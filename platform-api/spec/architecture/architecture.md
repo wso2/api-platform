@@ -39,29 +39,30 @@ The Platform API serves as the central backend service for the API Platform ecos
 
 ---
 
-## 3. Integration Points
+## 3. Client Applications
 
-### 3.1 External Systems
+### 3.1 Portal Applications
 
-**API Gateways**
+- Management Portal
+- Enterprise Portal
+- API Portal
+
+### 3.2 Command Line Interface (CLI)
+CLI Tool Backend Support
+
+---
+
+## 4. Integration Points
+
+**API Gateway Controller**
 - Dynamic gateway registration
 - Configuration synchronization
 - Deployment coordination
 
-**Portal Applications**
-- Management Portal backend APIs
-- Enterprise Portal data services
-- API Portal backend APIs
-
-**CLI Tool**
-
-### 3.2 MCP Server Integration
-- Protocol-compliant message handling
-- Real-time portal communication
-- State synchronization
-
 ---
 
 **Document Version**: 1.0
+
 **Last Updated**: 2025-10-07
+
 **Status**: Draft
