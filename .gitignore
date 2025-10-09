@@ -22,3 +22,64 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+# Node.js dependencies
+node_modules/
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Next.js and TypeScript build outputs
+.next/
+*.tsbuildinfo
+next-env.d.ts
+
+# Build and output directories
+build/
+dist/
+out/
+out-tsc/
+tmp/
+
+# Testing and coverage
+coverage/
+*.test
+*.out
+
+# Environment files
+.env*
+!.env.example
+
+# IDE and editor files
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+*.sublime-workspace
+.project
+.classpath
+.settings/
+*.launch
+.c9/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs and debug files
+npm-debug.log
+yarn-error.log
+yarn-debug.log*
+
+# Misc development artifacts
+.sass-cache/
+*.tgz
