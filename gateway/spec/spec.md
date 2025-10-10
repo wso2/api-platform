@@ -48,7 +48,6 @@ Practical deployment scenarios and use cases:
 
 ## Documentation
 
-- **Source**: `gateway/ap-gw.md`
 - **Architecture**: `gateway/spec/architecture/architecture.md`
 - **Design**: `gateway/spec/design/design.md`
 - **Use Cases**: `gateway/spec/use-cases/use_cases.md`
