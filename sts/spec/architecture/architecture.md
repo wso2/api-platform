@@ -10,14 +10,14 @@ The STS is built on the foundation of [Asgardeo Thunder](https://github.com/asga
 ┌─────────────────────────────────────────┐
 │         Docker Container                │
 │                                         │
-│  ┌────────────────┐  ┌──────────────┐  │
-│  │   Gate App     │  │    Thunder   │  │
-│  │  (Next.js UI)  │  │    (Core)    │  │
-│  │                │  │              │  │
-│  │  - Login       │  │ - OAuth 2.0  │  │
-│  │  - Register    │  │ - OIDC       │  │
-│  │                │  │ - Token Mgmt │  │
-│  └────────────────┘  └──────────────┘  │
+│  ┌────────────────┐  ┌──────────────┐   │
+│  │   Gate App     │  │    Thunder   │   │
+│  │  (Next.js UI)  │  │    (Core)    │   │
+│  │                │  │              │   │
+│  │  - Login       │  │ - OAuth 2.0  │   │
+│  │  - Register    │  │ - OIDC       │   │
+│  │                │  │ - Token Mgmt │   │
+│  └────────────────┘  └──────────────┘   │
 │                                         │
 └─────────────────────────────────────────┘
 ```

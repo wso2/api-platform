@@ -60,10 +60,10 @@ RUN apk add --no-cache nodejs npm
 USER thunder
 
 # Expose ports
-EXPOSE 8090 3000
+EXPOSE 8090 9090
 
-# Copy Gate App build from builder stage
-COPY --from=gate-builder /build/.next/standalone /opt/gate-app
+# Copy Gate App build from builder stage with proper ownership
+COPY --from=gate-builder --chown=thunder:thunder /build/.next/standalone /opt/gate-app
 
 # Copy startup script with execute permissions
 COPY --chmod=755 scripts/startup.sh /opt/sts/startup.sh
