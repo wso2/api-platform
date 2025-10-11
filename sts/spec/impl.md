@@ -26,5 +26,6 @@ STS implementation creates a Docker image packaging Thunder OAuth server and Gat
 
 See detailed feature documentation:
 
+- [Initial Thunder Setup](impls/initial-thunder-setup.md)
 - [Gate App Integration](impls/gate-app-integration.md)
 - [Kickstart Process](impls/kickstart-process.md)

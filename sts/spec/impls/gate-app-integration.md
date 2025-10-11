@@ -177,6 +177,7 @@ curl -k https://localhost:9090
 
 ## Related Features
 
+- [Initial Thunder Setup](./initial-thunder-setup.md) - Foundation for this integration
 - [Kickstart Process](./kickstart-process.md) - Automated setup script
 
 ## Future Enhancements

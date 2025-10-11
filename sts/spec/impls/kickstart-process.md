@@ -358,6 +358,7 @@ The script handles:
 
 ## Related Features
 
+- [Initial Thunder Setup](./initial-thunder-setup.md) - Provides Thunder APIs used by kickstart
 - [Gate App Integration](./gate-app-integration.md) - The runtime environment
 
 ## Future Enhancements
