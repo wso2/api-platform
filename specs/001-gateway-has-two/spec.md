@@ -5,6 +5,16 @@
 **Status**: Draft
 **Input**: User description: "Gateway has two components, Gateway-Controller and Router. Router is an Envoy Proxy based Docker image with the required bootstrap envoy.yaml with xds_cluster. The Gateway-Controller is the xds server for Router. The user will provide API configurations to the Gateway-Controller and it will configure the Router according to the user provided configurations. This API configuration is a YAML/JSON definition of RestAPI. User can delete/edit API configurations via Gateway-Controller and it should be reflected in the Router. Use gateway/ directory."
 
+## Clarifications
+
+### Session 2025-10-12
+
+- Q: When the Gateway-Controller persists API configurations (FR-009), what storage mechanism should be used? → A: Embedded key-value store (e.g., BoltDB, BadgerDB)
+- Q: How should the Gateway-Controller uniquely identify API configurations when the same API name exists with different versions? → A: Composite key: {name}/{version} (e.g., "PetStore/v1")
+- Q: When the Router (Envoy) cannot connect to the Gateway-Controller xDS server at startup, what should happen? → A: Wait indefinitely with retry backoff until connection succeeds
+- Q: What logging level and information should the Gateway-Controller output for troubleshooting configuration issues? → A: Detailed debug logs including full config diffs and xDS payloads, but user can change the log level
+- Q: When a configuration update is rejected due to validation errors, should the Gateway-Controller return detailed field-level error information? → A: Yes, JSON structure with field paths and specific error messages
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Deploy New API Configuration (Priority: P1)
@@ -19,7 +29,7 @@ An API administrator needs to expose a new REST API through the gateway by provi
 
 1. **Given** the Gateway-Controller and Router are running, **When** a user submits a valid API configuration (YAML/JSON) defining routes for a REST API, **Then** the Gateway-Controller accepts the configuration and the Router begins routing requests to the specified backend endpoints within 5 seconds
 2. **Given** a valid API configuration has been submitted, **When** a client sends an HTTP request matching the configured route path, **Then** the Router forwards the request to the correct backend service and returns the response
-3. **Given** an invalid API configuration is submitted (malformed YAML/JSON or missing required fields), **When** the user attempts to deploy it, **Then** the Gateway-Controller rejects it with a clear error message indicating what is invalid
+3. **Given** an invalid API configuration is submitted (malformed YAML/JSON or missing required fields), **When** the user attempts to deploy it, **Then** the Gateway-Controller rejects it with a structured JSON error response containing field paths and specific validation errors
 
 ---
 
@@ -76,7 +86,7 @@ An API administrator wants to view all currently deployed API configurations and
 - What happens when the Gateway-Controller loses connection to the Router during a configuration update? (Expected: Router continues serving existing configuration; Gateway-Controller retries when connection restored)
 - How does the system handle a configuration update that causes the Router to fail health checks? (Expected: Rollback to previous working configuration or clear error reporting)
 - What happens when multiple configuration updates are submitted rapidly for the same API? (Expected: Updates are applied in order; only the final state is guaranteed)
-- How does the Router behave when the Gateway-Controller (xDS server) is unavailable at startup? (Expected: Router either waits for connection or fails fast with clear error)
+- How does the Router behave when the Gateway-Controller (xDS server) is unavailable at startup? (Expected: Router waits indefinitely with exponential backoff retry until xDS connection succeeds; no traffic served until connected)
 - What happens when an API configuration references a backend service that is unavailable? (Expected: Configuration is accepted; Router returns 503 Service Unavailable for requests to that API)
 - How does the system handle very large configuration files or a large number of API configurations? (Expected: System should handle at least 100 distinct API configurations without performance degradation)
 
@@ -88,21 +98,22 @@ An API administrator wants to view all currently deployed API configurations and
 - **FR-002**: Gateway-Controller MUST validate API configuration syntax and structure before accepting it
 - **FR-003**: Gateway-Controller MUST act as an xDS (Discovery Service) server that the Router can connect to for configuration updates
 - **FR-004**: Gateway-Controller MUST push configuration updates to the Router within 5 seconds of accepting a new or modified API configuration
-- **FR-005**: Router MUST be packaged as a Docker container image based on Envoy Proxy with a bootstrap envoy.yaml file pre-configured with xds_cluster pointing to the Gateway-Controller
+- **FR-005**: Router MUST be packaged as a Docker container image based on Envoy Proxy with a bootstrap envoy.yaml file pre-configured with xds_cluster pointing to the Gateway-Controller; Router waits indefinitely with exponential backoff retry if xDS server unavailable at startup
 - **FR-006**: Router MUST dynamically update its routing configuration when receiving updates from the Gateway-Controller's xDS server without requiring restart
 - **FR-007**: Router MUST correctly route HTTP requests to backend services based on the deployed API configurations (matching method, path, headers as defined)
 - **FR-008**: Gateway-Controller MUST support creating, reading, updating, and deleting (CRUD) API configurations
 - **FR-009**: Gateway-Controller MUST persist API configurations so they survive restarts
-- **FR-010**: Gateway-Controller MUST provide clear error messages when API configurations are invalid, including specific details about what is wrong
+- **FR-010**: Gateway-Controller MUST provide clear error messages when API configurations are invalid, returning a JSON structure with field paths (e.g., "data.operations[0].path") and specific error descriptions for each validation failure
 - **FR-011**: Router MUST gracefully handle configuration updates without dropping in-flight requests
 - **FR-012**: Gateway-Controller MUST maintain an audit log of all configuration changes (create, update, delete operations) including timestamp and configuration details
+- **FR-016**: Gateway-Controller MUST support configurable log levels (debug, info, warn, error) with debug level including full configuration diffs and xDS payloads for troubleshooting
 - **FR-013**: System MUST support concurrent configuration updates without data corruption or inconsistent state
 - **FR-014**: Router MUST return appropriate HTTP error codes when requests don't match any configured route (e.g., 404 Not Found)
 - **FR-015**: Gateway-Controller MUST expose an interface for submitting and managing API configurations (CLI, REST API, or both)
 
 ### Key Entities
 
-- **API Configuration**: A declarative definition of a REST API including its name, version, context path, backend service URLs, routing rules (methods, paths, parameters), and policies. Represented as YAML or JSON. Key attributes include unique identifier, routes (method + path patterns), upstream backend endpoints, and optional metadata (name, version, description).
+- **API Configuration**: A declarative definition of a REST API including its name, version, context path, backend service URLs, routing rules (methods, paths, parameters), and policies. Represented as YAML or JSON. Uniquely identified by composite key `{name}/{version}` (e.g., "PetStore/v1"). Key attributes include routes (method + path patterns), upstream backend endpoints, and optional metadata (description, tags).
 
 - **Route**: A mapping between an incoming HTTP request pattern (method, path, optional headers/query params) and a backend service endpoint. Part of an API Configuration. Relationships: Multiple routes belong to one API Configuration; each route targets one or more backend endpoints.
 
@@ -127,14 +138,15 @@ An API administrator wants to view all currently deployed API configurations and
 
 1. **Deployment Environment**: Both Gateway-Controller and Router will run as Docker containers in a networked environment where they can communicate via TCP
 2. **API Configuration Format**: The API configuration schema will follow the `api.yaml` specification format defined in the platform's `concepts/api-yaml-specification.md` document
-3. **Persistence Mechanism**: Gateway-Controller will use a lightweight embedded database or file-based storage for configuration persistence (specific technology to be determined in planning phase)
+3. **Persistence Mechanism**: Gateway-Controller will use an embedded key-value store (BoltDB or BadgerDB) for configuration persistence, providing ACID guarantees and efficient key-based lookups
 4. **Network Reliability**: The network connection between Gateway-Controller and Router is reasonably stable; transient disconnections are acceptable but should be handled gracefully
 5. **Single Controller Instance**: Initial implementation assumes a single Gateway-Controller instance managing one or more Router instances (high availability to be addressed in future iterations)
 6. **Configuration Interface**: Gateway-Controller will expose a REST API as the primary interface for configuration management, with CLI support potentially added later
 7. **Security**: Basic authentication/authorization for Gateway-Controller API will be implemented, but detailed security model (mTLS, RBAC, etc.) is out of scope for initial version
-8. **Backend Service Availability**: Backend services referenced in API configurations are expected to be network-accessible from the Router; the gateway is not responsible for backend service discovery or health checking beyond basic connectivity
-9. **Configuration Size Limits**: Individual API configuration files are expected to be under 1MB; extremely large configurations are out of scope
-10. **xDS Protocol Version**: Will use Envoy's v3 xDS API for compatibility with current Envoy Proxy versions
+8. **Logging Configuration**: Gateway-Controller log level is configurable via environment variable or command-line flag; default level is info for production use
+9. **Backend Service Availability**: Backend services referenced in API configurations are expected to be network-accessible from the Router; the gateway is not responsible for backend service discovery or health checking beyond basic connectivity
+10. **Configuration Size Limits**: Individual API configuration files are expected to be under 1MB; extremely large configurations are out of scope
+11. **xDS Protocol Version**: Will use Envoy's v3 xDS API for compatibility with current Envoy Proxy versions
 
 ## Constraints
 

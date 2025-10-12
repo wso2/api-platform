@@ -16,14 +16,15 @@ Build a two-component API gateway system consisting of Gateway-Controller (Go-ba
 **Language/Version**: Go 1.25.1
 **Primary Dependencies**:
 - Gin (web framework for REST API)
-- Zap (structured logging)
-- go-control-plane (Envoy xDS v3 API implementation) - NEEDS CLARIFICATION: specific version
+- Zap (structured logging with configurable levels: debug, info, warn, error)
+- go-control-plane v0.13.0+ (Envoy xDS v3 API implementation, latest stable Feb 2025)
 - YAML/JSON parser (gopkg.in/yaml.v3, encoding/json)
-- Storage library - NEEDS CLARIFICATION: bbolt/badger/sqlite for persistence
+- bbolt v1.3.9+ (go.etcd.io/bbolt) for persistence
+- go-playground/validator/v10 (for structured validation with field-level error reporting)
 
-**Storage**: Embedded database or file-based storage for API configurations (bbolt, badger, or SQLite) - NEEDS CLARIFICATION: which option best fits requirements
+**Storage**: bbolt embedded key-value store with ACID guarantees, bucket-based organization
 **Testing**: Go testing framework (testing package), testify for assertions
-**Build Tool**: Make (Makefile for build, test, docker targets) - NEEDS CLARIFICATION: verify Make is appropriate vs alternatives
+**Build Tool**: Make (Makefile for build, test, docker targets)
 **Target Platform**: Linux/macOS Docker containers (multi-arch support for amd64/arm64)
 **Project Type**: Backend service with REST API
 **Performance Goals**:
@@ -36,9 +37,12 @@ Build a two-component API gateway system consisting of Gateway-Controller (Go-ba
 **Constraints**:
 - Must implement Envoy xDS v3 protocol using SotW (State-of-the-World) approach
 - Configuration changes must be atomic (all-or-nothing)
-- Must persist configurations to database for durability
+- Must persist configurations to bbolt database for durability
 - In-memory maps serve as primary data source for xDS cache generation
 - Database serves as persistence layer and loaded on startup
+- API configurations uniquely identified by composite key `{name}/{version}` (e.g., "PetStore/v1")
+- Validation errors must return structured JSON with field paths for precise error reporting
+- Logging configurable via environment variable (LOG_LEVEL) or CLI flag, default INFO level
 - Docker image size should be minimal (<100MB)
 
 **Scale/Scope**:
@@ -61,8 +65,10 @@ Build a two-component API gateway system consisting of Gateway-Controller (Go-ba
 
 **Constraints**:
 - Must use Envoy 1.35.3 specifically
-- Bootstrap configuration must be minimal (only xds_cluster)
+- Bootstrap configuration must be minimal (only xds_cluster with retry policy)
 - All routing configuration comes from xDS (no static routes)
+- Router waits indefinitely with exponential backoff (1s base, 30s max) if xDS server unavailable at startup
+- No traffic served until xDS connection established (fail-safe behavior)
 
 **Scale/Scope**:
 - Route traffic for 100+ configured APIs
