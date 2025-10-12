@@ -83,3 +83,10 @@ yarn-debug.log*
 # Misc development artifacts
 .sass-cache/
 *.tgz
+
+.idea
+.classpath
+.settings
+.project
+
+*.DS_Store
