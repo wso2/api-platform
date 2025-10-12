@@ -229,6 +229,11 @@ func LoadFromDatabase(db *bbolt.DB, store *ConfigStore) error {
 				return fmt.Errorf("failed to unmarshal config %s: %w", k, err)
 			}
 
+			// Reset status to pending on startup to ensure re-deployment to clean Router
+			// This fixes the cold-start issue where previously deployed configs would be
+			// skipped by the translator even though Envoy has no configuration yet
+			cfg.Status = models.StatusPending
+
 			// Add to in-memory store (bypassing locking since we're in startup)
 			if err := store.Add(&cfg); err != nil {
 				return fmt.Errorf("failed to add config to memory store: %w", err)
