@@ -73,20 +73,136 @@ docker run -p 9090:9090 -p 18000:18000 \
 
 ## Configuration
 
-### Environment Variables
+The Gateway-Controller supports configuration via:
+1. **Configuration file** (YAML)
+2. **Environment variables** (prefix: `GC_`)
+3. **Command-line flags**
 
-- `LOG_LEVEL`: Log level (debug, info, warn, error) - default: `info`
-- `DB_PATH`: Path to bbolt database file - default: `/data/gateway-controller.db`
-- `API_PORT`: REST API port - default: `9090`
-- `XDS_PORT`: xDS gRPC server port - default: `18000`
+Priority: Environment variables > Config file > Defaults
 
-### Example
+### Configuration File
+
+Create a `config.yaml` file (default location: `/etc/gateway-controller/config.yaml`):
+
+```yaml
+# Server configuration
+server:
+  api_port: 9090          # REST API port
+  xds_port: 18000         # xDS gRPC server port
+  shutdown_timeout: 15s   # Graceful shutdown timeout
+
+# Storage configuration
+storage:
+  mode: persistent        # "persistent" or "memory-only"
+  database_path: /data/gateway-controller.db
+
+# Router (Envoy) configuration
+router:
+  access_logs:
+    enabled: true         # Enable/disable access logs
+    format: json          # "json" or "text"
+  listener_port: 8080     # Envoy proxy port
+
+# Logging configuration
+logging:
+  level: info             # "debug", "info", "warn", "error"
+  format: json            # "json" or "console"
+```
+
+### Command-Line Flags
 
 ```bash
-export LOG_LEVEL=debug
-export DB_PATH=./gateway-controller.db
+# Specify custom config file location
+./bin/controller --config /path/to/config.yaml
+```
+
+### Environment Variables
+
+Override any configuration value using the `GC_` prefix:
+
+```bash
+# Override server API port
+export GC_SERVER_API_PORT=9091
+
+# Set storage mode to memory-only
+export GC_STORAGE_MODE=memory-only
+
+# Disable access logs
+export GC_ROUTER_ACCESS_LOGS_ENABLED=false
+
+# Set debug logging
+export GC_LOGGING_LEVEL=debug
+
 ./bin/controller
 ```
+
+Environment variable naming: `GC_<SECTION>_<KEY>` (uppercase, underscore-separated)
+
+### Configuration Modes
+
+#### Persistent Mode (Default)
+Use bbolt database for persistence across restarts:
+
+```yaml
+storage:
+  mode: persistent
+  database_path: /data/gateway-controller.db
+```
+
+#### Memory-Only Mode
+No persistent storage (useful for testing):
+
+```yaml
+storage:
+  mode: memory-only
+```
+
+### Access Logs
+
+#### JSON Format (Default)
+Structured logs for aggregation:
+
+```yaml
+router:
+  access_logs:
+    enabled: true
+    format: json
+```
+
+Example output:
+```json
+{"start_time":"2025-10-12T15:45:00Z","method":"GET","path":"/weather/US/Seattle","response_code":200,"duration":125}
+```
+
+#### Text Format
+Human-readable format:
+
+```yaml
+router:
+  access_logs:
+    enabled: true
+    format: text
+```
+
+Example output:
+```
+[2025-10-12T15:45:00Z] "GET /weather/US/Seattle HTTP/1.1" 200 - 512 1024 125 "10.0.0.1" "curl/7.68.0"
+```
+
+#### Disable Access Logs
+For performance or privacy:
+
+```yaml
+router:
+  access_logs:
+    enabled: false
+```
+
+### Example Configurations
+
+See `config/` directory for examples:
+- `config.yaml` - Default production configuration
+- `config-memory-only.yaml` - Testing/development configuration
 
 ## API Reference
 
@@ -202,6 +318,7 @@ gateway-controller/
 │   │   ├── handlers/         # REST API handlers
 │   │   └── middleware/       # Logging, error handling
 │   ├── config/
+│   │   ├── config.go         # Configuration loader (Koanf)
 │   │   ├── parser.go         # YAML/JSON parsing
 │   │   └── validator.go      # Configuration validation
 │   ├── models/
@@ -218,6 +335,9 @@ gateway-controller/
 │       └── logger.go         # Zap logger setup
 ├── api/
 │   └── openapi.yaml          # OpenAPI 3.0 specification
+├── config/
+│   ├── config.yaml           # Default configuration
+│   └── config-memory-only.yaml  # Memory-only example
 ├── oapi-codegen.yaml         # Code generation config
 ├── Dockerfile
 └── Makefile

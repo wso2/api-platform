@@ -77,9 +77,11 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 
 	cfg.UpdatedAt = now
 
-	// Update database
-	if err := s.db.UpdateConfig(cfg); err != nil {
-		s.logger.Error("Failed to update config status in database", zap.Error(err), zap.String("id", configID))
+	// Update database (only if persistent mode)
+	if s.db != nil {
+		if err := s.db.UpdateConfig(cfg); err != nil {
+			s.logger.Error("Failed to update config status in database", zap.Error(err), zap.String("id", configID))
+		}
 	}
 
 	// Update in-memory store
@@ -159,18 +161,23 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	}
 
 	// Atomic dual-write: database + in-memory
-	if err := s.db.SaveConfig(storedCfg); err != nil {
-		s.logger.Error("Failed to save config to database", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to persist configuration",
-		})
-		return
+	// Save to database first (only if persistent mode)
+	if s.db != nil {
+		if err := s.db.SaveConfig(storedCfg); err != nil {
+			s.logger.Error("Failed to save config to database", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to persist configuration",
+			})
+			return
+		}
 	}
 
 	if err := s.store.Add(storedCfg); err != nil {
-		// Rollback database write
-		_ = s.db.DeleteConfig(storedCfg.ID)
+		// Rollback database write (only if persistent mode)
+		if s.db != nil {
+			_ = s.db.DeleteConfig(storedCfg.ID)
+		}
 		s.logger.Error("Failed to add config to memory store", zap.Error(err))
 		c.JSON(http.StatusConflict, api.ErrorResponse{
 			Status:  "error",
@@ -346,13 +353,16 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	existing.DeployedVersion = 0
 
 	// Atomic dual-write: database + in-memory
-	if err := s.db.UpdateConfig(existing); err != nil {
-		s.logger.Error("Failed to update config in database", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to persist configuration update",
-		})
-		return
+	// Update database first (only if persistent mode)
+	if s.db != nil {
+		if err := s.db.UpdateConfig(existing); err != nil {
+			s.logger.Error("Failed to update config in database", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to persist configuration update",
+			})
+			return
+		}
 	}
 
 	if err := s.store.Update(existing); err != nil {
@@ -416,14 +426,16 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 		return
 	}
 
-	// Delete from database first
-	if err := s.db.DeleteConfig(id); err != nil {
-		s.logger.Error("Failed to delete config from database", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to delete configuration",
-		})
-		return
+	// Delete from database first (only if persistent mode)
+	if s.db != nil {
+		if err := s.db.DeleteConfig(id); err != nil {
+			s.logger.Error("Failed to delete config from database", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to delete configuration",
+			})
+			return
+		}
 	}
 
 	// Delete from in-memory store

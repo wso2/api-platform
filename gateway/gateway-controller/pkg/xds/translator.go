@@ -26,15 +26,23 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
+// AccessLogConfig holds access log configuration
+type AccessLogConfig struct {
+	Enabled bool
+	Format  string // "json" or "text"
+}
+
 // Translator converts API configurations to Envoy xDS resources
 type Translator struct {
-	logger *zap.Logger
+	logger          *zap.Logger
+	accessLogConfig AccessLogConfig
 }
 
 // NewTranslator creates a new translator
-func NewTranslator(logger *zap.Logger) *Translator {
+func NewTranslator(logger *zap.Logger, accessLogConfig AccessLogConfig) *Translator {
 	return &Translator{
-		logger: logger,
+		logger:          logger,
+		accessLogConfig: accessLogConfig,
 	}
 }
 
@@ -143,12 +151,6 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost) (*listene
 		return nil, fmt.Errorf("failed to create router config: %w", err)
 	}
 
-	// Create access log configuration
-	accessLogs, err := t.createAccessLogConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create access log config: %w", err)
-	}
-
 	// Create HTTP connection manager
 	manager := &hcm.HttpConnectionManager{
 		CodecType:  hcm.HttpConnectionManager_AUTO,
@@ -162,7 +164,15 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost) (*listene
 				TypedConfig: routerAny,
 			},
 		}},
-		AccessLog: accessLogs,
+	}
+
+	// Add access logs if enabled
+	if t.accessLogConfig.Enabled {
+		accessLogs, err := t.createAccessLogConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create access log config: %w", err)
+		}
+		manager.AccessLog = accessLogs
 	}
 
 	pbst, err := anypb.New(manager)
@@ -344,44 +354,68 @@ func (t *Translator) sanitizeName(name string) string {
 	return name
 }
 
-// createAccessLogConfig creates access log configuration with JSON format to stdout
+// createAccessLogConfig creates access log configuration based on format (JSON or text) to stdout
 func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
-	// Define JSON log format with standard fields
-	jsonFormat := map[string]string{
-		"start_time":             "%START_TIME%",
-		"method":                 "%REQ(:METHOD)%",
-		"path":                   "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
-		"protocol":               "%PROTOCOL%",
-		"response_code":          "%RESPONSE_CODE%",
-		"response_flags":         "%RESPONSE_FLAGS%",
-		"bytes_received":         "%BYTES_RECEIVED%",
-		"bytes_sent":             "%BYTES_SENT%",
-		"duration":               "%DURATION%",
-		"upstream_service_time":  "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
-		"x_forwarded_for":        "%REQ(X-FORWARDED-FOR)%",
-		"user_agent":             "%REQ(USER-AGENT)%",
-		"request_id":             "%REQ(X-REQUEST-ID)%",
-		"authority":              "%REQ(:AUTHORITY)%",
-		"upstream_host":          "%UPSTREAM_HOST%",
-		"upstream_cluster":       "%UPSTREAM_CLUSTER%",
-	}
+	var fileAccessLog *fileaccesslog.FileAccessLog
 
-	// Convert to structpb.Struct
-	jsonStruct, err := structpb.NewStruct(convertToInterface(jsonFormat))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create json struct: %w", err)
-	}
+	if t.accessLogConfig.Format == "json" {
+		// Define JSON log format with standard fields
+		jsonFormat := map[string]string{
+			"start_time":            "%START_TIME%",
+			"method":                "%REQ(:METHOD)%",
+			"path":                  "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
+			"protocol":              "%PROTOCOL%",
+			"response_code":         "%RESPONSE_CODE%",
+			"response_flags":        "%RESPONSE_FLAGS%",
+			"bytes_received":        "%BYTES_RECEIVED%",
+			"bytes_sent":            "%BYTES_SENT%",
+			"duration":              "%DURATION%",
+			"upstream_service_time": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
+			"x_forwarded_for":       "%REQ(X-FORWARDED-FOR)%",
+			"user_agent":            "%REQ(USER-AGENT)%",
+			"request_id":            "%REQ(X-REQUEST-ID)%",
+			"authority":             "%REQ(:AUTHORITY)%",
+			"upstream_host":         "%UPSTREAM_HOST%",
+			"upstream_cluster":      "%UPSTREAM_CLUSTER%",
+		}
 
-	// Create file access log configuration
-	fileAccessLog := &fileaccesslog.FileAccessLog{
-		Path: "/dev/stdout",
-		AccessLogFormat: &fileaccesslog.FileAccessLog_LogFormat{
-			LogFormat: &core.SubstitutionFormatString{
-				Format: &core.SubstitutionFormatString_JsonFormat{
-					JsonFormat: jsonStruct,
+		// Convert to structpb.Struct
+		jsonStruct, err := structpb.NewStruct(convertToInterface(jsonFormat))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create json struct: %w", err)
+		}
+
+		fileAccessLog = &fileaccesslog.FileAccessLog{
+			Path: "/dev/stdout",
+			AccessLogFormat: &fileaccesslog.FileAccessLog_LogFormat{
+				LogFormat: &core.SubstitutionFormatString{
+					Format: &core.SubstitutionFormatString_JsonFormat{
+						JsonFormat: jsonStruct,
+					},
 				},
 			},
-		},
+		}
+	} else {
+		// Text format: Common Log Format with additional fields
+		textFormat := "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" " +
+			"%RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
+			"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
+			"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n"
+
+		fileAccessLog = &fileaccesslog.FileAccessLog{
+			Path: "/dev/stdout",
+			AccessLogFormat: &fileaccesslog.FileAccessLog_LogFormat{
+				LogFormat: &core.SubstitutionFormatString{
+					Format: &core.SubstitutionFormatString_TextFormatSource{
+						TextFormatSource: &core.DataSource{
+							Specifier: &core.DataSource_InlineString{
+								InlineString: textFormat,
+							},
+						},
+					},
+				},
+			},
+		}
 	}
 
 	// Marshal to Any

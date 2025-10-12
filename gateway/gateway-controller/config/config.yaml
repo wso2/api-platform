@@ -1,0 +1,56 @@
+# Gateway-Controller Configuration
+# This file contains configuration for the WSO2 API Platform Gateway Controller
+
+# Server configuration
+server:
+  # REST API port for gateway management
+  api_port: 9090
+
+  # xDS gRPC port for Envoy communication
+  xds_port: 18000
+
+  # Graceful shutdown timeout
+  shutdown_timeout: 15s
+
+# Storage configuration
+storage:
+  # Storage mode: "memory-only" or "persistent"
+  # - memory-only: No persistent storage, all configs lost on restart (useful for testing)
+  # - persistent: Use bbolt database for persistence across restarts
+  mode: memory-only
+
+  # Path to bbolt database (only used when mode=persistent)
+  database_path: /data/gateway-controller.db
+
+# Router (Envoy) configuration
+router:
+  # Access logs configuration
+  access_logs:
+    # Enable or disable access logs
+    enabled: true
+
+    # Log format: "json" or "text"
+    # - json: Structured JSON format (recommended for log aggregation)
+    # - text: Human-readable text format
+    format: json
+
+  # Listener port for incoming traffic (Envoy proxy port)
+  listener_port: 8080
+
+# Logging configuration
+logging:
+  # Log level: "debug", "info", "warn", or "error"
+  level: info
+
+  # Log format: "json" or "console"
+  # - json: Structured JSON format (recommended for production)
+  # - console: Human-readable console format (recommended for development)
+  format: json
+
+# Environment Variables Override
+# You can override any configuration using environment variables with the prefix GC_
+# Examples:
+#   GC_SERVER_API_PORT=9091
+#   GC_STORAGE_MODE=memory-only
+#   GC_ROUTER_ACCESS_LOGS_ENABLED=false
+#   GC_LOGGING_LEVEL=debug

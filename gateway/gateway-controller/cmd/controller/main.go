@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -13,6 +14,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -20,41 +22,66 @@ import (
 )
 
 func main() {
-	// Initialize logger
-	log, err := logger.NewLogger()
+	// Parse command-line flags
+	configPath := flag.String("config", "/etc/gateway-controller/config.yaml", "Path to configuration file")
+	flag.Parse()
+
+	// Load configuration
+	cfg, err := config.LoadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Initialize logger with config
+	log, err := logger.NewLogger(logger.Config{
+		Level:  cfg.Logging.Level,
+		Format: cfg.Logging.Format,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
 	defer log.Sync()
 
-	log.Info("Starting Gateway-Controller")
+	log.Info("Starting Gateway-Controller",
+		zap.String("config_file", *configPath),
+		zap.String("storage_mode", cfg.Storage.Mode),
+		zap.Bool("access_logs_enabled", cfg.Router.AccessLogs.Enabled),
+	)
 
-	// Get configuration from environment
-	dbPath := getEnv("DB_PATH", "/data/gateway-controller.db")
-	apiPort := getEnv("API_PORT", "9090")
-	xdsPort := getEnvInt("XDS_PORT", 18000)
-
-	// Initialize bbolt database
-	log.Info("Initializing database", zap.String("path", dbPath))
-	db, err := storage.NewBBoltStorage(dbPath)
-	if err != nil {
-		log.Fatal("Failed to initialize database", zap.Error(err))
+	// Initialize storage based on mode
+	var db storage.Storage
+	if cfg.IsPersistentMode() {
+		log.Info("Initializing persistent storage", zap.String("path", cfg.Storage.DatabasePath))
+		db, err = storage.NewBBoltStorage(cfg.Storage.DatabasePath)
+		if err != nil {
+			log.Fatal("Failed to initialize database", zap.Error(err))
+		}
+		defer db.Close()
+	} else {
+		log.Info("Running in memory-only mode (no persistent storage)")
 	}
-	defer db.Close()
 
 	// Initialize in-memory config store
 	configStore := storage.NewConfigStore()
 
-	// Load configurations from database on startup
-	log.Info("Loading configurations from database")
-	if err := storage.LoadFromDatabase(db.GetDB(), configStore); err != nil {
-		log.Fatal("Failed to load configurations from database", zap.Error(err))
+	// Load configurations from database on startup (if persistent mode)
+	if cfg.IsPersistentMode() && db != nil {
+		log.Info("Loading configurations from database")
+		bboltDB := db.(*storage.BBoltStorage)
+		if err := storage.LoadFromDatabase(bboltDB.GetDB(), configStore); err != nil {
+			log.Fatal("Failed to load configurations from database", zap.Error(err))
+		}
+		log.Info("Loaded configurations", zap.Int("count", len(configStore.GetAll())))
 	}
-	log.Info("Loaded configurations", zap.Int("count", len(configStore.GetAll())))
 
-	// Initialize xDS snapshot manager
-	snapshotManager := xds.NewSnapshotManager(configStore, log)
+	// Initialize xDS snapshot manager with access log config
+	accessLogConfig := xds.AccessLogConfig{
+		Enabled: cfg.Router.AccessLogs.Enabled,
+		Format:  cfg.Router.AccessLogs.Format,
+	}
+	snapshotManager := xds.NewSnapshotManager(configStore, log, accessLogConfig)
 
 	// Generate initial xDS snapshot
 	log.Info("Generating initial xDS snapshot")
@@ -65,8 +92,8 @@ func main() {
 	cancel()
 
 	// Start xDS gRPC server
-	log.Info("Starting xDS server", zap.Int("port", xdsPort))
-	xdsServer := xds.NewServer(snapshotManager, xdsPort, log)
+	log.Info("Starting xDS server", zap.Int("port", cfg.Server.XDSPort))
+	xdsServer := xds.NewServer(snapshotManager, cfg.Server.XDSPort, log)
 	go func() {
 		if err := xdsServer.Start(); err != nil {
 			log.Fatal("xDS server failed", zap.Error(err))
@@ -91,11 +118,11 @@ func main() {
 	api.RegisterHandlers(router, apiServer)
 
 	// Start REST API server
-	log.Info("Starting REST API server", zap.String("port", apiPort))
+	log.Info("Starting REST API server", zap.Int("port", cfg.Server.APIPort))
 
 	// Setup graceful shutdown
 	srv := &http.Server{
-		Addr:    ":" + apiPort,
+		Addr:    fmt.Sprintf(":%d", cfg.Server.APIPort),
 		Handler: router,
 	}
 
@@ -114,7 +141,7 @@ func main() {
 	log.Info("Shutting down Gateway-Controller")
 
 	// Graceful shutdown with timeout
-	ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel = context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
@@ -124,20 +151,4 @@ func main() {
 	xdsServer.Stop()
 
 	log.Info("Gateway-Controller stopped")
-}
-
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-func getEnvInt(key string, defaultValue int) int {
-	if value := os.Getenv(key); value != "" {
-		var intValue int
-		fmt.Sscanf(value, "%d", &intValue)
-		return intValue
-	}
-	return defaultValue
 }

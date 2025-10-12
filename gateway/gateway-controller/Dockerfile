@@ -24,17 +24,18 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /build/controller .
 
+# Copy default configuration file
+COPY config/config.yaml /etc/gateway-controller/config.yaml
+
 # Create data directory for bbolt database
 RUN mkdir -p /data
 
 # Expose ports
 EXPOSE 9090 18000
 
-# Set default environment variables
-ENV LOG_LEVEL=info
-ENV DB_PATH=/data/gateway-controller.db
-ENV API_PORT=9090
-ENV XDS_PORT=18000
+# Set default environment variables (can override config file)
+ENV GC_LOGGING_LEVEL=info
+ENV GC_STORAGE_DATABASE_PATH=/data/gateway-controller.db
 
 # Run the application
 CMD ["/app/controller"]
