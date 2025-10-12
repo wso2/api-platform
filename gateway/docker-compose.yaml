@@ -48,83 +48,14 @@ services:
       retries: 3
       start_period: 30s
 
-  # sample-backend:
-  #   image: node:20-alpine
-  #   container_name: sample-backend
-  #   ports:
-  #     - "3000:3000"
-  #   command: >
-  #     sh -c "
-  #     cat > /app/server.js << 'EOF'
-  #     const http = require('http');
-  #     const url = require('url');
-
-  #     const server = http.createServer((req, res) => {
-  #       const parsedUrl = url.parse(req.url, true);
-  #       const pathParts = parsedUrl.pathname.split('/').filter(p => p);
-
-  #       console.log(`Received: ${req.method} ${req.url}`);
-
-  #       res.setHeader('Content-Type', 'application/json');
-
-  #       if (pathParts[0] === 'api' && pathParts[1] === 'v2') {
-  #         // Weather API endpoint: /api/v2/{country}/{city}
-  #         const country = pathParts[2] || 'US';
-  #         const city = pathParts[3] || 'Unknown';
-
-  #         if (req.method === 'GET') {
-  #           res.writeHead(200);
-  #           res.end(JSON.stringify({
-  #             country: country,
-  #             city: city,
-  #             temperature: Math.floor(Math.random() * 30) + 5,
-  #             conditions: ['Sunny', 'Cloudy', 'Rainy', 'Windy'][Math.floor(Math.random() * 4)],
-  #             timestamp: new Date().toISOString()
-  #           }));
-  #         } else if (req.method === 'POST') {
-  #           let body = '';
-  #           req.on('data', chunk => body += chunk.toString());
-  #           req.on('end', () => {
-  #             res.writeHead(200);
-  #             res.end(JSON.stringify({
-  #               status: 'alert received',
-  #               country: country,
-  #               city: city,
-  #               message: body ? JSON.parse(body).alert : 'No message'
-  #             }));
-  #           });
-  #         } else if (req.method === 'PUT') {
-  #           let body = '';
-  #           req.on('data', chunk => body += chunk.toString());
-  #           req.on('end', () => {
-  #             const data = JSON.parse(body);
-  #             res.writeHead(200);
-  #             res.end(JSON.stringify({
-  #               status: 'updated',
-  #               country: country,
-  #               city: city,
-  #               temperature: data.temperature || 20,
-  #               conditions: data.conditions || 'Unknown'
-  #             }));
-  #           });
-  #         } else {
-  #           res.writeHead(405);
-  #           res.end(JSON.stringify({ error: 'Method not allowed' }));
-  #         }
-  #       } else {
-  #         res.writeHead(404);
-  #         res.end(JSON.stringify({ error: 'Not found' }));
-  #       }
-  #     });
-
-  #     server.listen(3000, '0.0.0.0', () => {
-  #       console.log('Sample backend listening on port 3000');
-  #     });
-  #     EOF
-  #     node /app/server.js
-  #     "
-  #   networks:
-  #     - gateway-network
+  sample-backend:
+    image: renukafernando/request-info:latest
+    container_name: sample-backend
+    ports:
+      - "3000:3000"
+    command: ["-addr", ":3000", "-pretty"]
+    networks:
+      - gateway-network
 
 volumes:
   controller-data:

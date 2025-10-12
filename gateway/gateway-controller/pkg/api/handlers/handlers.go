@@ -34,13 +34,57 @@ func NewAPIServer(
 	snapshotManager *xds.SnapshotManager,
 	logger *zap.Logger,
 ) *APIServer {
-	return &APIServer{
+	server := &APIServer{
 		store:           store,
 		db:              db,
 		snapshotManager: snapshotManager,
 		parser:          config.NewParser(),
 		validator:       config.NewValidator(),
 		logger:          logger,
+	}
+
+	// Register status update callback
+	snapshotManager.SetStatusCallback(server.handleStatusUpdate)
+
+	return server
+}
+
+// handleStatusUpdate is called by SnapshotManager after xDS deployment
+func (s *APIServer) handleStatusUpdate(configID string, success bool, version int64) {
+	cfg, err := s.store.Get(configID)
+	if err != nil {
+		s.logger.Warn("Config not found for status update", zap.String("id", configID))
+		return
+	}
+
+	now := time.Now()
+	if success {
+		cfg.Status = models.StatusDeployed
+		cfg.DeployedAt = &now
+		cfg.DeployedVersion = version
+		s.logger.Info("API configuration deployed successfully",
+			zap.String("id", configID),
+			zap.String("name", cfg.Configuration.Data.Name),
+			zap.Int64("version", version))
+	} else {
+		cfg.Status = models.StatusFailed
+		cfg.DeployedAt = nil
+		cfg.DeployedVersion = 0
+		s.logger.Error("API configuration deployment failed",
+			zap.String("id", configID),
+			zap.String("name", cfg.Configuration.Data.Name))
+	}
+
+	cfg.UpdatedAt = now
+
+	// Update database
+	if err := s.db.UpdateConfig(cfg); err != nil {
+		s.logger.Error("Failed to update config status in database", zap.Error(err), zap.String("id", configID))
+	}
+
+	// Update in-memory store
+	if err := s.store.Update(cfg); err != nil {
+		s.logger.Error("Failed to update config status in memory", zap.Error(err), zap.String("id", configID))
 	}
 }
 
@@ -107,11 +151,11 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	storedCfg := &models.StoredAPIConfig{
 		ID:              uuid.New().String(),
 		Configuration:   *apiConfig,
-		Status:          models.StatusDeployed,
+		Status:          models.StatusPending,
 		CreatedAt:       now,
 		UpdatedAt:       now,
-		DeployedAt:      &now,
-		DeployedVersion: s.store.GetSnapshotVersion() + 1,
+		DeployedAt:      nil,
+		DeployedVersion: 0,
 	}
 
 	// Atomic dual-write: database + in-memory
@@ -296,10 +340,10 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	// Update stored configuration
 	now := time.Now()
 	existing.Configuration = *apiConfig
-	existing.Status = models.StatusDeployed
+	existing.Status = models.StatusPending
 	existing.UpdatedAt = now
-	existing.DeployedAt = &now
-	existing.DeployedVersion = s.store.GetSnapshotVersion() + 1
+	existing.DeployedAt = nil
+	existing.DeployedVersion = 0
 
 	// Atomic dual-write: database + in-memory
 	if err := s.db.UpdateConfig(existing); err != nil {

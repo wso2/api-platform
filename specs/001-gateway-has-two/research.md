@@ -564,6 +564,119 @@ func main() {
 
 ---
 
+## Decision 10: Router Access Logging Strategy
+
+**Question**: What access logging should the Router (Envoy) implement for observability of HTTP traffic routing through the gateway?
+
+**Decision**: Configure **structured JSON access logs to stdout** at the HTTP Connection Manager level in the bootstrap configuration
+
+**Rationale**:
+- **Container-Native**: Logging to stdout follows Docker/Kubernetes best practices; logs captured by container runtime
+- **Structured Format**: JSON format enables easy parsing by log aggregation tools (ELK, Splunk, CloudWatch, etc.)
+- **Production Ready**: Provides essential observability without requiring external log sinks or file mounts
+- **Minimal Configuration**: Access logs configured in bootstrap (static config), no xDS complexity
+- **Performance**: File-based access logs to stdout have minimal overhead compared to gRPC access log service
+- **Standard Fields**: Include request method, path, response code, duration, upstream cluster for troubleshooting
+
+**Alternatives Considered**:
+- **gRPC Access Log Service**: Rejected because:
+  - Adds complexity (requires separate log collection service)
+  - Increases latency for each request (synchronous gRPC call)
+  - Overkill for basic gateway use case
+
+- **Plain Text Format**: Rejected because:
+  - Harder to parse programmatically
+  - JSON is industry standard for structured logs
+  - Modern log aggregation tools prefer JSON
+
+- **No Access Logging**: Rejected because:
+  - Observability is critical for troubleshooting routing issues
+  - Production systems need request-level visibility
+  - Minimal performance impact with file-based logging
+
+**Implementation Notes**:
+
+1. **Bootstrap Configuration** (`gateway/router/config/envoy-bootstrap.yaml`):
+   - Access logs configured under static resources (not dynamic xDS)
+   - Applied to all dynamically configured listeners via HTTP Connection Manager defaults
+
+2. **Log Format Fields**:
+   ```yaml
+   json_format:
+     start_time: "%START_TIME%"
+     method: "%REQ(:METHOD)%"
+     path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+     protocol: "%PROTOCOL%"
+     response_code: "%RESPONSE_CODE%"
+     response_flags: "%RESPONSE_FLAGS%"
+     bytes_received: "%BYTES_RECEIVED%"
+     bytes_sent: "%BYTES_SENT%"
+     duration: "%DURATION%"
+     upstream_service_time: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
+     x_forwarded_for: "%REQ(X-FORWARDED-FOR)%"
+     user_agent: "%REQ(USER-AGENT)%"
+     request_id: "%REQ(X-REQUEST-ID)%"
+     authority: "%REQ(:AUTHORITY)%"
+     upstream_host: "%UPSTREAM_HOST%"
+     upstream_cluster: "%UPSTREAM_CLUSTER%"
+   ```
+
+3. **Standard Envoy Command Operators Used**:
+   - `%START_TIME%`: Request start time (ISO 8601 format)
+   - `%PROTOCOL%`: HTTP protocol version (HTTP/1.1, HTTP/2, HTTP/3)
+   - `%RESPONSE_CODE%`: HTTP response status code
+   - `%RESPONSE_FLAGS%`: Envoy response flags (UH, UF, etc. for troubleshooting)
+   - `%DURATION%`: Total request duration in milliseconds
+   - `%UPSTREAM_CLUSTER%`: Which backend cluster handled the request (maps to API config)
+   - `%UPSTREAM_HOST%`: Actual backend host that processed the request
+
+4. **Example Log Output**:
+   ```json
+   {
+     "start_time": "2025-10-12T10:30:45.123Z",
+     "method": "GET",
+     "path": "/weather/US/Seattle",
+     "protocol": "HTTP/1.1",
+     "response_code": 200,
+     "response_flags": "-",
+     "bytes_received": 0,
+     "bytes_sent": 1024,
+     "duration": 45,
+     "upstream_service_time": "42",
+     "x_forwarded_for": "192.168.1.10",
+     "user_agent": "curl/7.68.0",
+     "request_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+     "authority": "gateway.example.com",
+     "upstream_host": "api.weather.com:443",
+     "upstream_cluster": "cluster_api_weather_com"
+   }
+   ```
+
+5. **Configuration Location**:
+   - Access logs ARE configured in the xDS-generated Listener resources by the Gateway-Controller
+   - Each Listener resource includes an `access_log` field (part of Listener protobuf definition)
+   - The Gateway-Controller's xDS translator will include access log configuration in all generated Listeners
+   - This approach allows consistent logging across all APIs without requiring per-API customization
+
+**Decision**: Configure access logs **dynamically via xDS** in generated Listener resources:
+- Gateway-Controller includes access log configuration in all generated Listeners
+- Consistent logging format across all APIs
+- Simpler than bootstrap static configuration (no Router bootstrap changes needed)
+- All configuration comes from Gateway-Controller (single source of truth)
+- Future enhancement: Allow per-API access log customization via API configuration
+
+6. **Volume Considerations**:
+   - High-traffic gateways may generate large log volumes
+   - Container log rotation handled by Docker/Kubernetes runtime
+   - Consider log sampling or filtering for extremely high-throughput scenarios (future enhancement)
+
+**References**:
+- https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage
+- https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/access_loggers/file/v3/file.proto
+- https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage#command-operators
+
+---
+
 ## Summary of Resolved Clarifications
 
 | Item | Decision | Confidence |
@@ -577,5 +690,6 @@ func main() {
 | Logging strategy | Structured logging (Zap) with configurable levels | ✅ High |
 | Validation errors | Structured JSON with field paths | ✅ High |
 | REST API code generation | oapi-codegen with Gin framework | ✅ High |
+| Router access logs | JSON format to stdout in bootstrap config | ✅ High |
 
-**Status**: All technical clarifications resolved including spec clarifications from 2025-10-12 and code generation strategy from 2025-10-12. Ready to proceed to Phase 1 (Data Model & Contracts).
+**Status**: All technical clarifications resolved including spec clarifications from 2025-10-12, code generation strategy from 2025-10-12, and access logging strategy from 2025-10-12. Ready to proceed to Phase 1 (Data Model & Contracts).

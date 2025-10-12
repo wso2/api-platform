@@ -6,12 +6,16 @@ import (
 	"strings"
 	"time"
 
+	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	fileaccesslog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
+	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
+	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
@@ -19,6 +23,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // Translator converts API configurations to Envoy xDS resources
@@ -46,7 +51,7 @@ func (t *Translator) TranslateConfigs(configs []*models.StoredAPIConfig) (map[re
 	clusterMap := make(map[string]*cluster.Cluster)
 
 	for _, cfg := range configs {
-		if cfg.Status != models.StatusDeployed {
+		if cfg.Status == models.StatusDeployed {
 			continue
 		}
 
@@ -69,18 +74,14 @@ func (t *Translator) TranslateConfigs(configs []*models.StoredAPIConfig) (map[re
 	}
 
 	// Create single listener with all virtual hosts
+	// Note: Route configuration is embedded inline in the listener,
+	// so we don't add it as a standalone resource
 	if len(virtualHosts) > 0 {
 		l, err := t.createListener(virtualHosts)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create listener: %w", err)
 		}
 		listeners = append(listeners, l)
-	}
-
-	// Create route configuration
-	if len(virtualHosts) > 0 {
-		r := t.createRouteConfiguration(virtualHosts)
-		routes = append(routes, r)
 	}
 
 	// Add all clusters
@@ -131,9 +132,22 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredAPIConfig) (*route.Vir
 	return vh, []*cluster.Cluster{c}, nil
 }
 
-// createListener creates an Envoy listener
+// createListener creates an Envoy listener with access logging
 func (t *Translator) createListener(virtualHosts []*route.VirtualHost) (*listener.Listener, error) {
 	routeConfig := t.createRouteConfiguration(virtualHosts)
+
+	// Create router filter with typed config
+	routerConfig := &router.Router{}
+	routerAny, err := anypb.New(routerConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create router config: %w", err)
+	}
+
+	// Create access log configuration
+	accessLogs, err := t.createAccessLogConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create access log config: %w", err)
+	}
 
 	// Create HTTP connection manager
 	manager := &hcm.HttpConnectionManager{
@@ -144,7 +158,11 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost) (*listene
 		},
 		HttpFilters: []*hcm.HttpFilter{{
 			Name: wellknown.Router,
+			ConfigType: &hcm.HttpFilter_TypedConfig{
+				TypedConfig: routerAny,
+			},
 		}},
+		AccessLog: accessLogs,
 	}
 
 	pbst, err := anypb.New(manager)
@@ -186,15 +204,30 @@ func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost)
 
 // createRoute creates a route for an operation
 func (t *Translator) createRoute(method, path, clusterName, upstreamPath string) *route.Route {
+	// Check if path contains parameters (e.g., {country_code})
+	hasParams := strings.Contains(path, "{")
+
+	var pathSpecifier *route.RouteMatch_SafeRegex
+	if hasParams {
+		// Use regex matching for parameterized paths
+		regexPattern := t.pathToRegex(path)
+		pathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: regexPattern,
+			},
+		}
+	}
+
 	r := &route.Route{
 		Match: &route.RouteMatch{
-			PathSpecifier: &route.RouteMatch_Path{
-				Path: path,
-			},
 			Headers: []*route.HeaderMatcher{{
 				Name: ":method",
-				HeaderMatchSpecifier: &route.HeaderMatcher_ExactMatch{
-					ExactMatch: method,
+				HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+					StringMatch: &matcher.StringMatcher{
+						MatchPattern: &matcher.StringMatcher_Exact{
+							Exact: method,
+						},
+					},
 				},
 			}},
 		},
@@ -207,9 +240,28 @@ func (t *Translator) createRoute(method, path, clusterName, upstreamPath string)
 		},
 	}
 
+	// Set path specifier based on whether we have parameters
+	if hasParams {
+		r.Match.PathSpecifier = pathSpecifier
+	} else {
+		// Use exact path matching for non-parameterized paths
+		r.Match.PathSpecifier = &route.RouteMatch_Path{
+			Path: path,
+		}
+	}
+
 	// Add path rewriting if upstream has a path prefix
+	// The upstream path should be prepended to the full request path
+	// For example: request /weather/US/Seattle with upstream /api/v2
+	// should result in /api/v2/weather/US/Seattle
 	if upstreamPath != "" && upstreamPath != "/" {
-		r.GetRoute().PrefixRewrite = upstreamPath
+		// Use RegexRewrite to prepend the upstream path to the full request path
+		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+			Pattern: &matcher.RegexMatcher{
+				Regex: "^(.*)$",
+			},
+			Substitution: upstreamPath + "\\1",
+		}
 	}
 
 	return r
@@ -255,20 +307,26 @@ func (t *Translator) createCluster(name string, upstreamURL *url.URL) *cluster.C
 }
 
 // pathToRegex converts a path with parameters to a regex pattern
+// Converts paths like /{country_code}/{city} to ^/[^/]+/[^/]+$
 func (t *Translator) pathToRegex(path string) string {
-	// Replace path parameters with regex patterns
+	// Escape special regex characters in the path, except for {}
 	regex := path
-	regex = strings.ReplaceAll(regex, "/", "\\/")
-	// Replace {param} with named capture group
-	regex = strings.ReplaceAll(regex, "{", "(?P<")
-	regex = strings.ReplaceAll(regex, "}", ">[^/]+)")
-	return "^" + regex + "$"
-}
 
-// convertPathParameters converts {param} to Envoy format
-func (t *Translator) convertPathParameters(path string) string {
-	// Envoy uses the same {param} format, so we just return as-is
-	return path
+	// Replace {param} with a pattern that matches any non-slash characters
+	// This handles parameters like {country_code}, {city}, etc.
+	for strings.Contains(regex, "{") {
+		start := strings.Index(regex, "{")
+		end := strings.Index(regex, "}")
+		if end > start {
+			// Replace {paramName} with [^/]+ (matches one or more non-slash chars)
+			regex = regex[:start] + "[^/]+" + regex[end+1:]
+		} else {
+			break
+		}
+	}
+
+	// Anchor the regex to match the entire path
+	return "^" + regex + "$"
 }
 
 // sanitizeClusterName creates a valid cluster name from a hostname
@@ -284,4 +342,67 @@ func (t *Translator) sanitizeName(name string) string {
 	name = strings.ReplaceAll(name, " ", "_")
 	name = strings.ReplaceAll(name, "-", "_")
 	return name
+}
+
+// createAccessLogConfig creates access log configuration with JSON format to stdout
+func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
+	// Define JSON log format with standard fields
+	jsonFormat := map[string]string{
+		"start_time":             "%START_TIME%",
+		"method":                 "%REQ(:METHOD)%",
+		"path":                   "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
+		"protocol":               "%PROTOCOL%",
+		"response_code":          "%RESPONSE_CODE%",
+		"response_flags":         "%RESPONSE_FLAGS%",
+		"bytes_received":         "%BYTES_RECEIVED%",
+		"bytes_sent":             "%BYTES_SENT%",
+		"duration":               "%DURATION%",
+		"upstream_service_time":  "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
+		"x_forwarded_for":        "%REQ(X-FORWARDED-FOR)%",
+		"user_agent":             "%REQ(USER-AGENT)%",
+		"request_id":             "%REQ(X-REQUEST-ID)%",
+		"authority":              "%REQ(:AUTHORITY)%",
+		"upstream_host":          "%UPSTREAM_HOST%",
+		"upstream_cluster":       "%UPSTREAM_CLUSTER%",
+	}
+
+	// Convert to structpb.Struct
+	jsonStruct, err := structpb.NewStruct(convertToInterface(jsonFormat))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create json struct: %w", err)
+	}
+
+	// Create file access log configuration
+	fileAccessLog := &fileaccesslog.FileAccessLog{
+		Path: "/dev/stdout",
+		AccessLogFormat: &fileaccesslog.FileAccessLog_LogFormat{
+			LogFormat: &core.SubstitutionFormatString{
+				Format: &core.SubstitutionFormatString_JsonFormat{
+					JsonFormat: jsonStruct,
+				},
+			},
+		},
+	}
+
+	// Marshal to Any
+	accessLogAny, err := anypb.New(fileAccessLog)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal access log config: %w", err)
+	}
+
+	return []*accesslog.AccessLog{{
+		Name: "envoy.access_loggers.file",
+		ConfigType: &accesslog.AccessLog_TypedConfig{
+			TypedConfig: accessLogAny,
+		},
+	}}, nil
+}
+
+// convertToInterface converts map[string]string to map[string]interface{} for structpb
+func convertToInterface(m map[string]string) map[string]interface{} {
+	result := make(map[string]interface{})
+	for k, v := range m {
+		result[k] = v
+	}
+	return result
 }

@@ -7,6 +7,7 @@ The Router is an Envoy Proxy-based data plane that routes HTTP traffic to backen
 - **Envoy Proxy 1.35.3**: Industry-standard, high-performance proxy
 - **Dynamic Configuration**: xDS protocol for zero-downtime updates
 - **Graceful Reload**: In-flight requests complete during configuration changes
+- **Structured Access Logs**: JSON-formatted logs to stdout for observability
 - **Health Monitoring**: Admin interface on port 9901
 - **Resilient Startup**: Waits for Gateway-Controller with exponential backoff
 
@@ -100,6 +101,97 @@ curl http://localhost:9901/config_dump
 # View statistics
 curl http://localhost:9901/stats
 ```
+
+### Access Logs
+
+The Router emits structured JSON access logs to stdout for all HTTP requests, providing observability for production environments.
+
+#### Log Format
+
+All requests are logged in JSON format with 16 standard fields:
+
+```json
+{
+  "start_time": "2025-10-12T10:30:45.123Z",
+  "method": "GET",
+  "path": "/weather/US/Seattle",
+  "protocol": "HTTP/1.1",
+  "response_code": 200,
+  "response_flags": "-",
+  "bytes_received": 0,
+  "bytes_sent": 1024,
+  "duration": 45,
+  "upstream_service_time": "42",
+  "x_forwarded_for": "192.168.1.10",
+  "user_agent": "curl/7.68.0",
+  "request_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "authority": "gateway.example.com",
+  "upstream_host": "api.weather.com:443",
+  "upstream_cluster": "cluster_api_weather_com"
+}
+```
+
+#### Viewing Logs
+
+**Docker**:
+```bash
+docker logs -f router
+```
+
+**Docker Compose**:
+```bash
+docker-compose logs -f router
+```
+
+**Kubernetes**:
+```bash
+kubectl logs -f deployment/gateway-router
+```
+
+#### Log Fields Reference
+
+| Field | Description |
+|-------|-------------|
+| `start_time` | Request timestamp (ISO 8601) |
+| `method` | HTTP method (GET, POST, etc.) |
+| `path` | Request path |
+| `protocol` | HTTP protocol version |
+| `response_code` | HTTP status code |
+| `response_flags` | Envoy response flags (`-` = success, `UH` = no healthy upstream, `UF` = upstream failure, `NR` = no route) |
+| `bytes_received` | Request body size |
+| `bytes_sent` | Response body size |
+| `duration` | Total request duration (ms) |
+| `upstream_service_time` | Backend processing time (ms) |
+| `x_forwarded_for` | Client IP address |
+| `user_agent` | Client user agent |
+| `request_id` | Unique request ID (UUID) |
+| `authority` | HTTP Host header |
+| `upstream_host` | Backend server address |
+| `upstream_cluster` | Backend cluster name |
+
+#### Log Aggregation
+
+The JSON format is compatible with common log aggregation platforms:
+
+- **ELK Stack**: Logstash natively parses JSON
+- **Splunk**: JSON log format supported
+- **CloudWatch Logs**: AWS CloudWatch Logs Insights
+- **Datadog**: Automatic JSON parsing
+- **Loki/Grafana**: Query with `| json` parser
+
+**Example Loki query** (find slow requests):
+```logql
+{container="gateway-router"} | json | duration > 1000
+```
+
+**Example Splunk query** (find 5xx errors):
+```spl
+sourcetype="gateway-router" response_code>=500
+```
+
+#### Configuration
+
+Access logs are configured dynamically by the Gateway-Controller in the xDS Listener resources. No Router-side configuration is needed.
 
 ## Traffic Routing
 

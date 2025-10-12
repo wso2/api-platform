@@ -55,7 +55,7 @@ Build a two-component API gateway system consisting of Gateway-Controller (Go-ba
 
 **Language/Version**: Envoy Proxy 1.35.3 (C++ based, configured via YAML)
 **Primary Dependencies**: Envoy Proxy official Docker image
-**Configuration**: Bootstrap envoy.yaml with xds_cluster pre-configured
+**Configuration**: Bootstrap envoy.yaml with xds_cluster and access logging pre-configured
 **Build Tool**: Make (for Docker image build, consistent with Gateway-Controller)
 **Target Platform**: Linux Docker containers
 **Project Type**: Infrastructure component (proxy/router)
@@ -63,17 +63,20 @@ Build a two-component API gateway system consisting of Gateway-Controller (Go-ba
 - Route requests according to xDS configuration
 - Zero dropped connections during configuration updates
 - Support graceful configuration reload
+- Emit structured JSON access logs for observability
 
 **Constraints**:
 - Must use Envoy 1.35.3 specifically
-- Bootstrap configuration must be minimal (only xds_cluster with retry policy)
+- Bootstrap configuration must include xds_cluster with retry policy and access logging
 - All routing configuration comes from xDS (no static routes)
 - Router waits indefinitely with exponential backoff (1s base, 30s max) if xDS server unavailable at startup
 - No traffic served until xDS connection established (fail-safe behavior)
+- Access logs output to stdout in JSON format for container-native logging
 
 **Scale/Scope**:
 - Route traffic for 100+ configured APIs
 - Handle production HTTP traffic loads
+- Emit access logs for all requests without performance degradation
 
 ## Constitution Check
 
@@ -170,7 +173,7 @@ gateway/
 │
 ├── router/
 │   ├── config/
-│   │   └── envoy-bootstrap.yaml     # Bootstrap config with xds_cluster
+│   │   └── envoy-bootstrap.yaml     # Bootstrap config with xds_cluster and access logging
 │   ├── Dockerfile                   # Based on envoyproxy/envoy:v1.35.3
 │   ├── Makefile                     # Build docker image
 │   └── README.md
@@ -197,6 +200,36 @@ gateway/
 Startup:  Database → Load to In-Memory Maps → Generate Initial xDS Snapshot
 Runtime:  User Request → Validate → Update In-Memory Maps + Database → Generate xDS Snapshot → Push to Router
 ```
+
+**Router Access Logging**:
+The Router emits structured JSON access logs for all HTTP requests to stdout, enabling production observability:
+
+- **Configuration**: Included in xDS-generated Listener resources by Gateway-Controller (dynamic configuration)
+- **Format**: JSON with standard fields (timestamp, method, path, response code, duration, upstream cluster, etc.)
+- **Destination**: Stdout for container-native logging (captured by Docker/Kubernetes runtime)
+- **Performance**: File-based logging to stdout with minimal overhead
+- **Log Aggregation**: Compatible with ELK, Splunk, CloudWatch, and other log aggregation tools
+- **Implementation**: Gateway-Controller's xDS translator adds `access_log` field to all generated Listeners
+
+Example log entry:
+```json
+{
+  "start_time": "2025-10-12T10:30:45.123Z",
+  "method": "GET",
+  "path": "/weather/US/Seattle",
+  "protocol": "HTTP/1.1",
+  "response_code": 200,
+  "response_flags": "-",
+  "bytes_received": 0,
+  "bytes_sent": 1024,
+  "duration": 45,
+  "upstream_service_time": "42",
+  "upstream_cluster": "cluster_api_weather_com",
+  "upstream_host": "api.weather.com:443"
+}
+```
+
+See research.md Decision 10 for detailed access logging strategy and configuration.
 
 ## Complexity Tracking
 

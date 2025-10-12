@@ -10,13 +10,17 @@ import (
 	"go.uber.org/zap"
 )
 
+// StatusUpdateCallback is called after xDS snapshot update completes
+type StatusUpdateCallback func(configID string, success bool, version int64)
+
 // SnapshotManager manages xDS snapshots for Envoy
 type SnapshotManager struct {
-	cache      cache.SnapshotCache
-	translator *Translator
-	store      *storage.ConfigStore
-	logger     *zap.Logger
-	nodeID     string // Node ID for Envoy (default: "router-node")
+	cache            cache.SnapshotCache
+	translator       *Translator
+	store            *storage.ConfigStore
+	logger           *zap.Logger
+	nodeID           string // Node ID for Envoy (default: "router-node")
+	statusCallback   StatusUpdateCallback
 }
 
 // NewSnapshotManager creates a new snapshot manager
@@ -25,12 +29,18 @@ func NewSnapshotManager(store *storage.ConfigStore, logger *zap.Logger) *Snapsho
 	snapshotCache := cache.NewSnapshotCache(false, cache.IDHash{}, logger.Sugar())
 
 	return &SnapshotManager{
-		cache:      snapshotCache,
-		translator: NewTranslator(logger),
-		store:      store,
-		logger:     logger,
-		nodeID:     "router-node",
+		cache:          snapshotCache,
+		translator:     NewTranslator(logger),
+		store:          store,
+		logger:         logger,
+		nodeID:         "router-node",
+		statusCallback: nil,
 	}
+}
+
+// SetStatusCallback sets the callback for status updates
+func (sm *SnapshotManager) SetStatusCallback(callback StatusUpdateCallback) {
+	sm.statusCallback = callback
 }
 
 // UpdateSnapshot generates a new xDS snapshot from all configurations and updates the cache
@@ -42,6 +52,12 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	resources, err := sm.translator.TranslateConfigs(configs)
 	if err != nil {
 		sm.logger.Error("Failed to translate configurations", zap.Error(err))
+		// Mark all pending configs as failed
+		if sm.statusCallback != nil {
+			for _, cfg := range configs {
+				sm.statusCallback(cfg.ID, false, 0)
+			}
+		}
 		return fmt.Errorf("failed to translate configurations: %w", err)
 	}
 
@@ -55,18 +71,36 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	)
 	if err != nil {
 		sm.logger.Error("Failed to create snapshot", zap.Error(err))
+		// Mark all pending configs as failed
+		if sm.statusCallback != nil {
+			for _, cfg := range configs {
+				sm.statusCallback(cfg.ID, false, 0)
+			}
+		}
 		return fmt.Errorf("failed to create snapshot: %w", err)
 	}
 
 	// Validate snapshot consistency
 	if err := snapshot.Consistent(); err != nil {
 		sm.logger.Error("Snapshot is inconsistent", zap.Error(err))
+		// Mark all pending configs as failed
+		if sm.statusCallback != nil {
+			for _, cfg := range configs {
+				sm.statusCallback(cfg.ID, false, 0)
+			}
+		}
 		return fmt.Errorf("snapshot is inconsistent: %w", err)
 	}
 
 	// Update cache with new snapshot
 	if err := sm.cache.SetSnapshot(ctx, sm.nodeID, snapshot); err != nil {
 		sm.logger.Error("Failed to set snapshot", zap.Error(err))
+		// Mark all pending configs as failed
+		if sm.statusCallback != nil {
+			for _, cfg := range configs {
+				sm.statusCallback(cfg.ID, false, 0)
+			}
+		}
 		return fmt.Errorf("failed to set snapshot: %w", err)
 	}
 
@@ -77,6 +111,13 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 		zap.Int("num_routes", len(resources[resource.RouteType])),
 		zap.Int("num_clusters", len(resources[resource.ClusterType])),
 	)
+
+	// Mark all successfully deployed configs
+	if sm.statusCallback != nil {
+		for _, cfg := range configs {
+			sm.statusCallback(cfg.ID, true, version)
+		}
+	}
 
 	return nil
 }
