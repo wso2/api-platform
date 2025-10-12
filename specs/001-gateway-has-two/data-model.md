@@ -110,15 +110,139 @@ type Operation struct {
 
 ---
 
-## Entity 2: Stored Configuration
+## Entity 2: In-Memory Configuration Store
 
 ### Description
-Internal representation of API Configuration as stored in bbolt database. Includes metadata for lifecycle management.
+In-memory maps that serve as the primary runtime data source for fast access and xDS cache generation. These maps are loaded from the database on startup and updated on every configuration change.
 
 ### Go Data Structure
 
 ```go
-// StoredAPIConfig represents the configuration stored in the database
+// ConfigStore holds all API configurations in memory
+type ConfigStore struct {
+    mu          sync.RWMutex                    // Protects concurrent access
+    configs     map[string]*StoredAPIConfig     // Key: config ID
+    nameVersion map[string]string               // Key: "name:version" → Value: config ID (for uniqueness checks)
+    snapVersion int64                           // Current xDS snapshot version (monotonically increasing)
+}
+
+// NewConfigStore creates a new in-memory config store
+func NewConfigStore() *ConfigStore {
+    return &ConfigStore{
+        configs:     make(map[string]*StoredAPIConfig),
+        nameVersion: make(map[string]string),
+        snapVersion: 0,
+    }
+}
+
+// Add stores a new configuration in memory
+func (cs *ConfigStore) Add(cfg *StoredAPIConfig) error {
+    cs.mu.Lock()
+    defer cs.mu.Unlock()
+
+    key := fmt.Sprintf("%s:%s", cfg.Configuration.Data.Name, cfg.Configuration.Data.Version)
+    if existingID, exists := cs.nameVersion[key]; exists {
+        return fmt.Errorf("configuration with name '%s' and version '%s' already exists (ID: %s)",
+            cfg.Configuration.Data.Name, cfg.Configuration.Data.Version, existingID)
+    }
+
+    cs.configs[cfg.ID] = cfg
+    cs.nameVersion[key] = cfg.ID
+    return nil
+}
+
+// Update modifies an existing configuration in memory
+func (cs *ConfigStore) Update(cfg *StoredAPIConfig) error {
+    cs.mu.Lock()
+    defer cs.mu.Unlock()
+
+    existing, exists := cs.configs[cfg.ID]
+    if !exists {
+        return fmt.Errorf("configuration with ID '%s' not found", cfg.ID)
+    }
+
+    // If name/version changed, update the nameVersion index
+    oldKey := fmt.Sprintf("%s:%s", existing.Configuration.Data.Name, existing.Configuration.Data.Version)
+    newKey := fmt.Sprintf("%s:%s", cfg.Configuration.Data.Name, cfg.Configuration.Data.Version)
+
+    if oldKey != newKey {
+        delete(cs.nameVersion, oldKey)
+        cs.nameVersion[newKey] = cfg.ID
+    }
+
+    cs.configs[cfg.ID] = cfg
+    return nil
+}
+
+// Delete removes a configuration from memory
+func (cs *ConfigStore) Delete(id string) error {
+    cs.mu.Lock()
+    defer cs.mu.Unlock()
+
+    cfg, exists := cs.configs[id]
+    if !exists {
+        return fmt.Errorf("configuration with ID '%s' not found", id)
+    }
+
+    key := fmt.Sprintf("%s:%s", cfg.Configuration.Data.Name, cfg.Configuration.Data.Version)
+    delete(cs.nameVersion, key)
+    delete(cs.configs, id)
+    return nil
+}
+
+// Get retrieves a configuration by ID
+func (cs *ConfigStore) Get(id string) (*StoredAPIConfig, error) {
+    cs.mu.RLock()
+    defer cs.mu.RUnlock()
+
+    cfg, exists := cs.configs[id]
+    if !exists {
+        return nil, fmt.Errorf("configuration with ID '%s' not found", id)
+    }
+    return cfg, nil
+}
+
+// GetAll returns all configurations
+func (cs *ConfigStore) GetAll() []*StoredAPIConfig {
+    cs.mu.RLock()
+    defer cs.mu.RUnlock()
+
+    result := make([]*StoredAPIConfig, 0, len(cs.configs))
+    for _, cfg := range cs.configs {
+        result = append(result, cfg)
+    }
+    return result
+}
+
+// IncrementSnapshotVersion atomically increments and returns the next snapshot version
+func (cs *ConfigStore) IncrementSnapshotVersion() int64 {
+    cs.mu.Lock()
+    defer cs.mu.Unlock()
+
+    cs.snapVersion++
+    return cs.snapVersion
+}
+
+// GetSnapshotVersion returns the current snapshot version
+func (cs *ConfigStore) GetSnapshotVersion() int64 {
+    cs.mu.RLock()
+    defer cs.mu.RUnlock()
+
+    return cs.snapVersion
+}
+```
+
+---
+
+## Entity 3: Stored Configuration
+
+### Description
+Internal representation of API Configuration as stored in bbolt database. Includes metadata for lifecycle management. Database serves as the persistence layer and is synchronized with in-memory maps.
+
+### Go Data Structure
+
+```go
+// StoredAPIConfig represents the configuration stored in the database and in-memory
 type StoredAPIConfig struct {
     ID             string               `json:"id"`              // Unique identifier (generated)
     Configuration  APIConfiguration     `json:"configuration"`   // User-provided config
@@ -166,9 +290,55 @@ gateway-controller.db
 [User deletes config] → [Removed from storage]
 ```
 
+### Startup Flow: Database to In-Memory Loading
+
+On Gateway-Controller startup, all configurations are loaded from the database into in-memory maps:
+
+```go
+// LoadFromDatabase loads all configurations from bbolt into the in-memory store
+func (cs *ConfigStore) LoadFromDatabase(db *bolt.DB) error {
+    return db.View(func(tx *bolt.Tx) error {
+        bucket := tx.Bucket([]byte("apis"))
+        if bucket == nil {
+            // No configurations stored yet
+            return nil
+        }
+
+        cursor := bucket.Cursor()
+        for k, v := cursor.First(); k != nil; k, v = cursor.Next() {
+            var cfg StoredAPIConfig
+            if err := json.Unmarshal(v, &cfg); err != nil {
+                return fmt.Errorf("failed to unmarshal config %s: %w", k, err)
+            }
+
+            // Add to in-memory store (bypassing locks since we're in startup)
+            cs.configs[cfg.ID] = &cfg
+            key := fmt.Sprintf("%s:%s", cfg.Configuration.Data.Name, cfg.Configuration.Data.Version)
+            cs.nameVersion[key] = cfg.ID
+
+            // Track highest deployed version for snapshot versioning
+            if cfg.DeployedVersion > cs.snapVersion {
+                cs.snapVersion = cfg.DeployedVersion
+            }
+        }
+
+        log.Info("Loaded %d configurations from database", len(cs.configs))
+        return nil
+    })
+}
+```
+
+**Startup Sequence**:
+1. Initialize bbolt database connection
+2. Create empty `ConfigStore` (in-memory maps)
+3. Call `LoadFromDatabase()` to populate in-memory maps
+4. Generate initial xDS snapshot from in-memory configurations
+5. Start xDS server (ready to serve Envoy)
+6. Start REST API server (ready to accept user requests)
+
 ---
 
-## Entity 3: Audit Event
+## Entity 4: Audit Event
 
 ### Description
 Record of configuration changes for audit trail and debugging.
@@ -210,7 +380,7 @@ const (
 
 ---
 
-## Entity 4: xDS Snapshot
+## Entity 5: xDS Snapshot
 
 ### Description
 Internal representation of Envoy configuration snapshot. This is generated from API Configuration and pushed to Router via xDS protocol.
@@ -238,7 +408,51 @@ type SnapshotResources struct {
 }
 ```
 
-### Translation Logic: API Config → Envoy Resources
+### Translation Logic: In-Memory Maps → Envoy Resources (SotW)
+
+The xDS translator reads ALL configurations from the in-memory `ConfigStore` and generates a complete snapshot containing all Envoy resources. This implements the State-of-the-World (SotW) protocol.
+
+#### Translation Process
+```go
+// GenerateSnapshot creates a complete xDS snapshot from in-memory configurations
+func GenerateSnapshot(store *ConfigStore) (*cache.Snapshot, error) {
+    // Get all configurations from in-memory store
+    allConfigs := store.GetAll()
+
+    var listeners []*listener.Listener
+    var routes []*route.RouteConfiguration
+    var clusters []*cluster.Cluster
+
+    // Translate each configuration to Envoy resources
+    for _, cfg := range allConfigs {
+        if cfg.Status != StatusDeployed {
+            continue // Skip non-deployed configs
+        }
+
+        // Generate listener, route, and cluster for this config
+        l := createListener(cfg)
+        r := createRouteConfig(cfg)
+        c := createCluster(cfg)
+
+        listeners = append(listeners, l)
+        routes = append(routes, r)
+        clusters = append(clusters, c)
+    }
+
+    // Increment snapshot version and create new snapshot
+    version := store.IncrementSnapshotVersion()
+    snapshot, err := cache.NewSnapshot(
+        fmt.Sprintf("%d", version),
+        map[resource.Type][]types.Resource{
+            resource.ClusterType:  clustersToResources(clusters),
+            resource.RouteType:    routesToResources(routes),
+            resource.ListenerType: listenersToResources(listeners),
+        },
+    )
+
+    return snapshot, err
+}
+```
 
 #### Listener Creation
 For each unique context path, create an Envoy Listener:
@@ -294,27 +508,55 @@ data:
 
 ## Data Flow Summary
 
+### Startup Flow
 ```
-1. User submits API Configuration (YAML/JSON)
+1. Gateway-Controller starts
+           ↓
+2. Initialize bbolt database connection
+           ↓
+3. Create empty ConfigStore (in-memory maps)
+           ↓
+4. Load all StoredAPIConfig from database → populate in-memory maps
+           ↓
+5. Generate initial xDS snapshot from in-memory maps (SotW)
+           ↓
+6. Start xDS server (Router can now connect)
+           ↓
+7. Start REST API server (ready for user requests)
+```
+
+### Runtime Flow (User Configuration Change)
+```
+1. User submits API Configuration (YAML/JSON) via REST API
            ↓
 2. Gateway-Controller parses → APIConfiguration struct
            ↓
 3. Validation checks (rules from Entity 1)
            ↓
-4. Store as StoredAPIConfig in bbolt
+4. BEGIN ATOMIC TRANSACTION:
+   - Store as StoredAPIConfig in bbolt database
+   - Update in-memory ConfigStore maps
+   END TRANSACTION
            ↓
-5. Log AuditEvent (CREATE operation)
+5. Log AuditEvent (CREATE/UPDATE/DELETE operation)
            ↓
-6. Translate to Envoy resources (Listener, Route, Cluster)
+6. Generate complete xDS snapshot from ALL configs in memory (SotW)
+   - Iterate through all in-memory configurations
+   - Translate each to Envoy resources (Listener, Route, Cluster)
+   - Increment snapshot version
            ↓
-7. Create xDS Snapshot with new version
+7. Update go-control-plane snapshot cache with new snapshot
            ↓
-8. Update go-control-plane snapshot cache
+8. Envoy (Router) receives snapshot via xDS stream
            ↓
-9. Envoy (Router) polls/streams xDS and receives new config
-           ↓
-10. Router applies configuration and starts routing traffic
+9. Router applies complete configuration state and routes traffic
 ```
+
+**Key Points**:
+- In-memory maps are the primary data source for xDS generation
+- Database serves as persistence layer for durability and startup recovery
+- Every configuration change triggers a complete snapshot generation (SotW approach)
+- Updates to in-memory maps and database are atomic (both succeed or both fail)
 
 ---
 
@@ -367,19 +609,65 @@ type ErrorResponse struct {
 ## Concurrency & Consistency
 
 ### Thread Safety
+- **In-Memory ConfigStore**: Protected by `sync.RWMutex` for concurrent access
+  - Multiple readers can access simultaneously
+  - Writers acquire exclusive lock
 - **bbolt Transactions**: All read/write operations wrapped in bbolt transactions (ACID guarantees)
-- **xDS Snapshot Updates**: go-control-plane cache is thread-safe; use mutex for snapshot version generation
+- **xDS Snapshot Updates**: go-control-plane cache is thread-safe; snapshot version increments are atomic
 
 ### Atomicity
-- Configuration create/update/delete operations are atomic:
-  - Database write succeeds → xDS snapshot updated
-  - Database write fails → no xDS update, error returned to user
-  - xDS update should not block API response (async push to Envoy)
+Configuration create/update/delete operations maintain dual-write consistency:
+
+```go
+// Example: Atomic update to both in-memory and database
+func (s *Service) CreateConfig(cfg *APIConfiguration) error {
+    storedCfg := &StoredAPIConfig{
+        ID:            generateID(),
+        Configuration: *cfg,
+        Status:        StatusPending,
+        CreatedAt:     time.Now(),
+        UpdatedAt:     time.Now(),
+    }
+
+    // Step 1: Write to database first (persistent storage)
+    if err := s.db.SaveConfig(storedCfg); err != nil {
+        return fmt.Errorf("database write failed: %w", err)
+    }
+
+    // Step 2: Update in-memory store (if this fails, we have inconsistency)
+    if err := s.memStore.Add(storedCfg); err != nil {
+        // Rollback: delete from database
+        _ = s.db.DeleteConfig(storedCfg.ID)
+        return fmt.Errorf("in-memory update failed: %w", err)
+    }
+
+    // Step 3: Generate and push xDS snapshot (non-blocking, async)
+    go func() {
+        snapshot, err := GenerateSnapshot(s.memStore)
+        if err != nil {
+            log.Error("Failed to generate snapshot", zap.Error(err))
+            return
+        }
+        if err := s.xdsCache.SetSnapshot(context.Background(), "router-node", snapshot); err != nil {
+            log.Error("Failed to update xDS cache", zap.Error(err))
+        }
+    }()
+
+    return nil
+}
+```
+
+**Atomicity Strategy**:
+1. Write to database first (durable storage)
+2. Update in-memory maps (fast access)
+3. On in-memory failure: rollback database write
+4. xDS snapshot generation happens asynchronously (doesn't block API response)
 
 ### Consistency Rules
-1. API name + version uniqueness enforced via database check before insert
-2. Context consistency for same API name validated before insert/update
-3. Snapshot version monotonically increases (never decreases)
+1. **Uniqueness**: API name + version uniqueness enforced via in-memory index check + database constraint
+2. **Context Consistency**: For same API name but different version, context must be identical (validated before insert/update)
+3. **Snapshot Versioning**: Snapshot version monotonically increases (never decreases)
+4. **Startup Consistency**: On startup, in-memory state is rebuilt from database (database is source of truth for recovery)
 
 ---
 
@@ -387,9 +675,21 @@ type ErrorResponse struct {
 
 This data model provides:
 - **Clear contract** for user-facing API Configuration format
-- **Storage schema** using bbolt buckets for configurations, audit logs, and metadata
-- **Translation strategy** from user config to Envoy xDS resources
+- **In-memory architecture** with `ConfigStore` for fast runtime access and xDS generation
+- **Database persistence** using bbolt buckets for configurations, audit logs, and metadata
+- **Startup recovery** by loading database contents into in-memory maps
+- **SotW xDS protocol** implementation generating complete snapshots from in-memory state
+- **Translation strategy** from in-memory configurations to Envoy xDS resources
+- **Dual-write consistency** maintaining sync between database and in-memory maps
 - **Validation rules** at multiple stages to ensure correctness
 - **State management** for configuration lifecycle
+- **Thread-safe operations** using RWMutex for concurrent access
 
-**Status**: Data model complete. Ready for API contract generation.
+**Key Architecture Decisions**:
+1. In-memory maps are the primary data source for runtime operations and xDS generation
+2. Database serves as persistence layer for durability and startup recovery
+3. State-of-the-World (SotW) xDS protocol: every change generates a complete snapshot
+4. Atomic updates to both database and in-memory maps with rollback on failure
+5. Asynchronous xDS snapshot generation to avoid blocking API responses
+
+**Status**: Data model complete with in-memory architecture and SotW protocol. Ready for API contract generation.

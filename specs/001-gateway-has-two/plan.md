@@ -31,11 +31,14 @@ Build a two-component API gateway system consisting of Gateway-Controller (Go-ba
 - Push xDS updates to Router within 5 seconds of configuration change
 - Handle 100+ distinct API configurations without degradation
 - Support concurrent configuration updates
+- Load configurations from database to memory on startup within 2 seconds
 
 **Constraints**:
-- Must implement Envoy xDS v3 protocol
+- Must implement Envoy xDS v3 protocol using SotW (State-of-the-World) approach
 - Configuration changes must be atomic (all-or-nothing)
-- Must persist configurations for recovery after restarts
+- Must persist configurations to database for durability
+- In-memory maps serve as primary data source for xDS cache generation
+- Database serves as persistence layer and loaded on startup
 - Docker image size should be minimal (<100MB)
 
 **Scale/Scope**:
@@ -133,11 +136,12 @@ gateway/
 │   │   │   └── api_config.go        # API configuration data structures
 │   │   ├── storage/
 │   │   │   ├── interface.go         # Storage abstraction
-│   │   │   └── [implementation].go  # bbolt/badger/sqlite implementation
+│   │   │   ├── memory.go            # In-memory maps for runtime access
+│   │   │   └── [implementation].go  # bbolt implementation for persistence
 │   │   ├── xds/
-│   │   │   ├── server.go            # xDS server implementation
-│   │   │   ├── snapshot.go          # xDS snapshot manager
-│   │   │   └── translator.go        # API config -> Envoy config translation
+│   │   │   ├── server.go            # xDS SotW server implementation
+│   │   │   ├── snapshot.go          # xDS snapshot manager (SotW cache)
+│   │   │   └── translator.go        # In-memory maps -> Envoy config translation
 │   │   └── logger/
 │   │       └── logger.go            # Zap logger setup
 │   ├── tests/
@@ -168,9 +172,18 @@ gateway/
 **Structure Decision**: This is a multi-component infrastructure project with two independent Docker services (Gateway-Controller and Router). The structure follows Go community conventions (inspired by Kubernetes and go-control-plane projects):
 
 - **Gateway-Controller**: Standard Go project layout with `cmd/` (entry points), `pkg/` (packages), and `tests/` directories. The `pkg/` structure groups code by functional area (api, config, storage, xds).
+  - **Startup Flow**: Loads all API configurations from bbolt database into in-memory maps
+  - **Runtime**: In-memory maps serve as the primary data source for fast access and xDS cache generation
+  - **Persistence**: All configuration changes are written to both in-memory maps and database atomically
 - **Router**: Minimal structure since it's primarily Envoy configuration. Contains bootstrap YAML and Dockerfile.
 - **Separate directories**: Each component is independently buildable with its own Makefile and Dockerfile, supporting the constraint that they must be independently deployable containers.
 - **Root-level docker-compose**: Provides easy local development and testing of the complete system.
+
+**Data Flow Architecture**:
+```
+Startup:  Database → Load to In-Memory Maps → Generate Initial xDS Snapshot
+Runtime:  User Request → Validate → Update In-Memory Maps + Database → Generate xDS Snapshot → Push to Router
+```
 
 ## Complexity Tracking
 

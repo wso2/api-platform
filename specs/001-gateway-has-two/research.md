@@ -187,22 +187,39 @@ This document consolidates research findings for key technical decisions require
   - Route Discovery Service (RDS) - configures routes for listeners
   - Cluster Discovery Service (CDS) - defines upstream backend clusters
   - Endpoint Discovery Service (EDS) - provides endpoints for clusters (optional for our use case)
+- **SotW (State-of-the-World) Protocol**:
+  - xDS protocol variant where the control plane sends the complete configuration state in each response
+  - Envoy connects via gRPC stream and requests resource types (LDS, RDS, CDS, etc.)
+  - Control plane responds with ALL resources of that type (not incremental deltas)
+  - Simpler than incremental xDS; suitable for configuration management use cases
+  - go-control-plane's snapshot cache implements SotW by default
 - **Snapshot Cache**: go-control-plane provides snapshot-based cache that simplifies configuration management
   - Create new snapshot when API config changes
+  - Each snapshot contains the complete state of all resources
   - Cache handles versioning and distribution to connected Envoys
   - Envoy polls or streams updates based on resource versions
+  - Snapshot version is monotonically increasing integer (converted to string)
 - **Translation Pattern**:
-  1. Parse user API configuration (YAML/JSON)
-  2. Translate to Envoy resources (Listeners, Routes, Clusters)
-  3. Create snapshot with all resources
-  4. Update cache with new snapshot version
-  5. Envoy receives and applies configuration automatically
+  1. Load all API configurations from database to in-memory maps on startup
+  2. Generate initial xDS snapshot from in-memory maps
+  3. On configuration change:
+     - Update in-memory maps + database atomically
+     - Translate ALL API configs from in-memory maps to Envoy resources
+     - Create new snapshot with incremented version
+     - Update cache with new snapshot (SotW approach)
+  4. Envoy receives complete configuration state and applies it
 - **Graceful Updates**: Envoy's connection draining ensures in-flight requests complete before configuration changes take effect
 
 **Implementation Impact**:
-- xDS translation logic in `pkg/xds/translator.go`
-- Snapshot management in `pkg/xds/snapshot.go`
-- xDS server setup in `pkg/xds/server.go`
+- In-memory maps structure in `pkg/storage/memory.go`
+- Database loader on startup in `pkg/storage/[implementation].go`
+- xDS translation logic reads from in-memory maps in `pkg/xds/translator.go`
+- SotW snapshot management in `pkg/xds/snapshot.go`
+- xDS SotW server setup in `pkg/xds/server.go`
+
+**References**:
+- https://www.envoyproxy.io/docs/envoy/latest/api-docs/xds_protocol
+- https://blog.christianposta.com/envoy/guidance-for-building-a-control-plane-to-manage-envoy-proxy-based-infrastructure/
 
 ---
 
