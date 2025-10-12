@@ -142,17 +142,17 @@ type ServerInterface interface {
     // (GET /apis)
     ListAPIs(c *gin.Context)
 
-    // GetAPIByID retrieves a specific API configuration by ID
-    // (GET /apis/{id})
-    GetAPIByID(c *gin.Context, id string)
+    // GetAPIByNameVersion retrieves a specific API configuration by name and version
+    // (GET /apis/{name}/{version})
+    GetAPIByNameVersion(c *gin.Context, name string, version string)
 
     // UpdateAPI updates an existing API configuration
-    // (PUT /apis/{id})
-    UpdateAPI(c *gin.Context, id string)
+    // (PUT /apis/{name}/{version})
+    UpdateAPI(c *gin.Context, name string, version string)
 
     // DeleteAPI removes an API configuration
-    // (DELETE /apis/{id})
-    DeleteAPI(c *gin.Context, id string)
+    // (DELETE /apis/{name}/{version})
+    DeleteAPI(c *gin.Context, name string, version string)
 }
 
 // RegisterHandlers creates http.Handler with routing matching OpenAPI spec.

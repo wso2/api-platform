@@ -21,13 +21,16 @@ type Validator struct {
 	pathParamRegex *regexp.Regexp
 	// versionRegex matches semantic version patterns
 	versionRegex *regexp.Regexp
+	// urlFriendlyNameRegex matches URL-safe characters for API names
+	urlFriendlyNameRegex *regexp.Regexp
 }
 
 // NewValidator creates a new configuration validator
 func NewValidator() *Validator {
 	return &Validator{
-		pathParamRegex: regexp.MustCompile(`\{[a-zA-Z0-9_]+\}`),
-		versionRegex:   regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
+		pathParamRegex:       regexp.MustCompile(`\{[a-zA-Z0-9_]+\}`),
+		versionRegex:         regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
+		urlFriendlyNameRegex: regexp.MustCompile(`^[a-zA-Z0-9\-_\. ]+$`),
 	}
 }
 
@@ -71,6 +74,11 @@ func (v *Validator) validateData(data *api.APIConfigData) []ValidationError {
 		errors = append(errors, ValidationError{
 			Field:   "data.name",
 			Message: "API name must be 1-100 characters",
+		})
+	} else if !v.urlFriendlyNameRegex.MatchString(data.Name) {
+		errors = append(errors, ValidationError{
+			Field:   "data.name",
+			Message: "API name must be URL-friendly (only letters, numbers, spaces, hyphens, underscores, and dots allowed)",
 		})
 	}
 

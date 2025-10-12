@@ -86,7 +86,7 @@
 
 **Goal**: Enable API administrators to modify existing API configurations (change backend URL, update routing rules, add endpoints) without downtime. Changes reflect in Router immediately.
 
-**Independent Test**: Deploy an API config (US1), then submit updated version with modified routes via PUT /apis/{id}, verify Router behavior changes to match new config without dropping existing connections.
+**Independent Test**: Deploy an API config (US1), then submit updated version with modified routes via PUT /apis/{name}/{version}, verify Router behavior changes to match new config without dropping existing connections.
 
 ### Implementation for User Story 2
 
@@ -96,7 +96,7 @@
 - [ ] T034 [US2] Implement xDS snapshot version increment logic in ConfigStore (monotonically increasing version for SotW protocol)
 - [ ] T035 [US2] Add audit logging for UPDATE operations in audit.go (log old vs new configuration diff at debug level)
 
-**Validation**: Deploy weather-api.yaml (US1), update it to add PUT operation, submit via PUT /apis/{id}, verify new PUT endpoint works while existing GET/POST continue working. Verify in-flight requests complete with old config.
+**Validation**: Deploy weather-api.yaml (US1), update it to add PUT operation, submit via PUT /apis/{name}/{version}, verify new PUT endpoint works while existing GET/POST continue working. Verify in-flight requests complete with old config.
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work - users can deploy and update APIs with zero downtime
 
@@ -106,7 +106,7 @@
 
 **Goal**: Enable API administrators to remove APIs from gateway when deprecated or no longer needed. Router immediately stops accepting traffic for deleted API.
 
-**Independent Test**: Deploy an API config (US1), then delete it via DELETE /apis/{id}, verify Router returns 404 for requests to previously configured routes within 5 seconds.
+**Independent Test**: Deploy an API config (US1), then delete it via DELETE /apis/{name}/{version}, verify Router returns 404 for requests to previously configured routes within 5 seconds.
 
 ### Implementation for User Story 3
 
@@ -115,7 +115,7 @@
 - [ ] T038 [US3] Add audit logging for DELETE operations in audit.go (log deleted configuration details)
 - [ ] T039 [US3] Implement graceful deletion in xDS translator (ensure Router handles configuration removal without crashing, in-flight requests complete)
 
-**Validation**: Deploy weather-api.yaml, delete via DELETE /apis/{id}, verify Router returns appropriate error (404) for requests to /weather/* routes. Verify in-flight requests complete successfully.
+**Validation**: Deploy weather-api.yaml, delete via DELETE /apis/{name}/{version}, verify Router returns appropriate error (404) for requests to /weather/* routes. Verify in-flight requests complete successfully.
 
 **Checkpoint**: All core CRUD operations working - users can deploy, update, and delete APIs
 
@@ -125,16 +125,16 @@
 
 **Goal**: Enable API administrators to view all deployed API configurations and their status to understand what APIs are active and verify configurations are correct.
 
-**Independent Test**: Deploy several API configs (US1), query GET /apis for list and GET /apis/{id} for details, verify returned data matches what was deployed.
+**Independent Test**: Deploy several API configs (US1), query GET /apis for list and GET /apis/{name}/{version} for details, verify returned data matches what was deployed.
 
 ### Implementation for User Story 4
 
 - [ ] T040 [P] [US4] Implement ListAPIs handler in `gateway/gateway-controller/pkg/api/handlers/handlers.go` (return all configs with metadata: name, version, context, status, timestamps)
-- [ ] T041 [P] [US4] Implement GetAPIByID handler in `gateway/gateway-controller/pkg/api/handlers/handlers.go` (return complete configuration + metadata for specific ID, support both JSON and YAML response)
+- [ ] T041 [P] [US4] Implement GetAPIByNameVersion handler in `gateway/gateway-controller/pkg/api/handlers/handlers.go` (return complete configuration + metadata for specific name/version, support both JSON and YAML response)
 - [ ] T042 [US4] Implement ConfigStore.Get method in `gateway/gateway-controller/pkg/storage/memory.go` (retrieve single config by ID with RLock)
 - [ ] T043 [US4] Implement ConfigStore.GetAll method in `gateway/gateway-controller/pkg/storage/memory.go` (return all configs with RLock)
 
-**Validation**: Deploy 3 different API configs, call GET /apis and verify count=3 with correct metadata. Call GET /apis/{id} for each and verify complete config returned. Call GET /apis with no configs deployed and verify empty list returned.
+**Validation**: Deploy 3 different API configs, call GET /apis and verify count=3 with correct metadata. Call GET /apis/{name}/{version} for each and verify complete config returned. Call GET /apis with no configs deployed and verify empty list returned.
 
 **Checkpoint**: All user stories complete - full CRUD lifecycle with observability
 

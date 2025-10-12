@@ -353,9 +353,10 @@ components:
       properties:
         name:
           type: string
-          description: Human-readable API name
+          description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
           minLength: 1
           maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
           example: "Weather API"
         version:
           type: string
