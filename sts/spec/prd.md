@@ -10,6 +10,7 @@ STS is a containerized OAuth 2.0 / OIDC authentication and authorization service
 - [FR2: Authentication UI](prds/authentication-ui.md)
 - [FR3: Automated Setup](prds/automated-setup.md)
 - [FR4: OAuth 2.0 / OIDC Support](prds/oauth-support.md)
+- [FR5: Sample OAuth Application](prds/sample-oauth-app.md)
 
 ## Non-Functional Requirements
 
