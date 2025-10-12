@@ -178,7 +178,14 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 		if s.db != nil {
 			_ = s.db.DeleteConfig(storedCfg.ID)
 		}
-		s.logger.Error("Failed to add config to memory store", zap.Error(err))
+		// Log conflict errors at info level, other errors at error level
+		if storage.IsConflictError(err) {
+			s.logger.Info("API configuration already exists",
+				zap.String("name", apiConfig.Data.Name),
+				zap.String("version", apiConfig.Data.Version))
+		} else {
+			s.logger.Error("Failed to add config to memory store", zap.Error(err))
+		}
 		c.JSON(http.StatusConflict, api.ErrorResponse{
 			Status:  "error",
 			Message: err.Error(),
@@ -366,7 +373,15 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	}
 
 	if err := s.store.Update(existing); err != nil {
-		s.logger.Error("Failed to update config in memory store", zap.Error(err))
+		// Log conflict errors at info level, other errors at error level
+		if storage.IsConflictError(err) {
+			s.logger.Info("API configuration name/version already exists",
+				zap.String("id", id),
+				zap.String("name", apiConfig.Data.Name),
+				zap.String("version", apiConfig.Data.Version))
+		} else {
+			s.logger.Error("Failed to update config in memory store", zap.Error(err))
+		}
 		c.JSON(http.StatusConflict, api.ErrorResponse{
 			Status:  "error",
 			Message: err.Error(),
