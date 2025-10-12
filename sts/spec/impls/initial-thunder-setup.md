@@ -7,6 +7,7 @@ Basic Docker container setup using Thunder OAuth 2.0 / OIDC server as the founda
 ## Git Commits
 
 - `7a1fc12` - Add STS Docker configuration and build files
+- `7a0fb01` - Add Thunder deployment configuration
 
 ## Motivation
 
