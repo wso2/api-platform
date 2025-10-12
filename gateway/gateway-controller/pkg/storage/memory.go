@@ -1,11 +1,20 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
+
+// ErrConflict represents a conflict error (e.g., duplicate name/version)
+var ErrConflict = errors.New("conflict error")
+
+// IsConflictError checks if an error is a conflict error
+func IsConflictError(err error) bool {
+	return errors.Is(err, ErrConflict)
+}
 
 // ConfigStore holds all API configurations in memory for fast access
 type ConfigStore struct {
@@ -31,8 +40,8 @@ func (cs *ConfigStore) Add(cfg *models.StoredAPIConfig) error {
 
 	key := cfg.GetCompositeKey()
 	if existingID, exists := cs.nameVersion[key]; exists {
-		return fmt.Errorf("configuration with name '%s' and version '%s' already exists (ID: %s)",
-			cfg.GetAPIName(), cfg.GetAPIVersion(), existingID)
+		return fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists (ID: %s)",
+			ErrConflict, cfg.GetAPIName(), cfg.GetAPIVersion(), existingID)
 	}
 
 	cs.configs[cfg.ID] = cfg
@@ -57,8 +66,8 @@ func (cs *ConfigStore) Update(cfg *models.StoredAPIConfig) error {
 	if oldKey != newKey {
 		// Check if new name:version combination already exists
 		if existingID, exists := cs.nameVersion[newKey]; exists && existingID != cfg.ID {
-			return fmt.Errorf("configuration with name '%s' and version '%s' already exists (ID: %s)",
-				cfg.GetAPIName(), cfg.GetAPIVersion(), existingID)
+			return fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists (ID: %s)",
+				ErrConflict, cfg.GetAPIName(), cfg.GetAPIVersion(), existingID)
 		}
 		delete(cs.nameVersion, oldKey)
 		cs.nameVersion[newKey] = cfg.ID
@@ -92,6 +101,24 @@ func (cs *ConfigStore) Get(id string) (*models.StoredAPIConfig, error) {
 	cfg, exists := cs.configs[id]
 	if !exists {
 		return nil, fmt.Errorf("configuration with ID '%s' not found", id)
+	}
+	return cfg, nil
+}
+
+// GetByNameVersion retrieves a configuration by name and version
+func (cs *ConfigStore) GetByNameVersion(name, version string) (*models.StoredAPIConfig, error) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	key := fmt.Sprintf("%s:%s", name, version)
+	configID, exists := cs.nameVersion[key]
+	if !exists {
+		return nil, fmt.Errorf("configuration with name '%s' and version '%s' not found", name, version)
+	}
+
+	cfg, exists := cs.configs[configID]
+	if !exists {
+		return nil, fmt.Errorf("configuration with name '%s' and version '%s' not found", name, version)
 	}
 	return cfg, nil
 }

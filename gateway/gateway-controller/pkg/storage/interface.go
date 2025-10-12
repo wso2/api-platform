@@ -18,6 +18,9 @@ type Storage interface {
 	// GetConfig retrieves an API configuration by ID
 	GetConfig(id string) (*models.StoredAPIConfig, error)
 
+	// GetConfigByNameVersion retrieves an API configuration by name and version
+	GetConfigByNameVersion(name, version string) (*models.StoredAPIConfig, error)
+
 	// GetAllConfigs retrieves all API configurations
 	GetAllConfigs() ([]*models.StoredAPIConfig, error)
 

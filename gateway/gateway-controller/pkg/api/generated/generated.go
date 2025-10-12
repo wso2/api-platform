@@ -192,14 +192,14 @@ type ServerInterface interface {
 	// (POST /apis)
 	CreateAPI(c *gin.Context)
 	// Delete an API configuration
-	// (DELETE /apis/{id})
-	DeleteAPI(c *gin.Context, id string)
-	// Get API configuration by ID
-	// (GET /apis/{id})
-	GetAPIByID(c *gin.Context, id string)
+	// (DELETE /apis/{name}/{version})
+	DeleteAPI(c *gin.Context, name string, version string)
+	// Get API configuration by name and version
+	// (GET /apis/{name}/{version})
+	GetAPIByNameVersion(c *gin.Context, name string, version string)
 	// Update an existing API configuration
-	// (PUT /apis/{id})
-	UpdateAPI(c *gin.Context, id string)
+	// (PUT /apis/{name}/{version})
+	UpdateAPI(c *gin.Context, name string, version string)
 	// Health check endpoint
 	// (GET /health)
 	HealthCheck(c *gin.Context)
@@ -245,12 +245,21 @@ func (siw *ServerInterfaceWrapper) DeleteAPI(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "id" -------------
-	var id string
+	// ------------- Path parameter "name" -------------
+	var name string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -261,20 +270,29 @@ func (siw *ServerInterfaceWrapper) DeleteAPI(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.DeleteAPI(c, id)
+	siw.Handler.DeleteAPI(c, name, version)
 }
 
-// GetAPIByID operation middleware
-func (siw *ServerInterfaceWrapper) GetAPIByID(c *gin.Context) {
+// GetAPIByNameVersion operation middleware
+func (siw *ServerInterfaceWrapper) GetAPIByNameVersion(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "id" -------------
-	var id string
+	// ------------- Path parameter "name" -------------
+	var name string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -285,7 +303,7 @@ func (siw *ServerInterfaceWrapper) GetAPIByID(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetAPIByID(c, id)
+	siw.Handler.GetAPIByNameVersion(c, name, version)
 }
 
 // UpdateAPI operation middleware
@@ -293,12 +311,21 @@ func (siw *ServerInterfaceWrapper) UpdateAPI(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "id" -------------
-	var id string
+	// ------------- Path parameter "name" -------------
+	var name string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -309,7 +336,7 @@ func (siw *ServerInterfaceWrapper) UpdateAPI(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.UpdateAPI(c, id)
+	siw.Handler.UpdateAPI(c, name, version)
 }
 
 // HealthCheck operation middleware
@@ -354,61 +381,61 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 
 	router.GET(options.BaseURL+"/apis", wrapper.ListAPIs)
 	router.POST(options.BaseURL+"/apis", wrapper.CreateAPI)
-	router.DELETE(options.BaseURL+"/apis/:id", wrapper.DeleteAPI)
-	router.GET(options.BaseURL+"/apis/:id", wrapper.GetAPIByID)
-	router.PUT(options.BaseURL+"/apis/:id", wrapper.UpdateAPI)
+	router.DELETE(options.BaseURL+"/apis/:name/:version", wrapper.DeleteAPI)
+	router.GET(options.BaseURL+"/apis/:name/:version", wrapper.GetAPIByNameVersion)
+	router.PUT(options.BaseURL+"/apis/:name/:version", wrapper.UpdateAPI)
 	router.GET(options.BaseURL+"/health", wrapper.HealthCheck)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/+xaW3fbxhH+K3PQPNgKSIKKlNbsk2LJthonVnVpTmOo8RIYkhsDu8jughbrw//eM7u4",
-	"EqDEOFTqnJOXhMLeZufyzTez/uhFMs2kQGG0N/no6WiBKbM/Ty7On0sx4/NTZhh9yJTMUBmOdjiSwuCd",
-	"oZ8x6kjxzHApvIn3DdMIGTMLmEkFLEng5OIclMwNaniS5tqANkwZ+MDNAkY+CAlGMZ5wMQedML146vke",
-	"3rE0S9CbeKMPyMwCled7Kbt7jWJuFt7kMAh8L+Wi/HvsexkzBhWJ8J8wHL1lg/+eDH4MBs9+CsNBGI5u",
-	"D97S99svPN8zq4y21kZxMffWvidYit2rvMpTJgYKWcymCdp72IlN8X5w0tFgW8JxV8LOsaRQRofp7uGv",
-	"uTYgZ/Dq+voC6okjp0nP97jB1K77QuHMm3h/GdW2HBWGHL0pF9JxKRfnblEtDFOKrWgwz7RRyNLtkkxZ",
-	"9B5FDBrVkkcIN5evd5bjptz9ITGWqLQ9dlOKK0yZMDyCYgZJZBZYKL42yHI8DLyWNyzDMP4yDIf0vx7r",
-	"r31P4S85Vxh7k7deYeFSDr/y9IaKWpa7rXaU058xMnSLKnjyQvud+ImLqLpPae0QXPveey7irmbIL60E",
-	"vociT+kSC2OykUJtSLpaN/XnHmfcqnnaX2cY8RmP7G2gVk55IMv4IEuYmUmVDj9oeTiMZDpajtvnb531",
-	"kFHqA60KfKe+bZpXyAxeos6k0NgDXXY8/olZ9KqlOwwOjwfjYDAeX4+DyVfBJAh+9HyPhKWpdCYODLfu",
-	"0dEe7zHMjeC/5Ag8RmH4jKOykEhOW4hgISVqOUpTXcfHAf7tKAgGePhsOjgax0cD9tfx14Ojo6+/Pj4+",
-	"OgqCIGgKmOc87pMtRa3ZHNu37RxdCaXzKEKtZ3mSrPq204aZXLd3K9b0GrLPRqdoGE+224hlvDfntENq",
-	"p+DJawB0RnoMBRsW96fJx/C1GLNErnba9Xj3XRtmLYI6QxHTYH0ibcZ4gnE7rhvDnW3zLN63Bro+1edl",
-	"+3BTSn2Uq+7lP71cpaOHR0Sd/Tt0yYe28Zw/sPO0El2HNuzmFjdWrO3o9Xg4sxOQF1rbL5DvZozx5Oj4",
-	"N0Wy750pJdV23SIN9/Bll1EwhiVLeOwUUczdkaP+q1poRfDWXXbaMMBGqcDni0GCS0zcodAcbnp7Kyc1",
-	"ZS1CY0cz2UMepE3FylruPsZUlwgdXadoFrKH2NiapBisOeDLs2vP9y7eXNn/3dB/T89en12f0Z8n189f",
-	"eb736uzk1PO9NxfX52++v2oDgVvfuT7Vkl0RLqkMcnWmLSSlHWAJfMyYYukasoRFuJBJjNYDGiD9MZK5",
-	"MGr1UyRjXI8+Rtys1t5mATk8eLhWqFRgZexT7k2jqmrrNldJX/HcKbHgScpWwEWU5HFx4UzhjN9Bwt8j",
-	"jFjGR8vDds1MPF9PRjQ2LFKSZdpubgtpFH/wliRp390246VzxRnHpMd7XtBnMAtmCqdvhEHrGkSphnX5",
-	"dR8c3lu4u4gsZ29EI20OnbYEMBFDxISQBsgg7utOVITSspjJkiSwyMKly6jeD1dvDi3rvyjKILguquIN",
-	"9z67urbzqGJImWBzLubdckEDF7ag6O77khn8wFbDUITieoHl30BXVjJJUAGLIsyM3rLtv0++ew1SwT+u",
-	"3nwPzmGsVuKVYCmPWJKsQlEuQ23FsFGp4MmZWMoVXCh5t3oKS87g7vQKMiWNjGQyhKs8y6QyGig1wfPL",
-	"m1NI+AyjVZRgKOjKPSJZEyhkic0lRZLTYGTjZHvbg4NvcQUvkBmSa3JwEIoBXOXTlJsdrkqTL6tTGgBN",
-	"d3eepJCk52JOc39EJQex/CDs/L5ErGnaSR5z4xpdVWNso/xaMDF3k/+Zo1pBSYx6hA4pUAw3Dje7lnUs",
-	"rSI63ngYDIOi4yRsbeV9NQyGXxXQZaOV0MH+mGNPW+8SjeK4RGCQFP0gusI9MjqDlaXRMBSXaHIlNEyZ",
-	"5hFQjJBPWdVOZW4AWbSw+zyhYPHLLoMPBQT4xWkpCgOk7adDq4eqF3MeF92qk4tzwnxVkAh7q8MgqHi7",
-	"MK7GzJKiozH6Wbv857hAbz3qmN0uRKJZOPSQCJt+Wun8uJrEhcE5qj3UL+sOppR9vK6p6LjjX6mf+xTQ",
-	"pnA9opwLyrQssYkOlYsrewudpylTq1Lcsn+8Ia/vGTbXlJxo8DvCRyS38G6JMEjd48AFADAQ+KG7ZQkj",
-	"3VgaAqFna3IouC6RAWMfMnJUbX8SSBjFhE4sAzcSHBQS/inUMlcRarelQ6xQTHHOhbYdcsJ4o9hsxqOq",
-	"VUSiUiRxAcegMZIi1gXM1QkYLvOkgrqyTw1fVr3SSKZTLtxUm+umCLntTtGCbVnw3eidvVArCb4bvbOH",
-	"GEiQkUMJwmLHcuxs+lCFJJREgta8kAo0CVZKWIV2JVQkhVWlMMAiJbUur6B7Qt01+hzW0TmozTcyXu3g",
-	"xlVE1Y3YqqBvVvFl1m4Vv82u/duaJBf81dHVbSxz7TcWFFT5gRW3zd7824I4PkTxaFUN/7a4rfrHrTZw",
-	"PWlrc5aicqew77bc1n5L/SuWJhtltzt+AttODwUJPYFK5lCQxSahAOtCE2gYhz5WO9Kl6UNh2AmUdqWP",
-	"pUbtPgADyFXiDtmuVJpa275a6cw5gZdn1+4TWJY+gX6Dbi4jJ9htnfcb7NCi9EbluO6kx/He4L/bg+9J",
-	"ATv2n9e+d/T7ZiYL7BuiPekU6k+dZM9+P8nIpAmPDAyqnODQ1GI9IW+J9iyh0mcFeMe1+TyTu/OPbdn4",
-	"vvy+9h1THX3k8dql+QQN9jHWVBJfFT3ZfqZkem++LwoZbWSmQ+EKpW525ro/PcO5GMwSPl8YKPKSphSc",
-	"kaChaPr3360CqkkKI+RLhKPgCL6XBl7IXMR9LPfUXtrlI9vwQIPK5aOH3qDqd9MuBSp0SRWsN3GJqUqC",
-	"tiXZBpEmIP3qbucmg73dK2H/xBbsp7ZcneIe/e1sFxjtFcWC1dHvhwFdsYhEzsidP0s8cvHUCxb3Fxv3",
-	"F8v2rbcI/E0IkgpY9a5uj52ugBtdEHM4P+1E/Uuk0vablR3aU9j/MYP9Afqx8by8jYd++n47xSGt0X+G",
-	"3gOh9xJ72nIUC9bL76vz857Qc09zFMiW/fR2TV2Kd805aJbylkVZddBvI4s259B1UAtOUORo1/Asn9ra",
-	"wu9CCEJRAYOlcrSbTDZ22qAHucbtpxZNgfM0k8owYSYHB3A+23xi0r7doVJOW3CFKeNCA4sMX2If8XD6",
-	"3TvxcDf6P2LRr+ke7Lkafsyibq+ouvHsvRP29L5Ff+ZF3Z9gvRWsd4HXh6q3BbLEPeluI0/2mYCwwk0F",
-	"x5pLAOnWbB2UemXXPV9g9H6/7wB9/N0J2Uv3DU9RG5Zm9jn00/5pU8dOPe89XEMpRdteThEQkSYARZxJ",
-	"LkzDQFcrbTAlw9Aya/c+MH8tI5ZAjEtMZGZN6Tf6kJPRKKEJC6nN5FnwLLBtzo1/niGj96hG3+ZTVAIN",
-	"6sZjzuZmc3fBQVRdsNj1thK809239yj9hdJ44TPlnXWdT4o7d2W0D5F1hw/6HyLrjTa8e327/l8AAAD/",
-	"/3VPMV1QLwAA",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

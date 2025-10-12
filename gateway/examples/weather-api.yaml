@@ -1,7 +1,7 @@
 version: api-platform.wso2.com/v1
 kind: http/rest
 data:
-  name: Weather API
+  name: Weather-API
   version: v1.0
   context: /weather
   upstream:

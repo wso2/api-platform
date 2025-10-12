@@ -258,15 +258,17 @@ func (s *APIServer) ListAPIs(c *gin.Context) {
 	})
 }
 
-// GetAPIByID implements ServerInterface.GetAPIByID
-// (GET /apis/{id})
-func (s *APIServer) GetAPIByID(c *gin.Context, id string) {
-	cfg, err := s.store.Get(id)
+// GetAPIByNameVersion implements ServerInterface.GetAPIByNameVersion
+// (GET /apis/{name}/{version})
+func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version string) {
+	cfg, err := s.store.GetByNameVersion(name, version)
 	if err != nil {
-		s.logger.Warn("API configuration not found", zap.String("id", id))
+		s.logger.Warn("API configuration not found",
+			zap.String("name", name),
+			zap.String("version", version))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("API configuration with ID '%s' not found", id),
+			Message: fmt.Sprintf("API configuration with name '%s' and version '%s' not found", name, version),
 		})
 		return
 	}
@@ -292,8 +294,8 @@ func (s *APIServer) GetAPIByID(c *gin.Context, id string) {
 }
 
 // UpdateAPI implements ServerInterface.UpdateAPI
-// (PUT /apis/{id})
-func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
+// (PUT /apis/{name}/{version})
+func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -341,12 +343,14 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	}
 
 	// Check if config exists
-	existing, err := s.store.Get(id)
+	existing, err := s.store.GetByNameVersion(name, version)
 	if err != nil {
-		s.logger.Warn("API configuration not found", zap.String("id", id))
+		s.logger.Warn("API configuration not found",
+			zap.String("name", name),
+			zap.String("version", version))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("API configuration with ID '%s' not found", id),
+			Message: fmt.Sprintf("API configuration with name '%s' and version '%s' not found", name, version),
 		})
 		return
 	}
@@ -376,7 +380,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		// Log conflict errors at info level, other errors at error level
 		if storage.IsConflictError(err) {
 			s.logger.Info("API configuration name/version already exists",
-				zap.String("id", id),
+				zap.String("id", existing.ID),
 				zap.String("name", apiConfig.Data.Name),
 				zap.String("version", apiConfig.Data.Version))
 		} else {
@@ -428,22 +432,24 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 }
 
 // DeleteAPI implements ServerInterface.DeleteAPI
-// (DELETE /apis/{id})
-func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
+// (DELETE /apis/{name}/{version})
+func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 	// Check if config exists
-	cfg, err := s.store.Get(id)
+	cfg, err := s.store.GetByNameVersion(name, version)
 	if err != nil {
-		s.logger.Warn("API configuration not found", zap.String("id", id))
+		s.logger.Warn("API configuration not found",
+			zap.String("name", name),
+			zap.String("version", version))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("API configuration with ID '%s' not found", id),
+			Message: fmt.Sprintf("API configuration with name '%s' and version '%s' not found", name, version),
 		})
 		return
 	}
 
 	// Delete from database first (only if persistent mode)
 	if s.db != nil {
-		if err := s.db.DeleteConfig(id); err != nil {
+		if err := s.db.DeleteConfig(cfg.ID); err != nil {
 			s.logger.Error("Failed to delete config from database", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
@@ -454,7 +460,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	}
 
 	// Delete from in-memory store
-	if err := s.store.Delete(id); err != nil {
+	if err := s.store.Delete(cfg.ID); err != nil {
 		s.logger.Error("Failed to delete config from memory store", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
@@ -494,6 +500,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "API configuration deleted successfully",
-		"id":      id,
+		"name":    name,
+		"version": version,
 	})
 }

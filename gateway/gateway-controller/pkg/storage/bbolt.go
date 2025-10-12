@@ -130,6 +130,36 @@ func (s *BBoltStorage) GetConfig(id string) (*models.StoredAPIConfig, error) {
 	return cfg, err
 }
 
+// GetConfigByNameVersion retrieves an API configuration by name and version
+func (s *BBoltStorage) GetConfigByNameVersion(name, version string) (*models.StoredAPIConfig, error) {
+	var cfg *models.StoredAPIConfig
+
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket(bucketAPIs)
+		if bucket == nil {
+			return fmt.Errorf("apis bucket not found")
+		}
+
+		// Iterate through all configs to find the one matching name and version
+		cursor := bucket.Cursor()
+		for k, v := cursor.First(); k != nil; k, v = cursor.Next() {
+			var tempCfg models.StoredAPIConfig
+			if err := json.Unmarshal(v, &tempCfg); err != nil {
+				continue // Skip malformed entries
+			}
+
+			if tempCfg.Configuration.Data.Name == name && tempCfg.Configuration.Data.Version == version {
+				cfg = &tempCfg
+				return nil
+			}
+		}
+
+		return fmt.Errorf("configuration with name '%s' and version '%s' not found", name, version)
+	})
+
+	return cfg, err
+}
+
 // GetAllConfigs retrieves all API configurations
 func (s *BBoltStorage) GetAllConfigs() ([]*models.StoredAPIConfig, error) {
 	var configs []*models.StoredAPIConfig

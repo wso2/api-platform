@@ -265,25 +265,53 @@ Response:
 GET /apis
 ```
 
-#### Get API by ID
+#### Get API by Name and Version
 
 ```bash
-GET /apis/{id}
+GET /apis/{name}/{version}
+```
+
+Example:
+```bash
+GET /apis/Weather%20API/v1.0
 ```
 
 #### Update API
 
 ```bash
-PUT /apis/{id}
+PUT /apis/{name}/{version}
 Content-Type: application/yaml
 
 <updated configuration>
 ```
 
+Example:
+```bash
+PUT /apis/Weather%20API/v1.0
+Content-Type: application/yaml
+
+version: api-platform.wso2.com/v1
+kind: http/rest
+data:
+  name: Weather API
+  version: v1.0
+  context: /weather
+  upstream:
+    - url: http://api.weather.com/api/v3
+  operations:
+    - method: GET
+      path: /{country}/{city}
+```
+
 #### Delete API
 
 ```bash
-DELETE /apis/{id}
+DELETE /apis/{name}/{version}
+```
+
+Example:
+```bash
+DELETE /apis/Weather%20API/v1.0
 ```
 
 ## Data Storage
