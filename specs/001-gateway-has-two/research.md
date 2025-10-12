@@ -423,6 +423,147 @@ dynamic_resources:
 
 ---
 
+---
+
+## Decision 9: REST API Code Generation Strategy
+
+**Question**: Should we manually implement the REST API handlers or use code generation from the OpenAPI specification?
+
+**Decision**: Use **oapi-codegen** for generating server boilerplate code from OpenAPI specification
+
+**Rationale**:
+- **Reduced Boilerplate**: Automatically generates request/response types, parameter parsing, and handler interfaces from OpenAPI spec
+- **Contract-First Development**: Ensures implementation matches the OpenAPI contract in `gateway-controller-api.yaml`
+- **Type Safety**: Generated Go types match the OpenAPI schema exactly, preventing drift between spec and code
+- **Active Maintenance**: oapi-codegen is actively maintained (moved to its own organization in May 2024) and recommended by Go community
+- **Framework Integration**: Native support for Gin framework via `gin-server` generation mode
+- **Zero Dependencies**: Generated code has no runtime dependencies beyond the chosen framework (Gin)
+- **Single File Output**: All generated code in one file for simplicity
+- **Implementation Focus**: Developers write business logic in handler implementations; boilerplate is generated
+
+**Alternatives Considered**:
+- **Manual Implementation**: Rejected because:
+  - High maintenance burden keeping code and OpenAPI spec in sync
+  - Error-prone manual request validation and type conversion
+  - Repetitive boilerplate for each endpoint
+
+- **OpenAPI Generator (fork of Swagger Codegen)**: Rejected because:
+  - Community feedback indicates oapi-codegen produces more idiomatic Go code
+  - oapi-codegen is specifically designed for Go, not a multi-language tool adapted for Go
+  - Less active Go-specific development compared to oapi-codegen
+
+- **Swagger Codegen**: Rejected because:
+  - Older tool with less active development for Go servers
+  - oapi-codegen is the recommended modern alternative for Go
+
+**Implementation Notes**:
+
+1. **Configuration File** (`gateway-controller/oapi-codegen.yaml`):
+```yaml
+package: api
+output: pkg/api/generated.go
+generate:
+  gin-server: true        # Generate Gin framework handlers
+  models: true            # Generate request/response types
+  embedded-spec: true     # Embed OpenAPI spec for documentation
+  strict-server: false    # Use standard server interface (not strict mode)
+```
+
+2. **Code Generation Command**:
+```bash
+# Install oapi-codegen
+go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+
+# Generate code (from gateway-controller directory)
+oapi-codegen --config=oapi-codegen.yaml api/openapi.yaml
+```
+
+3. **Makefile Target**:
+```makefile
+.PHONY: generate
+generate:
+	@echo "Generating API server code from OpenAPI spec..."
+	oapi-codegen --config=oapi-codegen.yaml api/openapi.yaml
+```
+
+4. **Generated Artifacts**:
+   - `ServerInterface`: Go interface with methods for each OpenAPI operation
+   - Request/Response types: Go structs matching OpenAPI schemas
+   - `RegisterHandlers`: Function to register routes with Gin router
+   - Embedded OpenAPI spec for runtime documentation
+
+5. **Handler Implementation Pattern**:
+```go
+// pkg/api/handlers/handlers.go
+type APIServer struct {
+    storage storage.Storage
+    xdsServer *xds.Server
+    logger *zap.Logger
+}
+
+// Implement ServerInterface methods
+func (s *APIServer) CreateAPI(c *gin.Context) {
+    var req api.APIConfiguration
+    if err := c.ShouldBindJSON(&req); err != nil {
+        // Error handling
+        return
+    }
+
+    // Business logic: validate, store, update xDS
+    // ...
+
+    c.JSON(http.StatusCreated, api.APICreateResponse{
+        Status: "success",
+        Message: "API configuration created successfully",
+        ID: newID,
+        CreatedAt: time.Now(),
+    })
+}
+
+// Similar implementations for GetAPIByID, UpdateAPI, DeleteAPI, ListAPIs
+```
+
+6. **Server Setup** (`cmd/controller/main.go`):
+```go
+func main() {
+    // Initialize dependencies
+    store := storage.NewBBoltStorage("data/gateway-controller.db")
+    xdsServer := xds.NewServer()
+    logger := logger.NewLogger()
+
+    // Create handler implementation
+    apiServer := handlers.NewAPIServer(store, xdsServer, logger)
+
+    // Setup Gin router
+    router := gin.Default()
+
+    // Register generated handlers
+    api.RegisterHandlers(router, apiServer)
+
+    // Start server
+    router.Run(":9090")
+}
+```
+
+**Benefits**:
+- **Contract Enforcement**: Code generation ensures API implementation matches OpenAPI spec
+- **Rapid Development**: Focus on business logic; skip repetitive request/response handling
+- **Refactoring Safety**: Changing OpenAPI spec and regenerating code reveals breaking changes at compile time
+- **Documentation Alignment**: Generated code is always in sync with API documentation
+- **Testing Support**: Generated types make it easy to write type-safe tests
+
+**Trade-offs**:
+- **Build Step**: Requires running code generation before building (added to Makefile)
+- **Generated Code Review**: Generated file should be committed to version control for transparency
+- **Customization Limits**: Generated code cannot be manually edited (changes must go through OpenAPI spec)
+
+**Version Control**:
+- Commit both the OpenAPI spec (`api/openapi.yaml`) and generated code (`pkg/api/generated.go`)
+- Use `go generate` directive or Makefile to document generation process
+- CI/CD pipeline should verify generated code is up-to-date with spec
+
+---
+
 ## Summary of Resolved Clarifications
 
 | Item | Decision | Confidence |
@@ -435,5 +576,6 @@ dynamic_resources:
 | Router startup behavior | Wait indefinitely with exponential backoff | ✅ High |
 | Logging strategy | Structured logging (Zap) with configurable levels | ✅ High |
 | Validation errors | Structured JSON with field paths | ✅ High |
+| REST API code generation | oapi-codegen with Gin framework | ✅ High |
 
-**Status**: All technical clarifications resolved including spec clarifications from 2025-10-12. Ready to proceed to Phase 1 (Data Model & Contracts).
+**Status**: All technical clarifications resolved including spec clarifications from 2025-10-12 and code generation strategy from 2025-10-12. Ready to proceed to Phase 1 (Data Model & Contracts).
