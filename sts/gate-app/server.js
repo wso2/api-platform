@@ -72,8 +72,34 @@ function getTimestampWithOffset() {
 
 console.log(`Starting WSO2 Thunder gate app in ${dev ? 'development' : 'production'} mode...`);
 
+let server;
+
+// Graceful shutdown handler
+function gracefulShutdown(signal) {
+  console.log(`\nReceived ${signal}, shutting down gracefully...`);
+  
+  if (server) {
+    server.close(() => {
+      console.log('HTTPS server closed');
+      process.exit(0);
+    });
+    
+    // Force shutdown after 10 seconds
+    setTimeout(() => {
+      console.error('Forcing shutdown after timeout');
+      process.exit(1);
+    }, 10000);
+  } else {
+    process.exit(0);
+  }
+}
+
+// Register signal handlers
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
 app.prepare().then(() => {
-  https.createServer(httpsOptions, (req, res) => {
+  server = https.createServer(httpsOptions, (req, res) => {
     const parsedUrl = parse(req.url, true);
     handle(req, res, parsedUrl);
   }).listen(PORT, () => {
