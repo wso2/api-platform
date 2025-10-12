@@ -16,18 +16,27 @@ Establish the foundation for STS by packaging Thunder as a standalone Docker con
 
 ### Dockerfile
 
-Simple single-stage build using Thunder as the base image:
+Simple single-stage build using Thunder as the base image with custom deployment configuration:
 
 ```dockerfile
 FROM ghcr.io/asgardeo/thunder:latest
 
 EXPOSE 8090
+COPY --chown=thunder:thunder conf/deployment.yaml /opt/thunder/repository/conf/deployment.yaml
 COPY --chmod=755 scripts/startup.sh /opt/sts/startup.sh
 WORKDIR /opt/sts
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -k -f https://localhost:8090/health/liveness || exit 1
 CMD ["/opt/sts/startup.sh"]
 ```
+
+### Configuration
+
+**File**: `conf/deployment.yaml`
+
+Custom Thunder configuration file copied into the image at `/opt/thunder/repository/conf/deployment.yaml`. 
+
+**Purpose**: Fixes CORS issue between Gate App and Thunder by setting `gate_client.hostname: "localhost"` instead of Thunder's default `"0.0.0.0"`. Without this, when users are redirected to Gate App for login, the Gate App's API calls to Thunder fail because Thunder only allows CORS from localhost by default.
 
 ### Startup Script
 
@@ -64,7 +73,8 @@ exec ./start.sh
 
 ### Files
 
-- **Dockerfile**: Single-stage build with Thunder base
+- **Dockerfile**: Single-stage build with Thunder base and custom configuration
+- **conf/deployment.yaml**: Thunder configuration file (baked into image)
 - **scripts/startup.sh**: Thunder launcher
 - **.dockerignore**: Build optimization
 
@@ -78,8 +88,17 @@ docker build -t wso2/api-platform-sts:latest .
 
 ### Run
 
+Basic run with default Thunder configuration:
 ```bash
 docker run --rm -p 8090:8090 wso2/api-platform-sts:latest
+```
+
+Run with custom Thunder configuration:
+```bash
+docker run --rm \
+  -p 8090:8090 \
+  -v $(pwd)/deployment.yaml:/opt/thunder/repository/conf/deployment.yaml \
+  wso2/api-platform-sts:latest
 ```
 
 ### Verify
@@ -93,9 +112,10 @@ Expected response: `{"status": "UP"}`
 ## Key Technical Decisions
 
 1. **Thunder Base Image**: Use official `ghcr.io/asgardeo/thunder:latest` for OAuth 2.0 / OIDC capabilities
-2. **Simple Startup**: Single service (Thunder only) with straightforward startup process
-3. **Health Check**: Monitor Thunder liveness to ensure container health
-4. **Port 8090**: Standard Thunder HTTPS port
+2. **Custom Configuration**: Include `deployment.yaml` to fix CORS issue (sets `gate_client.hostname: "localhost"`)
+3. **Simple Startup**: Single service (Thunder only) with straightforward startup process
+4. **Health Check**: Monitor Thunder liveness to ensure container health
+5. **Port 8090**: Standard Thunder HTTPS port
 
 ## Challenges & Solutions
 
@@ -123,6 +143,6 @@ Expected response: `{"status": "UP"}`
 
 ## Future Enhancements
 
-- Custom Thunder configuration mounting
 - Thunder logging configuration
 - Thunder performance tuning
+- Runtime configuration override via volume mounts

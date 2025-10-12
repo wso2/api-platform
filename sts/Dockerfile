@@ -65,6 +65,9 @@ EXPOSE 8090 9090
 # Copy Gate App build from builder stage with proper ownership
 COPY --from=gate-builder --chown=thunder:thunder /build/.next/standalone /opt/gate-app
 
+# Copy Thunder deployment configuration with proper ownership
+COPY --chown=thunder:thunder conf/deployment.yaml /opt/thunder/repository/conf/deployment.yaml
+
 # Copy startup script with execute permissions
 COPY --chmod=755 scripts/startup.sh /opt/sts/startup.sh
 
