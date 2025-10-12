@@ -3,6 +3,8 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"platform-api/src/internal/constants"
+	"platform-api/src/internal/dto"
 	"platform-api/src/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -21,7 +23,7 @@ func NewProjectHandler(projectService *service.ProjectService) *ProjectHandler {
 }
 
 func (h *ProjectHandler) CreateProject(c *gin.Context) {
-	var req model.Project
+	var req dto.Project
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
@@ -40,15 +42,19 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 
 	project, err := h.projectService.CreateProject(req.Name, req.OrganizationID, req.IsDefault)
 	if err != nil {
-		if errors.Is(err, service.ErrProjectNameExists) {
+		if errors.Is(err, constants.ErrProjectNameExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Project name already exists in organization"))
 			return
 		}
-		if errors.Is(err, service.ErrOrganizationNotFound) {
+		if errors.Is(err, constants.ErrDefaultProjectAlreadyExists) {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Default project already exists in organization"))
+			return
+		}
+		if errors.Is(err, constants.ErrOrganizationNotFound) {
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Organization not found"))
 			return
 		}
-		if errors.Is(err, service.ErrInvalidProjectName) {
+		if errors.Is(err, constants.ErrInvalidProjectName) {
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project name is required"))
 			return
 		}
@@ -68,7 +74,7 @@ func (h *ProjectHandler) GetProject(c *gin.Context) {
 
 	project, err := h.projectService.GetProjectByID(uuid)
 	if err != nil {
-		if errors.Is(err, service.ErrProjectNotFound) {
+		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Project not found"))
 			return
 		}
@@ -88,7 +94,7 @@ func (h *ProjectHandler) GetProjectsByOrganization(c *gin.Context) {
 
 	projects, err := h.projectService.GetProjectsByOrganization(orgID)
 	if err != nil {
-		if errors.Is(err, service.ErrOrganizationNotFound) {
+		if errors.Is(err, constants.ErrOrganizationNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Organization not found"))
 			return
 		}
@@ -114,11 +120,15 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 
 	project, err := h.projectService.UpdateProject(uuid, req.Name, req.IsDefault)
 	if err != nil {
-		if errors.Is(err, service.ErrProjectNotFound) {
+		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Project not found"))
 			return
 		}
-		if errors.Is(err, service.ErrProjectNameExists) {
+		if errors.Is(err, constants.ErrDefaultProjectAlreadyExists) {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Default project already exists in organization"))
+			return
+		}
+		if errors.Is(err, constants.ErrProjectNameExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Project name already exists in organization"))
 			return
 		}
@@ -138,7 +148,7 @@ func (h *ProjectHandler) DeleteProject(c *gin.Context) {
 
 	err := h.projectService.DeleteProject(uuid)
 	if err != nil {
-		if errors.Is(err, service.ErrProjectNotFound) {
+		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Project not found"))
 			return
 		}

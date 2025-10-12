@@ -19,8 +19,8 @@ func NewProjectRepo(db *database.DB) ProjectRepository {
 	return &ProjectRepo{db: db}
 }
 
-// Create inserts a new project
-func (r *ProjectRepo) Create(project *model.Project) error {
+// CreateProject inserts a new project
+func (r *ProjectRepo) CreateProject(project *model.Project) error {
 	project.CreatedAt = time.Now()
 	project.UpdatedAt = time.Now()
 
@@ -36,8 +36,8 @@ func (r *ProjectRepo) Create(project *model.Project) error {
 	return nil
 }
 
-// GetByUUID retrieves a project by ID
-func (r *ProjectRepo) GetByUUID(uuid string) (*model.Project, error) {
+// GetProjectByUUID retrieves a project by ID
+func (r *ProjectRepo) GetProjectByUUID(uuid string) (*model.Project, error) {
 	project := &model.Project{}
 	query := `
 		SELECT uuid, name, organization_id, is_default, created_at, updated_at
@@ -56,8 +56,8 @@ func (r *ProjectRepo) GetByUUID(uuid string) (*model.Project, error) {
 	return project, nil
 }
 
-// GetByOrganizationID retrieves all projects for an organization
-func (r *ProjectRepo) GetByOrganizationID(orgID string) ([]*model.Project, error) {
+// GetProjectByOrganizationID retrieves all projects for an organization
+func (r *ProjectRepo) GetProjectByOrganizationID(orgID string) ([]*model.Project, error) {
 	query := `
 		SELECT id, name, organization_id, is_default, created_at, updated_at
 		FROM projects
@@ -83,8 +83,8 @@ func (r *ProjectRepo) GetByOrganizationID(orgID string) ([]*model.Project, error
 	return projects, rows.Err()
 }
 
-// GetDefaultByOrganizationID retrieves the default project for an organization
-func (r *ProjectRepo) GetDefaultByOrganizationID(orgID string) (*model.Project, error) {
+// GetDefaultProjectByOrganizationID retrieves the default project for an organization
+func (r *ProjectRepo) GetDefaultProjectByOrganizationID(orgID string) (*model.Project, error) {
 	project := &model.Project{}
 	query := `
 		SELECT id, name, organization_id, is_default, created_at, updated_at
@@ -104,8 +104,8 @@ func (r *ProjectRepo) GetDefaultByOrganizationID(orgID string) (*model.Project, 
 	return project, nil
 }
 
-// Update modifies an existing project
-func (r *ProjectRepo) Update(project *model.Project) error {
+// UpdateProject modifies an existing project
+func (r *ProjectRepo) UpdateProject(project *model.Project) error {
 	project.UpdatedAt = time.Now()
 	query := `
 		UPDATE projects
@@ -116,22 +116,23 @@ func (r *ProjectRepo) Update(project *model.Project) error {
 	return err
 }
 
-// Delete removes a project
-func (r *ProjectRepo) Delete(uuid string) error {
+// DeleteProject removes a project
+func (r *ProjectRepo) DeleteProject(uuid string) error {
 	query := `DELETE FROM projects WHERE uuid = ?`
 	_, err := r.db.Exec(query, uuid)
 	return err
 }
 
-// List retrieves projects with pagination
-func (r *ProjectRepo) List(limit, offset int) ([]*model.Project, error) {
+// ListProjects retrieves projects with pagination
+func (r *ProjectRepo) ListProjects(orgID string, limit, offset int) ([]*model.Project, error) {
 	query := `
 		SELECT uuid, name, organization_id, is_default, created_at, updated_at
 		FROM projects
+		WHERE organization_id = ?
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
 	`
-	rows, err := r.db.Query(query, limit, offset)
+	rows, err := r.db.Query(query, orgID, limit, offset)
 	if err != nil {
 		return nil, err
 	}

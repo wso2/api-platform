@@ -9,7 +9,7 @@ import (
 func main() {
 	cfg := config.GetConfig()
 
-	// Create and start server
+	// CreateOrganization and start server
 	srv, err := server.StartPlatformAPIServer(cfg)
 	if err != nil {
 		log.Fatal("Failed to create server:", err)

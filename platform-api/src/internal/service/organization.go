@@ -1,20 +1,14 @@
 package service
 
 import (
-	"errors"
 	"github.com/google/uuid"
+	"platform-api/src/internal/constants"
+	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"regexp"
 	"strings"
 	"time"
-)
-
-var (
-	ErrHandleExists          = errors.New("handle already exists")
-	ErrInvalidHandle         = errors.New("invalid handle format")
-	ErrOrganizationNotFound  = errors.New("organization not found")
-	ErrMultipleOrganizations = errors.New("multiple organizations found")
 )
 
 type OrganizationService struct {
@@ -29,27 +23,27 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository, projectRe
 	}
 }
 
-func (s *OrganizationService) CreateOrganization(handle string, name string) (*model.Organization, error) {
+func (s *OrganizationService) CreateOrganization(handle string, name string) (*dto.Organization, error) {
 	// Validate handle is URL friendly
 	if !s.isURLFriendly(handle) {
-		return nil, ErrInvalidHandle
+		return nil, constants.ErrInvalidHandle
 	}
 
 	// Check if handle already exists
-	existingOrg, err := s.orgRepo.GetByHandle(handle)
+	existingOrg, err := s.orgRepo.GetOrganizationByHandle(handle)
 	if err != nil {
 		return nil, err
 	}
 	if existingOrg != nil {
-		return nil, ErrHandleExists
+		return nil, constants.ErrHandleExists
 	}
 
 	if name == "" {
 		name = handle // Default name to handle if not provided
 	}
 
-	// Create organization
-	org := &model.Organization{
+	// CreateOrganization organization
+	org := &dto.Organization{
 		UUID:      uuid.New().String(),
 		Handle:    handle,
 		Name:      name,
@@ -57,7 +51,8 @@ func (s *OrganizationService) CreateOrganization(handle string, name string) (*m
 		UpdatedAt: time.Now(),
 	}
 
-	err = s.orgRepo.Create(org)
+	orgModel := s.dtoToModel(org)
+	err = s.orgRepo.CreateOrganization(orgModel)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +66,7 @@ func (s *OrganizationService) CreateOrganization(handle string, name string) (*m
 		UpdatedAt:      time.Now(),
 	}
 
-	err = s.projectRepo.Create(defaultProject)
+	err = s.projectRepo.CreateProject(defaultProject)
 	if err != nil {
 		// If project creation fails, roll back the organization creation
 		return org, err
@@ -80,16 +75,17 @@ func (s *OrganizationService) CreateOrganization(handle string, name string) (*m
 	return org, nil
 }
 
-func (s *OrganizationService) GetOrganizationByUUID(uuid string) (*model.Organization, error) {
-	org, err := s.orgRepo.GetByUUID(uuid)
+func (s *OrganizationService) GetOrganizationByUUID(uuid string) (*dto.Organization, error) {
+	orgModel, err := s.orgRepo.GetOrganizationByUUID(uuid)
 	if err != nil {
 		return nil, err
 	}
 
-	if org == nil {
-		return nil, ErrOrganizationNotFound
+	if orgModel == nil {
+		return nil, constants.ErrOrganizationNotFound
 	}
 
+	org := s.modelToDTO(orgModel)
 	return org, nil
 }
 
@@ -99,4 +95,33 @@ func (s *OrganizationService) isURLFriendly(handle string) bool {
 	pattern := `^[a-z][a-z0-9_-]*[a-z0-9]$|^[a-z]$`
 	matched, _ := regexp.MatchString(pattern, strings.ToLower(handle))
 	return matched && handle == strings.ToLower(handle)
+}
+
+// Mapping functions
+func (s *OrganizationService) dtoToModel(dto *dto.Organization) *model.Organization {
+	if dto == nil {
+		return nil
+	}
+
+	return &model.Organization{
+		UUID:      dto.UUID,
+		Handle:    dto.Handle,
+		Name:      dto.Name,
+		CreatedAt: dto.CreatedAt,
+		UpdatedAt: dto.UpdatedAt,
+	}
+}
+
+func (s *OrganizationService) modelToDTO(model *model.Organization) *dto.Organization {
+	if model == nil {
+		return nil
+	}
+
+	return &dto.Organization{
+		UUID:      model.UUID,
+		Handle:    model.Handle,
+		Name:      model.Name,
+		CreatedAt: model.CreatedAt,
+		UpdatedAt: model.UpdatedAt,
+	}
 }

@@ -90,3 +90,5 @@ yarn-debug.log*
 .project
 
 *.DS_Store
+
+data

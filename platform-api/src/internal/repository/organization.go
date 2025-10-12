@@ -19,8 +19,8 @@ func NewOrganizationRepo(db *database.DB) OrganizationRepository {
 	return &OrganizationRepo{db: db}
 }
 
-// Create inserts a new organization
-func (r *OrganizationRepo) Create(org *model.Organization) error {
+// CreateOrganization inserts a new organization
+func (r *OrganizationRepo) CreateOrganization(org *model.Organization) error {
 	org.CreatedAt = time.Now()
 	org.UpdatedAt = time.Now()
 
@@ -32,8 +32,8 @@ func (r *OrganizationRepo) Create(org *model.Organization) error {
 	return err
 }
 
-// GetByUUID retrieves an organization by UUID
-func (r *OrganizationRepo) GetByUUID(uuid string) (*model.Organization, error) {
+// GetOrganizationByUUID retrieves an organization by UUID
+func (r *OrganizationRepo) GetOrganizationByUUID(uuid string) (*model.Organization, error) {
 	org := &model.Organization{}
 	query := `
 		SELECT uuid, handle, name, created_at, updated_at
@@ -52,8 +52,8 @@ func (r *OrganizationRepo) GetByUUID(uuid string) (*model.Organization, error) {
 	return org, nil
 }
 
-// GetByHandle retrieves an organization by handle
-func (r *OrganizationRepo) GetByHandle(handle string) (*model.Organization, error) {
+// GetOrganizationByHandle retrieves an organization by handle
+func (r *OrganizationRepo) GetOrganizationByHandle(handle string) (*model.Organization, error) {
 	org := &model.Organization{}
 	query := `
 		SELECT uuid, handle, name, created_at, updated_at
@@ -72,8 +72,8 @@ func (r *OrganizationRepo) GetByHandle(handle string) (*model.Organization, erro
 	return org, nil
 }
 
-// Update modifies an existing organization
-func (r *OrganizationRepo) Update(org *model.Organization) error {
+// UpdateOrganization modifies an existing organization
+func (r *OrganizationRepo) UpdateOrganization(org *model.Organization) error {
 	org.UpdatedAt = time.Now()
 	query := `
 		UPDATE organizations
@@ -84,15 +84,15 @@ func (r *OrganizationRepo) Update(org *model.Organization) error {
 	return err
 }
 
-// Delete removes an organization
-func (r *OrganizationRepo) Delete(uuid string) error {
+// DeleteOrganization removes an organization
+func (r *OrganizationRepo) DeleteOrganization(uuid string) error {
 	query := `DELETE FROM organizations WHERE uuid = ?`
 	_, err := r.db.Exec(query, uuid)
 	return err
 }
 
-// List retrieves organizations with pagination
-func (r *OrganizationRepo) List(limit, offset int) ([]*model.Organization, error) {
+// ListOrganizations retrieves organizations with pagination
+func (r *OrganizationRepo) ListOrganizations(limit, offset int) ([]*model.Organization, error) {
 	query := `
 		SELECT uuid, handle, name, created_at, updated_at
 		FROM organizations

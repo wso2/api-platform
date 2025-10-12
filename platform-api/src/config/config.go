@@ -1,7 +1,10 @@
 package config
 
-import "sync"
-import "github.com/kelseyhightower/envconfig"
+import (
+	"sync"
+
+	"github.com/kelseyhightower/envconfig"
+)
 
 // Server holds the configuration parameters for the application.
 type Server struct {
@@ -52,7 +55,7 @@ func GetConfig() *Server {
 	if err != nil {
 		panic(err)
 	}
-	// Create Logger based on the env var
-	//settingInstance.Logger = logging.NewLogger()
+	settingInstance.Database.Driver = "sqlite3"
+	settingInstance.Database.Path = "./data/api_platform.db"
 	return settingInstance
 }

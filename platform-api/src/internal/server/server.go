@@ -77,7 +77,7 @@ func generateSelfSignedCert() (tls.Certificate, error) {
 		return tls.Certificate{}, err
 	}
 
-	// Create certificate template
+	// CreateOrganization certificate template
 	template := x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject: pkix.Name{
@@ -96,17 +96,17 @@ func generateSelfSignedCert() (tls.Certificate, error) {
 		DNSNames:    []string{"localhost"},
 	}
 
-	// Create certificate
+	// CreateOrganization certificate
 	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
 	if err != nil {
 		return tls.Certificate{}, err
 	}
 
-	// Create PEM blocks
+	// CreateOrganization PEM blocks
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
 
-	// Create TLS certificate
+	// CreateOrganization TLS certificate
 	cert, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
 		return tls.Certificate{}, err
@@ -154,7 +154,7 @@ func (s *Server) Start(port string) error {
 		}
 	}
 
-	// Create TLS configuration
+	// CreateOrganization TLS configuration
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		MinVersion:   tls.VersionTLS12,

@@ -29,6 +29,7 @@ func NewConnection(cfg *config.Database) (*DB, error) {
 			return nil, fmt.Errorf("failed to create database directory: %w", err)
 		}
 
+		// Open SQLite connection to the api_platform.db file
 		db, err = sql.Open("sqlite3", cfg.Path)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open database: %w", err)
@@ -57,33 +58,15 @@ func NewConnection(cfg *config.Database) (*DB, error) {
 
 // InitSchema initializes the database schema
 func (db *DB) InitSchema() error {
-	schemaSQL := `
-		-- Organizations table
-		CREATE TABLE IF NOT EXISTS organizations (
-			uuid TEXT PRIMARY KEY,
-			handle TEXT UNIQUE NOT NULL,
-			name TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		);
-		
-		-- Projects table
-		CREATE TABLE IF NOT EXISTS projects (
-			uuid TEXT PRIMARY KEY,
-			name TEXT NOT NULL,
-			organization_id TEXT NOT NULL,
-			is_default BOOLEAN DEFAULT FALSE,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (organization_id) REFERENCES organizations(uuid) ON DELETE CASCADE
-		);
-		
-		-- Indexes for better performance
-		CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_id);
-		CREATE INDEX IF NOT EXISTS idx_organizations_handle ON organizations(handle);
-	`
+	// Read the schema SQL from the external file
+	schemaPath := filepath.Join("internal", "database", "schema.sql")
+	schemaSQL, err := os.ReadFile(schemaPath)
+	if err != nil {
+		return fmt.Errorf("failed to read schema file: %w", err)
+	}
 
-	_, err := db.Exec(schemaSQL)
+	// Execute the schema SQL
+	_, err = db.Exec(string(schemaSQL))
 	if err != nil {
 		return fmt.Errorf("failed to initialize schema: %w", err)
 	}
