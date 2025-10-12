@@ -53,6 +53,19 @@ After kickstart, use the `example_auth_url` from `registration.yaml`:
 2. Login with the user credentials from `registration.yaml`
 3. Exchange the authorization code for tokens using the provided curl command
 
+**Sample Application:**
+
+A Node.js sample app automates the OAuth flow and displays tokens with decoded JWT claims:
+
+```bash
+cd sample-app
+pnpm install
+pnpm start
+# Open https://localhost:3000
+```
+
+See [sample-app/README.md](sample-app/README.md) for details.
+
 ## Ports
 
 - **8090** - Thunder OAuth server (HTTPS)
