@@ -1,0 +1,21 @@
+version: api-platform.wso2.com/v1
+kind: http/rest
+data:
+  name: PetStore API
+  version: v1.0
+  context: /petstore
+  upstream:
+    - url: http://petstore.swagger.io/v2
+  operations:
+    - method: GET
+      path: /pet/{petId}
+    - method: POST
+      path: /pet
+    - method: PUT
+      path: /pet
+    - method: DELETE
+      path: /pet/{petId}
+    - method: GET
+      path: /store/inventory
+    - method: POST
+      path: /store/order

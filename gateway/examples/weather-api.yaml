@@ -1,0 +1,15 @@
+version: api-platform.wso2.com/v1
+kind: http/rest
+data:
+  name: Weather API
+  version: v1.0
+  context: /weather
+  upstream:
+    - url: http://sample-backend:3000/api/v2
+  operations:
+    - method: GET
+      path: /{country_code}/{city}
+    - method: POST
+      path: /{country_code}/{city}
+    - method: PUT
+      path: /{country_code}/{city}
