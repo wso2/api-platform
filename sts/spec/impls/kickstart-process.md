@@ -64,8 +64,9 @@ The kickstart script automates this entire workflow, providing:
 
 4. **Create User** (API call #2)
    - Endpoint: `POST /users`
-   - Payload: organizationUnit, type, attributes (username, password, email, firstName, lastName)
+   - Payload: organizationUnit, type, attributes (username, password, email, firstName, lastName, organization)
    - Links user to created organization
+   - The `organization` attribute is set to the organization ID for token claims
    - Extracts user ID from response
 
 5. **Create Application** (API call #3)
@@ -77,6 +78,10 @@ The kickstart script automates this entire workflow, providing:
      - Response types: code
      - Token endpoint auth methods: client_secret_basic, client_secret_post
      - PKCE: disabled (pkce_required: false)
+     - Token configuration:
+       - Access token issuer: thunder
+       - Access token validity: 3600 seconds (1 hour)
+       - User attributes in access token: email, username, firstName, lastName, organization
    - Extracts application ID from response
 
 6. **Generate Output** (registration.yaml)
@@ -101,7 +106,7 @@ description: "Acme Corporation"
 
 # User Configuration
 username: "admin"
-password: "Admin@123"
+password: "admin"
 email: "admin@acme.com"
 firstName: "Admin"
 lastName: "User"
@@ -141,10 +146,11 @@ user:
   firstName: "Admin"
   lastName: "User"
   organization_unit: "d713e47e-..."
+  organization: "d713e47e-..."  # Organization attribute included in user attributes
   created_at: "2025-10-11T..."
 
   # Credentials (KEEP SECURE!)
-  password: "Admin@123"
+  password: "admin"
 
 application:
   id: "1f78eac6-e8d2-48f2-b037-e42f2d114e84"
@@ -165,6 +171,17 @@ application:
 
   response_types:
     - "code"
+
+  token_configuration:
+    access_token:
+      issuer: "thunder"
+      validity_period: 3600  # seconds (1 hour)
+      user_attributes:
+        - "email"
+        - "username"
+        - "firstName"
+        - "lastName"
+        - "organization"
 
 # OAuth 2.0 Endpoints
 oauth_endpoints:
@@ -221,6 +238,12 @@ test_commands:
    - Simplifies OAuth flow for basic use cases
    - User can modify for production use
 
+7. **Token Configuration with User Attributes**
+   - Access tokens include user attributes: email, username, firstName, lastName, organization
+   - Token validity set to 3600 seconds (1 hour)
+   - Enables rich user context in access tokens without additional API calls
+   - Organization attribute included in both user creation and token claims for consistent identity management
+
 ## Usage
 
 ### Prerequisites
@@ -270,7 +293,7 @@ https://localhost:8090/oauth2/authorize?response_type=code&client_id=management-
 
 Use credentials from `registration.yaml`:
 - Username: admin
-- Password: Admin@123
+- Password: admin
 
 ### Step 3: Exchange Code for Token
 

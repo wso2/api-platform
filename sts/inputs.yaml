@@ -12,11 +12,11 @@ handle: "acme"
 description: "Acme Corporation"
 
 # User Configuration
-username: "admin"
-password: "Admin@123"
-email: "admin@acme.com"
-firstName: "Admin"
-lastName: "User"
+username: "david"
+password: "david123"
+email: "david.miller@acme.com"
+firstName: "David"
+lastName: "Miller"
 type: "superhuman"  # Default user type
 
 # Application Configuration
@@ -33,5 +33,10 @@ redirect_uris:
 # Note: The following are set automatically by the script:
 #   - Grant types: authorization_code, refresh_token
 #   - Response types: code
-#   - PKCE: enabled
+#   - PKCE: disabled
 #   - Token endpoint auth methods: client_secret_basic, client_secret_post
+#   - Access token configuration:
+#       * Issuer: thunder
+#       * Validity period: 3600 seconds (1 hour)
+#       * User attributes in token: email, username, firstName, lastName, organization
+#   - User organization attribute: Set to the created organization ID

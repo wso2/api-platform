@@ -133,7 +133,7 @@ ORG_HANDLE=$(parse_yaml "$INPUTS_FILE" "handle" "default-org")
 ORG_DESC=$(parse_yaml "$INPUTS_FILE" "description" "Default Organization")
 
 USER_USERNAME=$(parse_yaml "$INPUTS_FILE" "username" "admin")
-USER_PASSWORD=$(parse_yaml "$INPUTS_FILE" "password" "Admin@123")
+USER_PASSWORD=$(parse_yaml "$INPUTS_FILE" "password" "admin")
 USER_EMAIL=$(parse_yaml "$INPUTS_FILE" "email" "admin@example.com")
 USER_FIRSTNAME=$(parse_yaml "$INPUTS_FILE" "firstName" "Admin")
 USER_LASTNAME=$(parse_yaml "$INPUTS_FILE" "lastName" "User")
@@ -205,7 +205,8 @@ USER_PAYLOAD=$(cat <<EOF
     "password": "$USER_PASSWORD",
     "email": "$USER_EMAIL",
     "firstName": "$USER_FIRSTNAME",
-    "lastName": "$USER_LASTNAME"
+    "lastName": "$USER_LASTNAME",
+    "organization": "$ORG_ID"
   }
 }
 EOF
@@ -262,7 +263,20 @@ APP_PAYLOAD=$(cat <<EOF
       "grant_types": ["authorization_code", "refresh_token"],
       "response_types": ["code"],
       "token_endpoint_auth_methods": ["client_secret_basic", "client_secret_post"],
-      "pkce_required": false
+      "pkce_required": false,
+      "token": {
+        "access_token": {
+          "issuer": "thunder",
+          "validity_period": 3600,
+          "user_attributes": [
+            "email",
+            "username",
+            "firstName",
+            "lastName",
+            "organization"
+          ]
+        }
+      }
     }
   }]
 }
@@ -321,6 +335,7 @@ user:
   firstName: "$USER_FIRSTNAME"
   lastName: "$USER_LASTNAME"
   organization_unit: "$ORG_ID"
+  organization: "$ORG_ID"  # Organization attribute included in user attributes
   created_at: "$TIMESTAMP"
 
   # Credentials (KEEP SECURE!)
@@ -344,6 +359,17 @@ $(echo -e "$REDIRECT_URIS_YAML")
 
   response_types:
     - "code"
+
+  token_configuration:
+    access_token:
+      issuer: "thunder"
+      validity_period: 3600  # seconds (1 hour)
+      user_attributes:
+        - "email"
+        - "username"
+        - "firstName"
+        - "lastName"
+        - "organization"
 
 # OAuth 2.0 Endpoints
 oauth_endpoints:
