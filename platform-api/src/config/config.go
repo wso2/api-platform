@@ -7,6 +7,26 @@ import "github.com/kelseyhightower/envconfig"
 type Server struct {
 	LogLevel string `envconfig:"LOG_LEVEL" default:"DEBUG"`
 	//Logger   logging.Logger
+
+	// Database configurations
+	Database Database `envconfig:"DATABASE"`
+}
+
+// Database holds database-specific configuration
+type Database struct {
+	Driver   string `envconfig:"DRIVER" default:"sqlite3"`
+	Path     string `envconfig:"PATH" default:"./data/api_platform.db"`
+	Host     string `envconfig:"HOST" default:"localhost"`
+	Port     int    `envconfig:"PORT" default:"5432"`
+	Name     string `envconfig:"NAME" default:"platform_api"`
+	User     string `envconfig:"USER" default:""`
+	Password string `envconfig:"PASSWORD" default:""`
+	SSLMode  string `envconfig:"SSL_MODE" default:"disable"`
+
+	// SQLite specific settings
+	MaxOpenConns    int `envconfig:"MAX_OPEN_CONNS" default:"25"`
+	MaxIdleConns    int `envconfig:"MAX_IDLE_CONNS" default:"10"`
+	ConnMaxLifetime int `envconfig:"CONN_MAX_LIFETIME" default:"300"` // seconds
 }
 
 // package-level variable and mutex for thread safety

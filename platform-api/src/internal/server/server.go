@@ -31,8 +31,8 @@ type Server struct {
 
 // StartPlatformAPIServer creates a new server instance with all dependencies initialized
 func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
-	// Initialize database
-	db, err := database.NewConnection("./data/platform.db")
+	// Initialize database using configuration
+	db, err := database.NewConnection(&cfg.Database)
 	if err != nil {
 		return nil, err
 	}
