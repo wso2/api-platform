@@ -79,7 +79,6 @@ func (s *OrganizationService) CreateOrganization(handle string, name string) (*d
 		UUID:           uuid.New().String(),
 		Name:           "Default",
 		OrganizationID: org.UUID,
-		IsDefault:      true,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}

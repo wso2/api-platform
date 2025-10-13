@@ -48,21 +48,25 @@ func (h *OrganizationHandler) CreateOrganization(c *gin.Context) {
 
 	// Validate required fields
 	if req.Handle == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Handle is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Handle is required"))
 		return
 	}
 
 	org, err := h.orgService.CreateOrganization(req.Handle, req.Name)
 	if err != nil {
 		if errors.Is(err, constants.ErrHandleExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Organization handle already exists"))
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"Organization already exists"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidHandle) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Organization handle must be URL friendly"))
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Organization handle must be URL friendly"))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create organization"))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to create organization"))
 		return
 	}
 
@@ -72,21 +76,25 @@ func (h *OrganizationHandler) CreateOrganization(c *gin.Context) {
 func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
 	uuid := c.Param("org_uuid")
 	if uuid == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Organization UUID is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Organization UUID is required"))
 		return
 	}
 
 	org, err := h.orgService.GetOrganizationByUUID(uuid)
 	if err != nil {
 		if errors.Is(err, constants.ErrOrganizationNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Organization not found"))
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Organization not found"))
 			return
 		}
 		if errors.Is(err, constants.ErrMultipleOrganizations) {
-			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Data integrity error: multiple organizations found"))
+			c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+				"Data integrity error: multiple organizations found"))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get organization"))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get organization"))
 		return
 	}
 
