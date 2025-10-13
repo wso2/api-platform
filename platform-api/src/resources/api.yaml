@@ -1,0 +1,145 @@
+kind: api
+version: v1
+data:
+  uuid: 3f3b1e2e-6dcb-4f7c-8f3a-1c4e5e6b7a8c
+  name: petstore_api
+  displayName: Pet Store
+  version: v1.0
+  description: ""
+  context: "/petstore/api/v3"
+  provider: 07df4d04-dc27-42fb-a01b-9ef3202f5eaf
+  createdTime: "2024-06-15T10:00:00Z"
+  lastUpdatedTime: "2024-06-15T10:00:00Z"
+  lifeCycleStatus: CREATED
+  type: HTTP
+  transport: [http, https]
+  mtls:
+    enabled: false
+    enforceIfClientCertPresent: false
+    verifyClient: false
+    clientCert: ""
+    clientKey: ""
+    caCert: ""
+  security:
+    enabled: true
+    apiKey:
+      enabled: true
+      header: api-key
+      query: ""
+      cookie: ""
+    oauth2:
+      grantTypes:
+        authorizationCode:
+          enabled: false
+          callbackUrl: ""
+        implicit:
+          enabled: false
+          callbackUrl: ""
+        password:
+          enabled: false
+        clientCredentials:
+          enabled: false
+      scopes: []
+  cors:
+    enabled: false
+    allowOrigins: "*"
+    allowMethods: "GET,PUT,POST,DELETE,HEAD,OPTIONS"
+    allowHeaders: "Authorization,Access-Control-Allow-Origin,Content-Type,SOAPAction"
+    exposeHeaders: ""
+    maxAge: 3600
+    allowCredentials: false
+  backend-services:
+    - name: default
+      isDefault: true
+      endpoints:
+        - url: https://petstore.swagger.io/v2
+          description: Petstore API
+          healthCheck:
+            enabled: true
+            interval: 60
+            timeout: 5
+            unhealthyThreshold: 3
+            healthyThreshold: 2
+          weight: 100
+          mtls:
+            enabled: false
+            clientCert: ""
+            clientKey: ""
+            caCert: ""
+      timeout:
+        connect: 5000
+        read: 60000
+        write: 60000
+      retries: 3
+      loadBalance:
+        algorithm: ROUND_ROBIN
+        failover: true
+      circuitBreaker:
+        enabled: false
+        maxConnections: 0
+        maxPendingRequests: 0
+        maxRequests: 0
+        maxRetries: 0
+  api-rate-limiting:
+    enabled: false
+    rateLimitCount: 0
+    rateLimitTimeUnit: minute
+    stopOnQuotaReach: true
+  operations:
+    - name: getPetById
+      description: Find pet by ID
+      request:
+        method: GET
+        path: /pet/{petId}
+        backend-services:
+          - name: default
+            weight: 80
+          - name: canary
+            weight: 20
+        authentication:
+          required: true
+          scopes: ["read:pets"]
+        requestPolicies:
+          - name: SET_HEADER
+            params:
+              key: MyHeader
+              value: MyValue
+          - name: SET_HEADER
+            params:
+              key: MyHeader2
+              value: MyValue-${request.path.petId}-foo
+          - name: SET_QUERY_PARAM
+            params:
+              key: MyQueryParam
+              value: MyValue
+          - name: SET_QUERY_PARAM
+            params:
+              key: MyQueryParam2
+              value: MyValue2
+          - name: JSON_TO_XML
+            params:
+              rootElemName: root
+              arrayItemName: item
+          - name: LOG
+            params:
+              message: my message
+              printBody: true
+              printHeaders: true
+        responsePolicies:
+          - name: SET_HEADER
+            params:
+              key: MyHeader
+              value: MyValue
+          - name: LOG
+            params:
+              message: my message
+              printBody: true
+              printHeaders: true
+          - name: JSON_TO_XML
+            params:
+              rootElemName: root
+              arrayItemName: item
+          - name: SET_HEADER
+            params:
+              key: MyHeader2
+              value: MyValue2

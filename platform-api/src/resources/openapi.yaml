@@ -1,0 +1,1102 @@
+openapi: 3.1.1
+info:
+  title: WSO2 API Platform - Platform API
+  description: This document specifies a **RESTful API** for WSO2 **API Platform** - **Platform API**.
+  version: 1.0.0
+  contact:
+    name: WSO2
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://localhost:8443/api/v1
+    description: Development server (HTTPS)
+  - url: https://api.platform.com/api/v1
+    description: Production server
+
+paths:
+  /organizations:
+    post:
+      summary: Create a new organization
+      description: Creates a new organization with a unique handle
+      operationId: createOrganization
+      tags:
+        - Organizations
+      requestBody:
+        description: Organization that needs to be added
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Organization'
+      responses:
+        '201':
+          description: Organization created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+            $ref: '#/components/responses/Conflict'
+        '500':
+            $ref: '#/components/responses/InternalServerError'
+
+  /organizations/{org_uuid}:
+    get:
+      summary: Get organization by UUID
+      description: Retrieves a specific organization by its UUID
+      operationId: getOrganization
+      tags:
+        - Organizations
+      parameters:
+        - name: org_uuid
+          in: path
+          required: true
+          description: UUID of the organization to retrieve
+          schema:
+            type: string
+            format: uuid
+            example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Organization retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /organizations/{org_uuid}/projects:
+    get:
+      summary: Get all projects for an organization
+      description: Retrieves all projects belonging to a specific organization
+      operationId: getProjectsByOrganization
+      tags:
+        - Projects
+      parameters:
+        - name: org_uuid
+          in: path
+          required: true
+          description: UUID of the organization
+          schema:
+            type: string
+            format: uuid
+            example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Projects retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projects:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /projects:
+    post:
+      description: Creates a new project within an organization
+      operationId: createProject
+      tags:
+        - Projects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Project'
+      responses:
+        '201':
+          description: Project created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /projects/{project_uuid}:
+    get:
+      summary: Get project by UUID
+      description: Retrieves a specific project by its UUID
+      operationId: getProject
+      tags:
+        - Projects
+      parameters:
+        - name: project_uuid
+          in: path
+          required: true
+          description: UUID of the project to retrieve
+          schema:
+            type: string
+            example: "yr434567-de34-76uj6-w376-234324532"
+      responses:
+        '200':
+          description: Project retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update project
+      description: Updates an existing project's name and/or default status
+      operationId: updateProject
+      tags:
+        - Projects
+      parameters:
+        - name: project_uuid
+          in: path
+          required: true
+          description: UUID of the project to update
+          schema:
+            type: string
+            example: "yr434567-de34-76uj6-w376-234324532"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Project'
+      responses:
+        '200':
+          description: Project updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete project
+      description: Deletes a specific project by its UUID
+      operationId: deleteProject
+      tags:
+        - Projects
+      parameters:
+        - name: project_uuid
+          in: path
+          required: true
+          description: UUID of the project to delete
+          schema:
+            type: string
+            example: "yr434567-de34-76uj6-w376-234324532"
+      responses:
+        '204':
+          description: Project deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /apis:
+    post:
+      summary: Create a new API
+      description: Creates a new API in the platform
+      operationId: createAPI
+      tags:
+        - APIs
+      requestBody:
+        description: API object that needs to be added
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/API'
+        required: true
+      responses:
+        '201':
+          description: API created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/API'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /projects/{project_uuid}/apis:
+    get:
+      summary: Get all APIs for an organization
+      description: Retrieves all APIs belonging to a specific project
+      operationId: getAPIsByProject
+      tags:
+        - APIs
+      parameters:
+        - name: project_uuid
+          in: path
+          required: true
+          description: UUID of the project
+          schema:
+            type: string
+            example: "yr434567-de34-76uj6-w376-234324532"
+      responses:
+        '200':
+          description: APIs retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projects:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/API'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /apis/{api_uuid}:
+    get:
+      summary: Get API by UUID
+      description: Retrieves a specific API by its UUID
+      operationId: getAPI
+      tags:
+        - APIs
+      parameters:
+        - name: api_uuid
+          in: path
+          required: true
+          description: UUID of the project to retrieve
+          schema:
+            type: string
+            example: "yr434567-de34-76uj6-w376-234324532"
+      responses:
+        '200':
+          description: API retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/API'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    put:
+      summary: Update API
+      description: Updates an existing API's details
+      operationId: updateAPI
+      tags:
+        - APIs
+      parameters:
+        - name: api_uuid
+          in: path
+          required: true
+          description: UUID of the API to update
+          schema:
+            type: string
+            example: "yr434567-de34-76uj6-w376-234324532"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/API'
+      responses:
+        '200':
+          description: Project updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/API'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete API
+      description: Deletes a specific API by its UUID
+      operationId: deleteAPI
+      tags:
+        - APIs
+      parameters:
+        - name: api_uuid
+          in: path
+          required: true
+          description: UUID of the API to delete
+          schema:
+            type: string
+            example: "yr434567-de34-76uj6-w376-234324532"
+      responses:
+        '204':
+          description: API deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  schemas:
+    Organization:
+      type: object
+      required:
+        - handle
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: Unique identifier for the organization
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        handle:
+          type: string
+          description: URL-friendly unique handle for the organization
+          pattern: '^[a-z0-9-]+$'
+          minLength: 1
+          example: "wso2"
+        name:
+          type: string
+          description: Display name of the organization
+          example: "WSO2"
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the organization was created
+          example: "2023-10-12T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the organization was last updated
+          example: "2023-10-12T10:30:00Z"
+
+    Project:
+      type: object
+      required:
+        - name
+        - organization_id
+      properties:
+        uuid:
+          type: string
+          description: Unique identifier for the project
+          example: "yr434567-de34-76uj6-w376-234324532"
+        name:
+          type: string
+          description: Name of the project
+          minLength: 1
+          example: "Default Project"
+        organization_id:
+          type: string
+          format: uuid
+          description: UUID of the organization this project belongs to
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        is_default:
+          type: boolean
+          description: Whether this is the default project for the organization
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the project was created
+          example: "2023-10-12T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the project was last updated
+          example: "2023-10-12T10:30:00Z"
+
+    API:
+      title: API object
+      required:
+        - name
+        - context
+        - version
+      type: object
+      properties:
+        uuid:
+          type: string
+          description: UUID of the api artifact
+          readOnly: true
+          example: 01234567-0123-0123-0123-012345678901
+        name:
+          minLength: 1
+          pattern: '(^[^~!@#;:%^*()+={}|\\<>"'',&$\[\]\/]*$)'
+          type: string
+          example: PizzaShackAPI
+        displayName:
+          description: Human-friendly name shown in UI. Length limited to DB column size
+          type: string
+          example: Pizza Shack API
+        description:
+          maxLength: 32766
+          type: string
+          example: This is a simple API for Pizza Shack online pizza delivery store
+        context:
+          maxLength: 232
+          minLength: 1
+          type: string
+          example: pizza
+        version:
+          maxLength: 30
+          minLength: 1
+          type: string
+          pattern: '^[^~!@#;:%^*()+={}|\\<>"'',&/$\[\]\s+\/]+$'
+          example: 1.0.0
+        provider:
+          maxLength: 200
+          type: string
+          description: |
+            If the provider value is not given user invoking the api will be used as the provider.
+          example: admin
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the api was created
+          example: "2023-10-12T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Timestamp when the api was last updated
+          example: "2023-10-12T10:30:00Z"
+        lifeCycleStatus:
+          type: string
+          description: Current lifecycle status of the API
+          enum:
+            - CREATED
+            - PUBLISHED
+            - DEPRECATED
+            - RETIRED
+            - BLOCKED
+          example: "CREATED"
+        hasThumbnail:
+          type: boolean
+          example: false
+        isDefaultVersion:
+          type: boolean
+          example: false
+        isRevision:
+          type: boolean
+          example: false
+        revisionedApiId:
+          type: string
+          description: UUID of the api artifact
+          readOnly: true
+          example: 01234567-0123-0123-0123-012345678901
+        revisionId:
+          type: integer
+          example: 1
+        type:
+          type: string
+          description: The api creation type to be used. Accepted values are HTTP,
+            WS, SOAPTOREST, GRAPHQL, WEBSUB, SSE, WEBHOOK, ASYNC
+          example: HTTP/REST
+          default: HTTP/REST
+          enum:
+            - HTTP
+            - WS
+            - SOAPTOREST
+            - SOAP
+            - GRAPHQL
+            - WEBSUB
+            - SSE
+            - WEBHOOK
+            - ASYNC
+        transport:
+          type: array
+          description: |
+            Supported transports for the API (http and/or https)
+          example:
+            - http
+            - https
+          items:
+            type: string
+        mtls:
+          $ref: '#/components/schemas/MTLSConfig'
+        security:
+          $ref: '#/components/schemas/SecurityConfig'
+        cors:
+          $ref: '#/components/schemas/CORSConfig'
+        backend-services:
+          type: array
+          description: List of backend services used by this API
+          items:
+            $ref: '#/components/schemas/BackendService'
+        api-rate-limiting:
+          $ref: '#/components/schemas/RateLimitingConfig'
+        operations:
+          type: array
+          description: List of operations exposed by this API
+          items:
+            $ref: '#/components/schemas/Operation'
+
+    MTLSConfig:
+      title: mTLS Configuration
+      type: object
+      description: Configuration for mutual TLS settings for the API
+      properties:
+        enabled:
+          type: boolean
+          description: Whether mutual TLS is enabled
+          example: false
+        enforceIfClientCertPresent:
+          type: boolean
+          description: Whether to enforce mTLS if a client certificate is present
+          example: false
+        verifyClient:
+          type: boolean
+          description: Whether client verification is enabled
+          example: false
+        clientCert:
+          type: string
+          description: Base64-encoded client certificate
+          example: "MIIDdTCCAl2gAwIBAgIUOQp4tDq2YVfB4KxwA3kM3G4x7eowDQYJKoZIhvcNAQELBQAwRjELMAkGA1UEBhMCVVMxCzAJBgNVBA"
+        clientKey:
+          type: string
+          description: Base64-encoded client private key
+          example: "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDOn1Q3xNQHRb7KmFwB6Y6L6K2B8rwRUKR6dW6iBzF7QdtsdQ"
+        caCert:
+          type: string
+          description: Base64-encoded certificate authority (CA) certificate
+          example: "MIIDrzCCApegAwIBAgIUYJzYpJ2Vj3iO6l3P2wq+1O1bS9EwDQYJKoZIhvcNAQELBQAwcDELMAkGA1UEBhMCVVMxCzAJBgNVBAg"
+
+    SecurityConfig:
+      title: Security Configuration
+      description: Defines security mechanisms (API key, OAuth2) applicable to the API
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Whether security is enabled
+          example: true
+        apiKey:
+          $ref: '#/components/schemas/APIKeySecurity'
+        oauth2:
+          $ref: '#/components/schemas/OAuth2Security'
+
+    APIKeySecurity:
+      title: API Key Security
+      description: Configuration for API key–based authentication
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Whether API key authentication is enabled
+          example: true
+        header:
+          type: string
+          description: Header name to carry the API key
+          example: "api-key"
+        query:
+          type: string
+          description: Query parameter name to carry the API key
+          example: "api-key"
+        cookie:
+          type: string
+          description: Cookie name to carry the API key
+          example: "api-key"
+
+    OAuth2Security:
+      title: OAuth2 Security
+      description: Configuration for OAuth 2.0 authentication
+      type: object
+      properties:
+        grantTypes:
+          $ref: '#/components/schemas/OAuth2GrantTypes'
+        scopes:
+          type: array
+          description: OAuth2 scopes required for this API
+          items:
+            type: string
+          example:
+            - openid
+            - profile
+            - email
+
+    OAuth2GrantTypes:
+      title: OAuth2 Grant Types
+      description: Supported OAuth2 grant types for this API
+      type: object
+      properties:
+        authorizationCode:
+          $ref: '#/components/schemas/AuthorizationCodeGrant'
+        implicit:
+          $ref: '#/components/schemas/ImplicitGrant'
+        password:
+          $ref: '#/components/schemas/PasswordGrant'
+        clientCredentials:
+          $ref: '#/components/schemas/ClientCredentialsGrant'
+
+    AuthorizationCodeGrant:
+      title: OAuth2 Grant Type with Callback
+      description: Defines an OAuth2 grant type that uses a callback URL
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Whether this grant type is enabled
+          example: true
+        callbackUrl:
+          type: string
+          description: Callback URL for OAuth2 authorization flow
+          example: http://localhost:8080/oauth2/callback
+
+    ImplicitGrant:
+      title: OAuth2 Grant Type with Callback
+      description: Defines an OAuth2 grant type that uses a callback URL
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Whether this grant type is enabled
+          example: false
+        callbackUrl:
+          type: string
+          description: Callback URL for OAuth2 authorization flow
+          example: http://localhost:8080/oauth2/callback
+
+    PasswordGrant:
+      title: Password OAuth2 Grant Type
+      description: Defines an Password OAuth2 grant type without a callback URL
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Whether grant type is enabled
+          example: false
+
+    ClientCredentialsGrant:
+      title: Client Credentials OAuth2 Grant Type
+      description: Defines Client Credentials OAuth2 grant type without a callback URL
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Whether grant type is enabled
+          example: false
+
+    CORSConfig:
+      title: CORS Configuration
+      description: Defines Cross-Origin Resource Sharing (CORS) policy for the API
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Whether CORS is enabled
+          example: true
+        allowOrigins:
+          type: string
+          description: Comma-separated list of allowed origins
+          example: "*"
+        allowMethods:
+          type: string
+          description: Comma-separated list of allowed HTTP methods
+          example: "GET,PUT,POST,DELETE,HEAD,OPTIONS"
+        allowHeaders:
+          type: string
+          description: Comma-separated list of allowed HTTP headers
+          example: "Authorization,Access-Control-Allow-Origin,Content-Type,SOAPAction"
+        exposeHeaders:
+          type: string
+          description: Headers that can be exposed to the browser
+          example: ""
+        maxAge:
+          type: integer
+          description: Maximum age (in seconds) for caching preflight requests
+          example: 3600
+        allowCredentials:
+          type: boolean
+          description: Whether credentials are allowed in CORS requests
+          example: false
+
+    BackendService:
+      title: Backend Service
+      description: Represents a backend service that handles requests for this API
+      type: object
+      properties:
+        name:
+          type: string
+          description: Name of the backend service
+          example: "default"
+        isDefault:
+          type: boolean
+          description: Whether this backend is the default one
+          example: true
+        endpoints:
+          type: array
+          description: List of endpoints in this backend service
+          items:
+            $ref: '#/components/schemas/BackendEndpoint'
+        timeout:
+          $ref: '#/components/schemas/TimeoutConfig'
+        retries:
+          type: integer
+          description: Number of retry attempts for failed requests
+          example: 3
+        loadBalance:
+          $ref: '#/components/schemas/LoadBalanceConfig'
+        circuitBreaker:
+          $ref: '#/components/schemas/CircuitBreakerConfig'
+
+    BackendEndpoint:
+      title: Backend Endpoint
+      type: object
+      description: Defines a single backend endpoint
+      properties:
+        url:
+          type: string
+          example: "https://petstore.swagger.io/v2"
+        description:
+          type: string
+          example: "Petstore API Endpoint"
+        healthCheck:
+          $ref: "#/components/schemas/HealthCheckConfig"
+        weight:
+          type: integer
+          example: 100
+        mtls:
+          $ref: "#/components/schemas/MTLSConfig"
+
+    HealthCheckConfig:
+      title: Health Check Configuration
+      type: object
+      description: Defines health check parameters for a backend endpoint
+      properties:
+        enabled:
+          type: boolean
+          example: true
+        interval:
+          type: integer
+          description: Health check interval in seconds
+          example: 60
+        timeout:
+          type: integer
+          description: Timeout in seconds for each health check attempt
+          example: 5
+        unhealthyThreshold:
+          type: integer
+          description: Number of failed checks before marking unhealthy
+          example: 3
+        healthyThreshold:
+          type: integer
+          description: Number of successful checks before marking healthy
+          example: 2
+
+    TimeoutConfig:
+      title: Timeout Configuration
+      type: object
+      description: Timeout settings for the backend connection
+      properties:
+        connect:
+          type: integer
+          description: Connection timeout in milliseconds
+          example: 5000
+        read:
+          type: integer
+          description: Read timeout in milliseconds
+          example: 60000
+        write:
+          type: integer
+          description: Write timeout in milliseconds
+          example: 60000
+
+    LoadBalanceConfig:
+      title: Load Balancing Configuration
+      type: object
+      description: Defines load balancing behavior for backend endpoints
+      properties:
+        algorithm:
+          type: string
+          description: Load balancing algorithm to use
+          example: "ROUND_ROBIN"
+        failover:
+          type: boolean
+          description: Whether to failover to another endpoint on failure
+          example: true
+
+    CircuitBreakerConfig:
+      title: Circuit Breaker Configuration
+      type: object
+      description: Circuit breaker settings to manage backend failures
+      properties:
+        enabled:
+          type: boolean
+          description: Whether circuit breaker is enabled
+          example: false
+        maxConnections:
+          type: integer
+          description: Maximum number of concurrent connections
+          example: 10
+        maxPendingRequests:
+          type: integer
+          description: Maximum number of pending requests
+          example: 5
+        maxRequests:
+          type: integer
+          description: Maximum number of requests in a given time window
+          example: 3
+        maxRetries:
+          type: integer
+          description: Maximum number of retries for a failed request
+          example: 1
+
+    RateLimitingConfig:
+      title: API Rate Limiting Configuration
+      type: object
+      description: Defines API rate limiting rules
+      properties:
+        enabled:
+          type: boolean
+          description: Whether rate limiting is enabled
+          example: true
+        rateLimitCount:
+          type: integer
+          description: Number of requests allowed in the specified time unit
+          example: 1000
+        rateLimitTimeUnit:
+          type: string
+          description: Time unit for rate limiting (second, minute, hour)
+          enum:
+            - second
+            - minute
+            - hour
+          example: "minute"
+        stopOnQuotaReach:
+          type: boolean
+          description: Whether to stop requests when the quota is reached
+          example: true
+
+    Operation:
+      title: API Operation
+      type: object
+      description: Defines a single operation (resource) within the API
+      properties:
+        name:
+          type: string
+          description: Name of the operation
+          example: "getPetById"
+        description:
+          type: string
+          description: Description of the operation
+          example: "Find pet by ID"
+        request:
+          $ref: "#/components/schemas/OperationRequest"
+
+    OperationRequest:
+      title: Operation Request
+      type: object
+      description: Request details for an API operation
+      properties:
+        method:
+          type: string
+          description: HTTP method for the operation
+          enum:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - PATCH
+            - HEAD
+            - OPTIONS
+          example: "GET"
+        path:
+          type: string
+          description: Resource path for the operation
+          example: "/pet/{petId}"
+        backend-services:
+          type: array
+          description: List of backend services for this operation
+          items:
+            $ref: "#/components/schemas/BackendRouting"
+        authentication:
+          $ref: "#/components/schemas/AuthenticationConfig"
+        requestPolicies:
+          type: array
+          items:
+            $ref: "#/components/schemas/Policy"
+        responsePolicies:
+          type: array
+          items:
+            $ref: "#/components/schemas/Policy"
+
+    BackendRouting:
+      title: Backend Routing
+      type: object
+      description: Defines routing weights to different backend services
+      properties:
+        name:
+          type: string
+          description: Name of the backend service
+          example: "default"
+        weight:
+          type: integer
+          description: Traffic weight for this backend service
+          example: 80
+
+    AuthenticationConfig:
+      title: Authentication Configuration
+      type: object
+      description: Defines authentication requirements for an operation
+      properties:
+        required:
+          type: boolean
+          description: Whether authentication is required
+          example: true
+        scopes:
+          type: array
+          description: List of OAuth2 scopes required for this operation
+          items:
+            type: string
+          example: [ "read:pets" ]
+
+    Policy:
+      title: Policy Configuration
+      type: object
+      description: Defines a request or response policy applied at runtime
+      properties:
+        name:
+          type: string
+          description: Name of the policy to apply
+          example: "SET_HEADER"
+        params:
+          type: object
+          description: Key-value pairs of parameters for the policy
+          additionalProperties: true
+          example:
+            key: "MyHeader"
+            value: "MyValue"
+
+    Error:
+      title: Error object returned
+      required:
+        - code
+        - message
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int64
+        message:
+          type: string
+          description: Error message
+        description:
+          type: string
+          description: A detailed description about the error message
+
+  responses:
+    BadRequest:
+      description: Bad Request. Invalid request or validation error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 400
+            message: Bad Request
+            description: Invalid request or validation error
+    NotFound:
+      description: Not Found. The specified resource does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 404
+            message: Not Found
+            description: The specified resource does not exist
+    Conflict:
+      description: Conflict. Specified resource already exists.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 409
+            message: Conflict
+            description: Specified resource already exists
+    InternalServerError:
+      description: Internal Server Error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 500
+            message: Internal Server Error
+            description: The server encountered an internal error. Please contact
+              administrator.
+  parameters:
+    OrganizationUUID:
+      name: org_uuid
+      in: path
+      required: true
+      description: UUID of the organization
+      schema:
+        type: string
+        format: uuid
+        example: "123e4567-e89b-12d3-a456-426614174000"
+
+    ProjectID:
+      name: project_uuid
+      in: path
+      required: true
+      description: UUID of the project
+      schema:
+        type: string
+        example: "yr434567-de34-76uj6-w376-234324532"
+
+    APIID:
+      name: api_uuid
+      in: path
+      required: true
+      description: UUID of the API
+      schema:
+        type: string
+        example: "f745uj48-d7e34-7356-w376-286532930"
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Organizations
+    description: Organization management operations
+  - name: Projects
+    description: Project management operations
