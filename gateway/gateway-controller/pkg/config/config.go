@@ -42,8 +42,10 @@ type RouterConfig struct {
 
 // AccessLogsConfig holds access log configuration
 type AccessLogsConfig struct {
-	Enabled bool   `koanf:"enabled"`
-	Format  string `koanf:"format"` // "json" or "text"
+	Enabled    bool              `koanf:"enabled"`
+	Format     string            `koanf:"format"`      // "json" or "text"
+	JSONFields map[string]string `koanf:"json_fields"` // JSON log format fields
+	TextFormat string            `koanf:"text_format"` // Text log format template
 }
 
 // LoggingConfig holds logging configuration
@@ -66,7 +68,14 @@ func LoadConfig(configPath string) (*Config, error) {
 	// Load config file if it exists
 	if configPath != "" {
 		if _, err := os.Stat(configPath); err == nil {
-			if err := k.Load(file.Provider(configPath), yaml.Parser()); err != nil {
+			// Use WithMergeFunc to prevent merging of maps - config file should fully override defaults
+			if err := k.Load(file.Provider(configPath), yaml.Parser(), koanf.WithMergeFunc(func(src, dest map[string]interface{}) error {
+				// For nested maps, replace instead of merge
+				for k, v := range src {
+					dest[k] = v
+				}
+				return nil
+			})); err != nil {
 				return nil, fmt.Errorf("failed to load config file: %w", err)
 			}
 		}
@@ -102,16 +111,39 @@ func LoadConfig(configPath string) (*Config, error) {
 // getDefaults returns a map with default configuration values
 func getDefaults() map[string]interface{} {
 	return map[string]interface{}{
-		"server.api_port":            9090,
-		"server.xds_port":            18000,
-		"server.shutdown_timeout":    "15s",
-		"storage.mode":               "memory-only",
-		"storage.database_path":      "/data/gateway-controller.db",
+		"server.api_port":         9090,
+		"server.xds_port":         18000,
+		"server.shutdown_timeout": "15s",
+		"storage.mode":            "memory-only",
+		"storage.database_path":   "/data/gateway-controller.db",
 		"router.access_logs.enabled": true,
 		"router.access_logs.format":  "json",
-		"router.listener_port":       8080,
-		"logging.level":              "info",
-		"logging.format":             "json",
+		"router.access_logs.json_fields": map[string]interface{}{
+			"start_time":            "%START_TIME%",
+			"method":                "%REQ(:METHOD)%",
+			"path":                  "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
+			"protocol":              "%PROTOCOL%",
+			"response_code":         "%RESPONSE_CODE%",
+			"response_flags":        "%RESPONSE_FLAGS%",
+			"response_flags_long":   "%RESPONSE_FLAGS_LONG%",
+			"bytes_received":        "%BYTES_RECEIVED%",
+			"bytes_sent":            "%BYTES_SENT%",
+			"duration":              "%DURATION%",
+			"upstream_service_time": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
+			"x_forwarded_for":       "%REQ(X-FORWARDED-FOR)%",
+			"user_agent":            "%REQ(USER-AGENT)%",
+			"request_id":            "%REQ(X-REQUEST-ID)%",
+			"authority":             "%REQ(:AUTHORITY)%",
+			"upstream_host":         "%UPSTREAM_HOST%",
+			"upstream_cluster":      "%UPSTREAM_CLUSTER%",
+		},
+		"router.access_logs.text_format": "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" " +
+			"%RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
+			"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
+			"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
+		"router.listener_port": 8080,
+		"logging.level":        "info",
+		"logging.format":       "json",
 	}
 }
 
@@ -130,6 +162,19 @@ func (c *Config) Validate() error {
 	// Validate access log format
 	if c.Router.AccessLogs.Format != "json" && c.Router.AccessLogs.Format != "text" {
 		return fmt.Errorf("router.access_logs.format must be either 'json' or 'text', got: %s", c.Router.AccessLogs.Format)
+	}
+
+	// Validate access log fields if access logs are enabled
+	if c.Router.AccessLogs.Enabled {
+		if c.Router.AccessLogs.Format == "json" {
+			if c.Router.AccessLogs.JSONFields == nil || len(c.Router.AccessLogs.JSONFields) == 0 {
+				return fmt.Errorf("router.access_logs.json_fields must be configured when format is 'json'")
+			}
+		} else if c.Router.AccessLogs.Format == "text" {
+			if c.Router.AccessLogs.TextFormat == "" {
+				return fmt.Errorf("router.access_logs.text_format must be configured when format is 'text'")
+			}
+		}
 	}
 
 	// Validate log level

@@ -6,6 +6,7 @@ import (
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"
 )
@@ -24,7 +25,7 @@ type SnapshotManager struct {
 }
 
 // NewSnapshotManager creates a new snapshot manager
-func NewSnapshotManager(store *storage.ConfigStore, logger *zap.Logger, accessLogConfig AccessLogConfig) *SnapshotManager {
+func NewSnapshotManager(store *storage.ConfigStore, logger *zap.Logger, accessLogConfig config.AccessLogsConfig) *SnapshotManager {
 	// Create a snapshot cache with a simple node ID hasher
 	snapshotCache := cache.NewSnapshotCache(false, cache.IDHash{}, logger.Sugar())
 

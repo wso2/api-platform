@@ -41,7 +41,7 @@ paths:
                 properties:
                   status:
                     type: string
-                    example: "healthy"
+                    example: healthy
                   timestamp:
                     type: string
                     format: date-time
@@ -68,11 +68,11 @@ paths:
           application/yaml:
             schema:
               $ref: '#/components/schemas/APIConfiguration'
-            example: |
+            example:
               version: api-platform.wso2.com/v1
               kind: http/rest
               data:
-                name: Weather API
+                name: weather-api
                 version: v1.0
                 context: /weather
                 upstream:
@@ -86,19 +86,19 @@ paths:
             schema:
               $ref: '#/components/schemas/APIConfiguration'
             example:
-              version: "api-platform.wso2.com/v1"
-              kind: "http/rest"
+              version: api-platform.wso2.com/v1
+              kind: http/rest
               data:
-                name: "Weather API"
-                version: "v1.0"
-                context: "/weather"
+                name: weather-api
+                version: v1.0
+                context: /weather
                 upstream:
-                  - url: "https://api.weather.com/api/v2"
+                  - url: https://api.weather.com/api/v2
                 operations:
-                  - method: "GET"
-                    path: "/{country_code}/{city}"
-                  - method: "POST"
-                    path: "/{country_code}/{city}"
+                  - method: GET
+                    path: /{country_code}/{city}
+                  - method: POST
+                    path: /{country_code}/{city}
       responses:
         '201':
           description: API configuration created successfully
@@ -143,7 +143,7 @@ paths:
                 properties:
                   status:
                     type: string
-                    example: "success"
+                    example: success
                   count:
                     type: integer
                     example: 5
@@ -172,14 +172,14 @@ paths:
           description: Name of the API
           schema:
             type: string
-            example: "Weather API"
+          example: weather-api
         - name: version
           in: path
           required: true
           description: Version of the API
           schema:
             type: string
-            example: "v1.0"
+          example: v1.0
       responses:
         '200':
           description: API configuration details
@@ -221,14 +221,14 @@ paths:
           description: Name of the API to update
           schema:
             type: string
-            example: "Weather API"
+          example: weather-api
         - name: version
           in: path
           required: true
           description: Version of the API to update
           schema:
             type: string
-            example: "v1.0"
+          example: v1.0
       requestBody:
         required: true
         content:
@@ -280,14 +280,14 @@ paths:
           description: Name of the API to delete
           schema:
             type: string
-            example: "Weather API"
+          example: weather-api
         - name: version
           in: path
           required: true
           description: Version of the API to delete
           schema:
             type: string
-            example: "v1.0"
+          example: v1.0
       responses:
         '200':
           description: API configuration deleted successfully
@@ -298,13 +298,13 @@ paths:
                 properties:
                   status:
                     type: string
-                    example: "success"
+                    example: success
                   message:
                     type: string
-                    example: "API configuration deleted successfully"
+                    example: API configuration deleted successfully
                   id:
                     type: string
-                    example: "550e8400-e29b-41d4-a716-446655440000"
+                    example: 550e8400-e29b-41d4-a716-446655440000
         '404':
           description: API configuration not found
           content:
@@ -330,15 +330,15 @@ components:
         version:
           type: string
           description: API specification version
-          example: "api-platform.wso2.com/v1"
+          example: api-platform.wso2.com/v1
           enum:
-            - "api-platform.wso2.com/v1"
+            - api-platform.wso2.com/v1
         kind:
           type: string
           description: API type
-          example: "http/rest"
+          example: http/rest
           enum:
-            - "http/rest"
+            - http/rest
         data:
           $ref: '#/components/schemas/APIConfigData'
 
@@ -357,19 +357,19 @@ components:
           minLength: 1
           maxLength: 100
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
-          example: "Weather API"
+          example: weather-api
         version:
           type: string
           description: Semantic version of the API
           pattern: '^v\d+\.\d+$'
-          example: "v1.0"
+          example: v1.0
         context:
           type: string
           description: Base path for all API routes (must start with /, no trailing slash)
           pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
           minLength: 1
           maxLength: 200
-          example: "/weather"
+          example: /weather
         upstream:
           type: array
           description: List of backend service URLs
@@ -392,7 +392,7 @@ components:
           type: string
           format: uri
           description: Backend service URL (may include path prefix like /api/v2)
-          example: "https://api.weather.com/api/v2"
+          example: https://api.weather.com/api/v2
 
     Operation:
       type: object
@@ -411,49 +411,49 @@ components:
             - PATCH
             - HEAD
             - OPTIONS
-          example: "GET"
+          example: GET
         path:
           type: string
           description: Route path with optional {param} placeholders
           pattern: '^\/.*$'
-          example: "/{country_code}/{city}"
+          example: /{country_code}/{city}
 
     APICreateResponse:
       type: object
       properties:
         status:
           type: string
-          example: "success"
+          example: success
         message:
           type: string
-          example: "API configuration created successfully"
+          example: API configuration created successfully
         id:
           type: string
           format: uuid
           description: Unique identifier for the created API configuration
-          example: "550e8400-e29b-41d4-a716-446655440000"
+          example: 550e8400-e29b-41d4-a716-446655440000
         created_at:
           type: string
           format: date-time
-          example: "2025-10-11T10:30:00Z"
+          example: 2025-10-11T10:30:00Z
 
     APIUpdateResponse:
       type: object
       properties:
         status:
           type: string
-          example: "success"
+          example: success
         message:
           type: string
-          example: "API configuration updated successfully"
+          example: API configuration updated successfully
         id:
           type: string
           format: uuid
-          example: "550e8400-e29b-41d4-a716-446655440000"
+          example: 550e8400-e29b-41d4-a716-446655440000
         updated_at:
           type: string
           format: date-time
-          example: "2025-10-11T11:45:00Z"
+          example: 2025-10-11T11:45:00Z
 
     APIListItem:
       type: object
@@ -461,45 +461,45 @@ components:
         id:
           type: string
           format: uuid
-          example: "550e8400-e29b-41d4-a716-446655440000"
+          example: 550e8400-e29b-41d4-a716-446655440000
         name:
           type: string
-          example: "Weather API"
+          example: weather-api
         version:
           type: string
-          example: "v1.0"
+          example: v1.0
         context:
           type: string
-          example: "/weather"
+          example: /weather
         status:
           type: string
           enum:
             - pending
             - deployed
             - failed
-          example: "deployed"
+          example: deployed
         created_at:
           type: string
           format: date-time
-          example: "2025-10-11T10:30:00Z"
+          example: 2025-10-11T10:30:00Z
         updated_at:
           type: string
           format: date-time
-          example: "2025-10-11T10:30:00Z"
+          example: 2025-10-11T10:30:00Z
 
     APIDetailResponse:
       type: object
       properties:
         status:
           type: string
-          example: "success"
+          example: success
         api:
           type: object
           properties:
             id:
               type: string
               format: uuid
-              example: "550e8400-e29b-41d4-a716-446655440000"
+              example: 550e8400-e29b-41d4-a716-446655440000
             configuration:
               $ref: '#/components/schemas/APIConfiguration'
             metadata:
@@ -511,19 +511,19 @@ components:
                     - pending
                     - deployed
                     - failed
-                  example: "deployed"
+                  example: deployed
                 created_at:
                   type: string
                   format: date-time
-                  example: "2025-10-11T10:30:00Z"
+                  example: 2025-10-11T10:30:00Z
                 updated_at:
                   type: string
                   format: date-time
-                  example: "2025-10-11T10:30:00Z"
+                  example: 2025-10-11T10:30:00Z
                 deployed_at:
                   type: string
                   format: date-time
-                  example: "2025-10-11T10:30:05Z"
+                  example: 2025-10-11T10:30:05Z
 
     ErrorResponse:
       type: object
@@ -533,11 +533,11 @@ components:
       properties:
         status:
           type: string
-          example: "error"
+          example: error
         message:
           type: string
           description: High-level error description
-          example: "Configuration validation failed"
+          example: Configuration validation failed
         errors:
           type: array
           description: Detailed validation errors
@@ -550,11 +550,11 @@ components:
         field:
           type: string
           description: Field that failed validation
-          example: "data.context"
+          example: data.context
         message:
           type: string
           description: Human-readable error message
-          example: "Context must start with / and cannot end with /"
+          example: Context must start with / and cannot end with /
 
 tags:
   - name: System

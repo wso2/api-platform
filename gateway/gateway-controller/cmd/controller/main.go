@@ -77,11 +77,7 @@ func main() {
 	}
 
 	// Initialize xDS snapshot manager with access log config
-	accessLogConfig := xds.AccessLogConfig{
-		Enabled: cfg.Router.AccessLogs.Enabled,
-		Format:  cfg.Router.AccessLogs.Format,
-	}
-	snapshotManager := xds.NewSnapshotManager(configStore, log, accessLogConfig)
+	snapshotManager := xds.NewSnapshotManager(configStore, log, cfg.Router.AccessLogs)
 
 	// Generate initial xDS snapshot
 	log.Info("Generating initial xDS snapshot")
@@ -92,7 +88,6 @@ func main() {
 	cancel()
 
 	// Start xDS gRPC server
-	log.Info("Starting xDS server", zap.Int("port", cfg.Server.XDSPort))
 	xdsServer := xds.NewServer(snapshotManager, cfg.Server.XDSPort, log)
 	go func() {
 		if err := xdsServer.Start(); err != nil {

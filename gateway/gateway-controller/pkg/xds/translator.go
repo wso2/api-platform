@@ -19,6 +19,7 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -26,20 +27,14 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
-// AccessLogConfig holds access log configuration
-type AccessLogConfig struct {
-	Enabled bool
-	Format  string // "json" or "text"
-}
-
 // Translator converts API configurations to Envoy xDS resources
 type Translator struct {
 	logger          *zap.Logger
-	accessLogConfig AccessLogConfig
+	accessLogConfig config.AccessLogsConfig
 }
 
 // NewTranslator creates a new translator
-func NewTranslator(logger *zap.Logger, accessLogConfig AccessLogConfig) *Translator {
+func NewTranslator(logger *zap.Logger, accessLogConfig config.AccessLogsConfig) *Translator {
 	return &Translator{
 		logger:          logger,
 		accessLogConfig: accessLogConfig,
@@ -359,24 +354,10 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	var fileAccessLog *fileaccesslog.FileAccessLog
 
 	if t.accessLogConfig.Format == "json" {
-		// Define JSON log format with standard fields
-		jsonFormat := map[string]string{
-			"start_time":            "%START_TIME%",
-			"method":                "%REQ(:METHOD)%",
-			"path":                  "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
-			"protocol":              "%PROTOCOL%",
-			"response_code":         "%RESPONSE_CODE%",
-			"response_flags":        "%RESPONSE_FLAGS%",
-			"bytes_received":        "%BYTES_RECEIVED%",
-			"bytes_sent":            "%BYTES_SENT%",
-			"duration":              "%DURATION%",
-			"upstream_service_time": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
-			"x_forwarded_for":       "%REQ(X-FORWARDED-FOR)%",
-			"user_agent":            "%REQ(USER-AGENT)%",
-			"request_id":            "%REQ(X-REQUEST-ID)%",
-			"authority":             "%REQ(:AUTHORITY)%",
-			"upstream_host":         "%UPSTREAM_HOST%",
-			"upstream_cluster":      "%UPSTREAM_CLUSTER%",
+		// Use JSON log format fields from config
+		jsonFormat := t.accessLogConfig.JSONFields
+		if jsonFormat == nil || len(jsonFormat) == 0 {
+			return nil, fmt.Errorf("json_fields not configured in access log config")
 		}
 
 		// Convert to structpb.Struct
@@ -396,11 +377,11 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 			},
 		}
 	} else {
-		// Text format: Common Log Format with additional fields
-		textFormat := "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" " +
-			"%RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
-			"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
-			"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n"
+		// Use text format from config
+		textFormat := t.accessLogConfig.TextFormat
+		if textFormat == "" {
+			return nil, fmt.Errorf("text_format not configured in access log config")
+		}
 
 		fileAccessLog = &fileaccesslog.FileAccessLog{
 			Path: "/dev/stdout",
