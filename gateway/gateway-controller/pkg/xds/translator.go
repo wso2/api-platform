@@ -55,17 +55,17 @@ func (t *Translator) TranslateConfigs(configs []*models.StoredAPIConfig, correla
 	var routes []types.Resource
 	var clusters []types.Resource
 
-	// We'll use a single listener on port 8080 with multiple virtual hosts
-	virtualHosts := make([]*route.VirtualHost, 0)
+	// We'll use a single listener on port 8080 with a single virtual host
+	// All API routes are consolidated into one virtual host to avoid wildcard domain conflicts
+	allRoutes := make([]*route.Route, 0)
 	clusterMap := make(map[string]*cluster.Cluster)
 
 	for _, cfg := range configs {
-		if cfg.Status == models.StatusDeployed {
-			continue
-		}
+		// Include ALL configs (both deployed and pending) in the snapshot
+		// This ensures existing APIs are not overridden when deploying new APIs
 
-		// Create virtual host for this API
-		vh, clusterList, err := t.translateAPIConfig(cfg)
+		// Create routes and clusters for this API
+		routesList, clusterList, err := t.translateAPIConfig(cfg)
 		if err != nil {
 			log.Error("Failed to translate config",
 				zap.String("id", cfg.ID),
@@ -74,7 +74,7 @@ func (t *Translator) TranslateConfigs(configs []*models.StoredAPIConfig, correla
 			continue
 		}
 
-		virtualHosts = append(virtualHosts, vh)
+		allRoutes = append(allRoutes, routesList...)
 
 		// Add clusters (avoiding duplicates)
 		for _, c := range clusterList {
@@ -82,16 +82,34 @@ func (t *Translator) TranslateConfigs(configs []*models.StoredAPIConfig, correla
 		}
 	}
 
-	// Create single listener with all virtual hosts
-	// Note: Route configuration is embedded inline in the listener,
-	// so we don't add it as a standalone resource
-	if len(virtualHosts) > 0 {
-		l, err := t.createListener(virtualHosts)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create listener: %w", err)
-		}
-		listeners = append(listeners, l)
+	// Add a catch-all route that returns 404 for unmatched requests
+	// This should be the last route (lowest priority)
+	allRoutes = append(allRoutes, &route.Route{
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_Prefix{
+				Prefix: "/",
+			},
+		},
+		Action: &route.Route_DirectResponse{
+			DirectResponse: &route.DirectResponseAction{
+				Status: 404,
+			},
+		},
+	})
+
+	// Create a single virtual host with all routes
+	virtualHost := &route.VirtualHost{
+		Name:    "all_apis",
+		Domains: []string{"*"},
+		Routes:  allRoutes,
 	}
+
+	// Always create the listener, even with no APIs deployed
+	l, err := t.createListener([]*route.VirtualHost{virtualHost})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create listener: %w", err)
+	}
+	listeners = append(listeners, l)
 
 	// Add all clusters
 	for _, c := range clusterMap {
@@ -106,7 +124,7 @@ func (t *Translator) TranslateConfigs(configs []*models.StoredAPIConfig, correla
 }
 
 // translateAPIConfig translates a single API configuration
-func (t *Translator) translateAPIConfig(cfg *models.StoredAPIConfig) (*route.VirtualHost, []*cluster.Cluster, error) {
+func (t *Translator) translateAPIConfig(cfg *models.StoredAPIConfig) ([]*route.Route, []*cluster.Cluster, error) {
 	apiData := cfg.Configuration.Data
 
 	// Parse upstream URL
@@ -131,14 +149,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredAPIConfig) (*route.Vir
 		routesList = append(routesList, r)
 	}
 
-	// Create virtual host
-	vh := &route.VirtualHost{
-		Name:    fmt.Sprintf("vh_%s_%s", t.sanitizeName(apiData.Name), apiData.Version),
-		Domains: []string{"*"},
-		Routes:  routesList,
-	}
-
-	return vh, []*cluster.Cluster{c}, nil
+	return routesList, []*cluster.Cluster{c}, nil
 }
 
 // createListener creates an Envoy listener with access logging
