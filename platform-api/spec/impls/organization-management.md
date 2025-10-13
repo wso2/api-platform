@@ -18,4 +18,4 @@
 ## Verification
 
 - Create: `curl -k -X POST https://localhost:8443/api/v1/organizations -d '{"handle":"alpha","name":"Alpha"}' -H 'Content-Type: application/json'`.
-- Fetch: `curl -k https://localhost:8443/api/v1/organizations/<uuid>`; expect JSON payload with default project seeded (`projects` endpoint).
+- Fetch: `curl -k https://localhost:8443/api/v1/organizations/<uuid>`; expect JSON payload with organization metadata (handle, name, timestamps).

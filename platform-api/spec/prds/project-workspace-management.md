@@ -6,4 +6,4 @@ Expose endpoints that allow clients to create, list, update, and delete projects
 
 ## Implementation
 
-[Project Workspace Management Implementation](../impls/project-workspace-management.md)
+[Project Management Implementation](../impls/project-workspace-management.md)

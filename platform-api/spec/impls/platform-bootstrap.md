@@ -16,4 +16,3 @@
 ## Verification
 
 - Build and run `go run ./cmd/main.go` within `platform-api/src`; confirm log output shows schema load and HTTPS startup.
-- Hit `curl -k https://localhost:8443/api/v1/organizations` to ensure routing is active.

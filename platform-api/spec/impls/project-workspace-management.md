@@ -1,4 +1,4 @@
-# Project Workspace Management Implementation
+# Project Management Implementation
 
 ## Entry Points
 
