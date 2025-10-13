@@ -1,0 +1,23 @@
+{
+  "name": "sts-sample-app",
+  "version": "1.0.0",
+  "description": "Sample OAuth2 client application for STS",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "oauth2",
+    "sts",
+    "thunder",
+    "sample"
+  ],
+  "author": "",
+  "license": "MIT",
+  "packageManager": "pnpm@10.0.0",
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.0",
+    "js-yaml": "^4.1.0"
+  }
+}

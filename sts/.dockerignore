@@ -1,0 +1,28 @@
+# Documentation
+spec/
+*.md
+!README.md
+
+# Gate app development files
+gate-app/node_modules
+gate-app/.next
+gate-app/.cache
+gate-app/dist
+gate-app/build
+
+# Include packages directory (symlink to Thunder packages)
+!packages
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
