@@ -1,0 +1,80 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+services:
+  gateway-controller:
+    build:
+      context: ./gateway-controller
+      dockerfile: Dockerfile
+    container_name: gateway-controller
+    ports:
+      - "9090:9090"   # REST API
+      - "18000:18000" # xDS gRPC
+    environment:
+      - GC_STORAGE_MODE=persistent
+      - GC_STORAGE_DATABASE_PATH=/data/gateway-controller.db
+    volumes:
+      - controller-data:/data
+    networks:
+      - gateway-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  router:
+    build:
+      context: ./router
+      dockerfile: Dockerfile
+    container_name: router
+    ports:
+      - "8080:8080"   # HTTP traffic
+      - "9901:9901"   # Envoy admin
+    environment:
+      - XDS_SERVER_HOST=host.docker.internal
+      - XDS_SERVER_PORT=18000
+    # depends_on:
+    #   gateway-controller:
+    #     condition: service_healthy
+    networks:
+      - gateway-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9901/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  sample-backend:
+    image: renukafernando/request-info:latest
+    container_name: sample-backend
+    ports:
+      - "3000:3000"
+    command: ["-addr", ":3000", "-pretty"]
+    networks:
+      - gateway-network
+
+volumes:
+  controller-data:
+    driver: local
+
+networks:
+  gateway-network:
+    driver: bridge

@@ -1,0 +1,82 @@
+# Gateway-Controller Configuration
+# This file contains configuration for the WSO2 API Platform Gateway Controller
+
+# Server configuration
+server:
+  # REST API port for gateway management
+  api_port: 9090
+
+  # xDS gRPC port for Envoy communication
+  xds_port: 18000
+
+  # Graceful shutdown timeout
+  shutdown_timeout: 15s
+
+# Storage configuration
+storage:
+  # Storage mode: "memory-only" or "persistent"
+  # - memory-only: No persistent storage, all configs lost on restart (useful for testing)
+  # - persistent: Use bbolt database for persistence across restarts
+  mode: memory-only
+
+  # Path to bbolt database (only used when mode=persistent)
+  database_path: /data/gateway-controller.db
+
+# Router (Envoy) configuration
+router:
+  # Access logs configuration
+  access_logs:
+    # Enable or disable access logs
+    enabled: true
+
+    # Log format: "json" or "text"
+    # - json: Structured JSON format (recommended for log aggregation)
+    # - text: Human-readable text format
+    format: json
+
+    # JSON format fields - key-value pairs for structured logging
+    # Uses Envoy command operators: https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage
+    json_fields:
+      start_time: "%START_TIME%"
+      method: "%REQ(:METHOD)%"
+      path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+      protocol: "%PROTOCOL%"
+      response_code: "%RESPONSE_CODE%"
+      response_flags: "%RESPONSE_FLAGS%"
+      response_flags_long: "%RESPONSE_FLAGS_LONG%"
+      bytes_received: "%BYTES_RECEIVED%"
+      bytes_sent: "%BYTES_SENT%"
+      duration: "%DURATION%"
+      upstream_service_time: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
+      x_forwarded_for: "%REQ(X-FORWARDED-FOR)%"
+      user_agent: "%REQ(USER-AGENT)%"
+      request_id: "%REQ(X-REQUEST-ID)%"
+      authority: "%REQ(:AUTHORITY)%"
+      upstream_host: "%UPSTREAM_HOST%"
+      upstream_cluster: "%UPSTREAM_CLUSTER%"
+
+    # Text format template - used when format is "text"
+    # Uses Envoy command operators: https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage
+    text_format: |
+      [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
+
+  # Listener port for incoming traffic (Envoy proxy port)
+  listener_port: 8080
+
+# Logging configuration
+logging:
+  # Log level: "debug", "info", "warn", or "error"
+  level: info
+
+  # Log format: "json" or "console"
+  # - json: Structured JSON format (recommended for production)
+  # - console: Human-readable console format (recommended for development)
+  format: json
+
+# Environment Variables Override
+# You can override any configuration using environment variables with the prefix GC_
+# Examples:
+#   GC_SERVER_API_PORT=9091
+#   GC_STORAGE_MODE=memory-only
+#   GC_ROUTER_ACCESS_LOGS_ENABLED=false
+#   GC_LOGGING_LEVEL=debug
