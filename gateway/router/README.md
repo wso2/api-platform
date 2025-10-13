@@ -45,7 +45,7 @@ The easiest way to run the complete gateway system:
 
 ```bash
 cd ../
-docker-compose up -d
+docker compose up -d
 ```
 
 ## Configuration
@@ -140,7 +140,7 @@ docker logs -f router
 
 **Docker Compose**:
 ```bash
-docker-compose logs -f router
+docker compose logs -f router
 ```
 
 **Kubernetes**:

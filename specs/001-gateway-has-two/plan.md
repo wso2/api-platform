@@ -178,7 +178,7 @@ gateway/
 │   ├── Makefile                     # Build docker image
 │   └── README.md
 │
-├── docker-compose.yaml              # Complete stack: controller, router, sample backend
+├── docker compose.yaml              # Complete stack: controller, router, sample backend
 └── README.md                        # Overall gateway documentation
 ```
 
@@ -193,7 +193,7 @@ gateway/
   - **Build Process**: `make generate` runs oapi-codegen before `make build` to ensure generated code is up-to-date
 - **Router**: Minimal structure since it's primarily Envoy configuration. Contains bootstrap YAML and Dockerfile.
 - **Separate directories**: Each component is independently buildable with its own Makefile and Dockerfile, supporting the constraint that they must be independently deployable containers.
-- **Root-level docker-compose**: Provides easy local development and testing of the complete system.
+- **Root-level docker compose**: Provides easy local development and testing of the complete system.
 
 **Data Flow Architecture**:
 ```

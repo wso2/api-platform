@@ -141,16 +141,16 @@ make clean
 cd gateway
 
 # Start all services (Controller + Router)
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Stop services
-docker-compose down
+docker compose down
 
 # Rebuild and restart
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 ## Development Workflow
@@ -203,7 +203,7 @@ make test
 ```bash
 # 1. Start gateway stack
 cd gateway
-docker-compose up -d
+docker compose up -d
 
 # 2. Deploy test API configuration
 curl -X POST http://localhost:9090/apis \
@@ -217,8 +217,8 @@ curl http://localhost:9901/config_dump | jq '.configs'
 curl http://localhost:8081/<context-path>
 
 # 5. Check logs
-docker-compose logs gateway-controller
-docker-compose logs router
+docker compose logs gateway-controller
+docker compose logs router
 ```
 
 ## Testing Strategy
@@ -254,13 +254,13 @@ Located in `gateway-controller/tests/integration/`:
 
 ```bash
 # Start test environment
-docker-compose -f docker-compose.test.yaml up -d
+docker compose -f docker compose.test.yaml up -d
 
 # Run integration tests
 make test-integration
 
 # Cleanup test environment
-docker-compose -f docker-compose.test.yaml down
+docker compose -f docker compose.test.yaml down
 ```
 
 ### Manual Testing Checklist
@@ -367,7 +367,7 @@ xds:
 
 ```bash
 cd gateway
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Docker (Manual)
@@ -412,7 +412,7 @@ curl http://localhost:9090/health
 curl http://localhost:9901/config_dump
 
 # View Controller logs (debug mode)
-docker-compose exec gateway-controller sh
+docker compose exec gateway-controller sh
 export LOG_LEVEL=debug
 ```
 
@@ -433,7 +433,7 @@ curl -X POST http://localhost:9090/apis \
 curl http://localhost:9901/config_dump | jq '.configs[2].dynamic_active_clusters'
 
 # Check access logs
-docker-compose logs router | grep "404"
+docker compose logs router | grep "404"
 
 # Verify API configuration matches request
 curl http://localhost:9090/apis/<name>/<version>
@@ -448,10 +448,10 @@ Enable comprehensive logging:
 export LOG_LEVEL=debug
 
 # View xDS payloads in logs
-docker-compose logs gateway-controller | grep "xds_snapshot"
+docker compose logs gateway-controller | grep "xds_snapshot"
 
 # View configuration diffs
-docker-compose logs gateway-controller | grep "config_diff"
+docker compose logs gateway-controller | grep "config_diff"
 ```
 
 ### Health Checks

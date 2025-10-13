@@ -35,7 +35,7 @@ The Gateway system includes three components:
 
 ```bash
 cd gateway/
-docker-compose up -d
+docker compose up -d
 ```
 
 This starts all three components. Wait ~10 seconds for services to initialize.
@@ -401,7 +401,7 @@ docker ps | grep gateway-controller
 docker logs gateway-controller
 
 # Restart if needed
-docker-compose restart gateway-controller
+docker compose restart gateway-controller
 ```
 
 ### Router Not Routing Traffic
@@ -443,10 +443,10 @@ When you're finished testing:
 ```bash
 # Stop all containers
 cd gateway/
-docker-compose down
+docker compose down
 
 # Remove volumes (deletes stored configurations)
-docker-compose down -v
+docker compose down -v
 ```
 
 ---

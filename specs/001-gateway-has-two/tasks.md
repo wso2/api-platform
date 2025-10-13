@@ -15,7 +15,7 @@
 ## Path Conventions
 - Gateway-Controller: `gateway/gateway-controller/`
 - Router: `gateway/router/`
-- Root level: `gateway/` for docker-compose and shared docs
+- Root level: `gateway/` for docker compose and shared docs
 
 ---
 
@@ -28,7 +28,7 @@
 - [ ] T003 [P] Create Makefile in `gateway/gateway-controller/Makefile` with targets: generate, build, test, docker, clean, run
 - [ ] T004 [P] Create Makefile in `gateway/router/Makefile` with targets: docker, clean
 - [ ] T005 [P] Create root-level `gateway/README.md` with overall gateway documentation
-- [ ] T006 [P] Create `gateway/docker-compose.yaml` for complete stack (gateway-controller, router, sample backend)
+- [ ] T006 [P] Create `gateway/docker compose.yaml` for complete stack (gateway-controller, router, sample backend)
 
 ---
 
@@ -145,7 +145,7 @@
 **Purpose**: Improvements that affect multiple components and ensure production readiness
 
 - [ ] T044 [P] Create sample backend service in `gateway/sample-backend/` for testing (simple Node.js/Python HTTP server responding to weather API paths)
-- [ ] T045 [P] Update docker-compose.yaml with all three services: gateway-controller, router, sample-backend with correct networking and ports
+- [ ] T045 [P] Update docker compose.yaml with all three services: gateway-controller, router, sample-backend with correct networking and ports
 - [ ] T046 [P] Create Gateway-Controller README in `gateway/gateway-controller/README.md` with build instructions, configuration, API usage examples
 - [ ] T047 [P] Create Router README in `gateway/router/README.md` with Envoy configuration details and startup behavior
 - [ ] T048 Create example API configurations in `gateway/examples/` (weather-api.yaml, petstore-api.yaml with different patterns)

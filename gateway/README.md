@@ -22,7 +22,7 @@ A two-component API gateway system consisting of Gateway-Controller (xDS control
 
 ```bash
 # Start the complete stack
-docker-compose up -d
+docker compose up -d
 
 # Verify services are running
 curl http://localhost:9090/health

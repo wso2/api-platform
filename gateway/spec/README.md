@@ -119,7 +119,7 @@ The API Gateway is a two-component system consisting of **Gateway-Controller** (
 ```bash
 # Start Gateway-Controller and Router
 cd gateway
-docker-compose up -d
+docker compose up -d
 
 # Deploy an API configuration
 curl -X POST http://localhost:9090/apis \
