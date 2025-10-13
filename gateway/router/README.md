@@ -269,8 +269,3 @@ This Router uses Envoy Proxy v1.35.3, which includes:
 - Circuit breaking
 - Health checking
 - Connection pooling
-
-## License
-
-Based on Envoy Proxy (Apache 2.0 License)
-Copyright WSO2. All rights reserved.

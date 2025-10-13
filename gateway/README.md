@@ -145,11 +145,3 @@ For complete configuration options, see [Gateway-Controller Configuration](gatew
 ## Examples
 
 See [examples/](examples/) directory for sample API configurations.
-
-## Contributing
-
-Please read the specification documents in `specs/001-gateway-has-two/` before contributing.
-
-## License
-
-Copyright WSO2. All rights reserved.

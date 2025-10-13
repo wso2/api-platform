@@ -410,7 +410,3 @@ Debug logs include:
 - xDS update push: < 5 seconds
 - Supports 100+ API configurations
 - Thread-safe concurrent operations
-
-## License
-
-Copyright WSO2. All rights reserved.
