@@ -13,8 +13,11 @@ go build ./cmd/main.go
 cd platform-api/src
 go run ./cmd/main.go
 
-# Verify (list organizations, expect 200 with empty list)
-curl -k https://localhost:8443/api/v1/organizations
+# Verify (create and fetch an organization)
+curl -k -X POST https://localhost:8443/api/v1/organizations \
+  -H 'Content-Type: application/json' \
+  -d '{"handle":"alpha","name":"Alpha"}'
+curl -k https://localhost:8443/api/v1/organizations/<uuid>
 ```
 
 ## Documentation

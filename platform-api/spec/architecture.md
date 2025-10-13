@@ -45,6 +45,6 @@ Layered Go service exposing REST endpoints over HTTPS with SQLite persistence an
 
 ## Integration Points
 
-- **Portals (API, Management, Enterprise)** → Platform API: fetch and mutate tenant/project/API resources.
+- **Portals (API, Management, Enterprise)** → Platform API: fetch and mutate organization/project/API resources.
 - **CLI** → Platform API: automate gateway registration and API lifecycle actions.
 - **Gateway Controller** ← Platform API: receives deployment orchestration data for pushing APIs to gateways.

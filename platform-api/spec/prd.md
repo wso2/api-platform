@@ -2,7 +2,7 @@
 
 ## Product Overview
 
-Provide a unified backend for the API Platform portals, CLI, and automation tooling, exposing secure REST APIs for tenant, project, and API lifecycle management.
+Provide a unified backend for the API Platform portals, CLI, and automation tooling, exposing secure REST APIs for organization, project, and API lifecycle management.
 
 ## Functional Requirements
 

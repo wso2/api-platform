@@ -2,7 +2,7 @@
 
 ## Requirement
 
-Expose endpoints that allow clients to create, list, update, and delete projects scoped to an organization while preventing duplicate names and protecting the default workspace from removal.
+Expose endpoints that allow clients to create, list, update, and delete projects scoped to an organization while preventing duplicate names and blocking deletions when a project is the last one or still owns APIs.
 
 ## Implementation
 
