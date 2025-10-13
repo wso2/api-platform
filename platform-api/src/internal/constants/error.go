@@ -14,6 +14,7 @@ var (
 	ErrProjectNotFound             = errors.New("project not found")
 	ErrInvalidProjectName          = errors.New("invalid project name")
 	ErrDefaultProjectAlreadyExists = errors.New("default project for organization already exists")
+	ErrCannotDeleteDefaultProject  = errors.New("cannot delete default project")
 )
 
 var (

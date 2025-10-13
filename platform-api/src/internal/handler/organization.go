@@ -38,11 +38,11 @@ func (h *OrganizationHandler) CreateOrganization(c *gin.Context) {
 	org, err := h.orgService.CreateOrganization(req.Handle, req.Name)
 	if err != nil {
 		if errors.Is(err, constants.ErrHandleExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Handle already exists"))
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Organization handle already exists"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidHandle) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Handle must be URL friendly"))
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Organization handle must be URL friendly"))
 			return
 		}
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create organization"))
@@ -55,7 +55,7 @@ func (h *OrganizationHandler) CreateOrganization(c *gin.Context) {
 func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
 	uuid := c.Param("org_uuid")
 	if uuid == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "UUID is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Organization UUID is required"))
 		return
 	}
 

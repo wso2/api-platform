@@ -151,7 +151,7 @@ func (s *APIService) GetAPIsByProjectID(projectID string) ([]*dto.API, error) {
 		return nil, fmt.Errorf("failed to get apis: %w", err)
 	}
 
-	apis := make([]*dto.API, len(apiModels))
+	apis := make([]*dto.API, 0)
 	for _, apiModel := range apiModels {
 		api := s.modelToDTO(apiModel)
 		apis = append(apis, api)
@@ -391,7 +391,7 @@ func (s *APIService) isValidAPIName(name string) bool {
 
 func (s *APIService) isValidContext(context string) bool {
 	// Context should be URL-friendly, no spaces or special characters
-	pattern := `^[a-zA-Z0-9_-]+$`
+	pattern := `^\/?[a-zA-Z0-9_/-]+$`
 	matched, _ := regexp.MatchString(pattern, context)
 	return matched && len(context) > 0 && len(context) <= 232
 }
@@ -634,7 +634,7 @@ func (s *APIService) backendServicesDTOToModel(dtos []dto.BackendService) []mode
 	if dtos == nil {
 		return nil
 	}
-	backendServiceModels := make([]model.BackendService, len(dtos))
+	backendServiceModels := make([]model.BackendService, 0)
 	for _, backendServiceDTO := range dtos {
 		backendServiceModels = append(backendServiceModels, *s.backendServiceDTOToModel(&backendServiceDTO))
 	}
@@ -660,7 +660,7 @@ func (s *APIService) backendEndpointsDTOToModel(dtos []dto.BackendEndpoint) []mo
 	if dtos == nil {
 		return nil
 	}
-	backendEndpointModels := make([]model.BackendEndpoint, len(dtos))
+	backendEndpointModels := make([]model.BackendEndpoint, 0)
 	for _, backendEndpointDTO := range dtos {
 		backendEndpointModels = append(backendEndpointModels, *s.backendEndpointDTOToModel(&backendEndpointDTO))
 	}
@@ -743,7 +743,7 @@ func (s *APIService) operationsDTOToModel(dtos []dto.Operation) []model.Operatio
 	if dtos == nil {
 		return nil
 	}
-	operationsModels := make([]model.Operation, len(dtos))
+	operationsModels := make([]model.Operation, 0)
 	for _, operationsDTO := range dtos {
 		operationsModels = append(operationsModels, *s.operationDTOToModel(&operationsDTO))
 	}
@@ -779,7 +779,7 @@ func (s *APIService) backendRoutingDTOsToModel(dtos []dto.BackendRouting) []mode
 	if dtos == nil {
 		return nil
 	}
-	backendRoutingModels := make([]model.BackendRouting, len(dtos))
+	backendRoutingModels := make([]model.BackendRouting, 0)
 	for _, operationsDTO := range dtos {
 		backendRoutingModels = append(backendRoutingModels, *s.backendRoutingDTOToModel(&operationsDTO))
 	}
@@ -810,7 +810,7 @@ func (s *APIService) policiesDTOToModel(dtos []dto.Policy) []model.Policy {
 	if dtos == nil {
 		return nil
 	}
-	policyModels := make([]model.Policy, len(dtos))
+	policyModels := make([]model.Policy, 0)
 	for _, policyDTO := range dtos {
 		policyModels = append(policyModels, *s.policyDTOToModel(&policyDTO))
 	}
@@ -945,7 +945,7 @@ func (s *APIService) backendServicesModelToDTO(models []model.BackendService) []
 	if models == nil {
 		return nil
 	}
-	backendServiceDTOs := make([]dto.BackendService, len(models))
+	backendServiceDTOs := make([]dto.BackendService, 0)
 	for _, backendServiceModel := range models {
 		backendServiceDTOs = append(backendServiceDTOs, *s.backendServiceModelToDTO(&backendServiceModel))
 	}
@@ -971,7 +971,7 @@ func (s *APIService) backendEndpointsModelToDTO(models []model.BackendEndpoint) 
 	if models == nil {
 		return nil
 	}
-	backendEndpointDTOs := make([]dto.BackendEndpoint, len(models))
+	backendEndpointDTOs := make([]dto.BackendEndpoint, 0)
 	for _, backendServiceModel := range models {
 		backendEndpointDTOs = append(backendEndpointDTOs, *s.backendEndpointModelToDTO(&backendServiceModel))
 	}
@@ -1054,7 +1054,7 @@ func (s *APIService) operationsModelToDTO(models []model.Operation) []dto.Operat
 	if models == nil {
 		return nil
 	}
-	operationsDTOs := make([]dto.Operation, len(models))
+	operationsDTOs := make([]dto.Operation, 0)
 	for _, operationsModel := range models {
 		operationsDTOs = append(operationsDTOs, *s.operationModelToDTO(&operationsModel))
 	}
@@ -1090,7 +1090,7 @@ func (s *APIService) backendRoutingModelsToDTO(models []model.BackendRouting) []
 	if models == nil {
 		return nil
 	}
-	backendRoutingDTOs := make([]dto.BackendRouting, len(models))
+	backendRoutingDTOs := make([]dto.BackendRouting, 0)
 	for _, backendRoutingModel := range models {
 		backendRoutingDTOs = append(backendRoutingDTOs, *s.backendRoutingModelToDTO(&backendRoutingModel))
 	}
@@ -1121,7 +1121,7 @@ func (s *APIService) policiesModelToDTO(models []model.Policy) []dto.Policy {
 	if models == nil {
 		return nil
 	}
-	policyDTOs := make([]dto.Policy, len(models))
+	policyDTOs := make([]dto.Policy, 0)
 	for _, policyModel := range models {
 		policyDTOs = append(policyDTOs, *s.policyModelToDTO(&policyModel))
 	}

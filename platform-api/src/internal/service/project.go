@@ -107,14 +107,14 @@ func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]*dt
 		return nil, err
 	}
 
-	projects := make([]*dto.Project, len(projectModels))
+	projects := make([]*dto.Project, 0)
 	for _, projectModel := range projectModels {
 		projects = append(projects, s.ModelToDTO(projectModel))
 	}
 	return projects, nil
 }
 
-func (s *ProjectService) UpdateProject(uuid string, name string, isDefault bool) (*dto.Project, error) {
+func (s *ProjectService) UpdateProject(uuid string, name string) (*dto.Project, error) {
 	// Get existing project
 	project, err := s.projectRepo.GetProjectByUUID(uuid)
 	if err != nil {
@@ -139,18 +139,6 @@ func (s *ProjectService) UpdateProject(uuid string, name string, isDefault bool)
 		project.Name = name
 	}
 
-	// If this is being set as default, unset other defaults in the organization
-	if isDefault && !project.IsDefault {
-		defaultProject, err := s.projectRepo.GetDefaultProjectByOrganizationID(project.OrganizationID)
-		if err != nil {
-			return nil, err
-		}
-		if defaultProject != nil {
-			return nil, constants.ErrDefaultProjectAlreadyExists
-		}
-	}
-
-	project.IsDefault = isDefault
 	project.UpdatedAt = time.Now()
 
 	err = s.projectRepo.UpdateProject(project)
@@ -170,6 +158,9 @@ func (s *ProjectService) DeleteProject(uuid string) error {
 	}
 	if project == nil {
 		return constants.ErrProjectNotFound
+	}
+	if project.IsDefault {
+		return constants.ErrCannotDeleteDefaultProject
 	}
 
 	return s.projectRepo.DeleteProject(uuid)

@@ -59,6 +59,7 @@ func (s *OrganizationService) CreateOrganization(handle string, name string) (*d
 
 	// Create default project for the organization
 	defaultProject := &model.Project{
+		UUID:           uuid.New().String(),
 		Name:           "Default",
 		OrganizationID: org.UUID,
 		IsDefault:      true,

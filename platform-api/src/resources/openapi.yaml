@@ -135,7 +135,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /projects/{uuid}:
+  /projects/{project_uuid}:
     get:
       summary: Get project by UUID
       description: Retrieves a specific project by its UUID
@@ -143,7 +143,7 @@ paths:
       tags:
         - Projects
       parameters:
-        - name: uuid
+        - name: project_uuid
           in: path
           required: true
           description: UUID of the project to retrieve
@@ -171,7 +171,7 @@ paths:
       tags:
         - Projects
       parameters:
-        - name: uuid
+        - name: project_uuid
           in: path
           required: true
           description: UUID of the project to update
@@ -207,7 +207,7 @@ paths:
       tags:
         - Projects
       parameters:
-        - name: uuid
+        - name: project_uuid
           in: path
           required: true
           description: UUID of the project to delete
@@ -231,13 +231,6 @@ paths:
       operationId: createAPI
       tags:
         - APIs
-      parameters:
-        - name: project-uuid
-          in: query
-          description: Project that the API is associated with
-          required: true
-          schema:
-            type: string
       requestBody:
         description: API object that needs to be added
         content:
@@ -295,7 +288,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /apis/{uuid}:
+  /apis/{api_uuid}:
     get:
       summary: Get API by UUID
       description: Retrieves a specific API by its UUID
@@ -303,7 +296,7 @@ paths:
       tags:
         - APIs
       parameters:
-        - name: uuid
+        - name: api_uuid
           in: path
           required: true
           description: UUID of the project to retrieve
@@ -331,7 +324,7 @@ paths:
       tags:
         - APIs
       parameters:
-        - name: uuid
+        - name: api_uuid
           in: path
           required: true
           description: UUID of the API to update
@@ -367,7 +360,7 @@ paths:
       tags:
         - APIs
       parameters:
-        - name: uuid
+        - name: api_uuid
           in: path
           required: true
           description: UUID of the API to delete
@@ -1083,13 +1076,22 @@ components:
         example: "123e4567-e89b-12d3-a456-426614174000"
 
     ProjectID:
-      name: uuid
+      name: project_uuid
       in: path
       required: true
       description: UUID of the project
       schema:
         type: string
         example: "yr434567-de34-76uj6-w376-234324532"
+
+    APIID:
+      name: api_uuid
+      in: path
+      required: true
+      description: UUID of the API
+      schema:
+        type: string
+        example: "f745uj48-d7e34-7356-w376-286532930"
 
 tags:
   - name: Health

@@ -2,6 +2,7 @@ package constants
 
 // ValidLifecycleStates Valid lifecycle states
 var ValidLifecycleStates = map[string]bool{
+	"STAGED":     true,
 	"CREATED":    true,
 	"PUBLISHED":  true,
 	"DEPRECATED": true,

@@ -26,7 +26,7 @@ func (r *ProjectRepo) CreateProject(project *model.Project) error {
 
 	query := `
 		INSERT INTO projects (uuid, name, organization_id, is_default, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?)
 	`
 	_, err := r.db.Exec(query, project.UUID, project.Name, project.OrganizationID, project.IsDefault, project.CreatedAt, project.UpdatedAt)
 	if err != nil {
@@ -59,7 +59,7 @@ func (r *ProjectRepo) GetProjectByUUID(uuid string) (*model.Project, error) {
 // GetProjectByOrganizationID retrieves all projects for an organization
 func (r *ProjectRepo) GetProjectByOrganizationID(orgID string) ([]*model.Project, error) {
 	query := `
-		SELECT id, name, organization_id, is_default, created_at, updated_at
+		SELECT uuid, name, organization_id, is_default, created_at, updated_at
 		FROM projects
 		WHERE organization_id = ?
 		ORDER BY created_at DESC
@@ -87,7 +87,7 @@ func (r *ProjectRepo) GetProjectByOrganizationID(orgID string) ([]*model.Project
 func (r *ProjectRepo) GetDefaultProjectByOrganizationID(orgID string) (*model.Project, error) {
 	project := &model.Project{}
 	query := `
-		SELECT id, name, organization_id, is_default, created_at, updated_at
+		SELECT uuid, name, organization_id, is_default, created_at, updated_at
 		FROM projects
 		WHERE organization_id = ? AND is_default = true
 		LIMIT 1

@@ -66,7 +66,7 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 }
 
 func (h *ProjectHandler) GetProject(c *gin.Context) {
-	uuid := c.Param("uuid")
+	uuid := c.Param("project_uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project UUID is required"))
 		return
@@ -106,7 +106,7 @@ func (h *ProjectHandler) GetProjectsByOrganization(c *gin.Context) {
 }
 
 func (h *ProjectHandler) UpdateProject(c *gin.Context) {
-	uuid := c.Param("uuid")
+	uuid := c.Param("project_uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project UUID is required"))
 		return
@@ -118,14 +118,10 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 		return
 	}
 
-	project, err := h.projectService.UpdateProject(uuid, req.Name, req.IsDefault)
+	project, err := h.projectService.UpdateProject(uuid, req.Name)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Project not found"))
-			return
-		}
-		if errors.Is(err, constants.ErrDefaultProjectAlreadyExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Default project already exists in organization"))
 			return
 		}
 		if errors.Is(err, constants.ErrProjectNameExists) {
@@ -140,7 +136,7 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 }
 
 func (h *ProjectHandler) DeleteProject(c *gin.Context) {
-	uuid := c.Param("uuid")
+	uuid := c.Param("project_uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project UUID is required"))
 		return
@@ -150,6 +146,10 @@ func (h *ProjectHandler) DeleteProject(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Project not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrCannotDeleteDefaultProject) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Cannot delete the default project of an organization"))
 			return
 		}
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete project"))
@@ -163,9 +163,9 @@ func (h *ProjectHandler) RegisterRoutes(r *gin.Engine) {
 	projectGroup := r.Group("/api/v1/projects")
 	{
 		projectGroup.POST("", h.CreateProject)
-		projectGroup.GET("/:uuid", h.GetProject)
-		projectGroup.PUT("/:uuid", h.UpdateProject)
-		projectGroup.DELETE("/:uuid", h.DeleteProject)
+		projectGroup.GET("/:project_uuid", h.GetProject)
+		projectGroup.PUT("/:project_uuid", h.UpdateProject)
+		projectGroup.DELETE("/:project_uuid", h.DeleteProject)
 	}
 
 	// Organization-specific project routes

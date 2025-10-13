@@ -40,7 +40,6 @@ CREATE TABLE IF NOT EXISTS apis (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (project_id) REFERENCES projects(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (revisioned_api_id) REFERENCES apis(uuid) ON DELETE SET NULL,
     UNIQUE(name, context, version, project_id)
 );
 

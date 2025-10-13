@@ -21,21 +21,11 @@ func NewAPIHandler(apiService *service.APIService) *APIHandler {
 
 // CreateAPI creates a new API
 func (h *APIHandler) CreateAPI(c *gin.Context) {
-	// Get project UUID from query parameter
-	projectUUID := c.Query("project-uuid")
-	if projectUUID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "project-uuid query parameter is required"))
-		return
-	}
-
 	var req service.CreateAPIRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
 	}
-
-	// Set project ID from query parameter
-	req.ProjectID = projectUUID
 
 	// Validate required fields
 	if req.Name == "" {
@@ -48,6 +38,10 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 	}
 	if req.Version == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API version is required"))
+		return
+	}
+	if req.ProjectID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project UUID is required"))
 		return
 	}
 
@@ -94,7 +88,7 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 
 // GetAPI retrieves an API by UUID
 func (h *APIHandler) GetAPI(c *gin.Context) {
-	uuid := c.Param("uuid")
+	uuid := c.Param("api_uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API UUID is required"))
 		return
@@ -143,7 +137,7 @@ func (h *APIHandler) GetAPIsByProject(c *gin.Context) {
 
 // UpdateAPI updates an existing API
 func (h *APIHandler) UpdateAPI(c *gin.Context) {
-	uuid := c.Param("uuid")
+	uuid := c.Param("api_uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API UUID is required"))
 		return
@@ -182,7 +176,7 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 
 // DeleteAPI deletes an API
 func (h *APIHandler) DeleteAPI(c *gin.Context) {
-	uuid := c.Param("uuid")
+	uuid := c.Param("api_uuid")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API UUID is required"))
 		return
@@ -206,15 +200,15 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	// API routes
 	apiGroup := r.Group("/api/v1/apis")
 	{
-		apiGroup.POST("", h.CreateAPI)         // POST /api/v1/apis?project-uuid=...
-		apiGroup.GET("/:uuid", h.GetAPI)       // GET /api/v1/apis/{uuid}
-		apiGroup.PUT("/:uuid", h.UpdateAPI)    // PUT /api/v1/apis/{uuid}
-		apiGroup.DELETE("/:uuid", h.DeleteAPI) // DELETE /api/v1/apis/{uuid}
+		apiGroup.POST("", h.CreateAPI)
+		apiGroup.GET("/:api_uuid", h.GetAPI)
+		apiGroup.PUT("/:api_uuid", h.UpdateAPI)
+		apiGroup.DELETE("/:api_uuid", h.DeleteAPI)
 	}
 
 	// Project-specific API routes
 	projectAPIGroup := r.Group("/api/v1/projects/:project_uuid/apis")
 	{
-		projectAPIGroup.GET("", h.GetAPIsByProject) // GET /api/v1/projects/{project_uuid}/apis
+		projectAPIGroup.GET("", h.GetAPIsByProject)
 	}
 }
