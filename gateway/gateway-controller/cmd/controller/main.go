@@ -82,7 +82,7 @@ func main() {
 	// Generate initial xDS snapshot
 	log.Info("Generating initial xDS snapshot")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	if err := snapshotManager.UpdateSnapshot(ctx); err != nil {
+	if err := snapshotManager.UpdateSnapshot(ctx, ""); err != nil {
 		log.Warn("Failed to generate initial xDS snapshot", zap.Error(err))
 	}
 	cancel()
@@ -102,6 +102,9 @@ func main() {
 	router := gin.New()
 
 	// Add middleware
+	// IMPORTANT: CorrelationIDMiddleware must be registered first to ensure
+	// correlation ID is available in context for subsequent middleware and handlers
+	router.Use(middleware.CorrelationIDMiddleware(log))
 	router.Use(middleware.ErrorHandlingMiddleware(log))
 	router.Use(middleware.LoggingMiddleware(log))
 	router.Use(gin.Recovery())

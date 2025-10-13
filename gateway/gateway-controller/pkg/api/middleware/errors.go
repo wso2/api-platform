@@ -13,7 +13,10 @@ func ErrorHandlingMiddleware(logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if err := recover(); err != nil {
-				logger.Error("Panic recovered",
+				// Get correlation-aware logger from context
+				log := GetLogger(c, logger)
+
+				log.Error("Panic recovered",
 					zap.Any("error", err),
 					zap.String("path", c.Request.URL.Path),
 					zap.String("method", c.Request.Method),

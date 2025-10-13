@@ -42,7 +42,13 @@ func NewTranslator(logger *zap.Logger, accessLogConfig config.AccessLogsConfig) 
 }
 
 // TranslateConfigs translates all API configurations to Envoy resources
-func (t *Translator) TranslateConfigs(configs []*models.StoredAPIConfig) (map[resource.Type][]types.Resource, error) {
+// The correlationID parameter is optional and used for request tracing in logs
+func (t *Translator) TranslateConfigs(configs []*models.StoredAPIConfig, correlationID string) (map[resource.Type][]types.Resource, error) {
+	// Create a logger with correlation ID if provided
+	log := t.logger
+	if correlationID != "" {
+		log = t.logger.With(zap.String("correlation_id", correlationID))
+	}
 	resources := make(map[resource.Type][]types.Resource)
 
 	var listeners []types.Resource
@@ -61,7 +67,7 @@ func (t *Translator) TranslateConfigs(configs []*models.StoredAPIConfig) (map[re
 		// Create virtual host for this API
 		vh, clusterList, err := t.translateAPIConfig(cfg)
 		if err != nil {
-			t.logger.Error("Failed to translate config",
+			log.Error("Failed to translate config",
 				zap.String("id", cfg.ID),
 				zap.String("name", cfg.GetAPIName()),
 				zap.Error(err))

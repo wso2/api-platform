@@ -12,7 +12,7 @@ import (
 )
 
 // StatusUpdateCallback is called after xDS snapshot update completes
-type StatusUpdateCallback func(configID string, success bool, version int64)
+type StatusUpdateCallback func(configID string, success bool, version int64, correlationID string)
 
 // SnapshotManager manages xDS snapshots for Envoy
 type SnapshotManager struct {
@@ -45,18 +45,24 @@ func (sm *SnapshotManager) SetStatusCallback(callback StatusUpdateCallback) {
 }
 
 // UpdateSnapshot generates a new xDS snapshot from all configurations and updates the cache
-func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
+// The correlationID parameter is optional and used for request tracing in logs
+func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID string) error {
+	// Create a logger with correlation ID if provided
+	log := sm.logger
+	if correlationID != "" {
+		log = sm.logger.With(zap.String("correlation_id", correlationID))
+	}
 	// Get all configurations from in-memory store
 	configs := sm.store.GetAll()
 
 	// Translate configurations to Envoy resources
-	resources, err := sm.translator.TranslateConfigs(configs)
+	resources, err := sm.translator.TranslateConfigs(configs, correlationID)
 	if err != nil {
-		sm.logger.Error("Failed to translate configurations", zap.Error(err))
+		log.Error("Failed to translate configurations", zap.Error(err))
 		// Mark all pending configs as failed
 		if sm.statusCallback != nil {
 			for _, cfg := range configs {
-				sm.statusCallback(cfg.ID, false, 0)
+				sm.statusCallback(cfg.ID, false, 0, correlationID)
 			}
 		}
 		return fmt.Errorf("failed to translate configurations: %w", err)
@@ -71,11 +77,11 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 		resources,
 	)
 	if err != nil {
-		sm.logger.Error("Failed to create snapshot", zap.Error(err))
+		log.Error("Failed to create snapshot", zap.Error(err))
 		// Mark all pending configs as failed
 		if sm.statusCallback != nil {
 			for _, cfg := range configs {
-				sm.statusCallback(cfg.ID, false, 0)
+				sm.statusCallback(cfg.ID, false, 0, correlationID)
 			}
 		}
 		return fmt.Errorf("failed to create snapshot: %w", err)
@@ -83,11 +89,11 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 
 	// Validate snapshot consistency
 	if err := snapshot.Consistent(); err != nil {
-		sm.logger.Error("Snapshot is inconsistent", zap.Error(err))
+		log.Error("Snapshot is inconsistent", zap.Error(err))
 		// Mark all pending configs as failed
 		if sm.statusCallback != nil {
 			for _, cfg := range configs {
-				sm.statusCallback(cfg.ID, false, 0)
+				sm.statusCallback(cfg.ID, false, 0, correlationID)
 			}
 		}
 		return fmt.Errorf("snapshot is inconsistent: %w", err)
@@ -95,17 +101,17 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 
 	// Update cache with new snapshot
 	if err := sm.cache.SetSnapshot(ctx, sm.nodeID, snapshot); err != nil {
-		sm.logger.Error("Failed to set snapshot", zap.Error(err))
+		log.Error("Failed to set snapshot", zap.Error(err))
 		// Mark all pending configs as failed
 		if sm.statusCallback != nil {
 			for _, cfg := range configs {
-				sm.statusCallback(cfg.ID, false, 0)
+				sm.statusCallback(cfg.ID, false, 0, correlationID)
 			}
 		}
 		return fmt.Errorf("failed to set snapshot: %w", err)
 	}
 
-	sm.logger.Info("Updated xDS snapshot",
+	log.Info("Updated xDS snapshot",
 		zap.Int64("version", version),
 		zap.Int("num_configs", len(configs)),
 		zap.Int("num_listeners", len(resources[resource.ListenerType])),
@@ -116,7 +122,7 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 	// Mark all successfully deployed configs
 	if sm.statusCallback != nil {
 		for _, cfg := range configs {
-			sm.statusCallback(cfg.ID, true, version)
+			sm.statusCallback(cfg.ID, true, version, correlationID)
 		}
 	}
 

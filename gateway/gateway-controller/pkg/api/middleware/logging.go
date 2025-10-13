@@ -8,6 +8,8 @@ import (
 )
 
 // LoggingMiddleware creates a Gin middleware for request/response logging
+// Note: This middleware should be registered AFTER CorrelationIDMiddleware
+// to ensure the correlation-aware logger is available in the context
 func LoggingMiddleware(logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -23,7 +25,10 @@ func LoggingMiddleware(logger *zap.Logger) gin.HandlerFunc {
 		method := c.Request.Method
 		clientIP := c.ClientIP()
 
-		logger.Info("HTTP request",
+		// Use correlation-aware logger from context (falls back to base logger)
+		log := GetLogger(c, logger)
+
+		log.Info("HTTP request",
 			zap.String("method", method),
 			zap.String("path", path),
 			zap.String("query", query),

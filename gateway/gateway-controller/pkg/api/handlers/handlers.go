@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -50,10 +51,16 @@ func NewAPIServer(
 }
 
 // handleStatusUpdate is called by SnapshotManager after xDS deployment
-func (s *APIServer) handleStatusUpdate(configID string, success bool, version int64) {
+func (s *APIServer) handleStatusUpdate(configID string, success bool, version int64, correlationID string) {
+	// Create a logger with correlation ID if provided
+	log := s.logger
+	if correlationID != "" {
+		log = s.logger.With(zap.String("correlation_id", correlationID))
+	}
+
 	cfg, err := s.store.Get(configID)
 	if err != nil {
-		s.logger.Warn("Config not found for status update", zap.String("id", configID))
+		log.Warn("Config not found for status update", zap.String("id", configID))
 		return
 	}
 
@@ -62,7 +69,7 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		cfg.Status = models.StatusDeployed
 		cfg.DeployedAt = &now
 		cfg.DeployedVersion = version
-		s.logger.Info("API configuration deployed successfully",
+		log.Info("API configuration deployed successfully",
 			zap.String("id", configID),
 			zap.String("name", cfg.Configuration.Data.Name),
 			zap.Int64("version", version))
@@ -70,7 +77,7 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		cfg.Status = models.StatusFailed
 		cfg.DeployedAt = nil
 		cfg.DeployedVersion = 0
-		s.logger.Error("API configuration deployment failed",
+		log.Error("API configuration deployment failed",
 			zap.String("id", configID),
 			zap.String("name", cfg.Configuration.Data.Name))
 	}
@@ -80,13 +87,13 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 	// Update database (only if persistent mode)
 	if s.db != nil {
 		if err := s.db.UpdateConfig(cfg); err != nil {
-			s.logger.Error("Failed to update config status in database", zap.Error(err), zap.String("id", configID))
+			log.Error("Failed to update config status in database", zap.Error(err), zap.String("id", configID))
 		}
 	}
 
 	// Update in-memory store
 	if err := s.store.Update(cfg); err != nil {
-		s.logger.Error("Failed to update config status in memory", zap.Error(err), zap.String("id", configID))
+		log.Error("Failed to update config status in memory", zap.Error(err), zap.String("id", configID))
 	}
 }
 
@@ -102,10 +109,13 @@ func (s *APIServer) HealthCheck(c *gin.Context) {
 // CreateAPI implements ServerInterface.CreateAPI
 // (POST /apis)
 func (s *APIServer) CreateAPI(c *gin.Context) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		s.logger.Error("Failed to read request body", zap.Error(err))
+		log.Error("Failed to read request body", zap.Error(err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
@@ -117,7 +127,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	contentType := c.GetHeader("Content-Type")
 	apiConfig, err := s.parser.Parse(body, contentType)
 	if err != nil {
-		s.logger.Error("Failed to parse configuration", zap.Error(err))
+		log.Error("Failed to parse configuration", zap.Error(err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to parse configuration",
@@ -128,7 +138,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	// Validate configuration
 	validationErrors := s.validator.Validate(apiConfig)
 	if len(validationErrors) > 0 {
-		s.logger.Warn("Configuration validation failed",
+		log.Warn("Configuration validation failed",
 			zap.String("name", apiConfig.Data.Name),
 			zap.Int("num_errors", len(validationErrors)))
 
@@ -164,7 +174,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	// Save to database first (only if persistent mode)
 	if s.db != nil {
 		if err := s.db.SaveConfig(storedCfg); err != nil {
-			s.logger.Error("Failed to save config to database", zap.Error(err))
+			log.Error("Failed to save config to database", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to persist configuration",
@@ -180,11 +190,11 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 		}
 		// Log conflict errors at info level, other errors at error level
 		if storage.IsConflictError(err) {
-			s.logger.Info("API configuration already exists",
+			log.Info("API configuration already exists",
 				zap.String("name", apiConfig.Data.Name),
 				zap.String("version", apiConfig.Data.Version))
 		} else {
-			s.logger.Error("Failed to add config to memory store", zap.Error(err))
+			log.Error("Failed to add config to memory store", zap.Error(err))
 		}
 		c.JSON(http.StatusConflict, api.ErrorResponse{
 			Status:  "error",
@@ -206,17 +216,20 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 		_ = bboltDB.LogEvent(auditEvent)
 	}
 
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
+
 	// Update xDS snapshot asynchronously
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		if err := s.snapshotManager.UpdateSnapshot(ctx); err != nil {
-			s.logger.Error("Failed to update xDS snapshot", zap.Error(err))
+		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
+			log.Error("Failed to update xDS snapshot", zap.Error(err))
 		}
 	}()
 
-	s.logger.Info("API configuration created",
+	log.Info("API configuration created",
 		zap.String("id", storedCfg.ID),
 		zap.String("name", apiConfig.Data.Name),
 		zap.String("version", apiConfig.Data.Version))
@@ -261,9 +274,12 @@ func (s *APIServer) ListAPIs(c *gin.Context) {
 // GetAPIByNameVersion implements ServerInterface.GetAPIByNameVersion
 // (GET /apis/{name}/{version})
 func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+
 	cfg, err := s.store.GetByNameVersion(name, version)
 	if err != nil {
-		s.logger.Warn("API configuration not found",
+		log.Warn("API configuration not found",
 			zap.String("name", name),
 			zap.String("version", version))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
@@ -296,10 +312,13 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 // UpdateAPI implements ServerInterface.UpdateAPI
 // (PUT /apis/{name}/{version})
 func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		s.logger.Error("Failed to read request body", zap.Error(err))
+		log.Error("Failed to read request body", zap.Error(err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
@@ -311,7 +330,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 	contentType := c.GetHeader("Content-Type")
 	apiConfig, err := s.parser.Parse(body, contentType)
 	if err != nil {
-		s.logger.Error("Failed to parse configuration", zap.Error(err))
+		log.Error("Failed to parse configuration", zap.Error(err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to parse configuration",
@@ -322,7 +341,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 	// Validate configuration
 	validationErrors := s.validator.Validate(apiConfig)
 	if len(validationErrors) > 0 {
-		s.logger.Warn("Configuration validation failed",
+		log.Warn("Configuration validation failed",
 			zap.String("name", apiConfig.Data.Name),
 			zap.Int("num_errors", len(validationErrors)))
 
@@ -345,7 +364,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 	// Check if config exists
 	existing, err := s.store.GetByNameVersion(name, version)
 	if err != nil {
-		s.logger.Warn("API configuration not found",
+		log.Warn("API configuration not found",
 			zap.String("name", name),
 			zap.String("version", version))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
@@ -367,7 +386,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 	// Update database first (only if persistent mode)
 	if s.db != nil {
 		if err := s.db.UpdateConfig(existing); err != nil {
-			s.logger.Error("Failed to update config in database", zap.Error(err))
+			log.Error("Failed to update config in database", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to persist configuration update",
@@ -379,12 +398,12 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 	if err := s.store.Update(existing); err != nil {
 		// Log conflict errors at info level, other errors at error level
 		if storage.IsConflictError(err) {
-			s.logger.Info("API configuration name/version already exists",
+			log.Info("API configuration name/version already exists",
 				zap.String("id", existing.ID),
 				zap.String("name", apiConfig.Data.Name),
 				zap.String("version", apiConfig.Data.Version))
 		} else {
-			s.logger.Error("Failed to update config in memory store", zap.Error(err))
+			log.Error("Failed to update config in memory store", zap.Error(err))
 		}
 		c.JSON(http.StatusConflict, api.ErrorResponse{
 			Status:  "error",
@@ -406,17 +425,20 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 		_ = bboltDB.LogEvent(auditEvent)
 	}
 
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
+
 	// Update xDS snapshot asynchronously
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		if err := s.snapshotManager.UpdateSnapshot(ctx); err != nil {
-			s.logger.Error("Failed to update xDS snapshot", zap.Error(err))
+		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
+			log.Error("Failed to update xDS snapshot", zap.Error(err))
 		}
 	}()
 
-	s.logger.Info("API configuration updated",
+	log.Info("API configuration updated",
 		zap.String("id", existing.ID),
 		zap.String("name", apiConfig.Data.Name),
 		zap.String("version", apiConfig.Data.Version))
@@ -434,10 +456,13 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 // DeleteAPI implements ServerInterface.DeleteAPI
 // (DELETE /apis/{name}/{version})
 func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+
 	// Check if config exists
 	cfg, err := s.store.GetByNameVersion(name, version)
 	if err != nil {
-		s.logger.Warn("API configuration not found",
+		log.Warn("API configuration not found",
 			zap.String("name", name),
 			zap.String("version", version))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
@@ -450,7 +475,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 	// Delete from database first (only if persistent mode)
 	if s.db != nil {
 		if err := s.db.DeleteConfig(cfg.ID); err != nil {
-			s.logger.Error("Failed to delete config from database", zap.Error(err))
+			log.Error("Failed to delete config from database", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to delete configuration",
@@ -461,7 +486,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 
 	// Delete from in-memory store
 	if err := s.store.Delete(cfg.ID); err != nil {
-		s.logger.Error("Failed to delete config from memory store", zap.Error(err))
+		log.Error("Failed to delete config from memory store", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to delete configuration",
@@ -482,17 +507,20 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 		_ = bboltDB.LogEvent(auditEvent)
 	}
 
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
+
 	// Update xDS snapshot asynchronously
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		if err := s.snapshotManager.UpdateSnapshot(ctx); err != nil {
-			s.logger.Error("Failed to update xDS snapshot", zap.Error(err))
+		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
+			log.Error("Failed to update xDS snapshot", zap.Error(err))
 		}
 	}()
 
-	s.logger.Info("API configuration deleted",
+	log.Info("API configuration deleted",
 		zap.String("id", cfg.ID),
 		zap.String("name", cfg.Configuration.Data.Name),
 		zap.String("version", cfg.Configuration.Data.Version))
