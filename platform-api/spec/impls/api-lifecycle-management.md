@@ -6,6 +6,7 @@
 - `platform-api/src/internal/service/api.go` – validates names, contexts, versions, and orchestrates default values plus repository calls.
 - `platform-api/src/internal/repository/api.go` – persists APIs, security, CORS, backend services, rate limiting, and operations using transactions.
 - `platform-api/src/internal/database/schema.sql` – contains tables for APIs, security configs, backend services, rate limits, and operations.
+- `platform-api/src/resources/openapi.yaml` – provides the published API lifecycle contract for client integrations.
 
 ## Behaviour
 

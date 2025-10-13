@@ -6,6 +6,7 @@
 - `platform-api/src/internal/service/organization.go` – validates handles, coordinates repository calls, and provisions default projects.
 - `platform-api/src/internal/repository/organization.go` – performs SQL CRUD operations.
 - `platform-api/src/internal/database/schema.sql` – defines `organizations` table and related indexes.
+- `platform-api/src/resources/openapi.yaml` – documents the organization endpoints for reference consumers.
 
 ## Behaviour
 
