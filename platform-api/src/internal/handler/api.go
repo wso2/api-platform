@@ -48,7 +48,7 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 	api, err := h.apiService.CreateAPI(&req)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPIAlreadyExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "API with this context and version already exists in the project"))
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "API already exists in the project"))
 			return
 		}
 		if errors.Is(err, constants.ErrProjectNotFound) {

@@ -39,7 +39,7 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	}
 
 	// Initialize schema
-	if err := db.InitSchema(); err != nil {
+	if err := db.InitSchema(cfg.DBSchemaPath); err != nil {
 		return nil, err
 	}
 

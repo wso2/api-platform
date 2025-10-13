@@ -57,9 +57,9 @@ func NewConnection(cfg *config.Database) (*DB, error) {
 }
 
 // InitSchema initializes the database schema
-func (db *DB) InitSchema() error {
+func (db *DB) InitSchema(dbSchemaPath string) error {
 	// Read the schema SQL from the external file
-	schemaPath := filepath.Join("internal", "database", "schema.sql")
+	schemaPath := filepath.Join(dbSchemaPath)
 	schemaSQL, err := os.ReadFile(schemaPath)
 	if err != nil {
 		return fmt.Errorf("failed to read schema file: %w", err)

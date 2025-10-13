@@ -12,7 +12,8 @@ type Server struct {
 	//Logger   logging.Logger
 
 	// Database configurations
-	Database Database `envconfig:"DATABASE"`
+	Database     Database `envconfig:"DATABASE"`
+	DBSchemaPath string   `envconfig:"DB_SCHEMA_PATH" default:"./internal/database/schema.sql"`
 }
 
 // Database holds database-specific configuration

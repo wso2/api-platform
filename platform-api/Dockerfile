@@ -1,0 +1,46 @@
+# Multi-stage Dockerfile for Platform API
+
+# Build stage
+FROM golang:1.24-alpine AS builder
+
+RUN apk add --no-cache gcc musl-dev sqlite-dev
+
+WORKDIR /api-platform
+
+COPY src/go.mod src/go.sum ./
+RUN go mod download
+
+COPY src/ ./
+
+RUN CGO_ENABLED=1 GOOS=linux go build \
+    -ldflags "-s -w" \
+    -o platform-api \
+    ./cmd/main.go
+
+# Runtime stage
+FROM alpine:latest
+
+RUN apk add --no-cache ca-certificates sqlite
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -u 1001 -S wso2 -G appgroup
+
+WORKDIR /api-platform
+
+COPY --from=builder /api-platform/platform-api .
+RUN mkdir -p /api-platform/data && \
+    chown -R wso2:appgroup /api-platform
+COPY src/internal/database/schema.sql ./schema.sql
+
+USER wso2
+
+EXPOSE 8443
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --quiet --tries=1 --spider https://localhost:8443/health || exit 1
+
+ENV LOG_LEVEL=INFO
+ENV DATABASE_DRIVER=sqlite3
+ENV DB_SCHEMA_PATH=./schema.sql
+ENV DATABASE_PATH=./data/api_platform.db
+
+CMD ["./platform-api"]
