@@ -1,29 +1,27 @@
 version: '3.8'
 
 services:
-  # gateway-controller:
-  #   build:
-  #     context: ./gateway-controller
-  #     dockerfile: Dockerfile
-  #   container_name: gateway-controller
-  #   ports:
-  #     - "9090:9090"   # REST API
-  #     - "18000:18000" # xDS gRPC
-  #   environment:
-  #     - LOG_LEVEL=info
-  #     - DB_PATH=/data/gateway-controller.db
-  #     - API_PORT=9090
-  #     - XDS_PORT=18000
-  #   volumes:
-  #     - controller-data:/data
-  #   networks:
-  #     - gateway-network
-  #   healthcheck:
-  #     test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/health"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 3
-  #     start_period: 10s
+  gateway-controller:
+    build:
+      context: ./gateway-controller
+      dockerfile: Dockerfile
+    container_name: gateway-controller
+    ports:
+      - "9090:9090"   # REST API
+      - "18000:18000" # xDS gRPC
+    environment:
+      - GC_STORAGE_MODE=persistent
+      - GC_STORAGE_DATABASE_PATH=/data/gateway-controller.db
+    volumes:
+      - controller-data:/data
+    networks:
+      - gateway-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   router:
     build:

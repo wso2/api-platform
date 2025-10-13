@@ -14,7 +14,7 @@ COPY . ./
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o controller cmd/controller/main.go
 
 # Stage 2: Create minimal runtime image
-FROM alpine:latest
+FROM alpine:3.22.2
 
 # Install ca-certificates for HTTPS requests
 RUN apk --no-cache add ca-certificates wget

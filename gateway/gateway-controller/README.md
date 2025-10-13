@@ -391,7 +391,12 @@ The Gateway-Controller uses structured logging (Zap) with configurable levels.
 ### Debug Mode
 
 ```bash
-LOG_LEVEL=debug ./bin/controller
+# Using environment variable
+GC_LOGGING_LEVEL=debug ./bin/controller
+
+# Or using config file
+export GC_LOGGING_LEVEL=debug
+./bin/controller
 ```
 
 Debug logs include:

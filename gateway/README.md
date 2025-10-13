@@ -122,10 +122,12 @@ make test
 
 #### Gateway-Controller Environment Variables
 
-- `LOG_LEVEL`: Log level (debug, info, warn, error) - default: info
-- `DB_PATH`: Path to bbolt database file - default: /data/gateway-controller.db
-- `API_PORT`: REST API port - default: 9090
-- `XDS_PORT`: xDS gRPC port - default: 18000
+The Gateway-Controller uses a structured configuration system with `GC_` prefix for environment variables:
+
+- `GC_STORAGE_MODE`: Storage mode ("memory-only" or "persistent") - default: memory-only
+- `GC_STORAGE_DATABASE_PATH`: Path to bbolt database file - default: /data/gateway-controller.db
+
+For complete configuration options, see [Gateway-Controller Configuration](gateway-controller/README.md#configuration).
 
 #### Router Environment Variables
 
