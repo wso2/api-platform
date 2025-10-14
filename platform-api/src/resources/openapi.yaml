@@ -430,10 +430,6 @@ components:
           format: uuid
           description: UUID of the organization this project belongs to
           example: "123e4567-e89b-12d3-a456-426614174000"
-        is_default:
-          type: boolean
-          description: Whether this is the default project for the organization
-          example: false
         created_at:
           type: string
           format: date-time

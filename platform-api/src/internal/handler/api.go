@@ -46,57 +46,70 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 
 	// Validate required fields
 	if req.Name == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API name is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API name is required"))
 		return
 	}
 	if req.Context == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API context is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API context is required"))
 		return
 	}
 	if req.Version == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API version is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API version is required"))
 		return
 	}
 	if req.ProjectID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project UUID is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Project UUID is required"))
 		return
 	}
 
 	api, err := h.apiService.CreateAPI(&req)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPIAlreadyExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "API already exists in the project"))
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"API already exists in the project"))
 			return
 		}
 		if errors.Is(err, constants.ErrProjectNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Project not found"))
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Project not found"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidAPIName) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid API name format"))
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid API name format"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidAPIContext) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid API context format"))
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid API context format"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidAPIVersion) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid API version format"))
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid API version format"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidLifecycleState) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid lifecycle status"))
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid lifecycle status"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidAPIType) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid API type"))
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid API type"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidTransport) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid transport protocol"))
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid transport protocol"))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create API"))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to create API"))
 		return
 	}
 
@@ -107,17 +120,20 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 func (h *APIHandler) GetAPI(c *gin.Context) {
 	uuid := c.Param("api_uuid")
 	if uuid == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API UUID is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API UUID is required"))
 		return
 	}
 
 	api, err := h.apiService.GetAPIByUUID(uuid)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API not found"))
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"API not found"))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get API"))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get API"))
 		return
 	}
 
@@ -128,17 +144,20 @@ func (h *APIHandler) GetAPI(c *gin.Context) {
 func (h *APIHandler) GetAPIsByProject(c *gin.Context) {
 	projectUUID := c.Param("project_uuid")
 	if projectUUID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project UUID is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Project UUID is required"))
 		return
 	}
 
 	apis, err := h.apiService.GetAPIsByProjectID(projectUUID)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Project not found"))
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Project not found"))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get APIs"))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get APIs"))
 		return
 	}
 
@@ -156,35 +175,42 @@ func (h *APIHandler) GetAPIsByProject(c *gin.Context) {
 func (h *APIHandler) UpdateAPI(c *gin.Context) {
 	uuid := c.Param("api_uuid")
 	if uuid == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API UUID is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API UUID is required"))
 		return
 	}
 
 	var req service.UpdateAPIRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			err.Error()))
 		return
 	}
 
 	api, err := h.apiService.UpdateAPI(uuid, &req)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API not found"))
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"API not found"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidLifecycleState) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid lifecycle status"))
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid lifecycle status"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidAPIType) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid API type"))
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid API type"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidTransport) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Invalid transport protocol"))
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid transport protocol"))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update API"))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to update API"))
 		return
 	}
 
@@ -195,17 +221,20 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 func (h *APIHandler) DeleteAPI(c *gin.Context) {
 	uuid := c.Param("api_uuid")
 	if uuid == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API UUID is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API UUID is required"))
 		return
 	}
 
 	err := h.apiService.DeleteAPI(uuid)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API not found"))
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"API not found"))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete API"))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to delete API"))
 		return
 	}
 

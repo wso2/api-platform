@@ -49,33 +49,35 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 
 	// Validate required fields
 	if req.Name == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project name is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Project name is required"))
 		return
 	}
 	if req.OrganizationID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Organization ID is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Organization ID is required"))
 		return
 	}
 
-	project, err := h.projectService.CreateProject(req.Name, req.OrganizationID, req.IsDefault)
+	project, err := h.projectService.CreateProject(req.Name, req.OrganizationID)
 	if err != nil {
-		if errors.Is(err, constants.ErrProjectNameExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Project name already exists in organization"))
-			return
-		}
-		if errors.Is(err, constants.ErrDefaultProjectAlreadyExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Default project already exists in organization"))
+		if errors.Is(err, constants.ErrProjectExists) {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"Project already exists in organization"))
 			return
 		}
 		if errors.Is(err, constants.ErrOrganizationNotFound) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Organization not found"))
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Organization not found"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidProjectName) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project name is required"))
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Project name is required"))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to create project"))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to create project"))
 		return
 	}
 
@@ -85,17 +87,20 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 func (h *ProjectHandler) GetProject(c *gin.Context) {
 	uuid := c.Param("project_uuid")
 	if uuid == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project UUID is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Project UUID is required"))
 		return
 	}
 
 	project, err := h.projectService.GetProjectByID(uuid)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Project not found"))
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Project not found"))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get project"))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get project"))
 		return
 	}
 
@@ -105,17 +110,20 @@ func (h *ProjectHandler) GetProject(c *gin.Context) {
 func (h *ProjectHandler) GetProjectsByOrganization(c *gin.Context) {
 	orgID := c.Param("org_uuid")
 	if orgID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Organization UUID is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Organization UUID is required"))
 		return
 	}
 
 	projects, err := h.projectService.GetProjectsByOrganization(orgID)
 	if err != nil {
 		if errors.Is(err, constants.ErrOrganizationNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Organization not found"))
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Organization not found"))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get projects"))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get projects"))
 		return
 	}
 
@@ -125,7 +133,8 @@ func (h *ProjectHandler) GetProjectsByOrganization(c *gin.Context) {
 func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 	uuid := c.Param("project_uuid")
 	if uuid == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project UUID is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Project UUID is required"))
 		return
 	}
 
@@ -138,14 +147,17 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 	project, err := h.projectService.UpdateProject(uuid, req.Name)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Project not found"))
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Project not found"))
 			return
 		}
-		if errors.Is(err, constants.ErrProjectNameExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict", "Project name already exists in organization"))
+		if errors.Is(err, constants.ErrProjectExists) {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"Project already exists in organization"))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to update project"))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to update project"))
 		return
 	}
 
@@ -155,21 +167,30 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 func (h *ProjectHandler) DeleteProject(c *gin.Context) {
 	uuid := c.Param("project_uuid")
 	if uuid == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Project UUID is required"))
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Project UUID is required"))
 		return
 	}
 
 	err := h.projectService.DeleteProject(uuid)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "Project not found"))
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Project not found"))
 			return
 		}
-		if errors.Is(err, constants.ErrCannotDeleteDefaultProject) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Cannot delete the default project of an organization"))
+		if errors.Is(err, constants.ErrOrganizationMustHAveAtLeastOneProject) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Organization must have at least one project"))
 			return
 		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to delete project"))
+		if errors.Is(err, constants.ErrProjectHasAssociatedAPIs) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Project has associated APIs"))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to delete project"))
 		return
 	}
 

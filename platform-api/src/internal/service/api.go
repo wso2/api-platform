@@ -1163,12 +1163,6 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 			Request: &dto.OperationRequest{
 				Method: "GET",
 				Path:   "/*",
-				BackendServices: []dto.BackendRouting{
-					{
-						Name:   "default",
-						Weight: 100,
-					},
-				},
 				Authentication: &dto.AuthenticationConfig{
 					Required: false,
 					Scopes:   []string{},
@@ -1183,12 +1177,6 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 			Request: &dto.OperationRequest{
 				Method: "POST",
 				Path:   "/*",
-				BackendServices: []dto.BackendRouting{
-					{
-						Name:   "default",
-						Weight: 100,
-					},
-				},
 				Authentication: &dto.AuthenticationConfig{
 					Required: false,
 					Scopes:   []string{},
@@ -1203,12 +1191,6 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 			Request: &dto.OperationRequest{
 				Method: "PATCH",
 				Path:   "/*",
-				BackendServices: []dto.BackendRouting{
-					{
-						Name:   "default",
-						Weight: 100,
-					},
-				},
 				Authentication: &dto.AuthenticationConfig{
 					Required: false,
 					Scopes:   []string{},
@@ -1223,12 +1205,6 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 			Request: &dto.OperationRequest{
 				Method: "DELETE",
 				Path:   "/*",
-				BackendServices: []dto.BackendRouting{
-					{
-						Name:   "default",
-						Weight: 100,
-					},
-				},
 				Authentication: &dto.AuthenticationConfig{
 					Required: false,
 					Scopes:   []string{},
