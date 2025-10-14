@@ -50,3 +50,21 @@ type APIRepository interface {
 	UpdateAPI(api *model.API) error
 	DeleteAPI(uuid string) error
 }
+
+// GatewayRepository defines the interface for gateway data access
+type GatewayRepository interface {
+	// Gateway operations
+	Create(gateway *model.Gateway) error
+	GetByUUID(uuid string) (*model.Gateway, error)
+	GetByOrganizationID(orgID string) ([]*model.Gateway, error)
+	GetByNameAndOrgID(name, orgID string) (*model.Gateway, error)
+	List() ([]*model.Gateway, error)
+	Delete(uuid string) error
+
+	// Token operations
+	CreateToken(token *model.GatewayToken) error
+	GetActiveTokensByGatewayUUID(gatewayUUID string) ([]*model.GatewayToken, error)
+	GetTokenByUUID(tokenUUID string) (*model.GatewayToken, error)
+	RevokeToken(tokenUUID string) error
+	CountActiveTokens(gatewayUUID string) (int, error)
+}

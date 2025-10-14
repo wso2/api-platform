@@ -41,10 +41,11 @@ import (
 )
 
 type Server struct {
-	router   *gin.Engine
-	orgRepo  repository.OrganizationRepository
-	projRepo repository.ProjectRepository
-	apiRepo  repository.APIRepository
+	router      *gin.Engine
+	orgRepo     repository.OrganizationRepository
+	projRepo    repository.ProjectRepository
+	apiRepo     repository.APIRepository
+	gatewayRepo repository.GatewayRepository
 }
 
 // StartPlatformAPIServer creates a new server instance with all dependencies initialized
@@ -64,16 +65,19 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	orgRepo := repository.NewOrganizationRepo(db)
 	projectRepo := repository.NewProjectRepo(db)
 	apiRepo := repository.NewAPIRepo(db)
+	gatewayRepo := repository.NewGatewayRepo(db)
 
 	// Initialize services
 	orgService := service.NewOrganizationService(orgRepo, projectRepo)
 	projectService := service.NewProjectService(projectRepo, orgRepo)
 	apiService := service.NewAPIService(apiRepo, projectRepo)
+	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo)
 
 	// Initialize handlers
 	orgHandler := handler.NewOrganizationHandler(orgService)
 	projectHandler := handler.NewProjectHandler(projectService)
 	apiHandler := handler.NewAPIHandler(apiService)
+	gatewayHandler := handler.NewGatewayHandler(gatewayService)
 
 	// Setup router
 	router := gin.Default()
@@ -83,12 +87,14 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	orgHandler.RegisterRoutes(router)
 	projectHandler.RegisterRoutes(router)
 	apiHandler.RegisterRoutes(router)
+	gatewayHandler.RegisterRoutes(router)
 
 	return &Server{
-		router:   router,
-		orgRepo:  orgRepo,
-		projRepo: projectRepo,
-		apiRepo:  apiRepo,
+		router:      router,
+		orgRepo:     orgRepo,
+		projRepo:    projectRepo,
+		apiRepo:     apiRepo,
+		gatewayRepo: gatewayRepo,
 	}, nil
 }
 
