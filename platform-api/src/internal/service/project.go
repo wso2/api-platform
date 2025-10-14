@@ -29,16 +29,19 @@ import (
 type ProjectService struct {
 	projectRepo repository.ProjectRepository
 	orgRepo     repository.OrganizationRepository
+	apiRepo     repository.APIRepository
 }
 
-func NewProjectService(projectRepo repository.ProjectRepository, orgRepo repository.OrganizationRepository) *ProjectService {
+func NewProjectService(projectRepo repository.ProjectRepository, orgRepo repository.OrganizationRepository,
+	apiRepo repository.APIRepository) *ProjectService {
 	return &ProjectService{
 		projectRepo: projectRepo,
 		orgRepo:     orgRepo,
+		apiRepo:     apiRepo,
 	}
 }
 
-func (s *ProjectService) CreateProject(name, organizationID string, isDefault bool) (*dto.Project, error) {
+func (s *ProjectService) CreateProject(name, organizationID string) (*dto.Project, error) {
 	// Validate project name
 	if name == "" {
 		return nil, constants.ErrInvalidProjectName
@@ -54,25 +57,14 @@ func (s *ProjectService) CreateProject(name, organizationID string, isDefault bo
 	}
 
 	// Check if project name already exists in the organization
-	existingProjects, err := s.projectRepo.GetProjectByOrganizationID(organizationID)
+	existingProjects, err := s.projectRepo.GetProjectsByOrganizationID(organizationID)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, existingProject := range existingProjects {
 		if existingProject.Name == name {
-			return nil, constants.ErrProjectNameExists
-		}
-	}
-
-	// If this is set as default check if there is an existing default and if there is throw an error
-	if isDefault {
-		defaultProject, err := s.projectRepo.GetDefaultProjectByOrganizationID(organizationID)
-		if err != nil {
-			return nil, err
-		}
-		if defaultProject != nil {
-			return nil, constants.ErrDefaultProjectAlreadyExists
+			return nil, constants.ErrProjectExists
 		}
 	}
 
@@ -81,7 +73,6 @@ func (s *ProjectService) CreateProject(name, organizationID string, isDefault bo
 		UUID:           uuid.New().String(),
 		Name:           name,
 		OrganizationID: organizationID,
-		IsDefault:      isDefault,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -119,7 +110,7 @@ func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]*dt
 		return nil, constants.ErrOrganizationNotFound
 	}
 
-	projectModels, err := s.projectRepo.GetProjectByOrganizationID(organizationID)
+	projectModels, err := s.projectRepo.GetProjectsByOrganizationID(organizationID)
 	if err != nil {
 		return nil, err
 	}
@@ -143,14 +134,14 @@ func (s *ProjectService) UpdateProject(uuid string, name string) (*dto.Project, 
 
 	// If name is being changed, check for duplicates in the organization
 	if name != "" && name != project.Name {
-		existingProjects, err := s.projectRepo.GetProjectByOrganizationID(project.OrganizationID)
+		existingProjects, err := s.projectRepo.GetProjectsByOrganizationID(project.OrganizationID)
 		if err != nil {
 			return nil, err
 		}
 
 		for _, existingProject := range existingProjects {
 			if existingProject.Name == name && existingProject.UUID != uuid {
-				return nil, constants.ErrProjectNameExists
+				return nil, constants.ErrProjectExists
 			}
 		}
 		project.Name = name
@@ -176,8 +167,22 @@ func (s *ProjectService) DeleteProject(uuid string) error {
 	if project == nil {
 		return constants.ErrProjectNotFound
 	}
-	if project.IsDefault {
-		return constants.ErrCannotDeleteDefaultProject
+
+	projects, err := s.projectRepo.GetProjectsByOrganizationID(project.OrganizationID)
+	if err != nil {
+		return err
+	}
+	if len(projects) <= 1 {
+		return constants.ErrOrganizationMustHAveAtLeastOneProject
+	}
+
+	// check if there are any APIs associated with the project
+	apis, err := s.apiRepo.GetAPIsByProjectID(uuid)
+	if err != nil {
+		return err
+	}
+	if len(apis) > 0 {
+		return constants.ErrProjectHasAssociatedAPIs
 	}
 
 	return s.projectRepo.DeleteProject(uuid)
@@ -193,7 +198,6 @@ func (s *ProjectService) DtoToModel(dto *dto.Project) *model.Project {
 		UUID:           dto.UUID,
 		Name:           dto.Name,
 		OrganizationID: dto.OrganizationID,
-		IsDefault:      dto.IsDefault,
 		CreatedAt:      dto.CreatedAt,
 		UpdatedAt:      dto.UpdatedAt,
 	}
@@ -208,7 +212,6 @@ func (s *ProjectService) ModelToDTO(model *model.Project) *dto.Project {
 		UUID:           model.UUID,
 		Name:           model.Name,
 		OrganizationID: model.OrganizationID,
-		IsDefault:      model.IsDefault,
 		CreatedAt:      model.CreatedAt,
 		UpdatedAt:      model.UpdatedAt,
 	}

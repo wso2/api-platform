@@ -69,7 +69,7 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 
 	// Initialize services
 	orgService := service.NewOrganizationService(orgRepo, projectRepo)
-	projectService := service.NewProjectService(projectRepo, orgRepo)
+	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo)
 	apiService := service.NewAPIService(apiRepo, projectRepo)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo)
 

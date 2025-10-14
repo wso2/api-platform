@@ -27,11 +27,11 @@ var (
 )
 
 var (
-	ErrProjectNameExists           = errors.New("project name already exists in organization")
-	ErrProjectNotFound             = errors.New("project not found")
-	ErrInvalidProjectName          = errors.New("invalid project name")
-	ErrDefaultProjectAlreadyExists = errors.New("default project for organization already exists")
-	ErrCannotDeleteDefaultProject  = errors.New("cannot delete default project")
+	ErrProjectExists                         = errors.New("project already exists in organization")
+	ErrProjectNotFound                       = errors.New("project not found")
+	ErrInvalidProjectName                    = errors.New("invalid project name")
+	ErrOrganizationMustHAveAtLeastOneProject = errors.New("organization must have at least one project")
+	ErrProjectHasAssociatedAPIs              = errors.New("project has associated APIs")
 )
 
 var (

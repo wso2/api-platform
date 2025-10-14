@@ -29,7 +29,6 @@ CREATE TABLE IF NOT EXISTS projects (
     uuid TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     organization_id TEXT NOT NULL,
-    is_default BOOLEAN DEFAULT FALSE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_id) REFERENCES organizations(uuid) ON DELETE CASCADE
@@ -184,8 +183,7 @@ CREATE TABLE IF NOT EXISTS operation_backend_services (
     operation_id INTEGER NOT NULL,
     backend_service_name TEXT NOT NULL,
     weight INTEGER,
-    FOREIGN KEY (operation_id) REFERENCES api_operations(id) ON DELETE CASCADE,
-    FOREIGN KEY (backend_service_name) REFERENCES backend_services(name) ON DELETE CASCADE
+    FOREIGN KEY (operation_id) REFERENCES api_operations(id) ON DELETE CASCADE
 );
 
 -- Request Policies table
