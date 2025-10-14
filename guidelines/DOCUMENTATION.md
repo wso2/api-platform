@@ -100,7 +100,7 @@ See [spec/](spec/) for detailed documentation.
 
 **Must contain:**
 - Product overview (1-2 sentences)
-- Functional requirements (links to prds/)
+- Functional requirements (links to prds/ with short descriptions)
 - Non-functional requirements (brief, 1-2 lines each)
 
 **Must NOT contain:**
@@ -118,8 +118,8 @@ One line description of what the component does.
 
 ## Functional Requirements
 
-- [FR1: Feature Name](prds/feature-name.md)
-- [FR2: Another Feature](prds/another-feature.md)
+- [FR1: Feature Name](prds/feature-name.md) – Short description of what the feature provides.
+- [FR2: Another Feature](prds/another-feature.md) – Short description of what the feature provides.
 
 ## Non-Functional Requirements
 
@@ -235,7 +235,7 @@ One sentence about design approach.
 - Base/foundation references
 - Key files list
 - Requirements (versions)
-- Links to implementation features
+- Links to implementation features with short descriptions
 
 **Must NOT contain:**
 - Detailed implementation steps
@@ -266,8 +266,8 @@ One sentence about implementation.
 
 ## Features
 
-- [Feature 1](impls/feature-1.md)
-- [Feature 2](impls/feature-2.md)
+- [Feature 1](impls/feature-1.md) – Short description of what the feature implements.
+- [Feature 2](impls/feature-2.md) – Short description of what the feature implements.
 ```
 
 ### spec/impls/feature.md
