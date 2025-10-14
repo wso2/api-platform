@@ -10,6 +10,7 @@ Provide a unified backend for the API Platform portals, CLI, and automation tool
 - [FR2: Organization Management](prds/organization-management.md)
 - [FR3: Project Management](prds/project-management.md)
 - [FR4: API Lifecycle Management](prds/api-lifecycle-management.md)
+- [FR5: Gateway Management](prds/gateway-management.md)
 
 ## Non-Functional Requirements
 
