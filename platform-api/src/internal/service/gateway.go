@@ -238,6 +238,71 @@ func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error) 
 	return nil, errors.New("invalid token")
 }
 
+// RotateToken generates a new token for a gateway (max 2 active tokens)
+func (s *GatewayService) RotateToken(gatewayUUID string) (*dto.TokenRotationResponse, error) {
+	// 1. Validate gateway exists
+	gateway, err := s.gatewayRepo.GetByUUID(gatewayUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query gateway: %w", err)
+	}
+	if gateway == nil {
+		return nil, errors.New("gateway not found")
+	}
+
+	// 2. Count active tokens
+	activeCount, err := s.gatewayRepo.CountActiveTokens(gatewayUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count active tokens: %w", err)
+	}
+
+	// 3. Check max 2 active tokens limit
+	if activeCount >= 2 {
+		return nil, errors.New("maximum 2 active tokens allowed. Revoke old tokens before rotating")
+	}
+
+	// 4. Generate new plain-text token and salt
+	plainToken, err := generateToken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate token: %w", err)
+	}
+
+	saltBytes, err := generateSalt()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate salt: %w", err)
+	}
+
+	// 5. Hash new token
+	tokenHash := hashToken(plainToken, saltBytes)
+	saltHex := hex.EncodeToString(saltBytes)
+
+	// 6. Create new GatewayToken model with status='active'
+	tokenUUID := uuid.New().String()
+	gatewayToken := &model.GatewayToken{
+		UUID:        tokenUUID,
+		GatewayUUID: gatewayUUID,
+		TokenHash:   tokenHash,
+		Salt:        saltHex,
+		Status:      "active",
+		CreatedAt:   time.Now(),
+		RevokedAt:   nil,
+	}
+
+	// 7. Insert token using repository
+	if err := s.gatewayRepo.CreateToken(gatewayToken); err != nil {
+		return nil, fmt.Errorf("failed to create token: %w", err)
+	}
+
+	// 8. Return TokenRotationResponse with token UUID, plain-text token, timestamp, and message
+	response := &dto.TokenRotationResponse{
+		TokenUUID: tokenUUID,
+		Token:     plainToken,
+		CreatedAt: gatewayToken.CreatedAt,
+		Message:   "New token generated successfully. Old token remains active until revoked.",
+	}
+
+	return response, nil
+}
+
 // validateGatewayInput validates gateway registration inputs
 func (s *GatewayService) validateGatewayInput(orgID, name, displayName string) error {
 	// Organization ID validation

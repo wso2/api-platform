@@ -135,6 +135,40 @@ func (h *GatewayHandler) GetGateway(c *gin.Context) {
 	c.JSON(http.StatusOK, gateway)
 }
 
+// RotateToken handles POST /api/v1/gateways/:uuid/tokens
+func (h *GatewayHandler) RotateToken(c *gin.Context) {
+	// Extract UUID path parameter
+	uuid := c.Param("uuid")
+	if uuid == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Gateway UUID is required"))
+		return
+	}
+
+	// Call service to rotate token
+	response, err := h.gatewayService.RotateToken(uuid)
+	if err != nil {
+		errMsg := err.Error()
+
+		// Check for specific error types
+		if strings.Contains(errMsg, "gateway not found") {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", errMsg))
+			return
+		}
+
+		if strings.Contains(errMsg, "maximum") || strings.Contains(errMsg, "Revoke") {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
+			return
+		}
+
+		// Internal server error
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to rotate token"))
+		return
+	}
+
+	// Return 201 Created with response
+	c.JSON(http.StatusCreated, response)
+}
+
 // RegisterRoutes registers gateway routes with the router
 func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 	gatewayGroup := r.Group("/api/v1/gateways")
@@ -142,5 +176,6 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 		gatewayGroup.POST("", h.CreateGateway)
 		gatewayGroup.GET("", h.ListGateways)
 		gatewayGroup.GET("/:uuid", h.GetGateway)
+		gatewayGroup.POST("/:uuid/tokens", h.RotateToken)
 	}
 }
