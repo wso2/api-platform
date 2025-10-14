@@ -8,7 +8,7 @@ Provide a unified backend for the API Platform portals, CLI, and automation tool
 
 - [FR1: Platform Bootstrap](prds/platform-bootstrap.md)
 - [FR2: Organization Management](prds/organization-management.md)
-- [FR3: Project Workspace Management](prds/project-workspace-management.md)
+- [FR3: Project Management](prds/project-management.md)
 - [FR4: API Lifecycle Management](prds/api-lifecycle-management.md)
 
 ## Non-Functional Requirements

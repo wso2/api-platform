@@ -1,4 +1,4 @@
-# FR3: Project Workspace Management
+# FR3: Project Management
 
 ## Requirement
 
@@ -6,4 +6,4 @@ Expose endpoints that allow clients to create, list, update, and delete projects
 
 ## Implementation
 
-[Project Management Implementation](../impls/project-workspace-management.md)
+[Project Management Implementation](../impls/project-management.md)

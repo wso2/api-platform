@@ -8,7 +8,7 @@ Bootstrap sequence lives in `cmd/main.go` and `internal/server`, layering config
 
 - [Platform Bootstrap](impls/platform-bootstrap.md)
 - [Organization Management](impls/organization-management.md)
-- [Project Management](impls/project-workspace-management.md)
+- [Project Management](impls/project-management.md)
 - [API Lifecycle Management](impls/api-lifecycle-management.md)
 
 Each implementation note captures entrypoints, supporting modules, and verification tips for manual or automated checks.
