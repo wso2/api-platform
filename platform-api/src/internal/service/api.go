@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gopkg.in/yaml.v3"
 	"platform-api/src/internal/constants"
 )
 
@@ -319,6 +320,114 @@ func (s *APIService) UpdateAPILifecycleStatus(uuid string, status string) (*dto.
 	return api, nil
 }
 
+// DeployAPIRevision deploys an API revision and generates deployment YAML
+func (s *APIService) DeployAPIRevision(apiUUID string, revisionID string,
+	deploymentRequests []dto.APIRevisionDeployment) ([]*dto.APIRevisionDeployment, error) {
+	if apiUUID == "" {
+		return nil, errors.New("api uuid is required")
+	}
+
+	// Get the API from database
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID)
+	if err != nil {
+		return nil, err
+	}
+	if apiModel == nil {
+		return nil, constants.ErrAPINotFound
+	}
+
+	// Convert to DTO for easier manipulation
+	api := s.modelToDTO(apiModel)
+
+	// Generate API deployment YAML
+	apiYAML, err := s.generateAPIDeploymentYAML(api)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate API deployment YAML: %w", err)
+	}
+
+	// Process deployment requests and create deployment responses
+	var deployments []*dto.APIRevisionDeployment
+	currentTime := time.Now().Format(time.RFC3339)
+
+	for _, deploymentReq := range deploymentRequests {
+		// Validate deployment request
+		if err := s.validateDeploymentRequest(&deploymentReq); err != nil {
+			return nil, err
+		}
+
+		deployment := &dto.APIRevisionDeployment{
+			RevisionUUID:        revisionID, // Optional, can be empty
+			Name:                deploymentReq.Name,
+			Status:              "CREATED", // Default status for new deployments
+			VHost:               deploymentReq.VHost,
+			DisplayOnDevportal:  deploymentReq.DisplayOnDevportal,
+			DeployedTime:        &currentTime,
+			SuccessDeployedTime: &currentTime,
+		}
+
+		deployments = append(deployments, deployment)
+	}
+
+	// Log the generated YAML for debugging/monitoring purposes
+	// TODO - send the deployment requests to the gateway via websocket
+	fmt.Printf("Generated API Deployment YAML for API %s:\n%s\n", apiUUID, apiYAML)
+
+	return deployments, nil
+}
+
+// generateAPIDeploymentYAML creates the deployment YAML from API data
+func (s *APIService) generateAPIDeploymentYAML(api *dto.API) (string, error) {
+	// Create API deployment YAML structure
+	apiYAMLData := dto.APIYAMLData{
+		UUID:            api.UUID,
+		Name:            api.Name,
+		DisplayName:     api.DisplayName,
+		Version:         api.Version,
+		Description:     api.Description,
+		Context:         api.Context,
+		Provider:        api.Provider,
+		CreatedTime:     api.CreatedAt.Format(time.RFC3339),
+		LastUpdatedTime: api.UpdatedAt.Format(time.RFC3339),
+		LifeCycleStatus: api.LifeCycleStatus,
+		Type:            api.Type,
+		Transport:       api.Transport,
+		MTLS:            api.MTLS,
+		Security:        api.Security,
+		CORS:            api.CORS,
+		BackendServices: api.BackendServices,
+		APIRateLimiting: api.APIRateLimiting,
+		Operations:      api.Operations,
+	}
+
+	apiDeployment := dto.APIDeploymentYAML{
+		Kind:    "api",
+		Version: "v1",
+		Data:    apiYAMLData,
+	}
+
+	// Convert to YAML
+	yamlBytes, err := yaml.Marshal(apiDeployment)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal API to YAML: %w", err)
+	}
+
+	return string(yamlBytes), nil
+}
+
+// validateDeploymentRequest validates the deployment request
+func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment) error {
+	if req.Name == "" {
+		return errors.New("deployment name is required")
+	}
+	if req.VHost == "" {
+		return errors.New("vhost is required")
+	}
+
+	// TODO - vHost validation
+
+	return nil
+}
+
 // Validation methods
 
 // validateCreateAPIRequest checks the validity of the create API request
@@ -418,6 +527,14 @@ func (s *APIService) isValidVersion(version string) bool {
 	pattern := `^[^~!@#;:%^*()+={}|\\<>"'',&/$\[\]\s+\/]+$`
 	matched, _ := regexp.MatchString(pattern, version)
 	return matched && len(version) > 0 && len(version) <= 30
+}
+
+// isValidVHost validates vhost format
+func (s *APIService) isValidVHost(vhost string) bool {
+	// Basic hostname validation pattern as per RFC 1123
+	pattern := `^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-ZaZ0-9\-]*[A-ZaZ0-9])$`
+	matched, _ := regexp.MatchString(pattern, vhost)
+	return matched
 }
 
 // Request/Response DTOs

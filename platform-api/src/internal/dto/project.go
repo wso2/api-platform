@@ -23,9 +23,9 @@ import (
 
 // Project represents a project entity in the API management platform
 type Project struct {
-	UUID           string    `json:"uuid"`
-	Name           string    `json:"name"`
-	OrganizationID string    `json:"organization_id"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	UUID           string    `json:"uuid" yaml:"uuid"`
+	Name           string    `json:"name" yaml:"name"`
+	OrganizationID string    `json:"organization_id" yaml:"organization_id"`
+	CreatedAt      time.Time `json:"created_at" yaml:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at" yaml:"updated_at"`
 }

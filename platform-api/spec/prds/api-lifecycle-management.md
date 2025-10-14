@@ -2,7 +2,8 @@
 
 ## Requirement
 
-Deliver CRUD endpoints for APIs within a project, enforcing context and version uniqueness, default transport/lifecycle values, and persistence of security, backend, rate limiting, and operation metadata.
+Deliver comprehensive CRUD endpoints for APIs within projects, supporting complete API lifecycle management with
+advanced security, backend service configuration, operation management, and deployment orchestration.
 
 ## Implementation
 
