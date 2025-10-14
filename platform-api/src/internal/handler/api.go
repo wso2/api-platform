@@ -22,6 +22,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"platform-api/src/internal/constants"
+	"platform-api/src/internal/dto"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 )
@@ -241,6 +242,49 @@ func (h *APIHandler) DeleteAPI(c *gin.Context) {
 	c.JSON(http.StatusNoContent, nil)
 }
 
+// DeployAPIRevision deploys an API revision
+func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
+	apiUUID := c.Param("api_uuid")
+	if apiUUID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API UUID is required"))
+		return
+	}
+
+	// Get optional revision ID from query parameter
+	revisionID := c.Query("revisionId")
+
+	// Parse deployment request body
+	var deploymentRequests []dto.APIRevisionDeployment
+	if err := c.ShouldBindJSON(&deploymentRequests); err != nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			err.Error()))
+		return
+	}
+
+	// Validate that we have at least one deployment request
+	if len(deploymentRequests) == 0 {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"At least one deployment configuration is required"))
+		return
+	}
+
+	// Call service to deploy the API
+	deployments, err := h.apiService.DeployAPIRevision(apiUUID, revisionID, deploymentRequests)
+	if err != nil {
+		if errors.Is(err, constants.ErrAPINotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"API not found"))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to deploy API revision"))
+		return
+	}
+
+	c.JSON(http.StatusOK, deployments)
+}
+
 // RegisterRoutes registers all API routes
 func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	// API routes
@@ -250,6 +294,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		apiGroup.GET("/:api_uuid", h.GetAPI)
 		apiGroup.PUT("/:api_uuid", h.UpdateAPI)
 		apiGroup.DELETE("/:api_uuid", h.DeleteAPI)
+		apiGroup.POST("/:api_uuid/deploy-revision", h.DeployAPIRevision)
 	}
 
 	// Project-specific API routes
