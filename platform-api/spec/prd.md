@@ -6,10 +6,11 @@ Provide a unified backend for the API Platform portals, CLI, and automation tool
 
 ## Functional Requirements
 
-- [FR1: Platform Bootstrap](prds/platform-bootstrap.md)
-- [FR2: Organization Management](prds/organization-management.md)
-- [FR3: Project Workspace Management](prds/project-workspace-management.md)
-- [FR4: API Lifecycle Management](prds/api-lifecycle-management.md)
+- [FR1: Platform Bootstrap](prds/platform-bootstrap.md) – Automatic service initialization with configuration, database schema, and HTTPS server startup.
+- [FR2: Organization Management](prds/organization-management.md) – Create and retrieve organizations with unique handles and automatic default project provisioning.
+- [FR3: Project Management](prds/project-management.md) – CRUD operations for organization-scoped projects with duplicate prevention and deletion constraints.
+- [FR4: API Lifecycle Management](prds/api-lifecycle-management.md) – Complete API lifecycle with security, backend, rate limiting, and operation metadata persistence.
+- [FR5: Gateway Management](prds/gateway-management.md) – Gateway registration with secure token management, rotation, revocation, and organization-scoped uniqueness.
 
 ## Non-Functional Requirements
 

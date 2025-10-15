@@ -359,6 +359,222 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /gateways:
+    post:
+      summary: Register a new gateway
+      description: Creates a new gateway within an organization and returns a registration token
+      operationId: createGateway
+      tags:
+        - Gateways
+      requestBody:
+        description: Gateway registration details
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGatewayRequest'
+            example:
+              organizationId: "123e4567-e89b-12d3-a456-426614174000"
+              name: "prod-gateway-01"
+              displayName: "Production Gateway 01"
+      responses:
+        '201':
+          description: Gateway registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Gateway name already exists within organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      summary: List all gateways
+      description: Retrieves a list of all registered gateways, optionally filtered by organization
+      operationId: listGateways
+      tags:
+        - Gateways
+      parameters:
+        - name: organizationId
+          in: query
+          description: Filter gateways by organization UUID
+          required: false
+          schema:
+            type: string
+            format: uuid
+            example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Gateways retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /gateways/{gateway_uuid}:
+    get:
+      summary: Get gateway by UUID
+      description: Retrieves a specific gateway by its UUID
+      operationId: getGateway
+      tags:
+        - Gateways
+      parameters:
+        - name: gateway_uuid
+          in: path
+          required: true
+          description: UUID of the gateway to retrieve
+          schema:
+            type: string
+            format: uuid
+            example: "987e6543-e21b-45d3-a789-426614174999"
+      responses:
+        '200':
+          description: Gateway retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Gateway not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Delete gateway
+      description: Deletes a gateway and all associated tokens
+      operationId: deleteGateway
+      tags:
+        - Gateways
+      parameters:
+        - name: gateway_uuid
+          in: path
+          required: true
+          description: UUID of the gateway to delete
+          schema:
+            type: string
+            format: uuid
+            example: "987e6543-e21b-45d3-a789-426614174999"
+      responses:
+        '204':
+          description: Gateway deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Gateway not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /gateways/{gateway_uuid}/tokens:
+    post:
+      summary: Rotate gateway token
+      description: Generates a new authentication token for the gateway. The existing token remains active to enable zero-downtime rotation.
+      operationId: rotateGatewayToken
+      tags:
+        - Gateway Tokens
+      parameters:
+        - name: gateway_uuid
+          in: path
+          required: true
+          description: UUID of the gateway
+          schema:
+            type: string
+            format: uuid
+            example: "987e6543-e21b-45d3-a789-426614174999"
+      responses:
+        '201':
+          description: New token generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRotationResponse'
+        '400':
+          description: Bad request (e.g., maximum active tokens reached)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Gateway not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /gateways/{gateway_uuid}/tokens/{token_uuid}:
+    delete:
+      summary: Revoke gateway token
+      description: Revokes a specific gateway token. Operation is idempotent - revoking an already-revoked token succeeds.
+      operationId: revokeGatewayToken
+      tags:
+        - Gateway Tokens
+      parameters:
+        - name: gateway_uuid
+          in: path
+          required: true
+          description: UUID of the gateway
+          schema:
+            type: string
+            format: uuid
+            example: "987e6543-e21b-45d3-a789-426614174999"
+        - name: token_uuid
+          in: path
+          required: true
+          description: UUID of the token to revoke
+          schema:
+            type: string
+            format: uuid
+            example: "abc12345-f678-90de-f123-456789abcdef"
+      responses:
+        '200':
+          description: Token revoked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Token revoked successfully"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Gateway or token not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   schemas:
     Organization:
@@ -1043,6 +1259,146 @@ components:
             The number of gateways where the API revision deployment has failed
           example: 1
 
+    CreateGatewayRequest:
+      type: object
+      required:
+        - organizationId
+        - name
+        - displayName
+      properties:
+        organizationId:
+          type: string
+          format: uuid
+          description: UUID of the organization this gateway belongs to
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+          minLength: 3
+          maxLength: 64
+          description: URL-friendly gateway identifier (lowercase alphanumeric with hyphens, unique per organization)
+          example: "prod-gateway-01"
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Human-readable gateway name
+          example: "Production Gateway 01"
+
+    GatewayResponse:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: Unique identifier for the gateway
+          example: "987e6543-e21b-45d3-a789-426614174999"
+        organizationId:
+          type: string
+          format: uuid
+          description: UUID of the organization this gateway belongs to
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          description: URL-friendly gateway identifier
+          example: "prod-gateway-01"
+        displayName:
+          type: string
+          description: Human-readable gateway name
+          example: "Production Gateway 01"
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when gateway was registered
+          example: "2025-10-14T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when gateway was last updated
+          example: "2025-10-14T10:30:00Z"
+
+    GatewayListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in current response
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/GatewayResponse'
+        pagination:
+          type: object
+          required:
+            - total
+            - offset
+            - limit
+          properties:
+            total:
+              type: integer
+              description: Total number of items available across all pages
+              example: 10
+            offset:
+              type: integer
+              description: Zero-based index of first item in current response
+              example: 0
+            limit:
+              type: integer
+              description: Maximum number of items returned per page
+              example: 10
+
+    TokenRotationResponse:
+      type: object
+      properties:
+        tokenUuid:
+          type: string
+          format: uuid
+          description: UUID of the newly generated token
+          example: "def45678-g901-23hi-j456-789012klmnop"
+        token:
+          type: string
+          description: Plain-text new authentication token (only exposed once during rotation)
+          example: "nM8pQ1rT4vW7yZ0bC3eF6hI9kL2nO5qR8tU1wX4zA7cE0fH3jK6mP9sV2yB5dG8i"
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when new token was created
+          example: "2025-10-15T14:20:00Z"
+        message:
+          type: string
+          description: Informational message about token rotation
+          example: "New token generated successfully. Old token remains active until revoked."
+
+    TokenInfoResponse:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: Token UUID
+          example: "abc12345-f678-90de-f123-456789abcdef"
+        status:
+          type: string
+          enum: [active, revoked]
+          description: Current token status
+          example: "active"
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when token was created
+          example: "2025-10-14T10:30:00Z"
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp when token was revoked (null if active)
+          example: null
+
     Error:
       title: Error object returned
       required:
@@ -1157,3 +1513,7 @@ tags:
     description: API management operations
   - name: API Revisions
     description: API revision deployment operations
+  - name: Gateways
+    description: Gateway registration and management operations
+  - name: Gateway Tokens
+    description: Gateway token rotation and revocation operations

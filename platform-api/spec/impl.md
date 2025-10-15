@@ -6,9 +6,10 @@ Bootstrap sequence lives in `cmd/main.go` and `internal/server`, layering config
 
 ## Feature Implementations
 
-- [Platform Bootstrap](impls/platform-bootstrap.md)
-- [Organization Management](impls/organization-management.md)
-- [Project Management](impls/project-workspace-management.md)
-- [API Lifecycle Management](impls/api-lifecycle-management.md)
+- [Platform Bootstrap](impls/platform-bootstrap.md) – Server initialization, database schema setup, and HTTPS startup.
+- [Organization Management](impls/organization-management.md) – Organization creation with unique handles and automatic default project provisioning.
+- [Project Management](impls/project-management.md) – Project lifecycle scoped to organizations with deletion constraints and API ownership validation.
+- [API Lifecycle Management](impls/api-lifecycle-management.md) – Transactional API persistence with security configs, backend services, and operations.
+- [Gateway Management](impls/gateway-management/gateway-management.md) – Gateway registration with secure token generation, rotation, and organization-scoped uniqueness.
 
 Each implementation note captures entrypoints, supporting modules, and verification tips for manual or automated checks.

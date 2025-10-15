@@ -11,8 +11,9 @@ Layered Go service exposing REST endpoints over HTTPS with SQLite persistence an
 - TLS enabled with auto-generated self-signed certificate for development.
 
 ### Service Layer
-- Business logic modules for organizations, projects, and APIs.
+- Business logic modules for organizations, projects, gateways, and APIs.
 - Validation, defaulting, and orchestration across repositories.
+- Gateway token generation, rotation, and verification with SHA-256 hashing and salt.
 
 ### Repository Layer
 - SQL repositories encapsulating CRUD operations and transactions.
@@ -48,3 +49,4 @@ Layered Go service exposing REST endpoints over HTTPS with SQLite persistence an
 - **Portals (API, Management, Enterprise)** → Platform API: fetch and mutate organization/project/API resources.
 - **CLI** → Platform API: automate gateway registration and API lifecycle actions.
 - **Gateway Controller** ← Platform API: receives deployment orchestration data for pushing APIs to gateways.
+- **Gateways** → Platform API: authenticate using secure tokens with SHA-256 hash verification.

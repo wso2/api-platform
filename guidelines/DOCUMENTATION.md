@@ -2,12 +2,37 @@
 
 Guidelines for documenting components in the API Platform.
 
+## Constitution
+
+Each component SHOULD have a `spec/constitution.md` that defines core principles and standards for that component.
+
+**Reference Example**: See [platform-api/spec/constitution.md](../platform-api/spec/constitution.md) for Platform API's constitution covering:
+- Specification-First Development
+- Layered Architecture
+- Security by Default
+- Documentation Traceability
+- RESTful API Standards (including camelCase and list response structure)
+- Data Integrity
+- Container-First Operations
+
+**When to create a constitution:**
+- Component has architectural principles that must be enforced
+- Multiple teams contribute to the component
+- API standards need to be codified (naming, response structures, error formats)
+- Security or compliance requirements exist
+
+**When NOT to create a constitution:**
+- Simple single-purpose components
+- Components with no external API contracts
+- Short-lived experimental projects
+
 ## Principles
 
 1. **No unnecessary content** - Keep content concise and to the point
 2. **Link requirements to implementation** - Every PRD links to its implementation feature
 3. **Single source of truth** - One place for each concept, linked from multiple places
 4. **Developer-first** - Quick start should get developers running immediately
+5. **Follow the constitution** - Adhere to component-specific standards defined in spec/constitution.md
 
 ## Structure
 
@@ -18,6 +43,7 @@ component/
 ├── README.md                    # Quick start + pointer to spec/
 ├── spec/
 │   ├── README.md                # Spec overview
+│   ├── constitution.md          # Core principles and standards (optional)
 │   ├── prd.md                   # Product requirements (links to prds/)
 │   ├── architecture.md          # Architecture overview
 │   ├── design.md                # Design decisions
@@ -74,7 +100,7 @@ See [spec/](spec/) for detailed documentation.
 
 **Must contain:**
 - Product overview (1-2 sentences)
-- Functional requirements (links to prds/)
+- Functional requirements (links to prds/ with short descriptions)
 - Non-functional requirements (brief, 1-2 lines each)
 
 **Must NOT contain:**
@@ -92,8 +118,8 @@ One line description of what the component does.
 
 ## Functional Requirements
 
-- [FR1: Feature Name](prds/feature-name.md)
-- [FR2: Another Feature](prds/another-feature.md)
+- [FR1: Feature Name](prds/feature-name.md) – Short description of what the feature provides.
+- [FR2: Another Feature](prds/another-feature.md) – Short description of what the feature provides.
 
 ## Non-Functional Requirements
 
@@ -209,7 +235,7 @@ One sentence about design approach.
 - Base/foundation references
 - Key files list
 - Requirements (versions)
-- Links to implementation features
+- Links to implementation features with short descriptions
 
 **Must NOT contain:**
 - Detailed implementation steps
@@ -240,8 +266,8 @@ One sentence about implementation.
 
 ## Features
 
-- [Feature 1](impls/feature-1.md)
-- [Feature 2](impls/feature-2.md)
+- [Feature 1](impls/feature-1.md) – Short description of what the feature implements.
+- [Feature 2](impls/feature-2.md) – Short description of what the feature implements.
 ```
 
 ### spec/impls/feature.md
@@ -307,6 +333,80 @@ Problem and solution.
 
 - [Other Feature](./other-feature.md)
 ```
+
+### spec/impls/feature-name/ (Complex Features)
+
+For complex features that require detailed design artifacts, use a directory structure:
+
+```
+spec/impls/feature-name/
+├── feature-name.md              # Main implementation doc
+└── artifacts/                   # Supporting design documents
+    ├── spec.md                  # Detailed specification
+    ├── plan.md                  # Implementation plan
+    ├── data-model.md            # Data model and schemas
+    └── openapi-*.yaml           # API contracts
+```
+
+**Main implementation file (feature-name.md) must contain:**
+- Entry Points (key files with one-line descriptions)
+- Behaviour (how the feature works)
+- Data Model (key database schemas if applicable)
+- Key Technical Decisions
+- Verification (curl commands with expected responses)
+- Design Artifacts (links to artifacts/ directory)
+- Related Features
+- Future Enhancements
+
+**Must NOT contain:**
+- Verbose explanations
+- Detailed planning process
+- Branch names or dates
+- Session notes
+
+**Artifacts directory (artifacts/) contains:**
+
+**spec.md** - Detailed feature specification:
+- Overview (what the feature does)
+- Clarifications (questions and answers from planning)
+- User Scenarios & Testing (user stories with acceptance criteria)
+- Requirements (functional requirements list)
+- Key Entities
+- Success Criteria
+- Assumptions
+
+**plan.md** - Implementation plan:
+- Overview
+- Constitution Compliance Check
+- Technical Context (stack, dependencies, integration points)
+- Implementation Phases
+- Testing Strategy
+- References
+
+**data-model.md** - Data model design:
+- Entity Relationship Diagram
+- Entity definitions with attributes and validation rules
+- State Transitions
+- Domain Models (code structs)
+- DTOs
+- Database Schema (SQL)
+- Business Rules
+- API Resource Structure
+
+**openapi-*.yaml** - API contract (OpenAPI specification)
+
+**When to use this structure:**
+- Feature has complex data model with multiple entities
+- Feature requires detailed planning artifacts
+- Feature has multiple implementation phases
+- You want to preserve design decisions and planning context
+
+**When NOT to use this structure:**
+- Simple features with < 3 files changed
+- Minor enhancements to existing features
+- Bug fixes
+
+**Example reference:** See `platform-api/spec/impls/gateway-management/` for complete example.
 
 ## Linking Rules
 

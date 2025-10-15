@@ -8,7 +8,7 @@ Service follows a clean layering pattern that separates HTTP handling, business 
 
 - **Configuration**: `config.GetConfig` loads environment variables once and seeds database settings.
 - **Server Wiring**: `internal/server.StartPlatformAPIServer` constructs repositories, services, and Gin routes.
-- **Domain Services**: Organization, project, and API services encapsulate validation and cross-entity coordination.
+- **Domain Services**: Organization, project, gateway, and API services encapsulate validation and cross-entity coordination.
 - **Persistence**: Repositories execute SQL statements and manage cascading writes in transactions.
 
 ## Key Decisions
@@ -18,3 +18,6 @@ Service follows a clean layering pattern that separates HTTP handling, business 
 3. **Gin Framework** – Leverages performant routing and JSON handling while keeping middleware extensible.
 4. **Transactional API Writes** – Complex API structures (security, operations) persist within a single transaction to maintain integrity.
 5. **TLS by Default** – Service always starts with HTTPS, generating self-signed certificates when none are supplied to encourage secure defaults.
+6. **Gateway Token Security** – SHA-256 hash with unique salt per token, constant-time verification using `crypto/subtle`, 32-byte tokens from `crypto/rand`, never store plain-text.
+7. **Zero-Downtime Token Rotation** – Maximum 2 active tokens allows overlap period for gateway reconfiguration without service interruption.
+8. **Organization-Scoped Uniqueness** – Composite unique constraint `(organization_id, name)` prevents duplicate gateway names within organizations while allowing cross-organization reuse.

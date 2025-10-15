@@ -92,3 +92,13 @@ yarn-debug.log*
 *.DS_Store
 
 data
+
+# Go-specific patterns
+*.exe
+*.test
+*.out
+vendor/
+__debug_bin
+*.db
+*.sqlite
+*.sqlite3
