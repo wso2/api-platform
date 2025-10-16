@@ -1,0 +1,34 @@
+## Purpose
+> Explain **why** this feature or fix is required. Describe the underlying problems, issues, or needs driving this feature/fix and include links to related issues in the following format: Resolves issue1, issue2, etc.
+
+## Goals
+> Describe **what solutions** this feature or fix introduces to address the problems outlined above.
+
+## Approach
+> Describe **how** you are implementing the solutions. Include an animated GIF or screenshot if the change affects the UI. Include a link to a Markdown file or Google doc if the feature write-up is too long to paste here.
+
+## User stories
+> Summary of user stories addressed by this change>
+
+## Documentation
+> Link(s) to product documentation that addresses the changes of this PR. If no doc impact, enter “N/A” plus brief explanation of why there’s no doc impact
+
+## Automation tests
+ - Unit tests 
+   > Code coverage information
+ - Integration tests
+   > Details about the test cases and coverage
+
+## Security checks
+ - Followed secure coding standards in http://wso2.com/technical-reports/wso2-secure-engineering-guidelines? yes/no
+ - Ran FindSecurityBugs plugin and verified report? yes/no
+ - Confirmed that this PR doesn't commit any keys, passwords, tokens, usernames, or other secrets? yes/no
+
+## Samples
+> Provide high-level details about the samples related to this feature
+
+## Related PRs
+> List any other related PRs
+
+## Test environment
+> List all JDK versions, operating systems, databases, and browser/versions on which this feature/fix was tested
