@@ -29,8 +29,18 @@ type Server struct {
 	//Logger   logging.Logger
 
 	// Database configurations
-	Database     Database `envconfig:"DATABASE"`
-	DBSchemaPath string   `envconfig:"DB_SCHEMA_PATH" default:"./internal/database/schema.sql"`
+	Database     Database  `envconfig:"DATABASE"`
+	DBSchemaPath string    `envconfig:"DB_SCHEMA_PATH" default:"./internal/database/schema.sql"`
+
+	// WebSocket configurations
+	WebSocket    WebSocket `envconfig:"WEBSOCKET"`
+}
+
+// WebSocket holds WebSocket-specific configuration
+type WebSocket struct {
+	MaxConnections    int `envconfig:"WS_MAX_CONNECTIONS" default:"1000"`
+	ConnectionTimeout int `envconfig:"WS_CONNECTION_TIMEOUT" default:"30"` // seconds
+	RateLimitPerMin   int `envconfig:"WS_RATE_LIMIT_PER_MINUTE" default:"10"`
 }
 
 // Database holds database-specific configuration
