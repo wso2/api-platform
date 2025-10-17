@@ -18,9 +18,11 @@ servers:
 paths:
   /organizations:
     post:
-      summary: Create a new organization
-      description: Creates a new organization with a unique handle
-      operationId: createOrganization
+      summary: Register a new organization
+      description: |
+        Registers a new organization with a unique UUID and handle. 
+        This endpoint is used during the organization onboarding process.
+      operationId: registerOrganization
       tags:
         - Organizations
       requestBody:
@@ -32,7 +34,7 @@ paths:
               $ref: '#/components/schemas/Organization'
       responses:
         '201':
-          description: Organization created successfully
+          description: Organization registered successfully
           content:
             application/json:
               schema:
@@ -580,6 +582,7 @@ components:
     Organization:
       type: object
       required:
+        - uuid
         - handle
       properties:
         uuid:
@@ -592,11 +595,11 @@ components:
           description: URL-friendly unique handle for the organization
           pattern: '^[a-z0-9-]+$'
           minLength: 1
-          example: "wso2"
+          example: "acme"
         name:
           type: string
           description: Display name of the organization
-          example: "WSO2"
+          example: "Acme Corporation"
         created_at:
           type: string
           format: date-time
@@ -606,7 +609,7 @@ components:
           type: string
           format: date-time
           description: Timestamp when the organization was last updated
-          example: "2023-10-12T10:30:00Z"
+          example: "Acme Corporation"
 
     Project:
       type: object
