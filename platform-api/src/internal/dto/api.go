@@ -23,16 +23,16 @@ import (
 
 // API represents an API entity in the platform
 type API struct {
-	UUID             string              `json:"uuid,omitempty" yaml:"uuid,omitempty"`
+	ID               string              `json:"id,omitempty" yaml:"id,omitempty"`
 	Name             string              `json:"name" yaml:"name"`
 	DisplayName      string              `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 	Description      string              `json:"description,omitempty" yaml:"description,omitempty"`
 	Context          string              `json:"context" yaml:"context"`
 	Version          string              `json:"version" yaml:"version"`
 	Provider         string              `json:"provider,omitempty" yaml:"provider,omitempty"`
-	ProjectID        string              `json:"project_id" yaml:"project_id"`
-	CreatedAt        time.Time           `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-	UpdatedAt        time.Time           `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	ProjectID        string              `json:"projectId" yaml:"projectId"`
+	CreatedAt        time.Time           `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
+	UpdatedAt        time.Time           `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 	LifeCycleStatus  string              `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`
 	HasThumbnail     bool                `json:"hasThumbnail,omitempty" yaml:"hasThumbnail,omitempty"`
 	IsDefaultVersion bool                `json:"isDefaultVersion,omitempty" yaml:"isDefaultVersion,omitempty"`
@@ -256,4 +256,11 @@ type APIYAMLData struct {
 	BackendServices []BackendService    `yaml:"backend-services,omitempty"`
 	APIRateLimiting *RateLimitingConfig `yaml:"api-rate-limiting,omitempty"`
 	Operations      []Operation         `yaml:"operations,omitempty"`
+}
+
+// APIListResponse represents a paginated list of APIs (constitution-compliant)
+type APIListResponse struct {
+	Count      int        `json:"count" yaml:"count"`           // Number of items in current response
+	List       []*API     `json:"list" yaml:"list"`             // Array of API objects
+	Pagination Pagination `json:"pagination" yaml:"pagination"` // Pagination metadata
 }

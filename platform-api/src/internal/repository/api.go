@@ -56,7 +56,7 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 
 	securityEnabled := api.Security != nil && api.Security.Enabled
 
-	_, err = tx.Exec(apiQuery, api.UUID, api.Name, api.DisplayName, api.Description,
+	_, err = tx.Exec(apiQuery, api.ID, api.Name, api.DisplayName, api.Description,
 		api.Context, api.Version, api.Provider, api.ProjectID, api.LifeCycleStatus,
 		api.HasThumbnail, api.IsDefaultVersion, api.IsRevision, api.RevisionedAPIID,
 		api.RevisionID, api.Type, string(transportJSON), securityEnabled, api.CreatedAt, api.UpdatedAt)
@@ -66,42 +66,42 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 
 	// Insert MTLS configuration
 	if api.MTLS != nil {
-		if err := r.insertMTLSConfig(tx, api.UUID, api.MTLS); err != nil {
+		if err := r.insertMTLSConfig(tx, api.ID, api.MTLS); err != nil {
 			return err
 		}
 	}
 
 	// Insert Security configuration
 	if api.Security != nil {
-		if err := r.insertSecurityConfig(tx, api.UUID, api.Security); err != nil {
+		if err := r.insertSecurityConfig(tx, api.ID, api.Security); err != nil {
 			return err
 		}
 	}
 
 	// Insert CORS configuration
 	if api.CORS != nil {
-		if err := r.insertCORSConfig(tx, api.UUID, api.CORS); err != nil {
+		if err := r.insertCORSConfig(tx, api.ID, api.CORS); err != nil {
 			return err
 		}
 	}
 
 	// Insert Backend Services
 	for _, backendService := range api.BackendServices {
-		if err := r.insertBackendService(tx, api.UUID, &backendService); err != nil {
+		if err := r.insertBackendService(tx, api.ID, &backendService); err != nil {
 			return err
 		}
 	}
 
 	// Insert API Rate Limiting
 	if api.APIRateLimiting != nil {
-		if err := r.insertRateLimitingConfig(tx, api.UUID, api.APIRateLimiting); err != nil {
+		if err := r.insertRateLimitingConfig(tx, api.ID, api.APIRateLimiting); err != nil {
 			return err
 		}
 	}
 
 	// Insert Operations
 	for _, operation := range api.Operations {
-		if err := r.insertOperation(tx, api.UUID, &operation); err != nil {
+		if err := r.insertOperation(tx, api.ID, &operation); err != nil {
 			return err
 		}
 	}
@@ -109,8 +109,8 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 	return tx.Commit()
 }
 
-// GetAPIByUUID retrieves an API by UUID with all its configurations
-func (r *APIRepo) GetAPIByUUID(uuid string) (*model.API, error) {
+// GetAPIByUUID retrieves an API by ID with all its configurations
+func (r *APIRepo) GetAPIByUUID(apiId string) (*model.API, error) {
 	api := &model.API{}
 
 	query := `
@@ -122,8 +122,8 @@ func (r *APIRepo) GetAPIByUUID(uuid string) (*model.API, error) {
 
 	var transportJSON string
 	var securityEnabled bool
-	err := r.db.QueryRow(query, uuid).Scan(
-		&api.UUID, &api.Name, &api.DisplayName, &api.Description, &api.Context,
+	err := r.db.QueryRow(query, apiId).Scan(
+		&api.ID, &api.Name, &api.DisplayName, &api.Description, &api.Context,
 		&api.Version, &api.Provider, &api.ProjectID, &api.LifeCycleStatus,
 		&api.HasThumbnail, &api.IsDefaultVersion, &api.IsRevision,
 		&api.RevisionedAPIID, &api.RevisionID, &api.Type, &transportJSON,
@@ -170,7 +170,7 @@ func (r *APIRepo) GetAPIsByProjectID(projectID string) ([]*model.API, error) {
 		var transportJSON string
 		var securityEnabled bool
 
-		err := rows.Scan(&api.UUID, &api.Name, &api.DisplayName, &api.Description,
+		err := rows.Scan(&api.ID, &api.Name, &api.DisplayName, &api.Description,
 			&api.Context, &api.Version, &api.Provider, &api.ProjectID,
 			&api.LifeCycleStatus, &api.HasThumbnail, &api.IsDefaultVersion,
 			&api.IsRevision, &api.RevisionedAPIID, &api.RevisionID, &api.Type,
@@ -221,49 +221,49 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 		api.Provider, api.LifeCycleStatus,
 		api.HasThumbnail, api.IsDefaultVersion, api.IsRevision,
 		api.RevisionedAPIID, api.RevisionID, api.Type, string(transportJSON),
-		securityEnabled, api.UpdatedAt, api.UUID)
+		securityEnabled, api.UpdatedAt, api.ID)
 	if err != nil {
 		return err
 	}
 
 	// Delete existing configurations and re-insert
-	if err := r.deleteAPIConfigurations(tx, api.UUID); err != nil {
+	if err := r.deleteAPIConfigurations(tx, api.ID); err != nil {
 		return err
 	}
 
 	// Re-insert configurations
 	if api.MTLS != nil {
-		if err := r.insertMTLSConfig(tx, api.UUID, api.MTLS); err != nil {
+		if err := r.insertMTLSConfig(tx, api.ID, api.MTLS); err != nil {
 			return err
 		}
 	}
 
 	if api.Security != nil {
-		if err := r.insertSecurityConfig(tx, api.UUID, api.Security); err != nil {
+		if err := r.insertSecurityConfig(tx, api.ID, api.Security); err != nil {
 			return err
 		}
 	}
 
 	if api.CORS != nil {
-		if err := r.insertCORSConfig(tx, api.UUID, api.CORS); err != nil {
+		if err := r.insertCORSConfig(tx, api.ID, api.CORS); err != nil {
 			return err
 		}
 	}
 
 	for _, backendService := range api.BackendServices {
-		if err := r.insertBackendService(tx, api.UUID, &backendService); err != nil {
+		if err := r.insertBackendService(tx, api.ID, &backendService); err != nil {
 			return err
 		}
 	}
 
 	if api.APIRateLimiting != nil {
-		if err := r.insertRateLimitingConfig(tx, api.UUID, api.APIRateLimiting); err != nil {
+		if err := r.insertRateLimitingConfig(tx, api.ID, api.APIRateLimiting); err != nil {
 			return err
 		}
 	}
 
 	for _, operation := range api.Operations {
-		if err := r.insertOperation(tx, api.UUID, &operation); err != nil {
+		if err := r.insertOperation(tx, api.ID, &operation); err != nil {
 			return err
 		}
 	}
@@ -272,11 +272,11 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 }
 
 // DeleteAPI removes an API and all its configurations
-func (r *APIRepo) DeleteAPI(uuid string) error {
+func (r *APIRepo) DeleteAPI(apiId string) error {
 	// Due to foreign key constraints with CASCADE, deleting the main API record
 	// will automatically delete all related configurations
 	query := `DELETE FROM apis WHERE uuid = ?`
-	_, err := r.db.Exec(query, uuid)
+	_, err := r.db.Exec(query, apiId)
 	return err
 }
 
@@ -284,42 +284,42 @@ func (r *APIRepo) DeleteAPI(uuid string) error {
 
 func (r *APIRepo) loadAPIConfigurations(api *model.API) error {
 	// Load MTLS configuration
-	if mtls, err := r.loadMTLSConfig(api.UUID); err != nil {
+	if mtls, err := r.loadMTLSConfig(api.ID); err != nil {
 		return err
 	} else if mtls != nil {
 		api.MTLS = mtls
 	}
 
 	// Load Security configuration
-	if security, err := r.loadSecurityConfig(api.UUID); err != nil {
+	if security, err := r.loadSecurityConfig(api.ID); err != nil {
 		return err
 	} else if security != nil {
 		api.Security = security
 	}
 
 	// Load CORS configuration
-	if cors, err := r.loadCORSConfig(api.UUID); err != nil {
+	if cors, err := r.loadCORSConfig(api.ID); err != nil {
 		return err
 	} else if cors != nil {
 		api.CORS = cors
 	}
 
 	// Load Backend Services
-	if backendServices, err := r.loadBackendServices(api.UUID); err != nil {
+	if backendServices, err := r.loadBackendServices(api.ID); err != nil {
 		return err
 	} else {
 		api.BackendServices = backendServices
 	}
 
 	// Load Rate Limiting configuration
-	if rateLimiting, err := r.loadRateLimitingConfig(api.UUID); err != nil {
+	if rateLimiting, err := r.loadRateLimitingConfig(api.ID); err != nil {
 		return err
 	} else if rateLimiting != nil {
 		api.APIRateLimiting = rateLimiting
 	}
 
 	// Load Operations
-	if operations, err := r.loadOperations(api.UUID); err != nil {
+	if operations, err := r.loadOperations(api.ID); err != nil {
 		return err
 	} else {
 		api.Operations = operations
@@ -329,25 +329,25 @@ func (r *APIRepo) loadAPIConfigurations(api *model.API) error {
 }
 
 // Helper methods for MTLS configuration
-func (r *APIRepo) insertMTLSConfig(tx *sql.Tx, apiUUID string, mtls *model.MTLSConfig) error {
+func (r *APIRepo) insertMTLSConfig(tx *sql.Tx, apiId string, mtls *model.MTLSConfig) error {
 	query := `
 		INSERT INTO api_mtls_config (api_uuid, enabled, enforce_if_client_cert_present,
 			verify_client, client_cert, client_key, ca_cert)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := tx.Exec(query, apiUUID, mtls.Enabled, mtls.EnforceIfClientCertPresent,
+	_, err := tx.Exec(query, apiId, mtls.Enabled, mtls.EnforceIfClientCertPresent,
 		mtls.VerifyClient, mtls.ClientCert, mtls.ClientKey, mtls.CACert)
 	return err
 }
 
-func (r *APIRepo) loadMTLSConfig(apiUUID string) (*model.MTLSConfig, error) {
+func (r *APIRepo) loadMTLSConfig(apiId string) (*model.MTLSConfig, error) {
 	mtls := &model.MTLSConfig{}
 	query := `
 		SELECT enabled, enforce_if_client_cert_present, verify_client,
 			client_cert, client_key, ca_cert
 		FROM api_mtls_config WHERE api_uuid = ?
 	`
-	err := r.db.QueryRow(query, apiUUID).Scan(&mtls.Enabled,
+	err := r.db.QueryRow(query, apiId).Scan(&mtls.Enabled,
 		&mtls.EnforceIfClientCertPresent, &mtls.VerifyClient,
 		&mtls.ClientCert, &mtls.ClientKey, &mtls.CACert)
 	if err != nil {
@@ -360,14 +360,14 @@ func (r *APIRepo) loadMTLSConfig(apiUUID string) (*model.MTLSConfig, error) {
 }
 
 // Helper methods for Security configuration
-func (r *APIRepo) insertSecurityConfig(tx *sql.Tx, apiUUID string, security *model.SecurityConfig) error {
+func (r *APIRepo) insertSecurityConfig(tx *sql.Tx, apiId string, security *model.SecurityConfig) error {
 	// Insert API Key security if present
 	if security.APIKey != nil {
 		apiKeyQuery := `
 			INSERT INTO api_key_security (api_uuid, enabled, header, query, cookie)
 			VALUES (?, ?, ?, ?, ?)
 		`
-		_, err := tx.Exec(apiKeyQuery, apiUUID, security.APIKey.Enabled,
+		_, err := tx.Exec(apiKeyQuery, apiId, security.APIKey.Enabled,
 			security.APIKey.Header, security.APIKey.Query, security.APIKey.Cookie)
 		if err != nil {
 			return err
@@ -408,7 +408,7 @@ func (r *APIRepo) insertSecurityConfig(tx *sql.Tx, apiUUID string, security *mod
 				password_enabled, client_credentials_enabled, scopes)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
-		_, err := tx.Exec(oauth2Query, apiUUID, true, authCodeEnabled, authCodeCallback,
+		_, err := tx.Exec(oauth2Query, apiId, true, authCodeEnabled, authCodeCallback,
 			implicitEnabled, implicitCallback, passwordEnabled, clientCredEnabled, string(scopesJSON))
 		if err != nil {
 			return err
@@ -418,7 +418,7 @@ func (r *APIRepo) insertSecurityConfig(tx *sql.Tx, apiUUID string, security *mod
 	return nil
 }
 
-func (r *APIRepo) loadSecurityConfig(apiUUID string) (*model.SecurityConfig, error) {
+func (r *APIRepo) loadSecurityConfig(apiId string) (*model.SecurityConfig, error) {
 	security := &model.SecurityConfig{Enabled: true}
 
 	// Load API Key security
@@ -427,7 +427,7 @@ func (r *APIRepo) loadSecurityConfig(apiUUID string) (*model.SecurityConfig, err
 		SELECT enabled, header, query, cookie 
 		FROM api_key_security WHERE api_uuid = ?
 	`
-	err := r.db.QueryRow(apiKeyQuery, apiUUID).Scan(&apiKey.Enabled,
+	err := r.db.QueryRow(apiKeyQuery, apiId).Scan(&apiKey.Enabled,
 		&apiKey.Header, &apiKey.Query, &apiKey.Cookie)
 	if err == nil {
 		security.APIKey = apiKey
@@ -447,7 +447,7 @@ func (r *APIRepo) loadSecurityConfig(apiUUID string) (*model.SecurityConfig, err
 		FROM oauth2_security WHERE api_uuid = ?
 	`
 	var enabled bool
-	err = r.db.QueryRow(oauth2Query, apiUUID).Scan(&enabled, &authCodeEnabled, &authCodeCallback,
+	err = r.db.QueryRow(oauth2Query, apiId).Scan(&enabled, &authCodeEnabled, &authCodeCallback,
 		&implicitEnabled, &implicitCallback, &passwordEnabled, &clientCredEnabled, &scopesJSON)
 	if err == nil {
 		if scopesJSON != "" {
@@ -489,26 +489,26 @@ func (r *APIRepo) loadSecurityConfig(apiUUID string) (*model.SecurityConfig, err
 }
 
 // Helper methods for CORS configuration
-func (r *APIRepo) insertCORSConfig(tx *sql.Tx, apiUUID string, cors *model.CORSConfig) error {
+func (r *APIRepo) insertCORSConfig(tx *sql.Tx, apiId string, cors *model.CORSConfig) error {
 	query := `
 		INSERT INTO api_cors_config (api_uuid, enabled, allow_origins, allow_methods,
 			allow_headers, expose_headers, max_age, allow_credentials)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := tx.Exec(query, apiUUID, cors.Enabled, cors.AllowOrigins,
+	_, err := tx.Exec(query, apiId, cors.Enabled, cors.AllowOrigins,
 		cors.AllowMethods, cors.AllowHeaders, cors.ExposeHeaders,
 		cors.MaxAge, cors.AllowCredentials)
 	return err
 }
 
-func (r *APIRepo) loadCORSConfig(apiUUID string) (*model.CORSConfig, error) {
+func (r *APIRepo) loadCORSConfig(apiId string) (*model.CORSConfig, error) {
 	cors := &model.CORSConfig{}
 	query := `
 		SELECT enabled, allow_origins, allow_methods, allow_headers,
 			expose_headers, max_age, allow_credentials
 		FROM api_cors_config WHERE api_uuid = ?
 	`
-	err := r.db.QueryRow(query, apiUUID).Scan(&cors.Enabled, &cors.AllowOrigins,
+	err := r.db.QueryRow(query, apiId).Scan(&cors.Enabled, &cors.AllowOrigins,
 		&cors.AllowMethods, &cors.AllowHeaders, &cors.ExposeHeaders,
 		&cors.MaxAge, &cors.AllowCredentials)
 	if err != nil {
@@ -521,7 +521,7 @@ func (r *APIRepo) loadCORSConfig(apiUUID string) (*model.CORSConfig, error) {
 }
 
 // Helper methods for Backend Services
-func (r *APIRepo) insertBackendService(tx *sql.Tx, apiUUID string, service *model.BackendService) error {
+func (r *APIRepo) insertBackendService(tx *sql.Tx, apiId string, service *model.BackendService) error {
 	// Build timeout and load balance values
 	var timeoutConnect, timeoutRead, timeoutWrite *int
 	if service.Timeout != nil {
@@ -554,7 +554,7 @@ func (r *APIRepo) insertBackendService(tx *sql.Tx, apiUUID string, service *mode
 			max_connections, max_pending_requests, max_requests, max_retries)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	result, err := tx.Exec(serviceQuery, apiUUID, service.Name, service.IsDefault,
+	result, err := tx.Exec(serviceQuery, apiId, service.Name, service.IsDefault,
 		timeoutConnect, timeoutRead, timeoutWrite, service.Retries, lbAlgorithm, lbFailover,
 		cbEnabled, maxConnections, maxPendingRequests, maxRequests, maxRetries)
 	if err != nil {
@@ -613,14 +613,14 @@ func (r *APIRepo) insertBackendEndpoint(tx *sql.Tx, serviceID int64, endpoint *m
 	return err
 }
 
-func (r *APIRepo) loadBackendServices(apiUUID string) ([]model.BackendService, error) {
+func (r *APIRepo) loadBackendServices(apiId string) ([]model.BackendService, error) {
 	query := `
 		SELECT id, name, is_default, timeout_connect_ms, timeout_read_ms, timeout_write_ms, retries,
 			loadBalanace_algorithm, loadBalanace_failover, circuit_breaker_enabled, max_connections,
 			max_pending_requests, max_requests, max_retries
 		FROM backend_services WHERE api_uuid = ?
 	`
-	rows, err := r.db.Query(query, apiUUID)
+	rows, err := r.db.Query(query, apiId)
 	if err != nil {
 		return nil, err
 	}
@@ -746,24 +746,24 @@ func (r *APIRepo) loadBackendEndpoints(serviceID int64) ([]model.BackendEndpoint
 }
 
 // Helper methods for Rate Limiting configuration
-func (r *APIRepo) insertRateLimitingConfig(tx *sql.Tx, apiUUID string, rateLimiting *model.RateLimitingConfig) error {
+func (r *APIRepo) insertRateLimitingConfig(tx *sql.Tx, apiId string, rateLimiting *model.RateLimitingConfig) error {
 	query := `
 		INSERT INTO api_rate_limiting (api_uuid, enabled, rate_limit_count,
 			rate_limit_time_unit, stop_on_quota_reach)
 		VALUES (?, ?, ?, ?, ?)
 	`
-	_, err := tx.Exec(query, apiUUID, rateLimiting.Enabled, rateLimiting.RateLimitCount,
+	_, err := tx.Exec(query, apiId, rateLimiting.Enabled, rateLimiting.RateLimitCount,
 		rateLimiting.RateLimitTimeUnit, rateLimiting.StopOnQuotaReach)
 	return err
 }
 
-func (r *APIRepo) loadRateLimitingConfig(apiUUID string) (*model.RateLimitingConfig, error) {
+func (r *APIRepo) loadRateLimitingConfig(apiId string) (*model.RateLimitingConfig, error) {
 	rateLimiting := &model.RateLimitingConfig{}
 	query := `
 		SELECT enabled, rate_limit_count, rate_limit_time_unit, stop_on_quota_reach
 		FROM api_rate_limiting WHERE api_uuid = ?
 	`
-	err := r.db.QueryRow(query, apiUUID).Scan(&rateLimiting.Enabled,
+	err := r.db.QueryRow(query, apiId).Scan(&rateLimiting.Enabled,
 		&rateLimiting.RateLimitCount, &rateLimiting.RateLimitTimeUnit,
 		&rateLimiting.StopOnQuotaReach)
 	if err != nil {
@@ -776,7 +776,7 @@ func (r *APIRepo) loadRateLimitingConfig(apiUUID string) (*model.RateLimitingCon
 }
 
 // Helper methods for Operations
-func (r *APIRepo) insertOperation(tx *sql.Tx, apiUUID string, operation *model.Operation) error {
+func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, operation *model.Operation) error {
 	var authRequired bool
 	var scopesJSON string
 	if operation.Request.Authentication != nil {
@@ -792,7 +792,7 @@ func (r *APIRepo) insertOperation(tx *sql.Tx, apiUUID string, operation *model.O
 		INSERT INTO api_operations (api_uuid, name, description, method, path, authentication_required, scopes)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
-	result, err := tx.Exec(opQuery, apiUUID, operation.Name, operation.Description,
+	result, err := tx.Exec(opQuery, apiId, operation.Name, operation.Description,
 		operation.Request.Method, operation.Request.Path, authRequired, scopesJSON)
 	if err != nil {
 		return err
@@ -842,12 +842,12 @@ func (r *APIRepo) insertPolicy(tx *sql.Tx, operationID int64, flowDirection stri
 	return err
 }
 
-func (r *APIRepo) loadOperations(apiUUID string) ([]model.Operation, error) {
+func (r *APIRepo) loadOperations(apiId string) ([]model.Operation, error) {
 	query := `
 		SELECT id, name, description, method, path, authentication_required, scopes 
 		FROM api_operations WHERE api_uuid = ?
 	`
-	rows, err := r.db.Query(query, apiUUID)
+	rows, err := r.db.Query(query, apiId)
 	if err != nil {
 		return nil, err
 	}
@@ -953,7 +953,7 @@ func (r *APIRepo) loadPolicies(operationID int64, flowDirection string) ([]model
 }
 
 // Helper method to delete all API configurations (used in Update)
-func (r *APIRepo) deleteAPIConfigurations(tx *sql.Tx, apiUUID string) error {
+func (r *APIRepo) deleteAPIConfigurations(tx *sql.Tx, apiId string) error {
 	// Delete in reverse order of dependencies
 	queries := []string{
 		`DELETE FROM policies WHERE operation_id IN (SELECT id FROM api_operations WHERE api_uuid = ?)`,
@@ -969,7 +969,7 @@ func (r *APIRepo) deleteAPIConfigurations(tx *sql.Tx, apiUUID string) error {
 	}
 
 	for _, query := range queries {
-		if _, err := tx.Exec(query, apiUUID); err != nil {
+		if _, err := tx.Exec(query, apiId); err != nil {
 			return err
 		}
 	}

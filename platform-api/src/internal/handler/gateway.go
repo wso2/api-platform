@@ -66,7 +66,7 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 		}
 
 		if strings.Contains(errMsg, "required") || strings.Contains(errMsg, "invalid") ||
-		   strings.Contains(errMsg, "must") || strings.Contains(errMsg, "cannot") {
+			strings.Contains(errMsg, "must") || strings.Contains(errMsg, "cannot") {
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", errMsg))
 			return
 		}
@@ -101,17 +101,17 @@ func (h *GatewayHandler) ListGateways(c *gin.Context) {
 	c.JSON(http.StatusOK, listResponse)
 }
 
-// GetGateway handles GET /api/v1/gateways/:uuid
+// GetGateway handles GET /api/v1/gateways/:gatewayId
 func (h *GatewayHandler) GetGateway(c *gin.Context) {
 	// Extract UUID path parameter
-	uuid := c.Param("uuid")
-	if uuid == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Gateway UUID is required"))
+	gatewayId := c.Param("gatewayId")
+	if gatewayId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Gateway ID is required"))
 		return
 	}
 
 	// Call service to get gateway
-	gateway, err := h.gatewayService.GetGateway(uuid)
+	gateway, err := h.gatewayService.GetGateway(gatewayId)
 	if err != nil {
 		errMsg := err.Error()
 
@@ -135,17 +135,17 @@ func (h *GatewayHandler) GetGateway(c *gin.Context) {
 	c.JSON(http.StatusOK, gateway)
 }
 
-// RotateToken handles POST /api/v1/gateways/:uuid/tokens
+// RotateToken handles POST /api/v1/gateways/:gatewayId/tokens
 func (h *GatewayHandler) RotateToken(c *gin.Context) {
-	// Extract UUID path parameter
-	uuid := c.Param("uuid")
-	if uuid == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Gateway UUID is required"))
+	// Extract ID path parameter
+	gatewayId := c.Param("gatewayId")
+	if gatewayId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Gateway ID is required"))
 		return
 	}
 
 	// Call service to rotate token
-	response, err := h.gatewayService.RotateToken(uuid)
+	response, err := h.gatewayService.RotateToken(gatewayId)
 	if err != nil {
 		errMsg := err.Error()
 
@@ -175,7 +175,7 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		gatewayGroup.POST("", h.CreateGateway)
 		gatewayGroup.GET("", h.ListGateways)
-		gatewayGroup.GET("/:uuid", h.GetGateway)
-		gatewayGroup.POST("/:uuid/tokens", h.RotateToken)
+		gatewayGroup.GET("/:gatewayId", h.GetGateway)
+		gatewayGroup.POST("/:gatewayId/tokens", h.RotateToken)
 	}
 }

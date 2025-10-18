@@ -15,22 +15,11 @@
  *
  */
 
-package model
+package dto
 
-import (
-	"time"
-)
-
-// Organization represents an organization entity in the API management platform
-type Organization struct {
-	ID        string    `json:"id" db:"uuid"`
-	Handle    string    `json:"handle" db:"handle"`
-	Name      string    `json:"name" db:"name"`
-	CreatedAt time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt time.Time `json:"updatedAt" db:"updated_at"`
-}
-
-// TableName returns the table name for the Organization model
-func (Organization) TableName() string {
-	return "organizations"
+// Pagination contains pagination metadata for list responses
+type Pagination struct {
+	Total  int `json:"total" yaml:"total"`   // Total number of items available across all pages
+	Offset int `json:"offset" yaml:"offset"` // Zero-based index of first item in current response
+	Limit  int `json:"limit" yaml:"limit"`   // Maximum number of items returned per page
 }

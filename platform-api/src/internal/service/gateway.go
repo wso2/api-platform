@@ -75,11 +75,11 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName string) (*dto.
 	}
 
 	// 4. Generate UUID for gateway
-	gatewayUUID := uuid.New().String()
+	gatewayId := uuid.New().String()
 
 	// 5. Create Gateway model
 	gateway := &model.Gateway{
-		UUID:           gatewayUUID,
+		ID:             gatewayId,
 		OrganizationID: orgID,
 		Name:           name,
 		DisplayName:    displayName,
@@ -103,15 +103,15 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName string) (*dto.
 	saltHex := hex.EncodeToString(saltBytes)
 
 	// 8. Create GatewayToken model
-	tokenUUID := uuid.New().String()
+	tokenId := uuid.New().String()
 	gatewayToken := &model.GatewayToken{
-		UUID:        tokenUUID,
-		GatewayUUID: gatewayUUID,
-		TokenHash:   tokenHash,
-		Salt:        saltHex,
-		Status:      "active",
-		CreatedAt:   time.Now(),
-		RevokedAt:   nil,
+		ID:        tokenId,
+		GatewayID: gatewayId,
+		TokenHash: tokenHash,
+		Salt:      saltHex,
+		Status:    "active",
+		CreatedAt: time.Now(),
+		RevokedAt: nil,
 	}
 
 	// 9. Insert gateway and token (in sequence - repository handles this)
@@ -126,7 +126,7 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName string) (*dto.
 
 	// 10. Return GatewayResponse with gateway details
 	response := &dto.GatewayResponse{
-		UUID:           gateway.UUID,
+		ID:             gateway.ID,
 		OrganizationID: gateway.OrganizationID,
 		Name:           gateway.Name,
 		DisplayName:    gateway.DisplayName,
@@ -157,7 +157,7 @@ func (s *GatewayService) ListGateways(orgID *string) (*dto.GatewayListResponse, 
 	responses := make([]dto.GatewayResponse, 0, len(gateways))
 	for _, gw := range gateways {
 		responses = append(responses, dto.GatewayResponse{
-			UUID:           gw.UUID,
+			ID:             gw.ID,
 			OrganizationID: gw.OrganizationID,
 			Name:           gw.Name,
 			DisplayName:    gw.DisplayName,
@@ -170,7 +170,7 @@ func (s *GatewayService) ListGateways(orgID *string) (*dto.GatewayListResponse, 
 	listResponse := &dto.GatewayListResponse{
 		Count: len(responses),
 		List:  responses,
-		Pagination: dto.PaginationInfo{
+		Pagination: dto.Pagination{
 			Total:  len(responses), // For now, total equals count (no pagination yet)
 			Offset: 0,              // Starting from first item
 			Limit:  len(responses), // Returning all items
@@ -180,14 +180,14 @@ func (s *GatewayService) ListGateways(orgID *string) (*dto.GatewayListResponse, 
 	return listResponse, nil
 }
 
-// GetGateway retrieves a gateway by UUID
-func (s *GatewayService) GetGateway(gatewayUUID string) (*dto.GatewayResponse, error) {
+// GetGateway retrieves a gateway by ID
+func (s *GatewayService) GetGateway(gatewayId string) (*dto.GatewayResponse, error) {
 	// Validate UUID format
-	if _, err := uuid.Parse(gatewayUUID); err != nil {
+	if _, err := uuid.Parse(gatewayId); err != nil {
 		return nil, errors.New("invalid UUID format")
 	}
 
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayUUID)
+	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gateway: %w", err)
 	}
@@ -197,7 +197,7 @@ func (s *GatewayService) GetGateway(gatewayUUID string) (*dto.GatewayResponse, e
 	}
 
 	response := &dto.GatewayResponse{
-		UUID:           gateway.UUID,
+		ID:             gateway.ID,
 		OrganizationID: gateway.OrganizationID,
 		Name:           gateway.Name,
 		DisplayName:    gateway.DisplayName,
@@ -222,7 +222,7 @@ func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error) 
 
 	// For each gateway, check if the token matches any active token
 	for _, gateway := range gateways {
-		activeTokens, err := s.gatewayRepo.GetActiveTokensByGatewayUUID(gateway.UUID)
+		activeTokens, err := s.gatewayRepo.GetActiveTokensByGatewayUUID(gateway.ID)
 		if err != nil {
 			continue // Skip this gateway on error
 		}
@@ -239,9 +239,9 @@ func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error) 
 }
 
 // RotateToken generates a new token for a gateway (max 2 active tokens)
-func (s *GatewayService) RotateToken(gatewayUUID string) (*dto.TokenRotationResponse, error) {
+func (s *GatewayService) RotateToken(gatewayId string) (*dto.TokenRotationResponse, error) {
 	// 1. Validate gateway exists
-	gateway, err := s.gatewayRepo.GetByUUID(gatewayUUID)
+	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query gateway: %w", err)
 	}
@@ -250,7 +250,7 @@ func (s *GatewayService) RotateToken(gatewayUUID string) (*dto.TokenRotationResp
 	}
 
 	// 2. Count active tokens
-	activeCount, err := s.gatewayRepo.CountActiveTokens(gatewayUUID)
+	activeCount, err := s.gatewayRepo.CountActiveTokens(gatewayId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count active tokens: %w", err)
 	}
@@ -276,15 +276,15 @@ func (s *GatewayService) RotateToken(gatewayUUID string) (*dto.TokenRotationResp
 	saltHex := hex.EncodeToString(saltBytes)
 
 	// 6. Create new GatewayToken model with status='active'
-	tokenUUID := uuid.New().String()
+	tokenId := uuid.New().String()
 	gatewayToken := &model.GatewayToken{
-		UUID:        tokenUUID,
-		GatewayUUID: gatewayUUID,
-		TokenHash:   tokenHash,
-		Salt:        saltHex,
-		Status:      "active",
-		CreatedAt:   time.Now(),
-		RevokedAt:   nil,
+		ID:        tokenId,
+		GatewayID: gatewayId,
+		TokenHash: tokenHash,
+		Salt:      saltHex,
+		Status:    "active",
+		CreatedAt: time.Now(),
+		RevokedAt: nil,
 	}
 
 	// 7. Insert token using repository
@@ -294,7 +294,7 @@ func (s *GatewayService) RotateToken(gatewayUUID string) (*dto.TokenRotationResp
 
 	// 8. Return TokenRotationResponse with token UUID, plain-text token, timestamp, and message
 	response := &dto.TokenRotationResponse{
-		TokenUUID: tokenUUID,
+		TokenID:   tokenId,
 		Token:     plainToken,
 		CreatedAt: gatewayToken.CreatedAt,
 		Message:   "New token generated successfully. Old token remains active until revoked.",

@@ -45,20 +45,20 @@ func (r *GatewayRepo) Create(gateway *model.Gateway) error {
 		INSERT INTO gateways (uuid, organization_id, name, display_name, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(query, gateway.UUID, gateway.OrganizationID, gateway.Name, gateway.DisplayName, gateway.CreatedAt, gateway.UpdatedAt)
+	_, err := r.db.Exec(query, gateway.ID, gateway.OrganizationID, gateway.Name, gateway.DisplayName, gateway.CreatedAt, gateway.UpdatedAt)
 	return err
 }
 
-// GetByUUID retrieves a gateway by UUID
-func (r *GatewayRepo) GetByUUID(uuid string) (*model.Gateway, error) {
+// GetByUUID retrieves a gateway by ID
+func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 	gateway := &model.Gateway{}
 	query := `
 		SELECT uuid, organization_id, name, display_name, created_at, updated_at
 		FROM gateways
 		WHERE uuid = ?
 	`
-	err := r.db.QueryRow(query, uuid).Scan(
-		&gateway.UUID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
+	err := r.db.QueryRow(query, gatewayId).Scan(
+		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -87,7 +87,7 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 	for rows.Next() {
 		gateway := &model.Gateway{}
 		err := rows.Scan(
-			&gateway.UUID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
+			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -106,7 +106,7 @@ func (r *GatewayRepo) GetByNameAndOrgID(name, orgID string) (*model.Gateway, err
 		WHERE name = ? AND organization_id = ?
 	`
 	err := r.db.QueryRow(query, name, orgID).Scan(
-		&gateway.UUID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
+		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -134,7 +134,7 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	for rows.Next() {
 		gateway := &model.Gateway{}
 		err := rows.Scan(
-			&gateway.UUID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
+			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -145,9 +145,9 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 }
 
 // Delete removes a gateway (cascade deletes tokens via FK)
-func (r *GatewayRepo) Delete(uuid string) error {
+func (r *GatewayRepo) Delete(gatewayId string) error {
 	query := `DELETE FROM gateways WHERE uuid = ?`
-	_, err := r.db.Exec(query, uuid)
+	_, err := r.db.Exec(query, gatewayId)
 	return err
 }
 
@@ -159,19 +159,19 @@ func (r *GatewayRepo) CreateToken(token *model.GatewayToken) error {
 		INSERT INTO gateway_tokens (uuid, gateway_uuid, token_hash, salt, status, created_at, revoked_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(query, token.UUID, token.GatewayUUID, token.TokenHash, token.Salt, token.Status, token.CreatedAt, token.RevokedAt)
+	_, err := r.db.Exec(query, token.ID, token.GatewayID, token.TokenHash, token.Salt, token.Status, token.CreatedAt, token.RevokedAt)
 	return err
 }
 
 // GetActiveTokensByGatewayUUID retrieves all active tokens for a gateway
-func (r *GatewayRepo) GetActiveTokensByGatewayUUID(gatewayUUID string) ([]*model.GatewayToken, error) {
+func (r *GatewayRepo) GetActiveTokensByGatewayUUID(gatewayId string) ([]*model.GatewayToken, error) {
 	query := `
 		SELECT uuid, gateway_uuid, token_hash, salt, status, created_at, revoked_at
 		FROM gateway_tokens
 		WHERE gateway_uuid = ? AND status = 'active'
 		ORDER BY created_at DESC
 	`
-	rows, err := r.db.Query(query, gatewayUUID)
+	rows, err := r.db.Query(query, gatewayId)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +181,7 @@ func (r *GatewayRepo) GetActiveTokensByGatewayUUID(gatewayUUID string) ([]*model
 	for rows.Next() {
 		token := &model.GatewayToken{}
 		err := rows.Scan(
-			&token.UUID, &token.GatewayUUID, &token.TokenHash, &token.Salt, &token.Status, &token.CreatedAt, &token.RevokedAt,
+			&token.ID, &token.GatewayID, &token.TokenHash, &token.Salt, &token.Status, &token.CreatedAt, &token.RevokedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -192,15 +192,15 @@ func (r *GatewayRepo) GetActiveTokensByGatewayUUID(gatewayUUID string) ([]*model
 }
 
 // GetTokenByUUID retrieves a specific token by UUID
-func (r *GatewayRepo) GetTokenByUUID(tokenUUID string) (*model.GatewayToken, error) {
+func (r *GatewayRepo) GetTokenByUUID(tokenId string) (*model.GatewayToken, error) {
 	token := &model.GatewayToken{}
 	query := `
 		SELECT uuid, gateway_uuid, token_hash, salt, status, created_at, revoked_at
 		FROM gateway_tokens
 		WHERE uuid = ?
 	`
-	err := r.db.QueryRow(query, tokenUUID).Scan(
-		&token.UUID, &token.GatewayUUID, &token.TokenHash, &token.Salt, &token.Status, &token.CreatedAt, &token.RevokedAt,
+	err := r.db.QueryRow(query, tokenId).Scan(
+		&token.ID, &token.GatewayID, &token.TokenHash, &token.Salt, &token.Status, &token.CreatedAt, &token.RevokedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -212,24 +212,24 @@ func (r *GatewayRepo) GetTokenByUUID(tokenUUID string) (*model.GatewayToken, err
 }
 
 // RevokeToken updates token status to revoked
-func (r *GatewayRepo) RevokeToken(tokenUUID string) error {
+func (r *GatewayRepo) RevokeToken(tokenId string) error {
 	now := time.Now()
 	query := `
 		UPDATE gateway_tokens
 		SET status = 'revoked', revoked_at = ?
 		WHERE uuid = ?
 	`
-	_, err := r.db.Exec(query, now, tokenUUID)
+	_, err := r.db.Exec(query, now, tokenId)
 	return err
 }
 
 // CountActiveTokens counts the number of active tokens for a gateway
-func (r *GatewayRepo) CountActiveTokens(gatewayUUID string) (int, error) {
+func (r *GatewayRepo) CountActiveTokens(gatewayId string) (int, error) {
 	var count int
 	query := `
 		SELECT COUNT(*) FROM gateway_tokens
 		WHERE gateway_uuid = ? AND status = 'active'
 	`
-	err := r.db.QueryRow(query, gatewayUUID).Scan(&count)
+	err := r.db.QueryRow(query, gatewayId).Scan(&count)
 	return count, err
 }
