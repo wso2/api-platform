@@ -85,7 +85,7 @@ curl -k -X POST https://localhost:8443/api/v1/gateways \
 **Expected Response (201 Created):**
 ```json
 {
-  "uuid": "987e6543-e21b-45d3-a789-426614174999",
+  "id": "987e6543-e21b-45d3-a789-426614174999",
   "organizationId": "123e4567-e89b-12d3-a456-426614174000",
   "name": "prod-gateway-01",
   "displayName": "Production Gateway 01",
@@ -106,7 +106,7 @@ curl -k https://localhost:8443/api/v1/gateways
   "count": 2,
   "list": [
     {
-      "uuid": "987e6543-e21b-45d3-a789-426614174999",
+      "id": "987e6543-e21b-45d3-a789-426614174999",
       "organizationId": "123e4567-e89b-12d3-a456-426614174000",
       "name": "prod-gateway-01",
       "displayName": "Production Gateway 01",
@@ -114,7 +114,7 @@ curl -k https://localhost:8443/api/v1/gateways
       "updatedAt": "2025-10-14T10:30:00Z"
     },
     {
-      "uuid": "abc12345-f678-90de-f123-456789abcdef",
+      "id": "abc12345-f678-90de-f123-456789abcdef",
       "organizationId": "123e4567-e89b-12d3-a456-426614174000",
       "name": "staging-gateway-01",
       "displayName": "Staging Gateway 01",
@@ -145,7 +145,7 @@ curl -k https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174
 **Expected Response (200 OK):**
 ```json
 {
-  "uuid": "987e6543-e21b-45d3-a789-426614174999",
+  "id": "987e6543-e21b-45d3-a789-426614174999",
   "organizationId": "123e4567-e89b-12d3-a456-426614174000",
   "name": "prod-gateway-01",
   "displayName": "Production Gateway 01",
@@ -163,7 +163,7 @@ curl -k -X POST https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-4
 **Expected Response (201 Created):**
 ```json
 {
-  "tokenUuid": "def45678-g901-23hi-j456-789012klmnop",
+  "tokenId": "def45678-g901-23hi-j456-789012klmnop",
   "token": "kR3mF9pL2vX8qN5wY7jK4sT1hU6gB0cD9aE8fI2mN5oP7qR3sT6uV9xY2zA5bC8e",
   "createdAt": "2025-10-15T14:20:00Z",
   "message": "New token generated successfully. Old token remains active until revoked."
