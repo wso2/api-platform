@@ -84,14 +84,14 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 }
 
 func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
-	uuid := c.Param("orgId")
-	if uuid == "" {
+	orgId := c.Param("orgId")
+	if orgId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Organization ID is required"))
 		return
 	}
 
-	org, err := h.orgService.GetOrganizationByUUID(uuid)
+	org, err := h.orgService.GetOrganizationByUUID(orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrOrganizationNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",

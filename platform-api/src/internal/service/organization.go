@@ -94,8 +94,8 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	return org, nil
 }
 
-func (s *OrganizationService) GetOrganizationByUUID(uuid string) (*dto.Organization, error) {
-	orgModel, err := s.orgRepo.GetOrganizationByUUID(uuid)
+func (s *OrganizationService) GetOrganizationByUUID(orgId string) (*dto.Organization, error) {
+	orgModel, err := s.orgRepo.GetOrganizationByUUID(orgId)
 	if err != nil {
 		return nil, err
 	}

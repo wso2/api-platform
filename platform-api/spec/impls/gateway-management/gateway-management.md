@@ -136,7 +136,7 @@ curl -k https://localhost:8443/api/v1/gateways
 curl -k 'https://localhost:8443/api/v1/gateways?organizationId=123e4567-e89b-12d3-a456-426614174000'
 ```
 
-### Get Gateway by UUID
+### Get Gateway by ID
 
 ```bash
 curl -k https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999

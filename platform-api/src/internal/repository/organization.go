@@ -69,15 +69,15 @@ func (r *OrganizationRepo) GetOrganizationByIdOrHandle(id, handle string) (*mode
 	return org, nil
 }
 
-// GetOrganizationByUUID retrieves an organization by UUID
-func (r *OrganizationRepo) GetOrganizationByUUID(uuid string) (*model.Organization, error) {
+// GetOrganizationByUUID retrieves an organization by ID
+func (r *OrganizationRepo) GetOrganizationByUUID(orgId string) (*model.Organization, error) {
 	org := &model.Organization{}
 	query := `
 		SELECT uuid, handle, name, created_at, updated_at
 		FROM organizations
 		WHERE uuid = ?
 	`
-	err := r.db.QueryRow(query, uuid).Scan(
+	err := r.db.QueryRow(query, orgId).Scan(
 		&org.ID, &org.Handle, &org.Name, &org.CreatedAt, &org.UpdatedAt,
 	)
 	if err != nil {
@@ -122,9 +122,9 @@ func (r *OrganizationRepo) UpdateOrganization(org *model.Organization) error {
 }
 
 // DeleteOrganization removes an organization
-func (r *OrganizationRepo) DeleteOrganization(uuid string) error {
+func (r *OrganizationRepo) DeleteOrganization(orgId string) error {
 	query := `DELETE FROM organizations WHERE uuid = ?`
-	_, err := r.db.Exec(query, uuid)
+	_, err := r.db.Exec(query, orgId)
 	return err
 }
 

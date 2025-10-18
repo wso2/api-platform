@@ -202,7 +202,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/API'
+              $ref: '#/components/schemas/CreateAPIRequest'
         required: true
       responses:
         '201':
@@ -275,11 +275,12 @@ paths:
       parameters:
         - $ref: '#/components/parameters/apiID'
       requestBody:
+        description: API object that needs to be updated
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/API'
+              $ref: '#/components/schemas/UpdateAPIRequest'
       responses:
         '200':
           description: Project updated successfully
@@ -1275,41 +1276,6 @@ components:
           description: Timestamp when gateway was last updated
           example: "2025-10-14T10:30:00Z"
 
-    GatewayListResponse:
-      type: object
-      required:
-        - count
-        - list
-        - pagination
-      properties:
-        count:
-          type: integer
-          description: Number of items in current response
-          example: 2
-        list:
-          type: array
-          items:
-            $ref: '#/components/schemas/GatewayResponse'
-        pagination:
-          type: object
-          required:
-            - total
-            - offset
-            - limit
-          properties:
-            total:
-              type: integer
-              description: Total number of items available across all pages
-              example: 10
-            offset:
-              type: integer
-              description: Zero-based index of first item in current response
-              example: 0
-            limit:
-              type: integer
-              description: Maximum number of items returned per page
-              example: 10
-
     Pagination:
       type: object
       required:
@@ -1430,6 +1396,215 @@ components:
           nullable: true
           description: Timestamp when token was revoked (null if active)
           example: null
+
+    CreateAPIRequest:
+      type: object
+      required:
+        - name
+        - context
+        - version
+        - projectId
+      properties:
+        name:
+          type: string
+          minLength: 1
+          pattern: '(^[^~!@#;:%^*()+={}|\\<>"'',&$\[\]\/]*$)'
+          description: Name of the API
+          example: PizzaShackAPI
+        displayName:
+          type: string
+          description: Human-friendly name shown in UI
+          example: Pizza Shack API
+        description:
+          type: string
+          maxLength: 32766
+          description: Description of the API
+          example: This is a simple API for Pizza Shack online pizza delivery store
+        context:
+          type: string
+          minLength: 1
+          maxLength: 232
+          description: Context path for the API
+          example: pizza
+        version:
+          type: string
+          minLength: 1
+          maxLength: 30
+          pattern: '^[^~!@#;:%^*()+={}|\\<>"'',&/$\[\]\s+\/]+$'
+          description: Version of the API
+          example: 1.0.0
+        provider:
+          type: string
+          maxLength: 200
+          description: Provider of the API. If not given, user invoking the API will be used as the provider
+          example: admin
+        projectId:
+          type: string
+          format: uuid
+          description: UUID of the project this API belongs to
+          example: 01234567-0123-0123-0123-012345678901
+        lifeCycleStatus:
+          type: string
+          description: Lifecycle status of the API
+          enum:
+            - STAGED
+            - CREATED
+            - PUBLISHED
+            - DEPRECATED
+            - RETIRED
+            - BLOCKED
+          example: CREATED
+        hasThumbnail:
+          type: boolean
+          description: Whether the API has a thumbnail
+          example: false
+        isDefaultVersion:
+          type: boolean
+          description: Whether this is the default version
+          example: false
+        isRevision:
+          type: boolean
+          description: Whether this is a revision
+          example: false
+        revisionedApiId:
+          type: string
+          format: uuid
+          description: UUID of the original API if this is a revision
+          example: 01234567-0123-0123-0123-012345678901
+        revisionId:
+          type: integer
+          description: Revision number
+          example: 1
+        type:
+          type: string
+          description: The API creation type
+          enum:
+            - HTTP
+            - WS
+            - SOAPTOREST
+            - SOAP
+            - GRAPHQL
+            - WEBSUB
+            - SSE
+            - WEBHOOK
+            - ASYNC
+          example: HTTP
+        transport:
+          type: array
+          description: Supported transports for the API
+          items:
+            type: string
+          example:
+            - http
+            - https
+        mtls:
+          $ref: '#/components/schemas/MTLSConfig'
+        security:
+          $ref: '#/components/schemas/SecurityConfig'
+        cors:
+          $ref: '#/components/schemas/CORSConfig'
+        backend-services:
+          type: array
+          description: List of backend services used by this API
+          items:
+            $ref: '#/components/schemas/BackendService'
+        api-rate-limiting:
+          $ref: '#/components/schemas/RateLimitingConfig'
+        operations:
+          type: array
+          description: List of operations exposed by this API
+          items:
+            $ref: '#/components/schemas/Operation'
+
+    UpdateAPIRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+          description: Human-friendly name shown in UI
+          example: Pizza Shack API
+        description:
+          type: string
+          maxLength: 32766
+          description: Description of the API
+          example: This is a simple API for Pizza Shack online pizza delivery store
+        provider:
+          type: string
+          maxLength: 200
+          description: Provider of the API
+          example: admin
+        lifeCycleStatus:
+          type: string
+          description: Lifecycle status of the API
+          enum:
+            - STAGED
+            - CREATED
+            - PUBLISHED
+            - DEPRECATED
+            - RETIRED
+            - BLOCKED
+          example: CREATED
+        hasThumbnail:
+          type: boolean
+          description: Whether the API has a thumbnail
+          example: false
+        isDefaultVersion:
+          type: boolean
+          description: Whether this is the default version
+          example: false
+        isRevision:
+          type: boolean
+          description: Whether this is a revision
+          example: false
+        revisionedApiId:
+          type: string
+          format: uuid
+          description: UUID of the original API if this is a revision
+          example: 01234567-0123-0123-0123-012345678901
+        revisionId:
+          type: integer
+          description: Revision number
+          example: 1
+        type:
+          type: string
+          description: The API creation type
+          enum:
+            - HTTP
+            - WS
+            - SOAPTOREST
+            - SOAP
+            - GRAPHQL
+            - WEBSUB
+            - SSE
+            - WEBHOOK
+            - ASYNC
+          example: HTTP
+        transport:
+          type: array
+          description: Supported transports for the API
+          items:
+            type: string
+          example:
+            - http
+            - https
+        mtls:
+          $ref: '#/components/schemas/MTLSConfig'
+        security:
+          $ref: '#/components/schemas/SecurityConfig'
+        cors:
+          $ref: '#/components/schemas/CORSConfig'
+        backend-services:
+          type: array
+          description: List of backend services used by this API
+          items:
+            $ref: '#/components/schemas/BackendService'
+        api-rate-limiting:
+          $ref: '#/components/schemas/RateLimitingConfig'
+        operations:
+          type: array
+          description: List of operations exposed by this API
+          items:
+            $ref: '#/components/schemas/Operation'
 
     Error:
       title: Error object returned

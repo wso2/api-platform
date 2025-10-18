@@ -32,14 +32,7 @@ type Project struct {
 
 // ProjectListResponse represents a paginated list of projects (constitution-compliant)
 type ProjectListResponse struct {
-	Count      int         `json:"count"`      // Number of items in current response
-	List       []*Project  `json:"list"`       // Array of project objects
-	Pagination Pagination `json:"pagination"` // Pagination metadata
-}
-
-// Pagination contains pagination metadata for list responses
-type Pagination struct {
-	Total  int `json:"total"`  // Total number of items available across all pages
-	Offset int `json:"offset"` // Zero-based index of first item in current response
-	Limit  int `json:"limit"`  // Maximum number of items returned per page
+	Count      int        `json:"count" yaml:"count"`           // Number of items in current response
+	List       []*Project `json:"list" yaml:"list"`             // Array of project objects
+	Pagination Pagination `json:"pagination" yaml:"pagination"` // Pagination metadata
 }

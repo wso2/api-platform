@@ -54,14 +54,14 @@ func (r *ProjectRepo) CreateProject(project *model.Project) error {
 }
 
 // GetProjectByUUID retrieves a project by ID
-func (r *ProjectRepo) GetProjectByUUID(uuid string) (*model.Project, error) {
+func (r *ProjectRepo) GetProjectByUUID(projectId string) (*model.Project, error) {
 	project := &model.Project{}
 	query := `
 		SELECT uuid, name, organization_id, created_at, updated_at
 		FROM projects
 		WHERE uuid = ?
 	`
-	err := r.db.QueryRow(query, uuid).Scan(
+	err := r.db.QueryRow(query, projectId).Scan(
 		&project.ID, &project.Name, &project.OrganizationID, &project.CreatedAt, &project.UpdatedAt,
 	)
 	if err != nil {
@@ -113,9 +113,9 @@ func (r *ProjectRepo) UpdateProject(project *model.Project) error {
 }
 
 // DeleteProject removes a project
-func (r *ProjectRepo) DeleteProject(uuid string) error {
+func (r *ProjectRepo) DeleteProject(projectId string) error {
 	query := `DELETE FROM projects WHERE uuid = ?`
-	_, err := r.db.Exec(query, uuid)
+	_, err := r.db.Exec(query, projectId)
 	return err
 }
 

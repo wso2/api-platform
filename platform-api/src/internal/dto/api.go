@@ -260,7 +260,7 @@ type APIYAMLData struct {
 
 // APIListResponse represents a paginated list of APIs (constitution-compliant)
 type APIListResponse struct {
-	Count      int        `json:"count"`      // Number of items in current response
-	List       []*API     `json:"list"`       // Array of API objects
-	Pagination Pagination `json:"pagination"` // Pagination metadata
+	Count      int        `json:"count" yaml:"count"`           // Number of items in current response
+	List       []*API     `json:"list" yaml:"list"`             // Array of API objects
+	Pagination Pagination `json:"pagination" yaml:"pagination"` // Pagination metadata
 }

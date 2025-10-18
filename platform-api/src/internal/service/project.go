@@ -86,8 +86,8 @@ func (s *ProjectService) CreateProject(name, organizationID string) (*dto.Projec
 	return project, nil
 }
 
-func (s *ProjectService) GetProjectByID(uuid string) (*dto.Project, error) {
-	projectModel, err := s.projectRepo.GetProjectByUUID(uuid)
+func (s *ProjectService) GetProjectByID(projectId string) (*dto.Project, error) {
+	projectModel, err := s.projectRepo.GetProjectByUUID(projectId)
 	if err != nil {
 		return nil, err
 	}
@@ -122,9 +122,9 @@ func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]*dt
 	return projects, nil
 }
 
-func (s *ProjectService) UpdateProject(uuid string, name string) (*dto.Project, error) {
+func (s *ProjectService) UpdateProject(projectId string, name string) (*dto.Project, error) {
 	// Get existing project
-	project, err := s.projectRepo.GetProjectByUUID(uuid)
+	project, err := s.projectRepo.GetProjectByUUID(projectId)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +140,7 @@ func (s *ProjectService) UpdateProject(uuid string, name string) (*dto.Project, 
 		}
 
 		for _, existingProject := range existingProjects {
-			if existingProject.Name == name && existingProject.ID != uuid {
+			if existingProject.Name == name && existingProject.ID != projectId {
 				return nil, constants.ErrProjectExists
 			}
 		}
@@ -158,9 +158,9 @@ func (s *ProjectService) UpdateProject(uuid string, name string) (*dto.Project, 
 	return updatedProject, nil
 }
 
-func (s *ProjectService) DeleteProject(uuid string) error {
+func (s *ProjectService) DeleteProject(projectId string) error {
 	// Check if project exists
-	project, err := s.projectRepo.GetProjectByUUID(uuid)
+	project, err := s.projectRepo.GetProjectByUUID(projectId)
 	if err != nil {
 		return err
 	}
@@ -177,7 +177,7 @@ func (s *ProjectService) DeleteProject(uuid string) error {
 	}
 
 	// check if there are any APIs associated with the project
-	apis, err := s.apiRepo.GetAPIsByProjectID(uuid)
+	apis, err := s.apiRepo.GetAPIsByProjectID(projectId)
 	if err != nil {
 		return err
 	}
@@ -185,7 +185,7 @@ func (s *ProjectService) DeleteProject(uuid string) error {
 		return constants.ErrProjectHasAssociatedAPIs
 	}
 
-	return s.projectRepo.DeleteProject(uuid)
+	return s.projectRepo.DeleteProject(projectId)
 }
 
 // Mapping functions

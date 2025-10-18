@@ -42,20 +42,13 @@ type GatewayResponse struct {
 type GatewayListResponse struct {
 	Count      int               `json:"count"`      // Number of items in current response
 	List       []GatewayResponse `json:"list"`       // Array of gateway objects
-	Pagination PaginationInfo    `json:"pagination"` // Pagination metadata
-}
-
-// PaginationInfo contains pagination metadata for list responses
-type PaginationInfo struct {
-	Total  int `json:"total"`  // Total number of items available across all pages
-	Offset int `json:"offset"` // Zero-based index of first item in current response
-	Limit  int `json:"limit"`  // Maximum number of items returned per page
+	Pagination Pagination        `json:"pagination"` // Pagination metadata
 }
 
 // TokenRotationResponse represents the response when rotating a gateway token
 type TokenRotationResponse struct {
-	TokenID   string    `json:"tokenId"`   // ID of the newly generated token
-	Token     string    `json:"token"`     // Plain-text new authentication token
+	TokenID   string    `json:"tokenId"` // ID of the newly generated token
+	Token     string    `json:"token"`   // Plain-text new authentication token
 	CreatedAt time.Time `json:"createdAt"`
 	Message   string    `json:"message"` // e.g., "New token generated. Old token remains active."
 }

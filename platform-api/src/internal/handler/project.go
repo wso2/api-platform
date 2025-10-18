@@ -85,14 +85,14 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 }
 
 func (h *ProjectHandler) GetProject(c *gin.Context) {
-	uuid := c.Param("projectId")
-	if uuid == "" {
+	projectId := c.Param("projectId")
+	if projectId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Project ID is required"))
 		return
 	}
 
-	project, err := h.projectService.GetProjectByID(uuid)
+	project, err := h.projectService.GetProjectByID(projectId)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -140,8 +140,8 @@ func (h *ProjectHandler) GetProjectsByOrganization(c *gin.Context) {
 }
 
 func (h *ProjectHandler) UpdateProject(c *gin.Context) {
-	uuid := c.Param("projectId")
-	if uuid == "" {
+	projectId := c.Param("projectId")
+	if projectId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Project ID is required"))
 		return
@@ -153,7 +153,7 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 		return
 	}
 
-	project, err := h.projectService.UpdateProject(uuid, req.Name)
+	project, err := h.projectService.UpdateProject(projectId, req.Name)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -174,14 +174,14 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 }
 
 func (h *ProjectHandler) DeleteProject(c *gin.Context) {
-	uuid := c.Param("projectId")
-	if uuid == "" {
+	projectId := c.Param("projectId")
+	if projectId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Project ID is required"))
 		return
 	}
 
-	err := h.projectService.DeleteProject(uuid)
+	err := h.projectService.DeleteProject(projectId)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",

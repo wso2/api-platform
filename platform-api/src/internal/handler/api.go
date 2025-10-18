@@ -63,7 +63,7 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 	}
 	if req.ProjectID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Project UUID is required"))
+			"Project ID is required"))
 		return
 	}
 
@@ -119,14 +119,14 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 
 // GetAPI retrieves an API by UUID
 func (h *APIHandler) GetAPI(c *gin.Context) {
-	uuid := c.Param("apiId")
-	if uuid == "" {
+	apiId := c.Param("apiId")
+	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
 		return
 	}
 
-	api, err := h.apiService.GetAPIByUUID(uuid)
+	api, err := h.apiService.GetAPIByUUID(apiId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -143,14 +143,14 @@ func (h *APIHandler) GetAPI(c *gin.Context) {
 
 // GetAPIsByProject retrieves all APIs for a project
 func (h *APIHandler) GetAPIsByProject(c *gin.Context) {
-	projectUUID := c.Param("projectId")
-	if projectUUID == "" {
+	projectId := c.Param("projectId")
+	if projectId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Project ID is required"))
 		return
 	}
 
-	apis, err := h.apiService.GetAPIsByProjectID(projectUUID)
+	apis, err := h.apiService.GetAPIsByProjectID(projectId)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -176,8 +176,8 @@ func (h *APIHandler) GetAPIsByProject(c *gin.Context) {
 
 // UpdateAPI updates an existing API
 func (h *APIHandler) UpdateAPI(c *gin.Context) {
-	uuid := c.Param("apiId")
-	if uuid == "" {
+	apiId := c.Param("apiId")
+	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
 		return
@@ -190,7 +190,7 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 		return
 	}
 
-	api, err := h.apiService.UpdateAPI(uuid, &req)
+	api, err := h.apiService.UpdateAPI(apiId, &req)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -222,14 +222,14 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 
 // DeleteAPI deletes an API
 func (h *APIHandler) DeleteAPI(c *gin.Context) {
-	uuid := c.Param("apiId")
-	if uuid == "" {
+	apiId := c.Param("apiId")
+	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
 		return
 	}
 
-	err := h.apiService.DeleteAPI(uuid)
+	err := h.apiService.DeleteAPI(apiId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -246,8 +246,8 @@ func (h *APIHandler) DeleteAPI(c *gin.Context) {
 
 // DeployAPIRevision deploys an API revision
 func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
-	apiUUID := c.Param("apiId")
-	if apiUUID == "" {
+	apiId := c.Param("apiId")
+	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API ID is required"))
 		return
@@ -272,7 +272,7 @@ func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
 	}
 
 	// Call service to deploy the API
-	deployments, err := h.apiService.DeployAPIRevision(apiUUID, revisionID, deploymentRequests)
+	deployments, err := h.apiService.DeployAPIRevision(apiId, revisionID, deploymentRequests)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
