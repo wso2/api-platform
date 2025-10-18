@@ -428,14 +428,7 @@ paths:
       tags:
         - Gateways
       parameters:
-        - name: gatewayId
-          in: path
-          required: true
-          description: UUID of the gateway to retrieve
-          schema:
-            type: string
-            format: uuid
-            example: "987e6543-e21b-45d3-a789-426614174999"
+        - $ref: '#/components/parameters/GatewayID'
       responses:
         '200':
           description: Gateway retrieved successfully
@@ -461,14 +454,7 @@ paths:
       tags:
         - Gateways
       parameters:
-        - name: gatewayId
-          in: path
-          required: true
-          description: UUID of the gateway to delete
-          schema:
-            type: string
-            format: uuid
-            example: "987e6543-e21b-45d3-a789-426614174999"
+        - $ref: '#/components/parameters/GatewayID'
       responses:
         '204':
           description: Gateway deleted successfully
@@ -491,14 +477,7 @@ paths:
       tags:
         - Gateway Tokens
       parameters:
-        - name: gatewayId
-          in: path
-          required: true
-          description: UUID of the gateway
-          schema:
-            type: string
-            format: uuid
-            example: "987e6543-e21b-45d3-a789-426614174999"
+        - $ref: '#/components/parameters/GatewayID'
       responses:
         '201':
           description: New token generated successfully
@@ -529,22 +508,8 @@ paths:
       tags:
         - Gateway Tokens
       parameters:
-        - name: gatewayId
-          in: path
-          required: true
-          description: UUID of the gateway
-          schema:
-            type: string
-            format: uuid
-            example: "987e6543-e21b-45d3-a789-426614174999"
-        - name: tokenId
-          in: path
-          required: true
-          description: UUID of the token to revoke
-          schema:
-            type: string
-            format: uuid
-            example: "abc12345-f678-90de-f123-456789abcdef"
+        - $ref: '#/components/parameters/GatewayID'
+        - $ref: '#/components/parameters/TokenID'
       responses:
         '200':
           description: Token revoked successfully
@@ -1568,6 +1533,28 @@ components:
         type: string
         format: uuid
         example: crer4354-jui52345-245vd-93fvk-137063
+
+    GatewayID:
+      name: gatewayId
+      in: path
+      required: true
+      description: |
+        **Gateway ID** consisting of the **UUID** of the Gateway.
+      schema:
+        type: string
+        format: uuid
+        example: "987e6543-e21b-45d3-a789-426614174999"
+
+    TokenID:
+      name: tokenId
+      in: path
+      required: true
+      description: |
+        **Token ID** consisting of the **UUID** of the Token.
+      schema:
+        type: string
+        format: uuid
+        example: "abc12345-f678-90de-f123-456789abcdef"
 
 tags:
   - name: Health
