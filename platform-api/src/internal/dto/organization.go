@@ -26,6 +26,6 @@ type Organization struct {
 	UUID      string    `json:"uuid" yaml:"uuid"`
 	Handle    string    `json:"handle" yaml:"handle"`
 	Name      string    `json:"name" yaml:"name"`
-	CreatedAt time.Time `json:"created_at" yaml:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" yaml:"updated_at"`
+	CreatedAt time.Time `json:"createdAt" yaml:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt" yaml:"updatedAt"`
 }

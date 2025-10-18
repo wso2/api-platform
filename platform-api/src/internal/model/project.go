@@ -25,9 +25,9 @@ import (
 type Project struct {
 	UUID           string    `json:"uuid" db:"uuid"`
 	Name           string    `json:"name" db:"name"`
-	OrganizationID string    `json:"organization_id" db:"organization_id"` // FK to Organization.UUID
-	CreatedAt      time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
+	OrganizationID string    `json:"organizationId" db:"organization_id"` // FK to Organization.UUID
+	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt      time.Time `json:"updatedAt" db:"updated_at"`
 }
 
 // TableName returns the table name for the Organization model

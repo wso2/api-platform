@@ -30,9 +30,9 @@ type API struct {
 	Context          string              `json:"context" db:"context"`
 	Version          string              `json:"version" db:"version"`
 	Provider         string              `json:"provider,omitempty" db:"provider"`
-	ProjectID        string              `json:"project_id" db:"project_id"` // FK to Project.UUID
-	CreatedAt        time.Time           `json:"created_at,omitempty" db:"created_at"`
-	UpdatedAt        time.Time           `json:"updated_at,omitempty" db:"updated_at"`
+	ProjectID        string              `json:"projectId" db:"project_id"` // FK to Project.UUID
+	CreatedAt        time.Time           `json:"createdAt,omitempty" db:"created_at"`
+	UpdatedAt        time.Time           `json:"updatedAt,omitempty" db:"updated_at"`
 	LifeCycleStatus  string              `json:"lifeCycleStatus,omitempty" db:"lifecycle_status"`
 	HasThumbnail     bool                `json:"hasThumbnail,omitempty" db:"has_thumbnail"`
 	IsDefaultVersion bool                `json:"isDefaultVersion,omitempty" db:"is_default_version"`
