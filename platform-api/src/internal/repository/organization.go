@@ -49,6 +49,26 @@ func (r *OrganizationRepo) CreateOrganization(org *model.Organization) error {
 	return err
 }
 
+// GetOrganizationByIdOrHandle retrieves an organization by id or handle
+func (r *OrganizationRepo) GetOrganizationByIdOrHandle(id, handle string) (*model.Organization, error) {
+	org := &model.Organization{}
+	query := `
+		SELECT uuid, handle, name, created_at, updated_at
+		FROM organizations
+		WHERE uuid = ? OR handle = ?
+	`
+	err := r.db.QueryRow(query, id, handle).Scan(
+		&org.UUID, &org.Handle, &org.Name, &org.CreatedAt, &org.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return org, nil
+}
+
 // GetOrganizationByUUID retrieves an organization by UUID
 func (r *OrganizationRepo) GetOrganizationByUUID(uuid string) (*model.Organization, error) {
 	org := &model.Organization{}

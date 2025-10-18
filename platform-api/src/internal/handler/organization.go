@@ -38,7 +38,7 @@ func NewOrganizationHandler(orgService *service.OrganizationService) *Organizati
 	}
 }
 
-func (h *OrganizationHandler) CreateOrganization(c *gin.Context) {
+func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 	var req dto.Organization
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -52,12 +52,22 @@ func (h *OrganizationHandler) CreateOrganization(c *gin.Context) {
 			"Handle is required"))
 		return
 	}
+	if req.UUID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Organization UUID is required"))
+		return
+	}
 
-	org, err := h.orgService.CreateOrganization(req.Handle, req.Name)
+	org, err := h.orgService.RegisterOrganization(req.UUID, req.Handle, req.Name)
 	if err != nil {
 		if errors.Is(err, constants.ErrHandleExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
 				"Organization already exists"))
+			return
+		}
+		if errors.Is(err, constants.ErrOrganizationExists) {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"Organization with the given ID already exists"))
 			return
 		}
 		if errors.Is(err, constants.ErrInvalidHandle) {
@@ -104,7 +114,7 @@ func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
 func (h *OrganizationHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/v1/organizations")
 	{
-		orgGroup.POST("", h.CreateOrganization)
+		orgGroup.POST("", h.RegisterOrganization)
 		orgGroup.GET("/:org_uuid", h.GetOrganization)
 	}
 }

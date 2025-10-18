@@ -18,7 +18,6 @@
 package service
 
 import (
-	"github.com/google/uuid"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
@@ -40,18 +39,21 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository, projectRe
 	}
 }
 
-func (s *OrganizationService) CreateOrganization(handle string, name string) (*dto.Organization, error) {
+func (s *OrganizationService) RegisterOrganization(id string, handle string, name string) (*dto.Organization, error) {
 	// Validate handle is URL friendly
 	if !s.isURLFriendly(handle) {
 		return nil, constants.ErrInvalidHandle
 	}
 
-	// Check if handle already exists
-	existingOrg, err := s.orgRepo.GetOrganizationByHandle(handle)
+	// Check if id or handle already exists
+	existingOrg, err := s.orgRepo.GetOrganizationByIdOrHandle(id, handle)
 	if err != nil {
 		return nil, err
 	}
 	if existingOrg != nil {
+		if existingOrg.UUID == id {
+			return nil, constants.ErrOrganizationExists
+		}
 		return nil, constants.ErrHandleExists
 	}
 
@@ -61,7 +63,7 @@ func (s *OrganizationService) CreateOrganization(handle string, name string) (*d
 
 	// CreateOrganization organization
 	org := &dto.Organization{
-		UUID:      uuid.New().String(),
+		UUID:      id,
 		Handle:    handle,
 		Name:      name,
 		CreatedAt: time.Now(),
@@ -76,7 +78,7 @@ func (s *OrganizationService) CreateOrganization(handle string, name string) (*d
 
 	// Create default project for the organization
 	defaultProject := &model.Project{
-		UUID:           uuid.New().String(),
+		UUID:           "default",
 		Name:           "Default",
 		OrganizationID: org.UUID,
 		CreatedAt:      time.Now(),

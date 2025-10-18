@@ -21,6 +21,7 @@ import "errors"
 
 var (
 	ErrHandleExists          = errors.New("handle already exists")
+	ErrOrganizationExists    = errors.New("organization already exists with the given UUID")
 	ErrInvalidHandle         = errors.New("invalid handle format")
 	ErrOrganizationNotFound  = errors.New("organization not found")
 	ErrMultipleOrganizations = errors.New("multiple organizations found")

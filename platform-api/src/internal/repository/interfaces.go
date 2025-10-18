@@ -24,6 +24,7 @@ import (
 // OrganizationRepository defines the interface for organization data access
 type OrganizationRepository interface {
 	CreateOrganization(org *model.Organization) error
+	GetOrganizationByIdOrHandle(id, handle string) (*model.Organization, error)
 	GetOrganizationByUUID(uuid string) (*model.Organization, error)
 	GetOrganizationByHandle(handle string) (*model.Organization, error)
 	UpdateOrganization(org *model.Organization) error
