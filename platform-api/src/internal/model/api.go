@@ -23,14 +23,14 @@ import (
 
 // API represents an API entity in the platform
 type API struct {
-	UUID             string              `json:"uuid,omitempty" db:"uuid"`
+	ID               string              `json:"id,omitempty" db:"uuid"`
 	Name             string              `json:"name" db:"name"`
 	DisplayName      string              `json:"displayName,omitempty" db:"display_name"`
 	Description      string              `json:"description,omitempty" db:"description"`
 	Context          string              `json:"context" db:"context"`
 	Version          string              `json:"version" db:"version"`
 	Provider         string              `json:"provider,omitempty" db:"provider"`
-	ProjectID        string              `json:"projectId" db:"project_id"` // FK to Project.UUID
+	ProjectID        string              `json:"projectId" db:"project_id"` // FK to Project.ID
 	CreatedAt        time.Time           `json:"createdAt,omitempty" db:"created_at"`
 	UpdatedAt        time.Time           `json:"updatedAt,omitempty" db:"updated_at"`
 	LifeCycleStatus  string              `json:"lifeCycleStatus,omitempty" db:"lifecycle_status"`

@@ -45,7 +45,7 @@ func (r *GatewayRepo) Create(gateway *model.Gateway) error {
 		INSERT INTO gateways (uuid, organization_id, name, display_name, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(query, gateway.UUID, gateway.OrganizationID, gateway.Name, gateway.DisplayName, gateway.CreatedAt, gateway.UpdatedAt)
+	_, err := r.db.Exec(query, gateway.ID, gateway.OrganizationID, gateway.Name, gateway.DisplayName, gateway.CreatedAt, gateway.UpdatedAt)
 	return err
 }
 
@@ -58,7 +58,7 @@ func (r *GatewayRepo) GetByUUID(uuid string) (*model.Gateway, error) {
 		WHERE uuid = ?
 	`
 	err := r.db.QueryRow(query, uuid).Scan(
-		&gateway.UUID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
+		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -87,7 +87,7 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 	for rows.Next() {
 		gateway := &model.Gateway{}
 		err := rows.Scan(
-			&gateway.UUID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
+			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -106,7 +106,7 @@ func (r *GatewayRepo) GetByNameAndOrgID(name, orgID string) (*model.Gateway, err
 		WHERE name = ? AND organization_id = ?
 	`
 	err := r.db.QueryRow(query, name, orgID).Scan(
-		&gateway.UUID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
+		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -134,7 +134,7 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	for rows.Next() {
 		gateway := &model.Gateway{}
 		err := rows.Scan(
-			&gateway.UUID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
+			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -159,7 +159,7 @@ func (r *GatewayRepo) CreateToken(token *model.GatewayToken) error {
 		INSERT INTO gateway_tokens (uuid, gateway_uuid, token_hash, salt, status, created_at, revoked_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(query, token.UUID, token.GatewayUUID, token.TokenHash, token.Salt, token.Status, token.CreatedAt, token.RevokedAt)
+	_, err := r.db.Exec(query, token.ID, token.GatewayID, token.TokenHash, token.Salt, token.Status, token.CreatedAt, token.RevokedAt)
 	return err
 }
 
@@ -181,7 +181,7 @@ func (r *GatewayRepo) GetActiveTokensByGatewayUUID(gatewayUUID string) ([]*model
 	for rows.Next() {
 		token := &model.GatewayToken{}
 		err := rows.Scan(
-			&token.UUID, &token.GatewayUUID, &token.TokenHash, &token.Salt, &token.Status, &token.CreatedAt, &token.RevokedAt,
+			&token.ID, &token.GatewayID, &token.TokenHash, &token.Salt, &token.Status, &token.CreatedAt, &token.RevokedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -200,7 +200,7 @@ func (r *GatewayRepo) GetTokenByUUID(tokenUUID string) (*model.GatewayToken, err
 		WHERE uuid = ?
 	`
 	err := r.db.QueryRow(query, tokenUUID).Scan(
-		&token.UUID, &token.GatewayUUID, &token.TokenHash, &token.Salt, &token.Status, &token.CreatedAt, &token.RevokedAt,
+		&token.ID, &token.GatewayID, &token.TokenHash, &token.Salt, &token.Status, &token.CreatedAt, &token.RevokedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

@@ -45,7 +45,7 @@ func (r *ProjectRepo) CreateProject(project *model.Project) error {
 		INSERT INTO projects (uuid, name, organization_id, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(query, project.UUID, project.Name, project.OrganizationID, project.CreatedAt, project.UpdatedAt)
+	_, err := r.db.Exec(query, project.ID, project.Name, project.OrganizationID, project.CreatedAt, project.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -62,7 +62,7 @@ func (r *ProjectRepo) GetProjectByUUID(uuid string) (*model.Project, error) {
 		WHERE uuid = ?
 	`
 	err := r.db.QueryRow(query, uuid).Scan(
-		&project.UUID, &project.Name, &project.OrganizationID, &project.CreatedAt, &project.UpdatedAt,
+		&project.ID, &project.Name, &project.OrganizationID, &project.CreatedAt, &project.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -90,7 +90,7 @@ func (r *ProjectRepo) GetProjectsByOrganizationID(orgID string) ([]*model.Projec
 	var projects []*model.Project
 	for rows.Next() {
 		project := &model.Project{}
-		err := rows.Scan(&project.UUID, &project.Name, &project.OrganizationID, &project.CreatedAt, &project.UpdatedAt)
+		err := rows.Scan(&project.ID, &project.Name, &project.OrganizationID, &project.CreatedAt, &project.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -108,7 +108,7 @@ func (r *ProjectRepo) UpdateProject(project *model.Project) error {
 		SET name = ?, organization_id = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-	_, err := r.db.Exec(query, project.Name, project.OrganizationID, project.UpdatedAt, project.UUID)
+	_, err := r.db.Exec(query, project.Name, project.OrganizationID, project.UpdatedAt, project.ID)
 	return err
 }
 
@@ -137,7 +137,7 @@ func (r *ProjectRepo) ListProjects(orgID string, limit, offset int) ([]*model.Pr
 	var projects []*model.Project
 	for rows.Next() {
 		project := &model.Project{}
-		err := rows.Scan(&project.UUID, &project.Name, &project.OrganizationID, &project.CreatedAt, &project.UpdatedAt)
+		err := rows.Scan(&project.ID, &project.Name, &project.OrganizationID, &project.CreatedAt, &project.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}

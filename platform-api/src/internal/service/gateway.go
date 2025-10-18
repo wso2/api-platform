@@ -79,7 +79,7 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName string) (*dto.
 
 	// 5. Create Gateway model
 	gateway := &model.Gateway{
-		UUID:           gatewayUUID,
+		ID:           gatewayUUID,
 		OrganizationID: orgID,
 		Name:           name,
 		DisplayName:    displayName,
@@ -105,8 +105,8 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName string) (*dto.
 	// 8. Create GatewayToken model
 	tokenUUID := uuid.New().String()
 	gatewayToken := &model.GatewayToken{
-		UUID:        tokenUUID,
-		GatewayUUID: gatewayUUID,
+		ID:        tokenUUID,
+		GatewayID: gatewayUUID,
 		TokenHash:   tokenHash,
 		Salt:        saltHex,
 		Status:      "active",
@@ -126,7 +126,7 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName string) (*dto.
 
 	// 10. Return GatewayResponse with gateway details
 	response := &dto.GatewayResponse{
-		UUID:           gateway.UUID,
+		ID:           gateway.ID,
 		OrganizationID: gateway.OrganizationID,
 		Name:           gateway.Name,
 		DisplayName:    gateway.DisplayName,
@@ -157,7 +157,7 @@ func (s *GatewayService) ListGateways(orgID *string) (*dto.GatewayListResponse, 
 	responses := make([]dto.GatewayResponse, 0, len(gateways))
 	for _, gw := range gateways {
 		responses = append(responses, dto.GatewayResponse{
-			UUID:           gw.UUID,
+			ID:           gw.ID,
 			OrganizationID: gw.OrganizationID,
 			Name:           gw.Name,
 			DisplayName:    gw.DisplayName,
@@ -197,7 +197,7 @@ func (s *GatewayService) GetGateway(gatewayUUID string) (*dto.GatewayResponse, e
 	}
 
 	response := &dto.GatewayResponse{
-		UUID:           gateway.UUID,
+		ID:           gateway.ID,
 		OrganizationID: gateway.OrganizationID,
 		Name:           gateway.Name,
 		DisplayName:    gateway.DisplayName,
@@ -222,7 +222,7 @@ func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error) 
 
 	// For each gateway, check if the token matches any active token
 	for _, gateway := range gateways {
-		activeTokens, err := s.gatewayRepo.GetActiveTokensByGatewayUUID(gateway.UUID)
+		activeTokens, err := s.gatewayRepo.GetActiveTokensByGatewayUUID(gateway.ID)
 		if err != nil {
 			continue // Skip this gateway on error
 		}
@@ -278,8 +278,8 @@ func (s *GatewayService) RotateToken(gatewayUUID string) (*dto.TokenRotationResp
 	// 6. Create new GatewayToken model with status='active'
 	tokenUUID := uuid.New().String()
 	gatewayToken := &model.GatewayToken{
-		UUID:        tokenUUID,
-		GatewayUUID: gatewayUUID,
+		ID:        tokenUUID,
+		GatewayID: gatewayUUID,
 		TokenHash:   tokenHash,
 		Salt:        saltHex,
 		Status:      "active",
@@ -294,7 +294,7 @@ func (s *GatewayService) RotateToken(gatewayUUID string) (*dto.TokenRotationResp
 
 	// 8. Return TokenRotationResponse with token UUID, plain-text token, timestamp, and message
 	response := &dto.TokenRotationResponse{
-		TokenUUID: tokenUUID,
+		TokenID: tokenUUID,
 		Token:     plainToken,
 		CreatedAt: gatewayToken.CreatedAt,
 		Message:   "New token generated successfully. Old token remains active until revoked.",

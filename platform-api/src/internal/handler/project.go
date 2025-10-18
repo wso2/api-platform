@@ -85,10 +85,10 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 }
 
 func (h *ProjectHandler) GetProject(c *gin.Context) {
-	uuid := c.Param("projectUuid")
+	uuid := c.Param("projectId")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Project UUID is required"))
+			"Project ID is required"))
 		return
 	}
 
@@ -108,10 +108,10 @@ func (h *ProjectHandler) GetProject(c *gin.Context) {
 }
 
 func (h *ProjectHandler) GetProjectsByOrganization(c *gin.Context) {
-	orgID := c.Param("orgUuid")
+	orgID := c.Param("orgId")
 	if orgID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Organization UUID is required"))
+			"Organization ID is required"))
 		return
 	}
 
@@ -140,10 +140,10 @@ func (h *ProjectHandler) GetProjectsByOrganization(c *gin.Context) {
 }
 
 func (h *ProjectHandler) UpdateProject(c *gin.Context) {
-	uuid := c.Param("projectUuid")
+	uuid := c.Param("projectId")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Project UUID is required"))
+			"Project ID is required"))
 		return
 	}
 
@@ -174,10 +174,10 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 }
 
 func (h *ProjectHandler) DeleteProject(c *gin.Context) {
-	uuid := c.Param("projectUuid")
+	uuid := c.Param("projectId")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Project UUID is required"))
+			"Project ID is required"))
 		return
 	}
 
@@ -210,13 +210,13 @@ func (h *ProjectHandler) RegisterRoutes(r *gin.Engine) {
 	projectGroup := r.Group("/api/v1/projects")
 	{
 		projectGroup.POST("", h.CreateProject)
-		projectGroup.GET("/:projectUuid", h.GetProject)
-		projectGroup.PUT("/:projectUuid", h.UpdateProject)
-		projectGroup.DELETE("/:projectUuid", h.DeleteProject)
+		projectGroup.GET("/:projectId", h.GetProject)
+		projectGroup.PUT("/:projectId", h.UpdateProject)
+		projectGroup.DELETE("/:projectId", h.DeleteProject)
 	}
 
 	// Organization-specific project routes
-	orgProjectGroup := r.Group("/api/v1/organizations/:orgUuid/projects")
+	orgProjectGroup := r.Group("/api/v1/organizations/:orgId/projects")
 	{
 		orgProjectGroup.GET("", h.GetProjectsByOrganization)
 	}

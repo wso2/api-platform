@@ -30,7 +30,7 @@ type CreateGatewayRequest struct {
 
 // GatewayResponse represents a gateway in API responses
 type GatewayResponse struct {
-	UUID           string    `json:"uuid"`
+	ID             string    `json:"id"`
 	OrganizationID string    `json:"organizationId"`
 	Name           string    `json:"name"`
 	DisplayName    string    `json:"displayName"`
@@ -54,7 +54,7 @@ type PaginationInfo struct {
 
 // TokenRotationResponse represents the response when rotating a gateway token
 type TokenRotationResponse struct {
-	TokenUUID string    `json:"tokenUuid"` // UUID of the newly generated token
+	TokenID   string    `json:"tokenId"`   // ID of the newly generated token
 	Token     string    `json:"token"`     // Plain-text new authentication token
 	CreatedAt time.Time `json:"createdAt"`
 	Message   string    `json:"message"` // e.g., "New token generated. Old token remains active."
@@ -62,7 +62,7 @@ type TokenRotationResponse struct {
 
 // TokenInfoResponse represents token metadata for audit purposes
 type TokenInfoResponse struct {
-	UUID      string     `json:"uuid"`
+	ID        string     `json:"id"`
 	Status    string     `json:"status"`
 	CreatedAt time.Time  `json:"createdAt"`
 	RevokedAt *time.Time `json:"revokedAt,omitempty"`

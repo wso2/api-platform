@@ -70,7 +70,7 @@ func (s *ProjectService) CreateProject(name, organizationID string) (*dto.Projec
 
 	// CreateOrganization project
 	project := &dto.Project{
-		UUID:           uuid.New().String(),
+		ID:             uuid.New().String(),
 		Name:           name,
 		OrganizationID: organizationID,
 		CreatedAt:      time.Now(),
@@ -140,7 +140,7 @@ func (s *ProjectService) UpdateProject(uuid string, name string) (*dto.Project, 
 		}
 
 		for _, existingProject := range existingProjects {
-			if existingProject.Name == name && existingProject.UUID != uuid {
+			if existingProject.Name == name && existingProject.ID != uuid {
 				return nil, constants.ErrProjectExists
 			}
 		}
@@ -195,7 +195,7 @@ func (s *ProjectService) DtoToModel(dto *dto.Project) *model.Project {
 	}
 
 	return &model.Project{
-		UUID:           dto.UUID,
+		ID:             dto.ID,
 		Name:           dto.Name,
 		OrganizationID: dto.OrganizationID,
 		CreatedAt:      dto.CreatedAt,
@@ -209,7 +209,7 @@ func (s *ProjectService) ModelToDTO(model *model.Project) *dto.Project {
 	}
 
 	return &dto.Project{
-		UUID:           model.UUID,
+		ID:             model.ID,
 		Name:           model.Name,
 		OrganizationID: model.OrganizationID,
 		CreatedAt:      model.CreatedAt,

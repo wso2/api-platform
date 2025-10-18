@@ -98,7 +98,7 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest) (*dto.API, error) {
 
 	// Create API DTO
 	api := &dto.API{
-		UUID:             apiUUID,
+		ID:               apiUUID,
 		Name:             req.Name,
 		DisplayName:      req.DisplayName,
 		Description:      req.Description,
@@ -379,7 +379,7 @@ func (s *APIService) DeployAPIRevision(apiUUID string, revisionID string,
 func (s *APIService) generateAPIDeploymentYAML(api *dto.API) (string, error) {
 	// Create API deployment YAML structure
 	apiYAMLData := dto.APIYAMLData{
-		UUID:            api.UUID,
+		UUID:            api.ID,
 		Name:            api.Name,
 		DisplayName:     api.DisplayName,
 		Version:         api.Version,
@@ -592,7 +592,7 @@ func (s *APIService) dtoToModel(dto *dto.API) *model.API {
 	}
 
 	return &model.API{
-		UUID:             dto.UUID,
+		ID:               dto.ID,
 		Name:             dto.Name,
 		DisplayName:      dto.DisplayName,
 		Description:      dto.Description,
@@ -623,7 +623,7 @@ func (s *APIService) modelToDTO(model *model.API) *dto.API {
 	}
 
 	return &dto.API{
-		UUID:             model.UUID,
+		ID:               model.ID,
 		Name:             model.Name,
 		DisplayName:      model.DisplayName,
 		Description:      model.Description,

@@ -56,7 +56,7 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 
 	securityEnabled := api.Security != nil && api.Security.Enabled
 
-	_, err = tx.Exec(apiQuery, api.UUID, api.Name, api.DisplayName, api.Description,
+	_, err = tx.Exec(apiQuery, api.ID, api.Name, api.DisplayName, api.Description,
 		api.Context, api.Version, api.Provider, api.ProjectID, api.LifeCycleStatus,
 		api.HasThumbnail, api.IsDefaultVersion, api.IsRevision, api.RevisionedAPIID,
 		api.RevisionID, api.Type, string(transportJSON), securityEnabled, api.CreatedAt, api.UpdatedAt)
@@ -66,42 +66,42 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 
 	// Insert MTLS configuration
 	if api.MTLS != nil {
-		if err := r.insertMTLSConfig(tx, api.UUID, api.MTLS); err != nil {
+		if err := r.insertMTLSConfig(tx, api.ID, api.MTLS); err != nil {
 			return err
 		}
 	}
 
 	// Insert Security configuration
 	if api.Security != nil {
-		if err := r.insertSecurityConfig(tx, api.UUID, api.Security); err != nil {
+		if err := r.insertSecurityConfig(tx, api.ID, api.Security); err != nil {
 			return err
 		}
 	}
 
 	// Insert CORS configuration
 	if api.CORS != nil {
-		if err := r.insertCORSConfig(tx, api.UUID, api.CORS); err != nil {
+		if err := r.insertCORSConfig(tx, api.ID, api.CORS); err != nil {
 			return err
 		}
 	}
 
 	// Insert Backend Services
 	for _, backendService := range api.BackendServices {
-		if err := r.insertBackendService(tx, api.UUID, &backendService); err != nil {
+		if err := r.insertBackendService(tx, api.ID, &backendService); err != nil {
 			return err
 		}
 	}
 
 	// Insert API Rate Limiting
 	if api.APIRateLimiting != nil {
-		if err := r.insertRateLimitingConfig(tx, api.UUID, api.APIRateLimiting); err != nil {
+		if err := r.insertRateLimitingConfig(tx, api.ID, api.APIRateLimiting); err != nil {
 			return err
 		}
 	}
 
 	// Insert Operations
 	for _, operation := range api.Operations {
-		if err := r.insertOperation(tx, api.UUID, &operation); err != nil {
+		if err := r.insertOperation(tx, api.ID, &operation); err != nil {
 			return err
 		}
 	}
@@ -123,7 +123,7 @@ func (r *APIRepo) GetAPIByUUID(uuid string) (*model.API, error) {
 	var transportJSON string
 	var securityEnabled bool
 	err := r.db.QueryRow(query, uuid).Scan(
-		&api.UUID, &api.Name, &api.DisplayName, &api.Description, &api.Context,
+		&api.ID, &api.Name, &api.DisplayName, &api.Description, &api.Context,
 		&api.Version, &api.Provider, &api.ProjectID, &api.LifeCycleStatus,
 		&api.HasThumbnail, &api.IsDefaultVersion, &api.IsRevision,
 		&api.RevisionedAPIID, &api.RevisionID, &api.Type, &transportJSON,
@@ -170,7 +170,7 @@ func (r *APIRepo) GetAPIsByProjectID(projectID string) ([]*model.API, error) {
 		var transportJSON string
 		var securityEnabled bool
 
-		err := rows.Scan(&api.UUID, &api.Name, &api.DisplayName, &api.Description,
+		err := rows.Scan(&api.ID, &api.Name, &api.DisplayName, &api.Description,
 			&api.Context, &api.Version, &api.Provider, &api.ProjectID,
 			&api.LifeCycleStatus, &api.HasThumbnail, &api.IsDefaultVersion,
 			&api.IsRevision, &api.RevisionedAPIID, &api.RevisionID, &api.Type,
@@ -221,49 +221,49 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 		api.Provider, api.LifeCycleStatus,
 		api.HasThumbnail, api.IsDefaultVersion, api.IsRevision,
 		api.RevisionedAPIID, api.RevisionID, api.Type, string(transportJSON),
-		securityEnabled, api.UpdatedAt, api.UUID)
+		securityEnabled, api.UpdatedAt, api.ID)
 	if err != nil {
 		return err
 	}
 
 	// Delete existing configurations and re-insert
-	if err := r.deleteAPIConfigurations(tx, api.UUID); err != nil {
+	if err := r.deleteAPIConfigurations(tx, api.ID); err != nil {
 		return err
 	}
 
 	// Re-insert configurations
 	if api.MTLS != nil {
-		if err := r.insertMTLSConfig(tx, api.UUID, api.MTLS); err != nil {
+		if err := r.insertMTLSConfig(tx, api.ID, api.MTLS); err != nil {
 			return err
 		}
 	}
 
 	if api.Security != nil {
-		if err := r.insertSecurityConfig(tx, api.UUID, api.Security); err != nil {
+		if err := r.insertSecurityConfig(tx, api.ID, api.Security); err != nil {
 			return err
 		}
 	}
 
 	if api.CORS != nil {
-		if err := r.insertCORSConfig(tx, api.UUID, api.CORS); err != nil {
+		if err := r.insertCORSConfig(tx, api.ID, api.CORS); err != nil {
 			return err
 		}
 	}
 
 	for _, backendService := range api.BackendServices {
-		if err := r.insertBackendService(tx, api.UUID, &backendService); err != nil {
+		if err := r.insertBackendService(tx, api.ID, &backendService); err != nil {
 			return err
 		}
 	}
 
 	if api.APIRateLimiting != nil {
-		if err := r.insertRateLimitingConfig(tx, api.UUID, api.APIRateLimiting); err != nil {
+		if err := r.insertRateLimitingConfig(tx, api.ID, api.APIRateLimiting); err != nil {
 			return err
 		}
 	}
 
 	for _, operation := range api.Operations {
-		if err := r.insertOperation(tx, api.UUID, &operation); err != nil {
+		if err := r.insertOperation(tx, api.ID, &operation); err != nil {
 			return err
 		}
 	}
@@ -284,42 +284,42 @@ func (r *APIRepo) DeleteAPI(uuid string) error {
 
 func (r *APIRepo) loadAPIConfigurations(api *model.API) error {
 	// Load MTLS configuration
-	if mtls, err := r.loadMTLSConfig(api.UUID); err != nil {
+	if mtls, err := r.loadMTLSConfig(api.ID); err != nil {
 		return err
 	} else if mtls != nil {
 		api.MTLS = mtls
 	}
 
 	// Load Security configuration
-	if security, err := r.loadSecurityConfig(api.UUID); err != nil {
+	if security, err := r.loadSecurityConfig(api.ID); err != nil {
 		return err
 	} else if security != nil {
 		api.Security = security
 	}
 
 	// Load CORS configuration
-	if cors, err := r.loadCORSConfig(api.UUID); err != nil {
+	if cors, err := r.loadCORSConfig(api.ID); err != nil {
 		return err
 	} else if cors != nil {
 		api.CORS = cors
 	}
 
 	// Load Backend Services
-	if backendServices, err := r.loadBackendServices(api.UUID); err != nil {
+	if backendServices, err := r.loadBackendServices(api.ID); err != nil {
 		return err
 	} else {
 		api.BackendServices = backendServices
 	}
 
 	// Load Rate Limiting configuration
-	if rateLimiting, err := r.loadRateLimitingConfig(api.UUID); err != nil {
+	if rateLimiting, err := r.loadRateLimitingConfig(api.ID); err != nil {
 		return err
 	} else if rateLimiting != nil {
 		api.APIRateLimiting = rateLimiting
 	}
 
 	// Load Operations
-	if operations, err := r.loadOperations(api.UUID); err != nil {
+	if operations, err := r.loadOperations(api.ID); err != nil {
 		return err
 	} else {
 		api.Operations = operations

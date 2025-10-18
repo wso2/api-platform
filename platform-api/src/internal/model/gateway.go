@@ -23,7 +23,7 @@ import (
 
 // Gateway represents a registered gateway instance within an organization
 type Gateway struct {
-	UUID           string    `json:"uuid" db:"uuid"`
+	ID             string    `json:"id" db:"uuid"`
 	OrganizationID string    `json:"organizationId" db:"organization_id"`
 	Name           string    `json:"name" db:"name"`
 	DisplayName    string    `json:"displayName" db:"display_name"`
@@ -38,13 +38,13 @@ func (Gateway) TableName() string {
 
 // GatewayToken represents an authentication token for a gateway
 type GatewayToken struct {
-	UUID        string     `json:"uuid" db:"uuid"`
-	GatewayUUID string     `json:"gatewayUuid" db:"gateway_uuid"`
-	TokenHash   string     `json:"-" db:"token_hash"` // Never expose in JSON responses
-	Salt        string     `json:"-" db:"salt"`       // Never expose in JSON responses
-	Status      string     `json:"status" db:"status"` // "active" or "revoked"
-	CreatedAt   time.Time  `json:"createdAt" db:"created_at"`
-	RevokedAt   *time.Time `json:"revokedAt,omitempty" db:"revoked_at"` // Pointer for NULL support
+	ID        string     `json:"id" db:"uuid"`
+	GatewayID string     `json:"gatewayId" db:"gateway_uuid"`
+	TokenHash string     `json:"-" db:"token_hash"` // Never expose in JSON responses
+	Salt      string     `json:"-" db:"salt"`       // Never expose in JSON responses
+	Status    string     `json:"status" db:"status"` // "active" or "revoked"
+	CreatedAt time.Time  `json:"createdAt" db:"created_at"`
+	RevokedAt *time.Time `json:"revokedAt,omitempty" db:"revoked_at"` // Pointer for NULL support
 }
 
 // TableName returns the table name for the GatewayToken model

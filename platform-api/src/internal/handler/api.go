@@ -119,10 +119,10 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 
 // GetAPI retrieves an API by UUID
 func (h *APIHandler) GetAPI(c *gin.Context) {
-	uuid := c.Param("apiUuid")
+	uuid := c.Param("apiId")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API UUID is required"))
+			"API ID is required"))
 		return
 	}
 
@@ -143,10 +143,10 @@ func (h *APIHandler) GetAPI(c *gin.Context) {
 
 // GetAPIsByProject retrieves all APIs for a project
 func (h *APIHandler) GetAPIsByProject(c *gin.Context) {
-	projectUUID := c.Param("projectUuid")
+	projectUUID := c.Param("projectId")
 	if projectUUID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Project UUID is required"))
+			"Project ID is required"))
 		return
 	}
 
@@ -176,10 +176,10 @@ func (h *APIHandler) GetAPIsByProject(c *gin.Context) {
 
 // UpdateAPI updates an existing API
 func (h *APIHandler) UpdateAPI(c *gin.Context) {
-	uuid := c.Param("apiUuid")
+	uuid := c.Param("apiId")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API UUID is required"))
+			"API ID is required"))
 		return
 	}
 
@@ -222,10 +222,10 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 
 // DeleteAPI deletes an API
 func (h *APIHandler) DeleteAPI(c *gin.Context) {
-	uuid := c.Param("apiUuid")
+	uuid := c.Param("apiId")
 	if uuid == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API UUID is required"))
+			"API ID is required"))
 		return
 	}
 
@@ -246,10 +246,10 @@ func (h *APIHandler) DeleteAPI(c *gin.Context) {
 
 // DeployAPIRevision deploys an API revision
 func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
-	apiUUID := c.Param("apiUuid")
+	apiUUID := c.Param("apiId")
 	if apiUUID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API UUID is required"))
+			"API ID is required"))
 		return
 	}
 
@@ -293,14 +293,14 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	apiGroup := r.Group("/api/v1/apis")
 	{
 		apiGroup.POST("", h.CreateAPI)
-		apiGroup.GET("/:apiUuid", h.GetAPI)
-		apiGroup.PUT("/:apiUuid", h.UpdateAPI)
-		apiGroup.DELETE("/:apiUuid", h.DeleteAPI)
-		apiGroup.POST("/:apiUuid/deploy-revision", h.DeployAPIRevision)
+		apiGroup.GET("/:apiId", h.GetAPI)
+		apiGroup.PUT("/:apiId", h.UpdateAPI)
+		apiGroup.DELETE("/:apiId", h.DeleteAPI)
+		apiGroup.POST("/:apiId/deploy-revision", h.DeployAPIRevision)
 	}
 
 	// Project-specific API routes
-	projectAPIGroup := r.Group("/api/v1/projects/:projectUuid/apis")
+	projectAPIGroup := r.Group("/api/v1/projects/:projectId/apis")
 	{
 		projectAPIGroup.GET("", h.GetAPIsByProject)
 	}

@@ -23,7 +23,7 @@ import (
 
 // API represents an API entity in the platform
 type API struct {
-	UUID             string              `json:"uuid,omitempty" yaml:"uuid,omitempty"`
+	ID               string              `json:"id,omitempty" yaml:"id,omitempty"`
 	Name             string              `json:"name" yaml:"name"`
 	DisplayName      string              `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 	Description      string              `json:"description,omitempty" yaml:"description,omitempty"`

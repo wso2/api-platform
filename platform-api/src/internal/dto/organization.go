@@ -23,7 +23,7 @@ import (
 
 // Organization represents an organization entity in the API management platform
 type Organization struct {
-	UUID      string    `json:"uuid" yaml:"uuid"`
+	ID        string    `json:"id" yaml:"id"`
 	Handle    string    `json:"handle" yaml:"handle"`
 	Name      string    `json:"name" yaml:"name"`
 	CreatedAt time.Time `json:"createdAt" yaml:"createdAt"`
