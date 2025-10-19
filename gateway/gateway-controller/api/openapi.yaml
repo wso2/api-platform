@@ -12,7 +12,7 @@ info:
     - Submit API configurations in YAML or JSON
     - Real-time validation and error reporting
     - Zero-downtime configuration updates
-    - Audit trail for all configuration changes
+    - Persistent storage with SQLite
     - Query deployed API configurations
   version: 1.0.0
   contact:

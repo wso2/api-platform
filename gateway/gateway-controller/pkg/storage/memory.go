@@ -19,20 +19,11 @@
 package storage
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
-
-// ErrConflict represents a conflict error (e.g., duplicate name/version)
-var ErrConflict = errors.New("conflict error")
-
-// IsConflictError checks if an error is a conflict error
-func IsConflictError(err error) bool {
-	return errors.Is(err, ErrConflict)
-}
 
 // ConfigStore holds all API configurations in memory for fast access
 type ConfigStore struct {
