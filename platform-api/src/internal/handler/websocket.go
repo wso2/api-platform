@@ -96,7 +96,7 @@ func (h *WebSocketHandler) Connect(c *gin.Context) {
 	// Upgrade HTTP connection to WebSocket
 	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		log.Printf("[ERROR] WebSocket upgrade failed: gatewayID=%s error=%v", gateway.UUID, err)
+		log.Printf("[ERROR] WebSocket upgrade failed: gatewayID=%s error=%v", gateway.ID, err)
 		// Upgrade error is already sent by upgrader
 		return
 	}
@@ -105,9 +105,9 @@ func (h *WebSocketHandler) Connect(c *gin.Context) {
 	transport := ws.NewWebSocketTransport(conn)
 
 	// Register connection with manager
-	connection, err := h.manager.Register(gateway.UUID, transport, apiKey)
+	connection, err := h.manager.Register(gateway.ID, transport, apiKey)
 	if err != nil {
-		log.Printf("[ERROR] Connection registration failed: gatewayID=%s error=%v", gateway.UUID, err)
+		log.Printf("[ERROR] Connection registration failed: gatewayID=%s error=%v", gateway.ID, err)
 		// Send error message before closing
 		errorMsg := map[string]string{
 			"type":    "error",
@@ -123,23 +123,23 @@ func (h *WebSocketHandler) Connect(c *gin.Context) {
 	// Send connection acknowledgment
 	ack := dto.ConnectionAckDTO{
 		Type:         "connection.ack",
-		GatewayID:    gateway.UUID,
+		GatewayID:    gateway.ID,
 		ConnectionID: connection.ConnectionID,
 		Timestamp:    time.Now().Format(time.RFC3339),
 	}
 
 	ackJSON, err := json.Marshal(ack)
 	if err != nil {
-		log.Printf("[ERROR] Failed to marshal connection ACK: gatewayID=%s error=%v", gateway.UUID, err)
+		log.Printf("[ERROR] Failed to marshal connection ACK: gatewayID=%s error=%v", gateway.ID, err)
 	} else {
 		if err := connection.Send(ackJSON); err != nil {
 			log.Printf("[ERROR] Failed to send connection ACK: gatewayID=%s connectionID=%s error=%v",
-				gateway.UUID, connection.ConnectionID, err)
+				gateway.ID, connection.ConnectionID, err)
 		}
 	}
 
 	log.Printf("[INFO] WebSocket connection established: gatewayID=%s connectionID=%s",
-		gateway.UUID, connection.ConnectionID)
+		gateway.ID, connection.ConnectionID)
 
 	// Start reading messages (blocks until connection closes)
 	// This keeps the handler goroutine alive to maintain the connection
@@ -147,8 +147,8 @@ func (h *WebSocketHandler) Connect(c *gin.Context) {
 
 	// Connection closed - cleanup
 	log.Printf("[INFO] WebSocket connection closed: gatewayID=%s connectionID=%s",
-		gateway.UUID, connection.ConnectionID)
-	h.manager.Unregister(gateway.UUID, connection.ConnectionID)
+		gateway.ID, connection.ConnectionID)
+	h.manager.Unregister(gateway.ID, connection.ConnectionID)
 }
 
 // readLoop reads messages from the WebSocket connection.

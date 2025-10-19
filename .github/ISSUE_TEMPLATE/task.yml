@@ -9,10 +9,3 @@ body:
       description: A clear description of what needs to be done.
     validations:
       required: true
-  - type: input
-    id: version
-    attributes:
-      label: Version
-      description: Enter product/component version.
-    validations:
-      required: false

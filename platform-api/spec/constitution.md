@@ -69,9 +69,29 @@ All OpenAPI schema properties MUST use camelCase:
 
 **Rationale**: camelCase aligns with JavaScript/TypeScript frontend conventions, reduces impedance mismatch for web clients, and follows OpenAPI/JSON industry standards. While Go prefers snake_case internally, API contracts serve external consumers.
 
+#### Resource Identifier Naming
+
+All resources MUST use consistent identifier naming:
+
+- **Primary Identifier**: Use `id` (NOT `uuid`, `resourceId`, or other variants) for the primary identifier of a resource
+- **Foreign Keys**: Use `<resource>Id` pattern (e.g., `organizationId`, `projectId`, `gatewayId`)
+- **Path Parameters**: Use `{resourceId}` format (e.g., `/organizations/{orgId}`, `/projects/{projectId}`)
+  - Use abbreviated resource name + "Id" suffix for brevity
+  - NOT `{resourceUuid}`, `{resource_id}`, or `{resource-id}`
+
+**Examples**:
+```json
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "organizationId": "789e0123-a456-12d3-e89b-426614174000"
+}
+```
+
+**Rationale**: Consistent identifier naming reduces cognitive load, aligns with REST conventions, and makes APIs more intuitive. Using `id` for primary identifiers follows industry standards and simplifies client code. The abbreviated form in path parameters (`orgId` vs `organizationId`) improves URL readability while maintaining clarity.
+
 #### List Response Structure
 
-All list/collection endpoints MUST return a consistent envelope structure:
+All list/collection endpoints MUST return a consistent envelope structure using a shared `Pagination` schema:
 
 ```json
 {
@@ -89,12 +109,34 @@ All list/collection endpoints MUST return a consistent envelope structure:
 
 - **count**: Number of items in current response (NOT total count across all pages)
 - **list**: Array of resource objects matching the endpoint's primary schema
-- **pagination**: Metadata for navigating large result sets
+- **pagination**: Shared `Pagination` schema referenced via `$ref` in OpenAPI
   - **total**: Total number of items available across all pages
   - **offset**: Zero-based index of first item in current response
   - **limit**: Maximum number of items returned per page
 
-**Rationale**: Consistent list structure enables generic client-side pagination logic, distinguishes between page count and total count, and provides all navigation metadata in a single response. The envelope pattern supports future extensibility (e.g., adding metadata fields) without breaking clients.
+**OpenAPI Implementation**: Define a shared `Pagination` schema in `components/schemas` and reference it in all list response schemas to avoid duplication:
+
+```yaml
+components:
+  schemas:
+    Pagination:
+      type: object
+      required: [total, offset, limit]
+      properties:
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+    
+    ResourceListResponse:
+      properties:
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+```
+
+**Rationale**: Consistent list structure enables generic client-side pagination logic, distinguishes between page count and total count, and provides all navigation metadata in a single response. The envelope pattern supports future extensibility (e.g., adding metadata fields) without breaking clients. Using a shared Pagination schema ensures consistency across all list endpoints and reduces specification maintenance burden.
 
 **Overall Rationale**: Consistent REST patterns reduce cognitive load, enable API client code reuse, and align with industry standards for predictable integration. OpenAPI standards ensure API contracts are interoperable and client-friendly.
 

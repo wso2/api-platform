@@ -20,12 +20,13 @@ package handler
 import (
 	"errors"
 	"log"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
+
+	"github.com/gin-gonic/gin"
 )
 
 type APIHandler struct {
@@ -64,7 +65,7 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 	}
 	if req.ProjectID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Project UUID is required"))
+			"Project ID is required"))
 		return
 	}
 
@@ -120,14 +121,14 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 
 // GetAPI retrieves an API by UUID
 func (h *APIHandler) GetAPI(c *gin.Context) {
-	uuid := c.Param("api_uuid")
-	if uuid == "" {
+	apiId := c.Param("apiId")
+	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API UUID is required"))
+			"API ID is required"))
 		return
 	}
 
-	api, err := h.apiService.GetAPIByUUID(uuid)
+	api, err := h.apiService.GetAPIByUUID(apiId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -144,14 +145,14 @@ func (h *APIHandler) GetAPI(c *gin.Context) {
 
 // GetAPIsByProject retrieves all APIs for a project
 func (h *APIHandler) GetAPIsByProject(c *gin.Context) {
-	projectUUID := c.Param("project_uuid")
-	if projectUUID == "" {
+	projectId := c.Param("projectId")
+	if projectId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Project UUID is required"))
+			"Project ID is required"))
 		return
 	}
 
-	apis, err := h.apiService.GetAPIsByProjectID(projectUUID)
+	apis, err := h.apiService.GetAPIsByProjectID(projectId)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -163,22 +164,24 @@ func (h *APIHandler) GetAPIsByProject(c *gin.Context) {
 		return
 	}
 
-	response := gin.H{
-		"apis": apis,
-		"pagination": gin.H{
-			"total": len(apis),
+	// Return constitution-compliant list response
+	c.JSON(http.StatusOK, dto.APIListResponse{
+		Count: len(apis),
+		List:  apis,
+		Pagination: dto.Pagination{
+			Total:  len(apis),
+			Offset: 0,
+			Limit:  len(apis),
 		},
-	}
-
-	c.JSON(http.StatusOK, response)
+	})
 }
 
 // UpdateAPI updates an existing API
 func (h *APIHandler) UpdateAPI(c *gin.Context) {
-	uuid := c.Param("api_uuid")
-	if uuid == "" {
+	apiId := c.Param("apiId")
+	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API UUID is required"))
+			"API ID is required"))
 		return
 	}
 
@@ -189,7 +192,7 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 		return
 	}
 
-	api, err := h.apiService.UpdateAPI(uuid, &req)
+	api, err := h.apiService.UpdateAPI(apiId, &req)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -221,14 +224,14 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 
 // DeleteAPI deletes an API
 func (h *APIHandler) DeleteAPI(c *gin.Context) {
-	uuid := c.Param("api_uuid")
-	if uuid == "" {
+	apiId := c.Param("apiId")
+	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API UUID is required"))
+			"API ID is required"))
 		return
 	}
 
-	err := h.apiService.DeleteAPI(uuid)
+	err := h.apiService.DeleteAPI(apiId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -245,10 +248,10 @@ func (h *APIHandler) DeleteAPI(c *gin.Context) {
 
 // DeployAPIRevision deploys an API revision
 func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
-	apiUUID := c.Param("api_uuid")
-	if apiUUID == "" {
+	apiId := c.Param("apiId")
+	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API UUID is required"))
+			"API ID is required"))
 		return
 	}
 
@@ -271,7 +274,7 @@ func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
 	}
 
 	// Call service to deploy the API
-	deployments, err := h.apiService.DeployAPIRevision(apiUUID, revisionID, deploymentRequests)
+	deployments, err := h.apiService.DeployAPIRevision(apiId, revisionID, deploymentRequests)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -279,7 +282,7 @@ func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
 			return
 		}
 		log.Printf("[ERROR] Failed to deploy API revision: apiUUID=%s revisionID=%s error=%v",
-			apiUUID, revisionID, err)
+			apiId, revisionID, err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to deploy API revision"))
 		return
@@ -294,14 +297,14 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	apiGroup := r.Group("/api/v1/apis")
 	{
 		apiGroup.POST("", h.CreateAPI)
-		apiGroup.GET("/:api_uuid", h.GetAPI)
-		apiGroup.PUT("/:api_uuid", h.UpdateAPI)
-		apiGroup.DELETE("/:api_uuid", h.DeleteAPI)
-		apiGroup.POST("/:api_uuid/deploy-revision", h.DeployAPIRevision)
+		apiGroup.GET("/:apiId", h.GetAPI)
+		apiGroup.PUT("/:apiId", h.UpdateAPI)
+		apiGroup.DELETE("/:apiId", h.DeleteAPI)
+		apiGroup.POST("/:apiId/deploy-revision", h.DeployAPIRevision)
 	}
 
 	// Project-specific API routes
-	projectAPIGroup := r.Group("/api/v1/projects/:project_uuid/apis")
+	projectAPIGroup := r.Group("/api/v1/projects/:projectId/apis")
 	{
 		projectAPIGroup.GET("", h.GetAPIsByProject)
 	}

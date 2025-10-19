@@ -24,46 +24,47 @@ import (
 // OrganizationRepository defines the interface for organization data access
 type OrganizationRepository interface {
 	CreateOrganization(org *model.Organization) error
-	GetOrganizationByUUID(uuid string) (*model.Organization, error)
+	GetOrganizationByIdOrHandle(id, handle string) (*model.Organization, error)
+	GetOrganizationByUUID(orgId string) (*model.Organization, error)
 	GetOrganizationByHandle(handle string) (*model.Organization, error)
 	UpdateOrganization(org *model.Organization) error
-	DeleteOrganization(uuid string) error
+	DeleteOrganization(orgId string) error
 	ListOrganizations(limit, offset int) ([]*model.Organization, error)
 }
 
 // ProjectRepository defines the interface for project data access
 type ProjectRepository interface {
 	CreateProject(project *model.Project) error
-	GetProjectByUUID(uuid string) (*model.Project, error)
+	GetProjectByUUID(projectId string) (*model.Project, error)
 	GetProjectsByOrganizationID(orgID string) ([]*model.Project, error)
 	UpdateProject(project *model.Project) error
-	DeleteProject(uuid string) error
+	DeleteProject(projectId string) error
 	ListProjects(orgID string, limit, offset int) ([]*model.Project, error)
 }
 
 // APIRepository defines the interface for API data operations
 type APIRepository interface {
 	CreateAPI(api *model.API) error
-	GetAPIByUUID(uuid string) (*model.API, error)
+	GetAPIByUUID(apiId string) (*model.API, error)
 	GetAPIsByProjectID(projectID string) ([]*model.API, error)
 	UpdateAPI(api *model.API) error
-	DeleteAPI(uuid string) error
+	DeleteAPI(apiId string) error
 }
 
 // GatewayRepository defines the interface for gateway data access
 type GatewayRepository interface {
 	// Gateway operations
 	Create(gateway *model.Gateway) error
-	GetByUUID(uuid string) (*model.Gateway, error)
+	GetByUUID(gatewayId string) (*model.Gateway, error)
 	GetByOrganizationID(orgID string) ([]*model.Gateway, error)
 	GetByNameAndOrgID(name, orgID string) (*model.Gateway, error)
 	List() ([]*model.Gateway, error)
-	Delete(uuid string) error
+	Delete(gatewayId string) error
 
 	// Token operations
 	CreateToken(token *model.GatewayToken) error
-	GetActiveTokensByGatewayUUID(gatewayUUID string) ([]*model.GatewayToken, error)
-	GetTokenByUUID(tokenUUID string) (*model.GatewayToken, error)
-	RevokeToken(tokenUUID string) error
-	CountActiveTokens(gatewayUUID string) (int, error)
+	GetActiveTokensByGatewayUUID(gatewayId string) ([]*model.GatewayToken, error)
+	GetTokenByUUID(tokenId string) (*model.GatewayToken, error)
+	RevokeToken(tokenId string) error
+	CountActiveTokens(gatewayId string) (int, error)
 }

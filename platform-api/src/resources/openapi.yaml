@@ -18,9 +18,11 @@ servers:
 paths:
   /organizations:
     post:
-      summary: Create a new organization
-      description: Creates a new organization with a unique handle
-      operationId: createOrganization
+      summary: Register a new organization
+      description: |
+        Registers a new organization with a unique UUID and handle. 
+        This endpoint is used during the organization onboarding process.
+      operationId: registerOrganization
       tags:
         - Organizations
       requestBody:
@@ -32,7 +34,7 @@ paths:
               $ref: '#/components/schemas/Organization'
       responses:
         '201':
-          description: Organization created successfully
+          description: Organization registered successfully
           content:
             application/json:
               schema:
@@ -44,7 +46,7 @@ paths:
         '500':
             $ref: '#/components/responses/InternalServerError'
 
-  /organizations/{org_uuid}:
+  /organizations/{orgId}:
     get:
       summary: Get organization by UUID
       description: Retrieves a specific organization by its UUID
@@ -67,7 +69,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /organizations/{org_uuid}/projects:
+  /organizations/{orgId}/projects:
     get:
       summary: Get all projects for an organization
       description: Retrieves all projects belonging to a specific organization
@@ -82,12 +84,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  projects:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Project'
+                $ref: '#/components/schemas/ProjectListResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -122,7 +119,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /projects/{project_uuid}:
+  /projects/{projectId}:
     get:
       summary: Get project by UUID
       description: Retrieves a specific project by its UUID
@@ -205,7 +202,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/API'
+              $ref: '#/components/schemas/CreateAPIRequest'
         required: true
       responses:
         '201':
@@ -223,7 +220,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /projects/{project_uuid}/apis:
+  /projects/{projectId}/apis:
     get:
       summary: Get all APIs for an project
       description: Retrieves all APIs belonging to a specific project
@@ -238,12 +235,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  projects:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/API'
+                $ref: '#/components/schemas/APIListResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -251,7 +243,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /apis/{api_uuid}:
+  /apis/{apiId}:
     get:
       summary: Get API by UUID
       description: Retrieves a specific API by its UUID
@@ -283,11 +275,12 @@ paths:
       parameters:
         - $ref: '#/components/parameters/apiID'
       requestBody:
+        description: API object that needs to be updated
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/API'
+              $ref: '#/components/schemas/UpdateAPIRequest'
       responses:
         '200':
           description: Project updated successfully
@@ -322,7 +315,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /apis/{api_uuid}/deploy-revision:
+  /apis/{apiId}/deploy-revision:
     post:
       tags:
         - API Revisions
@@ -428,7 +421,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gateways/{gateway_uuid}:
+  /gateways/{gatewayId}:
     get:
       summary: Get gateway by UUID
       description: Retrieves a specific gateway by its UUID
@@ -436,14 +429,7 @@ paths:
       tags:
         - Gateways
       parameters:
-        - name: gateway_uuid
-          in: path
-          required: true
-          description: UUID of the gateway to retrieve
-          schema:
-            type: string
-            format: uuid
-            example: "987e6543-e21b-45d3-a789-426614174999"
+        - $ref: '#/components/parameters/GatewayID'
       responses:
         '200':
           description: Gateway retrieved successfully
@@ -469,14 +455,7 @@ paths:
       tags:
         - Gateways
       parameters:
-        - name: gateway_uuid
-          in: path
-          required: true
-          description: UUID of the gateway to delete
-          schema:
-            type: string
-            format: uuid
-            example: "987e6543-e21b-45d3-a789-426614174999"
+        - $ref: '#/components/parameters/GatewayID'
       responses:
         '204':
           description: Gateway deleted successfully
@@ -491,7 +470,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gateways/{gateway_uuid}/tokens:
+  /gateways/{gatewayId}/tokens:
     post:
       summary: Rotate gateway token
       description: Generates a new authentication token for the gateway. The existing token remains active to enable zero-downtime rotation.
@@ -499,14 +478,7 @@ paths:
       tags:
         - Gateway Tokens
       parameters:
-        - name: gateway_uuid
-          in: path
-          required: true
-          description: UUID of the gateway
-          schema:
-            type: string
-            format: uuid
-            example: "987e6543-e21b-45d3-a789-426614174999"
+        - $ref: '#/components/parameters/GatewayID'
       responses:
         '201':
           description: New token generated successfully
@@ -529,7 +501,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gateways/{gateway_uuid}/tokens/{token_uuid}:
+  /gateways/{gatewayId}/tokens/{tokenId}:
     delete:
       summary: Revoke gateway token
       description: Revokes a specific gateway token. Operation is idempotent - revoking an already-revoked token succeeds.
@@ -537,22 +509,8 @@ paths:
       tags:
         - Gateway Tokens
       parameters:
-        - name: gateway_uuid
-          in: path
-          required: true
-          description: UUID of the gateway
-          schema:
-            type: string
-            format: uuid
-            example: "987e6543-e21b-45d3-a789-426614174999"
-        - name: token_uuid
-          in: path
-          required: true
-          description: UUID of the token to revoke
-          schema:
-            type: string
-            format: uuid
-            example: "abc12345-f678-90de-f123-456789abcdef"
+        - $ref: '#/components/parameters/GatewayID'
+        - $ref: '#/components/parameters/TokenID'
       responses:
         '200':
           description: Token revoked successfully
@@ -580,9 +538,10 @@ components:
     Organization:
       type: object
       required:
+        - uuid
         - handle
       properties:
-        uuid:
+        id:
           type: string
           format: uuid
           description: Unique identifier for the organization
@@ -592,29 +551,29 @@ components:
           description: URL-friendly unique handle for the organization
           pattern: '^[a-z0-9-]+$'
           minLength: 1
-          example: "wso2"
+          example: "acme"
         name:
           type: string
           description: Display name of the organization
-          example: "WSO2"
-        created_at:
+          example: "Acme Corporation"
+        createdAt:
           type: string
           format: date-time
           description: Timestamp when the organization was created
           example: "2023-10-12T10:30:00Z"
-        updated_at:
+        updatedAt:
           type: string
           format: date-time
           description: Timestamp when the organization was last updated
-          example: "2023-10-12T10:30:00Z"
+          example: "Acme Corporation"
 
     Project:
       type: object
       required:
         - name
-        - organization_id
+        - organizationId
       properties:
-        uuid:
+        id:
           type: string
           description: Unique identifier for the project
           example: "yr434567-de34-76uj6-w376-234324532"
@@ -623,17 +582,17 @@ components:
           description: Name of the project
           minLength: 1
           example: "Default Project"
-        organization_id:
+        organizationId:
           type: string
           format: uuid
           description: UUID of the organization this project belongs to
           example: "123e4567-e89b-12d3-a456-426614174000"
-        created_at:
+        createdAt:
           type: string
           format: date-time
           description: Timestamp when the project was created
           example: "2023-10-12T10:30:00Z"
-        updated_at:
+        updatedAt:
           type: string
           format: date-time
           description: Timestamp when the project was last updated
@@ -647,7 +606,7 @@ components:
         - version
       type: object
       properties:
-        uuid:
+        id:
           type: string
           description: Unique identifier for the api artifact
           readOnly: true
@@ -682,12 +641,12 @@ components:
           description: |
             If the provider value is not given user invoking the api will be used as the provider.
           example: admin
-        created_at:
+        createdAt:
           type: string
           format: date-time
           description: Timestamp when the api was created
           example: "2023-10-12T10:30:00Z"
-        updated_at:
+        updatedAt:
           type: string
           format: date-time
           description: Timestamp when the api was last updated
@@ -1288,7 +1247,7 @@ components:
     GatewayResponse:
       type: object
       properties:
-        uuid:
+        id:
           type: string
           format: uuid
           description: Unique identifier for the gateway
@@ -1317,6 +1276,26 @@ components:
           description: Timestamp when gateway was last updated
           example: "2025-10-14T10:30:00Z"
 
+    Pagination:
+      type: object
+      required:
+        - total
+        - offset
+        - limit
+      properties:
+        total:
+          type: integer
+          description: Total number of items available across all pages
+          example: 10
+        offset:
+          type: integer
+          description: Zero-based index of first item in current response
+          example: 0
+        limit:
+          type: integer
+          description: Maximum number of items returned per page
+          example: 10
+
     GatewayListResponse:
       type: object
       required:
@@ -1333,24 +1312,43 @@ components:
           items:
             $ref: '#/components/schemas/GatewayResponse'
         pagination:
-          type: object
-          required:
-            - total
-            - offset
-            - limit
-          properties:
-            total:
-              type: integer
-              description: Total number of items available across all pages
-              example: 10
-            offset:
-              type: integer
-              description: Zero-based index of first item in current response
-              example: 0
-            limit:
-              type: integer
-              description: Maximum number of items returned per page
-              example: 10
+          $ref: '#/components/schemas/Pagination'
+
+    ProjectListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in current response
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    APIListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in current response
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/API'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
 
     TokenRotationResponse:
       type: object
@@ -1377,7 +1375,7 @@ components:
     TokenInfoResponse:
       type: object
       properties:
-        uuid:
+        id:
           type: string
           format: uuid
           description: Token UUID
@@ -1398,6 +1396,215 @@ components:
           nullable: true
           description: Timestamp when token was revoked (null if active)
           example: null
+
+    CreateAPIRequest:
+      type: object
+      required:
+        - name
+        - context
+        - version
+        - projectId
+      properties:
+        name:
+          type: string
+          minLength: 1
+          pattern: '(^[^~!@#;:%^*()+={}|\\<>"'',&$\[\]\/]*$)'
+          description: Name of the API
+          example: PizzaShackAPI
+        displayName:
+          type: string
+          description: Human-friendly name shown in UI
+          example: Pizza Shack API
+        description:
+          type: string
+          maxLength: 32766
+          description: Description of the API
+          example: This is a simple API for Pizza Shack online pizza delivery store
+        context:
+          type: string
+          minLength: 1
+          maxLength: 232
+          description: Context path for the API
+          example: pizza
+        version:
+          type: string
+          minLength: 1
+          maxLength: 30
+          pattern: '^[^~!@#;:%^*()+={}|\\<>"'',&/$\[\]\s+\/]+$'
+          description: Version of the API
+          example: 1.0.0
+        provider:
+          type: string
+          maxLength: 200
+          description: Provider of the API. If not given, user invoking the API will be used as the provider
+          example: admin
+        projectId:
+          type: string
+          format: uuid
+          description: UUID of the project this API belongs to
+          example: 01234567-0123-0123-0123-012345678901
+        lifeCycleStatus:
+          type: string
+          description: Lifecycle status of the API
+          enum:
+            - STAGED
+            - CREATED
+            - PUBLISHED
+            - DEPRECATED
+            - RETIRED
+            - BLOCKED
+          example: CREATED
+        hasThumbnail:
+          type: boolean
+          description: Whether the API has a thumbnail
+          example: false
+        isDefaultVersion:
+          type: boolean
+          description: Whether this is the default version
+          example: false
+        isRevision:
+          type: boolean
+          description: Whether this is a revision
+          example: false
+        revisionedApiId:
+          type: string
+          format: uuid
+          description: UUID of the original API if this is a revision
+          example: 01234567-0123-0123-0123-012345678901
+        revisionId:
+          type: integer
+          description: Revision number
+          example: 1
+        type:
+          type: string
+          description: The API creation type
+          enum:
+            - HTTP
+            - WS
+            - SOAPTOREST
+            - SOAP
+            - GRAPHQL
+            - WEBSUB
+            - SSE
+            - WEBHOOK
+            - ASYNC
+          example: HTTP
+        transport:
+          type: array
+          description: Supported transports for the API
+          items:
+            type: string
+          example:
+            - http
+            - https
+        mtls:
+          $ref: '#/components/schemas/MTLSConfig'
+        security:
+          $ref: '#/components/schemas/SecurityConfig'
+        cors:
+          $ref: '#/components/schemas/CORSConfig'
+        backend-services:
+          type: array
+          description: List of backend services used by this API
+          items:
+            $ref: '#/components/schemas/BackendService'
+        api-rate-limiting:
+          $ref: '#/components/schemas/RateLimitingConfig'
+        operations:
+          type: array
+          description: List of operations exposed by this API
+          items:
+            $ref: '#/components/schemas/Operation'
+
+    UpdateAPIRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+          description: Human-friendly name shown in UI
+          example: Pizza Shack API
+        description:
+          type: string
+          maxLength: 32766
+          description: Description of the API
+          example: This is a simple API for Pizza Shack online pizza delivery store
+        provider:
+          type: string
+          maxLength: 200
+          description: Provider of the API
+          example: admin
+        lifeCycleStatus:
+          type: string
+          description: Lifecycle status of the API
+          enum:
+            - STAGED
+            - CREATED
+            - PUBLISHED
+            - DEPRECATED
+            - RETIRED
+            - BLOCKED
+          example: CREATED
+        hasThumbnail:
+          type: boolean
+          description: Whether the API has a thumbnail
+          example: false
+        isDefaultVersion:
+          type: boolean
+          description: Whether this is the default version
+          example: false
+        isRevision:
+          type: boolean
+          description: Whether this is a revision
+          example: false
+        revisionedApiId:
+          type: string
+          format: uuid
+          description: UUID of the original API if this is a revision
+          example: 01234567-0123-0123-0123-012345678901
+        revisionId:
+          type: integer
+          description: Revision number
+          example: 1
+        type:
+          type: string
+          description: The API creation type
+          enum:
+            - HTTP
+            - WS
+            - SOAPTOREST
+            - SOAP
+            - GRAPHQL
+            - WEBSUB
+            - SSE
+            - WEBHOOK
+            - ASYNC
+          example: HTTP
+        transport:
+          type: array
+          description: Supported transports for the API
+          items:
+            type: string
+          example:
+            - http
+            - https
+        mtls:
+          $ref: '#/components/schemas/MTLSConfig'
+        security:
+          $ref: '#/components/schemas/SecurityConfig'
+        cors:
+          $ref: '#/components/schemas/CORSConfig'
+        backend-services:
+          type: array
+          description: List of backend services used by this API
+          items:
+            $ref: '#/components/schemas/BackendService'
+        api-rate-limiting:
+          $ref: '#/components/schemas/RateLimitingConfig'
+        operations:
+          type: array
+          description: List of operations exposed by this API
+          items:
+            $ref: '#/components/schemas/Operation'
 
     Error:
       title: Error object returned
@@ -1460,7 +1667,7 @@ components:
               administrator.
   parameters:
     OrganizationID:
-      name: org_uuid
+      name: orgId
       in: path
       required: true
       description: |
@@ -1471,7 +1678,7 @@ components:
         example: "123e4567-e89b-12d3-a456-426614174000"
 
     ProjectID:
-      name: project_uuid
+      name: projectId
       in: path
       required: true
       description: |
@@ -1482,7 +1689,7 @@ components:
         example: "yr434567-de34-76uj6-w376-234324532"
 
     apiID:
-      name: api_uuid
+      name: apiId
       in: path
       description: |
         **API ID** consisting of the **UUID** of the API.
@@ -1501,6 +1708,28 @@ components:
         type: string
         format: uuid
         example: crer4354-jui52345-245vd-93fvk-137063
+
+    GatewayID:
+      name: gatewayId
+      in: path
+      required: true
+      description: |
+        **Gateway ID** consisting of the **UUID** of the Gateway.
+      schema:
+        type: string
+        format: uuid
+        example: "987e6543-e21b-45d3-a789-426614174999"
+
+    TokenID:
+      name: tokenId
+      in: path
+      required: true
+      description: |
+        **Token ID** consisting of the **UUID** of the Token.
+      schema:
+        type: string
+        format: uuid
+        example: "abc12345-f678-90de-f123-456789abcdef"
 
 tags:
   - name: Health

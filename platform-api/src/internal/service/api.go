@@ -79,7 +79,7 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest) (*dto.API, error) {
 	}
 
 	// Generate UUID for the API
-	apiUUID := uuid.New().String()
+	apiId := uuid.New().String()
 
 	// Set default values if not provided
 	if req.Provider == "" {
@@ -102,7 +102,7 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest) (*dto.API, error) {
 
 	// Create API DTO
 	api := &dto.API{
-		UUID:             apiUUID,
+		ID:               apiId,
 		Name:             req.Name,
 		DisplayName:      req.DisplayName,
 		Description:      req.Description,
@@ -135,13 +135,13 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest) (*dto.API, error) {
 	return api, nil
 }
 
-// GetAPIByUUID retrieves an API by its UUID
-func (s *APIService) GetAPIByUUID(uuid string) (*dto.API, error) {
-	if uuid == "" {
-		return nil, errors.New("uuid is required")
+// GetAPIByUUID retrieves an API by its ID
+func (s *APIService) GetAPIByUUID(apiId string) (*dto.API, error) {
+	if apiId == "" {
+		return nil, errors.New("API id is required")
 	}
 
-	apiModel, err := s.apiRepo.GetAPIByUUID(uuid)
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get api: %w", err)
 	}
@@ -182,13 +182,13 @@ func (s *APIService) GetAPIsByProjectID(projectID string) ([]*dto.API, error) {
 }
 
 // UpdateAPI updates an existing API
-func (s *APIService) UpdateAPI(uuid string, req *UpdateAPIRequest) (*dto.API, error) {
-	if uuid == "" {
-		return nil, errors.New("uuid is required")
+func (s *APIService) UpdateAPI(apiId string, req *UpdateAPIRequest) (*dto.API, error) {
+	if apiId == "" {
+		return nil, errors.New("API id is required")
 	}
 
 	// Get existing API
-	existingAPIModel, err := s.apiRepo.GetAPIByUUID(uuid)
+	existingAPIModel, err := s.apiRepo.GetAPIByUUID(apiId)
 	if err != nil {
 		return nil, err
 	}
@@ -266,13 +266,13 @@ func (s *APIService) UpdateAPI(uuid string, req *UpdateAPIRequest) (*dto.API, er
 }
 
 // DeleteAPI deletes an API
-func (s *APIService) DeleteAPI(uuid string) error {
-	if uuid == "" {
-		return errors.New("uuid is required")
+func (s *APIService) DeleteAPI(apiId string) error {
+	if apiId == "" {
+		return errors.New("API id is required")
 	}
 
 	// Check if API exists
-	api, err := s.apiRepo.GetAPIByUUID(uuid)
+	api, err := s.apiRepo.GetAPIByUUID(apiId)
 	if err != nil {
 		return err
 	}
@@ -281,7 +281,7 @@ func (s *APIService) DeleteAPI(uuid string) error {
 	}
 
 	// Delete API from repository
-	if err := s.apiRepo.DeleteAPI(uuid); err != nil {
+	if err := s.apiRepo.DeleteAPI(apiId); err != nil {
 		return fmt.Errorf("failed to delete api: %w", err)
 	}
 
@@ -289,9 +289,9 @@ func (s *APIService) DeleteAPI(uuid string) error {
 }
 
 // UpdateAPILifecycleStatus updates only the lifecycle status of an API
-func (s *APIService) UpdateAPILifecycleStatus(uuid string, status string) (*dto.API, error) {
-	if uuid == "" {
-		return nil, errors.New("uuid is required")
+func (s *APIService) UpdateAPILifecycleStatus(apiId string, status string) (*dto.API, error) {
+	if apiId == "" {
+		return nil, errors.New("API id is required")
 	}
 	if status == "" {
 		return nil, errors.New("status is required")
@@ -303,7 +303,7 @@ func (s *APIService) UpdateAPILifecycleStatus(uuid string, status string) (*dto.
 	}
 
 	// Get existing API
-	apiModel, err := s.apiRepo.GetAPIByUUID(uuid)
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiId)
 	if err != nil {
 		return nil, err
 	}
@@ -325,14 +325,14 @@ func (s *APIService) UpdateAPILifecycleStatus(uuid string, status string) (*dto.
 }
 
 // DeployAPIRevision deploys an API revision and generates deployment YAML
-func (s *APIService) DeployAPIRevision(apiUUID string, revisionID string,
+func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 	deploymentRequests []dto.APIRevisionDeployment) ([]*dto.APIRevisionDeployment, error) {
-	if apiUUID == "" {
-		return nil, errors.New("api uuid is required")
+	if apiId == "" {
+		return nil, errors.New("api id is required")
 	}
 
 	// Get the API from database
-	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID)
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiId)
 	if err != nil {
 		return nil, err
 	}
@@ -373,7 +373,7 @@ func (s *APIService) DeployAPIRevision(apiUUID string, revisionID string,
 
 		// Send deployment event to gateway via WebSocket
 		deploymentEvent := &model.APIDeploymentEvent{
-			APIUUID:     apiUUID,
+			APIUUID:     apiId,
 			RevisionID:  revisionID,
 			Vhost:       deployment.VHost,
 			Environment: "production", // Default environment
@@ -382,15 +382,16 @@ func (s *APIService) DeployAPIRevision(apiUUID string, revisionID string,
 		// Broadcast deployment event to target gateway
 		if s.gatewayEventsService != nil {
 			if err := s.gatewayEventsService.BroadcastDeploymentEvent(deployment.GatewayID, deploymentEvent); err != nil {
-				log.Printf("[WARN] Failed to broadcast deployment event: apiUUID=%s gatewayID=%s error=%v",
-					apiUUID, deployment.GatewayID, err)
+				log.Printf("[WARN] Failed to broadcast deployment event: apiId=%s gatewayID=%s error=%v",
+					apiId, deployment.GatewayID, err)
 				// Continue execution - event delivery failure doesn't fail the deployment
 			}
 		}
 	}
 
 	// Log the generated YAML for debugging/monitoring purposes
-	fmt.Printf("Generated API Deployment YAML for API %s:\n%s\n", apiUUID, apiYAML)
+	// TODO - send the deployment requests to the gateway via websocket
+	fmt.Printf("Generated API Deployment YAML for API %s:\n%s\n", apiId, apiYAML)
 
 	return deployments, nil
 }
@@ -399,7 +400,7 @@ func (s *APIService) DeployAPIRevision(apiUUID string, revisionID string,
 func (s *APIService) generateAPIDeploymentYAML(api *dto.API) (string, error) {
 	// Create API deployment YAML structure
 	apiYAMLData := dto.APIYAMLData{
-		UUID:            api.UUID,
+		UUID:            api.ID,
 		Name:            api.Name,
 		DisplayName:     api.DisplayName,
 		Version:         api.Version,
@@ -567,7 +568,7 @@ type CreateAPIRequest struct {
 	Context          string                  `json:"context"`
 	Version          string                  `json:"version"`
 	Provider         string                  `json:"provider,omitempty"`
-	ProjectID        string                  `json:"project_id"`
+	ProjectID        string                  `json:"projectId"`
 	LifeCycleStatus  string                  `json:"lifeCycleStatus,omitempty"`
 	HasThumbnail     bool                    `json:"hasThumbnail,omitempty"`
 	IsDefaultVersion bool                    `json:"isDefaultVersion,omitempty"`
@@ -612,7 +613,7 @@ func (s *APIService) dtoToModel(dto *dto.API) *model.API {
 	}
 
 	return &model.API{
-		UUID:             dto.UUID,
+		ID:               dto.ID,
 		Name:             dto.Name,
 		DisplayName:      dto.DisplayName,
 		Description:      dto.Description,
@@ -643,7 +644,7 @@ func (s *APIService) modelToDTO(model *model.API) *dto.API {
 	}
 
 	return &dto.API{
-		UUID:             model.UUID,
+		ID:               model.ID,
 		Name:             model.Name,
 		DisplayName:      model.DisplayName,
 		Description:      model.Description,

@@ -85,14 +85,14 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 }
 
 func (h *ProjectHandler) GetProject(c *gin.Context) {
-	uuid := c.Param("project_uuid")
-	if uuid == "" {
+	projectId := c.Param("projectId")
+	if projectId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Project UUID is required"))
+			"Project ID is required"))
 		return
 	}
 
-	project, err := h.projectService.GetProjectByID(uuid)
+	project, err := h.projectService.GetProjectByID(projectId)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -108,10 +108,10 @@ func (h *ProjectHandler) GetProject(c *gin.Context) {
 }
 
 func (h *ProjectHandler) GetProjectsByOrganization(c *gin.Context) {
-	orgID := c.Param("org_uuid")
+	orgID := c.Param("orgId")
 	if orgID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Organization UUID is required"))
+			"Organization ID is required"))
 		return
 	}
 
@@ -127,14 +127,23 @@ func (h *ProjectHandler) GetProjectsByOrganization(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"projects": projects})
+	// Return constitution-compliant list response
+	c.JSON(http.StatusOK, dto.ProjectListResponse{
+		Count: len(projects),
+		List:  projects,
+		Pagination: dto.Pagination{
+			Total:  len(projects),
+			Offset: 0,
+			Limit:  len(projects),
+		},
+	})
 }
 
 func (h *ProjectHandler) UpdateProject(c *gin.Context) {
-	uuid := c.Param("project_uuid")
-	if uuid == "" {
+	projectId := c.Param("projectId")
+	if projectId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Project UUID is required"))
+			"Project ID is required"))
 		return
 	}
 
@@ -144,7 +153,7 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 		return
 	}
 
-	project, err := h.projectService.UpdateProject(uuid, req.Name)
+	project, err := h.projectService.UpdateProject(projectId, req.Name)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -165,14 +174,14 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 }
 
 func (h *ProjectHandler) DeleteProject(c *gin.Context) {
-	uuid := c.Param("project_uuid")
-	if uuid == "" {
+	projectId := c.Param("projectId")
+	if projectId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Project UUID is required"))
+			"Project ID is required"))
 		return
 	}
 
-	err := h.projectService.DeleteProject(uuid)
+	err := h.projectService.DeleteProject(projectId)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -201,13 +210,13 @@ func (h *ProjectHandler) RegisterRoutes(r *gin.Engine) {
 	projectGroup := r.Group("/api/v1/projects")
 	{
 		projectGroup.POST("", h.CreateProject)
-		projectGroup.GET("/:project_uuid", h.GetProject)
-		projectGroup.PUT("/:project_uuid", h.UpdateProject)
-		projectGroup.DELETE("/:project_uuid", h.DeleteProject)
+		projectGroup.GET("/:projectId", h.GetProject)
+		projectGroup.PUT("/:projectId", h.UpdateProject)
+		projectGroup.DELETE("/:projectId", h.DeleteProject)
 	}
 
 	// Organization-specific project routes
-	orgProjectGroup := r.Group("/api/v1/organizations/:org_uuid/projects")
+	orgProjectGroup := r.Group("/api/v1/organizations/:orgId/projects")
 	{
 		orgProjectGroup.GET("", h.GetProjectsByOrganization)
 	}
