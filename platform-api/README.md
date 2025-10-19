@@ -48,7 +48,7 @@ curl -k -X POST 'https://localhost:8443/api/v1/apis/<api_uuid>/deploy-revision?r
   -H 'Accept: application/json' \
   -d '[
     {
-      "revisionUuid": "<revision_uuid>",
+      "revisionId": "<revision_uuid>",
       "gatewayId": "<gateway_uuid>",
       "status": "CREATED",
       "vhost": "mg.wso2.com",

@@ -217,7 +217,7 @@ type Policy struct {
 
 // APIRevisionDeployment represents an API revision deployment
 type APIRevisionDeployment struct {
-	RevisionUUID         string  `json:"revisionUuid,omitempty" yaml:"revisionUuid,omitempty"`
+	RevisionId           string  `json:"revisionId,omitempty" yaml:"revisionId,omitempty"`
 	GatewayID            string  `json:"gatewayId" yaml:"gatewayId"`
 	Status               string  `json:"status" yaml:"status"`
 	VHost                string  `json:"vhost" yaml:"vhost"`
@@ -238,7 +238,7 @@ type APIDeploymentYAML struct {
 
 // APIYAMLData represents the data section of the API deployment YAML
 type APIYAMLData struct {
-	UUID            string              `yaml:"uuid"`
+	Id              string              `yaml:"id"`
 	Name            string              `yaml:"name"`
 	DisplayName     string              `yaml:"displayName,omitempty"`
 	Version         string              `yaml:"version"`

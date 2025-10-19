@@ -49,8 +49,8 @@ type ConnectionAckDTO struct {
 
 // APIDeploymentEventDTO is the wire format for API deployment notifications.
 type APIDeploymentEventDTO struct {
-	// APIUUID identifies the deployed API
-	APIUUID string `json:"apiUuid"`
+	// ApiId identifies the deployed API
+	ApiId string `json:"apiId"`
 
 	// RevisionID identifies the specific API revision
 	RevisionID string `json:"revisionId"`
@@ -64,8 +64,8 @@ type APIDeploymentEventDTO struct {
 
 // APIUndeploymentEventDTO is the wire format for API undeployment notifications.
 type APIUndeploymentEventDTO struct {
-	// APIUUID identifies the undeployed API
-	APIUUID string `json:"apiUuid"`
+	// ApiId identifies the undeployed API
+	ApiId string `json:"apiId"`
 
 	// Vhost specifies the virtual host
 	Vhost string `json:"vhost"`

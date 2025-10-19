@@ -48,8 +48,8 @@ type GatewayEvent struct {
 // APIDeploymentEvent contains payload data for "api.deployed" event type.
 // This event is sent when an API revision is successfully deployed to a gateway.
 type APIDeploymentEvent struct {
-	// APIUUID identifies the deployed API
-	APIUUID string `json:"apiUuid"`
+	// ApiId identifies the deployed API
+	ApiId string `json:"apiId"`
 
 	// RevisionID identifies the specific API revision deployed
 	RevisionID string `json:"revisionId"`
@@ -64,8 +64,8 @@ type APIDeploymentEvent struct {
 // APIUndeploymentEvent contains payload data for "api.undeployed" event type.
 // This event is sent when an API is undeployed from a gateway.
 type APIUndeploymentEvent struct {
-	// APIUUID identifies the undeployed API
-	APIUUID string `json:"apiUuid"`
+	// ApiId identifies the undeployed API
+	ApiId string `json:"apiId"`
 
 	// Vhost specifies the virtual host from which the API is undeployed
 	Vhost string `json:"vhost"`

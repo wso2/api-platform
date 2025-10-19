@@ -360,7 +360,7 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 		}
 
 		deployment := &dto.APIRevisionDeployment{
-			RevisionUUID:        revisionID, // Optional, can be empty
+			RevisionId:          revisionID, // Optional, can be empty
 			GatewayID:           deploymentReq.GatewayID,
 			Status:              "CREATED", // Default status for new deployments
 			VHost:               deploymentReq.VHost,
@@ -373,7 +373,7 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 
 		// Send deployment event to gateway via WebSocket
 		deploymentEvent := &model.APIDeploymentEvent{
-			APIUUID:     apiId,
+			ApiId:       apiId,
 			RevisionID:  revisionID,
 			Vhost:       deployment.VHost,
 			Environment: "production", // Default environment
@@ -400,7 +400,7 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 func (s *APIService) generateAPIDeploymentYAML(api *dto.API) (string, error) {
 	// Create API deployment YAML structure
 	apiYAMLData := dto.APIYAMLData{
-		UUID:            api.ID,
+		Id:              api.ID,
 		Name:            api.Name,
 		DisplayName:     api.DisplayName,
 		Version:         api.Version,
