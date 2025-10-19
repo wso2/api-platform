@@ -22,7 +22,7 @@ storage:
 
   # SQLite configuration (used when type=sqlite)
   sqlite:
-    path: /data/gateway.db
+    path: ./data/gateway.db
 
 # Router (Envoy) configuration
 router:
