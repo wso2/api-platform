@@ -10,6 +10,14 @@
             "request": "launch",
             "mode": "auto",
             "program": "${workspaceFolder}/gateway/gateway-controller/cmd/controller/main.go",
+        },
+        {
+            "name": "Platform API",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/platform-api/src/cmd/main.go",
+            "cwd": "${workspaceFolder}/platform-api/src",
         }
     ]
 }
