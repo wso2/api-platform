@@ -218,7 +218,7 @@ type Policy struct {
 // APIRevisionDeployment represents an API revision deployment
 type APIRevisionDeployment struct {
 	RevisionUUID         string  `json:"revisionUuid,omitempty" yaml:"revisionUuid,omitempty"`
-	Name                 string  `json:"name" yaml:"name"`
+	GatewayID            string  `json:"gatewayId" yaml:"gatewayId"`
 	Status               string  `json:"status" yaml:"status"`
 	VHost                string  `json:"vhost" yaml:"vhost"`
 	DisplayOnDevportal   bool    `json:"displayOnDevportal" yaml:"displayOnDevportal"`

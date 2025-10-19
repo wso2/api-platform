@@ -19,6 +19,7 @@ package handler
 
 import (
 	"errors"
+	"log"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"platform-api/src/internal/constants"
@@ -277,6 +278,8 @@ func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
 				"API not found"))
 			return
 		}
+		log.Printf("[ERROR] Failed to deploy API revision: apiUUID=%s revisionID=%s error=%v",
+			apiUUID, revisionID, err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to deploy API revision"))
 		return

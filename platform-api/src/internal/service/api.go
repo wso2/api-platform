@@ -20,6 +20,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"log"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
@@ -27,22 +28,25 @@ import (
 	"strings"
 	"time"
 
+	"platform-api/src/internal/constants"
+
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
-	"platform-api/src/internal/constants"
 )
 
 // APIService handles business logic for API operations
 type APIService struct {
-	apiRepo     repository.APIRepository
-	projectRepo repository.ProjectRepository
+	apiRepo              repository.APIRepository
+	projectRepo          repository.ProjectRepository
+	gatewayEventsService *GatewayEventsService
 }
 
 // NewAPIService creates a new API service
-func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.ProjectRepository) *APIService {
+func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.ProjectRepository, gatewayEventsService *GatewayEventsService) *APIService {
 	return &APIService{
-		apiRepo:     apiRepo,
-		projectRepo: projectRepo,
+		apiRepo:              apiRepo,
+		projectRepo:          projectRepo,
+		gatewayEventsService: gatewayEventsService,
 	}
 }
 
@@ -357,7 +361,7 @@ func (s *APIService) DeployAPIRevision(apiUUID string, revisionID string,
 
 		deployment := &dto.APIRevisionDeployment{
 			RevisionUUID:        revisionID, // Optional, can be empty
-			Name:                deploymentReq.Name,
+			GatewayID:           deploymentReq.GatewayID,
 			Status:              "CREATED", // Default status for new deployments
 			VHost:               deploymentReq.VHost,
 			DisplayOnDevportal:  deploymentReq.DisplayOnDevportal,
@@ -366,10 +370,26 @@ func (s *APIService) DeployAPIRevision(apiUUID string, revisionID string,
 		}
 
 		deployments = append(deployments, deployment)
+
+		// Send deployment event to gateway via WebSocket
+		deploymentEvent := &model.APIDeploymentEvent{
+			APIUUID:     apiUUID,
+			RevisionID:  revisionID,
+			Vhost:       deployment.VHost,
+			Environment: "production", // Default environment
+		}
+
+		// Broadcast deployment event to target gateway
+		if s.gatewayEventsService != nil {
+			if err := s.gatewayEventsService.BroadcastDeploymentEvent(deployment.GatewayID, deploymentEvent); err != nil {
+				log.Printf("[WARN] Failed to broadcast deployment event: apiUUID=%s gatewayID=%s error=%v",
+					apiUUID, deployment.GatewayID, err)
+				// Continue execution - event delivery failure doesn't fail the deployment
+			}
+		}
 	}
 
 	// Log the generated YAML for debugging/monitoring purposes
-	// TODO - send the deployment requests to the gateway via websocket
 	fmt.Printf("Generated API Deployment YAML for API %s:\n%s\n", apiUUID, apiYAML)
 
 	return deployments, nil
@@ -416,8 +436,8 @@ func (s *APIService) generateAPIDeploymentYAML(api *dto.API) (string, error) {
 
 // validateDeploymentRequest validates the deployment request
 func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment) error {
-	if req.Name == "" {
-		return errors.New("deployment name is required")
+	if req.GatewayID == "" {
+		return errors.New("gatewayId is required")
 	}
 	if req.VHost == "" {
 		return errors.New("vhost is required")
