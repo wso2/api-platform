@@ -1,10 +1,5 @@
 # Implementation Plan: Database Migration from BBolt to SQLite
 
-**Branch**: `005-migrate-sqlite-db` | **Date**: 2025-10-19 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/005-migrate-sqlite-db/spec.md`
-
-**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
-
 ## Summary
 
 Replace the gateway-controller's BBolt embedded database with SQLite for persistent storage of API configurations. This migration enables standard SQL tooling for database management, better ecosystem support, and future extensibility to external databases like PostgreSQL. The implementation will maintain the existing Storage interface contract, remove all audit logging features completely, and support both persistent (SQLite) and memory-only storage modes. No data migration or backward compatibility is required.

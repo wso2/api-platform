@@ -1,15 +1,17 @@
-# API Gateway Implementation Guide
+# Gateway Implementation Overview
 
-## Overview
+## Summary
 
-This document provides implementation guidance for the API Gateway, covering build processes, development workflows, testing strategies, and deployment procedures.
+Gateway-Controller entry point in `cmd/controller/main.go` initializes storage backend (SQLite or memory), starts xDS gRPC server, and launches Gin REST API. Validation, persistence, and xDS translation layers work together to provide zero-downtime API configuration management.
 
-## Quick Links
+## Feature Implementations
 
-- [Gateway-Controller xDS Implementation](impls/gateway-controller-xds.md)
-- [API Configuration Lifecycle](impls/api-configuration-lifecycle.md)
-- [Router Envoy Configuration](impls/router-envoy-config.md)
-- [Policy Engine Integration](impls/policy-engine.md)
+- [Basic Gateway with Controller](impls/1-basic-gateway-with-controller/spec.md) – Initial gateway implementation with controller, xDS server, and Envoy router integration.
+- [Use SQLite](impls/2-use-sqlite/spec.md) – SQLite database integration for persistent API configuration storage.
+
+Each implementation note captures entrypoints, supporting modules, and verification tips for manual or automated checks.
+
+## Quick Reference
 
 ## Development Environment Setup
 
