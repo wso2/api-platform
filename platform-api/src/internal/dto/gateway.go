@@ -47,7 +47,7 @@ type GatewayListResponse struct {
 
 // TokenRotationResponse represents the response when rotating a gateway token
 type TokenRotationResponse struct {
-	TokenID   string    `json:"tokenId"` // ID of the newly generated token
+	ID        string    `json:"id"` // ID of the newly generated token
 	Token     string    `json:"token"`   // Plain-text new authentication token
 	CreatedAt time.Time `json:"createdAt"`
 	Message   string    `json:"message"` // e.g., "New token generated. Old token remains active."

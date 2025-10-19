@@ -286,6 +286,12 @@ One sentence about implementation.
 - Related features
 - Future enhancements
 
+**When spec-kit was used:**
+- Reference spec-kit artifacts (`artifacts/spec.md`, `artifacts/plan.md`, `artifacts/tasks.md`) for detailed requirements, user scenarios, and planning context
+- Extract key information from spec.md (user scenarios, acceptance criteria, requirements) to inform implementation documentation
+- Use plan.md for technical context, constitution compliance, and architecture decisions
+- Use tasks.md for understanding implementation phases and dependencies
+
 **Example:**
 ```markdown
 # Feature: Feature Name
@@ -407,6 +413,55 @@ spec/impls/feature-name/
 - Bug fixes
 
 **Example reference:** See `platform-api/spec/impls/gateway-management/` for complete example.
+
+## Spec-Kit Integration
+
+**RULE**: When creating feature implementation documents, automatically check if spec-kit was used for planning:
+
+1. **Check for spec-kit artifacts** in `<repo_root>/specs/<feature-folder>/`:
+   - `spec.md` - Detailed feature specification
+   - `plan.md` - Implementation plan
+   - `tasks.md` - Task breakdown
+
+2. **Copy artifacts to implementation folder** if they exist:
+   - Create `spec/impls/<feature-name>/artifacts/` directory
+   - Copy `spec.md`, `plan.md`, `tasks.md` from specs folder
+   - **Sanitize artifacts** to remove branch-specific and session-specific information:
+     - Remove branch names (e.g., `002-gateway-websockets-i`)
+     - Remove dates (e.g., `**Created**: 2025-10-15`)
+     - Remove status labels (e.g., `**Status**: Draft`)
+     - Remove verbose planning context (e.g., `**Input**: User description...`)
+     - Remove session headings (e.g., `### Session 2025-10-15`)
+     - Replace spec folder paths (`/specs/002-gateway-websockets-i/`) with artifact paths (`spec/impls/<feature-name>/artifacts/`)
+   - Update main implementation document to reference artifacts
+
+3. **Create PRD document**:
+   - Create `spec/prds/<feature-name>.md` following the PRD template
+   - Extract requirement statement and key entities from spec.md (if available)
+   - Link to implementation document in PRD
+   - Update `spec/prd.md` to reference the new PRD
+
+4. **Update cross-cutting documentation**:
+   - Update `spec/architecture.md` with new components and integration points
+   - Update `spec/design.md` with new key technical decisions
+   - Update `spec/impl.md` with link to new feature
+
+**Example structure when spec-kit was used:**
+```
+spec/impls/gateway-websocket-events/
+├── gateway-websocket-events.md      # Main implementation doc
+└── artifacts/                       # Spec-kit planning artifacts
+    ├── spec.md                      # From specs/002-gateway-websockets-i/
+    ├── plan.md                      # From specs/002-gateway-websockets-i/
+    └── tasks.md                     # From specs/002-gateway-websockets-i/
+```
+
+**When to apply this rule:**
+- User requests creating feature implementation document following DOCUMENTATION.md
+- You complete implementation of a feature that used spec-kit planning
+- You are documenting a feature that has planning artifacts in specs/ folder
+
+**Reference:** See `platform-api/spec/impls/gateway-management/` for example with spec-kit artifacts.
 
 ## Linking Rules
 

@@ -38,6 +38,7 @@ import (
 	"platform-api/src/internal/handler"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/service"
+	"platform-api/src/internal/websocket"
 )
 
 type Server struct {
@@ -46,6 +47,7 @@ type Server struct {
 	projRepo    repository.ProjectRepository
 	apiRepo     repository.APIRepository
 	gatewayRepo repository.GatewayRepository
+	wsManager   *websocket.Manager // WebSocket connection manager
 }
 
 // StartPlatformAPIServer creates a new server instance with all dependencies initialized
@@ -67,10 +69,19 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	apiRepo := repository.NewAPIRepo(db)
 	gatewayRepo := repository.NewGatewayRepo(db)
 
+	// Initialize WebSocket manager first (needed for GatewayEventsService)
+	wsConfig := websocket.ManagerConfig{
+		MaxConnections:    cfg.WebSocket.MaxConnections,
+		HeartbeatInterval: 20 * time.Second,
+		HeartbeatTimeout:  time.Duration(cfg.WebSocket.ConnectionTimeout) * time.Second,
+	}
+	wsManager := websocket.NewManager(wsConfig)
+
 	// Initialize services
 	orgService := service.NewOrganizationService(orgRepo, projectRepo)
 	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo)
-	apiService := service.NewAPIService(apiRepo, projectRepo)
+	gatewayEventsService := service.NewGatewayEventsService(wsManager)
+	apiService := service.NewAPIService(apiRepo, projectRepo, gatewayEventsService)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo)
 
 	// Initialize handlers
@@ -78,6 +89,7 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	projectHandler := handler.NewProjectHandler(projectService)
 	apiHandler := handler.NewAPIHandler(apiService)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService)
+	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, cfg.WebSocket.RateLimitPerMin)
 
 	// Setup router
 	router := gin.Default()
@@ -88,6 +100,10 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	projectHandler.RegisterRoutes(router)
 	apiHandler.RegisterRoutes(router)
 	gatewayHandler.RegisterRoutes(router)
+	wsHandler.RegisterRoutes(router)
+
+	log.Printf("[INFO] WebSocket manager initialized: maxConnections=%d heartbeatTimeout=%ds rateLimitPerMin=%d",
+		cfg.WebSocket.MaxConnections, cfg.WebSocket.ConnectionTimeout, cfg.WebSocket.RateLimitPerMin)
 
 	return &Server{
 		router:      router,
@@ -95,6 +111,7 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 		projRepo:    projectRepo,
 		apiRepo:     apiRepo,
 		gatewayRepo: gatewayRepo,
+		wsManager:   wsManager,
 	}, nil
 }
 

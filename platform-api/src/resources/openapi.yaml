@@ -1162,7 +1162,7 @@ components:
     APIRevisionDeployment:
       title: APIRevisionDeployment Info object with basic API deployment details
       properties:
-        revisionUuid:
+        revisionId:
           maxLength: 255
           minLength: 0
           type: string
@@ -1353,10 +1353,10 @@ components:
     TokenRotationResponse:
       type: object
       properties:
-        tokenUuid:
+        id:
           type: string
           format: uuid
-          description: UUID of the newly generated token
+          description: ID of the newly generated token
           example: "def45678-g901-23hi-j456-789012klmnop"
         token:
           type: string

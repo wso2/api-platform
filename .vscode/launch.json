@@ -16,6 +16,14 @@
             "env": {
                 "GC_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
             }
+        },
+        {
+            "name": "Platform API",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/platform-api/src/cmd/main.go",
+            "cwd": "${workspaceFolder}/platform-api/src",
         }
     ]
 }

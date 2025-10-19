@@ -21,3 +21,8 @@ Service follows a clean layering pattern that separates HTTP handling, business 
 6. **Gateway Token Security** – SHA-256 hash with unique salt per token, constant-time verification using `crypto/subtle`, 32-byte tokens from `crypto/rand`, never store plain-text.
 7. **Zero-Downtime Token Rotation** – Maximum 2 active tokens allows overlap period for gateway reconfiguration without service interruption.
 8. **Organization-Scoped Uniqueness** – Composite unique constraint `(organization_id, name)` prevents duplicate gateway names within organizations while allowing cross-organization reuse.
+9. **WebSocket Transport Abstraction** – Interface-based design decouples protocol from business logic enabling future protocol changes without modifying connection management.
+10. **sync.Map for Connection Registry** – Read-optimized concurrent map reduces lock contention for frequent event delivery lookups while supporting per-gateway clustering.
+11. **Per-Connection Heartbeat Goroutines** – Isolates connection monitoring preventing cascade failures and enabling graceful shutdown via context cancellation.
+12. **Partial Delivery Success Model** – API deployments succeed if any gateway connection receives the event balancing availability over strict consistency.
+13. **No Event Persistence** – Clean slate reconnection design where gateways sync full state after connection avoiding complex replay logic and storage overhead.

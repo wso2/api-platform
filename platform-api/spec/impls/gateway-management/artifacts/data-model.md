@@ -208,7 +208,7 @@ package model
 import "time"
 
 type Gateway struct {
-    UUID           string    `json:"uuid"`
+    Id             string    `json:"id"`
     OrganizationID string    `json:"organizationId"`
     Name           string    `json:"name"`
     DisplayName    string    `json:"displayName"`
@@ -225,8 +225,8 @@ package model
 import "time"
 
 type GatewayToken struct {
-    UUID        string     `json:"uuid"`
-    GatewayUUID string     `json:"gatewayUuid"`
+    Id          string     `json:"id"`
+    GatewayId   string     `json:"gatewayId"`
     TokenHash   string     `json:"-"` // Never expose in JSON responses
     Salt        string     `json:"-"` // Never expose in JSON responses
     Status      string     `json:"status"` // "active" or "revoked"
@@ -269,7 +269,7 @@ package dto
 import "time"
 
 type GatewayResponse struct {
-    UUID           string    `json:"uuid"`
+    Id             string    `json:"id"`
     OrganizationID string    `json:"organizationId"`
     Name           string    `json:"name"`
     DisplayName    string    `json:"displayName"`
@@ -297,7 +297,7 @@ package dto
 import "time"
 
 type TokenRotationResponse struct {
-    TokenUUID string    `json:"tokenUuid"` // UUID of new token
+    Id        string    `json:"id"` // ID of new token
     Token     string    `json:"token"`      // Plain-text new token
     CreatedAt time.Time `json:"createdAt"`
     Message   string    `json:"message"`    // e.g., "New token generated. Old token remains active."
@@ -312,7 +312,7 @@ package dto
 import "time"
 
 type TokenInfoResponse struct {
-    UUID      string     `json:"uuid"`
+    Id        string     `json:"id"`
     Status    string     `json:"status"`
     CreatedAt time.Time  `json:"createdAt"`
     RevokedAt *time.Time `json:"revokedAt,omitempty"`

@@ -294,7 +294,7 @@ func (s *GatewayService) RotateToken(gatewayId string) (*dto.TokenRotationRespon
 
 	// 8. Return TokenRotationResponse with token UUID, plain-text token, timestamp, and message
 	response := &dto.TokenRotationResponse{
-		TokenID:   tokenId,
+		ID:        tokenId,
 		Token:     plainToken,
 		CreatedAt: gatewayToken.CreatedAt,
 		Message:   "New token generated successfully. Old token remains active until revoked.",
