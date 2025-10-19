@@ -24,7 +24,7 @@ curl -k -X POST https://localhost:8443/api/v1/projects \
   -H 'Content-Type: application/json' \
   -d '{
     "name": "Production APIs",
-    "organization_id": "<organization_uuid>"
+    "organizationId": "<organization_uuid>"
   }'
 
 # Create an API
@@ -36,7 +36,7 @@ curl -k -X POST https://localhost:8443/api/v1/apis \
     "description": "API for retrieving weather information",
     "context": "/weather",
     "version": "v1.0",
-    "project_id": "<project_uuid>",
+    "projectId": "<project_uuid>",
     "type": "HTTP",
     "transport": ["http", "https"],
     "lifeCycleStatus": "CREATED"
