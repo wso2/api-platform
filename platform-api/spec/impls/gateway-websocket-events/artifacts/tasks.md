@@ -75,16 +75,16 @@
 
 ### Implementation for User Story 2
 
-- [ ] T021 [US2] Create GatewayEventsService with event broadcasting logic in src/internal/service/gateway_events.go
-- [ ] T022 [US2] Implement BroadcastDeploymentEvent method to lookup gateway connections and send events in src/internal/service/gateway_events.go (depends on T021)
-- [ ] T023 [US2] Implement event serialization to JSON with type, payload, timestamp, correlationId in src/internal/service/gateway_events.go (depends on T021)
-- [ ] T024 [US2] Implement event ordering guarantee per gateway (sequential delivery) in src/internal/service/gateway_events.go (depends on T022)
-- [ ] T025 [US2] Add maximum event payload size validation (default 1MB) in src/internal/service/gateway_events.go (depends on T022)
-- [ ] T026 [US2] Implement atomic counter increments for delivery statistics (TotalEventsSent) in src/internal/service/gateway_events.go (depends on T022)
-- [ ] T027 [US2] Implement event delivery failure logging with gateway ID, event type, timestamp in src/internal/service/gateway_events.go (depends on T022)
-- [ ] T028 [US2] Update atomic counter for FailedDeliveries and track LastFailureTime/Reason in src/internal/service/gateway_events.go (depends on T026, T027)
-- [ ] T029 [US2] Integrate GatewayEventsService into API deployment service (DeployAPIRevision method) in src/internal/service/api.go (depends on T022)
-- [ ] T030 [US2] Support multiple connections per gateway ID (broadcast to all instances) in src/internal/service/gateway_events.go (depends on T022)
+- [x] T021 [US2] Create GatewayEventsService with event broadcasting logic in src/internal/service/gateway_events.go
+- [x] T022 [US2] Implement BroadcastDeploymentEvent method to lookup gateway connections and send events in src/internal/service/gateway_events.go (depends on T021)
+- [x] T023 [US2] Implement event serialization to JSON with type, payload, timestamp, correlationId in src/internal/service/gateway_events.go (depends on T021)
+- [x] T024 [US2] Implement event ordering guarantee per gateway (sequential delivery) in src/internal/service/gateway_events.go (depends on T022)
+- [x] T025 [US2] Add maximum event payload size validation (default 1MB) in src/internal/service/gateway_events.go (depends on T022)
+- [x] T026 [US2] Implement atomic counter increments for delivery statistics (TotalEventsSent) in src/internal/service/gateway_events.go (depends on T022)
+- [x] T027 [US2] Implement event delivery failure logging with gateway ID, event type, timestamp in src/internal/service/gateway_events.go (depends on T022)
+- [x] T028 [US2] Update atomic counter for FailedDeliveries and track LastFailureTime/Reason in src/internal/service/gateway_events.go (depends on T026, T027)
+- [x] T029 [US2] Integrate GatewayEventsService into API deployment service (DeployAPIRevision method) in src/internal/service/api.go (depends on T022)
+- [x] T030 [US2] Support multiple connections per gateway ID (broadcast to all instances) in src/internal/service/gateway_events.go (depends on T022)
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently - gateways can connect AND receive deployment events when APIs are deployed
 
