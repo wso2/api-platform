@@ -14,13 +14,15 @@ server:
 
 # Storage configuration
 storage:
-  # Storage mode: "memory-only" or "persistent"
-  # - memory-only: No persistent storage, all configs lost on restart (useful for testing)
-  # - persistent: Use bbolt database for persistence across restarts
-  mode: memory-only
+  # Storage type: "sqlite", "postgres" (future), or "memory"
+  # - sqlite: Use SQLite embedded database for persistence
+  # - postgres: Use PostgreSQL database for persistence (future support)
+  # - memory: No persistent storage, all configs lost on restart (useful for testing)
+  type: sqlite
 
-  # Path to bbolt database (only used when mode=persistent)
-  database_path: /data/gateway-controller.db
+  # SQLite configuration (used when type=sqlite)
+  sqlite:
+    path: /data/gateway.db
 
 # Router (Envoy) configuration
 router:
@@ -77,6 +79,7 @@ logging:
 # You can override any configuration using environment variables with the prefix GC_
 # Examples:
 #   GC_SERVER_API_PORT=9091
-#   GC_STORAGE_MODE=memory-only
+#   GC_STORAGE_TYPE=memory
+#   GC_STORAGE_SQLITE_PATH=/custom/path/gateway.db
 #   GC_ROUTER_ACCESS_LOGS_ENABLED=false
 #   GC_LOGGING_LEVEL=debug

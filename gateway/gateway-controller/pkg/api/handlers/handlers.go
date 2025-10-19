@@ -221,19 +221,6 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 		return
 	}
 
-	// Log audit event
-	auditEvent := storage.CreateAuditEvent(
-		storage.AuditCreate,
-		storedCfg.ID,
-		apiConfig.Data.Name,
-		apiConfig.Data.Version,
-		"SUCCESS",
-		"",
-	)
-	if bboltDB, ok := s.db.(*storage.BBoltStorage); ok {
-		_ = bboltDB.LogEvent(auditEvent)
-	}
-
 	// Get correlation ID from context
 	correlationID := middleware.GetCorrelationID(c)
 
@@ -430,19 +417,6 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 		return
 	}
 
-	// Log audit event
-	auditEvent := storage.CreateAuditEvent(
-		storage.AuditUpdate,
-		existing.ID,
-		apiConfig.Data.Name,
-		apiConfig.Data.Version,
-		"SUCCESS",
-		"",
-	)
-	if bboltDB, ok := s.db.(*storage.BBoltStorage); ok {
-		_ = bboltDB.LogEvent(auditEvent)
-	}
-
 	// Get correlation ID from context
 	correlationID := middleware.GetCorrelationID(c)
 
@@ -510,19 +484,6 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 			Message: "Failed to delete configuration",
 		})
 		return
-	}
-
-	// Log audit event
-	auditEvent := storage.CreateAuditEvent(
-		storage.AuditDelete,
-		cfg.ID,
-		cfg.Configuration.Data.Name,
-		cfg.Configuration.Data.Version,
-		"SUCCESS",
-		"",
-	)
-	if bboltDB, ok := s.db.(*storage.BBoltStorage); ok {
-		_ = bboltDB.LogEvent(auditEvent)
 	}
 
 	// Get correlation ID from context
