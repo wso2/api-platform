@@ -11,6 +11,7 @@ Provide a unified backend for the API Platform portals, CLI, and automation tool
 - [FR3: Project Management](prds/project-management.md) – CRUD operations for organization-scoped projects with duplicate prevention and deletion constraints.
 - [FR4: API Lifecycle Management](prds/api-lifecycle-management.md) – Complete API lifecycle with security, backend, rate limiting, and operation metadata persistence.
 - [FR5: Gateway Management](prds/gateway-management.md) – Gateway registration with secure token management, rotation, revocation, and organization-scoped uniqueness.
+- [FR6: Gateway WebSocket Event Notification](prds/gateway-websocket-events.md) – Real-time event broadcasting to gateways via persistent WebSocket connections for API deployments and operational notifications.
 
 ## Non-Functional Requirements
 
