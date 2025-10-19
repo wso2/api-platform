@@ -191,7 +191,7 @@ func TestSQLiteStorage_ErrorHandling(t *testing.T) {
 		cfg2 := createTestConfig("DupeAPI", "v1.0")
 		err = db.SaveConfig(cfg2)
 		assert.Error(t, err, "SaveConfig should fail for duplicate name/version")
-		assert.ErrorIs(t, err, storage.ErrAlreadyExists)
+		assert.ErrorIs(t, err, storage.ErrConflict)
 	})
 
 	// Test update non-existent config

@@ -31,15 +31,8 @@ import (
 	"go.uber.org/zap"
 )
 
-//go:embed schema.sql
+//go:embed gateway-controller-db.sql
 var schemaSQL string
-
-// SQLite-specific errors
-var (
-	ErrNotFound       = errors.New("configuration not found")
-	ErrAlreadyExists  = errors.New("configuration already exists")
-	ErrDatabaseLocked = errors.New("database is locked")
-)
 
 // SQLiteStorage implements the Storage interface using SQLite
 type SQLiteStorage struct {
