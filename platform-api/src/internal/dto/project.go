@@ -23,9 +23,16 @@ import (
 
 // Project represents a project entity in the API management platform
 type Project struct {
-	UUID           string    `json:"uuid" yaml:"uuid"`
+	ID             string    `json:"id" yaml:"id"`
 	Name           string    `json:"name" yaml:"name"`
-	OrganizationID string    `json:"organization_id" yaml:"organization_id"`
-	CreatedAt      time.Time `json:"created_at" yaml:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at" yaml:"updated_at"`
+	OrganizationID string    `json:"organizationId" yaml:"organizationId"`
+	CreatedAt      time.Time `json:"createdAt" yaml:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt" yaml:"updatedAt"`
+}
+
+// ProjectListResponse represents a paginated list of projects (constitution-compliant)
+type ProjectListResponse struct {
+	Count      int        `json:"count" yaml:"count"`           // Number of items in current response
+	List       []*Project `json:"list" yaml:"list"`             // Array of project objects
+	Pagination Pagination `json:"pagination" yaml:"pagination"` // Pagination metadata
 }

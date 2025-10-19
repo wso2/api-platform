@@ -51,7 +51,7 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		return nil, err
 	}
 	if existingOrg != nil {
-		if existingOrg.UUID == id {
+		if existingOrg.ID == id {
 			return nil, constants.ErrOrganizationExists
 		}
 		return nil, constants.ErrHandleExists
@@ -63,7 +63,7 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 
 	// CreateOrganization organization
 	org := &dto.Organization{
-		UUID:      id,
+		ID:        id,
 		Handle:    handle,
 		Name:      name,
 		CreatedAt: time.Now(),
@@ -78,9 +78,9 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 
 	// Create default project for the organization
 	defaultProject := &model.Project{
-		UUID:           "default",
+		ID:             "default",
 		Name:           "Default",
-		OrganizationID: org.UUID,
+		OrganizationID: org.ID,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -94,8 +94,8 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	return org, nil
 }
 
-func (s *OrganizationService) GetOrganizationByUUID(uuid string) (*dto.Organization, error) {
-	orgModel, err := s.orgRepo.GetOrganizationByUUID(uuid)
+func (s *OrganizationService) GetOrganizationByUUID(orgId string) (*dto.Organization, error) {
+	orgModel, err := s.orgRepo.GetOrganizationByUUID(orgId)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ func (s *OrganizationService) dtoToModel(dto *dto.Organization) *model.Organizat
 	}
 
 	return &model.Organization{
-		UUID:      dto.UUID,
+		ID:        dto.ID,
 		Handle:    dto.Handle,
 		Name:      dto.Name,
 		CreatedAt: dto.CreatedAt,
@@ -137,7 +137,7 @@ func (s *OrganizationService) modelToDTO(model *model.Organization) *dto.Organiz
 	}
 
 	return &dto.Organization{
-		UUID:      model.UUID,
+		ID:        model.ID,
 		Handle:    model.Handle,
 		Name:      model.Name,
 		CreatedAt: model.CreatedAt,

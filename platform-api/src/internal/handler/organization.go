@@ -52,13 +52,13 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 			"Handle is required"))
 		return
 	}
-	if req.UUID == "" {
+	if req.ID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Organization UUID is required"))
 		return
 	}
 
-	org, err := h.orgService.RegisterOrganization(req.UUID, req.Handle, req.Name)
+	org, err := h.orgService.RegisterOrganization(req.ID, req.Handle, req.Name)
 	if err != nil {
 		if errors.Is(err, constants.ErrHandleExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
@@ -84,14 +84,14 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 }
 
 func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
-	uuid := c.Param("org_uuid")
-	if uuid == "" {
+	orgId := c.Param("orgId")
+	if orgId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Organization UUID is required"))
+			"Organization ID is required"))
 		return
 	}
 
-	org, err := h.orgService.GetOrganizationByUUID(uuid)
+	org, err := h.orgService.GetOrganizationByUUID(orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrOrganizationNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -115,6 +115,6 @@ func (h *OrganizationHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/v1/organizations")
 	{
 		orgGroup.POST("", h.RegisterOrganization)
-		orgGroup.GET("/:org_uuid", h.GetOrganization)
+		orgGroup.GET("/:orgId", h.GetOrganization)
 	}
 }
