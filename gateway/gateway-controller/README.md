@@ -6,11 +6,10 @@ The Gateway-Controller is the xDS control plane that manages API configurations 
 
 - **REST API**: Submit, update, delete, and query API configurations via HTTP
 - **Validation**: Comprehensive validation with field-level error messages
-- **Persistence**: Embedded bbolt database for configuration storage
+- **Persistence**: Embedded SQLite database for configuration storage
 - **In-Memory Cache**: Fast access with thread-safe operations
 - **xDS Server**: gRPC server implementing Envoy's State-of-the-World protocol
 - **Zero-Downtime Updates**: Configuration changes applied without dropping connections
-- **Audit Logging**: Complete audit trail of all configuration changes
 
 ## Architecture
 
@@ -19,7 +18,7 @@ REST API (Port 9090)
       ↓
   Validation
       ↓
-Persistence (bbolt) + In-Memory Cache
+Persistence (SQLite) + In-Memory Cache
       ↓
   xDS Translator
       ↓
@@ -93,8 +92,9 @@ server:
 
 # Storage configuration
 storage:
-  mode: persistent        # "persistent" or "memory-only"
-  database_path: /data/gateway-controller.db
+  type: sqlite            # "sqlite", "postgres" (future), or "memory"
+  sqlite:
+    path: ./data/gateway.db  # SQLite database file path
 
 # Router (Envoy) configuration
 router:
@@ -124,8 +124,11 @@ Override any configuration value using the `GC_` prefix:
 # Override server API port
 export GC_SERVER_API_PORT=9091
 
-# Set storage mode to memory-only
-export GC_STORAGE_MODE=memory-only
+# Set storage type to memory
+export GC_STORAGE_TYPE=memory
+
+# Override SQLite database path
+export GC_STORAGE_SQLITE_PATH=/custom/path/gateway.db
 
 # Disable access logs
 export GC_ROUTER_ACCESS_LOGS_ENABLED=false
@@ -140,13 +143,14 @@ Environment variable naming: `GC_<SECTION>_<KEY>` (uppercase, underscore-separat
 
 ### Configuration Modes
 
-#### Persistent Mode (Default)
-Use bbolt database for persistence across restarts:
+#### Persistent Mode with SQLite (Default)
+Use SQLite database for persistence across restarts:
 
 ```yaml
 storage:
-  mode: persistent
-  database_path: /data/gateway-controller.db
+  type: sqlite
+  sqlite:
+    path: ./data/gateway.db
 ```
 
 #### Memory-Only Mode
@@ -154,7 +158,7 @@ No persistent storage (useful for testing):
 
 ```yaml
 storage:
-  mode: memory-only
+  type: memory
 ```
 
 ### Access Logs
@@ -316,11 +320,134 @@ DELETE /apis/Weather%20API/v1.0
 
 ## Data Storage
 
-The Gateway-Controller uses bbolt (embedded key-value store) with the following buckets:
+The Gateway-Controller uses SQLite (embedded relational database) for persistent storage of API configurations.
 
-- `apis/` - API configurations
-- `audit/` - Audit event logs
-- `metadata/` - System metadata
+### Database Schema
+
+The SQLite database contains the following table:
+
+- **`api_configs`** - Stores API configurations with full lifecycle metadata
+
+#### Table Structure
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT (PRIMARY KEY) | Unique UUID identifier |
+| `name` | TEXT | API name (indexed for fast lookups) |
+| `version` | TEXT | API version (indexed for fast lookups) |
+| `context` | TEXT | Base path (e.g., "/weather") |
+| `kind` | TEXT | API type ("http/rest", "graphql", etc.) |
+| `configuration` | TEXT | Full JSON-serialized API configuration |
+| `status` | TEXT | Deployment status ("pending", "deployed", "failed") |
+| `created_at` | TIMESTAMP | Record creation timestamp |
+| `updated_at` | TIMESTAMP | Last modification timestamp |
+| `deployed_at` | TIMESTAMP | Timestamp of successful deployment (NULL if never deployed) |
+| `deployed_version` | INTEGER | xDS snapshot version number |
+
+**Unique Constraint**: `(name, version)` - prevents duplicate API versions
+
+### Database Configuration
+
+SQLite is configured with the following settings for optimal performance:
+
+- **Journal Mode**: WAL (Write-Ahead Logging) - enables concurrent reads during writes
+- **Busy Timeout**: 5000ms - retries locked database for 5 seconds before failing
+- **Synchronous**: NORMAL - balanced durability (faster than FULL, safer than OFF)
+- **Cache Size**: 2000 pages (~2MB in-memory cache)
+- **Foreign Keys**: ON - enables referential integrity
+
+### Database Files
+
+When using SQLite storage, the following files are created in the data directory:
+
+- `./data/gateway.db` - Main database file
+- `./data/gateway.db-wal` - Write-Ahead Log (transactions)
+- `./data/gateway.db-shm` - Shared memory for WAL
+
+### Inspecting the Database
+
+You can inspect the SQLite database using the `sqlite3` command-line tool:
+
+```bash
+# Connect to the database
+sqlite3 ./data/gateway.db
+
+# List all API configurations
+SELECT name, version, status FROM api_configs;
+
+# View specific API configuration (pretty-print JSON)
+SELECT json(configuration) FROM api_configs WHERE name = 'Weather API';
+
+# Count configurations by status
+SELECT status, COUNT(*) FROM api_configs GROUP BY status;
+
+# Check database size and schema
+.dbinfo
+.schema api_configs
+
+# Exit
+.quit
+```
+
+### Database Backup
+
+To backup the SQLite database:
+
+```bash
+# 1. Checkpoint WAL to main database file
+sqlite3 ./data/gateway.db "PRAGMA wal_checkpoint(TRUNCATE);"
+
+# 2. Copy database file
+cp ./data/gateway.db ./backups/gateway-$(date +%Y%m%d-%H%M%S).db
+
+# 3. Verify backup integrity
+sqlite3 ./backups/gateway-*.db "PRAGMA integrity_check;"
+```
+
+### Troubleshooting
+
+#### Database is Locked Error
+
+If you encounter "database is locked" errors:
+
+1. **Check for active connections**:
+   ```bash
+   lsof ./data/gateway.db
+   ```
+
+2. **Ensure only one gateway-controller instance is running**:
+   SQLite with a single writer connection is designed for single-instance deployments.
+
+3. **Restart the gateway-controller**:
+   The controller will fail-fast on startup if the database is locked, with a clear error message.
+
+4. **Force unlock** (DANGER: only if no processes are running):
+   ```bash
+   rm ./data/gateway.db-wal ./data/gateway.db-shm
+   sqlite3 ./data/gateway.db "PRAGMA integrity_check;"
+   ```
+
+#### Empty Database on Startup
+
+The gateway-controller automatically creates the database schema if it doesn't exist. If you see "schema initialization" in the logs, this is normal behavior on first startup.
+
+#### Performance Issues
+
+SQLite is optimized for up to 100+ API configurations. If you experience performance issues with larger datasets, consider:
+
+1. **Check index usage**:
+   ```bash
+   sqlite3 ./data/gateway.db
+   EXPLAIN QUERY PLAN SELECT * FROM api_configs WHERE name = 'MyAPI' AND version = 'v1';
+   ```
+
+2. **Verify WAL mode is enabled**:
+   ```bash
+   sqlite3 ./data/gateway.db "PRAGMA journal_mode;"
+   # Should return: wal
+   ```
+
+3. **For very large deployments** (1000+ configurations), consider migrating to PostgreSQL (future support planned)
 
 ## xDS Protocol
 
@@ -354,7 +481,7 @@ gateway-controller/
 │   ├── storage/
 │   │   ├── interface.go      # Storage abstraction
 │   │   ├── memory.go         # In-memory cache
-│   │   └── bbolt.go          # bbolt implementation
+│   │   └── sqlite.go         # SQLite implementation
 │   ├── xds/
 │   │   ├── server.go         # xDS gRPC server
 │   │   ├── snapshot.go       # Snapshot manager

@@ -10,6 +10,12 @@
             "request": "launch",
             "mode": "auto",
             "program": "${workspaceFolder}/gateway/gateway-controller/cmd/controller/main.go",
+            "args": [
+                "-config", "${workspaceFolder}/gateway/gateway-controller/config/config.yaml",
+            ],
+            "env": {
+                "GC_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
+            }
         }
     ]
 }

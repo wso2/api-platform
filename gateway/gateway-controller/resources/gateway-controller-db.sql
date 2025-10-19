@@ -1,0 +1,1 @@
+../pkg/storage/gateway-controller-db.sql

@@ -1,10 +1,5 @@
 # Implementation Plan: Gateway with Controller and Router
 
-**Branch**: `001-gateway-has-two` | **Date**: 2025-10-11 | **Spec**: [spec.md](./spec.md)
-**Input**: Feature specification from `/specs/001-gateway-has-two/spec.md`
-
-**Note**: This template is filled in by the `/speckit.plan` command. See `.specify/templates/commands/plan.md` for the execution workflow.
-
 ## Summary
 
 Build a two-component API gateway system consisting of Gateway-Controller (Go-based xDS server) and Router (Envoy Proxy). Users submit REST API configurations in YAML/JSON format to the Gateway-Controller, which validates, persists, and dynamically configures the Router via xDS protocol. The Router forwards HTTP traffic to backend services according to these configurations. The system supports full CRUD lifecycle (create, update, delete, query) for API configurations with zero-downtime updates and graceful handling of in-flight requests.

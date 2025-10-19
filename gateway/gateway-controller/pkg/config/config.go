@@ -48,8 +48,24 @@ type ServerConfig struct {
 
 // StorageConfig holds storage-related configuration
 type StorageConfig struct {
-	Mode         string `koanf:"mode"`          // "memory-only" or "persistent"
-	DatabasePath string `koanf:"database_path"` // Path to bbolt database (used when mode=persistent)
+	Type     string         `koanf:"type"`     // "sqlite", "postgres", or "memory"
+	SQLite   SQLiteConfig   `koanf:"sqlite"`   // SQLite-specific configuration
+	Postgres PostgresConfig `koanf:"postgres"` // PostgreSQL-specific configuration (future)
+}
+
+// SQLiteConfig holds SQLite-specific configuration
+type SQLiteConfig struct {
+	Path string `koanf:"path"` // Path to SQLite database file
+}
+
+// PostgresConfig holds PostgreSQL-specific configuration (future support)
+type PostgresConfig struct {
+	Host     string `koanf:"host"`
+	Port     int    `koanf:"port"`
+	Database string `koanf:"database"`
+	User     string `koanf:"user"`
+	Password string `koanf:"password"`
+	SSLMode  string `koanf:"sslmode"`
 }
 
 // RouterConfig holds router (Envoy) related configuration
@@ -83,19 +99,20 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load defaults: %w", err)
 	}
 
-	// Load config file if it exists
+	// Load config file if path is provided
 	if configPath != "" {
-		if _, err := os.Stat(configPath); err == nil {
-			// Use WithMergeFunc to prevent merging of maps - config file should fully override defaults
-			if err := k.Load(file.Provider(configPath), yaml.Parser(), koanf.WithMergeFunc(func(src, dest map[string]interface{}) error {
-				// For nested maps, replace instead of merge
-				for k, v := range src {
-					dest[k] = v
-				}
-				return nil
-			})); err != nil {
-				return nil, fmt.Errorf("failed to load config file: %w", err)
+		if _, err := os.Stat(configPath); err != nil {
+			return nil, fmt.Errorf("config file not found: %s", configPath)
+		}
+		// Use WithMergeFunc to prevent merging of maps - config file should fully override defaults
+		if err := k.Load(file.Provider(configPath), yaml.Parser(), koanf.WithMergeFunc(func(src, dest map[string]interface{}) error {
+			// For nested maps, replace instead of merge
+			for k, v := range src {
+				dest[k] = v
 			}
+			return nil
+		})); err != nil {
+			return nil, fmt.Errorf("failed to load config file: %w", err)
 		}
 	}
 
@@ -132,8 +149,8 @@ func getDefaults() map[string]interface{} {
 		"server.api_port":         9090,
 		"server.xds_port":         18000,
 		"server.shutdown_timeout": "15s",
-		"storage.mode":            "memory-only",
-		"storage.database_path":   "/data/gateway-controller.db",
+		"storage.type":            "memory",
+		"storage.sqlite.path":     "./data/gateway.db",
 		"router.access_logs.enabled": true,
 		"router.access_logs.format":  "json",
 		"router.access_logs.json_fields": map[string]interface{}{
@@ -167,14 +184,32 @@ func getDefaults() map[string]interface{} {
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
-	// Validate storage mode
-	if c.Storage.Mode != "memory-only" && c.Storage.Mode != "persistent" {
-		return fmt.Errorf("storage.mode must be either 'memory-only' or 'persistent', got: %s", c.Storage.Mode)
+	// Validate storage type
+	validStorageTypes := []string{"sqlite", "postgres", "memory"}
+	isValidType := false
+	for _, t := range validStorageTypes {
+		if c.Storage.Type == t {
+			isValidType = true
+			break
+		}
+	}
+	if !isValidType {
+		return fmt.Errorf("storage.type must be one of: sqlite, postgres, memory, got: %s", c.Storage.Type)
 	}
 
-	// Validate database path for persistent mode
-	if c.Storage.Mode == "persistent" && c.Storage.DatabasePath == "" {
-		return fmt.Errorf("storage.database_path is required when storage.mode is 'persistent'")
+	// Validate SQLite configuration
+	if c.Storage.Type == "sqlite" && c.Storage.SQLite.Path == "" {
+		return fmt.Errorf("storage.sqlite.path is required when storage.type is 'sqlite'")
+	}
+
+	// Validate PostgreSQL configuration (future)
+	if c.Storage.Type == "postgres" {
+		if c.Storage.Postgres.Host == "" {
+			return fmt.Errorf("storage.postgres.host is required when storage.type is 'postgres'")
+		}
+		if c.Storage.Postgres.Database == "" {
+			return fmt.Errorf("storage.postgres.database is required when storage.type is 'postgres'")
+		}
 	}
 
 	// Validate access log format
@@ -229,9 +264,14 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// IsPersistentMode returns true if storage mode is persistent
+// IsPersistentMode returns true if storage type is not memory
 func (c *Config) IsPersistentMode() bool {
-	return c.Storage.Mode == "persistent"
+	return c.Storage.Type != "memory"
+}
+
+// IsMemoryOnlyMode returns true if storage type is memory
+func (c *Config) IsMemoryOnlyMode() bool {
+	return c.Storage.Type == "memory"
 }
 
 // IsAccessLogsEnabled returns true if access logs are enabled

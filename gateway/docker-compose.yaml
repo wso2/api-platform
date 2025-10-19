@@ -26,10 +26,12 @@ services:
       - "9090:9090"   # REST API
       - "18000:18000" # xDS gRPC
     environment:
-      - GC_STORAGE_MODE=persistent
-      - GC_STORAGE_DATABASE_PATH=/data/gateway-controller.db
+      - GC_STORAGE_TYPE=sqlite
+      - GC_STORAGE_SQLITE_PATH=./data/gateway.db
+      - GC_LOGGING_LEVEL=info
     volumes:
-      - controller-data:/data
+      - controller-data:/app/data
+      - ./gateway-controller/config/config.yaml:/app/config/config.yaml:ro
     networks:
       - gateway-network
     healthcheck:
@@ -48,7 +50,7 @@ services:
       - "8080:8080"   # HTTP traffic
       - "9901:9901"   # Envoy admin
     environment:
-      - XDS_SERVER_HOST=host.docker.internal
+      - XDS_SERVER_HOST=${XDS_SERVER_HOST:-gateway-controller}
       - XDS_SERVER_PORT=18000
     # depends_on:
     #   gateway-controller:

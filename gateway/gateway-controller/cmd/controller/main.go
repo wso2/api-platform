@@ -23,7 +23,7 @@ import (
 
 func main() {
 	// Parse command-line flags
-	configPath := flag.String("config", "/etc/gateway-controller/config.yaml", "Path to configuration file")
+	configPath := flag.String("config", "config/config.yaml", "Path to configuration file")
 	flag.Parse()
 
 	// Load configuration
@@ -46,19 +46,32 @@ func main() {
 
 	log.Info("Starting Gateway-Controller",
 		zap.String("config_file", *configPath),
-		zap.String("storage_mode", cfg.Storage.Mode),
+		zap.String("storage_type", cfg.Storage.Type),
 		zap.Bool("access_logs_enabled", cfg.Router.AccessLogs.Enabled),
 	)
 
-	// Initialize storage based on mode
+	// Initialize storage based on type
 	var db storage.Storage
 	if cfg.IsPersistentMode() {
-		log.Info("Initializing persistent storage", zap.String("path", cfg.Storage.DatabasePath))
-		db, err = storage.NewBBoltStorage(cfg.Storage.DatabasePath)
-		if err != nil {
-			log.Fatal("Failed to initialize database", zap.Error(err))
+		switch cfg.Storage.Type {
+		case "sqlite":
+			log.Info("Initializing SQLite storage", zap.String("path", cfg.Storage.SQLite.Path))
+			db, err = storage.NewSQLiteStorage(cfg.Storage.SQLite.Path, log)
+			if err != nil {
+				// Check for database locked error and provide clear guidance
+				if err.Error() == "database is locked" || err.Error() == "failed to open database: database is locked" {
+					log.Fatal("Database is locked by another process",
+						zap.String("database_path", cfg.Storage.SQLite.Path),
+						zap.String("troubleshooting", "Check if another gateway-controller instance is running or remove stale WAL files"))
+				}
+				log.Fatal("Failed to initialize SQLite database", zap.Error(err))
+			}
+			defer db.Close()
+		case "postgres":
+			log.Fatal("PostgreSQL storage not yet implemented")
+		default:
+			log.Fatal("Unknown storage type", zap.String("type", cfg.Storage.Type))
 		}
-		defer db.Close()
 	} else {
 		log.Info("Running in memory-only mode (no persistent storage)")
 	}
@@ -69,8 +82,7 @@ func main() {
 	// Load configurations from database on startup (if persistent mode)
 	if cfg.IsPersistentMode() && db != nil {
 		log.Info("Loading configurations from database")
-		bboltDB := db.(*storage.BBoltStorage)
-		if err := storage.LoadFromDatabase(bboltDB.GetDB(), configStore); err != nil {
+		if err := storage.LoadFromDatabase(db, configStore); err != nil {
 			log.Fatal("Failed to load configurations from database", zap.Error(err))
 		}
 		log.Info("Loaded configurations", zap.Int("count", len(configStore.GetAll())))
