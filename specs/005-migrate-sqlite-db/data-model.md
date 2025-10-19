@@ -16,6 +16,25 @@ The gateway-controller uses SQLite to persist API configurations and maintain st
 
 ## Database Configuration
 
+### Configuration Format
+
+The gateway-controller storage configuration uses a hierarchical YAML structure:
+
+```yaml
+storage:
+  type: sqlite      # Database type: "sqlite" or "postgres" (future)
+  sqlite:
+    path: /data/gateway.db  # SQLite database file path
+  # Future PostgreSQL support:
+  # postgres:
+  #   host: localhost
+  #   port: 5432
+  #   database: gateway
+  #   user: gateway_user
+  #   password: secret
+  #   sslmode: require
+```
+
 ### SQLite Settings
 
 | Parameter | Value | Purpose |
@@ -28,19 +47,19 @@ The gateway-controller uses SQLite to persist API configurations and maintain st
 
 **Connection String**:
 ```
-file:./data/gateway.db?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_cache_size=2000&_foreign_keys=ON
+file:/data/gateway.db?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_cache_size=2000&_foreign_keys=ON
 ```
 
 ### File Locations
 
 | File | Purpose | Size (100 configs) |
 |------|---------|-------------------|
-| `./data/gateway.db` | Main database file | ~500-1000 KB |
-| `./data/gateway.db-wal` | Write-Ahead Log (transactions) | Variable (0-32 KB) |
-| `./data/gateway.db-shm` | Shared memory for WAL | 32 KB |
+| `/data/gateway.db` | Main database file | ~500-1000 KB |
+| `/data/gateway.db-wal` | Write-Ahead Log (transactions) | Variable (0-32 KB) |
+| `/data/gateway.db-shm` | Shared memory for WAL | 32 KB |
 
-**Default Path**: `./data/gateway.db` (relative to working directory)
-**Configurable Via**: `storage.path` config option
+**Default Path**: `/data/gateway.db` (configurable via `storage.sqlite.path`)
+**Storage Type**: Configured via `storage.type` ("sqlite" or "postgres")
 
 ---
 

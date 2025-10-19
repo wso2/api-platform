@@ -8,6 +8,22 @@
 
 This research provides comprehensive guidance for migrating from BBolt to SQLite for storing API configurations in the gateway-controller. The recommendations prioritize production-readiness, operational simplicity, and future migration paths to PostgreSQL.
 
+**Configuration Structure**:
+```yaml
+storage:
+  type: sqlite      # Database type: "sqlite", "postgres" (future), or "memory"
+  sqlite:
+    path: /data/gateway.db  # SQLite database file path
+  # Future PostgreSQL support:
+  # postgres:
+  #   host: localhost
+  #   port: 5432
+  #   database: gateway
+  #   user: gateway_user
+  #   password: secret
+  #   sslmode: require
+```
+
 ---
 
 ## Key Decisions
@@ -40,8 +56,9 @@ This research provides comprehensive guidance for migrating from BBolt to SQLite
 **Rationale**:
 - **Best debugging experience**: Human-readable in sqlite3 CLI
 - **Query performance**: Composite index on (name, version) eliminates full table scans
-- **PostgreSQL compatibility**: Maps directly to JSONB column type
+- **PostgreSQL compatibility**: Maps directly to JSONB column type for seamless migration
 - **Operational simplicity**: Operators can inspect configs without special tools
+- **Future extensibility**: Configuration structure supports both SQLite and PostgreSQL via `storage.type` field
 
 **Alternatives considered**:
 - BLOB with JSONB binary format - rejected due to poor debugging experience
@@ -297,7 +314,28 @@ func (s *SQLiteStorage) initSchema() error {
 
 ### Compatibility Design
 
-The chosen schema design ensures minimal changes for PostgreSQL migration:
+The chosen schema design and configuration structure ensure minimal changes for PostgreSQL migration:
+
+**Configuration** (SQLite - Current):
+```yaml
+storage:
+  type: sqlite
+  sqlite:
+    path: /data/gateway.db
+```
+
+**Configuration** (PostgreSQL - Future):
+```yaml
+storage:
+  type: postgres
+  postgres:
+    host: localhost
+    port: 5432
+    database: gateway
+    user: gateway_user
+    password: secret
+    sslmode: require
+```
 
 **SQLite Schema** (Current):
 ```sql
@@ -319,9 +357,11 @@ CREATE TABLE api_configs (
 CREATE INDEX idx_config_gin ON api_configs USING gin(configuration);
 ```
 
-**Code Changes Required**: ~10 lines
+**Code Changes Required**: ~20-30 lines
+- Add PostgreSQL storage implementation (new file `pkg/storage/postgres.go`)
+- Update storage factory to support `storage.type` routing
 - Update import: `_ "github.com/lib/pq"`
-- Update DSN: `postgres://...`
+- Build DSN from `storage.postgres.*` config fields
 - No query changes (database/sql abstraction)
 
 ---

@@ -70,7 +70,7 @@ As a platform architect, I need the gateway-controller's storage layer to be dat
 - **Corrupted database file**: How does the system handle a corrupted SQLite database on startup? System should log a clear error message and fail to start (fail-fast behavior preferred over silent corruption).
 - **Locked database file**: What happens when the SQLite database file is locked by another process on startup? System must fail immediately with a clear error message and exit (prevents multi-instance conflicts and silent failures).
 - **Concurrent write operations**: What happens when multiple API configuration changes are submitted simultaneously? System must handle concurrent writes safely using SQLite's transaction support and the in-memory cache's locking mechanisms.
-- **Large configuration payloads**: How does the system handle API configurations with very large upstream lists or many operations? System must store configurations up to reasonable limits (e.g., 1MB per configuration) without performance degradation.
+- **Large configuration payloads**: How does the system handle API configurations with very large upstream lists or many operations? System must store configurations up to 1MB per configuration without performance degradation. Configurations larger than 1MB should be rejected with a clear error message indicating the size limit.
 - **Database schema versioning**: What happens when the gateway-controller is upgraded and the SQLite schema needs to change? Future migrations should be supported through a schema version table (not required for initial implementation but design should accommodate it).
 - **Startup with mismatched storage mode**: What happens if the operator changes from persistent to memory-only mode but an old database file exists? System should ignore the database file and log a warning.
 
@@ -83,10 +83,10 @@ As a platform architect, I need the gateway-controller's storage layer to be dat
 - **FR-003**: System MUST remove all BBolt dependencies, configuration options, and related code from the codebase
 - **FR-004**: System MUST remove the audit logging feature entirely (including code, database tables, and API endpoints)
 - **FR-005**: System MUST maintain the existing Storage interface contract without breaking changes to dependent code
-- **FR-006**: System MUST support both "persistent" (SQLite) and "memory-only" storage modes via configuration
-- **FR-007**: System MUST automatically create the SQLite database and schema if they do not exist on startup in persistent mode (default path: ./data/gateway.db relative to working directory, configurable via storage.path setting)
-- **FR-008**: System MUST load all API configurations from SQLite into the in-memory cache during controller startup in persistent mode
-- **FR-009**: System MUST persist configuration changes (create, update, delete) to SQLite immediately when in persistent mode
+- **FR-006**: System MUST support "sqlite", "postgres" (future), and "memory" storage types via `storage.type` configuration
+- **FR-007**: System MUST automatically create the SQLite database and schema if they do not exist on startup when `storage.type=sqlite` (default path: `/data/gateway.db`, configurable via `storage.sqlite.path` setting)
+- **FR-008**: System MUST load all API configurations from SQLite into the in-memory cache during controller startup when `storage.type=sqlite`
+- **FR-009**: System MUST persist configuration changes (create, update, delete) to SQLite immediately when `storage.type=sqlite`
 - **FR-010**: System MUST use SQLite transactions to ensure data consistency during write operations
 - **FR-011**: System MUST maintain thread-safe operations for concurrent access to both SQLite and the in-memory cache
 - **FR-012**: System MUST support querying API configurations by ID and by name/version composite key
@@ -102,7 +102,14 @@ As a platform architect, I need the gateway-controller's storage layer to be dat
   - `api_configs` table: Stores API configurations with ID, name, version, created_at, updated_at, and configuration_json fields
   - Indexes on common query patterns: composite index on (name, version) for name/version lookups
   - **Driver**: Implementation uses mattn/go-sqlite3 (CGO-based, requires gcc at build time)
-  - **File Location**: Default path is ./data/gateway.db (relative to working directory), configurable via storage.path config option
+  - **File Location**: Default path is `/data/gateway.db`, configurable via `storage.sqlite.path` config option
+  - **Configuration Structure**:
+    ```yaml
+    storage:
+      type: sqlite      # "sqlite", "postgres" (future), or "memory"
+      sqlite:
+        path: /data/gateway.db
+    ```
 
 - **Storage Interface**: Abstraction layer defining methods for SaveConfig, UpdateConfig, DeleteConfig, GetConfig, GetConfigByNameVersion, GetAllConfigs, and Close. Implemented by both SQLiteStorage (persistent) and MemoryStorage (transient).
 
@@ -110,10 +117,10 @@ As a platform architect, I need the gateway-controller's storage layer to be dat
 
 ### Measurable Outcomes
 
-- **SC-001**: Gateway-controller starts successfully in persistent mode and creates SQLite database automatically if it does not exist
-- **SC-002**: All API configuration operations (create, read, update, delete) complete in under 1 second for databases with up to 100 configurations
-- **SC-003**: API configurations survive gateway-controller restarts with zero data loss when in persistent mode
-- **SC-004**: Gateway-controller operates correctly in memory-only mode without creating any database files
+- **SC-001**: Gateway-controller starts successfully with `storage.type=sqlite` and creates SQLite database automatically if it does not exist
+- **SC-002**: All API configuration operations (create, read, update, delete) complete with p95 latency under 1 second for databases with up to 100 configurations
+- **SC-003**: API configurations survive gateway-controller restarts with zero data loss when `storage.type=sqlite`
+- **SC-004**: Gateway-controller operates correctly with `storage.type=memory` without creating any database files
 - **SC-005**: SQLite database file size grows predictably (approximately 5-10 KB per API configuration stored)
 - **SC-006**: No BBolt-related code, dependencies, or configuration options remain in the codebase after migration
 - **SC-007**: No audit logging code, API endpoints, or database tables remain in the codebase after removal
