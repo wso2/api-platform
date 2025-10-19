@@ -41,6 +41,20 @@ curl -k -X POST https://localhost:8443/api/v1/apis \
     "transport": ["http", "https"],
     "lifeCycleStatus": "CREATED"
   }'
+
+# Deploy an API revision
+curl -k -X POST 'https://localhost:8443/api/v1/apis/<api_uuid>/deploy-revision?revisionId=<revision_uuid>' \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
+  -d '[
+    {
+      "revisionUuid": "<revision_uuid>",
+      "gatewayId": "<gateway_uuid>",
+      "status": "CREATED",
+      "vhost": "mg.wso2.com",
+      "displayOnDevportal": true
+    }
+  ]'
 ```
 
 ## Documentation
