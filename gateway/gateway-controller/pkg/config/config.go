@@ -149,7 +149,7 @@ func getDefaults() map[string]interface{} {
 		"server.xds_port":         18000,
 		"server.shutdown_timeout": "15s",
 		"storage.type":            "memory",
-		"storage.sqlite.path":     "/data/gateway.db",
+		"storage.sqlite.path":     "./data/gateway.db",
 		"router.access_logs.enabled": true,
 		"router.access_logs.format":  "json",
 		"router.access_logs.json_fields": map[string]interface{}{

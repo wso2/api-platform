@@ -37,7 +37,7 @@ storage:
 storage:
   type: sqlite
   sqlite:
-    path: /data/gateway.db  # SQLite database file path
+    path: ./data/gateway.db  # SQLite database file path
 
 # Features:
 # - Embedded relational database
@@ -77,7 +77,7 @@ server:
 storage:
   type: sqlite
   sqlite:
-    path: /data/gateway.db  # SQLite database file path
+    path: ./data/gateway.db  # SQLite database file path
 
 # Router configuration
 router:

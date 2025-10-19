@@ -276,7 +276,7 @@ func main() {
     logger := logger.NewLogger()
 
     // 2. Initialize storage
-    db, err := storage.NewBBoltStorage("/data/gateway-controller.db")
+    db, err := storage.NewBBoltStorage("./data/gateway-controller.db")
     if err != nil {
         logger.Fatal("Failed to initialize storage", zap.Error(err))
     }

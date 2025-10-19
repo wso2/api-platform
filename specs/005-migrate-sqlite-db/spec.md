@@ -84,7 +84,7 @@ As a platform architect, I need the gateway-controller's storage layer to be dat
 - **FR-004**: System MUST remove the audit logging feature entirely (including code, database tables, and API endpoints)
 - **FR-005**: System MUST maintain the existing Storage interface contract without breaking changes to dependent code
 - **FR-006**: System MUST support "sqlite", "postgres" (future), and "memory" storage types via `storage.type` configuration
-- **FR-007**: System MUST automatically create the SQLite database and schema if they do not exist on startup when `storage.type=sqlite` (default path: `/data/gateway.db`, configurable via `storage.sqlite.path` setting)
+- **FR-007**: System MUST automatically create the SQLite database and schema if they do not exist on startup when `storage.type=sqlite` (default path: `./data/gateway.db`, configurable via `storage.sqlite.path` setting)
 - **FR-008**: System MUST load all API configurations from SQLite into the in-memory cache during controller startup when `storage.type=sqlite`
 - **FR-009**: System MUST persist configuration changes (create, update, delete) to SQLite immediately when `storage.type=sqlite`
 - **FR-010**: System MUST use SQLite transactions to ensure data consistency during write operations
@@ -102,13 +102,13 @@ As a platform architect, I need the gateway-controller's storage layer to be dat
   - `api_configs` table: Stores API configurations with ID, name, version, created_at, updated_at, and configuration_json fields
   - Indexes on common query patterns: composite index on (name, version) for name/version lookups
   - **Driver**: Implementation uses mattn/go-sqlite3 (CGO-based, requires gcc at build time)
-  - **File Location**: Default path is `/data/gateway.db`, configurable via `storage.sqlite.path` config option
+  - **File Location**: Default path is `./data/gateway.db`, configurable via `storage.sqlite.path` config option
   - **Configuration Structure**:
     ```yaml
     storage:
       type: sqlite      # "sqlite", "postgres" (future), or "memory"
       sqlite:
-        path: /data/gateway.db
+        path: ./data/gateway.db
     ```
 
 - **Storage Interface**: Abstraction layer defining methods for SaveConfig, UpdateConfig, DeleteConfig, GetConfig, GetConfigByNameVersion, GetAllConfigs, and Close. Implemented by both SQLiteStorage (persistent) and MemoryStorage (transient).

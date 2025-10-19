@@ -21,13 +21,13 @@ Replace the gateway-controller's BBolt embedded database with SQLite for persist
   - **REMOVE**: `go.etcd.io/bbolt` (will be removed as part of this migration)
 
 **Storage**: SQLite 3.x (embedded database via mattn/go-sqlite3 driver), with fallback to memory-only mode for testing
-**Database Path**: Default `/data/gateway.db` (absolute path), configurable via `storage.sqlite.path` config option
+**Database Path**: Default `./data/gateway.db`, configurable via `storage.sqlite.path` config option
 **Configuration Format**:
 ```yaml
 storage:
   type: sqlite      # "sqlite", "postgres" (future), or "memory"
   sqlite:
-    path: /data/gateway.db
+    path: ./data/gateway.db
 ```
 **Testing**: Go's built-in testing framework (`go test`), integration tests in `tests/` directory
 **Target Platform**: Linux server (primary), macOS (development), Docker containers

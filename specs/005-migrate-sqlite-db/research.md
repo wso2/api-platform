@@ -13,7 +13,7 @@ This research provides comprehensive guidance for migrating from BBolt to SQLite
 storage:
   type: sqlite      # Database type: "sqlite", "postgres" (future), or "memory"
   sqlite:
-    path: /data/gateway.db  # SQLite database file path
+    path: ./data/gateway.db  # SQLite database file path
   # Future PostgreSQL support:
   # postgres:
   #   host: localhost
@@ -321,7 +321,7 @@ The chosen schema design and configuration structure ensure minimal changes for 
 storage:
   type: sqlite
   sqlite:
-    path: /data/gateway.db
+    path: ./data/gateway.db
 ```
 
 **Configuration** (PostgreSQL - Future):

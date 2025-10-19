@@ -82,11 +82,11 @@
 
 ### Implementation for User Story 2
 
-- [ ] T025 [US2] Update storage initialization logic to support memory type (storage.type: memory) in gateway/gateway-controller/cmd/controller/main.go
-- [ ] T026 [US2] Add conditional storage creation based on storage.type config (sqlite/postgres/memory) in gateway/gateway-controller/cmd/controller/main.go
-- [ ] T027 [US2] Update config-memory-only.yaml example to use storage.type: memory in gateway/gateway-controller/config/config-memory-only.yaml
-- [ ] T028 [US2] Add test for memory-only mode with configuration loss on restart in gateway/gateway-controller/tests/integration/memory_mode_test.go
-- [ ] T029 [US2] Verify CRUD operations work identically in both modes in gateway/gateway-controller/tests/integration/storage_parity_test.go
+- [X] T025 [US2] Update storage initialization logic to support memory type (storage.type: memory) in gateway/gateway-controller/cmd/controller/main.go
+- [X] T026 [US2] Add conditional storage creation based on storage.type config (sqlite/postgres/memory) in gateway/gateway-controller/cmd/controller/main.go
+- [X] T027 [US2] Update config-memory-only.yaml example to use storage.type: memory in gateway/gateway-controller/config/config-memory-only.yaml
+- [X] T028 [US2] Add test for memory-only mode with configuration loss on restart in gateway/gateway-controller/tests/integration/memory_mode_test.go
+- [X] T029 [US2] Verify CRUD operations work identically in both modes in gateway/gateway-controller/tests/integration/storage_parity_test.go
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently - persistent and memory-only modes both functional
 
@@ -100,11 +100,11 @@
 
 ### Implementation for User Story 3
 
-- [ ] T030 [P] [US3] Review and ensure Storage interface has no SQLite-specific methods in gateway/gateway-controller/pkg/storage/interface.go
-- [ ] T031 [P] [US3] Verify API handlers use Storage interface exclusively in gateway/gateway-controller/pkg/api/handlers/api_handler.go
-- [ ] T032 [P] [US3] Verify xDS server uses Storage interface exclusively in gateway/gateway-controller/pkg/xds/server.go
-- [ ] T033 [US3] Add documentation comments explaining abstraction strategy in gateway/gateway-controller/pkg/storage/interface.go
-- [ ] T034 [US3] Create future migration guide in gateway/gateway-controller/docs/postgresql-migration.md
+- [X] T030 [P] [US3] Review and ensure Storage interface has no SQLite-specific methods in gateway/gateway-controller/pkg/storage/interface.go
+- [X] T031 [P] [US3] Verify API handlers use Storage interface exclusively in gateway/gateway-controller/pkg/api/handlers/api_handler.go
+- [X] T032 [P] [US3] Verify xDS server uses Storage interface exclusively in gateway/gateway-controller/pkg/xds/server.go
+- [X] T033 [US3] Add documentation comments explaining abstraction strategy in gateway/gateway-controller/pkg/storage/interface.go
+- [X] T034 [US3] Create future migration guide in gateway/gateway-controller/docs/postgresql-migration.md
 
 **Checkpoint**: All user stories should now be independently functional - storage layer is fully abstracted
 
@@ -114,15 +114,15 @@
 
 **Purpose**: Remove all BBolt and audit logging code, dependencies, and configurations
 
-- [ ] T035 Delete bbolt.go implementation file from gateway/gateway-controller/pkg/storage/bbolt.go
-- [ ] T036 [P] Remove all audit logging endpoints from OpenAPI spec in gateway/gateway-controller/api/openapi.yaml
-- [ ] T037 [P] Remove audit logging handler methods from API handlers in gateway/gateway-controller/pkg/api/handlers/api_handler.go
-- [ ] T038 [P] Remove BBolt dependency from go.mod in gateway/gateway-controller/go.mod
-- [ ] T039 Run go mod tidy to clean up dependencies in gateway/gateway-controller/
-- [ ] T040 [P] Update config.yaml to use storage.type and storage.sqlite.path structure, remove database_path and audit settings in gateway/gateway-controller/config/config.yaml
-- [ ] T041 [P] Remove any BBolt-specific Makefile targets in gateway/gateway-controller/Makefile
-- [ ] T042 Search codebase for remaining BBolt references and remove in gateway/gateway-controller/
-- [ ] T043 [P] Review and update gateway deployment configs to remove BBolt references in gateway/gateway-controller/gateway/
+- [X] T035 Delete bbolt.go implementation file from gateway/gateway-controller/pkg/storage/bbolt.go
+- [X] T036 [P] Remove all audit logging endpoints from OpenAPI spec in gateway/gateway-controller/api/openapi.yaml
+- [X] T037 [P] Remove audit logging handler methods from API handlers in gateway/gateway-controller/pkg/api/handlers/api_handler.go
+- [X] T038 [P] Remove BBolt dependency from go.mod in gateway/gateway-controller/go.mod
+- [X] T039 Run go mod tidy to clean up dependencies in gateway/gateway-controller/
+- [X] T040 [P] Update config.yaml to use storage.type and storage.sqlite.path structure, remove database_path and audit settings in gateway/gateway-controller/config/config.yaml
+- [X] T041 [P] Remove any BBolt-specific Makefile targets in gateway/gateway-controller/Makefile
+- [X] T042 Search codebase for remaining BBolt references and remove in gateway/gateway-controller/
+- [X] T043 [P] Review and update gateway deployment configs to remove BBolt references in gateway/gateway-controller/gateway/
 
 ---
 
@@ -130,14 +130,14 @@
 
 **Purpose**: Update all documentation and configuration files to reflect SQLite migration
 
-- [ ] T044 [P] Update README.md to replace BBolt references with SQLite in gateway/gateway-controller/README.md
-- [ ] T045 [P] Update README.md Data Storage section with SQLite details in gateway/gateway-controller/README.md
-- [ ] T046 [P] Update README.md to remove audit logging documentation in gateway/gateway-controller/README.md
-- [ ] T047 [P] Update configuration examples with SQLite settings in gateway/gateway-controller/README.md
-- [ ] T048 [P] Add troubleshooting section for SQLite locked database errors in gateway/gateway-controller/README.md
-- [ ] T049 [P] Update architecture documentation if exists in gateway/gateway-controller/docs/
-- [ ] T050 [P] Add database inspection guide using sqlite3 CLI in gateway/gateway-controller/docs/
-- [ ] T051 Update CHANGELOG.md or release notes with breaking changes in gateway/gateway-controller/CHANGELOG.md
+- [X] T044 [P] Update README.md to replace BBolt references with SQLite in gateway/gateway-controller/README.md
+- [X] T045 [P] Update README.md Data Storage section with SQLite details in gateway/gateway-controller/README.md
+- [X] T046 [P] Update README.md to remove audit logging documentation in gateway/gateway-controller/README.md
+- [X] T047 [P] Update configuration examples with SQLite settings in gateway/gateway-controller/README.md
+- [X] T048 [P] Add troubleshooting section for SQLite locked database errors in gateway/gateway-controller/README.md
+- [X] T049 [P] Update architecture documentation if exists in gateway/gateway-controller/docs/
+- [X] T050 [P] Add database inspection guide using sqlite3 CLI in gateway/gateway-controller/docs/
+- [X] T051 Update CHANGELOG.md or release notes with breaking changes in gateway/gateway-controller/CHANGELOG.md
 
 ---
 
@@ -145,16 +145,16 @@
 
 **Purpose**: Comprehensive testing to ensure all success criteria are met
 
-- [ ] T052 Run make test to verify all unit tests pass in gateway/gateway-controller/
-- [ ] T053 Run integration tests with empty database initialization in gateway/gateway-controller/tests/integration/
-- [ ] T054 Test corrupted database file handling (verify fail-fast behavior) in gateway/gateway-controller/tests/integration/
-- [ ] T055 Test locked database file on startup (verify clear error message) in gateway/gateway-controller/tests/integration/
-- [ ] T056 Performance test: Verify CRUD operations complete with p95 latency under 1 second for 100 configs in gateway/gateway-controller/tests/performance/
-- [ ] T057 Load test: Create 100 API configurations and verify database size growth in gateway/gateway-controller/tests/performance/
-- [ ] T058 Concurrency test: Run 10 concurrent write operations and verify no errors in gateway/gateway-controller/tests/integration/
-- [ ] T059 Verify WAL mode is enabled by checking database files (.db, .db-wal, .db-shm) in gateway/gateway-controller/tests/integration/
-- [ ] T060 Test memory-only mode does not create database files in gateway/gateway-controller/tests/integration/
-- [ ] T061 Test configuration survival across restarts in persistent mode in gateway/gateway-controller/tests/integration/
+- [X] T052 Run make test to verify all unit tests pass in gateway/gateway-controller/
+- [X] T053 Run integration tests with empty database initialization in gateway/gateway-controller/tests/integration/
+- [X] T054 Test corrupted database file handling (verify fail-fast behavior) in gateway/gateway-controller/tests/integration/
+- [X] T055 Test locked database file on startup (verify clear error message) in gateway/gateway-controller/tests/integration/
+- [X] T056 Performance test: Verify CRUD operations complete with p95 latency under 1 second for 100 configs in gateway/gateway-controller/tests/performance/
+- [X] T057 Load test: Create 100 API configurations and verify database size growth in gateway/gateway-controller/tests/performance/
+- [X] T058 Concurrency test: Run 10 concurrent write operations and verify no errors in gateway/gateway-controller/tests/integration/
+- [X] T059 Verify WAL mode is enabled by checking database files (.db, .db-wal, .db-shm) in gateway/gateway-controller/tests/integration/
+- [X] T060 Test memory-only mode does not create database files in gateway/gateway-controller/tests/integration/
+- [X] T061 Test configuration survival across restarts in persistent mode in gateway/gateway-controller/tests/integration/
 
 ---
 
@@ -162,15 +162,15 @@
 
 **Purpose**: Final improvements, security hardening, and quickstart validation
 
-- [ ] T062 [P] Code review and refactoring for SQLite implementation in gateway/gateway-controller/pkg/storage/sqlite.go
-- [ ] T063 [P] Add structured logging for database operations in gateway/gateway-controller/pkg/storage/sqlite.go
-- [ ] T064 [P] Optimize SQL queries if needed (verify EXPLAIN QUERY PLAN) in gateway/gateway-controller/pkg/storage/sqlite.go
-- [ ] T065 [P] Security review: Ensure no SQL injection vulnerabilities in gateway/gateway-controller/pkg/storage/sqlite.go
-- [ ] T066 [P] Add database metrics collection (file size, query count) in gateway/gateway-controller/pkg/storage/sqlite.go
-- [ ] T067 Validate quickstart.md instructions with fresh deployment in specs/005-migrate-sqlite-db/quickstart.md
-- [ ] T068 [P] Update Docker image build to ensure gcc is available for CGO in gateway/gateway-controller/Dockerfile
-- [ ] T069 Run make docker to verify Docker image builds successfully in gateway/gateway-controller/
-- [ ] T070 [P] Verify Docker build includes gcc/build-essential and successfully compiles mattn/go-sqlite3 in gateway/gateway-controller/
+- [X] T062 [P] Code review and refactoring for SQLite implementation in gateway/gateway-controller/pkg/storage/sqlite.go
+- [X] T063 [P] Add structured logging for database operations in gateway/gateway-controller/pkg/storage/sqlite.go
+- [X] T064 [P] Optimize SQL queries if needed (verify EXPLAIN QUERY PLAN) in gateway/gateway-controller/pkg/storage/sqlite.go
+- [X] T065 [P] Security review: Ensure no SQL injection vulnerabilities in gateway/gateway-controller/pkg/storage/sqlite.go
+- [X] T066 [P] Add database metrics collection (file size, query count) in gateway/gateway-controller/pkg/storage/sqlite.go
+- [X] T067 Validate quickstart.md instructions with fresh deployment in specs/005-migrate-sqlite-db/quickstart.md
+- [X] T068 [P] Update Docker image build to ensure gcc is available for CGO in gateway/gateway-controller/Dockerfile
+- [X] T069 Run make docker to verify Docker image builds successfully in gateway/gateway-controller/
+- [X] T070 [P] Verify Docker build includes gcc/build-essential and successfully compiles mattn/go-sqlite3 in gateway/gateway-controller/
 
 ---
 
@@ -379,7 +379,7 @@ With 3 developers after Foundational phase complete:
 - Commit after each task or logical group
 - Stop at any checkpoint to validate story independently
 - **CGO Requirement**: mattn/go-sqlite3 requires gcc at build time - ensure Docker image includes build-essential
-- **Database Path**: Default `/data/gateway.db` (absolute path) configured via storage.sqlite.path
+- **Database Path**: Default `./data/gateway.db` configured via storage.sqlite.path
 - **Configuration Structure**: Hierarchical YAML with storage.type (sqlite/postgres/memory) and nested database-specific settings (storage.sqlite.*, storage.postgres.*)
 - **WAL Mode**: Enabled automatically via connection string parameters
 - **Backward Compatibility**: NOT REQUIRED - this is a clean-slate migration
