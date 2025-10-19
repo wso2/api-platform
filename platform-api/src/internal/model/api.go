@@ -30,7 +30,8 @@ type API struct {
 	Context          string              `json:"context" db:"context"`
 	Version          string              `json:"version" db:"version"`
 	Provider         string              `json:"provider,omitempty" db:"provider"`
-	ProjectID        string              `json:"projectId" db:"project_id"` // FK to Project.ID
+	ProjectID        string              `json:"projectId" db:"project_id"`           // FK to Project.ID
+	OrganizationID   string              `json:"organizationId" db:"organization_id"` // FK to Organization.ID
 	CreatedAt        time.Time           `json:"createdAt,omitempty" db:"created_at"`
 	UpdatedAt        time.Time           `json:"updatedAt,omitempty" db:"updated_at"`
 	LifeCycleStatus  string              `json:"lifeCycleStatus,omitempty" db:"lifecycle_status"`

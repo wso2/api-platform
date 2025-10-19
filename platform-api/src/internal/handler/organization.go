@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
+	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -38,8 +39,9 @@ func NewOrganizationHandler(orgService *service.OrganizationService) *Organizati
 	}
 }
 
+// RegisterOrganization handles POST /api/v1/organizations
 func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
-	var req dto.Organization
+	var req dto.CreateOrganizationRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
@@ -54,7 +56,7 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 	}
 	if req.ID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Organization UUID is required"))
+			"Organization ID is required"))
 		return
 	}
 
@@ -83,15 +85,16 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 	c.JSON(http.StatusCreated, org)
 }
 
+// GetOrganization handles GET /api/v1/organizations
 func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
-	orgId := c.Param("orgId")
-	if orgId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Organization ID is required"))
+	orgID, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
 		return
 	}
 
-	org, err := h.orgService.GetOrganizationByUUID(orgId)
+	org, err := h.orgService.GetOrganizationByUUID(orgID)
 	if err != nil {
 		if errors.Is(err, constants.ErrOrganizationNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -115,6 +118,6 @@ func (h *OrganizationHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/v1/organizations")
 	{
 		orgGroup.POST("", h.RegisterOrganization)
-		orgGroup.GET("/:orgId", h.GetOrganization)
+		orgGroup.GET("", h.GetOrganization)
 	}
 }

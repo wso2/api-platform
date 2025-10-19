@@ -40,8 +40,8 @@ func (Gateway) TableName() string {
 type GatewayToken struct {
 	ID        string     `json:"id" db:"uuid"`
 	GatewayID string     `json:"gatewayId" db:"gateway_uuid"`
-	TokenHash string     `json:"-" db:"token_hash"` // Never expose in JSON responses
-	Salt      string     `json:"-" db:"salt"`       // Never expose in JSON responses
+	TokenHash string     `json:"-" db:"token_hash"`  // Never expose in JSON responses
+	Salt      string     `json:"-" db:"salt"`        // Never expose in JSON responses
 	Status    string     `json:"status" db:"status"` // "active" or "revoked"
 	CreatedAt time.Time  `json:"createdAt" db:"created_at"`
 	RevokedAt *time.Time `json:"revokedAt,omitempty" db:"revoked_at"` // Pointer for NULL support

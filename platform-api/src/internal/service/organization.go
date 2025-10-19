@@ -32,7 +32,8 @@ type OrganizationService struct {
 	projectRepo repository.ProjectRepository
 }
 
-func NewOrganizationService(orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository) *OrganizationService {
+func NewOrganizationService(orgRepo repository.OrganizationRepository,
+	projectRepo repository.ProjectRepository) *OrganizationService {
 	return &OrganizationService{
 		orgRepo:     orgRepo,
 		projectRepo: projectRepo,
@@ -78,7 +79,7 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 
 	// Create default project for the organization
 	defaultProject := &model.Project{
-		ID:             "default",
+		ID:             "default" + "-" + handle,
 		Name:           "Default",
 		OrganizationID: org.ID,
 		CreatedAt:      time.Now(),

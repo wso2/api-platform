@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS projects (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_id) REFERENCES organizations(uuid) ON DELETE CASCADE
+    UNIQUE(name, organization_id)
 );
 
 -- APIs table
@@ -44,6 +45,7 @@ CREATE TABLE IF NOT EXISTS apis (
     version TEXT NOT NULL,
     provider TEXT,
     project_id TEXT NOT NULL,
+    organization_id TEXT NOT NULL,
     lifecycle_status TEXT DEFAULT 'CREATED',
     has_thumbnail BOOLEAN DEFAULT FALSE,
     is_default_version BOOLEAN DEFAULT FALSE,
@@ -56,6 +58,7 @@ CREATE TABLE IF NOT EXISTS apis (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (project_id) REFERENCES projects(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_id) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(name, context, version, project_id)
 );
 
@@ -115,7 +118,7 @@ CREATE TABLE IF NOT EXISTS api_cors_config (
 -- Backend Services table
 CREATE TABLE IF NOT EXISTS backend_services (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    api_uuid TEXT NOT NULL,
+    api_uuid TEXT,
     name TEXT UNIQUE NOT NULL,
     is_default BOOLEAN DEFAULT FALSE,
     timeout_connect_ms INTEGER,
@@ -129,7 +132,7 @@ CREATE TABLE IF NOT EXISTS backend_services (
     max_pending_requests INTEGER,
     max_requests INTEGER,
     max_retries INTEGER,
-    FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE
+    FOREIGN KEY (api_uuid) REFERENCES apis(uuid)
 );
 
 -- Backend Endpoints table
@@ -189,11 +192,25 @@ CREATE TABLE IF NOT EXISTS operation_backend_services (
 -- Request Policies table
 CREATE TABLE IF NOT EXISTS policies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    operation_id INTEGER NOT NULL,
+    operation_id INTEGER,
     flow_direction TEXT NOT NULL, -- 'REQUEST' or 'RESPONSE'
     name TEXT NOT NULL,
     params TEXT, -- JSON object as TEXT
-    FOREIGN KEY (operation_id) REFERENCES api_operations(id) ON DELETE CASCADE
+    FOREIGN KEY (operation_id) REFERENCES api_operations(id)
+);
+
+
+-- API Deployments table
+CREATE TABLE IF NOT EXISTS api_deployments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    api_uuid TEXT NOT NULL,
+    organization_id TEXT NOT NULL,
+    gateway_uuid TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_id) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
+    UNIQUE(api_uuid, gateway_uuid)
 );
 
 

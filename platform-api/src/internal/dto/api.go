@@ -31,6 +31,7 @@ type API struct {
 	Version          string              `json:"version" yaml:"version"`
 	Provider         string              `json:"provider,omitempty" yaml:"provider,omitempty"`
 	ProjectID        string              `json:"projectId" yaml:"projectId"`
+	OrganizationID   string              `json:"organizationId" yaml:"organizationId"`
 	CreatedAt        time.Time           `json:"createdAt,omitempty" yaml:"createdAt,omitempty"`
 	UpdatedAt        time.Time           `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 	LifeCycleStatus  string              `json:"lifeCycleStatus,omitempty" yaml:"lifeCycleStatus,omitempty"`

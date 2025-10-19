@@ -20,4 +20,4 @@
 - Create: `curl -k -X POST https://localhost:8443/api/v1/apis -H 'Content-Type: application/json' -d '{"name":"inventory","context":"/inventory","version":"v1","projectId":"<projectId>"}'`.
 - Fetch: `curl -k https://localhost:8443/api/v1/apis/<apiId>`; confirm nested structures.
 - List: `curl -k https://localhost:8443/api/v1/projects/<projectId>/apis` to verify pagination metadata and entries.
-- Deploy API: `curl -k -X POST https://localhost:8443/api/v1/apis/<apiId>/deploy-revision -H 'Content-Type: application/json' -d '[{"name": "production-deployment","vhost": "api.production.com", "displayOnDevportal": true}]'` to trigger API deployment.
+- Deploy API: `curl -k -X POST https://localhost:8443/api/v1/apis/<apiId>/deploy-revision -H 'Content-Type: application/json' -d '[{"name": "production-deployment","gatewayId": "987e6543-e21b-45d3-a789-426614174999", "displayOnDevportal": true}]'` to trigger API deployment.

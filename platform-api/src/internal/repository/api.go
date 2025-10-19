@@ -49,15 +49,15 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 	// Insert main API record
 	apiQuery := `
 		INSERT INTO apis (uuid, name, display_name, description, context, version, provider, 
-			project_id, lifecycle_status, has_thumbnail, is_default_version, is_revision, 
+			project_id, organization_id, lifecycle_status, has_thumbnail, is_default_version, is_revision, 
 			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	securityEnabled := api.Security != nil && api.Security.Enabled
 
 	_, err = tx.Exec(apiQuery, api.ID, api.Name, api.DisplayName, api.Description,
-		api.Context, api.Version, api.Provider, api.ProjectID, api.LifeCycleStatus,
+		api.Context, api.Version, api.Provider, api.ProjectID, api.OrganizationID, api.LifeCycleStatus,
 		api.HasThumbnail, api.IsDefaultVersion, api.IsRevision, api.RevisionedAPIID,
 		api.RevisionID, api.Type, string(transportJSON), securityEnabled, api.CreatedAt, api.UpdatedAt)
 	if err != nil {
@@ -115,7 +115,7 @@ func (r *APIRepo) GetAPIByUUID(apiId string) (*model.API, error) {
 
 	query := `
 		SELECT uuid, name, display_name, description, context, version, provider,
-			project_id, lifecycle_status, has_thumbnail, is_default_version, is_revision,
+			project_id, organization_id, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
 		FROM apis WHERE uuid = ?
 	`
@@ -124,7 +124,7 @@ func (r *APIRepo) GetAPIByUUID(apiId string) (*model.API, error) {
 	var securityEnabled bool
 	err := r.db.QueryRow(query, apiId).Scan(
 		&api.ID, &api.Name, &api.DisplayName, &api.Description, &api.Context,
-		&api.Version, &api.Provider, &api.ProjectID, &api.LifeCycleStatus,
+		&api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID, &api.LifeCycleStatus,
 		&api.HasThumbnail, &api.IsDefaultVersion, &api.IsRevision,
 		&api.RevisionedAPIID, &api.RevisionID, &api.Type, &transportJSON,
 		&securityEnabled, &api.CreatedAt, &api.UpdatedAt)
@@ -153,7 +153,7 @@ func (r *APIRepo) GetAPIByUUID(apiId string) (*model.API, error) {
 func (r *APIRepo) GetAPIsByProjectID(projectID string) ([]*model.API, error) {
 	query := `
 		SELECT uuid, name, display_name, description, context, version, provider,
-			project_id, lifecycle_status, has_thumbnail, is_default_version, is_revision,
+			project_id, organization_id, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
 		FROM apis WHERE project_id = ? ORDER BY created_at DESC
 	`
@@ -171,7 +171,7 @@ func (r *APIRepo) GetAPIsByProjectID(projectID string) ([]*model.API, error) {
 		var securityEnabled bool
 
 		err := rows.Scan(&api.ID, &api.Name, &api.DisplayName, &api.Description,
-			&api.Context, &api.Version, &api.Provider, &api.ProjectID,
+			&api.Context, &api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID,
 			&api.LifeCycleStatus, &api.HasThumbnail, &api.IsDefaultVersion,
 			&api.IsRevision, &api.RevisionedAPIID, &api.RevisionID, &api.Type,
 			&transportJSON, &securityEnabled, &api.CreatedAt, &api.UpdatedAt)

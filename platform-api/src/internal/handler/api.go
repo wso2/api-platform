@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
+	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 
@@ -39,8 +40,15 @@ func NewAPIHandler(apiService *service.APIService) *APIHandler {
 	}
 }
 
-// CreateAPI creates a new API
+// CreateAPI handles POST /api/v1/apis and creates a new API
 func (h *APIHandler) CreateAPI(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
 	var req service.CreateAPIRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
@@ -69,7 +77,7 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 		return
 	}
 
-	api, err := h.apiService.CreateAPI(&req)
+	api, err := h.apiService.CreateAPI(&req, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPIAlreadyExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
@@ -119,8 +127,15 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 	c.JSON(http.StatusCreated, api)
 }
 
-// GetAPI retrieves an API by UUID
+// GetAPI handles GET /api/v1/apis/:apiId and retrieves an API by its ID
 func (h *APIHandler) GetAPI(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
 	apiId := c.Param("apiId")
 	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -128,7 +143,7 @@ func (h *APIHandler) GetAPI(c *gin.Context) {
 		return
 	}
 
-	api, err := h.apiService.GetAPIByUUID(apiId)
+	api, err := h.apiService.GetAPIByUUID(apiId, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -143,8 +158,16 @@ func (h *APIHandler) GetAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, api)
 }
 
-// GetAPIsByProject retrieves all APIs for a project
-func (h *APIHandler) GetAPIsByProject(c *gin.Context) {
+// ListAPIs handles GET /api/v1/projects/:projectId/apis and lists APIs for a project
+func (h *APIHandler) ListAPIs(c *gin.Context) {
+	// Get organization from JWT token
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
 	projectId := c.Param("projectId")
 	if projectId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -152,7 +175,7 @@ func (h *APIHandler) GetAPIsByProject(c *gin.Context) {
 		return
 	}
 
-	apis, err := h.apiService.GetAPIsByProjectID(projectId)
+	apis, err := h.apiService.GetAPIsByProjectID(projectId, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -178,6 +201,13 @@ func (h *APIHandler) GetAPIsByProject(c *gin.Context) {
 
 // UpdateAPI updates an existing API
 func (h *APIHandler) UpdateAPI(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
 	apiId := c.Param("apiId")
 	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -192,7 +222,7 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 		return
 	}
 
-	api, err := h.apiService.UpdateAPI(apiId, &req)
+	api, err := h.apiService.UpdateAPI(apiId, &req, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -222,8 +252,15 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, api)
 }
 
-// DeleteAPI deletes an API
+// DeleteAPI handles DELETE /api/v1/apis/:apiId and deletes an API by its ID
 func (h *APIHandler) DeleteAPI(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
 	apiId := c.Param("apiId")
 	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -231,7 +268,7 @@ func (h *APIHandler) DeleteAPI(c *gin.Context) {
 		return
 	}
 
-	err := h.apiService.DeleteAPI(apiId)
+	err := h.apiService.DeleteAPI(apiId, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -246,8 +283,15 @@ func (h *APIHandler) DeleteAPI(c *gin.Context) {
 	c.JSON(http.StatusNoContent, nil)
 }
 
-// DeployAPIRevision deploys an API revision
+// DeployAPIRevision handles POST /api/v1/apis/:apiId/deploy-revision to deploy an API revision
 func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
 	apiId := c.Param("apiId")
 	if apiId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -274,7 +318,7 @@ func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
 	}
 
 	// Call service to deploy the API
-	deployments, err := h.apiService.DeployAPIRevision(apiId, revisionID, deploymentRequests)
+	deployments, err := h.apiService.DeployAPIRevision(apiId, revisionID, deploymentRequests, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -306,6 +350,6 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	// Project-specific API routes
 	projectAPIGroup := r.Group("/api/v1/projects/:projectId/apis")
 	{
-		projectAPIGroup.GET("", h.GetAPIsByProject)
+		projectAPIGroup.GET("", h.ListAPIs)
 	}
 }

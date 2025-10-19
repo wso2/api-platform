@@ -30,6 +30,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"platform-api/src/internal/middleware"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -81,7 +82,7 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	orgService := service.NewOrganizationService(orgRepo, projectRepo)
 	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo)
 	gatewayEventsService := service.NewGatewayEventsService(wsManager)
-	apiService := service.NewAPIService(apiRepo, projectRepo, gatewayEventsService)
+	apiService := service.NewAPIService(apiRepo, projectRepo, gatewayRepo, gatewayEventsService)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo)
 
 	// Initialize handlers
@@ -94,6 +95,15 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	// Setup router
 	router := gin.Default()
 	gin.SetMode(gin.ReleaseMode)
+
+	// Configure and apply JWT authentication middleware
+	authConfig := middleware.AuthConfig{
+		SecretKey:      cfg.JWT.SecretKey,
+		TokenIssuer:    cfg.JWT.Issuer,
+		SkipPaths:      cfg.JWT.SkipPaths,
+		SkipValidation: cfg.JWT.SkipValidation,
+	}
+	router.Use(middleware.AuthMiddleware(authConfig))
 
 	// Register routes
 	orgHandler.RegisterRoutes(router)
