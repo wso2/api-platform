@@ -151,7 +151,7 @@ for {
 {
   "type": "api.deployed",
   "payload": {
-    "apiId": "uuid",
+    "apiUuid": "uuid",
     "revisionId": "revision-id",
     "vhost": "mg.wso2.com",
     "environment": "production"
@@ -239,65 +239,60 @@ curl -k -X POST https://localhost:8443/api/v1/gateways \
   "name": "test-gateway",
   "displayName": "Test Gateway",
   "organizationId": "<org-uuid>",
-  "token": "eyJhbG...",
   "createdAt": "2025-10-19T..."
 }
 ```
 
-**Connect via WebSocket**:
+**Generate Gateway Token**:
 ```bash
-cd platform-api
-go run test-websocket-client.go -api-key "eyJhbG..."
+curl -k -X POST https://localhost:8443/api/v1/gateways/d1aa71bc-8cb5-4294-8a26-fe1273c28632/tokens \
+  -H 'Accept: application/json'
+```
+
+**Expected Response**:
+```json
+{
+  "id": "1db8b0e4-f237-4aa3-a6f2-e466c878de0f",
+  "token": "guDgqzePBJTMD8iElVH-q4_hc3IWZE87PgBqfzS_qPA",
+  "createdAt": "2025-10-19T14:00:43.848145213+05:30",
+  "message": "New token generated successfully. Old token remains active until revoked."
+}
+```
+
+**Connect via WebSocket (using wscat)**:
+```bash
+wscat -n -c wss://localhost:8443/api/internal/v1/ws/gateways/connect \
+  -H "api-key: guDgqzePBJTMD8iElVH-q4_hc3IWZE87PgBqfzS_qPA"
 ```
 
 **Expected Output**:
 ```
-Connecting to wss://localhost:8443/api/internal/v1/ws/gateways/connect...
-✓ Connected successfully!
-✓ Received connection ACK:
-  Gateway ID: d1aa71bc-8cb5-4294-8a26-fe1273c28632
-  Connection ID: <uuid>
-  Timestamp: 2025-10-19T...
-
-Connection established. Waiting for messages...
-Press Ctrl+C to disconnect
----
+Connected (press CTRL+C to quit)
+< {"type":"connection.ack","gatewayId":"d1aa71bc-8cb5-4294-8a26-fe1273c28632","connectionId":"85d759e5-f152-4a39-8cd1-e0923657268a","timestamp":"2025-10-19T07:11:04+05:30"}
 ```
 
 ### 2. Event Delivery
 
 **Deploy API Revision** (with gateway connected):
 ```bash
-curl -k -X POST https://localhost:8443/api/v1/apis/<api-id>/deploy-revision \
+curl -k -X POST 'https://localhost:8443/api/v1/apis/<api-uuid>/deploy-revision?revisionId=<revision-uuid>' \
   -H 'Content-Type: application/json' \
+  -H 'Accept: application/json' \
   -d '[{
-    "revisionId": "rev-123",
+    "revisionId": "<revision-uuid>",
     "gatewayId": "d1aa71bc-8cb5-4294-8a26-fe1273c28632",
+    "status": "CREATED",
     "vhost": "mg.wso2.com",
     "displayOnDevportal": true
   }]'
 ```
 
-**Expected Gateway Output**:
+**Expected Gateway Output (received via WebSocket)**:
 ```
-✓ Received event:
-  Type: api.deployed
-  Correlation ID: <uuid>
-  Timestamp: 2025-10-19T...
-  Payload: {"apiId":"<api-id>","revisionId":"rev-123","vhost":"mg.wso2.com","environment":"production"}
+< {"type":"api.deployed","payload":{"apiUuid":"23826f9e-8daf-4638-b295-14898312759f","revisionId":"90d10e1c-8560-5c36-9d5a-124ecaa17485","vhost":"mg.wso2.com","environment":"production"},"timestamp":"2025-10-19T07:11:07+05:30","correlationId":"16408ddb-0cc9-48bc-a35d-6debb8d90c28"}
 ```
 
-### 3. Heartbeat Test
-
-Keep connection open for 60+ seconds, verify ping/pong messages:
-```
-← Received PING from server
-→ Sent PONG to server
-← Received PING from server
-→ Sent PONG to server
-```
-
-### 4. Authentication Rejection
+### 3. Authentication Rejection
 
 ```bash
 curl -k -s -o /dev/null -w "%{http_code}" \
@@ -408,7 +403,7 @@ type GatewayEventDTO struct {
 }
 
 type APIDeploymentEvent struct {
-    ApiId       string `json:"apiId"`       // API UUID
+    ApiUuid     string `json:"apiUuid"`     // API UUID
     RevisionID  string `json:"revisionId"`  // Revision identifier
     Vhost       string `json:"vhost"`       // Virtual host
     Environment string `json:"environment"` // Target environment
