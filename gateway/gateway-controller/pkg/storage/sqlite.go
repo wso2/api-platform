@@ -143,7 +143,7 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredAPIConfig) error {
 	if err != nil {
 		// Check for unique constraint violation
 		if isUniqueConstraintError(err) {
-			return fmt.Errorf("%w: %s/%s", ErrAlreadyExists, name, version)
+			return fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", ErrConflict, name, version)
 		}
 		return fmt.Errorf("failed to insert configuration: %w", err)
 	}

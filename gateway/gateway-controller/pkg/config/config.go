@@ -99,19 +99,20 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load defaults: %w", err)
 	}
 
-	// Load config file if it exists
+	// Load config file if path is provided
 	if configPath != "" {
-		if _, err := os.Stat(configPath); err == nil {
-			// Use WithMergeFunc to prevent merging of maps - config file should fully override defaults
-			if err := k.Load(file.Provider(configPath), yaml.Parser(), koanf.WithMergeFunc(func(src, dest map[string]interface{}) error {
-				// For nested maps, replace instead of merge
-				for k, v := range src {
-					dest[k] = v
-				}
-				return nil
-			})); err != nil {
-				return nil, fmt.Errorf("failed to load config file: %w", err)
+		if _, err := os.Stat(configPath); err != nil {
+			return nil, fmt.Errorf("config file not found: %s", configPath)
+		}
+		// Use WithMergeFunc to prevent merging of maps - config file should fully override defaults
+		if err := k.Load(file.Provider(configPath), yaml.Parser(), koanf.WithMergeFunc(func(src, dest map[string]interface{}) error {
+			// For nested maps, replace instead of merge
+			for k, v := range src {
+				dest[k] = v
 			}
+			return nil
+		})); err != nil {
+			return nil, fmt.Errorf("failed to load config file: %w", err)
 		}
 	}
 

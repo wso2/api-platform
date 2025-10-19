@@ -192,10 +192,17 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	// Save to database first (only if persistent mode)
 	if s.db != nil {
 		if err := s.db.SaveConfig(storedCfg); err != nil {
-			log.Error("Failed to save config to database", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			// Log conflict errors at info level, other errors at error level
+			if storage.IsConflictError(err) {
+				log.Info("API configuration already exists in database",
+					zap.String("name", apiConfig.Data.Name),
+					zap.String("version", apiConfig.Data.Version))
+			} else {
+				log.Error("Failed to save config to database", zap.Error(err))
+			}
+			c.JSON(http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
-				Message: "Failed to persist configuration",
+				Message: err.Error(),
 			})
 			return
 		}

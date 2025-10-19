@@ -29,7 +29,7 @@ WORKDIR /app
 COPY --from=builder /build/controller .
 
 # Copy default configuration file
-COPY config/config.yaml /etc/gateway-controller/config.yaml
+COPY config/config.yaml /app/config/config.yaml
 
 # Create data directory for SQLite database
 RUN mkdir -p /app/data

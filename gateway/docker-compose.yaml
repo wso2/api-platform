@@ -31,6 +31,7 @@ services:
       - GC_LOGGING_LEVEL=info
     volumes:
       - controller-data:/app/data
+      - ./gateway-controller/config/config.yaml:/app/config/config.yaml:ro
     networks:
       - gateway-network
     healthcheck:
