@@ -612,7 +612,7 @@ components:
     Organization:
       type: object
       required:
-        - uuid
+        - id
         - handle
       properties:
         id:
@@ -634,11 +634,13 @@ components:
           type: string
           format: date-time
           description: Timestamp when the organization was created
+          readOnly: true
           example: "2023-10-12T10:30:00Z"
         updatedAt:
           type: string
           format: date-time
           description: Timestamp when the organization was last updated
+          readOnly: true
           example: "2023-10-12T10:30:00Z"
 
     CreateProjectRequest:
@@ -672,7 +674,9 @@ components:
       properties:
         id:
           type: string
+          format: uuid
           description: Unique identifier for the project
+          readOnly: true
           example: "yr434567-de34-76uj6-w376-234324532"
         name:
           type: string
@@ -689,11 +693,13 @@ components:
           type: string
           format: date-time
           description: Timestamp when the project was created
+          readOnly: true
           example: "2023-10-12T10:30:00Z"
         updatedAt:
           type: string
           format: date-time
           description: Timestamp when the project was last updated
+          readOnly: true
           example: "2023-10-12T10:30:00Z"
 
     API:
