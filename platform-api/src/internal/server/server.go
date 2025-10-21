@@ -95,7 +95,6 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 
 	// Setup router
 	router := gin.Default()
-	gin.SetMode(gin.ReleaseMode)
 
 	// Configure and apply CORS middleware first (before auth middleware)
 	corsConfig := cors.DefaultConfig()
@@ -218,6 +217,11 @@ func (s *Server) Start(port string) error {
 			return fmt.Errorf("failed to generate self-signed certificate: %v", err)
 		}
 	}
+
+	// Add a health endpoint that works with self-signed certs
+	s.router.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
 
 	// CreateOrganization TLS configuration
 	tlsConfig := &tls.Config{
