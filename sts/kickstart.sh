@@ -267,7 +267,7 @@ APP_PAYLOAD=$(cat <<EOF
       "token": {
         "access_token": {
           "issuer": "thunder",
-          "validity_period": 3600,
+          "validity_period": 604800,
           "user_attributes": [
             "email",
             "username",
