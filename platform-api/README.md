@@ -66,7 +66,6 @@ Response includes the gateway UUID:
 ```json
 {
   "id": "4dac93bd-07ba-417e-aef8-353cebe3ba73",
-  "organizationId": "1b6b799f-33c1-4920-be4d-0be4d0867d8b",
   "name": "prod-gateway-01",
   "displayName": "Production Gateway 01",
   "createdAt": "2025-10-21T15:12:44.168980842+05:30",
