@@ -33,6 +33,7 @@ import (
 	"platform-api/src/internal/middleware"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"platform-api/src/config"
 	"platform-api/src/internal/database"
@@ -95,6 +96,14 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	// Setup router
 	router := gin.Default()
 	gin.SetMode(gin.ReleaseMode)
+
+	// Configure and apply CORS middleware first (before auth middleware)
+	corsConfig := cors.DefaultConfig()
+	corsConfig.AllowAllOrigins = true
+	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+	corsConfig.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Authorization"}
+	corsConfig.AllowCredentials = true
+	router.Use(cors.New(corsConfig))
 
 	// Configure and apply JWT authentication middleware
 	authConfig := middleware.AuthConfig{

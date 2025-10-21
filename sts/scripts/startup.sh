@@ -27,7 +27,7 @@ echo ""
 sleep 5
 
 echo "[2/2] Starting Gate App Authentication UI..."
-echo "      Gate App will be available on port 9090"
+echo "      Gate App will be available on port 9091"
 echo ""
 
 # Start Gate App in the foreground

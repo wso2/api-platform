@@ -68,7 +68,7 @@ wait_for_thunder() {
     echo ""
     log_error "Thunder failed to start after $((MAX_RETRIES * RETRY_DELAY)) seconds"
     log_error "Make sure the STS container is running:"
-    log_error "  docker run -d -p 8090:8090 -p 9090:9090 wso2/api-platform-sts:latest"
+    log_error "  docker run -d -p 8090:8090 -p 9091:9091 wso2/api-platform-sts:latest"
     return 1
 }
 

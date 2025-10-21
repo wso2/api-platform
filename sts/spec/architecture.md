@@ -12,7 +12,7 @@ STS is built on [Asgardeo Thunder](https://github.com/asgardeo/thunder) OAuth 2.
 - User and organization management
 - Application registration
 
-### Gate App (Port 9090)
+### Gate App (Port 9091)
 - Next.js authentication UI
 - Login and registration flows
 - Communicates with Thunder APIs
@@ -25,7 +25,7 @@ STS is built on [Asgardeo Thunder](https://github.com/asgardeo/thunder) OAuth 2.
 │                                         │
 │  ┌──────────┐         ┌──────────┐      │
 │  │ Gate App │◄───────►│ Thunder  │      │
-│  │   :9090  │         │   :8090  │      │
+│  │   :9091  │         │   :8090  │      │
 │  └──────────┘         └──────────┘      │
 │                                         │
 └─────────────────────────────────────────┘
