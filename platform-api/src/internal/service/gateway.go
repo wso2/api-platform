@@ -181,7 +181,7 @@ func (s *GatewayService) ListGateways(orgID *string) (*dto.GatewayListResponse, 
 }
 
 // GetGateway retrieves a gateway by ID
-func (s *GatewayService) GetGateway(gatewayId string) (*dto.GatewayResponse, error) {
+func (s *GatewayService) GetGateway(gatewayId, orgId string) (*dto.GatewayResponse, error) {
 	// Validate UUID format
 	if _, err := uuid.Parse(gatewayId); err != nil {
 		return nil, errors.New("invalid UUID format")
@@ -193,6 +193,10 @@ func (s *GatewayService) GetGateway(gatewayId string) (*dto.GatewayResponse, err
 	}
 
 	if gateway == nil {
+		return nil, errors.New("gateway not found")
+	}
+
+	if gateway.OrganizationID != orgId {
 		return nil, errors.New("gateway not found")
 	}
 
@@ -239,13 +243,16 @@ func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error) 
 }
 
 // RotateToken generates a new token for a gateway (max 2 active tokens)
-func (s *GatewayService) RotateToken(gatewayId string) (*dto.TokenRotationResponse, error) {
+func (s *GatewayService) RotateToken(gatewayId, orgId string) (*dto.TokenRotationResponse, error) {
 	// 1. Validate gateway exists
 	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query gateway: %w", err)
 	}
 	if gateway == nil {
+		return nil, errors.New("gateway not found")
+	}
+	if gateway.OrganizationID != orgId {
 		return nil, errors.New("gateway not found")
 	}
 

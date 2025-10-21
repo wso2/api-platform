@@ -42,7 +42,7 @@ func (r *ProjectRepo) CreateProject(project *model.Project) error {
 	project.UpdatedAt = time.Now()
 
 	query := `
-		INSERT INTO projects (uuid, name, organization_id, created_at, updated_at)
+		INSERT INTO projects (uuid, name, organization_uuid, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?)
 	`
 	_, err := r.db.Exec(query, project.ID, project.Name, project.OrganizationID, project.CreatedAt, project.UpdatedAt)
@@ -57,7 +57,7 @@ func (r *ProjectRepo) CreateProject(project *model.Project) error {
 func (r *ProjectRepo) GetProjectByUUID(projectId string) (*model.Project, error) {
 	project := &model.Project{}
 	query := `
-		SELECT uuid, name, organization_id, created_at, updated_at
+		SELECT uuid, name, organization_uuid, created_at, updated_at
 		FROM projects
 		WHERE uuid = ?
 	`
@@ -76,9 +76,9 @@ func (r *ProjectRepo) GetProjectByUUID(projectId string) (*model.Project, error)
 // GetProjectsByOrganizationID retrieves all projects for an organization
 func (r *ProjectRepo) GetProjectsByOrganizationID(orgID string) ([]*model.Project, error) {
 	query := `
-		SELECT uuid, name, organization_id, created_at, updated_at
+		SELECT uuid, name, organization_uuid, created_at, updated_at
 		FROM projects
-		WHERE organization_id = ?
+		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
 	`
 	rows, err := r.db.Query(query, orgID)
@@ -105,7 +105,7 @@ func (r *ProjectRepo) UpdateProject(project *model.Project) error {
 	project.UpdatedAt = time.Now()
 	query := `
 		UPDATE projects
-		SET name = ?, organization_id = ?, updated_at = ?
+		SET name = ?, organization_uuid = ?, updated_at = ?
 		WHERE uuid = ?
 	`
 	_, err := r.db.Exec(query, project.Name, project.OrganizationID, project.UpdatedAt, project.ID)
@@ -122,9 +122,9 @@ func (r *ProjectRepo) DeleteProject(projectId string) error {
 // ListProjects retrieves projects with pagination
 func (r *ProjectRepo) ListProjects(orgID string, limit, offset int) ([]*model.Project, error) {
 	query := `
-		SELECT uuid, name, organization_id, created_at, updated_at
+		SELECT uuid, name, organization_uuid, created_at, updated_at
 		FROM projects
-		WHERE organization_id = ?
+		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
 	`

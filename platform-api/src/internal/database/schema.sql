@@ -28,10 +28,11 @@ CREATE TABLE IF NOT EXISTS organizations (
 CREATE TABLE IF NOT EXISTS projects (
     uuid TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    organization_id TEXT NOT NULL,
+    organization_uuid TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (organization_id) REFERENCES organizations(uuid) ON DELETE CASCADE
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(name, organization_uuid)
 );
 
 -- APIs table
@@ -43,7 +44,8 @@ CREATE TABLE IF NOT EXISTS apis (
     context TEXT NOT NULL,
     version TEXT NOT NULL,
     provider TEXT,
-    project_id TEXT NOT NULL,
+    project_uuid TEXT NOT NULL,
+    organization_uuid TEXT NOT NULL,
     lifecycle_status TEXT DEFAULT 'CREATED',
     has_thumbnail BOOLEAN DEFAULT FALSE,
     is_default_version BOOLEAN DEFAULT FALSE,
@@ -55,8 +57,9 @@ CREATE TABLE IF NOT EXISTS apis (
     security_enabled BOOLEAN,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (project_id) REFERENCES projects(uuid) ON DELETE CASCADE,
-    UNIQUE(name, context, version, project_id)
+    FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(name, context, version, project_uuid)
 );
 
 -- API MTLS Configuration table
@@ -189,24 +192,38 @@ CREATE TABLE IF NOT EXISTS operation_backend_services (
 -- Request Policies table
 CREATE TABLE IF NOT EXISTS policies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    operation_id INTEGER NOT NULL,
+    operation_id INTEGER,
     flow_direction TEXT NOT NULL, -- 'REQUEST' or 'RESPONSE'
     name TEXT NOT NULL,
     params TEXT, -- JSON object as TEXT
-    FOREIGN KEY (operation_id) REFERENCES api_operations(id) ON DELETE CASCADE
+    FOREIGN KEY (operation_id) REFERENCES api_operations(id)
+);
+
+
+-- API Deployments table
+CREATE TABLE IF NOT EXISTS api_deployments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    api_uuid TEXT NOT NULL,
+    organization_uuid TEXT NOT NULL,
+    gateway_uuid TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
+    UNIQUE(api_uuid, gateway_uuid)
 );
 
 
 -- Gateways table (scoped to organizations)
 CREATE TABLE IF NOT EXISTS gateways (
     uuid TEXT PRIMARY KEY,
-    organization_id TEXT NOT NULL,
+    organization_uuid TEXT NOT NULL,
     name TEXT NOT NULL,
     display_name TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (organization_id) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_id, name)
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, name)
 );
 
 -- Gateway Tokens table
@@ -224,13 +241,13 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
 );
 
 -- Indexes for better performance
-CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_id);
+CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_organizations_handle ON organizations(handle);
-CREATE INDEX IF NOT EXISTS idx_apis_project_id ON apis(project_id);
+CREATE INDEX IF NOT EXISTS idx_apis_project_id ON apis(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_apis_name_context_version ON apis(name, context, version);
 CREATE INDEX IF NOT EXISTS idx_backend_services_api_uuid ON backend_services(api_uuid);
 CREATE INDEX IF NOT EXISTS idx_backend_endpoints_service_id ON backend_endpoints(backend_service_id);
 CREATE INDEX IF NOT EXISTS idx_api_operations_api_uuid ON api_operations(api_uuid);
 CREATE INDEX IF NOT EXISTS idx_operation_backend_services_operation_id ON operation_backend_services(operation_id);
-CREATE INDEX IF NOT EXISTS idx_gateways_org ON gateways(organization_id);
+CREATE INDEX IF NOT EXISTS idx_gateways_org ON gateways(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_status ON gateway_tokens(gateway_uuid, status);

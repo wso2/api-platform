@@ -23,6 +23,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"platform-api/src/internal/dto"
+	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 )
@@ -41,16 +42,20 @@ func NewGatewayHandler(gatewayService *service.GatewayService) *GatewayHandler {
 
 // CreateGateway handles POST /api/v1/gateways
 func (h *GatewayHandler) CreateGateway(c *gin.Context) {
-	var req dto.CreateGatewayRequest
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
 
-	// Bind and validate request body
+	var req dto.CreateGatewayRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
 	}
 
-	// Call service to register gateway
-	response, err := h.gatewayService.RegisterGateway(req.OrganizationID, req.Name, req.DisplayName)
+	response, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName)
 	if err != nil {
 		errMsg := err.Error()
 
@@ -72,7 +77,8 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 		}
 
 		// Internal server error
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to register gateway"))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to register gateway"))
 		return
 	}
 
@@ -82,18 +88,17 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 
 // ListGateways handles GET /api/v1/gateways with constitution-compliant response
 func (h *GatewayHandler) ListGateways(c *gin.Context) {
-	// Extract optional organizationId query parameter (camelCase per constitution)
-	orgID := c.Query("organizationId")
-
-	var orgIDPtr *string
-	if orgID != "" {
-		orgIDPtr = &orgID
+	organizationID, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
 	}
 
-	// Call service to list gateways (returns structured response)
-	listResponse, err := h.gatewayService.ListGateways(orgIDPtr)
+	listResponse, err := h.gatewayService.ListGateways(&organizationID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to list gateways"))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to list gateways"))
 		return
 	}
 
@@ -103,15 +108,22 @@ func (h *GatewayHandler) ListGateways(c *gin.Context) {
 
 // GetGateway handles GET /api/v1/gateways/:gatewayId
 func (h *GatewayHandler) GetGateway(c *gin.Context) {
-	// Extract UUID path parameter
-	gatewayId := c.Param("gatewayId")
-	if gatewayId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Gateway ID is required"))
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
 		return
 	}
 
-	// Call service to get gateway
-	gateway, err := h.gatewayService.GetGateway(gatewayId)
+	// Extract UUID path parameter
+	gatewayId := c.Param("gatewayId")
+	if gatewayId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Gateway ID is required"))
+		return
+	}
+
+	gateway, err := h.gatewayService.GetGateway(gatewayId, orgId)
 	if err != nil {
 		errMsg := err.Error()
 
@@ -127,7 +139,8 @@ func (h *GatewayHandler) GetGateway(c *gin.Context) {
 		}
 
 		// Internal server error
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to retrieve gateway"))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to retrieve gateway"))
 		return
 	}
 
@@ -137,15 +150,22 @@ func (h *GatewayHandler) GetGateway(c *gin.Context) {
 
 // RotateToken handles POST /api/v1/gateways/:gatewayId/tokens
 func (h *GatewayHandler) RotateToken(c *gin.Context) {
-	// Extract ID path parameter
-	gatewayId := c.Param("gatewayId")
-	if gatewayId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "Gateway ID is required"))
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
 		return
 	}
 
-	// Call service to rotate token
-	response, err := h.gatewayService.RotateToken(gatewayId)
+	// Extract ID path parameter
+	gatewayId := c.Param("gatewayId")
+	if gatewayId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Gateway ID is required"))
+		return
+	}
+
+	response, err := h.gatewayService.RotateToken(gatewayId, orgId)
 	if err != nil {
 		errMsg := err.Error()
 
@@ -161,7 +181,8 @@ func (h *GatewayHandler) RotateToken(c *gin.Context) {
 		}
 
 		// Internal server error
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to rotate token"))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to rotate token"))
 		return
 	}
 

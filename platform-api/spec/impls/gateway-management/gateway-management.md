@@ -1,30 +1,72 @@
 # Gateway Management Implementation
 
+**Last Updated**: October 19, 2025  
+**Authentication**: Thunder STS JWT (organization claim)
+
 ## Entry Points
 
-- `platform-api/src/internal/handler/gateway.go` – registers `/api/v1/gateways` routes for registration, listing, retrieval, and token rotation.
+- `platform-api/src/internal/handler/gateway.go` – registers `/api/v1/gateways` routes for registration, listing, retrieval, and token rotation. **UPDATED**: Now extracts organization ID from JWT token instead of request body/query params.
+- `platform-api/src/internal/middleware/auth.go` – validates JWT tokens and extracts organization claim for all gateway endpoints.
 - `platform-api/src/internal/service/gateway.go` – handles validation, organization association, duplicate prevention, token generation/hashing, and token rotation logic with max 2 active tokens enforcement.
 - `platform-api/src/internal/repository/gateway.go` – executes SQL CRUD operations for gateways and tokens, enforces composite unique constraint on (organization_id, name).
 - `platform-api/src/internal/model/gateway.go` – defines Gateway and GatewayToken domain models with helper methods.
-- `platform-api/src/internal/dto/gateway.go` – defines request/response DTOs with camelCase JSON serialization per project constitution.
+- `platform-api/src/internal/dto/gateway.go` – defines request/response DTOs with camelCase JSON serialization per project constitution. **UPDATED**: `CreateGatewayRequest` no longer requires `organizationId` field.
 - `platform-api/src/internal/database/schema.sql` – defines `gateways` and `gateway_tokens` tables with foreign keys, constraints, and indexes.
-- `platform-api/src/resources/openapi.yaml` – documents all gateway management endpoints and schemas.
+- `platform-api/src/resources/openapi.yaml` – documents all gateway management endpoints and schemas with JWT Bearer authentication.
+
+## Authentication & Authorization
+
+### JWT Token Requirements
+
+All gateway management endpoints (except health checks) require JWT authentication:
+
+```http
+Authorization: Bearer <jwt-token>
+```
+
+The JWT token must contain an `organization` claim with the user's organization UUID. This organization ID is automatically used for all gateway operations.
+
+### Organization Isolation
+
+- **Registration**: Gateways are created in the organization specified by JWT token
+- **Listing**: Only gateways from user's organization are returned
+- **Retrieval**: Access validated against organization in JWT token
+- **Token Rotation**: Only gateways from user's organization can have tokens rotated
+
+### Handler Implementation
+
+```go
+func (h *GatewayHandler) CreateGateway(c *gin.Context) {
+    // Extract organization from JWT token (not request body)
+    organizationID, exists := middleware.GetOrganizationFromContext(c)
+    if !exists {
+        c.JSON(http.StatusUnauthorized, ...)
+        return
+    }
+    
+    // Use organizationID from token
+    response, err := h.gatewayService.RegisterGateway(organizationID, req.Name, req.DisplayName)
+    // ...
+}
+```
 
 ## Behaviour
 
 ### Gateway Registration
 
-1. Registration requests validate presence of `organizationId`, `name`, and `displayName` with format constraints (name: lowercase alphanumeric with hyphens, 3-64 chars; display name: 1-128 chars).
-2. Service confirms organization existence and prevents duplicate names within the same organization using composite unique constraint `(organization_id, name)`.
-3. System generates cryptographically secure 32-byte token using `crypto/rand`, hashes it with SHA-256 and unique 32-byte salt, stores hash and salt (never plain-text).
-4. Response returns gateway details without token (per API contract update).
-5. Different organizations can register gateways with identical names.
+1. **Authentication**: Middleware validates JWT token and extracts organization claim
+2. **Request Validation**: Validates presence of `name` and `displayName` with format constraints (name: lowercase alphanumeric with hyphens, 3-64 chars; display name: 1-128 chars)
+3. **Organization Scoping**: Uses organization ID from JWT token (not request body)
+4. Service confirms organization existence and prevents duplicate names within the same organization using composite unique constraint `(organization_id, name)`
+5. System generates cryptographically secure 32-byte token using `crypto/rand`, hashes it with SHA-256 and unique 32-byte salt, stores hash and salt (never plain-text)
+6. Response returns gateway details with initial registration token
+7. Different organizations can register gateways with identical names
 
 ### Token Lifecycle
 
-1. Token rotation generates new token while keeping existing tokens active, enforces maximum 2 active tokens per gateway.
-2. Each token has UUID for tracking, creation timestamp, status (active/revoked), and optional revocation timestamp.
-3. Token verification compares submitted token against stored hashes using constant-time comparison (`crypto/subtle`) to prevent timing attacks.
+1. Token rotation generates new token while keeping existing tokens active, enforces maximum 2 active tokens per gateway
+2. Each token has UUID for tracking, creation timestamp, status (active/revoked), and optional revocation timestamp
+3. Token verification compares submitted token against stored hashes using constant-time comparison (`crypto/subtle`) to prevent timing attacks
 4. Future implementation: Token revocation updates status to 'revoked' and sets revocation timestamp (idempotent operation).
 
 ### Data Model
@@ -61,22 +103,25 @@ CREATE TABLE gateway_tokens (
 
 ## Key Technical Decisions
 
-1. **Organization Scoping**: Gateways belong to organizations via foreign key but exposed as root resource `/api/v1/gateways` (not nested under organizations URL) for API simplicity.
-2. **Composite Uniqueness**: Database constraint `UNIQUE(organization_id, name)` prevents race conditions in concurrent registration attempts within same organization.
-3. **Token Security**: SHA-256 hash with unique salt per token, constant-time verification, 32-byte tokens from `crypto/rand`, never store plain-text.
-4. **Zero-Downtime Rotation**: Maximum 2 active tokens allows overlap period where both old and new tokens work, administrators revoke old token after gateway reconfiguration.
-5. **Cascade Deletion**: Deleting organization cascades to gateways, deleting gateway cascades to tokens.
-6. **Constitution Compliance**: All API properties use camelCase, list endpoints return `{count, list, pagination}` envelope structure.
+1. **JWT Authentication**: All endpoints require valid JWT token with `organization` claim for multi-tenant security
+2. **Organization Scoping**: Organization ID extracted from JWT token, eliminating need for clients to provide it in requests
+3. **Automatic Isolation**: Handlers automatically scope queries to organization from token, preventing cross-organization access
+4. **Composite Uniqueness**: Database constraint `UNIQUE(organization_id, name)` prevents race conditions in concurrent registration attempts within same organization
+5. **Token Security**: SHA-256 hash with unique salt per token, constant-time verification, 32-byte tokens from `crypto/rand`, never store plain-text
+6. **Zero-Downtime Rotation**: Maximum 2 active tokens allows overlap period where both old and new tokens work, administrators revoke old token after gateway reconfiguration
+7. **Cascade Deletion**: Deleting organization cascades to gateways, deleting gateway cascades to tokens
+8. **Constitution Compliance**: All API properties use camelCase, list endpoints return `{count, list, pagination}` envelope structure
 
 ## Verification
 
 ### Register Gateway
 
+**Request** (organization ID from JWT token):
 ```bash
 curl -k -X POST https://localhost:8443/api/v1/gateways \
+  -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...' \
   -H 'Content-Type: application/json' \
   -d '{
-    "organizationId": "123e4567-e89b-12d3-a456-426614174000",
     "name": "prod-gateway-01",
     "displayName": "Production Gateway 01"
   }'
@@ -96,8 +141,10 @@ curl -k -X POST https://localhost:8443/api/v1/gateways \
 
 ### List All Gateways
 
+**Request** (filters by organization from JWT token):
 ```bash
-curl -k https://localhost:8443/api/v1/gateways
+curl -k https://localhost:8443/api/v1/gateways \
+  -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 
 **Expected Response (200 OK):**
@@ -130,16 +177,11 @@ curl -k https://localhost:8443/api/v1/gateways
 }
 ```
 
-### Filter Gateways by Organization
-
-```bash
-curl -k 'https://localhost:8443/api/v1/gateways?organizationId=123e4567-e89b-12d3-a456-426614174000'
-```
-
 ### Get Gateway by ID
 
 ```bash
-curl -k https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999
+curl -k https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999 \
+  -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 
 **Expected Response (200 OK):**
@@ -157,7 +199,8 @@ curl -k https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174
 ### Rotate Gateway Token
 
 ```bash
-curl -k -X POST https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens
+curl -k -X POST https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
+  -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 
 **Expected Response (201 Created):**
@@ -170,23 +213,43 @@ curl -k -X POST https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-4
 }
 ```
 
+### Authentication Error Responses
+
+**Missing Token (401 Unauthorized):**
+```json
+{
+  "code": 401,
+  "message": "Unauthorized",
+  "description": "Authorization header is required"
+}
+```
+
+**Missing Organization Claim (401 Unauthorized):**
+```json
+{
+  "code": 401,
+  "message": "Unauthorized",
+  "description": "Token missing required 'organization' claim"
+}
+```
+
 ### Duplicate Prevention Test
 
 ```bash
 # Register first gateway
 curl -k -X POST https://localhost:8443/api/v1/gateways \
+  -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{
-    "organizationId": "123e4567-e89b-12d3-a456-426614174000",
     "name": "prod-gateway-01",
     "displayName": "Production Gateway 01"
   }'
 
 # Attempt duplicate (should return 409 Conflict)
 curl -k -X POST https://localhost:8443/api/v1/gateways \
+  -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{
-    "organizationId": "123e4567-e89b-12d3-a456-426614174000",
     "name": "prod-gateway-01",
     "displayName": "Duplicate Gateway"
   }'
@@ -205,13 +268,16 @@ curl -k -X POST https://localhost:8443/api/v1/gateways \
 
 ```bash
 # Rotate once (2 active tokens: initial + rotation 1)
-curl -k -X POST https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens
+curl -k -X POST https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
+  -H 'Authorization: Bearer <token>' \
 
 # Rotate again (3 active tokens: initial + rotation 1 + rotation 2)
-curl -k -X POST https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens
+curl -k -X POST https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
+  -H 'Authorization: Bearer <token>' \
 
 # Attempt third rotation (should return 400 Bad Request)
-curl -k -X POST https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens
+curl -k -X POST https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
+  -H 'Authorization: Bearer <token>' \
 ```
 
 **Expected Response (400 Bad Request):**
@@ -226,6 +292,7 @@ curl -k -X POST https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-4
 ## Error Responses
 
 - **400 Bad Request**: Validation failures (missing fields, invalid format, max tokens reached)
+- **401 Unauthorized**: Missing/invalid JWT token, missing organization claim
 - **404 Not Found**: Gateway not found, organization not found
 - **409 Conflict**: Duplicate gateway name within organization
 - **500 Internal Server Error**: Database errors, token generation failures

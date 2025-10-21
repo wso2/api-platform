@@ -30,7 +30,8 @@ type API struct {
 	Context          string              `json:"context" db:"context"`
 	Version          string              `json:"version" db:"version"`
 	Provider         string              `json:"provider,omitempty" db:"provider"`
-	ProjectID        string              `json:"projectId" db:"project_id"` // FK to Project.ID
+	ProjectID        string              `json:"projectId" db:"project_uuid"`           // FK to Project.ID
+	OrganizationID   string              `json:"organizationId" db:"organization_uuid"` // FK to Organization.ID
 	CreatedAt        time.Time           `json:"createdAt,omitempty" db:"created_at"`
 	UpdatedAt        time.Time           `json:"updatedAt,omitempty" db:"updated_at"`
 	LifeCycleStatus  string              `json:"lifeCycleStatus,omitempty" db:"lifecycle_status"`
@@ -216,6 +217,21 @@ type AuthenticationConfig struct {
 
 // Policy represents a request or response policy
 type Policy struct {
-	Name   string                 `json:"name,omitempty"`
-	Params map[string]interface{} `json:"params,omitempty"`
+	FlowDirection string                 `json:"flowDirection,omitempty"`
+	Name          string                 `json:"name,omitempty"`
+	Params        map[string]interface{} `json:"params,omitempty"`
+}
+
+// APIDeployment represents an API deployment record
+type APIDeployment struct {
+	ID             int       `json:"id,omitempty" db:"id"`
+	ApiID          string    `json:"apiId" db:"api_uuid"`
+	OrganizationID string    `json:"organizationId" db:"organization_uuid"`
+	GatewayID      string    `json:"gatewayId" db:"gateway_uuid"`
+	CreatedAt      time.Time `json:"createdAt,omitempty" db:"created_at"`
+}
+
+// TableName returns the table name for the APIDeployment model
+func (APIDeployment) TableName() string {
+	return "api_deployments"
 }

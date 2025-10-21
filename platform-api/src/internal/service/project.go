@@ -68,7 +68,6 @@ func (s *ProjectService) CreateProject(name, organizationID string) (*dto.Projec
 		}
 	}
 
-	// CreateOrganization project
 	project := &dto.Project{
 		ID:             uuid.New().String(),
 		Name:           name,
@@ -86,13 +85,16 @@ func (s *ProjectService) CreateProject(name, organizationID string) (*dto.Projec
 	return project, nil
 }
 
-func (s *ProjectService) GetProjectByID(projectId string) (*dto.Project, error) {
+func (s *ProjectService) GetProjectByID(projectId, orgId string) (*dto.Project, error) {
 	projectModel, err := s.projectRepo.GetProjectByUUID(projectId)
 	if err != nil {
 		return nil, err
 	}
 
 	if projectModel == nil {
+		return nil, constants.ErrProjectNotFound
+	}
+	if projectModel.OrganizationID != orgId {
 		return nil, constants.ErrProjectNotFound
 	}
 
@@ -122,13 +124,16 @@ func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]*dt
 	return projects, nil
 }
 
-func (s *ProjectService) UpdateProject(projectId string, name string) (*dto.Project, error) {
+func (s *ProjectService) UpdateProject(projectId string, name string, orgId string) (*dto.Project, error) {
 	// Get existing project
 	project, err := s.projectRepo.GetProjectByUUID(projectId)
 	if err != nil {
 		return nil, err
 	}
 	if project == nil {
+		return nil, constants.ErrProjectNotFound
+	}
+	if project.OrganizationID != orgId {
 		return nil, constants.ErrProjectNotFound
 	}
 
@@ -158,13 +163,16 @@ func (s *ProjectService) UpdateProject(projectId string, name string) (*dto.Proj
 	return updatedProject, nil
 }
 
-func (s *ProjectService) DeleteProject(projectId string) error {
+func (s *ProjectService) DeleteProject(projectId, orgId string) error {
 	// Check if project exists
 	project, err := s.projectRepo.GetProjectByUUID(projectId)
 	if err != nil {
 		return err
 	}
 	if project == nil {
+		return constants.ErrProjectNotFound
+	}
+	if project.OrganizationID != orgId {
 		return constants.ErrProjectNotFound
 	}
 

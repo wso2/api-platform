@@ -44,4 +44,5 @@ var (
 	ErrInvalidLifecycleState = errors.New("invalid lifecycle state")
 	ErrInvalidAPIType        = errors.New("invalid api type")
 	ErrInvalidTransport      = errors.New("invalid transport protocol")
+	ErrInvalidAPIDeployment  = errors.New("invalid api deployment")
 )

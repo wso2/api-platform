@@ -22,10 +22,10 @@ import (
 	"net/http"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
+	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/utils"
 
 	"github.com/gin-gonic/gin"
-	"platform-api/src/internal/model"
 	"platform-api/src/internal/service"
 )
 
@@ -39,9 +39,16 @@ func NewProjectHandler(projectService *service.ProjectService) *ProjectHandler {
 	}
 }
 
+// CreateProject handles POST /api/v1/projects
 func (h *ProjectHandler) CreateProject(c *gin.Context) {
-	var req dto.Project
+	organizationID, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
 
+	var req dto.CreateProjectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
@@ -53,13 +60,8 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 			"Project name is required"))
 		return
 	}
-	if req.OrganizationID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Organization ID is required"))
-		return
-	}
 
-	project, err := h.projectService.CreateProject(req.Name, req.OrganizationID)
+	project, err := h.projectService.CreateProject(req.Name, organizationID)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
@@ -84,7 +86,15 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 	c.JSON(http.StatusCreated, project)
 }
 
+// GetProject handles GET /api/v1/projects/:projectId
 func (h *ProjectHandler) GetProject(c *gin.Context) {
+	orgID, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
 	projectId := c.Param("projectId")
 	if projectId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -92,7 +102,7 @@ func (h *ProjectHandler) GetProject(c *gin.Context) {
 		return
 	}
 
-	project, err := h.projectService.GetProjectByID(projectId)
+	project, err := h.projectService.GetProjectByID(projectId, orgID)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -107,11 +117,12 @@ func (h *ProjectHandler) GetProject(c *gin.Context) {
 	c.JSON(http.StatusOK, project)
 }
 
-func (h *ProjectHandler) GetProjectsByOrganization(c *gin.Context) {
-	orgID := c.Param("orgId")
-	if orgID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Organization ID is required"))
+// ListProjects handles GET /api/v1/projects
+func (h *ProjectHandler) ListProjects(c *gin.Context) {
+	orgID, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
 		return
 	}
 
@@ -139,7 +150,15 @@ func (h *ProjectHandler) GetProjectsByOrganization(c *gin.Context) {
 	})
 }
 
+// UpdateProject handles PUT /api/v1/projects/:projectId
 func (h *ProjectHandler) UpdateProject(c *gin.Context) {
+	orgID, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
 	projectId := c.Param("projectId")
 	if projectId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -147,13 +166,13 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 		return
 	}
 
-	var req model.Project
+	var req dto.CreateProjectRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
 	}
 
-	project, err := h.projectService.UpdateProject(projectId, req.Name)
+	project, err := h.projectService.UpdateProject(projectId, req.Name, orgID)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -173,7 +192,15 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 	c.JSON(http.StatusOK, project)
 }
 
+// DeleteProject handles DELETE /api/v1/projects/:projectId
 func (h *ProjectHandler) DeleteProject(c *gin.Context) {
+	orgID, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
 	projectId := c.Param("projectId")
 	if projectId == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -181,7 +208,7 @@ func (h *ProjectHandler) DeleteProject(c *gin.Context) {
 		return
 	}
 
-	err := h.projectService.DeleteProject(projectId)
+	err := h.projectService.DeleteProject(projectId, orgID)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -209,15 +236,10 @@ func (h *ProjectHandler) DeleteProject(c *gin.Context) {
 func (h *ProjectHandler) RegisterRoutes(r *gin.Engine) {
 	projectGroup := r.Group("/api/v1/projects")
 	{
+		projectGroup.GET("", h.ListProjects)
 		projectGroup.POST("", h.CreateProject)
 		projectGroup.GET("/:projectId", h.GetProject)
 		projectGroup.PUT("/:projectId", h.UpdateProject)
 		projectGroup.DELETE("/:projectId", h.DeleteProject)
-	}
-
-	// Organization-specific project routes
-	orgProjectGroup := r.Group("/api/v1/organizations/:orgId/projects")
-	{
-		orgProjectGroup.GET("", h.GetProjectsByOrganization)
 	}
 }

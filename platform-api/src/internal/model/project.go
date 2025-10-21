@@ -25,7 +25,7 @@ import (
 type Project struct {
 	ID             string    `json:"id" db:"uuid"`
 	Name           string    `json:"name" db:"name"`
-	OrganizationID string    `json:"organizationId" db:"organization_id"` // FK to Organization.ID
+	OrganizationID string    `json:"organizationId" db:"organization_uuid"` // FK to Organization.ID
 	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
 	UpdatedAt      time.Time `json:"updatedAt" db:"updated_at"`
 }

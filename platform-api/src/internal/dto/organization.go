@@ -21,6 +21,13 @@ import (
 	"time"
 )
 
+// CreateOrganizationRequest represents the request body for registering a new organization
+type CreateOrganizationRequest struct {
+	ID     string `json:"id" yaml:"id" binding:"required"`
+	Handle string `json:"handle" yaml:"handle" binding:"required"`
+	Name   string `json:"name" yaml:"name"`
+}
+
 // Organization represents an organization entity in the API management platform
 type Organization struct {
 	ID        string    `json:"id" yaml:"id"`

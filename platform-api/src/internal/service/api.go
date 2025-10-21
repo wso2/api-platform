@@ -38,20 +38,23 @@ import (
 type APIService struct {
 	apiRepo              repository.APIRepository
 	projectRepo          repository.ProjectRepository
+	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
 }
 
 // NewAPIService creates a new API service
-func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.ProjectRepository, gatewayEventsService *GatewayEventsService) *APIService {
+func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.ProjectRepository,
+	gatewayRepo repository.GatewayRepository, gatewayEventsService *GatewayEventsService) *APIService {
 	return &APIService{
 		apiRepo:              apiRepo,
 		projectRepo:          projectRepo,
+		gatewayRepo:          gatewayRepo,
 		gatewayEventsService: gatewayEventsService,
 	}
 }
 
 // CreateAPI creates a new API with validation and business logic
-func (s *APIService) CreateAPI(req *CreateAPIRequest) (*dto.API, error) {
+func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, error) {
 	// Validate request
 	if err := s.validateCreateAPIRequest(req); err != nil {
 		return nil, err
@@ -63,6 +66,9 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest) (*dto.API, error) {
 		return nil, err
 	}
 	if project == nil {
+		return nil, constants.ErrProjectNotFound
+	}
+	if project.OrganizationID != orgId {
 		return nil, constants.ErrProjectNotFound
 	}
 
@@ -110,6 +116,7 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest) (*dto.API, error) {
 		Version:          req.Version,
 		Provider:         req.Provider,
 		ProjectID:        req.ProjectID,
+		OrganizationID:   orgId,
 		LifeCycleStatus:  req.LifeCycleStatus,
 		HasThumbnail:     req.HasThumbnail,
 		IsDefaultVersion: req.IsDefaultVersion,
@@ -136,7 +143,7 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest) (*dto.API, error) {
 }
 
 // GetAPIByUUID retrieves an API by its ID
-func (s *APIService) GetAPIByUUID(apiId string) (*dto.API, error) {
+func (s *APIService) GetAPIByUUID(apiId, orgId string) (*dto.API, error) {
 	if apiId == "" {
 		return nil, errors.New("API id is required")
 	}
@@ -148,13 +155,16 @@ func (s *APIService) GetAPIByUUID(apiId string) (*dto.API, error) {
 	if apiModel == nil {
 		return nil, constants.ErrAPINotFound
 	}
+	if apiModel.OrganizationID != orgId {
+		return nil, constants.ErrAPINotFound
+	}
 
 	api := s.modelToDTO(apiModel)
 	return api, nil
 }
 
 // GetAPIsByProjectID retrieves all APIs for a project
-func (s *APIService) GetAPIsByProjectID(projectID string) ([]*dto.API, error) {
+func (s *APIService) GetAPIsByProjectID(projectID, orgId string) ([]*dto.API, error) {
 	if projectID == "" {
 		return nil, errors.New("project id is required")
 	}
@@ -165,6 +175,9 @@ func (s *APIService) GetAPIsByProjectID(projectID string) ([]*dto.API, error) {
 		return nil, err
 	}
 	if project == nil {
+		return nil, constants.ErrProjectNotFound
+	}
+	if project.OrganizationID != orgId {
 		return nil, constants.ErrProjectNotFound
 	}
 
@@ -182,7 +195,7 @@ func (s *APIService) GetAPIsByProjectID(projectID string) ([]*dto.API, error) {
 }
 
 // UpdateAPI updates an existing API
-func (s *APIService) UpdateAPI(apiId string, req *UpdateAPIRequest) (*dto.API, error) {
+func (s *APIService) UpdateAPI(apiId string, req *UpdateAPIRequest, orgId string) (*dto.API, error) {
 	if apiId == "" {
 		return nil, errors.New("API id is required")
 	}
@@ -193,6 +206,9 @@ func (s *APIService) UpdateAPI(apiId string, req *UpdateAPIRequest) (*dto.API, e
 		return nil, err
 	}
 	if existingAPIModel == nil {
+		return nil, constants.ErrAPINotFound
+	}
+	if existingAPIModel.OrganizationID != orgId {
 		return nil, constants.ErrAPINotFound
 	}
 
@@ -266,7 +282,7 @@ func (s *APIService) UpdateAPI(apiId string, req *UpdateAPIRequest) (*dto.API, e
 }
 
 // DeleteAPI deletes an API
-func (s *APIService) DeleteAPI(apiId string) error {
+func (s *APIService) DeleteAPI(apiId, orgId string) error {
 	if apiId == "" {
 		return errors.New("API id is required")
 	}
@@ -277,6 +293,9 @@ func (s *APIService) DeleteAPI(apiId string) error {
 		return err
 	}
 	if api == nil {
+		return constants.ErrAPINotFound
+	}
+	if api.OrganizationID != orgId {
 		return constants.ErrAPINotFound
 	}
 
@@ -326,7 +345,7 @@ func (s *APIService) UpdateAPILifecycleStatus(apiId string, status string) (*dto
 
 // DeployAPIRevision deploys an API revision and generates deployment YAML
 func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
-	deploymentRequests []dto.APIRevisionDeployment) ([]*dto.APIRevisionDeployment, error) {
+	deploymentRequests []dto.APIRevisionDeployment, orgId string) ([]*dto.APIRevisionDeployment, error) {
 	if apiId == "" {
 		return nil, errors.New("api id is required")
 	}
@@ -337,6 +356,9 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 		return nil, err
 	}
 	if apiModel == nil {
+		return nil, constants.ErrAPINotFound
+	}
+	if apiModel.OrganizationID != orgId {
 		return nil, constants.ErrAPINotFound
 	}
 
@@ -355,8 +377,8 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 
 	for _, deploymentReq := range deploymentRequests {
 		// Validate deployment request
-		if err := s.validateDeploymentRequest(&deploymentReq); err != nil {
-			return nil, err
+		if err := s.validateDeploymentRequest(&deploymentReq, orgId); err != nil {
+			return nil, constants.ErrInvalidAPIDeployment
 		}
 
 		deployment := &dto.APIRevisionDeployment{
@@ -370,6 +392,21 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 		}
 
 		deployments = append(deployments, deployment)
+
+		// Create deployment record in the database
+		deploymentRecord := &model.APIDeployment{
+			ApiID:          apiId,
+			OrganizationID: orgId,
+			GatewayID:      deployment.GatewayID,
+		}
+
+		if err := s.apiRepo.CreateDeployment(deploymentRecord); err != nil {
+			log.Printf("[ERROR] Failed to create deployment record: apiId=%s gatewayID=%s error=%v",
+				apiId, deployment.GatewayID, err)
+		} else {
+			log.Printf("[INFO] Created deployment record: apiId=%s gatewayID=%s deploymentId=%d",
+				apiId, deployment.GatewayID, deploymentRecord.ID)
+		}
 
 		// Send deployment event to gateway via WebSocket
 		deploymentEvent := &model.APIDeploymentEvent{
@@ -436,15 +473,24 @@ func (s *APIService) generateAPIDeploymentYAML(api *dto.API) (string, error) {
 }
 
 // validateDeploymentRequest validates the deployment request
-func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment) error {
+func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, orgId string) error {
 	if req.GatewayID == "" {
-		return errors.New("gatewayId is required")
+		return errors.New("gateway Id is required")
 	}
 	if req.VHost == "" {
 		return errors.New("vhost is required")
 	}
-
 	// TODO - vHost validation
+	gateway, err := s.gatewayRepo.GetByUUID(req.GatewayID)
+	if err != nil {
+		return fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if gateway == nil {
+		return fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if gateway.OrganizationID != orgId {
+		return fmt.Errorf("failed to get gateway: %w", err)
+	}
 
 	return nil
 }
@@ -621,6 +667,7 @@ func (s *APIService) dtoToModel(dto *dto.API) *model.API {
 		Version:          dto.Version,
 		Provider:         dto.Provider,
 		ProjectID:        dto.ProjectID,
+		OrganizationID:   dto.OrganizationID,
 		LifeCycleStatus:  dto.LifeCycleStatus,
 		HasThumbnail:     dto.HasThumbnail,
 		IsDefaultVersion: dto.IsDefaultVersion,
@@ -652,6 +699,7 @@ func (s *APIService) modelToDTO(model *model.API) *dto.API {
 		Version:          model.Version,
 		Provider:         model.Provider,
 		ProjectID:        model.ProjectID,
+		OrganizationID:   model.OrganizationID,
 		CreatedAt:        model.CreatedAt,
 		UpdatedAt:        model.UpdatedAt,
 		LifeCycleStatus:  model.LifeCycleStatus,

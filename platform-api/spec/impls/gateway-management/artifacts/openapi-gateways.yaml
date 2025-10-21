@@ -1,14 +1,22 @@
 # Gateway Registration API - OpenAPI Contract
-# This file documents the gateway registration endpoints to be added to platform-api
+# This file documents the gateway registration endpoints added to platform-api
+#
+# UPDATED: October 2025
+# Changes: Integrated Thunder STS JWT authentication. Organization ID is now extracted
+# from the JWT token's 'organization' claim instead of being passed in request body or query params.
 
 paths:
   /gateways:
     post:
       summary: Register a new gateway
-      description: Creates a new gateway within an organization and returns a registration token
+      description: |
+        Creates a new gateway within the organization specified in the JWT token.
+        Organization ID is automatically extracted from the token and does not need to be provided.
       operationId: createGateway
       tags:
         - Gateways
+      security:
+        - BearerAuth: []
       requestBody:
         description: Gateway registration details
         required: true
@@ -17,7 +25,6 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateGatewayRequest'
             example:
-              organizationId: "123e4567-e89b-12d3-a456-426614174000"
               name: "prod-gateway-01"
               displayName: "Production Gateway 01"
       responses:
@@ -29,6 +36,8 @@ paths:
                 $ref: '#/components/schemas/GatewayRegistrationResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: Organization not found
           content:
@@ -46,19 +55,14 @@ paths:
 
     get:
       summary: List all gateways
-      description: Retrieves a list of all registered gateways, optionally filtered by organization
+      description: |
+        Retrieves a list of all registered gateways for the organization specified in the JWT token.
+        Organization ID is automatically extracted from the token.
       operationId: listGateways
       tags:
         - Gateways
-      parameters:
-        - name: organizationId
-          in: query
-          description: Filter gateways by organization UUID
-          required: false
-          schema:
-            type: string
-            format: uuid
-            example: "123e4567-e89b-12d3-a456-426614174000"
+      security:
+        - BearerAuth: []
       responses:
         '200':
           description: Gateways retrieved successfully
@@ -68,16 +72,22 @@ paths:
                 $ref: '#/components/schemas/GatewayListResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
   /gateways/{gateway_uuid}:
     get:
       summary: Get gateway by UUID
-      description: Retrieves a specific gateway by its UUID
+      description: |
+        Retrieves a specific gateway by its UUID. Access is validated against the organization 
+        in the JWT token to ensure users can only access gateways in their organization.
       operationId: getGateway
       tags:
         - Gateways
+      security:
+        - BearerAuth: []
       parameters:
         - name: gateway_uuid
           in: path
@@ -96,6 +106,8 @@ paths:
                 $ref: '#/components/schemas/GatewayResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: Gateway not found
           content:
@@ -107,10 +119,14 @@ paths:
 
     delete:
       summary: Delete gateway
-      description: Deletes a gateway and all associated tokens
+      description: |
+        Deletes a gateway and all associated tokens. Access is validated against the organization 
+        in the JWT token.
       operationId: deleteGateway
       tags:
         - Gateways
+      security:
+        - BearerAuth: []
       parameters:
         - name: gateway_uuid
           in: path
@@ -125,6 +141,8 @@ paths:
           description: Gateway deleted successfully
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: Gateway not found
           content:
@@ -137,10 +155,14 @@ paths:
   /gateways/{gateway_uuid}/tokens:
     post:
       summary: Rotate gateway token
-      description: Generates a new authentication token for the gateway. The existing token remains active to enable zero-downtime rotation.
+      description: |
+        Generates a new authentication token for the gateway. The existing token remains active 
+        to enable zero-downtime rotation. Access is validated against the organization in the JWT token.
       operationId: rotateGatewayToken
       tags:
         - Gateway Tokens
+      security:
+        - BearerAuth: []
       parameters:
         - name: gateway_uuid
           in: path
@@ -163,6 +185,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: Gateway not found
           content:
@@ -219,19 +243,26 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT access token issued by Thunder STS. The token must contain an `organization` claim 
+        that identifies the user's organization. All API operations are automatically scoped 
+        to this organization.
+
   schemas:
     CreateGatewayRequest:
+      description: |
+        Request body for creating a gateway. Organization ID is automatically extracted 
+        from the JWT token and does not need to be provided.
       type: object
       required:
-        - organizationId
         - name
         - displayName
       properties:
-        organizationId:
-          type: string
-          format: uuid
-          description: UUID of the organization this gateway belongs to
-          example: "123e4567-e89b-12d3-a456-426614174000"
         name:
           type: string
           pattern: '^[a-z0-9-]+$'
@@ -408,3 +439,15 @@ components:
             code: 500
             message: "Internal Server Error"
             description: "An unexpected error occurred"
+
+    Unauthorized:
+      description: Unauthorized. Authentication credentials are missing or invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: 401
+            message: Unauthorized
+            description: Authorization header is required or token is invalid
+
