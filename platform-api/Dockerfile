@@ -54,8 +54,10 @@ USER wso2
 EXPOSE 8443
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider https://localhost:8443/health || exit 1
+    CMD wget --quiet --tries=1 --spider --no-check-certificate https://localhost:8443/health || exit 1
 
+# Set Gin to release mode
+ENV GIN_MODE=release
 ENV LOG_LEVEL=INFO
 ENV DATABASE_DRIVER=sqlite3
 ENV DB_SCHEMA_PATH=./schema.sql

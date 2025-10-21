@@ -7,7 +7,7 @@ STS packages [Asgardeo Thunder](https://github.com/asgardeo/thunder) OAuth serve
 ## Components
 
 - **Thunder**: OAuth 2.0 / OIDC authorization server (port 8090)
-- **Gate App**: Next.js authentication UI (port 9090)
+- **Gate App**: Next.js authentication UI (port 9091)
 
 ## Key Decisions
 

@@ -31,7 +31,7 @@ This simplifies deployment and reduces infrastructure complexity for users.
 │  │  - Login       │         │ - OAuth 2.0  │        │
 │  │  - Register    │         │ - OIDC       │        │
 │  │                │         │ - Token Mgmt │        │
-│  │  Port: 9090    │         │ Port: 8090   │        │
+│  │  Port: 9091    │         │ Port: 8090   │        │
 │  └────────────────┘         └──────────────┘        │
 │                                                     │
 └─────────────────────────────────────────────────────┘
@@ -57,7 +57,7 @@ This simplifies deployment and reduces infrastructure complexity for users.
 - Switches back to `thunder` user for security
 - Copies Gate App build from builder stage with proper ownership
 - Copies startup script with execute permissions
-- Exposes ports 8090 (Thunder) and 9090 (Gate App)
+- Exposes ports 8090 (Thunder) and 9091 (Gate App)
 - Configures health check for Thunder
 - Sets startup script as entrypoint
 
@@ -111,7 +111,7 @@ The startup script orchestrates both services:
 ### Ports
 
 - **8090**: Thunder OAuth 2.0 / OIDC server (HTTPS)
-- **9090**: Gate App authentication UI (HTTPS)
+- **9091**: Gate App authentication UI (HTTPS)
 
 ### Files
 
@@ -131,7 +131,7 @@ docker build -t wso2/api-platform-sts:latest .
 ### Run
 
 ```bash
-docker run --rm -p 8090:8090 -p 9090:9090 wso2/api-platform-sts:latest
+docker run --rm -p 8090:8090 -p 9091:9091 wso2/api-platform-sts:latest
 ```
 
 ### Verify
@@ -141,7 +141,7 @@ docker run --rm -p 8090:8090 -p 9090:9090 wso2/api-platform-sts:latest
 curl -k https://localhost:8090/health/liveness
 
 # Gate App
-curl -k https://localhost:9090
+curl -k https://localhost:9091
 ```
 
 ## Challenges & Solutions

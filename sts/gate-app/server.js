@@ -35,7 +35,7 @@ if (fs.existsSync(requiredServerFilesConfig)) {
   process.env.__NEXT_PRIVATE_STANDALONE_CONFIG = JSON.stringify(nextConfig);
 }
 
-const PORT = 9090;
+const PORT = 9091;
 const HOST = 'localhost';
 const keyPath = path.resolve(__dirname, 'server.key');
 const certPath = path.resolve(__dirname, 'server.cert');

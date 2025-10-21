@@ -250,7 +250,7 @@ test_commands:
 
 ```bash
 # Start STS container
-docker run -d --name sts-container -p 8090:8090 -p 9090:9090 wso2/api-platform-sts:latest
+docker run -d --name sts-container -p 8090:8090 -p 9091:9091 wso2/api-platform-sts:latest
 ```
 
 ### Run Kickstart

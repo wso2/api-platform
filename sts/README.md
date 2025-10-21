@@ -11,11 +11,11 @@ OAuth 2.0 / OIDC server built on [Asgardeo Thunder](https://github.com/asgardeo/
 docker build -t wso2/api-platform-sts:latest .
 
 # Run
-docker run -d -p 8090:8090 -p 9090:9090 wso2/api-platform-sts:latest
+docker run -d -p 8090:8090 -p 9091:9091 wso2/api-platform-sts:latest
 
 # Verify
 curl -k https://localhost:8090/health/liveness  # Thunder
-curl -k https://localhost:9090                  # Gate App
+curl -k https://localhost:9091                  # Gate App
 ```
 
 ### Setup (Kickstart)
@@ -69,7 +69,7 @@ See [sample-app/README.md](sample-app/README.md) for details.
 ## Ports
 
 - **8090** - Thunder OAuth server (HTTPS)
-- **9090** - Gate App UI (HTTPS)
+- **9091** - Gate App UI (HTTPS)
 
 ## Documentation
 
