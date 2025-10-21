@@ -24,7 +24,7 @@ import (
 // Gateway represents a registered gateway instance within an organization
 type Gateway struct {
 	ID             string    `json:"id" db:"uuid"`
-	OrganizationID string    `json:"organizationId" db:"organization_id"`
+	OrganizationID string    `json:"organizationId" db:"organization_uuid"`
 	Name           string    `json:"name" db:"name"`
 	DisplayName    string    `json:"displayName" db:"display_name"`
 	CreatedAt      time.Time `json:"createdAt" db:"created_at"`

@@ -325,6 +325,11 @@ func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
 				"API not found"))
 			return
 		}
+		if errors.Is(err, constants.ErrInvalidAPIDeployment) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid API deployment configuration"))
+			return
+		}
 		log.Printf("[ERROR] Failed to deploy API revision: apiUUID=%s revisionID=%s error=%v",
 			apiId, revisionID, err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",

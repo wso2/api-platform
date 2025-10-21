@@ -378,7 +378,7 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 	for _, deploymentReq := range deploymentRequests {
 		// Validate deployment request
 		if err := s.validateDeploymentRequest(&deploymentReq, orgId); err != nil {
-			return nil, err
+			return nil, constants.ErrInvalidAPIDeployment
 		}
 
 		deployment := &dto.APIRevisionDeployment{
@@ -392,6 +392,21 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 		}
 
 		deployments = append(deployments, deployment)
+
+		// Create deployment record in the database
+		deploymentRecord := &model.APIDeployment{
+			ApiID:          apiId,
+			OrganizationID: orgId,
+			GatewayID:      deployment.GatewayID,
+		}
+
+		if err := s.apiRepo.CreateDeployment(deploymentRecord); err != nil {
+			log.Printf("[ERROR] Failed to create deployment record: apiId=%s gatewayID=%s error=%v",
+				apiId, deployment.GatewayID, err)
+		} else {
+			log.Printf("[INFO] Created deployment record: apiId=%s gatewayID=%s deploymentId=%d",
+				apiId, deployment.GatewayID, deploymentRecord.ID)
+		}
 
 		// Send deployment event to gateway via WebSocket
 		deploymentEvent := &model.APIDeploymentEvent{
@@ -468,6 +483,9 @@ func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, o
 	// TODO - vHost validation
 	gateway, err := s.gatewayRepo.GetByUUID(req.GatewayID)
 	if err != nil {
+		return fmt.Errorf("failed to get gateway: %w", err)
+	}
+	if gateway == nil {
 		return fmt.Errorf("failed to get gateway: %w", err)
 	}
 	if gateway.OrganizationID != orgId {

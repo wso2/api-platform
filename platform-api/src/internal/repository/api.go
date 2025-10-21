@@ -49,7 +49,7 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 	// Insert main API record
 	apiQuery := `
 		INSERT INTO apis (uuid, name, display_name, description, context, version, provider, 
-			project_id, organization_id, lifecycle_status, has_thumbnail, is_default_version, is_revision, 
+			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision, 
 			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
@@ -115,7 +115,7 @@ func (r *APIRepo) GetAPIByUUID(apiId string) (*model.API, error) {
 
 	query := `
 		SELECT uuid, name, display_name, description, context, version, provider,
-			project_id, organization_id, lifecycle_status, has_thumbnail, is_default_version, is_revision,
+			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
 		FROM apis WHERE uuid = ?
 	`
@@ -153,9 +153,9 @@ func (r *APIRepo) GetAPIByUUID(apiId string) (*model.API, error) {
 func (r *APIRepo) GetAPIsByProjectID(projectID string) ([]*model.API, error) {
 	query := `
 		SELECT uuid, name, display_name, description, context, version, provider,
-			project_id, organization_id, lifecycle_status, has_thumbnail, is_default_version, is_revision,
+			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
-		FROM apis WHERE project_id = ? ORDER BY created_at DESC
+		FROM apis WHERE project_uuid = ? ORDER BY created_at DESC
 	`
 
 	rows, err := r.db.Query(query, projectID)
@@ -980,4 +980,57 @@ func (r *APIRepo) deleteAPIConfigurations(tx *sql.Tx, apiId string) error {
 // NewAPIRepo creates a new API repository
 func NewAPIRepo(db *database.DB) APIRepository {
 	return &APIRepo{db: db}
+}
+
+// CreateDeployment inserts a new API deployment record
+func (r *APIRepo) CreateDeployment(deployment *model.APIDeployment) error {
+	deployment.CreatedAt = time.Now()
+
+	query := `
+		INSERT INTO api_deployments (api_uuid, organization_uuid, gateway_uuid, created_at)
+		VALUES (?, ?, ?, ?)
+	`
+
+	result, err := r.db.Exec(query, deployment.ApiID, deployment.OrganizationID,
+		deployment.GatewayID, deployment.CreatedAt)
+	if err != nil {
+		return err
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return err
+	}
+
+	deployment.ID = int(id)
+	return nil
+}
+
+// GetDeploymentsByAPIUUID retrieves all deployment records for an API
+func (r *APIRepo) GetDeploymentsByAPIUUID(apiId string) ([]*model.APIDeployment, error) {
+	query := `
+		SELECT id, api_uuid, organization_uuid, gateway_uuid, created_at
+		FROM api_deployments
+		WHERE api_uuid = ?
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.db.Query(query, apiId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var deployments []*model.APIDeployment
+	for rows.Next() {
+		var deployment model.APIDeployment
+		err := rows.Scan(&deployment.ID, &deployment.ApiID, &deployment.OrganizationID,
+			&deployment.GatewayID, &deployment.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		deployments = append(deployments, &deployment)
+	}
+
+	return deployments, rows.Err()
 }

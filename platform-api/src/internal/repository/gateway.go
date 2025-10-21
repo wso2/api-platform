@@ -42,7 +42,7 @@ func (r *GatewayRepo) Create(gateway *model.Gateway) error {
 	gateway.UpdatedAt = time.Now()
 
 	query := `
-		INSERT INTO gateways (uuid, organization_id, name, display_name, created_at, updated_at)
+		INSERT INTO gateways (uuid, organization_uuid, name, display_name, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
 	_, err := r.db.Exec(query, gateway.ID, gateway.OrganizationID, gateway.Name, gateway.DisplayName, gateway.CreatedAt, gateway.UpdatedAt)
@@ -53,7 +53,7 @@ func (r *GatewayRepo) Create(gateway *model.Gateway) error {
 func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 	gateway := &model.Gateway{}
 	query := `
-		SELECT uuid, organization_id, name, display_name, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, created_at, updated_at
 		FROM gateways
 		WHERE uuid = ?
 	`
@@ -72,9 +72,9 @@ func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 // GetByOrganizationID retrieves all gateways for an organization
 func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_id, name, display_name, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, created_at, updated_at
 		FROM gateways
-		WHERE organization_id = ?
+		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
 	`
 	rows, err := r.db.Query(query, orgID)
@@ -101,9 +101,9 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 func (r *GatewayRepo) GetByNameAndOrgID(name, orgID string) (*model.Gateway, error) {
 	gateway := &model.Gateway{}
 	query := `
-		SELECT uuid, organization_id, name, display_name, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, created_at, updated_at
 		FROM gateways
-		WHERE name = ? AND organization_id = ?
+		WHERE name = ? AND organization_uuid = ?
 	`
 	err := r.db.QueryRow(query, name, orgID).Scan(
 		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
@@ -120,7 +120,7 @@ func (r *GatewayRepo) GetByNameAndOrgID(name, orgID string) (*model.Gateway, err
 // List retrieves all gateways
 func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_id, name, display_name, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, created_at, updated_at
 		FROM gateways
 		ORDER BY created_at DESC
 	`
