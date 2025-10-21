@@ -15,7 +15,7 @@ pnpm start
 
 # Use
 # Open https://localhost:3000 in browser
-# Login with credentials from ../registration.yaml
+# Login with default credentials: user: david, password: david123
 # View access token and decoded JWT claims
 ```
 
