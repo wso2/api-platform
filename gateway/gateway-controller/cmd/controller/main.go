@@ -48,6 +48,8 @@ func main() {
 		zap.String("config_file", *configPath),
 		zap.String("storage_type", cfg.Storage.Type),
 		zap.Bool("access_logs_enabled", cfg.Router.AccessLogs.Enabled),
+		zap.String("control_plane_url", cfg.ControlPlane.URL),
+		zap.Bool("control_plane_token_configured", cfg.ControlPlane.Token != ""),
 	)
 
 	// Initialize storage based on type

@@ -33,10 +33,11 @@ import (
 
 // Config holds all configuration for the gateway-controller
 type Config struct {
-	Server  ServerConfig  `koanf:"server"`
-	Storage StorageConfig `koanf:"storage"`
-	Router  RouterConfig  `koanf:"router"`
-	Logging LoggingConfig `koanf:"logging"`
+	Server       ServerConfig       `koanf:"server"`
+	Storage      StorageConfig      `koanf:"storage"`
+	Router       RouterConfig       `koanf:"router"`
+	Logging      LoggingConfig      `koanf:"logging"`
+	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
 }
 
 // ServerConfig holds server-related configuration
@@ -88,6 +89,15 @@ type LoggingConfig struct {
 	Format string `koanf:"format"` // "json" or "console"
 }
 
+// ControlPlaneConfig holds control plane connection configuration
+type ControlPlaneConfig struct {
+	URL              string        `koanf:"url"`               // WebSocket endpoint URL
+	Token            string        `koanf:"token"`             // Registration token (api-key)
+	ReconnectInitial time.Duration `koanf:"reconnect_initial"` // Initial retry delay
+	ReconnectMax     time.Duration `koanf:"reconnect_max"`     // Maximum retry delay
+	PollingInterval  time.Duration `koanf:"polling_interval"`  // Reconciliation polling interval
+}
+
 // LoadConfig loads configuration from file, environment variables, and defaults
 // Priority: Environment variables > Config file > Defaults
 func LoadConfig(configPath string) (*Config, error) {
@@ -127,6 +137,34 @@ func LoadConfig(configPath string) (*Config, error) {
 		return s
 	}), nil); err != nil {
 		return nil, fmt.Errorf("failed to load environment variables: %w", err)
+	}
+
+	// Load control plane environment variables with prefix "GATEWAY_"
+	// Example: GATEWAY_CONTROL_PLANE_URL=wss://example.com:8443/ws
+	// Maps to: controlplane.url (but we need custom mapping)
+	if err := k.Load(env.Provider("GATEWAY_", ".", func(s string) string {
+		s = strings.TrimPrefix(s, "GATEWAY_")
+		s = strings.ToLower(s)
+
+		// Custom mappings for control plane variables
+		switch s {
+		case "control_plane_url":
+			return "controlplane.url"
+		case "registration_token":
+			return "controlplane.token"
+		case "reconnect_initial":
+			return "controlplane.reconnect_initial"
+		case "reconnect_max":
+			return "controlplane.reconnect_max"
+		case "polling_interval":
+			return "controlplane.polling_interval"
+		default:
+			// For other GATEWAY_ prefixed vars, use standard mapping
+			s = strings.ReplaceAll(s, "_", ".")
+			return s
+		}
+	}), nil); err != nil {
+		return nil, fmt.Errorf("failed to load GATEWAY_ environment variables: %w", err)
 	}
 
 	// Unmarshal into Config struct
@@ -176,9 +214,14 @@ func getDefaults() map[string]interface{} {
 			"%RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
 			"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
 			"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
-		"router.listener_port": 8080,
-		"logging.level":        "info",
-		"logging.format":       "json",
+		"router.listener_port":           8080,
+		"logging.level":                  "info",
+		"logging.format":                 "json",
+		"controlplane.url":               "wss://localhost:8443/api/internal/v1/ws/gateways/connect",
+		"controlplane.token":             "",
+		"controlplane.reconnect_initial": "1s",
+		"controlplane.reconnect_max":     "5m",
+		"controlplane.polling_interval":  "15m",
 	}
 }
 
@@ -259,6 +302,45 @@ func (c *Config) Validate() error {
 
 	if c.Router.ListenerPort < 1 || c.Router.ListenerPort > 65535 {
 		return fmt.Errorf("router.listener_port must be between 1 and 65535, got: %d", c.Router.ListenerPort)
+	}
+
+	// Validate control plane configuration
+	if err := c.validateControlPlaneConfig(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateControlPlaneConfig validates the control plane configuration
+func (c *Config) validateControlPlaneConfig() error {
+	// URL validation - must use wss:// protocol
+	if c.ControlPlane.URL != "" {
+		if !strings.HasPrefix(c.ControlPlane.URL, "wss://") {
+			return fmt.Errorf("controlplane.url must use wss:// protocol, got: %s", c.ControlPlane.URL)
+		}
+	}
+
+	// Token is optional - gateway can run without control plane connection
+	// If token is empty, connection will not be established
+
+	// Validate reconnection intervals
+	if c.ControlPlane.ReconnectInitial <= 0 {
+		return fmt.Errorf("controlplane.reconnect_initial must be positive, got: %s", c.ControlPlane.ReconnectInitial)
+	}
+
+	if c.ControlPlane.ReconnectMax <= 0 {
+		return fmt.Errorf("controlplane.reconnect_max must be positive, got: %s", c.ControlPlane.ReconnectMax)
+	}
+
+	if c.ControlPlane.ReconnectInitial > c.ControlPlane.ReconnectMax {
+		return fmt.Errorf("controlplane.reconnect_initial (%s) must be <= controlplane.reconnect_max (%s)",
+			c.ControlPlane.ReconnectInitial, c.ControlPlane.ReconnectMax)
+	}
+
+	// Validate polling interval
+	if c.ControlPlane.PollingInterval <= 0 {
+		return fmt.Errorf("controlplane.polling_interval must be positive, got: %s", c.ControlPlane.PollingInterval)
 	}
 
 	return nil
