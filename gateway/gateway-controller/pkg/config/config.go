@@ -127,22 +127,9 @@ func LoadConfig(configPath string) (*Config, error) {
 		}
 	}
 
-	// Load environment variables with prefix "GATEWAY_" (Gateway Controller)
-	// Example: GATEWAY_SERVER_API_PORT=9090
-	// Maps to: server.api_port
-	if err := k.Load(env.Provider("GATEWAY_", ".", func(s string) string {
-		// Remove prefix and convert to lowercase with dots
-		s = strings.TrimPrefix(s, "GATEWAY_")
-		s = strings.ToLower(s)
-		s = strings.ReplaceAll(s, "_", ".")
-		return s
-	}), nil); err != nil {
-		return nil, fmt.Errorf("failed to load environment variables: %w", err)
-	}
-
-	// Load control plane environment variables with prefix "GATEWAY_"
-	// Example: GATEWAY_CONTROL_PLANE_URL=wss://example.com:8443/ws
-	// Maps to: controlplane.url (but we need custom mapping)
+	// Load environment variables with prefix "GATEWAY_"
+	// Example: GATEWAY_SERVER_API_PORT=9090 -> server.api_port
+	//          GATEWAY_CONTROL_PLANE_URL=wss://... -> controlplane.url
 	if err := k.Load(env.Provider("GATEWAY_", ".", func(s string) string {
 		s = strings.TrimPrefix(s, "GATEWAY_")
 		s = strings.ToLower(s)
@@ -162,12 +149,12 @@ func LoadConfig(configPath string) (*Config, error) {
 		case "insecure_skip_verify":
 			return "controlplane.insecure_skip_verify"
 		default:
-			// For other GATEWAY_ prefixed vars, use standard mapping
+			// For other GATEWAY_ prefixed vars, use standard mapping (underscore to dot)
 			s = strings.ReplaceAll(s, "_", ".")
 			return s
 		}
 	}), nil); err != nil {
-		return nil, fmt.Errorf("failed to load GATEWAY_ environment variables: %w", err)
+		return nil, fmt.Errorf("failed to load environment variables: %w", err)
 	}
 
 	// Unmarshal into Config struct
