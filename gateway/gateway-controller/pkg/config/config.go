@@ -91,11 +91,12 @@ type LoggingConfig struct {
 
 // ControlPlaneConfig holds control plane connection configuration
 type ControlPlaneConfig struct {
-	URL              string        `koanf:"url"`               // WebSocket endpoint URL
-	Token            string        `koanf:"token"`             // Registration token (api-key)
-	ReconnectInitial time.Duration `koanf:"reconnect_initial"` // Initial retry delay
-	ReconnectMax     time.Duration `koanf:"reconnect_max"`     // Maximum retry delay
-	PollingInterval  time.Duration `koanf:"polling_interval"`  // Reconciliation polling interval
+	URL                string        `koanf:"url"`                  // WebSocket endpoint URL
+	Token              string        `koanf:"token"`                // Registration token (api-key)
+	ReconnectInitial   time.Duration `koanf:"reconnect_initial"`    // Initial retry delay
+	ReconnectMax       time.Duration `koanf:"reconnect_max"`        // Maximum retry delay
+	PollingInterval    time.Duration `koanf:"polling_interval"`     // Reconciliation polling interval
+	InsecureSkipVerify bool          `koanf:"insecure_skip_verify"` // Skip TLS certificate verification (default: true for dev)
 }
 
 // LoadConfig loads configuration from file, environment variables, and defaults
@@ -158,6 +159,8 @@ func LoadConfig(configPath string) (*Config, error) {
 			return "controlplane.reconnect_max"
 		case "polling_interval":
 			return "controlplane.polling_interval"
+		case "insecure_skip_verify":
+			return "controlplane.insecure_skip_verify"
 		default:
 			// For other GATEWAY_ prefixed vars, use standard mapping
 			s = strings.ReplaceAll(s, "_", ".")
@@ -214,14 +217,15 @@ func getDefaults() map[string]interface{} {
 			"%RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
 			"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
 			"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
-		"router.listener_port":           8080,
-		"logging.level":                  "info",
-		"logging.format":                 "json",
-		"controlplane.url":               "wss://localhost:8443/api/internal/v1/ws/gateways/connect",
-		"controlplane.token":             "",
-		"controlplane.reconnect_initial": "1s",
-		"controlplane.reconnect_max":     "5m",
-		"controlplane.polling_interval":  "15m",
+		"router.listener_port":                8080,
+		"logging.level":                       "info",
+		"logging.format":                      "json",
+		"controlplane.url":                    "wss://localhost:8443/api/internal/v1/ws/gateways/connect",
+		"controlplane.token":                  "",
+		"controlplane.reconnect_initial":      "1s",
+		"controlplane.reconnect_max":          "5m",
+		"controlplane.polling_interval":       "15m",
+		"controlplane.insecure_skip_verify":   true, // Default true for dev environments with self-signed certs
 	}
 }
 
