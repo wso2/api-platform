@@ -29,7 +29,7 @@ go run ./cmd/main.go
 
 ### Step-by-Step Workflow
 
-**1. Create an Organization**
+**1. Register an Organization**
 
 ```bash
 curl -k -X POST https://localhost:8443/api/v1/organizations \
@@ -45,8 +45,7 @@ curl -k -X POST https://localhost:8443/api/v1/projects \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <your-oauth2-token>' \
   -d '{
-    "name": "Production APIs",
-    "organizationId": "<organization-uuid>"
+    "name": "Production APIs"
   }'
 ```
 
@@ -67,7 +66,6 @@ Response includes the gateway UUID:
 ```json
 {
   "id": "4dac93bd-07ba-417e-aef8-353cebe3ba73",
-  "organizationId": "1b6b799f-33c1-4920-be4d-0be4d0867d8b",
   "name": "prod-gateway-01",
   "displayName": "Production Gateway 01",
   "createdAt": "2025-10-21T15:12:44.168980842+05:30",
@@ -109,7 +107,7 @@ wscat -n -c wss://localhost:8443/api/internal/v1/ws/gateways/connect \
 Expected output:
 ```
 Connected (press CTRL+C to quit)
-< {"type":"connection.ack","gatewayId":"2b90aff3-b532-43cb-9343-30ac86bb717e","connectionId":"3150a8b6-649d-4d12-8512-7d72e8ec7f13","timestamp":"2025-10-21T14:42:13+05:30"}
+< {"type":"connection.ack","gatewayId":"4dac93bd-07ba-417e-aef8-353cebe3ba73","connectionId":"3150a8b6-649d-4d12-8512-7d72e8ec7f13","timestamp":"2025-10-21T14:42:13+05:30"}
 ```
 
 Keep this connection open to receive real-time deployment events.
@@ -151,7 +149,7 @@ Expected response:
 [
   {
     "revisionId": "90d10e1c-8560-5c36-9d5a-124ecaa17485",
-    "gatewayId": "2b90aff3-b532-43cb-9343-30ac86bb717e",
+    "gatewayId": "4dac93bd-07ba-417e-aef8-353cebe3ba73",
     "status": "CREATED",
     "vhost": "mg.wso2.com",
     "displayOnDevportal": false,
