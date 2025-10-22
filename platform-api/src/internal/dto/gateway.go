@@ -25,6 +25,8 @@ import (
 type CreateGatewayRequest struct {
 	Name        string `json:"name" binding:"required"`
 	DisplayName string `json:"displayName" binding:"required"`
+	Description string `json:"description,omitempty"`
+	Vhost       string `json:"vhost" binding:"required"`
 }
 
 // GatewayResponse represents a gateway in API responses
@@ -33,6 +35,8 @@ type GatewayResponse struct {
 	OrganizationID string    `json:"organizationId"`
 	Name           string    `json:"name"`
 	DisplayName    string    `json:"displayName"`
+	Description    string    `json:"description,omitempty"`
+	Vhost          string    `json:"vhost"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`
 }
@@ -42,6 +46,11 @@ type GatewayListResponse struct {
 	Count      int               `json:"count"`      // Number of items in current response
 	List       []GatewayResponse `json:"list"`       // Array of gateway objects
 	Pagination Pagination        `json:"pagination"` // Pagination metadata
+}
+
+// UpdateGatewayRequest represents the request body for updating gateway details
+type UpdateGatewayRequest struct {
+	Description string `json:"description,omitempty"`
 }
 
 // TokenRotationResponse represents the response when rotating a gateway token

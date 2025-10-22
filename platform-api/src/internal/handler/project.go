@@ -61,7 +61,7 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 		return
 	}
 
-	project, err := h.projectService.CreateProject(req.Name, organizationID)
+	project, err := h.projectService.CreateProject(req.Name, req.Description, organizationID)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
@@ -172,7 +172,7 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 		return
 	}
 
-	project, err := h.projectService.UpdateProject(projectId, req.Name, orgID)
+	project, err := h.projectService.UpdateProject(projectId, req.Name, req.Description, orgID)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",

@@ -82,6 +82,7 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		ID:             "default" + "-" + handle,
 		Name:           "Default",
 		OrganizationID: org.ID,
+		Description:    "Default project",
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}

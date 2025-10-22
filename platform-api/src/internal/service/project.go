@@ -41,7 +41,7 @@ func NewProjectService(projectRepo repository.ProjectRepository, orgRepo reposit
 	}
 }
 
-func (s *ProjectService) CreateProject(name, organizationID string) (*dto.Project, error) {
+func (s *ProjectService) CreateProject(name, description, organizationID string) (*dto.Project, error) {
 	// Validate project name
 	if name == "" {
 		return nil, constants.ErrInvalidProjectName
@@ -72,6 +72,7 @@ func (s *ProjectService) CreateProject(name, organizationID string) (*dto.Projec
 		ID:             uuid.New().String(),
 		Name:           name,
 		OrganizationID: organizationID,
+		Description:    description,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -124,7 +125,7 @@ func (s *ProjectService) GetProjectsByOrganization(organizationID string) ([]*dt
 	return projects, nil
 }
 
-func (s *ProjectService) UpdateProject(projectId string, name string, orgId string) (*dto.Project, error) {
+func (s *ProjectService) UpdateProject(projectId, name, description, orgId string) (*dto.Project, error) {
 	// Get existing project
 	project, err := s.projectRepo.GetProjectByUUID(projectId)
 	if err != nil {
@@ -152,6 +153,7 @@ func (s *ProjectService) UpdateProject(projectId string, name string, orgId stri
 		project.Name = name
 	}
 
+	project.Description = description
 	project.UpdatedAt = time.Now()
 
 	err = s.projectRepo.UpdateProject(project)
@@ -206,6 +208,7 @@ func (s *ProjectService) DtoToModel(dto *dto.Project) *model.Project {
 		ID:             dto.ID,
 		Name:           dto.Name,
 		OrganizationID: dto.OrganizationID,
+		Description:    dto.Description,
 		CreatedAt:      dto.CreatedAt,
 		UpdatedAt:      dto.UpdatedAt,
 	}
@@ -220,6 +223,7 @@ func (s *ProjectService) ModelToDTO(model *model.Project) *dto.Project {
 		ID:             model.ID,
 		Name:           model.Name,
 		OrganizationID: model.OrganizationID,
+		Description:    model.Description,
 		CreatedAt:      model.CreatedAt,
 		UpdatedAt:      model.UpdatedAt,
 	}

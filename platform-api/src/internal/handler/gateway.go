@@ -18,7 +18,9 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
+	"platform-api/src/internal/constants"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -55,7 +57,7 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 		return
 	}
 
-	response, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName)
+	response, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, req.Description, req.Vhost)
 	if err != nil {
 		errMsg := err.Error()
 
@@ -148,6 +150,44 @@ func (h *GatewayHandler) GetGateway(c *gin.Context) {
 	c.JSON(http.StatusOK, gateway)
 }
 
+// UpdateGateway handles PUT /api/v1/gateways/:gatewayId
+func (h *GatewayHandler) UpdateGateway(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	// Extract UUID path parameter
+	gatewayId := c.Param("gatewayId")
+	if gatewayId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Gateway ID is required"))
+		return
+	}
+
+	var req dto.UpdateGatewayRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		return
+	}
+
+	gateway, err := h.gatewayService.UpdateGateway(gatewayId, req.Description, orgId)
+	if err != nil {
+		if errors.Is(err, constants.ErrGatewayNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Gateway not found"))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to update gateway"))
+		return
+	}
+
+	c.JSON(http.StatusOK, gateway)
+}
+
 // RotateToken handles POST /api/v1/gateways/:gatewayId/tokens
 func (h *GatewayHandler) RotateToken(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -196,6 +236,7 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		gatewayGroup.POST("", h.CreateGateway)
 		gatewayGroup.GET("", h.ListGateways)
+		gatewayGroup.PUT("/:gatewayId", h.UpdateGateway)
 		gatewayGroup.GET("/:gatewayId", h.GetGateway)
 		gatewayGroup.POST("/:gatewayId/tokens", h.RotateToken)
 	}
