@@ -506,6 +506,39 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+    put:
+      summary: Update gateway
+      description: |
+        Updates an existing gateway's mutable fields (description).
+        Access is validated against the organization in the JWT token.
+      operationId: UpdateGateway
+      tags:
+        - Gateways
+      parameters:
+        - $ref: '#/components/parameters/GatewayID'
+      requestBody:
+        description: Gateway object that needs to be updated
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGatewayRequest'
+      responses:
+        '200':
+          description: Gateway updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
     delete:
       summary: Delete gateway
       description: |
@@ -644,6 +677,9 @@ components:
           example: "2023-10-12T10:30:00Z"
 
     CreateProjectRequest:
+      description: |
+        Request body for creating a project. Organization ID is automatically extracted
+        from the JWT token and does not need to be provided.
       type: object
       required:
         - name
@@ -653,9 +689,10 @@ components:
           description: Name of the project
           minLength: 1
           example: "Default Project"
-      description: |
-        Request body for creating a project. Organization ID is automatically extracted 
-        from the JWT token and does not need to be provided.
+        description:
+          type: string
+          description: Description of the project
+          example: "This is the default project for development"
 
     UpdateProjectRequest:
       type: object
@@ -665,6 +702,10 @@ components:
           description: Name of the project
           minLength: 1
           example: "Updated Project Name"
+        description:
+          type: string
+          description: Description of the project
+          example: "Updated project description"
 
     Project:
       type: object
@@ -683,6 +724,10 @@ components:
           description: Name of the project
           minLength: 1
           example: "Default Project"
+        description:
+          type: string
+          description: Description of the project
+          example: "This is the default project for development"
         organizationId:
           type: string
           format: uuid
@@ -1344,6 +1389,7 @@ components:
       required:
         - name
         - displayName
+        - vhost
       properties:
         name:
           type: string
@@ -1358,6 +1404,18 @@ components:
           maxLength: 128
           description: Human-readable gateway name
           example: "Production Gateway 01"
+        description:
+          type: string
+          description: Description of the gateway
+          example: "Production gateway for handling API traffic"
+        vhost:
+          type: string
+          description: Virtual host (domain name) for the gateway
+          maxLength: 255
+          minLength: 1
+          # hostname regex as per RFC 1123 (http://tools.ietf.org/html/rfc1123) and appended *
+          pattern: '^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
+          example: mg.wso2.com
 
     GatewayResponse:
       type: object
@@ -1380,6 +1438,14 @@ components:
           type: string
           description: Human-readable gateway name
           example: "Production Gateway 01"
+        description:
+          type: string
+          description: Description of the gateway
+          example: "Production gateway for handling API traffic"
+        vhost:
+          type: string
+          description: Virtual host (domain name) for the gateway
+          example: mg.wso2.com
         createdAt:
           type: string
           format: date-time
@@ -1390,6 +1456,14 @@ components:
           format: date-time
           description: Timestamp when gateway was last updated
           example: "2025-10-14T10:30:00Z"
+
+    UpdateGatewayRequest:
+      type: object
+      properties:
+        description:
+          type: string
+          description: Description of the gateway
+          example: "Updated gateway description"
 
     Pagination:
       type: object

@@ -46,3 +46,7 @@ var (
 	ErrInvalidTransport      = errors.New("invalid transport protocol")
 	ErrInvalidAPIDeployment  = errors.New("invalid api deployment")
 )
+
+var (
+	ErrGatewayNotFound = errors.New("gateway not found")
+)

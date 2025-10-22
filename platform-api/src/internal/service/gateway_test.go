@@ -30,6 +30,7 @@ func TestValidateGatewayInput(t *testing.T) {
 		orgID       string
 		gatewayName string
 		displayName string
+		vhost       string
 		wantErr     bool
 		errContains string
 	}{
@@ -38,6 +39,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:       "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName: "prod-gateway-01",
 			displayName: "Production Gateway 01",
+			vhost:       "api.example.com",
 			wantErr:     false,
 		},
 		{
@@ -45,6 +47,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:       "",
 			gatewayName: "prod-gateway-01",
 			displayName: "Production Gateway 01",
+			vhost:       "api.example.com",
 			wantErr:     true,
 			errContains: "organization ID is required",
 		},
@@ -53,6 +56,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:       "not-a-uuid",
 			gatewayName: "prod-gateway-01",
 			displayName: "Production Gateway 01",
+			vhost:       "api.example.com",
 			wantErr:     true,
 			errContains: "invalid organization ID format",
 		},
@@ -61,6 +65,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:       "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName: "",
 			displayName: "Production Gateway 01",
+			vhost:       "api.example.com",
 			wantErr:     true,
 			errContains: "gateway name is required",
 		},
@@ -69,6 +74,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:       "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName: "ab",
 			displayName: "Production Gateway 01",
+			vhost:       "api.example.com",
 			wantErr:     true,
 			errContains: "at least 3 characters",
 		},
@@ -77,6 +83,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:       "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName: "this-is-a-very-long-gateway-name-that-exceeds-the-maximum-length-of-64-characters",
 			displayName: "Production Gateway 01",
+			vhost:       "api.example.com",
 			wantErr:     true,
 			errContains: "must not exceed 64 characters",
 		},
@@ -85,6 +92,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:       "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName: "Prod-Gateway-01",
 			displayName: "Production Gateway 01",
+			vhost:       "api.example.com",
 			wantErr:     true,
 			errContains: "lowercase letters, numbers, and hyphens",
 		},
@@ -93,6 +101,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:       "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName: "prod_gateway_01",
 			displayName: "Production Gateway 01",
+			vhost:       "api.example.com",
 			wantErr:     true,
 			errContains: "lowercase letters, numbers, and hyphens",
 		},
@@ -101,6 +110,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:       "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName: "-prod-gateway-01",
 			displayName: "Production Gateway 01",
+			vhost:       "api.example.com",
 			wantErr:     true,
 			errContains: "cannot start or end with a hyphen",
 		},
@@ -109,6 +119,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:       "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName: "prod-gateway-01-",
 			displayName: "Production Gateway 01",
+			vhost:       "api.example.com",
 			wantErr:     true,
 			errContains: "cannot start or end with a hyphen",
 		},
@@ -117,6 +128,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:       "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName: "prod-gateway-01",
 			displayName: "",
+			vhost:       "api.example.com",
 			wantErr:     true,
 			errContains: "display name is required",
 		},
@@ -125,21 +137,32 @@ func TestValidateGatewayInput(t *testing.T) {
 			orgID:       "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName: "prod-gateway-01",
 			displayName: "This is a very long display name that exceeds the maximum allowed length of 128 characters which should trigger a validation error in the system",
+			vhost:       "api.example.com",
 			wantErr:     true,
 			errContains: "must not exceed 128 characters",
+		},
+		{
+			name:        "empty display name",
+			orgID:       "123e4567-e89b-12d3-a456-426614174000",
+			gatewayName: "prod-gateway-01",
+			displayName: "Production Gateway 01",
+			vhost:       "",
+			wantErr:     true,
+			errContains: "vhost is required",
 		},
 		{
 			name:        "display name with spaces (valid)",
 			orgID:       "123e4567-e89b-12d3-a456-426614174000",
 			gatewayName: "prod-gateway-01",
 			displayName: "Production Gateway 01 - Main",
+			vhost:       "api.example.com",
 			wantErr:     false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := service.validateGatewayInput(tt.orgID, tt.gatewayName, tt.displayName)
+			err := service.validateGatewayInput(tt.orgID, tt.gatewayName, tt.displayName, tt.vhost)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("validateGatewayInput() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -259,46 +282,46 @@ func TestVerifyToken(t *testing.T) {
 	saltHex := "746573742d73616c742d33322d62797465732d666f722d68617368696e672121" // hex encoding
 
 	tests := []struct {
-		name        string
-		plainToken  string
-		storedHash  string
-		storedSalt  string
-		wantValid   bool
+		name       string
+		plainToken string
+		storedHash string
+		storedSalt string
+		wantValid  bool
 	}{
 		{
-			name:        "valid token",
-			plainToken:  token,
-			storedHash:  hash,
-			storedSalt:  saltHex,
-			wantValid:   true,
+			name:       "valid token",
+			plainToken: token,
+			storedHash: hash,
+			storedSalt: saltHex,
+			wantValid:  true,
 		},
 		{
-			name:        "wrong token",
-			plainToken:  "wrong-token-12345",
-			storedHash:  hash,
-			storedSalt:  saltHex,
-			wantValid:   false,
+			name:       "wrong token",
+			plainToken: "wrong-token-12345",
+			storedHash: hash,
+			storedSalt: saltHex,
+			wantValid:  false,
 		},
 		{
-			name:        "empty token",
-			plainToken:  "",
-			storedHash:  hash,
-			storedSalt:  saltHex,
-			wantValid:   false,
+			name:       "empty token",
+			plainToken: "",
+			storedHash: hash,
+			storedSalt: saltHex,
+			wantValid:  false,
 		},
 		{
-			name:        "invalid hash hex",
-			plainToken:  token,
-			storedHash:  "not-hex",
-			storedSalt:  saltHex,
-			wantValid:   false,
+			name:       "invalid hash hex",
+			plainToken: token,
+			storedHash: "not-hex",
+			storedSalt: saltHex,
+			wantValid:  false,
 		},
 		{
-			name:        "invalid salt hex",
-			plainToken:  token,
-			storedHash:  hash,
-			storedSalt:  "not-hex",
-			wantValid:   false,
+			name:       "invalid salt hex",
+			plainToken: token,
+			storedHash: hash,
+			storedSalt: "not-hex",
+			wantValid:  false,
 		},
 	}
 

@@ -23,7 +23,8 @@ import (
 
 // CreateProjectRequest represents the request body for creating a new project
 type CreateProjectRequest struct {
-	Name string `json:"name" yaml:"name" binding:"required"`
+	Name        string `json:"name" yaml:"name" binding:"required"`
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 }
 
 // Project represents a project entity in the API management platform
@@ -31,6 +32,7 @@ type Project struct {
 	ID             string    `json:"id" yaml:"id"`
 	Name           string    `json:"name" yaml:"name"`
 	OrganizationID string    `json:"organizationId" yaml:"organizationId"`
+	Description    string    `json:"description,omitempty" yaml:"description,omitempty"`
 	CreatedAt      time.Time `json:"createdAt" yaml:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt" yaml:"updatedAt"`
 }

@@ -42,10 +42,11 @@ func (r *GatewayRepo) Create(gateway *model.Gateway) error {
 	gateway.UpdatedAt = time.Now()
 
 	query := `
-		INSERT INTO gateways (uuid, organization_uuid, name, display_name, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO gateways (uuid, organization_uuid, name, display_name, description, vhost, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(query, gateway.ID, gateway.OrganizationID, gateway.Name, gateway.DisplayName, gateway.CreatedAt, gateway.UpdatedAt)
+	_, err := r.db.Exec(query, gateway.ID, gateway.OrganizationID, gateway.Name, gateway.DisplayName,
+		gateway.Description, gateway.Vhost, gateway.CreatedAt, gateway.UpdatedAt)
 	return err
 }
 
@@ -53,13 +54,13 @@ func (r *GatewayRepo) Create(gateway *model.Gateway) error {
 func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 	gateway := &model.Gateway{}
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, description, vhost, created_at, updated_at
 		FROM gateways
 		WHERE uuid = ?
 	`
 	err := r.db.QueryRow(query, gatewayId).Scan(
-		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
-	)
+		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &gateway.Vhost,
+		&gateway.CreatedAt, &gateway.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -72,7 +73,7 @@ func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 // GetByOrganizationID retrieves all gateways for an organization
 func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, description, vhost, created_at, updated_at
 		FROM gateways
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
@@ -87,8 +88,8 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 	for rows.Next() {
 		gateway := &model.Gateway{}
 		err := rows.Scan(
-			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
-		)
+			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &gateway.Vhost,
+			&gateway.CreatedAt, &gateway.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -101,13 +102,13 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 func (r *GatewayRepo) GetByNameAndOrgID(name, orgID string) (*model.Gateway, error) {
 	gateway := &model.Gateway{}
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, description, vhost, created_at, updated_at
 		FROM gateways
 		WHERE name = ? AND organization_uuid = ?
 	`
 	err := r.db.QueryRow(query, name, orgID).Scan(
-		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
-	)
+		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &gateway.Vhost,
+		&gateway.CreatedAt, &gateway.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -120,7 +121,7 @@ func (r *GatewayRepo) GetByNameAndOrgID(name, orgID string) (*model.Gateway, err
 // List retrieves all gateways
 func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, description, vhost, created_at, updated_at
 		FROM gateways
 		ORDER BY created_at DESC
 	`
@@ -134,8 +135,8 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	for rows.Next() {
 		gateway := &model.Gateway{}
 		err := rows.Scan(
-			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.CreatedAt, &gateway.UpdatedAt,
-		)
+			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &gateway.Vhost,
+			&gateway.CreatedAt, &gateway.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -148,6 +149,17 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 func (r *GatewayRepo) Delete(gatewayId string) error {
 	query := `DELETE FROM gateways WHERE uuid = ?`
 	_, err := r.db.Exec(query, gatewayId)
+	return err
+}
+
+// UpdateGateway updates gateway details
+func (r *GatewayRepo) UpdateGateway(gateway *model.Gateway) error {
+	query := `
+		UPDATE gateways
+		SET description = ?, updated_at = ?
+		WHERE uuid = ?
+	`
+	_, err := r.db.Exec(query, gateway.Description, gateway.UpdatedAt, gateway.ID)
 	return err
 }
 

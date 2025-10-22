@@ -62,6 +62,7 @@ type GatewayRepository interface {
 	GetByNameAndOrgID(name, orgID string) (*model.Gateway, error)
 	List() ([]*model.Gateway, error)
 	Delete(gatewayId string) error
+	UpdateGateway(gateway *model.Gateway) error
 
 	// Token operations
 	CreateToken(token *model.GatewayToken) error

@@ -25,6 +25,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"platform-api/src/internal/constants"
 	"regexp"
 	"strings"
 	"time"
@@ -50,9 +51,9 @@ func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo reposit
 }
 
 // RegisterGateway registers a new gateway with organization validation
-func (s *GatewayService) RegisterGateway(orgID, name, displayName string) (*dto.GatewayResponse, error) {
+func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string) (*dto.GatewayResponse, error) {
 	// 1. Validate inputs
-	if err := s.validateGatewayInput(orgID, name, displayName); err != nil {
+	if err := s.validateGatewayInput(orgID, name, displayName, vhost); err != nil {
 		return nil, err
 	}
 
@@ -83,6 +84,8 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName string) (*dto.
 		OrganizationID: orgID,
 		Name:           name,
 		DisplayName:    displayName,
+		Description:    description,
+		Vhost:          vhost,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -130,6 +133,8 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName string) (*dto.
 		OrganizationID: gateway.OrganizationID,
 		Name:           gateway.Name,
 		DisplayName:    gateway.DisplayName,
+		Description:    gateway.Description,
+		Vhost:          gateway.Vhost,
 		CreatedAt:      gateway.CreatedAt,
 		UpdatedAt:      gateway.UpdatedAt,
 	}
@@ -161,6 +166,8 @@ func (s *GatewayService) ListGateways(orgID *string) (*dto.GatewayListResponse, 
 			OrganizationID: gw.OrganizationID,
 			Name:           gw.Name,
 			DisplayName:    gw.DisplayName,
+			Description:    gw.Description,
+			Vhost:          gw.Vhost,
 			CreatedAt:      gw.CreatedAt,
 			UpdatedAt:      gw.UpdatedAt,
 		})
@@ -205,11 +212,48 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*dto.GatewayRespon
 		OrganizationID: gateway.OrganizationID,
 		Name:           gateway.Name,
 		DisplayName:    gateway.DisplayName,
+		Description:    gateway.Description,
+		Vhost:          gateway.Vhost,
 		CreatedAt:      gateway.CreatedAt,
 		UpdatedAt:      gateway.UpdatedAt,
 	}
 
 	return response, nil
+}
+
+// UpdateGateway updates gateway details
+func (s *GatewayService) UpdateGateway(gatewayId, description, orgId string) (*dto.GatewayResponse, error) {
+	// Get existing gateway
+	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
+	if err != nil {
+		return nil, err
+	}
+	if gateway == nil {
+		return nil, constants.ErrGatewayNotFound
+	}
+	if gateway.OrganizationID != orgId {
+		return nil, constants.ErrGatewayNotFound
+	}
+
+	gateway.Description = description
+	gateway.UpdatedAt = time.Now()
+
+	err = s.gatewayRepo.UpdateGateway(gateway)
+	if err != nil {
+		return nil, err
+	}
+
+	updatedGateway := &dto.GatewayResponse{
+		ID:             gateway.ID,
+		OrganizationID: gateway.OrganizationID,
+		Name:           gateway.Name,
+		DisplayName:    gateway.DisplayName,
+		Description:    gateway.Description,
+		Vhost:          gateway.Vhost,
+		CreatedAt:      gateway.CreatedAt,
+		UpdatedAt:      gateway.UpdatedAt,
+	}
+	return updatedGateway, nil
 }
 
 // VerifyToken verifies a plain-text token and returns the associated gateway
@@ -311,7 +355,7 @@ func (s *GatewayService) RotateToken(gatewayId, orgId string) (*dto.TokenRotatio
 }
 
 // validateGatewayInput validates gateway registration inputs
-func (s *GatewayService) validateGatewayInput(orgID, name, displayName string) error {
+func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost string) error {
 	// Organization ID validation
 	if strings.TrimSpace(orgID) == "" {
 		return errors.New("organization ID is required")
@@ -350,6 +394,12 @@ func (s *GatewayService) validateGatewayInput(orgID, name, displayName string) e
 	}
 	if len(displayName) > 128 {
 		return errors.New("display name must not exceed 128 characters")
+	}
+
+	// VHost validation
+	vhost = strings.TrimSpace(vhost)
+	if vhost == "" {
+		return errors.New("vhost is required")
 	}
 
 	return nil

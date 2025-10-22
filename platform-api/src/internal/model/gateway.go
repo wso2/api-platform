@@ -27,6 +27,8 @@ type Gateway struct {
 	OrganizationID string    `json:"organizationId" db:"organization_uuid"`
 	Name           string    `json:"name" db:"name"`
 	DisplayName    string    `json:"displayName" db:"display_name"`
+	Description    string    `json:"description" db:"description"`
+	Vhost          string    `json:"vhost" db:"vhost"`
 	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
 	UpdatedAt      time.Time `json:"updatedAt" db:"updated_at"`
 }
