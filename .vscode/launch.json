@@ -14,7 +14,8 @@
                 "-config", "${workspaceFolder}/gateway/gateway-controller/config/config.yaml",
             ],
             "env": {
-                "GC_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
+                "GATEWAY_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
+                "GATEWAY_CONTROLPLANE_TOKEN": "",
             }
         },
         {

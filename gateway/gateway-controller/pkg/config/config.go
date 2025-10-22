@@ -127,12 +127,12 @@ func LoadConfig(configPath string) (*Config, error) {
 		}
 	}
 
-	// Load environment variables with prefix "GC_" (Gateway Controller)
-	// Example: GC_SERVER_API_PORT=9090
+	// Load environment variables with prefix "GATEWAY_" (Gateway Controller)
+	// Example: GATEWAY_SERVER_API_PORT=9090
 	// Maps to: server.api_port
-	if err := k.Load(env.Provider("GC_", ".", func(s string) string {
+	if err := k.Load(env.Provider("GATEWAY_", ".", func(s string) string {
 		// Remove prefix and convert to lowercase with dots
-		s = strings.TrimPrefix(s, "GC_")
+		s = strings.TrimPrefix(s, "GATEWAY_")
 		s = strings.ToLower(s)
 		s = strings.ReplaceAll(s, "_", ".")
 		return s
@@ -187,11 +187,11 @@ func LoadConfig(configPath string) (*Config, error) {
 // getDefaults returns a map with default configuration values
 func getDefaults() map[string]interface{} {
 	return map[string]interface{}{
-		"server.api_port":         9090,
-		"server.xds_port":         18000,
-		"server.shutdown_timeout": "15s",
-		"storage.type":            "memory",
-		"storage.sqlite.path":     "./data/gateway.db",
+		"server.api_port":            9090,
+		"server.xds_port":            18000,
+		"server.shutdown_timeout":    "15s",
+		"storage.type":               "memory",
+		"storage.sqlite.path":        "./data/gateway.db",
 		"router.access_logs.enabled": true,
 		"router.access_logs.format":  "json",
 		"router.access_logs.json_fields": map[string]interface{}{
@@ -217,15 +217,15 @@ func getDefaults() map[string]interface{} {
 			"%RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
 			"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
 			"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
-		"router.listener_port":                8080,
-		"logging.level":                       "info",
-		"logging.format":                      "json",
-		"controlplane.url":                    "wss://localhost:8443/api/internal/v1/ws/gateways/connect",
-		"controlplane.token":                  "",
-		"controlplane.reconnect_initial":      "1s",
-		"controlplane.reconnect_max":          "5m",
-		"controlplane.polling_interval":       "15m",
-		"controlplane.insecure_skip_verify":   true, // Default true for dev environments with self-signed certs
+		"router.listener_port":              8080,
+		"logging.level":                     "info",
+		"logging.format":                    "json",
+		"controlplane.url":                  "wss://localhost:8443/api/internal/v1/ws/gateways/connect",
+		"controlplane.token":                "",
+		"controlplane.reconnect_initial":    "1s",
+		"controlplane.reconnect_max":        "5m",
+		"controlplane.polling_interval":     "15m",
+		"controlplane.insecure_skip_verify": true, // Default true for dev environments with self-signed certs
 	}
 }
 

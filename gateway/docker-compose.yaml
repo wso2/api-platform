@@ -26,9 +26,9 @@ services:
       - "9090:9090"   # REST API
       - "18000:18000" # xDS gRPC
     environment:
-      - GC_STORAGE_TYPE=sqlite
-      - GC_STORAGE_SQLITE_PATH=./data/gateway.db
-      - GC_LOGGING_LEVEL=info
+      - GATEWAY_STORAGE_TYPE=sqlite
+      - GATEWAY_STORAGE_SQLITE_PATH=./data/gateway.db
+      - GATEWAY_LOGGING_LEVEL=info
     volumes:
       - controller-data:/app/data
       - ./gateway-controller/config/config.yaml:/app/config/config.yaml:ro
