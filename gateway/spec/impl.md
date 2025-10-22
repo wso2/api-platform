@@ -8,6 +8,7 @@ Gateway-Controller entry point in `cmd/controller/main.go` initializes storage b
 
 - [Basic Gateway with Controller](impls/1-basic-gateway-with-controller/spec.md) – Initial gateway implementation with controller, xDS server, and Envoy router integration.
 - [Use SQLite](impls/2-use-sqlite/spec.md) – SQLite database integration for persistent API configuration storage.
+- [Gateway to Control Plane Registration](impls/gateway-control-plane-registration.md) – Gateway registration with control plane via WebSocket connection with heartbeat monitoring and reconnection.
 
 Each implementation note captures entrypoints, supporting modules, and verification tips for manual or automated checks.
 
