@@ -558,16 +558,7 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 		return
 	}
 
-	// Save API definition to disk
-	if err := c.apiUtilsService.SaveAPIDefinition(apiID, zipData); err != nil {
-		c.logger.Error("Failed to save API definition",
-			zap.String("api_id", apiID),
-			zap.Error(err),
-		)
-		return
-	}
-
-	// Extract YAML from zip file
+	// Extract YAML directly from zip file in memory (no need to save to disk)
 	yamlData, err := c.apiUtilsService.ExtractYAMLFromZip(zipData)
 	if err != nil {
 		c.logger.Error("Failed to extract YAML from zip",
