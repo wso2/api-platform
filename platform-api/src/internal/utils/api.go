@@ -22,7 +22,6 @@ import (
 	"gopkg.in/yaml.v3"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
-	"time"
 )
 
 type APIUtil struct{}
@@ -718,26 +717,28 @@ func (u *APIUtil) policyModelToDTO(model *model.Policy) *dto.Policy {
 
 // GenerateAPIDeploymentYAML creates the deployment YAML from API data
 func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
+	operationList := make([]dto.OperationRequest, 0)
+	for _, op := range api.Operations {
+		operationList = append(operationList, *op.Request)
+	}
+	upstreamList := make([]dto.BackendEndpoint, 0)
+	for _, backendService := range api.BackendServices {
+		for _, endpoint := range backendService.Endpoints {
+			upstreamList = append(upstreamList, endpoint)
+		}
+	}
+
 	// Create API deployment YAML structure
-	apiYAMLData := dto.APIYAMLData{
-		Id:              api.ID,
-		Name:            api.Name,
-		DisplayName:     api.DisplayName,
-		Version:         api.Version,
-		Description:     api.Description,
-		Context:         api.Context,
-		Provider:        api.Provider,
-		CreatedTime:     api.CreatedAt.Format(time.RFC3339),
-		LastUpdatedTime: api.UpdatedAt.Format(time.RFC3339),
-		LifeCycleStatus: api.LifeCycleStatus,
-		Type:            api.Type,
-		Transport:       api.Transport,
-		MTLS:            api.MTLS,
-		Security:        api.Security,
-		CORS:            api.CORS,
-		BackendServices: api.BackendServices,
-		APIRateLimiting: api.APIRateLimiting,
-		Operations:      api.Operations,
+	apiYAMLData := dto.APIYAMLData2{
+		Id:          api.ID,
+		Name:        api.Name,
+		DisplayName: api.DisplayName,
+		Version:     api.Version,
+		Description: api.Description,
+		Context:     api.Context,
+		Provider:    api.Provider,
+		Upstreams:   upstreamList,
+		Operations:  operationList,
 	}
 
 	apiDeployment := dto.APIDeploymentYAML{
