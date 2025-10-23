@@ -29,21 +29,21 @@ type Server struct {
 	//Logger   logging.Logger
 
 	// Database configurations
-	Database     Database  `envconfig:"DATABASE"`
-	DBSchemaPath string    `envconfig:"DB_SCHEMA_PATH" default:"./internal/database/schema.sql"`
+	Database     Database `envconfig:"DATABASE"`
+	DBSchemaPath string   `envconfig:"DB_SCHEMA_PATH" default:"./internal/database/schema.sql"`
 
 	// JWT Authentication configurations
 	JWT JWT `envconfig:"JWT"`
 
 	// WebSocket configurations
-	WebSocket    WebSocket `envconfig:"WEBSOCKET"`
+	WebSocket WebSocket `envconfig:"WEBSOCKET"`
 }
 
 // JWT holds JWT-specific configuration
 type JWT struct {
 	SecretKey      string   `envconfig:"SECRET_KEY" default:"your-secret-key-change-in-production"`
 	Issuer         string   `envconfig:"ISSUER" default:"thunder"`
-	SkipPaths      []string `envconfig:"SKIP_PATHS" default:"/health,/metrics,/api/internal/v1/ws/gateways/connect"`
+	SkipPaths      []string `envconfig:"SKIP_PATHS" default:"/health,/metrics,/api/internal/v1/ws/gateways/connect,/api/internal/v1/apis"`
 	SkipValidation bool     `envconfig:"SKIP_VALIDATION" default:"true"` // Skip signature validation for development
 }
 

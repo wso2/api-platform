@@ -47,6 +47,7 @@ type APIRepository interface {
 	CreateAPI(api *model.API) error
 	GetAPIByUUID(apiId string) (*model.API, error)
 	GetAPIsByProjectID(projectID string) ([]*model.API, error)
+	GetAPIsByOrganizationID(orgID string) ([]*model.API, error)
 	UpdateAPI(api *model.API) error
 	DeleteAPI(apiId string) error
 	CreateDeployment(deployment *model.APIDeployment) error

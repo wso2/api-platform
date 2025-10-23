@@ -1,0 +1,238 @@
+openapi: 3.1.1
+info:
+  title: Gateway Internal API
+  description: |
+    Internal APIs for gateway services to retrieve API configurations and deployments.
+    These APIs are used by gateways to fetch API definitions for their organization from the control plane.
+
+  version: 1.0.0
+  contact:
+    name: WSO2 API Platform Team
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://localhost:8443
+    description: Development server
+  - url: https://api-platform.wso2.com
+    description: Production server
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /api/internal/v1/apis:
+    get:
+      summary: Get all APIs for organization
+      description: |
+        Retrieves all API configurations for the authenticated gateway's organization.
+        Returns a ZIP file containing YAML definitions for all APIs in the organization.
+      operationId: getAPIsByOrganization
+      tags:
+        - Gateway Internal APIs
+      responses:
+        '200':
+          description: Successfully retrieved APIs
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+              example: |
+                Binary ZIP file containing API YAML configurations
+          headers:
+            Content-Disposition:
+              description: Attachment filename for the ZIP file
+              schema:
+                type: string
+                example: 'attachment; filename="apis-org-12345.zip"'
+            Content-Length:
+              description: Size of the ZIP file in bytes
+              schema:
+                type: integer
+                example: 4096
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: "Not Found"
+                description: "Organization not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                get_apis_failed:
+                  summary: Failed to retrieve APIs
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to get apis"
+                zip_creation_failed:
+                  summary: Failed to create ZIP package
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to create API package"
+
+  /api/internal/v1/apis/{apiId}:
+    get:
+      summary: Get specific API by ID
+      description: |
+        Retrieves a specific API configuration by its UUID for the authenticated gateway's organization.
+        Returns a ZIP file containing the YAML definition for the requested API.
+      operationId: getAPIById
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - name: apiId
+          in: path
+          required: true
+          description: The unique identifier (UUID) of the API
+          schema:
+            type: string
+            format: uuid
+            example: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Successfully retrieved API
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+              example: |
+                Binary ZIP file containing API YAML configuration
+          headers:
+            Content-Disposition:
+              description: Attachment filename for the ZIP file
+              schema:
+                type: string
+                example: 'attachment; filename="api-550e8400-e29b-41d4-a716-446655440000.zip"'
+            Content-Length:
+              description: Size of the ZIP file in bytes
+              schema:
+                type: integer
+                example: 2048
+        '400':
+          description: Bad request - Invalid API ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "API ID is required"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '404':
+          description: API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: "Not Found"
+                description: "API not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                get_api_failed:
+                  summary: Failed to retrieve API
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to get API"
+                zip_creation_failed:
+                  summary: Failed to create ZIP package
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to create API package"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: api-key
+      description: |
+        API key for gateway authentication. This key is used to identify and authenticate 
+        the gateway making the request. The key should be provided in the 'api-key' header.
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: integer
+          description: HTTP status code
+          example: 400
+        message:
+          type: string
+          description: Error message
+          example: "Bad Request"
+        description:
+          type: string
+          description: Detailed error description
+          example: "API ID is required"
+      description: Standard error response format used across all endpoints
+
+tags:
+  - name: Gateway Internal APIs
+    description: |
+      Internal APIs used by gateways to retrieve API configurations and deployment artifacts.
+      These endpoints are secured with API key authentication and are intended for use by 
+      registered gateways within the platform.

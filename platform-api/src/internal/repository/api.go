@@ -32,6 +32,11 @@ type APIRepo struct {
 	db *database.DB
 }
 
+// NewAPIRepo creates a new API repository
+func NewAPIRepo(db *database.DB) APIRepository {
+	return &APIRepo{db: db}
+}
+
 // CreateAPI inserts a new API with all its configurations
 func (r *APIRepo) CreateAPI(api *model.API) error {
 	tx, err := r.db.Begin()
@@ -159,6 +164,52 @@ func (r *APIRepo) GetAPIsByProjectID(projectID string) ([]*model.API, error) {
 	`
 
 	rows, err := r.db.Query(query, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var apis []*model.API
+	for rows.Next() {
+		api := &model.API{}
+		var transportJSON string
+		var securityEnabled bool
+
+		err := rows.Scan(&api.ID, &api.Name, &api.DisplayName, &api.Description,
+			&api.Context, &api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID,
+			&api.LifeCycleStatus, &api.HasThumbnail, &api.IsDefaultVersion,
+			&api.IsRevision, &api.RevisionedAPIID, &api.RevisionID, &api.Type,
+			&transportJSON, &securityEnabled, &api.CreatedAt, &api.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+
+		// Parse transport JSON
+		if transportJSON != "" {
+			json.Unmarshal([]byte(transportJSON), &api.Transport)
+		}
+
+		// Load related configurations
+		if err := r.loadAPIConfigurations(api); err != nil {
+			return nil, err
+		}
+
+		apis = append(apis, api)
+	}
+
+	return apis, rows.Err()
+}
+
+// GetAPIsByOrganizationID retrieves all APIs for a organization
+func (r *APIRepo) GetAPIsByOrganizationID(orgId string) ([]*model.API, error) {
+	query := `
+		SELECT uuid, name, display_name, description, context, version, provider,
+			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
+			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
+		FROM apis WHERE organization_uuid = ? ORDER BY created_at DESC
+	`
+
+	rows, err := r.db.Query(query, orgId)
 	if err != nil {
 		return nil, err
 	}
@@ -975,11 +1026,6 @@ func (r *APIRepo) deleteAPIConfigurations(tx *sql.Tx, apiId string) error {
 	}
 
 	return nil
-}
-
-// NewAPIRepo creates a new API repository
-func NewAPIRepo(db *database.DB) APIRepository {
-	return &APIRepo{db: db}
 }
 
 // CreateDeployment inserts a new API deployment record

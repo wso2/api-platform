@@ -24,6 +24,7 @@ import (
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
+	"platform-api/src/internal/utils"
 	"regexp"
 	"strings"
 	"time"
@@ -31,7 +32,6 @@ import (
 	"platform-api/src/internal/constants"
 
 	"github.com/google/uuid"
-	"gopkg.in/yaml.v3"
 )
 
 // APIService handles business logic for API operations
@@ -40,6 +40,7 @@ type APIService struct {
 	projectRepo          repository.ProjectRepository
 	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
+	apiUtil              *utils.APIUtil
 }
 
 // NewAPIService creates a new API service
@@ -50,6 +51,7 @@ func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.Proj
 		projectRepo:          projectRepo,
 		gatewayRepo:          gatewayRepo,
 		gatewayEventsService: gatewayEventsService,
+		apiUtil:              &utils.APIUtil{},
 	}
 }
 
@@ -133,7 +135,7 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 		Operations:       req.Operations,
 	}
 
-	apiModel := s.dtoToModel(api)
+	apiModel := s.apiUtil.DTOToModel(api)
 	// Create API in repository
 	if err := s.apiRepo.CreateAPI(apiModel); err != nil {
 		return nil, fmt.Errorf("failed to create api: %w", err)
@@ -159,7 +161,7 @@ func (s *APIService) GetAPIByUUID(apiId, orgId string) (*dto.API, error) {
 		return nil, constants.ErrAPINotFound
 	}
 
-	api := s.modelToDTO(apiModel)
+	api := s.apiUtil.ModelToDTO(apiModel)
 	return api, nil
 }
 
@@ -188,7 +190,7 @@ func (s *APIService) GetAPIsByProjectID(projectID, orgId string) ([]*dto.API, er
 
 	apis := make([]*dto.API, 0)
 	for _, apiModel := range apiModels {
-		api := s.modelToDTO(apiModel)
+		api := s.apiUtil.ModelToDTO(apiModel)
 		apis = append(apis, api)
 	}
 	return apis, nil
@@ -212,7 +214,7 @@ func (s *APIService) UpdateAPI(apiId string, req *UpdateAPIRequest, orgId string
 		return nil, constants.ErrAPINotFound
 	}
 
-	existingAPI := s.modelToDTO(existingAPIModel)
+	existingAPI := s.apiUtil.ModelToDTO(existingAPIModel)
 
 	// Validate update request
 	if err := s.validateUpdateAPIRequest(req); err != nil {
@@ -273,7 +275,7 @@ func (s *APIService) UpdateAPI(apiId string, req *UpdateAPIRequest, orgId string
 	}
 
 	// Update API in repository
-	updatedAPIModel := s.dtoToModel(existingAPI)
+	updatedAPIModel := s.apiUtil.DTOToModel(existingAPI)
 	if err := s.apiRepo.UpdateAPI(updatedAPIModel); err != nil {
 		return nil, fmt.Errorf("failed to update api: %w", err)
 	}
@@ -339,7 +341,7 @@ func (s *APIService) UpdateAPILifecycleStatus(apiId string, status string) (*dto
 		return nil, fmt.Errorf("failed to update api lifecycle status: %w", err)
 	}
 
-	api := s.modelToDTO(apiModel)
+	api := s.apiUtil.ModelToDTO(apiModel)
 	return api, nil
 }
 
@@ -363,10 +365,10 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 	}
 
 	// Convert to DTO for easier manipulation
-	api := s.modelToDTO(apiModel)
+	api := s.apiUtil.ModelToDTO(apiModel)
 
 	// Generate API deployment YAML
-	apiYAML, err := s.generateAPIDeploymentYAML(api)
+	apiYAML, err := s.apiUtil.GenerateAPIDeploymentYAML(api)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate API deployment YAML: %w", err)
 	}
@@ -431,45 +433,6 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 	fmt.Printf("Generated API Deployment YAML for API %s:\n%s\n", apiId, apiYAML)
 
 	return deployments, nil
-}
-
-// generateAPIDeploymentYAML creates the deployment YAML from API data
-func (s *APIService) generateAPIDeploymentYAML(api *dto.API) (string, error) {
-	// Create API deployment YAML structure
-	apiYAMLData := dto.APIYAMLData{
-		Id:              api.ID,
-		Name:            api.Name,
-		DisplayName:     api.DisplayName,
-		Version:         api.Version,
-		Description:     api.Description,
-		Context:         api.Context,
-		Provider:        api.Provider,
-		CreatedTime:     api.CreatedAt.Format(time.RFC3339),
-		LastUpdatedTime: api.UpdatedAt.Format(time.RFC3339),
-		LifeCycleStatus: api.LifeCycleStatus,
-		Type:            api.Type,
-		Transport:       api.Transport,
-		MTLS:            api.MTLS,
-		Security:        api.Security,
-		CORS:            api.CORS,
-		BackendServices: api.BackendServices,
-		APIRateLimiting: api.APIRateLimiting,
-		Operations:      api.Operations,
-	}
-
-	apiDeployment := dto.APIDeploymentYAML{
-		Kind:    "api",
-		Version: "v1",
-		Data:    apiYAMLData,
-	}
-
-	// Convert to YAML
-	yamlBytes, err := yaml.Marshal(apiDeployment)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal API to YAML: %w", err)
-	}
-
-	return string(yamlBytes), nil
 }
 
 // validateDeploymentRequest validates the deployment request
@@ -650,695 +613,6 @@ type UpdateAPIRequest struct {
 	BackendServices  *[]dto.BackendService   `json:"backend-services,omitempty"`
 	APIRateLimiting  *dto.RateLimitingConfig `json:"api-rate-limiting,omitempty"`
 	Operations       *[]dto.Operation        `json:"operations,omitempty"`
-}
-
-// Mapping functions
-func (s *APIService) dtoToModel(dto *dto.API) *model.API {
-	if dto == nil {
-		return nil
-	}
-
-	return &model.API{
-		ID:               dto.ID,
-		Name:             dto.Name,
-		DisplayName:      dto.DisplayName,
-		Description:      dto.Description,
-		Context:          dto.Context,
-		Version:          dto.Version,
-		Provider:         dto.Provider,
-		ProjectID:        dto.ProjectID,
-		OrganizationID:   dto.OrganizationID,
-		LifeCycleStatus:  dto.LifeCycleStatus,
-		HasThumbnail:     dto.HasThumbnail,
-		IsDefaultVersion: dto.IsDefaultVersion,
-		IsRevision:       dto.IsRevision,
-		RevisionedAPIID:  dto.RevisionedAPIID,
-		RevisionID:       dto.RevisionID,
-		Type:             dto.Type,
-		Transport:        dto.Transport,
-		MTLS:             s.mtlsDTOToModel(dto.MTLS),
-		Security:         s.securityDTOToModel(dto.Security),
-		CORS:             s.corsDTOToModel(dto.CORS),
-		BackendServices:  s.backendServicesDTOToModel(dto.BackendServices),
-		APIRateLimiting:  s.rateLimitingDTOToModel(dto.APIRateLimiting),
-		Operations:       s.operationsDTOToModel(dto.Operations),
-	}
-}
-
-func (s *APIService) modelToDTO(model *model.API) *dto.API {
-	if model == nil {
-		return nil
-	}
-
-	return &dto.API{
-		ID:               model.ID,
-		Name:             model.Name,
-		DisplayName:      model.DisplayName,
-		Description:      model.Description,
-		Context:          model.Context,
-		Version:          model.Version,
-		Provider:         model.Provider,
-		ProjectID:        model.ProjectID,
-		OrganizationID:   model.OrganizationID,
-		CreatedAt:        model.CreatedAt,
-		UpdatedAt:        model.UpdatedAt,
-		LifeCycleStatus:  model.LifeCycleStatus,
-		HasThumbnail:     model.HasThumbnail,
-		IsDefaultVersion: model.IsDefaultVersion,
-		IsRevision:       model.IsRevision,
-		RevisionedAPIID:  model.RevisionedAPIID,
-		RevisionID:       model.RevisionID,
-		Type:             model.Type,
-		Transport:        model.Transport,
-		MTLS:             s.mtlsModelToDTO(model.MTLS),
-		Security:         s.securityModelToDTO(model.Security),
-		CORS:             s.corsModelToDTO(model.CORS),
-		BackendServices:  s.backendServicesModelToDTO(model.BackendServices),
-		APIRateLimiting:  s.rateLimitingModelToDTO(model.APIRateLimiting),
-		Operations:       s.operationsModelToDTO(model.Operations),
-	}
-}
-
-// Helper DTO to Model conversion methods
-
-func (s *APIService) mtlsDTOToModel(dto *dto.MTLSConfig) *model.MTLSConfig {
-	if dto == nil {
-		return nil
-	}
-	return &model.MTLSConfig{
-		Enabled:                    dto.Enabled,
-		EnforceIfClientCertPresent: dto.EnforceIfClientCertPresent,
-		VerifyClient:               dto.VerifyClient,
-		ClientCert:                 dto.ClientCert,
-		ClientKey:                  dto.ClientKey,
-		CACert:                     dto.CACert,
-	}
-}
-
-func (s *APIService) securityDTOToModel(dto *dto.SecurityConfig) *model.SecurityConfig {
-	if dto == nil {
-		return nil
-	}
-	return &model.SecurityConfig{
-		Enabled: dto.Enabled,
-		APIKey:  s.apiKeyDTOToModel(dto.APIKey),
-		OAuth2:  s.oauth2DTOToModel(dto.OAuth2),
-	}
-}
-
-func (s *APIService) apiKeyDTOToModel(dto *dto.APIKeySecurity) *model.APIKeySecurity {
-	if dto == nil {
-		return nil
-	}
-	return &model.APIKeySecurity{
-		Enabled: dto.Enabled,
-		Header:  dto.Header,
-		Query:   dto.Query,
-		Cookie:  dto.Cookie,
-	}
-}
-
-func (s *APIService) oauth2DTOToModel(dto *dto.OAuth2Security) *model.OAuth2Security {
-	if dto == nil {
-		return nil
-	}
-	return &model.OAuth2Security{
-		GrantTypes: s.oauth2GrantTypesDTOToModel(dto.GrantTypes),
-		Scopes:     dto.Scopes,
-	}
-}
-
-func (s *APIService) oauth2GrantTypesDTOToModel(dto *dto.OAuth2GrantTypes) *model.OAuth2GrantTypes {
-	if dto == nil {
-		return nil
-	}
-	return &model.OAuth2GrantTypes{
-		AuthorizationCode: s.authCodeGrantDTOToModel(dto.AuthorizationCode),
-		Implicit:          s.implicitGrantDTOToModel(dto.Implicit),
-		Password:          s.passwordGrantDTOToModel(dto.Password),
-		ClientCredentials: s.clientCredGrantDTOToModel(dto.ClientCredentials),
-	}
-}
-
-func (s *APIService) authCodeGrantDTOToModel(dto *dto.AuthorizationCodeGrant) *model.AuthorizationCodeGrant {
-	if dto == nil {
-		return nil
-	}
-	return &model.AuthorizationCodeGrant{
-		Enabled:     dto.Enabled,
-		CallbackURL: dto.CallbackURL,
-	}
-}
-
-func (s *APIService) implicitGrantDTOToModel(dto *dto.ImplicitGrant) *model.ImplicitGrant {
-	if dto == nil {
-		return nil
-	}
-	return &model.ImplicitGrant{
-		Enabled:     dto.Enabled,
-		CallbackURL: dto.CallbackURL,
-	}
-}
-
-func (s *APIService) passwordGrantDTOToModel(dto *dto.PasswordGrant) *model.PasswordGrant {
-	if dto == nil {
-		return nil
-	}
-	return &model.PasswordGrant{
-		Enabled: dto.Enabled,
-	}
-}
-
-func (s *APIService) clientCredGrantDTOToModel(dto *dto.ClientCredentialsGrant) *model.ClientCredentialsGrant {
-	if dto == nil {
-		return nil
-	}
-	return &model.ClientCredentialsGrant{
-		Enabled: dto.Enabled,
-	}
-}
-
-func (s *APIService) corsDTOToModel(dto *dto.CORSConfig) *model.CORSConfig {
-	if dto == nil {
-		return nil
-	}
-	return &model.CORSConfig{
-		Enabled:          dto.Enabled,
-		AllowOrigins:     dto.AllowOrigins,
-		AllowMethods:     dto.AllowMethods,
-		AllowHeaders:     dto.AllowHeaders,
-		ExposeHeaders:    dto.ExposeHeaders,
-		MaxAge:           dto.MaxAge,
-		AllowCredentials: dto.AllowCredentials,
-	}
-}
-
-func (s *APIService) backendServicesDTOToModel(dtos []dto.BackendService) []model.BackendService {
-	if dtos == nil {
-		return nil
-	}
-	backendServiceModels := make([]model.BackendService, 0)
-	for _, backendServiceDTO := range dtos {
-		backendServiceModels = append(backendServiceModels, *s.backendServiceDTOToModel(&backendServiceDTO))
-	}
-	return backendServiceModels
-}
-
-func (s *APIService) backendServiceDTOToModel(dto *dto.BackendService) *model.BackendService {
-	if dto == nil {
-		return nil
-	}
-	return &model.BackendService{
-		Name:           dto.Name,
-		IsDefault:      dto.IsDefault,
-		Endpoints:      s.backendEndpointsDTOToModel(dto.Endpoints),
-		Timeout:        s.timeoutDTOToModel(dto.Timeout),
-		Retries:        dto.Retries,
-		LoadBalance:    s.loadBalanceDTOToModel(dto.LoadBalance),
-		CircuitBreaker: s.circuitBreakerDTOToModel(dto.CircuitBreaker),
-	}
-}
-
-func (s *APIService) backendEndpointsDTOToModel(dtos []dto.BackendEndpoint) []model.BackendEndpoint {
-	if dtos == nil {
-		return nil
-	}
-	backendEndpointModels := make([]model.BackendEndpoint, 0)
-	for _, backendEndpointDTO := range dtos {
-		backendEndpointModels = append(backendEndpointModels, *s.backendEndpointDTOToModel(&backendEndpointDTO))
-	}
-	return backendEndpointModels
-}
-
-func (s *APIService) backendEndpointDTOToModel(dto *dto.BackendEndpoint) *model.BackendEndpoint {
-	if dto == nil {
-		return nil
-	}
-	return &model.BackendEndpoint{
-		URL:         dto.URL,
-		Description: dto.Description,
-		HealthCheck: s.healthCheckDTOToModel(dto.HealthCheck),
-		Weight:      dto.Weight,
-		MTLS:        s.mtlsDTOToModel(dto.MTLS),
-	}
-}
-
-func (s *APIService) healthCheckDTOToModel(dto *dto.HealthCheckConfig) *model.HealthCheckConfig {
-	if dto == nil {
-		return nil
-	}
-	return &model.HealthCheckConfig{
-		Enabled:            dto.Enabled,
-		Interval:           dto.Interval,
-		Timeout:            dto.Timeout,
-		UnhealthyThreshold: dto.UnhealthyThreshold,
-		HealthyThreshold:   dto.HealthyThreshold,
-	}
-}
-
-func (s *APIService) timeoutDTOToModel(dto *dto.TimeoutConfig) *model.TimeoutConfig {
-	if dto == nil {
-		return nil
-	}
-	return &model.TimeoutConfig{
-		Connect: dto.Connect,
-		Read:    dto.Read,
-		Write:   dto.Write,
-	}
-}
-
-func (s *APIService) loadBalanceDTOToModel(dto *dto.LoadBalanceConfig) *model.LoadBalanceConfig {
-	if dto == nil {
-		return nil
-	}
-	return &model.LoadBalanceConfig{
-		Algorithm: dto.Algorithm,
-		Failover:  dto.Failover,
-	}
-}
-
-func (s *APIService) circuitBreakerDTOToModel(dto *dto.CircuitBreakerConfig) *model.CircuitBreakerConfig {
-	if dto == nil {
-		return nil
-	}
-	return &model.CircuitBreakerConfig{
-		Enabled:            dto.Enabled,
-		MaxConnections:     dto.MaxConnections,
-		MaxPendingRequests: dto.MaxPendingRequests,
-		MaxRequests:        dto.MaxRequests,
-		MaxRetries:         dto.MaxRetries,
-	}
-}
-
-func (s *APIService) rateLimitingDTOToModel(dto *dto.RateLimitingConfig) *model.RateLimitingConfig {
-	if dto == nil {
-		return nil
-	}
-	return &model.RateLimitingConfig{
-		Enabled:           dto.Enabled,
-		RateLimitCount:    dto.RateLimitCount,
-		RateLimitTimeUnit: dto.RateLimitTimeUnit,
-		StopOnQuotaReach:  dto.StopOnQuotaReach,
-	}
-}
-
-func (s *APIService) operationsDTOToModel(dtos []dto.Operation) []model.Operation {
-	if dtos == nil {
-		return nil
-	}
-	operationsModels := make([]model.Operation, 0)
-	for _, operationsDTO := range dtos {
-		operationsModels = append(operationsModels, *s.operationDTOToModel(&operationsDTO))
-	}
-	return operationsModels
-}
-
-func (s *APIService) operationDTOToModel(dto *dto.Operation) *model.Operation {
-	if dto == nil {
-		return nil
-	}
-	return &model.Operation{
-		Name:        dto.Name,
-		Description: dto.Description,
-		Request:     s.operationRequestDTOToModel(dto.Request),
-	}
-}
-
-func (s *APIService) operationRequestDTOToModel(dto *dto.OperationRequest) *model.OperationRequest {
-	if dto == nil {
-		return nil
-	}
-	return &model.OperationRequest{
-		Method:           dto.Method,
-		Path:             dto.Path,
-		BackendServices:  s.backendRoutingDTOsToModel(dto.BackendServices),
-		Authentication:   s.authConfigDTOToModel(dto.Authentication),
-		RequestPolicies:  s.policiesDTOToModel(dto.RequestPolicies),
-		ResponsePolicies: s.policiesDTOToModel(dto.ResponsePolicies),
-	}
-}
-
-func (s *APIService) backendRoutingDTOsToModel(dtos []dto.BackendRouting) []model.BackendRouting {
-	if dtos == nil {
-		return nil
-	}
-	backendRoutingModels := make([]model.BackendRouting, 0)
-	for _, operationsDTO := range dtos {
-		backendRoutingModels = append(backendRoutingModels, *s.backendRoutingDTOToModel(&operationsDTO))
-	}
-	return backendRoutingModels
-}
-
-func (s *APIService) backendRoutingDTOToModel(dto *dto.BackendRouting) *model.BackendRouting {
-	if dto == nil {
-		return nil
-	}
-	return &model.BackendRouting{
-		Name:   dto.Name,
-		Weight: dto.Weight,
-	}
-}
-
-func (s *APIService) authConfigDTOToModel(dto *dto.AuthenticationConfig) *model.AuthenticationConfig {
-	if dto == nil {
-		return nil
-	}
-	return &model.AuthenticationConfig{
-		Required: dto.Required,
-		Scopes:   dto.Scopes,
-	}
-}
-
-func (s *APIService) policiesDTOToModel(dtos []dto.Policy) []model.Policy {
-	if dtos == nil {
-		return nil
-	}
-	policyModels := make([]model.Policy, 0)
-	for _, policyDTO := range dtos {
-		policyModels = append(policyModels, *s.policyDTOToModel(&policyDTO))
-	}
-	return policyModels
-}
-
-func (s *APIService) policyDTOToModel(dto *dto.Policy) *model.Policy {
-	if dto == nil {
-		return nil
-	}
-	return &model.Policy{
-		Name:   dto.Name,
-		Params: dto.Params,
-	}
-}
-
-// Helper Model to DTO conversion methods
-
-func (s *APIService) mtlsModelToDTO(model *model.MTLSConfig) *dto.MTLSConfig {
-	if model == nil {
-		return nil
-	}
-	return &dto.MTLSConfig{
-		Enabled:                    model.Enabled,
-		EnforceIfClientCertPresent: model.EnforceIfClientCertPresent,
-		VerifyClient:               model.VerifyClient,
-		ClientCert:                 model.ClientCert,
-		ClientKey:                  model.ClientKey,
-		CACert:                     model.CACert,
-	}
-}
-
-func (s *APIService) securityModelToDTO(model *model.SecurityConfig) *dto.SecurityConfig {
-	if model == nil {
-		return nil
-	}
-	return &dto.SecurityConfig{
-		Enabled: model.Enabled,
-		APIKey:  s.apiKeyModelToDTO(model.APIKey),
-		OAuth2:  s.oauth2ModelToDTO(model.OAuth2),
-	}
-}
-
-func (s *APIService) apiKeyModelToDTO(model *model.APIKeySecurity) *dto.APIKeySecurity {
-	if model == nil {
-		return nil
-	}
-	return &dto.APIKeySecurity{
-		Enabled: model.Enabled,
-		Header:  model.Header,
-		Query:   model.Query,
-		Cookie:  model.Cookie,
-	}
-}
-
-func (s *APIService) oauth2ModelToDTO(model *model.OAuth2Security) *dto.OAuth2Security {
-	if model == nil {
-		return nil
-	}
-	return &dto.OAuth2Security{
-		GrantTypes: s.oauth2GrantTypesModelToDTO(model.GrantTypes),
-		Scopes:     model.Scopes,
-	}
-}
-
-func (s *APIService) oauth2GrantTypesModelToDTO(model *model.OAuth2GrantTypes) *dto.OAuth2GrantTypes {
-	if model == nil {
-		return nil
-	}
-	return &dto.OAuth2GrantTypes{
-		AuthorizationCode: s.authCodeGrantModelToDTO(model.AuthorizationCode),
-		Implicit:          s.implicitGrantModelToDTO(model.Implicit),
-		Password:          s.passwordGrantModelToDTO(model.Password),
-		ClientCredentials: s.clientCredGrantModelToDTO(model.ClientCredentials),
-	}
-}
-
-func (s *APIService) authCodeGrantModelToDTO(model *model.AuthorizationCodeGrant) *dto.AuthorizationCodeGrant {
-	if model == nil {
-		return nil
-	}
-	return &dto.AuthorizationCodeGrant{
-		Enabled:     model.Enabled,
-		CallbackURL: model.CallbackURL,
-	}
-}
-
-func (s *APIService) implicitGrantModelToDTO(model *model.ImplicitGrant) *dto.ImplicitGrant {
-	if model == nil {
-		return nil
-	}
-	return &dto.ImplicitGrant{
-		Enabled:     model.Enabled,
-		CallbackURL: model.CallbackURL,
-	}
-}
-
-func (s *APIService) passwordGrantModelToDTO(model *model.PasswordGrant) *dto.PasswordGrant {
-	if model == nil {
-		return nil
-	}
-	return &dto.PasswordGrant{
-		Enabled: model.Enabled,
-	}
-}
-
-func (s *APIService) clientCredGrantModelToDTO(model *model.ClientCredentialsGrant) *dto.ClientCredentialsGrant {
-	if model == nil {
-		return nil
-	}
-	return &dto.ClientCredentialsGrant{
-		Enabled: model.Enabled,
-	}
-}
-
-func (s *APIService) corsModelToDTO(model *model.CORSConfig) *dto.CORSConfig {
-	if model == nil {
-		return nil
-	}
-	return &dto.CORSConfig{
-		Enabled:          model.Enabled,
-		AllowOrigins:     model.AllowOrigins,
-		AllowMethods:     model.AllowMethods,
-		AllowHeaders:     model.AllowHeaders,
-		ExposeHeaders:    model.ExposeHeaders,
-		MaxAge:           model.MaxAge,
-		AllowCredentials: model.AllowCredentials,
-	}
-}
-
-func (s *APIService) backendServicesModelToDTO(models []model.BackendService) []dto.BackendService {
-	if models == nil {
-		return nil
-	}
-	backendServiceDTOs := make([]dto.BackendService, 0)
-	for _, backendServiceModel := range models {
-		backendServiceDTOs = append(backendServiceDTOs, *s.backendServiceModelToDTO(&backendServiceModel))
-	}
-	return backendServiceDTOs
-}
-
-func (s *APIService) backendServiceModelToDTO(model *model.BackendService) *dto.BackendService {
-	if model == nil {
-		return nil
-	}
-	return &dto.BackendService{
-		Name:           model.Name,
-		IsDefault:      model.IsDefault,
-		Endpoints:      s.backendEndpointsModelToDTO(model.Endpoints),
-		Timeout:        s.timeoutModelToDTO(model.Timeout),
-		Retries:        model.Retries,
-		LoadBalance:    s.loadBalanceModelToDTO(model.LoadBalance),
-		CircuitBreaker: s.circuitBreakerModelToDTO(model.CircuitBreaker),
-	}
-}
-
-func (s *APIService) backendEndpointsModelToDTO(models []model.BackendEndpoint) []dto.BackendEndpoint {
-	if models == nil {
-		return nil
-	}
-	backendEndpointDTOs := make([]dto.BackendEndpoint, 0)
-	for _, backendServiceModel := range models {
-		backendEndpointDTOs = append(backendEndpointDTOs, *s.backendEndpointModelToDTO(&backendServiceModel))
-	}
-	return backendEndpointDTOs
-}
-
-func (s *APIService) backendEndpointModelToDTO(model *model.BackendEndpoint) *dto.BackendEndpoint {
-	if model == nil {
-		return nil
-	}
-	return &dto.BackendEndpoint{
-		URL:         model.URL,
-		Description: model.Description,
-		HealthCheck: s.healthCheckModelToDTO(model.HealthCheck),
-		Weight:      model.Weight,
-		MTLS:        s.mtlsModelToDTO(model.MTLS),
-	}
-}
-
-func (s *APIService) healthCheckModelToDTO(model *model.HealthCheckConfig) *dto.HealthCheckConfig {
-	if model == nil {
-		return nil
-	}
-	return &dto.HealthCheckConfig{
-		Enabled:            model.Enabled,
-		Interval:           model.Interval,
-		Timeout:            model.Timeout,
-		UnhealthyThreshold: model.UnhealthyThreshold,
-		HealthyThreshold:   model.HealthyThreshold,
-	}
-}
-
-func (s *APIService) timeoutModelToDTO(model *model.TimeoutConfig) *dto.TimeoutConfig {
-	if model == nil {
-		return nil
-	}
-	return &dto.TimeoutConfig{
-		Connect: model.Connect,
-		Read:    model.Read,
-		Write:   model.Write,
-	}
-}
-
-func (s *APIService) loadBalanceModelToDTO(model *model.LoadBalanceConfig) *dto.LoadBalanceConfig {
-	if model == nil {
-		return nil
-	}
-	return &dto.LoadBalanceConfig{
-		Algorithm: model.Algorithm,
-		Failover:  model.Failover,
-	}
-}
-
-func (s *APIService) circuitBreakerModelToDTO(model *model.CircuitBreakerConfig) *dto.CircuitBreakerConfig {
-	if model == nil {
-		return nil
-	}
-	return &dto.CircuitBreakerConfig{
-		Enabled:            model.Enabled,
-		MaxConnections:     model.MaxConnections,
-		MaxPendingRequests: model.MaxPendingRequests,
-		MaxRequests:        model.MaxRequests,
-		MaxRetries:         model.MaxRetries,
-	}
-}
-
-func (s *APIService) rateLimitingModelToDTO(model *model.RateLimitingConfig) *dto.RateLimitingConfig {
-	if model == nil {
-		return nil
-	}
-	return &dto.RateLimitingConfig{
-		Enabled:           model.Enabled,
-		RateLimitCount:    model.RateLimitCount,
-		RateLimitTimeUnit: model.RateLimitTimeUnit,
-		StopOnQuotaReach:  model.StopOnQuotaReach,
-	}
-}
-
-func (s *APIService) operationsModelToDTO(models []model.Operation) []dto.Operation {
-	if models == nil {
-		return nil
-	}
-	operationsDTOs := make([]dto.Operation, 0)
-	for _, operationsModel := range models {
-		operationsDTOs = append(operationsDTOs, *s.operationModelToDTO(&operationsModel))
-	}
-	return operationsDTOs
-}
-
-func (s *APIService) operationModelToDTO(model *model.Operation) *dto.Operation {
-	if model == nil {
-		return nil
-	}
-	return &dto.Operation{
-		Name:        model.Name,
-		Description: model.Description,
-		Request:     s.operationRequestModelToDTO(model.Request),
-	}
-}
-
-func (s *APIService) operationRequestModelToDTO(model *model.OperationRequest) *dto.OperationRequest {
-	if model == nil {
-		return nil
-	}
-	return &dto.OperationRequest{
-		Method:           model.Method,
-		Path:             model.Path,
-		BackendServices:  s.backendRoutingModelsToDTO(model.BackendServices),
-		Authentication:   s.authConfigModelToDTO(model.Authentication),
-		RequestPolicies:  s.policiesModelToDTO(model.RequestPolicies),
-		ResponsePolicies: s.policiesModelToDTO(model.ResponsePolicies),
-	}
-}
-
-func (s *APIService) backendRoutingModelsToDTO(models []model.BackendRouting) []dto.BackendRouting {
-	if models == nil {
-		return nil
-	}
-	backendRoutingDTOs := make([]dto.BackendRouting, 0)
-	for _, backendRoutingModel := range models {
-		backendRoutingDTOs = append(backendRoutingDTOs, *s.backendRoutingModelToDTO(&backendRoutingModel))
-	}
-	return backendRoutingDTOs
-}
-
-func (s *APIService) backendRoutingModelToDTO(model *model.BackendRouting) *dto.BackendRouting {
-	if model == nil {
-		return nil
-	}
-	return &dto.BackendRouting{
-		Name:   model.Name,
-		Weight: model.Weight,
-	}
-}
-
-func (s *APIService) authConfigModelToDTO(model *model.AuthenticationConfig) *dto.AuthenticationConfig {
-	if model == nil {
-		return nil
-	}
-	return &dto.AuthenticationConfig{
-		Required: model.Required,
-		Scopes:   model.Scopes,
-	}
-}
-
-func (s *APIService) policiesModelToDTO(models []model.Policy) []dto.Policy {
-	if models == nil {
-		return nil
-	}
-	policyDTOs := make([]dto.Policy, 0)
-	for _, policyModel := range models {
-		policyDTOs = append(policyDTOs, *s.policyModelToDTO(&policyModel))
-	}
-	return policyDTOs
-}
-
-func (s *APIService) policyModelToDTO(model *model.Policy) *dto.Policy {
-	if model == nil {
-		return nil
-	}
-	return &dto.Policy{
-		Name:   model.Name,
-		Params: model.Params,
-	}
 }
 
 func (s *APIService) generateDefaultOperations() []dto.Operation {
