@@ -60,7 +60,8 @@ CREATE TABLE IF NOT EXISTS apis (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(name, context, version, project_uuid)
+    UNIQUE(name, project_uuid),
+    UNIQUE(context, organization_uuid)
 );
 
 -- API MTLS Configuration table
