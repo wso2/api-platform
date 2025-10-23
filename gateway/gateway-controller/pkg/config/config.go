@@ -91,7 +91,7 @@ type LoggingConfig struct {
 
 // ControlPlaneConfig holds control plane connection configuration
 type ControlPlaneConfig struct {
-	URL                string        `koanf:"url"`                  // WebSocket endpoint URL
+	Host               string        `koanf:"host"`                 // Control plane hostname
 	Token              string        `koanf:"token"`                // Registration token (api-key)
 	ReconnectInitial   time.Duration `koanf:"reconnect_initial"`    // Initial retry delay
 	ReconnectMax       time.Duration `koanf:"reconnect_max"`        // Maximum retry delay
@@ -207,7 +207,7 @@ func getDefaults() map[string]interface{} {
 		"router.listener_port":              8080,
 		"logging.level":                     "info",
 		"logging.format":                    "json",
-		"controlplane.url":                  "wss://localhost:8443/api/internal/v1/ws/gateways/connect",
+		"controlplane.host":                 "localhost:8443",
 		"controlplane.token":                "",
 		"controlplane.reconnect_initial":    "1s",
 		"controlplane.reconnect_max":        "5m",
@@ -305,11 +305,9 @@ func (c *Config) Validate() error {
 
 // validateControlPlaneConfig validates the control plane configuration
 func (c *Config) validateControlPlaneConfig() error {
-	// URL validation - must use wss:// protocol
-	if c.ControlPlane.URL != "" {
-		if !strings.HasPrefix(c.ControlPlane.URL, "wss://") {
-			return fmt.Errorf("controlplane.url must use wss:// protocol, got: %s", c.ControlPlane.URL)
-		}
+	// Host validation - required if control plane is configured
+	if c.ControlPlane.Host == "" {
+		return fmt.Errorf("controlplane.host is required")
 	}
 
 	// Token is optional - gateway can run without control plane connection
