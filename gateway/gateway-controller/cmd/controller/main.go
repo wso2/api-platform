@@ -49,7 +49,7 @@ func main() {
 		zap.String("config_file", *configPath),
 		zap.String("storage_type", cfg.Storage.Type),
 		zap.Bool("access_logs_enabled", cfg.Router.AccessLogs.Enabled),
-		zap.String("control_plane_url", cfg.ControlPlane.URL),
+		zap.String("control_plane_host", cfg.ControlPlane.Host),
 		zap.Bool("control_plane_token_configured", cfg.ControlPlane.Token != ""),
 	)
 
@@ -110,8 +110,8 @@ func main() {
 		}
 	}()
 
-	// Initialize and start control plane client
-	cpClient := controlplane.NewClient(cfg.ControlPlane, log)
+	// Initialize and start control plane client with dependencies for API creation
+	cpClient := controlplane.NewClient(cfg.ControlPlane, log, configStore, db, snapshotManager)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", zap.Error(err))
 		// Don't fail startup - gateway can run in degraded mode without control plane

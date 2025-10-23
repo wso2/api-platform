@@ -30,6 +30,9 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 	"go.uber.org/zap"
 )
 
@@ -78,22 +81,47 @@ type ConnectionState struct {
 
 // Client manages the WebSocket connection to the control plane
 type Client struct {
-	config   config.ControlPlaneConfig
-	logger   *zap.Logger
-	state    *ConnectionState
-	ctx      context.Context
-	cancel   context.CancelFunc
-	stopChan chan struct{}
-	wg       sync.WaitGroup
+	config            config.ControlPlaneConfig
+	logger            *zap.Logger
+	state             *ConnectionState
+	ctx               context.Context
+	cancel            context.CancelFunc
+	stopChan          chan struct{}
+	wg                sync.WaitGroup
+	store             *storage.ConfigStore
+	db                storage.Storage
+	snapshotManager   *xds.SnapshotManager
+	parser            *config.Parser
+	validator         *config.Validator
+	deploymentService *utils.APIDeploymentService
+	apiUtilsService   *utils.APIUtilsService
 }
 
 // NewClient creates a new control plane client
-func NewClient(cfg config.ControlPlaneConfig, logger *zap.Logger) *Client {
+func NewClient(
+	cfg config.ControlPlaneConfig,
+	logger *zap.Logger,
+	store *storage.ConfigStore,
+	db storage.Storage,
+	snapshotManager *xds.SnapshotManager,
+) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Client{
-		config: cfg,
-		logger: logger,
+		config:            cfg,
+		logger:            logger,
+		store:             store,
+		db:                db,
+		snapshotManager:   snapshotManager,
+		parser:            config.NewParser(),
+		validator:         config.NewValidator(),
+		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager),
+		apiUtilsService: utils.NewAPIUtilsService(utils.APIFetchConfig{
+			BaseURL:            fmt.Sprintf("https://%s/api/internal/v1", cfg.Host),
+			Token:              cfg.Token,
+			InsecureSkipVerify: cfg.InsecureSkipVerify,
+			Timeout:            30 * time.Second,
+		}, logger),
 		state: &ConnectionState{
 			Current:        Disconnected,
 			Conn:           nil,
@@ -117,7 +145,8 @@ func (c *Client) Start() error {
 	}
 
 	c.logger.Info("Starting control plane client",
-		zap.String("url", c.config.URL),
+		zap.String("host", c.config.Host),
+		zap.String("websocket_url", c.getWebSocketURL()),
 	)
 
 	// Start connection in background
@@ -157,7 +186,7 @@ func (c *Client) Connect() error {
 	c.setState(Connecting)
 
 	c.logger.Info("Connecting to control plane",
-		zap.String("url", c.config.URL),
+		zap.String("url", c.getWebSocketURL()),
 		zap.Int("retry_count", c.state.RetryCount),
 	)
 
@@ -179,7 +208,8 @@ func (c *Client) Connect() error {
 	headers.Add("api-key", c.config.Token)
 
 	// Dial WebSocket
-	conn, resp, err := dialer.Dial(c.config.URL, headers)
+	wsURL := c.getWebSocketURL() + "/gateways/connect"
+	conn, resp, err := dialer.Dial(wsURL, headers)
 	if err != nil {
 		if resp != nil {
 			c.logger.Error("WebSocket connection failed",
@@ -485,7 +515,78 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 		zap.Any("timestamp", event["timestamp"]),
 		zap.Any("correlationId", event["correlationId"]),
 	)
-	// TODO: Implement actual API deployment logic in Phase 6
+
+	// Parse the event into structured format
+	eventBytes, err := json.Marshal(event)
+	if err != nil {
+		c.logger.Error("Failed to marshal event for parsing",
+			zap.Error(err),
+		)
+		return
+	}
+
+	var deployedEvent APIDeployedEvent
+	if err := json.Unmarshal(eventBytes, &deployedEvent); err != nil {
+		c.logger.Error("Failed to parse API deployment event",
+			zap.Error(err),
+		)
+		return
+	}
+
+	// Extract API ID
+	apiID := deployedEvent.Payload.APIID
+	if apiID == "" {
+		c.logger.Error("API ID is empty in deployment event")
+		return
+	}
+
+	c.logger.Info("Processing API deployment",
+		zap.String("api_id", apiID),
+		zap.String("environment", deployedEvent.Payload.Environment),
+		zap.String("revision_id", deployedEvent.Payload.RevisionID),
+		zap.String("vhost", deployedEvent.Payload.VHost),
+		zap.String("correlation_id", deployedEvent.CorrelationID),
+	)
+
+	// Fetch API definition from control plane
+	zipData, err := c.apiUtilsService.FetchAPIDefinition(apiID)
+	if err != nil {
+		c.logger.Error("Failed to fetch API definition",
+			zap.String("api_id", apiID),
+			zap.Error(err),
+		)
+		return
+	}
+
+	// Extract YAML directly from zip file in memory (no need to save to disk)
+	yamlData, err := c.apiUtilsService.ExtractYAMLFromZip(zipData)
+	if err != nil {
+		c.logger.Error("Failed to extract YAML from zip",
+			zap.String("api_id", apiID),
+			zap.Error(err),
+		)
+		return
+	}
+
+	// log the yaml for debugging
+	c.logger.Debug("Extracted YAML data",
+		zap.String("api_id", apiID),
+		zap.String("yaml_data", string(yamlData)),
+	)
+
+	// Create API configuration from YAML using the deployment service
+	if err := c.apiUtilsService.CreateAPIFromYAML(yamlData, apiID, deployedEvent.CorrelationID, c.deploymentService); err != nil {
+		c.logger.Error("Failed to create API from YAML",
+			zap.String("api_id", apiID),
+			zap.Error(err),
+		)
+		return
+	}
+
+	c.logger.Info("Successfully processed API deployment event",
+		zap.String("api_id", apiID),
+		zap.String("correlation_id", deployedEvent.CorrelationID),
+	)
 }
 
 // handleAPIUndeployedEvent handles API undeployment events
@@ -558,4 +659,18 @@ func (c *Client) GetState() State {
 // IsConnected returns true if the client is currently connected
 func (c *Client) IsConnected() bool {
 	return c.GetState() == Connected
+}
+
+// getWebSocketURL constructs the base WebSocket URL from configuration
+func (c *Client) getWebSocketURL() string {
+	return fmt.Sprintf("wss://%s/api/internal/v1/ws",
+		c.config.Host,
+	)
+}
+
+// getRestAPIBaseURL constructs the base REST API URL from configuration
+func (c *Client) getRestAPIBaseURL() string {
+	return fmt.Sprintf("https://%s/api/internal/v1",
+		c.config.Host,
+	)
 }

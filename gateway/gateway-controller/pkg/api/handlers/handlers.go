@@ -26,24 +26,25 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 	"go.uber.org/zap"
 )
 
 // APIServer implements the generated ServerInterface
 type APIServer struct {
-	store           *storage.ConfigStore
-	db              storage.Storage
-	snapshotManager *xds.SnapshotManager
-	parser          *config.Parser
-	validator       *config.Validator
-	logger          *zap.Logger
+	store             *storage.ConfigStore
+	db                storage.Storage
+	snapshotManager   *xds.SnapshotManager
+	parser            *config.Parser
+	validator         *config.Validator
+	logger            *zap.Logger
+	deploymentService *utils.APIDeploymentService
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -54,12 +55,13 @@ func NewAPIServer(
 	logger *zap.Logger,
 ) *APIServer {
 	server := &APIServer{
-		store:           store,
-		db:              db,
-		snapshotManager: snapshotManager,
-		parser:          config.NewParser(),
-		validator:       config.NewValidator(),
-		logger:          logger,
+		store:             store,
+		db:                db,
+		snapshotManager:   snapshotManager,
+		parser:            config.NewParser(),
+		validator:         config.NewValidator(),
+		logger:            logger,
+		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager),
 	}
 
 	// Register status update callback
@@ -141,118 +143,34 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 		return
 	}
 
-	// Parse configuration
-	contentType := c.GetHeader("Content-Type")
-	apiConfig, err := s.parser.Parse(body, contentType)
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Deploy API configuration using the utility service
+	result, err := s.deploymentService.DeployAPIConfiguration(utils.APIDeploymentParams{
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		APIID:         "", // Empty to generate new UUID
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
+
 	if err != nil {
-		log.Error("Failed to parse configuration", zap.Error(err))
+		log.Error("Failed to deploy API configuration", zap.Error(err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to parse configuration",
-		})
-		return
-	}
-
-	// Validate configuration
-	validationErrors := s.validator.Validate(apiConfig)
-	if len(validationErrors) > 0 {
-		log.Warn("Configuration validation failed",
-			zap.String("name", apiConfig.Data.Name),
-			zap.Int("num_errors", len(validationErrors)))
-
-		errors := make([]api.ValidationError, len(validationErrors))
-		for i, e := range validationErrors {
-			errors[i] = api.ValidationError{
-				Field:   stringPtr(e.Field),
-				Message: stringPtr(e.Message),
-			}
-		}
-
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: "Configuration validation failed",
-			Errors:  &errors,
-		})
-		return
-	}
-
-	// Create stored configuration
-	now := time.Now()
-	storedCfg := &models.StoredAPIConfig{
-		ID:              uuid.New().String(),
-		Configuration:   *apiConfig,
-		Status:          models.StatusPending,
-		CreatedAt:       now,
-		UpdatedAt:       now,
-		DeployedAt:      nil,
-		DeployedVersion: 0,
-	}
-
-	// Atomic dual-write: database + in-memory
-	// Save to database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.SaveConfig(storedCfg); err != nil {
-			// Log conflict errors at info level, other errors at error level
-			if storage.IsConflictError(err) {
-				log.Info("API configuration already exists in database",
-					zap.String("name", apiConfig.Data.Name),
-					zap.String("version", apiConfig.Data.Version))
-			} else {
-				log.Error("Failed to save config to database", zap.Error(err))
-			}
-			c.JSON(http.StatusConflict, api.ErrorResponse{
-				Status:  "error",
-				Message: err.Error(),
-			})
-			return
-		}
-	}
-
-	if err := s.store.Add(storedCfg); err != nil {
-		// Rollback database write (only if persistent mode)
-		if s.db != nil {
-			_ = s.db.DeleteConfig(storedCfg.ID)
-		}
-		// Log conflict errors at info level, other errors at error level
-		if storage.IsConflictError(err) {
-			log.Info("API configuration already exists",
-				zap.String("name", apiConfig.Data.Name),
-				zap.String("version", apiConfig.Data.Version))
-		} else {
-			log.Error("Failed to add config to memory store", zap.Error(err))
-		}
-		c.JSON(http.StatusConflict, api.ErrorResponse{
 			Status:  "error",
 			Message: err.Error(),
 		})
 		return
 	}
 
-	// Get correlation ID from context
-	correlationID := middleware.GetCorrelationID(c)
-
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			log.Error("Failed to update xDS snapshot", zap.Error(err))
-		}
-	}()
-
-	log.Info("API configuration created",
-		zap.String("id", storedCfg.ID),
-		zap.String("name", apiConfig.Data.Name),
-		zap.String("version", apiConfig.Data.Version))
-
 	// Return success response
-	id, _ := uuidToOpenAPIUUID(storedCfg.ID)
+	id, _ := uuidToOpenAPIUUID(result.StoredConfig.ID)
 	c.JSON(http.StatusCreated, api.APICreateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("API configuration created successfully"),
 		Id:        id,
-		CreatedAt: timePtr(storedCfg.CreatedAt),
+		CreatedAt: timePtr(result.StoredConfig.CreatedAt),
 	})
 }
 

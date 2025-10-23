@@ -26,3 +26,19 @@ type ConnectionAckMessage struct {
 	ConnectionID string `json:"connectionId"` // Unique connection UUID
 	Timestamp    string `json:"timestamp"`    // RFC3339 timestamp
 }
+
+// APIDeployedEventPayload represents the payload of an API deployment event
+type APIDeployedEventPayload struct {
+	APIID       string `json:"apiId"`
+	Environment string `json:"environment"`
+	RevisionID  string `json:"revisionId"`
+	VHost       string `json:"vhost"`
+}
+
+// APIDeployedEvent represents the complete API deployment event
+type APIDeployedEvent struct {
+	Type          string                  `json:"type"`
+	Payload       APIDeployedEventPayload `json:"payload"`
+	Timestamp     string                  `json:"timestamp"`
+	CorrelationID string                  `json:"correlationId"`
+}
