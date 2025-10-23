@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32px" height="32px" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>0B16B5A0-BB35-4524-A66E-0A7502151BD4</title>
+    <defs>
+        <rect id="path-1" x="1.86882473e-13" y="0" width="32" height="32" rx="16"></rect>
+        <filter x="0.0%" y="0.0%" width="100.0%" height="100.0%" filterUnits="objectBoundingBox" id="filter-2">
+            <feOffset dx="0" dy="0" in="SourceAlpha" result="shadowOffsetOuter1"></feOffset>
+            <feComposite in="shadowOffsetOuter1" in2="SourceAlpha" operator="out" result="shadowOffsetOuter1"></feComposite>
+            <feColorMatrix values="0 0 0 0 0   0 0 0 0 0   0 0 0 0 0  0 0 0 0.07 0" type="matrix" in="shadowOffsetOuter1"></feColorMatrix>
+        </filter>
+        <path d="M4.79385923,13.1666667 L5.035763,12.9323214 L2.83333333,10.7987089 L11.4554668,2.33141421 C11.9116048,1.8895286 12.6511509,1.8895286 13.107289,2.33141421 L13.6578964,2.86481733 C14.1140345,3.30670294 14.1140345,4.02314108 13.6578964,4.46502669 L4.79385923,13.1666667 Z M4.5,13.7191877 C4.28750503,13.8997988 4.01689863,14 3.73596121,14 L2.19663312,14 C2.08803565,14 2,13.9119644 2,13.8033669 L2,12.2640388 C2,11.9831014 2.1002012,11.712495 2.28081232,11.5 L4.5,13.7191877 Z" id="path-3"></path>
+    </defs>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Insights-Configuration" transform="translate(-1193.000000, -492.000000)">
+            <g id="Button/Circle/Default" transform="translate(1193.000000, 492.000000)">
+                <g id="Group" fill-rule="nonzero">
+                    <g id="Shadow">
+                        <use fill="black" fill-opacity="1" filter="url(#filter-2)" xlink:href="#path-1"></use>
+                        <use fill-opacity="0" fill="#FFFFFF" xlink:href="#path-1"></use>
+                    </g>
+                </g>
+                <path d="M16,0 C24.836556,-1.623249e-15 32,7.163444 32,16 C32,24.836556 24.836556,32 16,32 C7.163444,32 1.082166e-15,24.836556 0,16 C-1.082166e-15,7.163444 7.163444,1.623249e-15 16,0 Z M16,1 C7.71572875,1 1,7.71572875 1,16 C1,24.2842712 7.71572875,31 16,31 C24.2842712,31 31,24.2842712 31,16 C31,7.71572875 24.2842712,1 16,1 Z" id="Combined-Shape" fill="#CBCEDB" fill-rule="nonzero"></path>
+                <g id="Icon/Clear" transform="translate(8.000000, 8.000000)">
+                    <mask id="mask-4" fill="white">
+                        <use xlink:href="#path-3"></use>
+                    </mask>
+                    <use id="Shape" fill="#8D91A3" fill-rule="nonzero" xlink:href="#path-3"></use>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

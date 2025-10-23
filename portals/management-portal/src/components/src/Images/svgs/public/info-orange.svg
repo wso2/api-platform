@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>E7C339D4-E885-488E-863F-E89EC927ADDA</title>
+    <g id="API" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="connector-public-selected" transform="translate(-799.000000, -424.000000)" fill="#FF9D52" fill-rule="nonzero">
+            <g id="Icon/Alerts/Info-filled" transform="translate(799.000000, 424.000000)">
+                <path d="M8,0 C12.418278,0 16,3.581722 16,8 C16,12.418278 12.418278,16 8,16 C3.581722,16 0,12.418278 0,8 C0,3.581722 3.581722,0 8,0 Z M8,1 C4.13400675,1 1,4.13400675 1,8 C1,11.8659932 4.13400675,15 8,15 C11.8659932,15 15,11.8659932 15,8 C15,4.13400675 11.8659932,1 8,1 Z M7,11 L7,7 C7,6.44771525 7.44771525,6 8,6 C8.55228475,6 9,6.44771525 9,7 L9,11 C9,11.5128358 8.61395981,11.9355072 8.11662113,11.9932723 L8,12 L8,12 C7.44771525,12 7,11.5522847 7,11 Z M7,4 C7,3.44771525 7.44771525,3 8,3 C8.55228475,3 9,3.44771525 9,4 C9,4.51283584 8.61395981,4.93550716 8.11662113,4.99327227 L8,5 L8,5 C7.44771525,5 7,4.55228475 7,4 Z" id="Combined-Shape"></path>
+            </g>
+        </g>
+    </g>
+</svg>

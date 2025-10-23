@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="12px" height="12px" viewBox="0 0 12 12" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>A7615C17-604A-4BB8-BCCE-15ADA4276D90</title>
+    <g id="Apps" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="apps-settings" transform="translate(-1196.000000, -180.000000)">
+            <g id="popup" transform="translate(1172.000000, 80.000000)">
+                <g id="Icon/Controls/Edit" transform="translate(24.000000, 100.000000)">
+                    <path d="M3.35263107,11 L3.6429156,10.7187857 L1,8.15845074 L8.94656011,0.397697051 C9.49392582,-0.132565684 10.3813811,-0.132565684 10.9287468,0.397697051 L11.5894757,1.0377808 C12.1368414,1.56804353 12.1368414,2.4277693 11.5894757,2.95803203 L3.35263107,11 Z M3,11.6630252 C2.74500603,11.8797586 2.42027835,12 2.08315345,12 L0.235959749,12 C0.10564278,12 0,11.8943572 0,11.7640403 L0,9.91684657 C0,9.57972168 0.120241445,9.25499396 0.336974778,9 L3,11.6630252 Z" id="path-1"></path>
+                    <use id="Shape" fill="#CBCEDB" fill-rule="nonzero" style="mix-blend-mode: multiply;" xlink:href="#path-1"></use>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

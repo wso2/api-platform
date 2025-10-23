@@ -1,0 +1,24 @@
+/* eslint-disable prettier/prettier */
+/* eslint-disable max-len */
+import { createSvgIcon } from '@mui/material';
+import * as React from 'react';export default createSvgIcon(
+  <React.Fragment>
+    <path
+      fill="currentColor"
+      fillRule="evenodd"
+      d="M9.75.25c-2.4853 0-4.5 2.0147-4.5 4.5s2.0147 4.5 4.5 4.5 4.5-2.0147 4.5-4.5-2.0147-4.5-4.5-4.5Zm-3 4.5c0-1.6568 1.3431-3 3-3s3 1.3432 3 3c0 1.6569-1.3431 3-3 3s-3-1.3431-3-3Z"
+      clipRule="evenodd"
+    />
+    <path
+      fill="currentColor"
+      d="M.25 21.25H9a.75.75 0 0 0 0-1.5H1.7797c.3597-4.5134 3.9361-8 8.2203-8 1.3114 0 2.5504.324 3.6516.9017a.75.75 0 0 0 .6968-1.3284C13.0397 10.6368 11.5623 10.25 10 10.25 4.5775 10.25.25 14.8778.25 20.5v.75Z"
+    />
+    <path
+      fill="currentColor"
+      fillRule="evenodd"
+      d="M11 16c0-1.1046.8954-2 2-2h8c1.1046 0 2 .8954 2 2v5c0 1.1046-.8954 2-2 2h-8c-1.1046 0-2-.8954-2-2v-5Zm8.4393 2.5-1.4696 1.4697a.75.75 0 0 0 0 1.0606.75.75 0 0 0 1.0606 0L21.5607 18.5l-2.5304-2.5303a.75.75 0 0 0-1.0606 0 .75.75 0 0 0 0 1.0606L19.4393 18.5Zm-3.409-1.4697a.75.75 0 0 0 0-1.0606.75.75 0 0 0-1.0606 0L12.4393 18.5l2.5304 2.5303a.75.75 0 0 0 1.0606 0 .75.75 0 0 0 0-1.0606L14.5607 18.5l1.4696-1.4697Z"
+      clipRule="evenodd"
+    />
+  </React.Fragment>,
+  'MenuDevPortalThemesFilled'
+);

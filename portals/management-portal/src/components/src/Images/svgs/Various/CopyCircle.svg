@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- 
+~    Copyright (c) 2021, WSO2 Inc. (http://www.wso2.com). All Rights Reserved.
+~   
+~    This software is the property of WSO2 Inc. and its suppliers, if any. 
+~    Dissemination of any information or reproduction of any material contained 
+~    herein in any form is strictly forbidden, unless permitted by WSO2 expressly. 
+~    You may not alter or remove any copyright or other notice from copies of this content."
+-->
+
+<svg width="32px" height="32px" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<defs>
+  <rect id="path-1" x="1.86882473e-13" y="0" width="32" height="32" rx="16"></rect>
+  <filter x="0.0%" y="0.0%" width="100.0%" height="100.0%" filterUnits="objectBoundingBox" id="filter-2">
+    <feOffset dx="0" dy="0" in="SourceAlpha" result="shadowOffsetOuter1"></feOffset>
+    <feComposite in="shadowOffsetOuter1" in2="SourceAlpha" operator="out" result="shadowOffsetOuter1"></feComposite>
+    <feColorMatrix values="0 0 0 0 0   0 0 0 0 0   0 0 0 0 0  0 0 0 0.07 0" type="matrix" in="shadowOffsetOuter1"></feColorMatrix>
+  </filter>
+  <rect id="path-5" x="0" y="0" width="32" height="32" rx="16"></rect>
+  <filter x="-1.6%" y="-1.6%" width="103.1%" height="103.1%" filterUnits="objectBoundingBox" id="filter-6">
+    <feMorphology radius="1" operator="erode" in="SourceAlpha" result="shadowSpreadInner1"></feMorphology>
+    <feOffset dx="0" dy="0" in="shadowSpreadInner1" result="shadowOffsetInner1"></feOffset>
+    <feComposite in="shadowOffsetInner1" in2="SourceAlpha" operator="arithmetic" k2="-1" k3="1" result="shadowInnerInner1"></feComposite>
+    <feColorMatrix values="0 0 0 0 1   0 0 0 0 1   0 0 0 0 1  0 0 0 0.302229021 0" type="matrix" in="shadowInnerInner1"></feColorMatrix>
+  </filter>
+</defs>
+<g id="Observe" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+  <g id="Observe-Guest--popup-" transform="translate(-836.000000, -344.000000)">
+    <g id="Button/32/Circle/Default" transform="translate(836.000000, 344.000000)">
+      <g id="Shadow/Rounded/Primary" fill-rule="nonzero">
+        <g id="Shadow">
+          <use fill="#FFFFFF" fill-opacity="1" filter="url(#filter-2)" xlink:href="#path-1"></use>
+          <use fill-opacity="0" fill="#FFFFFF" xlink:href="#path-1"></use>
+        </g>
+      </g>
+      <circle id="path-3" cx="16" cy="16" r="16"></circle>
+      <use id="Shape" fill="#F7F8FB" xlink:href="#path-3"></use>
+      <g id="State/Rounded/Default" opacity="0.204756">
+        <g id="Rectangle">
+          <use fill-opacity="0.8" fill="#FFFFFF" fill-rule="evenodd" xlink:href="#path-5"></use>
+          <use fill="#FFFFFF" fill-opacity="1" filter="url(#filter-6)" xlink:href="#path-5"></use>
+        </g>
+      </g>
+      <g id="Icon/12/Plus">
+        <g transform="translate(10.000000, 10.000000)">
+          <path d="M7,3 C8.1045695,3 9,3.8954305 9,5 L9,5 L9,10 C9,11.1045695 8.1045695,12 7,12 L7,12 L2,12 C0.8954305,12 0,11.1045695 0,10 L0,10 L0,5 C0,3.8954305 0.8954305,3 2,3 L2,3 Z M7,5 L2,5 L2,10 L7,10 L7,5 Z M9,0 C10.5976809,0 11.9036609,1.24891996 11.9949073,2.82372721 L12,3 L12,8 C12,8.55228475 11.5522847,9 11,9 C10.4871642,9 10.0644928,8.61395981 10.0067277,8.11662113 L10,8 L10,3 C10,2.48716416 9.61395981,2.06449284 9.11662113,2.00672773 L9,2 L5,2 C4.44771525,2 4,1.55228475 4,1 C4,0.487164161 4.38604019,0.0644928393 4.88337887,0.00672773133 L5,0 L9,0 Z" id="path-7"></path>
+          <use id="Combined-Shape" stroke="none" fill="#CBCEDB" fill-rule="nonzero" xlink:href="#path-7"></use>
+        </g>
+      </g>
+    </g>
+  </g>
+</g>
+</svg>

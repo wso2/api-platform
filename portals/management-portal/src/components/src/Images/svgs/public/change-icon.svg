@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="16" height="16" viewBox="0 0 16 16">
+    <defs>
+        <clipPath id="clip-path">
+            <path id="Combined_Shape" d="M4.343,8.653a.391.391,0,0,1,0-.554L7.666,4.791H.407a.407.407,0,0,1,0-.814H7.665L4.343.669a.391.391,0,0,1,0-.554.4.4,0,0,1,.557,0L8.83,4.027a.391.391,0,0,1,.064.083.407.407,0,0,1,0,.548.391.391,0,0,1-.064.082L4.9,8.653a.4.4,0,0,1-.557,0Z" transform="translate(0 0)"/>
+        </clipPath>
+    </defs>
+    <g id="Group_179" transform="translate(-2109 17300) rotate(180)">
+        <g id="Icon_Right_arrow" transform="translate(-2121.55 17287.617)">
+            <path id="Combined_Shape-2" d="M4.343,8.653a.391.391,0,0,1,0-.554L7.666,4.791H.407a.407.407,0,0,1,0-.814H7.665L4.343.669a.391.391,0,0,1,0-.554.4.4,0,0,1,.557,0L8.83,4.027a.391.391,0,0,1,.064.083.407.407,0,0,1,0,.548.391.391,0,0,1-.064.082L4.9,8.653a.4.4,0,0,1-.557,0Z" transform="translate(0 0)"/>
+            <g id="Mask_Group_152" transform="translate(0 0)" clip-path="url(#clip-path)">
+                <rect id="Color" width="14" height="14" transform="translate(-2.45 -2.617)" fill="#8d91a3"/>
+            </g>
+        </g>
+        <g id="Ellipse_1" transform="translate(-2125 17284)" fill="none" stroke="#8d91a3" stroke-width="1">
+            <circle cx="8" cy="8" r="8" stroke="none"/>
+            <circle cx="8" cy="8" r="7.5" fill="none"/>
+        </g>
+    </g>
+</svg>

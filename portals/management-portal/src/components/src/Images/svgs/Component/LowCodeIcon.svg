@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="243px" height="370px" viewBox="0 0 243 370" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>62AB8437-3184-4B82-82A3-FF19D596E1DA</title>
+    <g id="Home" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Component-Develop-overview" transform="translate(-593.000000, -257.000000)">
+            <g id="default" transform="translate(594.000000, 258.000000)">
+                <path d="M13.75,154 L144.25,154 C151.843915,154 158,160.156085 158,167.75 L158,251.25 C158,258.843915 151.843915,265 144.25,265 L13.75,265 C6.15608469,265 9.29986408e-16,258.843915 0,251.25 L0,167.75 C2.62272727e-15,160.156085 6.15608469,154 13.75,154 Z" id="Rectangle-Copy-6" stroke="#40404B" stroke-linecap="round" stroke-dasharray="1,4"></path>
+                <line x1="79" y1="41.0147476" x2="79" y2="245.813019" id="Path-13" stroke="#40404B" stroke-linecap="round" stroke-dasharray="1,4"></line>
+                <line x1="219.25" y1="82.75" x2="76" y2="82.5" id="Path-2-Copy-3" stroke="#40404B" stroke-linecap="round" stroke-dasharray="1,4"></line>
+                <line x1="79.5" y1="265" x2="79.5" y2="360.397278" id="Path-2-Copy" stroke="#40404B" stroke-linecap="round" stroke-dasharray="1,4"></line>
+                <path d="M79,129.053301 C80.0876699,129.053301 81.1753397,129.468233 82.0052038,130.298097 L82.0052038,130.298097 L102.701903,150.994796 C103.531767,151.82466 103.946699,152.91233 103.946699,154 C103.946699,155.08767 103.531767,156.17534 102.701903,157.005204 L102.701903,157.005204 L82.0052038,177.701903 C81.1753397,178.531767 80.0876699,178.946699 79,178.946699 C77.9123301,178.946699 76.8246603,178.531767 75.9947962,177.701903 L75.9947962,177.701903 L55.298097,157.005204 C54.4682329,156.17534 54.0533009,155.08767 54.0533009,154 C54.0533009,152.91233 54.4682329,151.82466 55.298097,150.994796 L55.298097,150.994796 L75.9947962,130.298097 C76.8246603,129.468233 77.9123301,129.053301 79,129.053301 Z" id="Polygon" stroke="#8D91A3" fill="#F3F5F9"></path>
+                <rect id="Rectangle-Copy-16" stroke="#8D91A3" fill="#F3F5F9" x="60.5" y="349.5" width="37" height="19" rx="9"></rect>
+                <rect id="Rectangle" stroke="#8D91A3" fill="#F3F5F9" x="43.5" y="-0.5" width="71" height="39" rx="19"></rect>
+                <rect id="Rectangle-Copy-15" stroke="#8D91A3" fill="#F3F5F9" x="55.5" y="202.5" width="47" height="47" rx="6"></rect>
+                <rect id="Rectangle-Copy-15" stroke="#8D91A3" fill="#F3F5F9" x="55.5" y="282.5" width="47" height="47" rx="6"></rect>
+                <rect id="Rectangle-Copy-17" stroke="#8D91A3" fill="#F3F5F9" x="55.5" y="59.5" width="47" height="47" rx="6"></rect>
+                <circle id="Oval" stroke="#8D91A3" fill="#F3F5F9" cx="218" cy="83" r="23.5"></circle>
+                <g id="trigger-copy" transform="translate(213.000000, 283.000000)" fill="#F3F5F9" stroke="#8D91A3">
+                    <rect id="Rectangle-Copy-5" x="-0.5" y="-0.5" width="9" height="47" rx="4.21875"></rect>
+                </g>
+                <line x1="217" y1="281.144577" x2="217" y2="108.729927" id="Path-11" stroke="#40404B" stroke-linecap="round" stroke-dasharray="1,4"></line>
+                <line x1="103.871124" y1="306" x2="210.958099" y2="306" id="Path-12" stroke="#40404B" stroke-linecap="round" stroke-dasharray="1,4"></line>
+            </g>
+        </g>
+    </g>
+</svg>

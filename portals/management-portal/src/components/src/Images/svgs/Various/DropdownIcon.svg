@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- 
+~    Copyright (c) 2021, WSO2 Inc. (http://www.wso2.com). All Rights Reserved.
+~   
+~    This software is the property of WSO2 Inc. and its suppliers, if any. 
+~    Dissemination of any information or reproduction of any material contained 
+~    herein in any form is strictly forbidden, unless permitted by WSO2 in accordance with
+~    the WSO2 Commercial License available at http://wso2.com/licenses.
+~    For specific language governing the permissions and limitations under
+~    this license, please see the license as well as any agreement you’ve
+~    entered into with WSO2 governing the purchase of this software and any
+~    associated services.
+-->
+
+<svg width="8px" height="6px" viewBox="0 0 8 6" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <defs>
+        <polygon id="path-1" points="4 0 8 6 0 6"></polygon>
+    </defs>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="BC-Module" transform="translate(-462.000000, -123.000000)">
+            <g id="Icon/Dropdown/Down" transform="translate(462.000000, 123.000000)">
+                <mask id="mask-2" fill="white">
+                    <use xlink:href="#path-1"></use>
+                </mask>
+                <use id="Triangle" fill="#40404B" fill-rule="nonzero" transform="translate(4.000000, 3.000000) rotate(-180.000000) translate(-4.000000, -3.000000) " xlink:href="#path-1"></use>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -1,0 +1,6 @@
+# choreo-console Icons## Getting StartedTo ensure the proper integration of new icons into the icon folder, please follow these steps:1. <b>Check the Icon Folder:</b> Verify if the new icons are already present in the `src/components/ChoreoSystem/Icons/generated/` folder or by running Storybook.
+2. <b>Verify Icon Names:</b> Ensure that there are no icons with conflicting names. If there are icons with the same name, confirm that they are intended for the same usage. If not, rename the icons accordingly.
+3. <b>Review SVG Icon Code:<b> Inspect the SVG icon code and remove any unnecessary elements such as `rec,radialGradient,defs ...`.
+4. <b>Upload Icons: </b> Upload the icons to the `workspaces/choreo-design-system/src/Icons/svgs` folder. Please ensure that the SVG file names follow the CamelCase letter convention.#### Generate IconsTo generate the icons, follow these steps:1. Run the command npm run generate-icons.
+2. Execute generate-icons-prettier:fix to fix the prettier formatting.
+3. Remove the previously uploaded icons from the `workspaces/choreo-design-system/src/Icons/svgs` folder.Please adhere to these guidelines to maintain consistency and ensure the successful integration of new icons.

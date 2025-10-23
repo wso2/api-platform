@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- 
+~    Copyright (c) 2021, WSO2 Inc. (http://www.wso2.com). All Rights Reserved.
+~   
+~    This software is the property of WSO2 Inc. and its suppliers, if any. 
+~    Dissemination of any information or reproduction of any material contained 
+~    herein in any form is strictly forbidden, unless permitted by WSO2 expressly. 
+~    You may not alter or remove any copyright or other notice from copies of this content."
+-->
+
+<svg width="18px" height="18px" viewBox="0 0 18 18" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>C946861C-E4DA-4E4B-8D6D-04DED9039747</title>
+    <g id="Test" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="test-curl" transform="translate(-92.000000, -83.000000)" fill="#40404B" fill-rule="nonzero">
+            <g id="Icon/Control/Burger" transform="translate(92.000000, 83.000000)">
+                <path d="M12.0568103,3.38429677 C12.4155298,3.59140355 12.5384362,4.05009635 12.3313294,4.40881582 L6.08132939,15.2341334 C5.87422261,15.5928528 5.4155298,15.7157592 5.05681033,15.5086524 C4.69809087,15.3015456 4.5751845,14.8428528 4.78229128,14.4841334 L11.0322913,3.65881582 C11.2393981,3.30009635 11.6980909,3.17718999 12.0568103,3.38429677 Z M16.0568103,3.38429677 C16.4155298,3.59140355 16.5384362,4.05009635 16.3313294,4.40881582 L10.0813294,15.2341334 C9.87422261,15.5928528 9.4155298,15.7157592 9.05681033,15.5086524 C8.69809087,15.3015456 8.5751845,14.8428528 8.78229128,14.4841334 L15.0322913,3.65881582 C15.2393981,3.30009635 15.6980909,3.17718999 16.0568103,3.38429677 Z M3.25,10 C3.94035594,10 4.5,10.5596441 4.5,11.25 C4.5,11.9403559 3.94035594,12.5 3.25,12.5 C2.55964406,12.5 2,11.9403559 2,11.25 C2,10.5596441 2.55964406,10 3.25,10 Z M3.25,5 C3.94035594,5 4.5,5.55964406 4.5,6.25 C4.5,6.94035594 3.94035594,7.5 3.25,7.5 C2.55964406,7.5 2,6.94035594 2,6.25 C2,5.55964406 2.55964406,5 3.25,5 Z" id="Combined-Shape"></path>
+            </g>
+        </g>
+    </g>
+</svg>

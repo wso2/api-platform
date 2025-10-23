@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="104" height="31" viewBox="0 0 104 31">
+  <defs>
+    <filter id="Rectangle_Copy_10" x="0" y="0" width="104" height="31" filterUnits="userSpaceOnUse">
+      <feOffset dy="1" input="SourceAlpha"/>
+      <feGaussianBlur stdDeviation="1" result="blur"/>
+      <feFlood flood-color="#a9acb6" flood-opacity="0.302"/>
+      <feComposite operator="in" in2="blur"/>
+      <feComposite in="SourceGraphic"/>
+    </filter>
+  </defs>
+  <g id="Group" transform="translate(3.5 2.5)">
+    <g transform="matrix(1, 0, 0, 1, -3.5, -2.5)" filter="url(#Rectangle_Copy_10)">
+      <rect id="Rectangle_Copy_10-2" data-name="Rectangle Copy 10" width="97" height="24" rx="12" transform="translate(3.5 2.5)" fill="#f0f1fb" stroke="#fff" stroke-miterlimit="10" stroke-width="1"/>
+    </g>
+    <text id="calller_req_self_copy" data-name="calller, req, self copy" transform="translate(48.5 12)" fill="#40404b" font-size="10" font-family="GilmerMedium, Gilmer Medium"><tspan x="-35.83" y="0">calller, req, self</tspan></text>
+  </g>
+</svg>

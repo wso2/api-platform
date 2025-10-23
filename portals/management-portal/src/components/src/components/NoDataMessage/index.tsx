@@ -1,0 +1,1 @@
+export { NoDataMessage } from './NoDataMessage';

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>design-config-icon</title>
+    <defs>
+        <path d="M13,0.25 C14.5187831,0.25 15.75,1.48121694 15.75,3 L15.75,3 L15.75,13 C15.75,14.5187831 14.5187831,15.75 13,15.75 L13,15.75 L3,15.75 C1.48121694,15.75 0.25,14.5187831 0.25,13 L0.25,13 L0.25,3 C0.25,1.48121694 1.48121694,0.25 3,0.25 L3,0.25 Z M13,1.75 L3,1.75 C2.30964406,1.75 1.75,2.30964406 1.75,3 L1.75,3 L1.75,13 C1.75,13.6903559 2.30964406,14.25 3,14.25 L3,14.25 L13,14.25 C13.6903559,14.25 14.25,13.6903559 14.25,13 L14.25,13 L14.25,3 C14.25,2.30964406 13.6903559,1.75 13,1.75 L13,1.75 Z M11.25,4 C11.6642136,4 12,4.33578644 12,4.75 C12,5.16421356 11.6642136,5.5 11.25,5.5 L8.75,5.5 L8.75,12 C8.75,12.4142136 8.41421356,12.75 8,12.75 C7.58578644,12.75 7.25,12.4142136 7.25,12 L7.25,5.5 L4.75,5.5 C4.33578644,5.5 4,5.16421356 4,4.75 C4,4.33578644 4.33578644,4 4.75,4 L11.25,4 Z" id="path-1"></path>
+    </defs>
+    <g id="Portal" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Portal-Overview" transform="translate(-93.000000, -140.000000)">
+            <g id="Icon/Control/Burger" transform="translate(93.000000, 140.000000)">
+                <mask id="mask-2" fill="white">
+                    <use xlink:href="#path-1"></use>
+                </mask>
+                <use id="Combined-Shape" fill="#D8D8D8" xlink:href="#path-1"></use>
+                <rect id="Color" fill="#CBCEDB" fill-rule="nonzero" mask="url(#mask-2)" x="-1" y="-1" width="18" height="18"></rect>
+            </g>
+        </g>
+    </g>
+</svg>

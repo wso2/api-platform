@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- 
+~    Copyright (c) 2021, WSO2 Inc. (http://www.wso2.com). All Rights Reserved.
+~   
+~    This software is the property of WSO2 Inc. and its suppliers, if any. 
+~    Dissemination of any information or reproduction of any material contained 
+~    herein in any form is strictly forbidden, unless permitted by WSO2 in accordance with
+~    the WSO2 Commercial License available at http://wso2.com/licenses.
+~    For specific language governing the permissions and limitations under
+~    this license, please see the license as well as any agreement you’ve
+~    entered into with WSO2 governing the purchase of this software and any
+~    associated services.
+-->
+
+<svg width="16px" height="15px" viewBox="0 0 16 15" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <g id="marketplace" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="marketplace-listing-view" transform="translate(-384.000000, -549.000000)" fill="#CBCEDB" fill-rule="nonzero">
+            <g id="Icon/docs-Copy-3" transform="translate(384.500000, 549.000000)">
+                <path d="M14.5,11.5 C14.7454599,11.5 14.9496084,11.6768752 14.9919443,11.9101244 L15,12 L15,13 C15,13.7796961 14.4051119,14.4204487 13.64446,14.4931334 L13.5,14.5 L1.5,14.5 C0.720303883,14.5 0.0795513218,13.9051119 0.00686657806,13.14446 L0,13 L0,12 C0,11.7238576 0.223857625,11.5 0.5,11.5 C0.745459889,11.5 0.94960837,11.6768752 0.991944331,11.9101244 L1,12 L1,13 C1,13.2454599 1.17687516,13.4496084 1.41012437,13.4919443 L1.5,13.5 L13.5,13.5 C13.7454599,13.5 13.9496084,13.3231248 13.9919443,13.0898756 L14,13 L14,12 C14,11.7238576 14.2238576,11.5 14.5,11.5 Z M7.5,4.4408921e-14 C7.77614237,4.43581945e-14 8,0.223857625 8,0.5 L7.99955339,8.792 L10.7928984,6.00000518 C10.9881548,5.80474303 11.3047327,5.8047384 11.4999948,5.99999482 C11.6952621,6.19526215 11.6952621,6.51184464 11.5,6.70710678 L7.5,10.7071068 L3.5,6.70710678 C3.30473785,6.51184464 3.30473785,6.19526215 3.5,6 C3.69525929,5.80474071 4.01183714,5.80474071 4.20709643,6 L4.2071016,6.00000518 L6.99955339,8.792 L7,0.5 C7,0.223857625 7.22385763,4.44596475e-14 7.5,4.4408921e-14 Z" id="Combined-Shape"></path>
+            </g>
+        </g>
+    </g>
+</svg> 
