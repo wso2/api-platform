@@ -190,8 +190,8 @@ type Operation struct {
 
 // OperationRequest represents operation request details
 type OperationRequest struct {
-	Method           string                `json:"method,omitempty" yaml:"method,omitempty"`
-	Path             string                `json:"path,omitempty" yaml:"path,omitempty"`
+	Method           string                `json:"method" yaml:"method"`
+	Path             string                `json:"path" yaml:"path"`
 	BackendServices  []BackendRouting      `json:"backend-services,omitempty" yaml:"backend-services,omitempty"`
 	Authentication   *AuthenticationConfig `json:"authentication,omitempty" yaml:"authentication,omitempty"`
 	RequestPolicies  []Policy              `json:"requestPolicies,omitempty" yaml:"requestPolicies,omitempty"`
@@ -232,9 +232,22 @@ type APIRevisionDeployment struct {
 
 // APIDeploymentYAML represents the API deployment YAML structure
 type APIDeploymentYAML struct {
-	Kind    string      `yaml:"kind"`
-	Version string      `yaml:"version"`
-	Data    APIYAMLData `yaml:"data"`
+	Kind    string       `yaml:"kind"`
+	Version string       `yaml:"version"`
+	Data    APIYAMLData2 `yaml:"data"`
+}
+
+// APIYAMLData2 represents a basic data section of the API deployment YAML
+type APIYAMLData2 struct {
+	Id          string             `yaml:"id"`
+	Name        string             `yaml:"name"`
+	DisplayName string             `yaml:"displayName,omitempty"`
+	Version     string             `yaml:"version"`
+	Description string             `yaml:"description,omitempty"`
+	Context     string             `yaml:"context"`
+	Provider    string             `yaml:"provider,omitempty"`
+	Upstreams   []BackendEndpoint  `yaml:"upstream,omitempty"`
+	Operations  []OperationRequest `yaml:"operations,omitempty"`
 }
 
 // APIYAMLData represents the data section of the API deployment YAML

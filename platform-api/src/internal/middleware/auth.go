@@ -52,7 +52,7 @@ func AuthMiddleware(config AuthConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Skip authentication for specified paths
 		for _, path := range config.SkipPaths {
-			if c.Request.URL.Path == path {
+			if strings.HasPrefix(c.Request.URL.Path, path) {
 				c.Next()
 				return
 			}
