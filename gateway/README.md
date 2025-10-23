@@ -122,10 +122,10 @@ make test
 
 #### Gateway-Controller Environment Variables
 
-The Gateway-Controller uses a structured configuration system with `GC_` prefix for environment variables:
+The Gateway-Controller uses a structured configuration system with `GATEWAY_` prefix for environment variables:
 
-- `GC_STORAGE_MODE`: Storage mode ("memory-only" or "persistent") - default: memory-only
-- `GC_STORAGE_DATABASE_PATH`: Path to bbolt database file - default: /data/gateway-controller.db
+- `GATEWAY_STORAGE_MODE`: Storage mode ("memory-only" or "persistent") - default: memory-only
+- `GATEWAY_STORAGE_DATABASE_PATH`: Path to bbolt database file - default: /data/gateway-controller.db
 
 For complete configuration options, see [Gateway-Controller Configuration](gateway-controller/README.md#configuration).
 

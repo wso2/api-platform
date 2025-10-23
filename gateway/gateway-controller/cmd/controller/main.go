@@ -15,6 +15,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -48,6 +49,8 @@ func main() {
 		zap.String("config_file", *configPath),
 		zap.String("storage_type", cfg.Storage.Type),
 		zap.Bool("access_logs_enabled", cfg.Router.AccessLogs.Enabled),
+		zap.String("control_plane_url", cfg.ControlPlane.URL),
+		zap.Bool("control_plane_token_configured", cfg.ControlPlane.Token != ""),
 	)
 
 	// Initialize storage based on type
@@ -107,6 +110,13 @@ func main() {
 		}
 	}()
 
+	// Initialize and start control plane client
+	cpClient := controlplane.NewClient(cfg.ControlPlane, log)
+	if err := cpClient.Start(); err != nil {
+		log.Error("Failed to start control plane client", zap.Error(err))
+		// Don't fail startup - gateway can run in degraded mode without control plane
+	}
+
 	// Initialize Gin router
 	if os.Getenv("GIN_MODE") == "" {
 		gin.SetMode(gin.ReleaseMode)
@@ -153,6 +163,9 @@ func main() {
 	// Graceful shutdown with timeout
 	ctx, cancel = context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
+
+	// Stop control plane client first
+	cpClient.Stop()
 
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Error("Server forced to shutdown", zap.Error(err))

@@ -76,10 +76,10 @@ logging:
   format: json
 
 # Environment Variables Override
-# You can override any configuration using environment variables with the prefix GC_
+# You can override any configuration using environment variables with the prefix GATEWAY_
 # Examples:
-#   GC_SERVER_API_PORT=9091
-#   GC_STORAGE_TYPE=memory
-#   GC_STORAGE_SQLITE_PATH=/custom/path/gateway.db
-#   GC_ROUTER_ACCESS_LOGS_ENABLED=false
-#   GC_LOGGING_LEVEL=debug
+#   GATEWAY_SERVER_API_PORT=9091
+#   GATEWAY_STORAGE_TYPE=memory
+#   GATEWAY_STORAGE_SQLITE_PATH=/custom/path/gateway.db
+#   GATEWAY_ROUTER_ACCESS_LOGS_ENABLED=false
+#   GATEWAY_LOGGING_LEVEL=debug

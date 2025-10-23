@@ -74,7 +74,7 @@ docker run -p 9090:9090 -p 18000:18000 \
 
 The Gateway-Controller supports configuration via:
 1. **Configuration file** (YAML)
-2. **Environment variables** (prefix: `GC_`)
+2. **Environment variables** (prefix: `GATEWAY_`)
 3. **Command-line flags**
 
 Priority: Environment variables > Config file > Defaults
@@ -118,28 +118,28 @@ logging:
 
 ### Environment Variables
 
-Override any configuration value using the `GC_` prefix:
+Override any configuration value using the `GATEWAY_` prefix:
 
 ```bash
 # Override server API port
-export GC_SERVER_API_PORT=9091
+export GATEWAY_SERVER_API_PORT=9091
 
 # Set storage type to memory
-export GC_STORAGE_TYPE=memory
+export GATEWAY_STORAGE_TYPE=memory
 
 # Override SQLite database path
-export GC_STORAGE_SQLITE_PATH=/custom/path/gateway.db
+export GATEWAY_STORAGE_SQLITE_PATH=/custom/path/gateway.db
 
 # Disable access logs
-export GC_ROUTER_ACCESS_LOGS_ENABLED=false
+export GATEWAY_ROUTER_ACCESS_LOGS_ENABLED=false
 
 # Set debug logging
-export GC_LOGGING_LEVEL=debug
+export GATEWAY_LOGGING_LEVEL=debug
 
 ./bin/controller
 ```
 
-Environment variable naming: `GC_<SECTION>_<KEY>` (uppercase, underscore-separated)
+Environment variable naming: `GATEWAY_<SECTION>_<KEY>` (uppercase, underscore-separated)
 
 ### Configuration Modes
 
@@ -519,10 +519,10 @@ The Gateway-Controller uses structured logging (Zap) with configurable levels.
 
 ```bash
 # Using environment variable
-GC_LOGGING_LEVEL=debug ./bin/controller
+GATEWAY_LOGGING_LEVEL=debug ./bin/controller
 
 # Or using config file
-export GC_LOGGING_LEVEL=debug
+export GATEWAY_LOGGING_LEVEL=debug
 ./bin/controller
 ```
 

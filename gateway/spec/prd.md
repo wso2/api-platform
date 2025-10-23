@@ -21,4 +21,4 @@ Configuration validation completes in <1 second; xDS updates propagate within 5 
 SQLite ACID transactions ensure data consistency; Router waits indefinitely with exponential backoff if xDS unavailable; graceful shutdown with WAL checkpoint.
 
 ### NFR3: Operability
-Docker container deployment with volume mounts for data directory; environment variable configuration with `GC_` prefix; structured JSON logging to stdout; health check endpoints.
+Docker container deployment with volume mounts for data directory; environment variable configuration with `GATEWAY_` prefix; structured JSON logging to stdout; health check endpoints.
