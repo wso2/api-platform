@@ -1,0 +1,16 @@
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_1895_3577)">
+<path d="M1 13C1 6.37258 6.37258 1 13 1H18H23C29.6274 1 35 6.37258 35 13V25C35 31.6274 29.6274 37 23 37H18H13C6.37258 37 1 31.6274 1 25V13Z" fill="#F0F1F4"/>
+<ellipse cx="18" cy="8.5" rx="17" ry="7.5" fill="white"/>
+<ellipse cx="18" cy="8.5" rx="17" ry="7.5" stroke="#40404B" stroke-width="1.5" stroke-linecap="round"/>
+<path d="M18 26C8.61116 26 1 22.4183 1 18" stroke="#40404B" stroke-width="1.5" stroke-linecap="round"/>
+<path d="M1 9V29.6557C1 33.7119 8.61116 37 18 37C27.3888 37 35 33.7119 35 29.6557V9" stroke="#40404B" stroke-width="1.5" stroke-linecap="round"/>
+<path d="M48 35C48 42.1797 42.1797 48 35 48C27.8203 48 22 42.1797 22 35C22 27.8203 27.8203 22 35 22C42.1797 22 48 27.8203 48 35Z" fill="#A6B3FF"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M35 26.25C35.4142 26.25 35.75 26.5858 35.75 27V35.4081L40.3542 38.3389C40.7193 38.5345 40.8567 38.989 40.6611 39.3542C40.4655 39.7193 40.011 39.8567 39.6458 39.6611L34.25 36.3062V27C34.25 26.5858 34.5858 26.25 35 26.25Z" fill="#40404B"/>
+</g>
+<defs>
+<clipPath id="clip0_1895_3577">
+<rect width="48" height="48" fill="white"/>
+</clipPath>
+</defs>
+</svg>

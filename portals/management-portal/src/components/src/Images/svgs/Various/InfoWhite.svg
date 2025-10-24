@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+~    Copyright (c) 2022, WSO2 Inc. (http://www.wso2.com). All Rights Reserved.
+~   
+~    This software is the property of WSO2 Inc. and its suppliers, if any. 
+~    Dissemination of any information or reproduction of any material contained 
+~    herein in any form is strictly forbidden, unless permitted by WSO2 expressly. 
+~    You may not alter or remove any copyright or other notice from copies of this content."
+-->
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <g id="Icon/Alerts/Info-filled">
+        <circle id="Oval" fill="#FFFFFF"  fill-rule="nonzero" cx="8" cy="8" r="8"></circle>
+        <path d="M8,6 C8.55228475,6 9,6.44771525 9,7 L9,11 C9,11.5522847 8.55228475,12 8,12 C7.44771525,12 7,11.5522847 7,11 L7,7 C7,6.44771525 7.44771525,6 8,6 Z M8,3 C8.55228475,3 9,3.44771525 9,4 C9,4.55228475 8.55228475,5 8,5 C7.44771525,5 7,4.55228475 7,4 C7,3.44771525 7.44771525,3 8,3 Z" id="Combined-Shape" fill="#5567D5"></path>
+    </g>
+</svg>

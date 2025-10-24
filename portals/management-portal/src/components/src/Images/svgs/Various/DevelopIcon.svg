@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generator: Adobe Illustrator 17.0.0, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 width="22px" height="22px" viewBox="0 0 22 22" enable-background="new 0 0 22 22" xml:space="preserve">
+<title>ADC66945-0E70-446D-81CB-E4E3604639BE</title>
+<g id="Project">
+	<g id="DevOps-View" transform="translate(-25.000000, -233.000000)">
+		<g id="Group" transform="translate(6.000000, 124.000000)">
+			<g id="Icon_x2F_Develope" transform="translate(19.000000, 109.000000)">
+				<g id="Combined-Shape">
+					<path id="path-1_1_" fill="#40404B" d="M8.009,0l3.422,6.422C12.248,6.145,13.114,6,14,6c4.418,0,8,3.582,8,8s-3.582,8-8,8
+						c-4.079,0-7.445-3.053-7.938-6.999L0,15L8.009,0z M14,8c-0.553,0-1.094,0.075-1.612,0.219L16,15l-7.917,0.001
+						C8.56,17.838,11.027,20,14,20c3.314,0,6-2.686,6-6S17.314,8,14,8z"/>
+				</g>
+				<defs>
+					<filter id="Adobe_OpacityMaskFilter" filterUnits="userSpaceOnUse" x="-1" y="-1" width="24" height="24">
+						<feColorMatrix  type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/>
+					</filter>
+				</defs>
+				<mask maskUnits="userSpaceOnUse" x="-1" y="-1" width="24" height="24" id="mask-2">
+					<g filter="url(#Adobe_OpacityMaskFilter)">
+						<path id="path-1" fill="#FFFFFF" d="M8.009,0l3.422,6.422C12.248,6.145,13.114,6,14,6c4.418,0,8,3.582,8,8s-3.582,8-8,8
+							c-4.079,0-7.445-3.053-7.938-6.999L0,15L8.009,0z M14,8c-0.553,0-1.094,0.075-1.612,0.219L16,15l-7.917,0.001
+							C8.56,17.838,11.027,20,14,20c3.314,0,6-2.686,6-6S17.314,8,14,8z"/>
+					</g>
+				</mask>
+				<rect id="Color" x="-1" y="-1" mask="url(#mask-2)" fill="#40404B" width="24" height="24"/>
+			</g>
+		</g>
+	</g>
+</g>
+</svg>

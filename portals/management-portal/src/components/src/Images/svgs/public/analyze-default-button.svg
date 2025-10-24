@@ -1,0 +1,13 @@
+<svg id="Icon_Settings" data-name="Icon/Settings" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="18" height="18" viewBox="0 0 18 18">
+  <defs>
+    <clipPath id="clip-path">
+      <path id="Combined_Shape" data-name="Combined Shape" d="M15,13V5a1,1,0,1,1,2,0v8a1,1,0,1,1-2,0Zm-5,0V1a1,1,0,0,1,2,0V13a1,1,0,1,1-2,0ZM5,13V3A1,1,0,0,1,7,3V13a1,1,0,1,1-2,0ZM0,13V9A1,1,0,0,1,2,9v4a1,1,0,1,1-2,0Z" transform="translate(0.5 2)" fill="#8d91a3"/>
+    </clipPath>
+  </defs>
+  <g id="Group_78" data-name="Group 78">
+    <path id="Combined_Shape-2" data-name="Combined Shape" d="M15,13V5a1,1,0,1,1,2,0v8a1,1,0,1,1-2,0Zm-5,0V1a1,1,0,0,1,2,0V13a1,1,0,1,1-2,0ZM5,13V3A1,1,0,0,1,7,3V13a1,1,0,1,1-2,0ZM0,13V9A1,1,0,0,1,2,9v4a1,1,0,1,1-2,0Z" transform="translate(0.5 2)" fill="#8d91a3"/>
+    <g id="Mask_Group_81" data-name="Mask Group 81" clip-path="url(#clip-path)">
+      <rect id="Color" width="18" height="18" fill="#8d91a3"/>
+    </g>
+  </g>
+</svg>

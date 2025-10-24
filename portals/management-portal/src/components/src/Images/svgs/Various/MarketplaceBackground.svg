@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1368px" height="168px" viewBox="0 0 1368 168" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <defs>
+        <linearGradient x1="0%" y1="54.1315351%" x2="100%" y2="54.1315351%" id="linearGradient-1">
+            <stop stop-color="#F7F8FB" offset="0%"></stop>
+            <stop stop-color="#A6B3FF" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="0%" y1="54.1315351%" x2="100%" y2="54.1315351%" id="linearGradient-2">
+            <stop stop-color="#F7F8FB" offset="0%"></stop>
+            <stop stop-color="#5567D5" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="50%" y1="0%" x2="50%" y2="100%" id="linearGradient-3">
+            <stop stop-color="#FFFFFF" offset="0%"></stop>
+            <stop stop-color="#DCE1FC" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="marketplace" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="marketplace-listing-view-triggers" transform="translate(-72.000000, -63.000000)">
+            <g id="background" transform="translate(72.000000, 63.000000)">
+                <g id="Group">
+                    <path d="M1031,168 L1031,0 L1368,0 L1368,168 L1031,168 Z" id="Combined-Shape-Copy" fill="url(#linearGradient-1)"></path>
+                    <path d="M1200,167.959081 C1200,75.197991 1124.78407,0.000269790667 1032.00061,0.000269790667 C939.21714,0.000269790667 864,75.197991 864,167.959081 C863.464766,168.00706 1200,167.99847 1200,167.959081 Z" id="Oval-Copy" fill="#5567D5" transform="translate(1032.000000, 83.996096) rotate(-180.000000) translate(-1032.000000, -83.996096) "></path>
+                    <path d="M0,168 L0,0 L1031,0 L1031,168 L0,168 Z" id="Combined-Shape" fill="url(#linearGradient-2)"></path>
+                    <polygon id="Rectangle-Copy-50" fill="url(#linearGradient-3)" points="806 0.000269790667 974 0.000269790667 806 167.991923"></polygon>
+                    <polygon id="Fill-18" fill="#FFFFFF" opacity="0.585790725" points="516 0 660.999143 145 806 0"></polygon>
+                    <polygon id="Fill-18-Copy" fill="#FFFFFF" opacity="0.132354736" points="516 0 683.990868 167.991862 702.006027 167.992979 870 0"></polygon>
+                    <polygon id="Rectangle-Copy-49" fill="#A6B3FF" points="1200 0.000269790667 1368 0.000269790667 1200 167.991923"></polygon>
+                    <polygon id="Rectangle-Copy-52" fill="#5567D5" points="869.033909 0.96114523 806 63.9919229 806 1.51141357"></polygon>
+                </g>
+                <polygon id="Fill-18" fill="#A6B3FF" points="580 0 692.999332 113 806 0"></polygon>
+                <polygon id="Fill-18" fill="#FFFFFF" points="648 1 695.999716 49 744 1"></polygon>
+                <path d="M1158,125.975367 C1158,56.4010932 1101.58805,0 1032.00045,0 C962.412855,0 906,56.4010932 906,125.975367 C905.598574,126.011354 1158,126.00491 1158,125.975367 Z" id="Oval-Copy" fill="#A6B3FF" transform="translate(1032.000000, 63.000000) rotate(-180.000000) translate(-1032.000000, -63.000000) "></path>
+                <path d="M1116.00067,83.9960963 C1116.00067,37.6064823 1078.39256,0.000269790667 1032.00064,0.000269790667 C985.608721,0.000269790667 948,37.6064823 948,83.9960963 C947.732382,84.0200907 1116.00067,84.0157944 1116.00067,83.9960963 Z" id="Oval-Copy-3" fill="#F0F1FB" opacity="0.595448812" transform="translate(1032.000337, 42.006395) rotate(-180.000000) translate(-1032.000337, -42.006395) "></path>
+                <path d="M1074.00209,41.9920589 C1074.00209,18.8006342 1055.19717,0.000269790667 1032.00015,0.000269790667 C1008.80313,0.000269790667 989.997913,18.8006342 989.997913,41.9920589 C989.864098,42.0040544 1074.00209,42.0019066 1074.00209,41.9920589 Z" id="Oval-Copy" fill="#FFFFFF" transform="translate(1032.000000, 21.000270) rotate(-180.000000) translate(-1032.000000, -21.000270) "></path>
+                <polygon id="Rectangle-Copy-51" fill="#5567D5" transform="translate(1325.997913, 42.000270) rotate(-180.000000) translate(-1325.997913, -42.000270) " points="1283.99583 0.000269790667 1368 0.000269790667 1283.99583 84.0002698"></polygon>
+                <g id="Icon/Search-small" transform="translate(651.000000, 75.000000)"></g>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="14px" height="13px" viewBox="0 0 14 13" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>81704D0F-83AD-45D4-B0CE-5657A91AC636</title>
+    <g id="Observe" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Observe-Logs-View" transform="translate(-94.000000, -198.000000)">
+            <g id="Icon/Control/Burger" transform="translate(94.000000, 198.000000)">
+                <path d="M5,8 C5.55228475,8 6,8.44771525 6,9 L6,12 C6,12.5522847 5.55228475,13 5,13 L1,13 C0.44771525,13 0,12.5522847 0,12 L0,9 C0,8.44771525 0.44771525,8 1,8 L5,8 Z M13,8 C13.5522847,8 14,8.44771525 14,9 L14,12 C14,12.5522847 13.5522847,13 13,13 L9,13 C8.44771525,13 8,12.5522847 8,12 L8,9 C8,8.44771525 8.44771525,8 9,8 L13,8 Z M4.5,9.5 L1.5,9.5 L1.5,11.5 L4.5,11.5 L4.5,9.5 Z M12.5,9.5 L9.5,9.5 L9.5,11.5 L12.5,11.5 L12.5,9.5 Z M13,0 C13.5522847,0 14,0.44771525 14,1 L14,5 C14,5.55228475 13.5522847,6 13,6 L1,6 C0.44771525,6 0,5.55228475 0,5 L0,1 C0,0.44771525 0.44771525,0 1,0 L13,0 Z M12.5,1.5 L1.5,1.5 L1.5,4.5 L12.5,4.5 L12.5,1.5 Z" id="path-1"></path>
+                <use id="Combined-Shape" fill="#CBCEDB" fill-rule="nonzero" xlink:href="#path-1"></use>
+            </g>
+        </g>
+    </g>
+</svg>

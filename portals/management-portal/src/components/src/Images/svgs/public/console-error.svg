@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="34px" height="34px" viewBox="0 0 34 34" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>8C60904C-028A-4297-AA80-E5A0B5E45E66</title>
+    <defs>
+        <rect id="path-1" x="0" y="0" width="32" height="32" rx="16"></rect>
+        <filter x="-6.2%" y="-3.1%" width="112.5%" height="112.5%" filterUnits="objectBoundingBox" id="filter-2">
+            <feOffset dx="0" dy="1" in="SourceAlpha" result="shadowOffsetOuter1"></feOffset>
+            <feGaussianBlur stdDeviation="0.5" in="shadowOffsetOuter1" result="shadowBlurOuter1"></feGaussianBlur>
+            <feColorMatrix values="0 0 0 0 0   0 0 0 0 0   0 0 0 0 0  0 0 0 0.180725524 0" type="matrix" in="shadowBlurOuter1"></feColorMatrix>
+        </filter>
+        <linearGradient x1="50%" y1="0%" x2="50%" y2="100%" id="linearGradient-3">
+            <stop stop-color="#FFFFFF" offset="0%"></stop>
+            <stop stop-color="#F7F8FB" offset="100%"></stop>
+        </linearGradient>
+        <path d="M17.1313708,7.285217 L24.714783,14.8686292 C25.3396219,15.493468 25.3396219,16.506532 24.714783,17.1313708 L17.1313708,24.714783 C16.506532,25.3396219 15.493468,25.3396219 14.8686292,24.714783 L7.285217,17.1313708 C6.66037814,16.506532 6.66037814,15.493468 7.285217,14.8686292 L14.8686292,7.285217 C15.493468,6.66037814 16.506532,6.66037814 17.1313708,7.285217 Z" id="path-4"></path>
+        <filter x="0.8%" y="0.8%" width="98.3%" height="103.4%" filterUnits="objectBoundingBox" id="filter-5">
+            <feOffset dx="0" dy="1" in="SourceAlpha" result="shadowOffsetOuter1"></feOffset>
+            <feColorMatrix values="0 0 0 0 0   0 0 0 0 0   0 0 0 0 0  0 0 0 0.0991586538 0" type="matrix" in="shadowOffsetOuter1"></feColorMatrix>
+        </filter>
+    </defs>
+    <g id="Develop" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="develop-error" transform="translate(-80.000000, -664.000000)">
+            <g id="Badge/Rounded/Warning" transform="translate(81.000000, 664.000000)">
+                <g id="Rectangle-Copy-18" fill-rule="nonzero">
+                    <use fill="black" fill-opacity="1" filter="url(#filter-2)" xlink:href="#path-1"></use>
+                    <use fill="#EA4C4D" xlink:href="#path-1"></use>
+                </g>
+                <g id="Polygon" fill-rule="nonzero">
+                    <use fill="black" fill-opacity="1" filter="url(#filter-5)" xlink:href="#path-4"></use>
+                    <use fill="url(#linearGradient-3)" xlink:href="#path-4"></use>
+                </g>
+                <path d="M16.4307692,18.9538462 C16.872597,18.9538462 17.2307692,19.3120184 17.2307692,19.7538462 L17.2307692,20.1230769 C17.2307692,20.5649047 16.872597,20.9230769 16.4307692,20.9230769 L15.5692308,20.9230769 C15.127403,20.9230769 14.7692308,20.5649047 14.7692308,20.1230769 L14.7692308,19.7538462 C14.7692308,19.3120184 15.127403,18.9538462 15.5692308,18.9538462 L16.4307692,18.9538462 Z M16.4307692,11.0769231 C16.872597,11.0769231 17.2307692,11.4350953 17.2307692,11.8769231 L17.2307692,16.1846154 C17.2307692,16.6264432 16.872597,16.9846154 16.4307692,16.9846154 L15.5692308,16.9846154 C15.127403,16.9846154 14.7692308,16.6264432 14.7692308,16.1846154 L14.7692308,11.8769231 C14.7692308,11.4350953 15.127403,11.0769231 15.5692308,11.0769231 L16.4307692,11.0769231 Z" id="Combined-Shape" fill="#EA4C4D"></path>
+            </g>
+        </g>
+    </g>
+</svg>

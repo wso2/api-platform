@@ -1,0 +1,16 @@
+<svg id="Button_Rounded_32_icon_Default" data-name="Button/Rounded/32 icon/Default" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="32" height="32" viewBox="0 0 32 32">
+  <defs>
+    <clipPath id="clip-path">
+      <path id="Combined_Shape" data-name="Combined Shape" d="M2.5,13A2.5,2.5,0,0,1,0,10.5v-5A2.5,2.5,0,0,1,2.5,3h5A2.5,2.5,0,0,1,10,5.5v5A2.5,2.5,0,0,1,7.5,13ZM1,5.5v5A1.5,1.5,0,0,0,2.5,12h5A1.5,1.5,0,0,0,9,10.5v-5A1.5,1.5,0,0,0,7.5,4h-5A1.5,1.5,0,0,0,1,5.5ZM10.5,10a1.5,1.5,0,0,0,1.493-1.355L12,8.5v-6a1.5,1.5,0,0,0-1.355-1.493L10.5,1h-5A1.5,1.5,0,0,0,4.007,2.355L4,2.5H3A2.5,2.5,0,0,1,5.335.005L5.5,0h5A2.5,2.5,0,0,1,13,2.336L13,2.5v6a2.5,2.5,0,0,1-2.335,2.495L10.5,11Z" transform="translate(1.5 1.5)" fill="#979797"/>
+    </clipPath>
+  </defs>
+  <path id="Combined_Shape-2" data-name="Combined Shape" d="M16,32A16,16,0,0,1,4.686,4.686,16,16,0,1,1,27.314,27.314,15.9,15.9,0,0,1,16,32ZM16,1A15,15,0,0,0,5.393,26.607,15,15,0,0,0,26.607,5.393,14.9,14.9,0,0,0,16,1Z" fill="rgba(83,192,138,0.85)"/>
+  <g id="Icon_Clear" data-name="Icon/Clear" transform="translate(8 8)">
+    <g id="Group_131" data-name="Group 131">
+      <path id="Combined_Shape-3" data-name="Combined Shape" d="M2.5,13A2.5,2.5,0,0,1,0,10.5v-5A2.5,2.5,0,0,1,2.5,3h5A2.5,2.5,0,0,1,10,5.5v5A2.5,2.5,0,0,1,7.5,13ZM1,5.5v5A1.5,1.5,0,0,0,2.5,12h5A1.5,1.5,0,0,0,9,10.5v-5A1.5,1.5,0,0,0,7.5,4h-5A1.5,1.5,0,0,0,1,5.5ZM10.5,10a1.5,1.5,0,0,0,1.493-1.355L12,8.5v-6a1.5,1.5,0,0,0-1.355-1.493L10.5,1h-5A1.5,1.5,0,0,0,4.007,2.355L4,2.5H3A2.5,2.5,0,0,1,5.335.005L5.5,0h5A2.5,2.5,0,0,1,13,2.336L13,2.5v6a2.5,2.5,0,0,1-2.335,2.495L10.5,11Z" transform="translate(1.5 1.5)" fill="#979797"/>
+      <g id="Mask_Group_136" data-name="Mask Group 136" clip-path="url(#clip-path)">
+        <rect id="Color" width="16" height="16" fill="#36b475"/>
+      </g>
+    </g>
+  </g>
+</svg>

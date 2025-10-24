@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="44px" height="44px" viewBox="0 0 44 44" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <defs>
+        <rect id="path-1" x="0" y="0" width="40" height="40" rx="20"></rect>
+        <filter x="-8.8%" y="-6.2%" width="117.5%" height="117.5%" filterUnits="objectBoundingBox" id="filter-2">
+            <feOffset dx="0" dy="1" in="SourceAlpha" result="shadowOffsetOuter1"></feOffset>
+            <feGaussianBlur stdDeviation="1" in="shadowOffsetOuter1" result="shadowBlurOuter1"></feGaussianBlur>
+            <feComposite in="shadowBlurOuter1" in2="SourceAlpha" operator="out" result="shadowBlurOuter1"></feComposite>
+            <feColorMatrix values="0 0 0 0 0   0 0 0 0 0   0 0 0 0 0  0 0 0 0.15 0" type="matrix" in="shadowBlurOuter1"></feColorMatrix>
+        </filter>
+        <rect id="path-3" x="0" y="0" width="40" height="40" rx="20"></rect>
+        <rect id="path-5" x="0" y="0" width="40" height="40" rx="20"></rect>
+        <filter x="-1.2%" y="-1.2%" width="102.5%" height="102.5%" filterUnits="objectBoundingBox" id="filter-6">
+            <feMorphology radius="1" operator="erode" in="SourceAlpha" result="shadowSpreadInner1"></feMorphology>
+            <feOffset dx="0" dy="0" in="shadowSpreadInner1" result="shadowOffsetInner1"></feOffset>
+            <feComposite in="shadowOffsetInner1" in2="SourceAlpha" operator="arithmetic" k2="-1" k3="1" result="shadowInnerInner1"></feComposite>
+            <feColorMatrix values="0 0 0 0 0   0 0 0 0 0   0 0 0 0 0  0 0 0 0.1 0" type="matrix" in="shadowInnerInner1"></feColorMatrix>
+        </filter>
+        <path d="M7,0 C7.55228475,-1.01453063e-16 8,0.44771525 8,1 L8,5.999 L13,6 C13.5522847,6 14,6.44771525 14,7 C14,7.55228475 13.5522847,8 13,8 L8,7.999 L8,13 C8,13.5522847 7.55228475,14 7,14 C6.44771525,14 6,13.5522847 6,13 L6,7.999 L1,8 C0.44771525,8 0,7.55228475 0,7 C0,6.44771525 0.44771525,6 1,6 L6,5.999 L6,1 C6,0.44771525 6.44771525,1.01453063e-16 7,0 Z" id="path-7"></path>
+    </defs>
+    <g id="API" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Portal-Deploy-Notification" transform="translate(-285.000000, -462.000000)">
+            <g id="Button/Primary/Default-Copy-2" transform="translate(287.000000, 463.000000)">
+                <g id="Shadow">
+                    <use fill="black" fill-opacity="1" filter="url(#filter-2)" xlink:href="#path-1"></use>
+                    <use fill-opacity="0" fill="#FFFFFF" fill-rule="evenodd" xlink:href="#path-1"></use>
+                </g>
+                <mask id="mask-4" fill="white">
+                    <use xlink:href="#path-3"></use>
+                </mask>
+                <use id="Mask" fill="#D8D8D8" xlink:href="#path-3"></use>
+                <g id="Purpose" mask="url(#mask-4)" fill="#5567D5" fill-rule="nonzero">
+                    <rect x="0" y="0" width="40" height="40" rx="20"></rect>
+                </g>
+                <g id="Rectangle">
+                    <use fill-opacity="0" fill="#FFFFFF" fill-rule="evenodd" xlink:href="#path-5"></use>
+                    <use fill="black" fill-opacity="1" filter="url(#filter-6)" xlink:href="#path-5"></use>
+                </g>
+                <g id="Icon/Add-plus" transform="translate(13.000000, 13.000000)">
+                    <mask id="mask-8" fill="white">
+                        <use xlink:href="#path-7"></use>
+                    </mask>
+                    <use id="Combined-Shape" fill="#FFFFFF" xlink:href="#path-7"></use>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

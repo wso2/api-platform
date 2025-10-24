@@ -1,0 +1,7 @@
+body {
+    display: flex;
+    justify-content: center;
+    font-family: Gilmer;
+    flex-wrap: wrap;
+    background-color: rgb(247, 248, 251);
+}

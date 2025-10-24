@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- 
+~    Copyright (c) 2021, WSO2 Inc. (http://www.wso2.com). All Rights Reserved.
+~   
+~    This software is the property of WSO2 Inc. and its suppliers, if any. 
+~    Dissemination of any information or reproduction of any material contained 
+~    herein in any form is strictly forbidden, unless permitted by WSO2 in accordance with
+~    the WSO2 Commercial License available at http://wso2.com/licenses.
+~    For specific language governing the permissions and limitations under
+~    this license, please see the license as well as any agreement you’ve
+~    entered into with WSO2 governing the purchase of this software and any
+~    associated services.
+-->
+
+<svg width="18px" height="18px" viewBox="0 0 18 18" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>ED548F17-1A3D-4AA4-817A-3C1681C10331</title>
+    <g id="Test" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="test-key-auto-validate" transform="translate(-1375.000000, -213.000000)">
+            <g id="Input/48/Default" transform="translate(1112.000000, 165.000000)">
+                <g id="Input/State/Deafult" transform="translate(0.000000, 33.000000)">
+                    <g id="validate" transform="translate(263.000000, 15.000000)">
+                        <polygon id="Star" fill="#53C08A" points="9 17.0095564 7.82526427 17.9230038 6.92697427 16.7366373 5.55584911 17.3149158 4.99522182 15.9364793 3.52114714 16.1401801 3.33638838 14.6636116 1.85981994 14.4788529 2.06352072 13.0047782 0.685084207 12.4441509 1.26336265 11.0730257 0.0769962476 10.1747357 0.990443638 9 0.0769962476 7.82526427 1.26336265 6.92697427 0.685084207 5.55584911 2.06352072 4.99522182 1.85981994 3.52114714 3.33638838 3.33638838 3.52114714 1.85981994 4.99522182 2.06352072 5.55584911 0.685084207 6.92697427 1.26336265 7.82526427 0.0769962476 9 0.990443638 10.1747357 0.0769962476 11.0730257 1.26336265 12.4441509 0.685084207 13.0047782 2.06352072 14.4788529 1.85981994 14.6636116 3.33638838 16.1401801 3.52114714 15.9364793 4.99522182 17.3149158 5.55584911 16.7366373 6.92697427 17.9230038 7.82526427 17.0095564 9 17.9230038 10.1747357 16.7366373 11.0730257 17.3149158 12.4441509 15.9364793 13.0047782 16.1401801 14.4788529 14.6636116 14.6636116 14.4788529 16.1401801 13.0047782 15.9364793 12.4441509 17.3149158 11.0730257 16.7366373 10.1747357 17.9230038"></polygon>
+                        <polyline id="Path-3" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" points="5.25 8.40765381 8.09353638 11.2511902 12.5947266 6.75"></polyline>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

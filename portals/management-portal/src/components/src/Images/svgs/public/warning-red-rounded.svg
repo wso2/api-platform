@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="18px" height="18px" viewBox="0 0 18 18" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>A37CAC1D-622B-4EAE-872D-79A0DF13ACAD</title>
+    <defs>
+        <path d="M9,0 C13.9705627,0 18,4.02943725 18,9 C18,13.9705627 13.9705627,18 9,18 C4.02943725,18 0,13.9705627 0,9 C0,4.02943725 4.02943725,0 9,0 Z M9.125,6.75 L8.875,6.75 C8.32271525,6.75 7.875,7.19771525 7.875,7.75 L7.875,7.75 L7.875,12.5 C7.875,13.0522847 8.32271525,13.5 8.875,13.5 L8.875,13.5 L9.125,13.5 C9.67728475,13.5 10.125,13.0522847 10.125,12.5 L10.125,12.5 L10.125,7.75 C10.125,7.19771525 9.67728475,6.75 9.125,6.75 L9.125,6.75 Z M9.125,3.375 L8.875,3.375 C8.32271525,3.375 7.875,3.82271525 7.875,4.375 L7.875,4.375 L7.875,4.625 C7.875,5.17728475 8.32271525,5.625 8.875,5.625 L8.875,5.625 L9.125,5.625 C9.67728475,5.625 10.125,5.17728475 10.125,4.625 L10.125,4.625 L10.125,4.375 C10.125,3.82271525 9.67728475,3.375 9.125,3.375 L9.125,3.375 Z" id="path-1"></path>
+    </defs>
+    <g id="Test" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="test-key-auto-validate-error" transform="translate(-1375.000000, -213.000000)">
+            <g id="Input/48/Alert" transform="translate(1112.000000, 165.000000)">
+                <g id="Icon/Alerts/Warning" transform="translate(263.000000, 48.000000)">
+                    <mask id="mask-2" fill="white">
+                        <use xlink:href="#path-1"></use>
+                    </mask>
+                    <use id="Combined-Shape" fill="#EA4C4D" fill-rule="nonzero" xlink:href="#path-1"></use>
+                    <rect id="Color" fill="#EA4C4D" fill-rule="nonzero" mask="url(#mask-2)" x="0" y="0" width="18" height="18"></rect>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

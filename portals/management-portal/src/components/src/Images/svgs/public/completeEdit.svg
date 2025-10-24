@@ -1,0 +1,6 @@
+<svg id="Button_Rounded_32_icon_Default" data-name="Button/Rounded/32 icon/Default" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <path id="Combined_Shape" data-name="Combined Shape" d="M16,32A16,16,0,0,1,4.686,4.686,16,16,0,1,1,27.314,27.314,15.9,15.9,0,0,1,16,32ZM16,1A15,15,0,0,0,5.393,26.607,15,15,0,0,0,26.607,5.393,14.9,14.9,0,0,0,16,1Z" transform="translate(0 0)" fill="rgba(83,192,138,0.85)"/>
+  <g id="Icon_Check" data-name="Icon/Check" transform="translate(8.5 8)">
+    <path id="Combined_Shape-2" data-name="Combined Shape" d="M0,8A8.01,8.01,0,0,1,8,0V1a7,7,0,1,0,7,7h1A8,8,0,0,1,0,8ZM8.207,9.864a.491.491,0,0,1-.232-.131L5.146,6.9a.5.5,0,0,1,0-.707l.05-.05a.5.5,0,0,1,.708,0l2.6,2.6,5.009-5.01a.5.5,0,0,1,.707,0l.05.051a.5.5,0,0,1,0,.707L8.9,9.853a.5.5,0,0,1-.7.011Z" transform="translate(0 0)" fill="#36b475"/>
+  </g>
+</svg>

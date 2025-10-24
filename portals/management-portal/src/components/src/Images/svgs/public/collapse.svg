@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="22px" height="22px" viewBox="0 0 22 22" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>1A126E16-43D9-49F6-B4A7-D5FAACACAFC0</title>
+    <g id="Develop" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="develop-perfomance-banner" transform="translate(-1284.000000, -197.000000)">
+            <g id="Icon/Colapse" transform="translate(1295.000000, 208.000000) rotate(-270.000000) translate(-1295.000000, -208.000000) translate(1285.000000, 198.000000)">
+                <circle id="Oval" stroke="#E6E7EC" cx="10" cy="10" r="10"></circle>
+                <polyline id="Path-6" stroke="#40404B" stroke-linecap="round" transform="translate(10.000000, 9.998245) scale(1, -1) translate(-10.000000, -9.998245) " points="7.5 11.2464905 10 8.75 12.5 11.2464905"></polyline>
+            </g>
+        </g>
+    </g>
+</svg>

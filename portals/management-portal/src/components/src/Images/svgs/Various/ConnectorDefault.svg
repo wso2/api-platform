@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- 
+~    Copyright (c) 2021, WSO2 Inc. (http://www.wso2.com). All Rights Reserved.
+~   
+~    This software is the property of WSO2 Inc. and its suppliers, if any. 
+~    Dissemination of any information or reproduction of any material contained 
+~    herein in any form is strictly forbidden, unless permitted by WSO2 in accordance with
+~    the WSO2 Commercial License available at http://wso2.com/licenses.
+~    For specific language governing the permissions and limitations under
+~    this license, please see the license as well as any agreement you’ve
+~    entered into with WSO2 governing the purchase of this software and any
+~    associated services.
+-->
+
+<svg width="48px" height="48px" viewBox="0 0 48 48" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <g id="UI-kit" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Connectors" transform="translate(-120.000000, -336.000000)" fill="#5567D5" fill-rule="nonzero">
+            <g id="Connector/Ably-Copy" transform="translate(120.000000, 336.000000)">
+                <path d="M40.9705627,9.1507576 C41.9468735,10.1270683 41.9468735,11.7099808 40.9705627,12.6862915 C39.994252,13.6626022 38.4113396,13.6626022 37.4350288,12.6862915 C31.1866402,6.43790283 21.0560005,6.43790283 14.8076118,12.6862915 C8.55922318,18.9346802 8.55922318,29.0653198 14.8076118,35.3137085 C21.0560005,41.5620972 31.1866402,41.5620972 37.4350288,35.3137085 C38.4113396,34.3373978 39.994252,34.3373978 40.9705627,35.3137085 C41.9468735,36.2900192 41.9468735,37.8729317 40.9705627,38.8492424 C32.7695526,47.0502525 19.4730881,47.0502525 11.2720779,38.8492424 C7.93659152,35.513756 5.95770258,31.335388 5.33541111,26.9997661 L3,27 C1.34314575,27 2.02906125e-16,25.6568542 0,24 C-2.02906125e-16,22.3431458 1.34314575,21 3,21 L5.3355548,20.999233 C5.95800715,16.663969 7.93684819,12.4859873 11.2720779,9.1507576 C19.4730881,0.949747469 32.7695526,0.949747469 40.9705627,9.1507576 Z M26,14.5 C30.1981026,14.5 33.7601988,17.2230666 35.0163468,20.9992578 L45,21 C46.6568542,21 48,22.3431458 48,24 C48,25.6568542 46.6568542,27 45,27 L35.0166782,26.9997458 C33.7608254,30.7764544 30.1984718,33.5 26,33.5 C20.7532949,33.5 16.5,29.2467051 16.5,24 C16.5,18.7532949 20.7532949,14.5 26,14.5 Z M26,19.5 C23.5147186,19.5 21.5,21.5147186 21.5,24 C21.5,26.4852814 23.5147186,28.5 26,28.5 C28.4852814,28.5 30.5,26.4852814 30.5,24 C30.5,21.5147186 28.4852814,19.5 26,19.5 Z" id="Combined-Shape"></path>
+            </g>
+        </g>
+    </g>
+</svg>

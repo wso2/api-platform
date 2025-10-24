@@ -1,0 +1,7 @@
+<svg width="23px" height="22px" viewBox="0 0 23 22" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <g id="Develop" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <polygon id="Triangle" fill="#5567D5" transform="translate(7.621429, 10.450000) rotate(-90.000000) translate(-7.621429, -10.450000) " points="7.62142857 7.7 11.9428571 13.2 3.3 13.2"></polygon>
+        <polygon id="Triangle-Copy" fill="#CCD1F2" transform="translate(13.435714, 10.450000) rotate(-90.000000) translate(-13.435714, -10.450000) " points="13.4357143 7.7 17.7571429 13.2 9.11428571 13.2"></polygon>
+        <circle id="Oval" stroke="#CCD1F2" stroke-width="2" cx="11" cy="11" r="10"></circle>
+    </g>
+</svg>

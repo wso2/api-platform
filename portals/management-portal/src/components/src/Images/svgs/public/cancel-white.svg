@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="10px" height="10px" viewBox="0 0 10 10" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>cancel-white-icon</title>
+    <defs>
+        <path d="M0.976858925,0.167602494 L5,4.191 L9.02314108,0.167602494 C9.24661107,-0.0558674981 9.60892751,-0.0558674981 9.83239751,0.167602494 C10.0558675,0.391072487 10.0558675,0.753388932 9.83239751,0.976858925 L5.809,5 L9.83239751,9.02314108 C10.0558675,9.24661107 10.0558675,9.60892751 9.83239751,9.83239751 C9.60892751,10.0558675 9.24661107,10.0558675 9.02314108,9.83239751 L5,5.809 L0.976858925,9.83239751 C0.753388932,10.0558675 0.391072487,10.0558675 0.167602494,9.83239751 C-0.0558674981,9.60892751 -0.0558674981,9.24661107 0.167602494,9.02314108 L4.191,5 L0.167602494,0.976858925 C-0.0558674981,0.753388932 -0.0558674981,0.391072487 0.167602494,0.167602494 C0.391072487,-0.0558674981 0.753388932,-0.0558674981 0.976858925,0.167602494 Z" id="path-1"></path>
+    </defs>
+    <g id="Portal" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Portal-API-Edit" transform="translate(-511.000000, -179.000000)">
+            <g id="Button/Pill/32-with-icon/Default-Copy" transform="translate(500.000000, 168.000000)">
+                <g id="Icon/Clear" transform="translate(11.000000, 11.000000)">
+                    <mask id="mask-2" fill="white">
+                        <use xlink:href="#path-1"></use>
+                    </mask>
+                    <use id="Combined-Shape" fill="#FFFFFF" fill-rule="nonzero" xlink:href="#path-1"></use>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

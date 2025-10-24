@@ -1,0 +1,25 @@
+<svg width="32px" height="32px" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+        <title>0A50B091-554A-4A96-9409-B4465D128B14</title>
+        <defs>
+            <rect id="path-1" x="1.86882473e-13" y="0" width="32" height="32" rx="16"></rect>
+            <filter x="0.0%" y="0.0%" width="100.0%" height="100.0%" filterUnits="objectBoundingBox" id="filter-2">
+                <feOffset dx="0" dy="0" in="SourceAlpha" result="shadowOffsetOuter1"></feOffset>
+                <feComposite in="shadowOffsetOuter1" in2="SourceAlpha" operator="out" result="shadowOffsetOuter1"></feComposite>
+                <feColorMatrix values="0 0 0 0 0   0 0 0 0 0   0 0 0 0 0  0 0 0 0.07 0" type="matrix" in="shadowOffsetOuter1"></feColorMatrix>
+            </filter>
+        </defs>
+        <g id="Home" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+            <g id="new-IDP-list" transform="translate(-1056.000000, -320.000000)" fill-rule="nonzero">
+                <g id="Button/Circle/Default-Copy-3" transform="translate(1056.000000, 320.000000)">
+                    <g id="Shadow">
+                        <use fill="black" fill-opacity="1" filter="url(#filter-2)" xlink:href="#path-1"></use>
+                        <use fill-opacity="0" fill="#FFFFFF" xlink:href="#path-1"></use>
+                    </g>
+                    <path d="M16,0 C24.836556,-1.623249e-15 32,7.163444 32,16 C32,24.836556 24.836556,32 16,32 C7.163444,32 1.082166e-15,24.836556 0,16 C-1.082166e-15,7.163444 7.163444,1.623249e-15 16,0 Z M16,1 C7.71572875,1 1,7.71572875 1,16 C1,24.2842712 7.71572875,31 16,31 C24.2842712,31 31,24.2842712 31,16 C31,7.71572875 24.2842712,1 16,1 Z" id="Combined-Shape" fill="#E6E7EC"></path>
+                    <g id="Icon/Clear" transform="translate(8.000000, 8.000000)" fill="#8D91A3">
+                        <path d="M8,0.5 C12.1421356,0.5 15.5,3.85786438 15.5,8 C15.5,12.1421356 12.1421356,15.5 8,15.5 C3.85786438,15.5 0.5,12.1421356 0.5,8 C0.5,3.85786438 3.85786438,0.5 8,0.5 Z M8,1.5 C4.41014913,1.5 1.5,4.41014913 1.5,8 C1.5,11.5898509 4.41014913,14.5 8,14.5 C11.5898509,14.5 14.5,11.5898509 14.5,8 C14.5,4.41014913 11.5898509,1.5 8,1.5 Z M8,7.53857422 C8.24545989,7.53857422 8.44960837,7.71544938 8.49194433,7.94869859 L8.5,8.03857422 L8.5,12.0134888 C8.5,12.2896311 8.27614237,12.5134888 8,12.5134888 C7.75454011,12.5134888 7.55039163,12.3366136 7.50805567,12.1033644 L7.5,12.0134888 L7.5,8.03857422 C7.5,7.76243184 7.72385763,7.53857422 8,7.53857422 Z M8,4 C8.55228475,4 9,4.44771525 9,5 C9,5.55228475 8.55228475,6 8,6 C7.44771525,6 7,5.55228475 7,5 C7,4.44771525 7.44771525,4 8,4 Z" id="Combined-Shape"></path>
+                    </g>
+                </g>
+            </g>
+        </g>
+</svg>

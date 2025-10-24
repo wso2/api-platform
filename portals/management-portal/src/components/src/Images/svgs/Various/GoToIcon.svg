@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- 
+~    Copyright (c) 2021, WSO2 Inc. (http://www.wso2.com). All Rights Reserved.
+~   
+~    This software is the property of WSO2 Inc. and its suppliers, if any. 
+~    Dissemination of any information or reproduction of any material contained 
+~    herein in any form is strictly forbidden, unless permitted by WSO2 in accordance with
+~    the WSO2 Commercial License available at http://wso2.com/licenses.
+~    For specific language governing the permissions and limitations under
+~    this license, please see the license as well as any agreement you’ve
+~    entered into with WSO2 governing the purchase of this software and any
+~    associated services.
+-->
+
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="BC-Module" transform="translate(-1065.000000, -533.000000)" fill="#0095FF">
+            <g id="Icon/Go-to" transform="translate(1065.000000, 533.000000)">
+                <path d="M0,8 C0,3.581722 3.581722,0 8,0 C12.418278,0 16,3.581722 16,8 C16,12.418278 12.418278,16 8,16 C3.581722,16 0,12.418278 0,8 Z M1,8 C1,11.8659932 4.13400675,15 8,15 C11.8659932,15 15,11.8659932 15,8 C15,4.13400675 11.8659932,1 8,1 C4.13890702,1.01180477 1.01180477,4.13890702 1,8 L1,8 Z M8.31825,11.0415 C8.12305903,10.8462501 8.12305903,10.5297499 8.31825,10.3345 L10.15825,8.49475 L4.495,8.49475 C4.21885763,8.49475 3.995,8.27089237 3.995,7.99475 C3.995,7.71860763 4.21885763,7.49475 4.495,7.49475 L10.127,7.49475 L8.31825,5.686 C8.19195658,5.55966196 8.1426572,5.37554406 8.18892246,5.20300174 C8.23518772,5.03045942 8.36998882,4.89570596 8.54254749,4.84950171 C8.71510616,4.80329745 8.89920662,4.85266192 9.0255,4.979 L11.97875,8.0105 L9.025,11.0415 C8.93122599,11.135312 8.80401834,11.1880182 8.671375,11.1880182 C8.53873166,11.1880182 8.41152401,11.135312 8.31775,11.0415 L8.31825,11.0415 Z" id="Shape"></path>
+            </g>
+        </g>
+    </g>
+</svg>

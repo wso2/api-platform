@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="26px" height="26px" viewBox="0 0 26 26" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>F346A8BA-ABD7-4808-9901-A7E759A5ACBE</title>
+    <defs>
+        <linearGradient x1="50%" y1="0%" x2="50%" y2="100%" id="linearGradient-1">
+            <stop stop-color="#53C08A" offset="0%"></stop>
+            <stop stop-color="#36B475" offset="100%"></stop>
+        </linearGradient>
+        <circle id="path-2" cx="12" cy="12" r="12"></circle>
+        <filter x="-8.3%" y="-4.2%" width="116.7%" height="116.7%" filterUnits="objectBoundingBox" id="filter-3">
+            <feOffset dx="0" dy="1" in="SourceAlpha" result="shadowOffsetOuter1"></feOffset>
+            <feGaussianBlur stdDeviation="0.5" in="shadowOffsetOuter1" result="shadowBlurOuter1"></feGaussianBlur>
+            <feColorMatrix values="0 0 0 0 0   0 0 0 0 0   0 0 0 0 0  0 0 0 0.1 0" type="matrix" in="shadowBlurOuter1"></feColorMatrix>
+        </filter>
+    </defs>
+    <g id="Deploy" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Deployment-overview" transform="translate(-103.000000, -95.000000)">
+            <g id="Icon/Alerts/Success" transform="translate(104.000000, 95.000000)">
+                <g id="Oval" fill-rule="nonzero">
+                    <use fill="black" fill-opacity="1" filter="url(#filter-3)" xlink:href="#path-2"></use>
+                    <use fill="url(#linearGradient-1)" xlink:href="#path-2"></use>
+                </g>
+                <path d="M7,14.3905243 C6.44771525,14.3905243 6,13.942809 6,13.3905243 L6,7.94280904 C6,7.39052429 6.44771525,6.94280904 7,6.94280904 L7.66666667,6.94280904 C8.21895142,6.94280904 8.66666667,7.39052429 8.66666667,7.94280904 L8.666,11.723809 L17,11.7238576 C17.5522847,11.7238576 18,12.1715729 18,12.7238576 L18,13.3905243 C18,13.942809 17.5522847,14.3905243 17,14.3905243 L7,14.3905243 Z" id="Combined-Shape" fill="#FFFFFF" transform="translate(12.000000, 10.666667) rotate(-45.000000) translate(-12.000000, -10.666667) "></path>
+            </g>
+        </g>
+    </g>
+</svg>

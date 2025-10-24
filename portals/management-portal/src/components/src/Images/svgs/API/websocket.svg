@@ -1,0 +1,17 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+<mask id="path-1-inside-1_344_20842" fill="white">
+<rect width="36.5714" height="36.5714" rx="6"/>
+</mask>
+<rect width="36.5714" height="36.5714" rx="6" stroke="url(#paint0_angular_344_20842)" stroke-width="24" mask="url(#path-1-inside-1_344_20842)"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M49.6683 32.0036C47.5357 26.5385 42.22 22.6665 36 22.6665C27.8998 22.6665 21.3333 29.233 21.3333 37.3332C21.3333 37.788 21.354 38.2381 21.3945 38.6824C15.4168 38.9971 10.6666 43.9437 10.6666 49.9998C10.6666 56.2591 15.7407 61.3332 22 61.3332H49.3333C57.4335 61.3332 64 54.7667 64 46.6665C64 38.6783 57.6137 32.1816 49.6683 32.0036Z" fill="#F0F1F4"/>
+<path d="M30.8572 30.8571L14.2858 14.2856" stroke="#40404B" stroke-width="1.5" stroke-linecap="round"/>
+<path d="M31.0475 31.0479L44.3808 44.3812" stroke="#40404B" stroke-width="1.5" stroke-linecap="round"/>
+<path d="M22.2858 13.7142L13.7143 13.7142L13.7143 22.2856" stroke="#40404B" stroke-width="1.5" stroke-linecap="round"/>
+<path d="M32.9525 44.9521H44.9525V32.9521" stroke="#40404B" stroke-width="1.5" stroke-linecap="round"/>
+<defs>
+<radialGradient id="paint0_angular_344_20842" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(18.2857 18.2857) rotate(-45) scale(25.8599)">
+<stop offset="0.25" stop-color="white"/>
+<stop offset="0.25" stop-color="#7789F5"/>
+</radialGradient>
+</defs>
+</svg>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>5A136358-41D3-4D4B-AD77-B0977CFE085E</title>
+    <g id="Deploy" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Deploy-succes" transform="translate(-89.000000, -736.000000)">
+            <g id="Icon/Alerts/Info-filled" transform="translate(89.000000, 736.000000)">
+                <circle id="Oval" fill="#5567D5" fill-rule="nonzero" cx="8" cy="8" r="8"></circle>
+                <path d="M8,6 C8.55228475,6 9,6.44771525 9,7 L9,11 C9,11.5522847 8.55228475,12 8,12 C7.44771525,12 7,11.5522847 7,11 L7,7 C7,6.44771525 7.44771525,6 8,6 Z M8,3 C8.55228475,3 9,3.44771525 9,4 C9,4.55228475 8.55228475,5 8,5 C7.44771525,5 7,4.55228475 7,4 C7,3.44771525 7.44771525,3 8,3 Z" id="Combined-Shape" fill="#FFFFFF"></path>
+            </g>
+        </g>
+    </g>
+</svg>

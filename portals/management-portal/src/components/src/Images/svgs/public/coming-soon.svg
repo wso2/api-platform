@@ -1,0 +1,18 @@
+<svg width="108px" height="24px" viewBox="0 0 108 24" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>55A9AF6A-E46C-42C7-B1BD-D9784CC6DE4C</title>
+    <defs>
+        <linearGradient x1="134.199049%" y1="50%" x2="9.19333761%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#BDC5F9" offset="0%"></stop>
+            <stop stop-color="#5567D5" offset="100%"></stop>
+        </linearGradient>
+        <path d="M948,256 L948,280 L842.316733,280 C841.212164,280 840.316733,279.104569 840.316733,278 C840.316733,277.9023 840.323892,277.804732 840.338152,277.708078 L843.288972,257.708078 C843.433739,256.726882 844.275735,256 845.267553,256 L948,256 L948,256 Z" id="path-2"></path>
+    </defs>
+    <g id="Home" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="new-IDP-adding" transform="translate(-840.000000, -256.000000)">
+            <g id="Rectangle-Copy-12" transform="translate(894.000000, 268.000000) rotate(-180.000000) translate(-894.000000, -268.000000) ">
+                <use fill="url(#linearGradient-1)" xlink:href="#path-2"></use>
+                <use fill-opacity="0.85" fill="#FFFFFF" xlink:href="#path-2"></use>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -1,0 +1,40 @@
+@font-face {
+    font-family: 'Droid Sans Mono';
+    src: url('../fonts/DroidSansMono-webfont.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Gilmer';
+    src: url('../fonts/gilmer-regular.eot');
+    src: url('../fonts/gilmer-regular.eot?#iefix') format('embedded-opentype'),
+         url('../fonts/gilmer-regular.woff2') format('woff2'),
+         url('../fonts/gilmer-regular.woff') format('woff'),
+         url('../fonts/gilmer-regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Gilmer';
+    src: url('../fonts/gilmer-medium.eot');
+    src: url('../fonts/gilmer-medium.eot?#iefix') format('embedded-opentype'),
+         url('../fonts/gilmer-medium.woff2') format('woff2'),
+         url('../fonts/gilmer-medium.woff') format('woff'),
+         url('../fonts/gilmer-medium.ttf') format('truetype');
+    font-weight: 500;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Gilmer';
+    src: url('../fonts/gilmer-bold.eot');
+    src: url('../fonts/gilmer-bold.eot?#iefix') format('embedded-opentype'),
+         url('../fonts/gilmer-bold.woff2') format('woff2'),
+         url('../fonts/gilmer-bold.woff') format('woff'),
+         url('../fonts/gilmer-bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+}
+

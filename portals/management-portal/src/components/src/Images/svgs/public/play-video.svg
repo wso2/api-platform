@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- 
+~    Copyright (c) 2021, WSO2 Inc. (http://www.wso2.com). All Rights Reserved.
+~   
+~    This software is the property of WSO2 Inc. and its suppliers, if any. 
+~    Dissemination of any information or reproduction of any material contained 
+~    herein in any form is strictly forbidden, unless permitted by WSO2 expressly. 
+~    You may not alter or remove any copyright or other notice from copies of this content."
+-->
+
+<svg width="18px" height="18px" viewBox="0 0 18 18" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>98A3A956-FC80-49EB-87CE-06379101021C</title>
+    <g id="Apps" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="apps-empty-tour-icon" transform="translate(-667.000000, -767.000000)" stroke="#5567D5" stroke-width="1.5">
+            <g id="Icon/Feedback" transform="translate(667.000000, 767.000000)">
+                <circle id="Oval" fill-rule="nonzero" cx="9" cy="9" r="7.75"></circle>
+                <path d="M7,6.08830952 L7,11.8567473 C7,11.8843615 7.02238576,11.9067473 7.05,11.9067473 C7.05892229,11.9067473 7.06768206,11.9043598 7.07537045,11.8998325 L11.9275156,9.0426819 C11.951311,9.02867018 11.9592422,8.99802152 11.9452305,8.97422618 C11.9409953,8.9670339 11.9350271,8.96101625 11.92787,8.95672198 L7.07572479,6.04543487 C7.05204577,6.03122746 7.02133276,6.03890572 7.00712535,6.06258473 C7.00246289,6.0703555 7,6.07924732 7,6.08830952 Z" id="Combined-Shape" stroke-linecap="round"></path>
+            </g>
+        </g>
+    </g>
+</svg>

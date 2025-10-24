@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="18.001" height="18" viewBox="0 0 18.001 18">
+  <defs>
+    <clipPath id="clip-path">
+      <path id="Combined_Shape" data-name="Combined Shape" d="M11.289,11.677a.989.989,0,0,1,0-1.4L15.6,5.983,11.289,1.689a.992.992,0,0,1,1.4-1.4L17.7,5.278a1,1,0,0,1,0,1.411l-5.007,4.988a1,1,0,0,1-1.4,0Zm-5.993,0L.289,6.689a1,1,0,0,1,0-1.411L5.3.29a.992.992,0,1,1,1.4,1.4L2.39,5.983,6.7,10.277a.992.992,0,0,1-1.4,1.4Z" transform="translate(0 3.043)"/>
+    </clipPath>
+  </defs>
+  <g id="Icon_Code" data-name="Icon/Code" transform="translate(0.001)">
+    <g id="Group_85" data-name="Group 85">
+      <path id="Combined_Shape-2" data-name="Combined Shape" d="M11.289,11.677a.989.989,0,0,1,0-1.4L15.6,5.983,11.289,1.689a.992.992,0,0,1,1.4-1.4L17.7,5.278a1,1,0,0,1,0,1.411l-5.007,4.988a1,1,0,0,1-1.4,0Zm-5.993,0L.289,6.689a1,1,0,0,1,0-1.411L5.3.29a.992.992,0,1,1,1.4,1.4L2.39,5.983,6.7,10.277a.992.992,0,0,1-1.4,1.4Z" transform="translate(0 3.043)"/>
+      <g id="Mask_Group_88" data-name="Mask Group 88" clip-path="url(#clip-path)">
+        <rect id="Color" width="18" height="18" fill="#40404b"/>
+      </g>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,269 @@
+{
+    "colorSchemes": {
+        "light": {
+            "palette": {
+                "mode": "light",
+                "common": {
+                    "black": "#1d2028",
+                    "white": "#ffffff"
+                },
+                "primary": {
+                    "light": "#a6B3ff",
+                    "main": "#5567d5",
+                    "dark": "#4d5ec0",
+                    "contrastText": "#ffffff"
+                },
+                "secondary": {
+                    "light": "#f7f8fb",
+                    "main": "#8d91a3",
+                    "dark": "#40404b",
+                    "contrastText": "#ffffff"
+                },
+                "error": {
+                    "light": "#fceded",
+                    "main": "#fe523c",
+                    "dark": "#d64733",
+                    "contrastText": "#ffffff"
+                },
+                "warning": {
+                    "light": "#fff5eb",
+                    "main": "#ff9d52",
+                    "dark": "#ff9133",
+                    "contrastText": "#1d2028"
+                },
+                "success": {
+                    "light": "#effdf2",
+                    "main": "#36b475",
+                    "dark": "#05a26b",
+                    "contrastText": "#ffffff"
+                },
+                "grey": {
+                    "100": "#e6e7ec",
+                    "200": "#cbcedb"
+                },
+                "text": {
+                    "primary": "#1d2028",
+                    "secondary": "#cbcedb"
+                },
+                "background": {
+                    "default": "#f7f8fb",
+                    "paper": "#ffffff"
+                }
+            }
+        },
+        "dark": {
+            "palette": {
+                "mode": "dark",
+                "common": {
+                    "black": "#121212",
+                    "white": "#ffffff"
+                },
+                "primary": {
+                    "light": "#3D4BA3",
+                    "main": "#5567d5",
+                    "dark": "#7B86FF",
+                    "contrastText": "#ffffff"
+                },
+                "secondary": {
+                    "light": "#4A4A57",
+                    "main": "#2D2D35",
+                    "dark": "#1E1E24",
+                    "contrastText": "#ffffff"
+                },
+                "error": {
+                    "light": "#FF6B6B",
+                    "main": "#fe523c",
+                    "dark": "#CF3A28",
+                    "contrastText": "#ffffff"
+                },
+                "warning": {
+                    "light": "#FFB77E",
+                    "main": "#ff9d52",
+                    "dark": "#D67B33",
+                    "contrastText": "#121212"
+                },
+                "success": {
+                    "light": "#4CD08D",
+                    "main": "#36b475",
+                    "dark": "#258F5D",
+                    "contrastText": "#ffffff"
+                },
+                "grey": {
+                    "100": "#3A3A45",
+                    "200": "#2D2D35"
+                },
+                "text": {
+                    "primary": "#ffffff",
+                    "secondary": "#B8B9C1"
+                },
+                "background": {
+                    "paper": "#121212",
+                    "default": "#2D2D35"
+                }
+            }
+        }
+    },
+    "typography": {
+        "fontFamily": "Gilmer, sans-serif",
+        "h1": {
+            "fontSize": "43px",
+            "fontWeight": 700,
+            "fontStretch": "normal",
+            "fontStyle": "normal",
+            "lineHeight": 1.11,
+            "letterSpacing": "normal"
+        },
+        "h2": {
+            "fontSize": "29px",
+            "fontWeight": 700,
+            "fontStretch": "normal",
+            "fontStyle": "normal",
+            "lineHeight": 1.4,
+            "letterSpacing": "normal"
+        },
+        "h3": {
+            "fontSize": "22px",
+            "fontWeight": 500,
+            "fontStretch": "normal",
+            "fontStyle": "normal",
+            "lineHeight": 1.4,
+            "letterSpacing": "normal"
+        },
+        "h4": {
+            "fontSize": "15px",
+            "fontWeight": 600,
+            "fontStretch": "normal",
+            "fontStyle": "normal",
+            "lineHeight": 1.6,
+            "letterSpacing": "normal"
+        },
+        "h5": {
+            "fontSize": "13px",
+            "fontWeight": 600,
+            "fontStretch": "normal",
+            "fontStyle": "normal",
+            "lineHeight": 1.8,
+            "letterSpacing": "normal"
+        },
+        "h6": {
+            "fontSize": "12px",
+            "fontWeight": 600,
+            "fontStretch": "normal",
+            "fontStyle": "normal",
+            "lineHeight": 2,
+            "letterSpacing": "normal"
+        },
+        "subtitle1": {
+            "fontSize": "16px",
+            "fontWeight": 400,
+            "fontStretch": "normal",
+            "fontStyle": "normal",
+            "lineHeight": 1.5,
+            "letterSpacing": "normal"
+        },
+        "subtitle2": {
+            "fontSize": "15px",
+            "fontWeight": 400,
+            "fontStretch": "normal",
+            "fontStyle": "normal",
+            "lineHeight": 1.6,
+            "letterSpacing": "normal"
+        },
+        "overline": {
+            "fontSize": "14px",
+            "fontWeight": 400,
+            "fontStretch": "normal",
+            "fontStyle": "normal",
+            "lineHeight": 1.71,
+            "letterSpacing": "normal",
+            "textTransform": "none"
+        },
+        "body1": {
+            "fontSize": "13px",
+            "fontWeight": 400,
+            "fontStretch": "normal",
+            "fontStyle": "normal",
+            "lineHeight": 1.53846154,
+            "letterSpacing": "normal"
+        },
+        "body2": {
+            "fontSize": "12px",
+            "fontWeight": 400,
+            "fontStretch": "normal",
+            "fontStyle": "normal",
+            "lineHeight": 1.33333,
+            "letterSpacing": "normal"
+        },
+        "caption": {
+            "fontSize": "11px",
+            "fontWeight": 400,
+            "fontStretch": "normal",
+            "fontStyle": "normal",
+            "lineHeight": 2.1,
+            "letterSpacing": "normal"
+        }
+    },
+    "zIndex": {
+        "appBar": 1200,
+        "drawer": 1100
+    },
+    "dark": {
+        "shadows": [
+            "none",
+            "0 1px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 2px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 3px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 4px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 5px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 6px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 7px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 8px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 9px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 10px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 11px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 12px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 13px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 14px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 15px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 16px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 17px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 18px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 19px 6px 2px rgba(0, 0, 0, 0.1)",
+            "inset 0 0 0 1px #3A3A45, inset 0 2px 1px 0 rgba(0,0,0,0.07), 0 0 0 0 rgba(50,50,77,0.07)",
+            "inset 0 0 0 1px rgba(85,103,213,0.4), inset 0 1px 1px 0 rgba(0,0,0,0.07), 0 0 0 0 rgba(50,50,77,0.07)",
+            "inset 0 0 0 1px #EA4C4D, inset 0 1px 1px 0 rgba(0,0,0,0.07), 0 0 0 0 rgba(50,50,77,0.07)",
+            "0 22px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 23px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 24px 6px 2px rgba(0, 0, 0, 0.1)"
+        ]
+    },
+    "light": {
+        "shadows": [
+            "none",
+            "0 1px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 2px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 3px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 4px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 5px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 6px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 7px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 8px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 9px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 10px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 11px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 12px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 13px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 14px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 15px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 16px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 17px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 18px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 19px 6px 2px rgba(0, 0, 0, 0.1)",
+            "inset 0 0 0 1px #DEE0E7, inset 0 2px 1px 0 rgba(0,0,0,0.07), 0 0 0 0 rgba(50,50,77,0.07)",
+            "inset 0 0 0 1px rgba(85,103,213,0.4), inset 0 1px 1px 0 rgba(0,0,0,0.07), 0 0 0 0 rgba(50,50,77,0.07)",
+            "inset 0 0 0 1px #EA4C4D, inset 0 1px 1px 0 rgba(0,0,0,0.07), 0 0 0 0 rgba(50,50,77,0.07)",
+            "0 23px 6px 2px rgba(0, 0, 0, 0.1)",
+            "0 24px 6px 2px rgba(0, 0, 0, 0.1)"
+        ]
+    }
+}

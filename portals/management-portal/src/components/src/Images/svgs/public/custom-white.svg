@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>3F9BC1E1-3537-466C-BBFD-ED53EC598C69</title>
+    <g id="Apps" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="apps-select-item" transform="translate(-236.000000, -276.000000)">
+            <g id="Table/Row/Default" transform="translate(216.000000, 256.000000)">
+                <g id="Icon/Apps/Webhook" transform="translate(20.000000, 20.000000)">
+                    <path d="M7,2 L6.94089693,2.07982774 C6.34880863,2.90139724 6,3.90996431 6,5 C6,7.76142375 8.23857625,10 11,10 C12.1261445,10 13.1653335,9.62769913 14.0011995,8.99946494 C14,12.8659932 10.8659932,16 7,16 C3.13400675,16 -8.8817842e-15,12.8659932 -8.8817842e-15,9 C-8.8817842e-15,5.13400675 3.13400675,2 7,2 L7,2 Z" id="Combined-Shape" fill="#FFFFFF"></path>
+                    <circle id="Oval" fill="#CBCEDB" cx="11.5" cy="4.5" r="4.5"></circle>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

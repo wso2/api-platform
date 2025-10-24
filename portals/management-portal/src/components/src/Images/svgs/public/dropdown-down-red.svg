@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="8px" height="6px" viewBox="0 0 8 6" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>C4EE940E-BABE-4B59-B253-6241D32D562A</title>
+    <defs>
+        <polygon id="path-1" points="4 0 8 6 0 6"></polygon>
+    </defs>
+    <g id="API" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="api-proxy-lifecycle-7" transform="translate(-288.000000, -877.000000)">
+            <g id="Icon/Dropdown/Down-Copy-2" transform="translate(288.000000, 877.000000)">
+                <mask id="mask-2" fill="white">
+                    <use xlink:href="#path-1"></use>
+                </mask>
+                <use id="Triangle" fill="#FE523C" fill-rule="nonzero" transform="translate(4.000000, 3.000000) rotate(-180.000000) translate(-4.000000, -3.000000) " xlink:href="#path-1"></use>
+            </g>
+        </g>
+    </g>
+</svg>

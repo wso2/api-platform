@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>BDA8F2BD-01B3-4A64-A4D2-164773906574</title>
+    <g id="Home" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="new-remote-apps-listing" transform="translate(-165.000000, -252.000000)">
+            <g id="Icon/Apps/Webhook" transform="translate(165.000000, 252.000000)">
+                <path d="M7,2 L6.94089693,2.07982774 C6.34880863,2.90139724 6,3.90996431 6,5 C6,7.76142375 8.23857625,10 11,10 C12.1261445,10 13.1653335,9.62769913 14.0011995,8.99946494 C14,12.8659932 10.8659932,16 7,16 C3.13400675,16 0,12.8659932 0,9 C0,5.13400675 3.13400675,2 7,2 L7,2 Z" id="Combined-Shape" fill="#5567D5"></path>
+                <circle id="Oval" fill="#CCD1F2" cx="11.5" cy="4.5" r="4.5"></circle>
+            </g>
+        </g>
+    </g>
+</svg>
