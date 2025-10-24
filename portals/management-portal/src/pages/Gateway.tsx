@@ -69,10 +69,10 @@ const relativeTime = (value?: string | Date | null) => {
   return `${day} day${day > 1 ? "s" : ""} ago`;
 };
 
-const codeFor = (gatewayName: string, gatewayToken?: string) =>
-  `curl -Ls https://bijira.dev/quick-start | bash -s -- -k ${
-    gatewayToken ?? "$GATEWAY_KEY"
-  } --name ${gatewayName}`;
+const codeFor = (_gatewayName: string, gatewayToken?: string) =>
+  `GATEWAY_CONTROLPLANE_TOKEN=${
+    gatewayToken ?? "$GATEWAY_CONTROLPLANE_TOKEN"
+  } docker compose up`;
 
 const GatewayContent: React.FC = () => {
   const {
@@ -105,7 +105,9 @@ const GatewayContent: React.FC = () => {
   const [host, setHost] = React.useState("");
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [manualRotatingId, setManualRotatingId] = React.useState<string | null>(null);
+  const [manualRotatingId, setManualRotatingId] = React.useState<string | null>(
+    null
+  );
 
   // snackbar
   const [snack, setSnack] = React.useState<{
@@ -129,11 +131,7 @@ const GatewayContent: React.FC = () => {
   React.useEffect(() => {
     if (mode === "choose" && gateways.length > 0) {
       setMode("list");
-    } else if (
-      mode === "list" &&
-      !gatewaysLoading &&
-      gateways.length === 0
-    ) {
+    } else if (mode === "list" && !gatewaysLoading && gateways.length === 0) {
       setMode("choose");
     }
   }, [gateways.length, gatewaysLoading, mode]);
@@ -472,23 +470,28 @@ const GatewayContent: React.FC = () => {
       </Grid>
 
       {/* --- Start: Use case section (after gateway cards) --- */}
-      <Box mt={6} display={"flex"} flexDirection={"column"} alignItems={"center"}>
+      <Box
+        mt={6}
+        display={"flex"}
+        flexDirection={"column"}
+        alignItems={"center"}
+      >
         <Box>
-        <Typography variant="body1" fontWeight={600} sx={{ mb: 1 }}>
-          Start with a popular use case
-        </Typography>
+          <Typography variant="body1" fontWeight={600} sx={{ mb: 1 }}>
+            Start with a popular use case
+          </Typography>
 
-        <Tabs
-          value={useCaseTab}
-          onChange={(_, v: "api" | "ai") => setUseCaseTab(v)}
-          sx={{
-            mb: 2,
-            "& .MuiTab-root": { textTransform: "none", minHeight: 36 },
-          }}
-        >
-          <Tab label="API Gateway" value="api" />
-          <Tab label="AI Gateway" value="ai" />
-        </Tabs>
+          <Tabs
+            value={useCaseTab}
+            onChange={(_, v: "api" | "ai") => setUseCaseTab(v)}
+            sx={{
+              mb: 2,
+              "& .MuiTab-root": { textTransform: "none", minHeight: 36 },
+            }}
+          >
+            <Tab label="API Gateway" value="api" />
+            <Tab label="AI Gateway" value="ai" />
+          </Tabs>
         </Box>
 
         {useCaseTab === "api" ? (
@@ -800,40 +803,29 @@ const GatewayContent: React.FC = () => {
                     overflowX: "auto",
                   }}
                 >
-                  {/* lightweight color accenting */}
                   <Box
                     component="span"
                     sx={{ color: "#C5E478", fontWeight: 700 }}
                   >
-                    curl
-                  </Box>{" "}
-                  -Ls{" "}
-                  <Box component="span" sx={{ color: "#6EC1FF" }}>
-                    https://bijira.dev/quick-start
-                  </Box>{" "}
-                  |{" "}
+                    GATEWAY_CONTROLPLANE_TOKEN
+                  </Box>
+                  =
+                  {hasToken ? (
+                    <Box component="span" sx={{ color: "#7FE0E7" }}>
+                      {"<Gateway Token>"}
+                    </Box>
+                  ) : (
+                    <Typography component="span" color="text.secondary">
+                      Rotate the token to generate this command.
+                    </Typography>
+                  )}{" "}
                   <Box
                     component="span"
                     sx={{ color: "#E8D06B", fontWeight: 700 }}
                   >
-                    bash
+                    docker
                   </Box>{" "}
-                  -s -- -k{" "}
-                  {hasToken ? (
-                    <>
-                      <Box component="span" sx={{ color: "#7FE0E7" }}>
-                        {latestToken}
-                      </Box>{" "}
-                      --name{" "}
-                      <Box component="span" sx={{ color: "#F2A65A" }}>
-                        {g.name}
-                      </Box>
-                    </>
-                  ) : (
-                    <Typography color="text.secondary">
-                      Rotate the token to generate this command.
-                    </Typography>
-                  )}
+                  compose up
                 </Box>
 
                 <Box
@@ -852,9 +844,10 @@ const GatewayContent: React.FC = () => {
                       disabled={manualRotatingId === g.id}
                       size="small"
                     >
-                      <CachedRoundedIcon fontSize="small" />
+                      <CachedRoundedIcon style={{ color: "#fff", fill: "#fff" }} />
                     </IconButton>
                   </Tooltip>
+
                   <Tooltip title="Copy command">
                     <IconButton
                       variant="outlined"
@@ -862,7 +855,7 @@ const GatewayContent: React.FC = () => {
                       disabled={!hasToken}
                       size="small"
                     >
-                      <Copy />
+                      <Copy style={{ color: "#fff", fill: "#fff" }} />
                     </IconButton>
                   </Tooltip>
                 </Box>

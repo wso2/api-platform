@@ -9,20 +9,21 @@ import Gateways from "./pages/Gateway";
 import Portals from "./pages/PortalManagement";
 
 // API Proxies
-import APIs from "./pages/APIs"; // list page you already have
+import APIs from "./pages/APIs";
 import ApiTest from "./pages/apis/ApiTest";
 import ApiDeploy from "./pages/apis/ApiDeploy";
 import ApiPolicies from "./pages/apis/ApiPolicies";
 import ApiOverview from "./pages/apis/ApiOverview";
+import ApiDevelop from "./pages/apis/ApiDevelop"; // <-- ADD
 
 // MCP Servers
-import McpServers from "./pages/McpServers"; // new simple list page (see below)
+import McpServers from "./pages/McpServers";
 import McpTest from "./pages/mcp/McpTest";
 import McpDeploy from "./pages/mcp/McpDeploy";
 import McpPolicies from "./pages/mcp/McpPolicies";
 
 // API Products
-import ApiProducts from "./pages/ApiProducts"; // new simple list page (see below)
+import ApiProducts from "./pages/ApiProducts";
 import ProductsTest from "./pages/products/ProductsTest";
 import ProductsDeploy from "./pages/products/ProductsDeploy";
 import ProductsPolicies from "./pages/products/ProductsPolicies";
@@ -31,27 +32,20 @@ import Admin from "./pages/Admin";
 import Policies from "./pages/Policies";
 import { useOrganization } from "./context/OrganizationContext";
 import { useProjects } from "./context/ProjectContext";
-import { slugify } from "./utils/slug";
 import { projectSlugFromName } from "./utils/projectSlug";
 import ProjectOverview from "./pages/ProjectOverview";
+
 const OverviewEntry: React.FC = () => {
   const { organization, loading } = useOrganization();
   const { selectedProject } = useProjects();
 
-  if (loading || !organization) {
-    return null;
-  }
+  if (loading || !organization) return null;
 
   const projectSegment = selectedProject
     ? `/${projectSlugFromName(selectedProject.name, selectedProject.id)}`
     : "";
 
-  return (
-    <Navigate
-      to={`/${organization.handle}${projectSegment}/overview`}
-      replace
-    />
-  );
+  return <Navigate to={`/${organization.handle}${projectSegment}/overview`} replace />;
 };
 
 const App: React.FC = () => {
@@ -69,6 +63,16 @@ const App: React.FC = () => {
             <Route path="gateways" element={<Gateways />} />
             <Route path="portals" element={<Portals />} />
             <Route path="policies" element={<Policies />} />
+            {/* API Proxies (org scope) */}
+            <Route path="apis" element={<APIs />} />
+            <Route path="apis/develop" element={<ApiDevelop />} />   {/* <-- ADD */}
+            <Route path="apis/test" element={<ApiTest />} />
+            <Route path="apis/deploy" element={<ApiDeploy />} />
+            <Route path="apis/policies" element={<ApiPolicies />} />
+            <Route path="apis/:apiId/overview" element={<ApiOverview />} />
+            <Route path=":apiSlug/apioverview" element={<ApiOverview />} />
+
+            {/* MCP + Products + Admin */}
             <Route path="mcp" element={<McpServers />} />
             <Route path="mcp/test" element={<McpTest />} />
             <Route path="mcp/deploy" element={<McpDeploy />} />
@@ -79,19 +83,22 @@ const App: React.FC = () => {
             <Route path="products/policies" element={<ProductsPolicies />} />
             <Route path="admin" element={<Admin />} />
 
-            <Route path="apis" element={<APIs />} />
-            <Route path="apis/:apiId/overview" element={<ApiOverview />} />
-            <Route path="apis/test" element={<ApiTest />} />
-            <Route path="apis/deploy" element={<ApiDeploy />} />
-            <Route path="apis/policies" element={<ApiPolicies />} />
-            <Route path=":apiSlug/apioverview" element={<ApiOverview />} />
-
+            {/* Project scope */}
             <Route path=":projectHandle">
               <Route index element={<Navigate to="overview" replace />} />
               <Route path="overview" element={<ProjectOverview />} />
               <Route path="gateways" element={<Gateways />} />
               <Route path="portals" element={<Portals />} />
               <Route path="policies" element={<Policies />} />
+              {/* API Proxies (project scope) */}
+              <Route path="apis" element={<APIs />} />
+              <Route path="apis/develop" element={<ApiDevelop />} /> {/* <-- ADD */}
+              <Route path="apis/test" element={<ApiTest />} />
+              <Route path="apis/deploy" element={<ApiDeploy />} />
+              <Route path="apis/policies" element={<ApiPolicies />} />
+              <Route path="apis/:apiId/overview" element={<ApiOverview />} />
+              <Route path=":apiSlug/apioverview" element={<ApiOverview />} />
+              {/* MCP + Products + Admin */}
               <Route path="mcp" element={<McpServers />} />
               <Route path="mcp/test" element={<McpTest />} />
               <Route path="mcp/deploy" element={<McpDeploy />} />
@@ -101,12 +108,6 @@ const App: React.FC = () => {
               <Route path="products/deploy" element={<ProductsDeploy />} />
               <Route path="products/policies" element={<ProductsPolicies />} />
               <Route path="admin" element={<Admin />} />
-              <Route path="apis" element={<APIs />} />
-              <Route path="apis/:apiId/overview" element={<ApiOverview />} />
-              <Route path="apis/test" element={<ApiTest />} />
-              <Route path="apis/deploy" element={<ApiDeploy />} />
-              <Route path="apis/policies" element={<ApiPolicies />} />
-              <Route path=":apiSlug/apioverview" element={<ApiOverview />} />
             </Route>
           </Route>
 

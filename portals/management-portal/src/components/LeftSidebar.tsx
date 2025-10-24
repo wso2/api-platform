@@ -37,10 +37,7 @@ import { useOrganization } from "../context/OrganizationContext";
 import { useProjects } from "../context/ProjectContext";
 import { slugEquals, slugify } from "../utils/slug";
 import { isRootLevelSegment, splitPathSegments } from "../utils/navigation";
-import {
-  projectSlugFromName,
-  projectSlugMatches,
-} from "../utils/projectSlug";
+import { projectSlugFromName, projectSlugMatches } from "../utils/projectSlug";
 
 export const LEFT_DRAWER_WIDTH = 240;
 
@@ -72,8 +69,7 @@ const LeftSidebar: React.FC = () => {
   const { selectedProject, projects } = useProjects();
 
   const firstSegment = segments[0] ?? null;
-  const isRootLevel =
-    firstSegment && isRootLevelSegment(firstSegment);
+  const isRootLevel = firstSegment && isRootLevelSegment(firstSegment);
   const candidateOrgFromSegments =
     firstSegment &&
     (!isRootLevel ||
@@ -127,7 +123,9 @@ const LeftSidebar: React.FC = () => {
     apiOverviewIndex > 0 ? segments[apiOverviewIndex - 1] : null;
   const apiOverviewPath = React.useMemo(() => {
     if (!currentApiSlug) {
-      return projectBasePath ? `${projectBasePath}/apis` : `${baseOrgPath}/apis`;
+      return projectBasePath
+        ? `${projectBasePath}/apis`
+        : `${baseOrgPath}/apis`;
     }
     return projectBasePath
       ? `${projectBasePath}/${currentApiSlug}/apioverview`
@@ -151,10 +149,7 @@ const LeftSidebar: React.FC = () => {
     const slugPart = effectiveProjectSlug
       ? `(?:/${escapeForRegex(effectiveProjectSlug)})?`
       : "";
-    const regex = new RegExp(
-      `^/${escapedOrg}${slugPart}/overview$`,
-      "i"
-    );
+    const regex = new RegExp(`^/${escapedOrg}${slugPart}/overview$`, "i");
     return regex.test(location.pathname);
   }, [orgHandle, effectiveProjectSlug, location.pathname]);
 
@@ -162,7 +157,10 @@ const LeftSidebar: React.FC = () => {
   const [openMcp, setOpenMcp] = React.useState(false);
   const [openProducts, setOpenProducts] = React.useState(false);
 
-  React.useEffect(() => setOpenApis(apisChildActive || apiOverviewActive), [apisChildActive, apiOverviewActive]);
+  React.useEffect(
+    () => setOpenApis(apisChildActive || apiOverviewActive),
+    [apisChildActive, apiOverviewActive]
+  );
   React.useEffect(() => setOpenMcp(mcpChildActive), [mcpChildActive]);
   React.useEffect(() => setOpenProducts(prodChildActive), [prodChildActive]);
 
@@ -281,7 +279,8 @@ const LeftSidebar: React.FC = () => {
     selectedOverride?: boolean;
     disabled?: boolean;
   }) => {
-    const active = !disabled && (selectedOverride ?? useActive(to, Boolean(end)));
+    const active =
+      !disabled && (selectedOverride ?? useActive(to, Boolean(end)));
     return (
       <ListItemButton
         component={(disabled ? "div" : RouterLink) as any}
@@ -402,21 +401,33 @@ const LeftSidebar: React.FC = () => {
           selectedOverride={overviewSelected}
         />
         <NavItem
-          to={projectBasePath ? `${projectBasePath}/gateways` : `${baseOrgPath}/gateways`}
+          to={
+            projectBasePath
+              ? `${projectBasePath}/gateways`
+              : `${baseOrgPath}/gateways`
+          }
           end
           icon={<HubOutlinedIcon fontSize="small" />}
           label="Gateways"
           selectedOverride={gatewaysSelected}
         />
         <NavItem
-          to={projectBasePath ? `${projectBasePath}/portals` : `${baseOrgPath}/portals`}
+          to={
+            projectBasePath
+              ? `${projectBasePath}/portals`
+              : `${baseOrgPath}/portals`
+          }
           end
           icon={<MenuProjectSheet fontSize="small" />}
           label="Portals"
           selectedOverride={portalsSelected}
         />
         <NavItem
-          to={projectBasePath ? `${projectBasePath}/policies` : `${baseOrgPath}/policies`}
+          to={
+            projectBasePath
+              ? `${projectBasePath}/policies`
+              : `${baseOrgPath}/policies`
+          }
           end
           icon={<MenuPolicies fontSize="small" />}
           label="Policies"
@@ -425,7 +436,9 @@ const LeftSidebar: React.FC = () => {
 
         {/* API Proxies group */}
         <ParentRow
-          to={projectBasePath ? `${projectBasePath}/apis` : `${baseOrgPath}/apis`}
+          to={
+            projectBasePath ? `${projectBasePath}/apis` : `${baseOrgPath}/apis`
+          }
           label="API Proxies"
           icon={<MenuAPIDefinition fontSize="small" />}
           open={openApis}
@@ -443,13 +456,21 @@ const LeftSidebar: React.FC = () => {
           />
           <NavItem
             child
-            to={projectBasePath ? `${projectBasePath}/apis/develop` : `${baseOrgPath}/apis/develop`}
+            to={
+              projectBasePath
+                ? `${projectBasePath}/apis/develop`
+                : `${baseOrgPath}/apis/develop`
+            }
             icon={<MenuDevelop fontSize="small" />}
             label="Develop"
           />
           <NavItem
             child
-            to={projectBasePath ? `${projectBasePath}/apis/test` : `${baseOrgPath}/apis/test`}
+            to={
+              projectBasePath
+                ? `${projectBasePath}/apis/test`
+                : `${baseOrgPath}/apis/test`
+            }
             icon={<MenuTest fontSize="small" />}
             label="Test"
           />
@@ -467,13 +488,21 @@ const LeftSidebar: React.FC = () => {
         <Collapse in={openMcp} timeout="auto" unmountOnExit>
           <NavItem
             child
-            to={projectBasePath ? `${projectBasePath}/mcp/test` : `${baseOrgPath}/mcp/test`}
+            to={
+              projectBasePath
+                ? `${projectBasePath}/mcp/test`
+                : `${baseOrgPath}/mcp/test`
+            }
             icon={<MenuDevelop fontSize="small" />}
             label="Gateways"
           />
           <NavItem
             child
-            to={projectBasePath ? `${projectBasePath}/mcp/deploy` : `${baseOrgPath}/mcp/deploy`}
+            to={
+              projectBasePath
+                ? `${projectBasePath}/mcp/deploy`
+                : `${baseOrgPath}/mcp/deploy`
+            }
             icon={<MenuDeploy fontSize="small" />}
             label="Consumers"
           />
@@ -481,7 +510,11 @@ const LeftSidebar: React.FC = () => {
 
         {/* API Products group */}
         <ParentRow
-          to={projectBasePath ? `${projectBasePath}/products` : `${baseOrgPath}/products`}
+          to={
+            projectBasePath
+              ? `${projectBasePath}/products`
+              : `${baseOrgPath}/products`
+          }
           label="API Products"
           icon={<MenuBusinessInsights fontSize="small" />}
           open={openProducts}
@@ -491,20 +524,32 @@ const LeftSidebar: React.FC = () => {
         <Collapse in={openProducts} timeout="auto" unmountOnExit>
           <NavItem
             child
-            to={projectBasePath ? `${projectBasePath}/products/test` : `${baseOrgPath}/products/test`}
+            to={
+              projectBasePath
+                ? `${projectBasePath}/products/test`
+                : `${baseOrgPath}/products/test`
+            }
             icon={<MenuDevelop fontSize="small" />}
             label="Gateways"
           />
           <NavItem
             child
-            to={projectBasePath ? `${projectBasePath}/products/deploy` : `${baseOrgPath}/products/deploy`}
+            to={
+              projectBasePath
+                ? `${projectBasePath}/products/deploy`
+                : `${baseOrgPath}/products/deploy`
+            }
             icon={<MenuTest fontSize="small" />}
             label="Consumers"
           />
         </Collapse>
 
         <NavItem
-          to={projectBasePath ? `${projectBasePath}/admin` : `${baseOrgPath}/admin`}
+          to={
+            projectBasePath
+              ? `${projectBasePath}/admin`
+              : `${baseOrgPath}/admin`
+          }
           end
           icon={<SettingsIcon fontSize="small" />}
           label="Admin"

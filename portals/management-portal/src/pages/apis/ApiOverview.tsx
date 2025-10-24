@@ -495,9 +495,30 @@ const ApiOverviewContent: React.FC = () => {
           <Button
             variant="outlined"
             startIcon={<RocketLaunchIcon />}
+            onClick={() => {
+              // open the "API Proxies" submenu
+              window.dispatchEvent(
+                new CustomEvent("open-submenu", { detail: { group: "apis" } })
+              );
+
+              // build the correct base path (org-only or org+project)
+              const base =
+                orgHandle && projectHandle
+                  ? `/${orgHandle}/${projectHandle}/apis/develop`
+                  : orgHandle
+                  ? `/${orgHandle}/apis/develop`
+                  : `/apis/develop`;
+
+              const params = new URLSearchParams();
+              params.set("apiId", api.id);
+              params.set("apiSlug", slugify(api.name)); // optional if you want it
+
+              navigate(`${base}?${params.toString()}`);
+            }}
             sx={{
               textTransform: "none",
               borderColor: "#069668",
+
               color: "#069668",
               "&:hover": {
                 borderColor: "#069668",

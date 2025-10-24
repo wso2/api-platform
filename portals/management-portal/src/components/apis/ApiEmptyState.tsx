@@ -6,12 +6,12 @@ import {
   CardContent,
   Typography,
   Stack,
-  Button,
 } from "@mui/material";
 import RocketLaunchRoundedIcon from "@mui/icons-material/RocketLaunchRounded";
 import CloudUploadRoundedIcon from "@mui/icons-material/CloudUploadRounded";
 import BuildRoundedIcon from "@mui/icons-material/BuildRounded";
 import SmartToyRoundedIcon from "@mui/icons-material/SmartToyRounded";
+import { Button } from "../src/components/Button";
 
 type TemplateKey = "endpoint" | "contract" | "scratch" | "genai";
 
@@ -113,7 +113,7 @@ const ApiEmptyState: React.FC<ApiEmptyStateProps> = ({ onAction }) => (
                 <Button
                   variant="contained"
                   color="success"
-                  onClick={(event) => {
+                  onClick={(event: { stopPropagation: () => void; }) => {
                     event.stopPropagation();
                     if (template.key === "endpoint") {
                       onAction({ type: "createFromEndpoint" });
@@ -128,7 +128,7 @@ const ApiEmptyState: React.FC<ApiEmptyStateProps> = ({ onAction }) => (
                 {template.showLearnMore && (
                   <Button
                     variant="text"
-                    onClick={(event) => {
+                    onClick={(event: { stopPropagation: () => void; }) => {
                       event.stopPropagation();
                       onAction({ type: "learnMore", template: template.key });
                     }}

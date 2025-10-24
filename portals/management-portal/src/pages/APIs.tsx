@@ -11,6 +11,9 @@ import {
   InputAdornment,
   Rating,
   Stack,
+  Step,
+  StepLabel,
+  Stepper,
   TextField,
   Typography,
 } from "@mui/material";
@@ -25,16 +28,22 @@ import { openSidebarGroup } from "../utils/sidebar";
 import { ApiProvider, useApisContext } from "../context/ApiContext";
 import { useOrganization } from "../context/OrganizationContext";
 import { useProjects } from "../context/ProjectContext";
-import { slugEquals, slugify } from "../utils/slug";
+import { slugify } from "../utils/slug";
 import { projectSlugFromName, projectSlugMatches } from "../utils/projectSlug";
 import type { ApiSummary } from "../hooks/apis";
 import ApiEmptyState, {
   type EmptyStateAction,
 } from "../components/apis/ApiEmptyState";
-import EndpointCreationDialog, {
-  type EndpointCreationState,
-  type EndpointWizardStep,
-} from "../components/apis/EndpointCreationDialog";
+
+// ——— Types kept from your dialog ———
+export type EndpointWizardStep = "endpoint" | "details";
+export type EndpointCreationState = {
+  endpointUrl: string;
+  name: string;
+  context: string;
+  version: string;
+  description?: string;
+};
 
 type ApiCardData = {
   id: string;
@@ -180,12 +189,8 @@ const ApiListContent: React.FC = () => {
   const navigate = useNavigate();
   const params = useParams<{ orgHandle?: string; projectHandle?: string }>();
   const { organization } = useOrganization();
-  const {
-    projects,
-    selectedProject,
-    setSelectedProject,
-    projectsLoaded,
-  } = useProjects();
+  const { projects, selectedProject, setSelectedProject, projectsLoaded } =
+    useProjects();
   const { apis, loading, error, createApi } = useApisContext();
 
   const [query, setQuery] = React.useState("");
@@ -218,14 +223,10 @@ const ApiListContent: React.FC = () => {
     if (selectedProject || !projectsLoaded || !projectSlugParam) {
       return;
     }
-
-    const match = projects.find((project) =>
-      projectSlugMatches(project.name, project.id, projectSlugParam)
+    const match = projects.find((p) =>
+      projectSlugMatches(p.name, p.id, projectSlugParam)
     );
-
-    if (match) {
-      setSelectedProject(match);
-    }
+    if (match) setSelectedProject(match);
   }, [
     projectSlugParam,
     projects,
@@ -236,9 +237,7 @@ const ApiListContent: React.FC = () => {
 
   const filteredApis = React.useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) {
-      return apis;
-    }
+    if (!q) return apis;
     return apis.filter((api) => {
       const transports = api.transport ?? [];
       return (
@@ -261,16 +260,17 @@ const ApiListContent: React.FC = () => {
         );
         return;
       }
-
       if (orgHandle) {
         navigate(`/${orgHandle}/${apiSlug}/apioverview?${search}`);
         return;
       }
-
       navigate(`/${apiSlug}/apioverview?${search}`);
     },
     [navigate, orgHandle, projectSlug]
   );
+
+  // Hide toolbar while inline wizard is open
+  const showToolbar = !loading && filteredApis.length > 0 && !wizardOpen;
 
   const resetWizard = React.useCallback(() => {
     setWizardStep("endpoint");
@@ -299,10 +299,7 @@ const ApiListContent: React.FC = () => {
 
   const handleWizardStateChange = React.useCallback(
     (patch: Partial<EndpointCreationState & { contextEdited?: boolean }>) => {
-      setWizardState((prev) => ({
-        ...prev,
-        ...patch,
-      }));
+      setWizardState((prev) => ({ ...prev, ...patch }));
     },
     []
   );
@@ -322,62 +319,12 @@ const ApiListContent: React.FC = () => {
     });
   }, []);
 
-  const handleContextChange = React.useCallback((value: string) => {
-    handleWizardStateChange({ context: value, contextEdited: true });
-  }, [handleWizardStateChange]);
-
-  const handleWizardCreate = React.useCallback(async () => {
-    if (!selectedProject) {
-      return;
-    }
-
-    const endpointUrl = wizardState.endpointUrl.trim();
-    const name = wizardState.name.trim();
-    const context = wizardState.context.trim();
-    const version = wizardState.version.trim() || "1.0.0";
-
-    if (!endpointUrl || !name || !context) {
-      setWizardError("Please complete all required fields.");
-      return;
-    }
-
-    try {
-      setWizardError(null);
-      setCreating(true);
-      const uniqueBackendName = `default-backend-${Date.now().toString(36)}${Math.random()
-        .toString(36)
-        .slice(2, 8)}`;
-
-      await createApi({
-        name,
-        context: context.startsWith("/") ? context : `/${context}`,
-        version,
-        description: wizardState.description?.trim() || undefined,
-        projectId: selectedProject.id,
-        backendServices: [
-          {
-            name: uniqueBackendName,
-            isDefault: true,
-            endpoints: [
-              {
-                url: endpointUrl,
-                description: "Default backend endpoint",
-              },
-            ],
-            retries: 0,
-          },
-        ],
-      });
-      setWizardOpen(false);
-      resetWizard();
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to create API";
-      setWizardError(message);
-    } finally {
-      setCreating(false);
-    }
-  }, [createApi, resetWizard, selectedProject, wizardState]);
+  const handleContextChange = React.useCallback(
+    (value: string) => {
+      handleWizardStateChange({ context: value, contextEdited: true });
+    },
+    [handleWizardStateChange]
+  );
 
   const inferNameFromEndpoint = React.useCallback((url: string) => {
     try {
@@ -407,24 +354,69 @@ const ApiListContent: React.FC = () => {
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-")
             .replace(/^-+|-+$/g, "");
-          handleWizardStateChange({ context: slug ? `/${slug}` : "", contextEdited: false });
+          handleWizardStateChange({
+            context: slug ? `/${slug}` : "",
+            contextEdited: false,
+          });
         }
       }
       setWizardStep(nextStep);
     },
-    [handleNameChange, handleWizardStateChange, inferNameFromEndpoint, wizardState]
+    [
+      handleNameChange,
+      handleWizardStateChange,
+      inferNameFromEndpoint,
+      wizardState,
+    ]
   );
 
-  const dialogState = React.useMemo<EndpointCreationState>(
-    () => ({
-      endpointUrl: wizardState.endpointUrl,
-      name: wizardState.name,
-      context: wizardState.context,
-      version: wizardState.version,
-      description: wizardState.description,
-    }),
-    [wizardState]
-  );
+  const handleWizardCreate = React.useCallback(async () => {
+    if (!selectedProject) return;
+
+    const endpointUrl = wizardState.endpointUrl.trim();
+    const name = wizardState.name.trim();
+    const context = wizardState.context.trim();
+    const version = wizardState.version.trim() || "1.0.0";
+
+    if (!endpointUrl || !name || !context) {
+      setWizardError("Please complete all required fields.");
+      return;
+    }
+
+    try {
+      setWizardError(null);
+      setCreating(true);
+      const uniqueBackendName = `default-backend-${Date.now().toString(
+        36
+      )}${Math.random().toString(36).slice(2, 8)}`;
+
+      await createApi({
+        name,
+        context: context.startsWith("/") ? context : `/${context}`,
+        version,
+        description: wizardState.description?.trim() || undefined,
+        projectId: selectedProject.id,
+        backendServices: [
+          {
+            name: uniqueBackendName,
+            isDefault: true,
+            endpoints: [
+              { url: endpointUrl, description: "Default backend endpoint" },
+            ],
+            retries: 0,
+          },
+        ],
+      });
+      setWizardOpen(false);
+      resetWizard();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to create API";
+      setWizardError(message);
+    } finally {
+      setCreating(false);
+    }
+  }, [createApi, resetWizard, selectedProject, wizardState]);
 
   if (!projectsLoaded) {
     return (
@@ -446,46 +438,49 @@ const ApiListContent: React.FC = () => {
 
   return (
     <Box>
-      <Box
-        sx={{
-          mb: 2,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 2,
-        }}
-      >
-        <Typography variant="h5">APIs</Typography>
+      {/* Toolbar (hidden while wizard open) */}
+      {showToolbar && (
+        <Box
+          sx={{
+            mb: 2,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 2,
+          }}
+        >
+          <Typography variant="h5">APIs</Typography>
 
-        <Stack direction="row" spacing={1} alignItems="center">
-          <TextField
-            size="small"
-            placeholder="Search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <IconButton edge="start" disableRipple tabIndex={-1}>
-                    <SearchIcon fontSize="small" />
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-          />
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            sx={{ textTransform: "none" }}
-            onClick={() => {
-              resetWizard();
-              setWizardOpen(true);
-            }}
-          >
-            Create
-          </Button>
-        </Stack>
-      </Box>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <TextField
+              size="small"
+              placeholder="Search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <IconButton edge="start" disableRipple tabIndex={-1}>
+                      <SearchIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              sx={{ textTransform: "none" }}
+              onClick={() => {
+                resetWizard();
+                setWizardOpen(true);
+              }}
+            >
+              Create
+            </Button>
+          </Stack>
+        </Box>
+      )}
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -493,63 +488,192 @@ const ApiListContent: React.FC = () => {
         </Alert>
       )}
 
-      {loading ? (
-        <Box display="flex" alignItems="center" justifyContent="center" mt={6}>
-          <CircularProgress size={28} />
-        </Box>
-      ) : filteredApis.length === 0 ? (
-        <ApiEmptyState onAction={handleEmptyStateAction} />
-      ) : (
+      {/* Inline Wizard */}
+      {wizardOpen && (
         <Box
           sx={{
-            display: "flex",
-            gap: 2,
-            alignItems:"flex-start"
+            mb: 3,
+            p: 3,
+            borderRadius: 2,
+            border: "1px solid",
+            borderColor: "divider",
+            bgcolor: "background.paper",
           }}
         >
-          {filteredApis.map((apiSummary) => {
-            const card = toCardData(apiSummary);
-            return (
-              <ApiCard
-                key={apiSummary.id}
-                api={card}
-                onClick={() => handleNavigate(apiSummary)}
+          <Typography variant="h6" fontWeight={700} sx={{ mb: 1 }}>
+            Create API from Endpoint
+          </Typography>
+
+          <Stepper
+            activeStep={wizardStep === "endpoint" ? 0 : 1}
+            sx={{ pt: 1, pb: 3, width: 500, maxWidth: "100%", mx: "auto" }}
+          >
+            <Step key="endpoint">
+              <StepLabel>Endpoint</StepLabel>
+            </Step>
+            <Step key="details">
+              <StepLabel>API Details</StepLabel>
+            </Step>
+          </Stepper>
+
+          {wizardStep === "endpoint" && (
+            <Stack spacing={2}>
+              <Typography color="text.secondary">
+                Provide the backend service URL. We'll use it to configure the
+                default endpoint of your API.
+              </Typography>
+              <TextField
+                label="Endpoint URL"
+                placeholder="https://api.example.com/v1"
+                fullWidth
+                value={wizardState.endpointUrl}
+                onChange={(e) =>
+                  handleWizardStateChange({ endpointUrl: e.target.value })
+                }
+                autoFocus
               />
-            );
-          })}
+            </Stack>
+          )}
+
+          {wizardStep === "details" && (
+            <Stack spacing={2}>
+              <TextField
+                label="Name"
+                placeholder="Sample API"
+                fullWidth
+                value={wizardState.name}
+                onChange={(e) =>
+                  handleWizardStateChange({ name: e.target.value })
+                }
+                autoFocus
+              />
+              <TextField
+                label="Context"
+                placeholder="/sample"
+                fullWidth
+                value={wizardState.context}
+                onChange={(e) => handleContextChange(e.target.value)}
+              />
+              <TextField
+                label="Version"
+                placeholder="1.0.0"
+                fullWidth
+                value={wizardState.version}
+                onChange={(e) =>
+                  handleWizardStateChange({ version: e.target.value })
+                }
+              />
+              <TextField
+                label="Description"
+                placeholder="Optional description"
+                fullWidth
+                multiline
+                minRows={2}
+                value={wizardState.description ?? ""}
+                onChange={(e) =>
+                  handleWizardStateChange({ description: e.target.value })
+                }
+              />
+              <Box sx={{ mt: 1 }}>
+                <Typography variant="body2" color="text.secondary">
+                  The endpoint URL will be added as the default backend of this
+                  API.
+                </Typography>
+              </Box>
+            </Stack>
+          )}
+
+          {/* Actions */}
+          <Stack
+            direction="row"
+            spacing={1}
+            justifyContent="flex-end"
+            sx={{ mt: 3 }}
+          >
+            <Button
+              variant="outlined"
+              onClick={() => {
+                if (!creating) {
+                  setWizardOpen(false);
+                  resetWizard();
+                }
+              }}
+              disabled={creating}
+              sx={{ textTransform: "none" }}
+            >
+              Cancel
+            </Button>
+
+            {wizardStep === "details" ? (
+              <Button
+                variant="contained"
+                onClick={handleWizardCreate}
+                disabled={
+                  creating ||
+                  !wizardState.name.trim() ||
+                  !wizardState.context.trim() ||
+                  !wizardState.version.trim()
+                }
+                sx={{ textTransform: "none" }}
+              >
+                {creating ? "Creating..." : "Create"}
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                onClick={() => handleWizardStepChange("details")}
+                disabled={!wizardState.endpointUrl.trim()}
+                sx={{ textTransform: "none" }}
+              >
+                Next
+              </Button>
+            )}
+          </Stack>
+
+          {wizardError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {wizardError}
+            </Alert>
+          )}
         </Box>
       )}
 
-      <EndpointCreationDialog
-        open={wizardOpen}
-        step={wizardStep}
-        state={dialogState}
-        onChange={(patch) => {
-          if (Object.prototype.hasOwnProperty.call(patch, "name")) {
-            handleNameChange(patch.name ?? "");
-            return;
-          }
-          if (Object.prototype.hasOwnProperty.call(patch, "context")) {
-            handleContextChange(patch.context ?? "");
-            return;
-          }
-          handleWizardStateChange(patch);
-        }}
-        onStepChange={handleWizardStepChange}
-        onClose={() => {
-          if (!creating) {
-            setWizardOpen(false);
-            resetWizard();
-          }
-        }}
-        onCreate={handleWizardCreate}
-        creating={creating}
-      />
-
-      {wizardOpen && wizardError && (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          {wizardError}
-        </Alert>
+      {/* List / Empty State (hidden while wizard open) */}
+      {!wizardOpen && (
+        <>
+          {loading ? (
+            <Box
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              mt={6}
+            >
+              <CircularProgress size={28} />
+            </Box>
+          ) : filteredApis.length === 0 ? (
+            <ApiEmptyState onAction={handleEmptyStateAction} />
+          ) : (
+            <Box
+              sx={{
+                display: "flex",
+                gap: 2,
+                alignItems: "flex-start",
+                flexWrap: "wrap",
+              }}
+            >
+              {filteredApis.map((apiSummary) => {
+                const card = toCardData(apiSummary);
+                return (
+                  <ApiCard
+                    key={apiSummary.id}
+                    api={card}
+                    onClick={() => handleNavigate(apiSummary)}
+                  />
+                );
+              })}
+            </Box>
+          )}
+        </>
       )}
     </Box>
   );
