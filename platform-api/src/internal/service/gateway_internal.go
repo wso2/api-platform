@@ -46,7 +46,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, gatewayRepo 
 // GetAPIsByOrganization retrieves all APIs for a specific organization (used by gateways)
 func (s *GatewayInternalAPIService) GetAPIsByOrganization(orgID string) (map[string]string, error) {
 	// Get all APIs for the organization
-	apis, err := s.apiRepo.GetAPIsByOrganizationID(orgID)
+	apis, err := s.apiRepo.GetAPIsByOrganizationID(orgID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve APIs: %w", err)
 	}

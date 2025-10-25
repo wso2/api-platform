@@ -231,6 +231,31 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
   /apis:
+    get:
+      summary: Get all APIs for an organization
+      description: |
+        Retrieves all APIs belonging to an organization. Optionally filter by project using 
+        the projectId query parameter. Access is validated against the organization in the JWT token.
+      operationId: ListAPIs
+      tags:
+        - APIs
+      parameters:
+        - $ref: '#/components/parameters/projectId-Q'
+      responses:
+        '200':
+          description: APIs retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
     post:
       summary: Create a new API
       description: |
@@ -261,33 +286,6 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /projects/{projectId}/apis:
-    get:
-      summary: Get all APIs for a project
-      description: |
-        Retrieves all APIs belonging to a specific project. Access is validated against 
-        the organization in the JWT token.
-      operationId: ListAPIs
-      tags:
-        - APIs
-      parameters:
-        - $ref: '#/components/parameters/ProjectID'
-      responses:
-        '200':
-          description: APIs retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1713,6 +1711,17 @@ components:
         type: string
         format: uuid
         example: crer4354-jui52345-245vd-93fvk-137063
+
+    projectId-Q:
+      name: projectId
+      in: query
+      required: false
+      description: |
+        **Project ID** consisting of the **UUID** of the Project to filter APIs by.
+      schema:
+        type: string
+        format: uuid
+        example: "yr434567-de34-76uj6-w376-234324532"
 
     GatewayID:
       name: gatewayId
