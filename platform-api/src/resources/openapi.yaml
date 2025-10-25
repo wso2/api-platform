@@ -1416,6 +1416,16 @@ components:
           # hostname regex as per RFC 1123 (http://tools.ietf.org/html/rfc1123) and appended *
           pattern: '^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
           example: mg.wso2.com
+        isCritical:
+          type: boolean
+          description: Whether the gateway is critical for production
+          default: false
+          example: true
+        isAiGateway:
+          type: boolean
+          description: Whether the gateway is designed for AI workloads
+          default: false
+          example: false
 
     GatewayResponse:
       type: object
@@ -1446,6 +1456,14 @@ components:
           type: string
           description: Virtual host (domain name) for the gateway
           example: mg.wso2.com
+        isCritical:
+          type: boolean
+          description: Whether the gateway is critical for production
+          example: true
+        isAiGateway:
+          type: boolean
+          description: Whether the gateway is designed for AI workloads
+          example: false
         createdAt:
           type: string
           format: date-time
@@ -1460,10 +1478,20 @@ components:
     UpdateGatewayRequest:
       type: object
       properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Human-readable gateway name
+          example: "Updated Production Gateway"
         description:
           type: string
           description: Description of the gateway
           example: "Updated gateway description"
+        isCritical:
+          type: boolean
+          description: Whether the gateway is critical for production
+          example: true
 
     Pagination:
       type: object
