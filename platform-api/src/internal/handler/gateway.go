@@ -57,7 +57,8 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 		return
 	}
 
-	response, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, req.Description, req.Vhost)
+	response, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, req.Description, req.Vhost,
+		*req.IsCritical, *req.IsAIGateway)
 	if err != nil {
 		errMsg := err.Error()
 
@@ -173,7 +174,7 @@ func (h *GatewayHandler) UpdateGateway(c *gin.Context) {
 		return
 	}
 
-	gateway, err := h.gatewayService.UpdateGateway(gatewayId, req.Description, orgId)
+	gateway, err := h.gatewayService.UpdateGateway(gatewayId, orgId, req.Description, req.DisplayName, req.IsCritical)
 	if err != nil {
 		if errors.Is(err, constants.ErrGatewayNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",

@@ -51,7 +51,8 @@ func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo reposit
 }
 
 // RegisterGateway registers a new gateway with organization validation
-func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string) (*dto.GatewayResponse, error) {
+func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string, isCritical,
+	isAIGateway bool) (*dto.GatewayResponse, error) {
 	// 1. Validate inputs
 	if err := s.validateGatewayInput(orgID, name, displayName, vhost); err != nil {
 		return nil, err
@@ -86,6 +87,8 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 		DisplayName:    displayName,
 		Description:    description,
 		Vhost:          vhost,
+		IsCritical:     isCritical,
+		IsAIGateway:    isAIGateway,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -135,6 +138,8 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 		DisplayName:    gateway.DisplayName,
 		Description:    gateway.Description,
 		Vhost:          gateway.Vhost,
+		IsCritical:     gateway.IsCritical,
+		IsAIGateway:    gateway.IsAIGateway,
 		CreatedAt:      gateway.CreatedAt,
 		UpdatedAt:      gateway.UpdatedAt,
 	}
@@ -168,6 +173,8 @@ func (s *GatewayService) ListGateways(orgID *string) (*dto.GatewayListResponse, 
 			DisplayName:    gw.DisplayName,
 			Description:    gw.Description,
 			Vhost:          gw.Vhost,
+			IsCritical:     gw.IsCritical,
+			IsAIGateway:    gw.IsAIGateway,
 			CreatedAt:      gw.CreatedAt,
 			UpdatedAt:      gw.UpdatedAt,
 		})
@@ -214,6 +221,8 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*dto.GatewayRespon
 		DisplayName:    gateway.DisplayName,
 		Description:    gateway.Description,
 		Vhost:          gateway.Vhost,
+		IsCritical:     gateway.IsCritical,
+		IsAIGateway:    gateway.IsAIGateway,
 		CreatedAt:      gateway.CreatedAt,
 		UpdatedAt:      gateway.UpdatedAt,
 	}
@@ -222,7 +231,8 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*dto.GatewayRespon
 }
 
 // UpdateGateway updates gateway details
-func (s *GatewayService) UpdateGateway(gatewayId, description, orgId string) (*dto.GatewayResponse, error) {
+func (s *GatewayService) UpdateGateway(gatewayId, orgId string, description, displayName *string,
+	isCritical *bool) (*dto.GatewayResponse, error) {
 	// Get existing gateway
 	gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
 	if err != nil {
@@ -235,7 +245,15 @@ func (s *GatewayService) UpdateGateway(gatewayId, description, orgId string) (*d
 		return nil, constants.ErrGatewayNotFound
 	}
 
-	gateway.Description = description
+	if description != nil {
+		gateway.Description = *description
+	}
+	if displayName != nil {
+		gateway.DisplayName = *displayName
+	}
+	if isCritical != nil {
+		gateway.IsCritical = *isCritical
+	}
 	gateway.UpdatedAt = time.Now()
 
 	err = s.gatewayRepo.UpdateGateway(gateway)
@@ -250,6 +268,8 @@ func (s *GatewayService) UpdateGateway(gatewayId, description, orgId string) (*d
 		DisplayName:    gateway.DisplayName,
 		Description:    gateway.Description,
 		Vhost:          gateway.Vhost,
+		IsCritical:     gateway.IsCritical,
+		IsAIGateway:    gateway.IsAIGateway,
 		CreatedAt:      gateway.CreatedAt,
 		UpdatedAt:      gateway.UpdatedAt,
 	}
