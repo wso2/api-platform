@@ -200,16 +200,36 @@ func (r *APIRepo) GetAPIsByProjectID(projectID string) ([]*model.API, error) {
 	return apis, rows.Err()
 }
 
-// GetAPIsByOrganizationID retrieves all APIs for a organization
-func (r *APIRepo) GetAPIsByOrganizationID(orgId string) ([]*model.API, error) {
-	query := `
-		SELECT uuid, name, display_name, description, context, version, provider,
-			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
-			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
-		FROM apis WHERE organization_uuid = ? ORDER BY created_at DESC
-	`
+// GetAPIsByOrganizationID retrieves all APIs for an organization with optional project filter
+func (r *APIRepo) GetAPIsByOrganizationID(orgID string, projectID *string) ([]*model.API, error) {
+	var query string
+	var args []interface{}
 
-	rows, err := r.db.Query(query, orgId)
+	if projectID != nil && *projectID != "" {
+		// Filter by specific project within the organization
+		query = `
+			SELECT uuid, name, display_name, description, context, version, provider,
+				project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
+				revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
+			FROM apis
+			WHERE organization_uuid = ? AND project_uuid = ?
+			ORDER BY created_at DESC
+		`
+		args = []interface{}{orgID, *projectID}
+	} else {
+		// Get all APIs for the organization
+		query = `
+			SELECT uuid, name, display_name, description, context, version, provider,
+				project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
+				revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
+			FROM apis
+			WHERE organization_uuid = ?
+			ORDER BY created_at DESC
+		`
+		args = []interface{}{orgID}
+	}
+
+	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
