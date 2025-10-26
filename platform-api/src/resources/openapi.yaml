@@ -540,8 +540,9 @@ paths:
     delete:
       summary: Delete gateway
       description: |
-        Deletes a gateway and all associated tokens. Access is validated against the organization 
-        in the JWT token.
+        Permanently deletes a gateway and all associated tokens (CASCADE).
+        Deletion is blocked if the gateway has active API deployments or WebSocket connections.
+        Access is validated against the organization in the JWT token.
       operationId: DeleteGateway
       tags:
         - Gateways
@@ -554,8 +555,25 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        404:
+        '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: Conflict. Gateway has active deployments or connections
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                activeDeployments:
+                  value:
+                    code: 409
+                    message: Conflict
+                    description: Cannot delete gateway - 3 active API deployment(s) exist
+                activeConnections:
+                  value:
+                    code: 409
+                    message: Conflict
+                    description: Cannot delete gateway - 2 active connection(s) exist
         '500':
           $ref: '#/components/responses/InternalServerError'
 
