@@ -327,9 +327,9 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		gatewayGroup.POST("", h.CreateGateway)
 		gatewayGroup.GET("", h.ListGateways)
+		gatewayGroup.GET("/:gatewayId", h.GetGateway)
 		gatewayGroup.GET("/status", h.GetGatewayStatus)
 		gatewayGroup.PUT("/:gatewayId", h.UpdateGateway)
-		gatewayGroup.GET("/:gatewayId", h.GetGateway)
 		gatewayGroup.DELETE("/:gatewayId", h.DeleteGateway)
 		gatewayGroup.POST("/:gatewayId/tokens", h.RotateToken)
 	}

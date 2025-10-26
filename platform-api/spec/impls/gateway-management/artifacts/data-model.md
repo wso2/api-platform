@@ -26,6 +26,11 @@ This document defines the data model for gateway registration. Gateways are scop
 │ organization_id  │◄─── FK to organizations
 │ name             │◄─── UNIQUE per organization
 │ display_name     │
+│ description      │
+│ vhost            │
+│ is_critical      │
+│ is_ai_gateway    │
+│ is_active        │
 │ created_at       │
 │ updated_at       │
 └────────┬─────────┘
@@ -60,6 +65,11 @@ Represents a registered API gateway instance within an organization.
 | `organization_id` | TEXT | FOREIGN KEY, NOT NULL | Organization this gateway belongs to |
 | `name` | TEXT | NOT NULL | URL-friendly gateway identifier (unique per org) |
 | `display_name` | TEXT | NOT NULL | Human-readable gateway name |
+| `description` | TEXT | NULLABLE | Optional gateway description |
+| `vhost` | TEXT | NOT NULL | Virtual host (domain name) for the gateway |
+| `is_critical` | BOOLEAN | NOT NULL, DEFAULT FALSE | Indicates if gateway is critical for operations |
+| `is_ai_gateway` | BOOLEAN | NOT NULL, DEFAULT FALSE | Indicates if this is an AI gateway |
+| `is_active` | BOOLEAN | NOT NULL, DEFAULT FALSE | Indicates if gateway is currently connected via WebSocket |
 | `created_at` | DATETIME | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Registration timestamp |
 | `updated_at` | DATETIME | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Last modification timestamp |
 
@@ -82,6 +92,32 @@ Represents a registered API gateway instance within an organization.
   - Pattern: Allow any printable characters, spaces
   - Length: 1-128 characters
   - Whitespace trimmed before storage
+
+- **description**:
+  - Optional
+  - Maximum length: 500 characters
+  - Whitespace trimmed before storage
+
+- **vhost**:
+  - Required (non-empty after trim)
+  - Pattern: Valid hostname/domain format
+  - Length: 1-253 characters
+  - Must be a valid domain name or IP address
+
+- **is_critical**:
+  - Required boolean value
+  - Defaults to false if not specified
+  - Indicates operational criticality
+
+- **is_ai_gateway**:
+  - Required boolean value
+  - Defaults to false if not specified
+  - Indicates AI workload specialization
+
+- **is_active**:
+  - System-managed boolean value
+  - Defaults to false on creation
+  - Updated automatically based on WebSocket connection status
 
 **Indexes**:
 - Primary key index on `uuid` (automatic)
@@ -208,10 +244,15 @@ package model
 import "time"
 
 type Gateway struct {
-    Id             string    `json:"id"`
+    ID             string    `json:"id"`
     OrganizationID string    `json:"organizationId"`
     Name           string    `json:"name"`
     DisplayName    string    `json:"displayName"`
+    Description    string    `json:"description"`
+    Vhost          string    `json:"vhost"`
+    IsCritical     bool      `json:"isCritical"`
+    IsAIGateway    bool      `json:"isAIGateway"`
+    IsActive       bool      `json:"isActive"`
     CreatedAt      time.Time `json:"createdAt"`
     UpdatedAt      time.Time `json:"updatedAt"`
 }
@@ -255,13 +296,16 @@ func (t *GatewayToken) Revoke() {
 package dto
 
 type CreateGatewayRequest struct {
-    OrganizationID string `json:"organizationId" binding:"required"`
-    Name           string `json:"name" binding:"required"`
-    DisplayName    string `json:"displayName" binding:"required"`
+    Name        string `json:"name" binding:"required"`
+    DisplayName string `json:"displayName" binding:"required"`
+    Description string `json:"description,omitempty"`
+    Vhost       string `json:"vhost" binding:"required"`
+    IsCritical  *bool  `json:"isCritical" binding:"required"`
+    IsAIGateway *bool  `json:"isAIGateway" binding:"required"`
 }
 ```
 
-### Gateway Response
+### Gateway Registration and Gateway Response
 
 ```go
 package dto
@@ -269,23 +313,17 @@ package dto
 import "time"
 
 type GatewayResponse struct {
-    Id             string    `json:"id"`
+    ID             string    `json:"id"`
     OrganizationID string    `json:"organizationId"`
     Name           string    `json:"name"`
     DisplayName    string    `json:"displayName"`
+    Description    string    `json:"description,omitempty"`
+    Vhost          string    `json:"vhost"`
+    IsCritical     bool      `json:"isCritical"`
+    IsAIGateway    bool      `json:"isAIGateway"`
+    IsActive       bool      `json:"isActive"`
     CreatedAt      time.Time `json:"createdAt"`
     UpdatedAt      time.Time `json:"updatedAt"`
-}
-```
-
-### Gateway Registration Response
-
-```go
-package dto
-
-type GatewayRegistrationResponse struct {
-    Gateway GatewayResponse `json:"gateway"`
-    Token   string          `json:"token"` // Plain-text token (only time it's exposed)
 }
 ```
 
@@ -325,13 +363,18 @@ type TokenInfoResponse struct {
 -- Gateways table (scoped to organizations)
 CREATE TABLE IF NOT EXISTS gateways (
     uuid TEXT PRIMARY KEY,
-    organization_id TEXT NOT NULL,
+    organization_uuid TEXT NOT NULL,
     name TEXT NOT NULL,
     display_name TEXT NOT NULL,
+    description TEXT,
+    vhost TEXT NOT NULL,
+    is_critical BOOLEAN DEFAULT FALSE,
+    is_ai_gateway BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT FALSE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (organization_id) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_id, name)
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, name)
 );
 
 -- Gateway Tokens table
@@ -418,12 +461,14 @@ CREATE INDEX IF NOT EXISTS idx_gateway_tokens_created
 **Important**: Despite the database-level organization ownership, gateways are exposed as a **root resource** in the REST API:
 
 ```
-POST   /api/v1/gateways                    # Register gateway (org_id in request body)
-GET    /api/v1/gateways                    # List gateways (can filter by org_id)
-GET    /api/v1/gateways/{uuid}            # Get gateway by UUID
-DELETE /api/v1/gateways/{uuid}            # Delete gateway
+POST   /api/v1/gateways                        # Register gateway
+GET    /api/v1/gateways                        # List gateways (can filter by org_id)
+GET    /api/v1/gateways/{gatewayId}            # Get gateway by UUID
+GET    /api/v1/gateways/status                 # Get gateway status of the gateways in a org can filter by gatewayId
+PUT    /api/v1/gateways/{gatewayId}            # Update gateway
+DELETE /api/v1/gateways/{gatewayId}            # Delete gateway
 
-POST   /api/v1/gateways/{uuid}/tokens     # Rotate token
+POST   /api/v1/gateways/{gatewayId}/tokens     # Rotate token
 DELETE /api/v1/gateways/{uuid}/tokens/{token_uuid}  # Revoke token
 ```
 

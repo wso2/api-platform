@@ -1,9 +1,9 @@
 # Gateway Registration API - OpenAPI Contract
 # This file documents the gateway registration endpoints added to platform-api
 #
-# UPDATED: October 2025
-# Changes: Integrated Thunder STS JWT authentication. Organization ID is now extracted
-# from the JWT token's 'organization' claim instead of being passed in request body or query params.
+# UPDATED: October 26, 2025
+# Changes: Added new gateway properties (isCritical, isAIGateway, description, vhost, isActive),
+# added gateway status endpoint for polling, updated all response schemas to include new fields.
 
 paths:
   /gateways:
@@ -74,6 +74,47 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /gateways/status:
+    get:
+      summary: Get gateway status
+      description: |
+        Retrieves lightweight status information for gateways for frequent polling by management portals.
+        Returns only essential fields (id, name, isActive, isCritical) for efficient polling.
+        Organization ID is automatically extracted from the JWT token.
+      operationId: getGatewayStatus
+      tags:
+        - Gateway Status
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: gatewayId
+          in: query
+          required: false
+          description: Optional gateway UUID to filter to a specific gateway
+          schema:
+            type: string
+            format: uuid
+            example: "987e6543-e21b-45d3-a789-426614174999"
+      responses:
+        '200':
+          description: Gateway status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayStatusListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Gateway not found (when gatewayId is specified)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -262,6 +303,9 @@ components:
       required:
         - name
         - displayName
+        - vhost
+        - isCritical
+        - isAIGateway
       properties:
         name:
           type: string
@@ -276,6 +320,25 @@ components:
           maxLength: 128
           description: Human-readable gateway name
           example: "Production Gateway 01"
+        description:
+          type: string
+          maxLength: 500
+          description: Optional gateway description
+          example: "Primary production gateway for API traffic"
+        vhost:
+          type: string
+          minLength: 1
+          maxLength: 253
+          description: Virtual host for the gateway
+          example: "api.example.com"
+        isCritical:
+          type: boolean
+          description: Indicates if the gateway is critical for operations
+          example: true
+        isAIGateway:
+          type: boolean
+          description: Indicates if this is an AI gateway
+          example: false
 
     GatewayResponse:
       type: object
@@ -298,16 +361,36 @@ components:
           type: string
           description: Human-readable gateway name
           example: "Production Gateway 01"
+        description:
+          type: string
+          description: Gateway description
+          example: "Primary production gateway for API traffic"
+        vhost:
+          type: string
+          description: Virtual host for the gateway
+          example: "api.example.com"
+        isCritical:
+          type: boolean
+          description: Indicates if the gateway is critical for operations
+          example: true
+        isAIGateway:
+          type: boolean
+          description: Indicates if this is an AI gateway
+          example: false
+        isActive:
+          type: boolean
+          description: Indicates if the gateway is currently connected to the platform via WebSocket
+          example: true
         createdAt:
           type: string
           format: date-time
           description: Timestamp when gateway was registered
-          example: "2025-10-14T10:30:00Z"
+          example: "2025-10-26T10:30:00Z"
         updatedAt:
           type: string
           format: date-time
           description: Timestamp when gateway was last updated
-          example: "2025-10-14T10:30:00Z"
+          example: "2025-10-26T10:30:00Z"
 
     GatewayListResponse:
       type: object
@@ -400,6 +483,62 @@ components:
           nullable: true
           description: Timestamp when token was revoked (null if active)
           example: null
+
+    GatewayStatusResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the gateway
+          example: "987e6543-e21b-45d3-a789-426614174999"
+        name:
+          type: string
+          description: URL-friendly gateway identifier
+          example: "prod-gateway-01"
+        isActive:
+          type: boolean
+          description: Indicates if the gateway is currently connected to the platform via WebSocket
+          example: true
+        isCritical:
+          type: boolean
+          description: Indicates if the gateway is critical for operations
+          example: true
+
+    GatewayStatusListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in current response
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/GatewayStatusResponse'
+        pagination:
+          type: object
+          required:
+            - total
+            - offset
+            - limit
+          properties:
+            total:
+              type: integer
+              description: Total number of items available across all pages
+              example: 2
+            offset:
+              type: integer
+              description: Zero-based index of first item in current response
+              example: 0
+            limit:
+              type: integer
+              description: Maximum number of items returned per page
+              example: 2
 
     ErrorResponse:
       type: object

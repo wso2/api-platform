@@ -1438,6 +1438,8 @@ components:
         - name
         - displayName
         - vhost
+        - isCritical
+        - isAIGateway
       properties:
         name:
           type: string
@@ -1469,11 +1471,11 @@ components:
           description: Whether the gateway is critical for production
           default: false
           example: true
-        isAiGateway:
+        isAIGateway:
           type: boolean
-          description: Whether the gateway is designed for AI workloads
-          default: false
+          description: Whether this is an AI gateway
           example: false
+          default: false
 
     GatewayResponse:
       type: object
@@ -1508,9 +1510,9 @@ components:
           type: boolean
           description: Whether the gateway is critical for production
           example: true
-        isAiGateway:
+        isAIGateway:
           type: boolean
-          description: Whether the gateway is designed for AI workloads
+          description: Whether this is an AI gateway
           example: false
         isActive:
           type: boolean
