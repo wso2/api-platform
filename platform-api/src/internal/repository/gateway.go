@@ -40,13 +40,16 @@ func NewGatewayRepo(db *database.DB) GatewayRepository {
 func (r *GatewayRepo) Create(gateway *model.Gateway) error {
 	gateway.CreatedAt = time.Now()
 	gateway.UpdatedAt = time.Now()
+	gateway.IsActive = false // Set default value to false at registration
 
 	query := `
-		INSERT INTO gateways (uuid, organization_uuid, name, display_name, description, vhost, is_critical, is_ai_gateway, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO gateways (uuid, organization_uuid, name, display_name, description, vhost, is_critical,
+		                      gateway_functionality_type, is_active, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := r.db.Exec(query, gateway.ID, gateway.OrganizationID, gateway.Name, gateway.DisplayName,
-		gateway.Description, gateway.Vhost, gateway.IsCritical, gateway.IsAIGateway, gateway.CreatedAt, gateway.UpdatedAt)
+		gateway.Description, gateway.Vhost, gateway.IsCritical, gateway.FunctionalityType, gateway.IsActive,
+		gateway.CreatedAt, gateway.UpdatedAt)
 	return err
 }
 
@@ -54,13 +57,14 @@ func (r *GatewayRepo) Create(gateway *model.Gateway) error {
 func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 	gateway := &model.Gateway{}
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, description, vhost, is_critical, is_ai_gateway, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, description, vhost, is_critical, gateway_functionality_type, is_active,
+		       created_at, updated_at
 		FROM gateways
 		WHERE uuid = ?
 	`
 	err := r.db.QueryRow(query, gatewayId).Scan(
 		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &gateway.Vhost,
-		&gateway.IsCritical, &gateway.IsAIGateway, &gateway.CreatedAt, &gateway.UpdatedAt)
+		&gateway.IsCritical, &gateway.FunctionalityType, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -73,7 +77,8 @@ func (r *GatewayRepo) GetByUUID(gatewayId string) (*model.Gateway, error) {
 // GetByOrganizationID retrieves all gateways for an organization
 func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, description, vhost, is_critical, is_ai_gateway, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, description, vhost, is_critical, gateway_functionality_type, is_active,
+		       created_at, updated_at
 		FROM gateways
 		WHERE organization_uuid = ?
 		ORDER BY created_at DESC
@@ -89,7 +94,7 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 		gateway := &model.Gateway{}
 		err := rows.Scan(
 			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &gateway.Vhost,
-			&gateway.IsCritical, &gateway.IsAIGateway, &gateway.CreatedAt, &gateway.UpdatedAt)
+			&gateway.IsCritical, &gateway.FunctionalityType, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -102,13 +107,14 @@ func (r *GatewayRepo) GetByOrganizationID(orgID string) ([]*model.Gateway, error
 func (r *GatewayRepo) GetByNameAndOrgID(name, orgID string) (*model.Gateway, error) {
 	gateway := &model.Gateway{}
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, description, vhost, is_critical, is_ai_gateway, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, description, vhost, is_critical, gateway_functionality_type, is_active,
+		       created_at, updated_at
 		FROM gateways
 		WHERE name = ? AND organization_uuid = ?
 	`
 	err := r.db.QueryRow(query, name, orgID).Scan(
 		&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &gateway.Vhost,
-		&gateway.IsCritical, &gateway.IsAIGateway, &gateway.CreatedAt, &gateway.UpdatedAt)
+		&gateway.IsCritical, &gateway.FunctionalityType, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -121,7 +127,8 @@ func (r *GatewayRepo) GetByNameAndOrgID(name, orgID string) (*model.Gateway, err
 // List retrieves all gateways
 func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	query := `
-		SELECT uuid, organization_uuid, name, display_name, description, vhost, is_critical, is_ai_gateway, created_at, updated_at
+		SELECT uuid, organization_uuid, name, display_name, description, vhost, is_critical, gateway_functionality_type, is_active,
+		       created_at, updated_at
 		FROM gateways
 		ORDER BY created_at DESC
 	`
@@ -136,7 +143,7 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 		gateway := &model.Gateway{}
 		err := rows.Scan(
 			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName, &gateway.Description, &gateway.Vhost,
-			&gateway.IsCritical, &gateway.IsAIGateway, &gateway.CreatedAt, &gateway.UpdatedAt)
+			&gateway.IsCritical, &gateway.FunctionalityType, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -186,6 +193,17 @@ func (r *GatewayRepo) UpdateGateway(gateway *model.Gateway) error {
 	return err
 }
 
+// UpdateActiveStatus updates the is_active status of a gateway
+func (r *GatewayRepo) UpdateActiveStatus(gatewayId string, isActive bool) error {
+	query := `
+		UPDATE gateways
+		SET is_active = ?, updated_at = ?
+		WHERE uuid = ?
+	`
+	_, err := r.db.Exec(query, isActive, time.Now(), gatewayId)
+	return err
+}
+
 // CreateToken inserts a new token
 func (r *GatewayRepo) CreateToken(token *model.GatewayToken) error {
 	token.CreatedAt = time.Now()
@@ -194,7 +212,8 @@ func (r *GatewayRepo) CreateToken(token *model.GatewayToken) error {
 		INSERT INTO gateway_tokens (uuid, gateway_uuid, token_hash, salt, status, created_at, revoked_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := r.db.Exec(query, token.ID, token.GatewayID, token.TokenHash, token.Salt, token.Status, token.CreatedAt, token.RevokedAt)
+	_, err := r.db.Exec(query, token.ID, token.GatewayID, token.TokenHash, token.Salt, token.Status, token.CreatedAt,
+		token.RevokedAt)
 	return err
 }
 

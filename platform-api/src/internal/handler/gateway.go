@@ -58,7 +58,7 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 	}
 
 	response, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, req.Description, req.Vhost,
-		*req.IsCritical, *req.IsAIGateway)
+		*req.IsCritical, req.FunctionalityType)
 	if err != nil {
 		errMsg := err.Error()
 
@@ -157,6 +157,38 @@ func (h *GatewayHandler) GetGateway(c *gin.Context) {
 
 	// Return 200 OK with gateway details
 	c.JSON(http.StatusOK, gateway)
+}
+
+// GetGatewayStatus handles GET /api/v1/status/gateways
+func (h *GatewayHandler) GetGatewayStatus(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	// Get optional gatewayId filter from query parameter
+	gatewayId := c.Query("gatewayId")
+	var gatewayIdPtr *string
+	if gatewayId != "" {
+		gatewayIdPtr = &gatewayId
+	}
+
+	// Get gateway status from service
+	status, err := h.gatewayService.GetGatewayStatus(orgId, gatewayIdPtr)
+	if err != nil {
+		if strings.Contains(err.Error(), "gateway not found") {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Gateway not found"))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get gateway status"))
+		return
+	}
+
+	c.JSON(http.StatusOK, status)
 }
 
 // UpdateGateway handles PUT /api/v1/gateways/:gatewayId
@@ -295,9 +327,14 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		gatewayGroup.POST("", h.CreateGateway)
 		gatewayGroup.GET("", h.ListGateways)
-		gatewayGroup.PUT("/:gatewayId", h.UpdateGateway)
 		gatewayGroup.GET("/:gatewayId", h.GetGateway)
+		gatewayGroup.PUT("/:gatewayId", h.UpdateGateway)
 		gatewayGroup.DELETE("/:gatewayId", h.DeleteGateway)
 		gatewayGroup.POST("/:gatewayId/tokens", h.RotateToken)
+	}
+
+	gatewayStatusGroup := r.Group("/api/v1/status")
+	{
+		gatewayStatusGroup.GET("/gateways", h.GetGatewayStatus)
 	}
 }

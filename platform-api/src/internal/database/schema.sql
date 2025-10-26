@@ -225,11 +225,13 @@ CREATE TABLE IF NOT EXISTS gateways (
     description TEXT,
     vhost TEXT NOT NULL,
     is_critical BOOLEAN DEFAULT FALSE,
-    is_ai_gateway BOOLEAN DEFAULT FALSE,
+    gateway_functionality_type TEXT DEFAULT 'regular' NOT NULL,
+    is_active BOOLEAN DEFAULT FALSE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, name)
+    UNIQUE(organization_uuid, name),
+    CHECK (gateway_functionality_type IN ('regular', 'ai', 'event'))
 );
 
 -- Gateway Tokens table

@@ -23,26 +23,27 @@ import (
 
 // CreateGatewayRequest represents the request body for registering a new gateway
 type CreateGatewayRequest struct {
-	Name        string `json:"name" binding:"required"`
-	DisplayName string `json:"displayName" binding:"required"`
-	Description string `json:"description,omitempty"`
-	Vhost       string `json:"vhost" binding:"required"`
-	IsCritical  *bool  `json:"isCritical" binding:"required"`
-	IsAIGateway *bool  `json:"isAIGateway" binding:"required"`
+	Name              string `json:"name" binding:"required"`
+	DisplayName       string `json:"displayName" binding:"required"`
+	Description       string `json:"description,omitempty"`
+	Vhost             string `json:"vhost" binding:"required"`
+	IsCritical        *bool  `json:"isCritical" binding:"required"`
+	FunctionalityType string `json:"functionalityType" binding:"required"`
 }
 
 // GatewayResponse represents a gateway in API responses
 type GatewayResponse struct {
-	ID             string    `json:"id"`
-	OrganizationID string    `json:"organizationId"`
-	Name           string    `json:"name"`
-	DisplayName    string    `json:"displayName"`
-	Description    string    `json:"description,omitempty"`
-	Vhost          string    `json:"vhost"`
-	IsCritical     bool      `json:"isCritical"`
-	IsAIGateway    bool      `json:"isAIGateway"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
+	ID                string    `json:"id"`
+	OrganizationID    string    `json:"organizationId"`
+	Name              string    `json:"name"`
+	DisplayName       string    `json:"displayName"`
+	Description       string    `json:"description,omitempty"`
+	Vhost             string    `json:"vhost"`
+	IsCritical        bool      `json:"isCritical"`
+	FunctionalityType string    `json:"functionalityType"`
+	IsActive          bool      `json:"isActive"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
 // GatewayListResponse represents a paginated list of gateways (constitution-compliant)
@@ -73,4 +74,19 @@ type TokenInfoResponse struct {
 	Status    string     `json:"status"`
 	CreatedAt time.Time  `json:"createdAt"`
 	RevokedAt *time.Time `json:"revokedAt,omitempty"`
+}
+
+// GatewayStatusResponse represents a lightweight gateway status for polling
+type GatewayStatusResponse struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	IsActive   bool   `json:"isActive"`
+	IsCritical bool   `json:"isCritical"`
+}
+
+// GatewayStatusListResponse represents a list of gateway statuses for polling
+type GatewayStatusListResponse struct {
+	Count      int                     `json:"count"`
+	List       []GatewayStatusResponse `json:"list"`
+	Pagination Pagination              `json:"pagination"`
 }
