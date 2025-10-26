@@ -145,11 +145,34 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	return gateways, nil
 }
 
-// Delete removes a gateway (cascade deletes tokens via FK)
-func (r *GatewayRepo) Delete(gatewayId string) error {
-	query := `DELETE FROM gateways WHERE uuid = ?`
-	_, err := r.db.Exec(query, gatewayId)
-	return err
+// Delete removes a gateway with organization isolation (cascade deletes tokens via FK)
+func (r *GatewayRepo) Delete(gatewayID, organizationID string) error {
+	// Start transaction for atomicity
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Delete gateway with organization isolation
+	query := `DELETE FROM gateways WHERE uuid = ? AND organization_uuid = ?`
+	result, err := tx.Exec(query, gatewayID, organizationID)
+	if err != nil {
+		return err
+	}
+
+	// Check if gateway was actually deleted
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		// Gateway not found (or belongs to different organization)
+		return errors.New("gateway not found")
+	}
+
+	// Commit transaction
+	return tx.Commit()
 }
 
 // UpdateGateway updates gateway details

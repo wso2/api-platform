@@ -188,6 +188,48 @@ func (h *GatewayHandler) UpdateGateway(c *gin.Context) {
 	c.JSON(http.StatusOK, gateway)
 }
 
+// DeleteGateway handles DELETE /api/v1/gateways/:gatewayId
+func (h *GatewayHandler) DeleteGateway(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	// Extract UUID path parameter
+	gatewayId := c.Param("gatewayId")
+	if gatewayId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Gateway ID is required"))
+		return
+	}
+
+	err := h.gatewayService.DeleteGateway(gatewayId, orgId)
+	if err != nil {
+		// Check for specific error types
+		if errors.Is(err, constants.ErrGatewayNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"The specified resource does not exist"))
+			return
+		}
+
+		if strings.Contains(err.Error(), "invalid UUID") {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid gateway ID format"))
+			return
+		}
+
+		// Internal server error
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"The server encountered an internal error. Please contact administrator."))
+		return
+	}
+
+	// Return 204 No Content on successful deletion
+	c.Status(http.StatusNoContent)
+}
+
 // RotateToken handles POST /api/v1/gateways/:gatewayId/tokens
 func (h *GatewayHandler) RotateToken(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -238,6 +280,7 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 		gatewayGroup.GET("", h.ListGateways)
 		gatewayGroup.PUT("/:gatewayId", h.UpdateGateway)
 		gatewayGroup.GET("/:gatewayId", h.GetGateway)
+		gatewayGroup.DELETE("/:gatewayId", h.DeleteGateway)
 		gatewayGroup.POST("/:gatewayId/tokens", h.RotateToken)
 	}
 }

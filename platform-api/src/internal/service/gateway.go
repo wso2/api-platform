@@ -256,6 +256,35 @@ func (s *GatewayService) UpdateGateway(gatewayId, description, orgId string) (*d
 	return updatedGateway, nil
 }
 
+// DeleteGateway deletes a gateway and all associated tokens (CASCADE)
+func (s *GatewayService) DeleteGateway(gatewayID, orgID string) error {
+	// Validate UUID format
+	if _, err := uuid.Parse(gatewayID); err != nil {
+		return errors.New("invalid UUID format")
+	}
+
+	// Verify gateway exists and belongs to organization
+	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	if err != nil {
+		return err
+	}
+	if gateway == nil {
+		return constants.ErrGatewayNotFound
+	}
+	if gateway.OrganizationID != orgID {
+		// Return same error for both "not found" and "wrong organization" (security through obscurity)
+		return constants.ErrGatewayNotFound
+	}
+
+	// Delete gateway (CASCADE will remove tokens automatically)
+	err = s.gatewayRepo.Delete(gatewayID, orgID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // VerifyToken verifies a plain-text token and returns the associated gateway
 func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error) {
 	if plainToken == "" {
