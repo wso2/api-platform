@@ -29,7 +29,7 @@ This document defines the data model for gateway registration. Gateways are scop
 │ description      │
 │ vhost            │
 │ is_critical      │
-│ is_ai_gateway    │
+│ gateway_type     │
 │ is_active        │
 │ created_at       │
 │ updated_at       │
@@ -59,19 +59,19 @@ Represents a registered API gateway instance within an organization.
 
 **Attributes**:
 
-| Field | Type | Constraints | Description |
-|-------|------|-------------|-------------|
-| `uuid` | TEXT | PRIMARY KEY, NOT NULL | Unique identifier (UUID v4) |
-| `organization_id` | TEXT | FOREIGN KEY, NOT NULL | Organization this gateway belongs to |
-| `name` | TEXT | NOT NULL | URL-friendly gateway identifier (unique per org) |
-| `display_name` | TEXT | NOT NULL | Human-readable gateway name |
-| `description` | TEXT | NULLABLE | Optional gateway description |
-| `vhost` | TEXT | NOT NULL | Virtual host (domain name) for the gateway |
-| `is_critical` | BOOLEAN | NOT NULL, DEFAULT FALSE | Indicates if gateway is critical for operations |
-| `is_ai_gateway` | BOOLEAN | NOT NULL, DEFAULT FALSE | Indicates if this is an AI gateway |
-| `is_active` | BOOLEAN | NOT NULL, DEFAULT FALSE | Indicates if gateway is currently connected via WebSocket |
-| `created_at` | DATETIME | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Registration timestamp |
-| `updated_at` | DATETIME | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Last modification timestamp |
+| Field | Type | Constraints                         | Description |
+|-------|------|-------------------------------------|-------------|
+| `uuid` | TEXT | PRIMARY KEY, NOT NULL               | Unique identifier (UUID v4) |
+| `organization_id` | TEXT | FOREIGN KEY, NOT NULL               | Organization this gateway belongs to |
+| `name` | TEXT | NOT NULL                            | URL-friendly gateway identifier (unique per org) |
+| `display_name` | TEXT | NOT NULL                            | Human-readable gateway name |
+| `description` | TEXT | NULLABLE                            | Optional gateway description |
+| `vhost` | TEXT | NOT NULL                            | Virtual host (domain name) for the gateway |
+| `is_critical` | BOOLEAN | NOT NULL, DEFAULT FALSE             | Indicates if gateway is critical for operations |
+| `gateway_type` | TEXT | NOT NULL, DEFAULT 'regular'         | Type of gateway: 'regular', 'ai', 'event'            |
+| `is_active` | BOOLEAN | NOT NULL, DEFAULT FALSE             | Indicates if gateway is currently connected via WebSocket |
+| `created_at` | DATETIME | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Registration timestamp                                    |
+| `updated_at` | DATETIME | NOT NULL, DEFAULT CURRENT_TIMESTAMP | Last modification timestamp                               |
 
 **Validation Rules**:
 
@@ -109,10 +109,12 @@ Represents a registered API gateway instance within an organization.
   - Defaults to false if not specified
   - Indicates operational criticality
 
-- **is_ai_gateway**:
-  - Required boolean value
-  - Defaults to false if not specified
-  - Indicates AI workload specialization
+- **gateway_type**:
+  - Required text value
+  - Defaults to 'regular' if not specified
+  - Enum values: 'regular', 'ai', 'event'
+  - Case-sensitive validation
+  - Determines gateway specialization and capabilities
 
 - **is_active**:
   - System-managed boolean value
@@ -251,7 +253,7 @@ type Gateway struct {
     Description    string    `json:"description"`
     Vhost          string    `json:"vhost"`
     IsCritical     bool      `json:"isCritical"`
-    IsAIGateway    bool      `json:"isAIGateway"`
+    GatewayType    string    `json:"gatewayType"`
     IsActive       bool      `json:"isActive"`
     CreatedAt      time.Time `json:"createdAt"`
     UpdatedAt      time.Time `json:"updatedAt"`
@@ -301,7 +303,7 @@ type CreateGatewayRequest struct {
     Description string `json:"description,omitempty"`
     Vhost       string `json:"vhost" binding:"required"`
     IsCritical  *bool  `json:"isCritical" binding:"required"`
-    IsAIGateway *bool  `json:"isAIGateway" binding:"required"`
+    GatewayType string `json:"gatewayType" binding:"required"`
 }
 ```
 
@@ -320,7 +322,7 @@ type GatewayResponse struct {
     Description    string    `json:"description,omitempty"`
     Vhost          string    `json:"vhost"`
     IsCritical     bool      `json:"isCritical"`
-    IsAIGateway    bool      `json:"isAIGateway"`
+    GatewayType    string    `json:"gatewayType"`
     IsActive       bool      `json:"isActive"`
     CreatedAt      time.Time `json:"createdAt"`
     UpdatedAt      time.Time `json:"updatedAt"`
@@ -369,12 +371,13 @@ CREATE TABLE IF NOT EXISTS gateways (
     description TEXT,
     vhost TEXT NOT NULL,
     is_critical BOOLEAN DEFAULT FALSE,
-    is_ai_gateway BOOLEAN DEFAULT FALSE,
+    gateway_type TEXT DEFAULT 'regular' NOT NULL,
     is_active BOOLEAN DEFAULT FALSE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, name)
+    UNIQUE(organization_uuid, name),
+    CHECK (gateway_type IN ('regular', 'ai', 'event'))
 );
 
 -- Gateway Tokens table
@@ -393,7 +396,7 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_gateways_org
-    ON gateways(organization_id);
+    ON gateways(organization_uuid);
 
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_status
     ON gateway_tokens(gateway_uuid, status);

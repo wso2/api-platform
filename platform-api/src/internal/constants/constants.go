@@ -47,3 +47,20 @@ var ValidTransports = map[string]bool{
 	"ws":    true,
 	"wss":   true,
 }
+
+// Gateway Type Constants
+const (
+	GatewayTypeRegular = "regular"
+	GatewayTypeAI      = "ai"
+	GatewayTypeEvent   = "event"
+)
+
+// ValidGatewayTypes Valid gateway types
+var ValidGatewayTypes = map[string]bool{
+	GatewayTypeRegular: true,
+	GatewayTypeAI:      true,
+	GatewayTypeEvent:   true,
+}
+
+// DefaultGatewayType Default gateway type for new gateways
+const DefaultGatewayType = GatewayTypeRegular

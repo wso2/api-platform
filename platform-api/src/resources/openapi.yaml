@@ -1439,7 +1439,7 @@ components:
         - displayName
         - vhost
         - isCritical
-        - isAIGateway
+        - gatewayType
       properties:
         name:
           type: string
@@ -1471,11 +1471,12 @@ components:
           description: Whether the gateway is critical for production
           default: false
           example: true
-        isAIGateway:
-          type: boolean
-          description: Whether this is an AI gateway
-          example: false
-          default: false
+        gatewayType:
+          type: string
+          enum: [regular, ai, event]
+          description: Type of gateway functionality
+          default: regular
+          example: "regular"
 
     GatewayResponse:
       type: object
@@ -1510,10 +1511,11 @@ components:
           type: boolean
           description: Whether the gateway is critical for production
           example: true
-        isAIGateway:
-          type: boolean
-          description: Whether this is an AI gateway
-          example: false
+        gatewayType:
+          type: string
+          enum: [regular, ai, event]
+          description: Type of gateway functionality
+          example: "regular"
         isActive:
           type: boolean
           description: Indicates if the gateway is currently connected to the platform via WebSocket

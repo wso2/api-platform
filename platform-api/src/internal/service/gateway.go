@@ -51,10 +51,10 @@ func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo reposit
 }
 
 // RegisterGateway registers a new gateway with organization validation
-func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string, isCritical,
-	isAIGateway bool) (*dto.GatewayResponse, error) {
+func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string, isCritical bool,
+	gatewayType string) (*dto.GatewayResponse, error) {
 	// 1. Validate inputs
-	if err := s.validateGatewayInput(orgID, name, displayName, vhost); err != nil {
+	if err := s.validateGatewayInput(orgID, name, displayName, vhost, gatewayType); err != nil {
 		return nil, err
 	}
 
@@ -88,7 +88,7 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 		Description:    description,
 		Vhost:          vhost,
 		IsCritical:     isCritical,
-		IsAIGateway:    isAIGateway,
+		GatewayType:    gatewayType,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -139,7 +139,7 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 		Description:    gateway.Description,
 		Vhost:          gateway.Vhost,
 		IsCritical:     gateway.IsCritical,
-		IsAIGateway:    gateway.IsAIGateway,
+		GatewayType:    gateway.GatewayType,
 		IsActive:       gateway.IsActive,
 		CreatedAt:      gateway.CreatedAt,
 		UpdatedAt:      gateway.UpdatedAt,
@@ -175,7 +175,7 @@ func (s *GatewayService) ListGateways(orgID *string) (*dto.GatewayListResponse, 
 			Description:    gw.Description,
 			Vhost:          gw.Vhost,
 			IsCritical:     gw.IsCritical,
-			IsAIGateway:    gw.IsAIGateway,
+			GatewayType:    gw.GatewayType,
 			IsActive:       gw.IsActive,
 			CreatedAt:      gw.CreatedAt,
 			UpdatedAt:      gw.UpdatedAt,
@@ -224,7 +224,7 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*dto.GatewayRespon
 		Description:    gateway.Description,
 		Vhost:          gateway.Vhost,
 		IsCritical:     gateway.IsCritical,
-		IsAIGateway:    gateway.IsAIGateway,
+		GatewayType:    gateway.GatewayType,
 		IsActive:       gateway.IsActive,
 		CreatedAt:      gateway.CreatedAt,
 		UpdatedAt:      gateway.UpdatedAt,
@@ -272,7 +272,7 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId string, description, dis
 		Description:    gateway.Description,
 		Vhost:          gateway.Vhost,
 		IsCritical:     gateway.IsCritical,
-		IsAIGateway:    gateway.IsAIGateway,
+		GatewayType:    gateway.GatewayType,
 		IsActive:       gateway.IsActive,
 		CreatedAt:      gateway.CreatedAt,
 		UpdatedAt:      gateway.UpdatedAt,
@@ -470,7 +470,7 @@ func (s *GatewayService) UpdateGatewayActiveStatus(gatewayId string, isActive bo
 }
 
 // validateGatewayInput validates gateway registration inputs
-func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost string) error {
+func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost, gatewayType string) error {
 	// Organization ID validation
 	if strings.TrimSpace(orgID) == "" {
 		return errors.New("organization ID is required")
@@ -515,6 +515,16 @@ func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost st
 	vhost = strings.TrimSpace(vhost)
 	if vhost == "" {
 		return errors.New("vhost is required")
+	}
+
+	// Gateway type validation
+	gatewayType = strings.TrimSpace(gatewayType)
+	if gatewayType == "" {
+		return errors.New("gateway type is required")
+	}
+	if !constants.ValidGatewayTypes[gatewayType] {
+		return fmt.Errorf("gateway type must be one of: %s, %s, %s",
+			constants.GatewayTypeRegular, constants.GatewayTypeAI, constants.GatewayTypeEvent)
 	}
 
 	return nil

@@ -30,7 +30,7 @@ type Gateway struct {
 	Description    string    `json:"description" db:"description"`
 	Vhost          string    `json:"vhost" db:"vhost"`
 	IsCritical     bool      `json:"isCritical" db:"is_critical"`
-	IsAIGateway    bool      `json:"isAIGateway" db:"is_ai_gateway"`
+	GatewayType    string    `json:"gatewayType" db:"gateway_type"`
 	IsActive       bool      `json:"isActive" db:"is_active"`
 	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
 	UpdatedAt      time.Time `json:"updatedAt" db:"updated_at"`

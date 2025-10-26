@@ -28,7 +28,7 @@ type CreateGatewayRequest struct {
 	Description string `json:"description,omitempty"`
 	Vhost       string `json:"vhost" binding:"required"`
 	IsCritical  *bool  `json:"isCritical" binding:"required"`
-	IsAIGateway *bool  `json:"isAIGateway" binding:"required"`
+	GatewayType string `json:"gatewayType" binding:"required"`
 }
 
 // GatewayResponse represents a gateway in API responses
@@ -40,7 +40,7 @@ type GatewayResponse struct {
 	Description    string    `json:"description,omitempty"`
 	Vhost          string    `json:"vhost"`
 	IsCritical     bool      `json:"isCritical"`
-	IsAIGateway    bool      `json:"isAIGateway"`
+	GatewayType    string    `json:"gatewayType"`
 	IsActive       bool      `json:"isActive"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`

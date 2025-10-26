@@ -11,7 +11,7 @@ Gateways are scoped to organizations at the database level but exposed as root A
 
 **Key Enhancements Implemented**:
 - Gateway criticality indicators (`isCritical`)
-- AI gateway type identification (`isAIGateway`) 
+- Gateway type classification (`gatewayType`) supporting regular, ai, and event gateways
 - Real-time connection status (`isActive`)
 - Virtual host configuration (`vhost`)
 - Gateway descriptions (`description`)
@@ -129,12 +129,13 @@ CREATE TABLE IF NOT EXISTS gateways (
     description TEXT,                          -- Optional description
     vhost TEXT NOT NULL,                       -- Virtual host configuration
     is_critical BOOLEAN DEFAULT FALSE,        --  Criticality indicator
-    is_ai_gateway BOOLEAN DEFAULT FALSE,      --  Gateway type (AI or not)
+    gateway_type TEXT DEFAULT 'regular' NOT NULL, -- Gateway type: regular, ai, event
     is_active BOOLEAN DEFAULT FALSE,          --  Connection status
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    UNIQUE(organization_uuid, name)
+    UNIQUE(organization_uuid, name),
+    CHECK (gateway_type IN ('regular', 'ai', 'event'))
 );
 
 -- Gateway Tokens table
@@ -201,7 +202,7 @@ type GatewayRepository interface {
 **Key Methods**:
 ```go
 // Enhanced gateway registration with new properties
-func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string, isCritical, isAIGateway bool) (*dto.GatewayRegistrationResponse, error)
+func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string, isCritical bool, gatewayType string) (*dto.GatewayRegistrationResponse, error)
 
 // Gateway retrieval and listing
 func (s *GatewayService) GetGateway(gatewayId, orgId string) (*dto.GatewayResponse, error)
@@ -349,7 +350,7 @@ From spec.md:
 -  SC-010: Audit token events
 -  SC-011: Token status tracking
 -  SC-012: Gateway criticality tracking (`isCritical`)
--  SC-013: AI gateway type identification (`isAIGateway`)
+-  SC-013: Gateway type classification (`gatewayType`) supporting regular, ai, and event types
 -  SC-014: Real-time connection status (`isActive`)
 -  SC-015: Virtual host configuration (`vhost`)
 -  SC-016: Gateway descriptions (`description`)

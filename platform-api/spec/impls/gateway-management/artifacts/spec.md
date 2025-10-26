@@ -4,11 +4,14 @@
 
 ## Overview
 
-Gateway management service enables platform administrators to register and manage gateway instances within organizations with comprehensive metadata, secure authentication tokens with rotation and revocation capabilities, real-time status monitoring, and enhanced operational features. The service provides complete lifecycle management for gateways including criticality tracking, AI gateway identification, connection status monitoring, and lightweight polling capabilities for management portals.
+Gateway management service enables platform administrators to register and manage gateway instances within organizations
+with comprehensive metadata, secure authentication tokens with rotation and revocation capabilities, real-time status monitoring,
+and enhanced operational features. The service provides complete lifecycle management for gateways including criticality tracking,
+gateway type classification, connection status monitoring, and lightweight polling capabilities for management portals.
 
 **Features Implemented**:
 - **Gateway Criticality**: Boolean flag indicating operational importance
-- **AI Gateway Type**: Identification of AI-specialized gateways  
+- **Gateway Type Classification**: Support for regular, ai, and event gateway types for specialized routing and processing
 - **Connection Status**: Real-time WebSocket connection tracking
 - **Virtual Host Configuration**: Domain-based gateway routing
 - **Gateway Descriptions**: Optional metadata for operational context
@@ -92,15 +95,15 @@ A platform administrator detects a potential token compromise and needs to immed
 
 ### User Story 5 - Gateway Criticality and Type Management (Priority: P2)
 
-A platform administrator needs to classify gateways by criticality and type to enable proper operational monitoring, alerting, and resource allocation for business-critical and AI-specialized gateways.
+A platform administrator needs to classify gateways by criticality and type to enable proper operational monitoring, alerting, and resource allocation for business-critical gateways and specialized gateway types (ai, event).
 
-**Why this priority**: Essential for operational excellence and proper resource management. Critical gateways require different SLA handling, monitoring thresholds, and incident response procedures. AI gateways may need specialized routing and processing capabilities.
+**Why this priority**: Essential for operational excellence and proper resource management. Critical gateways require different SLA handling, monitoring thresholds, and incident response procedures. Different gateway types (ai, event) may need specialized routing and processing capabilities.
 
 **Independent Test**: Can be tested by registering gateways with different criticality levels and types, then verifying these properties are persisted and returned in all gateway responses.
 
 **Acceptance Scenarios**:
 
-1. **Given** the platform API is running, **When** an administrator registers a gateway with `isCritical: true` and `isAIGateway: false`, **Then** the system persists these properties and returns them in gateway details and listing responses
+1. **Given** the platform API is running, **When** an administrator registers a gateway with `isCritical: true` and `gatewayType: regular`, **Then** the system persists these properties and returns them in gateway details and listing responses
 2. **Given** multiple gateways exist with different criticality levels, **When** an administrator lists all gateways, **Then** the response includes criticality and type information for proper operational classification
 3. **Given** a gateway has been registered with specific criticality and type settings, **When** an administrator updates the gateway metadata, **Then** the system allows modification of criticality while preserving type consistency
 
@@ -165,7 +168,7 @@ A platform administrator submits incomplete or invalid gateway registration data
 **Acceptance Scenarios**:
 
 1. **Given** the platform API is running, **When** an administrator submits a registration request with an empty gateway name, **Then** the system rejects the request with a validation error indicating the name is required
-2. **Given** the platform API is running, **When** an administrator submits a registration request with missing required fields (vhost, isCritical, isAIGateway), **Then** the system rejects the request with validation errors for each missing field
+2. **Given** the platform API is running, **When** an administrator submits a registration request with missing required fields (vhost, isCritical, gatewayType), **Then** the system rejects the request with validation errors for each missing field
 3. **Given** the platform API is running, **When** an administrator submits a registration request with invalid vhost format, **Then** the system validates domain format and rejects invalid virtual hosts
 
 ---
@@ -187,14 +190,14 @@ A platform administrator submits incomplete or invalid gateway registration data
 ### Functional Requirements
 
 **Gateway Registration:**
-- **FR-001**: System MUST accept organization ID (from JWT token), gateway name, display name, virtual host, criticality flag, and AI gateway type as input parameters for registration
-- **FR-002**: System MUST validate that gateway name, display name, virtual host, criticality flag, and AI gateway type are provided and valid
+- **FR-001**: System MUST accept organization ID (from JWT token), gateway name, display name, virtual host, criticality flag, and gateway type as input parameters for registration
+- **FR-002**: System MUST validate that gateway name, display name, virtual host, criticality flag, and gateway type are provided and valid
 - **FR-003**: System MUST validate that the organization ID from JWT token references an existing organization
 - **FR-004**: System MUST enforce uniqueness of gateway names within each organization (composite uniqueness on organization_id and name)
 - **FR-005**: System MUST allow different organizations to register gateways with the same name
 - **FR-006**: System MUST generate a cryptographically secure registration token upon successful gateway registration
 - **FR-007**: System MUST return the registration token and complete gateway details to the caller exactly once during the registration response
-- **FR-008**: System MUST persist gateway registration information including organization association, name, display name, description, virtual host, criticality flag, AI gateway type, connection status, and timestamps
+- **FR-008**: System MUST persist gateway registration information including organization association, name, display name, description, virtual host, criticality flag, gateway type, connection status, and timestamps
 - **FR-009**: System MUST store tokens in a manner that allows verification without requiring storage of plain-text tokens
 - **FR-010**: System MUST provide a verification mechanism that validates tokens presented by gateways
 - **FR-011**: System MUST prevent duplicate gateway registrations when the same name is submitted multiple times within the same organization
@@ -236,18 +239,18 @@ A platform administrator submits incomplete or invalid gateway registration data
 
 **Gateway Metadata Management:**
 - **FR-037**: System MUST support updating gateway metadata (displayName, description, isCritical) via PUT operations
-- **FR-038**: System MUST preserve immutable gateway properties (id, name, organizationId, vhost, isAIGateway) during updates
+- **FR-038**: System MUST preserve immutable gateway properties (id, name, organizationId, vhost, gatewayType) during updates
 - **FR-039**: System MUST validate updated metadata according to the same rules as creation
 - **FR-040**: System MUST update the gateway's updatedAt timestamp when metadata changes occur
 - **FR-041**: System MUST return the complete updated gateway information after successful metadata updates
 
 **Enhanced Gateway Properties:**
 - **FR-042**: System MUST track gateway criticality status (isCritical) for operational monitoring and alerting
-- **FR-043**: System MUST identify AI gateway type (isAIGateway) for specialized routing and processing
+- **FR-043**: System MUST support gateway type classification (regular, ai, event) for specialized routing and processing
 - **FR-044**: System MUST store and manage virtual host configuration (vhost) for domain-based routing
 - **FR-045**: System MUST support optional gateway descriptions for operational documentation
 - **FR-046**: System MUST include all enhanced properties in gateway listing and detail responses
-- **FR-047**: System MUST validate boolean properties (isCritical, isAIGateway) as required fields during registration
+- **FR-047**: System MUST validate boolean properties (isCritical, gatewayType) as required fields during registration
 
 **API Enhancement Integration:**
 - **FR-048**: System MUST support enhanced API listing that returns all APIs for an organization by default
@@ -259,7 +262,7 @@ A platform administrator submits incomplete or invalid gateway registration data
 - **Gateway**: Represents a registered gateway instance within an organization with comprehensive metadata and operational properties. Enhanced attributes include:
   - **Core Identity**: Unique identifier (UUID), organization association (foreign key), name (unique per organization), display name (human-readable label)
   - **Configuration**: Virtual host (vhost) for domain-based routing, optional description for operational context
-  - **Classification**: Criticality flag (isCritical) for operational priority, AI gateway type (isAIGateway) for specialized processing
+  - **Classification**: Criticality flag (isCritical) for operational priority, gateway type (gatewayType) supporting regular, ai, and event types for specialized processing
   - **Status**: Real-time connection status (isActive) based on WebSocket connections
   - **Timestamps**: Creation and last update timestamps for audit and lifecycle tracking
   - **Relationships**: Belongs to exactly one organization, can have multiple tokens throughout lifetime
@@ -276,7 +279,7 @@ A platform administrator submits incomplete or invalid gateway registration data
 - **SC-001**: System successfully prevents 100% of duplicate gateway name registrations within the same organization while allowing the same name across different organizations
 - **SC-002**: Registered gateways can authenticate and be verified using their issued tokens
 - **SC-003**: Gateway registration records persist correctly with all required attributes including organization association, vhost, criticality, AI type, and connection status
-- **SC-004**: All required gateway properties (name, displayName, vhost, isCritical, isAIGateway) are validated and enforced during registration
+- **SC-004**: All required gateway properties (name, displayName, vhost, isCritical, gatewayType) are validated and enforced during registration
 - **SC-005**: Virtual host configurations are properly validated and stored for domain-based routing
 
 **Gateway Status Monitoring:**
@@ -302,7 +305,7 @@ A platform administrator submits incomplete or invalid gateway registration data
 
 **Enhanced Classification:**
 - **SC-019**: Gateway criticality flags (isCritical) are accurately tracked and returned in all gateway responses
-- **SC-020**: AI gateway type identification (isAIGateway) is properly maintained throughout gateway lifecycle
+- **SC-020**: Gateway type classification (gatewayType) supporting regular, ai, and event types is properly maintained throughout gateway lifecycle
 - **SC-021**: Gateway classification information is available for operational monitoring and routing decisions
 
 **API Integration:**
@@ -327,7 +330,7 @@ A platform administrator submits incomplete or invalid gateway registration data
 **Enhanced Gateway Properties:**
 - Virtual hosts (vhost) follow standard domain name conventions and are used for routing decisions
 - Gateway criticality (isCritical) is a required boolean field that affects monitoring and alerting priorities
-- AI gateway type (isAIGateway) is a required boolean field for specialized processing and routing
+- Gateway type (gatewayType) is a required enum field supporting 'regular', 'ai', and 'event' values for specialized processing and routing
 - Connection status (isActive) is system-managed based on real-time WebSocket connections
 - Gateway descriptions are optional and support up to 500 characters for operational context
 
@@ -359,4 +362,4 @@ A platform administrator submits incomplete or invalid gateway registration data
 - Platform administrators have appropriate permissions (authorization handled by existing platform mechanisms)
 - Token rotation and revocation are administrative operations, not automated
 - Gateway configuration with tokens happens externally and is out of scope
-- Update operations preserve immutable properties (id, name, organizationId, vhost, isAIGateway)
+- Update operations preserve immutable properties (id, name, organizationId, vhost, gatewayType)
