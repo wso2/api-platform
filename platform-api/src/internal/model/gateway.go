@@ -23,17 +23,17 @@ import (
 
 // Gateway represents a registered gateway instance within an organization
 type Gateway struct {
-	ID             string    `json:"id" db:"uuid"`
-	OrganizationID string    `json:"organizationId" db:"organization_uuid"`
-	Name           string    `json:"name" db:"name"`
-	DisplayName    string    `json:"displayName" db:"display_name"`
-	Description    string    `json:"description" db:"description"`
-	Vhost          string    `json:"vhost" db:"vhost"`
-	IsCritical     bool      `json:"isCritical" db:"is_critical"`
-	GatewayType    string    `json:"gatewayType" db:"gateway_type"`
-	IsActive       bool      `json:"isActive" db:"is_active"`
-	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt      time.Time `json:"updatedAt" db:"updated_at"`
+	ID                string    `json:"id" db:"uuid"`
+	OrganizationID    string    `json:"organizationId" db:"organization_uuid"`
+	Name              string    `json:"name" db:"name"`
+	DisplayName       string    `json:"displayName" db:"display_name"`
+	Description       string    `json:"description" db:"description"`
+	Vhost             string    `json:"vhost" db:"vhost"`
+	IsCritical        bool      `json:"isCritical" db:"is_critical"`
+	FunctionalityType string    `json:"functionalityType" db:"gateway_functionality_type"`
+	IsActive          bool      `json:"isActive" db:"is_active"`
+	CreatedAt         time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt         time.Time `json:"updatedAt" db:"updated_at"`
 }
 
 // TableName returns the table name for the Gateway model

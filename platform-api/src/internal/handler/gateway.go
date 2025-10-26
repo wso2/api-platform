@@ -58,7 +58,7 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 	}
 
 	response, err := h.gatewayService.RegisterGateway(orgId, req.Name, req.DisplayName, req.Description, req.Vhost,
-		*req.IsCritical, req.GatewayType)
+		*req.IsCritical, req.FunctionalityType)
 	if err != nil {
 		errMsg := err.Error()
 

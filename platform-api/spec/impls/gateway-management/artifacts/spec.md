@@ -103,7 +103,7 @@ A platform administrator needs to classify gateways by criticality and type to e
 
 **Acceptance Scenarios**:
 
-1. **Given** the platform API is running, **When** an administrator registers a gateway with `isCritical: true` and `gatewayType: regular`, **Then** the system persists these properties and returns them in gateway details and listing responses
+1. **Given** the platform API is running, **When** an administrator registers a gateway with `isCritical: true` and `functionalityType: regular`, **Then** the system persists these properties and returns them in gateway details and listing responses
 2. **Given** multiple gateways exist with different criticality levels, **When** an administrator lists all gateways, **Then** the response includes criticality and type information for proper operational classification
 3. **Given** a gateway has been registered with specific criticality and type settings, **When** an administrator updates the gateway metadata, **Then** the system allows modification of criticality while preserving type consistency
 
@@ -168,7 +168,7 @@ A platform administrator submits incomplete or invalid gateway registration data
 **Acceptance Scenarios**:
 
 1. **Given** the platform API is running, **When** an administrator submits a registration request with an empty gateway name, **Then** the system rejects the request with a validation error indicating the name is required
-2. **Given** the platform API is running, **When** an administrator submits a registration request with missing required fields (vhost, isCritical, gatewayType), **Then** the system rejects the request with validation errors for each missing field
+2. **Given** the platform API is running, **When** an administrator submits a registration request with missing required fields (vhost, isCritical, functionalityType), **Then** the system rejects the request with validation errors for each missing field
 3. **Given** the platform API is running, **When** an administrator submits a registration request with invalid vhost format, **Then** the system validates domain format and rejects invalid virtual hosts
 
 ---
@@ -239,7 +239,7 @@ A platform administrator submits incomplete or invalid gateway registration data
 
 **Gateway Metadata Management:**
 - **FR-037**: System MUST support updating gateway metadata (displayName, description, isCritical) via PUT operations
-- **FR-038**: System MUST preserve immutable gateway properties (id, name, organizationId, vhost, gatewayType) during updates
+- **FR-038**: System MUST preserve immutable gateway properties (id, name, organizationId, vhost, functionalityType) during updates
 - **FR-039**: System MUST validate updated metadata according to the same rules as creation
 - **FR-040**: System MUST update the gateway's updatedAt timestamp when metadata changes occur
 - **FR-041**: System MUST return the complete updated gateway information after successful metadata updates
@@ -250,7 +250,7 @@ A platform administrator submits incomplete or invalid gateway registration data
 - **FR-044**: System MUST store and manage virtual host configuration (vhost) for domain-based routing
 - **FR-045**: System MUST support optional gateway descriptions for operational documentation
 - **FR-046**: System MUST include all enhanced properties in gateway listing and detail responses
-- **FR-047**: System MUST validate boolean properties (isCritical, gatewayType) as required fields during registration
+- **FR-047**: System MUST validate boolean properties (isCritical, functionalityType) as required fields during registration
 
 **API Enhancement Integration:**
 - **FR-048**: System MUST support enhanced API listing that returns all APIs for an organization by default
@@ -262,7 +262,7 @@ A platform administrator submits incomplete or invalid gateway registration data
 - **Gateway**: Represents a registered gateway instance within an organization with comprehensive metadata and operational properties. Enhanced attributes include:
   - **Core Identity**: Unique identifier (UUID), organization association (foreign key), name (unique per organization), display name (human-readable label)
   - **Configuration**: Virtual host (vhost) for domain-based routing, optional description for operational context
-  - **Classification**: Criticality flag (isCritical) for operational priority, gateway type (gatewayType) supporting regular, ai, and event types for specialized processing
+  - **Classification**: Criticality flag (isCritical) for operational priority, gateway type (functionalityType) supporting regular, ai, and event types for specialized processing
   - **Status**: Real-time connection status (isActive) based on WebSocket connections
   - **Timestamps**: Creation and last update timestamps for audit and lifecycle tracking
   - **Relationships**: Belongs to exactly one organization, can have multiple tokens throughout lifetime
@@ -279,7 +279,7 @@ A platform administrator submits incomplete or invalid gateway registration data
 - **SC-001**: System successfully prevents 100% of duplicate gateway name registrations within the same organization while allowing the same name across different organizations
 - **SC-002**: Registered gateways can authenticate and be verified using their issued tokens
 - **SC-003**: Gateway registration records persist correctly with all required attributes including organization association, vhost, criticality, AI type, and connection status
-- **SC-004**: All required gateway properties (name, displayName, vhost, isCritical, gatewayType) are validated and enforced during registration
+- **SC-004**: All required gateway properties (name, displayName, vhost, isCritical, functionalityType) are validated and enforced during registration
 - **SC-005**: Virtual host configurations are properly validated and stored for domain-based routing
 
 **Gateway Status Monitoring:**
@@ -305,7 +305,7 @@ A platform administrator submits incomplete or invalid gateway registration data
 
 **Enhanced Classification:**
 - **SC-019**: Gateway criticality flags (isCritical) are accurately tracked and returned in all gateway responses
-- **SC-020**: Gateway type classification (gatewayType) supporting regular, ai, and event types is properly maintained throughout gateway lifecycle
+- **SC-020**: Gateway type classification (functionalityType) supporting regular, ai, and event types is properly maintained throughout gateway lifecycle
 - **SC-021**: Gateway classification information is available for operational monitoring and routing decisions
 
 **API Integration:**
@@ -330,7 +330,7 @@ A platform administrator submits incomplete or invalid gateway registration data
 **Enhanced Gateway Properties:**
 - Virtual hosts (vhost) follow standard domain name conventions and are used for routing decisions
 - Gateway criticality (isCritical) is a required boolean field that affects monitoring and alerting priorities
-- Gateway type (gatewayType) is a required enum field supporting 'regular', 'ai', and 'event' values for specialized processing and routing
+- Gateway type (functionalityType) is a required enum field supporting 'regular', 'ai', and 'event' values for specialized processing and routing
 - Connection status (isActive) is system-managed based on real-time WebSocket connections
 - Gateway descriptions are optional and support up to 500 characters for operational context
 
@@ -362,4 +362,4 @@ A platform administrator submits incomplete or invalid gateway registration data
 - Platform administrators have appropriate permissions (authorization handled by existing platform mechanisms)
 - Token rotation and revocation are administrative operations, not automated
 - Gateway configuration with tokens happens externally and is out of scope
-- Update operations preserve immutable properties (id, name, organizationId, vhost, gatewayType)
+- Update operations preserve immutable properties (id, name, organizationId, vhost, functionalityType)

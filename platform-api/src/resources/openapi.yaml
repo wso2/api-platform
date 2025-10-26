@@ -1439,7 +1439,7 @@ components:
         - displayName
         - vhost
         - isCritical
-        - gatewayType
+        - functionalityType
       properties:
         name:
           type: string
@@ -1471,7 +1471,7 @@ components:
           description: Whether the gateway is critical for production
           default: false
           example: true
-        gatewayType:
+        functionalityType:
           type: string
           enum: [regular, ai, event]
           description: Type of gateway functionality
@@ -1511,7 +1511,7 @@ components:
           type: boolean
           description: Whether the gateway is critical for production
           example: true
-        gatewayType:
+        functionalityType:
           type: string
           enum: [regular, ai, event]
           description: Type of gateway functionality

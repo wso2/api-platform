@@ -186,7 +186,7 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
    - `displayName`: 1-128 chars
    - `vhost`: virtual host for the gateway
    - `isCritical`: boolean indicating gateway criticality
-   - `gatewayType`: enum value (required) - one of "regular", "ai", "event"
+   - `functionalityType`: enum value (required) - one of "regular", "ai", "event"
    - `description`: optional gateway description
 3. **Gateway Type Validation**: Uses global constants from `constants.go` to validate enum values
 4. **Organization Scoping**: Uses organization ID from JWT token (not request body)
@@ -248,31 +248,31 @@ CREATE TABLE gateways (
     description TEXT,
     vhost TEXT NOT NULL,
     is_critical BOOLEAN DEFAULT FALSE,
-    gateway_type TEXT DEFAULT 'regular' NOT NULL,
+    gateway_functionality_type TEXT DEFAULT 'regular' NOT NULL,
     is_active BOOLEAN DEFAULT FALSE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, name),
-    CHECK (gateway_type IN ('regular', 'ai', 'event'))
+    CHECK (gateway_functionality_type IN ('regular', 'ai', 'event'))
 );
 ```
 
 **Gateway Type Constants (from constants.go):**
 ```go
 const (
-    GatewayTypeRegular = "regular"
-    GatewayTypeAI      = "ai" 
-    GatewayTypeEvent   = "event"
+   GatewayFunctionalityTypeRegular = "regular"
+   GatewayFunctionalityTypeAI      = "ai"
+   GatewayFunctionalityTypeEvent   = "event"
 )
 
-var ValidGatewayTypes = map[string]bool{
-    GatewayTypeRegular: true,
-    GatewayTypeAI:      true,
-    GatewayTypeEvent:   true,
+var ValidGatewayFunctionalityType = map[string]bool{
+   GatewayFunctionalityTypeRegular: true,
+   GatewayFunctionalityTypeAI:      true,
+   GatewayFunctionalityTypeEvent:   true,
 }
 
-const DefaultGatewayType = GatewayTypeRegular
+const DefaultGatewayFunctionalityType = GatewayFunctionalityTypeRegular
 ```
 
 **Gateway Tokens Table:**
@@ -340,7 +340,7 @@ curl -k -X POST https://localhost:8443/api/v1/gateways \
     "description": "Primary production gateway for API traffic",
     "vhost": "api.example.com",
     "isCritical": true,
-    "gatewayType": "regular"
+    "functionalityType": "regular"
   }'
 ```
 
@@ -354,7 +354,7 @@ curl -k -X POST https://localhost:8443/api/v1/gateways \
   "description": "Primary production gateway for API traffic",
   "vhost": "api.example.com",
   "isCritical": true,
-  "gatewayType": "regular",
+  "functionalityType": "regular",
   "isActive": false,
   "createdAt": "2025-10-26T10:30:00Z",
   "updatedAt": "2025-10-26T10:30:00Z"
@@ -382,7 +382,7 @@ curl -k https://localhost:8443/api/v1/gateways \
       "description": "Primary production gateway for API traffic",
       "vhost": "api.example.com",
       "isCritical": true,
-      "gatewayType": "regular",
+      "functionalityType": "regular",
       "isActive": true,
       "createdAt": "2025-10-26T10:30:00Z",
       "updatedAt": "2025-10-26T10:30:00Z"
@@ -395,7 +395,7 @@ curl -k https://localhost:8443/api/v1/gateways \
       "description": "AI workloads gateway",
       "vhost": "ai-api.example.com",
       "isCritical": false,
-      "gatewayType": "ai",
+      "functionalityType": "ai",
       "isActive": false,
       "createdAt": "2025-10-26T11:00:00Z",
       "updatedAt": "2025-10-26T11:00:00Z"
@@ -426,7 +426,7 @@ curl -k https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174
   "description": "Primary production gateway for API traffic",
   "vhost": "api.example.com",
   "isCritical": true,
-  "gatewayType": "regular",
+  "functionalityType": "regular",
   "isActive": true,
   "createdAt": "2025-10-26T10:30:00Z",
   "updatedAt": "2025-10-26T10:30:00Z"
@@ -483,7 +483,7 @@ curl -k https://localhost:8443/api/v1/status/gateways?gatewayId=987e6543-e21b-45
       "name": "prod-gateway-01",
       "isActive": true,
       "isCritical": true,
-      "gatewayType": "regular"
+      "functionalityType": "regular"
     }
   ],
   "pagination": {

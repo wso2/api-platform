@@ -4,7 +4,7 @@
 # UPDATED: October 26, 2025
 # Changes: Added new gateway properties (isCritical, isAIGateway, description, vhost, isActive),
 # added gateway status endpoint for polling, updated all response schemas to include new fields.
-# Replaced isAIGateway boolean with gatewayType enum for better extensibility.
+# Replaced isAIGateway boolean with functionalityType enum for better extensibility.
 
 paths:
   /gateways:
@@ -297,7 +297,7 @@ components:
         - displayName
         - vhost
         - isCritical
-        - gatewayType
+        - functionalityType
       properties:
         name:
           type: string
@@ -327,7 +327,7 @@ components:
           type: boolean
           description: Indicates if the gateway is critical for operations
           example: true
-        gatewayType:
+        functionalityType:
           type: string
           enum: [regular, ai, event]
           default: regular
@@ -367,7 +367,7 @@ components:
           type: boolean
           description: Indicates if the gateway is critical for operations
           example: true
-        gatewayType:
+        functionalityType:
           type: string
           enum: [regular, ai, event]
           description: Type of gateway that determines its capabilities and specialization

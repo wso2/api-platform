@@ -23,27 +23,27 @@ import (
 
 // CreateGatewayRequest represents the request body for registering a new gateway
 type CreateGatewayRequest struct {
-	Name        string `json:"name" binding:"required"`
-	DisplayName string `json:"displayName" binding:"required"`
-	Description string `json:"description,omitempty"`
-	Vhost       string `json:"vhost" binding:"required"`
-	IsCritical  *bool  `json:"isCritical" binding:"required"`
-	GatewayType string `json:"gatewayType" binding:"required"`
+	Name              string `json:"name" binding:"required"`
+	DisplayName       string `json:"displayName" binding:"required"`
+	Description       string `json:"description,omitempty"`
+	Vhost             string `json:"vhost" binding:"required"`
+	IsCritical        *bool  `json:"isCritical" binding:"required"`
+	FunctionalityType string `json:"functionalityType" binding:"required"`
 }
 
 // GatewayResponse represents a gateway in API responses
 type GatewayResponse struct {
-	ID             string    `json:"id"`
-	OrganizationID string    `json:"organizationId"`
-	Name           string    `json:"name"`
-	DisplayName    string    `json:"displayName"`
-	Description    string    `json:"description,omitempty"`
-	Vhost          string    `json:"vhost"`
-	IsCritical     bool      `json:"isCritical"`
-	GatewayType    string    `json:"gatewayType"`
-	IsActive       bool      `json:"isActive"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
+	ID                string    `json:"id"`
+	OrganizationID    string    `json:"organizationId"`
+	Name              string    `json:"name"`
+	DisplayName       string    `json:"displayName"`
+	Description       string    `json:"description,omitempty"`
+	Vhost             string    `json:"vhost"`
+	IsCritical        bool      `json:"isCritical"`
+	FunctionalityType string    `json:"functionalityType"`
+	IsActive          bool      `json:"isActive"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
 // GatewayListResponse represents a paginated list of gateways (constitution-compliant)

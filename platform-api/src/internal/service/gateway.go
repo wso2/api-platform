@@ -52,9 +52,9 @@ func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo reposit
 
 // RegisterGateway registers a new gateway with organization validation
 func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, vhost string, isCritical bool,
-	gatewayType string) (*dto.GatewayResponse, error) {
+	functionalityType string) (*dto.GatewayResponse, error) {
 	// 1. Validate inputs
-	if err := s.validateGatewayInput(orgID, name, displayName, vhost, gatewayType); err != nil {
+	if err := s.validateGatewayInput(orgID, name, displayName, vhost, functionalityType); err != nil {
 		return nil, err
 	}
 
@@ -81,16 +81,16 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 
 	// 5. Create Gateway model
 	gateway := &model.Gateway{
-		ID:             gatewayId,
-		OrganizationID: orgID,
-		Name:           name,
-		DisplayName:    displayName,
-		Description:    description,
-		Vhost:          vhost,
-		IsCritical:     isCritical,
-		GatewayType:    gatewayType,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+		ID:                gatewayId,
+		OrganizationID:    orgID,
+		Name:              name,
+		DisplayName:       displayName,
+		Description:       description,
+		Vhost:             vhost,
+		IsCritical:        isCritical,
+		FunctionalityType: functionalityType,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
 	}
 
 	// 6. Generate plain-text token and salt
@@ -132,17 +132,17 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 
 	// 10. Return GatewayResponse with gateway details
 	response := &dto.GatewayResponse{
-		ID:             gateway.ID,
-		OrganizationID: gateway.OrganizationID,
-		Name:           gateway.Name,
-		DisplayName:    gateway.DisplayName,
-		Description:    gateway.Description,
-		Vhost:          gateway.Vhost,
-		IsCritical:     gateway.IsCritical,
-		GatewayType:    gateway.GatewayType,
-		IsActive:       gateway.IsActive,
-		CreatedAt:      gateway.CreatedAt,
-		UpdatedAt:      gateway.UpdatedAt,
+		ID:                gateway.ID,
+		OrganizationID:    gateway.OrganizationID,
+		Name:              gateway.Name,
+		DisplayName:       gateway.DisplayName,
+		Description:       gateway.Description,
+		Vhost:             gateway.Vhost,
+		IsCritical:        gateway.IsCritical,
+		FunctionalityType: gateway.FunctionalityType,
+		IsActive:          gateway.IsActive,
+		CreatedAt:         gateway.CreatedAt,
+		UpdatedAt:         gateway.UpdatedAt,
 	}
 
 	return response, nil
@@ -168,17 +168,17 @@ func (s *GatewayService) ListGateways(orgID *string) (*dto.GatewayListResponse, 
 	responses := make([]dto.GatewayResponse, 0, len(gateways))
 	for _, gw := range gateways {
 		responses = append(responses, dto.GatewayResponse{
-			ID:             gw.ID,
-			OrganizationID: gw.OrganizationID,
-			Name:           gw.Name,
-			DisplayName:    gw.DisplayName,
-			Description:    gw.Description,
-			Vhost:          gw.Vhost,
-			IsCritical:     gw.IsCritical,
-			GatewayType:    gw.GatewayType,
-			IsActive:       gw.IsActive,
-			CreatedAt:      gw.CreatedAt,
-			UpdatedAt:      gw.UpdatedAt,
+			ID:                gw.ID,
+			OrganizationID:    gw.OrganizationID,
+			Name:              gw.Name,
+			DisplayName:       gw.DisplayName,
+			Description:       gw.Description,
+			Vhost:             gw.Vhost,
+			IsCritical:        gw.IsCritical,
+			FunctionalityType: gw.FunctionalityType,
+			IsActive:          gw.IsActive,
+			CreatedAt:         gw.CreatedAt,
+			UpdatedAt:         gw.UpdatedAt,
 		})
 	}
 
@@ -217,17 +217,17 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*dto.GatewayRespon
 	}
 
 	response := &dto.GatewayResponse{
-		ID:             gateway.ID,
-		OrganizationID: gateway.OrganizationID,
-		Name:           gateway.Name,
-		DisplayName:    gateway.DisplayName,
-		Description:    gateway.Description,
-		Vhost:          gateway.Vhost,
-		IsCritical:     gateway.IsCritical,
-		GatewayType:    gateway.GatewayType,
-		IsActive:       gateway.IsActive,
-		CreatedAt:      gateway.CreatedAt,
-		UpdatedAt:      gateway.UpdatedAt,
+		ID:                gateway.ID,
+		OrganizationID:    gateway.OrganizationID,
+		Name:              gateway.Name,
+		DisplayName:       gateway.DisplayName,
+		Description:       gateway.Description,
+		Vhost:             gateway.Vhost,
+		IsCritical:        gateway.IsCritical,
+		FunctionalityType: gateway.FunctionalityType,
+		IsActive:          gateway.IsActive,
+		CreatedAt:         gateway.CreatedAt,
+		UpdatedAt:         gateway.UpdatedAt,
 	}
 
 	return response, nil
@@ -265,17 +265,17 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId string, description, dis
 	}
 
 	updatedGateway := &dto.GatewayResponse{
-		ID:             gateway.ID,
-		OrganizationID: gateway.OrganizationID,
-		Name:           gateway.Name,
-		DisplayName:    gateway.DisplayName,
-		Description:    gateway.Description,
-		Vhost:          gateway.Vhost,
-		IsCritical:     gateway.IsCritical,
-		GatewayType:    gateway.GatewayType,
-		IsActive:       gateway.IsActive,
-		CreatedAt:      gateway.CreatedAt,
-		UpdatedAt:      gateway.UpdatedAt,
+		ID:                gateway.ID,
+		OrganizationID:    gateway.OrganizationID,
+		Name:              gateway.Name,
+		DisplayName:       gateway.DisplayName,
+		Description:       gateway.Description,
+		Vhost:             gateway.Vhost,
+		IsCritical:        gateway.IsCritical,
+		FunctionalityType: gateway.FunctionalityType,
+		IsActive:          gateway.IsActive,
+		CreatedAt:         gateway.CreatedAt,
+		UpdatedAt:         gateway.UpdatedAt,
 	}
 	return updatedGateway, nil
 }
@@ -470,7 +470,7 @@ func (s *GatewayService) UpdateGatewayActiveStatus(gatewayId string, isActive bo
 }
 
 // validateGatewayInput validates gateway registration inputs
-func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost, gatewayType string) error {
+func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost, functionalityType string) error {
 	// Organization ID validation
 	if strings.TrimSpace(orgID) == "" {
 		return errors.New("organization ID is required")
@@ -518,13 +518,13 @@ func (s *GatewayService) validateGatewayInput(orgID, name, displayName, vhost, g
 	}
 
 	// Gateway type validation
-	gatewayType = strings.TrimSpace(gatewayType)
-	if gatewayType == "" {
-		return errors.New("gateway type is required")
+	functionalityType = strings.TrimSpace(functionalityType)
+	if functionalityType == "" {
+		return errors.New("gateway functionality type is required")
 	}
-	if !constants.ValidGatewayTypes[gatewayType] {
+	if !constants.ValidGatewayFunctionalityType[functionalityType] {
 		return fmt.Errorf("gateway type must be one of: %s, %s, %s",
-			constants.GatewayTypeRegular, constants.GatewayTypeAI, constants.GatewayTypeEvent)
+			constants.GatewayFunctionalityTypeRegular, constants.GatewayFunctionalityTypeAI, constants.GatewayFunctionalityTypeEvent)
 	}
 
 	return nil
