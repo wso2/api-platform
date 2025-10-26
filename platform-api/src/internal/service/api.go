@@ -165,25 +165,23 @@ func (s *APIService) GetAPIByUUID(apiId, orgId string) (*dto.API, error) {
 	return api, nil
 }
 
-// GetAPIsByProjectID retrieves all APIs for a project
-func (s *APIService) GetAPIsByProjectID(projectID, orgId string) ([]*dto.API, error) {
-	if projectID == "" {
-		return nil, errors.New("project id is required")
+// GetAPIsByOrganization retrieves all APIs for an organization with optional project filter
+func (s *APIService) GetAPIsByOrganization(orgId string, projectID *string) ([]*dto.API, error) {
+	// If project ID is provided, validate that it belongs to the organization
+	if projectID != nil && *projectID != "" {
+		project, err := s.projectRepo.GetProjectByUUID(*projectID)
+		if err != nil {
+			return nil, err
+		}
+		if project == nil {
+			return nil, constants.ErrProjectNotFound
+		}
+		if project.OrganizationID != orgId {
+			return nil, constants.ErrProjectNotFound
+		}
 	}
 
-	// Check if project exists
-	project, err := s.projectRepo.GetProjectByUUID(projectID)
-	if err != nil {
-		return nil, err
-	}
-	if project == nil {
-		return nil, constants.ErrProjectNotFound
-	}
-	if project.OrganizationID != orgId {
-		return nil, constants.ErrProjectNotFound
-	}
-
-	apiModels, err := s.apiRepo.GetAPIsByProjectID(projectID)
+	apiModels, err := s.apiRepo.GetAPIsByOrganizationID(orgId, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get apis: %w", err)
 	}
