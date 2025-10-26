@@ -141,6 +141,11 @@ func (h *WebSocketHandler) Connect(c *gin.Context) {
 	log.Printf("[INFO] WebSocket connection established: gatewayID=%s connectionID=%s",
 		gateway.ID, connection.ConnectionID)
 
+	// Update gateway active status to true when connection is established
+	if err := h.gatewayService.UpdateGatewayActiveStatus(gateway.ID, true); err != nil {
+		log.Printf("[ERROR] Failed to update gateway active status to true: gatewayID=%s error=%v", gateway.ID, err)
+	}
+
 	// Start reading messages (blocks until connection closes)
 	// This keeps the handler goroutine alive to maintain the connection
 	h.readLoop(connection)
@@ -149,6 +154,11 @@ func (h *WebSocketHandler) Connect(c *gin.Context) {
 	log.Printf("[INFO] WebSocket connection closed: gatewayID=%s connectionID=%s",
 		gateway.ID, connection.ConnectionID)
 	h.manager.Unregister(gateway.ID, connection.ConnectionID)
+
+	// Update gateway active status to false when connection is disconnected
+	if err := h.gatewayService.UpdateGatewayActiveStatus(gateway.ID, false); err != nil {
+		log.Printf("[ERROR] Failed to update gateway active status to false: gatewayID=%s error=%v", gateway.ID, err)
+	}
 }
 
 // readLoop reads messages from the WebSocket connection.

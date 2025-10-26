@@ -41,6 +41,7 @@ type GatewayResponse struct {
 	Vhost          string    `json:"vhost"`
 	IsCritical     bool      `json:"isCritical"`
 	IsAIGateway    bool      `json:"isAIGateway"`
+	IsActive       bool      `json:"isActive"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`
 }

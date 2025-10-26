@@ -1480,6 +1480,10 @@ components:
           type: boolean
           description: Whether the gateway is designed for AI workloads
           example: false
+        isActive:
+          type: boolean
+          description: Indicates if the gateway is currently connected to the platform via WebSocket
+          example: true
         createdAt:
           type: string
           format: date-time

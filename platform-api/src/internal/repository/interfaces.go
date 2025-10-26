@@ -64,6 +64,7 @@ type GatewayRepository interface {
 	List() ([]*model.Gateway, error)
 	Delete(gatewayID, organizationID string) error
 	UpdateGateway(gateway *model.Gateway) error
+	UpdateActiveStatus(gatewayId string, isActive bool) error
 
 	// Token operations
 	CreateToken(token *model.GatewayToken) error

@@ -226,6 +226,7 @@ CREATE TABLE IF NOT EXISTS gateways (
     vhost TEXT NOT NULL,
     is_critical BOOLEAN DEFAULT FALSE,
     is_ai_gateway BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT FALSE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,

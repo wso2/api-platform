@@ -140,6 +140,7 @@ func (s *GatewayService) RegisterGateway(orgID, name, displayName, description, 
 		Vhost:          gateway.Vhost,
 		IsCritical:     gateway.IsCritical,
 		IsAIGateway:    gateway.IsAIGateway,
+		IsActive:       gateway.IsActive,
 		CreatedAt:      gateway.CreatedAt,
 		UpdatedAt:      gateway.UpdatedAt,
 	}
@@ -175,6 +176,7 @@ func (s *GatewayService) ListGateways(orgID *string) (*dto.GatewayListResponse, 
 			Vhost:          gw.Vhost,
 			IsCritical:     gw.IsCritical,
 			IsAIGateway:    gw.IsAIGateway,
+			IsActive:       gw.IsActive,
 			CreatedAt:      gw.CreatedAt,
 			UpdatedAt:      gw.UpdatedAt,
 		})
@@ -223,6 +225,7 @@ func (s *GatewayService) GetGateway(gatewayId, orgId string) (*dto.GatewayRespon
 		Vhost:          gateway.Vhost,
 		IsCritical:     gateway.IsCritical,
 		IsAIGateway:    gateway.IsAIGateway,
+		IsActive:       gateway.IsActive,
 		CreatedAt:      gateway.CreatedAt,
 		UpdatedAt:      gateway.UpdatedAt,
 	}
@@ -270,6 +273,7 @@ func (s *GatewayService) UpdateGateway(gatewayId, orgId string, description, dis
 		Vhost:          gateway.Vhost,
 		IsCritical:     gateway.IsCritical,
 		IsAIGateway:    gateway.IsAIGateway,
+		IsActive:       gateway.IsActive,
 		CreatedAt:      gateway.CreatedAt,
 		UpdatedAt:      gateway.UpdatedAt,
 	}
@@ -401,6 +405,11 @@ func (s *GatewayService) RotateToken(gatewayId, orgId string) (*dto.TokenRotatio
 	}
 
 	return response, nil
+}
+
+// UpdateGatewayActiveStatus updates the active status of a gateway
+func (s *GatewayService) UpdateGatewayActiveStatus(gatewayId string, isActive bool) error {
+	return s.gatewayRepo.UpdateActiveStatus(gatewayId, isActive)
 }
 
 // validateGatewayInput validates gateway registration inputs
