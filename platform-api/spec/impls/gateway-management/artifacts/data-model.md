@@ -467,7 +467,7 @@ CREATE INDEX IF NOT EXISTS idx_gateway_tokens_created
 POST   /api/v1/gateways                        # Register gateway
 GET    /api/v1/gateways                        # List gateways (can filter by org_id)
 GET    /api/v1/gateways/{gatewayId}            # Get gateway by UUID
-GET    /api/v1/gateways/status                 # Get gateway status of the gateways in a org can filter by gatewayId
+GET    /api/v1/status/gateways               # Get gateway status of the gateways in a org can filter by gatewayId
 PUT    /api/v1/gateways/{gatewayId}            # Update gateway
 DELETE /api/v1/gateways/{gatewayId}            # Delete gateway
 

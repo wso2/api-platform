@@ -221,7 +221,7 @@ func (h *GatewayHandler) CreateGateway(c *gin.Context) {
 
 ### Gateway Status Monitoring
 
-1. **Lightweight Status API**: New endpoint `/api/v1/gateways/status` provides minimal gateway information for frequent polling by management portals
+1. **Lightweight Status API**: New endpoint `/api/v1/status/gateways` provides minimal gateway information for frequent polling by management portals
 2. **Optional Filtering**: Query parameter `gatewayId` allows filtering to a specific gateway
 3. **Response Structure**: Returns only essential fields (id, name, isActive, isCritical) for efficient polling
 4. **Organization Scoping**: Automatically filtered by organization from JWT token
@@ -437,7 +437,7 @@ curl -k https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174
 
 **Get all gateway statuses:**
 ```bash
-curl -k https://localhost:8443/api/v1/gateways/status \
+curl -k https://localhost:8443/api/v1/status/gateways \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 
@@ -469,7 +469,7 @@ curl -k https://localhost:8443/api/v1/gateways/status \
 
 **Get specific gateway status:**
 ```bash
-curl -k https://localhost:8443/api/v1/gateways/status?gatewayId=987e6543-e21b-45d3-a789-426614174999 \
+curl -k https://localhost:8443/api/v1/status/gateways?gatewayId=987e6543-e21b-45d3-a789-426614174999 \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 

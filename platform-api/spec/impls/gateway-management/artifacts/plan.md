@@ -15,7 +15,7 @@ Gateways are scoped to organizations at the database level but exposed as root A
 - Real-time connection status (`isActive`)
 - Virtual host configuration (`vhost`)
 - Gateway descriptions (`description`)
-- Lightweight status polling endpoint (`/gateways/status`)
+- Lightweight status polling endpoint (`/status/gateways`)
 - Enhanced API filtering by project
 - Comprehensive CRUD operations
 
@@ -235,7 +235,7 @@ func (h *GatewayHandler) UpdateGateway(c *gin.Context)     // PUT /api/v1/gatewa
 func (h *GatewayHandler) DeleteGateway(c *gin.Context)     // DELETE /api/v1/gateways/{gatewayId}
 
 // Lightweight status polling endpoint
-func (h *GatewayHandler) GetGatewayStatus(c *gin.Context)  // GET /api/v1/gateways/status
+func (h *GatewayHandler) GetGatewayStatus(c *gin.Context)  // GET /api/v1/status/gateways
 
 // Token management endpoints
 func (h *GatewayHandler) RotateToken(c *gin.Context)       // POST /api/v1/gateways/{gatewayId}/tokens

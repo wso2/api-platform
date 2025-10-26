@@ -477,38 +477,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /gateways/status:
-    get:
-      summary: Get gateway status
-      description: |
-        Retrieves lightweight status information for gateways. This endpoint is optimized for frequent polling 
-        by management portals to monitor gateway connection status. If gatewayId query parameter is provided, 
-        returns status for that specific gateway only. Otherwise returns status for all gateways in the organization.
-      operationId: GetGatewayStatus
-      tags:
-        - Gateways
-      parameters:
-        - $ref: '#/components/parameters/gatewayId-Q'
-      responses:
-        '200':
-          description: Gateway status retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GatewayStatusListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          description: Gateway not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
   /gateways/{gatewayId}:
     get:
       summary: Get gateway by UUID
@@ -669,6 +637,38 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           description: Gateway or token not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /status/gateways:
+    get:
+      summary: Get gateway status
+      description: |
+        Retrieves lightweight status information for gateways. This endpoint is optimized for frequent polling 
+        by management portals to monitor gateway connection status. If gatewayId query parameter is provided, 
+        returns status for that specific gateway only. Otherwise returns status for all gateways in the organization.
+      operationId: GetGatewayStatus
+      tags:
+        - Gateways
+      parameters:
+        - $ref: '#/components/parameters/gatewayId-Q'
+      responses:
+        '200':
+          description: Gateway status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayStatusListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Gateway not found
           content:
             application/json:
               schema:

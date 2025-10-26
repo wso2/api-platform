@@ -159,7 +159,7 @@ func (h *GatewayHandler) GetGateway(c *gin.Context) {
 	c.JSON(http.StatusOK, gateway)
 }
 
-// GetGatewayStatus handles GET /api/v1/gateways/status
+// GetGatewayStatus handles GET /api/v1/status/gateways
 func (h *GatewayHandler) GetGatewayStatus(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -328,9 +328,13 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 		gatewayGroup.POST("", h.CreateGateway)
 		gatewayGroup.GET("", h.ListGateways)
 		gatewayGroup.GET("/:gatewayId", h.GetGateway)
-		gatewayGroup.GET("/status", h.GetGatewayStatus)
 		gatewayGroup.PUT("/:gatewayId", h.UpdateGateway)
 		gatewayGroup.DELETE("/:gatewayId", h.DeleteGateway)
 		gatewayGroup.POST("/:gatewayId/tokens", h.RotateToken)
+	}
+
+	gatewayStatusGroup := r.Group("/api/v1/status")
+	{
+		gatewayStatusGroup.GET("/gateways", h.GetGatewayStatus)
 	}
 }

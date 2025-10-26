@@ -119,7 +119,7 @@ Management portal operators need to continuously monitor gateway connection stat
 
 **Acceptance Scenarios**:
 
-1. **Given** multiple gateways are registered with different connection states, **When** management portal polls the `/gateways/status` endpoint, **Then** the system returns lightweight status information (id, name, isActive, isCritical) for all gateways
+1. **Given** multiple gateways are registered with different connection states, **When** management portal polls the `status/gateways` endpoint, **Then** the system returns lightweight status information (id, name, isActive, isCritical) for all gateways
 2. **Given** a specific gateway ID is provided as a query parameter, **When** the status endpoint is called, **Then** the system returns status information only for that specific gateway
 3. **Given** gateway connection status changes in real-time, **When** management portal polls status frequently, **Then** the system provides current connection state without performance degradation
 
