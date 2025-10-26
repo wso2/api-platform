@@ -27,6 +27,8 @@ type CreateGatewayRequest struct {
 	DisplayName string `json:"displayName" binding:"required"`
 	Description string `json:"description,omitempty"`
 	Vhost       string `json:"vhost" binding:"required"`
+	IsCritical  *bool  `json:"isCritical" binding:"required"`
+	IsAIGateway *bool  `json:"isAIGateway" binding:"required"`
 }
 
 // GatewayResponse represents a gateway in API responses
@@ -37,6 +39,8 @@ type GatewayResponse struct {
 	DisplayName    string    `json:"displayName"`
 	Description    string    `json:"description,omitempty"`
 	Vhost          string    `json:"vhost"`
+	IsCritical     bool      `json:"isCritical"`
+	IsAIGateway    bool      `json:"isAIGateway"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`
 }
@@ -50,7 +54,9 @@ type GatewayListResponse struct {
 
 // UpdateGatewayRequest represents the request body for updating gateway details
 type UpdateGatewayRequest struct {
-	Description string `json:"description,omitempty"`
+	DisplayName *string `json:"displayName,omitempty"`
+	Description *string `json:"description,omitempty"`
+	IsCritical  *bool   `json:"isCritical,omitempty"`
 }
 
 // TokenRotationResponse represents the response when rotating a gateway token

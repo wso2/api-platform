@@ -158,7 +158,7 @@ func (h *APIHandler) GetAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, api)
 }
 
-// ListAPIs handles GET /api/v1/projects/:projectId/apis and lists APIs for a project
+// ListAPIs handles GET /api/v1/apis and lists APIs for an organization with optional project filter
 func (h *APIHandler) ListAPIs(c *gin.Context) {
 	// Get organization from JWT token
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -168,14 +168,14 @@ func (h *APIHandler) ListAPIs(c *gin.Context) {
 		return
 	}
 
-	projectId := c.Param("projectId")
-	if projectId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Project ID is required"))
-		return
+	// Get optional project filter from query parameter
+	projectId := c.Query("projectId")
+	var projectIdPtr *string
+	if projectId != "" {
+		projectIdPtr = &projectId
 	}
 
-	apis, err := h.apiService.GetAPIsByProjectID(projectId, orgId)
+	apis, err := h.apiService.GetAPIsByOrganization(orgId, projectIdPtr)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -346,15 +346,10 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	apiGroup := r.Group("/api/v1/apis")
 	{
 		apiGroup.POST("", h.CreateAPI)
+		apiGroup.GET("", h.ListAPIs)
 		apiGroup.GET("/:apiId", h.GetAPI)
 		apiGroup.PUT("/:apiId", h.UpdateAPI)
 		apiGroup.DELETE("/:apiId", h.DeleteAPI)
 		apiGroup.POST("/:apiId/deploy-revision", h.DeployAPIRevision)
-	}
-
-	// Project-specific API routes
-	projectAPIGroup := r.Group("/api/v1/projects/:projectId/apis")
-	{
-		projectAPIGroup.GET("", h.ListAPIs)
 	}
 }

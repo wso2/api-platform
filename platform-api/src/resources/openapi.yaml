@@ -231,6 +231,31 @@ paths:
           $ref: '#/components/responses/InternalServerError'
 
   /apis:
+    get:
+      summary: Get all APIs for an organization
+      description: |
+        Retrieves all APIs belonging to an organization. Optionally filter by project using 
+        the projectId query parameter. Access is validated against the organization in the JWT token.
+      operationId: ListAPIs
+      tags:
+        - APIs
+      parameters:
+        - $ref: '#/components/parameters/projectId-Q'
+      responses:
+        '200':
+          description: APIs retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
     post:
       summary: Create a new API
       description: |
@@ -261,33 +286,6 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /projects/{projectId}/apis:
-    get:
-      summary: Get all APIs for a project
-      description: |
-        Retrieves all APIs belonging to a specific project. Access is validated against 
-        the organization in the JWT token.
-      operationId: ListAPIs
-      tags:
-        - APIs
-      parameters:
-        - $ref: '#/components/parameters/ProjectID'
-      responses:
-        '200':
-          description: APIs retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/APIListResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1434,6 +1432,16 @@ components:
           # hostname regex as per RFC 1123 (http://tools.ietf.org/html/rfc1123) and appended *
           pattern: '^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
           example: mg.wso2.com
+        isCritical:
+          type: boolean
+          description: Whether the gateway is critical for production
+          default: false
+          example: true
+        isAiGateway:
+          type: boolean
+          description: Whether the gateway is designed for AI workloads
+          default: false
+          example: false
 
     GatewayResponse:
       type: object
@@ -1464,6 +1472,14 @@ components:
           type: string
           description: Virtual host (domain name) for the gateway
           example: mg.wso2.com
+        isCritical:
+          type: boolean
+          description: Whether the gateway is critical for production
+          example: true
+        isAiGateway:
+          type: boolean
+          description: Whether the gateway is designed for AI workloads
+          example: false
         createdAt:
           type: string
           format: date-time
@@ -1478,10 +1494,20 @@ components:
     UpdateGatewayRequest:
       type: object
       properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Human-readable gateway name
+          example: "Updated Production Gateway"
         description:
           type: string
           description: Description of the gateway
           example: "Updated gateway description"
+        isCritical:
+          type: boolean
+          description: Whether the gateway is critical for production
+          example: true
 
     Pagination:
       type: object
@@ -1731,6 +1757,17 @@ components:
         type: string
         format: uuid
         example: crer4354-jui52345-245vd-93fvk-137063
+
+    projectId-Q:
+      name: projectId
+      in: query
+      required: false
+      description: |
+        **Project ID** consisting of the **UUID** of the Project to filter APIs by.
+      schema:
+        type: string
+        format: uuid
+        example: "yr434567-de34-76uj6-w376-234324532"
 
     GatewayID:
       name: gatewayId
