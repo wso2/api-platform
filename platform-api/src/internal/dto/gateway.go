@@ -75,3 +75,18 @@ type TokenInfoResponse struct {
 	CreatedAt time.Time  `json:"createdAt"`
 	RevokedAt *time.Time `json:"revokedAt,omitempty"`
 }
+
+// GatewayStatusResponse represents a lightweight gateway status for polling
+type GatewayStatusResponse struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	IsActive   bool   `json:"isActive"`
+	IsCritical bool   `json:"isCritical"`
+}
+
+// GatewayStatusListResponse represents a list of gateway statuses for polling
+type GatewayStatusListResponse struct {
+	Count      int                     `json:"count"`
+	List       []GatewayStatusResponse `json:"list"`
+	Pagination Pagination              `json:"pagination"`
+}

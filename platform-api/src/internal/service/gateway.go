@@ -407,6 +407,63 @@ func (s *GatewayService) RotateToken(gatewayId, orgId string) (*dto.TokenRotatio
 	return response, nil
 }
 
+// GetGatewayStatus retrieves gateway status information for polling
+func (s *GatewayService) GetGatewayStatus(orgID string, gatewayId *string) (*dto.GatewayStatusListResponse, error) {
+	// Validate organizationId is provided and valid
+	if strings.TrimSpace(orgID) == "" {
+		return nil, errors.New("organization ID is required")
+	}
+
+	var gateways []*model.Gateway
+	var err error
+
+	// If gatewayId is provided, get specific gateway
+	if gatewayId != nil && *gatewayId != "" {
+		gateway, err := s.gatewayRepo.GetByUUID(*gatewayId)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get gateway: %w", err)
+		}
+		if gateway == nil {
+			return nil, errors.New("gateway not found")
+		}
+		// Check organization access
+		if gateway.OrganizationID != orgID {
+			return nil, errors.New("gateway not found")
+		}
+		gateways = []*model.Gateway{gateway}
+	} else {
+		// Get all gateways for organization
+		gateways, err = s.gatewayRepo.GetByOrganizationID(orgID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list gateways: %w", err)
+		}
+	}
+
+	// Convert to lightweight status DTOs
+	statusResponses := make([]dto.GatewayStatusResponse, 0, len(gateways))
+	for _, gw := range gateways {
+		statusResponses = append(statusResponses, dto.GatewayStatusResponse{
+			ID:         gw.ID,
+			Name:       gw.Name,
+			IsActive:   gw.IsActive,
+			IsCritical: gw.IsCritical,
+		})
+	}
+
+	// Build constitution-compliant list response
+	listResponse := &dto.GatewayStatusListResponse{
+		Count: len(statusResponses),
+		List:  statusResponses,
+		Pagination: dto.Pagination{
+			Total:  len(statusResponses),
+			Offset: 0,
+			Limit:  len(statusResponses),
+		},
+	}
+
+	return listResponse, nil
+}
+
 // UpdateGatewayActiveStatus updates the active status of a gateway
 func (s *GatewayService) UpdateGatewayActiveStatus(gatewayId string, isActive bool) error {
 	return s.gatewayRepo.UpdateActiveStatus(gatewayId, isActive)

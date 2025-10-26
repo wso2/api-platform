@@ -477,6 +477,38 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /gateways/status:
+    get:
+      summary: Get gateway status
+      description: |
+        Retrieves lightweight status information for gateways. This endpoint is optimized for frequent polling 
+        by management portals to monitor gateway connection status. If gatewayId query parameter is provided, 
+        returns status for that specific gateway only. Otherwise returns status for all gateways in the organization.
+      operationId: GetGatewayStatus
+      tags:
+        - Gateways
+      parameters:
+        - $ref: '#/components/parameters/gatewayId-Q'
+      responses:
+        '200':
+          description: Gateway status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayStatusListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Gateway not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /gateways/{gatewayId}:
     get:
       summary: Get gateway by UUID
@@ -1551,6 +1583,47 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
+    GatewayStatusResponse:
+      type: object
+      description: Lightweight gateway status information optimized for frequent polling
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the gateway
+          example: "987e6543-e21b-45d3-a789-426614174999"
+        name:
+          type: string
+          description: URL-friendly gateway identifier
+          example: "prod-gateway-01"
+        isActive:
+          type: boolean
+          description: Indicates if the gateway is currently connected to the platform via WebSocket
+          example: true
+        isCritical:
+          type: boolean
+          description: Whether the gateway is critical for production
+          example: true
+
+    GatewayStatusListResponse:
+      type: object
+      description: List of gateway status information for polling
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in current response
+          example: 2
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/GatewayStatusResponse'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
     ProjectListResponse:
       type: object
       required:
@@ -1772,6 +1845,17 @@ components:
         type: string
         format: uuid
         example: "yr434567-de34-76uj6-w376-234324532"
+
+    gatewayId-Q:
+      name: gatewayId
+      in: query
+      required: false
+      description: |
+        **Gateway ID** consisting of the **UUID** of the Gateway to filter status by.
+      schema:
+        type: string
+        format: uuid
+        example: "987e6543-e21b-45d3-a789-426614174999"
 
     GatewayID:
       name: gatewayId

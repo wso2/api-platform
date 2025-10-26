@@ -159,6 +159,38 @@ func (h *GatewayHandler) GetGateway(c *gin.Context) {
 	c.JSON(http.StatusOK, gateway)
 }
 
+// GetGatewayStatus handles GET /api/v1/gateways/status
+func (h *GatewayHandler) GetGatewayStatus(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	// Get optional gatewayId filter from query parameter
+	gatewayId := c.Query("gatewayId")
+	var gatewayIdPtr *string
+	if gatewayId != "" {
+		gatewayIdPtr = &gatewayId
+	}
+
+	// Get gateway status from service
+	status, err := h.gatewayService.GetGatewayStatus(orgId, gatewayIdPtr)
+	if err != nil {
+		if strings.Contains(err.Error(), "gateway not found") {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Gateway not found"))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get gateway status"))
+		return
+	}
+
+	c.JSON(http.StatusOK, status)
+}
+
 // UpdateGateway handles PUT /api/v1/gateways/:gatewayId
 func (h *GatewayHandler) UpdateGateway(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -295,6 +327,7 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		gatewayGroup.POST("", h.CreateGateway)
 		gatewayGroup.GET("", h.ListGateways)
+		gatewayGroup.GET("/status", h.GetGatewayStatus)
 		gatewayGroup.PUT("/:gatewayId", h.UpdateGateway)
 		gatewayGroup.GET("/:gatewayId", h.GetGateway)
 		gatewayGroup.DELETE("/:gatewayId", h.DeleteGateway)
