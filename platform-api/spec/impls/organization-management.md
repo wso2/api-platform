@@ -17,5 +17,5 @@
 
 ## Verification
 
-- Register: `curl -k -X POST https://localhost:8443/api/v1/organizations -d '{"id":"123e4567-e89b-12d3-a456-426614174000","handle":"alpha","name":"Alpha","region":"us-east-1"}' -H 'Content-Type: application/json'`.
+- Register: `curl -k -X POST https://localhost:8443/api/v1/organizations -d '{"id":"123e4567-e89b-12d3-a456-426614174000","handle":"alpha","name":"Alpha","region":"us"}' -H 'Content-Type: application/json'`.
 - Fetch: `curl -k https://localhost:8443/api/v1/organizations/<orgId>`; expect JSON payload with organization metadata (handle, name, region, timestamps).
