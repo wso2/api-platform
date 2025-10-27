@@ -2,7 +2,7 @@
 
 ## Requirement
 
-Provide REST endpoints to create and retrieve organizations with validated handles, guarantee handle uniqueness, and automatically provision a default project per organization.
+Provide REST endpoints to create and retrieve organizations with validated handles, guarantee handle uniqueness, include region specification for geographic organization, and automatically provision a default project per organization.
 
 ## Implementation
 

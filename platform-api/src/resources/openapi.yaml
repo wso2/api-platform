@@ -695,11 +695,14 @@ components:
       required:
         - id
         - handle
+        - name
+        - region
       properties:
         id:
           type: string
           format: uuid
           description: Unique identifier for the organization
+          readOnly: true
           example: "123e4567-e89b-12d3-a456-426614174000"
         handle:
           type: string
@@ -711,6 +714,10 @@ components:
           type: string
           description: Display name of the organization
           example: "Acme Corporation"
+        region:
+          type: string
+          description: Geographic region where the organization operates
+          example: "us"
         createdAt:
           type: string
           format: date-time
