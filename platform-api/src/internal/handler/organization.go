@@ -54,13 +54,23 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 			"Handle is required"))
 		return
 	}
+	if req.Name == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Name is required"))
+		return
+	}
 	if req.ID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Organization ID is required"))
 		return
 	}
+	if req.Region == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Region is required"))
+		return
+	}
 
-	org, err := h.orgService.RegisterOrganization(req.ID, req.Handle, req.Name)
+	org, err := h.orgService.RegisterOrganization(req.ID, req.Handle, req.Name, req.Region)
 	if err != nil {
 		if errors.Is(err, constants.ErrHandleExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",

@@ -26,6 +26,7 @@ type Organization struct {
 	ID        string    `json:"id" db:"uuid"`
 	Handle    string    `json:"handle" db:"handle"`
 	Name      string    `json:"name" db:"name"`
+	Region    string    `json:"region" db:"region"`
 	CreatedAt time.Time `json:"createdAt" db:"created_at"`
 	UpdatedAt time.Time `json:"updatedAt" db:"updated_at"`
 }

@@ -25,7 +25,8 @@ import (
 type CreateOrganizationRequest struct {
 	ID     string `json:"id" yaml:"id" binding:"required"`
 	Handle string `json:"handle" yaml:"handle" binding:"required"`
-	Name   string `json:"name" yaml:"name"`
+	Name   string `json:"name" yaml:"name" binding:"required"`
+	Region string `json:"region" yaml:"region" binding:"required"`
 }
 
 // Organization represents an organization entity in the API management platform
@@ -33,6 +34,7 @@ type Organization struct {
 	ID        string    `json:"id" yaml:"id"`
 	Handle    string    `json:"handle" yaml:"handle"`
 	Name      string    `json:"name" yaml:"name"`
+	Region    string    `json:"region" yaml:"region"`
 	CreatedAt time.Time `json:"createdAt" yaml:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt" yaml:"updatedAt"`
 }

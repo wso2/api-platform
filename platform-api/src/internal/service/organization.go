@@ -40,7 +40,7 @@ func NewOrganizationService(orgRepo repository.OrganizationRepository,
 	}
 }
 
-func (s *OrganizationService) RegisterOrganization(id string, handle string, name string) (*dto.Organization, error) {
+func (s *OrganizationService) RegisterOrganization(id string, handle string, name string, region string) (*dto.Organization, error) {
 	// Validate handle is URL friendly
 	if !s.isURLFriendly(handle) {
 		return nil, constants.ErrInvalidHandle
@@ -67,6 +67,7 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		ID:        id,
 		Handle:    handle,
 		Name:      name,
+		Region:    region,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -128,6 +129,7 @@ func (s *OrganizationService) dtoToModel(dto *dto.Organization) *model.Organizat
 		ID:        dto.ID,
 		Handle:    dto.Handle,
 		Name:      dto.Name,
+		Region:    dto.Region,
 		CreatedAt: dto.CreatedAt,
 		UpdatedAt: dto.UpdatedAt,
 	}
@@ -142,6 +144,7 @@ func (s *OrganizationService) modelToDTO(model *model.Organization) *dto.Organiz
 		ID:        model.ID,
 		Handle:    model.Handle,
 		Name:      model.Name,
+		Region:    model.Region,
 		CreatedAt: model.CreatedAt,
 		UpdatedAt: model.UpdatedAt,
 	}

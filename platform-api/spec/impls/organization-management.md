@@ -10,12 +10,12 @@
 
 ## Behaviour
 
-1. POST requests bind to `dto.Organization`, ensuring both UUID and handle presence before calling the service.
+1. POST requests bind to `dto.Organization`, ensuring UUID, handle, name and region presence before calling the service.
 2. Service enforces lowercase URL-friendly handles and uniqueness checks via repository lookups for both ID and handle.
-3. Upon registration, service inserts the organization and immediately creates a default project.
+3. Upon registration, service inserts the organization with region information and immediately creates a default project.
 4. GET requests fetch by UUID, returning `404` when the organization is absent.
 
 ## Verification
 
-- Register: `curl -k -X POST https://localhost:8443/api/v1/organizations -d '{"id":"123e4567-e89b-12d3-a456-426614174000","handle":"alpha","name":"Alpha"}' -H 'Content-Type: application/json'`.
-- Fetch: `curl -k https://localhost:8443/api/v1/organizations/<orgId>`; expect JSON payload with organization metadata (handle, name, timestamps).
+- Register: `curl -k -X POST https://localhost:8443/api/v1/organizations -d '{"id":"123e4567-e89b-12d3-a456-426614174000","handle":"alpha","name":"Alpha","region":"us-east-1"}' -H 'Content-Type: application/json'`.
+- Fetch: `curl -k https://localhost:8443/api/v1/organizations/<orgId>`; expect JSON payload with organization metadata (handle, name, region, timestamps).
