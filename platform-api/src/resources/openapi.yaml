@@ -413,6 +413,35 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /apis/{apiId}/gateways:
+    get:
+      summary: Get gateways for API
+      description: |
+        Retrieves all gateways where the specified API is deployed with pagination support. 
+        This endpoint returns a paginated list of gateway instances that currently have the API deployed to them.
+        Access is validated against the organization in the JWT token.
+      operationId: GetAPIGateways
+      tags:
+        - APIs
+        - Gateways
+      parameters:
+        - $ref: '#/components/parameters/apiID'
+      responses:
+        '200':
+          description: Paginated list of gateways where the API is deployed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /gateways:
     post:
       summary: Register a new gateway

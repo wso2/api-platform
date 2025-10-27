@@ -61,6 +61,7 @@ type GatewayRepository interface {
 	GetByUUID(gatewayId string) (*model.Gateway, error)
 	GetByOrganizationID(orgID string) ([]*model.Gateway, error)
 	GetByNameAndOrgID(name, orgID string) (*model.Gateway, error)
+	GetGatewaysByAPIID(apiID, organizationID string) ([]*model.Gateway, error)
 	List() ([]*model.Gateway, error)
 	Delete(gatewayID, organizationID string) error
 	UpdateGateway(gateway *model.Gateway) error
