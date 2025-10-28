@@ -321,7 +321,7 @@ func (h *GatewayHandler) RotateToken(c *gin.Context) {
 	c.JSON(http.StatusCreated, response)
 }
 
-// GetGatewayArtifacts handles GET /api/v1/gateways/{gatewayId}/artifacts
+// GetGatewayArtifacts handles GET /api/v1/gateways/{gatewayId}/live-proxy-artifacts
 func (h *GatewayHandler) GetGatewayArtifacts(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -376,7 +376,7 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 		gatewayGroup.PUT("/:gatewayId", h.UpdateGateway)
 		gatewayGroup.DELETE("/:gatewayId", h.DeleteGateway)
 		gatewayGroup.POST("/:gatewayId/tokens", h.RotateToken)
-		gatewayGroup.GET("/:gatewayId/artifacts", h.GetGatewayArtifacts)
+		gatewayGroup.GET("/:gatewayId/live-proxy-artifacts", h.GetGatewayArtifacts)
 	}
 
 	gatewayStatusGroup := r.Group("/api/v1/status")
