@@ -321,6 +321,51 @@ func (h *GatewayHandler) RotateToken(c *gin.Context) {
 	c.JSON(http.StatusCreated, response)
 }
 
+// GetGatewayArtifacts handles GET /api/v1/gateways/{gatewayId}/artifacts
+func (h *GatewayHandler) GetGatewayArtifacts(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	gatewayId := c.Param("gatewayId")
+	if gatewayId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Gateway ID is required"))
+		return
+	}
+
+	// Parse artifact type filter parameter
+	artifactType := c.Query("artifactType")
+	// Validate artifactType if provided
+	if artifactType != "" {
+		if !constants.ValidArtifactTypes[artifactType] {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid artifact type. Valid values are: "+constants.ArtifactTypeAPI+", "+constants.ArtifactTypeMCP+
+					", "+constants.ArtifactTypeAPIProduct))
+			return
+		}
+	}
+
+	// Get paginated artifacts for the gateway
+	artifactListResponse, err := h.gatewayService.GetGatewayArtifacts(gatewayId, orgId, artifactType)
+	if err != nil {
+		if errors.Is(err, constants.ErrGatewayNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Gateway not found"))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get gateway artifacts"))
+		return
+	}
+
+	// Return paginated artifact list
+	c.JSON(http.StatusOK, artifactListResponse)
+}
+
 // RegisterRoutes registers gateway routes with the router
 func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 	gatewayGroup := r.Group("/api/v1/gateways")
@@ -331,6 +376,7 @@ func (h *GatewayHandler) RegisterRoutes(r *gin.Engine) {
 		gatewayGroup.PUT("/:gatewayId", h.UpdateGateway)
 		gatewayGroup.DELETE("/:gatewayId", h.DeleteGateway)
 		gatewayGroup.POST("/:gatewayId/tokens", h.RotateToken)
+		gatewayGroup.GET("/:gatewayId/artifacts", h.GetGatewayArtifacts)
 	}
 
 	gatewayStatusGroup := r.Group("/api/v1/status")

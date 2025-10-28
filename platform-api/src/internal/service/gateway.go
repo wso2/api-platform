@@ -26,27 +26,31 @@ import (
 	"errors"
 	"fmt"
 	"platform-api/src/internal/constants"
+	"platform-api/src/internal/dto"
+	"platform-api/src/internal/model"
+	"platform-api/src/internal/repository"
+	"platform-api/src/internal/utils"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"platform-api/src/internal/dto"
-	"platform-api/src/internal/model"
-	"platform-api/src/internal/repository"
 )
 
 // GatewayService handles gateway business logic
 type GatewayService struct {
 	gatewayRepo repository.GatewayRepository
 	orgRepo     repository.OrganizationRepository
+	apiRepo     repository.APIRepository
 }
 
 // NewGatewayService creates a new gateway service
-func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository) *GatewayService {
+func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository,
+	apiRepo repository.APIRepository) *GatewayService {
 	return &GatewayService{
 		gatewayRepo: gatewayRepo,
 		orgRepo:     orgRepo,
+		apiRepo:     apiRepo,
 	}
 }
 
@@ -467,6 +471,69 @@ func (s *GatewayService) GetGatewayStatus(orgID string, gatewayId *string) (*dto
 // UpdateGatewayActiveStatus updates the active status of a gateway
 func (s *GatewayService) UpdateGatewayActiveStatus(gatewayId string, isActive bool) error {
 	return s.gatewayRepo.UpdateActiveStatus(gatewayId, isActive)
+}
+
+// GetGatewayArtifacts retrieves all artifacts (APIs) deployed to a specific gateway with pagination and optional type filtering
+func (s *GatewayService) GetGatewayArtifacts(gatewayID, orgID, artifactType string) (*dto.GatewayArtifactListResponse, error) {
+	// First validate that the gateway exists and belongs to the organization
+	gateway, err := s.gatewayRepo.GetByUUID(gatewayID)
+	if err != nil {
+		return nil, err
+	}
+	if gateway == nil {
+		return nil, constants.ErrGatewayNotFound
+	}
+	if gateway.OrganizationID != orgID {
+		return nil, constants.ErrGatewayNotFound
+	}
+
+	// Get all APIs deployed to this gateway
+	apis, err := s.apiRepo.GetAPIsByGatewayID(gatewayID, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert APIs to GatewayArtifact DTOs and apply type filtering
+	allArtifacts := make([]dto.GatewayArtifact, 0)
+	for _, api := range apis {
+		// Skip if artifactType filter is specified and doesn't match "API"
+		if artifactType != "" && artifactType != "API" {
+			continue
+		}
+
+		// Determine API subtype based on the type field using APIUtil
+		apiUtil := &utils.APIUtil{}
+		subType := apiUtil.GetAPISubType(api.Type)
+
+		artifact := dto.GatewayArtifact{
+			ID:          api.ID,
+			Name:        api.Name,
+			DisplayName: api.DisplayName,
+			Type:        "API",
+			SubType:     subType,
+			CreatedAt:   api.CreatedAt,
+			UpdatedAt:   api.UpdatedAt,
+		}
+		allArtifacts = append(allArtifacts, artifact)
+	}
+
+	// If filtering by MCP or API_PRODUCT, return empty list for now (future implementation)
+	if artifactType != "" && (artifactType == constants.ArtifactTypeMCP || artifactType == constants.ArtifactTypeAPIProduct) {
+		// For future implementation when MCP and API_PRODUCT are supported
+		allArtifacts = []dto.GatewayArtifact{}
+	}
+
+	listResponse := &dto.GatewayArtifactListResponse{
+		Count: len(allArtifacts),
+		List:  allArtifacts,
+		Pagination: dto.Pagination{
+			Total:  len(allArtifacts),
+			Offset: 0,
+			Limit:  len(allArtifacts),
+		},
+	}
+
+	return listResponse, nil
 }
 
 // validateGatewayInput validates gateway registration inputs

@@ -20,6 +20,7 @@ package utils
 import (
 	"fmt"
 	"gopkg.in/yaml.v3"
+	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 )
@@ -712,6 +713,24 @@ func (u *APIUtil) policyModelToDTO(model *model.Policy) *dto.Policy {
 	return &dto.Policy{
 		Name:   model.Name,
 		Params: model.Params,
+	}
+}
+
+// GetAPISubType determines the API subtype based on the API type using constants
+func (u *APIUtil) GetAPISubType(apiType string) string {
+	switch apiType {
+	case constants.APITypeHTTP:
+		return constants.APISubTypeHTTP
+	case constants.APITypeGraphQL:
+		return constants.APISubTypeGraphQL
+	case constants.APITypeAsync, constants.APITypeWebSub, constants.APITypeSSE, constants.APITypeWebhook:
+		return constants.APISubTypeAsync
+	case constants.APITypeWS:
+		return constants.APISubTypeWebSocket
+	case constants.APITypeSOAP, constants.APITypeSOAPToREST:
+		return constants.APISubTypeSOAP
+	default:
+		return constants.APISubTypeHTTP // Default to HTTP for unknown types
 	}
 }
 

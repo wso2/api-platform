@@ -29,6 +29,7 @@ Gateway Management provides APIs for registering, managing, and deleting API gat
 | PUT | `/api/v1/gateways/{id}` | Update gateway | ✅ Implemented |
 | DELETE | `/api/v1/gateways/{id}` | Delete gateway | ✅ Implemented |
 | POST | `/api/v1/gateways/{id}/tokens` | Rotate gateway token | ✅ Implemented |
+| GET | `/api/v1/gateways/{id}/artifacts` | Get deployed artifacts | ✅ Implemented |
 | DELETE | `/api/v1/gateways/{id}/tokens/{tokenId}` | Revoke token | ⏳ Planned |
 
 ## Authentication & Authorization

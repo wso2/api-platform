@@ -673,6 +673,36 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /gateways/{gatewayId}/artifacts:
+    get:
+      summary: Get gateway artifacts
+      description: |
+        Retrieves all artifacts (APIs, MCPs, API Products) deployed to a specific gateway with pagination support.
+        Currently, only APIs are supported as artifacts. Future versions will include MCPs and API Products.
+        Access is validated against the organization in the JWT token.
+      operationId: GetGatewayArtifacts
+      tags:
+        - Gateways
+        - Artifacts
+      parameters:
+        - $ref: '#/components/parameters/GatewayID'
+        - $ref: '#/components/parameters/ArtifactType-Q'
+      responses:
+        '200':
+          description: Paginated list of artifacts deployed to the gateway
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GatewayArtifactListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /status/gateways:
     get:
       summary: Get gateway status
@@ -1778,6 +1808,68 @@ components:
           type: string
           description: A detailed description about the error message
 
+    GatewayArtifact:
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the artifact
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        name:
+          type: string
+          description: Name of the artifact
+          example: "inventory-api"
+        displayName:
+          type: string
+          description: Display name of the artifact
+          example: "Inventory Management API"
+        type:
+          type: string
+          enum: ["API", "MCP", "API_PRODUCT"]
+          description: Type of artifact deployed to the gateway
+          example: "API"
+        subType:
+          type: string
+          enum: ["REST", "ASYNC", "GQL", "WEBSOCKET", "SOAP"]
+          description: Subtype of the artifact (for APIs - type of API)
+          example: "REST"
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the artifact was created
+          example: "2025-10-27T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the artifact was last updated
+          example: "2025-10-27T11:45:00Z"
+
+    GatewayArtifactListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of items in current response
+          example: 5
+        list:
+          type: array
+          description: Array of gateway artifact objects
+          items:
+            $ref: '#/components/schemas/GatewayArtifact'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
   responses:
     Unauthorized:
       description: Unauthorized. Authentication credentials are missing or invalid.
@@ -1918,6 +2010,16 @@ components:
         type: string
         format: uuid
         example: "abc12345-f678-90de-f123-456789abcdef"
+
+    ArtifactType-Q:
+      name: artifactType
+      in: query
+      required: false
+      description: Filter artifacts by type
+      schema:
+        type: string
+        enum: ["API", "MCP", "API_PRODUCT"]
+      example: "API"
 
 tags:
   - name: Health
