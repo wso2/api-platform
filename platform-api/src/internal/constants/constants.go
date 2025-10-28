@@ -64,3 +64,39 @@ var ValidGatewayFunctionalityType = map[string]bool{
 
 // DefaultGatewayFunctionalityType Default gateway functionality type for new gateways
 const DefaultGatewayFunctionalityType = GatewayFunctionalityTypeRegular
+
+// API Type Constants
+const (
+	APITypeHTTP       = "HTTP"
+	APITypeWS         = "WS"
+	APITypeSOAPToREST = "SOAPTOREST"
+	APITypeSOAP       = "SOAP"
+	APITypeGraphQL    = "GRAPHQL"
+	APITypeWebSub     = "WEBSUB"
+	APITypeSSE        = "SSE"
+	APITypeWebhook    = "WEBHOOK"
+	APITypeAsync      = "ASYNC"
+)
+
+// API SubType Constants
+const (
+	APISubTypeHTTP      = "REST"
+	APISubTypeGraphQL   = "GQL"
+	APISubTypeAsync     = "ASYNC"
+	APISubTypeWebSocket = "WEBSOCKET"
+	APISubTypeSOAP      = "SOAP"
+)
+
+// Artifact Type Constants
+const (
+	ArtifactTypeAPI        = "API"
+	ArtifactTypeMCP        = "MCP"
+	ArtifactTypeAPIProduct = "API_PRODUCT"
+)
+
+// ValidArtifactTypes Valid artifact types deployed to gateways
+var ValidArtifactTypes = map[string]bool{
+	ArtifactTypeAPI:        true,
+	ArtifactTypeMCP:        true,
+	ArtifactTypeAPIProduct: true,
+}

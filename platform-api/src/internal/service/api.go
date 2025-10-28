@@ -433,6 +433,58 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 	return deployments, nil
 }
 
+// GetGatewaysForAPI retrieves all gateways where the specified API is deployed with pagination
+func (s *APIService) GetGatewaysForAPI(apiId, orgId string) (*dto.GatewayListResponse, error) {
+	// First validate that the API exists and belongs to the organization
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiId)
+	if err != nil {
+		return nil, err
+	}
+	if apiModel == nil {
+		return nil, constants.ErrAPINotFound
+	}
+	if apiModel.OrganizationID != orgId {
+		return nil, constants.ErrAPINotFound
+	}
+
+	// Get all gateways where this API is deployed (without pagination for total count)
+	gateways, err := s.gatewayRepo.GetGatewaysByAPIID(apiId, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert models to DTOs
+	responses := make([]dto.GatewayResponse, 0, len(gateways))
+	for _, gw := range gateways {
+		responses = append(responses, dto.GatewayResponse{
+			ID:                gw.ID,
+			OrganizationID:    gw.OrganizationID,
+			Name:              gw.Name,
+			DisplayName:       gw.DisplayName,
+			Description:       gw.Description,
+			Vhost:             gw.Vhost,
+			IsCritical:        gw.IsCritical,
+			FunctionalityType: gw.FunctionalityType,
+			IsActive:          gw.IsActive,
+			CreatedAt:         gw.CreatedAt,
+			UpdatedAt:         gw.UpdatedAt,
+		})
+	}
+
+	// Create paginated response
+	listResponse := &dto.GatewayListResponse{
+		Count: len(responses),
+		List:  responses,
+		Pagination: dto.Pagination{
+			Total:  len(responses), // For now, total equals count (no pagination yet)
+			Offset: 0,              // Starting from first item
+			Limit:  len(responses), // Returning all items
+		},
+	}
+
+	return listResponse, nil
+}
+
 // validateDeploymentRequest validates the deployment request
 func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, orgId string) error {
 	if req.GatewayID == "" {

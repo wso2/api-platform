@@ -287,3 +287,36 @@ func (r *GatewayRepo) CountActiveTokens(gatewayId string) (int, error) {
 	err := r.db.QueryRow(query, gatewayId).Scan(&count)
 	return count, err
 }
+
+// GetGatewaysByAPIID retrieves all gateways where the specified API is deployed
+func (r *GatewayRepo) GetGatewaysByAPIID(apiID, organizationID string) ([]*model.Gateway, error) {
+	query := `
+		SELECT g.uuid, g.organization_uuid, g.name, g.display_name, g.description, 
+		       g.vhost, g.is_critical, g.gateway_functionality_type, g.is_active, 
+		       g.created_at, g.updated_at
+		FROM gateways g
+		INNER JOIN api_deployments ad ON g.uuid = ad.gateway_uuid
+		WHERE ad.api_uuid = ? AND g.organization_uuid = ?
+		ORDER BY g.created_at DESC
+	`
+	rows, err := r.db.Query(query, apiID, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var gateways []*model.Gateway
+	for rows.Next() {
+		gateway := &model.Gateway{}
+		err := rows.Scan(
+			&gateway.ID, &gateway.OrganizationID, &gateway.Name, &gateway.DisplayName,
+			&gateway.Description, &gateway.Vhost, &gateway.IsCritical,
+			&gateway.FunctionalityType, &gateway.IsActive, &gateway.CreatedAt, &gateway.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		gateways = append(gateways, gateway)
+	}
+	return gateways, nil
+}

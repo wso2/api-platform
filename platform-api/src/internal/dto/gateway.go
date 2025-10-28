@@ -90,3 +90,21 @@ type GatewayStatusListResponse struct {
 	List       []GatewayStatusResponse `json:"list"`
 	Pagination Pagination              `json:"pagination"`
 }
+
+// GatewayArtifact represents an artifact (API, MCP, API Product) deployed to a gateway
+type GatewayArtifact struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	DisplayName string    `json:"displayName,omitempty"`
+	Type        string    `json:"type"`              // "API", "MCP", "API_PRODUCT"
+	SubType     string    `json:"subType,omitempty"` // For APIs: "REST", "ASYNC", "GQL"
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+// GatewayArtifactListResponse represents a paginated list of artifacts deployed to a gateway
+type GatewayArtifactListResponse struct {
+	Count      int               `json:"count"`
+	List       []GatewayArtifact `json:"list"`
+	Pagination Pagination        `json:"pagination"`
+}

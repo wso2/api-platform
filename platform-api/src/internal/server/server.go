@@ -84,7 +84,7 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo)
 	gatewayEventsService := service.NewGatewayEventsService(wsManager)
 	apiService := service.NewAPIService(apiRepo, projectRepo, gatewayRepo, gatewayEventsService)
-	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo)
+	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo)
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, gatewayRepo, orgRepo)
 
 	// Initialize handlers

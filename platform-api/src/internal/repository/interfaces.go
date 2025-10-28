@@ -48,6 +48,7 @@ type APIRepository interface {
 	GetAPIByUUID(apiId string) (*model.API, error)
 	GetAPIsByProjectID(projectID string) ([]*model.API, error)
 	GetAPIsByOrganizationID(orgID string, projectID *string) ([]*model.API, error)
+	GetAPIsByGatewayID(gatewayID, organizationID string) ([]*model.API, error)
 	UpdateAPI(api *model.API) error
 	DeleteAPI(apiId string) error
 	CreateDeployment(deployment *model.APIDeployment) error
@@ -61,6 +62,7 @@ type GatewayRepository interface {
 	GetByUUID(gatewayId string) (*model.Gateway, error)
 	GetByOrganizationID(orgID string) ([]*model.Gateway, error)
 	GetByNameAndOrgID(name, orgID string) (*model.Gateway, error)
+	GetGatewaysByAPIID(apiID, organizationID string) ([]*model.Gateway, error)
 	List() ([]*model.Gateway, error)
 	Delete(gatewayID, organizationID string) error
 	UpdateGateway(gateway *model.Gateway) error

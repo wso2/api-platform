@@ -19,6 +19,7 @@ package handler
 
 import (
 	"errors"
+	"github.com/gin-gonic/gin"
 	"log"
 	"net/http"
 	"platform-api/src/internal/constants"
@@ -26,8 +27,6 @@ import (
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
-
-	"github.com/gin-gonic/gin"
 )
 
 type APIHandler struct {
@@ -340,6 +339,36 @@ func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
 	c.JSON(http.StatusOK, deployments)
 }
 
+// GetAPIDeployedGateways handles GET /api/v1/apis/{apiId}/gateways
+func (h *APIHandler) GetAPIDeployedGateways(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	apiId := c.Param("apiId")
+	if apiId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
+		return
+	}
+
+	// Get paginated gateways for the API
+	gatewayListResponse, err := h.apiService.GetGatewaysForAPI(apiId, orgId)
+	if err != nil {
+		if errors.Is(err, constants.ErrAPINotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API not found"))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get API gateways"))
+		return
+	}
+
+	// Return paginated gateway list
+	c.JSON(http.StatusOK, gatewayListResponse)
+}
+
 // RegisterRoutes registers all API routes
 func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	// API routes
@@ -351,5 +380,6 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		apiGroup.PUT("/:apiId", h.UpdateAPI)
 		apiGroup.DELETE("/:apiId", h.DeleteAPI)
 		apiGroup.POST("/:apiId/deploy-revision", h.DeployAPIRevision)
+		apiGroup.GET("/:apiId/gateways", h.GetAPIDeployedGateways)
 	}
 }

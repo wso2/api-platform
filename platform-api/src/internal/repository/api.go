@@ -266,6 +266,37 @@ func (r *APIRepo) GetAPIsByOrganizationID(orgID string, projectID *string) ([]*m
 	return apis, rows.Err()
 }
 
+// GetAPIsByGatewayID retrieves all APIs deployed to a specific gateway
+func (r *APIRepo) GetAPIsByGatewayID(gatewayID, organizationID string) ([]*model.API, error) {
+	query := `
+		SELECT a.uuid, a.name, a.display_name, a.type, a.created_at, a.updated_at
+		FROM apis a
+		INNER JOIN api_deployments ad ON a.uuid = ad.api_uuid
+		WHERE ad.gateway_uuid = ? AND a.organization_uuid = ?
+		ORDER BY a.created_at DESC
+	`
+
+	rows, err := r.db.Query(query, gatewayID, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var apis []*model.API
+	for rows.Next() {
+		api := &model.API{}
+		err := rows.Scan(
+			&api.ID, &api.Name, &api.DisplayName, &api.Type, &api.CreatedAt, &api.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		apis = append(apis, api)
+	}
+
+	return apis, nil
+}
+
 // UpdateAPI modifies an existing API
 func (r *APIRepo) UpdateAPI(api *model.API) error {
 	tx, err := r.db.Begin()
