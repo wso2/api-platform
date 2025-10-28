@@ -20,7 +20,9 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"io"
 	"net/http"
 	"time"
@@ -38,13 +40,14 @@ import (
 
 // APIServer implements the generated ServerInterface
 type APIServer struct {
-	store             *storage.ConfigStore
-	db                storage.Storage
-	snapshotManager   *xds.SnapshotManager
-	parser            *config.Parser
-	validator         *config.Validator
-	logger            *zap.Logger
-	deploymentService *utils.APIDeploymentService
+	store              *storage.ConfigStore
+	db                 storage.Storage
+	snapshotManager    *xds.SnapshotManager
+	parser             *config.Parser
+	validator          *config.Validator
+	logger             *zap.Logger
+	deploymentService  *utils.APIDeploymentService
+	controlPlaneClient controlplane.ControlPlaneClient
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -53,15 +56,17 @@ func NewAPIServer(
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
 	logger *zap.Logger,
+	controlPlaneClient controlplane.ControlPlaneClient,
 ) *APIServer {
 	server := &APIServer{
-		store:             store,
-		db:                db,
-		snapshotManager:   snapshotManager,
-		parser:            config.NewParser(),
-		validator:         config.NewValidator(),
-		logger:            logger,
-		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager),
+		store:              store,
+		db:                 db,
+		snapshotManager:    snapshotManager,
+		parser:             config.NewParser(),
+		validator:          config.NewValidator(),
+		logger:             logger,
+		deploymentService:  utils.NewAPIDeploymentService(store, db, snapshotManager),
+		controlPlaneClient: controlPlaneClient,
 	}
 
 	// Register status update callback
@@ -84,6 +89,15 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		return
 	}
 
+	// Debug: dump the configuration as string for debugging
+	if configJSON, err := json.Marshal(cfg.Configuration); err != nil {
+		log.Error("Failed to marshal configuration for debugging", zap.Error(err))
+	} else {
+		log.Info("Configuration dump for debugging",
+			zap.String("config_id", configID),
+			zap.String("configuration", string(configJSON)))
+	}
+
 	now := time.Now()
 	if success {
 		cfg.Status = models.StatusDeployed
@@ -93,6 +107,26 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 			zap.String("id", configID),
 			zap.String("name", cfg.Configuration.Data.Name),
 			zap.Int64("version", version))
+
+		// Send REST API call to platform-api if connected to control plane
+		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() {
+			go func() {
+				// Extract API ID from stored config (use config ID as API ID)
+				apiID := configID
+
+				// Use empty revision ID for now (can be made configurable later)
+				revisionID := ""
+
+				if err := s.controlPlaneClient.NotifyAPIDeployment(apiID, cfg, revisionID); err != nil {
+					log.Error("Failed to notify platform-api of successful deployment",
+						zap.String("api_id", apiID),
+						zap.Error(err))
+				}
+			}()
+		} else {
+			log.Debug("Not connected to control plane, skipping platform-api notification",
+				zap.String("api_id", configID))
+		}
 	} else {
 		cfg.Status = models.StatusFailed
 		cfg.DeployedAt = nil

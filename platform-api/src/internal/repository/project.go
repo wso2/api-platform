@@ -74,6 +74,26 @@ func (r *ProjectRepo) GetProjectByUUID(projectId string) (*model.Project, error)
 	return project, nil
 }
 
+// GetProjectByNameAndOrgID retrieves a project by name within an organization
+func (r *ProjectRepo) GetProjectByNameAndOrgID(name, orgID string) (*model.Project, error) {
+	project := &model.Project{}
+	query := `
+		SELECT uuid, name, organization_uuid, description, created_at, updated_at
+		FROM projects
+		WHERE name = ? AND organization_uuid = ?
+	`
+	err := r.db.QueryRow(query, name, orgID).Scan(
+		&project.ID, &project.Name, &project.OrganizationID, &project.Description, &project.CreatedAt, &project.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return project, nil
+}
+
 // GetProjectsByOrganizationID retrieves all projects for an organization
 func (r *ProjectRepo) GetProjectsByOrganizationID(orgID string) ([]*model.Project, error) {
 	query := `

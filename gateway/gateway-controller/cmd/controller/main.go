@@ -132,7 +132,7 @@ func main() {
 	router.Use(gin.Recovery())
 
 	// Initialize API server
-	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, log)
+	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, log, cpClient)
 
 	// Register API routes
 	api.RegisterHandlers(router, apiServer)

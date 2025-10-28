@@ -22,7 +22,10 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"io"
 	"net/http"
 	"os"
@@ -32,8 +35,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// APIFetchConfig contains configuration for fetching API definitions
-type APIFetchConfig struct {
+// PlatformAPIConfig contains configuration for fetching API definitions
+type PlatformAPIConfig struct {
 	BaseURL            string        // Base URL for API requests
 	Token              string        // Authentication token
 	InsecureSkipVerify bool          // Skip TLS verification
@@ -42,12 +45,12 @@ type APIFetchConfig struct {
 
 // APIUtilsService provides utilities for API operations
 type APIUtilsService struct {
-	config APIFetchConfig
+	config PlatformAPIConfig
 	logger *zap.Logger
 }
 
 // NewAPIUtilsService creates a new API utilities service
-func NewAPIUtilsService(config APIFetchConfig, logger *zap.Logger) *APIUtilsService {
+func NewAPIUtilsService(config PlatformAPIConfig, logger *zap.Logger) *APIUtilsService {
 	// Set default timeout if not provided
 	if config.Timeout == 0 {
 		config.Timeout = 30 * time.Second
@@ -188,6 +191,97 @@ func (s *APIUtilsService) SaveAPIDefinition(apiID string, zipData []byte) error 
 		zap.String("api_id", apiID),
 		zap.String("filename", filename),
 	)
+
+	return nil
+}
+
+// APIDeploymentNotification represents the request body for notifying control plane about API deployments in the gateway
+type APIDeploymentNotification struct {
+	ID                string               `json:"id" yaml:"id"`
+	Configuration     api.APIConfiguration `json:"configuration" yaml:"configuration"`
+	Status            string               `json:"status" yaml:"status"`
+	CreatedAt         time.Time            `json:"createdAt" yaml:"createdAt"`
+	UpdatedAt         time.Time            `json:"updatedAt" yaml:"updatedAt"`
+	DeployedAt        *time.Time           `json:"deployedAt,omitempty" yaml:"deployedAt,omitempty"`
+	DeployedVersion   int64                `json:"deployedVersion" yaml:"deployedVersion"`
+	ProjectIdentifier string               `json:"projectIdentifier" yaml:"projectIdentifier"`
+}
+
+// NotifyAPIDeployment sends a REST API call to platform-api when an API is deployed successfully
+func (s *APIUtilsService) NotifyAPIDeployment(apiID string, apiConfig *models.StoredAPIConfig, revisionID string) error {
+	// Construct the deployment URL
+	deployURL := s.config.BaseURL + "/apis/" + apiID + "/gateway-deployments"
+	if revisionID != "" {
+		deployURL += "?revisionId=" + revisionID
+	}
+
+	// Create request body
+	requestBody := APIDeploymentNotification{
+		ID:                apiConfig.ID,
+		Configuration:     apiConfig.Configuration,
+		Status:            string(apiConfig.Status),
+		CreatedAt:         apiConfig.CreatedAt,
+		UpdatedAt:         apiConfig.UpdatedAt,
+		DeployedAt:        apiConfig.DeployedAt,
+		DeployedVersion:   apiConfig.DeployedVersion,
+		ProjectIdentifier: "default", // Set a default value or fetch from config if needed
+	}
+
+	// Marshal request body to JSON
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	// Create HTTP client with TLS configuration
+	client := &http.Client{
+		Timeout: s.config.Timeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: s.config.InsecureSkipVerify,
+			},
+		},
+	}
+
+	// Create POST request
+	req, err := http.NewRequest("POST", deployURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Add headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Add("api-key", s.config.Token)
+
+	s.logger.Info("Sending API deployment notification to platform-api",
+		zap.String("api_id", apiID),
+		zap.String("url", deployURL),
+		zap.String("revision_id", revisionID))
+
+	// Make the request
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send deployment notification: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check response status
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		s.logger.Error("API deployment notification failed",
+			zap.String("api_id", apiID),
+			zap.Int("status_code", resp.StatusCode))
+	}
+
+	// Read response body for error details
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	s.logger.Info("Successfully sent API deployment notification",
+		zap.String("api_id", apiID),
+		zap.Int("status_code", resp.StatusCode),
+		zap.String("response", string(bodyBytes)))
 
 	return nil
 }

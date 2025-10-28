@@ -23,6 +23,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -79,6 +80,12 @@ type ConnectionState struct {
 	mu             sync.RWMutex    // Protects state transitions
 }
 
+// ControlPlaneClient interface defines the methods needed from the control plane client
+type ControlPlaneClient interface {
+	IsConnected() bool
+	NotifyAPIDeployment(apiID string, apiConfig *models.StoredAPIConfig, revisionID string) error
+}
+
 // Client manages the WebSocket connection to the control plane
 type Client struct {
 	config            config.ControlPlaneConfig
@@ -107,7 +114,7 @@ func NewClient(
 ) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &Client{
+	client := &Client{
 		config:            cfg,
 		logger:            logger,
 		store:             store,
@@ -116,12 +123,6 @@ func NewClient(
 		parser:            config.NewParser(),
 		validator:         config.NewValidator(),
 		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager),
-		apiUtilsService: utils.NewAPIUtilsService(utils.APIFetchConfig{
-			BaseURL:            fmt.Sprintf("https://%s/api/internal/v1", cfg.Host),
-			Token:              cfg.Token,
-			InsecureSkipVerify: cfg.InsecureSkipVerify,
-			Timeout:            30 * time.Second,
-		}, logger),
 		state: &ConnectionState{
 			Current:        Disconnected,
 			Conn:           nil,
@@ -134,6 +135,16 @@ func NewClient(
 		cancel:   cancel,
 		stopChan: make(chan struct{}),
 	}
+
+	// Initialize API utils service with the proper base URL using the method
+	client.apiUtilsService = utils.NewAPIUtilsService(utils.PlatformAPIConfig{
+		BaseURL:            client.getRestAPIBaseURL(),
+		Token:              cfg.Token,
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
+		Timeout:            30 * time.Second,
+	}, logger)
+
+	return client
 }
 
 // Start initiates the connection to the control plane
@@ -658,7 +669,22 @@ func (c *Client) GetState() State {
 
 // IsConnected returns true if the client is currently connected
 func (c *Client) IsConnected() bool {
-	return c.GetState() == Connected
+	c.state.mu.RLock()
+	defer c.state.mu.RUnlock()
+	return c.state.Current == Connected && c.state.Conn != nil
+}
+
+// NotifyAPIDeployment sends a REST API call to platform-api when an API is deployed successfully
+func (c *Client) NotifyAPIDeployment(apiID string, apiConfig *models.StoredAPIConfig, revisionID string) error {
+	// Check if connected to control plane
+	if !c.IsConnected() {
+		c.logger.Debug("Not connected to control plane, skipping API deployment notification",
+			zap.String("api_id", apiID))
+		return nil
+	}
+
+	// Use the api utils service to send the deployment notification
+	return c.apiUtilsService.NotifyAPIDeployment(apiID, apiConfig, revisionID)
 }
 
 // getWebSocketURL constructs the base WebSocket URL from configuration
