@@ -37,6 +37,9 @@ type Server struct {
 
 	// WebSocket configurations
 	WebSocket WebSocket `envconfig:"WEBSOCKET"`
+
+	// Developer Portal configurations
+	DevPortal DevPortal `envconfig:"DEVPORTAL"`
 }
 
 // JWT holds JWT-specific configuration
@@ -69,6 +72,14 @@ type Database struct {
 	MaxOpenConns    int `envconfig:"MAX_OPEN_CONNS" default:"25"`
 	MaxIdleConns    int `envconfig:"MAX_IDLE_CONNS" default:"10"`
 	ConnMaxLifetime int `envconfig:"CONN_MAX_LIFETIME" default:"300"` // seconds
+}
+
+// DevPortal holds developer portal-specific configuration
+type DevPortal struct {
+	Enabled bool   `envconfig:"ENABLED" default:"false"`
+	BaseURL string `envconfig:"BASE_URL" default:"172.17.0.1:3001"`
+	APIKey  string `envconfig:"API_KEY" default:""`
+	Timeout int    `envconfig:"TIMEOUT" default:"15"` // seconds
 }
 
 // package-level variable and mutex for thread safety
