@@ -765,18 +765,12 @@ func (s *APIService) PublishAPI(apiID string, orgID string, devPortalID string) 
 		return nil, constants.ErrAPINotFound
 	}
 
-	// Retrieve OpenAPI definition
-	// TODO: Implement OpenAPI definition retrieval from storage
-	// For now, using a minimal placeholder OpenAPI definition
-	apiDefinition := []byte(fmt.Sprintf(`{
-		"openapi": "3.0.0",
-		"info": {
-			"title": "%s",
-			"version": "%s",
-			"description": "%s"
-		},
-		"paths": {}
-	}`, api.Name, api.Version, api.Description))
+	// Generate OpenAPI definition from API operations
+	apiDefinition, err := s.apiUtil.GenerateOpenAPIDefinition(api)
+	if err != nil {
+		log.Printf("[APIService] Failed to generate OpenAPI definition for API %s: %v", apiID, err)
+		return nil, fmt.Errorf("failed to generate OpenAPI definition: %w", err)
+	}
 
 	// Build API publish request for devportal
 	publishReq := &devportalDto.APIPublishRequest{
