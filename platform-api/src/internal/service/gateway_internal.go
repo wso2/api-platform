@@ -134,6 +134,42 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 
 	apiCreated := false
 	if existingAPI == nil {
+		// Convert upstream services from notification to backend services
+		backendServices := make([]model.BackendService, 0, len(notification.Configuration.Data.Upstream))
+		for i, upstream := range notification.Configuration.Data.Upstream {
+			backendService := model.BackendService{
+				Name:      fmt.Sprintf("backend-service-%d", i+1),
+				IsDefault: i == 0, // First backend service is default
+				Endpoints: []model.BackendEndpoint{
+					{
+						URL:    upstream.URL,
+						Weight: 100,
+					},
+				},
+			}
+			backendServices = append(backendServices, backendService)
+		}
+
+		// Convert operations from notification to API operations
+		operations := make([]model.Operation, 0, len(notification.Configuration.Data.Operations))
+		for _, op := range notification.Configuration.Data.Operations {
+			operation := model.Operation{
+				Name:        fmt.Sprintf("%s %s", op.Method, op.Path),
+				Description: fmt.Sprintf("Operation for %s %s", op.Method, op.Path),
+				Request: &model.OperationRequest{
+					Method: op.Method,
+					Path:   op.Path,
+					BackendServices: []model.BackendRouting{
+						{
+							Name:   "backend-service-1", // Route to default backend service
+							Weight: 100,
+						},
+					},
+				},
+			}
+			operations = append(operations, operation)
+		}
+
 		// Create new API from notification
 		newAPI := &model.API{
 			ID:               apiID,
@@ -149,6 +185,8 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 			IsDefaultVersion: false,
 			IsRevision:       false,
 			RevisionID:       0,
+			BackendServices:  backendServices,
+			Operations:       operations,
 			CreatedAt:        time.Now(),
 			UpdatedAt:        time.Now(),
 		}
