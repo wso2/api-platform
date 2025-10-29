@@ -18,6 +18,7 @@
 package config
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/kelseyhightower/envconfig"
@@ -101,6 +102,10 @@ func GetConfig() *Server {
 	processOnce.Do(func() {
 		settingInstance = &Server{}
 		err = envconfig.Process("", settingInstance)
+		if err == nil {
+			// Validate developer portal configuration
+			err = validateDevPortalConfig(&settingInstance.DevPortal)
+		}
 	})
 	if err != nil {
 		panic(err)
@@ -108,4 +113,37 @@ func GetConfig() *Server {
 	settingInstance.Database.Driver = "sqlite3"
 	settingInstance.Database.Path = "./data/api_platform.db"
 	return settingInstance
+}
+
+// validateDevPortalConfig validates developer portal configuration
+//
+// When developer portal is enabled, this function ensures that required
+// fields (BaseURL, APIKey) are provided.
+//
+// Parameters:
+//   - cfg: Developer portal configuration to validate
+//
+// Returns:
+//   - error: Validation error if configuration is invalid, nil otherwise
+func validateDevPortalConfig(cfg *DevPortal) error {
+	// If developer portal is not enabled, no validation needed
+	if !cfg.Enabled {
+		return nil
+	}
+
+	// When enabled, BaseURL and APIKey are required
+	if cfg.BaseURL == "" {
+		return fmt.Errorf("developer portal is enabled but DEVPORTAL_BASE_URL is not configured")
+	}
+
+	if cfg.APIKey == "" {
+		return fmt.Errorf("developer portal is enabled but DEVPORTAL_API_KEY is not configured")
+	}
+
+	// Timeout must be positive
+	if cfg.Timeout <= 0 {
+		return fmt.Errorf("developer portal timeout must be greater than 0, got: %d", cfg.Timeout)
+	}
+
+	return nil
 }
