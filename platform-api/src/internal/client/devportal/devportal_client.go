@@ -403,6 +403,60 @@ func (c *DevPortalClient) PublishAPI(orgID string, req *dto.APIPublishRequest, a
 	return &apiResp, nil
 }
 
+// CheckAPIExists checks if an API exists in the developer portal
+//
+// This method queries the developer portal to check if an API with the given ID exists.
+// It returns true if the API exists (200 OK), false if not found (404), and an error
+// for any other status codes or network issues.
+//
+// Parameters:
+//   - orgID: Organization UUID
+//   - apiID: API UUID to check (platform-api API UUID used as referenceID in devportal)
+//
+// Returns:
+//   - bool: True if API exists (200), false if not found (404)
+//   - error: DevPortalError if check fails (non-404, non-200 responses)
+func (c *DevPortalClient) CheckAPIExists(orgID string, apiID string) (bool, error) {
+	url := fmt.Sprintf("http://%s/devportal/organizations/%s/apis/%s?view=default", c.baseURL, orgID, apiID)
+
+	// Create HTTP request
+	httpReq, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return false, NewDevPortalError(0, "failed to create HTTP request", false, err)
+	}
+
+	// Set headers
+	httpReq.Header.Set("Accept", "application/json")
+	httpReq.Header.Set("x-wso2-api-key", c.apiKey)
+
+	log.Printf("[DevPortal] Checking if API exists: %s (Organization: %s)", apiID, orgID)
+
+	// Execute request with retry logic
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return false, NewDevPortalError(0, "failed to check API existence after retries", true, err)
+	}
+	defer resp.Body.Close()
+
+	// Handle status codes
+	if resp.StatusCode == http.StatusOK {
+		log.Printf("[DevPortal] API exists: %s", apiID)
+		return true, nil
+	} else if resp.StatusCode == http.StatusNotFound {
+		log.Printf("[DevPortal] API not found: %s", apiID)
+		return false, nil
+	}
+
+	// Read response body for error messages
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, NewDevPortalError(resp.StatusCode, "failed to read response body", false, err)
+	}
+
+	// Any other status code is an error
+	return false, NewDevPortalError(resp.StatusCode, fmt.Sprintf("API existence check failed: %s", string(respBody)), resp.StatusCode >= 500, nil)
+}
+
 // UnpublishAPI unpublishes an API from the developer portal
 //
 // This method deletes an API from the developer portal by its API ID.

@@ -804,6 +804,23 @@ func (s *APIService) PublishAPI(apiID string, orgID string, devPortalID string) 
 	log.Printf("[APIService] Publishing API %s (Name: %s, Version: %s) to developer portal",
 		api.ID, api.Name, api.Version)
 
+	// T046: Check if API already exists in developer portal
+	exists, err := s.devportalClient.CheckAPIExists(orgID, api.ID)
+	if err != nil {
+		log.Printf("[APIService] Failed to check API existence in developer portal: %v", err)
+		return nil, constants.ErrDevPortalSync
+	}
+
+	// T047: If API exists, unpublish it first before republishing
+	if exists {
+		log.Printf("[APIService] API %s already exists in developer portal, unpublishing first", api.ID)
+		if err := s.devportalClient.UnpublishAPI(orgID, api.ID); err != nil {
+			log.Printf("[APIService] Failed to unpublish existing API before republishing: %v", err)
+			return nil, constants.ErrDevPortalSync
+		}
+		log.Printf("[APIService] Successfully unpublished existing API %s", api.ID)
+	}
+
 	// T033: Invoke devportal client with 3-retry logic
 	devportalResp, err := s.devportalClient.PublishAPI(orgID, publishReq, apiDefinition)
 	if err != nil {
