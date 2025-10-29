@@ -17,14 +17,11 @@
 
 package dto
 
-// APIPublishRequest represents the complete API metadata for publishing to developer portal
+// APIPublishRequest represents the complete API metadata for publishing to api portal
 //
-// This DTO is used when platform-api publishes APIs to the developer portal. It matches
+// This DTO is used when platform-api publishes APIs to the api portal. It matches
 // the multipart form-data structure where this entire struct is serialized as JSON
 // in the "apiMetadata" field, and the OpenAPI definition is sent separately as a file.
-//
-// Reference: /home/malintha/wso2apim/gitworkspace/new-devportal/api-developer-portal-core/readmenew.md
-// Endpoint: POST /devportal/apis (lines 456-586)
 type APIPublishRequest struct {
 	APIInfo              APIInfo              `json:"apiInfo"`                        // Required: Core API information
 	SubscriptionPolicies []SubscriptionPolicy `json:"subscriptionPolicies,omitempty"` // Optional: Subscription policies for this API
@@ -75,12 +72,9 @@ type EndPoints struct {
 	SandboxURL    string `json:"sandboxURL"`    // Required: Sandbox endpoint URL
 }
 
-// APIPublishResponse represents the response from developer portal after API publishing
-//
-// Reference: /home/malintha/wso2apim/gitworkspace/new-devportal/api-developer-portal-core/readmenew.md
-// Response structure (lines 578-586)
+// APIPublishResponse represents the response from api portal after API publishing
 type APIPublishResponse struct {
-	APIID       string `json:"apiID"`       // Created/updated API UUID in developer portal
+	APIID       string `json:"apiID"`       // Created/updated API UUID in api portal
 	APIHandle   string `json:"apiHandle"`   // URL-friendly identifier
 	ReferenceID string `json:"referenceID"` // Reference ID from platform-api
 	Message     string `json:"message"`     // Success message

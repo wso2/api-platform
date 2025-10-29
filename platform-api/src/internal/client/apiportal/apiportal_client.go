@@ -15,7 +15,7 @@
  *
  */
 
-package devportal
+package apiportal
 
 import (
 	"bytes"
@@ -29,40 +29,40 @@ import (
 
 	"platform-api/src/config"
 	"platform-api/src/internal/client"
-	"platform-api/src/internal/client/devportal/dto"
+	"platform-api/src/internal/client/apiportal/dto"
 )
 
-// DevPortalError represents an error from developer portal operations
+// ApiPortalError represents an error from api portal operations
 //
 // This error type provides structured error information for intelligent
 // retry logic and clear error messages to API consumers.
-type DevPortalError struct {
-	Code       int    // HTTP status code from developer portal
+type ApiPortalError struct {
+	Code       int    // HTTP status code from api portal
 	Message    string // Human-readable error message
 	Retryable  bool   // Whether the error should trigger a retry
 	Underlying error  // Underlying error if any
 }
 
-// Error implements the error interface for DevPortalError
+// Error implements the error interface for ApiPortalError
 //
 // Returns:
 //   - string: Formatted error message including status code and message
-func (e *DevPortalError) Error() string {
+func (e *ApiPortalError) Error() string {
 	if e.Code > 0 {
-		return fmt.Sprintf("devportal error (%d): %s", e.Code, e.Message)
+		return fmt.Sprintf("apiportal error (%d): %s", e.Code, e.Message)
 	}
-	return fmt.Sprintf("devportal error: %s", e.Message)
+	return fmt.Sprintf("apiportal error: %s", e.Message)
 }
 
 // Unwrap returns the underlying error for error unwrapping
 //
 // Returns:
 //   - error: The underlying error if present, nil otherwise
-func (e *DevPortalError) Unwrap() error {
+func (e *ApiPortalError) Unwrap() error {
 	return e.Underlying
 }
 
-// NewDevPortalError creates a new DevPortalError
+// NewApiPortalError creates a new ApiPortalError
 //
 // Parameters:
 //   - code: HTTP status code (0 if not applicable)
@@ -71,9 +71,9 @@ func (e *DevPortalError) Unwrap() error {
 //   - underlying: Underlying error (can be nil)
 //
 // Returns:
-//   - *DevPortalError: A structured error instance
-func NewDevPortalError(code int, message string, retryable bool, underlying error) *DevPortalError {
-	return &DevPortalError{
+//   - *ApiPortalError: A structured error instance
+func NewApiPortalError(code int, message string, retryable bool, underlying error) *ApiPortalError {
+	return &ApiPortalError{
 		Code:       code,
 		Message:    message,
 		Retryable:  retryable,
@@ -85,34 +85,34 @@ func NewDevPortalError(code int, message string, retryable bool, underlying erro
 //
 // Returns:
 //   - bool: True if the error is retryable (5xx errors, network errors)
-func (e *DevPortalError) IsRetryable() bool {
+func (e *ApiPortalError) IsRetryable() bool {
 	return e.Retryable
 }
 
-// DevPortalClient handles HTTP communication with the developer portal
+// ApiPortalClient handles HTTP communication with the api portal
 //
 // This client provides methods for creating organizations, managing subscription policies,
-// and publishing APIs to the developer portal with automatic retry logic.
-type DevPortalClient struct {
+// and publishing APIs to the api portal with automatic retry logic.
+type ApiPortalClient struct {
 	httpClient *client.RetryableHTTPClient // HTTP client with retry capabilities
-	baseURL    string                      // Developer portal base URL (e.g., "172.17.0.1:3001")
+	baseURL    string                      // api portal base URL (e.g., "172.17.0.1:3001")
 	apiKey     string                      // Authentication API key
-	enabled    bool                        // Whether developer portal integration is enabled
+	enabled    bool                        // Whether api portal integration is enabled
 }
 
-// NewDevPortalClient creates a new developer portal client from configuration
+// NewApiPortalClient creates a new api portal client from configuration
 //
 // Parameters:
-//   - cfg: Developer portal configuration from config package
+//   - cfg: api portal configuration from config package
 //
 // Returns:
-//   - *DevPortalClient: Configured client instance
+//   - *ApiPortalClient: Configured client instance
 //
 // The client initializes with:
 //   - 3 retry attempts (per spec requirement)
 //   - Configured timeout duration (default 15 seconds)
 //   - Base URL and API key from configuration
-func NewDevPortalClient(cfg config.DevPortal) *DevPortalClient {
+func NewApiPortalClient(cfg config.ApiPortal) *ApiPortalClient {
 	// Convert timeout from seconds to duration
 	timeout := time.Duration(cfg.Timeout) * time.Second
 
@@ -121,13 +121,13 @@ func NewDevPortalClient(cfg config.DevPortal) *DevPortalClient {
 
 	// Log configuration status
 	if cfg.Enabled {
-		log.Printf("[DevPortal] Developer portal integration enabled. BaseURL: %s, Timeout: %d seconds",
+		log.Printf("[ApiPortal] api portal integration enabled. BaseURL: %s, Timeout: %d seconds",
 			cfg.BaseURL, cfg.Timeout)
 	} else {
-		log.Printf("[DevPortal] Developer portal integration disabled")
+		log.Printf("[ApiPortal] api portal integration disabled")
 	}
 
-	return &DevPortalClient{
+	return &ApiPortalClient{
 		httpClient: httpClient,
 		baseURL:    cfg.BaseURL,
 		apiKey:     cfg.APIKey,
@@ -135,75 +135,75 @@ func NewDevPortalClient(cfg config.DevPortal) *DevPortalClient {
 	}
 }
 
-// IsEnabled checks if developer portal integration is enabled
+// IsEnabled checks if api portal integration is enabled
 //
 // Returns:
 //   - bool: True if integration is enabled in configuration
-func (c *DevPortalClient) IsEnabled() bool {
+func (c *ApiPortalClient) IsEnabled() bool {
 	return c.enabled
 }
 
-// CreateOrganization creates a new organization in the developer portal
+// CreateOrganization creates a new organization in the api portal
 //
 // This method is called during organization creation in platform-api to synchronize
-// organizations to the developer portal. It uses retry logic to handle transient failures.
+// organizations to the api portal. It uses retry logic to handle transient failures.
 //
 // Parameters:
 //   - req: Organization creation request with ID, Name, DisplayName, Description
 //
 // Returns:
 //   - *dto.OrganizationCreateResponse: Response with created organization details
-//   - error: DevPortalError if creation fails after retries
-func (c *DevPortalClient) CreateOrganization(req *dto.OrganizationCreateRequest) (*dto.OrganizationCreateResponse, error) {
+//   - error: ApiPortalError if creation fails after retries
+func (c *ApiPortalClient) CreateOrganization(req *dto.OrganizationCreateRequest) (*dto.OrganizationCreateResponse, error) {
 	url := fmt.Sprintf("http://%s/devportal/organizations", c.baseURL)
 
 	// Marshal request body
 	body, err := json.Marshal(req)
 	if err != nil {
-		return nil, NewDevPortalError(0, "failed to marshal organization request", false, err)
+		return nil, NewApiPortalError(0, "failed to marshal organization request", false, err)
 	}
 
 	// Create HTTP request
 	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	if err != nil {
-		return nil, NewDevPortalError(0, "failed to create HTTP request", false, err)
+		return nil, NewApiPortalError(0, "failed to create HTTP request", false, err)
 	}
 
 	// Set headers
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-wso2-api-key", c.apiKey)
 
-	log.Printf("[DevPortal] Creating organization: %s (ID: %s)", req.OrgName, req.OrgID)
+	log.Printf("[ApiPortal] Creating organization: %s (ID: %s)", req.OrgName, req.OrgID)
 
 	// Execute request with retry logic
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, NewDevPortalError(0, "failed to create organization after retries", true, err)
+		return nil, NewApiPortalError(0, "failed to create organization after retries", true, err)
 	}
 	defer resp.Body.Close()
 
 	// Read response body
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, NewDevPortalError(resp.StatusCode, "failed to read response body", false, err)
+		return nil, NewApiPortalError(resp.StatusCode, "failed to read response body", false, err)
 	}
 
 	// Check status code
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return nil, NewDevPortalError(resp.StatusCode, fmt.Sprintf("organization creation failed: %s", string(respBody)), resp.StatusCode >= 500, nil)
+		return nil, NewApiPortalError(resp.StatusCode, fmt.Sprintf("organization creation failed: %s", string(respBody)), resp.StatusCode >= 500, nil)
 	}
 
 	// Unmarshal response
 	var orgResp dto.OrganizationCreateResponse
 	if err := json.Unmarshal(respBody, &orgResp); err != nil {
-		return nil, NewDevPortalError(resp.StatusCode, "failed to unmarshal response", false, err)
+		return nil, NewApiPortalError(resp.StatusCode, "failed to unmarshal response", false, err)
 	}
 
-	log.Printf("[DevPortal] Organization created successfully: %s (ID: %s)", orgResp.OrgName, orgResp.OrgID)
+	log.Printf("[ApiPortal] Organization created successfully: %s (ID: %s)", orgResp.OrgName, orgResp.OrgID)
 	return &orgResp, nil
 }
 
-// CreateSubscriptionPolicy creates a subscription policy for an organization in the developer portal
+// CreateSubscriptionPolicy creates a subscription policy for an organization in the api portal
 //
 // This method is used to create the default "unlimited" subscription policy for new organizations.
 //
@@ -213,53 +213,53 @@ func (c *DevPortalClient) CreateOrganization(req *dto.OrganizationCreateRequest)
 //
 // Returns:
 //   - *dto.SubscriptionPolicyCreateResponse: Response with created policy details
-//   - error: DevPortalError if creation fails after retries
-func (c *DevPortalClient) CreateSubscriptionPolicy(orgID string, req *dto.SubscriptionPolicyCreateRequest) (*dto.SubscriptionPolicyCreateResponse, error) {
+//   - error: ApiPortalError if creation fails after retries
+func (c *ApiPortalClient) CreateSubscriptionPolicy(orgID string, req *dto.SubscriptionPolicyCreateRequest) (*dto.SubscriptionPolicyCreateResponse, error) {
 	url := fmt.Sprintf("http://%s/devportal/organizations/%s/subscription-policies", c.baseURL, orgID)
 
 	// Marshal request body
 	body, err := json.Marshal(req)
 	if err != nil {
-		return nil, NewDevPortalError(0, "failed to marshal subscription policy request", false, err)
+		return nil, NewApiPortalError(0, "failed to marshal subscription policy request", false, err)
 	}
 
 	// Create HTTP request
 	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	if err != nil {
-		return nil, NewDevPortalError(0, "failed to create HTTP request", false, err)
+		return nil, NewApiPortalError(0, "failed to create HTTP request", false, err)
 	}
 
 	// Set headers
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-wso2-api-key", c.apiKey)
 
-	log.Printf("[DevPortal] Creating subscription policy '%s' for organization: %s", req.PolicyName, orgID)
+	log.Printf("[ApiPortal] Creating subscription policy '%s' for organization: %s", req.PolicyName, orgID)
 
 	// Execute request with retry logic
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, NewDevPortalError(0, "failed to create subscription policy after retries", true, err)
+		return nil, NewApiPortalError(0, "failed to create subscription policy after retries", true, err)
 	}
 	defer resp.Body.Close()
 
 	// Read response body
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, NewDevPortalError(resp.StatusCode, "failed to read response body", false, err)
+		return nil, NewApiPortalError(resp.StatusCode, "failed to read response body", false, err)
 	}
 
 	// Check status code
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return nil, NewDevPortalError(resp.StatusCode, fmt.Sprintf("subscription policy creation failed: %s", string(respBody)), resp.StatusCode >= 500, nil)
+		return nil, NewApiPortalError(resp.StatusCode, fmt.Sprintf("subscription policy creation failed: %s", string(respBody)), resp.StatusCode >= 500, nil)
 	}
 
 	// Unmarshal response
 	var policyResp dto.SubscriptionPolicyCreateResponse
 	if err := json.Unmarshal(respBody, &policyResp); err != nil {
-		return nil, NewDevPortalError(resp.StatusCode, "failed to unmarshal response", false, err)
+		return nil, NewApiPortalError(resp.StatusCode, "failed to unmarshal response", false, err)
 	}
 
-	log.Printf("[DevPortal] Subscription policy created successfully: %s (ID: %s)", policyResp.PolicyName, policyResp.ID)
+	log.Printf("[ApiPortal] Subscription policy created successfully: %s (ID: %s)", policyResp.PolicyName, policyResp.ID)
 	return &policyResp, nil
 }
 
@@ -273,7 +273,7 @@ func (c *DevPortalClient) CreateSubscriptionPolicy(orgID string, req *dto.Subscr
 //
 // Returns:
 //   - *dto.SubscriptionPolicyCreateRequest: Configured unlimited policy request
-func (c *DevPortalClient) CreateDefaultSubscriptionPolicy() *dto.SubscriptionPolicyCreateRequest {
+func (c *ApiPortalClient) CreateDefaultSubscriptionPolicy() *dto.SubscriptionPolicyCreateRequest {
 	return &dto.SubscriptionPolicyCreateRequest{
 		PolicyName:   "unlimited",
 		DisplayName:  "Unlimited Tier",
@@ -288,7 +288,7 @@ func (c *DevPortalClient) CreateDefaultSubscriptionPolicy() *dto.SubscriptionPol
 
 // createMultipartRequest creates a multipart/form-data request with API metadata and definition
 //
-// This helper constructs the multipart request required by the developer portal API publishing endpoint.
+// This helper constructs the multipart request required by the api portal API publishing endpoint.
 // The request contains:
 //   - apiMetadata: JSON-serialized API metadata (Content-Type: application/json)
 //   - apiDefinition: OpenAPI definition file (must be named "apiDefinition.json")
@@ -301,7 +301,7 @@ func (c *DevPortalClient) CreateDefaultSubscriptionPolicy() *dto.SubscriptionPol
 //   - *bytes.Buffer: Multipart request body
 //   - string: Content-Type header value with boundary
 //   - error: Error if multipart creation fails
-func (c *DevPortalClient) createMultipartRequest(metadata *dto.APIPublishRequest, apiDefinition []byte) (*bytes.Buffer, string, error) {
+func (c *ApiPortalClient) createMultipartRequest(metadata *dto.APIPublishRequest, apiDefinition []byte) (*bytes.Buffer, string, error) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
@@ -321,7 +321,7 @@ func (c *DevPortalClient) createMultipartRequest(metadata *dto.APIPublishRequest
 	}
 
 	// Add apiDefinition file field
-	// IMPORTANT: File must be named "apiDefinition.json" per devportal API spec
+	// IMPORTANT: File must be named "apiDefinition.json" per apiportal API spec
 	fileField, err := writer.CreateFormFile("apiDefinition", "apiDefinition.json")
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to create apiDefinition form file: %w", err)
@@ -338,9 +338,9 @@ func (c *DevPortalClient) createMultipartRequest(metadata *dto.APIPublishRequest
 	return body, writer.FormDataContentType(), nil
 }
 
-// PublishAPI publishes an API to the developer portal
+// PublishAPI publishes an API to the api portal
 //
-// This method creates a new API in the developer portal with metadata and OpenAPI definition.
+// This method creates a new API in the api portal with metadata and OpenAPI definition.
 // It uses multipart/form-data to send both the API metadata (JSON) and the OpenAPI definition file.
 //
 // Parameters:
@@ -350,20 +350,20 @@ func (c *DevPortalClient) createMultipartRequest(metadata *dto.APIPublishRequest
 //
 // Returns:
 //   - *dto.APIPublishResponse: Response with created API details
-//   - error: DevPortalError if publishing fails after retries
-func (c *DevPortalClient) PublishAPI(orgID string, req *dto.APIPublishRequest, apiDefinition []byte) (*dto.APIPublishResponse, error) {
+//   - error: ApiPortalError if publishing fails after retries
+func (c *ApiPortalClient) PublishAPI(orgID string, req *dto.APIPublishRequest, apiDefinition []byte) (*dto.APIPublishResponse, error) {
 	url := fmt.Sprintf("http://%s/devportal/apis", c.baseURL)
 
 	// Create multipart request body
 	body, contentType, err := c.createMultipartRequest(req, apiDefinition)
 	if err != nil {
-		return nil, NewDevPortalError(0, "failed to create multipart request", false, err)
+		return nil, NewApiPortalError(0, "failed to create multipart request", false, err)
 	}
 
 	// Create HTTP request
 	httpReq, err := http.NewRequest("POST", url, body)
 	if err != nil {
-		return nil, NewDevPortalError(0, "failed to create HTTP request", false, err)
+		return nil, NewApiPortalError(0, "failed to create HTTP request", false, err)
 	}
 
 	// Set headers
@@ -371,110 +371,110 @@ func (c *DevPortalClient) PublishAPI(orgID string, req *dto.APIPublishRequest, a
 	httpReq.Header.Set("x-wso2-api-key", c.apiKey)
 	httpReq.Header.Set("organization", orgID)
 
-	log.Printf("[DevPortal] Publishing API: %s (Organization: %s, ReferenceID: %s)",
+	log.Printf("[ApiPortal] Publishing API: %s (Organization: %s, ReferenceID: %s)",
 		req.APIInfo.APIName, orgID, req.APIInfo.ReferenceID)
 
 	// Execute request with retry logic
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, NewDevPortalError(0, "failed to publish API after retries", true, err)
+		return nil, NewApiPortalError(0, "failed to publish API after retries", true, err)
 	}
 	defer resp.Body.Close()
 
 	// Read response body
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, NewDevPortalError(resp.StatusCode, "failed to read response body", false, err)
+		return nil, NewApiPortalError(resp.StatusCode, "failed to read response body", false, err)
 	}
 
 	// Check status code
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return nil, NewDevPortalError(resp.StatusCode, fmt.Sprintf("API publishing failed: %s", string(respBody)), resp.StatusCode >= 500, nil)
+		return nil, NewApiPortalError(resp.StatusCode, fmt.Sprintf("API publishing failed: %s", string(respBody)), resp.StatusCode >= 500, nil)
 	}
 
 	// Unmarshal response
 	var apiResp dto.APIPublishResponse
 	if err := json.Unmarshal(respBody, &apiResp); err != nil {
-		return nil, NewDevPortalError(resp.StatusCode, "failed to unmarshal response", false, err)
+		return nil, NewApiPortalError(resp.StatusCode, "failed to unmarshal response", false, err)
 	}
 
-	log.Printf("[DevPortal] API published successfully: %s (ID: %s, ReferenceID: %s)",
+	log.Printf("[ApiPortal] API published successfully: %s (ID: %s, ReferenceID: %s)",
 		apiResp.APIHandle, apiResp.APIID, apiResp.ReferenceID)
 	return &apiResp, nil
 }
 
-// CheckAPIExists checks if an API exists in the developer portal
+// CheckAPIExists checks if an API exists in the api portal
 //
-// This method queries the developer portal to check if an API with the given ID exists.
+// This method queries the api portal to check if an API with the given ID exists.
 // It returns true if the API exists (200 OK), false if not found (404), and an error
 // for any other status codes or network issues.
 //
 // Parameters:
 //   - orgID: Organization UUID
-//   - apiID: API UUID to check (platform-api API UUID used as referenceID in devportal)
+//   - apiID: API UUID to check (platform-api API UUID used as referenceID in apiportal)
 //
 // Returns:
 //   - bool: True if API exists (200), false if not found (404)
-//   - error: DevPortalError if check fails (non-404, non-200 responses)
-func (c *DevPortalClient) CheckAPIExists(orgID string, apiID string) (bool, error) {
+//   - error: ApiPortalError if check fails (non-404, non-200 responses)
+func (c *ApiPortalClient) CheckAPIExists(orgID string, apiID string) (bool, error) {
 	url := fmt.Sprintf("http://%s/devportal/organizations/%s/apis/%s?view=default", c.baseURL, orgID, apiID)
 
 	// Create HTTP request
 	httpReq, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return false, NewDevPortalError(0, "failed to create HTTP request", false, err)
+		return false, NewApiPortalError(0, "failed to create HTTP request", false, err)
 	}
 
 	// Set headers
 	httpReq.Header.Set("Accept", "application/json")
 	httpReq.Header.Set("x-wso2-api-key", c.apiKey)
 
-	log.Printf("[DevPortal] Checking if API exists: %s (Organization: %s)", apiID, orgID)
+	log.Printf("[ApiPortal] Checking if API exists: %s (Organization: %s)", apiID, orgID)
 
 	// Execute request with retry logic
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return false, NewDevPortalError(0, "failed to check API existence after retries", true, err)
+		return false, NewApiPortalError(0, "failed to check API existence after retries", true, err)
 	}
 	defer resp.Body.Close()
 
 	// Handle status codes
 	if resp.StatusCode == http.StatusOK {
-		log.Printf("[DevPortal] API exists: %s", apiID)
+		log.Printf("[ApiPortal] API exists: %s", apiID)
 		return true, nil
 	} else if resp.StatusCode == http.StatusNotFound {
-		log.Printf("[DevPortal] API not found: %s", apiID)
+		log.Printf("[ApiPortal] API not found: %s", apiID)
 		return false, nil
 	}
 
 	// Read response body for error messages
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return false, NewDevPortalError(resp.StatusCode, "failed to read response body", false, err)
+		return false, NewApiPortalError(resp.StatusCode, "failed to read response body", false, err)
 	}
 
 	// Any other status code is an error
-	return false, NewDevPortalError(resp.StatusCode, fmt.Sprintf("API existence check failed: %s", string(respBody)), resp.StatusCode >= 500, nil)
+	return false, NewApiPortalError(resp.StatusCode, fmt.Sprintf("API existence check failed: %s", string(respBody)), resp.StatusCode >= 500, nil)
 }
 
-// UnpublishAPI unpublishes an API from the developer portal
+// UnpublishAPI unpublishes an API from the api portal
 //
-// This method deletes an API from the developer portal by its API ID.
+// This method deletes an API from the api portal by its API ID.
 // It uses retry logic to handle transient failures.
 //
 // Parameters:
 //   - orgID: Organization UUID
-//   - apiID: Developer portal API UUID (not platform-api API UUID)
+//   - apiID: api portal API UUID (not platform-api API UUID)
 //
 // Returns:
-//   - error: DevPortalError if unpublishing fails after retries, nil on success
-func (c *DevPortalClient) UnpublishAPI(orgID string, apiID string) error {
+//   - error: ApiPortalError if unpublishing fails after retries, nil on success
+func (c *ApiPortalClient) UnpublishAPI(orgID string, apiID string) error {
 	url := fmt.Sprintf("http://%s/devportal/apis/%s", c.baseURL, apiID)
 
 	// Create HTTP request
 	httpReq, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
-		return NewDevPortalError(0, "failed to create HTTP request", false, err)
+		return NewApiPortalError(0, "failed to create HTTP request", false, err)
 	}
 
 	// Set headers
@@ -482,26 +482,26 @@ func (c *DevPortalClient) UnpublishAPI(orgID string, apiID string) error {
 	httpReq.Header.Set("organization", orgID)
 	httpReq.Header.Set("Accept", "application/json")
 
-	log.Printf("[DevPortal] Unpublishing API: %s (Organization: %s)", apiID, orgID)
+	log.Printf("[ApiPortal] Unpublishing API: %s (Organization: %s)", apiID, orgID)
 
 	// Execute request with retry logic
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return NewDevPortalError(0, "failed to unpublish API after retries", true, err)
+		return NewApiPortalError(0, "failed to unpublish API after retries", true, err)
 	}
 	defer resp.Body.Close()
 
 	// Read response body for error messages
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return NewDevPortalError(resp.StatusCode, "failed to read response body", false, err)
+		return NewApiPortalError(resp.StatusCode, "failed to read response body", false, err)
 	}
 
 	// Check status code - DELETE should return 200 or 204 on success
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return NewDevPortalError(resp.StatusCode, fmt.Sprintf("API unpublishing failed: %s", string(respBody)), resp.StatusCode >= 500, nil)
+		return NewApiPortalError(resp.StatusCode, fmt.Sprintf("API unpublishing failed: %s", string(respBody)), resp.StatusCode >= 500, nil)
 	}
 
-	log.Printf("[DevPortal] API unpublished successfully: %s", apiID)
+	log.Printf("[ApiPortal] API unpublished successfully: %s", apiID)
 	return nil
 }

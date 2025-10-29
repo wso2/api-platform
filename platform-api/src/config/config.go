@@ -40,7 +40,7 @@ type Server struct {
 	WebSocket WebSocket `envconfig:"WEBSOCKET"`
 
 	// Developer Portal configurations
-	DevPortal DevPortal `envconfig:"DEVPORTAL"`
+	ApiPortal ApiPortal `envconfig:"APIPORTAL"`
 }
 
 // JWT holds JWT-specific configuration
@@ -75,8 +75,8 @@ type Database struct {
 	ConnMaxLifetime int `envconfig:"CONN_MAX_LIFETIME" default:"300"` // seconds
 }
 
-// DevPortal holds developer portal-specific configuration
-type DevPortal struct {
+// ApiPortal holds api portal-specific configuration
+type ApiPortal struct {
 	Enabled bool   `envconfig:"ENABLED" default:"false"`
 	BaseURL string `envconfig:"BASE_URL" default:"172.17.0.1:3001"`
 	APIKey  string `envconfig:"API_KEY" default:""`
@@ -103,8 +103,8 @@ func GetConfig() *Server {
 		settingInstance = &Server{}
 		err = envconfig.Process("", settingInstance)
 		if err == nil {
-			// Validate developer portal configuration
-			err = validateDevPortalConfig(&settingInstance.DevPortal)
+			// Validate api portal configuration
+			err = validateApiPortalConfig(&settingInstance.ApiPortal)
 		}
 	})
 	if err != nil {
@@ -115,34 +115,34 @@ func GetConfig() *Server {
 	return settingInstance
 }
 
-// validateDevPortalConfig validates developer portal configuration
+// validateApiPortalConfig validates api portal configuration
 //
-// When developer portal is enabled, this function ensures that required
+// When api portal is enabled, this function ensures that required
 // fields (BaseURL, APIKey) are provided.
 //
 // Parameters:
-//   - cfg: Developer portal configuration to validate
+//   - cfg: api portal configuration to validate
 //
 // Returns:
 //   - error: Validation error if configuration is invalid, nil otherwise
-func validateDevPortalConfig(cfg *DevPortal) error {
-	// If developer portal is not enabled, no validation needed
+func validateApiPortalConfig(cfg *ApiPortal) error {
+	// If api portal is not enabled, no validation needed
 	if !cfg.Enabled {
 		return nil
 	}
 
 	// When enabled, BaseURL and APIKey are required
 	if cfg.BaseURL == "" {
-		return fmt.Errorf("developer portal is enabled but DEVPORTAL_BASE_URL is not configured")
+		return fmt.Errorf("api portal is enabled but APIPORTAL_BASE_URL is not configured")
 	}
 
 	if cfg.APIKey == "" {
-		return fmt.Errorf("developer portal is enabled but DEVPORTAL_API_KEY is not configured")
+		return fmt.Errorf("api portal is enabled but APIPORTAL_API_KEY is not configured")
 	}
 
 	// Timeout must be positive
 	if cfg.Timeout <= 0 {
-		return fmt.Errorf("developer portal timeout must be greater than 0, got: %d", cfg.Timeout)
+		return fmt.Errorf("api portal timeout must be greater than 0, got: %d", cfg.Timeout)
 	}
 
 	return nil

@@ -279,37 +279,37 @@ type APIListResponse struct {
 	Pagination Pagination `json:"pagination" yaml:"pagination"` // Pagination metadata
 }
 
-// PublishAPIRequest represents the request for publishing an API to developer portal
+// PublishAPIRequest represents the request for publishing an API to api portal
 //
-// This DTO is used at the handler level for the POST /apis/{id}/publish-to-devportal endpoint.
+// This DTO is used at the handler level for the POST /apis/{id}/publish-to-apiportal endpoint.
 // The handler validates this request and then invokes the service layer which transforms it
-// into the devportal client DTOs.
+// into the apiportal client DTOs.
 type PublishAPIRequest struct {
-	DevPortalID string `json:"devPortalId,omitempty"` // Optional: Specific devportal API ID to use/update
+	ApiPortalID string `json:"apiPortalId,omitempty"` // Optional: Specific apiportal API ID to use/update
 }
 
-// PublishAPIResponse represents the response after publishing an API to developer portal
+// PublishAPIResponse represents the response after publishing an API to api portal
 //
 // This DTO is returned to the API consumer after successfully publishing the API.
 type PublishAPIResponse struct {
 	Message        string    `json:"message"`        // Success message
 	APIID          string    `json:"apiId"`          // Platform-api API UUID
-	DevPortalRefID string    `json:"devPortalRefId"` // Developer portal API UUID
+	ApiPortalRefID string    `json:"apiPortalRefId"` // api portal API UUID
 	PublishedAt    time.Time `json:"publishedAt"`    // Timestamp of publication
 }
 
-// UnpublishAPIRequest represents the request for unpublishing an API from developer portal
+// UnpublishAPIRequest represents the request for unpublishing an API from api portal
 //
 // This DTO is used at the handler level for the POST /apis/{id}/api-portals/unpublish endpoint.
 type UnpublishAPIRequest struct {
-	DevPortalID string `json:"devPortalId,omitempty"` // Optional: Specific devportal API ID to unpublish
+	ApiPortalID string `json:"apiPortalId,omitempty"` // Optional: Specific apiportal API ID to unpublish
 }
 
-// UnpublishAPIResponse represents the response after unpublishing an API from developer portal
+// UnpublishAPIResponse represents the response after unpublishing an API from api portal
 //
 // This DTO is returned to the API consumer after successfully unpublishing the API.
 type UnpublishAPIResponse struct {
 	Message       string    `json:"message"`       // Success message
-	APIID         string    `json:"apiId"`         // API UUID (same in platform-api and devportal)
+	APIID         string    `json:"apiId"`         // API UUID (same in platform-api and apiportal)
 	UnpublishedAt time.Time `json:"unpublishedAt"` // Timestamp of unpublishing
 }

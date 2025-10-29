@@ -17,35 +17,29 @@
 
 package dto
 
-// OrganizationCreateRequest represents the request body for creating an organization in developer portal
+// OrganizationCreateRequest represents the request body for creating an organization in api portal
 //
-// This DTO is used when platform-api synchronizes organizations to the developer portal
-// during organization creation workflow. Fields match the actual developer portal API spec.
-//
-// Reference: /home/malintha/wso2apim/gitworkspace/new-devportal/api-developer-portal-core/readmenew.md
-// Endpoint: POST /devportal/organizations (lines 114-199)
+// This DTO is used when platform-api synchronizes organizations to the api portal
+// during organization creation workflow. Fields match the actual api portal API spec.
 type OrganizationCreateRequest struct {
-	OrgID                  string `json:"orgId,omitempty"`            // Organization UUID (optional, auto-generated if not provided)
-	OrgName                string `json:"orgName"`                    // Organization name (required, unique)
-	OrgHandle              string `json:"orgHandle"`                  // URL-friendly handle (required, unique)
-	OrganizationIdentifier string `json:"organizationIdentifier"`     // Organization identifier (required, unique)
-	BusinessOwner          string `json:"businessOwner,omitempty"`    // Business owner name (optional)
-	BusinessOwnerContact   string `json:"businessOwnerContact,omitempty"` // Contact number (optional)
-	BusinessOwnerEmail     string `json:"businessOwnerEmail,omitempty"`   // Email address (optional)
-	RoleClaimName          string `json:"roleClaimName,omitempty"`    // JWT claim for roles (default: "roles")
-	GroupsClaimName        string `json:"groupsClaimName,omitempty"`  // JWT claim for groups (default: "groups")
+	OrgID                  string `json:"orgId,omitempty"`                 // Organization UUID (optional, auto-generated if not provided)
+	OrgName                string `json:"orgName"`                         // Organization name (required, unique)
+	OrgHandle              string `json:"orgHandle"`                       // URL-friendly handle (required, unique)
+	OrganizationIdentifier string `json:"organizationIdentifier"`          // Organization identifier (required, unique)
+	BusinessOwner          string `json:"businessOwner,omitempty"`         // Business owner name (optional)
+	BusinessOwnerContact   string `json:"businessOwnerContact,omitempty"`  // Contact number (optional)
+	BusinessOwnerEmail     string `json:"businessOwnerEmail,omitempty"`    // Email address (optional)
+	RoleClaimName          string `json:"roleClaimName,omitempty"`         // JWT claim for roles (default: "roles")
+	GroupsClaimName        string `json:"groupsClaimName,omitempty"`       // JWT claim for groups (default: "groups")
 	OrganizationClaimName  string `json:"organizationClaimName,omitempty"` // JWT claim for organization (default: "organizationID")
-	AdminRole              string `json:"adminRole,omitempty"`        // Admin role name (default: "admin")
-	SubscriberRole         string `json:"subscriberRole,omitempty"`   // Subscriber role (default: "Internal/subscriber")
-	SuperAdminRole         string `json:"superAdminRole,omitempty"`   // Super admin role (default: "superAdmin")
+	AdminRole              string `json:"adminRole,omitempty"`             // Admin role name (default: "admin")
+	SubscriberRole         string `json:"subscriberRole,omitempty"`        // Subscriber role (default: "Internal/subscriber")
+	SuperAdminRole         string `json:"superAdminRole,omitempty"`        // Super admin role (default: "superAdmin")
 }
 
-// OrganizationCreateResponse represents the response from developer portal after organization creation
+// OrganizationCreateResponse represents the response from api portal after organization creation
 //
-// This DTO contains the confirmed organization details from the developer portal.
-//
-// Reference: /home/malintha/wso2apim/gitworkspace/new-devportal/api-developer-portal-core/readmenew.md
-// Response structure (lines 179-198)
+// This DTO contains the confirmed organization details from the api portal.
 type OrganizationCreateResponse struct {
 	OrgID                  string                 `json:"orgId"`                  // Created organization UUID
 	OrgName                string                 `json:"orgName"`                // Organization name
