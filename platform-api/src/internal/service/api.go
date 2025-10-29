@@ -735,7 +735,7 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 //
 // This method handles the business logic for publishing APIs to the developer portal:
 //   - Fetches API metadata from platform-api database
-//   - Retrieves OpenAPI definition (placeholder for now - T031)
+//   - Generates an OpenAPI definition
 //   - Builds API publish request with required fields
 //   - Assigns hardcoded "unlimited" subscription tier
 //   - Invokes devportal client with 3-retry logic
@@ -765,7 +765,7 @@ func (s *APIService) PublishAPI(apiID string, orgID string, devPortalID string) 
 		return nil, constants.ErrAPINotFound
 	}
 
-	// T031: Retrieve OpenAPI definition
+	// Retrieve OpenAPI definition
 	// TODO: Implement OpenAPI definition retrieval from storage
 	// For now, using a minimal placeholder OpenAPI definition
 	apiDefinition := []byte(fmt.Sprintf(`{
@@ -793,7 +793,7 @@ func (s *APIService) PublishAPI(apiID string, orgID string, devPortalID string) 
 			Visibility:     "PUBLIC",                                    // Optional: Default to PUBLIC
 		},
 		SubscriptionPolicies: []devportalDto.SubscriptionPolicy{
-			{PolicyName: "unlimited"}, // T032: Hardcoded "unlimited" subscription tier
+			{PolicyName: "unlimited"}, // Hardcoded "unlimited" subscription tier
 		},
 		EndPoints: devportalDto.EndPoints{
 			ProductionURL: "http://backend-service:8080", // Placeholder production URL
@@ -804,14 +804,14 @@ func (s *APIService) PublishAPI(apiID string, orgID string, devPortalID string) 
 	log.Printf("[APIService] Publishing API %s (Name: %s, Version: %s) to developer portal",
 		api.ID, api.Name, api.Version)
 
-	// T046: Check if API already exists in developer portal
+	// Check if API already exists in developer portal
 	exists, err := s.devportalClient.CheckAPIExists(orgID, api.ID)
 	if err != nil {
 		log.Printf("[APIService] Failed to check API existence in developer portal: %v", err)
 		return nil, constants.ErrDevPortalSync
 	}
 
-	// T047: If API exists, unpublish it first before republishing
+	// If API exists, unpublish it first before republishing
 	if exists {
 		log.Printf("[APIService] API %s already exists in developer portal, unpublishing first", api.ID)
 		if err := s.devportalClient.UnpublishAPI(orgID, api.ID); err != nil {
@@ -821,7 +821,7 @@ func (s *APIService) PublishAPI(apiID string, orgID string, devPortalID string) 
 		log.Printf("[APIService] Successfully unpublished existing API %s", api.ID)
 	}
 
-	// T033: Invoke devportal client with 3-retry logic
+	// Invoke devportal client with 3-retry logic
 	devportalResp, err := s.devportalClient.PublishAPI(orgID, publishReq, apiDefinition)
 	if err != nil {
 		log.Printf("[APIService] Failed to publish API to developer portal: %v", err)
