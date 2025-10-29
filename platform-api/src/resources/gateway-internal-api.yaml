@@ -199,6 +199,88 @@ paths:
                     message: "Internal Server Error"
                     description: "Failed to create API package"
 
+  /api/internal/v1/apis/{apiId}/gateway-deployments:
+    post:
+      summary: Create API and Deployment entities for a API deployment in the gateway
+      description: |
+        Creates API and a revision deployment entities on the platform api when an API is deployed in the gateway.
+      operationId: CreateGatewayAPIDeployment
+      tags:
+        - Gateway Internal APIs
+      parameters:
+        - $ref: '#/components/parameters/apiID'
+        - $ref: '#/components/parameters/revisionId-Q'
+      requestBody:
+        description: Deployed API details
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIDeploymentNotification'
+      responses:
+        '201':
+          description: API deployment created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "API deployment created successfully"
+        '400':
+          description: Bad request - Invalid API ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: "Bad Request"
+                description: "API ID is required"
+        '401':
+          description: Unauthorized - Invalid or missing API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_api_key:
+                  summary: Missing API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "API key is required. Provide 'api-key' header."
+                invalid_api_key:
+                  summary: Invalid API key
+                  value:
+                    code: 401
+                    message: "Unauthorized"
+                    description: "Invalid or expired API key"
+        '404':
+          description: API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: "Not Found"
+                description: "API not found"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                get_api_failed:
+                  summary: Failed to retrieve API
+                  value:
+                    code: 500
+                    message: "Internal Server Error"
+                    description: "Failed to get API"
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -209,7 +291,183 @@ components:
         API key for gateway authentication. This key is used to identify and authenticate 
         the gateway making the request. The key should be provided in the 'api-key' header.
 
+  parameters:
+    apiID:
+      name: apiId
+      in: path
+      description: |
+        **API ID** consisting of the **UUID** of the API.
+      required: true
+      schema:
+        type: string
+        format: uuid
+        example: ivbda7385-chs529-63bf-8bd2-7437690
+
+    revisionId-Q:
+      name: revisionId
+      in: query
+      description: |
+        Revision ID of an API
+      schema:
+        type: string
+        format: uuid
+        example: crer4354-jui52345-245vd-93fvk-137063
+
   schemas:
+    APIDeploymentNotification:
+      title: API deployment object
+      required:
+        - id
+        - configuration
+        - status
+        - createdAt
+        - updatedAt
+        - projectIdentifier
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the api artifact
+          readOnly: true
+          example: 01234567-0123-0123-0123-012345678901
+        configuration:
+          $ref: '#/components/schemas/APIConfiguration'
+        status:
+          type: string
+          enum:
+            - pending
+            - deployed
+            - failed
+          example: deployed
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when API was created
+          example: "2025-10-14T10:30:00Z"
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when API was last updated
+          example: "2025-10-14T10:30:00Z"
+        deployedAt:
+          type: string
+          format: date-time
+          description: Timestamp when API was deployed to the gateway
+          example: "2025-10-14T10:45:00Z"
+        deployedVersion:
+          type: number
+          description: Version of the API that was deployed
+          example: 51
+        projectIdentifier:
+          type: string
+          description: Project identifier associated with the API
+          example: weather-project
+
+    APIConfiguration:
+      type: object
+      required:
+        - version
+        - kind
+        - data
+      properties:
+        version:
+          type: string
+          description: API specification version
+          example: api-platform.wso2.com/v1
+          enum:
+            - api-platform.wso2.com/v1
+        kind:
+          type: string
+          description: API type
+          example: http/rest
+          enum:
+            - http/rest
+        data:
+          $ref: '#/components/schemas/APIConfigData'
+
+    APIConfigData:
+      type: object
+      required:
+        - name
+        - version
+        - context
+        - upstream
+        - operations
+      properties:
+        name:
+          type: string
+          description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: weather-api
+        version:
+          type: string
+          description: Semantic version of the API
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        context:
+          type: string
+          description: Base path for all API routes (must start with /, no trailing slash)
+          pattern: '^\/[a-zA-Z0-9_\-\/]*[^\/]$'
+          minLength: 1
+          maxLength: 200
+          example: /weather
+        projectName:
+          type: string
+          description: Project name associated with the API
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          example: weather-project
+        upstream:
+          type: array
+          description: List of backend service URLs
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Upstream'
+        operations:
+          type: array
+          description: List of HTTP operations/routes
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Operation'
+
+    Upstream:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Backend service URL (may include path prefix like /api/v2)
+          example: https://api.weather.com/api/v2
+
+    Operation:
+      type: object
+      required:
+        - method
+        - path
+      properties:
+        method:
+          type: string
+          description: HTTP method
+          enum:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - PATCH
+            - HEAD
+            - OPTIONS
+          example: GET
+        path:
+          type: string
+          description: Route path with optional {param} placeholders
+          pattern: '^\/.*$'
+          example: /{country_code}/{city}
+
     ErrorResponse:
       type: object
       required:

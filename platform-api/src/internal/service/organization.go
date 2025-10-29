@@ -18,6 +18,7 @@
 package service
 
 import (
+	"github.com/google/uuid"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
@@ -80,8 +81,8 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 
 	// Create default project for the organization
 	defaultProject := &model.Project{
-		ID:             "default" + "-" + handle,
-		Name:           "Default",
+		ID:             uuid.New().String(),
+		Name:           "default",
 		OrganizationID: org.ID,
 		Description:    "Default project",
 		CreatedAt:      time.Now(),
