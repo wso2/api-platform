@@ -19,7 +19,6 @@ package handler
 
 import (
 	"errors"
-	"github.com/gin-gonic/gin"
 	"log"
 	"net/http"
 	"platform-api/src/internal/constants"
@@ -27,6 +26,8 @@ import (
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
+
+	"github.com/gin-gonic/gin"
 )
 
 type APIHandler struct {
@@ -369,6 +370,67 @@ func (h *APIHandler) GetAPIDeployedGateways(c *gin.Context) {
 	c.JSON(http.StatusOK, gatewayListResponse)
 }
 
+// PublishToDevPortal handles POST /api/v1/apis/:apiId/publish-to-devportal
+//
+// This endpoint publishes an API to the developer portal with its metadata and OpenAPI definition.
+// The API must exist in platform-api and the developer portal integration must be enabled.
+//
+// T034-T039: Handler implementation with validation and error handling
+func (h *APIHandler) PublishToDevPortal(c *gin.Context) {
+	// T035: Extract organization ID from context
+	orgID, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	// T035: Extract and validate apiId path parameter
+	apiID := c.Param("apiId")
+	if apiID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API ID is required"))
+		return
+	}
+
+	// T035: Parse optional request body (devPortalID for updates - reserved for US4)
+	var req dto.PublishAPIRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// Request body is optional, so ignore binding errors
+		log.Printf("[APIHandler] No request body provided for publish, using defaults: %v", err)
+	}
+
+	// T030-T033: Call service layer to publish API
+	response, err := h.apiService.PublishAPI(apiID, orgID, req.DevPortalID)
+	if err != nil {
+		// T037: Error response handling
+		if errors.Is(err, constants.ErrAPINotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"API not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrDevPortalSync) {
+			// T036: Check if devportal is disabled
+			// T037: Devportal unavailable or sync failed
+			c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable",
+				"Failed to publish API to developer portal. Developer portal may be disabled or unavailable."))
+			return
+		}
+		// T037: Internal server error
+		log.Printf("[APIHandler] Failed to publish API %s: %v", apiID, err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to publish API to developer portal"))
+		return
+	}
+
+	// T039: Log successful publish
+	log.Printf("[APIHandler] API %s published successfully to developer portal (DevPortal ID: %s)",
+		apiID, response.DevPortalRefID)
+
+	// Return success response
+	c.JSON(http.StatusOK, response)
+}
+
 // RegisterRoutes registers all API routes
 func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	// API routes
@@ -381,5 +443,6 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		apiGroup.DELETE("/:apiId", h.DeleteAPI)
 		apiGroup.POST("/:apiId/deploy-revision", h.DeployAPIRevision)
 		apiGroup.GET("/:apiId/gateways", h.GetAPIDeployedGateways)
+		apiGroup.POST("/:apiId/api-portals/publish", h.PublishToDevPortal)
 	}
 }

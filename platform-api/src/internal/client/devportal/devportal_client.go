@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"time"
 
@@ -283,4 +284,121 @@ func (c *DevPortalClient) CreateDefaultSubscriptionPolicy() *dto.SubscriptionPol
 		UnitTime:     "min",
 		RequestCount: 1000000,
 	}
+}
+
+// createMultipartRequest creates a multipart/form-data request with API metadata and definition
+//
+// This helper constructs the multipart request required by the developer portal API publishing endpoint.
+// The request contains:
+//   - apiMetadata: JSON-serialized API metadata (Content-Type: application/json)
+//   - apiDefinition: OpenAPI definition file (must be named "apiDefinition.json")
+//
+// Parameters:
+//   - metadata: API metadata request
+//   - apiDefinition: OpenAPI definition content (JSON bytes)
+//
+// Returns:
+//   - *bytes.Buffer: Multipart request body
+//   - string: Content-Type header value with boundary
+//   - error: Error if multipart creation fails
+func (c *DevPortalClient) createMultipartRequest(metadata *dto.APIPublishRequest, apiDefinition []byte) (*bytes.Buffer, string, error) {
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	// Add apiMetadata field as JSON
+	metadataJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to marshal API metadata: %w", err)
+	}
+
+	// Create apiMetadata field with application/json content type
+	metadataField, err := writer.CreateFormField("apiMetadata")
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create apiMetadata form field: %w", err)
+	}
+	if _, err := metadataField.Write(metadataJSON); err != nil {
+		return nil, "", fmt.Errorf("failed to write apiMetadata: %w", err)
+	}
+
+	// Add apiDefinition file field
+	// IMPORTANT: File must be named "apiDefinition.json" per devportal API spec
+	fileField, err := writer.CreateFormFile("apiDefinition", "apiDefinition.json")
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create apiDefinition form file: %w", err)
+	}
+	if _, err := fileField.Write(apiDefinition); err != nil {
+		return nil, "", fmt.Errorf("failed to write apiDefinition: %w", err)
+	}
+
+	// Close writer to finalize multipart body
+	if err := writer.Close(); err != nil {
+		return nil, "", fmt.Errorf("failed to close multipart writer: %w", err)
+	}
+
+	return body, writer.FormDataContentType(), nil
+}
+
+// PublishAPI publishes an API to the developer portal
+//
+// This method creates a new API in the developer portal with metadata and OpenAPI definition.
+// It uses multipart/form-data to send both the API metadata (JSON) and the OpenAPI definition file.
+//
+// Parameters:
+//   - orgID: Organization UUID
+//   - req: API publish request with metadata
+//   - apiDefinition: OpenAPI definition content (JSON bytes)
+//
+// Returns:
+//   - *dto.APIPublishResponse: Response with created API details
+//   - error: DevPortalError if publishing fails after retries
+func (c *DevPortalClient) PublishAPI(orgID string, req *dto.APIPublishRequest, apiDefinition []byte) (*dto.APIPublishResponse, error) {
+	url := fmt.Sprintf("http://%s/devportal/apis", c.baseURL)
+
+	// Create multipart request body
+	body, contentType, err := c.createMultipartRequest(req, apiDefinition)
+	if err != nil {
+		return nil, NewDevPortalError(0, "failed to create multipart request", false, err)
+	}
+
+	// Create HTTP request
+	httpReq, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		return nil, NewDevPortalError(0, "failed to create HTTP request", false, err)
+	}
+
+	// Set headers
+	httpReq.Header.Set("Content-Type", contentType)
+	httpReq.Header.Set("x-wso2-api-key", c.apiKey)
+	httpReq.Header.Set("organization", orgID)
+
+	log.Printf("[DevPortal] Publishing API: %s (Organization: %s, ReferenceID: %s)",
+		req.APIInfo.APIName, orgID, req.APIInfo.ReferenceID)
+
+	// Execute request with retry logic
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, NewDevPortalError(0, "failed to publish API after retries", true, err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, NewDevPortalError(resp.StatusCode, "failed to read response body", false, err)
+	}
+
+	// Check status code
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		return nil, NewDevPortalError(resp.StatusCode, fmt.Sprintf("API publishing failed: %s", string(respBody)), resp.StatusCode >= 500, nil)
+	}
+
+	// Unmarshal response
+	var apiResp dto.APIPublishResponse
+	if err := json.Unmarshal(respBody, &apiResp); err != nil {
+		return nil, NewDevPortalError(resp.StatusCode, "failed to unmarshal response", false, err)
+	}
+
+	log.Printf("[DevPortal] API published successfully: %s (ID: %s, ReferenceID: %s)",
+		apiResp.APIHandle, apiResp.APIID, apiResp.ReferenceID)
+	return &apiResp, nil
 }

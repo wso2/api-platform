@@ -278,3 +278,22 @@ type APIListResponse struct {
 	List       []*API     `json:"list" yaml:"list"`             // Array of API objects
 	Pagination Pagination `json:"pagination" yaml:"pagination"` // Pagination metadata
 }
+
+// PublishAPIRequest represents the request for publishing an API to developer portal
+//
+// This DTO is used at the handler level for the POST /apis/{id}/publish-to-devportal endpoint.
+// The handler validates this request and then invokes the service layer which transforms it
+// into the devportal client DTOs.
+type PublishAPIRequest struct {
+	DevPortalID string `json:"devPortalId,omitempty"` // Optional: Specific devportal API ID to use/update
+}
+
+// PublishAPIResponse represents the response after publishing an API to developer portal
+//
+// This DTO is returned to the API consumer after successfully publishing the API.
+type PublishAPIResponse struct {
+	Message        string    `json:"message"`                  // Success message
+	APIID          string    `json:"apiId"`                    // Platform-api API UUID
+	DevPortalRefID string    `json:"devPortalRefId"`           // Developer portal API UUID
+	PublishedAt    time.Time `json:"publishedAt"`              // Timestamp of publication
+}

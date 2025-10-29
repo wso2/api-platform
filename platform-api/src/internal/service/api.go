@@ -29,6 +29,8 @@ import (
 	"strings"
 	"time"
 
+	"platform-api/src/internal/client/devportal"
+	devportalDto "platform-api/src/internal/client/devportal/dto"
 	"platform-api/src/internal/constants"
 
 	"github.com/google/uuid"
@@ -40,17 +42,20 @@ type APIService struct {
 	projectRepo          repository.ProjectRepository
 	gatewayRepo          repository.GatewayRepository
 	gatewayEventsService *GatewayEventsService
+	devportalClient      *devportal.DevPortalClient
 	apiUtil              *utils.APIUtil
 }
 
 // NewAPIService creates a new API service
 func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.ProjectRepository,
-	gatewayRepo repository.GatewayRepository, gatewayEventsService *GatewayEventsService) *APIService {
+	gatewayRepo repository.GatewayRepository, gatewayEventsService *GatewayEventsService,
+	devportalClient *devportal.DevPortalClient) *APIService {
 	return &APIService{
 		apiRepo:              apiRepo,
 		projectRepo:          projectRepo,
 		gatewayRepo:          gatewayRepo,
 		gatewayEventsService: gatewayEventsService,
+		devportalClient:      devportalClient,
 		apiUtil:              &utils.APIUtil{},
 	}
 }
@@ -724,4 +729,95 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 			},
 		},
 	}
+}
+
+// PublishAPI publishes an API to the developer portal
+//
+// This method handles the business logic for publishing APIs to the developer portal:
+//   - Fetches API metadata from platform-api database
+//   - Retrieves OpenAPI definition (placeholder for now - T031)
+//   - Builds API publish request with required fields
+//   - Assigns hardcoded "unlimited" subscription tier
+//   - Invokes devportal client with 3-retry logic
+//
+// Parameters:
+//   - apiID: API UUID in platform-api
+//   - orgID: Organization UUID
+//   - devPortalID: Optional devportal API ID (for updates - reserved for US4)
+//
+// Returns:
+//   - *dto.PublishAPIResponse: Response with publish details
+//   - error: Error if API not found, devportal disabled, or publishing fails
+func (s *APIService) PublishAPI(apiID string, orgID string, devPortalID string) (*dto.PublishAPIResponse, error) {
+	// Check if devportal is enabled
+	if s.devportalClient == nil || !s.devportalClient.IsEnabled() {
+		log.Printf("[APIService] Developer portal disabled, cannot publish API")
+		return nil, constants.ErrDevPortalSync
+	}
+
+	// Fetch API from repository
+	api, err := s.GetAPIByUUID(apiID, orgID)
+	if err != nil {
+		log.Printf("[APIService] Failed to fetch API %s: %v", apiID, err)
+		return nil, err
+	}
+	if api == nil {
+		return nil, constants.ErrAPINotFound
+	}
+
+	// T031: Retrieve OpenAPI definition
+	// TODO: Implement OpenAPI definition retrieval from storage
+	// For now, using a minimal placeholder OpenAPI definition
+	apiDefinition := []byte(fmt.Sprintf(`{
+		"openapi": "3.0.0",
+		"info": {
+			"title": "%s",
+			"version": "%s",
+			"description": "%s"
+		},
+		"paths": {}
+	}`, api.Name, api.Version, api.Description))
+
+	// Build API publish request for devportal
+	publishReq := &devportalDto.APIPublishRequest{
+		APIInfo: devportalDto.APIInfo{
+			ReferenceID:    api.ID,                                 // Required: Platform-api API UUID
+			APIName:        api.Name,                               // Required: API name
+			APIHandle:      fmt.Sprintf("%s-%s", api.Name, api.Version), // Required: {apiName}-{version}
+			APIVersion:     api.Version,                            // Required: API version
+			APIType:        "REST",                                 // Required: API type
+			Provider:       api.Provider,                           // Optional: Provider name
+			APIDescription: api.Description,                        // Optional: Description
+			APIStatus:      "PUBLISHED",                            // Optional: Status
+			Visibility:     "PUBLIC",                               // Optional: Default to PUBLIC
+		},
+		SubscriptionPolicies: []devportalDto.SubscriptionPolicy{
+			{PolicyName: "unlimited"}, // T032: Hardcoded "unlimited" subscription tier
+		},
+		EndPoints: devportalDto.EndPoints{
+			ProductionURL: "http://backend-service:8080", // Placeholder production URL
+			SandboxURL:    "http://backend-service:8080", // Placeholder sandbox URL
+		},
+	}
+
+	log.Printf("[APIService] Publishing API %s (Name: %s, Version: %s) to developer portal",
+		api.ID, api.Name, api.Version)
+
+	// T033: Invoke devportal client with 3-retry logic
+	devportalResp, err := s.devportalClient.PublishAPI(orgID, publishReq, apiDefinition)
+	if err != nil {
+		log.Printf("[APIService] Failed to publish API to developer portal: %v", err)
+		return nil, constants.ErrDevPortalSync
+	}
+
+	// Build response
+	response := &dto.PublishAPIResponse{
+		Message:        "API published successfully to developer portal",
+		APIID:          api.ID,
+		DevPortalRefID: devportalResp.APIID,
+		PublishedAt:    time.Now(),
+	}
+
+	log.Printf("[APIService] API published successfully: %s (DevPortal ID: %s)", api.ID, devportalResp.APIID)
+	return response, nil
 }
