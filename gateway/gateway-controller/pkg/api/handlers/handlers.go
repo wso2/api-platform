@@ -96,26 +96,6 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 			zap.String("id", configID),
 			zap.String("name", cfg.Configuration.Data.Name),
 			zap.Int64("version", version))
-
-		// Send REST API call to platform-api if connected to control plane
-		if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() {
-			go func() {
-				// Extract API ID from stored config (use config ID as API ID)
-				apiID := configID
-
-				// Use empty revision ID for now (can be made configurable later)
-				revisionID := ""
-
-				if err := s.controlPlaneClient.NotifyAPIDeployment(apiID, cfg, revisionID); err != nil {
-					log.Error("Failed to notify platform-api of successful deployment",
-						zap.String("api_id", apiID),
-						zap.Error(err))
-				}
-			}()
-		} else {
-			log.Debug("Not connected to control plane, skipping platform-api notification",
-				zap.String("api_id", configID))
-		}
 	} else {
 		cfg.Status = models.StatusFailed
 		cfg.DeployedAt = nil
@@ -185,6 +165,12 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 			Message: err.Error(),
 		})
 		return
+	}
+
+	// Set up a callback to notify platform API after successful deployment
+	// This is specific to direct API creation via gateway endpoint
+	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() {
+		go s.waitForDeploymentAndNotify(result.StoredConfig.ID, correlationID, log)
 	}
 
 	// Return success response
@@ -458,4 +444,66 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 		"name":    name,
 		"version": version,
 	})
+}
+
+// waitForDeploymentAndNotify waits for API deployment to complete and notifies platform API
+// This is only called for APIs created directly via gateway endpoint (not from platform API)
+func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID string, log *zap.Logger) {
+	// Create a logger with correlation ID if provided
+	if correlationID != "" {
+		log = log.With(zap.String("correlation_id", correlationID))
+	}
+
+	// Poll for deployment status with timeout
+	timeout := time.NewTimer(30 * time.Second)       // 30 second timeout
+	ticker := time.NewTicker(500 * time.Millisecond) // Check every 500ms
+	defer timeout.Stop()
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout.C:
+			log.Warn("Timeout waiting for API deployment to complete for platform API notification",
+				zap.String("config_id", configID))
+			return
+
+		case <-ticker.C:
+			cfg, err := s.store.Get(configID)
+			if err != nil {
+				log.Warn("Config not found while waiting for deployment completion",
+					zap.String("config_id", configID))
+				return
+			}
+
+			if cfg.Status == models.StatusDeployed {
+				// API successfully deployed, notify platform API
+				log.Info("API deployed successfully, notifying platform API",
+					zap.String("config_id", configID),
+					zap.String("name", cfg.Configuration.Data.Name))
+
+				// Extract API ID from stored config (use config ID as API ID)
+				apiID := configID
+
+				// Use empty revision ID for now (can be made configurable later)
+				revisionID := ""
+
+				if err := s.controlPlaneClient.NotifyAPIDeployment(apiID, cfg, revisionID); err != nil {
+					log.Error("Failed to notify platform-api of successful deployment",
+						zap.String("api_id", apiID),
+						zap.Error(err))
+				} else {
+					log.Info("Successfully notified platform API of deployment",
+						zap.String("api_id", apiID))
+				}
+				return
+
+			} else if cfg.Status == models.StatusFailed {
+				log.Warn("API deployment failed, skipping platform API notification",
+					zap.String("config_id", configID),
+					zap.String("name", cfg.Configuration.Data.Name))
+				return
+			}
+			// Continue waiting if status is still pending
+		}
+	}
 }
