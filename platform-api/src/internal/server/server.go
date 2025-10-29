@@ -33,14 +33,16 @@ import (
 	"platform-api/src/internal/middleware"
 	"time"
 
-	"github.com/gin-contrib/cors"
-	"github.com/gin-gonic/gin"
 	"platform-api/src/config"
+	"platform-api/src/internal/client/apiportal"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/handler"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/websocket"
+
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
 )
 
 type Server struct {
@@ -79,11 +81,14 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	}
 	wsManager := websocket.NewManager(wsConfig)
 
+	// Initialize api portal client
+	apiPortalClient := apiportal.NewApiPortalClient(cfg.ApiPortal)
+
 	// Initialize services
-	orgService := service.NewOrganizationService(orgRepo, projectRepo)
+	orgService := service.NewOrganizationService(orgRepo, projectRepo, apiPortalClient)
 	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo)
 	gatewayEventsService := service.NewGatewayEventsService(wsManager)
-	apiService := service.NewAPIService(apiRepo, projectRepo, gatewayRepo, gatewayEventsService)
+	apiService := service.NewAPIService(apiRepo, projectRepo, gatewayRepo, gatewayEventsService, apiPortalClient)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo)
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, gatewayRepo, orgRepo, projectRepo)
 

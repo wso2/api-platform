@@ -18,6 +18,7 @@
 package config
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/kelseyhightower/envconfig"
@@ -37,6 +38,9 @@ type Server struct {
 
 	// WebSocket configurations
 	WebSocket WebSocket `envconfig:"WEBSOCKET"`
+
+	// Developer Portal configurations
+	ApiPortal ApiPortal `envconfig:"APIPORTAL"`
 }
 
 // JWT holds JWT-specific configuration
@@ -71,6 +75,14 @@ type Database struct {
 	ConnMaxLifetime int `envconfig:"CONN_MAX_LIFETIME" default:"300"` // seconds
 }
 
+// ApiPortal holds api portal-specific configuration
+type ApiPortal struct {
+	Enabled bool   `envconfig:"ENABLED" default:"false"`
+	BaseURL string `envconfig:"BASE_URL" default:"172.17.0.1:3001"`
+	APIKey  string `envconfig:"API_KEY" default:""`
+	Timeout int    `envconfig:"TIMEOUT" default:"15"` // seconds
+}
+
 // package-level variable and mutex for thread safety
 var (
 	processOnce     sync.Once
@@ -90,6 +102,10 @@ func GetConfig() *Server {
 	processOnce.Do(func() {
 		settingInstance = &Server{}
 		err = envconfig.Process("", settingInstance)
+		if err == nil {
+			// Validate api portal configuration
+			err = validateApiPortalConfig(&settingInstance.ApiPortal)
+		}
 	})
 	if err != nil {
 		panic(err)
@@ -97,4 +113,37 @@ func GetConfig() *Server {
 	settingInstance.Database.Driver = "sqlite3"
 	settingInstance.Database.Path = "./data/api_platform.db"
 	return settingInstance
+}
+
+// validateApiPortalConfig validates api portal configuration
+//
+// When api portal is enabled, this function ensures that required
+// fields (BaseURL, APIKey) are provided.
+//
+// Parameters:
+//   - cfg: api portal configuration to validate
+//
+// Returns:
+//   - error: Validation error if configuration is invalid, nil otherwise
+func validateApiPortalConfig(cfg *ApiPortal) error {
+	// If api portal is not enabled, no validation needed
+	if !cfg.Enabled {
+		return nil
+	}
+
+	// When enabled, BaseURL and APIKey are required
+	if cfg.BaseURL == "" {
+		return fmt.Errorf("api portal is enabled but APIPORTAL_BASE_URL is not configured")
+	}
+
+	if cfg.APIKey == "" {
+		return fmt.Errorf("api portal is enabled but APIPORTAL_API_KEY is not configured")
+	}
+
+	// Timeout must be positive
+	if cfg.Timeout <= 0 {
+		return fmt.Errorf("api portal timeout must be greater than 0, got: %d", cfg.Timeout)
+	}
+
+	return nil
 }

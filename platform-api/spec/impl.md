@@ -12,5 +12,6 @@ Bootstrap sequence lives in `cmd/main.go` and `internal/server`, layering config
 - [API Lifecycle Management](impls/api-lifecycle-management.md) – Transactional API persistence with security configs, backend services, and operations.
 - [Gateway Management](impls/gateway-management/gateway-management.md) – Gateway registration with secure token generation, rotation, and organization-scoped uniqueness.
 - [Gateway WebSocket Event Notification](impls/gateway-websocket-events.md) – Real-time bidirectional communication with gateways via WebSocket for event delivery and connection management.
+- [API Portal API Publishing](impls/apiportal-api-publishing.md) – API publishing and unpublishing to external API portal with automatic organization sync and retry logic.
 
 Each implementation note captures entrypoints, supporting modules, and verification tips for manual or automated checks.

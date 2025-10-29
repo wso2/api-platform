@@ -51,3 +51,7 @@ var (
 var (
 	ErrGatewayNotFound = errors.New("gateway not found")
 )
+
+var (
+	ErrApiPortalSync = errors.New("failed to synchronize with api portal")
+)

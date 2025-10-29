@@ -18,7 +18,10 @@
 package utils
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
+
 	"gopkg.in/yaml.v3"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
@@ -773,4 +776,69 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 	}
 
 	return string(yamlBytes), nil
+}
+
+// GenerateOpenAPIDefinition generates an OpenAPI 3.0 definition from the API struct
+//
+// This method creates a valid OpenAPI specification using the API's operations.
+// For each operation, it creates a path with the HTTP method and includes:
+//   - Description from Operation.Description
+//   - Method from Operation.Request.Method
+//   - Path from Operation.Request.Path
+//   - Empty request body
+//   - 200 OK response with empty body
+//
+// Parameters:
+//   - api: The API DTO containing operations
+//
+// Returns:
+//   - []byte: JSON-encoded OpenAPI definition
+//   - error: Error if JSON marshaling fails
+func (u *APIUtil) GenerateOpenAPIDefinition(api *dto.API) ([]byte, error) {
+	// Build paths object from operations
+	paths := make(map[string]interface{})
+
+	for _, operation := range api.Operations {
+		if operation.Request == nil {
+			continue
+		}
+
+		path := operation.Request.Path
+		method := strings.ToLower(operation.Request.Method)
+
+		// Initialize path if it doesn't exist
+		if paths[path] == nil {
+			paths[path] = make(map[string]interface{})
+		}
+
+		// Add operation to path
+		pathMap := paths[path].(map[string]interface{})
+		pathMap[method] = map[string]interface{}{
+			"description": operation.Description,
+			"responses": map[string]interface{}{
+				"200": map[string]interface{}{
+					"description": "Successful response",
+				},
+			},
+		}
+	}
+
+	// Build complete OpenAPI spec
+	openAPISpec := map[string]interface{}{
+		"openapi": "3.0.0",
+		"info": map[string]interface{}{
+			"title":       api.Name,
+			"version":     api.Version,
+			"description": api.Description,
+		},
+		"paths": paths,
+	}
+
+	// Marshal to JSON
+	apiDefinition, err := json.Marshal(openAPISpec)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal OpenAPI definition: %w", err)
+	}
+
+	return apiDefinition, nil
 }
