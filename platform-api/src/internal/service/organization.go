@@ -18,6 +18,7 @@
 package service
 
 import (
+	"log"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
@@ -25,18 +26,23 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"platform-api/src/internal/client/devportal"
+	devportalDto "platform-api/src/internal/client/devportal/dto"
 )
 
 type OrganizationService struct {
-	orgRepo     repository.OrganizationRepository
-	projectRepo repository.ProjectRepository
+	orgRepo       repository.OrganizationRepository
+	projectRepo   repository.ProjectRepository
+	devportalClient *devportal.DevPortalClient
 }
 
 func NewOrganizationService(orgRepo repository.OrganizationRepository,
-	projectRepo repository.ProjectRepository) *OrganizationService {
+	projectRepo repository.ProjectRepository, devportalClient *devportal.DevPortalClient) *OrganizationService {
 	return &OrganizationService{
-		orgRepo:     orgRepo,
-		projectRepo: projectRepo,
+		orgRepo:       orgRepo,
+		projectRepo:   projectRepo,
+		devportalClient: devportalClient,
 	}
 }
 
@@ -62,7 +68,48 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		name = handle // Default name to handle if not provided
 	}
 
-	// CreateOrganization organization
+	// Synchronize with developer portal if enabled
+	if s.devportalClient != nil && s.devportalClient.IsEnabled() {
+		log.Printf("[OrganizationService] Developer portal enabled, synchronizing organization: %s", name)
+
+		// Create organization in developer portal
+		// Map platform-api organization to devportal format
+		orgReq := &devportalDto.OrganizationCreateRequest{
+			OrgID:                  id,                           // Platform-api organization UUID
+			OrgName:                name,                         // Organization display name
+			OrgHandle:              handle,                       // URL-friendly handle
+			OrganizationIdentifier: handle,                       // Use handle as identifier
+			RoleClaimName:          "roles",                      // Default JWT claim for roles
+			GroupsClaimName:        "groups",                     // Default JWT claim for groups
+			OrganizationClaimName:  "organizationID",             // Default JWT claim for organization
+			AdminRole:              "admin",                      // Default admin role
+			SubscriberRole:         "Internal/subscriber",        // Default subscriber role
+			SuperAdminRole:         "superAdmin",                 // Default super admin role
+		}
+
+		orgResp, err := s.devportalClient.CreateOrganization(orgReq)
+		if err != nil {
+			log.Printf("[OrganizationService] Failed to create organization in developer portal: %v", err)
+			return nil, constants.ErrDevPortalSync
+		}
+
+		log.Printf("[OrganizationService] Organization synced to developer portal: %s (ID: %s)", orgResp.OrgName, orgResp.OrgID)
+
+		// Create default "unlimited" subscription policy
+		policyReq := s.devportalClient.CreateDefaultSubscriptionPolicy()
+		policyResp, err := s.devportalClient.CreateSubscriptionPolicy(id, policyReq)
+		if err != nil {
+			log.Printf("[OrganizationService] Failed to create subscription policy in developer portal: %v", err)
+			// Note: Organization already created in devportal, but policy creation failed
+			return nil, constants.ErrDevPortalSync
+		}
+
+		log.Printf("[OrganizationService] Default subscription policy created: %s (ID: %s)", policyResp.PolicyName, policyResp.ID)
+	} else {
+		log.Printf("[OrganizationService] Developer portal disabled, skipping synchronization")
+	}
+
+	// CreateOrganization organization in platform-api
 	org := &dto.Organization{
 		ID:        id,
 		Handle:    handle,

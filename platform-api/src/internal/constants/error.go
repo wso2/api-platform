@@ -50,3 +50,7 @@ var (
 var (
 	ErrGatewayNotFound = errors.New("gateway not found")
 )
+
+var (
+	ErrDevPortalSync = errors.New("failed to synchronize with developer portal")
+)

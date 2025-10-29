@@ -36,6 +36,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"platform-api/src/config"
+	"platform-api/src/internal/client/devportal"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/handler"
 	"platform-api/src/internal/repository"
@@ -79,8 +80,11 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	}
 	wsManager := websocket.NewManager(wsConfig)
 
+	// Initialize developer portal client
+	devportalClient := devportal.NewDevPortalClient(cfg.DevPortal)
+
 	// Initialize services
-	orgService := service.NewOrganizationService(orgRepo, projectRepo)
+	orgService := service.NewOrganizationService(orgRepo, projectRepo, devportalClient)
 	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo)
 	gatewayEventsService := service.NewGatewayEventsService(wsManager)
 	apiService := service.NewAPIService(apiRepo, projectRepo, gatewayRepo, gatewayEventsService)

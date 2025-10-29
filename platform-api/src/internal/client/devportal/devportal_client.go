@@ -18,12 +18,17 @@
 package devportal
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"time"
 
 	"platform-api/src/config"
 	"platform-api/src/internal/client"
+	"platform-api/src/internal/client/devportal/dto"
 )
 
 // DevPortalError represents an error from developer portal operations
@@ -135,4 +140,147 @@ func NewDevPortalClient(cfg config.DevPortal) *DevPortalClient {
 //   - bool: True if integration is enabled in configuration
 func (c *DevPortalClient) IsEnabled() bool {
 	return c.enabled
+}
+
+// CreateOrganization creates a new organization in the developer portal
+//
+// This method is called during organization creation in platform-api to synchronize
+// organizations to the developer portal. It uses retry logic to handle transient failures.
+//
+// Parameters:
+//   - req: Organization creation request with ID, Name, DisplayName, Description
+//
+// Returns:
+//   - *dto.OrganizationCreateResponse: Response with created organization details
+//   - error: DevPortalError if creation fails after retries
+func (c *DevPortalClient) CreateOrganization(req *dto.OrganizationCreateRequest) (*dto.OrganizationCreateResponse, error) {
+	url := fmt.Sprintf("http://%s/devportal/organizations", c.baseURL)
+
+	// Marshal request body
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, NewDevPortalError(0, "failed to marshal organization request", false, err)
+	}
+
+	// Create HTTP request
+	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, NewDevPortalError(0, "failed to create HTTP request", false, err)
+	}
+
+	// Set headers
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-wso2-api-key", c.apiKey)
+
+	log.Printf("[DevPortal] Creating organization: %s (ID: %s)", req.OrgName, req.OrgID)
+
+	// Execute request with retry logic
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, NewDevPortalError(0, "failed to create organization after retries", true, err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, NewDevPortalError(resp.StatusCode, "failed to read response body", false, err)
+	}
+
+	// Check status code
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		return nil, NewDevPortalError(resp.StatusCode, fmt.Sprintf("organization creation failed: %s", string(respBody)), resp.StatusCode >= 500, nil)
+	}
+
+	// Unmarshal response
+	var orgResp dto.OrganizationCreateResponse
+	if err := json.Unmarshal(respBody, &orgResp); err != nil {
+		return nil, NewDevPortalError(resp.StatusCode, "failed to unmarshal response", false, err)
+	}
+
+	log.Printf("[DevPortal] Organization created successfully: %s (ID: %s)", orgResp.OrgName, orgResp.OrgID)
+	return &orgResp, nil
+}
+
+// CreateSubscriptionPolicy creates a subscription policy for an organization in the developer portal
+//
+// This method is used to create the default "unlimited" subscription policy for new organizations.
+//
+// Parameters:
+//   - orgID: Organization UUID
+//   - req: Subscription policy creation request
+//
+// Returns:
+//   - *dto.SubscriptionPolicyCreateResponse: Response with created policy details
+//   - error: DevPortalError if creation fails after retries
+func (c *DevPortalClient) CreateSubscriptionPolicy(orgID string, req *dto.SubscriptionPolicyCreateRequest) (*dto.SubscriptionPolicyCreateResponse, error) {
+	url := fmt.Sprintf("http://%s/devportal/organizations/%s/subscription-policies", c.baseURL, orgID)
+
+	// Marshal request body
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, NewDevPortalError(0, "failed to marshal subscription policy request", false, err)
+	}
+
+	// Create HTTP request
+	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, NewDevPortalError(0, "failed to create HTTP request", false, err)
+	}
+
+	// Set headers
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-wso2-api-key", c.apiKey)
+
+	log.Printf("[DevPortal] Creating subscription policy '%s' for organization: %s", req.PolicyName, orgID)
+
+	// Execute request with retry logic
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, NewDevPortalError(0, "failed to create subscription policy after retries", true, err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, NewDevPortalError(resp.StatusCode, "failed to read response body", false, err)
+	}
+
+	// Check status code
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		return nil, NewDevPortalError(resp.StatusCode, fmt.Sprintf("subscription policy creation failed: %s", string(respBody)), resp.StatusCode >= 500, nil)
+	}
+
+	// Unmarshal response
+	var policyResp dto.SubscriptionPolicyCreateResponse
+	if err := json.Unmarshal(respBody, &policyResp); err != nil {
+		return nil, NewDevPortalError(resp.StatusCode, "failed to unmarshal response", false, err)
+	}
+
+	log.Printf("[DevPortal] Subscription policy created successfully: %s (ID: %s)", policyResp.PolicyName, policyResp.ID)
+	return &policyResp, nil
+}
+
+// CreateDefaultSubscriptionPolicy constructs the default "unlimited" subscription policy request
+//
+// Per spec requirements, the unlimited policy has:
+//   - Policy name: "unlimited"
+//   - Display name: "Unlimited Tier"
+//   - Billing plan: "FREE"
+//   - Request count: 1000000 per minute
+//
+// Returns:
+//   - *dto.SubscriptionPolicyCreateRequest: Configured unlimited policy request
+func (c *DevPortalClient) CreateDefaultSubscriptionPolicy() *dto.SubscriptionPolicyCreateRequest {
+	return &dto.SubscriptionPolicyCreateRequest{
+		PolicyName:   "unlimited",
+		DisplayName:  "Unlimited Tier",
+		BillingPlan:  "FREE",
+		Description:  "Allows unlimited requests per minute",
+		Type:         "requestCount",
+		TimeUnit:     60,
+		UnitTime:     "min",
+		RequestCount: 1000000,
+	}
 }

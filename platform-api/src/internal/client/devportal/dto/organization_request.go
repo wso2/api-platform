@@ -20,21 +20,45 @@ package dto
 // OrganizationCreateRequest represents the request body for creating an organization in developer portal
 //
 // This DTO is used when platform-api synchronizes organizations to the developer portal
-// during organization creation workflow.
+// during organization creation workflow. Fields match the actual developer portal API spec.
+//
+// Reference: /home/malintha/wso2apim/gitworkspace/new-devportal/api-developer-portal-core/readmenew.md
+// Endpoint: POST /devportal/organizations (lines 114-199)
 type OrganizationCreateRequest struct {
-	ID          string `json:"id"`          // UUID from platform-api (must match)
-	Name        string `json:"name"`        // Organization name
-	DisplayName string `json:"displayName"` // Human-readable display name
-	Description string `json:"description"` // Organization description
+	OrgID                  string `json:"orgId,omitempty"`            // Organization UUID (optional, auto-generated if not provided)
+	OrgName                string `json:"orgName"`                    // Organization name (required, unique)
+	OrgHandle              string `json:"orgHandle"`                  // URL-friendly handle (required, unique)
+	OrganizationIdentifier string `json:"organizationIdentifier"`     // Organization identifier (required, unique)
+	BusinessOwner          string `json:"businessOwner,omitempty"`    // Business owner name (optional)
+	BusinessOwnerContact   string `json:"businessOwnerContact,omitempty"` // Contact number (optional)
+	BusinessOwnerEmail     string `json:"businessOwnerEmail,omitempty"`   // Email address (optional)
+	RoleClaimName          string `json:"roleClaimName,omitempty"`    // JWT claim for roles (default: "roles")
+	GroupsClaimName        string `json:"groupsClaimName,omitempty"`  // JWT claim for groups (default: "groups")
+	OrganizationClaimName  string `json:"organizationClaimName,omitempty"` // JWT claim for organization (default: "organizationID")
+	AdminRole              string `json:"adminRole,omitempty"`        // Admin role name (default: "admin")
+	SubscriberRole         string `json:"subscriberRole,omitempty"`   // Subscriber role (default: "Internal/subscriber")
+	SuperAdminRole         string `json:"superAdminRole,omitempty"`   // Super admin role (default: "superAdmin")
 }
 
 // OrganizationCreateResponse represents the response from developer portal after organization creation
 //
-// This DTO contains the confirmed organization details from the developer portal,
-// including the creation timestamp.
+// This DTO contains the confirmed organization details from the developer portal.
+//
+// Reference: /home/malintha/wso2apim/gitworkspace/new-devportal/api-developer-portal-core/readmenew.md
+// Response structure (lines 179-198)
 type OrganizationCreateResponse struct {
-	ID          string `json:"id"`          // Created organization UUID (should match request ID)
-	Name        string `json:"name"`        // Organization name
-	DisplayName string `json:"displayName"` // Display name
-	CreatedAt   string `json:"createdAt"`   // Timestamp of creation (ISO 8601)
+	OrgID                  string                 `json:"orgId"`                  // Created organization UUID
+	OrgName                string                 `json:"orgName"`                // Organization name
+	OrgHandle              string                 `json:"orgHandle"`              // URL-friendly handle
+	OrganizationIdentifier string                 `json:"organizationIdentifier"` // Organization identifier
+	BusinessOwner          string                 `json:"businessOwner"`          // Business owner name
+	BusinessOwnerContact   string                 `json:"businessOwnerContact"`   // Contact number
+	BusinessOwnerEmail     string                 `json:"businessOwnerEmail"`     // Email address
+	RoleClaimName          string                 `json:"roleClaimName"`          // JWT claim for roles
+	GroupsClaimName        string                 `json:"groupsClaimName"`        // JWT claim for groups
+	OrganizationClaimName  string                 `json:"organizationClaimName"`  // JWT claim for organization
+	AdminRole              string                 `json:"adminRole"`              // Admin role name
+	SubscriberRole         string                 `json:"subscriberRole"`         // Subscriber role
+	SuperAdminRole         string                 `json:"superAdminRole"`         // Super admin role
+	OrgConfiguration       map[string]interface{} `json:"orgConfiguration"`       // Organization configuration
 }
