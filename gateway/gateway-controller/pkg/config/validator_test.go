@@ -98,15 +98,13 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			project := "TestProject"
 			config := &api.APIConfiguration{
 				Version: "api-platform.wso2.com/v1",
 				Kind:    "http/rest",
 				Data: api.APIConfigData{
-					Name:        tt.apiName,
-					Version:     "v1.0",
-					Context:     "/test",
-					ProjectName: &project,
+					Name:    tt.apiName,
+					Version: "v1.0",
+					Context: "/test",
 					Upstream: []api.Upstream{
 						{Url: "http://example.com"},
 					},

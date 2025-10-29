@@ -20,7 +20,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"io"
@@ -88,16 +87,6 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		log.Warn("Config not found for status update", zap.String("id", configID))
 		return
 	}
-
-	// Debug: dump the configuration as string for debugging
-	if configJSON, err := json.Marshal(cfg.Configuration); err != nil {
-		log.Error("Failed to marshal configuration for debugging", zap.Error(err))
-	} else {
-		log.Info("Configuration dump for debugging",
-			zap.String("config_id", configID),
-			zap.String("configuration", string(configJSON)))
-	}
-
 	now := time.Now()
 	if success {
 		cfg.Status = models.StatusDeployed

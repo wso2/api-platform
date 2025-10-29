@@ -156,7 +156,8 @@ func (s *APIUtilsService) ExtractYAMLFromZip(zipData []byte) ([]byte, error) {
 }
 
 // CreateAPIFromYAML creates an API configuration from YAML data using the deployment service
-func (s *APIUtilsService) CreateAPIFromYAML(yamlData []byte, apiID string, correlationID string, deploymentService *APIDeploymentService) error {
+func (s *APIUtilsService) CreateAPIFromYAML(yamlData []byte, apiID string, correlationID string,
+	deploymentService *APIDeploymentService) error {
 	// Use the deployment service to handle the API configuration deployment
 	_, err := deploymentService.DeployAPIConfiguration(APIDeploymentParams{
 		Data:          yamlData,
