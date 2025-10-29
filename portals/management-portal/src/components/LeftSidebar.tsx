@@ -439,7 +439,7 @@ const LeftSidebar: React.FC = () => {
           to={
             projectBasePath ? `${projectBasePath}/apis` : `${baseOrgPath}/apis`
           }
-          label="API Proxies"
+          label="APIs"
           icon={<MenuAPIDefinition fontSize="small" />}
           open={openApis}
           setOpen={setOpenApis}
@@ -479,7 +479,7 @@ const LeftSidebar: React.FC = () => {
         {/* MCP Servers group */}
         <ParentRow
           to={projectBasePath ? `${projectBasePath}/mcp` : `${baseOrgPath}/mcp`}
-          label="MCP Servers"
+          label="MCP"
           icon={<DnsOutlinedIcon fontSize="small" />}
           open={openMcp}
           setOpen={setOpenMcp}

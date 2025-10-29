@@ -15,6 +15,8 @@ import {
   Tooltip,
   Tabs,
   Tab,
+  FormControlLabel,
+  Checkbox,
 } from "@mui/material";
 
 import AddIcon from "@mui/icons-material/Add";
@@ -35,6 +37,8 @@ import Delete from "../components/src/Icons/generated/Delete";
 import Copy from "../components/src/Icons/generated/Copy";
 import { GatewayProvider, useGateways } from "../context/GatewayContext";
 import type { Gateway, GatewayType } from "../hooks/gateways";
+import type { Components } from "react-markdown";
+import ReactMarkdown from "react-markdown";
 
 type Mode = "choose" | "form" | "list";
 
@@ -83,8 +87,11 @@ const GatewayContent: React.FC = () => {
     refreshGateways,
     fetchGatewayById,
     rotateGatewayToken,
+    deleteGatewayByPayload,
     gatewayTokens,
     loading: gatewaysLoading,
+    getGatewayStatus,
+    gatewayStatuses,
   } = useGateways();
   const tokenRequestsRef = React.useRef<Set<string>>(new Set());
 
@@ -97,6 +104,8 @@ const GatewayContent: React.FC = () => {
 
   // selected type (used for form header and when coming from cards)
   const [type, setType] = React.useState<GatewayType>("hybrid");
+  // form state (add this)
+  const [isCritical, setIsCritical] = React.useState(false);
 
   // form state
   const [displayName, setDisplayName] = React.useState("");
@@ -225,6 +234,8 @@ const GatewayContent: React.FC = () => {
         description: description || undefined,
         vhost: host || undefined,
         type,
+        isCritical, // from checkbox (default false)
+        functionalityType: "regular",
       });
       await refreshGateways();
       setSnack({
@@ -302,7 +313,7 @@ const GatewayContent: React.FC = () => {
   const handleDelete = async (id: string) => {
     const nextLen = gateways.length - 1;
     try {
-      await deleteGateway(id);
+      await deleteGatewayByPayload({ gatewayId: id }); // ← pass selected id
       await refreshGateways();
       setSnack({
         open: true,
@@ -318,6 +329,78 @@ const GatewayContent: React.FC = () => {
       setSnack({ open: true, msg, severity: "error" });
     }
   };
+
+  // Minimal bash highlighter (same as Wizard)
+  const BashSyntax = ({ text }: { text: string }) => {
+    const pattern =
+      /(https?:\/\/\S+)|(\$[A-Z0-9_]+)|\b(curl|bash)\b|(\s--?[a-zA-Z0-9-]+)|(\s\|\s)|\b(test)\b/g;
+
+    const parts: React.ReactNode[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+
+    while ((m = pattern.exec(text)) !== null) {
+      if (m.index > last) parts.push(text.slice(last, m.index));
+      const [full, url, env, cmd, flag, pipe, litTest] = m;
+
+      let color = "#EDEDF0";
+      if (url) color = "#79a8ff";
+      else if (env) color = "#7dd3fc";
+      else if (cmd) color = cmd === "curl" ? "#b8e78b" : "#f5d67b";
+      else if (flag) color = "#a8acb3";
+      else if (pipe) color = "#EDEDF0";
+      else if (litTest) color = "#f2a36b";
+
+      parts.push(
+        <span key={m.index} style={{ color }}>
+          {full}
+        </span>
+      );
+      last = pattern.lastIndex;
+    }
+    if (last < text.length) parts.push(text.slice(last));
+    return <>{parts}</>;
+  };
+
+  // Markdown components for the code box
+  const mdComponentsForCmd: Components = {
+    pre: ({ children }) => (
+      <Box
+        sx={{
+          bgcolor: "#373842",
+          color: "#EDEDF0",
+          p: 2.5,
+          borderRadius: 1,
+          fontFamily:
+            'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+          fontSize: 14,
+          lineHeight: 1.6,
+          overflowX: "auto",
+          m: 0,
+        }}
+      >
+        <pre style={{ margin: 0, whiteSpace: "pre" }}>{children}</pre>
+      </Box>
+    ),
+    code: (props: any) => {
+      const raw = String(props.children ?? "");
+      const isBlock = raw.includes("\n");
+      const { ref, node, ...rest } = props as any; // strip to avoid ref typing issues
+      if (!isBlock) return <code {...rest}>{raw}</code>;
+      return (
+        <code {...rest}>
+          <BashSyntax text={raw} />
+        </code>
+      );
+    },
+  };
+
+  const cmdTextDisplayMd =
+    "```bash\n" +
+    "curl -sLO https://github.com/wso2/api-platform/releases/download/v0.1.0-m3/gateway.zip && \\\n" +
+    "unzip gateway.zip && \\\n" +
+    "GATEWAY_CONTROLPLANE_TOKEN=<Token> docker compose --project-directory gateway up\n" +
+    "```";
 
   const handleCopy = async (text: string) => {
     try {
@@ -601,6 +684,16 @@ const GatewayContent: React.FC = () => {
           placeholder="Optional description for your gateway"
         />
 
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={isCritical}
+              onChange={(e) => setIsCritical(e.target.checked)}
+            />
+          }
+          label="Mark this as a critical gateway"
+        />
+
         <Stack direction="row" spacing={2} justifyContent="flex-start" mt={1}>
           <Button variant="outlined" onClick={handleCancel}>
             Cancel
@@ -647,6 +740,17 @@ const GatewayContent: React.FC = () => {
       {gateways.map((g) => {
         const latestToken = gatewayTokens[g.id]?.token;
         const hasToken = Boolean(latestToken);
+        const status =
+          typeof getGatewayStatus === "function"
+            ? getGatewayStatus(g.id)
+            : gatewayStatuses?.[g.id];
+
+        const isActive = status?.isActive === true;
+        const cmdTextCopy =
+          `curl -sLO https://github.com/wso2/api-platform/releases/download/v0.1.0-m3/gateway.zip && \\\n` +
+          `unzip gateway.zip && \\\n` +
+          `GATEWAY_CONTROLPLANE_TOKEN=${latestToken ?? ""} ` +
+          `docker compose --project-directory gateway up`;
         const cmd = hasToken
           ? codeFor(g.name, latestToken)
           : "Rotate the gateway token to generate the command.";
@@ -762,13 +866,23 @@ const GatewayContent: React.FC = () => {
                   <Typography color="text.secondary">
                     {relativeTime(g.createdAt)}
                   </Typography>
-                  <Chip
-                    size="small"
-                    label="Active"
-                    color="success"
-                    variant="outlined"
-                    style={{ borderRadius: 4 }}
-                  />
+                  {isActive ? (
+                    <Chip
+                      size="small"
+                      label="Active"
+                      color="success"
+                      variant="outlined"
+                      style={{ borderRadius: 4 }}
+                    />
+                  ) : (
+                    <Chip
+                      size="small"
+                      label="Not Active"
+                      color="error"
+                      variant="outlined"
+                      style={{ borderRadius: 4 }}
+                    />
+                  )}
                 </Stack>
               </Box>
               <Box display={"flex"} gap={4} alignItems={"center"}>
@@ -784,49 +898,16 @@ const GatewayContent: React.FC = () => {
             </Box>
 
             {/* Command block */}
+            {/* Command block */}
             <Box sx={{ mt: 3 }}>
               <Typography variant="body2" sx={{ mb: 1 }}>
                 Run This Command locally to start the gateway
               </Typography>
 
               <Box sx={{ position: "relative" }}>
-                <Box
-                  sx={{
-                    bgcolor: "#373842",
-                    color: "#EDEDF0",
-                    p: 2.5,
-                    borderRadius: 1,
-                    fontFamily:
-                      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                    fontSize: 14,
-                    lineHeight: 1.6,
-                    overflowX: "auto",
-                  }}
-                >
-                  <Box
-                    component="span"
-                    sx={{ color: "#C5E478", fontWeight: 700 }}
-                  >
-                    GATEWAY_CONTROLPLANE_TOKEN
-                  </Box>
-                  =
-                  {hasToken ? (
-                    <Box component="span" sx={{ color: "#7FE0E7" }}>
-                      {"<Gateway Token>"}
-                    </Box>
-                  ) : (
-                    <Typography component="span" color="text.secondary">
-                      Rotate the token to generate this command.
-                    </Typography>
-                  )}{" "}
-                  <Box
-                    component="span"
-                    sx={{ color: "#E8D06B", fontWeight: 700 }}
-                  >
-                    docker
-                  </Box>{" "}
-                  compose up
-                </Box>
+                <ReactMarkdown components={mdComponentsForCmd}>
+                  {cmdTextDisplayMd}
+                </ReactMarkdown>
 
                 <Box
                   sx={{
@@ -844,19 +925,25 @@ const GatewayContent: React.FC = () => {
                       disabled={manualRotatingId === g.id}
                       size="small"
                     >
-                      <CachedRoundedIcon style={{ color: "#fff", fill: "#fff" }} />
+                      <CachedRoundedIcon
+                        style={{ color: "#fff", fill: "#fff" }}
+                      />
                     </IconButton>
                   </Tooltip>
 
-                  <Tooltip title="Copy command">
-                    <IconButton
-                      variant="outlined"
-                      onClick={() => handleCopy(cmd)}
-                      disabled={!hasToken}
-                      size="small"
-                    >
-                      <Copy style={{ color: "#fff", fill: "#fff" }} />
-                    </IconButton>
+                  <Tooltip
+                    title={hasToken ? "Copy command" : "Rotate token first"}
+                  >
+                    <span>
+                      <IconButton
+                        variant="outlined"
+                        onClick={() => handleCopy(cmdTextCopy)}
+                        disabled={!hasToken}
+                        size="small"
+                      >
+                        <Copy style={{ color: "#fff", fill: "#fff" }} />
+                      </IconButton>
+                    </span>
                   </Tooltip>
                 </Box>
               </Box>
