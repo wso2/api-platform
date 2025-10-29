@@ -29,6 +29,8 @@ services:
       - GATEWAY_STORAGE_TYPE=sqlite
       - GATEWAY_STORAGE_SQLITE_PATH=./data/gateway.db
       - GATEWAY_LOGGING_LEVEL=info
+      - GATEWAY_CONTROLPLANE_TOKEN=${GATEWAY_CONTROLPLANE_TOKEN:-}
+      - GATEWAY_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-172.17.0.1:8443}
     volumes:
       - controller-data:/app/data
       - ./gateway-controller/config/config.yaml:/app/config/config.yaml:ro
@@ -68,8 +70,8 @@ services:
     image: renukafernando/request-info:latest
     container_name: sample-backend
     ports:
-      - "3000:3000"
-    command: ["-addr", ":3000", "-pretty"]
+      - "5000:5000"
+    command: ["-addr", ":5000", "-pretty"]
     networks:
       - gateway-network
 
