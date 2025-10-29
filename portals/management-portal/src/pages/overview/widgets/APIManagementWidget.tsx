@@ -12,7 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { useApisContext } from "../../../context/ApiContext";
 
 // images
-import mcpSvg from "./mcp.svg";
+import mcpSvg from "./MCPIcon.svg";
 import fromMarketplaceSvg from "./FromMarketplace.svg";   // ← API Products
 import withEndpointSvg from "./WithEndpoint.svg";          // ← APIs
 

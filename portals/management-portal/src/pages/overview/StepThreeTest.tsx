@@ -36,7 +36,7 @@ function twoLetters(s: string) {
 
 function testCurl(api: ApiItem) {
   // simple local test endpoint based on context/version
-  return `curl -sS -X GET "http://localhost:8080${api.context}/v${api.version}/health" -H "accept: application/json"`;
+  return `curl http://localhost:8080/petstore/pet/1`;
 }
 
 // deterministic tiny generator for a sparkline
@@ -187,7 +187,7 @@ export default function StepThreeTest({
               right: 6,
             }}
           >
-            <Copy />
+            <Copy sx={{ color: "#fff", fill: "#fff" }} />
           </IconButton>
         </Tooltip>
       </Box>

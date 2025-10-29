@@ -50,10 +50,10 @@ const STEPS: Step[] = [
 ];
 
 /** Top-level wrapper that provides the Gateway context */
-export default function GatewayWizard() {
+export default function GatewayWizard({ onFinish }: { onFinish?: () => void }) {
   return (
     <GatewayProvider>
-      <GatewayWizardContent />
+      <GatewayWizardContent onFinish={onFinish} />
     </GatewayProvider>
   );
 }
@@ -366,7 +366,7 @@ function CreatedGatewaySummary({
   );
 }
 
-function GatewayWizardContent() {
+function GatewayWizardContent({ onFinish }: { onFinish?: () => void }) {
   const params = useParams<{ orgHandle?: string; projectHandle?: string }>();
   const { organization } = useOrganization();
   const { selectedProject } = useProjects();
@@ -421,8 +421,10 @@ function GatewayWizardContent() {
       setActiveStep((s) => s + 1);
     } else {
       notify("All steps completed 🎉", "success");
+      onFinish?.();
     }
   };
+
   const skip = () => {
     if (activeStep < STEPS.length - 1) setActiveStep((s) => s + 1);
   };

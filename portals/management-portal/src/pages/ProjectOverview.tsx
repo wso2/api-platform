@@ -21,9 +21,9 @@ import ProjectFeatureCards from "./overview/ProjectFeatureCards";
 // Providers required by cards (for counts, etc.)
 import { ApiProvider } from "../context/ApiContext";
 import { GatewayProvider } from "../context/GatewayContext";
+import GatewayWizard from "./overview/StepHeader";
 
 // Wizard header to show after clicking "Get Start"
-import StepHeader from "./overview/StepHeader";
 
 const ProjectOverview: React.FC = () => {
   const navigate = useNavigate();
@@ -104,16 +104,8 @@ const ProjectOverview: React.FC = () => {
       </Box>
 
       {showWizard ? (
-        // Only the wizard when Get Start is clicked
-        <Box
-          maxHeight={"80vh"}
-          position="relative"
-          maxWidth={1200}
-          mx="auto"
-          mt={4}
-          px={6}
-        >
-          <StepHeader />
+        <Box maxWidth={1200} mx="auto" mt={4} px={6}>
+          <GatewayWizard onFinish={() => setShowWizard(false)} />
         </Box>
       ) : (
         // Otherwise show Banner + Cards

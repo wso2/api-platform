@@ -17,7 +17,6 @@ import {
   TextField,
   Tabs,
   Tab,
-  Switch,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -25,14 +24,26 @@ import {
 } from "@mui/material";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import PublicOutlinedIcon from "@mui/icons-material/PublicOutlined";
-import UploadFileOutlinedIcon from "@mui/icons-material/UploadFileOutlined";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { Button } from "../components/src/components/Button";
 import AiBanner from "./AITheming.svg";
 
+/* ---------------- types ---------------- */
 
 type PortalType = "private" | "public";
 type Step = "setup" | "theme";
+
+/* ---------------- helpers ---------------- */
+
+const slugify = (s: string) =>
+  s
+    .toLowerCase()
+    .trim()
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+
+/* ---------------- small components ---------------- */
 
 const OptionCard: React.FC<{
   title: string;
@@ -208,7 +219,7 @@ const PublicPreview: React.FC = () => (
   </Paper>
 );
 
-/** ------- THEME UI (Step 2) ------- */
+/* ---------------- Theme step bits ---------------- */
 
 const Swatch = ({ value }: { value: string }) => (
   <Box
@@ -245,11 +256,10 @@ const ColorField: React.FC<{
   />
 );
 
-// --- PromoBanner.tsx (inline or separate) ---
-// Drop-in replacement for PromoBanner from before
+// Drop-in banner with a single image (right)
 const PromoBanner: React.FC<{
   onPrimary?: () => void;
-  imageSrc: string; // <-- required image
+  imageSrc: string;
   imageAlt?: string;
 }> = ({ onPrimary, imageSrc, imageAlt = "AI theming illustration" }) => {
   return (
@@ -267,7 +277,6 @@ const PromoBanner: React.FC<{
       }}
     >
       <Grid container alignItems="center" spacing={2} wrap="nowrap">
-        {/* Left: content */}
         <Grid>
           <Stack spacing={1.5}>
             <Typography fontSize={18} fontWeight={800}>
@@ -285,14 +294,13 @@ const PromoBanner: React.FC<{
           </Stack>
         </Grid>
 
-        {/* Right: single image */}
         <Grid>
           <Box
             component="img"
             src={imageSrc}
             alt={imageAlt}
             sx={{
-              width: 240, // tweak as needed
+              width: 240,
               height: 140,
               objectFit: "contain",
               display: "block",
@@ -307,9 +315,6 @@ const PromoBanner: React.FC<{
 
 const ThemeSettingsPanel: React.FC = () => {
   const [tab, setTab] = React.useState(0);
-  const [published, setPublished] = React.useState(false);
-
-  // colors
   const [bg, setBg] = React.useState("#FFFFFF");
   const [primary, setPrimary] = React.useState("#1A4C6D");
   const [secondary, setSecondary] = React.useState("#FE8C3A");
@@ -317,7 +322,6 @@ const ThemeSettingsPanel: React.FC = () => {
 
   return (
     <Stack spacing={2.5}>
-      {/* Top bar: Org/APIs & switch */}
       <Stack direction="row" alignItems="center" justifyContent="space-between">
         <Tabs
           value={0}
@@ -414,27 +418,64 @@ const ThemeSettingsPanel: React.FC = () => {
   );
 };
 
-/** ------- PAGE ------- */
+/* ---------------- Page ---------------- */
 
 const PortalManagement: React.FC = () => {
-  const [portalType, setPortalType] = React.useState<PortalType>("private");
+  // default to Developer portal as requested
+  const [portalType, setPortalType] = React.useState<PortalType>("public");
   const [portalName, setPortalName] = React.useState<string>("");
+  const [portalIdentifier, setPortalIdentifier] = React.useState<string>("");
+  const [portalDomains, setPortalDomains] = React.useState<string>("");
   const [step, setStep] = React.useState<Step>("setup");
+
+  // auto-build identifier from name
+  React.useEffect(() => {
+    setPortalIdentifier(slugify(portalName || "developer-portal"));
+  }, [portalName]);
 
   return (
     <Box sx={{ p: 3, overflowX: "auto" }}>
-      <Typography variant="h5" sx={{ mt: 0.5 }}>
-        {step === "setup" ? "Create portal" : "Theme Settings"}
-      </Typography>
-      <Typography
-        variant="body2"
-        color="text.secondary"
-        sx={{ mt: 0.5, mb: 3, maxWidth: 760 }}
-      >
-        {step === "setup"
-          ? "Define visibility of your portal and publish your first API. You can modify your selections later."
-          : "Manage and customize the theme settings for your organization."}
-      </Typography>
+      <Box display={"flex"} justifyContent="space-between" alignItems="center">
+        <Box>
+          <Typography variant="h5" sx={{ mt: 0.5 }}>
+            {step === "setup" ? "Create portal" : "Theme Settings"}
+          </Typography>
+
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ mt: 0.5, mb: 3, maxWidth: 760 }}
+          >
+            {step === "setup"
+              ? "Define visibility of your portal and publish your first API. You can modify your selections later."
+              : "Manage and customize the theme settings for your organization."}
+          </Typography>
+        </Box>
+
+        {/* Publish Theme button like screenshot — only on theme step */}
+        {step === "theme" && (
+          <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 2 }}>
+            <Button
+              variant="contained"
+              onClick={() => {
+                // wire up your real publish handler here
+                console.log("Publish theme clicked", {
+                  portalType,
+                  portalName,
+                  portalIdentifier,
+                  portalDomains,
+                });
+              }}
+              sx={{
+                backgroundColor: "#FE8C3A",
+                "&:hover": { backgroundColor: "#e67d33" },
+              }}
+            >
+              Publish Theme
+            </Button>
+          </Box>
+        )}
+      </Box>
 
       <Grid
         container
@@ -446,10 +487,9 @@ const PortalManagement: React.FC = () => {
         <Grid>
           {step === "setup" ? (
             <Stack spacing={2.5}>
-              <Typography variant="subtitle2">
-                Choose Your Portal Type
-              </Typography>
+              {/* <Typography variant="subtitle2">Choose Your Portal Type</Typography> */}
               <Grid container spacing={2}>
+                {/* 
                 <Grid>
                   <OptionCard
                     title="Internal portal"
@@ -458,7 +498,8 @@ const PortalManagement: React.FC = () => {
                     selected={portalType === "private"}
                     onClick={() => setPortalType("private")}
                   />
-                </Grid>
+                </Grid> 
+                */}
                 <Grid>
                   <OptionCard
                     title="Developer portal"
@@ -474,6 +515,8 @@ const PortalManagement: React.FC = () => {
                 <Typography variant="subtitle2" sx={{ mb: 1 }}>
                   Add Your Portal Details
                 </Typography>
+
+                {/* Portal name */}
                 <FormControl fullWidth sx={{ mt: 1 }}>
                   <TextField
                     label="Portal name"
@@ -482,6 +525,33 @@ const PortalManagement: React.FC = () => {
                     onChange={(e) => setPortalName(e.target.value)}
                     required
                     sx={{ maxWidth: 580 }}
+                  />
+                </FormControl>
+
+                {/* Identifier (auto from name; editable) */}
+                <FormControl fullWidth sx={{ mt: 2 }}>
+                  <TextField
+                    label="Identifier"
+                    value={portalIdentifier}
+                    onChange={(e) =>
+                      setPortalIdentifier(slugify(e.target.value))
+                    }
+                    helperText="Auto-generated from name. You can tweak if needed."
+                    sx={{ maxWidth: 580 }}
+                    inputProps={{ maxLength: 64 }}
+                  />
+                </FormControl>
+
+                {/* Domains textarea */}
+                <FormControl fullWidth sx={{ mt: 2 }}>
+                  <TextField
+                    label="Domains"
+                    placeholder="e.g., dev.example.com, api.example.com"
+                    value={portalDomains}
+                    onChange={(e) => setPortalDomains(e.target.value)}
+                    sx={{ maxWidth: 580 }}
+                    multiline
+                    minRows={2}
                   />
                 </FormControl>
               </Box>
@@ -504,7 +574,7 @@ const PortalManagement: React.FC = () => {
               <PromoBanner
                 imageSrc={AiBanner}
                 onPrimary={() => {
-                  /* open AI flow */
+                  // open AI flow
                 }}
               />
               <ThemeSettingsPanel />

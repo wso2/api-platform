@@ -23,6 +23,10 @@ import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
+import {
+  ApiPublishProvider,
+  useApiPublishContext,
+} from "../../context/ApiPublishContext";
 
 import { ApiProvider, useApisContext } from "../../context/ApiContext";
 import type { ApiSummary } from "../../hooks/apis";
@@ -63,6 +67,12 @@ const ApiOverviewContent: React.FC = () => {
     apiSlug?: string;
     apiId?: string;
   }>();
+  const {
+    publish,
+    unpublish,
+    getPublishState,
+    loading: publishLoading,
+  } = useApiPublishContext();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { apis, fetchApiById, loading } = useApisContext();
@@ -257,6 +267,8 @@ const ApiOverviewContent: React.FC = () => {
       </Box>
     );
   }
+  const publishState = getPublishState(api.id);
+  const isPublished = publishState?.isPublished ?? false;
 
   return (
     <Box>
@@ -381,6 +393,7 @@ const ApiOverviewContent: React.FC = () => {
           <Button
             variant="outlined"
             endIcon={<LaunchIcon />}
+            disabled={!isPublished || publishLoading}
             sx={{
               textTransform: "none",
               borderColor: "#069668",
@@ -394,21 +407,33 @@ const ApiOverviewContent: React.FC = () => {
             View on Developer Portal
           </Button>
           <Button
-            variant="contained"
+            variant={isPublished ? "outlined" : "contained"}
+            disabled={publishLoading}
+            onClick={() => {
+              if (!api?.id) return;
+              (isPublished ? unpublish(api.id) : publish(api.id)).catch(
+                () => {}
+              );
+            }}
             sx={{
               textTransform: "none",
-              bgcolor: "#069668",
-              "&:hover": { bgcolor: "#047857" },
+              bgcolor: isPublished ? "transparent" : "#069668",
+              color: isPublished ? "#069668" : undefined,
+              borderColor: "#069668",
+              "&:hover": {
+                bgcolor: isPublished ? "rgba(6,150,104,0.05)" : "#047857",
+                borderColor: "#069668",
+              },
             }}
           >
-            Generate MCP Server
+            {isPublished ? "Unpublish API" : "Publish API"}
           </Button>
 
           <Stack spacing={0.25} alignItems="flex-end" sx={{ mt: 0.5 }}>
-            <Typography variant="caption" color="text.secondary">
+            {/* <Typography variant="caption" color="text.secondary">
               Lifecycle Status
             </Typography>
-            <Chip size="small" label="Published" />
+            <Chip size="small" label="Published" /> */}
             <Typography variant="caption" color="text.secondary">
               Compliance Summary
             </Typography>
@@ -702,9 +727,11 @@ const ApiOverviewContent: React.FC = () => {
 };
 
 const ApiOverview: React.FC = () => (
-  <ApiProvider>
-    <ApiOverviewContent />
-  </ApiProvider>
+  <ApiPublishProvider>
+    <ApiProvider>
+      <ApiOverviewContent />
+    </ApiProvider>
+  </ApiPublishProvider>
 );
 
 export default ApiOverview;
