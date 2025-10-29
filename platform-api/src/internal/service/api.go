@@ -781,15 +781,16 @@ func (s *APIService) PublishAPI(apiID string, orgID string, devPortalID string) 
 	// Build API publish request for devportal
 	publishReq := &devportalDto.APIPublishRequest{
 		APIInfo: devportalDto.APIInfo{
-			ReferenceID:    api.ID,                                 // Required: Platform-api API UUID
-			APIName:        api.Name,                               // Required: API name
+			APIID:          api.ID,
+			ReferenceID:    api.ID,                                      // Required: Platform-api API UUID
+			APIName:        api.Name,                                    // Required: API name
 			APIHandle:      fmt.Sprintf("%s-%s", api.Name, api.Version), // Required: {apiName}-{version}
-			APIVersion:     api.Version,                            // Required: API version
-			APIType:        "REST",                                 // Required: API type
-			Provider:       api.Provider,                           // Optional: Provider name
-			APIDescription: api.Description,                        // Optional: Description
-			APIStatus:      "PUBLISHED",                            // Optional: Status
-			Visibility:     "PUBLIC",                               // Optional: Default to PUBLIC
+			APIVersion:     api.Version,                                 // Required: API version
+			APIType:        "REST",                                      // Required: API type
+			Provider:       api.Provider,                                // Optional: Provider name
+			APIDescription: api.Description,                             // Optional: Description
+			APIStatus:      "PUBLISHED",                                 // Optional: Status
+			Visibility:     "PUBLIC",                                    // Optional: Default to PUBLIC
 		},
 		SubscriptionPolicies: []devportalDto.SubscriptionPolicy{
 			{PolicyName: "unlimited"}, // T032: Hardcoded "unlimited" subscription tier
@@ -819,5 +820,58 @@ func (s *APIService) PublishAPI(apiID string, orgID string, devPortalID string) 
 	}
 
 	log.Printf("[APIService] API published successfully: %s (DevPortal ID: %s)", api.ID, devportalResp.APIID)
+	return response, nil
+}
+
+// UnpublishAPI unpublishes an API from the developer portal
+//
+// This method handles the business logic for unpublishing APIs from the developer portal:
+//   - Validates that devportal is enabled
+//   - Validates that API exists in platform-api
+//   - Invokes devportal client to delete API with 3-retry logic
+//
+// Parameters:
+//   - apiID: API UUID in platform-api (same UUID used in devportal)
+//   - orgID: Organization UUID
+//   - devPortalID: Optional developer portal API ID (reserved for future use)
+//
+// Returns:
+//   - *dto.UnpublishAPIResponse: Response with unpublish details
+//   - error: Error if API not found, devportal disabled, or unpublishing fails
+func (s *APIService) UnpublishAPI(apiID string, orgID string, devPortalID string) (*dto.UnpublishAPIResponse, error) {
+	// Check if devportal is enabled
+	if s.devportalClient == nil || !s.devportalClient.IsEnabled() {
+		log.Printf("[APIService] Developer portal disabled, cannot unpublish API")
+		return nil, constants.ErrDevPortalSync
+	}
+
+	// Fetch API from repository to ensure it exists
+	api, err := s.GetAPIByUUID(apiID, orgID)
+	if err != nil {
+		log.Printf("[APIService] Failed to fetch API %s: %v", apiID, err)
+		return nil, err
+	}
+	if api == nil {
+		return nil, constants.ErrAPINotFound
+	}
+
+	log.Printf("[APIService] Unpublishing API %s (Name: %s, Version: %s) from developer portal",
+		api.ID, api.Name, api.Version)
+
+	// Invoke devportal client with 3-retry logic using same API ID
+	err = s.devportalClient.UnpublishAPI(orgID, apiID)
+	if err != nil {
+		log.Printf("[APIService] Failed to unpublish API from developer portal: %v", err)
+		return nil, constants.ErrDevPortalSync
+	}
+
+	// Build response
+	response := &dto.UnpublishAPIResponse{
+		Message:       "API unpublished successfully from developer portal",
+		APIID:         api.ID,
+		UnpublishedAt: time.Now(),
+	}
+
+	log.Printf("[APIService] API unpublished successfully: %s", api.ID)
 	return response, nil
 }

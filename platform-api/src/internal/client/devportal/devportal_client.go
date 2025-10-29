@@ -402,3 +402,52 @@ func (c *DevPortalClient) PublishAPI(orgID string, req *dto.APIPublishRequest, a
 		apiResp.APIHandle, apiResp.APIID, apiResp.ReferenceID)
 	return &apiResp, nil
 }
+
+// UnpublishAPI unpublishes an API from the developer portal
+//
+// This method deletes an API from the developer portal by its API ID.
+// It uses retry logic to handle transient failures.
+//
+// Parameters:
+//   - orgID: Organization UUID
+//   - apiID: Developer portal API UUID (not platform-api API UUID)
+//
+// Returns:
+//   - error: DevPortalError if unpublishing fails after retries, nil on success
+func (c *DevPortalClient) UnpublishAPI(orgID string, apiID string) error {
+	url := fmt.Sprintf("http://%s/devportal/apis/%s", c.baseURL, apiID)
+
+	// Create HTTP request
+	httpReq, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return NewDevPortalError(0, "failed to create HTTP request", false, err)
+	}
+
+	// Set headers
+	httpReq.Header.Set("x-wso2-api-key", c.apiKey)
+	httpReq.Header.Set("organization", orgID)
+	httpReq.Header.Set("Accept", "application/json")
+
+	log.Printf("[DevPortal] Unpublishing API: %s (Organization: %s)", apiID, orgID)
+
+	// Execute request with retry logic
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return NewDevPortalError(0, "failed to unpublish API after retries", true, err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body for error messages
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return NewDevPortalError(resp.StatusCode, "failed to read response body", false, err)
+	}
+
+	// Check status code - DELETE should return 200 or 204 on success
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return NewDevPortalError(resp.StatusCode, fmt.Sprintf("API unpublishing failed: %s", string(respBody)), resp.StatusCode >= 500, nil)
+	}
+
+	log.Printf("[DevPortal] API unpublished successfully: %s", apiID)
+	return nil
+}
