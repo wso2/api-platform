@@ -25,6 +25,7 @@ var (
 	ErrInvalidHandle         = errors.New("invalid handle format")
 	ErrOrganizationNotFound  = errors.New("organization not found")
 	ErrMultipleOrganizations = errors.New("multiple organizations found")
+	ErrInvalidInput          = errors.New("invalid input parameters")
 )
 
 var (

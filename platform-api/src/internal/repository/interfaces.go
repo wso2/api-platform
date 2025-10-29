@@ -36,6 +36,7 @@ type OrganizationRepository interface {
 type ProjectRepository interface {
 	CreateProject(project *model.Project) error
 	GetProjectByUUID(projectId string) (*model.Project, error)
+	GetProjectByNameAndOrgID(name, orgID string) (*model.Project, error)
 	GetProjectsByOrganizationID(orgID string) ([]*model.Project, error)
 	UpdateProject(project *model.Project) error
 	DeleteProject(projectId string) error

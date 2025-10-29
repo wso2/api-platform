@@ -23,6 +23,7 @@ import (
 	"log"
 	"net/http"
 	"platform-api/src/internal/constants"
+	"platform-api/src/internal/dto"
 	"platform-api/src/internal/utils"
 
 	"github.com/gin-gonic/gin"
@@ -157,10 +158,96 @@ func (h *GatewayInternalAPIHandler) GetAPI(c *gin.Context) {
 	c.Data(http.StatusOK, "application/zip", zipData)
 }
 
+// CreateGatewayAPIDeployment handles POST /api/internal/v1/apis/{apiId}/gateway-deployments
+func (h *GatewayInternalAPIHandler) CreateGatewayAPIDeployment(c *gin.Context) {
+	// Extract client IP for logging
+	clientIP := c.ClientIP()
+
+	// Extract and validate API key from header
+	apiKey := c.GetHeader("api-key")
+	if apiKey == "" {
+		log.Printf("[WARN] Unauthorized access attempt from IP: %s - Missing API key", clientIP)
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"API key is required. Provide 'api-key' header."))
+		return
+	}
+
+	// Authenticate gateway using API key
+	gateway, err := h.gatewayService.VerifyToken(apiKey)
+	if err != nil {
+		log.Printf("[WARN] Authentication failed ip: %s - error=%v", clientIP, err)
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Invalid or expired API key"))
+		return
+	}
+
+	// Extract API ID from path parameter
+	apiID := c.Param("apiId")
+	if apiID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API ID is required"))
+		return
+	}
+
+	// Extract optional revision ID from query parameter
+	revisionID := c.Query("revisionId")
+	var revisionIDPtr *string
+	if revisionID != "" {
+		revisionIDPtr = &revisionID
+	}
+
+	// Parse and validate request body
+	var notification dto.APIDeploymentNotification
+	if err := c.ShouldBindJSON(&notification); err != nil {
+		log.Printf("[WARN] Invalid request body from IP: %s - error=%v", clientIP, err)
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Invalid request body: "+err.Error()))
+		return
+	}
+
+	// Create API and deployment using the service
+	orgID := gateway.OrganizationID
+	gatewayID := gateway.ID
+
+	response, err := h.gatewayInternalService.CreateGatewayAPIDeployment(
+		apiID, orgID, gatewayID, notification, revisionIDPtr)
+	if err != nil {
+		if errors.Is(err, constants.ErrInvalidInput) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid input data"))
+			return
+		}
+		if errors.Is(err, constants.ErrGatewayNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Gateway not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrAPINotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"API not found"))
+			return
+		}
+		log.Printf("[ERROR] Failed to create gateway API deployment: apiId=%s gatewayId=%s error=%v",
+			apiID, gatewayID, err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to create API deployment"))
+		return
+	}
+
+	log.Printf("[INFO] Successfully created gateway API deployment: apiId=%s gatewayId=%s created=%v",
+		apiID, gatewayID, response.Created)
+
+	// Return success response
+	c.JSON(http.StatusCreated, map[string]interface{}{
+		"message": response.Message,
+	})
+}
+
 func (h *GatewayInternalAPIHandler) RegisterRoutes(r *gin.Engine) {
 	orgGroup := r.Group("/api/internal/v1/apis")
 	{
 		orgGroup.GET("", h.GetAPIsByOrganization)
 		orgGroup.GET("/:apiId", h.GetAPI)
+		orgGroup.POST("/:apiId/gateway-deployments", h.CreateGatewayAPIDeployment)
 	}
 }

@@ -27,6 +27,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"platform-api/src/internal/client/apiportal"
 	apiportalDto "platform-api/src/internal/client/apiportal/dto"
 )
@@ -127,8 +129,8 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 
 	// Create default project for the organization
 	defaultProject := &model.Project{
-		ID:             "default" + "-" + handle,
-		Name:           "Default",
+		ID:             uuid.New().String(),
+		Name:           "default",
 		OrganizationID: org.ID,
 		Description:    "Default project",
 		CreatedAt:      time.Now(),

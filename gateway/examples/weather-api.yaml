@@ -23,7 +23,7 @@ data:
   version: v1.0
   context: /weather
   upstream:
-    - url: http://sample-backend:3000/api/v2
+    - url: http://sample-backend:5000/api/v2
   operations:
     - method: GET
       path: /{country_code}/{city}
