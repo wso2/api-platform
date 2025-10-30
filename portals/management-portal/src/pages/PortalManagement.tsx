@@ -430,7 +430,7 @@ const PortalManagement: React.FC = () => {
 
   // auto-build identifier from name
   React.useEffect(() => {
-    setPortalIdentifier(slugify(portalName || "developer-portal"));
+    setPortalIdentifier(slugify(portalName));
   }, [portalName]);
 
   return (
@@ -564,9 +564,9 @@ const PortalManagement: React.FC = () => {
                 >
                   Create and continue
                 </Button>
-                <Button variant="text" onClick={() => setStep("theme")}>
+                {/* <Button variant="text" onClick={() => setStep("theme")}>
                   Skip for now
-                </Button>
+                </Button> */}
               </Stack>
             </Stack>
           ) : (

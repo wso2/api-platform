@@ -78,6 +78,7 @@ function CreatedGatewaySummary({
   activeStep,
   onSkip,
   onNext,
+  isActive,
 }: {
   gateway: Gateway;
   token?: string | null;
@@ -87,6 +88,7 @@ function CreatedGatewaySummary({
   activeStep: number;
   onSkip: () => void;
   onNext: () => void;
+  isActive?: boolean;
 }) {
   const ui = toUiGateway(gateway);
 
@@ -275,6 +277,23 @@ function CreatedGatewaySummary({
               <Typography color="text.secondary">
                 {relativeTime(ui.createdAt)}
               </Typography>
+              {isActive ? (
+                <Chip
+                  size="small"
+                  label="Active"
+                  color="success"
+                  variant="outlined"
+                  style={{ borderRadius: 4 }}
+                />
+              ) : (
+                <Chip
+                  size="small"
+                  label="Not Active"
+                  color="error"
+                  variant="outlined"
+                  style={{ borderRadius: 4 }}
+                />
+              )}
             </Stack>
           </Box>
 
@@ -289,7 +308,7 @@ function CreatedGatewaySummary({
         </Box>
 
         <Typography variant="body2" sx={{ mb: 1 }}>
-          Run this command locally to start the gateway
+          Run this command locally to start the gateways
         </Typography>
 
         <Box sx={{ position: "relative" }}>
@@ -407,8 +426,14 @@ function GatewayWizardContent({ onFinish }: { onFinish?: () => void }) {
   const closeSnack = () => setSnack((s) => ({ ...s, open: false }));
 
   // ---- Gateways context wiring ----
-  const { createGateway, refreshGateways, rotateGatewayToken, gatewayTokens } =
-    useGateways();
+  const {
+    createGateway,
+    refreshGateways,
+    rotateGatewayToken,
+    gatewayTokens,
+    getGatewayStatus,
+    gatewayStatuses,
+  } = useGateways();
 
   // token helpers for the created gateway
   const createdToken = createdGateway
@@ -560,6 +585,12 @@ function GatewayWizardContent({ onFinish }: { onFinish?: () => void }) {
                   activeStep={activeStep}
                   onSkip={skip}
                   onNext={next}
+                  isActive={
+                    (typeof getGatewayStatus === "function"
+                      ? getGatewayStatus(createdGateway.id)
+                      : gatewayStatuses?.[createdGateway.id]
+                    )?.isActive === true
+                  }
                 />
               )}
             </>

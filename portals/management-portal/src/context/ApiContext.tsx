@@ -32,29 +32,32 @@ type ApiProviderProps = {
 };
 
 export const ApiProvider = ({ children }: ApiProviderProps) => {
-  const { fetchProjectApis, fetchApi, createApi: createApiRequest, deleteApi: deleteApiRequest } =
-    useApisApi();
+  const {
+    fetchProjectApis,
+    fetchApi,
+    createApi: createApiRequest,
+    deleteApi: deleteApiRequest,
+  } = useApisApi();
   const { selectedProject } = useProjects();
 
-  const [apisByProject, setApisByProject] = useState<Record<string, ApiSummary[]>>({});
+  const [apisByProject, setApisByProject] = useState<
+    Record<string, ApiSummary[]>
+  >({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastFetchedProjectRef = useRef<string | null>(null);
 
   const currentProjectId = selectedProject?.id ?? null;
+
   const apis = useMemo(() => {
-    if (!currentProjectId) {
-      return [];
-    }
+    if (!currentProjectId) return [];
     return apisByProject[currentProjectId] ?? [];
   }, [apisByProject, currentProjectId]);
 
   const refreshApis = useCallback(
     async (projectIdParam?: string) => {
       const projectId = projectIdParam ?? currentProjectId;
-      if (!projectId) {
-        return [];
-      }
+      if (!projectId) return [];
 
       setLoading(true);
       setError(null);
@@ -91,11 +94,11 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
         if (projectId) {
           setApisByProject((prev) => {
             const existing = prev[projectId] ?? [];
-            const next = [api, ...existing.filter((item) => item.id !== api.id)];
-            return {
-              ...prev,
-              [projectId]: next,
-            };
+            const next = [
+              api,
+              ...existing.filter((item) => item.id !== api.id),
+            ];
+            return { ...prev, [projectId]: next };
           });
         }
 
@@ -125,15 +128,9 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
             const existing = prev[projectId] ?? [];
             const index = existing.findIndex((item) => item.id === api.id);
             const next = [...existing];
-            if (index === -1) {
-              next.unshift(api);
-            } else {
-              next[index] = api;
-            }
-            return {
-              ...prev,
-              [projectId]: next,
-            };
+            if (index === -1) next.unshift(api);
+            else next[index] = api;
+            return { ...prev, [projectId]: next };
           });
         }
         return api;
@@ -161,13 +158,11 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
           let changed = false;
           const next: Record<string, ApiSummary[]> = {};
 
-          entries.forEach(([projectId, items]) => {
+          for (const [projectId, items] of entries) {
             const filtered = items.filter((item) => item.id !== apiId);
             next[projectId] = filtered;
-            if (filtered.length !== items.length) {
-              changed = true;
-            }
-          });
+            if (filtered.length !== items.length) changed = true;
+          }
 
           return changed ? next : prev;
         });
@@ -184,12 +179,8 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
   );
 
   useEffect(() => {
-    if (!currentProjectId) {
-      return;
-    }
-    if (lastFetchedProjectRef.current === currentProjectId) {
-      return;
-    }
+    if (!currentProjectId) return;
+    if (lastFetchedProjectRef.current === currentProjectId) return;
 
     refreshApis(currentProjectId).catch(() => {
       /* error captured in state */

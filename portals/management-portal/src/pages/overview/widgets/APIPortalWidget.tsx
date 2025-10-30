@@ -1,5 +1,6 @@
 import { Box, Card, CardActionArea, CardContent, Divider, Link as MuiLink, Stack, Typography } from "@mui/material";
 import { useNavigate } from "react-router-dom";
+import NoData from "./NoData.svg"; // portals/management-portal/src/pages/overview/widgets/NoData.svg
 
 type Portal = { id: string; name: string; href: string };
 type Props = { height?: number; href: string; portals?: Portal[] };
@@ -28,12 +29,21 @@ export default function APIPortalWidget({ height = 220, href, portals = [] }: Pr
               bgcolor: t.palette.action.hover,
               px: 1,
               width: "100%",
+              textAlign: "center",
             })}
           >
             {recent.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">
-                No portals configured.
-              </Typography>
+              <Stack alignItems="center" justifyContent="center">
+                <Box
+                  component="img"
+                  src={NoData}
+                  alt=""
+                  sx={{ width: 50, height: 50, display: "block", opacity: 0.9 }}
+                />
+                <Typography variant="body2" color="text.secondary">
+                  No portals configured.
+                </Typography>
+              </Stack>
             ) : (
               <Stack sx={{ width: "100%" }}>
                 {recent.map((p) => (
@@ -62,7 +72,7 @@ export default function APIPortalWidget({ height = 220, href, portals = [] }: Pr
           </Box>
 
           <Divider sx={{ mt: 1.5 }} />
-          <Typography variant="body2" color="primary.main" sx={{ mt: 1 }}>
+          <Typography variant="body2" color="049669" sx={{ mt: 1 }}>
             Manage →
           </Typography>
         </CardContent>

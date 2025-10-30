@@ -26,6 +26,7 @@ export type ApiOperation = {
 export type ApiSummary = {
   id: string;
   name: string;
+  displayName?: string;
   context: string;
   version: string;
   description?: string;
@@ -44,6 +45,11 @@ export type ApiSummary = {
 type ApiListResponse = {
   list?: ApiSummary[];
   count?: number;
+  pagination?: {
+    total: number;
+    offset: number;
+    limit: number;
+  };
 };
 
 export type CreateApiPayload = {
@@ -56,9 +62,7 @@ export type CreateApiPayload = {
 };
 
 const mapBackendServices = (services?: ApiBackendService[]) => {
-  if (!services) {
-    return undefined;
-  }
+  if (!services) return undefined;
 
   return services.map((service) => ({
     name: service.name,
@@ -73,6 +77,7 @@ const mapBackendServices = (services?: ApiBackendService[]) => {
 
 const normalizeApiSummary = (api: any): ApiSummary => {
   if (!api) return api;
+
   const backend =
     api.backendServices ??
     api["backend-services"] ??
@@ -98,9 +103,7 @@ export const useApisApi = () => {
       const { token, baseUrl } = getApiConfig();
       const { backendServices, ...rest } = payload;
 
-      const body: Record<string, unknown> = {
-        ...rest,
-      };
+      const body: Record<string, unknown> = { ...rest };
 
       if (payload.description) {
         body.description = payload.description;
@@ -133,19 +136,26 @@ export const useApisApi = () => {
     []
   );
 
+  /**
+   * UPDATED: fetch from /api/v1/apis with optional projectId filter
+   * - /api/v1/apis                 => all APIs in org
+   * - /api/v1/apis?projectId=....  => APIs for a specific project
+   */
   const fetchProjectApis = useCallback(
     async (projectId: string): Promise<ApiSummary[]> => {
       const { token, baseUrl } = getApiConfig();
 
-      const response = await fetch(
-        `${baseUrl}/api/v1/projects/${projectId}/apis`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const url =
+        projectId && projectId.length > 0
+          ? `${baseUrl}/api/v1/apis?projectId=${encodeURIComponent(projectId)}`
+          : `${baseUrl}/api/v1/apis`;
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       if (response.status === 404) {
         return [];
@@ -154,11 +164,13 @@ export const useApisApi = () => {
       if (!response.ok) {
         const errorBody = await response.text();
         throw new Error(
-          `Failed to fetch APIs for project ${projectId}: ${response.status} ${response.statusText} ${errorBody}`
+          `Failed to fetch APIs${projectId ? ` for project ${projectId}` : ""}: ${response.status} ${response.statusText} ${errorBody}`
         );
       }
 
       const data = await response.json();
+
+      // API may return either a raw array or a { list, count, pagination } wrapper
       if (Array.isArray(data)) {
         return (data as ApiSummary[]).map(normalizeApiSummary);
       }
