@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/google/uuid"
 	"time"
 
 	"platform-api/src/internal/database"
@@ -624,6 +625,9 @@ func (r *APIRepo) loadCORSConfig(apiId string) (*model.CORSConfig, error) {
 
 // Helper methods for Backend Services
 func (r *APIRepo) insertBackendService(tx *sql.Tx, apiId string, service *model.BackendService) error {
+	if service.Name == "" {
+		service.Name = uuid.New().String()
+	}
 	// Build timeout and load balance values
 	var timeoutConnect, timeoutRead, timeoutWrite *int
 	if service.Timeout != nil {
