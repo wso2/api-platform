@@ -462,7 +462,7 @@ const LeftSidebar: React.FC = () => {
                 : `${baseOrgPath}/apis/develop`
             }
             icon={<MenuDevelop fontSize="small" />}
-            label="Develop"
+            label="Deploy"
           />
           <NavItem
             child

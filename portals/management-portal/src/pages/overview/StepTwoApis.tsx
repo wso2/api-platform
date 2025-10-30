@@ -97,7 +97,7 @@ data:
   version: v1.0
   context: /petstore
   upstream:
-    - url: http://petstore.swagger.io/v2
+    - url: https://petstore.swagger.io/v2
   operations:
     - method: GET
       path: /pet/{petId}
@@ -116,7 +116,7 @@ data:
   version: v1.0
   context: /petstore
   upstream:
-    - url: http://petstore.swagger.io/v2
+    - url: https://petstore.swagger.io/v2
   operations:
     - method: GET
       path: /pet/{petId}

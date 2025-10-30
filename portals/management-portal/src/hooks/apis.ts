@@ -61,6 +61,31 @@ export type CreateApiPayload = {
   backendServices?: ApiBackendService[];
 };
 
+/** ---------- Gateways bound to an API ---------- */
+export type ApiGatewaySummary = {
+  id: string;
+  organizationId: string;
+  name: string;
+  displayName?: string;
+  description?: string;
+  vhost?: string;
+  isCritical?: boolean;
+  functionalityType?: string; // e.g., "regular"
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type ApiGatewayListResponse = {
+  count?: number;
+  list?: ApiGatewaySummary[];
+  pagination?: {
+    total: number;
+    offset: number;
+    limit: number;
+  };
+};
+
 const mapBackendServices = (services?: ApiBackendService[]) => {
   if (!services) return undefined;
 
@@ -137,7 +162,7 @@ export const useApisApi = () => {
   );
 
   /**
-   * UPDATED: fetch from /api/v1/apis with optional projectId filter
+   * Fetch from /api/v1/apis with optional projectId filter:
    * - /api/v1/apis                 => all APIs in org
    * - /api/v1/apis?projectId=....  => APIs for a specific project
    */
@@ -224,10 +249,46 @@ export const useApisApi = () => {
     }
   }, []);
 
+  /** Fetch gateways attached to a specific API id */
+  const fetchApiGateways = useCallback(
+    async (apiId: string): Promise<ApiGatewaySummary[]> => {
+      const { token, baseUrl } = getApiConfig();
+
+      const response = await fetch(
+        `${baseUrl}/api/v1/apis/${encodeURIComponent(apiId)}/gateways`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (response.status === 404) {
+        return [];
+      }
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(
+          `Failed to fetch gateways for ${apiId}: ${response.status} ${response.statusText} ${errorBody}`
+        );
+      }
+
+      const data =
+        (await response.json()) as ApiGatewayListResponse | ApiGatewaySummary[];
+
+      if (Array.isArray(data)) return data;
+      if (data?.list && Array.isArray(data.list)) return data.list;
+
+      return [];
+    },
+    []
+  );
+
   return {
     createApi,
     fetchProjectApis,
     fetchApi,
     deleteApi,
+    fetchApiGateways,
   };
 };
