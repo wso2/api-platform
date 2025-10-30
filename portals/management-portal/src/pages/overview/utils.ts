@@ -25,5 +25,5 @@ export const relativeTime = (d: Date) => {
   return `${day} day${day > 1 ? "s" : ""} ago`;
 };
 
-export const codeFor = (name: string) =>
+export const codeFor = (name: string, token: string) =>
   `curl -Ls https://bijira.dev/quick-start | bash -s -- -k $GATEWAY_KEY --name ${name}`;

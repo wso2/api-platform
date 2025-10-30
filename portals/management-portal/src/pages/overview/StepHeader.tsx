@@ -8,25 +8,38 @@ import {
   useTheme,
   Alert,
   Snackbar,
+  Chip,
+  Tooltip,
+  Stack,
 } from "@mui/material";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
-import { useNavigate, useParams } from "react-router-dom";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import CachedRoundedIcon from "@mui/icons-material/CachedRounded";
+import { useParams } from "react-router-dom";
 import { useOrganization } from "../../context/OrganizationContext";
 import { useProjects } from "../../context/ProjectContext";
 import { projectSlugFromName } from "../../utils/projectSlug";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
 
+// Step content
 import StepTwoApis from "./StepTwoApis";
 import StepThreeTest from "./StepThreeTest";
 import GatewayCards from "./GatewayCards";
 import GatewayForm from "./GatewayForm";
-import GatewayList from "./GatewayList";
-import OverviewSummary from "./OverviewSummary";
 
-import type { GatewayRecord, GwMode, GwType } from "./types";
-import { codeFor } from "./utils";
+// Context + API types
+import { GatewayProvider, useGateways } from "../../context/GatewayContext";
+import type { Gateway, GatewayType } from "../../hooks/gateways";
+
+// UI types
+import type { GatewayRecord as UIGatewayRecord, GwType } from "./types";
+
+// util
+import { codeFor, relativeTime, twoLetters } from "./utils";
 
 // If you’re using a custom Button, keep this import.
-// Otherwise, swap to MUI: `import { Button } from "@mui/material";`
 import { Button } from "../../components/src/components/Button";
 
 type Step = { title: string; subtitle: string };
@@ -36,8 +49,324 @@ const STEPS: Step[] = [
   { title: "Test Your APIs", subtitle: "Lorem Ipsum is simply" },
 ];
 
-export default function GatewayWizard() {
-  const navigate = useNavigate();
+/** Top-level wrapper that provides the Gateway context */
+export default function GatewayWizard({ onFinish }: { onFinish?: () => void }) {
+  return (
+    <GatewayProvider>
+      <GatewayWizardContent onFinish={onFinish} />
+    </GatewayProvider>
+  );
+}
+
+/** ---- Adapter: API Gateway -> UI GatewayRecord ---- */
+const toUiGateway = (g: Gateway): UIGatewayRecord => ({
+  id: g.id,
+  type: (g.type ?? "hybrid") as GwType,
+  displayName: g.displayName,
+  name: g.name,
+  host: g.vhost ?? g.host ?? "",
+  description: g.description ?? "",
+  createdAt: new Date(g.createdAt),
+});
+
+/** Small summary card shown right after create */
+function CreatedGatewaySummary({
+  gateway,
+  token,
+  onRotate,
+  onCopy,
+  activeStep,
+  onSkip,
+  onNext,
+}: {
+  gateway: Gateway;
+  token?: string | null;
+  onRotate: () => void;
+  // onCopy receives the final text that will be placed on the clipboard
+  onCopy: (text: string) => void;
+  activeStep: number;
+  onSkip: () => void;
+  onNext: () => void;
+}) {
+  const ui = toUiGateway(gateway);
+
+  // What we SHOW (placeholder kept as <Token>)
+  const cmdTextDisplayMd =
+    "```bash\n" +
+    "curl -sLO https://github.com/wso2/api-platform/releases/download/v0.1.0-m3/gateway.zip && \\\n" +
+    "unzip gateway.zip && \\\n" +
+    "GATEWAY_CONTROLPLANE_TOKEN=<Token> docker compose --project-directory gateway up\n" +
+    "```";
+
+  // What we COPY (append real token right after <Token>)
+  const cmdTextCopy =
+    `curl -sLO https://github.com/wso2/api-platform/releases/download/v0.1.0-m3/gateway.zip && \\\n` +
+    `unzip gateway.zip && \\\n` +
+    `GATEWAY_CONTROLPLANE_TOKEN=${
+      token ?? ""
+    } docker compose --project-directory gateway up`;
+
+  // --- put this near the top of the file (or in a small utils file) ---
+  // 1) Minimal bash token colorizer
+  const BashSyntax = ({ text }: { text: string }) => {
+    const pattern =
+      /(https?:\/\/\S+)|(\$[A-Z0-9_]+)|\b(curl|bash)\b|(\s--?[a-zA-Z0-9-]+)|(\s\|\s)|\b(test)\b/g;
+
+    const parts: React.ReactNode[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+
+    while ((m = pattern.exec(text)) !== null) {
+      if (m.index > last) parts.push(text.slice(last, m.index));
+      const [full, url, env, cmd, flag, pipe, litTest] = m;
+
+      let color = "#EDEDF0";
+      if (url) color = "#79a8ff"; // URL
+      else if (env) color = "#7dd3fc"; // $GATEWAY_KEY
+      else if (cmd) color = cmd === "curl" ? "#b8e78b" : "#f5d67b"; // curl/bash
+      else if (flag) color = "#a8acb3"; // -s --name -k
+      else if (pipe) color = "#EDEDF0"; // |
+      else if (litTest) color = "#f2a36b"; // test
+
+      parts.push(
+        <span key={m.index} style={{ color }}>
+          {full}
+        </span>
+      );
+      last = pattern.lastIndex;
+    }
+    if (last < text.length) parts.push(text.slice(last));
+    return <>{parts}</>;
+  };
+
+  // 2) Use it in react-markdown components (no `inline` typing)
+  const mdComponents: Components = {
+    pre: ({ children }) => (
+      <Box
+        sx={{
+          bgcolor: "#373842",
+          color: "#EDEDF0",
+          p: 2.5,
+          borderRadius: 1,
+          fontFamily:
+            'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+          fontSize: 14,
+          lineHeight: 1.6,
+          overflowX: "auto",
+          m: 0,
+        }}
+      >
+        <pre style={{ margin: 0, whiteSpace: "pre" }}>{children}</pre>
+      </Box>
+    ),
+    code: (props: any) => {
+      const raw = String(props.children ?? "");
+      const isBlock = raw.includes("\n"); // robust inline vs block check
+
+      // avoid passing an incompatible `ref` (causes type clash when multiple React types exist)
+      // strip `ref` and `node` which react-markdown may pass
+      const { ref, node, ...rest } = props as any;
+
+      if (!isBlock) return <code {...rest}>{raw}</code>;
+      return (
+        <code {...rest}>
+          <BashSyntax text={raw} />
+        </code>
+      );
+    },
+  };
+
+  return (
+    <>
+      <Card
+        elevation={0}
+        sx={{
+          p: 3,
+          borderRadius: 1,
+          border: "1px solid",
+          borderColor: "divider",
+        }}
+      >
+        {/* Header row */}
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 2,
+          }}
+        >
+          {/* Left block */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 2,
+              flex: 1,
+            }}
+          >
+            {/* Thumbnail */}
+            <Box
+              sx={(theme) => ({
+                width: 85,
+                height: 85,
+                borderRadius: 1,
+                backgroundImage: `linear-gradient(135deg,
+                  ${
+                    theme.palette.augmentColor({ color: { main: "#059669" } })
+                      .light
+                  } 0%,
+                  #059669 55%,
+                  ${
+                    theme.palette.augmentColor({ color: { main: "#059669" } })
+                      .dark
+                  } 100%)`,
+                color: "common.white",
+                fontWeight: 800,
+                fontSize: 28,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              })}
+              aria-label={`${ui.displayName} thumbnail`}
+            >
+              {twoLetters(ui.displayName || ui.name)}
+            </Box>
+
+            {/* Text */}
+            <Box sx={{ flex: 1 }}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Chip
+                  label={ui.type === "hybrid" ? "On Premise" : "Cloud"}
+                  color="info"
+                  variant="outlined"
+                  sx={{ borderRadius: 1 }}
+                />
+              </Stack>
+              <Typography variant="h5" fontWeight={800} sx={{ mt: 0.5 }}>
+                {ui.displayName}
+              </Typography>
+              {ui.description && (
+                <Typography
+                  color="text.secondary"
+                  sx={{ mt: 0.2, maxWidth: 900 }}
+                >
+                  {ui.description}
+                </Typography>
+              )}
+            </Box>
+          </Box>
+        </Box>
+
+        {/* Meta rows */}
+        <Box>
+          <Box display={"flex"} gap={4} mt={2} alignItems={"center"}>
+            <Typography color="text.disabled">Created:</Typography>
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              sx={{ mt: 0.5 }}
+            >
+              <AccessTimeIcon
+                fontSize="small"
+                sx={{ color: "text.secondary" }}
+              />
+              <Typography color="text.secondary">
+                {relativeTime(ui.createdAt)}
+              </Typography>
+            </Stack>
+          </Box>
+
+          <Box display={"flex"} gap={4} alignItems={"center"}>
+            <Typography color="text.disabled">Host:</Typography>
+            <Typography sx={{ mt: 0.5 }}>{ui.host || "-"}</Typography>
+          </Box>
+          <Box display={"flex"} gap={4} mb={1} alignItems={"center"}>
+            <Typography color="text.disabled">Replicas:</Typography>
+            <Typography sx={{ mt: 0.5 }}>01</Typography>
+          </Box>
+        </Box>
+
+        <Typography variant="body2" sx={{ mb: 1 }}>
+          Run this command locally to start the gateway
+        </Typography>
+
+        <Box sx={{ position: "relative" }}>
+          {/* Pre to preserve the three lines */}
+          <Box sx={{ position: "relative" }}>
+            <ReactMarkdown components={mdComponents}>
+              {cmdTextDisplayMd}
+            </ReactMarkdown>
+          </Box>
+
+          <Box
+            sx={{
+              position: "absolute",
+              top: 16,
+              right: 2,
+              display: "flex",
+              gap: 1,
+            }}
+          >
+            {/* <Tooltip title="Rotate token">
+              <Button
+                variant="text"
+                onClick={onRotate}
+                size="medium"
+                style={{ color: "#fff" }}
+                startIcon={<CachedRoundedIcon />}
+              />
+            </Tooltip> */}
+
+            <Tooltip title={token ? "Copy command" : "Rotate token first"}>
+              <span>
+                <Button
+                  variant="text"
+                  onClick={() => onCopy(cmdTextCopy)}
+                  size="medium"
+                  disabled={!token}
+                  style={{ color: "#fff" }}
+                  startIcon={<ContentCopyIcon />}
+                />
+              </span>
+            </Tooltip>
+          </Box>
+        </Box>
+      </Card>
+
+      {/* Skip / Next under the card */}
+      <Box
+        sx={{
+          marginTop: 3,
+          display: "flex",
+          gap: 2,
+          alignItems: "center",
+          justifyContent: "flex-end",
+        }}
+      >
+        {activeStep < STEPS.length - 1 && (
+          <Button
+            variant="text"
+            onClick={onSkip}
+            style={{ color: "#059669", borderColor: "#059669" }}
+          >
+            Skip
+          </Button>
+        )}
+        <Button
+          variant="contained"
+          onClick={onNext}
+          style={{ backgroundColor: "#059669", borderColor: "#059669" }}
+        >
+          {activeStep === STEPS.length - 1 ? "Finish" : "Next"}
+        </Button>
+      </Box>
+    </>
+  );
+}
+
+function GatewayWizardContent({ onFinish }: { onFinish?: () => void }) {
   const params = useParams<{ orgHandle?: string; projectHandle?: string }>();
   const { organization } = useOrganization();
   const { selectedProject } = useProjects();
@@ -49,23 +378,20 @@ export default function GatewayWizard() {
     : null;
   const effectiveProjectSlug = selectedProjectSlug ?? routeProjectSlug;
 
-  const basePath = orgHandle ? `/${orgHandle}` : "";
-  const projectBasePath = effectiveProjectSlug
-    ? `${basePath}/${effectiveProjectSlug}`
-    : null;
-
   // ---- wizard container state ----
-  const [showWizard, setShowWizard] = React.useState(true);
   const [activeStep, setActiveStep] = React.useState<number>(0); // Step 1 initially active
 
-  // ---- state for Step 1/2/3 ----
+  // Step 1 modes: only "cards" | "form" | "created" (no list)
+  type GwMode = "cards" | "form" | "created";
   const [gwMode, setGwMode] = React.useState<GwMode>("cards");
-  const [selectedGateway, setSelectedGateway] = React.useState<GwType | null>(
+  const [selectedGateway, setSelectedGateway] =
+    React.useState<GatewayType | null>(null);
+  const [type, setType] = React.useState<GatewayType>("hybrid");
+
+  // keep the last created gateway in state (to show its summary)
+  const [createdGateway, setCreatedGateway] = React.useState<Gateway | null>(
     null
   );
-  const [type, setType] = React.useState<GwType>("hybrid");
-  const [editing, setEditing] = React.useState<GatewayRecord | null>(null);
-  const [gateways, setGateways] = React.useState<GatewayRecord[]>([]);
 
   // ---- snackbar ----
   const [snack, setSnack] = React.useState<{
@@ -80,90 +406,96 @@ export default function GatewayWizard() {
   ) => setSnack({ open: true, msg, severity });
   const closeSnack = () => setSnack((s) => ({ ...s, open: false }));
 
+  // ---- Gateways context wiring ----
+  const { createGateway, refreshGateways, rotateGatewayToken, gatewayTokens } =
+    useGateways();
+
+  // token helpers for the created gateway
+  const createdToken = createdGateway
+    ? gatewayTokens[createdGateway.id]?.token
+    : undefined;
+
   // ---- step navigation ----
   const next = () => {
     if (activeStep < STEPS.length - 1) {
       setActiveStep((s) => s + 1);
     } else {
-      // Finished → show Summary page
-      setShowWizard(false);
       notify("All steps completed 🎉", "success");
+      onFinish?.();
     }
   };
+
   const skip = () => {
     if (activeStep < STEPS.length - 1) setActiveStep((s) => s + 1);
   };
 
-  // ---- Step 1: Gateways ----
-  const handleSelectCard = (gw: GwType) => {
+  // ---- Step 1 handlers ----
+  const handleSelectCard = (gw: GatewayType) => {
     setSelectedGateway(gw);
     setType(gw);
-    setEditing(null);
     setGwMode("form");
   };
 
   const handleCancel = () => {
-    setEditing(null);
-    setGwMode(gateways.length ? "list" : "cards");
+    setGwMode(createdGateway ? "created" : "cards");
   };
 
-  const handleSubmit = (data: {
+  const handleSubmit = async (data: {
     displayName: string;
     name: string;
     host: string;
     description: string;
+    isCritical: boolean; // <-- NEW
   }) => {
-    if (editing) {
-      setGateways((prev) =>
-        prev.map((g) => (g.id === editing.id ? { ...g, ...data } : g))
-      );
-    } else {
-      const rec: GatewayRecord = {
-        id: String(Date.now()),
-        type,
+    try {
+      const gw = await createGateway({
         displayName: data.displayName,
         name: data.name,
-        host: data.host,
-        description: data.description,
-        createdAt: new Date(),
-        isActive: false,
-      };
-      setGateways((prev) => [rec, ...prev]);
+        description: data.description || undefined,
+        vhost: data.host || undefined,
+        type,
+        isCritical: data.isCritical, // <-- NEW: from checkbox
+        functionalityType: "regular", // <-- NEW: hardcoded
+      });
+
+      await refreshGateways();
+
+      try {
+        await rotateGatewayToken(gw.id);
+      } catch {
+        /* non-fatal */
+      }
+
+      setCreatedGateway(gw);
+      setGwMode("created");
+      notify("Successfully added gateway");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to add gateway";
+      notify(msg, "error");
     }
-    setEditing(null);
-    setGwMode("list");
-  };
-  
-
-  const handleEdit = (g: GatewayRecord) => {
-    setType(g.type);
-    setEditing(g);
-    setGwMode("form");
   };
 
-  const handleDelete = (id: string) => {
-    setGateways((prev) => prev.filter((g) => g.id !== id));
-  };
-
-  const handleCopy = async (g: GatewayRecord) => {
+  const handleRotateCreated = async () => {
+    if (!createdGateway) return;
     try {
-      await navigator.clipboard.writeText(codeFor(g.name));
-      setGateways((prev) =>
-        prev.map((x) => (x.id === g.id ? { ...x, isActive: true } : x))
-      );
-    } catch {
-      // optional: you can notify error here if you want
+      await rotateGatewayToken(createdGateway.id);
+      notify("Gateway token rotated");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to rotate token";
+      notify(msg, "error");
     }
   };
 
-  // ---- Step 2 helper: mark a gateway active ----
-  const markGatewayActive = (id: string) => {
-    setGateways((prev) =>
-      prev.map((x) => (x.id === id ? { ...x, isActive: true } : x))
-    );
+  const handleCopyCreated = async (text: string) => {
+    // text already includes `<Token>` + the real token appended (if any)
+    try {
+      await navigator.clipboard.writeText(text);
+      notify("Command copied.");
+    } catch {
+      notify("Unable to copy command", "error");
+    }
   };
 
-  // ---- render ----
   return (
     <Box
       sx={{ minHeight: "100vh", py: 2 }}
@@ -171,101 +503,86 @@ export default function GatewayWizard() {
       flexDirection={"column"}
       alignItems={"center"}
     >
-      {showWizard ? (
-        <Container
-          maxWidth="lg"
-          style={{ display: "flex", flexDirection: "column", alignItems: "center" }}
+      <Container
+        maxWidth="lg"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+        }}
+      >
+        {/* TOP: custom stepper */}
+        <StepperBar
+          steps={STEPS}
+          activeStep={activeStep}
+          onChange={setActiveStep}
+        />
+
+        {/* CONTENT CARD */}
+        <Card
+          elevation={0}
+          sx={{
+            p: 3,
+            borderTopLeftRadius: 0,
+            borderTopRightRadius: 0,
+            borderBottomLeftRadius: 4,
+            borderBottomRightRadius: 4,
+            border: "1px solid",
+            borderColor: "divider",
+            maxWidth: 1010,
+            width: "100%",
+          }}
         >
-          {/* TOP: custom stepper */}
-          <StepperBar steps={STEPS} activeStep={activeStep} onChange={setActiveStep} />
+          {/* Step 1: Gateways (no list) */}
+          {activeStep === 0 && (
+            <>
+              {gwMode === "cards" && (
+                <GatewayCards
+                  selected={selectedGateway}
+                  onSelect={handleSelectCard}
+                />
+              )}
 
-          {/* CONTENT CARD */}
-          <Card
-            elevation={0}
-            sx={{
-              p: 3,
-              borderTopLeftRadius: 0,
-              borderTopRightRadius: 0,
-              borderBottomLeftRadius: 4,
-              borderBottomRightRadius: 4,
-              border: "1px solid",
-              borderColor: "divider",
-              maxWidth: 1010,
-              width: "100%",
-            }}
-          >
-            {/* Step 1: Gateways */}
-            {activeStep === 0 && (
-              <>
-                {gwMode === "cards" && (
-                  <GatewayCards
-                    selected={selectedGateway}
-                    onSelect={handleSelectCard}
-                  />
-                )}
+              {gwMode === "form" && (
+                <GatewayForm
+                  type={type as GwType}
+                  onCancel={handleCancel}
+                  onSubmit={handleSubmit}
+                />
+              )}
 
-                {gwMode === "form" && (
-                  <GatewayForm
-                    type={type}
-                    defaults={editing ?? undefined}
-                    onCancel={handleCancel}
-                    onSubmit={(data) => {
-                      const wasEditing = Boolean(editing);
-                      handleSubmit(data);
-                      notify(
-                        wasEditing
-                          ? "Gateway updated successfully"
-                          : "Successfully added gateway"
-                      );
-                    }}
-                  />
-                )}
+              {gwMode === "created" && createdGateway && (
+                <CreatedGatewaySummary
+                  gateway={createdGateway}
+                  token={createdToken ?? null}
+                  onRotate={handleRotateCreated}
+                  onCopy={handleCopyCreated}
+                  activeStep={activeStep}
+                  onSkip={skip}
+                  onNext={next}
+                />
+              )}
+            </>
+          )}
 
-                {gwMode === "list" && (
-                  <GatewayList
-                    items={gateways}
-                    onAdd={() => {
-                      setEditing(null);
-                      setGwMode("form");
-                    }}
-                    onEdit={handleEdit}
-                    onDelete={(id) => {
-                      handleDelete(id);
-                      notify("Gateway deleted", "info");
-                    }}
-                    onCopy={async (g) => {
-                      try {
-                        await handleCopy(g);
-                        notify("Command copied. Gateway marked Active.");
-                      } catch {
-                        notify("Unable to copy command", "error");
-                      }
-                    }}
-                  />
-                )}
-              </>
-            )}
+          {/* Step 2: APIs */}
+          {activeStep === 1 && (
+            <StepTwoApis
+              gateways={createdGateway ? [toUiGateway(createdGateway)] : []}
+              onGoStep1={() => setActiveStep(0)}
+              onGatewayActivated={async () => {
+                await handleRotateCreated();
+              }}
+              notify={(msg) => notify(msg)}
+              onGoStep3={() => setActiveStep(2)}
+            />
+          )}
 
-            {/* Step 2: APIs */}
-            {activeStep === 1 && (
-              <StepTwoApis
-                gateways={gateways}
-                onGoStep1={() => setActiveStep(0)}
-                onGatewayActivated={(id) => {
-                  markGatewayActive(id);
-                  notify("Gateway activated");
-                }}
-                notify={(msg) => notify(msg)}
-                onGoStep3={() => setActiveStep(2)}
-              />
-            )}
+          {/* Step 3: Test */}
+          {activeStep === 2 && <StepThreeTest notify={(msg) => notify(msg)} />}
 
-            {/* Step 3: Test */}
-            {activeStep === 2 && (
-              <StepThreeTest notify={(msg) => notify(msg)} />
-            )}
-
-            {/* Bottom-right actions */}
+          {/* Bottom-right actions (hidden on step 0) */}
+          {activeStep !== 0 && (
             <Box
               sx={{
                 marginTop: 3,
@@ -292,50 +609,30 @@ export default function GatewayWizard() {
                 {activeStep === STEPS.length - 1 ? "Finish" : "Next"}
               </Button>
             </Box>
+          )}
 
-            {/* Snackbar */}
-            <Snackbar
-              open={snack.open}
-              autoHideDuration={4000}
+          {/* Snackbar */}
+          <Snackbar
+            open={snack.open}
+            autoHideDuration={4000}
+            onClose={closeSnack}
+            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+          >
+            <Alert
+              severity={snack.severity ?? "success"}
               onClose={closeSnack}
-              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+              variant="filled"
             >
-              <Alert
-                severity={snack.severity ?? "success"}
-                onClose={closeSnack}
-                variant="filled"
-              >
-                {snack.msg}
-              </Alert>
-            </Snackbar>
-          </Card>
-        </Container>
-      ) : (
-        // ---- Summary page (post wizard) ----
-        <Container
-          maxWidth="lg"
-          style={{ display: "flex", flexDirection: "column", alignItems: "center" }}
-        >
-          <OverviewSummary
-            gateways={gateways}
-            navigateToGateways={() =>
-              navigate(
-                projectBasePath ? `${projectBasePath}/gateways` : `${basePath}/gateways`
-              )
-            }
-            navigateToApis={() =>
-              navigate(
-                projectBasePath ? `${projectBasePath}/apis` : `${basePath}/apis`
-              )
-            }
-          />
-        </Container>
-      )}
+              {snack.msg}
+            </Alert>
+          </Snackbar>
+        </Card>
+      </Container>
     </Box>
   );
 }
 
-/* ======= Stepper ======= */
+/* ======= Stepper (with your color tweaks) ======= */
 
 function StepperBar({
   steps,
@@ -358,9 +655,7 @@ function StepperBar({
           active={i === activeStep}
           completed={i < activeStep}
           onClick={() => onChange(i)}
-          // pulls each next segment *under* the previous one
           overlap={i === 0 ? 0 : overlap}
-          // zIndex: leftmost on top
           zIndex={steps.length - i}
           title={s.title}
           subtitle={s.subtitle}
@@ -398,10 +693,10 @@ function StepSegment({
     : completed
     ? "#059669"
     : theme.palette.grey[100];
+
   const textColor = completed ? "#fff" : theme.palette.text.primary;
   const ringColor = completed ? "#fff" : theme.palette.text.primary;
 
-  // flip-headed right arrow for steps 1 & 2, plain for step 3
   const clipPath = last
     ? "none"
     : "polygon(0% 0%, 100% 0%, 92% 0%, 100% 50%, 92% 100%, 100% 100%, 0% 100%, 0% 0%)";
@@ -409,7 +704,6 @@ function StepSegment({
   const basePadX = 24;
   const contentPadLeft = index === 0 ? basePadX : basePadX + overlap;
 
-  // 1px border color by state
   const borderColor = active
     ? "#adb1b1ff"
     : completed
@@ -417,7 +711,6 @@ function StepSegment({
     : theme.palette.grey[300];
 
   return (
-    // WRAPPER: handles overlap, click, and carries the border layer behind
     <Box
       onClick={onClick}
       sx={{
@@ -428,12 +721,12 @@ function StepSegment({
         display: "inline-block",
       }}
     >
-      {/* BORDER LAYER (1px bigger so it peeks all around, including arrow head) */}
+      {/* BORDER LAYER */}
       <Box
         aria-hidden
         sx={{
           position: "absolute",
-          inset: "-1px", // expand 1px on each side
+          inset: "-1px",
           clipPath,
           bgcolor: borderColor,
           pointerEvents: "none",
@@ -445,12 +738,12 @@ function StepSegment({
         }}
       />
 
-      {/* SHAPE LAYER (actual segment content) */}
+      {/* SHAPE LAYER */}
       <Box
         sx={{
           position: "relative",
           zIndex: 1,
-          overflow: "hidden", // prevents next step’s text from bleeding in
+          overflow: "hidden",
           bgcolor: fill,
           color: textColor,
           clipPath,

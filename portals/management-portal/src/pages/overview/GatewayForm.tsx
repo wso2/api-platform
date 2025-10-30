@@ -1,8 +1,7 @@
 import React from "react";
-import { Box, Typography, Stack, TextField } from "@mui/material";
+import { Box, Typography, Stack, TextField, FormControlLabel, Checkbox } from "@mui/material";
 import type { GwType, GatewayRecord } from "./types";
 import { slugify } from "./utils";
-import { TextInput } from "../../components/src/components/TextInput/TextInput";
 import { Button } from "../../components/src/components/Button";
 
 export default function GatewayForm({
@@ -19,11 +18,13 @@ export default function GatewayForm({
     name: string;
     host: string;
     description: string;
+    isCritical: boolean;
   }) => void;
 }) {
   const [displayName, setDisplayName] = React.useState(
     defaults?.displayName ?? ""
   );
+  const [isCritical, setIsCritical] = React.useState(false);
   const [name, setName] = React.useState(defaults?.name ?? "");
   const [host, setHost] = React.useState(defaults?.host ?? "");
   const [description, setDescription] = React.useState(
@@ -35,7 +36,12 @@ export default function GatewayForm({
   }, [displayName]);
 
   return (
-    <Box maxWidth={640} display={"flex"} flexDirection="column" alignItems={"flex-start"}>
+    <Box
+      maxWidth={640}
+      display={"flex"}
+      flexDirection="column"
+      alignItems={"flex-start"}
+    >
       <Typography variant="body1" mb={2} fontWeight={600}>
         {defaults?.id
           ? `Edit ${type === "hybrid" ? "On Premise" : "Cloud"} Gateway`
@@ -84,6 +90,16 @@ export default function GatewayForm({
           placeholder="Optional description for your gateway"
         />
 
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={isCritical}
+              onChange={(e) => setIsCritical(e.target.checked)}
+            />
+          }
+          label="Mark this as a critical gateway"
+        />
+
         <Stack direction="row" spacing={2} justifyContent="flex-start" mt={1}>
           <Button
             variant="outlined"
@@ -96,7 +112,7 @@ export default function GatewayForm({
           </Button>
           <Button
             variant="contained"
-            onClick={() => onSubmit({ displayName, name, host, description })}
+            onClick={() => onSubmit({ displayName, name, host, description, isCritical })}
             disabled={!displayName.trim()}
             sx={{
               textTransform: "none",

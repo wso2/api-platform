@@ -2,20 +2,33 @@
 import React from "react";
 import { Box, Typography } from "@mui/material";
 import { useNavigate, useParams } from "react-router-dom";
+
 import { useOrganization } from "../context/OrganizationContext";
 import { useProjects } from "../context/ProjectContext";
 import { projectSlugMatches } from "../utils/projectSlug";
 
-// ⬇️ import the banner
-import HeroBanner, { type BannerSlide } from "../pages/HeroBanner";
+// Banner
+import HeroBanner from "./HeroBanner";
 
-// ⬇️ import your SVG images
+// Images used in slides
 import deepWorkImg from "./undraw_deep-work_muov.svg";
 import typingCodeImg from "./undraw_typing-code_6t2b.svg";
+import PredictiveAnalytics from "./undraw_predictive-analytics_6vi1.svg";
+
+// Cards section (the new overview grid)
+import ProjectFeatureCards from "./overview/ProjectFeatureCards";
+
+// Providers required by cards (for counts, etc.)
+import { ApiProvider } from "../context/ApiContext";
+import { GatewayProvider } from "../context/GatewayContext";
+import GatewayWizard from "./overview/StepHeader";
+
+// Wizard header to show after clicking "Get Start"
 
 const ProjectOverview: React.FC = () => {
   const navigate = useNavigate();
   const params = useParams<{ orgHandle?: string; projectHandle?: string }>();
+
   const { organization } = useOrganization();
   const {
     projects,
@@ -25,25 +38,31 @@ const ProjectOverview: React.FC = () => {
     projectsLoaded,
   } = useProjects();
 
+  // Toggle wizard vs. banner+cards
+  const [showWizard, setShowWizard] = React.useState(false);
+
   const orgHandle = params.orgHandle ?? organization?.handle ?? "";
   const projectSlug = params.projectHandle ?? "";
 
   const resolvedProject = React.useMemo(() => {
     if (selectedProject) return selectedProject;
     if (!projectSlug) return null;
-    return projects.find((project) =>
-      projectSlugMatches(project.name, project.id, projectSlug)
+    return (
+      projects.find((p) => projectSlugMatches(p.name, p.id, projectSlug)) ??
+      null
     );
   }, [projects, selectedProject, projectSlug]);
 
   React.useEffect(() => {
     if (!projectSlug || loading || !projectsLoaded) return;
+
     if (resolvedProject) {
       if (!selectedProject || selectedProject.id !== resolvedProject.id) {
         setSelectedProject(resolvedProject);
       }
       return;
     }
+
     if (!loading && orgHandle) {
       navigate(`/${orgHandle}/overview`, { replace: true });
     }
@@ -72,32 +91,9 @@ const ProjectOverview: React.FC = () => {
 
   const displayName = resolvedProject.name;
 
-  // Slides for the HeroBanner (now with images)
-  const slides: BannerSlide[] = [
-    {
-      id: "apis",
-      tag: "Getting started",
-      title: "Create your first API",
-      subtitle:
-        "Point us at your backend endpoint and we’ll scaffold an API with routing, context, and versioning.",
-      ctaLabel: "Create API",
-      onCtaClick: () => navigate(`/${orgHandle}/${projectSlug}/apis`),
-      imageUrl: typingCodeImg, // ← added image
-    },
-    {
-      id: "gateways",
-      tag: "Traffic & Security",
-      title: "Set up a Gateway",
-      subtitle:
-        "Add rate limits, auth, and observability to protect and monitor your services.",
-      ctaLabel: "Configure Gateway",
-      onCtaClick: () => navigate(`/${orgHandle}/${projectSlug}/gateway`),
-      imageUrl: deepWorkImg, // ← added image
-    },
-  ];
-
   return (
     <>
+      {/* Header always visible */}
       <Box textAlign="center" mt={3}>
         <Typography variant="h4" fontWeight={700}>
           Welcome to {displayName}
@@ -107,9 +103,56 @@ const ProjectOverview: React.FC = () => {
         </Typography>
       </Box>
 
-      <Box mt={3} pr={6} pl={6}>
-        <HeroBanner slides={slides} height={180} intervalMs={5000} />
-      </Box>
+      {showWizard ? (
+        <Box maxWidth={1200} mx="auto" mt={4} px={6}>
+          <GatewayWizard onFinish={() => setShowWizard(false)} />
+        </Box>
+      ) : (
+        // Otherwise show Banner + Cards
+        <>
+          {/* Banner */}
+          <Box mt={3} pr={6} pl={6}>
+            <HeroBanner
+              onStart={() => setShowWizard(true)}
+              slides={[
+                {
+                  id: "1",
+                  title: "Create a Gateway in minutes",
+                  subtitle:
+                    "Spin up a Hybrid or Cloud gateway and start proxying traffic with a single command.",
+                  imageUrl: typingCodeImg,
+                },
+                {
+                  id: "2",
+                  title: "Import and discover your APIs",
+                  subtitle:
+                    "Push your OpenAPI / AsyncAPI definition and curate them with tags, versions, and contexts.",
+                  imageUrl: deepWorkImg,
+                },
+                {
+                  id: "3",
+                  title: "Validate & monitor in one place",
+                  subtitle:
+                    "Run smoke tests and observe latency, errors, and throughput—before and after deploy.",
+                  imageUrl: PredictiveAnalytics,
+                },
+              ]}
+            />
+          </Box>
+
+          {/* Cards */}
+          <Box mt={1.5} pr={6} pl={6}>
+            <ApiProvider>
+              <GatewayProvider>
+                <ProjectFeatureCards
+                  orgHandle={orgHandle}
+                  projectSlug={projectSlug}
+                />
+              </GatewayProvider>
+            </ApiProvider>
+          </Box>
+        </>
+      )}
     </>
   );
 };

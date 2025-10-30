@@ -12,6 +12,8 @@ import {
   type CreateGatewayPayload,
   type Gateway,
   type RotateTokenResponse,
+  type DeleteGatewayPayload,
+  type GatewayStatus, // NEW
 } from "../hooks/gateways";
 import { useOrganization } from "./OrganizationContext";
 
@@ -64,14 +66,18 @@ type GatewayContextValue = {
     updates: Partial<Gateway>
   ) => Gateway | undefined;
   deleteGateway: (gatewayId: string) => Promise<void>;
+  deleteGatewayByPayload: (payload: DeleteGatewayPayload) => Promise<void>;
   fetchGatewayById: (gatewayId: string) => Promise<Gateway>;
   rotateGatewayToken: (gatewayId: string) => Promise<RotateTokenResponse>;
   gatewayTokens: Record<string, RotateTokenResponse>;
+
+  // NEW: statuses API exposure
+  gatewayStatuses: Record<string, GatewayStatus>;
+  refreshGatewayStatuses: (gatewayId?: string) => Promise<Record<string, GatewayStatus>>;
+  getGatewayStatus: (gatewayId: string) => GatewayStatus | undefined;
 };
 
-const GatewayContext = createContext<GatewayContextValue | undefined>(
-  undefined
-);
+const GatewayContext = createContext<GatewayContextValue | undefined>(undefined);
 
 type GatewayProviderProps = {
   children: ReactNode;
@@ -83,8 +89,11 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
     fetchGateways,
     fetchGateway,
     deleteGateway: deleteGatewayRequest,
+    deleteGatewayWithPayload,
     rotateGatewayToken: rotateGatewayTokenRequest,
+    fetchGatewayStatuses, // NEW
   } = useGatewaysApi();
+
   const { organization, loading: organizationLoading } = useOrganization();
 
   const TOKEN_STORAGE_KEY = "gatewayTokens";
@@ -126,6 +135,9 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
     Record<string, RotateTokenResponse>
   >(loadStoredTokens);
 
+  // NEW: status state
+  const [gatewayStatuses, setGatewayStatuses] = useState<Record<string, GatewayStatus>>({});
+
   const refreshGateways = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -162,6 +174,30 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
     }
   }, [fetchGateways, persistTokens]);
 
+  // NEW: refresh statuses (all or single)
+  const refreshGatewayStatuses = useCallback(
+    async (gatewayId?: string) => {
+      try {
+        const list = await fetchGatewayStatuses(gatewayId);
+        setGatewayStatuses((prev) => {
+          const next = { ...prev };
+          for (const s of list) next[s.id] = s;
+          return next;
+        });
+        return list.reduce<Record<string, GatewayStatus>>((acc, s) => {
+          acc[s.id] = s;
+          return acc;
+        }, {});
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to fetch gateway status";
+        setError(message);
+        throw err;
+      }
+    },
+    [fetchGatewayStatuses]
+  );
+
   const createGateway = useCallback(
     async (payload: CreateGatewayPayload) => {
       setError(null);
@@ -179,6 +215,7 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
           return [normalized, ...next];
         });
 
+        // rotate token in background
         rotateGatewayTokenRequest(gateway.id)
           .then((tokenResponse) => {
             setGatewayTokens((prev) => {
@@ -193,6 +230,9 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
             setError(message);
           });
 
+        // NEW: refresh statuses after create
+        refreshGatewayStatuses().catch(() => {});
+
         return normalized;
       } catch (err) {
         const message =
@@ -201,7 +241,7 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
         throw err;
       }
     },
-    [createGatewayRequest, persistTokens]
+    [createGatewayRequest, persistTokens, rotateGatewayTokenRequest, refreshGatewayStatuses]
   );
 
   const updateGateway = useCallback(
@@ -227,6 +267,8 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
           return gateway;
         })
       );
+      // Optional: refresh status for that single gateway if relevant fields changed
+      // refreshGatewayStatuses(gatewayId).catch(() => {});
       return updatedGateway;
     },
     []
@@ -249,6 +291,9 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
           }
           return next;
         });
+
+        // NEW: refresh statuses after delete
+        refreshGatewayStatuses().catch(() => {});
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Unknown error occurred";
@@ -256,7 +301,38 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
         throw err;
       }
     },
-    [deleteGatewayRequest, persistTokens]
+    [deleteGatewayRequest, persistTokens, refreshGatewayStatuses]
+  );
+
+  const deleteGatewayByPayload = useCallback(
+    async (payload: DeleteGatewayPayload) => {
+      setError(null);
+
+      try {
+        await deleteGatewayWithPayload(payload);
+        const id = payload.gatewayId;
+
+        setGateways((prev) => prev.filter((gateway) => gateway.id !== id));
+
+        setGatewayTokens((prev) => {
+          const next = { ...prev };
+          if (id in next) {
+            delete next[id];
+            persistTokens(next);
+          }
+          return next;
+        });
+
+        // NEW: refresh statuses after delete
+        refreshGatewayStatuses().catch(() => {});
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Unknown error occurred";
+        setError(message);
+        throw err;
+      }
+    },
+    [deleteGatewayWithPayload, persistTokens, refreshGatewayStatuses]
   );
 
   const fetchGatewayById = useCallback(
@@ -277,6 +353,9 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
           normalized = mergeGateway(gateway);
         }
 
+        // NEW: also refresh status for the fetched gateway
+        refreshGatewayStatuses(gatewayId).catch(() => {});
+
         return normalized;
       } catch (err) {
         const message =
@@ -285,7 +364,7 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
         throw err;
       }
     },
-    [fetchGateway]
+    [fetchGateway, refreshGatewayStatuses]
   );
 
   const rotateGatewayToken = useCallback(
@@ -312,6 +391,7 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
     [rotateGatewayTokenRequest, persistTokens]
   );
 
+  // When org changes
   useEffect(() => {
     if (organizationLoading) {
       return;
@@ -325,6 +405,7 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
         }
         return {};
       });
+      setGatewayStatuses({});
       setLoading(false);
       return;
     }
@@ -332,7 +413,30 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
     refreshGateways().catch(() => {
       /* errors captured in state */
     });
-  }, [organization, organizationLoading, refreshGateways]);
+  }, [organization, organizationLoading, refreshGateways, persistTokens]);
+
+  // NEW: Poll statuses every 15s while org is present
+  useEffect(() => {
+    if (organizationLoading) return;
+    if (!organization) {
+      setGatewayStatuses({});
+      return;
+    }
+
+    // initial fetch
+    refreshGatewayStatuses().catch(() => {});
+
+    const interval = setInterval(() => {
+      refreshGatewayStatuses().catch(() => {});
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [organization, organizationLoading, refreshGatewayStatuses]);
+
+  const getGatewayStatus = useCallback(
+    (gatewayId: string) => gatewayStatuses[gatewayId],
+    [gatewayStatuses]
+  );
 
   const value = useMemo<GatewayContextValue>(
     () => ({
@@ -343,9 +447,15 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
       createGateway,
       updateGateway,
       deleteGateway,
+      deleteGatewayByPayload,
       fetchGatewayById,
       rotateGatewayToken,
       gatewayTokens,
+
+      // NEW
+      gatewayStatuses,
+      refreshGatewayStatuses,
+      getGatewayStatus,
     }),
     [
       gateways,
@@ -355,9 +465,15 @@ export const GatewayProvider = ({ children }: GatewayProviderProps) => {
       createGateway,
       updateGateway,
       deleteGateway,
+      deleteGatewayByPayload,
       fetchGatewayById,
       rotateGatewayToken,
       gatewayTokens,
+
+      // NEW
+      gatewayStatuses,
+      refreshGatewayStatuses,
+      getGatewayStatus,
     ]
   );
 
