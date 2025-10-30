@@ -19,7 +19,7 @@ export default function EnterprisePortalWidget({ height = 220, href }: Props) {
         <Box sx={{ flex: 1 }} />
 
         <Divider sx={{ my: 1.5 }} />
-        <Stack direction="row" justifyContent="flex-end">
+        <Stack direction="row" justifyContent="flex-start">
           <Button size="small" variant="contained" onClick={() => navigate(href)}>
             Open
           </Button>

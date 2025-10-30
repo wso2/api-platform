@@ -404,7 +404,7 @@ const ApiOverviewContent: React.FC = () => {
               },
             }}
           >
-            View on Developer Portal
+            View on API Portal
           </Button>
           <Button
             variant={isPublished ? "outlined" : "contained"}

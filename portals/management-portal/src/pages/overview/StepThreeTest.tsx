@@ -7,7 +7,6 @@ import {
   Stack,
   Chip,
 } from "@mui/material";
-import ContentCopyOutlinedIcon from "@mui/icons-material/ContentCopyOutlined";
 import apisData from "../../data/apis.json";
 import { IconButton } from "../../components/src/components/IconButton";
 import Copy from "../../components/src/Icons/generated/Copy";
