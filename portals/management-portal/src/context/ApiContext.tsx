@@ -12,6 +12,7 @@ import {
   useApisApi,
   type ApiSummary,
   type CreateApiPayload,
+  type ApiGatewaySummary,
 } from "../hooks/apis";
 import { useProjects } from "./ProjectContext";
 
@@ -23,6 +24,8 @@ type ApiContextValue = {
   createApi: (payload: CreateApiPayload) => Promise<ApiSummary>;
   fetchApiById: (apiId: string) => Promise<ApiSummary>;
   deleteApi: (apiId: string) => Promise<void>;
+  /** Gateways bound to an API id */
+  fetchGatewaysForApi: (apiId: string) => Promise<ApiGatewaySummary[]>;
 };
 
 const ApiContext = createContext<ApiContextValue | undefined>(undefined);
@@ -37,11 +40,15 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
     fetchApi,
     createApi: createApiRequest,
     deleteApi: deleteApiRequest,
+    fetchApiGateways,
   } = useApisApi();
   const { selectedProject } = useProjects();
 
   const [apisByProject, setApisByProject] = useState<
     Record<string, ApiSummary[]>
+  >({});
+  const [gatewaysByApi, setGatewaysByApi] = useState<
+    Record<string, ApiGatewaySummary[]>
   >({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -166,6 +173,14 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
 
           return changed ? next : prev;
         });
+        // also clear any cached gateways for this API
+        setGatewaysByApi((prev) => {
+          if (prev[apiId]) {
+            const { [apiId]: _removed, ...rest } = prev;
+            return rest;
+          }
+          return prev;
+        });
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Failed to delete API";
@@ -176,6 +191,27 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
       }
     },
     [deleteApiRequest]
+  );
+
+  /** Fetch + cache gateways for an API */
+  const fetchGatewaysForApi = useCallback(
+    async (apiId: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const list = await fetchApiGateways(apiId);
+        setGatewaysByApi((prev) => ({ ...prev, [apiId]: list }));
+        return list;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to fetch API gateways";
+        setError(message);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fetchApiGateways]
   );
 
   useEffect(() => {
@@ -196,8 +232,18 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
       createApi,
       fetchApiById,
       deleteApi,
+      fetchGatewaysForApi,
     }),
-    [apis, loading, error, refreshApis, createApi, fetchApiById, deleteApi]
+    [
+      apis,
+      loading,
+      error,
+      refreshApis,
+      createApi,
+      fetchApiById,
+      deleteApi,
+      fetchGatewaysForApi,
+    ]
   );
 
   return <ApiContext.Provider value={value}>{children}</ApiContext.Provider>;

@@ -12,20 +12,20 @@ import {
 import { useSearchParams } from "react-router-dom";
 
 import { ApiProvider, useApisContext } from "../../context/ApiContext";
-import type { ApiSummary } from "../../hooks/apis";
+import type { ApiSummary, ApiGatewaySummary } from "../../hooks/apis";
 
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import StopOutlinedIcon from "@mui/icons-material/StopOutlined";
 import { Button } from "../../components/src/components/Button";
-
-import { GatewayProvider, useGateways } from "../../context/GatewayContext";
-import type { Gateway } from "../../hooks/gateways";
 
 import {
   DeploymentProvider,
   useDeployment,
 } from "../../context/DeploymentContext";
 import type { DeployRevisionResponseItem } from "../../hooks/deployments";
+
+import { GatewayProvider, useGateways } from "../../context/GatewayContext";
+import type { Gateway } from "../../hooks/gateways";
 
 /* ---------------- helpers ---------------- */
 
@@ -62,7 +62,7 @@ const Card = (props: any) => (
 /* ---------------- page content ---------------- */
 
 const DevelopContent: React.FC = () => {
-  const { fetchApiById } = useApisContext();
+  const { fetchApiById, fetchGatewaysForApi } = useApisContext();
   const { gateways, loading: gatewaysLoading } = useGateways();
   const { deployApiRevision, loading: deploying } = useDeployment();
 
@@ -71,12 +71,18 @@ const DevelopContent: React.FC = () => {
   const revisionIdFromQuery = params.get("revisionId") ?? "7";
 
   const [api, setApi] = React.useState<ApiSummary | null>(null);
-  const [loading, setLoading] = React.useState(true);
 
+  // gateways already deployed for THIS api
+  const [deployedForApi, setDeployedForApi] = React.useState<
+    ApiGatewaySummary[]
+  >([]);
+
+  // seeded + live deployment items keyed by gatewayId
   const [deployByGateway, setDeployByGateway] = React.useState<
     Record<string, DeployRevisionResponseItem>
   >({});
 
+  const [loading, setLoading] = React.useState(true);
   const [deployingIds, setDeployingIds] = React.useState<Set<string>>(
     () => new Set()
   );
@@ -86,8 +92,31 @@ const DevelopContent: React.FC = () => {
     (async () => {
       try {
         if (!apiId) return;
-        const data = await fetchApiById(apiId);
-        if (mounted) setApi(data);
+
+        const [apiData, apiDeployedGws] = await Promise.all([
+          fetchApiById(apiId),
+          fetchGatewaysForApi(apiId),
+        ]);
+
+        if (!mounted) return;
+
+        setApi(apiData);
+        setDeployedForApi(apiDeployedGws);
+
+        // Seed deployed gateways so they initially show the status section
+        const nowIso = new Date().toISOString();
+        const seeded: Record<string, DeployRevisionResponseItem> = {};
+        apiDeployedGws.forEach((gw) => {
+          seeded[gw.id] = {
+            gatewayId: gw.id,
+            revisionId: String(revisionIdFromQuery),
+            vhost: gw.vhost ?? undefined,
+            status: "ACTIVE",
+            deployedTime: nowIso,
+            successDeployedTime: nowIso,
+          } as DeployRevisionResponseItem;
+        });
+        setDeployByGateway(seeded);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -95,12 +124,18 @@ const DevelopContent: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [apiId, fetchApiById]);
+  }, [apiId, fetchApiById, fetchGatewaysForApi, revisionIdFromQuery]);
+
+  const deployedMap = React.useMemo(() => {
+    const m = new Map<string, ApiGatewaySummary>();
+    deployedForApi.forEach((g) => m.set(g.id, g));
+    return m;
+  }, [deployedForApi]);
 
   const gatewaysById = React.useMemo(() => {
-    const map = new Map<string, Gateway>();
-    gateways.forEach((g) => map.set(g.id, g));
-    return map;
+    const m = new Map<string, Gateway>();
+    gateways.forEach((g) => m.set(g.id, g));
+    return m;
   }, [gateways]);
 
   const handleDeploySingle = async (gatewayId: string) => {
@@ -109,7 +144,7 @@ const DevelopContent: React.FC = () => {
     const targets = [
       {
         gatewayId,
-        vhost: gw?.vhost || (gw as any)?.host || undefined,
+        vhost: gw?.vhost ?? undefined,
         displayOnDevportal: true,
       },
     ];
@@ -118,9 +153,32 @@ const DevelopContent: React.FC = () => {
       setDeployingIds((prev) => new Set(prev).add(gatewayId));
       const resp = await deployApiRevision(apiId, revisionIdFromQuery, targets);
       const item = resp.find((x) => x.gatewayId === gatewayId) ?? resp[0];
-      if (item) setDeployByGateway((prev) => ({ ...prev, [gatewayId]: item }));
-    } catch {
-      // error surfaced via context
+
+      if (item) {
+        setDeployByGateway((prev) => ({ ...prev, [gatewayId]: item }));
+
+        // if it wasn't deployed before, mark it as deployed for this API now
+        if (!deployedMap.has(gatewayId) && gw) {
+          const newly: ApiGatewaySummary = {
+            id: gw.id,
+            organizationId: (gw as any).organizationId ?? "",
+            name: gw.name,
+            displayName: gw.displayName ?? undefined,
+            description: gw.description ?? undefined,
+            vhost: gw.vhost ?? undefined,
+            // 🔴 CRITICAL comes from Gateways list (not deployed info)
+            isCritical:
+              (gw as any).isCritical ??
+              (gw as any).critical ??
+              false,
+            functionalityType: (gw as any).functionalityType ?? "regular",
+            isActive: true,
+            createdAt: (gw as any).createdAt ?? undefined,
+            updatedAt: new Date().toISOString(),
+          };
+          setDeployedForApi((prev) => [...prev, newly]);
+        }
+      }
     } finally {
       setDeployingIds((prev) => {
         const next = new Set(prev);
@@ -147,28 +205,30 @@ const DevelopContent: React.FC = () => {
       ) : (
         <Grid container spacing={3}>
           {gateways.map((gw) => {
-            const item = deployByGateway[gw.id];
+            const isDeployed = deployedMap.has(gw.id);
+            const seededItem = deployByGateway[gw.id];
+            const item = isDeployed ? seededItem : undefined;
 
-            // data to show (some may be absent)
+            const apiDeployed = deployedMap.get(gw.id);
+
             const lastWhen =
               item?.successDeployedTime ||
               item?.deployedTime ||
-              (gw as any)?.lastDeployedAt ||
+              gw.updatedAt ||
+              gw.createdAt ||
               null;
 
-            const vhost =
-              gw?.vhost || (gw as any)?.host || (item && item.vhost) || "";
+            const vhost = gw.vhost || (item && item.vhost) || "";
+            const description = gw.description || "";
 
-            const description =
-              gw?.description || (gw as any)?.summary || "";
-
+            // ✅ CRITICAL strictly based on gateways list data,
+            // and shown regardless of deployed state (before and after).
             const isCritical =
-              (gw as any)?.critical === true ||
               (gw as any)?.isCritical === true ||
-              String((gw as any)?.criticality || "")
-                .toLowerCase()
-                .includes("critical") ||
-              String((gw as any)?.tier || "").toLowerCase() === "critical";
+              (gw as any)?.critical === true;
+
+            // Active flag only used for other UI choices if needed later
+            const isActive = apiDeployed?.isActive !== false;
 
             const status = (item?.status || "").toString().toUpperCase() as
               | "ACTIVE"
@@ -197,21 +257,21 @@ const DevelopContent: React.FC = () => {
                     alignItems="center"
                     minWidth={300}
                   >
-                    <Stack direction="row" alignItems="center" spacing={1}>
+                    <Stack direction="row" alignItems="center" spacing={1.25}>
                       {isCritical && (
-                        <Box
-                          sx={{
-                            width: 10,
-                            height: 10,
-                            borderRadius: "50%",
-                            bgcolor: (t) => t.palette.error.main,
-                          }}
+                        <Chip
+                          label="Critical"
+                          color="error"
+                          size="small"
+                          variant="outlined"
+                          sx={{ height: 22 }}
                         />
                       )}
                       <Typography fontWeight={800}>{title}</Typography>
                     </Stack>
 
-                    {item && (
+                    {/* If you want Stop for deployed gateways, uncomment this */}
+                    {/* {isDeployed && (
                       <Button
                         size="small"
                         variant="outlined"
@@ -220,28 +280,30 @@ const DevelopContent: React.FC = () => {
                       >
                         Stop
                       </Button>
-                    )}
+                    )} */}
                   </Stack>
 
                   <Divider sx={{ my: 2 }} />
 
-                  {/* Deployed row (always shown). If missing -> "Not Deployed" */}
+                  {/* Deployed row */}
                   <Stack direction="row" spacing={1} alignItems="center" mb={1}>
                     <Typography>Deployed</Typography>
                     <AccessTimeIcon fontSize="small" sx={{ opacity: 0.7 }} />
                     <Typography color="text.secondary">
-                      {lastWhen ? relativeTime(lastWhen) : "Not Deployed"}
+                      {isDeployed
+                        ? lastWhen
+                          ? relativeTime(lastWhen)
+                          : "0 min ago"
+                        : "Not Deployed"}
                     </Typography>
                   </Stack>
 
-                  {/* vhost: only render if present */}
                   {vhost && (
                     <Typography color="text.secondary" sx={{ mb: 0.5 }}>
                       vhost: {vhost}
                     </Typography>
                   )}
 
-                  {/* description: only render if present */}
                   {description && (
                     <Typography
                       variant="body2"
@@ -252,8 +314,7 @@ const DevelopContent: React.FC = () => {
                     </Typography>
                   )}
 
-                  {/* Status banner only after deployed */}
-                  {item && (
+                  {isDeployed && (
                     <Box
                       mt={2}
                       sx={{
@@ -282,7 +343,7 @@ const DevelopContent: React.FC = () => {
                         Deployment Status
                       </Typography>
                       <Chip
-                        label={status || "—"}
+                        label={status || "ACTIVE"}
                         color={success ? "success" : "error"}
                         variant={success ? "filled" : "outlined"}
                         size="small"
@@ -290,17 +351,21 @@ const DevelopContent: React.FC = () => {
                     </Box>
                   )}
 
-                  {/* Deploy button visible only before first deploy */}
-                  {!item && (
-                    <Button
-                      variant="contained"
-                      fullWidth
-                      disabled={!apiId || isDeployingThis}
-                      onClick={() => handleDeploySingle(gw.id)}
-                    >
-                      {isDeployingThis ? "Deploying…" : "Deploy"}
-                    </Button>
-                  )}
+                  {/* Deploy / Re-deploy action */}
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    disabled={!apiId || isDeployingThis}
+                    onClick={() => handleDeploySingle(gw.id)}
+                  >
+                    {isDeployed
+                      ? isDeployingThis
+                        ? "Re-deploying…"
+                        : "Re-deploy"
+                      : isDeployingThis
+                      ? "Deploying…"
+                      : "Deploy"}
+                  </Button>
                 </Card>
               </Grid>
             );
