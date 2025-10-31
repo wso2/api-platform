@@ -1,0 +1,89 @@
+.benifits-section{
+  padding: 0 3.75rem 1rem 3.75rem;
+}
+.benefits-container {
+  background: var(--primary-gradient);
+  padding: 3.75rem;
+  border-radius: 1.5rem;
+  margin: 4rem auto 2.5rem auto;
+  text-align: center;
+}
+
+.benefits-list {
+  display: flex;
+  justify-content: space-between;
+  gap: 2rem;
+}
+
+.benefit-item {
+  position: relative;
+  background-color: var(--white-color);
+  border-radius: 0.75rem;
+  padding: 1.875rem;
+  text-align: left;
+  max-width: 29rem;
+  min-height: 12.5rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.benefit-item:hover {
+  transform: translateY(-0.3125rem);
+  box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.1);
+}
+
+.benefit-image {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  opacity: 0.8;
+  width: 8rem;
+  z-index: 0;
+  margin-left: 1rem;
+}
+
+.benefit-item > div,
+.benefit-item a {
+  position: relative;
+  z-index: 1;
+}
+
+.benefit-item h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--primary-main-color);
+  margin-bottom: 0.625rem;
+}
+
+.benefit-item p {
+  font-size: 0.875rem;
+  color: var(--main-text-color);
+  margin-bottom: 1.25rem;
+  line-height: 1.5;
+}
+
+.benefit-link {
+  color: var(--primary-main-color);
+  font-size: 0.75rem;
+  text-decoration: none;
+  display: inline-block;
+  transition: color 0.3s ease-in-out, transform 0.3s ease-in-out;
+}
+
+.benefit-link:hover {
+  transform: translateX(0.3rem);
+}
+
+@media screen and (max-width: 48rem) {
+  .benefits-list {
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+  .benefit-item {
+    max-width: 100%;
+  }
+}

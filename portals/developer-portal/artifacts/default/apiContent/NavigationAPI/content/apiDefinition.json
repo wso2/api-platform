@@ -1,0 +1,312 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "Navigation Kafka API",
+    "version": "1.0.0",
+    "description": "The NavigationAPI provides real-time navigation data, including routes, GPS coordinates, traffic updates, and real-time directions for enhancing transportation and location-based services.\n\n### Key Features:\n\n* Retrieve optimized routes between waypoints 🚗\n* Get real-time traffic conditions 🛣️\n* Access detailed GPS coordinates 📍\n",
+    "license": {
+      "name": "Apache 2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+    }
+  },
+  "defaultContentType": "application/json",
+  "servers": {
+    "scram-connections": {
+      "host": "test.mykafkacluster.org:18092",
+      "protocol": "kafka-secure",
+      "description": "Test broker secured with scramSha256",
+      "security": [
+        {
+          "$ref": "#/components/securitySchemes/saslScram"
+        }
+      ],
+      "tags": [
+        {
+          "name": "env:test-scram",
+          "description": "This environment is meant for running internal tests through scramSha256"
+        },
+        {
+          "name": "kind:remote",
+          "description": "This server is a remote server. Not exposed by the application"
+        },
+        {
+          "name": "visibility:private",
+          "description": "This resource is private and only available to certain users"
+        }
+      ]
+    },
+    "mtls-connections": {
+      "host": "test.mykafkacluster.org:28092",
+      "protocol": "kafka-secure",
+      "description": "Test broker secured with X509",
+      "security": [
+        {
+          "$ref": "#/components/securitySchemes/certs"
+        }
+      ],
+      "tags": [
+        {
+          "name": "env:test-mtls",
+          "description": "This environment is meant for running internal tests through mtls"
+        },
+        {
+          "name": "kind:remote",
+          "description": "This server is a remote server. Not exposed by the application"
+        },
+        {
+          "name": "visibility:private",
+          "description": "This resource is private and only available to certain users"
+        }
+      ]
+    }
+  },
+  "channels": {
+    "routeRequested": {
+      "address": "navigationApi.routes.requested",
+      "messages": {
+        "routeRequested": {
+          "$ref": "#/components/messages/routeRequested"
+        }
+      },
+      "description": "The topic for requesting a route between two points.",
+      "parameters": {
+        "requestId": {
+          "$ref": "#/components/parameters/requestId"
+        }
+      }
+    },
+    "trafficUpdate": {
+      "address": "navigationApi.traffic.update",
+      "messages": {
+        "trafficUpdate": {
+          "$ref": "#/components/messages/trafficUpdate"
+        }
+      },
+      "description": "The topic for receiving real-time traffic updates.",
+      "parameters": {
+        "locationId": {
+          "$ref": "#/components/parameters/locationId"
+        }
+      }
+    },
+    "gpsCoordinates": {
+      "address": "navigationApi.gps.coordinates",
+      "messages": {
+        "gpsCoordinates": {
+          "$ref": "#/components/messages/gpsCoordinates"
+        }
+      },
+      "description": "The topic for receiving GPS coordinates.",
+      "parameters": {
+        "coordinateId": {
+          "$ref": "#/components/parameters/coordinateId"
+        }
+      }
+    }
+  },
+  "operations": {
+    "requestRoute": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/routeRequested"
+      },
+      "summary": "Request a route between two points.",
+      "traits": [
+        {
+          "$ref": "#/components/operationTraits/kafka"
+        }
+      ],
+      "messages": [
+        {
+          "$ref": "#/channels/routeRequested/messages/routeRequested"
+        }
+      ]
+    },
+    "receiveTrafficUpdate": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/trafficUpdate"
+      },
+      "summary": "Receive real-time traffic updates.",
+      "traits": [
+        {
+          "$ref": "#/components/operationTraits/kafka"
+        }
+      ],
+      "messages": [
+        {
+          "$ref": "#/channels/trafficUpdate/messages/trafficUpdate"
+        }
+      ]
+    },
+    "receiveGpsCoordinates": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/gpsCoordinates"
+      },
+      "summary": "Receive GPS coordinates.",
+      "traits": [
+        {
+          "$ref": "#/components/operationTraits/kafka"
+        }
+      ],
+      "messages": [
+        {
+          "$ref": "#/channels/gpsCoordinates/messages/gpsCoordinates"
+        }
+      ]
+    }
+  },
+  "components": {
+    "messages": {
+      "routeRequested": {
+        "name": "routeRequested",
+        "title": "Route Requested",
+        "summary": "Request a route between two points.",
+        "contentType": "application/json",
+        "traits": [
+          {
+            "$ref": "#/components/messageTraits/commonHeaders"
+          }
+        ],
+        "payload": {
+          "$ref": "#/components/schemas/routeRequestedPayload"
+        }
+      },
+      "trafficUpdate": {
+        "name": "trafficUpdate",
+        "title": "Traffic Update",
+        "summary": "Receive real-time traffic updates.",
+        "contentType": "application/json",
+        "traits": [
+          {
+            "$ref": "#/components/messageTraits/commonHeaders"
+          }
+        ],
+        "payload": {
+          "$ref": "#/components/schemas/trafficUpdatePayload"
+        }
+      },
+      "gpsCoordinates": {
+        "name": "gpsCoordinates",
+        "title": "GPS Coordinates",
+        "summary": "Receive GPS coordinates.",
+        "contentType": "application/json",
+        "traits": [
+          {
+            "$ref": "#/components/messageTraits/commonHeaders"
+          }
+        ],
+        "payload": {
+          "$ref": "#/components/schemas/gpsCoordinatesPayload"
+        }
+      }
+    },
+    "schemas": {
+      "routeRequestedPayload": {
+        "type": "object",
+        "properties": {
+          "startPoint": {
+            "type": "string",
+            "description": "The starting point of the route."
+          },
+          "endPoint": {
+            "type": "string",
+            "description": "The destination point of the route."
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/timestamp"
+          }
+        }
+      },
+      "trafficUpdatePayload": {
+        "type": "object",
+        "properties": {
+          "locationId": {
+            "type": "string",
+            "description": "Identifier for the location where the traffic update is reported."
+          },
+          "trafficCondition": {
+            "type": "string",
+            "description": "Description of the current traffic condition."
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/timestamp"
+          }
+        }
+      },
+      "gpsCoordinatesPayload": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "format": "float",
+            "description": "The latitude of the GPS coordinate."
+          },
+          "longitude": {
+            "type": "number",
+            "format": "float",
+            "description": "The longitude of the GPS coordinate."
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/timestamp"
+          }
+        }
+      },
+      "timestamp": {
+        "type": "string",
+        "format": "date-time",
+        "description": "Date and time when the message was sent."
+      }
+    },
+    "securitySchemes": {
+      "saslScram": {
+        "type": "scramSha256",
+        "description": "Provide your username and password for SASL/SCRAM authentication."
+      },
+      "certs": {
+        "type": "X509",
+        "description": "Download the certificate files from the service provider."
+      }
+    },
+    "parameters": {
+      "requestId": {
+        "description": "The ID of the route request."
+      },
+      "locationId": {
+        "description": "The ID of the location for traffic updates."
+      },
+      "coordinateId": {
+        "description": "The ID of the GPS coordinate."
+      }
+    },
+    "messageTraits": {
+      "commonHeaders": {
+        "headers": {
+          "type": "object",
+          "properties": {
+            "my-app-header": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
+            }
+          }
+        }
+      }
+    },
+    "operationTraits": {
+      "kafka": {
+        "bindings": {
+          "kafka": {
+            "clientId": {
+              "type": "string",
+              "enum": [
+                "my-app-id"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

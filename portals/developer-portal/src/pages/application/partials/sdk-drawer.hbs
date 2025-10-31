@@ -1,0 +1,133 @@
+<!-- SDK Generation Right Drawer -->
+<div id="sdkDrawer" class="sdk-drawer" style="display: none;"
+    data-application-id="{{applicationMetadata.id}}">
+    <div class="sdk-drawer-overlay" onclick="closeSdkDrawer()"></div>
+    <div class="sdk-drawer-content">
+        <!-- Header -->
+        <div class="sdk-drawer-header">
+            <div class="d-flex align-items-center justify-content-between">
+                <h4 class="mb-0">Generate SDK</h4>
+                <button class="btn-close" onclick="closeSdkDrawer()" aria-label="Close">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Drawer Body -->
+        <div class="sdk-drawer-body">
+
+            <!-- SDK Configuration Section -->
+            <div class="sdk-config-section mb-4">
+
+                <!-- Programming Language -->
+                <div class="config-group mb-4">
+                    <label class="form-label mb-1" style="color: var(--primary-main-color)">Select Programming Language</label>
+                    <div class="language-options" id="languageOptions">
+                        
+                        <div class="language-option selected" data-language="java">
+                            <input type="radio" name="programmingLanguageAI" id="langJava" value="java" checked>
+                            <label for="langJava" class="language-card">
+                                <div class="language-info">
+                                    <div class="language-icon java-icon">
+                                        <i class="bi bi-cup-hot"></i>
+                                    </div>
+                                    <span class="language-name">Java</span>
+                                </div>
+                            </label>
+                        </div>
+                        
+                        <div class="language-option" data-language="javascript">
+                            <input type="radio" name="programmingLanguageAI" id="langJS" value="javascript">
+                            <label for="langJS" class="language-card">
+                                <div class="language-info">
+                                    <div class="language-icon js-icon">
+                                        <span>JS</span>
+                                    </div>
+                                    <span class="language-name">Javascript</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Description Section -->
+                <div id="sdkDescriptionSection" class="config-group mb-4">
+                    <label for="sdkDescription" class="form-label mb-3" style="color: var(--primary-main-color)">
+                        Describe your SDK Requirement 
+                        <i class="bi bi-stars text-warning ms-1"></i>
+                    </label>
+                    <div class="prompt-input-area">
+                        <div class="prompt-suggestions-container">
+                            <div class="suggestion-chip" data-prompt="Generate a sample application by integrating given APIs">
+                                <i class="bi bi-play-fill suggestion-play-button"></i>
+                                <span class="suggestion-text">Generate a sample application by integrating given APIs</span>
+                                <button type="button" class="btn-close" aria-label="Close">×</button>
+                            </div>
+                        </div>
+
+                        <textarea class="form-control" id="sdkDescription" rows="5" 
+                                placeholder="Add your requirement..."></textarea>
+                    </div>
+
+                    <div class="prompt-footer-row">
+                        <div class="ai-disclaimer">
+                            Use AI Chat mindfully as AI can make mistakes.
+                        </div>
+                        <div class="ai-generate-section">
+                            <button class="common-btn-primary" id="aiGenerateBtn">
+                                <i class="bi bi-arrow-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SDK Generation Cancel Confirmation Modal -->
+<div class="modal custom-modal" id="sdkCancelConfirmModal" style="display: none;">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content custom-modal-content">
+            <div class="custom-modal-body">
+                <h4 class="confirmation-title">Are you sure you want to cancel the SDK Generation?</h4>
+                <p class="confirmation-text">
+                    This action will be irreversible and SDK generation will be stopped. Please click the <strong>Yes</strong> button to abort the process.
+                </p>
+                
+                <div class="button-container">
+                    <button class="common-btn-outlined" type="button" onclick="closeSdkCancelConfirmModal()">
+                        Cancel
+                    </button>
+                    <button class="common-btn-primary btn-danger" type="button" onclick="confirmSdkCancellation()">
+                        Yes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SDK Generation Description Required Modal -->
+<div class="modal custom-modal" id="sdkDescriptionRequiredModal" style="display: none;">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content custom-modal-content">
+            <div class="custom-modal-body">
+                <h4 class="confirmation-title">Description Required</h4>
+                <p class="confirmation-text">
+                    Please provide a <strong>description</strong> for AI-generated SDK requirements. 
+                    This description helps our AI understand what kind of application code you want to generate.
+                </p>
+
+                <div class="button-container">
+                    <button class="common-btn-primary" type="button" onclick="closeSdkDescriptionRequiredModal()">
+                        OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SDK Drawer Script -->
+<script src="/technical-scripts/sdk-drawer.js" defer></script>

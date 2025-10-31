@@ -1,0 +1,39 @@
+<section class="testimonial-section">
+  <div class="col-lg-11 testimonial-container">
+    <div class="common-sub-header">
+      <h5>Get Started</h5>
+    </div>
+    <div class="common-header">
+      <h2>Turning Code into Customer Solutionss</h2>
+    </div>
+    <div class="row testimonial-card-container">
+      {{#userProfiles}}
+        <div class="col-md-4">
+          <div class="card testimonial-card">
+            <div class="card-body">
+              <div class="profile-details">
+                <div class="profile-info">
+                  <img
+                    src={{avatar}}
+                    alt="Avatar"
+                    class="profile-avatar rounded-circle"
+                  />
+                  <div>
+                    <h5>{{name}}</h5>
+                    <p class="text-muted">{{company}}</p>
+                  </div>
+                </div>
+              </div>
+              <p class="card-text">{{comment}}</p>
+              <div>
+                <a href={{profileUrl}} class="linkedin-icon">
+                  <img src="/images/linkedIn.svg" alt="LinkedIn" />
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      {{/userProfiles}}
+    </div>
+  </div>
+</section>

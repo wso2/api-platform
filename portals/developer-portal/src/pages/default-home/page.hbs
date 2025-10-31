@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>DevPortal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon"
+        href="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/favicon.ico"
+        type="image/x-icon">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://getbootstrap.com/docs/5.3/assets/css/docs.css" rel="stylesheet">
+    <link rel="stylesheet" href="/styles/main.css">
+    <script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'></script>
+    <script src='/technical-scripts/common.js' defer></script>
+</head>
+
+<body style="background-color: var(--primary-lightest-color);"
+    class="min-vh-100 d-flex flex-column align-items-start justify-content-center p-3">
+    <div class="default-container">
+        <div class="left-side">
+            <div class="default-logo-container">
+                <div class="default-logo">
+                    <img src="/images/devportalLogo.png" alt="Logo" class="img-fluid align-items-start me-2"
+                        style="width: 40%;" />
+                </div>
+            </div>
+        </div>
+        <div class="default-card">
+            <div class="default-card-content">
+                <div class="default-form-group">
+                    <label class="default-form-label">Organization Name</label>
+                    <input type="text" id="organization-name" class="default-form-input"
+                        placeholder="Enter your organization name" required>
+                </div>
+                <button onclick="getOrgName()" class="common-btn-primary w-100">Continue</button>
+            </div>
+        </div>
+    </div>
+    <footer class="footer-section">
+        <div class="footer-container">
+            <ul class="footer-links">
+                <li><a href="#">Terms of use</a></li>
+                <li><a href="#">Privacy Policy</a></li>
+                <li><a href="#">Support</a></li>
+            </ul>
+            <div class="footer-icons">
+                <a href="#">© 2025, WSO2 LLC.</a>
+            </div>
+        </div>
+    </footer>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,86 @@
+name: Build and Release on Tag Push
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build project
+        run: npm run build
+
+      - name: Upload dist folder as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-output
+          path: dist/
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download dist folder artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-output
+          path: ./dist-output
+
+      - name: Add required files and folders to each zip
+        run: |
+          # Create directories
+          mkdir -p ./release-artifacts ./temp-dir
+          
+          # Process each file in dist-output
+          for file in ./dist-output/*; do
+            filename=$(basename "$file")
+            zipname="${filename}.zip"
+            
+            # Clear temp-dir and recreate the developer-portal structure
+            rm -rf ./temp-dir/*
+            mkdir -p ./temp-dir/developer-portal
+            
+            # Copy the additional files and folders into developer-portal
+            cp -r bin/startup.sh bin/startup.bat artifacts InstallationGuide.md QuickStart.md README.md config.json ./temp-dir/developer-portal/
+            
+            # Move the current dist file into developer-portal
+            mv "$file" ./temp-dir/developer-portal/
+            
+            # Zip everything inside developer-portal with its structure
+            (cd ./temp-dir && zip -r "../release-artifacts/$zipname" developer-portal > /dev/null)
+          done
+
+      - name: Debug release-artifacts contents
+        run: ls -R ./release-artifacts
+
+      - name: Create or Update GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.ref_name }}
+          name: WSO2 API Developer Portal Core ${{ github.ref_name }}
+          body: "WSO2 API Developer Portal Core serves as a development portal offering fundamental layout and structural components."
+          draft: false
+          prerelease: false
+          artifacts: "./release-artifacts/*"
+          allowUpdates: true

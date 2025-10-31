@@ -1,0 +1,150 @@
+{{#in apiType values="REST"}}
+
+<head>
+  <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements/styles.min.css">
+  <script src="https://unpkg.com/@stoplight/elements/web-components.min.js"></script>
+</head>
+<main>
+  <div class="p-4">
+    <elements-api apiDescriptionDocument='{{swagger}}' router="hash" layout="sidebar" />
+  </div>
+  <style>
+    .sl-py-16 {
+      max-width: 900px !important;
+    }
+
+    @media (max-width: 1700px) {
+      .sl-py-16 {
+        max-width: 800px !important;
+      }
+    }
+
+    @media (max-width: 1600px) {
+      .sl-py-16 {
+        max-width: 700px !important;
+      }
+    }
+
+    @media (max-width: 1500px) {
+      .sl-py-16 {
+        max-width: 600px !important;
+      }
+    }
+
+    .sl-px-24 {
+      padding-right: 0px;
+      padding-left: 30px;
+    }
+
+    .sl-border-t {
+      display: none;
+    }
+  </style>
+</main>
+{{/in}}
+{{#if (eq apiType "WS")}}
+
+<head>
+  <link rel="stylesheet" href="/technical-styles/async-tryout.css">
+</head>
+<main>
+  <div id="root" style="height: 100vh;"></div>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@asyncapi/react-component@latest/browser/standalone/index.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/wso2/api-developer-portal-core@refs/heads/main/libs/async-api-viewer/dist/websocket-viewer.umd.js"></script>
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/gh/wso2/api-developer-portal-core@refs/heads/main/libs/async-api-viewer/dist/async-api-viewer.css"
+  />
+  <script>
+    const isWebSocketTryout = {{#if isWebSocketTryout}}{{isWebSocketTryout}}{{else}}false{{/if}};
+    if (isWebSocketTryout) {
+      document.addEventListener('DOMContentLoaded', function () {
+        const swaggerData = {{{ asyncapi }}};
+        let serverUrl = swaggerData.servers && swaggerData.servers.production ? swaggerData.servers.production.url : '';
+        const rootElement = document.getElementById('root');
+        rootElement.innerHTML = '<div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: montserrat;">Loading AsyncAPI Viewer...</div>';
+        ReactDOM.render(React.createElement(WebSocketViewer.default, {
+            apiEndpoint: serverUrl,
+            token: '<your-token-here>',
+            asyncapi: swaggerData,
+            isDevportal: true
+        }), rootElement);
+      });
+    } else {
+      const config = { "show": { "sidebar": false }, "sidebar": { "showOperations": "byDefault" } };
+      AsyncApiStandalone.hydrate({
+        schema: {{{ asyncapi }}},
+        config
+      }, document.getElementById('root'));
+    }
+  </script>
+</main>
+
+{{else if (eq apiType "GraphQL")}}
+
+<head>
+  <link rel="stylesheet" href="https://unpkg.com/graphiql@latest/graphiql.min.css">
+  <script src="https://unpkg.com/react@18.0.0/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18.0.0/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/graphiql/graphiql.min.js"></script>
+</head>
+<main>
+  <div id="root" style="height: 100vh;"></div>
+  <script>
+    const fetcher = GraphiQL.createFetcher({ url: '{{ apiMetadata.endPoints.productionURL }}' });
+    const rootElement = document.getElementById('root');
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(
+      React.createElement(GraphiQL, {
+        fetcher: fetcher,
+      })
+    );
+  </script>
+</main>
+
+{{else if (eq apiType "MCP")}}
+
+<head>
+    <script>
+        window.process = {env: {NODE_ENV: 'production'}};
+    </script>
+    <script src="https://unpkg.com/react@17.0.2/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@17.0.2/umd/react-dom.development.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/thisaltennakoon/mcp-inspector@main11/dist/mcp-inspector.umd.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<main>
+    <div id="root" style="height: 100vh;"></div>
+    <style>
+        .mcp-MuiTypography-h3 {
+            font-family: 'Montserrat', sans-serif;
+        }
+    </style>
+    <script>
+        // Wait for the DOM to be ready
+        document.addEventListener('DOMContentLoaded', function () {
+            // Extract URL from swagger JSON
+            const swaggerData = {{{swagger}}};
+            let serverUrl = swaggerData.servers && swaggerData.servers.length > 0 ? swaggerData.servers[0].url : '';
+
+            // Add '/mcp' to the end of the URL if URL is available
+            if (serverUrl) {
+                serverUrl = serverUrl + '/mcp';
+            }
+
+            const rootElement = document.getElementById('root');
+
+            // Show loading message first
+            rootElement.innerHTML = '<div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: montserrat;">Loading MCP Inspector...</div>';
+
+            // Then render the actual component
+            ReactDOM.render(React.createElement(MCPInspector.default, {
+                url: serverUrl,
+                tokenPlaceholder: 'Bearer <your-token-here>',
+            }), rootElement);
+        });
+    </script>
+</main>
+{{/if}}

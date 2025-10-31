@@ -1,0 +1,139 @@
+/* Content Area Styles */
+.doc-content {
+    flex: 1;
+}
+
+/* Documents Section */
+.documents {
+    display: flex;
+    gap: 2rem;
+}
+
+.documents-sidebar {
+    padding: 1rem 2rem 1rem 0rem;
+    flex-shrink: 0;
+    border-right: 1px solid #e0e2e9;
+}
+
+.documents-sidebar .search-container {
+    display: flex;
+    margin-bottom: 1rem;
+    justify-content: center;
+    width: 100%;
+}
+
+.documents-sidebar .search-input {
+    display: flex;
+    align-items: center;
+    background-color: #e0e2e9;
+    padding: 0.625rem 1rem;
+    border-radius: 5px;
+    width: 100%;
+}
+
+.documents-sidebar .search-icon {
+    width: 1rem;
+    height: 1rem;
+    opacity: 0.5;
+}
+
+.documents-sidebar .search-input input {
+    border: none;
+    outline: none;
+    width: 100%;
+    margin-left: 1rem;
+    font-size: 14px;
+    font-weight: 300;
+    background-color: transparent;
+    color: var(--main-text-color);
+}
+
+.documents-sidebar #docQuery::placeholder {
+    color: var(--main-text-color);
+    opacity: 0.5;
+}
+
+.doc-content-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    border: 0.5px solid #e0e2e9;
+    border-radius: 16px;
+    box-shadow: 0px 2px 4px #0000000a;
+    display: flex;
+}
+
+.doc-section {
+    flex: 1;
+    padding: 1rem;
+    max-height: 100%;
+}
+
+.doc-section-title {
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    color: var(--main-text-color);
+}
+
+.doc-links {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.doc-link {
+    display: flex;
+    align-items: center;
+    min-width: 200px;;
+    padding: 8px 12px;
+    gap: 12px;
+    background: var(--main-bg-color);
+    box-shadow: 0px 0px 0px 1px #e0e2e9, 0px 1px 1px #CBCEDB;
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--main-text-color);
+}
+
+.doc-link:hover {
+    background-color: var(--secondary-bg-color);
+}
+
+.doc-link.active {
+    background-color: var(--secondary-bg-color);
+}
+
+.doc-link i {
+    width: auto;
+    height: auto;
+    color: var(--primary-main-color);
+}
+
+.doc-title {
+    font-family: 'Gilmer Medium', sans-serif;
+    font-weight: 600;
+    font-size: 12px;
+    line-height: 24px;
+    color: var(--primary-main-color);
+}
+
+.doc-spec {
+    display: block;
+    color: var(--main-text-color);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 1rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+
+    .documents {
+        flex-direction: column;
+    }
+
+    .documents-sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid #e0e2e9;
+    }
+}

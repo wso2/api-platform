@@ -1,0 +1,37 @@
+.faq-banner-section {
+  background-color: var(--primary-light-color);
+  border-radius: 1.5rem;
+  padding: 2.5rem;
+  margin: 3.75rem 7.75rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.faq-banner-container {
+  max-width: 50rem;
+}
+
+.faq-banner-description {
+  font-size: 1rem;
+  color: var(--main-text-color);
+  margin-bottom: 2rem;
+}
+
+.faq-banner-container .common-header h2{
+  margin-bottom: 0.5rem;
+}
+
+.faq-banner-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+
+@media screen and (max-width: 768px) {
+  .faq-banner-buttons {
+    flex-direction: column;
+    gap: 1rem;
+  }
+}

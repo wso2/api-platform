@@ -1,0 +1,147 @@
+<head>
+  <link rel='stylesheet' href='/technical-styles/api-key-generation.css' />
+  <script src='/technical-scripts/api-key-generation.js' defer></script>
+</head>
+
+<body>
+  <section>
+    {{#applicationMetadata}}
+        <div class="app-header mb-4 pt-4">
+          <h1 class='app-title'>{{name}}</h1>
+          <div class="d-flex justify-content-between align-items-center">
+            <p>Subscriptions: {{subscriptionCount}}</p>
+            <div class='action-buttons'>
+              <button class='btn btn-sm' title='Edit' onclick="window.location.href='{{../baseUrl}}/applications/{{applicationId}}/edit'">
+                <i class='bi bi-pencil-square'></i>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class='form-card'>
+          {{#if ../isProduction}}
+            <h2 class='title mb-4'>Generate Production API Key</h2>
+          {{else}}
+            <h2 class='title mb-4'>Generate Sanbox API Key</h2>
+          {{/if}}
+          <p class='text-muted mb-4'>
+            Use the Generate Key button to generate a self-contained JWT token.
+          </p>
+          <form id='apiKeyGenerateForm' data-application-id="{{applicationId}}" data-is-production="{{../isProduction}}">
+
+            <div class='form-check'>
+              <input
+                class='form-check-input'
+                type='radio'
+                name='option'
+                id='noneCheck-{{#if ../isProduction}}production{{else}}sandbox{{/if}}'
+                checked
+                {{#if ../isProduction}}
+                  onclick='updateProductionSections()'
+                {{else}}
+                  onclick='updateSandboxSections()'
+                {{/if}}
+              />
+              <label class='form-check-label' for='noneCheck-{{#if ../isProduction}}production{{else}}sandbox{{/if}}'>None</label>
+            </div>
+
+      <div class='form-check'>
+        <input class='form-check-input' type='radio' name='option'
+          id='ipCheck-{{#if ../isProduction}}production{{else}}sandbox{{/if}}' {{#if ../isProduction}}
+          onclick='updateProductionSections()' {{else}} onclick='updateSandboxSections()' {{/if}} />
+        <label class='form-check-label' for='ipCheck-{{#if ../isProduction}}production{{else}}sandbox{{/if}}'>IP
+          Addresses</label>
+      </div>
+
+            {{! IP Section }}
+            <div id='section-ip-{{#if ../isProduction}}production{{else}}sandbox{{/if}}' style='display: none;'>
+              <div class='mb-3'>
+                <label for='ip-input-{{#if ../isProduction}}production{{else}}sandbox{{/if}}' class='form-label'>
+                  IP Addresses
+                  <span class='text-danger'>*</span>
+                </label>
+                <div id='ip-container-{{#if ../isProduction}}production{{else}}sandbox{{/if}}'>
+                  <input
+                    type='text'
+                    id='ip-input-{{#if ../isProduction}}production{{else}}sandbox{{/if}}'
+                    class='form-control'
+                    placeholder='Enter IP Address'
+                    onkeydown='addIp(event, {{../isProduction}})'
+                  />
+                </div>
+              </div>
+              <div class='form-text mb-3'>Once you add an IP address, press
+                <span class='text-danger'>Enter</span>. Specify one IPv4 or IPv6
+                or a subnet using CIDR notation. Examples: 192.168.1.2,
+                152.12.0.0/13, 2002:eb8::2 or 1001:ab8::/44</div>
+              <input type='hidden' id='ip-values-{{#if ../isProduction}}production{{else}}sandbox{{/if}}' name='ip-values' />
+            </div>
+            {{! IP Section ends }}
+
+      <div class='form-check'>
+              <input
+                class='form-check-input'
+                type='radio'
+                name='option'
+                id='httpCheck-{{#if ../isProduction}}production{{else}}sandbox{{/if}}'
+                {{#if ../isProduction}}
+                  onclick='updateProductionSections()'
+                {{else}}
+                  onclick='updateSandboxSections()'
+                {{/if}}
+              />
+              <label class='form-check-label' for='httpCheck-{{#if ../isProduction}}production{{else}}sandbox{{/if}}'>HTTP Referrers
+                (Web Sites)</label>
+            </div>
+
+      {{! HTTP Section }}
+      <div id='section-http-{{#if ../isProduction}}production{{else}}sandbox{{/if}}' style='display: none;'>
+        <div class='mb-3'>
+          <label for='http-input-{{#if ../isProduction}}production{{else}}sandbox{{/if}}' class='form-label'>
+            HTTP Referrers
+            <span class='text-danger'>*</span>
+          </label>
+          <div id='http-container-{{#if ../isProduction}}production{{else}}sandbox{{/if}}'>
+            <input type="text" class="form-control"
+              id='http-input-{{#if ../isProduction}}production{{else}}sandbox{{/if}}'
+              onkeydown='addHttpReferrer(event, {{../isProduction}})' placeholder="Enter HTTP Referrerl">
+          </div>
+        </div>
+        <div class='form-text mb-3'>Once you add an HTTP Referrer, press
+          <span class='text-danger'>Enter</span>. A specific URL with an
+          exact path: www.example.com/path Any URL in a single subdomain,
+          using a wildcard asterisk (*): sub.example.com/* Any subdomain
+          or path URLs in a single domain, using wildcard asterisks (*):
+          *.example.com/*
+        </div>
+        <input type='hidden' id='http-values-{{#if ../isProduction}}production{{else}}sandbox{{/if}}'
+          name='http-values' />
+      </div>
+      {{! HTTP Section ends }}
+
+      <div class='mb-3'>
+        <label for='validity-{{#if ../isProduction}}production{{else}}sandbox{{/if}}' class='form-label'>
+          Validity Period
+          <span class='text-danger'>*</span>
+        </label>
+        <input type='number' id='validity-{{#if ../isProduction}}production{{else}}sandbox{{/if}}' class='form-control'
+          placeholder='Enter Validity Period' value='-1' oninput="validateGenerateButton({{../isProduction}})" />
+      </div>
+      <div class='form-text mb-3'>You can set an expiration period to determine the validity period of the token after
+        generation.
+        Set this as <span class='text-danger'>-1</span> to ensure that the apikey never expires.</div>
+
+      <!-- Buttons -->
+      <div class='d-flex gap-3'>
+        <button class='common-btn-primary'
+          id='apiKeyGenerateButton-{{#if ../isProduction}}production{{else}}sandbox{{/if}}' name='http-values'
+                type='button'
+                onClick="generateAPIKey('{{applicationId}}', {{../isProduction}})"
+              >
+                Generate Key
+              </button>
+            </div>
+          </form>
+        </div>
+    {{/applicationMetadata}}
+  </section>
+</body>

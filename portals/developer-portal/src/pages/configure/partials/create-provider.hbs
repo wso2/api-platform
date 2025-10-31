@@ -1,0 +1,24 @@
+<form id="createProviderForm" class="provider-form">
+    <div class="row g-3 align-items-end mb-4">
+        <div class="col-md-4">
+            <label for="displayName{{displayName}}" class="form-label">Provider Name</label>
+        </div>
+        <div class="col-md-4">
+            <input type="text" class="form-control" id="name" name="name" required>
+        </div>
+    </div>
+    <div class="row g-3 align-items-end mb-4">
+        <div class="col-md-4">
+            <label for="providerUrl" class="form-label">Provider URL</label>
+        </div>
+        <div class="col-md-4">
+            <input type="url" class="form-control" id="providerURL" name="providerURL" required>
+        </div>
+    </div>
+    <div class="row g-3">
+        <div class="col-md-4">
+            <button type="button" class="btn btn-secondary" id="cancelProviderBtn">Cancel</button>
+            <button type="button" class="btn common-btn-outlined" onClick="addProviders('{{orgID}}')">Add</button>
+        </div>
+    </div>
+</form>

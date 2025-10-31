@@ -1,0 +1,57 @@
+{
+  "name": "async-api-viewer",
+  "version": "1.0.0",
+  "main": "dist/websocket-viewer.umd.js",
+  "module": "dist/websocket-viewer.es.js",
+  "exports": {
+    ".": {
+      "import": "./dist/websocket-viewer.es.js",
+      "require": "./dist/websocket-viewer.umd.js"
+    }
+  },
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "peerDependencies": {
+    "@material-ui/core": "^4.12.3",
+    "@material-ui/icons": "^4.11.2",
+    "@modelcontextprotocol/sdk": "1.12.1",
+    "@radix-ui/react-tabs": "^1.1.1",
+    "ajv": "^6.12.6",
+    "notistack": "^1.0.10",
+    "prism-react-renderer": "^1.2.1",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "react-helmet": "^6.1.0",
+    "react-json-view": "^1.21.3",
+    "react-simple-code-editor": "^0.14.1",
+    "tailwind-merge": "^2.5.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.25.0",
+    "@types/react": "^17.0.2",
+    "@types/react-dom": "^17.0.2",
+    "@vitejs/plugin-react": "^4.4.1",
+    "eslint": "^9.25.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "globals": "^16.0.0",
+    "vite": "^6.3.5"
+  },
+  "dependencies": {
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^7.3.4",
+    "clipboard-copy": "^4.0.1",
+    "dayjs": "^1.11.18",
+    "loadash": "^1.0.0",
+    "lodash.clonedeep": "^4.5.0",
+    "react-intl": "^7.1.13",
+    "react-monaco-editor": "^0.59.0",
+    "timezone-support": "^3.1.0"
+  }
+}

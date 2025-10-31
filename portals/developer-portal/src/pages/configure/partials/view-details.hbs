@@ -1,0 +1,43 @@
+<section>
+    <div id="viewDetails">
+        <div class="d-flex justify-content-end mb-3">
+            <button type="button" class="common-btn-outlined" id="createViewBtn">
+                <i class="bi bi-plus-circle me-1"> </i> View
+            </button>
+        </div>
+        {{> views}}
+        <div class="card mb-4">
+            <div class="card-header">
+                Upload View Content
+            </div>
+            <div class="card-body">
+                <form id="uploadContent">
+                    <div class="d-flex align-items-center gap-3 flex-wrap">
+                        <!-- View name select -->
+                        <div class="mb-0">
+                            <label for="views" class="form-label">View name</label>
+                        </div>
+                        <div class="mb-0">
+                            <select id="uploadViewContent" class="form-select">
+                                {{#each views}}
+                                <option>{{name}}</option>
+                                {{/each}}
+                            </select>
+                        </div>
+                        <!-- File upload -->
+                        <div class="mb-0">
+                            <input type="file" class="form-control" id="file" name="file" required>
+                        </div>
+                        <!-- Upload button -->
+                        <button type="button" class="common-btn-outlined" onclick="uploadContent('{{orgID}}')">
+                            Upload
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div id="createView" style="display: none;">
+        {{> create-view}}
+    </div>
+</section>

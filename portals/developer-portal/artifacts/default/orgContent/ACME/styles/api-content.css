@@ -1,0 +1,347 @@
+.api-overview-section {
+  margin: 3rem 3.75rem;
+}
+
+.apiOver-features-container {
+  text-align: center;
+  overflow: hidden;
+  padding: 0rem;
+  margin: 4rem auto 2.5rem auto;
+}
+
+.apibenefits-list {
+  display: flex;
+  justify-content: space-between;
+  gap: 2rem;
+  padding: 1rem 0;
+}
+
+.key-benefit-item {
+  position: relative;
+  background-color: var(--secondary-light-color);
+  border-radius: 0.75rem;
+  padding: 1.875rem;
+  text-align: left;
+  max-width: 29rem;
+  min-height: 15rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.key-benefit-item:hover {
+  transform: translateY(-0.3125rem);
+  box-shadow: 0 0.5rem 0.75rem rgba(0, 0, 0, 0.1);
+}
+
+.key-benefit-image {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  opacity: 0.8;
+  width: 8rem;
+  z-index: 0;
+  margin-left: 1rem;
+}
+
+.key-benefit-item > div,
+.key-benefit-item a {
+  position: relative;
+  z-index: 1;
+}
+
+.key-benefit-item h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--primary-main-color);
+  margin-bottom: 0.625rem;
+}
+
+.key-benefit-item p {
+  font-size: 0.875rem;
+  color: var(--main-text-color);
+  margin-bottom: 1.25rem;
+  line-height: 1.5;
+}
+
+.key-benefit-link {
+  color: var(--primary-main-color);
+  font-size: 0.75rem;
+  text-decoration: none;
+  display: inline-block;
+  transition: color 0.3s ease-in-out, transform 0.3s ease-in-out;
+}
+
+.key-benefit-link:hover {
+  transform: translateX(0.1875rem);
+}
+
+/* styles of api overview */
+.api-overview {
+  text-align: center;
+  overflow: hidden;
+  padding: 0rem 1rem 2.5rem 1rem;
+  margin: 4rem auto 2.5rem auto;
+}
+
+.api-overview-content {
+  padding: 2.5rem;
+  overflow: hidden;
+  border-radius: 1.5rem;
+  background: var(--primary-gradient);
+  box-shadow: 0 0.125rem 0.125rem rgba(125, 124, 124, 0.1);
+}
+
+.overview-title {
+  font-size: 2.25rem;
+  color: var(--main-text-color);
+  margin-bottom: 1.25rem;
+}
+
+.api-content-text {
+  text-align: left;
+}
+
+.intro-text-des {
+  color: var(--primary-main-color);
+}
+
+.api-content-text .intro-text,
+.intro-text-des,
+.api-sidebar {
+  margin-bottom: 1.25rem;
+  font-size: 0.875rem;
+  line-height: 1.8;
+  max-width: 56.25rem;
+}
+
+.section-title {
+  font-size: 1rem;
+  color: var(--main-text-color);
+  margin-bottom: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.625rem;
+}
+
+.requirement-list {
+  padding: 0;
+  list-style: none;
+}
+
+.requirement-list li {
+  position: relative;
+  padding-left: 1.875rem;
+  margin-bottom: 0.625rem;
+  font-size: 0.875rem;
+}
+
+.checkmark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--primary-color);
+  font-size: 1rem;
+}
+
+.requirement-list .bi {
+  vertical-align: 0;
+}
+
+.api-sidebar {
+  border: 0.0625rem solid var(--primary-color);
+  padding: 0 2.1875rem;
+  border-radius: 2rem;
+  background-color: transparent;
+  text-align: left;
+}
+
+.api-list {
+  list-style: none;
+  list-style-type: disc;
+  padding: 0;
+  padding-left: 0.5rem;
+}
+
+.api-list li {
+  margin-bottom: 0.625rem;
+  position: relative;
+  padding-left: 0.5rem;
+  font-size: 0.75rem;
+  list-style-position: outside;
+}
+
+.api-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.5rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  background-color: var(--primary-color);
+  border-radius: 50%;
+}
+
+/* styles of FAQ */
+.faq-section {
+  text-align: center;
+  overflow: hidden;
+  padding: 0rem;
+  margin: 0rem auto 2.5rem auto;
+}
+
+.faq-container {
+  border: 0.03125rem solid var(--secondary-main-color);
+  padding: 2.5rem;
+  overflow: hidden;
+  border-radius: 1.5625rem;
+  box-shadow: 0 0.125rem 0.125rem rgba(125, 124, 124, 0.1);
+}
+
+.faq-header {
+  text-align: center;
+}
+
+.faq-header .common-header h2 {
+  margin-bottom: 1rem;
+}
+
+.faq-container p {
+  font-size: 1rem;
+  color: var(--main-text-color);
+}
+
+.faq-container a {
+  font-size: 1rem;
+  color: var(--secondary-dark-color);
+  text-decoration: none;
+}
+
+.faq-container a:hover {
+  text-decoration: none;
+}
+
+.faq-item {
+  margin-top: 1.875rem;
+  margin-bottom: 1.25rem;
+  text-align: left;
+}
+
+.faq-question {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--main-text-color);
+  margin-bottom: 0.5rem;
+}
+
+.faq-tags {
+  margin-bottom: 0.625rem;
+}
+
+.faq-badge-custom1 {
+  border: 0.0625rem solid var(--main-text-color);
+  color: var(--main-text-color);
+  margin: 0px 0.3125rem 0.625rem 0;
+  padding: 0.375rem 1.25rem;
+  border-radius: 1.875rem;
+  font-size: 0.75rem;
+}
+
+.faq-answer {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--light-text-color);
+}
+
+hr {
+  border: none;
+  border-top: 0.0625rem solid #abb0c0;
+  margin-top: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 1024px) {
+  .apibenefits-list {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .key-benefit-item {
+    max-width: 100%;
+    min-height: auto;
+    padding: 1.5rem;
+  }
+
+  .key-benefit-image {
+    width: 6rem;
+    margin-left: 0.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .api-overview-section {
+    margin: 2rem 1.5rem;
+  }
+
+  .api-overview-content {
+    padding: 1.5rem;
+  }
+
+  .overview-title {
+    font-size: 1.5rem;
+  }
+
+  .key-benefit-item h3 {
+    font-size: 0.875rem;
+  }
+
+  .key-benefit-item p {
+    font-size: 0.75rem;
+  }
+
+  .key-benefit-link {
+    font-size: 0.6875rem;
+  }
+
+  .faq-container {
+    padding: 1.5rem;
+  }
+
+  .faq-question {
+    font-size: 1rem;
+  }
+
+  .faq-answer {
+    font-size: 0.875rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .api-overview-section {
+    margin: 1.5rem 1rem;
+  }
+
+  .overview-title {
+    font-size: 1.25rem;
+  }
+
+  .key-benefit-item {
+    padding: 1rem;
+    border-radius: 0.5rem;
+  }
+
+  .key-benefit-image {
+    width: 4.5rem;
+  }
+
+  .faq-question {
+    font-size: 0.875rem;
+  }
+
+  .faq-badge-custom1 {
+    padding: 0.25rem 1rem;
+    font-size: 0.625rem;
+  }
+}

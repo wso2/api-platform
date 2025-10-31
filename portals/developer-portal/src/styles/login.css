@@ -1,0 +1,122 @@
+/* General Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Body Styling */
+body {
+    font-family: 'Roboto', sans-serif;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Login Container */
+.login-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1500px;
+    height: 100%;
+}
+
+/* Login Box */
+.login-box {
+    background: var(--primary-light-color);
+    padding: 40px 30px;
+    border-radius: 12px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+}
+
+/* Login Title */
+.login-title {
+    font-size: 1.875rem;
+    font-weight: bold;
+    color: var(--primary-main-color);
+    margin-bottom: 10px;
+}
+
+/* Form Styling */
+.login-form .form-group {
+    margin-bottom: 20px;
+    text-align: left;
+}
+
+.login-form label {
+    display: block;
+    font-size: 14px;
+    color: var(--main-text-color);
+    opacity: 0.7;
+    margin-bottom: 8px;
+}
+
+.login-form .form-control {
+    width: 100%;
+    padding: 10px 15px;
+    font-size: 14px;
+    color: var(--main-text-color);
+    opacity: 0.7;
+    background: #ecf0f1;
+    border: 1px solid #bdc3c7;
+    border-radius: 6px;
+    outline: none;
+    transition: all 0.3s ease;
+}
+
+.login-form .form-control:focus {
+    border-color: #3498db;
+    box-shadow: 0 0 5px rgba(52, 152, 219, 0.5);
+}
+
+/* Button Styling */
+.btn-login {
+    width: 100%;
+    padding: 12px 15px;
+    font-size: 16px;
+    color: #fff;
+    background: #3498db;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.btn-login:hover {
+    background: #2980b9;
+}
+
+/* Footer Links */
+.form-footer {
+    margin-top: 15px;
+}
+
+.forgot-password {
+    font-size: 14px;
+    color: #3498db;
+    text-decoration: none;
+}
+
+.forgot-password:hover {
+    text-decoration: underline;
+}
+
+/* Responsive Design */
+@media (max-width: 480px) {
+    .login-box {
+        padding: 30px 20px;
+    }
+
+    .login-title {
+        font-size: 20px;
+    }
+
+    .btn-login {
+        font-size: 14px;
+    }
+}

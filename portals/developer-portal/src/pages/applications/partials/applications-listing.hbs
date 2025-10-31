@@ -1,0 +1,130 @@
+<head>
+  <link rel='stylesheet' href='/technical-styles/applications.css' />
+  <script src='/technical-scripts/application-listing.js' defer></script>
+  <script src='/technical-scripts/add-application-form.js' defer></script>
+</head>
+
+<section class="section mt-0 mb-6">
+  <div class="container-fluid applicationspage-container" id="applicationsContainer">
+    <div class="container-header mb-4 d-sm-flex justify-content-between align-items-center">
+      <span>Applications</span>
+
+      {{#if applicationsMetadata.length}}
+      <!-- Show button if there are applications -->
+      <div class="create-application-btn">
+        <button class="btn common-btn-primary {{#if @root.isReadOnlyMode}}disabled{{/if}}" onclick="toggleCreateCard()" id="createButton">Create</button>
+      </div>
+      {{/if}}
+    </div>
+
+    <div class="row row-gap-4">
+
+      <!-- Create application Card -->
+      <div class="col-12 col-md-6 col-lg-4 col-xl-3 {{#if applicationsMetadata.length}}d-none{{/if}}" id="createApplicationCardWrapper">
+        <div class="create-application-card card {{#if @root.isReadOnlyMode}}disabled{{/if}} {{#if applicationsMetadata.length}}d-none{{/if}}" id="applicationCreateCard" style="{{#if @root.isReadOnlyMode}}pointer-events: none; opacity: 0.5;{{else}} cursor: pointer; {{/if}}"
+          onclick="showApplicationForm()">
+          <span class="plus-icon">+</span>
+          <span class="create-text">Create Application</span>
+        </div>
+
+        <div class="application-create-card card d-none" style=" cursor: pointer;"
+          id="applicationCreateForm">
+          <div class="application-layout">
+            <div class="application-content">
+              <form id='applicationForm' class='create-app-form'>
+                <div class="d-flex">
+                  <div class="application-icon-container">
+                    <img
+                      src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/application.svg"
+                      alt="Application icon" />
+                  </div>
+                  <div class="flex-grow-1 application-card-body">
+                    <!-- Application Name -->
+                    <div class="w-100">
+                      <input type="text" id="applicationName" class="form-control" placeholder="Name" required />
+                    </div>
+                    <div id="nameError" class="error-msg text-danger mt-1 d-none">
+                      Application name cannot be empty.
+                    </div>
+                  </div>
+                </div>
+                <div class="application-card-footer">
+                    <button type='button' class='btn common-btn-outlined add-application-action-btn' id='cancelCreateButton' 
+                      data-has-apps="{{#if applicationsMetadata.length}}true{{else}}false{{/if}}" onclick="event.stopPropagation(); hideApplicationForm(this);">
+                        Cancel
+                      </button>
+                    <button type='submit' class='btn common-btn-primary add-application-action-btn' id='createAppButton'>
+                      Create  
+                    </button>
+                </div>
+              </form>
+          </div>
+           <div class="message-overlay hidden" id="message-overlay">
+              <div class="message-content" >
+                  <i class="bi message-icon"></i>
+                  <p class="message-text"></p>
+              </div>
+              <button type="button" class="close-message" aria-label="Close message">&times;</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- Application Cards -->
+      {{#applicationsMetadata}}
+
+      <div class="col-12 col-md-6 col-lg-4 col-xl-3">
+        <div class="card app-card application-card" id="app-card-{{id}}" data-name="{{name}}" style="cursor: pointer;"
+          onclick="window.location.href='{{../baseUrl}}/applications/{{id}}'">
+          <div class="application-layout">
+            <div class="application-icon-container">
+              <img
+                src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/application.svg"
+                alt="Application icon" />
+            </div>
+            <div class="application-content">
+              <div class="application-card-header">
+                <div class="overflow-hidden">
+                  <div>
+                    <a href="{{../baseUrl}}/applications/{{id}}" class="application-name-link">
+                      {{name}}
+                    </a>
+                  </div>
+                </div>
+              </div>
+              <div class="application-card-body">
+                <div>
+                  <span class="subscription-count-badge">
+                    Subscriptions: {{subscriptionCount}}
+                  </span>
+                </div>
+                <div class="application-card-meta">
+                  <p class="fw-light application-description">
+                    <span class="truncate-text">{{description}}</span>
+                  </p>
+                </div>
+              </div>
+              <div class="application-card-footer">
+                <div class="application-card-actions">
+                  <button type="button" class="btn application-btn-icon delete-button {{#if @root.isReadOnlyMode}}disabled{{/if}}" title="Delete"
+                      id="trash-btn-{{id}}" onclick="event.stopPropagation(); openWarningModal('{{id}}', '')">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </div>
+              </div>
+               <div class="message-overlay hidden" id="message-overlay-{{id}}">
+                <div class="message-content" >
+                    <i class="bi message-icon"></i>
+                    <p class="message-text"></p>
+                </div>
+                <button type="button" class="close-message" aria-label="Close message">&times;</button>
+            </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {{/applicationsMetadata}}
+    </div>
+  </div>
+</section>

@@ -1,0 +1,57 @@
+<main>
+    <section>
+        <!-- Create Organization Button -->
+        {{!-- <div class="card create-project-card">
+            <a type="button" class="btn create-project-button" href="{{baseUrl}}/portal/create">
+                <div class="create-project-content">
+                    <span class="plus-icon">+</span>
+                    <span class="create-text">New Organization</span>
+                </div>
+            </a>
+        </div> --}}
+        <!-- Organization Cards -->
+        {{> delete-confirmation modalTitle="Do you really want to delete this organization?" modalMessage="This will
+        remove the organization stored in devportal" modalFunction='deleteOrg()' }}
+        <div id="orgDefaultContent">
+            <div class="d-flex justify-content-end mb-3">
+                <button type="button" class="common-btn-outlined" id="createOrgBtn">
+                    <i class="bi bi-plus-circle me-1"> </i> Organization
+                </button>
+            </div>
+            <table class="table table-striped mt-4">
+                <thead>
+                    <tr>
+                        <th>Organization Name</th>
+                        <th class="text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{#organizations}}
+                    <tr>
+                        <td> {{orgHandle}}</td>
+                        <div id="organization">
+                            <td class="text-center">
+                                <button type="button" class="common-btn-outlined" title="Edit" id="orgEdit" onclick="showEditForm('{{this.orgID}}')">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button type="button" class="common-btn-outlined btn-outline-danger" title="Delete"
+                                    onclick="openOrgDeleteModal('{{orgID}}');">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </div>
+                    </tr>
+                    {{/organizations}}
+                </tbody>
+            </table>
+        </div>
+        <div id="addOrg" style="display: none;">
+            {{> add-organization-form}}
+        </div>
+        {{#organizations}}
+        <div id="editForm-{{this.orgID}}" style="display: none;">
+            {{> edit-organization-form}}
+        </div>
+        {{/organizations}}
+    </section>
+</main>

@@ -1,0 +1,65 @@
+<div class="sidebar" id="sidebar">
+  <nav class="nav">
+    <a href="{{baseUrl}}/" class="nav-link" id="home">
+      <img
+        src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/home-icon.svg"
+      />
+      <span class="nav-text">Home</span>
+    </a>
+      {{#in devportalMode values="DEFAULT,APISONLY"}}
+      <a href="{{baseUrl}}/apis" class="nav-link" id="apis">
+        <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/apis-icon.svg" />
+        <span class="nav-text">APIs</span>
+      </a>
+      <div class="submenu api-submenu" id="api-submenu">
+        <a href="#" class="nav-link submenu-link fw-light" id="api-overview">
+          <img
+            src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/MenuOverview.svg"
+            class="submenu-icon"
+          />
+          <span class="nav-text">Overview</span>
+        </a>
+        <a href="#" class="nav-link submenu-link fw-light" id="api-docs">
+          <img
+            src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/documentation.svg"
+            class="submenu-icon"
+          />
+          <span class="nav-text">Documentation</span>
+        </a>
+      </div>
+      {{/in}}
+      {{#in devportalMode values="DEFAULT,MCPSERVERSONLY"}}
+      <a href="{{baseUrl}}/mcps" class="nav-link" id="mcps">
+        <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/MCPMenu.svg" />
+        <span class="nav-text">MCP Servers</span>
+      </a>
+      <div class="submenu api-submenu" id="mcp-submenu">
+        <a href="#" class="nav-link submenu-link fw-light" id="mcp-overview">
+          <img
+            src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/MenuOverview.svg"
+            class="submenu-icon"
+          />
+          <span class="nav-text">Overview</span>
+        </a>
+        <a href="#" class="nav-link submenu-link fw-light" id="mcp-docs">
+          <img
+            src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/documentation.svg"
+            class="submenu-icon"
+          />
+          <span class="nav-text">Documentation</span>
+        </a>
+      </div>
+      {{/in}}
+    <a href="{{baseUrl}}/applications" class="nav-link" id="applications">
+      <img
+        src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/applications-icon.svg"
+      />
+      <span class="nav-text">Applications</span>
+    </a>
+  </nav>
+
+  <button class="collapse-btn" id="collapseBtn">
+    <i class="bi bi-chevron-right"></i>
+    <span class="collapse-text">Expand</span>
+  </button>
+</div>

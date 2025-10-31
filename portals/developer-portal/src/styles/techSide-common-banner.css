@@ -1,0 +1,88 @@
+.techSide-banner-section {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+}
+
+.techSide-banner-hero {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  padding: 1.5rem 0;
+  background: var(--primary-gradient);
+  border-radius: 1.5rem;
+}
+
+.techSide-banner-container {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  padding: 1.5rem 5rem;
+}
+
+.techSide-banner-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.techSide-banner-image {
+  max-width: 80%;
+  height: auto;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.techSide-banner-content h1,
+.techSide-banner-content span {
+  color: var(--primary-main-color);
+}
+
+.techSide-banner-header {
+  max-width: 60rem;
+  margin: 0 auto;
+}
+
+.techSide-banner-content h1 {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-bottom: 1.25rem;
+}
+
+.techSide-banner-search-container {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.techSide-banner-search-input {
+  display: flex;
+  align-items: center;
+  background-color: var(--main-bg-color);
+  padding: 0.625rem 1.25rem;
+  border-radius: 1.5625rem;
+  width: 100%;
+  max-width: 81rem;
+  box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.1);
+  max-height: 3rem;
+}
+
+.techSide-banner-search-input input {
+  border: none;
+  outline: none;
+  width: 100%;
+  margin-left: 0.625rem;
+  font-size: 1rem;
+  background-color: transparent;
+  color: var(--main-text-color);
+}
+
+#query::placeholder {
+  color: var(--main-text-color);
+  opacity: 0.8;
+}

@@ -1,0 +1,46 @@
+<head>
+  <link rel='stylesheet' href='/technical-styles/warning.css' />
+  <script src="/technical-scripts/warning.js" defer></script> 
+  <script src='/technical-scripts/create-org.js' defer></script>
+</head>
+
+<body>
+  <section>
+    <div
+      class='modal fade delete-alert'
+      id='warningModal'
+      tabindex='-1'
+      aria-hidden='true'
+    >
+      <div class='modal-dialog'>
+        <div class='modal-content'>
+          <div class='modal-header'>
+            <h5 class='modal-title' id="modalTitle">{{modalTitle}}</h5>
+          </div>
+          <div class='modal-body'>
+            <p class='modal-message' id="modalMessage">{{modalMessage}}</p>
+          </div>
+          <div class='modal-footer'>
+            <button
+              type='button'
+              class='btn common-btn-link'
+              data-bs-dismiss='modal'
+            >
+              Cancel
+            </button>
+            <button
+              type='button'
+              class='btn common-btn-primary common-btn-danger'
+              data-bs-dismiss='modal'
+              id="modalFunction"
+              onclick="{{modalFunction}}"
+              data-cyid="confirm" 
+            >
+              Confirm
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</body>
