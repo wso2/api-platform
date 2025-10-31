@@ -37,7 +37,7 @@ const createAPIMetadata = async (orgID, apiMetadata, t) => {
         owners = apiInfo.owners;
     }
     try {
-        const apiMetadataResponse = await APIMetadata.create({
+        const createData = {
             REFERENCE_ID: apiInfo.referenceID,
             STATUS: apiInfo.apiStatus,
             PROVIDER: apiInfo.provider,
@@ -57,7 +57,12 @@ const createAPIMetadata = async (orgID, apiMetadata, t) => {
             PRODUCTION_URL: apiMetadata.endPoints.productionURL,
             METADATA_SEARCH: apiMetadata,
             ORG_ID: orgID
-        },
+        };
+        // If apiId is provided, use it instead of auto-generating
+        if (apiInfo.apiId) {
+            createData.API_ID = apiInfo.apiId;
+        }
+        const apiMetadataResponse = await APIMetadata.create(createData,
             { transaction: t }
         );
         return apiMetadataResponse;

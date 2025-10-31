@@ -46,6 +46,10 @@ const createOrganization = async (orgData, t) => {
         SUPER_ADMIN_ROLE: orgData.superAdminRole,
         ORG_CONFIG: orgData.orgConfig
     };
+    // If orgId is provided, use it instead of auto-generating
+    if (orgData.orgId) {
+        createOrgData.ORG_ID = orgData.orgId;
+    }
     try {
         const organization = await Organization.create(createOrgData, { transaction: t });
         return organization;
