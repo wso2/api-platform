@@ -1,0 +1,74 @@
+<!-- Display Validation Errors -->
+{{#if errors}}
+<div class="alert alert-danger">
+    <ul>
+        {{#each errors}}
+        <li>{{msg}}</li>
+        {{/each}}
+    </ul>
+</div>
+{{/if}}
+<!-- Display Success Message -->
+        <div class="card-body">
+            <form id="createIDP">
+                <div class="form-group mb-2">
+                    <label for="name" class="form-label">Name</label>
+                    <input type="text" class="form-control" id="name" name="name" placeholder="Enter IDP name">
+                </div>
+                <div class="form-group mb-2">
+                    <label for="issuer" class="form-label">Issuer</label>
+                    <input type="text" class="form-control" id="issuer" name="issuer" placeholder="Enter issuer URL">
+                </div>
+                <div class="form-group mb-2">
+                    <label for="authorizationURL" class="form-label">Authorization URL</label>
+                    <input type="text" class="form-control" id="authorizationURL" name="authorizationURL"
+                        placeholder="Enter authorization URL">
+                </div>
+                <div class="form-group mb-2">
+                    <label for="tokenURL" class="form-label">Token URL</label>
+                    <input type="text" class="form-control" id="tokenURL" name="tokenURL" placeholder="Enter token URL">
+                </div>
+                <div class="form-group mb-2">
+                    <label for="userInfoURL" class="form-label">User Info URL</label>
+                    <input type="text" class="form-control" id="userInfoURL" name="userInfoURL"
+                        placeholder="Enter user info URL">
+                </div>
+                <div class="form-group mb-2">
+                    <label for="clientId" class="form-label">Client ID</label>
+                    <input type="text" class="form-control" id="clientId" name="clientId" placeholder="Enter client ID">
+                </div>
+                <div class="form-group mb-2">
+                    <label for="callbackURL" class="form-label">Callback URL</label>
+                    <input type="text" class="form-control" id="callbackURL" name="callbackURL"
+                        placeholder="Enter callback URL">
+                </div>
+                <div class="form-group mb-2">
+                    <label for="signUpURL" class="form-label">Sign Up URL</label>
+                    <input type="text" class="form-control" id="signUpURL" name="signUpURL"
+                        placeholder="Enter sign up URL">
+                </div>
+                <div class="form-group mb-2">
+                    <label for="logoutURL" class="form-label">Logout URL</label>
+                    <input type="text" class="form-control" id="logoutURL" name="logoutURL"
+                        placeholder="Enter logout URL">
+                </div>
+                <div class="form-group mb-2">
+                    <label for="logoutRedirectURI" class="form-label">Logout Redirect URI</label>
+                    <input type="text" class="form-control" id="logoutRedirectURI" name="logoutRedirectURI"
+                        placeholder="Enter logout redirect URI">
+                </div>
+                <div class="form-group mb-2">
+                    <label for="logoutRedirectURI" class="form-label">JWKS URL</label>
+                    <input type="text" class="form-control" id="jwksURL" name="jwksURL" placeholder="Enter JWKS URL">
+                </div>
+                <div class="form-group mb-4">
+                    <label for="certificate" class="form-label">Certificate</label>
+                    <textarea class="form-control" id="certificate" name="certificate" rows="4"
+                        placeholder="Enter certificate"></textarea>
+                </div>
+                <div class="form-group">
+                    <button type="button" onclick="createIDP('{{orgID}}')" class="common-btn-outlined">Save
+                        Changes</button>
+                </div>
+            </form>
+        </div>

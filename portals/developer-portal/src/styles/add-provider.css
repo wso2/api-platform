@@ -1,0 +1,49 @@
+
+.provider-form {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    align-items: flex-end;
+}
+.input-group {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+label {
+    font-size: 14px;
+    margin-bottom: 5px;
+}
+input {
+    padding: 8px;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+button {
+    padding: 10px 20px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    border-radius: 4px;
+    height: 38px;
+}
+button:hover {
+    background-color: #45a049;
+}
+#providerList {
+    border-top: 1px solid #ccc;
+    padding-top: 20px;
+}
+.provider {
+    background-color: #f1f1f1;
+    padding: 10px;
+    margin-bottom: 10px;
+    border-radius: 5px;
+}
+
+.app-selection{
+    display: none;
+}

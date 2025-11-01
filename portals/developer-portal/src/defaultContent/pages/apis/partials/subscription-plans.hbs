@@ -1,0 +1,78 @@
+<!--
+ * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+ -->
+<div id="planModal-{{apiID}}" class="modal custom-modal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content custom-modal-content">
+            <div class="custom-modal-header">
+                <h2 class="custom-modal-title m-0">Choose Your Subscription Plan</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"
+                    onclick="closeModal('planModal-{{apiID}}')"></button>
+            </div>
+            <div class="custom-modal-body">
+                <div class="api-banner-content py-4 px-5">
+                    <div class="d-flex align-items-center justify-content-between w-100">
+                        <div class="col-12 col-md-7">
+                            <div class="api-title pb-3">
+                                <h4>{{apiInfo.apiName}}</h4>
+                                <span class="mb-1"> {{apiInfo.apiVersion}}</span>
+                                <p class="api-description">{{apiInfo.apiDescription}}</p>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-5 text-md-right">
+                            {{#if apiInfo.apiImageMetadata.api-icon}}
+                            <img class="img-thumbnail api-image-small" src="{{apiInfo.apiImageMetadata.api-icon}}"
+                                alt="API Image" />
+                            {{else}}
+                            <div
+                                class="img-thumbnail api-image-small image-icon d-flex justify-content-center align-items-center">
+                                {{firstTwoLetters apiInfo.apiName}}</div>
+                            {{/if}}
+                        </div>
+                    </div>
+                </div>
+                <div class="subscription-plans-body pb-4">
+                    <div class="subscription-plans-title small">Subscription Plans</div>
+                    <p class="subscription-plans-subtitle">Please select the most suitable subscription plan from the
+                        options
+                        available for this API</p>
+                    <div class="row row-gap-4 pt-3">
+                        {{#each subscriptionPolicyDetails}}
+                        <div class="col-12 col-md-6 col-lg-4">
+                            <div class="card dev-card">
+                                <div class="card-body align-items-center text-center p-0">
+                                    <span class="subscription-plans-card-title">{{displayName}}</h5>
+                                        <h1 class="subscription-plans-request-count">{{requestCount}}</h1>
+                                        <p class="subscription-plans-card-subtitle pb-4 pt-0">requests per minutes</p>
+                                        <a id="subscribe-btn-{{policyID}}" type="button"
+                                            class="common-btn-outlined p-1 ps-2 pe-2 w-100 subscription-plan-subscribe-btn"
+                                            onclick="showSubscribeButtonLoading(this); subscribe('{{@root.orgID}}', '', '{{../apiID}}', '{{../apiReferenceID}}', '{{policyID}}', '{{policyName}}')">Subscribe</a>
+                                </div>
+                            </div>
+                        </div>
+                        {{/each}}
+                    </div>
+                </div>
+                <div class="d-flex justify-content-end mb-3" id="applicationKeyUpdateButtonContainer">
+                    <button class="common-btn-outlined pr-3 me-3" type="button"
+                        onclick="closeModal('planModal-{{apiID}}')">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

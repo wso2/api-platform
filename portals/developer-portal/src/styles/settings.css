@@ -1,0 +1,94 @@
+.upload-area {
+  border: 2px dashed #ccc;
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.upload-area:hover {
+  border-color: var(--primary-color);
+}
+
+.hidden {
+  display: none;
+}
+
+h1 {
+  color: #333;
+}
+.organization {
+  border: 1px solid #ddd;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 3px;
+}
+.organization-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.organization-name {
+  font-weight: bold;
+}
+.organization-details {
+  display: none;
+  margin-top: 10px;
+  padding: 10px;
+  background-color: #f9f9f9;
+  border-radius: 3px;
+}
+.labels-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+}
+.label-span {
+  background-color: #8a80e2;
+  color: white;
+  padding: 5px 5px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+}
+.label-span .remove {
+  margin-left: 8px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.input-container {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 0.5rem;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  min-height: 40px;
+}
+#textInput {
+  flex-grow: 1;
+  border: none;
+  outline: none;
+  font-size: 1rem;
+  padding: 0.25rem;
+  min-width: 50px;
+}
+.span-tag {
+  display: inline-block;
+  margin: 2px;
+  padding: 2px 8px;
+  background-color: #e9ecef;
+  border-radius: 16px;
+  font-size: 0.875rem;
+  transition: background-color 0.2s ease;
+}
+.span-tag:hover {
+  background-color: #007bff;
+  color: white;
+}
+.span-tag .remove {
+  margin-left: 5px;
+  cursor: pointer;
+}

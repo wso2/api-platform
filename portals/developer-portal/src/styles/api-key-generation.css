@@ -1,0 +1,35 @@
+.form-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 0.75rem;
+  background-color: var(--white-color);
+  padding: 1.25rem;
+  height: 100%;
+  box-shadow: 0.25rem 0.25rem 0.5rem rgba(0, 0, 0, 0.1);
+}
+
+.title {
+  font-size: 1.5rem;
+  margin: 0;
+  color: var(--primary-color);
+}
+
+.button i {
+  margin-right: 0.3125rem;
+}
+
+.form-label {
+  font-size: 0.875rem;
+  color: var(--main-text-color);
+  margin: 0.3125rem 0;
+}
+
+.form-control,
+.form-select {
+  font-size: 0.875rem;
+  color: var(--main-text-color);
+}
+
+.error-msg {
+  font-size: 0.875rem;
+}

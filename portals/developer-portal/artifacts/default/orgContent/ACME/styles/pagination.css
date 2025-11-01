@@ -1,0 +1,27 @@
+.pagination-container {
+  margin-top: 10px;
+  margin-bottom: 50px;
+}
+
+.pagination-content {
+  justify-content: end;
+  align-items: center;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  padding-right: 100px;
+}
+
+.items-label {
+  margin-bottom: 0;
+  margin-right: 0.5rem;
+  font-size: 14px;
+}
+
+.pagination-btn {
+  margin-left: 5px;
+  border: none;
+  background-color: transparent;
+}

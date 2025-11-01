@@ -1,0 +1,88 @@
+    .default-container {
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Left side styles */
+    .left-side {
+      color: var(--main-text-color);
+      margin-bottom: 2.5rem;
+      text-align: center;
+    }
+
+    .default-logo-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1rem;
+    }
+
+    .default-logo {
+      margin-right: 0.5rem;
+      font-size: 1.875rem;
+      font-weight: 700;
+    }
+
+    /* Card styles */
+    .default-card {
+      background-color: white;
+      border-radius: 0.5rem;
+      width: 100%;
+      max-width: 28rem;
+    }
+
+    .default-card-content {
+      padding: 1rem 1.5rem 1.5rem 1.5rem;
+    }
+
+    /* Form styles */
+    .default-form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .default-form-label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+      color: #374151;
+    }
+
+    .default-form-input {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border: 0.5px solid rgb(from var(--primary-main-color) r g b / 10%);
+      border-radius: 0.375rem;
+      font-size: 1rem;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .default-form-input:focus {
+      outline: none;
+      border-color: var(--primary-dark-color);
+      box-shadow: 0 0.5rem 0.75rem rgba(from var(--primary-dark-color) r g b / 10%);
+    }
+
+    .default-form-input::placeholder {
+      color: #9ca3af;
+    }
+
+    /* Responsive styles */
+    @media (min-width: 1024px) {
+      .default-container {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: start;
+      }
+
+      .left-side {
+        margin-bottom: 0;
+        text-align: left;
+      }
+
+      .default-logo-container {
+        justify-content: flex-start;
+      }
+    }

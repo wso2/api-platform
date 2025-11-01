@@ -1,0 +1,72 @@
+<div class="modal custom-modal" id='keysTokenModal'>
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content custom-modal-content">
+            <div class="custom-modal-header">
+                <h2 class="custom-modal-title m-0">Access Token</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-cyid="keysTokenModal-close"  aria-label="Close"
+                    onclick="closeModal('keysTokenModal')"></button>
+            </div>
+            <div class="custom-modal-body">
+                <div class="container">
+                    {{#each keyManagersMetadata}}
+                    {{#if enabled}}
+                    {{#let "keys" (conditionalIf ../isProduction productionKeys sandboxKeys)}}
+                    <div id="regenerateKeyBtn" class="d-flex">
+                        <div class="row">
+                            <div id="tokenDisplay_{{../name}}" style="display: none;">
+                                <div class="info-title pb-2">Request Permissions (Scopes)</div>
+                                <div class="input-scopes" id="scopeContainer-{{@root.applicationMetadata.id}}"
+                                    data-scopes="{{json @root.subscriptionScopes}}">
+                                    <input type="text" class="text-input" id="scope-{{@root.applicationMetadata.id}}"
+                                        placeholder="Type scope and press Enter...">
+                                </div>
+                                <div class="info-box mt-5">
+                                    <div class="info-content">
+                                        <div class="info-title">Copy the access token</div>
+                                        <p class="info-text">
+                                            Please copy this generated access token as it will not be visible in the UI
+                                            again.
+                                        </p>
+                                    </div>
+                                    <div class="info-icon">
+                                        <i class="bi bi-info-circle"></i>
+                                    </div>
+                                </div>
+                                <div class="token-card">
+                                    <pre id="token_{{../name}}" class="token-text"></pre>
+                                    <button id="copyButton_{{../name}}" class="copy-button" aria-label="Copy token"
+                                        type="button" onclick="copyToken('{{../name}}')">
+                                        <i class="bi bi-copy"></i>
+                                    </button>
+                                </div>
+                                <div class="info-title pt-2 pb-2" id="resScopeTitle">Response Permisssions (Scopes)</div>
+                                <div id="responseScopeContainer-{{@root.applicationMetadata.id}}" data-response-scopes="">
+                                </div>
+                                <div class="d-flex justify-content-end mt-4 mb-3"
+                                    id="applicationKeyUpdateButtonContainer">
+                                    <button class="common-btn-outlined pr-3 me-3" type="button"
+                                        onClick="closeModal('keysTokenModal')">
+                                        Cancel
+                                    </button>
+                                    <button class="common-btn-primary btn-sm me-1 {{#if @root.isReadOnlyMode}}disabled{{/if}}" id="regenerateButton_{{../name}}"
+                                        onclick="generateOauthKey('applicationKeyGenerateForm-{{../id}}-{{#if ../../isProduction}}production{{else}}sandbox{{/if}}', '{{keys.appRefID}}', '{{keys.keyMappingId}}', '{{../name}}', '{{../../applicationMetadata/name}}', '{{keys.consumerSecret}}')">
+                                        <span class="button-normal-state">
+                                            <i class="bi bi-arrow-clockwise"></i> Regenerate
+                                        </span>
+                                        <span class="button-loading-state" style="display: none;">
+                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                            Regenerating...
+                                        </span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {{/let}}
+                    {{/if}}
+                    {{/each}}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

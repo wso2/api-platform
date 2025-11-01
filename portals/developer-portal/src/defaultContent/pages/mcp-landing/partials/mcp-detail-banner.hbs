@@ -1,0 +1,35 @@
+<section class="api-banner-section">
+  <div class="container-fluid">
+    <div class="api-banner-content align-items-center ">
+      <div class="col-12 col-md-7">
+        <div class="api-title">
+          <span class="badge api-badge-custom1">{{apiMetadata.apiInfo.apiCategory}}</span>
+          <h4>{{apiMetadata.apiInfo.apiName}}</h4>
+          <p class="api-version"> {{apiMetadata.apiInfo.apiVersion}}</p>
+        </div>
+        <p class="api-description">{{apiMetadata.apiInfo.apiDescription}}</p>
+        <div class="api-tags">
+          {{#apiMetadata.apiInfo.tags}}
+          <span class="badge api-badge-custom2">{{this}}</span>
+          {{/apiMetadata.apiInfo.tags}}
+        </div>
+        <div class="api-details-btn">
+          <a type="button" class="common-btn-primary" href="#subscriptionPlans">Subscribe</a>
+          {{#in apiMetadata.apiInfo.apiType values="REST,WS,GraphQL,MCP"}}
+          <a type="button" class="common-btn-outlined"
+            href="{{baseUrl}}/mcp/{{apiMetadata.apiHandle}}/docs/specification">Documentation</a>
+          {{else}}
+          <a type="button" class="common-btn-outlined" href="{{{schemaUrl}}}" download>Download</a>
+          {{/in}}
+        </div>
+      </div>
+      <div class="col-12 col-md-5 text-md-right api-banner-icon">
+        {{#if apiMetadata.apiInfo.apiImageMetadata.api-icon}}
+        <img class="img-thumbnail api-image" src="{{apiMetadata.apiInfo.apiImageMetadata.api-icon}}" alt="API Image" />
+        {{else}}
+        <div class="img-thumbnail api-image image-icon d-flex justify-content-center align-items-center">{{firstTwoLetters apiMetadata.apiInfo.apiName}}</div>
+        {{/if}}
+      </div>
+    </div>
+  </div>
+</section>

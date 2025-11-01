@@ -1,0 +1,55 @@
+<head>
+  <link rel='stylesheet' href='/technical-styles/add-edit-application.css' />
+</head>
+
+<section>
+    <div id="createAppModal" class="modal custom-modal" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-xl" role="document">
+            <div class="modal-content custom-modal-content">
+                <div class="custom-modal-header">
+                    <h2 class="custom-modal-title m-0">Create Application</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"
+                        onclick="closeModal('createAppModal')"></button>
+                </div>
+                <div class="custom-modal-body">
+                    <form id='applicationForm' class='create-app-form'>
+                        <!-- Application Name -->
+                        <div class='mb-3'>
+                            <label for='applicationName' class='form-label'>Application Name
+                                <span class='text-danger'>*</span></label>
+                            <input type='text' id='applicationName' class='form-control'
+                                placeholder='My Application' required />
+                            <div id='nameError' class='error-msg text-danger mt-1' style='display: none;'>
+                                Application name cannot be empty.</div>
+                        </div>
+
+                        <!-- Application Description -->
+                        <div class='mb-3'>
+                            <label for='applicationDescription' class='form-label'>Application
+                                Description</label>
+                            <textarea id='applicationDescription' class='form-control' rows='4'
+                                placeholder='Provide a brief description of the application'
+                                maxlength='256'></textarea>
+                            <div class='form-text'>
+                              <span id='remainingCharacters'>256</span> characters remaining
+                            </div>
+                            <div id='descriptionError' class='text-danger mt-1' style='display: none;'>
+                                Description exceeds the character limit.</div>
+                        </div>
+
+                        <!-- Buttons -->
+                        <div class='d-flex gap-3 mt-4'>
+                            <button type='button' class='common-btn-outlined' id="cancelButton"
+                                onclick="closeModal('createAppModal')">
+                                Cancel
+                            </button>
+                            <button type='submit' class='common-btn-primary' id='saveButton' disabled>
+                                Save
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>

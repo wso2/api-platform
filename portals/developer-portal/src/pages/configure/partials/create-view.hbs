@@ -1,0 +1,51 @@
+<form id="editView">
+    <div class="row g-3 align-items-end mb-4">
+        <div class="col-md-4">
+            <label for="displayName{{displayName}}" class="form-label">View display name</label>
+        </div>
+        <div class="col-md-4">
+            <input type="text" class="form-control" id="displayName{{displayName}}" name="displayName" required
+                value="{{displayName}}">
+        </div>
+    </div>
+    <div class="row g-3 align-items-end mb-4">
+        <div class="col-md-4">
+            <label for="viewName{{name}}" class="form-label">View Name</label>
+        </div>
+        <div class="col-md-4">
+            <input type="text" class="form-control" id="viewName{{name}}" name="viewName" required value="{{name}}">
+        </div>
+    </div>
+    <div class="row g-3 align-items-end mb-4">
+        <div class="col-md-4">
+            <label for="displayName{{displayName}}" class="form-label">Add label</label>
+        </div>
+        <div class="col-md-4">
+            <select id="labelSelect{{name}}" class="form-select"
+                onchange="addViewLabel('labelSelect{{name}}', 'labelsContainer{{name}}')">
+                {{#each @root.orgLabels as |orgLabelGroup|}}
+                <option>{{orgLabelGroup.name}}</option>
+                {{/each}}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <div id="labelsContainer{{name}}" class="d-flex flex-wrap gap-2 mb-3">
+                {{#each labels}}
+                <span class="badge bg-primary">
+                    {{this}}
+                    <button type="button" class="btn-close btn-close-white" aria-label="Remove"></button>
+                </span>
+                {{/each}}
+            </div>
+        </div>
+    </div>
+    <div class="row g-3">
+        <div class="col-md-4">
+            <button type="button" class="btn btn-secondary" id="cancelViewBtn">Cancel</button>
+            <button type="button" class="common-btn-outlined"
+                onclick="editView('{{json labels}}', 'labelsContainer{{name}}', 'displayName{{displayName}}', 'viewName{{name}}', '{{@root.orgID}}')">
+                +View
+            </button>
+        </div>
+    </div>
+</form>

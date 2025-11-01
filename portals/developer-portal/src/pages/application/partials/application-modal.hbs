@@ -1,0 +1,28 @@
+<section>
+    <div id="appModal-{{applicationMetadata.id}}" class="modal custom-modal" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-md" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h4>Add API</h4>
+                </div>
+                <div class="modal-body">
+                    <p>Name</p>
+                    <select class="form-select bg-white text-dark" onchange="addAPISubscription(this)" id="apiSelect">
+                        <option value="" disabled selected>Select an API</option>
+                        {{#each nonSubAPIs}}
+                        <option value="{{apiID}}" data-apiRefID= "{{apiReferenceID}}" data-policies='{{{json this.subscriptionPolicyDetails}}}'>
+                            {{apiInfo.apiName}} - {{apiInfo.apiVersion}}</option>
+                        {{/each}}
+                    </select>
+                    <p class="pt-4" id="planSelectLabel"> Subscription Plan</p>
+                    <select class="form-select bg-white text-dark" id="planSelect">
+                        <option value="" disabled selected>Select a Plan</option>
+                    </select>
+                    <div class="pt-5">
+                        <a class="common-btn-white" type="button" onclick="closeModal('appModal-{{applicationMetadata.id}}')">Cancel</a>
+                        <a class="common-btn-primary" type="button" onclick="subscribe('{{orgID}}','{{applicationMetadata.id}}', '', '', '')">Save</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+</section>

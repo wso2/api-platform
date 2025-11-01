@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions 
+    xmlns="http://schemas.xmlsoap.org/wsdl/"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+    xmlns:tns="http://example.com/leisureactivities"
+    name="LeisureActivitiesAPI"
+    targetNamespace="http://example.com/leisureactivities"
+    xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/">
+
+    <types>
+        <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="http://example.com/leisureactivities">
+            <xs:element name="AddActivityRequest">
+                <xs:complexType>
+                    <xs:sequence>
+                        <xs:element name="activityName" type="xs:string"/>
+                        <xs:element name="activityDescription" type="xs:string"/>
+                        <xs:element name="activityDate" type="xs:date"/>
+                    </xs:sequence>
+                </xs:complexType>
+            </xs:element>
+            <xs:element name="AddActivityResponse">
+                <xs:complexType>
+                    <xs:sequence>
+                        <xs:element name="status" type="xs:string"/>
+                        <xs:element name="activityId" type="xs:string"/>
+                    </xs:sequence>
+                </xs:complexType>
+            </xs:element>
+            <xs:element name="GetActivityRequest">
+                <xs:complexType>
+                    <xs:sequence>
+                        <xs:element name="activityId" type="xs:string"/>
+                    </xs:sequence>
+                </xs:complexType>
+            </xs:element>
+            <xs:element name="GetActivityResponse">
+                <xs:complexType>
+                    <xs:sequence>
+                        <xs:element name="activityName" type="xs:string"/>
+                        <xs:element name="activityDescription" type="xs:string"/>
+                        <xs:element name="activityDate" type="xs:date"/>
+                    </xs:sequence>
+                </xs:complexType>
+            </xs:element>
+            <xs:element name="UpdateActivityRequest">
+                <xs:complexType>
+                    <xs:sequence>
+                        <xs:element name="activityId" type="xs:string"/>
+                        <xs:element name="activityName" type="xs:string" minOccurs="0"/>
+                        <xs:element name="activityDescription" type="xs:string" minOccurs="0"/>
+                        <xs:element name="activityDate" type="xs:date" minOccurs="0"/>
+                    </xs:sequence>
+                </xs:complexType>
+            </xs:element>
+            <xs:element name="UpdateActivityResponse">
+                <xs:complexType>
+                    <xs:sequence>
+                        <xs:element name="status" type="xs:string"/>
+                    </xs:sequence>
+                </xs:complexType>
+            </xs:element>
+        </xs:schema>
+    </types>
+
+    <message name="AddActivityRequest">
+        <part name="parameters" element="tns:AddActivityRequest"/>
+    </message>
+    <message name="AddActivityResponse">
+        <part name="parameters" element="tns:AddActivityResponse"/>
+    </message>
+    <message name="GetActivityRequest">
+        <part name="parameters" element="tns:GetActivityRequest"/>
+    </message>
+    <message name="GetActivityResponse">
+        <part name="parameters" element="tns:GetActivityResponse"/>
+    </message>
+    <message name="UpdateActivityRequest">
+        <part name="parameters" element="tns:UpdateActivityRequest"/>
+    </message>
+    <message name="UpdateActivityResponse">
+        <part name="parameters" element="tns:UpdateActivityResponse"/>
+    </message>
+
+    <portType name="LeisureActivitiesPortType">
+        <operation name="AddActivity">
+            <input message="tns:AddActivityRequest"/>
+            <output message="tns:AddActivityResponse"/>
+        </operation>
+        <operation name="GetActivity">
+            <input message="tns:GetActivityRequest"/>
+            <output message="tns:GetActivityResponse"/>
+        </operation>
+        <operation name="UpdateActivity">
+            <input message="tns:UpdateActivityRequest"/>
+            <output message="tns:UpdateActivityResponse"/>
+        </operation>
+    </portType>
+
+    <binding name="LeisureActivitiesBinding" type="tns:LeisureActivitiesPortType">
+        <soap:binding style="rpc" transport="http://schemas.xmlsoap.org/soap/http"/>
+        <operation name="AddActivity">
+            <soap:operation soapAction="http://example.com/leisureactivities/AddActivity"/>
+            <input>
+                <soap:body use="encoded" namespace="http://example.com/leisureactivities" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/>
+            </input>
+            <output>
+                <soap:body use="encoded" namespace="http://example.com/leisureactivities" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/>
+            </output>
+        </operation>
+        <operation name="GetActivity">
+            <soap:operation soapAction="http://example.com/leisureactivities/GetActivity"/>
+            <input>
+                <soap:body use="encoded" namespace="http://example.com/leisureactivities" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/>
+            </input>
+            <output>
+                <soap:body use="encoded" namespace="http://example.com/leisureactivities" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/>
+            </output>
+        </operation>
+        <operation name="UpdateActivity">
+            <soap:operation soapAction="http://example.com/leisureactivities/UpdateActivity"/>
+            <input>
+                <soap:body use="encoded" namespace="http://example.com/leisureactivities" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/>
+            </input>
+            <output>
+                <soap:body use="encoded" namespace="http://example.com/leisureactivities" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"/>
+            </output>
+        </operation>
+    </binding>
+
+    <service name="LeisureActivitiesService">
+        <port name="LeisureActivitiesPort" binding="tns:LeisureActivitiesBinding">
+            <soap:address location="http://example.com/leisureactivities"/>
+        </port>
+    </service>
+</definitions>

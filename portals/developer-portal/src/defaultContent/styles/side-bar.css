@@ -1,0 +1,282 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Sidebar base styles */
+.sidebar {
+    position: fixed;
+    top: 5rem;
+    left: 0;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: calc(100vh - 8rem);
+    padding: 1rem 0;
+    background-color: var(--primary-main-color);
+    width: 4.5rem;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 0 0.5rem 0.5rem 0;
+    box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+/* Hover state - expand as overlay without affecting content */
+.sidebar:hover:not(.expanded):not(.force-collapse) {
+    width: 16rem;
+}
+
+/* Prevent hover expansion when force-collapse is active */
+.sidebar.force-collapse:hover {
+    width: 4.5rem;
+}
+
+/* Expanded state - stays fixed but content area adjusts */
+.sidebar.expanded {
+    width: 16rem;
+}
+
+/* Default content area margin */
+.content-area {
+    margin-left: 7.75rem;
+    transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: margin-left;
+}
+
+/* Content area when sidebar is expanded */
+.sidebar.expanded ~ .content-area {
+    margin-left: 19.25rem;
+}
+
+.sidebar.collapsed {
+    width: 4.5rem;
+}
+
+.sidebar .nav a {
+    font-size: 1rem;
+}
+
+.nav {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.nav-link {
+    padding: 1rem;
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    color: var(--primary-lightest-color);
+    border-radius: 0.5rem;
+    transition: background-color 0.2s;
+    margin: 0 0.5rem;
+}
+
+/* Align to left when expanded or hovered (and not force-collapsed) */
+.sidebar:hover:not(.force-collapse) .nav-link,
+.sidebar.expanded .nav-link {
+    justify-content: flex-start;
+}
+
+.nav-link:hover {
+    background-color: var(--primary-light-color);
+    color: var(--light-text-color);
+}
+
+.nav-link:hover img,
+.nav-link:hover svg {
+    filter: brightness(0) invert(1);
+}
+
+.nav-link.active {
+    background-color: var(--primary-light-color);
+    color: var(--light-text-color);
+}
+
+.nav-link.active img,
+.nav-link.active svg {
+    filter: brightness(0) invert(1);
+}
+
+.nav-link svg {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+}
+
+.nav-text {
+    margin: 0;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease, margin 0.2s ease;
+    overflow: hidden;
+    width: 0; /* Take no space when hidden */
+    font-weight: normal; 
+    color: var(--light-text-color);
+    font-size: smaller;
+}
+
+/* Show text only when hovered (and not force-collapsed) or expanded */
+.sidebar:hover:not(.force-collapse) .nav-text,
+.sidebar.expanded .nav-text {
+    margin: 0 0 0 1rem;
+    opacity: 1;
+    visibility: visible;
+    width: auto;
+}
+
+.sidebar:hover .nav-text,
+.sidebar.expanded .nav-text {
+    opacity: 1;
+}
+
+.collapsed .nav-text {
+    display: none;
+}
+
+.api-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 0.125rem solid currentColor;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.625rem;
+    flex-shrink: 0;
+}
+
+/* Adjust collapse button alignment */
+.collapse-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    background: none;
+    border: none;
+    margin: 0 0.3125rem;
+    color: var(--primary-lightest-color);
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+/* Align to left when expanded or hovered (and not force-collapsed) */
+.sidebar:hover:not(.force-collapse) .collapse-btn,
+.sidebar.expanded .collapse-btn {
+    justify-content: flex-start;
+}
+
+.collapse-btn i {
+    display: flex;
+    align-items: center;
+    font-size: 1rem;
+}
+
+.collapse-btn:hover {
+    color: var(--light-text-color);
+}
+
+.collapse-btn svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    transition: transform 0.3s;
+}
+
+.collapsed .collapse-btn svg {
+    transform: rotate(180deg);
+}
+
+/* Improved styling for the collapse button text */
+.collapse-text {
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    overflow: hidden;
+    width: 0;
+    font-weight: normal; 
+    color: white;
+    font-size: smaller;
+}
+
+/* Show collapse button text when sidebar is hovered (and not force-collapsed) or expanded */
+.sidebar:hover:not(.force-collapse) .collapse-text,
+.sidebar.expanded .collapse-text {
+    opacity: 1;
+    visibility: visible;
+    width: auto;
+}
+
+.collapsed .collapse-text {
+    opacity: 0;
+    width: 0;
+    overflow: hidden;
+}
+
+.submenu {
+    display: none;
+    flex-direction: column;
+    background-color: var(--primary-dark-color);
+    border-radius: 0 0 0.5rem 0.5rem;
+    padding: 0.25rem 0;
+    margin: -1rem 0.5rem 0 0.5rem;
+}
+
+.submenu.show {
+    display: flex;
+}
+
+#apis.has-active-submenu {
+    background-color: var(--primary-dark-color);
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    margin-bottom: 0;
+}
+
+#mcps.has-active-submenu {
+    background-color: var(--primary-dark-color);
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    margin-bottom: 0;
+}
+
+.submenu-link {
+    margin: 0;
+    border-radius: 0;
+    padding: 0.75rem 1rem !important;
+    background-color: transparent;
+}
+
+.submenu-link.active {
+    background-color: var(--primary-light-color);
+    border-radius: 0;
+}
+
+.submenu-icon {
+    width: 1.375rem;
+    height: 1rem;
+    flex-shrink: 0;
+}
+
+.sidebar.collapsed .submenu {
+    /* padding-left: 0; */
+    display: none;
+}
+
+.sidebar.collapsed .submenu.show {
+    display: flex;
+}
+
+.sidebar.collapsed .submenu-link {
+    justify-content: center;
+}
+
+.sidebar.collapsed .submenu-icon {
+    display: block;
+    margin: 0;
+}

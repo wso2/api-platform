@@ -1,0 +1,154 @@
+.hero-section {
+  margin: 0 1rem 0 0;
+}
+
+.hero-content {
+  border-radius: 0.75rem;
+  padding-left: 3rem;
+}
+
+.hero-title {
+  font-size: 2.75rem;
+  font-weight: 600;
+  color: var(--light-text-color);
+  margin-bottom: 1.5rem;
+  line-height: 1.2;
+}
+
+.hero-title .highlight {
+  color: var(--primary-main-color);
+  padding: 0;
+}
+
+.hero-description {
+  font-size: 1rem;
+  color: var(--light-text-color);
+  margin-bottom: 2rem;
+  max-width: 600px;
+}
+
+.hero {
+  background: var(--primary-gradient);
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.hero-left-content {
+  padding-top: 2rem;
+  padding-bottom: 2rem;
+}
+
+.hero-image-container {
+  width: 100%; 
+  overflow: hidden; 
+  justify-content: center;
+}
+
+.hero-banner-image {
+  width: 100%; 
+  height: auto;
+}
+
+.ad-container {
+  display: flex;
+  gap: 6rem;
+  margin: 0 auto;
+  flex-wrap: wrap;
+  justify-content: center;
+  border-radius: 24px;
+  row-gap: 2rem;
+}
+
+.card {
+  position: static;
+}
+
+.advantage-card {
+  border-radius: 0.75rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--main-bg-color);
+}
+
+.advantage-card-image-container {
+  height: 220px;
+  max-width: 54vw;
+  overflow: hidden;
+  border-top-left-radius: 0.75rem;
+  border-top-right-radius: 0.75rem;
+}
+
+.advantage-card-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.advantage-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 1.5rem 0 1.5rem;
+}
+
+.advantage-card h5 {
+  font-size: 18px;
+  color: var(--primary-light-color);
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+}
+
+.advantage-card ul {
+  list-style: none;
+  margin-bottom: 2rem;
+  flex-grow: 1;
+  padding-left: 0;
+}
+
+.advantage-card ul li {
+  color: var(--main-text-color);
+  margin-bottom: 0.5rem;
+  padding-left: 1rem;
+  position: relative;
+}
+
+.advantage-card ul li::before {
+  content: "•";
+  color: var(--secondary-main-color);
+  position: absolute;
+  left: 0;
+  font-size: 1rem;
+}
+
+.advantage-card .advantage-card-footer {
+  padding: 10px 20px 20px 20px;
+  margin-top: auto;
+}
+
+@media (max-width: 992px) {
+  .hero-content {
+    padding: 3rem 2rem;
+  }
+
+  .hero-title {
+    font-size: 4vw;
+    white-space: normal;
+  }
+
+  .hero-description {
+    font-size: 2vw;
+    white-space: normal;
+  }
+
+  .hero-buttons {
+    flex-direction: column;
+  }
+
+  .hero-image-container {
+    display: none; 
+  }
+}

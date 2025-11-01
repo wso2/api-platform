@@ -1,0 +1,43 @@
+<section class="api-banner-section">
+  <div class="col-11 row align-items-center api-banner-content">
+    <div class="col-12 col-md-7">
+      <div class="api-title">
+        <h4>{{apiMetadata.apiInfo.apiName}}</h4>
+        <span
+          class="badge api-badge-custom1"
+        >{{apiMetadata.apiInfo.apiCategory}}</span>
+        <p class="api-version"> V{{apiMetadata.apiInfo.apiVersion}}</p>
+      </div>
+      <p class="api-description">{{apiMetadata.apiInfo.apiDescription}}</p>
+      <div class="api-tags">
+        {{#apiMetadata.apiInfo.tags}}
+          <span class="badge api-badge-custom2">{{this}}</span>
+        {{/apiMetadata.apiInfo.tags}}
+      </div>
+      <div class="api-details-btn">
+        {{#in apiMetadata.apiInfo.apiType values="REST,WS,GraphQL"}}
+          <a
+            type="button"
+            class="common-btn-primary"
+            href="{{baseUrl}}/api/{{apiMetadata.apiInfo.apiName}}/tryout"
+          >Try Out</a>
+        {{else}}
+          <a
+            type="button"
+            class="common-btn-white"
+            href="{{{schemaUrl}}}"
+            download
+          >Download</a>
+        {{/in}}
+          <a type="button" class="common-btn-white" href="#subscriptionPlans">Subscribe</a>
+      </div>
+    </div>
+    <div class="col-12 col-md-5 text-md-right">
+      <img
+        class="img-thumbnail api-image"
+        src="{{apiMetadata.apiInfo.apiImageMetadata.api-icon}}"
+        alt="API Image"
+      />
+    </div>
+  </div>
+</section>

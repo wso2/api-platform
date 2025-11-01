@@ -1,0 +1,31 @@
+<head>
+  <link rel='stylesheet' href='/technical-styles/application.css' />
+  <script src='/technical-scripts/application-dashboard.js' defer></script>
+</head>
+
+<body>
+  <section>
+    <div class='row'>
+      <div class='col content pt-0'>
+        <div id='overview' class='content-section'>
+          {{> overview }}
+        </div>
+        <div id='prod-oauth2' class='content-section d-none'>
+          {{> apis }}
+        </div>
+        <div id='prod-apikey' class='content-section d-none'>
+          {{> prod-apikey}}
+        </div>
+        <div id='sandbox-oauth2' class='content-section d-none'>
+          {{> sandbox-oauth2 }}
+        </div>
+        <div id='sandbox-apikey' class='content-section d-none'>
+          {{> sandbox-apikey }}
+        </div>
+        <div id='subscriptions' class='content-section d-none'>
+          {{> subscriptions }}
+        </div>
+      </div>
+    </div>
+  </section>
+</body>

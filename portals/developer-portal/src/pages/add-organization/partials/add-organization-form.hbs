@@ -1,0 +1,73 @@
+<section>
+    <div class="container my-5">
+        <div class="card-body">
+            <form id="createOrg">
+                <div class="form-group mb-2">
+                    <label for="orgName" class="form-label">Name</label>
+                    <input type="text" class="form-control" id="orgName" name="orgName"
+                        placeholder="Enter organization name">
+                </div>
+                <div class="form-group mb-2">
+                    <label for="business-owner" class="form-label">Business Owner</label>
+                    <input type="text" class="form-control" id="businessOwner" name="businessOwner"
+                        placeholder="Enter Business Owner">
+                </div>
+                <div class="form-group mb-2">
+                    <label for="business-owner-contact" class="form-label">Business Owner Contact</label>
+                    <input type="text" class="form-control" id="businessOwnerContact" name="businessOwnerContact"
+                        placeholder="Enter Business Owner Contact" pattern="[0-9]{10}"
+                        title="Please enter a valid 10-digit contact number">
+                </div>
+                <div class="form-group mb-2">
+                    <label for="business-owner-email" class="form-label">Business Owner Email</label>
+                    <input type="email" class="form-control" id="businessOwnerEmail" name="businessOwnerEmail"
+                        placeholder="Enter Business Owner Email" title="Please enter a valid email address">
+                </div>
+                <div class="form-group mb-2">
+                    <label for="orgHandle" class="form-label">Organization display name</label>
+                    <input type="text" class="form-control" id="orgHandle" name="orgHandle"
+                        placeholder="Enter Dev Portal URL Identifier" required>
+                </div>
+                <div class="form-group mb-2">
+                    <label for="roleClaimName" class="form-label">Role Claim Name</label>
+                    <input type="text" class="form-control" id="roleClaimName" name="roleClaimName"
+                        placeholder="Enter Role Claim Name" required>
+                </div>
+                <div class="form-group mb-2">
+                    <label for="groupsClaimName" class="form-label">Groups Claim Name</label>
+                    <input type="text" class="form-control" id="groupsClaimName" name="groupsClaimName"
+                        placeholder="Enter Groups Claim Name" required>
+                </div>
+                <div class="form-group mb-2">
+                    <label for="organizationClaimName" class="form-label">Organization Claim Name</label>
+                    <input type="text" class="form-control" id="organizationClaimName" name="organizationClaimName"
+                        placeholder="Enter Organization Claim Name" required>
+                </div>
+                <div class="form-group mb-2">
+                    <label for="organizationIdentifier" class="form-label">Organization Identifier</label>
+                    <input type="text" class="form-control" id="organizationIdentifier" name="organizationIdentifier"
+                        placeholder="Enter Organization Identifier" required>
+                </div>
+                <div class="form-group mb-2">
+                    <label for="adminRole" class="form-label">Admin Role</label>
+                    <input type="text" class="form-control" id="adminRole" name="adminRole"
+                        placeholder="Enter Admin Role" required>
+                </div>
+                <div class="form-group mb-2">
+                    <label for="subscriberRole" class="form-label">Subscriber Role</label>
+                    <input type="text" class="form-control" id="subscriberRole" name="subscriberRole"
+                        placeholder="Enter Subscriber Role" required>
+                </div>
+                <div class="form-group mb-4">
+                    <label for="superAdminRole" class="form-label">Super Admin Role</label>
+                    <input type="text" class="form-control" id="superAdminRole" name="superAdminRole"
+                        placeholder="Enter Super Admin Role" required>
+                </div>
+                <div class="form-group">
+                    <button type="button" class="btn btn-secondary" id="cancelAddBtn">Cancel</button>
+                    <button type="button" class="common-btn-outlined" onclick="createOrg()">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>

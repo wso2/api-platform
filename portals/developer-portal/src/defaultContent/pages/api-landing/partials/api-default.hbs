@@ -1,0 +1,107 @@
+<!--
+ * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+ -->
+<section class="section mb-4">
+    <div class="container-fluid">
+        <div class="defaultapi-section">
+            <div class="container-header mb-4">Endpoints</div>
+            {{#if (eq resources.serverDetails "")}}
+            <div class="defaultapi-endpoint-row col-12 col-xl-9">
+                <div class="defaultapi-endpoint-content ">
+                    <span class="defaultapi-development-label">No endpoints available</span>
+                </div>
+            </div>
+            {{else}}
+            {{#unless (eq resources.serverDetails.productionURL "")}}
+            <div class="defaultapi-endpoint-row col-12 col-xl-9">
+                <div class="defaultapi-endpoint-content">
+                    <span class="defaultapi-development-label">Production Endpoint</span>
+                    <div class="defaultapi-endpoint-url-container d-flex">
+                        <pre id="token_api_prod_url" class="defaultapi-endpoint-url token-text mb-0">{{resources.serverDetails.productionURL}}</pre>
+                        <a class="copy-button" aria-label="Copy token" type="button" onclick="copyToken('api_prod_url')">
+                            <i class="bi bi-copy"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {{/unless}}
+            {{#unless (eq apiMetadata.apiInfo.apiType "MCP")}}
+            {{#unless (eq resources.serverDetails.sandboxURL "")}}
+            <div class="defaultapi-endpoint-row col-12 col-xl-9">
+                <div class="defaultapi-endpoint-content">
+                    <span class="defaultapi-development-label">Sandbox Endpoint</span>
+                    <div class="defaultapi-endpoint-url-container d-flex">
+                        <pre id="token_api_dev_url" class="defaultapi-endpoint-url token-text mb-0">{{resources.serverDetails.sandboxURL}}</pre>
+                        <a class="copy-button" aria-label="Copy token" type="button" onclick="copyToken('api_dev_url')">
+                            <i class="bi bi-copy"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {{/unless}}
+            {{/unless}}
+            {{/if}}
+        </div>
+        {{#unless (eq apiMetadata.apiInfo.apiType "WS")}}
+        <div class="defaultapi-section">
+            <div class="container-header mb-4">Scopes</div>
+            {{#if scopes.length}}
+            {{#scopes}}
+            <span class="api-span-tag"> {{this.key}} </span>
+            {{/scopes}}
+            {{else}}
+            <span> No scopes available </span>
+            {{/if}}
+        </div>
+        {{/unless}}
+        {{#unless (eq apiMetadata.apiInfo.apiType "MCP")}}
+        {{#unless (eq apiMetadata.apiInfo.apiType "WS")}}
+        <div class="defaultapi-section">
+        <div class="container-header mb-4">Resources</div>
+        <div class="defaultapi-resources col-12">
+            {{#resources.endpoints}}
+            {{#methods}}
+            <div class="defaultapi-resource-item defaultapi-resource-item-{{method}}">
+            <div class="defaultapi-http-method defaultapi-http-method-{{method}}">{{method}}</div>
+            <div class="defaultapi-resource-path">{{../path}}</div>
+            <div class="defaultapi-resource-summary">{{summary}}</div>
+            </div>
+            {{/methods}}
+            {{/resources.endpoints}}
+        </div>
+        </div>
+        {{/unless}}
+        {{/unless}}
+        {{#if (eq apiMetadata.apiInfo.apiType "WS")}}
+        <div class="defaultapi-section">
+            <div class="container-header mb-4">Channels</div>
+            <div class="defaultapi-resources col-12">
+                {{#each resources.channels}}
+                <div class="defaultapi-resources-channel">
+                    <div class="defaultapi-resources-channel-operations">
+                        <div class="pub-box">PUB</div>
+                        <div class="sub-box">SUB</div>
+                    </div>
+                    <div class="defaultapi-resource-path">{{name}}</div>
+                </div>
+                {{/each}}
+            </div>
+        </div>
+        {{/if}}
+    </div>
+</section>

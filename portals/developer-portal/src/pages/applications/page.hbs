@@ -1,0 +1,9 @@
+<main>
+    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode }}
+    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode }}
+    {{!-- {{> applications-hero-banner}} --}}
+    {{> applications-listing }}
+    {{> create-app }}
+    {{> alert }}
+    {{> warning modalTitle="Delete Application" modalMessage="Are you sure you want to delete this application? This action cannot be undone and will revoke all associated access tokens and subscriptions." modalFunction="deleteApplication()" }}
+</main>

@@ -1,0 +1,32 @@
+<section id="subscriptionPlans" class="api-plans-section">
+    <div class="col-11 row align-items-center api-plans-content">
+        {{#if subscriptionPlans.length}}
+        <div class="common-header">
+            <h2>Available Subscription Plans</h2>
+        </div>
+        <div class="row card-section">
+            {{#each subscriptionPlans}}
+            <div class="col-lg-3">
+                <div class="card dev-card custom-plans-card">
+                    <div class="card-body">
+                        <h5 >{{displayName}}</h5>
+                        <p> Billing plan: {{billingPlan}} </p>
+                        <p class="custom-plans-description"> {{description}}</p>
+                        {{#if (eq ../providerUrl "#subscriptionPlans")}}
+                            <a type="button" class="common-btn-outlined"
+                                href="{{../baseUrl}}/myapis?policyName={{policyName}}&apiName={{../apiMetadata.apiInfo.apiName}}&apiVersion={{../apiMetadata.apiInfo.apiVersion}}">Subscribe</a>
+                        {{else}}
+                            <a type="button" class="common-btn-outlined" href="{{../providerUrl}}" target="_blank">Subscribe</a>
+                        {{/if}}
+                    </div>
+                </div>
+            </div>
+            {{/each}}
+        </div>
+        {{else}}
+        <div class="common-header">
+            <h2>No Subscription Plans Available</h2>
+        </div>
+        {{/if}}
+    </div>
+</section>

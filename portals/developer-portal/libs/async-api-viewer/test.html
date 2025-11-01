@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://unpkg.com/react@17.0.2/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@17.0.2/umd/react-dom.development.js"></script>
+    <script src="dist/websocket-viewer.umd.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script>
+    const swaggerData = {
+        asyncapi: '2.0.0',
+        info: {
+            title: 'My API',
+            version: '1.0.0',
+            description: 'A sample AsyncAPI specification'
+        },
+        channels: {
+            'test': {
+                subscribe: {
+                    message: 'A sample message',
+                    operationId: 'test'
+                },
+                publish: {
+                    message: 'A sample message',
+                    operationId: 'test'
+                }
+            }
+        }
+    };
+    let serverUrl = 'wss://echo.websocket.org';
+    const rootElement = document.getElementById('root');
+    ReactDOM.render(React.createElement(WebSocketViewer.default, {
+        apiEndpoint: serverUrl,
+        token: 'token',
+        asyncapi: swaggerData,
+    }), rootElement);
+</script>
+</body>
+</html>

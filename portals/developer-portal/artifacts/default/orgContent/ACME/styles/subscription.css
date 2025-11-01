@@ -1,0 +1,36 @@
+.api-plans-section {
+  margin: 3rem 3.75rem;
+  text-align: center;
+}
+
+.api-plans-content {
+  margin: 4rem auto 2.5rem auto;
+}
+
+.card-section {
+  display: flex;
+  justify-content: center;
+}
+
+.custom-plans-card {
+  border: 0.2px solid var(--secondary-main-color);
+  transition: all 0.3s ease-in-out;
+  max-width: 380px;
+}
+
+.custom-plans-card:hover {
+  transform: translateY(-5px);
+}
+
+.custom-plans-card h5 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary-main-color);
+  margin-bottom: 0.5rem;
+}
+
+.custom-plans-description {
+  font-size: 1rem;
+  color: var(--light-text-color);
+}
+

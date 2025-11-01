@@ -1,0 +1,14 @@
+.custom-bootstrap-alert {
+    background-color: #fff7f0;
+    color: #2c2c2c;
+    border-radius: 0;
+    font-size: 0.75rem;
+    margin-left: 0.7rem;
+    margin-right: 1.7rem;
+    padding: 0.75rem 1.25rem;
+}
+
+.alert-icon {
+    color: #f57c00;
+    font-size: 1.25rem;
+}

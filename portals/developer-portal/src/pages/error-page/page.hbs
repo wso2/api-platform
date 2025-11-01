@@ -1,0 +1,8 @@
+<section class="d-flex flex-column justify-content-center align-items-center vh-100 text-center">
+    {{> header profile=profile baseUrl=baseUrl devportalMode=devportalMode }}
+    {{> sidebar profile=profile baseUrl=baseUrl devportalMode=devportalMode }}
+    <div>
+        <img src="/images/Ooops.svg" alt="Oops" class="img-fluid mb-3" />
+        <h4>{{errorMessage}}</h4>
+    </div>
+</section>

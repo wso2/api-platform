@@ -1,0 +1,77 @@
+.custom-navbar {
+  background-color: var(--white-color);
+  padding: 0.5rem;
+}
+
+.navbar-logo {
+  height: 2.5rem;
+}
+
+.nav-link {
+  color: var(--main-text-color);
+  margin: 0 0.3125rem;
+}
+
+.nav-item {
+  color: var(--main-text-color);
+}
+
+.nav-link:hover,
+.nav-link:focus,
+.nav-link.active {
+  color: var(--primary-main-color);
+}
+
+.profile-link {
+  color: var(--main-text-color);
+  text-decoration: none;
+}
+
+.profile-icon {
+  height: 1.875rem;
+  border-radius: 50%;
+}
+
+.profile-options {
+  right: 2rem !important;
+  font-size: small !important;
+}
+
+.profile-dropdown-link {
+  color: var(--main-text-color);
+  text-decoration: none;
+}
+
+.navbar-toggler:focus {
+  box-shadow: none;
+  border: 0.0625rem solid var(--primary-color);
+}
+
+@media (max-width: 61.5rem) {
+  .navbar-collapse {
+    text-align: left;
+  }
+
+  .navbar-nav {
+    justify-content: start;
+    width: 100%;
+  }
+
+  .nav-item {
+    width: 100%;
+  }
+}
+
+@media (max-width: 48rem) {
+  .navbar-brand span {
+    font-size: 1rem;
+  }
+
+  .nav-link {
+    font-size: 0.5625rem;
+  }
+
+  #auth-section {
+    flex-direction: column;
+  }
+}

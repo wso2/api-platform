@@ -1,0 +1,494 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+      "title": "Accommodation API",
+      "description": "API for managing accommodations and reservations in a specified city",
+      "version": "1.1.0"
+    },
+    "servers": [
+      {
+        "url": "https://stoplight.io/mocks/devportalmock/accommodationapi/413740907",
+        "description": "Main (production) server"
+      },
+      {
+        "url": "https://stoplight.io/mocks/devportalmock/accommodationapi/413740907",
+        "description": "Staging server"
+      }
+    ],
+    "paths": {
+      "/accommodations": {
+        "get": {
+          "summary": "Get a list of available accommodations",
+          "description": "Retrieve a list of available accommodations in the specified city based on search criteria",
+          "parameters": [
+            {
+              "in": "query",
+              "name": "city",
+              "schema": {
+                "type": "string"
+              },
+              "required": true,
+              "description": "The name of the city to search accommodations in",
+              "example": "Paris"
+            },
+            {
+              "in": "query",
+              "name": "check_in_date",
+              "schema": {
+                "type": "string",
+                "format": "date"
+              },
+              "required": true,
+              "description": "The check-in date for the accommodation stay",
+              "example": "2024-08-01"
+            },
+            {
+              "in": "query",
+              "name": "check_out_date",
+              "schema": {
+                "type": "string",
+                "format": "date"
+              },
+              "required": true,
+              "description": "The check-out date for the accommodation stay",
+              "example": "2024-08-10"
+            },
+            {
+              "in": "query",
+              "name": "guests",
+              "schema": {
+                "type": "integer"
+              },
+              "required": true,
+              "description": "The number of guests for the accommodation stay",
+              "example": 2
+            },
+            {
+              "in": "query",
+              "name": "min_price",
+              "schema": {
+                "type": "number",
+                "format": "float"
+              },
+              "description": "Minimum price per night",
+              "example": 50
+            },
+            {
+              "in": "query",
+              "name": "max_price",
+              "schema": {
+                "type": "number",
+                "format": "float"
+              },
+              "description": "Maximum price per night",
+              "example": 300
+            },
+            {
+              "in": "query",
+              "name": "rating",
+              "schema": {
+                "type": "number",
+                "format": "float"
+              },
+              "description": "Minimum rating of the accommodation",
+              "example": 4
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "A list of available accommodations",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Accommodation"
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Invalid parameters"
+            },
+            "500": {
+              "description": "Server error"
+            }
+          }
+        }
+      },
+      "/accommodations/{id}": {
+        "get": {
+          "summary": "Get details of a specific accommodation",
+          "description": "Retrieve detailed information about a specific accommodation",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "schema": {
+                "type": "string"
+              },
+              "required": true,
+              "description": "The ID of the accommodation",
+              "example": "acc123"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Accommodation details",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Accommodation"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Accommodation not found"
+            },
+            "500": {
+              "description": "Server error"
+            }
+          }
+        }
+      },
+      "/reservations": {
+        "post": {
+          "summary": "Create a new accommodation reservation",
+          "description": "Make a reservation for an accommodation",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewReservation",
+                  "examples": {
+                    "example-1": {
+                      "summary": "Standard reservation",
+                      "value": {
+                        "accommodation_id": "acc123",
+                        "guest_name": "Jane Smith",
+                        "check_in_date": "2024-08-01",
+                        "check_out_date": "2024-08-10",
+                        "number_of_guests": 2,
+                        "special_requests": "Late check-in"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Reservation created",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Reservation"
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Invalid request"
+            },
+            "500": {
+              "description": "Server error"
+            }
+          }
+        }
+      },
+      "/reservations/{id}": {
+        "get": {
+          "summary": "Get details of a specific reservation",
+          "description": "Retrieve detailed information about a specific reservation",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "schema": {
+                "type": "string"
+              },
+              "required": true,
+              "description": "The ID of the reservation",
+              "example": "res123"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Reservation details",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Reservation"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Reservation not found"
+            },
+            "500": {
+              "description": "Server error"
+            }
+          }
+        },
+        "put": {
+          "summary": "Update a reservation",
+          "description": "Update details of an existing reservation",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "schema": {
+                "type": "string"
+              },
+              "required": true,
+              "description": "The ID of the reservation",
+              "example": "res123"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewReservation",
+                  "examples": {
+                    "example-1": {
+                      "summary": "Update reservation",
+                      "value": {
+                        "accommodation_id": "acc123",
+                        "guest_name": "Jane Smith",
+                        "check_in_date": "2024-08-01",
+                        "check_out_date": "2024-08-10",
+                        "number_of_guests": 2,
+                        "special_requests": "Quiet room"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Reservation updated",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Reservation"
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Invalid request"
+            },
+            "404": {
+              "description": "Reservation not found"
+            },
+            "500": {
+              "description": "Server error"
+            }
+          }
+        },
+        "delete": {
+          "summary": "Delete a reservation",
+          "description": "Cancel a reservation for an accommodation",
+          "parameters": [
+            {
+              "in": "path",
+              "name": "id",
+              "schema": {
+                "type": "string"
+              },
+              "required": true,
+              "description": "The ID of the reservation",
+              "example": "res123"
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Reservation deleted"
+            },
+            "404": {
+              "description": "Reservation not found"
+            },
+            "500": {
+              "description": "Server error"
+            }
+          }
+        }
+      }
+    },
+    "components": {
+      "schemas": {
+        "Accommodation": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "The unique identifier for the accommodation",
+              "example": "acc123"
+            },
+            "name": {
+              "type": "string",
+              "description": "The name of the accommodation",
+              "example": "Eiffel Tower View Apartment"
+            },
+            "address": {
+              "type": "string",
+              "description": "The address of the accommodation",
+              "example": "123 Champs-Élysées, 75008 Paris, France"
+            },
+            "city": {
+              "type": "string",
+              "description": "The city where the accommodation is located",
+              "example": "Paris"
+            },
+            "price_per_night": {
+              "type": "number",
+              "format": "float",
+              "description": "The price per night for the accommodation",
+              "example": 150
+            },
+            "rating": {
+              "type": "number",
+              "format": "float",
+              "description": "The rating of the accommodation",
+              "example": 4.7
+            },
+            "amenities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "A list of amenities provided by the accommodation",
+              "example": [
+                "Free WiFi",
+                "Air Conditioning",
+                "Kitchen",
+                "Balcony"
+              ]
+            },
+            "description": {
+              "type": "string",
+              "description": "A detailed description of the accommodation",
+              "example": "A cozy apartment with a stunning view of the Eiffel Tower, located in the heart of Paris."
+            },
+            "availability": {
+              "type": "object",
+              "properties": {
+                "check_in_date": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "The check-in date for the accommodation stay",
+                  "example": "2024-08-01"
+                },
+                "check_out_date": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "The check-out date for the accommodation stay",
+                  "example": "2024-08-10"
+                },
+                "available_rooms": {
+                  "type": "integer",
+                  "description": "The number of available rooms for the specified dates",
+                  "example": 3
+                }
+              }
+            }
+          }
+        },
+        "NewReservation": {
+          "type": "object",
+          "properties": {
+            "accommodation_id": {
+              "type": "string",
+              "description": "The ID of the accommodation being reserved",
+              "example": "acc123"
+            },
+            "guest_name": {
+              "type": "string",
+              "description": "The name of the guest making the reservation",
+              "example": "Jane Smith"
+            },
+            "check_in_date": {
+              "type": "string",
+              "format": "date",
+              "description": "The check-in date for the reservation",
+              "example": "2024-08-01"
+            },
+            "check_out_date": {
+              "type": "string",
+              "format": "date",
+              "description": "The check-out date for the reservation",
+              "example": "2024-08-10"
+            },
+            "number_of_guests": {
+              "type": "integer",
+              "description": "The number of guests for the reservation",
+              "example": 2
+            },
+            "special_requests": {
+              "type": "string",
+              "description": "Any special requests for the reservation",
+              "example": "Late check-in"
+            }
+          },
+          "required": [
+            "accommodation_id",
+            "guest_name",
+            "check_in_date",
+            "check_out_date",
+            "number_of_guests"
+          ]
+        },
+        "Reservation": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "The unique identifier for the reservation",
+              "example": "res123"
+            },
+            "accommodation_id": {
+              "type": "string",
+              "description": "The ID of the accommodation being reserved",
+              "example": "acc123"
+            },
+            "guest_name": {
+              "type": "string",
+              "description": "The name of the guest making the reservation",
+              "example": "Jane Smith"
+            },
+            "check_in_date": {
+              "type": "string",
+              "format": "date",
+              "description": "The check-in date for the reservation",
+              "example": "2024-08-01"
+            },
+            "check_out_date": {
+              "type": "string",
+              "format": "date",
+              "description": "The check-out date for the reservation",
+              "example": "2024-08-10"
+            },
+            "number_of_guests": {
+              "type": "integer",
+              "description": "The number of guests for the reservation",
+              "example": 2
+            },
+            "special_requests": {
+              "type": "string",
+              "description": "Any special requests for the reservation",
+              "example": "Late check-in"
+            }
+          }
+        }
+      }
+    }
+  }

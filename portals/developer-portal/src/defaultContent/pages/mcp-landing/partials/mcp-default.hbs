@@ -1,0 +1,103 @@
+{{!
+ * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+}}
+<section class="section mb-4">
+  <div class="container-fluid">
+    <div class="defaultapi-section">
+      <div class="container-header mb-4">MCP Server URL</div>
+      {{#if (eq resources.serverDetails "")}}
+        <div class="defaultapi-endpoint-row col-12 col-xl-9">
+          <div class="defaultapi-endpoint-content">
+            <span class="defaultapi-development-label">No endpoints available</span>
+          </div>
+        </div>
+      {{else}}
+        {{#unless (eq resources.serverDetails.productionURL "")}}
+          <div class="defaultapi-endpoint-row col-12 col-xl-9">
+            <div class="defaultapi-endpoint-content">
+              <div class="defaultapi-endpoint-url-container d-flex">
+                <pre id="token_mcp_prod_url" class="defaultapi-endpoint-url token-text mb-0">{{resources.serverDetails.productionURL}}/mcp</pre>                
+                  <a class="copy-button" aria-label="Copy token" type="button" onclick="copyToken('mcp_prod_url')">
+                    <i class="bi bi-copy"></i>
+                  </a>
+              </div>
+            </div>
+          </div>
+        {{/unless}}
+      {{/if}}
+    </div>
+      <div class="defaultapi-section">
+      <div class="row">
+        <div class="container-header mb-4">Tools</div>
+        <div class="defaultapi-resources col-12 col-lg-6 mb-4" style="margin-right: 30px;">
+          {{#each schemaDefinition}}
+            <div class="accordion-set">
+              <button
+                class="accordion-header"
+                onclick="this.classList.toggle('open')"
+              >
+                <span>{{this.name}}</span>
+                <i class="chevron-icon bi bi-chevron-down"></i>
+              </button>
+              <div class="accordion-body">
+                {{#if this.description}}
+                  <p class="accordion-summary">{{this.description}}</p>
+                {{else}}
+                  <p class="accordion-summary">No summary available.</p>
+                {{/if}}
+                {{#if this.inputSchema}}
+                    <pre class="json-block"><code>    {{jsonBeautify this.inputSchema}}</code></pre>
+                {{/if}}
+              </div>
+            </div>
+          {{/each}}
+        </div>
+        <div class="defaultapi-resources-mcp col-12 col-lg-5 mb-4">
+          <div class="mcp-json-block-header">MCP Server Configuration</div>
+        <div class="server-config-container" style="position: relative;">
+        <pre class="mcp-json-block" id="server-config-{{apiID}}">
+        <code class="language-json">
+{
+  <span class="schema-title">"servers"</span>: {
+    <span class="schema-title">"{{apiMetadata.apiInfo.apiName}}"</span>: {
+      <span class="schema-title">"url"</span>: <span class="schema-content">"{{resources.serverDetails.productionURL}}/mcp"</span>,
+      <span class="schema-title">"type"</span>: <span class="schema-content">"http"</span>,
+      <span class="schema-title">"headers"</span>: {
+        <span class="schema-title">"Authorization"</span>: <span class="schema-content">"Bearer ${token}</span>"
+      }
+    }
+  }
+}
+        </code>
+        </pre>
+        <button
+            type="button"
+            class="password-copy-btn"
+            onclick="copyServerConfig('{{apiID}}')"
+            title="Copy"
+            style="position: absolute; top: 10px; right: 10px; border: none; background: transparent; outline: none;"
+        >
+            <i class="bi bi-clipboard"></i>
+        </button>
+        </div>
+          <p style="font-size: small; font-weight: 400;">Please generate a token using the subscribed application and replace the placeholder.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
