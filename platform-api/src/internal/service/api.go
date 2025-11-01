@@ -772,6 +772,16 @@ func (s *APIService) PublishAPI(apiID string, orgID string, apiPortalID string) 
 		return nil, fmt.Errorf("failed to generate OpenAPI definition: %w", err)
 	}
 
+	// Set default values for optional fields that have NOT NULL constraints in API portal
+	provider := api.Provider
+	if provider == "" {
+		provider = "N/A"
+	}
+	description := api.Description
+	if description == "" {
+		description = "N/A"
+	}
+
 	// Build API publish request for apiportal
 	publishReq := &apiportalDto.APIPublishRequest{
 		APIInfo: apiportalDto.APIInfo{
@@ -781,8 +791,8 @@ func (s *APIService) PublishAPI(apiID string, orgID string, apiPortalID string) 
 			APIHandle:      fmt.Sprintf("%s-%s", api.Name, api.Version), // Required: {apiName}-{version}
 			APIVersion:     api.Version,                                 // Required: API version
 			APIType:        "REST",                                      // Required: API type
-			Provider:       api.Provider,                                // Optional: Provider name
-			APIDescription: api.Description,                             // Optional: Description
+			Provider:       provider,                                    // Optional: Provider name (default: "N/A")
+			APIDescription: description,                                 // Optional: Description (default: "N/A")
 			APIStatus:      "PUBLISHED",                                 // Optional: Status
 			Visibility:     "PUBLIC",                                    // Optional: Default to PUBLIC
 		},
