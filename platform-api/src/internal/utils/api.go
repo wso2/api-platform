@@ -119,12 +119,12 @@ func (u *APIUtil) SecurityDTOToModel(dto *dto.SecurityConfig) *model.SecurityCon
 	}
 	return &model.SecurityConfig{
 		Enabled: dto.Enabled,
-		APIKey:  u.ApiKeyDTOToModel(dto.APIKey),
-		OAuth2:  u.Oauth2DTOToModel(dto.OAuth2),
+		APIKey:  u.APIKeyDTOToModel(dto.APIKey),
+		OAuth2:  u.OAuth2DTOToModel(dto.OAuth2),
 	}
 }
 
-func (u *APIUtil) ApiKeyDTOToModel(dto *dto.APIKeySecurity) *model.APIKeySecurity {
+func (u *APIUtil) APIKeyDTOToModel(dto *dto.APIKeySecurity) *model.APIKeySecurity {
 	if dto == nil {
 		return nil
 	}
@@ -136,17 +136,17 @@ func (u *APIUtil) ApiKeyDTOToModel(dto *dto.APIKeySecurity) *model.APIKeySecurit
 	}
 }
 
-func (u *APIUtil) Oauth2DTOToModel(dto *dto.OAuth2Security) *model.OAuth2Security {
+func (u *APIUtil) OAuth2DTOToModel(dto *dto.OAuth2Security) *model.OAuth2Security {
 	if dto == nil {
 		return nil
 	}
 	return &model.OAuth2Security{
-		GrantTypes: u.Oauth2GrantTypesDTOToModel(dto.GrantTypes),
+		GrantTypes: u.OAuth2GrantTypesDTOToModel(dto.GrantTypes),
 		Scopes:     dto.Scopes,
 	}
 }
 
-func (u *APIUtil) Oauth2GrantTypesDTOToModel(dto *dto.OAuth2GrantTypes) *model.OAuth2GrantTypes {
+func (u *APIUtil) OAuth2GrantTypesDTOToModel(dto *dto.OAuth2GrantTypes) *model.OAuth2GrantTypes {
 	if dto == nil {
 		return nil
 	}
@@ -429,12 +429,12 @@ func (u *APIUtil) SecurityModelToDTO(model *model.SecurityConfig) *dto.SecurityC
 	}
 	return &dto.SecurityConfig{
 		Enabled: model.Enabled,
-		APIKey:  u.ApiKeyModelToDTO(model.APIKey),
-		OAuth2:  u.Oauth2ModelToDTO(model.OAuth2),
+		APIKey:  u.APIKeyModelToDTO(model.APIKey),
+		OAuth2:  u.OAuth2ModelToDTO(model.OAuth2),
 	}
 }
 
-func (u *APIUtil) ApiKeyModelToDTO(model *model.APIKeySecurity) *dto.APIKeySecurity {
+func (u *APIUtil) APIKeyModelToDTO(model *model.APIKeySecurity) *dto.APIKeySecurity {
 	if model == nil {
 		return nil
 	}
@@ -446,17 +446,17 @@ func (u *APIUtil) ApiKeyModelToDTO(model *model.APIKeySecurity) *dto.APIKeySecur
 	}
 }
 
-func (u *APIUtil) Oauth2ModelToDTO(model *model.OAuth2Security) *dto.OAuth2Security {
+func (u *APIUtil) OAuth2ModelToDTO(model *model.OAuth2Security) *dto.OAuth2Security {
 	if model == nil {
 		return nil
 	}
 	return &dto.OAuth2Security{
-		GrantTypes: u.Oauth2GrantTypesModelToDTO(model.GrantTypes),
+		GrantTypes: u.OAuth2GrantTypesModelToDTO(model.GrantTypes),
 		Scopes:     model.Scopes,
 	}
 }
 
-func (u *APIUtil) Oauth2GrantTypesModelToDTO(model *model.OAuth2GrantTypes) *dto.OAuth2GrantTypes {
+func (u *APIUtil) OAuth2GrantTypesModelToDTO(model *model.OAuth2GrantTypes) *dto.OAuth2GrantTypes {
 	if model == nil {
 		return nil
 	}

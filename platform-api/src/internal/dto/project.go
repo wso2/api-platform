@@ -27,7 +27,7 @@ type CreateProjectRequest struct {
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 }
 
-// UpdateProjectRequest represents the request body for creating a new project
+// UpdateProjectRequest represents the request body for updating an existing project
 type UpdateProjectRequest struct {
 	Name        string `json:"name,omitempty" yaml:"name,omitempty"`
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
