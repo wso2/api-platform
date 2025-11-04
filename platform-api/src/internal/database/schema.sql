@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS api_cors_config (
 
 -- Backend Services table
 CREATE TABLE IF NOT EXISTS backend_services (
-    uuid TEXT UNIQUE NOT NULL,
+    uuid TEXT PRIMARY KEY,
     organization_uuid TEXT NOT NULL,
     name TEXT NOT NULL,
     description TEXT,
@@ -128,8 +128,8 @@ CREATE TABLE IF NOT EXISTS backend_services (
     timeout_read_ms INTEGER,
     timeout_write_ms INTEGER,
     retries INTEGER,
-    loadBalanace_algorithm TEXT DEFAULT 'ROUND_ROBIN',
-    loadBalanace_failover BOOLEAN,
+    loadBalance_algorithm TEXT DEFAULT 'ROUND_ROBIN',
+    loadBalance_failover BOOLEAN,
     circuit_breaker_enabled BOOLEAN DEFAULT FALSE,
     max_connections INTEGER,
     max_pending_requests INTEGER,

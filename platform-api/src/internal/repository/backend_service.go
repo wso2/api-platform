@@ -51,36 +51,15 @@ func (r *BackendServiceRepo) CreateBackendService(service *model.BackendService)
 	serviceQuery := `
 		INSERT INTO backend_services (uuid, organization_uuid, name, description, 
 			timeout_connect_ms, timeout_read_ms, timeout_write_ms, retries, 
-			loadBalanace_algorithm, loadBalanace_failover, circuit_breaker_enabled,
+			loadBalance_algorithm, loadBalance_failover, circuit_breaker_enabled,
 			max_connections, max_pending_requests, max_requests, max_retries, 
 			created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	// Build timeout and load balance values
-	var timeoutConnect, timeoutRead, timeoutWrite *int
-	if service.Timeout != nil {
-		timeoutConnect = &service.Timeout.Connect
-		timeoutRead = &service.Timeout.Read
-		timeoutWrite = &service.Timeout.Write
-	}
-
-	var lbAlgorithm *string
-	var lbFailover *bool
-	if service.LoadBalance != nil {
-		lbAlgorithm = &service.LoadBalance.Algorithm
-		lbFailover = &service.LoadBalance.Failover
-	}
-
-	var cbEnabled *bool
-	var maxConnections, maxPendingRequests, maxRequests, maxRetries *int
-	if service.CircuitBreaker != nil {
-		cbEnabled = &service.CircuitBreaker.Enabled
-		maxConnections = &service.CircuitBreaker.MaxConnections
-		maxPendingRequests = &service.CircuitBreaker.MaxPendingRequests
-		maxRequests = &service.CircuitBreaker.MaxRequests
-		maxRetries = &service.CircuitBreaker.MaxRetries
-	}
+	// Extract configuration values for database insertion
+	timeoutConnect, timeoutRead, timeoutWrite, lbAlgorithm, lbFailover, cbEnabled, maxConnections, maxPendingRequests,
+		maxRequests, maxRetries := r.extractConfigurationForDatabase(service)
 
 	_, err = tx.Exec(serviceQuery, service.ID, service.OrganizationID, service.Name, service.Description,
 		timeoutConnect, timeoutRead, timeoutWrite, service.Retries, lbAlgorithm, lbFailover,
@@ -106,7 +85,7 @@ func (r *BackendServiceRepo) GetBackendServiceByUUID(serviceId string) (*model.B
 
 	query := `
 		SELECT uuid, organization_uuid, name, description, timeout_connect_ms, timeout_read_ms, 
-			timeout_write_ms, retries, loadBalanace_algorithm, loadBalanace_failover,
+			timeout_write_ms, retries, loadBalance_algorithm, loadBalance_failover,
 			circuit_breaker_enabled, max_connections, max_pending_requests, max_requests, 
 			max_retries, created_at, updated_at
 		FROM backend_services WHERE uuid = ?
@@ -132,33 +111,9 @@ func (r *BackendServiceRepo) GetBackendServiceByUUID(serviceId string) (*model.B
 		return nil, err
 	}
 
-	// Build timeout config
-	if timeoutConnect.Valid || timeoutRead.Valid || timeoutWrite.Valid {
-		service.Timeout = &model.TimeoutConfig{
-			Connect: int(timeoutConnect.Int64),
-			Read:    int(timeoutRead.Int64),
-			Write:   int(timeoutWrite.Int64),
-		}
-	}
-
-	// Build load balance config
-	if lbAlgorithm.Valid || lbFailover.Valid {
-		service.LoadBalance = &model.LoadBalanceConfig{
-			Algorithm: lbAlgorithm.String,
-			Failover:  lbFailover.Bool,
-		}
-	}
-
-	// Build circuit breaker config
-	if cbEnabled.Valid {
-		service.CircuitBreaker = &model.CircuitBreakerConfig{
-			Enabled:            cbEnabled.Bool,
-			MaxConnections:     int(maxConnections.Int64),
-			MaxPendingRequests: int(maxPendingRequests.Int64),
-			MaxRequests:        int(maxRequests.Int64),
-			MaxRetries:         int(maxRetries.Int64),
-		}
-	}
+	// Build configurations from database values
+	r.buildConfigurationFromDatabase(service, timeoutConnect, timeoutRead, timeoutWrite, lbAlgorithm, lbFailover,
+		cbEnabled, maxConnections, maxPendingRequests, maxRequests, maxRetries)
 
 	// Load endpoints
 	if endpoints, err := r.loadBackendEndpointsByServiceUUID(service.ID); err != nil {
@@ -174,7 +129,7 @@ func (r *BackendServiceRepo) GetBackendServiceByUUID(serviceId string) (*model.B
 func (r *BackendServiceRepo) GetBackendServicesByOrganizationID(orgID string) ([]*model.BackendService, error) {
 	query := `
 		SELECT uuid, organization_uuid, name, description, timeout_connect_ms, timeout_read_ms, 
-			timeout_write_ms, retries, loadBalanace_algorithm, loadBalanace_failover,
+			timeout_write_ms, retries, loadBalance_algorithm, loadBalance_failover,
 			circuit_breaker_enabled, max_connections, max_pending_requests, max_requests, 
 			max_retries, created_at, updated_at
 		FROM backend_services WHERE organization_uuid = ? ORDER BY created_at DESC
@@ -204,31 +159,9 @@ func (r *BackendServiceRepo) GetBackendServicesByOrganizationID(orgID string) ([
 			return nil, err
 		}
 
-		// Build configurations
-		if timeoutConnect.Valid || timeoutRead.Valid || timeoutWrite.Valid {
-			service.Timeout = &model.TimeoutConfig{
-				Connect: int(timeoutConnect.Int64),
-				Read:    int(timeoutRead.Int64),
-				Write:   int(timeoutWrite.Int64),
-			}
-		}
-
-		if lbAlgorithm.Valid || lbFailover.Valid {
-			service.LoadBalance = &model.LoadBalanceConfig{
-				Algorithm: lbAlgorithm.String,
-				Failover:  lbFailover.Bool,
-			}
-		}
-
-		if cbEnabled.Valid {
-			service.CircuitBreaker = &model.CircuitBreakerConfig{
-				Enabled:            cbEnabled.Bool,
-				MaxConnections:     int(maxConnections.Int64),
-				MaxPendingRequests: int(maxPendingRequests.Int64),
-				MaxRequests:        int(maxRequests.Int64),
-				MaxRetries:         int(maxRetries.Int64),
-			}
-		}
+		// Build configurations from database values
+		r.buildConfigurationFromDatabase(service, timeoutConnect, timeoutRead, timeoutWrite, lbAlgorithm, lbFailover,
+			cbEnabled, maxConnections, maxPendingRequests, maxRequests, maxRetries)
 
 		// Load endpoints
 		if endpoints, err := r.loadBackendEndpointsByServiceUUID(service.ID); err != nil {
@@ -249,7 +182,7 @@ func (r *BackendServiceRepo) GetBackendServiceByNameAndOrgID(name, orgID string)
 
 	query := `
 		SELECT uuid, organization_uuid, name, description, timeout_connect_ms, timeout_read_ms, 
-			timeout_write_ms, retries, loadBalanace_algorithm, loadBalanace_failover,
+			timeout_write_ms, retries, loadBalance_algorithm, loadBalance_failover,
 			circuit_breaker_enabled, max_connections, max_pending_requests, max_requests, 
 			max_retries, created_at, updated_at
 		FROM backend_services WHERE name = ? AND organization_uuid = ?
@@ -275,31 +208,9 @@ func (r *BackendServiceRepo) GetBackendServiceByNameAndOrgID(name, orgID string)
 		return nil, err
 	}
 
-	// Build configurations (same as GetBackendServiceByUUID)
-	if timeoutConnect.Valid || timeoutRead.Valid || timeoutWrite.Valid {
-		service.Timeout = &model.TimeoutConfig{
-			Connect: int(timeoutConnect.Int64),
-			Read:    int(timeoutRead.Int64),
-			Write:   int(timeoutWrite.Int64),
-		}
-	}
-
-	if lbAlgorithm.Valid || lbFailover.Valid {
-		service.LoadBalance = &model.LoadBalanceConfig{
-			Algorithm: lbAlgorithm.String,
-			Failover:  lbFailover.Bool,
-		}
-	}
-
-	if cbEnabled.Valid {
-		service.CircuitBreaker = &model.CircuitBreakerConfig{
-			Enabled:            cbEnabled.Bool,
-			MaxConnections:     int(maxConnections.Int64),
-			MaxPendingRequests: int(maxPendingRequests.Int64),
-			MaxRequests:        int(maxRequests.Int64),
-			MaxRetries:         int(maxRetries.Int64),
-		}
-	}
+	// Build configurations from database values
+	r.buildConfigurationFromDatabase(service, timeoutConnect, timeoutRead, timeoutWrite, lbAlgorithm, lbFailover,
+		cbEnabled, maxConnections, maxPendingRequests, maxRequests, maxRetries)
 
 	// Load endpoints
 	if endpoints, err := r.loadBackendEndpointsByServiceUUID(service.ID); err != nil {
@@ -321,36 +232,15 @@ func (r *BackendServiceRepo) UpdateBackendService(service *model.BackendService)
 
 	service.UpdatedAt = time.Now()
 
-	// Build timeout and load balance values
-	var timeoutConnect, timeoutRead, timeoutWrite *int
-	if service.Timeout != nil {
-		timeoutConnect = &service.Timeout.Connect
-		timeoutRead = &service.Timeout.Read
-		timeoutWrite = &service.Timeout.Write
-	}
-
-	var lbAlgorithm *string
-	var lbFailover *bool
-	if service.LoadBalance != nil {
-		lbAlgorithm = &service.LoadBalance.Algorithm
-		lbFailover = &service.LoadBalance.Failover
-	}
-
-	var cbEnabled *bool
-	var maxConnections, maxPendingRequests, maxRequests, maxRetries *int
-	if service.CircuitBreaker != nil {
-		cbEnabled = &service.CircuitBreaker.Enabled
-		maxConnections = &service.CircuitBreaker.MaxConnections
-		maxPendingRequests = &service.CircuitBreaker.MaxPendingRequests
-		maxRequests = &service.CircuitBreaker.MaxRequests
-		maxRetries = &service.CircuitBreaker.MaxRetries
-	}
+	// Extract configuration values for database update
+	timeoutConnect, timeoutRead, timeoutWrite, lbAlgorithm, lbFailover, cbEnabled, maxConnections, maxPendingRequests,
+		maxRequests, maxRetries := r.extractConfigurationForDatabase(service)
 
 	// Update main backend service record
 	query := `
 		UPDATE backend_services SET 
 			name = ?, description = ?, timeout_connect_ms = ?, timeout_read_ms = ?, timeout_write_ms = ?, 
-			retries = ?, loadBalanace_algorithm = ?, loadBalanace_failover = ?, 
+			retries = ?, loadBalance_algorithm = ?, loadBalance_failover = ?, 
 			circuit_breaker_enabled = ?, max_connections = ?, max_pending_requests = ?, 
 			max_requests = ?, max_retries = ?, updated_at = ?
 		WHERE uuid = ?
@@ -390,12 +280,24 @@ func (r *BackendServiceRepo) DeleteBackendService(serviceId string) error {
 
 // AssociateBackendServiceWithAPI creates an association between an API and a backend service
 func (r *BackendServiceRepo) AssociateBackendServiceWithAPI(apiId, backendServiceId string, isDefault bool) error {
-	query := `
-		INSERT INTO api_backend_services (api_uuid, backend_service_uuid, is_default)
-		VALUES (?, ?, ?)
-		ON CONFLICT(api_uuid, backend_service_uuid) DO UPDATE SET is_default = excluded.is_default
-	`
-	_, err := r.db.Exec(query, apiId, backendServiceId, isDefault)
+	// First check if the association already exists
+	var existingCount int
+	checkQuery := `SELECT COUNT(*) FROM api_backend_services WHERE api_uuid = ? AND backend_service_uuid = ?`
+	err := r.db.QueryRow(checkQuery, apiId, backendServiceId).Scan(&existingCount)
+	if err != nil {
+		return err
+	}
+
+	if existingCount > 0 {
+		// Association exists, update it
+		updateQuery := `UPDATE api_backend_services SET is_default = ? WHERE api_uuid = ? AND backend_service_uuid = ?`
+		_, err = r.db.Exec(updateQuery, isDefault, apiId, backendServiceId)
+	} else {
+		// Association doesn't exist, insert it
+		insertQuery := `INSERT INTO api_backend_services (api_uuid, backend_service_uuid, is_default) VALUES (?, ?, ?)`
+		_, err = r.db.Exec(insertQuery, apiId, backendServiceId, isDefault)
+	}
+
 	return err
 }
 
@@ -410,7 +312,7 @@ func (r *BackendServiceRepo) DisassociateBackendServiceFromAPI(apiId, backendSer
 func (r *BackendServiceRepo) GetBackendServicesByAPIID(apiId string) ([]*model.BackendService, error) {
 	query := `
 		SELECT bs.uuid, bs.organization_uuid, bs.name, bs.description, bs.timeout_connect_ms, bs.timeout_read_ms, 
-			bs.timeout_write_ms, bs.retries, bs.loadBalanace_algorithm, bs.loadBalanace_failover,
+			bs.timeout_write_ms, bs.retries, bs.loadBalance_algorithm, bs.loadBalance_failover,
 			bs.circuit_breaker_enabled, bs.max_connections, bs.max_pending_requests, bs.max_requests, 
 			bs.max_retries, bs.created_at, bs.updated_at
 		FROM backend_services bs
@@ -443,31 +345,9 @@ func (r *BackendServiceRepo) GetBackendServicesByAPIID(apiId string) ([]*model.B
 			return nil, err
 		}
 
-		// Build configurations (same as other methods)
-		if timeoutConnect.Valid || timeoutRead.Valid || timeoutWrite.Valid {
-			service.Timeout = &model.TimeoutConfig{
-				Connect: int(timeoutConnect.Int64),
-				Read:    int(timeoutRead.Int64),
-				Write:   int(timeoutWrite.Int64),
-			}
-		}
-
-		if lbAlgorithm.Valid || lbFailover.Valid {
-			service.LoadBalance = &model.LoadBalanceConfig{
-				Algorithm: lbAlgorithm.String,
-				Failover:  lbFailover.Bool,
-			}
-		}
-
-		if cbEnabled.Valid {
-			service.CircuitBreaker = &model.CircuitBreakerConfig{
-				Enabled:            cbEnabled.Bool,
-				MaxConnections:     int(maxConnections.Int64),
-				MaxPendingRequests: int(maxPendingRequests.Int64),
-				MaxRequests:        int(maxRequests.Int64),
-				MaxRetries:         int(maxRetries.Int64),
-			}
-		}
+		// Build configurations from database values
+		r.buildConfigurationFromDatabase(service, timeoutConnect, timeoutRead, timeoutWrite, lbAlgorithm, lbFailover,
+			cbEnabled, maxConnections, maxPendingRequests, maxRequests, maxRetries)
 
 		// Load endpoints
 		if endpoints, err := r.loadBackendEndpointsByServiceUUID(service.ID); err != nil {
@@ -601,4 +481,72 @@ func (r *BackendServiceRepo) loadBackendEndpointsByServiceUUID(serviceUUID strin
 	}
 
 	return endpoints, rows.Err()
+}
+
+// Helper methods to extract duplicated configuration building logic
+
+// extractConfigurationForDatabase extracts nullable pointers from model configurations for database insertion
+func (r *BackendServiceRepo) extractConfigurationForDatabase(service *model.BackendService) (
+	timeoutConnect, timeoutRead, timeoutWrite *int,
+	lbAlgorithm *string, lbFailover *bool,
+	cbEnabled *bool, maxConnections, maxPendingRequests, maxRequests, maxRetries *int) {
+
+	// Extract timeout values
+	if service.Timeout != nil {
+		timeoutConnect = &service.Timeout.Connect
+		timeoutRead = &service.Timeout.Read
+		timeoutWrite = &service.Timeout.Write
+	}
+
+	// Extract load balance values
+	if service.LoadBalance != nil {
+		lbAlgorithm = &service.LoadBalance.Algorithm
+		lbFailover = &service.LoadBalance.Failover
+	}
+
+	// Extract circuit breaker values
+	if service.CircuitBreaker != nil {
+		cbEnabled = &service.CircuitBreaker.Enabled
+		maxConnections = &service.CircuitBreaker.MaxConnections
+		maxPendingRequests = &service.CircuitBreaker.MaxPendingRequests
+		maxRequests = &service.CircuitBreaker.MaxRequests
+		maxRetries = &service.CircuitBreaker.MaxRetries
+	}
+
+	return
+}
+
+// buildConfigurationFromDatabase builds model configurations from nullable database values
+func (r *BackendServiceRepo) buildConfigurationFromDatabase(service *model.BackendService,
+	timeoutConnect, timeoutRead, timeoutWrite sql.NullInt64,
+	lbAlgorithm sql.NullString, lbFailover sql.NullBool,
+	cbEnabled sql.NullBool, maxConnections, maxPendingRequests, maxRequests, maxRetries sql.NullInt64) {
+
+	// Build timeout config
+	if timeoutConnect.Valid || timeoutRead.Valid || timeoutWrite.Valid {
+		service.Timeout = &model.TimeoutConfig{
+			Connect: int(timeoutConnect.Int64),
+			Read:    int(timeoutRead.Int64),
+			Write:   int(timeoutWrite.Int64),
+		}
+	}
+
+	// Build load balance config
+	if lbAlgorithm.Valid || lbFailover.Valid {
+		service.LoadBalance = &model.LoadBalanceConfig{
+			Algorithm: lbAlgorithm.String,
+			Failover:  lbFailover.Bool,
+		}
+	}
+
+	// Build circuit breaker config
+	if cbEnabled.Valid {
+		service.CircuitBreaker = &model.CircuitBreakerConfig{
+			Enabled:            cbEnabled.Bool,
+			MaxConnections:     int(maxConnections.Int64),
+			MaxPendingRequests: int(maxPendingRequests.Int64),
+			MaxRequests:        int(maxRequests.Int64),
+			MaxRetries:         int(maxRetries.Int64),
+		}
+	}
 }

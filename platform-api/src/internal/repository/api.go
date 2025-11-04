@@ -790,7 +790,12 @@ func (r *APIRepo) loadOperations(apiId string) ([]model.Operation, error) {
 }
 
 func (r *APIRepo) loadOperationBackendServices(operationID int64) ([]model.BackendRouting, error) {
-	query := `SELECT backend_service_uuid, weight FROM operation_backend_services WHERE operation_id = ?`
+	query := `
+		SELECT bs.name, obs.weight
+		FROM operation_backend_services obs
+		JOIN backend_services bs ON bs.uuid = obs.backend_service_uuid
+		WHERE obs.operation_id = ?
+	`
 	rows, err := r.db.Query(query, operationID)
 	if err != nil {
 		return nil, err
