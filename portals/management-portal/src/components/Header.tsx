@@ -26,16 +26,13 @@ import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { useOrganization } from "../context/OrganizationContext";
 import { useProjects } from "../context/ProjectContext";
-import { slugEquals, slugify } from "../utils/slug";
-import {
-  projectSlugFromName,
-  projectSlugMatches,
-} from "../utils/projectSlug";
+import { projectSlugFromName, projectSlugMatches } from "../utils/projectSlug";
 import {
   normalizeSegmentsForOrganization,
   normalizeSegmentsForProject,
 } from "../utils/navigation";
 import type { Project } from "../hooks/projects";
+import { TextInput } from "./src";
 
 /** Simple tag pill like MCP / Proxy on the right */
 function TypeChip({ type }: { type?: string }) {
@@ -60,19 +57,17 @@ const Header: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const params = useParams<{ orgHandle?: string; projectHandle?: string }>();
-  const {
-    organization,
-    organizations,
-    setSelectedOrganization,
-  } = useOrganization();
+  const { organization, organizations, setSelectedOrganization } =
+    useOrganization();
   const { projects, selectedProject, setSelectedProject } = useProjects();
 
   const [proxy, setProxy] = React.useState("Select Proxy/MCP");
   const [showOrg, setShowOrg] = React.useState(true);
   const [showProxy, setShowProxy] = React.useState(false);
   const [menuAnchor, setMenuAnchor] = React.useState<HTMLElement | null>(null);
-  const [activeMenu, setActiveMenu] =
-    React.useState<"project" | "proxy" | null>(null);
+  const [activeMenu, setActiveMenu] = React.useState<
+    "project" | "proxy" | null
+  >(null);
 
   const currentOrgHandle =
     organization?.handle ?? params.orgHandle ?? organizations[0]?.handle ?? "";
@@ -94,12 +89,7 @@ const Header: React.FC = () => {
     if (match && (!selectedProject || selectedProject.id !== match.id)) {
       setSelectedProject(match);
     }
-  }, [
-    params.projectHandle,
-    projects,
-    selectedProject,
-    setSelectedProject,
-  ]);
+  }, [params.projectHandle, projects, selectedProject, setSelectedProject]);
 
   React.useEffect(() => {
     if (selectedProject) {
@@ -168,7 +158,9 @@ const Header: React.FC = () => {
     selectedProject || lastSelectedProjectNameRef.current
   );
   const projectPickerValue =
-    selectedProject?.name ?? lastSelectedProjectNameRef.current ?? "Select Project";
+    selectedProject?.name ??
+    lastSelectedProjectNameRef.current ??
+    "Select Project";
 
   const getRestSegments = React.useCallback(() => {
     if (!currentOrgHandle) {
@@ -219,9 +211,7 @@ const Header: React.FC = () => {
     return `/${currentOrgHandle}/${restPath}`;
   }, [currentOrgHandle, currentProjectSlug, getRestSegments]);
 
-  const handleRevealProject = (
-    event: React.MouseEvent<HTMLButtonElement>
-  ) => {
+  const handleRevealProject = (event: React.MouseEvent<HTMLButtonElement>) => {
     setMenuAnchor(event.currentTarget);
     setActiveMenu("project");
   };
@@ -354,15 +344,15 @@ const Header: React.FC = () => {
               menuItems={projectMenuItems}
               menuTitle="All Projects"
               onCreateNew={handleCreateProject}
-            onRemove={() => {
-              lastSelectedProjectNameRef.current = null;
-              setSelectedProject(null);
-              setShowProxy(false);
-              setProxy("Select Proxy/MCP");
-              navigate(buildPathWithoutProject());
-            }}
-          />
-        )}
+              onRemove={() => {
+                lastSelectedProjectNameRef.current = null;
+                setSelectedProject(null);
+                setShowProxy(false);
+                setProxy("Select Proxy/MCP");
+                navigate(buildPathWithoutProject());
+              }}
+            />
+          )}
 
           {showProjectPicker && !showProxy && (
             <IconButton
@@ -416,9 +406,7 @@ const Header: React.FC = () => {
         open={Boolean(activeMenu)}
         onClose={closeActiveMenu}
         onSelect={handleMenuSelect}
-        menuTitle={
-          activeMenu === "proxy" ? "All Proxies/MCP" : "All Projects"
-        }
+        menuTitle={activeMenu === "proxy" ? "All Proxies/MCP" : "All Projects"}
         menuItems={activeMenu === "project" ? projectMenuItems : undefined}
         menuSections={
           activeMenu === "proxy"
@@ -532,13 +520,12 @@ function FieldPickerMenuPopover({
       }}
     >
       <Paper sx={{ p: 2, boxShadow: "none" }}>
-        <TextField
+        <TextInput
           fullWidth
           placeholder="Search"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(v) => setQuery(v)}
           size="small"
-          autoFocus
           InputProps={{
             sx: {
               borderRadius: 1.5,
@@ -550,6 +537,7 @@ function FieldPickerMenuPopover({
               </InputAdornment>
             ),
           }}
+          testId={""}
         />
 
         {onCreateNew && (
@@ -704,8 +692,8 @@ function FieldPicker({
           // py: 1,
           borderRadius: 2,
           bgcolor: "action.hover",
-          border: "1px solid",
-          borderColor: "divider",
+          border: "1px solid #3d39391f",
+          // borderColor: "divider",
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
@@ -764,7 +752,16 @@ function FieldPicker({
             px: 0.25,
           }}
         >
-          <Typography sx={{ fontSize: 14, lineHeight: 1.2,fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <Typography
+            sx={{
+              fontSize: 14,
+              lineHeight: 1.2,
+              fontWeight: 500,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
             {value}
           </Typography>
           <KeyboardArrowDownRoundedIcon fontSize="small" />

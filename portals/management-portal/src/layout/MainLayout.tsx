@@ -1,8 +1,7 @@
 import React from "react";
-import { Box, Toolbar } from "@mui/material";
+import { Box } from "@mui/material";
 import Header from "../components/Header";
-import LeftSidebar, { LEFT_DRAWER_WIDTH } from "../components/LeftSidebar";
-import RightSidebar, { RIGHT_DRAWER_WIDTH } from "../components/RightSidebar";
+import LeftSidebar from "../components/LeftSidebar";
 import Footer, { FOOTER_HEIGHT } from "../components/Footer";
 
 const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -10,21 +9,19 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     <Box sx={{ display: "flex", minHeight: "100%" }}>
       <Header />
       <LeftSidebar />
-      <RightSidebar />
+      {/* <RightSidebar /> */}
 
       <Box
         component="main"
         sx={{
           flexGrow: 1,
-        //   ml: `${LEFT_DRAWER_WIDTH}px`,
-          mr: `${RIGHT_DRAWER_WIDTH}px`,
-          p: 3,
+          mt: 7,
+          mr: 0,
+          p: 5,
           pb: `${FOOTER_HEIGHT + 16}px`,
-          bgcolor: "background.default",
-          minHeight: "100vh",
+          bgcolor: "background.paper",
         }}
       >
-        <Toolbar /> 
         {children}
       </Box>
 

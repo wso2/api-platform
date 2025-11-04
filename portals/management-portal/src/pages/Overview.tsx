@@ -1,13 +1,9 @@
-// src/pages/Overview.tsx
 import React from "react";
-import { Box} from "@mui/material";
+import { Box } from "@mui/material";
 import { useNavigate, useParams } from "react-router-dom";
-
-import OrgOverview from "./overview/OrgOverview";
-
+import OrgOverview from "./overview/orgOverview/OrgOverview";
 import { useOrganization } from "../context/OrganizationContext";
 import { useProjects } from "../context/ProjectContext";
-import { slugEquals, slugify } from "../utils/slug";
 import { projectSlugFromName, projectSlugMatches } from "../utils/projectSlug";
 
 import type { Project } from "../hooks/projects";
@@ -63,7 +59,10 @@ const Overview: React.FC = () => {
     (project: Project) => {
       setSelectedProject(project);
       navigate(
-        `/${currentOrgHandle}/${projectSlugFromName(project.name, project.id)}/overview`
+        `/${currentOrgHandle}/${projectSlugFromName(
+          project.name,
+          project.id
+        )}/overview`
       );
     },
     [currentOrgHandle, navigate, setSelectedProject]

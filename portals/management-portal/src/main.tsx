@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { CssBaseline, ThemeProvider } from "@mui/material";
+import {CssBaseline, ThemeProvider } from "@mui/material";
 import theme from "./theme";
 import App from "./App";
 import "@fontsource/poppins/300.css";
@@ -14,12 +14,12 @@ import { ProjectProvider } from "./context/ProjectContext";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <OrganizationProvider>
-        <ProjectProvider>
-          <App />
-        </ProjectProvider>
-      </OrganizationProvider>
+        <CssBaseline />
+        <OrganizationProvider>
+          <ProjectProvider>
+            <App />
+          </ProjectProvider>
+        </OrganizationProvider>
     </ThemeProvider>
   </React.StrictMode>
 );

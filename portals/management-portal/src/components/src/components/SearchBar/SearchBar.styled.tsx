@@ -81,7 +81,7 @@ export const StyledSearchBar: ComponentType<StyledSearchBarProps> = styled(
       }),
 
       '&:hover': {
-        borderColor: theme.palette.primary.light,
+        borderColor: theme.palette.grey[200],
       },
 
       ...(filter && {

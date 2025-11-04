@@ -95,8 +95,8 @@ const ProjectOverview: React.FC = () => {
     <>
       {/* Header always visible */}
       <Box textAlign="center" mt={3}>
-        <Typography variant="h4" fontWeight={700}>
-          Welcome to {displayName}
+        <Typography variant="h3" fontWeight={600}>
+          Welcome to {displayName} Project
         </Typography>
         <Typography color="text.secondary">
           Manage all aspects of the {displayName} project from here.
