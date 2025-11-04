@@ -120,10 +120,10 @@ CREATE TABLE IF NOT EXISTS api_cors_config (
 
 -- Backend Services table
 CREATE TABLE IF NOT EXISTS backend_services (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    api_uuid TEXT NOT NULL,
-    name TEXT UNIQUE NOT NULL,
-    is_default BOOLEAN DEFAULT FALSE,
+    uuid TEXT UNIQUE NOT NULL,
+    organization_uuid TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
     timeout_connect_ms INTEGER,
     timeout_read_ms INTEGER,
     timeout_write_ms INTEGER,
@@ -135,7 +135,21 @@ CREATE TABLE IF NOT EXISTS backend_services (
     max_pending_requests INTEGER,
     max_requests INTEGER,
     max_retries INTEGER,
-    FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(name, organization_uuid)
+);
+
+-- API Backend Services junction table (many-to-many relationship)
+CREATE TABLE IF NOT EXISTS api_backend_services (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    api_uuid TEXT NOT NULL,
+    backend_service_uuid TEXT NOT NULL,
+    is_default BOOLEAN DEFAULT FALSE,
+    FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (backend_service_uuid) REFERENCES backend_services(uuid) ON DELETE CASCADE,
+    UNIQUE(api_uuid, backend_service_uuid)
 );
 
 -- Backend Endpoints table
@@ -156,7 +170,7 @@ CREATE TABLE IF NOT EXISTS backend_endpoints (
     client_cert TEXT,
     client_key TEXT,
     ca_cert TEXT,
-    FOREIGN KEY (backend_service_id) REFERENCES backend_services(id) ON DELETE CASCADE
+    FOREIGN KEY (backend_service_id) REFERENCES backend_services(uuid) ON DELETE CASCADE
 );
 
 -- API Rate Limiting Configuration table
@@ -187,9 +201,11 @@ CREATE TABLE IF NOT EXISTS api_operations (
 CREATE TABLE IF NOT EXISTS operation_backend_services (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     operation_id INTEGER NOT NULL,
-    backend_service_name TEXT NOT NULL,
+    backend_service_uuid TEXT NOT NULL,
     weight INTEGER,
-    FOREIGN KEY (operation_id) REFERENCES api_operations(id) ON DELETE CASCADE
+    FOREIGN KEY (operation_id) REFERENCES api_operations(id) ON DELETE CASCADE,
+    FOREIGN KEY (backend_service_uuid) REFERENCES backend_services(uuid) ON DELETE CASCADE,
+    UNIQUE(operation_id, backend_service_uuid)
 );
 
 -- Request Policies table
@@ -254,9 +270,13 @@ CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization
 CREATE INDEX IF NOT EXISTS idx_organizations_handle ON organizations(handle);
 CREATE INDEX IF NOT EXISTS idx_apis_project_id ON apis(project_uuid);
 CREATE INDEX IF NOT EXISTS idx_apis_name_context_version ON apis(name, context, version);
-CREATE INDEX IF NOT EXISTS idx_backend_services_api_uuid ON backend_services(api_uuid);
+CREATE INDEX IF NOT EXISTS idx_backend_services_organization_uuid ON backend_services(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_backend_services_name_org ON backend_services(name, organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_backend_services_api_uuid ON api_backend_services(api_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_backend_services_backend_uuid ON api_backend_services(backend_service_uuid);
 CREATE INDEX IF NOT EXISTS idx_backend_endpoints_service_id ON backend_endpoints(backend_service_id);
 CREATE INDEX IF NOT EXISTS idx_api_operations_api_uuid ON api_operations(api_uuid);
 CREATE INDEX IF NOT EXISTS idx_operation_backend_services_operation_id ON operation_backend_services(operation_id);
+CREATE INDEX IF NOT EXISTS idx_operation_backend_services_backend_uuid ON operation_backend_services(backend_service_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateways_org ON gateways(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_status ON gateway_tokens(gateway_uuid, status);

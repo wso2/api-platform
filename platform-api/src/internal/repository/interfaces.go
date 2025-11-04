@@ -56,6 +56,22 @@ type APIRepository interface {
 	GetDeploymentsByAPIUUID(apiId string) ([]*model.APIDeployment, error)
 }
 
+// BackendServiceRepository defines the interface for backend service data operations
+type BackendServiceRepository interface {
+	CreateBackendService(service *model.BackendService) error
+	GetBackendServiceByUUID(serviceId string) (*model.BackendService, error)
+	GetBackendServicesByOrganizationID(orgID string) ([]*model.BackendService, error)
+	GetBackendServiceByNameAndOrgID(name, orgID string) (*model.BackendService, error)
+	UpdateBackendService(service *model.BackendService) error
+	DeleteBackendService(serviceId string) error
+
+	// API-Backend Service associations
+	AssociateBackendServiceWithAPI(apiId, backendServiceId string, isDefault bool) error
+	DisassociateBackendServiceFromAPI(apiId, backendServiceId string) error
+	GetBackendServicesByAPIID(apiId string) ([]*model.BackendService, error)
+	GetAPIsByBackendServiceID(backendServiceId string) ([]string, error)
+}
+
 // GatewayRepository defines the interface for gateway data access
 type GatewayRepository interface {
 	// Gateway operations

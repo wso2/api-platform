@@ -72,6 +72,7 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	projectRepo := repository.NewProjectRepo(db)
 	apiRepo := repository.NewAPIRepo(db)
 	gatewayRepo := repository.NewGatewayRepo(db)
+	backendServiceRepo := repository.NewBackendServiceRepo(db)
 
 	// Initialize WebSocket manager first (needed for GatewayEventsService)
 	wsConfig := websocket.ManagerConfig{
@@ -88,9 +89,10 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	orgService := service.NewOrganizationService(orgRepo, projectRepo, apiPortalClient)
 	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo)
 	gatewayEventsService := service.NewGatewayEventsService(wsManager)
-	apiService := service.NewAPIService(apiRepo, projectRepo, gatewayRepo, gatewayEventsService, apiPortalClient)
+	upstreamService := service.NewUpstreamService(backendServiceRepo)
+	apiService := service.NewAPIService(apiRepo, projectRepo, gatewayRepo, upstreamService, gatewayEventsService, apiPortalClient)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo)
-	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, gatewayRepo, orgRepo, projectRepo)
+	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, gatewayRepo, orgRepo, projectRepo, upstreamService)
 
 	// Initialize handlers
 	orgHandler := handler.NewOrganizationHandler(orgService)

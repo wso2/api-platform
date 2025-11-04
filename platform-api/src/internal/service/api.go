@@ -41,6 +41,7 @@ type APIService struct {
 	apiRepo              repository.APIRepository
 	projectRepo          repository.ProjectRepository
 	gatewayRepo          repository.GatewayRepository
+	upstreamService      *UpstreamService
 	gatewayEventsService *GatewayEventsService
 	apiPortalClient      *apiportal.ApiPortalClient
 	apiUtil              *utils.APIUtil
@@ -48,12 +49,13 @@ type APIService struct {
 
 // NewAPIService creates a new API service
 func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.ProjectRepository,
-	gatewayRepo repository.GatewayRepository, gatewayEventsService *GatewayEventsService,
-	apiPortalClient *apiportal.ApiPortalClient) *APIService {
+	gatewayRepo repository.GatewayRepository, upstreamSvc *UpstreamService,
+	gatewayEventsService *GatewayEventsService, apiPortalClient *apiportal.ApiPortalClient) *APIService {
 	return &APIService{
 		apiRepo:              apiRepo,
 		projectRepo:          projectRepo,
 		gatewayRepo:          gatewayRepo,
+		upstreamService:      upstreamSvc,
 		gatewayEventsService: gatewayEventsService,
 		apiPortalClient:      apiPortalClient,
 		apiUtil:              &utils.APIUtil{},
@@ -140,10 +142,33 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 		Operations:       req.Operations,
 	}
 
+	// Process backend services: check if they exist, create or update them
+	var backendServiceIdList []string
+	for _, backendService := range req.BackendServices {
+		backendServiceId, err := s.upstreamService.UpsertBackendService(&backendService, orgId)
+		if err != nil {
+			return nil, fmt.Errorf("failed to process backend service '%s': %w", backendService.Name, err)
+		}
+		backendServiceIdList = append(backendServiceIdList, backendServiceId)
+	}
+
 	apiModel := s.apiUtil.DTOToModel(api)
 	// Create API in repository
 	if err := s.apiRepo.CreateAPI(apiModel); err != nil {
 		return nil, fmt.Errorf("failed to create api: %w", err)
+	}
+
+	// Associate backend services with the API
+	for i, backendServiceUUID := range backendServiceIdList {
+		isDefault := i == 0 // First backend service is default
+		if len(req.BackendServices) > 0 && i < len(req.BackendServices) {
+			// Check if isDefault was explicitly set in the request
+			isDefault = req.BackendServices[i].IsDefault
+		}
+
+		if err := s.upstreamService.AssociateBackendServiceWithAPI(apiId, backendServiceUUID, isDefault); err != nil {
+			return nil, fmt.Errorf("failed to associate backend service with API: %w", err)
+		}
 	}
 
 	return api, nil
@@ -268,6 +293,43 @@ func (s *APIService) UpdateAPI(apiId string, req *UpdateAPIRequest, orgId string
 		existingAPI.CORS = req.CORS
 	}
 	if req.BackendServices != nil {
+		// Process backend services: check if they exist, create or update them
+		var backendServiceUUIDs []string
+		for _, backendService := range *req.BackendServices {
+			backendServiceUUID, err := s.upstreamService.UpsertBackendService(&backendService, orgId)
+			if err != nil {
+				return nil, fmt.Errorf("failed to process backend service '%s': %w", backendService.Name, err)
+			}
+			backendServiceUUIDs = append(backendServiceUUIDs, backendServiceUUID)
+		}
+
+		// Remove existing associations and add new ones
+		// First, get existing associations to remove them
+		existingBackendServices, err := s.upstreamService.GetBackendServicesByAPIID(apiId)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get existing backend services: %w", err)
+		}
+
+		// Remove existing associations
+		for _, existingService := range existingBackendServices {
+			if err := s.upstreamService.DisassociateBackendServiceFromAPI(apiId, existingService.ID); err != nil {
+				return nil, fmt.Errorf("failed to remove existing backend service association: %w", err)
+			}
+		}
+
+		// Add new associations
+		for i, backendServiceUUID := range backendServiceUUIDs {
+			isDefault := i == 0 // First backend service is default
+			if len(*req.BackendServices) > 0 && i < len(*req.BackendServices) {
+				// Check if isDefault was explicitly set in the request
+				isDefault = (*req.BackendServices)[i].IsDefault
+			}
+
+			if err := s.upstreamService.AssociateBackendServiceWithAPI(apiId, backendServiceUUID, isDefault); err != nil {
+				return nil, fmt.Errorf("failed to associate backend service with API: %w", err)
+			}
+		}
+
 		existingAPI.BackendServices = *req.BackendServices
 	}
 	if req.APIRateLimiting != nil {

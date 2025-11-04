@@ -54,12 +54,12 @@ func (u *APIUtil) DTOToModel(dto *dto.API) *model.API {
 		RevisionID:       dto.RevisionID,
 		Type:             dto.Type,
 		Transport:        dto.Transport,
-		MTLS:             u.mtlsDTOToModel(dto.MTLS),
-		Security:         u.securityDTOToModel(dto.Security),
-		CORS:             u.corsDTOToModel(dto.CORS),
-		BackendServices:  u.backendServicesDTOToModel(dto.BackendServices),
-		APIRateLimiting:  u.rateLimitingDTOToModel(dto.APIRateLimiting),
-		Operations:       u.operationsDTOToModel(dto.Operations),
+		MTLS:             u.MTLSDTOToModel(dto.MTLS),
+		Security:         u.SecurityDTOToModel(dto.Security),
+		CORS:             u.CORSDTOToModel(dto.CORS),
+		BackendServices:  u.BackendServicesDTOToModel(dto.BackendServices),
+		APIRateLimiting:  u.RateLimitingDTOToModel(dto.APIRateLimiting),
+		Operations:       u.OperationsDTOToModel(dto.Operations),
 	}
 }
 
@@ -88,18 +88,18 @@ func (u *APIUtil) ModelToDTO(model *model.API) *dto.API {
 		RevisionID:       model.RevisionID,
 		Type:             model.Type,
 		Transport:        model.Transport,
-		MTLS:             u.mtlsModelToDTO(model.MTLS),
-		Security:         u.securityModelToDTO(model.Security),
-		CORS:             u.corsModelToDTO(model.CORS),
-		BackendServices:  u.backendServicesModelToDTO(model.BackendServices),
-		APIRateLimiting:  u.rateLimitingModelToDTO(model.APIRateLimiting),
-		Operations:       u.operationsModelToDTO(model.Operations),
+		MTLS:             u.MTLSModelToDTO(model.MTLS),
+		Security:         u.SecurityModelToDTO(model.Security),
+		CORS:             u.CORSModelToDTO(model.CORS),
+		BackendServices:  u.BackendServicesModelToDTO(model.BackendServices),
+		APIRateLimiting:  u.RateLimitingModelToDTO(model.APIRateLimiting),
+		Operations:       u.OperationsModelToDTO(model.Operations),
 	}
 }
 
 // Helper DTO to Model conversion methods
 
-func (u *APIUtil) mtlsDTOToModel(dto *dto.MTLSConfig) *model.MTLSConfig {
+func (u *APIUtil) MTLSDTOToModel(dto *dto.MTLSConfig) *model.MTLSConfig {
 	if dto == nil {
 		return nil
 	}
@@ -113,18 +113,18 @@ func (u *APIUtil) mtlsDTOToModel(dto *dto.MTLSConfig) *model.MTLSConfig {
 	}
 }
 
-func (u *APIUtil) securityDTOToModel(dto *dto.SecurityConfig) *model.SecurityConfig {
+func (u *APIUtil) SecurityDTOToModel(dto *dto.SecurityConfig) *model.SecurityConfig {
 	if dto == nil {
 		return nil
 	}
 	return &model.SecurityConfig{
 		Enabled: dto.Enabled,
-		APIKey:  u.apiKeyDTOToModel(dto.APIKey),
-		OAuth2:  u.oauth2DTOToModel(dto.OAuth2),
+		APIKey:  u.ApiKeyDTOToModel(dto.APIKey),
+		OAuth2:  u.Oauth2DTOToModel(dto.OAuth2),
 	}
 }
 
-func (u *APIUtil) apiKeyDTOToModel(dto *dto.APIKeySecurity) *model.APIKeySecurity {
+func (u *APIUtil) ApiKeyDTOToModel(dto *dto.APIKeySecurity) *model.APIKeySecurity {
 	if dto == nil {
 		return nil
 	}
@@ -136,29 +136,29 @@ func (u *APIUtil) apiKeyDTOToModel(dto *dto.APIKeySecurity) *model.APIKeySecurit
 	}
 }
 
-func (u *APIUtil) oauth2DTOToModel(dto *dto.OAuth2Security) *model.OAuth2Security {
+func (u *APIUtil) Oauth2DTOToModel(dto *dto.OAuth2Security) *model.OAuth2Security {
 	if dto == nil {
 		return nil
 	}
 	return &model.OAuth2Security{
-		GrantTypes: u.oauth2GrantTypesDTOToModel(dto.GrantTypes),
+		GrantTypes: u.Oauth2GrantTypesDTOToModel(dto.GrantTypes),
 		Scopes:     dto.Scopes,
 	}
 }
 
-func (u *APIUtil) oauth2GrantTypesDTOToModel(dto *dto.OAuth2GrantTypes) *model.OAuth2GrantTypes {
+func (u *APIUtil) Oauth2GrantTypesDTOToModel(dto *dto.OAuth2GrantTypes) *model.OAuth2GrantTypes {
 	if dto == nil {
 		return nil
 	}
 	return &model.OAuth2GrantTypes{
-		AuthorizationCode: u.authCodeGrantDTOToModel(dto.AuthorizationCode),
-		Implicit:          u.implicitGrantDTOToModel(dto.Implicit),
-		Password:          u.passwordGrantDTOToModel(dto.Password),
-		ClientCredentials: u.clientCredGrantDTOToModel(dto.ClientCredentials),
+		AuthorizationCode: u.AuthCodeGrantDTOToModel(dto.AuthorizationCode),
+		Implicit:          u.ImplicitGrantDTOToModel(dto.Implicit),
+		Password:          u.PasswordGrantDTOToModel(dto.Password),
+		ClientCredentials: u.ClientCredGrantDTOToModel(dto.ClientCredentials),
 	}
 }
 
-func (u *APIUtil) authCodeGrantDTOToModel(dto *dto.AuthorizationCodeGrant) *model.AuthorizationCodeGrant {
+func (u *APIUtil) AuthCodeGrantDTOToModel(dto *dto.AuthorizationCodeGrant) *model.AuthorizationCodeGrant {
 	if dto == nil {
 		return nil
 	}
@@ -168,7 +168,7 @@ func (u *APIUtil) authCodeGrantDTOToModel(dto *dto.AuthorizationCodeGrant) *mode
 	}
 }
 
-func (u *APIUtil) implicitGrantDTOToModel(dto *dto.ImplicitGrant) *model.ImplicitGrant {
+func (u *APIUtil) ImplicitGrantDTOToModel(dto *dto.ImplicitGrant) *model.ImplicitGrant {
 	if dto == nil {
 		return nil
 	}
@@ -178,7 +178,7 @@ func (u *APIUtil) implicitGrantDTOToModel(dto *dto.ImplicitGrant) *model.Implici
 	}
 }
 
-func (u *APIUtil) passwordGrantDTOToModel(dto *dto.PasswordGrant) *model.PasswordGrant {
+func (u *APIUtil) PasswordGrantDTOToModel(dto *dto.PasswordGrant) *model.PasswordGrant {
 	if dto == nil {
 		return nil
 	}
@@ -187,7 +187,7 @@ func (u *APIUtil) passwordGrantDTOToModel(dto *dto.PasswordGrant) *model.Passwor
 	}
 }
 
-func (u *APIUtil) clientCredGrantDTOToModel(dto *dto.ClientCredentialsGrant) *model.ClientCredentialsGrant {
+func (u *APIUtil) ClientCredGrantDTOToModel(dto *dto.ClientCredentialsGrant) *model.ClientCredentialsGrant {
 	if dto == nil {
 		return nil
 	}
@@ -196,7 +196,7 @@ func (u *APIUtil) clientCredGrantDTOToModel(dto *dto.ClientCredentialsGrant) *mo
 	}
 }
 
-func (u *APIUtil) corsDTOToModel(dto *dto.CORSConfig) *model.CORSConfig {
+func (u *APIUtil) CORSDTOToModel(dto *dto.CORSConfig) *model.CORSConfig {
 	if dto == nil {
 		return nil
 	}
@@ -211,57 +211,56 @@ func (u *APIUtil) corsDTOToModel(dto *dto.CORSConfig) *model.CORSConfig {
 	}
 }
 
-func (u *APIUtil) backendServicesDTOToModel(dtos []dto.BackendService) []model.BackendService {
+func (u *APIUtil) BackendServicesDTOToModel(dtos []dto.BackendService) []model.BackendService {
 	if dtos == nil {
 		return nil
 	}
 	backendServiceModels := make([]model.BackendService, 0)
 	for _, backendServiceDTO := range dtos {
-		backendServiceModels = append(backendServiceModels, *u.backendServiceDTOToModel(&backendServiceDTO))
+		backendServiceModels = append(backendServiceModels, *u.BackendServiceDTOToModel(&backendServiceDTO))
 	}
 	return backendServiceModels
 }
 
-func (u *APIUtil) backendServiceDTOToModel(dto *dto.BackendService) *model.BackendService {
+func (u *APIUtil) BackendServiceDTOToModel(dto *dto.BackendService) *model.BackendService {
 	if dto == nil {
 		return nil
 	}
 	return &model.BackendService{
 		Name:           dto.Name,
-		IsDefault:      dto.IsDefault,
-		Endpoints:      u.backendEndpointsDTOToModel(dto.Endpoints),
-		Timeout:        u.timeoutDTOToModel(dto.Timeout),
+		Endpoints:      u.BackendEndpointsDTOToModel(dto.Endpoints),
+		Timeout:        u.TimeoutDTOToModel(dto.Timeout),
 		Retries:        dto.Retries,
-		LoadBalance:    u.loadBalanceDTOToModel(dto.LoadBalance),
-		CircuitBreaker: u.circuitBreakerDTOToModel(dto.CircuitBreaker),
+		LoadBalance:    u.LoadBalanceDTOToModel(dto.LoadBalance),
+		CircuitBreaker: u.CircuitBreakerDTOToModel(dto.CircuitBreaker),
 	}
 }
 
-func (u *APIUtil) backendEndpointsDTOToModel(dtos []dto.BackendEndpoint) []model.BackendEndpoint {
+func (u *APIUtil) BackendEndpointsDTOToModel(dtos []dto.BackendEndpoint) []model.BackendEndpoint {
 	if dtos == nil {
 		return nil
 	}
 	backendEndpointModels := make([]model.BackendEndpoint, 0)
 	for _, backendEndpointDTO := range dtos {
-		backendEndpointModels = append(backendEndpointModels, *u.backendEndpointDTOToModel(&backendEndpointDTO))
+		backendEndpointModels = append(backendEndpointModels, *u.BackendEndpointDTOToModel(&backendEndpointDTO))
 	}
 	return backendEndpointModels
 }
 
-func (u *APIUtil) backendEndpointDTOToModel(dto *dto.BackendEndpoint) *model.BackendEndpoint {
+func (u *APIUtil) BackendEndpointDTOToModel(dto *dto.BackendEndpoint) *model.BackendEndpoint {
 	if dto == nil {
 		return nil
 	}
 	return &model.BackendEndpoint{
 		URL:         dto.URL,
 		Description: dto.Description,
-		HealthCheck: u.healthCheckDTOToModel(dto.HealthCheck),
+		HealthCheck: u.HealthCheckDTOToModel(dto.HealthCheck),
 		Weight:      dto.Weight,
-		MTLS:        u.mtlsDTOToModel(dto.MTLS),
+		MTLS:        u.MTLSDTOToModel(dto.MTLS),
 	}
 }
 
-func (u *APIUtil) healthCheckDTOToModel(dto *dto.HealthCheckConfig) *model.HealthCheckConfig {
+func (u *APIUtil) HealthCheckDTOToModel(dto *dto.HealthCheckConfig) *model.HealthCheckConfig {
 	if dto == nil {
 		return nil
 	}
@@ -274,7 +273,7 @@ func (u *APIUtil) healthCheckDTOToModel(dto *dto.HealthCheckConfig) *model.Healt
 	}
 }
 
-func (u *APIUtil) timeoutDTOToModel(dto *dto.TimeoutConfig) *model.TimeoutConfig {
+func (u *APIUtil) TimeoutDTOToModel(dto *dto.TimeoutConfig) *model.TimeoutConfig {
 	if dto == nil {
 		return nil
 	}
@@ -285,7 +284,7 @@ func (u *APIUtil) timeoutDTOToModel(dto *dto.TimeoutConfig) *model.TimeoutConfig
 	}
 }
 
-func (u *APIUtil) loadBalanceDTOToModel(dto *dto.LoadBalanceConfig) *model.LoadBalanceConfig {
+func (u *APIUtil) LoadBalanceDTOToModel(dto *dto.LoadBalanceConfig) *model.LoadBalanceConfig {
 	if dto == nil {
 		return nil
 	}
@@ -295,7 +294,7 @@ func (u *APIUtil) loadBalanceDTOToModel(dto *dto.LoadBalanceConfig) *model.LoadB
 	}
 }
 
-func (u *APIUtil) circuitBreakerDTOToModel(dto *dto.CircuitBreakerConfig) *model.CircuitBreakerConfig {
+func (u *APIUtil) CircuitBreakerDTOToModel(dto *dto.CircuitBreakerConfig) *model.CircuitBreakerConfig {
 	if dto == nil {
 		return nil
 	}
@@ -308,7 +307,7 @@ func (u *APIUtil) circuitBreakerDTOToModel(dto *dto.CircuitBreakerConfig) *model
 	}
 }
 
-func (u *APIUtil) rateLimitingDTOToModel(dto *dto.RateLimitingConfig) *model.RateLimitingConfig {
+func (u *APIUtil) RateLimitingDTOToModel(dto *dto.RateLimitingConfig) *model.RateLimitingConfig {
 	if dto == nil {
 		return nil
 	}
@@ -320,54 +319,54 @@ func (u *APIUtil) rateLimitingDTOToModel(dto *dto.RateLimitingConfig) *model.Rat
 	}
 }
 
-func (u *APIUtil) operationsDTOToModel(dtos []dto.Operation) []model.Operation {
+func (u *APIUtil) OperationsDTOToModel(dtos []dto.Operation) []model.Operation {
 	if dtos == nil {
 		return nil
 	}
 	operationsModels := make([]model.Operation, 0)
 	for _, operationsDTO := range dtos {
-		operationsModels = append(operationsModels, *u.operationDTOToModel(&operationsDTO))
+		operationsModels = append(operationsModels, *u.OperationDTOToModel(&operationsDTO))
 	}
 	return operationsModels
 }
 
-func (u *APIUtil) operationDTOToModel(dto *dto.Operation) *model.Operation {
+func (u *APIUtil) OperationDTOToModel(dto *dto.Operation) *model.Operation {
 	if dto == nil {
 		return nil
 	}
 	return &model.Operation{
 		Name:        dto.Name,
 		Description: dto.Description,
-		Request:     u.operationRequestDTOToModel(dto.Request),
+		Request:     u.OperationRequestDTOToModel(dto.Request),
 	}
 }
 
-func (u *APIUtil) operationRequestDTOToModel(dto *dto.OperationRequest) *model.OperationRequest {
+func (u *APIUtil) OperationRequestDTOToModel(dto *dto.OperationRequest) *model.OperationRequest {
 	if dto == nil {
 		return nil
 	}
 	return &model.OperationRequest{
 		Method:           dto.Method,
 		Path:             dto.Path,
-		BackendServices:  u.backendRoutingDTOsToModel(dto.BackendServices),
-		Authentication:   u.authConfigDTOToModel(dto.Authentication),
-		RequestPolicies:  u.policiesDTOToModel(dto.RequestPolicies),
-		ResponsePolicies: u.policiesDTOToModel(dto.ResponsePolicies),
+		BackendServices:  u.BackendRoutingDTOsToModel(dto.BackendServices),
+		Authentication:   u.AuthConfigDTOToModel(dto.Authentication),
+		RequestPolicies:  u.PoliciesDTOToModel(dto.RequestPolicies),
+		ResponsePolicies: u.PoliciesDTOToModel(dto.ResponsePolicies),
 	}
 }
 
-func (u *APIUtil) backendRoutingDTOsToModel(dtos []dto.BackendRouting) []model.BackendRouting {
+func (u *APIUtil) BackendRoutingDTOsToModel(dtos []dto.BackendRouting) []model.BackendRouting {
 	if dtos == nil {
 		return nil
 	}
 	backendRoutingModels := make([]model.BackendRouting, 0)
 	for _, operationsDTO := range dtos {
-		backendRoutingModels = append(backendRoutingModels, *u.backendRoutingDTOToModel(&operationsDTO))
+		backendRoutingModels = append(backendRoutingModels, *u.BackendRoutingDTOToModel(&operationsDTO))
 	}
 	return backendRoutingModels
 }
 
-func (u *APIUtil) backendRoutingDTOToModel(dto *dto.BackendRouting) *model.BackendRouting {
+func (u *APIUtil) BackendRoutingDTOToModel(dto *dto.BackendRouting) *model.BackendRouting {
 	if dto == nil {
 		return nil
 	}
@@ -377,7 +376,7 @@ func (u *APIUtil) backendRoutingDTOToModel(dto *dto.BackendRouting) *model.Backe
 	}
 }
 
-func (u *APIUtil) authConfigDTOToModel(dto *dto.AuthenticationConfig) *model.AuthenticationConfig {
+func (u *APIUtil) AuthConfigDTOToModel(dto *dto.AuthenticationConfig) *model.AuthenticationConfig {
 	if dto == nil {
 		return nil
 	}
@@ -387,18 +386,18 @@ func (u *APIUtil) authConfigDTOToModel(dto *dto.AuthenticationConfig) *model.Aut
 	}
 }
 
-func (u *APIUtil) policiesDTOToModel(dtos []dto.Policy) []model.Policy {
+func (u *APIUtil) PoliciesDTOToModel(dtos []dto.Policy) []model.Policy {
 	if dtos == nil {
 		return nil
 	}
 	policyModels := make([]model.Policy, 0)
 	for _, policyDTO := range dtos {
-		policyModels = append(policyModels, *u.policyDTOToModel(&policyDTO))
+		policyModels = append(policyModels, *u.PolicyDTOToModel(&policyDTO))
 	}
 	return policyModels
 }
 
-func (u *APIUtil) policyDTOToModel(dto *dto.Policy) *model.Policy {
+func (u *APIUtil) PolicyDTOToModel(dto *dto.Policy) *model.Policy {
 	if dto == nil {
 		return nil
 	}
@@ -410,7 +409,7 @@ func (u *APIUtil) policyDTOToModel(dto *dto.Policy) *model.Policy {
 
 // Helper Model to DTO conversion methods
 
-func (u *APIUtil) mtlsModelToDTO(model *model.MTLSConfig) *dto.MTLSConfig {
+func (u *APIUtil) MTLSModelToDTO(model *model.MTLSConfig) *dto.MTLSConfig {
 	if model == nil {
 		return nil
 	}
@@ -424,18 +423,18 @@ func (u *APIUtil) mtlsModelToDTO(model *model.MTLSConfig) *dto.MTLSConfig {
 	}
 }
 
-func (u *APIUtil) securityModelToDTO(model *model.SecurityConfig) *dto.SecurityConfig {
+func (u *APIUtil) SecurityModelToDTO(model *model.SecurityConfig) *dto.SecurityConfig {
 	if model == nil {
 		return nil
 	}
 	return &dto.SecurityConfig{
 		Enabled: model.Enabled,
-		APIKey:  u.apiKeyModelToDTO(model.APIKey),
-		OAuth2:  u.oauth2ModelToDTO(model.OAuth2),
+		APIKey:  u.ApiKeyModelToDTO(model.APIKey),
+		OAuth2:  u.Oauth2ModelToDTO(model.OAuth2),
 	}
 }
 
-func (u *APIUtil) apiKeyModelToDTO(model *model.APIKeySecurity) *dto.APIKeySecurity {
+func (u *APIUtil) ApiKeyModelToDTO(model *model.APIKeySecurity) *dto.APIKeySecurity {
 	if model == nil {
 		return nil
 	}
@@ -447,29 +446,29 @@ func (u *APIUtil) apiKeyModelToDTO(model *model.APIKeySecurity) *dto.APIKeySecur
 	}
 }
 
-func (u *APIUtil) oauth2ModelToDTO(model *model.OAuth2Security) *dto.OAuth2Security {
+func (u *APIUtil) Oauth2ModelToDTO(model *model.OAuth2Security) *dto.OAuth2Security {
 	if model == nil {
 		return nil
 	}
 	return &dto.OAuth2Security{
-		GrantTypes: u.oauth2GrantTypesModelToDTO(model.GrantTypes),
+		GrantTypes: u.Oauth2GrantTypesModelToDTO(model.GrantTypes),
 		Scopes:     model.Scopes,
 	}
 }
 
-func (u *APIUtil) oauth2GrantTypesModelToDTO(model *model.OAuth2GrantTypes) *dto.OAuth2GrantTypes {
+func (u *APIUtil) Oauth2GrantTypesModelToDTO(model *model.OAuth2GrantTypes) *dto.OAuth2GrantTypes {
 	if model == nil {
 		return nil
 	}
 	return &dto.OAuth2GrantTypes{
-		AuthorizationCode: u.authCodeGrantModelToDTO(model.AuthorizationCode),
-		Implicit:          u.implicitGrantModelToDTO(model.Implicit),
-		Password:          u.passwordGrantModelToDTO(model.Password),
-		ClientCredentials: u.clientCredGrantModelToDTO(model.ClientCredentials),
+		AuthorizationCode: u.AuthCodeGrantModelToDTO(model.AuthorizationCode),
+		Implicit:          u.ImplicitGrantModelToDTO(model.Implicit),
+		Password:          u.PasswordGrantModelToDTO(model.Password),
+		ClientCredentials: u.ClientCredGrantModelToDTO(model.ClientCredentials),
 	}
 }
 
-func (u *APIUtil) authCodeGrantModelToDTO(model *model.AuthorizationCodeGrant) *dto.AuthorizationCodeGrant {
+func (u *APIUtil) AuthCodeGrantModelToDTO(model *model.AuthorizationCodeGrant) *dto.AuthorizationCodeGrant {
 	if model == nil {
 		return nil
 	}
@@ -479,7 +478,7 @@ func (u *APIUtil) authCodeGrantModelToDTO(model *model.AuthorizationCodeGrant) *
 	}
 }
 
-func (u *APIUtil) implicitGrantModelToDTO(model *model.ImplicitGrant) *dto.ImplicitGrant {
+func (u *APIUtil) ImplicitGrantModelToDTO(model *model.ImplicitGrant) *dto.ImplicitGrant {
 	if model == nil {
 		return nil
 	}
@@ -489,7 +488,7 @@ func (u *APIUtil) implicitGrantModelToDTO(model *model.ImplicitGrant) *dto.Impli
 	}
 }
 
-func (u *APIUtil) passwordGrantModelToDTO(model *model.PasswordGrant) *dto.PasswordGrant {
+func (u *APIUtil) PasswordGrantModelToDTO(model *model.PasswordGrant) *dto.PasswordGrant {
 	if model == nil {
 		return nil
 	}
@@ -498,7 +497,7 @@ func (u *APIUtil) passwordGrantModelToDTO(model *model.PasswordGrant) *dto.Passw
 	}
 }
 
-func (u *APIUtil) clientCredGrantModelToDTO(model *model.ClientCredentialsGrant) *dto.ClientCredentialsGrant {
+func (u *APIUtil) ClientCredGrantModelToDTO(model *model.ClientCredentialsGrant) *dto.ClientCredentialsGrant {
 	if model == nil {
 		return nil
 	}
@@ -507,7 +506,7 @@ func (u *APIUtil) clientCredGrantModelToDTO(model *model.ClientCredentialsGrant)
 	}
 }
 
-func (u *APIUtil) corsModelToDTO(model *model.CORSConfig) *dto.CORSConfig {
+func (u *APIUtil) CORSModelToDTO(model *model.CORSConfig) *dto.CORSConfig {
 	if model == nil {
 		return nil
 	}
@@ -522,57 +521,56 @@ func (u *APIUtil) corsModelToDTO(model *model.CORSConfig) *dto.CORSConfig {
 	}
 }
 
-func (u *APIUtil) backendServicesModelToDTO(models []model.BackendService) []dto.BackendService {
+func (u *APIUtil) BackendServicesModelToDTO(models []model.BackendService) []dto.BackendService {
 	if models == nil {
 		return nil
 	}
 	backendServiceDTOs := make([]dto.BackendService, 0)
 	for _, backendServiceModel := range models {
-		backendServiceDTOs = append(backendServiceDTOs, *u.backendServiceModelToDTO(&backendServiceModel))
+		backendServiceDTOs = append(backendServiceDTOs, *u.BackendServiceModelToDTO(&backendServiceModel))
 	}
 	return backendServiceDTOs
 }
 
-func (u *APIUtil) backendServiceModelToDTO(model *model.BackendService) *dto.BackendService {
+func (u *APIUtil) BackendServiceModelToDTO(model *model.BackendService) *dto.BackendService {
 	if model == nil {
 		return nil
 	}
 	return &dto.BackendService{
 		Name:           model.Name,
-		IsDefault:      model.IsDefault,
-		Endpoints:      u.backendEndpointsModelToDTO(model.Endpoints),
-		Timeout:        u.timeoutModelToDTO(model.Timeout),
+		Endpoints:      u.BackendEndpointsModelToDTO(model.Endpoints),
+		Timeout:        u.TimeoutModelToDTO(model.Timeout),
 		Retries:        model.Retries,
-		LoadBalance:    u.loadBalanceModelToDTO(model.LoadBalance),
-		CircuitBreaker: u.circuitBreakerModelToDTO(model.CircuitBreaker),
+		LoadBalance:    u.LoadBalanceModelToDTO(model.LoadBalance),
+		CircuitBreaker: u.CircuitBreakerModelToDTO(model.CircuitBreaker),
 	}
 }
 
-func (u *APIUtil) backendEndpointsModelToDTO(models []model.BackendEndpoint) []dto.BackendEndpoint {
+func (u *APIUtil) BackendEndpointsModelToDTO(models []model.BackendEndpoint) []dto.BackendEndpoint {
 	if models == nil {
 		return nil
 	}
 	backendEndpointDTOs := make([]dto.BackendEndpoint, 0)
 	for _, backendServiceModel := range models {
-		backendEndpointDTOs = append(backendEndpointDTOs, *u.backendEndpointModelToDTO(&backendServiceModel))
+		backendEndpointDTOs = append(backendEndpointDTOs, *u.BackendEndpointModelToDTO(&backendServiceModel))
 	}
 	return backendEndpointDTOs
 }
 
-func (u *APIUtil) backendEndpointModelToDTO(model *model.BackendEndpoint) *dto.BackendEndpoint {
+func (u *APIUtil) BackendEndpointModelToDTO(model *model.BackendEndpoint) *dto.BackendEndpoint {
 	if model == nil {
 		return nil
 	}
 	return &dto.BackendEndpoint{
 		URL:         model.URL,
 		Description: model.Description,
-		HealthCheck: u.healthCheckModelToDTO(model.HealthCheck),
+		HealthCheck: u.HealthCheckModelToDTO(model.HealthCheck),
 		Weight:      model.Weight,
-		MTLS:        u.mtlsModelToDTO(model.MTLS),
+		MTLS:        u.MTLSModelToDTO(model.MTLS),
 	}
 }
 
-func (u *APIUtil) healthCheckModelToDTO(model *model.HealthCheckConfig) *dto.HealthCheckConfig {
+func (u *APIUtil) HealthCheckModelToDTO(model *model.HealthCheckConfig) *dto.HealthCheckConfig {
 	if model == nil {
 		return nil
 	}
@@ -585,7 +583,7 @@ func (u *APIUtil) healthCheckModelToDTO(model *model.HealthCheckConfig) *dto.Hea
 	}
 }
 
-func (u *APIUtil) timeoutModelToDTO(model *model.TimeoutConfig) *dto.TimeoutConfig {
+func (u *APIUtil) TimeoutModelToDTO(model *model.TimeoutConfig) *dto.TimeoutConfig {
 	if model == nil {
 		return nil
 	}
@@ -596,7 +594,7 @@ func (u *APIUtil) timeoutModelToDTO(model *model.TimeoutConfig) *dto.TimeoutConf
 	}
 }
 
-func (u *APIUtil) loadBalanceModelToDTO(model *model.LoadBalanceConfig) *dto.LoadBalanceConfig {
+func (u *APIUtil) LoadBalanceModelToDTO(model *model.LoadBalanceConfig) *dto.LoadBalanceConfig {
 	if model == nil {
 		return nil
 	}
@@ -606,7 +604,7 @@ func (u *APIUtil) loadBalanceModelToDTO(model *model.LoadBalanceConfig) *dto.Loa
 	}
 }
 
-func (u *APIUtil) circuitBreakerModelToDTO(model *model.CircuitBreakerConfig) *dto.CircuitBreakerConfig {
+func (u *APIUtil) CircuitBreakerModelToDTO(model *model.CircuitBreakerConfig) *dto.CircuitBreakerConfig {
 	if model == nil {
 		return nil
 	}
@@ -619,7 +617,7 @@ func (u *APIUtil) circuitBreakerModelToDTO(model *model.CircuitBreakerConfig) *d
 	}
 }
 
-func (u *APIUtil) rateLimitingModelToDTO(model *model.RateLimitingConfig) *dto.RateLimitingConfig {
+func (u *APIUtil) RateLimitingModelToDTO(model *model.RateLimitingConfig) *dto.RateLimitingConfig {
 	if model == nil {
 		return nil
 	}
@@ -631,54 +629,54 @@ func (u *APIUtil) rateLimitingModelToDTO(model *model.RateLimitingConfig) *dto.R
 	}
 }
 
-func (u *APIUtil) operationsModelToDTO(models []model.Operation) []dto.Operation {
+func (u *APIUtil) OperationsModelToDTO(models []model.Operation) []dto.Operation {
 	if models == nil {
 		return nil
 	}
 	operationsDTOs := make([]dto.Operation, 0)
 	for _, operationsModel := range models {
-		operationsDTOs = append(operationsDTOs, *u.operationModelToDTO(&operationsModel))
+		operationsDTOs = append(operationsDTOs, *u.OperationModelToDTO(&operationsModel))
 	}
 	return operationsDTOs
 }
 
-func (u *APIUtil) operationModelToDTO(model *model.Operation) *dto.Operation {
+func (u *APIUtil) OperationModelToDTO(model *model.Operation) *dto.Operation {
 	if model == nil {
 		return nil
 	}
 	return &dto.Operation{
 		Name:        model.Name,
 		Description: model.Description,
-		Request:     u.operationRequestModelToDTO(model.Request),
+		Request:     u.OperationRequestModelToDTO(model.Request),
 	}
 }
 
-func (u *APIUtil) operationRequestModelToDTO(model *model.OperationRequest) *dto.OperationRequest {
+func (u *APIUtil) OperationRequestModelToDTO(model *model.OperationRequest) *dto.OperationRequest {
 	if model == nil {
 		return nil
 	}
 	return &dto.OperationRequest{
 		Method:           model.Method,
 		Path:             model.Path,
-		BackendServices:  u.backendRoutingModelsToDTO(model.BackendServices),
-		Authentication:   u.authConfigModelToDTO(model.Authentication),
-		RequestPolicies:  u.policiesModelToDTO(model.RequestPolicies),
-		ResponsePolicies: u.policiesModelToDTO(model.ResponsePolicies),
+		BackendServices:  u.BackendRoutingModelsToDTO(model.BackendServices),
+		Authentication:   u.AuthConfigModelToDTO(model.Authentication),
+		RequestPolicies:  u.PoliciesModelToDTO(model.RequestPolicies),
+		ResponsePolicies: u.PoliciesModelToDTO(model.ResponsePolicies),
 	}
 }
 
-func (u *APIUtil) backendRoutingModelsToDTO(models []model.BackendRouting) []dto.BackendRouting {
+func (u *APIUtil) BackendRoutingModelsToDTO(models []model.BackendRouting) []dto.BackendRouting {
 	if models == nil {
 		return nil
 	}
 	backendRoutingDTOs := make([]dto.BackendRouting, 0)
 	for _, backendRoutingModel := range models {
-		backendRoutingDTOs = append(backendRoutingDTOs, *u.backendRoutingModelToDTO(&backendRoutingModel))
+		backendRoutingDTOs = append(backendRoutingDTOs, *u.BackendRoutingModelToDTO(&backendRoutingModel))
 	}
 	return backendRoutingDTOs
 }
 
-func (u *APIUtil) backendRoutingModelToDTO(model *model.BackendRouting) *dto.BackendRouting {
+func (u *APIUtil) BackendRoutingModelToDTO(model *model.BackendRouting) *dto.BackendRouting {
 	if model == nil {
 		return nil
 	}
@@ -688,7 +686,7 @@ func (u *APIUtil) backendRoutingModelToDTO(model *model.BackendRouting) *dto.Bac
 	}
 }
 
-func (u *APIUtil) authConfigModelToDTO(model *model.AuthenticationConfig) *dto.AuthenticationConfig {
+func (u *APIUtil) AuthConfigModelToDTO(model *model.AuthenticationConfig) *dto.AuthenticationConfig {
 	if model == nil {
 		return nil
 	}
@@ -698,18 +696,18 @@ func (u *APIUtil) authConfigModelToDTO(model *model.AuthenticationConfig) *dto.A
 	}
 }
 
-func (u *APIUtil) policiesModelToDTO(models []model.Policy) []dto.Policy {
+func (u *APIUtil) PoliciesModelToDTO(models []model.Policy) []dto.Policy {
 	if models == nil {
 		return nil
 	}
 	policyDTOs := make([]dto.Policy, 0)
 	for _, policyModel := range models {
-		policyDTOs = append(policyDTOs, *u.policyModelToDTO(&policyModel))
+		policyDTOs = append(policyDTOs, *u.PolicyModelToDTO(&policyModel))
 	}
 	return policyDTOs
 }
 
-func (u *APIUtil) policyModelToDTO(model *model.Policy) *dto.Policy {
+func (u *APIUtil) PolicyModelToDTO(model *model.Policy) *dto.Policy {
 	if model == nil {
 		return nil
 	}

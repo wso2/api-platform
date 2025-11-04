@@ -23,7 +23,7 @@ import (
 
 // API represents an API entity in the platform
 type API struct {
-	ID               string              `json:"id,omitempty" db:"uuid"`
+	ID               string              `json:"id" db:"uuid"`
 	Name             string              `json:"name" db:"name"`
 	DisplayName      string              `json:"displayName,omitempty" db:"display_name"`
 	Description      string              `json:"description,omitempty" db:"description"`
@@ -129,13 +129,24 @@ type CORSConfig struct {
 
 // BackendService represents a backend service configuration
 type BackendService struct {
-	Name           string                `json:"name,omitempty"`
-	IsDefault      bool                  `json:"isDefault,omitempty"`
+	ID             string                `json:"id" db:"uuid"`
+	OrganizationID string                `json:"organizationId" db:"organization_uuid"`
+	Name           string                `json:"name" db:"name"`
+	Description    string                `json:"description,omitempty" db:"description"`
 	Endpoints      []BackendEndpoint     `json:"endpoints,omitempty"`
 	Timeout        *TimeoutConfig        `json:"timeout,omitempty"`
-	Retries        int                   `json:"retries,omitempty"`
+	Retries        int                   `json:"retries,omitempty" db:"retries"`
 	LoadBalance    *LoadBalanceConfig    `json:"loadBalance,omitempty"`
 	CircuitBreaker *CircuitBreakerConfig `json:"circuitBreaker,omitempty"`
+	CreatedAt      time.Time             `json:"createdAt,omitempty" db:"created_at"`
+	UpdatedAt      time.Time             `json:"updatedAt,omitempty" db:"updated_at"`
+}
+
+// APIBackendService represents the association between an API and a backend service
+type APIBackendService struct {
+	ApiID            string `json:"apiId" db:"api_uuid"`
+	BackendServiceID string `json:"backendServiceId" db:"backend_service_uuid"`
+	IsDefault        bool   `json:"isDefault" db:"is_default"`
 }
 
 // BackendEndpoint represents a backend endpoint
