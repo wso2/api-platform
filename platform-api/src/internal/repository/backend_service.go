@@ -363,7 +363,7 @@ func (r *BackendServiceRepo) UpdateBackendService(service *model.BackendService)
 	}
 
 	// Delete existing endpoints and re-insert using service UUID
-	deleteEndpointsQuery := `DELETE FROM backend_endpoints WHERE backend_service_id = ?`
+	deleteEndpointsQuery := `DELETE FROM backend_endpoints WHERE backend_service_uuid = ?`
 	_, err = tx.Exec(deleteEndpointsQuery, service.ID)
 	if err != nil {
 		return err
@@ -531,7 +531,7 @@ func (r *BackendServiceRepo) insertBackendEndpointByUUID(tx *sql.Tx, serviceUUID
 
 	// Insert endpoint using service UUID
 	endpointQuery := `
-		INSERT INTO backend_endpoints (backend_service_id, url, description, healthcheck_enabled,
+		INSERT INTO backend_endpoints (backend_service_uuid, url, description, healthcheck_enabled,
 			healthcheck_interval_seconds, healthcheck_timeout_seconds, unhealthy_threshold,
 			healthy_threshold, weight, mtls_enabled, enforce_if_client_cert_present, verify_client,
 			client_cert, client_key, ca_cert)
@@ -549,7 +549,7 @@ func (r *BackendServiceRepo) loadBackendEndpointsByServiceUUID(serviceUUID strin
 			be.healthcheck_timeout_seconds, be.unhealthy_threshold, be.healthy_threshold, be.weight,
 			be.mtls_enabled, be.enforce_if_client_cert_present, be.verify_client, be.client_cert, be.client_key, be.ca_cert
 		FROM backend_endpoints be
-		WHERE be.backend_service_id = ?
+		WHERE be.backend_service_uuid = ?
 	`
 	rows, err := r.db.Query(query, serviceUUID)
 	if err != nil {

@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS api_backend_services (
 -- Backend Endpoints table
 CREATE TABLE IF NOT EXISTS backend_endpoints (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    backend_service_id INTEGER NOT NULL,
+    backend_service_uuid TEXT NOT NULL,
     url TEXT NOT NULL,
     description TEXT,
     healthcheck_enabled BOOLEAN DEFAULT FALSE,
@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS backend_endpoints (
     client_cert TEXT,
     client_key TEXT,
     ca_cert TEXT,
-    FOREIGN KEY (backend_service_id) REFERENCES backend_services(uuid) ON DELETE CASCADE
+    FOREIGN KEY (backend_service_uuid) REFERENCES backend_services(uuid) ON DELETE CASCADE
 );
 
 -- API Rate Limiting Configuration table
@@ -274,7 +274,7 @@ CREATE INDEX IF NOT EXISTS idx_backend_services_organization_uuid ON backend_ser
 CREATE INDEX IF NOT EXISTS idx_backend_services_name_org ON backend_services(name, organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_backend_services_api_uuid ON api_backend_services(api_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_backend_services_backend_uuid ON api_backend_services(backend_service_uuid);
-CREATE INDEX IF NOT EXISTS idx_backend_endpoints_service_id ON backend_endpoints(backend_service_id);
+CREATE INDEX IF NOT EXISTS idx_backend_endpoints_service_id ON backend_endpoints(backend_service_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_operations_api_uuid ON api_operations(api_uuid);
 CREATE INDEX IF NOT EXISTS idx_operation_backend_services_operation_id ON operation_backend_services(operation_id);
 CREATE INDEX IF NOT EXISTS idx_operation_backend_services_backend_uuid ON operation_backend_services(backend_service_uuid);
