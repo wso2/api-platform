@@ -44,14 +44,6 @@ This file provides a comprehensive index of all documentation in the API Platfor
 - [platform-api/docs/README.md](platform-api/docs/README.md) - Backend service providing RESTful APIs and business logic
 - [platform-api/docs/features/README.md](platform-api/docs/features/README.md) - Features overview and index
 
-##### Platform API Features
-- [platform-api/docs/features/gateway-management/README.md](platform-api/docs/features/gateway-management/README.md) - Gateway lifecycle management
-- [platform-api/docs/features/gateway-management/quickstart.md](platform-api/docs/features/gateway-management/quickstart.md) - Gateway management quick start
-- [platform-api/docs/features/gateway-websocket-connections/README.md](platform-api/docs/features/gateway-websocket-connections/README.md) - Real-time WebSocket connections
-- [platform-api/docs/features/gateway-websocket-connections/quickstart.md](platform-api/docs/features/gateway-websocket-connections/quickstart.md) - WebSocket quick start
-- [platform-api/docs/features/devportal-publishing/README.md](platform-api/docs/features/devportal-publishing/README.md) - Developer portal publishing
-- [platform-api/docs/features/devportal-publishing/quickstart.md](platform-api/docs/features/devportal-publishing/quickstart.md) - Portal publishing quick start
-
 #### Gateway
 - [gateway/docs/README.md](gateway/docs/README.md) - Envoy-based API gateway documentation
 
