@@ -29,22 +29,25 @@ import (
 
 // GatewayInternalAPIService handles internal gateway API operations
 type GatewayInternalAPIService struct {
-	apiRepo     repository.APIRepository
-	gatewayRepo repository.GatewayRepository
-	orgRepo     repository.OrganizationRepository
-	projectRepo repository.ProjectRepository
-	apiUtil     *utils.APIUtil
+	apiRepo         repository.APIRepository
+	gatewayRepo     repository.GatewayRepository
+	orgRepo         repository.OrganizationRepository
+	projectRepo     repository.ProjectRepository
+	upstreamService *UpstreamService
+	apiUtil         *utils.APIUtil
 }
 
 // NewGatewayInternalAPIService creates a new gateway internal API service
 func NewGatewayInternalAPIService(apiRepo repository.APIRepository, gatewayRepo repository.GatewayRepository,
-	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository) *GatewayInternalAPIService {
+	orgRepo repository.OrganizationRepository, projectRepo repository.ProjectRepository,
+	upstreamSvc *UpstreamService) *GatewayInternalAPIService {
 	return &GatewayInternalAPIService{
-		apiRepo:     apiRepo,
-		gatewayRepo: gatewayRepo,
-		orgRepo:     orgRepo,
-		projectRepo: projectRepo,
-		apiUtil:     &utils.APIUtil{},
+		apiRepo:         apiRepo,
+		gatewayRepo:     gatewayRepo,
+		orgRepo:         orgRepo,
+		projectRepo:     projectRepo,
+		upstreamService: upstreamSvc,
+		apiUtil:         &utils.APIUtil{},
 	}
 }
 
@@ -134,20 +137,14 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 
 	apiCreated := false
 	if existingAPI == nil {
-		// Convert upstream services from notification to backend services
-		backendServices := make([]model.BackendService, 0, len(notification.Configuration.Data.Upstream))
-		for i, upstream := range notification.Configuration.Data.Upstream {
-			backendService := model.BackendService{
-				Name:      fmt.Sprintf("backend-service-%d", i+1),
-				IsDefault: i == 0, // First backend service is default
-				Endpoints: []model.BackendEndpoint{
-					{
-						URL:    upstream.URL,
-						Weight: 100,
-					},
-				},
+		// Create backend services from upstream configurations
+		var backendServiceUUIDs []string
+		for _, upstream := range notification.Configuration.Data.Upstream {
+			backendServiceUUID, err := s.upstreamService.CreateBackendServiceFromUpstream(upstream, orgID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create backend service from upstream: %w", err)
 			}
-			backendServices = append(backendServices, backendService)
+			backendServiceUUIDs = append(backendServiceUUIDs, backendServiceUUID)
 		}
 
 		// Convert operations from notification to API operations
@@ -159,18 +156,12 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 				Request: &model.OperationRequest{
 					Method: op.Method,
 					Path:   op.Path,
-					BackendServices: []model.BackendRouting{
-						{
-							Name:   "backend-service-1", // Route to default backend service
-							Weight: 100,
-						},
-					},
 				},
 			}
 			operations = append(operations, operation)
 		}
 
-		// Create new API from notification
+		// Create new API from notification (without backend services in the model)
 		newAPI := &model.API{
 			ID:               apiID,
 			Name:             notification.Configuration.Data.Name,
@@ -185,7 +176,6 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 			IsDefaultVersion: false,
 			IsRevision:       false,
 			RevisionID:       0,
-			BackendServices:  backendServices,
 			Operations:       operations,
 			CreatedAt:        time.Now(),
 			UpdatedAt:        time.Now(),
@@ -195,6 +185,15 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 		if err != nil {
 			return nil, fmt.Errorf("failed to create API: %w", err)
 		}
+
+		// Associate backend services with the API
+		for i, backendServiceUUID := range backendServiceUUIDs {
+			isDefault := i == 0 // First backend service is default
+			if err := s.upstreamService.AssociateBackendServiceWithAPI(apiID, backendServiceUUID, isDefault); err != nil {
+				return nil, fmt.Errorf("failed to associate backend service with API: %w", err)
+			}
+		}
+
 		apiCreated = true
 	} else {
 		// Validate that existing API belongs to the same organization

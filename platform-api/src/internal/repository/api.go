@@ -21,7 +21,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"github.com/google/uuid"
+	"fmt"
 	"time"
 
 	"platform-api/src/internal/database"
@@ -30,12 +30,16 @@ import (
 
 // APIRepo implements APIRepository
 type APIRepo struct {
-	db *database.DB
+	db                 *database.DB
+	backendServiceRepo BackendServiceRepository
 }
 
 // NewAPIRepo creates a new API repository
 func NewAPIRepo(db *database.DB) APIRepository {
-	return &APIRepo{db: db}
+	return &APIRepo{
+		db:                 db,
+		backendServiceRepo: NewBackendServiceRepo(db),
+	}
 }
 
 // CreateAPI inserts a new API with all its configurations
@@ -91,14 +95,7 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 		}
 	}
 
-	// Insert Backend Services
-	for _, backendService := range api.BackendServices {
-		if err := r.insertBackendService(tx, api.ID, &backendService); err != nil {
-			return err
-		}
-	}
-
-	// Insert API Rate Limiting
+	// Insert Rate Limiting configuration
 	if api.APIRateLimiting != nil {
 		if err := r.insertRateLimitingConfig(tx, api.ID, api.APIRateLimiting); err != nil {
 			return err
@@ -107,7 +104,7 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 
 	// Insert Operations
 	for _, operation := range api.Operations {
-		if err := r.insertOperation(tx, api.ID, &operation); err != nil {
+		if err := r.insertOperation(tx, api.ID, api.OrganizationID, &operation); err != nil {
 			return err
 		}
 	}
@@ -353,20 +350,15 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 		}
 	}
 
-	for _, backendService := range api.BackendServices {
-		if err := r.insertBackendService(tx, api.ID, &backendService); err != nil {
-			return err
-		}
-	}
-
 	if api.APIRateLimiting != nil {
 		if err := r.insertRateLimitingConfig(tx, api.ID, api.APIRateLimiting); err != nil {
 			return err
 		}
 	}
 
+	// Re-insert operations
 	for _, operation := range api.Operations {
-		if err := r.insertOperation(tx, api.ID, &operation); err != nil {
+		if err := r.insertOperation(tx, api.ID, api.OrganizationID, &operation); err != nil {
 			return err
 		}
 	}
@@ -407,11 +399,15 @@ func (r *APIRepo) loadAPIConfigurations(api *model.API) error {
 		api.CORS = cors
 	}
 
-	// Load Backend Services
-	if backendServices, err := r.loadBackendServices(api.ID); err != nil {
+	// Load Backend Services associated with this API
+	if backendServices, err := r.backendServiceRepo.GetBackendServicesByAPIID(api.ID); err != nil {
 		return err
-	} else {
-		api.BackendServices = backendServices
+	} else if backendServices != nil {
+		// Convert from []*model.BackendService to []model.BackendService
+		api.BackendServices = make([]model.BackendService, len(backendServices))
+		for i, bs := range backendServices {
+			api.BackendServices[i] = *bs
+		}
 	}
 
 	// Load Rate Limiting configuration
@@ -623,234 +619,6 @@ func (r *APIRepo) loadCORSConfig(apiId string) (*model.CORSConfig, error) {
 	return cors, nil
 }
 
-// Helper methods for Backend Services
-func (r *APIRepo) insertBackendService(tx *sql.Tx, apiId string, service *model.BackendService) error {
-	if service.Name == "" {
-		service.Name = uuid.New().String()
-	}
-	// Build timeout and load balance values
-	var timeoutConnect, timeoutRead, timeoutWrite *int
-	if service.Timeout != nil {
-		timeoutConnect = &service.Timeout.Connect
-		timeoutRead = &service.Timeout.Read
-		timeoutWrite = &service.Timeout.Write
-	}
-
-	var lbAlgorithm *string
-	var lbFailover *bool
-	if service.LoadBalance != nil {
-		lbAlgorithm = &service.LoadBalance.Algorithm
-		lbFailover = &service.LoadBalance.Failover
-	}
-
-	var cbEnabled *bool
-	var maxConnections, maxPendingRequests, maxRequests, maxRetries *int
-	if service.CircuitBreaker != nil {
-		cbEnabled = &service.CircuitBreaker.Enabled
-		maxConnections = &service.CircuitBreaker.MaxConnections
-		maxPendingRequests = &service.CircuitBreaker.MaxPendingRequests
-		maxRequests = &service.CircuitBreaker.MaxRequests
-		maxRetries = &service.CircuitBreaker.MaxRetries
-	}
-
-	// Insert backend service
-	serviceQuery := `
-		INSERT INTO backend_services (api_uuid, name, is_default, timeout_connect_ms, timeout_read_ms, 
-			timeout_write_ms, retries, loadBalanace_algorithm, loadBalanace_failover, circuit_breaker_enabled,
-			max_connections, max_pending_requests, max_requests, max_retries)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-	result, err := tx.Exec(serviceQuery, apiId, service.Name, service.IsDefault,
-		timeoutConnect, timeoutRead, timeoutWrite, service.Retries, lbAlgorithm, lbFailover,
-		cbEnabled, maxConnections, maxPendingRequests, maxRequests, maxRetries)
-	if err != nil {
-		return err
-	}
-
-	serviceID, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-
-	// Insert endpoints
-	for _, endpoint := range service.Endpoints {
-		if err := r.insertBackendEndpoint(tx, serviceID, &endpoint); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (r *APIRepo) insertBackendEndpoint(tx *sql.Tx, serviceID int64, endpoint *model.BackendEndpoint) error {
-	var hcEnabled *bool
-	var hcInterval, hcTimeout, unhealthyThreshold, healthyThreshold *int
-	if endpoint.HealthCheck != nil {
-		hcEnabled = &endpoint.HealthCheck.Enabled
-		hcInterval = &endpoint.HealthCheck.Interval
-		hcTimeout = &endpoint.HealthCheck.Timeout
-		unhealthyThreshold = &endpoint.HealthCheck.UnhealthyThreshold
-		healthyThreshold = &endpoint.HealthCheck.HealthyThreshold
-	}
-
-	var mtlsEnabled *bool
-	var enforceIfClientCertPresent, verifyClient *bool
-	var clientCert, clientKey, caCert *string
-	if endpoint.MTLS != nil {
-		mtlsEnabled = &endpoint.MTLS.Enabled
-		enforceIfClientCertPresent = &endpoint.MTLS.EnforceIfClientCertPresent
-		verifyClient = &endpoint.MTLS.VerifyClient
-		clientCert = &endpoint.MTLS.ClientCert
-		clientKey = &endpoint.MTLS.ClientKey
-		caCert = &endpoint.MTLS.CACert
-	}
-
-	// Insert endpoint
-	endpointQuery := `
-		INSERT INTO backend_endpoints (backend_service_id, url, description, healthcheck_enabled,
-			healthcheck_interval_seconds, healthcheck_timeout_seconds, unhealthy_threshold,
-			healthy_threshold, weight, mtls_enabled, enforce_if_client_cert_present, verify_client,
-			client_cert, client_key, ca_cert)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-	_, err := tx.Exec(endpointQuery, serviceID, endpoint.URL, endpoint.Description,
-		hcEnabled, hcInterval, hcTimeout, unhealthyThreshold, healthyThreshold, endpoint.Weight,
-		mtlsEnabled, enforceIfClientCertPresent, verifyClient, clientCert, clientKey, caCert)
-	return err
-}
-
-func (r *APIRepo) loadBackendServices(apiId string) ([]model.BackendService, error) {
-	query := `
-		SELECT id, name, is_default, timeout_connect_ms, timeout_read_ms, timeout_write_ms, retries,
-			loadBalanace_algorithm, loadBalanace_failover, circuit_breaker_enabled, max_connections,
-			max_pending_requests, max_requests, max_retries
-		FROM backend_services WHERE api_uuid = ?
-	`
-	rows, err := r.db.Query(query, apiId)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var services []model.BackendService
-	for rows.Next() {
-		var serviceID int64
-		service := model.BackendService{}
-
-		var timeoutConnect, timeoutRead, timeoutWrite sql.NullInt64
-		var lbAlgorithm sql.NullString
-		var lbFailover sql.NullBool
-		var cbEnabled sql.NullBool
-		var maxConnections, maxPendingRequests, maxRequests, maxRetries sql.NullInt64
-
-		err := rows.Scan(&serviceID, &service.Name, &service.IsDefault,
-			&timeoutConnect, &timeoutRead, &timeoutWrite, &service.Retries,
-			&lbAlgorithm, &lbFailover, &cbEnabled, &maxConnections,
-			&maxPendingRequests, &maxRequests, &maxRetries)
-		if err != nil {
-			return nil, err
-		}
-
-		// Build timeout config
-		if timeoutConnect.Valid || timeoutRead.Valid || timeoutWrite.Valid {
-			service.Timeout = &model.TimeoutConfig{
-				Connect: int(timeoutConnect.Int64),
-				Read:    int(timeoutRead.Int64),
-				Write:   int(timeoutWrite.Int64),
-			}
-		}
-
-		// Build load balance config
-		if lbAlgorithm.Valid || lbFailover.Valid {
-			service.LoadBalance = &model.LoadBalanceConfig{
-				Algorithm: lbAlgorithm.String,
-				Failover:  lbFailover.Bool,
-			}
-		}
-
-		// Build circuit breaker config
-		if cbEnabled.Valid {
-			service.CircuitBreaker = &model.CircuitBreakerConfig{
-				Enabled:            cbEnabled.Bool,
-				MaxConnections:     int(maxConnections.Int64),
-				MaxPendingRequests: int(maxPendingRequests.Int64),
-				MaxRequests:        int(maxRequests.Int64),
-				MaxRetries:         int(maxRetries.Int64),
-			}
-		}
-
-		// Load endpoints
-		if endpoints, err := r.loadBackendEndpoints(serviceID); err != nil {
-			return nil, err
-		} else {
-			service.Endpoints = endpoints
-		}
-
-		services = append(services, service)
-	}
-
-	return services, rows.Err()
-}
-
-func (r *APIRepo) loadBackendEndpoints(serviceID int64) ([]model.BackendEndpoint, error) {
-	query := `
-		SELECT url, description, healthcheck_enabled, healthcheck_interval_seconds,
-			healthcheck_timeout_seconds, unhealthy_threshold, healthy_threshold, weight,
-			mtls_enabled, enforce_if_client_cert_present, verify_client, client_cert, client_key, ca_cert
-		FROM backend_endpoints WHERE backend_service_id = ?
-	`
-	rows, err := r.db.Query(query, serviceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var endpoints []model.BackendEndpoint
-	for rows.Next() {
-		endpoint := model.BackendEndpoint{}
-
-		var hcEnabled sql.NullBool
-		var hcInterval, hcTimeout, unhealthyThreshold, healthyThreshold sql.NullInt64
-		var mtlsEnabled sql.NullBool
-		var enforceIfClientCertPresent, verifyClient sql.NullBool
-		var clientCert, clientKey, caCert sql.NullString
-
-		err := rows.Scan(&endpoint.URL, &endpoint.Description, &hcEnabled, &hcInterval,
-			&hcTimeout, &unhealthyThreshold, &healthyThreshold, &endpoint.Weight,
-			&mtlsEnabled, &enforceIfClientCertPresent, &verifyClient, &clientCert, &clientKey, &caCert)
-		if err != nil {
-			return nil, err
-		}
-
-		// Build health check config
-		if hcEnabled.Valid {
-			endpoint.HealthCheck = &model.HealthCheckConfig{
-				Enabled:            hcEnabled.Bool,
-				Interval:           int(hcInterval.Int64),
-				Timeout:            int(hcTimeout.Int64),
-				UnhealthyThreshold: int(unhealthyThreshold.Int64),
-				HealthyThreshold:   int(healthyThreshold.Int64),
-			}
-		}
-
-		// Build MTLS config
-		if mtlsEnabled.Valid {
-			endpoint.MTLS = &model.MTLSConfig{
-				Enabled:                    mtlsEnabled.Bool,
-				EnforceIfClientCertPresent: enforceIfClientCertPresent.Bool,
-				VerifyClient:               verifyClient.Bool,
-				ClientCert:                 clientCert.String,
-				ClientKey:                  clientKey.String,
-				CACert:                     caCert.String,
-			}
-		}
-
-		endpoints = append(endpoints, endpoint)
-	}
-
-	return endpoints, rows.Err()
-}
-
 // Helper methods for Rate Limiting configuration
 func (r *APIRepo) insertRateLimitingConfig(tx *sql.Tx, apiId string, rateLimiting *model.RateLimitingConfig) error {
 	query := `
@@ -882,7 +650,7 @@ func (r *APIRepo) loadRateLimitingConfig(apiId string) (*model.RateLimitingConfi
 }
 
 // Helper methods for Operations
-func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, operation *model.Operation) error {
+func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, organizationId string, operation *model.Operation) error {
 	var authRequired bool
 	var scopesJSON string
 	if operation.Request.Authentication != nil {
@@ -911,11 +679,22 @@ func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, operation *model.Ope
 
 	// Insert backend services routing
 	for _, backendRouting := range operation.Request.BackendServices {
+		// Look up backend service UUID by name and organization ID
+		var backendServiceUUID string
+		lookupQuery := `SELECT uuid FROM backend_services WHERE name = ? AND organization_uuid = ?`
+		err = tx.QueryRow(lookupQuery, backendRouting.Name, organizationId).Scan(&backendServiceUUID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("backend service with name '%s' not found in organization", backendRouting.Name)
+			}
+			return fmt.Errorf("failed to lookup backend service UUID: %w", err)
+		}
+
 		bsQuery := `
-			INSERT INTO operation_backend_services (operation_id, backend_service_name, weight)
+			INSERT INTO operation_backend_services (operation_id, backend_service_uuid, weight)
 			VALUES (?, ?, ?)
 		`
-		_, err = tx.Exec(bsQuery, operationID, backendRouting.Name, backendRouting.Weight)
+		_, err = tx.Exec(bsQuery, operationID, backendServiceUUID, backendRouting.Weight)
 		if err != nil {
 			return err
 		}
@@ -1011,7 +790,12 @@ func (r *APIRepo) loadOperations(apiId string) ([]model.Operation, error) {
 }
 
 func (r *APIRepo) loadOperationBackendServices(operationID int64) ([]model.BackendRouting, error) {
-	query := `SELECT backend_service_name, weight FROM operation_backend_services WHERE operation_id = ?`
+	query := `
+		SELECT bs.name, obs.weight
+		FROM operation_backend_services obs
+		JOIN backend_services bs ON bs.uuid = obs.backend_service_uuid
+		WHERE obs.operation_id = ?
+	`
 	rows, err := r.db.Query(query, operationID)
 	if err != nil {
 		return nil, err
@@ -1065,9 +849,8 @@ func (r *APIRepo) deleteAPIConfigurations(tx *sql.Tx, apiId string) error {
 		`DELETE FROM policies WHERE operation_id IN (SELECT id FROM api_operations WHERE api_uuid = ?)`,
 		`DELETE FROM operation_backend_services WHERE operation_id IN (SELECT id FROM api_operations WHERE api_uuid = ?)`,
 		`DELETE FROM api_operations WHERE api_uuid = ?`,
+		`DELETE FROM api_backend_services WHERE api_uuid = ?`, // Remove API-backend service associations
 		`DELETE FROM api_rate_limiting WHERE api_uuid = ?`,
-		`DELETE FROM backend_endpoints WHERE backend_service_id IN (SELECT id FROM backend_services WHERE api_uuid = ?)`,
-		`DELETE FROM backend_services WHERE api_uuid = ?`,
 		`DELETE FROM api_cors_config WHERE api_uuid = ?`,
 		`DELETE FROM oauth2_security WHERE api_uuid = ?`,
 		`DELETE FROM api_key_security WHERE api_uuid = ?`,
