@@ -1,0 +1,143 @@
+<section class="hero-section">
+    <div class="container-fluid">
+        <div class="hero-content hero">
+            <div class="row h-100">
+                <!-- Left Content -->
+                <div class="col-xl-9 col-lg-6 col-md-12 text-lg-start d-flex flex-column justify-content-center">
+                    <div class="hero-left-content">
+                        {{#if (eq devportalMode "MCPSERVERSONLY")}}
+                        <h1 class="hero-title">
+                            Empower your development with our <span class="span-highlight"> MCP Servers </span>
+                            for your AI agents
+                        </h1>
+                        <p class="hero-description">
+                            Use our MCP Servers to deploy and manage tools for your AI agents. Browse the MCP Server catalog, 
+                            configure tools, & get started instantly.
+                        </p>
+                        {{/if}}
+                        {{#if (eq devportalMode "APISONLY")}}
+                        <h1 class="hero-title">
+                            Empower your development with our <span class="span-highlight"> APIs </span>
+                            to craft intuitive and robust applications
+                        </h1>
+                        <p class="hero-description">
+                            Use our APIs to build amazing enterprise and consumer applications. Browse our API catalog,
+                            subscribe, and get going in minutes.
+                        </p>
+                        {{/if}}
+                        {{#if (eq devportalMode "DEFAULT")}}
+                        <h1 class="hero-title">
+                            Empower your development with our <span class="span-highlight"> APIs & MCP Servers </span>
+                            to craft intuitive and robust experience
+                        </h1>
+                        <p class="hero-description">
+                            Use our APIs & MCP Servers to build amazing enterprise and consumer applications. Browse our catalog,
+                            subscribe, and get going in minutes.
+                        </p>
+                        {{/if}}
+                        <div class="hero-buttons d-flex gap-3">
+                            {{#in devportalMode values="DEFAULT,APISONLY"}}
+                            <a href="{{baseUrl}}/apis" class="common-btn-primary common-btn-secondary">Browse our APIs →</a>
+                            {{/in}}
+                            {{#in devportalMode values="DEFAULT,MCPSERVERSONLY"}}
+                            <a href="{{baseUrl}}/mcps" class="common-btn-primary common-btn-secondary">Browse our MCP Servers →</a>
+                            {{/in}}
+                        </div>
+                    </div>
+                </div>
+                <!-- Right Content -->
+                <div class="col-xl-3 col-lg-6 col-12 d-flex justify-content-end align-items-end">
+                    <div class="hero-image-container">
+                        <div id="heroImage" class="me-0">
+                            <img class="hero-banner-image d-none" src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/hero.svg">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+<section class="section">
+    <div class="container mw-100">
+        <div class="common-header">
+            <h2 style="text-align: center; font-family: var(--font-family-sans);">Empowering Developers to Build
+                Applications</h2>
+        </div>
+        <div class="row justify-content-center g-5 pb-5">
+            <div class="col-12 col-sm-6 col-md-6 col-lg-4">
+                <div class="card advantage-card">
+                    <div class="advantage-card-image-container">
+                        <div id="apisImage" class="w-50 mx-auto d-flex align-items-center justify-content-center p-3">
+                            {{#if (eq devportalMode "APISONLY")}}
+                            <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/apis.svg" class="d-none">
+                            {{/if}} 
+                            {{#if (eq devportalMode "MCPSERVERSONLY")}}
+                            <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/MCPs.svg" class="d-none">
+                            {{/if}} 
+                            {{#if (eq devportalMode "DEFAULT")}}
+                            <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/MCP&API.svg" class="d-none">
+                            {{/if}} 
+                        </div>
+                    </div>
+                    <div class="advantage-card-body">
+                        <h5>Explore & Subscribe to our 
+                            {{#if (eq devportalMode "MCPSERVERSONLY")}} <span> MCP Servers </span> {{/if}} 
+                            {{#if (eq devportalMode "APISONLY")}} <span> APIs </span> {{/if}} 
+                            {{#if (eq devportalMode "DEFAULT")}} <span> APIs & MCP Servers </span> {{/if}} 
+                        </h5>
+                        <ul class="fw-light">
+                            <li>Sign up with us</li>
+                            <li>Choose an {{#if (eq devportalMode "MCPSERVERSONLY")}} <span> MCP Servers </span> {{/if}} 
+                            {{#if (eq devportalMode "APISONLY")}} <span> APIs </span> {{/if}} 
+                            {{#if (eq devportalMode "DEFAULT")}} <span> APIs & MCP Servers </span> {{/if}} 
+                             and Try-it-out</li>
+                            <li>Create an application</li>
+                            <li>Subscribe the application to the {{#if (eq devportalMode "MCPSERVERSONLY")}} <span> MCP Servers </span> {{/if}} 
+                            {{#if (eq devportalMode "APISONLY")}} <span> APIs </span> {{/if}} 
+                            {{#if (eq devportalMode "DEFAULT")}} <span> APIs & MCP Servers </span> {{/if}} to get going</li>
+                        </ul>
+                    </div>
+                    <div class="advantage-card-footer">
+                        <a href="#" class="common-btn-link px-2">How it works →</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-sm-6 col-md-6 col-lg-4">
+                <div class="card advantage-card">
+                    <div class="advantage-card-image-container">
+                        <div id="applicationsImage" class="w-50 mx-auto d-flex align-items-center justify-content-center p-3"><img class="d-none" src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/applications.svg"> </div>
+                    </div>
+                    <div class="advantage-card-body">
+                        <h5>Developing Applications</h5>
+                        <ul class="fw-light">
+                            <li>Generate application keys</li>
+                            <li>Utilise SDKs to generate application code</li>
+                            <li>Connect to the Sandbox endpoint for testing</li>
+                        </ul>
+                    </div>
+                    <div class="advantage-card-footer">
+                        <a href="#" class="common-btn-link px-2">How it works →</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-sm-6 col-md-6 col-lg-4">
+                <div class="card advantage-card">
+                    <div class="advantage-card-image-container">
+                        <div id="launchImage" class="w-50 mx-auto d-flex align-items-center justify-content-center p-3"><img class="d-none" src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/launch.svg"> </div>
+                    </div>
+                    <div class="advantage-card-body">
+                        <h5>Ready to Launch</h5>
+                        <ul class="fw-light">
+                            <li>Switch to the production endpoint</li>
+                            <li>Perform tests</li>
+                            <li>Launch!</li>
+                        </ul>
+                    </div>
+                    <div class="advantage-card-footer">
+                        <a href="#" class="common-btn-link px-2">How it works →</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>

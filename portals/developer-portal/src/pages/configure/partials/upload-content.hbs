@@ -1,0 +1,29 @@
+<section>
+  <div class="card mb-4">
+    <div class="card-header">
+      Upload Zip File
+    </div>
+    <div class="card-body">
+      <form id="uploadOrgContent" enctype="multipart/form-data">
+        <div class="upload-area" id="uploadArea">
+          <p>Drag & Drop your zip file here or click to select</p>
+          <input
+            type="file"
+            id="file"
+            name="file"
+            accept=".zip"
+            class="hidden"
+          />
+        </div>
+        <div id="fileName" class="mt-3"></div>
+        <div class="text-end">
+          <button
+            type="button"
+            class="common-btn-primary"
+            onclick="uploadOrgContent('{{orgID}}')"
+          >Upload</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>

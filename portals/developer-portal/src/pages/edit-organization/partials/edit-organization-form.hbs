@@ -1,0 +1,71 @@
+<section>
+    <form id="editOrg{{orgName}}" class="editOrg">
+        <div class="form-group mb-2">
+            <label for="orgName" class="form-label">Name</label>
+            <input type="text" class="form-control orgName" id="orgName" name="orgName"
+                placeholder="Enter Organization Name" value={{orgName}}>
+        </div>
+        <div class="form-group mb-2">
+            <label for="business-owner" class="form-label">Business Owner</label>
+            <input type="text" class="form-control businessOwner" id="businessOwner" name="businessOwner"
+                placeholder="Enter Business Owner Name" value={{businessOwner}}>
+        </div>
+        <div class="form-group mb-2">
+            <label for="business-owner-contact" class="form-label">Business Owner Contact</label>
+            <input type="text" class="form-control" id="businessOwnerContact" name="businessOwnerContact"
+                placeholder="Enter Business Owner Contact" pattern="\d{10}"
+                title="Please enter a valid 10-digit contact number" value={{businessOwnerContact}}>
+        </div>
+        <div class="form-group mb-2">
+            <label for="business-owner-email" class="form-label">Business Owner Email</label>
+            <input type="email" class="form-control" id="businessOwnerEmail" name="businessOwnerEmail"
+                placeholder="Enter Business Owner Email" title="Please enter a valid email address"
+                value={{businessOwnerEmail}}>
+        </div>
+        <div class="form-group mb-2">
+            <label for="orgHandle" class="form-label">Org Handle</label>
+            <input type="text" class="form-control" id="orgHandle" name="orgHandle"
+                placeholder="Enter organization handle" required value={{orgHandle}}>
+        </div>
+        <div class="form-group mb-2">
+            <label for="roleClaimName" class="form-label">Role Claim Name</label>
+            <input type="text" class="form-control" id="roleClaimName" name="roleClaimName"
+                placeholder="Enter Role Claim Name" required value={{roleClaimName}}>
+        </div>
+        <div class="form-group mb-2">
+            <label for="groupsClaimName" class="form-label">Groups Claim Name</label>
+            <input type="text" class="form-control" id="groupsClaimName" name="groupsClaimName"
+                placeholder="Enter Groups Claim Name" required value={{groupsClaimName}}>
+        </div>
+        <div class="form-group mb-2">
+            <label for="organizationClaimName" class="form-label">Organization Claim Name</label>
+            <input type="text" class="form-control" id="organizationClaimName" name="organizationClaimName"
+                placeholder="Enter Organization Claim Name" required value={{organizationClaimName}}>
+        </div>
+        <div class="form-group mb-2">
+            <label for="organizationIdentifier" class="form-label">Organization Identifier</label>
+            <input type="text" class="form-control" id="organizationIdentifier" name="organizationIdentifier"
+                placeholder="Enter Organization Identifier" required value={{organizationIdentifier}}>
+        </div>
+        <div class="form-group mb-2">
+            <label for="adminRole" class="form-label">Admin Role Name</label>
+            <input type="text" class="form-control" id="adminRole" name="adminRole" placeholder="Enter Admin Role"
+                required value={{adminRole}}>
+        </div>
+        <div class="form-group mb-2">
+            <label for="subscriberRole" class="form-label">Subscriber Role</label>
+            <input type="text" class="form-control" id="subscriberRole" name="subscriberRole"
+                placeholder="Enter Subscriber Role" required value={{subscriberRole}}>
+        </div>
+        <div class="form-group mb-4">
+            <label for="superAdminRole" class="form-label">Super Admin Role</label>
+            <input type="text" class="form-control" id="superAdminRole" name="superAdminRole"
+                placeholder="Enter Super Admin Role" required value={{superAdminRole}}>
+        </div>
+        <div class="form-group">
+            <button type="button" class="btn btn-secondary" id="cancelEditBtn" onclick="hideEditForm('{{orgID}}')">Cancel</button>
+            <button type="button" class="common-btn-outlined" onclick="editOrg('{{orgID}}', 'editOrg{{orgName}}')">Save
+                Changes</button>
+        </div>
+    </form>
+</section>

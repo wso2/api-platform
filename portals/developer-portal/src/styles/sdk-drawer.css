@@ -1,0 +1,701 @@
+/* SDK Drawer Styles */
+/* Body scroll lock when drawer is open */
+body.drawer-open {
+  overflow: hidden;
+}
+
+.sdk-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1050;
+  pointer-events: none;
+}
+
+.sdk-drawer.open {
+  pointer-events: all;
+}
+
+.sdk-drawer-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.sdk-drawer.open .sdk-drawer-overlay {
+  opacity: 1;
+}
+
+.sdk-drawer-content {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 480px;
+  height: 100%;
+  background-color: var(--white-color);
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.sdk-drawer.open .sdk-drawer-content {
+  transform: translateX(0);
+}
+
+/* Header */
+.sdk-drawer-header {
+  padding: 1.5rem 1.5rem 0.5rem;
+  flex-shrink: 0;
+}
+
+.sdk-drawer-header h4 {
+  color: var(--primary-main-color);
+  font-weight: 600;
+  font-size: 1.25rem;
+}
+
+.sdk-drawer .btn-close {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  color: var(--main-text-color);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.sdk-drawer .btn-close:hover {
+  background-color: #f5f5f5;
+}
+
+/* Body */
+.sdk-drawer-body {
+  flex: 1;
+  padding: 0.5rem 1.5rem 1.5rem;
+  overflow-y: auto;
+}
+
+/* SDK Configuration */
+.sdk-config-section {
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.config-group {
+  margin-bottom: 1.5rem;
+}
+
+/* Form labels styling */
+.form-label {
+  font-weight: 600;
+  color: var(--primary-main-color);
+}
+
+/* Language Grid */
+.language-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.language-option {
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+/* Makes the whole card a clickable radio button */
+.language-option input[type="radio"] {
+    position: absolute;
+    top: 50%;
+    right: 16px;
+    transform: translateY(-50%); 
+    opacity: 1;
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+    z-index: 2;
+    margin: 0;
+    accent-color: var(--primary-main-color);
+}
+
+/* AI Mode card styling without download buttons */
+.language-card {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 1.25rem 1.5rem;
+    padding-right: 2.5rem; /* Make room for radio button */
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    background-color: var(--white-color);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    color: inherit;
+    height: 54px;
+    min-height: 54px;
+    min-width: 200px; 
+    position: relative;
+}
+
+.language-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem; 
+    flex: 1;
+    min-width: 0;
+    margin-left: -0.25rem; /* Shift more to the left for AI mode */
+}
+
+/* The selected state now highlights the border and background */
+.language-option.selected .language-card,
+.language-option input:checked + .language-card {
+    border-color: var(--primary-main-color);
+    background-color: rgba(89, 82, 173, 0.08);
+    box-shadow: 0 2px 8px rgba(89, 82, 173, 0.15);
+}
+
+
+.language-card:hover {
+    border-color: var(--primary-main-color);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.language-option.selected .language-card:hover,
+.language-option input:checked + .language-card:hover {
+    box-shadow: 0 4px 12px rgba(89, 82, 173, 0.25);
+    transform: translateY(-1px);
+}
+
+
+/* --- Element Styles --- */
+
+/* Language icon styling */
+.language-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  color: #6c757d;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+/* Icon hover effects */
+.language-card:hover .language-icon {
+    transform: scale(1.05);
+}
+
+/* Specific icon colors and backgrounds */
+.language-icon.java-icon {
+  background-color: #ed8b00;
+  color: white;
+  font-size: 1rem;
+}
+
+.language-icon.js-icon {
+  background-color: #f7df1e;
+  color: #000;
+  font-weight: 700;
+  font-size: 0.65rem;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Language name styling */
+.language-name {
+  font-size: 0.875rem; 
+  color: var(--main-text-color);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* AI Generate Button Section */
+#sdkDescription {
+    min-height: calc(1.5em * 5); /* Corresponds to 5 rows */
+    max-height: calc(1.5em * 20); /* Maximum height for 20 rows */
+    overflow-y: auto; /* Show scrollbar when max-height is reached */
+}
+
+.ai-generate-section {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+/* Override common-btn-primary dimensions for AI generate button */
+#aiGenerateBtn {
+    width: 60px;
+    height: 20px;
+    padding: 16px;
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.prompt-input-area {
+    position: relative;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background-color: #fff;
+    padding: 0.75rem;
+    transition: border-color 0.2s ease;
+}
+.prompt-input-area:focus-within {
+        border-color: var(--primary-main-color);
+        box-shadow: 0 0 0 0.25rem rgba(89, 82, 173, 0.25);
+}
+
+/* Hide the original textarea border */
+.prompt-input-area > textarea.form-control {
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    margin-top: 0.5rem; /* Space between suggestion and textarea */
+    resize: none; /* Or vertical if you prefer */
+    color: var(--main-text-color);
+}
+
+.prompt-input-area > textarea.form-control:focus {
+    border: none;
+    box-shadow: none;
+}
+
+.prompt-input-area > textarea.form-control::placeholder {
+    color: #6c757d;
+}
+
+/* Typing indicator styles */
+.prompt-input-area > textarea.form-control.typing {
+    position: relative;
+}
+
+.prompt-input-area > textarea.form-control.typing::after {
+    content: '|';
+    color: var(--primary-main-color);
+    animation: blinkCursor 1s infinite;
+    position: absolute;
+    right: 2px;
+}
+
+/* Container for one or more suggestion chips */
+.prompt-suggestions-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+/* Individual suggestion chip */
+.suggestion-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.35rem 0.5rem 0.35rem 0.5rem;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    color: #495057;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    opacity: 1;
+    transform: scale(1);
+}
+
+.suggestion-chip:hover {
+    background-color: #dee2e6;
+    border-color: var(--primary-main-color);
+    transform: translateY(-1px) scale(1.02);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Fade out animation for clicked suggestion chips */
+.suggestion-chip.fading-out {
+    opacity: 0;
+    transform: scale(0.95);
+    pointer-events: none;
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Disabled state during typing */
+.suggestion-chip.typing-in-progress {
+    opacity: 0.5;
+    pointer-events: none;
+    filter: grayscale(50%);
+    transition: all 0.3s ease;
+}
+
+.suggestion-play-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--success-color);
+    border-radius: 50%;
+    color: var(--white-color);
+    font-size: 1rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    transition: all 0.2s ease;
+    padding: 6px;
+}
+
+.suggestion-chip .suggestion-icon {
+    color: var(--white-color);
+}
+
+.suggestion-chip .btn-close {
+    font-size: 0.75rem; /* Make the 'x' smaller */
+    margin-left: 0.5rem;
+    padding: 0.5rem; /* Increase clickable area */
+    opacity: 0.7;
+}
+.suggestion-chip .btn-close:hover {
+    opacity: 1;
+}
+
+.prompt-footer-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+    gap: 1rem; /* Add space between items */
+}
+
+.ai-disclaimer {
+    font-size: 0.6rem;
+    color: #6c757d; /* A subtle gray color */
+    flex-grow: 1; /* Allow it to take up available space */
+    text-align: left;
+}
+
+/* SDK Progress Bar Styles */
+.sdk-progress-container {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 10px 0;
+    min-height: 120px;
+    transition: all 0.3s ease;
+}
+
+.sdk-progress-container.error {
+    background: #f8f4f4;
+    border-color: #f5c6cb;
+}
+
+.sdk-progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.sdk-progress-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--primary-main-color);
+}
+
+.sdk-progress-percentage {
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--primary-main-color);
+}
+
+.sdk-progress-container.error .sdk-progress-percentage {
+    color: #dc3545;
+}
+
+.sdk-progress-bar-wrapper {
+    margin-bottom: 15px;
+}
+
+.sdk-progress-bar {
+    width: 100%;
+    height: 8px;
+    background-color: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.sdk-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-main-color) 0%, rgba(89, 82, 173, 0.8) 100%);
+    border-radius: 4px;
+    width: 0%;
+    transition: width 0.4s ease;
+    position: relative;
+}
+
+.sdk-progress-container.error .sdk-progress-fill {
+    background: linear-gradient(90deg, #dc3545 0%, #c82333 100%);
+}
+
+/* Success state styles */
+.sdk-progress-container.success .sdk-progress-fill {
+    background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+}
+
+.sdk-progress-container.success .sdk-progress-title {
+    color: var(--success-color);
+}
+
+.sdk-progress-container.success .sdk-progress-percentage {
+    color: var(--success-color);
+    font-weight: 600;
+}
+
+.sdk-progress-container.success .sdk-progress-status {
+    color: var(--success-color);
+}
+
+.sdk-progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.3) 50%,
+        transparent 100%
+    );
+    animation: progressShimmer 2s infinite;
+}
+
+@keyframes progressShimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+.sdk-progress-status {
+    font-size: 13px;
+    color: #6c757d;
+    font-style: italic;
+    text-align: center;
+}
+
+/* Hide generate button when progress is shown */
+.sdk-progress-container + .ai-generate-section {
+    display: none;
+}
+
+#sdkDescriptionSection {
+  width: 100%;
+}
+
+/* Ensure proper spacing in SDK description section */
+#sdkDescriptionSection .sdk-progress-container {
+    margin-top: 10px;
+    margin-bottom: 20px;
+}
+
+/* Progress container animation */
+.sdk-progress-container {
+    opacity: 0;
+    transform: translateY(-10px);
+    animation: progressSlideIn 0.3s ease forwards;
+}
+
+@keyframes progressSlideIn {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Blinking cursor animation for typing effect */
+@keyframes blinkCursor {
+    0%, 50% {
+        opacity: 1;
+    }
+    51%, 100% {
+        opacity: 0;
+    }
+}
+
+/* Notification System Styles */
+.sdk-error-notification,
+.sdk-success-notification,
+.sdk-warning-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    max-width: 400px;
+    min-width: 300px;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 1.4;
+    animation: slideInFromRight 0.3s ease-out;
+}
+
+.sdk-error-notification {
+    box-shadow: 0 4px 20px rgba(220, 53, 69, 0.3);
+    border: 1px solid #dc3545;
+}
+
+.sdk-success-notification {
+    box-shadow: 0 4px 20px rgba(25, 135, 84, 0.3);
+    border: 1px solid #198754;
+}
+
+.sdk-warning-notification {
+    box-shadow: 0 4px 20px rgba(255, 193, 7, 0.3);
+    border: 1px solid #ffc107;
+}
+
+.sdk-error-notification .fw-bold,
+.sdk-success-notification .fw-bold,
+.sdk-warning-notification .fw-bold {
+    font-size: 15px;
+}
+
+.sdk-error-notification .error-message,
+.sdk-success-notification .success-message,
+.sdk-warning-notification .warning-message {
+    word-wrap: break-word;
+}
+
+.sdk-error-notification .bi-exclamation-triangle-fill,
+.sdk-success-notification .bi-check-circle-fill,
+.sdk-warning-notification .bi-exclamation-triangle-fill {
+    font-size: 1.2em;
+}
+
+/* Notification animations */
+@keyframes slideInFromRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOutToRight {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+/* Responsive behavior for notifications */
+@media (max-width: 768px) {
+    .sdk-error-notification,
+    .sdk-success-notification,
+    .sdk-warning-notification {
+        left: 10px;
+        right: 10px;
+        max-width: none;
+        min-width: auto;
+    }
+}
+
+/* SDK Cancel Confirmation Modal Styles */
+
+/* Reduce modal width */
+#sdkCancelConfirmModal .modal-dialog {
+    max-width: 600px;
+    width: 90%;
+}
+
+#sdkCancelConfirmModal .button-container {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+
+/* Make both buttons the same size */
+#sdkCancelConfirmModal .button-container button {
+    min-width: 100px;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+#sdkCancelConfirmModal .btn-danger {
+  background-color: #fa5c5c;
+  border: 1px solid #fa5c5c;
+  color: white;
+}
+
+#sdkCancelConfirmModal .btn-danger:hover {
+  background-color: #c82333;
+  border-color: #bd2130;
+}
+
+#sdkCancelConfirmModal .btn-danger:focus {
+  box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+}
+
+/* Modal body styling for better presentation */
+#sdkCancelConfirmModal .custom-modal-body {
+  min-height: 150px;
+}
+
+/* Prevent background scrolling when modal is open */
+body.modal-open {
+  overflow: hidden;
+}
+
+#sdkCancelConfirmModal .confirmation-title {
+    font-size: 1.1rem; 
+    font-weight: 600;
+    color: #111827; 
+    margin-bottom: 0.75rem;
+}
+
+#sdkCancelConfirmModal .confirmation-text {
+    font-size: 0.75rem; 
+    color: #4b5563;
+    line-height: 1.6;
+    margin-bottom: 2rem;
+}
+
+#sdkDescriptionRequiredModal .confirmation-title {
+    font-size: 1.1rem; 
+    font-weight: 600;
+    color: #111827; 
+    margin-bottom: 0.75rem;
+}
+
+#sdkDescriptionRequiredModal .confirmation-text {
+    font-size: 0.75rem; 
+    color: #4b5563;
+    line-height: 1.6;
+    margin-bottom: 2rem;
+}

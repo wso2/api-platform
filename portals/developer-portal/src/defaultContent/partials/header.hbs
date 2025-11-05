@@ -1,0 +1,41 @@
+<header>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+  <nav class="navbar navbar-expand-lg custom-navbar fixed-top">
+    <div class="container-fluid">
+      <a class="navbar-brand d-flex align-items-center" href="{{baseUrl}}">
+        <img src="/images/devportalLogo.png" alt="Logo" class="navbar-logo me-2" />
+      </a>
+      <div class="d-flex align-items-center me-2">
+        {{#if profile}}
+        <a class="dropdown-toggle profile-link d-flex align-items-center p-1 fw-light" href="#" id="navbarDropdown"
+          role="button" data-bs-toggle="dropdown" aria-expanded="false">
+          <img src={{profile.imageURL}} alt="Profile" class="profile-icon me-2" />
+          <span>{{profile.firstName}}</span>
+        </a>
+        <ul class="dropdown-menu dropdown-menu-end profile-options" aria-labelledby="navbarDropdown">
+          <li class="dropdown-item">
+            <div class="userprofile-info d-flex align-items-center">
+              <img src={{profile.imageURL}} class="profile-icon me-2" />
+              <div>
+                <span class="user-name d-block">{{profile.firstName}} {{profile.lastName}}</span>
+                <span class="user-email text-muted">{{profile.email}}</span>
+              </div>
+            </div>
+          </li>
+          <li>
+            <hr class="dropdown-divider" />
+          </li>
+          <li class="dropdown-item">
+            <i class="fas fa-sign-out-alt me-2"></i>
+            <a href="{{baseUrl}}/logout" class="profile-dropdown-link">Log Out</a>
+          </li>
+        </ul>
+        {{else}}
+        <div id="auth-section">
+          <a class="common-btn-primary login-btn" href="{{baseUrl}}/login">Log In</a>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+  </nav>
+</header>

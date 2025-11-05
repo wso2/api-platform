@@ -1,0 +1,79 @@
+.subscription-list-section .common-header h2 {
+  margin-bottom: 1rem;
+}
+
+.common-btn-outlined.action-btn {
+  padding: 0.1rem 1rem;
+  border: none;
+}
+
+tbody td:nth-child(2),
+tbody td:nth-child(3),
+tbody td:nth-child(4) {
+  width: 18%;
+  white-space: nowrap;
+}
+
+.table {
+  border: 2px solid #ffff;
+  border-radius: 5px;
+}
+
+.table tbody {
+  border: 2px solid #ffff;
+  font-size: small;
+}
+
+.table th {
+  background-color: var(--primary-light-color);
+  color: var(--primary-main-color);
+  padding: 10px;
+  text-align: left;
+}
+
+.table td {
+  font-size: small;
+  padding: 12px;
+  text-align: left;
+}
+
+
+.table-primary {
+  --bs-table-bg: var(--primary-light-color);
+}
+
+.table-primary th {
+  font-size: 1rem;
+}
+
+.myapis-container {
+  margin: 3rem 3.75rem;
+  padding: 0rem 4rem;
+}
+
+.table-links {
+  color: var(--main-text-color);
+  text-decoration: none;
+}
+
+.plane-badge {
+  border: 0.0625rem solid var(--primary-main-color);
+  background-color: var(--primary-light-color);
+  color: var(--primary-main-color);
+  margin: 0px 0.3125rem 0.625rem 0;
+  border-radius: 1.875rem;
+  font-size: 0.8rem;
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 5px;
+  font-weight: 500;
+}
+
+.btn-unsubscribe {
+  text-decoration: none;
+  color: inherit;
+}
+
+.btn-unsubscribe:hover {
+  text-decoration: underline;
+}

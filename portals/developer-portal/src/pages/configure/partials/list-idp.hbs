@@ -1,0 +1,81 @@
+<section>
+    <div class="card-body">
+        <div class="idp-item organization">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6>{{idp.name}}</h6>
+                <div>
+                    <button class="common-btn-outlined" id="idpEdit">
+                        <i class="bi bi-pencil"></i> Edit
+                    </button>
+                    <form id="idp-delete" class="d-inline">
+                        <button type="button" class="common-btn-outlined btn-outline-danger"
+                            onclick="if (confirm('Are you sure you want to delete this Provider?')) { deleteIDP('{{orgID}}'); }">
+                            <i class="bi bi-trash"></i> Delete
+                        </button>
+                    </form>
+                </div>
+            </div>
+            <div class="organization-details">
+                <form id="editIDP">
+                    <div class="mb-3">
+                        <label for="IDPName" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="name" name="name" value={{idp.name}}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="issuer" class="form-label">Issuer</label>
+                        <input type="text" class="form-control" id="issuer" name="issuer" value={{idp.issuer}}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="authorizationURL" class="form-label">Authorization URL</label>
+                        <input type="text" class="form-control" id="authorizationURL" name="authorizationURL"
+                            value={{idp.authorizationURL}}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="tokenURL" class="form-label">Token URL</label>
+                        <input type="text" class="form-control" id="tokenURL" name="tokenURL" value={{idp.tokenURL}}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="userInfoURL" class="form-label">User Info URL</label>
+                        <input type="text" class="form-control" id="userInfoURL" name="userInfoURL"
+                            value={{idp.userInfoURL}}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="clientId" class="form-label">Client ID</label>
+                        <input type="text" class="form-control" id="clientId" name="clientId" value={{idp.clientId}}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="callbackURL" class="form-label">Callback URL</label>
+                        <input type="text" class="form-control" id="callbackURL" name="callbackURL"
+                            value={{idp.callbackURL}}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="signUpURL" class="form-label">Sign Up URL</label>
+                        <input type="text" class="form-control" id="signUpURL" name="signUpURL" value={{idp.signUpURL}}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="logoutURL" class="form-label">Logout URL</label>
+                        <input type="text" class="form-control" id="logoutURL" name="logoutURL" value={{idp.logoutURL}}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="logoutRedirectURI" class="form-label">Logout Redirect URI</label>
+                        <input type="text" class="form-control" id="logoutRedirectURI" name="logoutRedirectURI"
+                            value={{idp.logoutRedirectURI}}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="jwksURL" class="form-label">JWKS URL</label>
+                        <input type="text" class="form-control" id="jwksURL" name="jwksURL" value={{idp.jwksURL}}>
+                    </div>
+                    <div class="mb-3">
+                        <label for="certificate" class="form-label">Certificate</label>
+                        <textarea class="form-control" id="certificate" name="certificate"
+                            rows="4">{{{idp.certificate}}}</textarea>
+                    </div>
+                    <div class="text-end">
+                        <button type="button" class="common-btn-outlined" onclick="editIDP('{{orgID}}', 'editIDP')">Save
+                            Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>

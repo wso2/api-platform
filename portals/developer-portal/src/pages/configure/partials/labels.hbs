@@ -1,0 +1,15 @@
+<div class="labels-container me-3" id="labelsContainer">
+    <div class="input-container" id="inputContainer">
+        <input type="text" id="textInput" placeholder="Enter label name">
+        <div class="d-flex flex-wrap justify-content-start gap-2 mt-2">
+            {{#each orgLabels}}
+            <span class="span-tag">
+                {{this.name}} <span class="remove">&times;</span>
+            </span>
+            {{/each}}
+        </div>
+    </div>
+    <div class="mt-2">
+        <button class="common-btn-outlined me-4" onclick="addLabels('{{orgID}}', {{json orgLabels}})">Update</button>
+    </div>
+</div>

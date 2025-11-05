@@ -1,0 +1,182 @@
+<!--
+ * Copyright (c) 2025, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+ -->
+
+<section class="apis-section">
+  <div class="container-fluid">
+    <div class="apilist-hero-container">
+      <div class="apilist-hero-content">
+        <div class="apilist-hero-header">
+          <h1 class="apilist-hero-title">
+            Discover, Integrate, and Innovate with Scalable APIs
+          </h1>
+          <div class="apilist-hero-description">
+            Explore our extensive API catalog and discover how to integrate them seamlessly into your application.
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6 col-md-12 apilist-hero-image">
+        <img
+          src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/apisHeroImg.png"
+          alt="Hero Image" class="img-fluid" />
+      </div>
+    </div>
+  </div>
+  <div class="container-fluid apilist-container">
+    <div class="search-container">
+      <div class="search-input">
+        <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/search.svg"
+          alt="search" class="search-icon" />
+        <input type="text" id="query" placeholder="Search APIs" autocomplete="off" />
+      </div>
+    </div>
+    <div class="row row-gap-4">
+      {{#if (eq apiMetadata.length 0)}}
+      <div class="ps-3" id="no-subscription">
+        <div class="api-info-box">
+          <div class="api-info-content">
+            <div class="api-info-title">
+              No APIs available.
+            </div>
+          </div>
+        </div>
+      </div>
+      {{/if}}
+      {{#apiMetadata}}
+      {{#unless (eq apiInfo.apiType "MCP")}}
+      <div class="col-lg-4 col-md-6 col-sm-12" id="apiCard-{{apiID}}">
+        <div class="card api-card d-flex flex-column">
+          <div class="api-card-header d-flex align-items-center gap-3 position-relative overflow-hidden" 
+               onclick="window.location.href='{{../baseUrl}}/api/{{apiHandle}}'" style="cursor: pointer;">
+               {{#if apiInfo.apiImageMetadata.api-icon}}
+                  <img src="{{apiInfo.apiImageMetadata.api-icon}}" class="api-card-img" alt="..." />
+                {{else}}
+                  <div class="image-icon">{{firstTwoLetters apiInfo.apiName}}</div>
+                {{/if}}
+            <div class="flex-grow-1">
+              <h5 class="api-card-title mb-0">{{apiInfo.apiName}}</h5>
+              <div class="d-flex align-items-center gap-2">
+                <p class="mb-0 mt-1" style="font-size: 16px;">{{apiInfo.apiVersion}}</p>                         
+                <div class="type-badge badge-custom2" style="display: flex; flex-direction: row; align-items: center;">
+                  <div style="margin-right: 8px; display: flex;">
+                    {{#if (eq apiInfo.apiType "WS")}}
+                    <img
+                      src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/WebSocket.svg"
+                      style=" height: 16px; object-fit: contain;"
+                    />
+                    {{else}}
+                    <img
+                      src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/REST.svg"
+                      style=" height: 16px; object-fit: contain;"
+                    />
+                    {{/if}}
+                  </div>
+                  {{#if (eq apiInfo.apiType "WS")}}
+                  <span>WebSocket</span>
+                  {{else}}
+                  <span>{{apiInfo.apiType}}</span>
+                  {{/if}}
+                </div>
+              </div>
+            </div>
+            {{#if ../isAuthenticated}}
+            <div class="subscription-flag fw-bold" style="display: {{#if (some applications "subscribed")}}block{{else}}none{{/if}};">Subscribed</div>
+            {{/if}}
+          </div>
+          <div class="api-card-body flex-grow-1" onclick="window.location.href='{{../baseUrl}}/api/{{apiHandle}}'" style="cursor: pointer;">
+            <div class="truncate-text fw-light apilisting-api-description small mb-3">{{apiInfo.apiDescription}}</div>
+            <div class="row">
+              <div class="apilisting-tags">
+                {{#apiInfo.tags}}
+                <span class="badge badge-custom2">{{this}}</span>
+                {{/apiInfo.tags}}
+              </div>
+            </div>
+          </div>
+          {{#if ../isAuthenticated}}
+          <hr class="card-separator" />
+          {{/if}}
+          <div class="api-card-footer">
+            <div id="btnSection" class="d-flex align-items-center gap-2 w-100">
+              {{#if ../isAuthenticated}}
+              <div id="subscriptionBox" class="subscription-container w-100">
+                {{> subscription-plans apiInfo=apiInfo apiName=apiInfo.apiName}}
+                {{#if subscriptionPolicies.length}}
+
+                <p class="subscription-box-label">Application: </p>
+                <div class="custom-dropdown">
+                  <input type="hidden" id="selectedAppId-{{apiID}}" value="" />
+                  <div class="custom-select-container">
+                    <div class="select-selected" role="combobox" aria-expanded="false" aria-haspopup="listbox">
+                      <span class="selected-text small">Create an app</span>
+                      <span class="select-arrow"></span>
+                    </div>
+                    <div class="select-items" role="listbox">
+                      <div class="select-search-container">
+                        <input type="text" class="select-search-input {{#if @root.isReadOnlyMode}}d-none{{/if}}" placeholder="Find or create an application..."
+                          aria-label="Search applications">
+                      </div>
+                      <div class="select-items-container">
+                        {{#each applications}}
+
+                        <div class="select-item {{#if subscribed}}disabled{{/if}}" role="button" data-value="{{id}}"
+                          data-app-name="{{name}}">
+                          <span>{{name}}</span>
+                          <img src="https://raw.githubusercontent.com/wso2/docs-bijira/refs/heads/main/en/devportal-theming/success-rounded.svg"
+                            alt="Subscribed" class="subscription-icon" style="display: {{#if subscribed}}inline-block{{else}}none{{/if}};" />
+                        </div>
+
+                        {{/each}}
+                      </div>
+                      <div class="create-app-container" style="display: none;">
+                        <div class="create-app-option" role="button">
+                          Create application "<span class="search-term"></span>"
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {{#if (eq subscriptionPolicies.length 1)}}
+                 <a type="button" class="common-btn-primary {{#if @root.isReadOnlyMode}}disabled{{/if}}"
+                   onclick="showSubscribeButtonLoading(this); subscribe('{{../orgID}}', '', '{{apiID}}', '{{apiReferenceID}}', '{{lookup (lookup subscriptionPolicyDetails 0) "policyID"}}', '{{lookup (lookup subscriptionPolicyDetails 0) "policyName"}}')"
+                   disabled>Subscribe</a>
+                 {{else}}
+                 <a type="button" class="common-btn-primary" onclick="loadModal('planModal-{{apiID}}')" disabled>Subscribe</a>
+                 {{/if}}
+
+                {{/if}}
+              </div>
+              {{/if}}
+            </div>
+            
+            <div class="message-overlay hidden">
+              <div class="message-content">
+                <i class="bi message-icon"></i>
+                <p class="message-text"></p>
+              </div>
+              <button type="button" class="close-message" aria-label="Close message">&times;</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      {{/unless}}
+      {{/apiMetadata}}
+    </div>
+  </div>
+</section>

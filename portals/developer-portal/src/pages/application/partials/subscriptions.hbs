@@ -1,0 +1,28 @@
+{{> delete-confirmation modalTitle="Do you really want to remove the subscription?" modalMessage="This will remove the subscription entry stored in the devportal." modalFunction="removeSubscription()" }}
+<div class="row">
+    {{#each apis}}
+    {{#if isSubAvailable}}
+    <div class="dev-card custom-plans-card" onclick="handleCardClick('{{../baseUrl}}/api/{{this.name}}')">
+        <div class="card-header">
+            <h2 id="apiName" data-id="{{this.id}}"> <a href="{{../baseUrl}}/api/{{this.name}}">{{this.name}}</a></h2>
+        </div>
+        {{subscribedPolicy.length}}
+        {{#if subscribedPolicy}}
+        <h6 class="dev-header h6">Subscribed Policy:
+            <ul class="policy-label">
+                <li>{{subscribedPolicy.policy}}</li>
+        </h6>
+        <button class="common-btn-outlined mt-2" onclick="openDeleteModal('{{subscribedPolicy.id}}', '')">Unsubscribe</button>
+
+        {{else}}
+        <select id="subscriptionPlan" class="form-control items-label sub-api-card-item">
+            {{#each subscriptionPolicies}}
+            <option value="{{this}}">{{this}}</option>
+            {{/each}}
+        </select>
+        <button class="common-btn-primary mt-1" onclick="handleSubscribe(null, '{{this.name}}', '{{this.version}}', '{{this.id}}')">Subscribe</button>
+        {{/if}}
+    </div>
+    {{/if}}
+    {{/each}}
+</div>
