@@ -156,12 +156,6 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 				Request: &model.OperationRequest{
 					Method: op.Method,
 					Path:   op.Path,
-					BackendServices: []model.BackendRouting{
-						{
-							Name:   "backend-service-1", // Route to default backend service
-							Weight: 100,
-						},
-					},
 				},
 			}
 			operations = append(operations, operation)

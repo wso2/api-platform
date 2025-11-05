@@ -200,7 +200,7 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredAPICon
 // updateExistingConfig updates an existing API configuration
 func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredAPIConfig) (bool, error) {
 	// Get existing config
-	existing, err := s.store.Get(newConfig.ID)
+	existing, err := s.store.GetByNameVersion(newConfig.GetAPIName(), newConfig.GetAPIVersion())
 	if err != nil {
 		return false, fmt.Errorf("failed to get existing config: %w", err)
 	}

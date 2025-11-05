@@ -494,7 +494,6 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 	}
 
 	// Log the generated YAML for debugging/monitoring purposes
-	// TODO - send the deployment requests to the gateway via websocket
 	fmt.Printf("Generated API Deployment YAML for API %s:\n%s\n", apiId, apiYAML)
 
 	return deployments, nil

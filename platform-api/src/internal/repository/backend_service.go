@@ -280,25 +280,43 @@ func (r *BackendServiceRepo) DeleteBackendService(serviceId string) error {
 
 // AssociateBackendServiceWithAPI creates an association between an API and a backend service
 func (r *BackendServiceRepo) AssociateBackendServiceWithAPI(apiId, backendServiceId string, isDefault bool) error {
-	// First check if the association already exists
-	var existingCount int
-	checkQuery := `SELECT COUNT(*) FROM api_backend_services WHERE api_uuid = ? AND backend_service_uuid = ?`
-	err := r.db.QueryRow(checkQuery, apiId, backendServiceId).Scan(&existingCount)
+	// Database-agnostic upsert using a transaction with proper error handling
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// First attempt: try to update existing record
+	updateQuery := `UPDATE api_backend_services SET is_default = ? WHERE api_uuid = ? AND backend_service_uuid = ?`
+	result, err := tx.Exec(updateQuery, isDefault, apiId, backendServiceId)
 	if err != nil {
 		return err
 	}
 
-	if existingCount > 0 {
-		// Association exists, update it
-		updateQuery := `UPDATE api_backend_services SET is_default = ? WHERE api_uuid = ? AND backend_service_uuid = ?`
-		_, err = r.db.Exec(updateQuery, isDefault, apiId, backendServiceId)
-	} else {
-		// Association doesn't exist, insert it
-		insertQuery := `INSERT INTO api_backend_services (api_uuid, backend_service_uuid, is_default) VALUES (?, ?, ?)`
-		_, err = r.db.Exec(insertQuery, apiId, backendServiceId, isDefault)
+	// Check if any rows were affected by the update
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
 	}
 
-	return err
+	// If no rows were updated, the record doesn't exist, so insert it
+	if rowsAffected == 0 {
+		insertQuery := `INSERT INTO api_backend_services (api_uuid, backend_service_uuid, is_default) VALUES (?, ?, ?)`
+		_, err = tx.Exec(insertQuery, apiId, backendServiceId, isDefault)
+		if err != nil {
+			// If insert fails due to race condition (another thread inserted the same record),
+			// rollback and retry the update operation
+			tx.Rollback()
+
+			// Retry with a simple update - if the record now exists due to concurrent insert
+			retryUpdateQuery := `UPDATE api_backend_services SET is_default = ? WHERE api_uuid = ? AND backend_service_uuid = ?`
+			_, retryErr := r.db.Exec(retryUpdateQuery, isDefault, apiId, backendServiceId)
+			return retryErr
+		}
+	}
+
+	return tx.Commit()
 }
 
 // DisassociateBackendServiceFromAPI removes the association between an API and a backend service
@@ -525,17 +543,17 @@ func (r *BackendServiceRepo) buildConfigurationFromDatabase(service *model.Backe
 	// Build timeout config
 	if timeoutConnect.Valid || timeoutRead.Valid || timeoutWrite.Valid {
 		service.Timeout = &model.TimeoutConfig{
-			Connect: int(timeoutConnect.Int64),
-			Read:    int(timeoutRead.Int64),
-			Write:   int(timeoutWrite.Int64),
+			Connect: nullIntToInt(timeoutConnect),
+			Read:    nullIntToInt(timeoutRead),
+			Write:   nullIntToInt(timeoutWrite),
 		}
 	}
 
 	// Build load balance config
 	if lbAlgorithm.Valid || lbFailover.Valid {
 		service.LoadBalance = &model.LoadBalanceConfig{
-			Algorithm: lbAlgorithm.String,
-			Failover:  lbFailover.Bool,
+			Algorithm: nullStringToString(lbAlgorithm),
+			Failover:  nullBoolToBool(lbFailover),
 		}
 	}
 
@@ -543,10 +561,36 @@ func (r *BackendServiceRepo) buildConfigurationFromDatabase(service *model.Backe
 	if cbEnabled.Valid {
 		service.CircuitBreaker = &model.CircuitBreakerConfig{
 			Enabled:            cbEnabled.Bool,
-			MaxConnections:     int(maxConnections.Int64),
-			MaxPendingRequests: int(maxPendingRequests.Int64),
-			MaxRequests:        int(maxRequests.Int64),
-			MaxRetries:         int(maxRetries.Int64),
+			MaxConnections:     nullIntToInt(maxConnections),
+			MaxPendingRequests: nullIntToInt(maxPendingRequests),
+			MaxRequests:        nullIntToInt(maxRequests),
+			MaxRetries:         nullIntToInt(maxRetries),
 		}
 	}
+}
+
+// Helper functions for nullable database value conversions
+
+// nullIntToInt converts sql.NullInt64 to int with default value of 0
+func nullIntToInt(nullInt sql.NullInt64) int {
+	if nullInt.Valid {
+		return int(nullInt.Int64)
+	}
+	return 0
+}
+
+// nullStringToString converts sql.NullString to string with default value of empty string
+func nullStringToString(nullStr sql.NullString) string {
+	if nullStr.Valid {
+		return nullStr.String
+	}
+	return ""
+}
+
+// nullBoolToBool converts sql.NullBool to bool with default value of false
+func nullBoolToBool(nullBool sql.NullBool) bool {
+	if nullBool.Valid {
+		return nullBool.Bool
+	}
+	return false
 }
