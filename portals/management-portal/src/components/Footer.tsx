@@ -20,20 +20,21 @@ const Footer: React.FC = () => {
         px: 2,
         borderTop: "1px solid #e8e8ee",
         bgcolor: "background.paper",
+        width: `calc(100% - ${LEFT_DRAWER_WIDTH}px)`,
       }}
     >
       <Box sx={{ display: "flex", gap: 2 }}>
-        <Link href="#" underline="hover" fontSize={14}>
+        <Link href="#" underline="hover" fontSize={12} sx={{ color: "text.secondary" }}>
           Terms of service
         </Link>
-        <Link href="#" underline="hover" fontSize={14}>
+        <Link href="#" underline="hover" fontSize={12} sx={{ color: "text.secondary" }}>
           Privacy Policy
         </Link>
-        <Link href="#" underline="hover" fontSize={14}>
+        <Link href="#" underline="hover" fontSize={12} sx={{ color: "text.secondary" }}>
           Support
         </Link>
       </Box>
-      <Box component="span" sx={{ color: "text.secondary" }} fontSize={14}>
+      <Box component="span" sx={{ color: "text.secondary" }} fontSize={12}>
         © 2025 WSO2 LLC
       </Box>
     </Box>
