@@ -417,7 +417,7 @@ paths:
     get:
       summary: Get gateways for API
       description: |
-        Retrieves all gateways where the specified API is deployed with pagination support. 
+        Retrieves all gateways where the specified API is deployed with pagination support.
         This endpoint returns a paginated list of gateway instances that currently have the API deployed to them.
         Access is validated against the organization in the JWT token.
       operationId: GetAPIGateways
@@ -441,6 +441,118 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
+
+  /apis/{apiId}/api-portals/publish:
+    post:
+      summary: Publish API to API Portal
+      description: |
+        Publishes an existing API from platform-api to the configured API portal.
+      operationId: PublishAPIToAPIPortal
+      tags:
+        - APIs
+        - API Portal
+      parameters:
+        - $ref: '#/components/parameters/apiID'
+      responses:
+        '200':
+          description: API successfully published to API portal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishAPIResponse'
+              example:
+                message: "API published successfully to API portal"
+                apiId: "1f01c9b2-440b-4cfe-bf48-f8f168062df4"
+                apiPortalRefId: "1f01c9b2-440b-4cfe-bf48-f8f168062df4"
+                publishedAt: "2025-10-29T21:25:09.418859918+05:30"
+        '400':
+          description: Bad request - Invalid input or API portal not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidApiId:
+                  summary: Invalid API ID format
+                  value:
+                    code: 400
+                    message: Bad Request
+                    description: API ID must be a valid UUID
+                apiPortalDisabled:
+                  summary: API portal not configured
+                  value:
+                    code: 400
+                    message: Bad Request
+                    description: API portal integration is not enabled. Set APIPORTAL_ENABLED=true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: 404
+                message: Not Found
+                description: API with ID 1f01c9b2-440b-4cfe-bf48-f8f168062df4 does not exist
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: API portal unavailable after retries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: 503
+                message: Service Unavailable
+                description: Failed to reach API portal after 3 retry attempts (total 60 seconds)
+
+  /apis/{apiId}/api-portals/unpublish:
+    post:
+      summary: Unpublish API from API Portal
+      description: |
+        Removes an API from the configured API portal.
+      operationId: UnpublishAPIFromAPIPortal
+      tags:
+        - APIs
+        - API Portal
+      parameters:
+        - $ref: '#/components/parameters/apiID'
+      responses:
+        '200':
+          description: API successfully unpublished from API portal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnpublishAPIResponse'
+              example:
+                message: "API unpublished successfully from API portal"
+                apiId: "1f01c9b2-440b-4cfe-bf48-f8f168062df4"
+                unpublishedAt: "2025-10-29T21:08:59.834784232+05:30"
+        '400':
+          description: Bad request - Invalid input or API portal not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          description: API portal unavailable after retries
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /gateways:
     post:
@@ -528,7 +640,7 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        404:
+        '404':
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
@@ -1870,6 +1982,55 @@ components:
         pagination:
           $ref: '#/components/schemas/Pagination'
 
+    PublishAPIResponse:
+      type: object
+      required:
+        - message
+        - apiId
+        - apiPortalRefId
+        - publishedAt
+      properties:
+        message:
+          type: string
+          description: Human-readable success message
+          example: "API published successfully to API portal"
+        apiId:
+          type: string
+          format: uuid
+          description: Platform-api API identifier
+          example: "1f01c9b2-440b-4cfe-bf48-f8f168062df4"
+        apiPortalRefId:
+          type: string
+          description: API portal reference ID for the published API
+          example: "1f01c9b2-440b-4cfe-bf48-f8f168062df4"
+        publishedAt:
+          type: string
+          format: date-time
+          description: Timestamp of publication
+          example: "2025-10-29T21:25:09.418859918+05:30"
+
+    UnpublishAPIResponse:
+      type: object
+      required:
+        - message
+        - apiId
+        - unpublishedAt
+      properties:
+        message:
+          type: string
+          description: Human-readable success message
+          example: "API unpublished successfully from API portal"
+        apiId:
+          type: string
+          format: uuid
+          description: Platform-api API identifier
+          example: "1f01c9b2-440b-4cfe-bf48-f8f168062df4"
+        unpublishedAt:
+          type: string
+          format: date-time
+          description: Timestamp when API was unpublished
+          example: "2025-10-29T21:08:59.834784232+05:30"
+
   responses:
     Unauthorized:
       description: Unauthorized. Authentication credentials are missing or invalid.
@@ -2032,6 +2193,8 @@ tags:
     description: API management operations
   - name: API Revisions
     description: API revision deployment operations
+  - name: API Portal
+    description: API portal publishing and unpublishing operations
   - name: Gateways
     description: Gateway registration and management operations
   - name: Gateway Tokens
