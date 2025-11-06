@@ -163,7 +163,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredAPIConfig) ([]*route.R
 	// Create routes for each operation
 	routesList := make([]*route.Route, 0)
 	for _, op := range apiData.Operations {
-		r := t.createRoute(string(op.Method), apiData.Context+op.Path, clusterName, parsedURL.Path)
+		r := t.createRoute(apiData.Context, string(op.Method), op.Path, clusterName, parsedURL.Path)
 		routesList = append(routesList, r)
 	}
 
@@ -243,14 +243,17 @@ func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost)
 }
 
 // createRoute creates a route for an operation
-func (t *Translator) createRoute(method, path, clusterName, upstreamPath string) *route.Route {
+func (t *Translator) createRoute(context, method, path, clusterName, upstreamPath string) *route.Route {
+	// Combine context and path for matching
+	fullPath := context + path
+
 	// Check if path contains parameters (e.g., {country_code})
 	hasParams := strings.Contains(path, "{")
 
 	var pathSpecifier *route.RouteMatch_SafeRegex
 	if hasParams {
 		// Use regex matching for parameterized paths
-		regexPattern := t.pathToRegex(path)
+		regexPattern := t.pathToRegex(fullPath)
 		pathSpecifier = &route.RouteMatch_SafeRegex{
 			SafeRegex: &matcher.RegexMatcher{
 				Regex: regexPattern,
@@ -286,19 +289,20 @@ func (t *Translator) createRoute(method, path, clusterName, upstreamPath string)
 	} else {
 		// Use exact path matching for non-parameterized paths
 		r.Match.PathSpecifier = &route.RouteMatch_Path{
-			Path: path,
+			Path: fullPath,
 		}
 	}
 
 	// Add path rewriting if upstream has a path prefix
-	// The upstream path should be prepended to the full request path
-	// For example: request /weather/US/Seattle with upstream /api/v2
-	// should result in /api/v2/weather/US/Seattle
+	// Strip the API context and prepend the upstream path
+	// For example: request /weather/US/Seattle with context /weather and upstream /api/v2
+	// should result in /api/v2/US/Seattle (context stripped, upstream prepended)
 	if upstreamPath != "" && upstreamPath != "/" {
-		// Use RegexRewrite to prepend the upstream path to the full request path
+		// Use RegexRewrite to strip the context and prepend the upstream path
+		// Pattern captures everything after the context
 		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
 			Pattern: &matcher.RegexMatcher{
-				Regex: "^(.*)$",
+				Regex: "^" + context + "(.*)$",
 			},
 			Substitution: upstreamPath + "\\1",
 		}
