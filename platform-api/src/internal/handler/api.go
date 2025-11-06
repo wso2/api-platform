@@ -61,11 +61,6 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 			"API name is required"))
 		return
 	}
-	if req.Description == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API description is required"))
-		return
-	}
 	if req.Context == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API context is required"))
@@ -399,8 +394,8 @@ func (h *APIHandler) PublishToDevPortal(c *gin.Context) {
 	// Parse request body
 	var req dto.PublishToDevPortalRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Invalid request body: "+err.Error()))
+		status, errorResponse := utils.GetErrorResponse(err)
+		c.JSON(status, errorResponse)
 		return
 	}
 
@@ -463,8 +458,8 @@ func (h *APIHandler) UnpublishFromDevPortal(c *gin.Context) {
 	// Parse request body
 	var req dto.UnpublishFromDevPortalRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Invalid request body: "+err.Error()))
+		status, errorResponse := utils.GetErrorResponse(err)
+		c.JSON(status, errorResponse)
 		return
 	}
 
