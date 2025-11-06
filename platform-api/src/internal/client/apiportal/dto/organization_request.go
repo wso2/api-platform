@@ -17,12 +17,12 @@
 
 package dto
 
-// OrganizationCreateRequest represents the request body for creating an organization in dev poratl
+// OrganizationCreateRequest represents the request body for creating an organization in api portal
 //
-// This DTO is used when platform-api synchronizes organizations to the dev poratl
-// during organization creation workflow. Fields match the actual dev poratl API spec.
+// This DTO is used when platform-api synchronizes organizations to the api portal
+// during organization creation workflow. Fields match the actual api portal API spec.
 type OrganizationCreateRequest struct {
-	OrgID                  string `json:"orgId"`                           // Organization UUID (optional, auto-generated if not provided)
+	OrgID                  string `json:"orgId,omitempty"`                 // Organization UUID (optional, auto-generated if not provided)
 	OrgName                string `json:"orgName"`                         // Organization name (required, unique)
 	OrgHandle              string `json:"orgHandle"`                       // URL-friendly handle (required, unique)
 	OrganizationIdentifier string `json:"organizationIdentifier"`          // Organization identifier (required, unique)
@@ -37,9 +37,9 @@ type OrganizationCreateRequest struct {
 	SuperAdminRole         string `json:"superAdminRole,omitempty"`        // Super admin role (default: "superAdmin")
 }
 
-// OrganizationCreateResponse represents the response from dev poratl after organization creation
+// OrganizationCreateResponse represents the response from api portal after organization creation
 //
-// This DTO contains the confirmed organization details from the dev poratl.
+// This DTO contains the confirmed organization details from the api portal.
 type OrganizationCreateResponse struct {
 	OrgID                  string                 `json:"orgId"`                  // Created organization UUID
 	OrgName                string                 `json:"orgName"`                // Organization name

@@ -29,6 +29,8 @@ import (
 	"strings"
 	"time"
 
+	"platform-api/src/internal/client/apiportal"
+	apiportalDto "platform-api/src/internal/client/apiportal/dto"
 	"platform-api/src/internal/constants"
 
 	"github.com/google/uuid"
@@ -41,22 +43,22 @@ type APIService struct {
 	gatewayRepo          repository.GatewayRepository
 	upstreamService      *UpstreamService
 	gatewayEventsService *GatewayEventsService
-	devPortalManager     *DevPortalManager
+	apiPortalClient      *apiportal.ApiPortalClient
 	apiUtil              *utils.APIUtil
 }
 
 // NewAPIService creates a new API service
 func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.ProjectRepository,
 	gatewayRepo repository.GatewayRepository, upstreamSvc *UpstreamService,
-	gatewayEventsService *GatewayEventsService, devPortalManager *DevPortalManager, apiUtil *utils.APIUtil) *APIService {
+	gatewayEventsService *GatewayEventsService, apiPortalClient *apiportal.ApiPortalClient) *APIService {
 	return &APIService{
 		apiRepo:              apiRepo,
 		projectRepo:          projectRepo,
 		gatewayRepo:          gatewayRepo,
 		upstreamService:      upstreamSvc,
 		gatewayEventsService: gatewayEventsService,
-		devPortalManager:     devPortalManager,
-		apiUtil:              apiUtil,
+		apiPortalClient:      apiPortalClient,
+		apiUtil:              &utils.APIUtil{},
 	}
 }
 
@@ -790,24 +792,168 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 	}
 }
 
-// PublishAPIToDevPortal publishes an API to a specific DevPortal
-func (s *APIService) PublishAPIToDevPortal(apiID, devPortalUUID, orgID string) (*dto.PublishToDevPortalResponse, error) {
-	// Get the API
-	api, err := s.GetAPIByUUID(apiID, orgID)
-	if err != nil {
-		return nil, err
+// PublishAPI publishes an API to the api portal
+//
+// This method handles the business logic for publishing APIs to the api portal:
+//   - Fetches API metadata from platform-api database
+//   - Generates an OpenAPI definition
+//   - Builds API publish request with required fields
+//   - Assigns hardcoded "unlimited" subscription tier
+//   - Invokes apiportal client with 3-retry logic
+//
+// Parameters:
+//   - apiID: API UUID in platform-api
+//   - orgID: Organization UUID
+//   - apiPortalID: Optional apiportal API ID (for updates - reserved for US4)
+//
+// Returns:
+//   - *dto.PublishAPIResponse: Response with publish details
+//   - error: Error if API not found, apiportal disabled, or publishing fails
+func (s *APIService) PublishAPI(apiID string, orgID string, apiPortalID string) (*dto.PublishAPIResponse, error) {
+	// Check if apiportal is enabled
+	if s.apiPortalClient == nil || !s.apiPortalClient.IsEnabled() {
+		log.Printf("[APIService] api portal disabled, cannot publish API")
+		return nil, constants.ErrApiPortalSync
 	}
 
-	// Convert API DTO to model for DevPortal manager
-	apiModel := s.apiUtil.DTOToModel(api)
+	// Fetch API from repository
+	api, err := s.GetAPIByUUID(apiID, orgID)
+	if err != nil {
+		log.Printf("[APIService] Failed to fetch API %s: %v", apiID, err)
+		return nil, err
+	}
+	if api == nil {
+		return nil, constants.ErrAPINotFound
+	}
 
-	// Publish API to DevPortal
-	return s.devPortalManager.PublishAPIToDevPortal(devPortalUUID, orgID, apiID, apiModel)
+	// Generate OpenAPI definition from API operations
+	apiDefinition, err := s.apiUtil.GenerateOpenAPIDefinition(api)
+	if err != nil {
+		log.Printf("[APIService] Failed to generate OpenAPI definition for API %s: %v", apiID, err)
+		return nil, fmt.Errorf("failed to generate OpenAPI definition: %w", err)
+	}
+
+	// Set default values for optional fields that have NOT NULL constraints in API portal
+	provider := api.Provider
+	if provider == "" {
+		provider = "N/A"
+	}
+	description := api.Description
+	if description == "" {
+		description = "N/A"
+	}
+
+	// Build API publish request for apiportal
+	publishReq := &apiportalDto.APIPublishRequest{
+		APIInfo: apiportalDto.APIInfo{
+			APIID:          api.ID,
+			ReferenceID:    api.ID,                                      // Required: Platform-api API UUID
+			APIName:        api.Name,                                    // Required: API name
+			APIHandle:      fmt.Sprintf("%s-%s", api.Name, api.Version), // Required: {apiName}-{version}
+			APIVersion:     api.Version,                                 // Required: API version
+			APIType:        "REST",                                      // Required: API type
+			Provider:       provider,                                    // Optional: Provider name (default: "N/A")
+			APIDescription: description,                                 // Optional: Description (default: "N/A")
+			APIStatus:      "PUBLISHED",                                 // Optional: Status
+			Visibility:     "PUBLIC",                                    // Optional: Default to PUBLIC
+		},
+		SubscriptionPolicies: []apiportalDto.SubscriptionPolicy{
+			{PolicyName: "unlimited"}, // Hardcoded "unlimited" subscription tier
+		},
+		EndPoints: apiportalDto.EndPoints{
+			ProductionURL: "http://backend-service:8080", // Placeholder production URL
+			SandboxURL:    "http://backend-service:8080", // Placeholder sandbox URL
+		},
+	}
+
+	log.Printf("[APIService] Publishing API %s (Name: %s, Version: %s) to api portal",
+		api.ID, api.Name, api.Version)
+
+	// Check if API already exists in api portal
+	exists, err := s.apiPortalClient.CheckAPIExists(orgID, api.ID)
+	if err != nil {
+		log.Printf("[APIService] Failed to check API existence in api portal: %v", err)
+		return nil, constants.ErrApiPortalSync
+	}
+
+	// If API exists, unpublish it first before republishing
+	if exists {
+		log.Printf("[APIService] API %s already exists in api portal, unpublishing first", api.ID)
+		if err := s.apiPortalClient.UnpublishAPI(orgID, api.ID); err != nil {
+			log.Printf("[APIService] Failed to unpublish existing API before republishing: %v", err)
+			return nil, constants.ErrApiPortalSync
+		}
+		log.Printf("[APIService] Successfully unpublished existing API %s", api.ID)
+	}
+
+	// Invoke apiportal client with 3-retry logic
+	apiportalResp, err := s.apiPortalClient.PublishAPI(orgID, publishReq, apiDefinition)
+	if err != nil {
+		log.Printf("[APIService] Failed to publish API to api portal: %v", err)
+		return nil, constants.ErrApiPortalSync
+	}
+
+	// Build response
+	response := &dto.PublishAPIResponse{
+		Message:        "API published successfully to api portal",
+		APIID:          api.ID,
+		ApiPortalRefID: apiportalResp.APIID,
+		PublishedAt:    time.Now(),
+	}
+
+	log.Printf("[APIService] API published successfully: %s (ApiPortal ID: %s)", api.ID, apiportalResp.APIID)
+	return response, nil
 }
 
-// UnpublishAPIFromDevPortal unpublishes an API from a specific DevPortal
-func (s *APIService) UnpublishAPIFromDevPortal(apiID, devPortalUUID, orgID string) (*dto.UnpublishFromDevPortalResponse, error) {
-	// TODO : Relevant logics needs to be implemented. (before unpublishing whether that api have active subscriptions in devportal)
-	// Unpublish API from DevPortal
-	return s.devPortalManager.UnpublishAPIFromDevPortal(devPortalUUID, orgID, apiID)
+// UnpublishAPI unpublishes an API from the api portal
+//
+// This method handles the business logic for unpublishing APIs from the api portal:
+//   - Validates that apiportal is enabled
+//   - Validates that API exists in platform-api
+//   - Invokes apiportal client to delete API with 3-retry logic
+//
+// Parameters:
+//   - apiID: API UUID in platform-api (same UUID used in apiportal)
+//   - orgID: Organization UUID
+//   - apiPortalID: Optional api portal API ID (reserved for future use)
+//
+// Returns:
+//   - *dto.UnpublishAPIResponse: Response with unpublish details
+//   - error: Error if API not found, apiportal disabled, or unpublishing fails
+func (s *APIService) UnpublishAPI(apiID string, orgID string, apiPortalID string) (*dto.UnpublishAPIResponse, error) {
+	// Check if apiportal is enabled
+	if s.apiPortalClient == nil || !s.apiPortalClient.IsEnabled() {
+		log.Printf("[APIService] api portal disabled, cannot unpublish API")
+		return nil, constants.ErrApiPortalSync
+	}
+
+	// Fetch API from repository to ensure it exists
+	api, err := s.GetAPIByUUID(apiID, orgID)
+	if err != nil {
+		log.Printf("[APIService] Failed to fetch API %s: %v", apiID, err)
+		return nil, err
+	}
+	if api == nil {
+		return nil, constants.ErrAPINotFound
+	}
+
+	log.Printf("[APIService] Unpublishing API %s (Name: %s, Version: %s) from api portal",
+		api.ID, api.Name, api.Version)
+
+	// Invoke apiportal client with 3-retry logic using same API ID
+	err = s.apiPortalClient.UnpublishAPI(orgID, apiID)
+	if err != nil {
+		log.Printf("[APIService] Failed to unpublish API from api portal: %v", err)
+		return nil, constants.ErrApiPortalSync
+	}
+
+	// Build response
+	response := &dto.UnpublishAPIResponse{
+		Message:       "API unpublished successfully from api portal",
+		APIID:         api.ID,
+		UnpublishedAt: time.Now(),
+	}
+
+	log.Printf("[APIService] API unpublished successfully: %s", api.ID)
+	return response, nil
 }
