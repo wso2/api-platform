@@ -68,3 +68,43 @@ func (t *GatewayToken) Revoke() {
 	t.Status = "revoked"
 	t.RevokedAt = &now
 }
+
+// APIGatewayAssociation represents the association between an API and a gateway
+type APIGatewayAssociation struct {
+	ID             int       `json:"id" db:"id"`
+	ApiID          string    `json:"apiId" db:"api_uuid"`
+	OrganizationID string    `json:"organizationId" db:"organization_uuid"`
+	GatewayID      string    `json:"gatewayId" db:"gateway_uuid"`
+	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt      time.Time `json:"updatedAt" db:"updated_at"`
+}
+
+// TableName returns the table name for the APIGatewayAssociation model
+func (APIGatewayAssociation) TableName() string {
+	return "api_gateway_associations"
+}
+
+// APIGatewayWithDetails represents a gateway with its association and deployment details for an API
+type APIGatewayWithDetails struct {
+	// Gateway information
+	ID                string    `json:"id" db:"id"`
+	OrganizationID    string    `json:"organizationId" db:"organization_id"`
+	Name              string    `json:"name" db:"name"`
+	DisplayName       string    `json:"displayName" db:"display_name"`
+	Description       string    `json:"description" db:"description"`
+	Vhost             string    `json:"vhost" db:"vhost"`
+	IsCritical        bool      `json:"isCritical" db:"is_critical"`
+	FunctionalityType string    `json:"functionalityType" db:"functionality_type"`
+	IsActive          bool      `json:"isActive" db:"is_active"`
+	CreatedAt         time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt         time.Time `json:"updatedAt" db:"updated_at"`
+
+	// Association information
+	AssociatedAt         time.Time `json:"associatedAt" db:"associated_at"`
+	AssociationUpdatedAt time.Time `json:"associationUpdatedAt" db:"association_updated_at"`
+
+	// Deployment information (nullable if not deployed)
+	IsDeployed       bool       `json:"isDeployed" db:"is_deployed"`
+	DeployedRevision *string    `json:"deployedRevision,omitempty" db:"deployed_revision"`
+	DeployedAt       *time.Time `json:"deployedAt,omitempty" db:"deployed_at"`
+}

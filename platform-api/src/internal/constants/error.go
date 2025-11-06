@@ -49,7 +49,8 @@ var (
 )
 
 var (
-	ErrGatewayNotFound = errors.New("gateway not found")
+	ErrGatewayNotFound          = errors.New("gateway not found")
+	ErrGatewayAlreadyAssociated = errors.New("gateway already associated with API")
 )
 
 var (
