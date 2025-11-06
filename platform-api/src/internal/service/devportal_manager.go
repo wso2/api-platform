@@ -642,7 +642,7 @@ func (m *DevPortalManager) updatePublicationSuccess(publication *model.APIPublic
 		// Continue even if update fails - the publish was successful
 	}
 
-	log.Printf("[DevPortalManager] Successfully published API %s to DevPortal %s (API Portal ID: %s)",
+	log.Printf("[DevPortalManager] Successfully published API %s to DevPortal %s (Dev Portal ID: %s)",
 		api.ID, devPortal.Name, apiportalResp.APIID)
 }
 

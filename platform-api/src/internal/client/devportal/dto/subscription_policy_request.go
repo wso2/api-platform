@@ -20,7 +20,7 @@ package dto
 // SubscriptionPolicyCreateRequest represents the request body for creating a subscription policy
 //
 // This DTO is used when creating default "unlimited" subscription policies for new organizations
-// in the api portal. Per spec, the unlimited policy has 1000000 requests per minute.
+// in the dev poratl. Per spec, the unlimited policy has 1000000 requests per minute.
 type SubscriptionPolicyCreateRequest struct {
 	PolicyName   string `json:"policyName"`   // Policy identifier (e.g., "unlimited")
 	DisplayName  string `json:"displayName"`  // Human-readable name (e.g., "Unlimited Tier")
@@ -32,9 +32,9 @@ type SubscriptionPolicyCreateRequest struct {
 	RequestCount int    `json:"requestCount"` // Maximum requests allowed (e.g., 1000000)
 }
 
-// SubscriptionPolicyCreateResponse represents the response from api portal after policy creation
+// SubscriptionPolicyCreateResponse represents the response from dev poratl after policy creation
 //
-// This DTO contains the confirmed subscription policy details from the api portal.
+// This DTO contains the confirmed subscription policy details from the dev poratl.
 type SubscriptionPolicyCreateResponse struct {
 	ID          string `json:"id"`          // Created policy UUID
 	PolicyName  string `json:"policyName"`  // Policy identifier

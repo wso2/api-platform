@@ -403,7 +403,7 @@ func (c *DevPortalClient) CheckOrganizationExists(orgID string) (bool, error) {
 	return c.executeExistenceCheck(url, fmt.Sprintf("Checking if organization exists: %s", orgID))
 }
 
-// CreateSubscriptionPolicy creates a subscription policy for an organization in the api portal
+// CreateSubscriptionPolicy creates a subscription policy for an organization in the DevPortal
 //
 // This method is used to create the default "unlimited" subscription policy for new organizations.
 //
@@ -443,7 +443,7 @@ func (c *DevPortalClient) CreateSubscriptionPolicy(orgID string, req *dto.Subscr
 
 // createMultipartRequest creates a multipart/form-data request with API metadata and definition
 //
-// This helper constructs the multipart request required by the api portal API publishing endpoint.
+// This helper constructs the multipart request required by the dev poratl API publishing endpoint.
 // The request contains:
 //   - apiMetadata: JSON-serialized API metadata (Content-Type: application/json)
 //   - apiDefinition: OpenAPI definition file (must be named "apiDefinition.json")
@@ -493,9 +493,9 @@ func (c *DevPortalClient) createMultipartRequest(metadata *dto.APIPublishRequest
 	return body, writer.FormDataContentType(), nil
 }
 
-// PublishAPI publishes an API to the api portal
+// PublishAPI publishes an API to the dev poratl
 //
-// This method creates a new API in the api portal with metadata and OpenAPI definition.
+// This method creates a new API in the dev poratl with metadata and OpenAPI definition.
 // It uses multipart/form-data to send both the API metadata (JSON) and the OpenAPI definition file.
 //
 // Parameters:
@@ -534,9 +534,9 @@ func (c *DevPortalClient) PublishAPI(orgID string, req *dto.APIPublishRequest, a
 	return &apiResp, nil
 }
 
-// CheckAPIExists checks if an API exists in the api portal
+// CheckAPIExists checks if an API exists in the dev poratl
 //
-// This method queries the api portal to check if an API with the given ID exists.
+// This method queries the dev poratl to check if an API with the given ID exists.
 // It returns true if the API exists (200 OK), false if not found (404), and an error
 // for any other status codes or network issues.
 //
@@ -552,14 +552,14 @@ func (c *DevPortalClient) CheckAPIExists(orgID string, apiID string) (bool, erro
 	return c.executeExistenceCheck(url, fmt.Sprintf("Checking if API exists: %s (Organization: %s)", apiID, orgID))
 }
 
-// UnpublishAPI unpublishes an API from the api portal
+// UnpublishAPI unpublishes an API from the dev poratl
 //
-// This method deletes an API from the api portal by its API ID.
+// This method deletes an API from the dev poratl by its API ID.
 // It uses retry logic to handle transient failures.
 //
 // Parameters:
 //   - orgID: Organization UUID
-//   - apiID: api portal API UUID (not platform-api API UUID)
+//   - apiID: dev poratl API UUID (not platform-api API UUID)
 //
 // Returns:
 //   - error: ApiPortalError if unpublishing fails after retries, nil on success

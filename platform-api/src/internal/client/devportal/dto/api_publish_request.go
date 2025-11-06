@@ -17,9 +17,9 @@
 
 package dto
 
-// APIPublishRequest represents the complete API metadata for publishing to api portal
+// APIPublishRequest represents the complete API metadata for publishing to dev poratl
 //
-// This DTO is used when platform-api publishes APIs to the api portal. It matches
+// This DTO is used when platform-api publishes APIs to the dev poratl. It matches
 // the multipart form-data structure where this entire struct is serialized as JSON
 // in the "apiMetadata" field, and the OpenAPI definition is sent separately as a file.
 type APIPublishRequest struct {
@@ -72,9 +72,9 @@ type EndPoints struct {
 	SandboxURL    string `json:"sandboxURL"`    // Required: Sandbox endpoint URL
 }
 
-// APIPublishResponse represents the response from api portal after API publishing
+// APIPublishResponse represents the response from dev portal after API publishing
 type APIPublishResponse struct {
-	APIID       string `json:"apiID"`       // Created/updated API UUID in api portal
+	APIID       string `json:"apiID"`       // Created/updated API UUID in ap portal
 	APIHandle   string `json:"apiHandle"`   // URL-friendly identifier
 	ReferenceID string `json:"referenceID"` // Reference ID from platform-api
 	Message     string `json:"message"`     // Success message

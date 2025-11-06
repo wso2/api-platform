@@ -53,7 +53,7 @@ var (
 )
 
 var (
-	ErrApiPortalSync = errors.New("failed to synchronize with api portal")
+	ErrApiPortalSync = errors.New("failed to synchronize with dev poratl")
 )
 
 var (
