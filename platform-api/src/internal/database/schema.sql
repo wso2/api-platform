@@ -17,20 +17,20 @@
 
 -- Organizations table
 CREATE TABLE IF NOT EXISTS organizations (
-    uuid TEXT PRIMARY KEY,
-    handle TEXT UNIQUE NOT NULL,
-    name TEXT NOT NULL,
-    region TEXT NOT NULL,
+    uuid VARCHAR(40) PRIMARY KEY,
+    handle VARCHAR(255) UNIQUE NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    region VARCHAR(63) NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Projects table
 CREATE TABLE IF NOT EXISTS projects (
-    uuid TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    organization_uuid TEXT NOT NULL,
-    description TEXT,
+    uuid VARCHAR(40) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    description VARCHAR(1023),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
@@ -39,23 +39,23 @@ CREATE TABLE IF NOT EXISTS projects (
 
 -- APIs table
 CREATE TABLE IF NOT EXISTS apis (
-    uuid TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    display_name TEXT,
-    description TEXT,
-    context TEXT NOT NULL,
-    version TEXT NOT NULL,
-    provider TEXT,
-    project_uuid TEXT NOT NULL,
-    organization_uuid TEXT NOT NULL,
-    lifecycle_status TEXT DEFAULT 'CREATED',
+    uuid VARCHAR(40) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255),
+    description VARCHAR(1023),
+    context VARCHAR(255) NOT NULL,
+    version VARCHAR(30) NOT NULL,
+    provider VARCHAR(200),
+    project_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    lifecycle_status VARCHAR(20) DEFAULT 'CREATED',
     has_thumbnail BOOLEAN DEFAULT FALSE,
     is_default_version BOOLEAN DEFAULT FALSE,
     is_revision BOOLEAN DEFAULT FALSE,
-    revisioned_api_id TEXT,
+    revisioned_api_id VARCHAR(40),
     revision_id INTEGER DEFAULT 0,
-    type TEXT DEFAULT 'HTTP',
-    transport TEXT, -- JSON array as TEXT
+    type VARCHAR(20) DEFAULT 'HTTP',
+    transport VARCHAR(255), -- JSON array as TEXT
     security_enabled BOOLEAN,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -68,36 +68,36 @@ CREATE TABLE IF NOT EXISTS apis (
 -- API MTLS Configuration table
 CREATE TABLE IF NOT EXISTS api_mtls_config (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    api_uuid TEXT NOT NULL,
+    api_uuid VARCHAR(40) NOT NULL,
     enabled BOOLEAN DEFAULT FALSE,
     enforce_if_client_cert_present BOOLEAN,
     verify_client BOOLEAN,
-    client_cert TEXT,
-    client_key TEXT,
-    ca_cert TEXT,
+    client_cert BLOB,
+    client_key VARCHAR(512),
+    ca_cert BLOB,
     FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE
 );
 
 -- API Key Security Configuration table
 CREATE TABLE IF NOT EXISTS api_key_security (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    api_uuid TEXT NOT NULL,
+    api_uuid VARCHAR(40) NOT NULL,
     enabled BOOLEAN,
-    header TEXT,
-    query TEXT,
-    cookie TEXT,
+    header VARCHAR(255),
+    query VARCHAR(255),
+    cookie VARCHAR(255),
     FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE
 );
 
 -- OAuth2 Security Configuration table
 CREATE TABLE IF NOT EXISTS oauth2_security (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    api_uuid TEXT NOT NULL,
+    api_uuid VARCHAR(40) NOT NULL,
     enabled BOOLEAN,
     authorization_code_enabled BOOLEAN,
-    authorization_code_callback_url TEXT,
+    authorization_code_callback_url VARCHAR(255),
     implicit_enabled BOOLEAN,
-    implicit_callback_url TEXT,
+    implicit_callback_url VARCHAR(255),
     password_enabled BOOLEAN,
     client_credentials_enabled BOOLEAN,
     scopes TEXT, -- JSON array as TEXT
@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS oauth2_security (
 -- CORS Configuration table
 CREATE TABLE IF NOT EXISTS api_cors_config (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    api_uuid TEXT NOT NULL,
+    api_uuid VARCHAR(40) NOT NULL,
     enabled BOOLEAN DEFAULT FALSE,
     allow_origins TEXT,
     allow_methods TEXT,
@@ -120,15 +120,15 @@ CREATE TABLE IF NOT EXISTS api_cors_config (
 
 -- Backend Services table
 CREATE TABLE IF NOT EXISTS backend_services (
-    uuid TEXT PRIMARY KEY,
-    organization_uuid TEXT NOT NULL,
-    name TEXT NOT NULL,
-    description TEXT,
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description VARCHAR(1023),
     timeout_connect_ms INTEGER,
     timeout_read_ms INTEGER,
     timeout_write_ms INTEGER,
     retries INTEGER,
-    loadBalance_algorithm TEXT DEFAULT 'ROUND_ROBIN',
+    loadBalance_algorithm VARCHAR(255) DEFAULT 'ROUND_ROBIN',
     loadBalance_failover BOOLEAN,
     circuit_breaker_enabled BOOLEAN DEFAULT FALSE,
     max_connections INTEGER,
@@ -144,8 +144,8 @@ CREATE TABLE IF NOT EXISTS backend_services (
 -- API Backend Services junction table (many-to-many relationship)
 CREATE TABLE IF NOT EXISTS api_backend_services (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    api_uuid TEXT NOT NULL,
-    backend_service_uuid TEXT NOT NULL,
+    api_uuid VARCHAR(40) NOT NULL,
+    backend_service_uuid VARCHAR(40) NOT NULL,
     is_default BOOLEAN DEFAULT FALSE,
     FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
     FOREIGN KEY (backend_service_uuid) REFERENCES backend_services(uuid) ON DELETE CASCADE,
@@ -155,9 +155,9 @@ CREATE TABLE IF NOT EXISTS api_backend_services (
 -- Backend Endpoints table
 CREATE TABLE IF NOT EXISTS backend_endpoints (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    backend_service_uuid TEXT NOT NULL,
-    url TEXT NOT NULL,
-    description TEXT,
+    backend_service_uuid VARCHAR(40) NOT NULL,
+    url VARCHAR(255) NOT NULL,
+    description VARCHAR(1023),
     healthcheck_enabled BOOLEAN DEFAULT FALSE,
     healthcheck_interval_seconds INTEGER,
     healthcheck_timeout_seconds INTEGER,
@@ -167,19 +167,19 @@ CREATE TABLE IF NOT EXISTS backend_endpoints (
     mtls_enabled BOOLEAN DEFAULT FALSE,
     enforce_if_client_cert_present BOOLEAN,
     verify_client BOOLEAN,
-    client_cert TEXT,
-    client_key TEXT,
-    ca_cert TEXT,
+    client_cert BLOB,
+    client_key VARCHAR(512),
+    ca_cert BLOB,
     FOREIGN KEY (backend_service_uuid) REFERENCES backend_services(uuid) ON DELETE CASCADE
 );
 
 -- API Rate Limiting Configuration table
 CREATE TABLE IF NOT EXISTS api_rate_limiting (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    api_uuid TEXT NOT NULL,
+    api_uuid VARCHAR(40) NOT NULL,
     enabled BOOLEAN DEFAULT FALSE,
     rate_limit_count INTEGER,
-    rate_limit_time_unit TEXT,
+    rate_limit_time_unit VARCHAR(10),
     stop_on_quota_reach BOOLEAN DEFAULT TRUE,
     FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE
 );
@@ -187,11 +187,11 @@ CREATE TABLE IF NOT EXISTS api_rate_limiting (
 -- API Operations table
 CREATE TABLE IF NOT EXISTS api_operations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    api_uuid TEXT NOT NULL,
-    name TEXT NOT NULL,
-    description TEXT,
-    method TEXT NOT NULL,
-    path TEXT NOT NULL,
+    api_uuid VARCHAR(40) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description VARCHAR(1023),
+    method VARCHAR(10) NOT NULL,
+    path VARCHAR(255) NOT NULL,
     authentication_required BOOLEAN,
     scopes TEXT, -- JSON array as TEXT
     FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE
@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS api_operations (
 CREATE TABLE IF NOT EXISTS operation_backend_services (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     operation_id INTEGER NOT NULL,
-    backend_service_uuid TEXT NOT NULL,
+    backend_service_uuid VARCHAR(40) NOT NULL,
     weight INTEGER,
     FOREIGN KEY (operation_id) REFERENCES api_operations(id) ON DELETE CASCADE,
     FOREIGN KEY (backend_service_uuid) REFERENCES backend_services(uuid) ON DELETE CASCADE,
@@ -212,8 +212,8 @@ CREATE TABLE IF NOT EXISTS operation_backend_services (
 CREATE TABLE IF NOT EXISTS policies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     operation_id INTEGER,
-    flow_direction TEXT NOT NULL, -- 'REQUEST' or 'RESPONSE'
-    name TEXT NOT NULL,
+    flow_direction VARCHAR(10) NOT NULL, -- 'REQUEST' or 'RESPONSE'
+    name VARCHAR(255) NOT NULL,
     params TEXT, -- JSON object as TEXT
     FOREIGN KEY (operation_id) REFERENCES api_operations(id)
 );
@@ -222,9 +222,9 @@ CREATE TABLE IF NOT EXISTS policies (
 -- API Deployments table
 CREATE TABLE IF NOT EXISTS api_deployments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    api_uuid TEXT NOT NULL,
-    organization_uuid TEXT NOT NULL,
-    gateway_uuid TEXT NOT NULL,
+    api_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    gateway_uuid VARCHAR(40) NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
@@ -235,14 +235,14 @@ CREATE TABLE IF NOT EXISTS api_deployments (
 
 -- Gateways table (scoped to organizations)
 CREATE TABLE IF NOT EXISTS gateways (
-    uuid TEXT PRIMARY KEY,
-    organization_uuid TEXT NOT NULL,
-    name TEXT NOT NULL,
-    display_name TEXT NOT NULL,
-    description TEXT,
-    vhost TEXT NOT NULL,
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    description VARCHAR(1023),
+    vhost VARCHAR(255) NOT NULL,
     is_critical BOOLEAN DEFAULT FALSE,
-    gateway_functionality_type TEXT DEFAULT 'regular' NOT NULL,
+    gateway_functionality_type VARCHAR(20) DEFAULT 'regular' NOT NULL,
     is_active BOOLEAN DEFAULT FALSE,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -253,11 +253,11 @@ CREATE TABLE IF NOT EXISTS gateways (
 
 -- Gateway Tokens table
 CREATE TABLE IF NOT EXISTS gateway_tokens (
-    uuid TEXT PRIMARY KEY,
-    gateway_uuid TEXT NOT NULL,
-    token_hash TEXT NOT NULL,
-    salt TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'active',
+    uuid VARCHAR(40) PRIMARY KEY,
+    gateway_uuid VARCHAR(40) NOT NULL,
+    token_hash VARCHAR(255) NOT NULL,
+    salt VARCHAR(255) NOT NULL,
+    status VARCHAR(10) NOT NULL DEFAULT 'active',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     revoked_at DATETIME,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
