@@ -538,6 +538,11 @@ func (m *DevPortalManager) extractEndpointURLs(api *model.API) (productionURL, s
 func (m *DevPortalManager) buildPublishRequest(api *model.API) *devportalDto.APIPublishRequest {
 	productionURL, sandboxURL := m.extractEndpointURLs(api)
 
+	description := "N/A"
+	if api.Description != "" {
+		description = api.Description
+	}
+
 	return &devportalDto.APIPublishRequest{
 		APIInfo: devportalDto.APIInfo{
 			APIID:          api.ID,

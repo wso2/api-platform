@@ -61,11 +61,6 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 			"API name is required"))
 		return
 	}
-	if req.Description == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API description is required"))
-		return
-	}
 	if req.Context == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"API context is required"))
