@@ -18,6 +18,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"platform-api/src/config"
@@ -209,6 +210,9 @@ func (m *DevPortalManager) UpdateDevPortal(uuid, orgUUID string, req *dto.Update
 	}
 	if req.HeaderKeyName != nil {
 		devPortal.HeaderKeyName = *req.HeaderKeyName
+	}
+	if req.IsActive != nil {
+		devPortal.IsActive = *req.IsActive
 	}
 	if req.Visibility != nil {
 		devPortal.Visibility = *req.Visibility
@@ -427,73 +431,54 @@ func (m *DevPortalManager) validateDevPortalForPublishing(devPortalUUID, orgUUID
 	return devPortal, client, nil
 }
 
-// preparePublicationRecordOptimized creates or updates a publication record with publishing status using UPSERT
-// This reduces database queries from 2-3 to just 1
-func (m *DevPortalManager) preparePublicationRecordOptimized(api *model.API, devPortalUUID, orgUUID string) (*model.APIPublication, error) {
-	currentTime := time.Now()
-
-	// Create publication record with "publishing" status
-	// Use UPSERT to handle both create and update cases in a single query
-	publication := &model.APIPublication{
-		APIUUID:          api.ID,
-		DevPortalUUID:    devPortalUUID,
-		OrganizationUUID: orgUUID,
-		Status:           model.PublishingStatus,
-		APIVersion:       &api.Version,
-		DevPortalRefID:   nil,
-		CreatedAt:        currentTime,
-		UpdatedAt:        currentTime,
-	}
-
-	// Single UPSERT operation handles both new and existing records
-	if err := m.publicationRepo.UpsertPublication(publication); err != nil {
-		log.Printf("[DevPortalManager] Failed to upsert publication record: %v", err)
-		return nil, err
-	}
-
-	// Retrieve the record to get the UUID (important for existing records)
+// preparePublicationRecord creates or updates a publication record with publishing status
+func (m *DevPortalManager) preparePublicationRecord(api *model.API, devPortalUUID, orgUUID string) (*model.APIPublication, error) {
+	// Check if there's an existing publication record
 	existingPublication, err := m.publicationRepo.GetByAPIAndDevPortal(api.ID, devPortalUUID, orgUUID)
-	if err != nil {
-		log.Printf("[DevPortalManager] Failed to retrieve upserted publication record: %v", err)
+	if err != nil && !errors.Is(err, constants.ErrAPIPublicationNotFound) {
+		log.Printf("[DevPortalManager] Failed to check existing publication: %v", err)
 		return nil, err
 	}
 
-	return existingPublication, nil
-}
-
-// prepareUnpublicationRecordOptimized creates or updates a publication record with unpublishing status using UPSERT
-func (m *DevPortalManager) prepareUnpublicationRecordOptimized(apiID, devPortalUUID, orgUUID string) (*model.APIPublication, error) {
+	// Create or update publication record with "publishing" status
+	var publication *model.APIPublication
 	currentTime := time.Now()
 
-	// For unpublishing, we need to handle the case where the record might not exist
-	// (if API was published outside our tracking system)
-	apiVersionPtr := "unknown"
+	if existingPublication != nil {
+		// Update existing publication
+		if err := existingPublication.SetPublishing(); err != nil {
+			log.Printf("[DevPortalManager] Invalid status transition for existing publication: %v", err)
+			return nil, err
+		}
+		existingPublication.APIVersion = &api.Version
+		existingPublication.UpdatedAt = currentTime
+		publication = existingPublication
 
-	publication := &model.APIPublication{
-		APIUUID:          apiID,
-		DevPortalUUID:    devPortalUUID,
-		OrganizationUUID: orgUUID,
-		Status:           model.UnpublishingStatus,
-		APIVersion:       &apiVersionPtr,
-		DevPortalRefID:   nil,
-		CreatedAt:        currentTime,
-		UpdatedAt:        currentTime,
+		if err := m.publicationRepo.Update(publication); err != nil {
+			log.Printf("[DevPortalManager] Failed to update publication record: %v", err)
+			return nil, err
+		}
+	} else {
+		// Create new publication record
+		publication = &model.APIPublication{
+			UUID:             uuid.New().String(),
+			APIUUID:          api.ID,
+			DevPortalUUID:    devPortalUUID,
+			OrganizationUUID: orgUUID,
+			Status:           model.PublishingStatus,
+			APIVersion:       &api.Version,
+			DevPortalRefID:   nil,
+			CreatedAt:        currentTime,
+			UpdatedAt:        currentTime,
+		}
+
+		if err := m.publicationRepo.Create(publication); err != nil {
+			log.Printf("[DevPortalManager] Failed to create publication record: %v", err)
+			return nil, err
+		}
 	}
 
-	// Single UPSERT operation handles both new and existing records
-	if err := m.publicationRepo.UpsertPublication(publication); err != nil {
-		log.Printf("[DevPortalManager] Failed to upsert unpublication record: %v", err)
-		return nil, err
-	}
-
-	// Retrieve the record to get the UUID and current state
-	existingPublication, err := m.publicationRepo.GetByAPIAndDevPortal(apiID, devPortalUUID, orgUUID)
-	if err != nil {
-		log.Printf("[DevPortalManager] Failed to retrieve upserted unpublication record: %v", err)
-		return nil, err
-	}
-
-	return existingPublication, nil
+	return publication, nil
 }
 
 // generateAPIDefinition generates OpenAPI definition for the API
@@ -553,11 +538,6 @@ func (m *DevPortalManager) extractEndpointURLs(api *model.API) (productionURL, s
 func (m *DevPortalManager) buildPublishRequest(api *model.API) *devportalDto.APIPublishRequest {
 	productionURL, sandboxURL := m.extractEndpointURLs(api)
 
-	description := api.Description
-	if description == "" {
-		description = "N/A"
-	}
-
 	return &devportalDto.APIPublishRequest{
 		APIInfo: devportalDto.APIInfo{
 			APIID:          api.ID,
@@ -567,7 +547,7 @@ func (m *DevPortalManager) buildPublishRequest(api *model.API) *devportalDto.API
 			APIVersion:     api.Version,
 			APIType:        "REST",
 			Provider:       api.Provider,
-			APIDescription: description,
+			APIDescription: api.Description,
 			APIStatus:      "PUBLISHED",
 			Visibility:     "PUBLIC",
 			Labels:         []string{"default"},
@@ -653,8 +633,8 @@ func (m *DevPortalManager) PublishAPIToDevPortal(devPortalUUID, orgUUID, apiID s
 		return nil, err
 	}
 
-	// Prepare publication record (optimized with UPSERT)
-	publication, err := m.preparePublicationRecordOptimized(api, devPortalUUID, orgUUID)
+	// Prepare publication record
+	publication, err := m.preparePublicationRecord(api, devPortalUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -715,10 +695,50 @@ func (m *DevPortalManager) UnpublishAPIFromDevPortal(devPortalUUID, orgUUID, api
 	// Create ApiPortal client for this DevPortal
 	client := m.createDevPortalClient(devPortal)
 
-	// Prepare unpublication record (optimized with UPSERT)
-	publication, err := m.prepareUnpublicationRecordOptimized(apiID, devPortalUUID, orgUUID)
-	if err != nil {
+	// Check if there's an existing publication record
+	existingPublication, err := m.publicationRepo.GetByAPIAndDevPortal(apiID, devPortalUUID, orgUUID)
+	if err != nil && !errors.Is(err, constants.ErrAPIPublicationNotFound) {
+		log.Printf("[DevPortalManager] Failed to check existing publication: %v", err)
 		return nil, err
+	}
+
+	// Create or update publication record with "unpublishing" status
+	var publication *model.APIPublication
+	currentTime := time.Now()
+
+	if existingPublication != nil {
+		// Update existing publication
+		publication = existingPublication
+		if err := publication.SetUnpublishing(); err != nil {
+			log.Printf("[DevPortalManager] Invalid status transition for existing publication: %v", err)
+			return nil, err
+		}
+		publication.UpdatedAt = currentTime
+
+		if err := m.publicationRepo.Update(publication); err != nil {
+			log.Printf("[DevPortalManager] Failed to update publication record: %v", err)
+			return nil, err
+		}
+	} else {
+		// Create new publication record for tracking unpublish attempt
+		// This can happen if API was published outside the tracking system
+		apiVersionPtr := "unknown"
+		publication = &model.APIPublication{
+			UUID:             uuid.New().String(),
+			APIUUID:          apiID,
+			DevPortalUUID:    devPortalUUID,
+			OrganizationUUID: orgUUID,
+			Status:           model.UnpublishingStatus,
+			APIVersion:       &apiVersionPtr,
+			DevPortalRefID:   nil,
+			CreatedAt:        currentTime,
+			UpdatedAt:        currentTime,
+		}
+
+		if err := m.publicationRepo.Create(publication); err != nil {
+			log.Printf("[DevPortalManager] Failed to create publication record: %v", err)
+			return nil, err
+		}
 	}
 
 	log.Printf("[DevPortalManager] Unpublishing API %s from DevPortal %s", apiID, devPortal.Name)
