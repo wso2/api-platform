@@ -265,6 +265,55 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
     CHECK (revoked_at IS NULL OR status = 'revoked')
 );
 
+-- DevPortals table
+CREATE TABLE IF NOT EXISTS devportals (
+    uuid TEXT PRIMARY KEY,
+    organization_uuid TEXT NOT NULL,
+    name TEXT NOT NULL,
+    identifier TEXT NOT NULL,
+    api_url TEXT NOT NULL,
+    hostname TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    api_key TEXT NOT NULL,
+    header_key_name TEXT DEFAULT 'x-wso2-api-key',
+    is_default BOOLEAN DEFAULT FALSE,
+    visibility TEXT NOT NULL DEFAULT 'private',
+    description TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, api_url),
+    UNIQUE(identifier, api_url),
+    UNIQUE(organization_uuid, hostname)
+);
+
+-- API-DevPortal Publication Tracking Table
+-- This table tracks which APIs are published to which DevPortals
+
+CREATE TABLE IF NOT EXISTS api_publications (
+    uuid TEXT PRIMARY KEY DEFAULT (LOWER(HEX(RANDOMBLOB(4))) || '-' || LOWER(HEX(RANDOMBLOB(2))) || '-' || '4' || SUBSTR(LOWER(HEX(RANDOMBLOB(2))), 2) || '-' || SUBSTR('89ab', ABS(RANDOM()) % 4 + 1, 1) || SUBSTR(LOWER(HEX(RANDOMBLOB(2))), 2) || '-' || LOWER(HEX(RANDOMBLOB(6)))),
+    api_uuid TEXT NOT NULL,
+    devportal_uuid TEXT NOT NULL,
+    organization_uuid TEXT NOT NULL,
+    
+    -- Publication status and basic metadata
+    status TEXT NOT NULL CHECK (status IN ('published', 'unpublished', 'failed', 'publishing', 'unpublishing')),
+    api_version TEXT, -- API version when published
+    devportal_ref_id TEXT, -- ID assigned by the DevPortal backend
+    
+    -- Timestamps
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Foreign key constraints
+    FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (devportal_uuid) REFERENCES devportals(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    
+    -- Unique constraint: one publication record per API-DevPortal-Organization combination
+    UNIQUE (api_uuid, devportal_uuid, organization_uuid)
+);
+
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_organizations_handle ON organizations(handle);
@@ -280,3 +329,11 @@ CREATE INDEX IF NOT EXISTS idx_operation_backend_services_operation_id ON operat
 CREATE INDEX IF NOT EXISTS idx_operation_backend_services_backend_uuid ON operation_backend_services(backend_service_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateways_org ON gateways(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_status ON gateway_tokens(gateway_uuid, status);
+CREATE INDEX IF NOT EXISTS idx_devportals_org ON devportals(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_devportals_active ON devportals(organization_uuid, is_active);
+CREATE INDEX IF NOT EXISTS idx_api_publications_api ON api_publications(api_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_publications_devportal ON api_publications(devportal_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_publications_org ON api_publications(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_publications_api_devportal_org ON api_publications(api_uuid, devportal_uuid, organization_uuid);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_devportals_default_per_org ON devportals(organization_uuid) WHERE is_default = TRUE;

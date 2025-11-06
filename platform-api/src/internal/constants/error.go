@@ -53,5 +53,27 @@ var (
 )
 
 var (
-	ErrApiPortalSync = errors.New("failed to synchronize with api portal")
+	ErrApiPortalSync = errors.New("failed to synchronize with dev poratl")
+)
+
+var (
+	ErrDevPortalNotFound                = errors.New("devportal not found")
+	ErrDevPortalNameRequired            = errors.New("devportal name is required")
+	ErrDevPortalIdentifierRequired      = errors.New("devportal identifier is required")
+	ErrDevPortalAPIUrlRequired          = errors.New("devportal API URL is required")
+	ErrDevPortalHostnameRequired        = errors.New("devportal hostname is required")
+	ErrDevPortalAPIKeyRequired          = errors.New("devportal API key is required")
+	ErrDevPortalHeaderKeyNameRequired   = errors.New("header key name is required for header transmission mode")
+	ErrDevPortalIdentifierExists        = errors.New("devportal identifier already exists in organization")
+	ErrDevPortalHostnameExists          = errors.New("devportal hostname already exists in organization")
+	ErrDevPortalAPIUrlExists            = errors.New("devportal API URL already exists in organization")
+	ErrDevPortalDefaultAlreadyExists    = errors.New("default devportal already exists for organization")
+	ErrDevPortalCannotDeleteDefault     = errors.New("cannot delete default devportal")
+	ErrDevPortalCannotDeactivateDefault = errors.New("cannot deactivate default devportal")
+	ErrDevPortalBackendUnreachable      = errors.New("devportal backend is unreachable")
+	ErrDevPortalSyncFailed              = errors.New("failed to sync organization to devportal")
+	ErrDevPortalInvalidVisibility       = errors.New("devportal visibility must be 'public' or 'private'")
+
+	// API Publication errors
+	ErrAPIPublicationNotFound = errors.New("api publication not found")
 )
