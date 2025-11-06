@@ -32,21 +32,21 @@ type APIPublishRequest struct {
 //
 // Required fields: ReferenceID, APIName, APIHandle, APIVersion, APIType
 type APIInfo struct {
-	APIID          string   `json:"apiId,omitempty"`          // Optional: API UUID (auto-generated if not provided)
-	ReferenceID    string   `json:"referenceID"`              // Required: Unique reference ID from platform-api (UUID)
-	APIName        string   `json:"apiName"`                  // Required: API name
-	APIHandle      string   `json:"apiHandle"`                // Required: URL-friendly identifier (format: {apiName}-{version})
-	Provider       string   `json:"provider,omitempty"`       // Optional: Provider name (default: "WSO2")
-	APICategory    string   `json:"apiCategory,omitempty"`    // Optional: API category (e.g., "Travel", "Finance")
-	APIDescription string   `json:"apiDescription,omitempty"` // Optional: API description
-	Visibility     string   `json:"visibility,omitempty"`     // Optional: "PUBLIC", "PRIVATE", or "RESTRICTED" (default: "PUBLIC")
-	VisibleGroups  []string `json:"visibleGroups,omitempty"`  // Optional: Array of group names (required if visibility is "RESTRICTED")
-	Owners         *Owners  `json:"owners,omitempty"`         // Optional: Owner information
-	APIVersion     string   `json:"apiVersion"`               // Required: API version (e.g., "3.0.2")
-	APIType        string   `json:"apiType"`                  // Required: API type (use "REST" for RESTful APIs)
-	APIStatus      string   `json:"apiStatus,omitempty"`      // Optional: API status (e.g., "PUBLISHED", "CREATED", "DEPRECATED")
-	Labels         []string `json:"labels,omitempty"`         // Optional: Array of label names (default: ["default"])
-	Tags           []string `json:"tags,omitempty"`           // Optional: Array of tag strings
+	APIID          string   `json:"apiId,omitempty"`         // Optional: API UUID (auto-generated if not provided)
+	ReferenceID    string   `json:"referenceID"`             // Required: Unique reference ID from platform-api (UUID)
+	APIName        string   `json:"apiName"`                 // Required: API name
+	APIHandle      string   `json:"apiHandle"`               // Required: URL-friendly identifier (format: {apiName}-{version})
+	Provider       string   `json:"provider,omitempty"`      // Optional: Provider name (default: "WSO2")
+	APICategory    string   `json:"apiCategory,omitempty"`   // Optional: API category (e.g., "Travel", "Finance")
+	APIDescription string   `json:"apiDescription"`          // Required: API description
+	Visibility     string   `json:"visibility,omitempty"`    // Optional: "PUBLIC", "PRIVATE", or "RESTRICTED" (default: "PUBLIC")
+	VisibleGroups  []string `json:"visibleGroups,omitempty"` // Optional: Array of group names (required if visibility is "RESTRICTED")
+	Owners         *Owners  `json:"owners,omitempty"`        // Optional: Owner information
+	APIVersion     string   `json:"apiVersion"`              // Required: API version (e.g., "3.0.2")
+	APIType        string   `json:"apiType"`                 // Required: API type (use "REST" for RESTful APIs)
+	APIStatus      string   `json:"apiStatus,omitempty"`     // Optional: API status (e.g., "PUBLISHED", "CREATED", "DEPRECATED")
+	Labels         []string `json:"labels"`                  // Required: Array of label names
+	Tags           []string `json:"tags,omitempty"`          // Optional: Array of tag strings
 }
 
 // Owners contains API owner information
