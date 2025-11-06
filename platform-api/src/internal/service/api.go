@@ -443,8 +443,11 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 	currentTime := time.Now().Format(time.RFC3339)
 
 	for _, deploymentReq := range deploymentRequests {
-		// Validate deployment request
-		if err := s.validateDeploymentRequest(&deploymentReq, orgId); err != nil {
+		// Validate deployment request including API-gateway association
+		if err := s.validateDeploymentRequest(&deploymentReq, apiId, orgId); err != nil {
+			if errors.Is(err, constants.ErrGatewayNotAssociated) {
+				return nil, fmt.Errorf("gateway %s is not associated with API. Associate the gateway with the API before deployment", deploymentReq.GatewayID)
+			}
 			return nil, constants.ErrInvalidAPIDeployment
 		}
 
@@ -630,7 +633,7 @@ func (s *APIService) GetAPIGateways(apiId, orgId string) (*dto.APIGatewayListRes
 }
 
 // validateDeploymentRequest validates the deployment request
-func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, orgId string) error {
+func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, apiId, orgId string) error {
 	if req.GatewayID == "" {
 		return errors.New("gateway Id is required")
 	}
@@ -647,6 +650,25 @@ func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, o
 	}
 	if gateway.OrganizationID != orgId {
 		return fmt.Errorf("failed to get gateway: %w", err)
+	}
+
+	// Check if API is associated with the gateway
+	associations, err := s.apiRepo.GetAPIGatewayAssociations(apiId, orgId)
+	if err != nil {
+		return fmt.Errorf("failed to check API-gateway associations: %w", err)
+	}
+
+	// Verify that the gateway is associated with the API
+	isAssociated := false
+	for _, assoc := range associations {
+		if assoc.GatewayID == req.GatewayID {
+			isAssociated = true
+			break
+		}
+	}
+
+	if !isAssociated {
+		return constants.ErrGatewayNotAssociated
 	}
 
 	return nil
