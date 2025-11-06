@@ -35,9 +35,9 @@ import MenuDeploy from "./src/Icons/generated/MenuDeploy";
 import MenuBusinessInsights from "./src/Icons/generated/MenuBusinessInsights";
 import { useOrganization } from "../context/OrganizationContext";
 import { useProjects } from "../context/ProjectContext";
-import { slugEquals, slugify } from "../utils/slug";
 import { isRootLevelSegment, splitPathSegments } from "../utils/navigation";
 import { projectSlugFromName, projectSlugMatches } from "../utils/projectSlug";
+import { useApisContext } from "../context/ApiContext";
 
 export const LEFT_DRAWER_WIDTH = 240;
 
@@ -67,6 +67,7 @@ const LeftSidebar: React.FC = () => {
   const adminChildActive = segments.includes("admin");
   const { organization, organizations } = useOrganization();
   const { selectedProject, projects } = useProjects();
+  const { currentApiSlug: activeApiSlug } = useApisContext();
 
   const firstSegment = segments[0] ?? null;
   const isRootLevel = firstSegment && isRootLevelSegment(firstSegment);
@@ -119,18 +120,19 @@ const LeftSidebar: React.FC = () => {
   const apiOverviewIndex = segments.findIndex(
     (segment) => segment.toLowerCase() === "apioverview"
   );
-  const currentApiSlug =
+  const slugFromPath =
     apiOverviewIndex > 0 ? segments[apiOverviewIndex - 1] : null;
+  const effectiveApiSlug = slugFromPath ?? activeApiSlug ?? null;
   const apiOverviewPath = React.useMemo(() => {
-    if (!currentApiSlug) {
+    if (!effectiveApiSlug) {
       return projectBasePath
         ? `${projectBasePath}/apis`
         : `${baseOrgPath}/apis`;
     }
     return projectBasePath
-      ? `${projectBasePath}/${currentApiSlug}/apioverview`
-      : `${baseOrgPath}/${currentApiSlug}/apioverview`;
-  }, [currentApiSlug, projectBasePath, baseOrgPath]);
+      ? `${projectBasePath}/${effectiveApiSlug}/apioverview`
+      : `${baseOrgPath}/${effectiveApiSlug}/apioverview`;
+  }, [effectiveApiSlug, projectBasePath, baseOrgPath]);
 
   const overviewPath = React.useMemo(() => {
     if (!orgHandle) {
@@ -153,13 +155,15 @@ const LeftSidebar: React.FC = () => {
     return regex.test(location.pathname);
   }, [orgHandle, effectiveProjectSlug, location.pathname]);
 
+  const hasSelectedApi = Boolean(effectiveApiSlug);
+
   const [openApis, setOpenApis] = React.useState(false);
   const [openMcp, setOpenMcp] = React.useState(false);
   const [openProducts, setOpenProducts] = React.useState(false);
 
   React.useEffect(
-    () => setOpenApis(apisChildActive || apiOverviewActive),
-    [apisChildActive, apiOverviewActive]
+    () => setOpenApis(hasSelectedApi && (apisChildActive || apiOverviewActive)),
+    [apisChildActive, apiOverviewActive, hasSelectedApi]
   );
   React.useEffect(() => setOpenMcp(mcpChildActive), [mcpChildActive]);
   React.useEffect(() => setOpenProducts(prodChildActive), [prodChildActive]);
@@ -441,18 +445,17 @@ const LeftSidebar: React.FC = () => {
           }
           label="APIs"
           icon={<MenuAPIDefinition fontSize="small" />}
-          open={openApis}
+          open={hasSelectedApi && openApis}
           setOpen={setOpenApis}
           selected={apisSelected}
         />
-        <Collapse in={openApis} timeout="auto" unmountOnExit>
+        <Collapse in={hasSelectedApi && openApis} timeout="auto" unmountOnExit>
           <NavItem
             child
             to={apiOverviewPath}
             icon={<MenuOverview fontSize="small" />}
             label="Overview"
             selectedOverride={apiOverviewActive}
-            disabled={!currentApiSlug}
           />
           <NavItem
             child

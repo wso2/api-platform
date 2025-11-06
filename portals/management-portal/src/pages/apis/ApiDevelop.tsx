@@ -1,22 +1,15 @@
 import React from "react";
 import {
   Box,
-  Chip,
   CircularProgress,
-  Divider,
   Grid,
-  Paper,
   Stack,
   Typography,
+  Button as MuiButton,
 } from "@mui/material";
 import { useSearchParams } from "react-router-dom";
-
-import { ApiProvider, useApisContext } from "../../context/ApiContext";
+import { useApisContext } from "../../context/ApiContext";
 import type { ApiSummary, ApiGatewaySummary } from "../../hooks/apis";
-
-import AccessTimeIcon from "@mui/icons-material/AccessTime";
-import StopOutlinedIcon from "@mui/icons-material/StopOutlined";
-import { Button } from "../../components/src/components/Button";
 
 import {
   DeploymentProvider,
@@ -26,6 +19,12 @@ import type { DeployRevisionResponseItem } from "../../hooks/deployments";
 
 import { GatewayProvider, useGateways } from "../../context/GatewayContext";
 import type { Gateway } from "../../hooks/gateways";
+import GatewayDeployCard from "./ApiDeploy/GatewayDeployCard";
+import GatewayPickTable from "./ApiDeploy/GatewayPickTable";
+import { Card, CardActionArea } from "../../components/src/components/Card";
+import { Button } from "../../components/src/components/Button";
+import { SearchBar } from "../../components/src/components/SearchBar";
+import { Tooltip } from "../../components/src/components/Tooltip";
 
 /* ---------------- helpers ---------------- */
 
@@ -45,30 +44,21 @@ const relativeTime = (d?: string | Date | null) => {
   return `${min} min ago`;
 };
 
-const Card = (props: any) => (
-  <Paper
-    elevation={0}
-    {...props}
-    sx={{
-      p: 3,
-      borderRadius: 3,
-      border: (t) => `1px solid ${t.palette.divider}`,
-      width: 380, // fixed width so all cards align
-      ...props.sx,
-    }}
-  />
-);
+type Mode = "empty" | "pick" | "cards";
 
 /* ---------------- page content ---------------- */
 
 const DevelopContent: React.FC = () => {
-  const { fetchApiById, fetchGatewaysForApi } = useApisContext();
+  const { fetchApiById, fetchGatewaysForApi, selectApi, currentApi } =
+    useApisContext();
   const { gateways, loading: gatewaysLoading } = useGateways();
   const { deployApiRevision, loading: deploying } = useDeployment();
 
-  const [params] = useSearchParams();
-  const apiId = params.get("apiId") ?? "";
-  const revisionIdFromQuery = params.get("revisionId") ?? "7";
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchParamsKey = searchParams.toString();
+  const apiIdFromQuery = searchParams.get("apiId");
+  const revisionIdFromQuery = searchParams.get("revisionId") ?? "7";
+  const [query, setQuery] = React.useState("");
 
   const [api, setApi] = React.useState<ApiSummary | null>(null);
 
@@ -87,20 +77,52 @@ const DevelopContent: React.FC = () => {
     () => new Set()
   );
 
+  // UI mode + selection
+  const [mode, setMode] = React.useState<Mode>("empty");
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(
+    () => new Set()
+  );
+  const [stagedIds, setStagedIds] = React.useState<string[]>([]);
+
+  const effectiveApiId = React.useMemo(() => {
+    if (apiIdFromQuery) return apiIdFromQuery;
+    return currentApi?.id ?? "";
+  }, [apiIdFromQuery, currentApi?.id]);
+
+  React.useEffect(() => {
+    if (apiIdFromQuery || !currentApi?.id) return;
+    const next = new URLSearchParams(searchParamsKey);
+    next.set("apiId", currentApi.id);
+    setSearchParams(next, { replace: true });
+  }, [apiIdFromQuery, currentApi?.id, searchParamsKey, setSearchParams]);
+
   React.useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        if (!apiId) return;
+        if (!effectiveApiId) {
+          if (mounted) {
+            setLoading(false);
+            setApi(null);
+            setDeployedForApi([]);
+            setDeployByGateway({});
+            setStagedIds([]);
+            setSelectedIds(new Set<string>());
+            setMode("empty");
+          }
+          return;
+        }
 
+        setLoading(true);
         const [apiData, apiDeployedGws] = await Promise.all([
-          fetchApiById(apiId),
-          fetchGatewaysForApi(apiId),
+          fetchApiById(effectiveApiId),
+          fetchGatewaysForApi(effectiveApiId),
         ]);
 
         if (!mounted) return;
 
         setApi(apiData);
+        selectApi(apiData);
         setDeployedForApi(apiDeployedGws);
 
         // Seed deployed gateways so they initially show the status section
@@ -117,6 +139,16 @@ const DevelopContent: React.FC = () => {
           } as DeployRevisionResponseItem;
         });
         setDeployByGateway(seeded);
+
+        // Initial mode based on whether API already has deployments
+        if (apiDeployedGws.length > 0) {
+          // Show Cards view upfront with those deployed gateways
+          setStagedIds(apiDeployedGws.map((g) => g.id));
+          setMode("cards");
+        } else {
+          // No deployments yet → show the Add Gateways tile
+          setMode("empty");
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -124,7 +156,13 @@ const DevelopContent: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [apiId, fetchApiById, fetchGatewaysForApi, revisionIdFromQuery]);
+  }, [
+    effectiveApiId,
+    fetchApiById,
+    fetchGatewaysForApi,
+    revisionIdFromQuery,
+    selectApi,
+  ]);
 
   const deployedMap = React.useMemo(() => {
     const m = new Map<string, ApiGatewaySummary>();
@@ -132,14 +170,27 @@ const DevelopContent: React.FC = () => {
     return m;
   }, [deployedForApi]);
 
+  const deployedIds = React.useMemo(
+    () => new Set(deployedForApi.map((g) => g.id)),
+    [deployedForApi]
+  );
+
+  // Only show NOT deployed gateways in the pick table
+  const visibleGateways = React.useMemo(
+    () => gateways.filter((g) => !deployedIds.has(g.id)),
+    [gateways, deployedIds]
+  );
+
   const gatewaysById = React.useMemo(() => {
     const m = new Map<string, Gateway>();
     gateways.forEach((g) => m.set(g.id, g));
     return m;
   }, [gateways]);
 
+  const noMoreGateways = visibleGateways.length === 0;
+
   const handleDeploySingle = async (gatewayId: string) => {
-    if (!apiId) return;
+    if (!effectiveApiId) return;
     const gw = gatewaysById.get(gatewayId);
     const targets = [
       {
@@ -151,7 +202,11 @@ const DevelopContent: React.FC = () => {
 
     try {
       setDeployingIds((prev) => new Set(prev).add(gatewayId));
-      const resp = await deployApiRevision(apiId, revisionIdFromQuery, targets);
+      const resp = await deployApiRevision(
+        effectiveApiId,
+        revisionIdFromQuery,
+        targets
+      );
       const item = resp.find((x) => x.gatewayId === gatewayId) ?? resp[0];
 
       if (item) {
@@ -166,17 +221,19 @@ const DevelopContent: React.FC = () => {
             displayName: gw.displayName ?? undefined,
             description: gw.description ?? undefined,
             vhost: gw.vhost ?? undefined,
-            // 🔴 CRITICAL comes from Gateways list (not deployed info)
-            isCritical:
-              (gw as any).isCritical ??
-              (gw as any).critical ??
-              false,
+            isCritical: (gw as any).isCritical ?? (gw as any).critical ?? false,
             functionalityType: (gw as any).functionalityType ?? "regular",
             isActive: true,
             createdAt: (gw as any).createdAt ?? undefined,
             updatedAt: new Date().toISOString(),
           };
           setDeployedForApi((prev) => [...prev, newly]);
+          // optional: if this gateway was selected in pick mode, remove from selected
+          setSelectedIds((prev) => {
+            const next = new Set(prev);
+            next.delete(gatewayId);
+            return next;
+          });
         }
       }
     } finally {
@@ -188,6 +245,211 @@ const DevelopContent: React.FC = () => {
     }
   };
 
+  // ---------- Selection handlers for table (operate on visible gateways only) ----------
+  const toggleRow = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const [search, setSearch] = React.useState("");
+
+  const areAllSelected =
+    visibleGateways.length > 0 &&
+    visibleGateways.every((g) => selectedIds.has(g.id));
+
+  const isSomeSelected =
+    selectedIds.size > 0 &&
+    !areAllSelected &&
+    visibleGateways.some((g) => selectedIds.has(g.id));
+
+  const toggleAll = () => {
+    if (areAllSelected) {
+      // unselect only the visible ones
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        visibleGateways.forEach((g) => next.delete(g.id));
+        return next;
+      });
+    } else {
+      // select all visible
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        visibleGateways.forEach((g) => next.add(g.id));
+        return next;
+      });
+    }
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const addSelection = () => {
+    if (selectedIds.size === 0) return;
+    setStagedIds(Array.from(selectedIds));
+    setMode("cards");
+  };
+
+  // ---------- Rendering helpers ----------
+const renderEmptyTile = () => (
+  <Grid container spacing={3}>
+    <Grid >
+      <Card
+        testId={""}
+        style={{
+          width: 300,
+          height: 200,
+          border: "1px solid #4caf50",
+          borderColor: "success.light",
+        }}
+      >
+        <CardActionArea
+          onClick={() => setMode("pick")}
+          testId={""}
+          sx={{
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Stack alignItems="center" spacing={0.5}>
+            <Typography variant="h4" fontWeight={700}>
+              +
+            </Typography>
+            <Typography variant="h4" fontWeight={700}>
+              Add Gateways
+            </Typography>
+            <Typography color="text.secondary">
+              Select gateways you need to Deploy
+            </Typography>
+          </Stack>
+        </CardActionArea>
+      </Card>
+    </Grid>
+  </Grid>
+);
+
+
+  const renderCards = () => {
+    const selectedGateways = stagedIds
+      .map((id) => gatewaysById.get(id))
+      .filter((g): g is Gateway => Boolean(g));
+
+    // filter by SearchBar query
+    const q = query.trim().toLowerCase();
+    const filteredGateways = q
+      ? selectedGateways.filter((gw) => {
+          const text =
+            `${gw.displayName || gw.name || ""} ` +
+            `${gw.description || ""} ` +
+            `${gw.vhost || ""}`;
+          return text.toLowerCase().includes(q);
+        })
+      : selectedGateways;
+
+    return selectedGateways.length === 0 ? (
+      <Card style={{ marginTop: 2 }} testId={""}>
+        <Typography color="text.secondary">
+          No gateways selected. Click “Add Gateways” to choose.
+        </Typography>
+      </Card>
+    ) : (
+      <>
+        {/* Title at start; SearchBar + Button at end */}
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="center"
+          mb={3}
+          gap={2}
+        >
+          <Typography variant="h4" fontWeight={600}>
+            Selected Gateways
+          </Typography>
+
+          <Stack
+            direction="row"
+            alignItems="center"
+            gap={1.5}
+            flexShrink={0}
+            sx={{
+              minWidth: 500,
+              maxWidth: 700,
+              flex: 1,
+              justifyContent: "flex-end",
+            }}
+          >
+            <Box sx={{ flex: 1, maxWidth: 420 }}>
+              <SearchBar
+                testId="selected-gateways-search"
+                placeholder="Search selected gateways"
+                inputValue={query}
+                onChange={setQuery}
+                iconPlacement="left"
+                bordered
+                size="medium"
+                color="secondary"
+              />
+            </Box>
+            <Tooltip
+              title={
+                noMoreGateways
+                  ? "All available gateways are already deployed"
+                  : ""
+              }
+              placement="bottom"
+              arrow
+              disableHoverListener={!noMoreGateways}
+              disableFocusListener={!noMoreGateways}
+              disableTouchListener={!noMoreGateways}
+            >
+              <span>
+                <Button
+                  onClick={() => setMode("pick")}
+                  disabled={noMoreGateways}
+                >
+                  Add Gateways
+                </Button>
+              </span>
+            </Tooltip>
+          </Stack>
+        </Stack>
+
+        <Grid container spacing={3}>
+          {filteredGateways.map((gw) => (
+            <GatewayDeployCard
+              key={gw.id}
+              gw={gw}
+              apiId={effectiveApiId}
+              deployedMap={deployedMap}
+              deployByGateway={deployByGateway}
+              deploying={deploying}
+              deployingIds={deployingIds}
+              relativeTime={relativeTime}
+              onDeploy={handleDeploySingle}
+            />
+          ))}
+        </Grid>
+      </>
+    );
+  };
+
+  if (!effectiveApiId) {
+    return (
+      <Box textAlign="center" mt={6}>
+        <Typography variant="h5" fontWeight={700}>
+          Select an API to deploy.
+        </Typography>
+        <Typography color="text.secondary">
+          Choose an API from the header picker to manage deployments.
+        </Typography>
+      </Box>
+    );
+  }
+
   if (loading || gatewaysLoading) {
     return (
       <Box display="flex" alignItems="center" justifyContent="center" mt={6}>
@@ -198,193 +460,41 @@ const DevelopContent: React.FC = () => {
 
   return (
     <Box>
-      {gateways.length === 0 ? (
-        <Card sx={{ mt: 2 }}>
-          <Typography color="text.secondary">No gateways found.</Typography>
-        </Card>
-      ) : (
-        <Grid container spacing={3}>
-          {gateways.map((gw) => {
-            const isDeployed = deployedMap.has(gw.id);
-            const seededItem = deployByGateway[gw.id];
-            const item = isDeployed ? seededItem : undefined;
+      {/* <Box mb={2}>
+        <Typography variant="h3" fontWeight={700}>
+          Deploy
+        </Typography>
+      </Box> */}
 
-            const apiDeployed = deployedMap.get(gw.id);
+      {mode === "empty" && renderEmptyTile()}
 
-            const lastWhen =
-              item?.successDeployedTime ||
-              item?.deployedTime ||
-              gw.updatedAt ||
-              gw.createdAt ||
-              null;
-
-            const vhost = gw.vhost || (item && item.vhost) || "";
-            const description = gw.description || "";
-
-            // ✅ CRITICAL strictly based on gateways list data,
-            // and shown regardless of deployed state (before and after).
-            const isCritical =
-              (gw as any)?.isCritical === true ||
-              (gw as any)?.critical === true;
-
-            // Active flag only used for other UI choices if needed later
-            const isActive = apiDeployed?.isActive !== false;
-
-            const status = (item?.status || "").toString().toUpperCase() as
-              | "ACTIVE"
-              | "CREATED"
-              | "FAILED"
-              | "IN_PROGRESS"
-              | "ROLLED_BACK"
-              | "UNKNOWN"
-              | "";
-
-            const success =
-              status === "ACTIVE" ||
-              status === "CREATED" ||
-              status === "IN_PROGRESS";
-
-            const title = gw.displayName || gw.name || "Gateway";
-            const isDeployingThis = deploying || deployingIds.has(gw.id);
-
-            return (
-              <Grid key={gw.id}>
-                <Card>
-                  {/* Header */}
-                  <Stack
-                    direction="row"
-                    justifyContent="space-between"
-                    alignItems="center"
-                    minWidth={300}
-                  >
-                    <Stack direction="row" alignItems="center" spacing={1.25}>
-                      {isCritical && (
-                        <Chip
-                          label="Critical"
-                          color="error"
-                          size="small"
-                          variant="outlined"
-                          sx={{ height: 22 }}
-                        />
-                      )}
-                      <Typography fontWeight={800}>{title}</Typography>
-                    </Stack>
-
-                    {/* If you want Stop for deployed gateways, uncomment this */}
-                    {/* {isDeployed && (
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        color="error"
-                        startIcon={<StopOutlinedIcon />}
-                      >
-                        Stop
-                      </Button>
-                    )} */}
-                  </Stack>
-
-                  <Divider sx={{ my: 2 }} />
-
-                  {/* Deployed row */}
-                  <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-                    <Typography>Deployed</Typography>
-                    <AccessTimeIcon fontSize="small" sx={{ opacity: 0.7 }} />
-                    <Typography color="text.secondary">
-                      {isDeployed
-                        ? lastWhen
-                          ? relativeTime(lastWhen)
-                          : "0 min ago"
-                        : "Not Deployed"}
-                    </Typography>
-                  </Stack>
-
-                  {vhost && (
-                    <Typography color="text.secondary" sx={{ mb: 0.5 }}>
-                      vhost: {vhost}
-                    </Typography>
-                  )}
-
-                  {description && (
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ mb: 1 }}
-                    >
-                      {description}
-                    </Typography>
-                  )}
-
-                  {isDeployed && (
-                    <Box
-                      mt={2}
-                      sx={{
-                        backgroundColor: (t) =>
-                          success
-                            ? t.palette.mode === "dark"
-                              ? "rgba(16,185,129,0.12)"
-                              : "#E8F7EC"
-                            : t.palette.mode === "dark"
-                            ? "rgba(239,68,68,0.12)"
-                            : "#FDECEC",
-                        border: (t) =>
-                          `1px solid ${
-                            success ? "#D8EEDC" : t.palette.error.light
-                          }`,
-                        borderRadius: 2,
-                        px: 2,
-                        py: 1.25,
-                        mb: 2,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <Typography fontWeight={500}>
-                        Deployment Status
-                      </Typography>
-                      <Chip
-                        label={status || "ACTIVE"}
-                        color={success ? "success" : "error"}
-                        variant={success ? "filled" : "outlined"}
-                        size="small"
-                      />
-                    </Box>
-                  )}
-
-                  {/* Deploy / Re-deploy action */}
-                  <Button
-                    variant="contained"
-                    fullWidth
-                    disabled={!apiId || isDeployingThis}
-                    onClick={() => handleDeploySingle(gw.id)}
-                  >
-                    {isDeployed
-                      ? isDeployingThis
-                        ? "Re-deploying…"
-                        : "Re-deploy"
-                      : isDeployingThis
-                      ? "Deploying…"
-                      : "Deploy"}
-                  </Button>
-                </Card>
-              </Grid>
-            );
-          })}
-        </Grid>
+      {mode === "pick" && (
+        <GatewayPickTable
+          gateways={visibleGateways}
+          selectedIds={selectedIds}
+          areAllSelected={areAllSelected}
+          isSomeSelected={isSomeSelected}
+          onToggleRow={toggleRow}
+          onToggleAll={toggleAll}
+          onClear={clearSelection}
+          onAdd={addSelection}
+          relativeTime={relativeTime}
+          onBack={() => setMode(stagedIds.length ? "cards" : "empty")}
+        />
       )}
+
+      {mode === "cards" && renderCards()}
     </Box>
   );
 };
 
 /* Wrap with providers */
 const ApiDevelop: React.FC = () => (
-  <ApiProvider>
-    <GatewayProvider>
-      <DeploymentProvider>
-        <DevelopContent />
-      </DeploymentProvider>
-    </GatewayProvider>
-  </ApiProvider>
+  <GatewayProvider>
+    <DeploymentProvider>
+      <DevelopContent />
+    </DeploymentProvider>
+  </GatewayProvider>
 );
 
 export default ApiDevelop;

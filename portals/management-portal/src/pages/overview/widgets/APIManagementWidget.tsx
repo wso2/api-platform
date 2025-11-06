@@ -54,7 +54,7 @@ function RowLink({
       {/* left: image + label */}
       <Box sx={{ display: "flex", alignItems: "center", gap: 1.25, minWidth: 0 }}>
         <Box component="img" src={imgSrc} alt="" sx={{ width: 28, height: 28, flex: "0 0 auto" }} />
-        <Typography variant="subtitle1" sx={{ color: "text.secondary" }} noWrap fontWeight={600}>
+        <Typography variant="subtitle1" sx={{ color: "#757272ff" }} noWrap fontWeight={600}>
           {label}
         </Typography>
       </Box>

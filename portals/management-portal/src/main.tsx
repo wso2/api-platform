@@ -10,6 +10,7 @@ import "@fontsource/poppins/600.css";
 import "@fontsource/poppins/700.css";
 import { OrganizationProvider } from "./context/OrganizationContext";
 import { ProjectProvider } from "./context/ProjectContext";
+import { ApiProvider } from "./context/ApiContext";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
@@ -17,7 +18,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <CssBaseline />
         <OrganizationProvider>
           <ProjectProvider>
-            <App />
+            <ApiProvider>
+              <App />
+            </ApiProvider>
           </ProjectProvider>
         </OrganizationProvider>
     </ThemeProvider>

@@ -15,15 +15,19 @@ import {
   type ApiGatewaySummary,
 } from "../hooks/apis";
 import { useProjects } from "./ProjectContext";
+import { slugify } from "../utils/slug";
 
 type ApiContextValue = {
   apis: ApiSummary[];
+  currentApi: ApiSummary | null;
+  currentApiSlug: string | null;
   loading: boolean;
   error: string | null;
   refreshApis: (projectId?: string) => Promise<ApiSummary[]>;
   createApi: (payload: CreateApiPayload) => Promise<ApiSummary>;
   fetchApiById: (apiId: string) => Promise<ApiSummary>;
   deleteApi: (apiId: string) => Promise<void>;
+  selectApi: (api: ApiSummary | null, options?: { slug?: string }) => void;
   /** Gateways bound to an API id */
   fetchGatewaysForApi: (apiId: string) => Promise<ApiGatewaySummary[]>;
 };
@@ -52,6 +56,9 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
   >({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentApi, setCurrentApi] = useState<ApiSummary | null>(null);
+  const [currentApiSlug, setCurrentApiSlug] = useState<string | null>(null);
+  const currentApiIdRef = useRef<string | null>(null);
   const lastFetchedProjectRef = useRef<string | null>(null);
 
   const currentProjectId = selectedProject?.id ?? null;
@@ -60,6 +67,33 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
     if (!currentProjectId) return [];
     return apisByProject[currentProjectId] ?? [];
   }, [apisByProject, currentProjectId]);
+
+  const selectApi = useCallback(
+    (api: ApiSummary | null, options?: { slug?: string }) => {
+      setCurrentApi(api);
+      if (api) {
+        currentApiIdRef.current = api.id;
+        const nextSlug = options?.slug ?? slugify(api.name);
+        setCurrentApiSlug(nextSlug);
+      } else {
+        currentApiIdRef.current = null;
+        setCurrentApiSlug(null);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!currentProjectId) {
+      if (currentApi) {
+        selectApi(null);
+      }
+      return;
+    }
+    if (currentApi && currentApi.projectId !== currentProjectId) {
+      selectApi(null);
+    }
+  }, [currentApi, currentProjectId, selectApi]);
 
   const refreshApis = useCallback(
     async (projectIdParam?: string) => {
@@ -75,6 +109,16 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
           ...prev,
           [projectId]: result,
         }));
+        const currentId = currentApiIdRef.current;
+        if (currentId) {
+          const updated = result.find((item) => item.id === currentId) ?? null;
+          if (updated) {
+            setCurrentApi(updated);
+            setCurrentApiSlug(slugify(updated.name));
+          } else {
+            selectApi(null);
+          }
+        }
         lastFetchedProjectRef.current = projectId;
         return result;
       } catch (err) {
@@ -86,7 +130,7 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
         setLoading(false);
       }
     },
-    [currentProjectId, fetchProjectApis]
+    [currentProjectId, fetchProjectApis, selectApi]
   );
 
   const createApi = useCallback(
@@ -140,6 +184,10 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
             return { ...prev, [projectId]: next };
           });
         }
+        if (currentApiIdRef.current === api.id) {
+          setCurrentApi(api);
+          setCurrentApiSlug(slugify(api.name));
+        }
         return api;
       } catch (err) {
         const message =
@@ -181,6 +229,9 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
           }
           return prev;
         });
+        if (currentApiIdRef.current === apiId) {
+          selectApi(null);
+        }
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Failed to delete API";
@@ -190,7 +241,7 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
         setLoading(false);
       }
     },
-    [deleteApiRequest]
+    [deleteApiRequest, selectApi]
   );
 
   /** Fetch + cache gateways for an API */
@@ -226,22 +277,28 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
   const value = useMemo<ApiContextValue>(
     () => ({
       apis,
+      currentApi,
+      currentApiSlug,
       loading,
       error,
       refreshApis,
       createApi,
       fetchApiById,
       deleteApi,
+      selectApi,
       fetchGatewaysForApi,
     }),
     [
       apis,
+      currentApi,
+      currentApiSlug,
       loading,
       error,
       refreshApis,
       createApi,
       fetchApiById,
       deleteApi,
+      selectApi,
       fetchGatewaysForApi,
     ]
   );
