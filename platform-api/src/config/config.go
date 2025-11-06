@@ -39,8 +39,8 @@ type Server struct {
 	// WebSocket configurations
 	WebSocket WebSocket `envconfig:"WEBSOCKET"`
 
-	// Default DevPortal configurations
-	DefaultDevPortal DefaultDevPortal `envconfig:"DEFAULT_DEVPORTAL"`
+	// Developer Portal configurations
+	ApiPortal ApiPortal `envconfig:"APIPORTAL"`
 }
 
 // JWT holds JWT-specific configuration
@@ -75,24 +75,12 @@ type Database struct {
 	ConnMaxLifetime int `envconfig:"CONN_MAX_LIFETIME" default:"300"` // seconds
 }
 
-// DefaultDevPortal holds default DevPortal configuration for new organizations
-type DefaultDevPortal struct {
-	Enabled       bool   `envconfig:"ENABLED" default:"true"`
-	Name          string `envconfig:"NAME" default:"Default DevPortal"`
-	Identifier    string `envconfig:"IDENTIFIER" default:"default"`
-	APIUrl        string `envconfig:"API_URL" default:"http://localhost:3001"`
-	Hostname      string `envconfig:"HOSTNAME" default:"devportal.local"`
-	APIKey        string `envconfig:"API_KEY" default:"RRolL.t9r@^uLi4"`
-	HeaderKeyName string `envconfig:"HEADER_KEY_NAME" default:"x-wso2-api-key"`
-	Timeout       int    `envconfig:"TIMEOUT" default:"10"` // seconds
-
-	// Role mapping configuration for DevPortal integrations
-	RoleClaimName         string `envconfig:"ROLE_CLAIM_NAME" default:"roles"`
-	GroupsClaimName       string `envconfig:"GROUPS_CLAIM_NAME" default:"groups"`
-	OrganizationClaimName string `envconfig:"ORGANIZATION_CLAIM_NAME" default:"organizationID"`
-	AdminRole             string `envconfig:"ADMIN_ROLE" default:"admin"`
-	SubscriberRole        string `envconfig:"SUBSCRIBER_ROLE" default:"Internal/subscriber"`
-	SuperAdminRole        string `envconfig:"SUPER_ADMIN_ROLE" default:"superAdmin"`
+// ApiPortal holds api portal-specific configuration
+type ApiPortal struct {
+	Enabled bool   `envconfig:"ENABLED" default:"false"`
+	BaseURL string `envconfig:"BASE_URL" default:"172.17.0.1:3001"`
+	APIKey  string `envconfig:"API_KEY" default:""`
+	Timeout int    `envconfig:"TIMEOUT" default:"15"` // seconds
 }
 
 // package-level variable and mutex for thread safety
@@ -115,8 +103,8 @@ func GetConfig() *Server {
 		settingInstance = &Server{}
 		err = envconfig.Process("", settingInstance)
 		if err == nil {
-			// Validate default devportal configuration
-			err = validateDefaultDevPortalConfig(&settingInstance.DefaultDevPortal)
+			// Validate api portal configuration
+			err = validateApiPortalConfig(&settingInstance.ApiPortal)
 		}
 	})
 	if err != nil {
@@ -127,46 +115,34 @@ func GetConfig() *Server {
 	return settingInstance
 }
 
-// validateDefaultDevPortalConfig validates default DevPortal configuration
+// validateApiPortalConfig validates api portal configuration
 //
-// When default DevPortal is enabled, this function ensures that required
-// fields are provided.
+// When api portal is enabled, this function ensures that required
+// fields (BaseURL, APIKey) are provided.
 //
 // Parameters:
-//   - cfg: default DevPortal configuration to validate
+//   - cfg: api portal configuration to validate
 //
 // Returns:
 //   - error: Validation error if configuration is invalid, nil otherwise
-func validateDefaultDevPortalConfig(cfg *DefaultDevPortal) error {
-	// If default DevPortal is not enabled, no validation needed
+func validateApiPortalConfig(cfg *ApiPortal) error {
+	// If api portal is not enabled, no validation needed
 	if !cfg.Enabled {
 		return nil
 	}
 
-	// When enabled, required fields must be provided
-	if cfg.Name == "" {
-		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_NAME is not configured")
-	}
-
-	if cfg.Identifier == "" {
-		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_IDENTIFIER is not configured")
-	}
-
-	if cfg.APIUrl == "" {
-		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_API_URL is not configured")
-	}
-
-	if cfg.Hostname == "" {
-		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_HOSTNAME is not configured")
+	// When enabled, BaseURL and APIKey are required
+	if cfg.BaseURL == "" {
+		return fmt.Errorf("api portal is enabled but APIPORTAL_BASE_URL is not configured")
 	}
 
 	if cfg.APIKey == "" {
-		return fmt.Errorf("default DevPortal is enabled but DEFAULT_DEVPORTAL_API_KEY is not configured")
+		return fmt.Errorf("api portal is enabled but APIPORTAL_API_KEY is not configured")
 	}
 
-	// Header key name is always required since we use header mode
-	if cfg.HeaderKeyName == "" {
-		return fmt.Errorf("default DevPortal header key name is not configured")
+	// Timeout must be positive
+	if cfg.Timeout <= 0 {
+		return fmt.Errorf("api portal timeout must be greater than 0, got: %d", cfg.Timeout)
 	}
 
 	return nil

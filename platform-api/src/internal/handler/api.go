@@ -370,11 +370,13 @@ func (h *APIHandler) GetAPIDeployedGateways(c *gin.Context) {
 	c.JSON(http.StatusOK, gatewayListResponse)
 }
 
-// PublishToDevPortal handles POST /api/v1/apis/:apiId/devportals/publish
+// PublishToApiPortal handles POST /api/v1/apis/:apiId/publish-to-apiportal
 //
-// This endpoint publishes an API to a specific DevPortal with its metadata and OpenAPI definition.
-// The API must exist in platform-api and the specified DevPortal must be active.
-func (h *APIHandler) PublishToDevPortal(c *gin.Context) {
+// This endpoint publishes an API to the api portal with its metadata and OpenAPI definition.
+// The API must exist in platform-api and the api portal integration must be enabled.
+//
+// Handler implementation with validation and error handling
+func (h *APIHandler) PublishToApiPortal(c *gin.Context) {
 	// Extract organization ID from context
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -391,54 +393,52 @@ func (h *APIHandler) PublishToDevPortal(c *gin.Context) {
 		return
 	}
 
-	// Parse request body
-	var req dto.PublishToDevPortalRequest
+	// Parse optional request body (apiPortalID for updates - reserved for US4)
+	var req dto.PublishAPIRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Invalid request body: "+err.Error()))
-		return
+		// Request body is optional, so ignore binding errors
+		log.Printf("[APIHandler] No request body provided for publish, using defaults: %v", err)
 	}
 
-	// Publish API to DevPortal through service layer
-	response, err := h.apiService.PublishAPIToDevPortal(apiID, req.DevPortalUUID, orgID)
+	// Call service layer to publish API
+	response, err := h.apiService.PublishAPI(apiID, orgID, req.ApiPortalID)
 	if err != nil {
-		// Handle specific errors
+		// Error response handling
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"API not found"))
 			return
 		}
-		if errors.Is(err, constants.ErrDevPortalNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"DevPortal not found"))
-			return
-		}
 		if errors.Is(err, constants.ErrApiPortalSync) {
+			// Check if apiportal is disabled
 			// Devportal unavailable or sync failed
 			c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable",
-				"Failed to publish API to DevPortal. DevPortal may be unavailable."))
+				"Failed to publish API to api portal. api portal may be disabled or unavailable."))
 			return
 		}
-
 		// Internal server error
-		log.Printf("[APIHandler] Failed to publish API %s to DevPortal %s: %v", apiID, req.DevPortalUUID, err)
+		log.Printf("[APIHandler] Failed to publish API %s: %v", apiID, err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to publish API to DevPortal"))
+			"Failed to publish API to api portal"))
 		return
 	}
 
 	// Log successful publish
-	log.Printf("[APIHandler] API %s published successfully to DevPortal %s", apiID, req.DevPortalUUID)
+	log.Printf("[APIHandler] API %s published successfully to api portal (ApiPortal ID: %s)",
+		apiID, response.ApiPortalRefID)
 
 	// Return success response
 	c.JSON(http.StatusOK, response)
 }
 
-// UnpublishFromDevPortal handles POST /api/v1/apis/:apiId/devportals/unpublish
+// UnpublishFromApiPortal handles POST /api/v1/apis/:apiId/api-portals/unpublish
 //
-// This endpoint unpublishes an API from a specific DevPortal by deleting it.
-// The API must exist in platform-api and the specified DevPortal must exist.
-func (h *APIHandler) UnpublishFromDevPortal(c *gin.Context) {
+// This endpoint unpublishes an API from the api portal by deleting it.
+// The API must exist in platform-api and the api portal integration must be enabled.
+// The API ID from the path parameter is used as the apiportal API ID by default.
+//
+// Handler implementation with validation and error handling
+func (h *APIHandler) UnpublishFromApiPortal(c *gin.Context) {
 	// Extract organization ID from context
 	orgID, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -455,44 +455,37 @@ func (h *APIHandler) UnpublishFromDevPortal(c *gin.Context) {
 		return
 	}
 
-	// Parse request body
-	var req dto.UnpublishFromDevPortalRequest
+	// Parse optional request body (apiPortalID if different from apiID)
+	var req dto.UnpublishAPIRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Invalid request body: "+err.Error()))
-		return
+		// Request body is optional, so ignore binding errors
+		log.Printf("[APIHandler] No request body provided for unpublish, using defaults: %v", err)
 	}
 
-	// Unpublish API from DevPortal through service layer
-	response, err := h.apiService.UnpublishAPIFromDevPortal(apiID, req.DevPortalUUID, orgID)
+	// Call service layer to unpublish API
+	response, err := h.apiService.UnpublishAPI(apiID, orgID, req.ApiPortalID)
 	if err != nil {
-		// Handle specific errors
+		// Error response handling
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"API not found"))
 			return
 		}
-		if errors.Is(err, constants.ErrDevPortalNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"DevPortal not found"))
-			return
-		}
 		if errors.Is(err, constants.ErrApiPortalSync) {
 			// Devportal unavailable or sync failed
 			c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable",
-				"Failed to unpublish API from DevPortal. DevPortal may be unavailable."))
+				"Failed to unpublish API from api portal. api portal may be disabled or unavailable."))
 			return
 		}
-
 		// Internal server error
-		log.Printf("[APIHandler] Failed to unpublish API %s from DevPortal %s: %v", apiID, req.DevPortalUUID, err)
+		log.Printf("[APIHandler] Failed to unpublish API %s: %v", apiID, err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to unpublish API from DevPortal"))
+			"Failed to unpublish API from api portal"))
 		return
 	}
 
 	// Log successful unpublish
-	log.Printf("[APIHandler] API %s unpublished successfully from DevPortal %s", apiID, req.DevPortalUUID)
+	log.Printf("[APIHandler] API %s unpublished successfully from api portal", apiID)
 
 	// Return success response
 	c.JSON(http.StatusOK, response)
@@ -510,8 +503,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		apiGroup.DELETE("/:apiId", h.DeleteAPI)
 		apiGroup.POST("/:apiId/deploy-revision", h.DeployAPIRevision)
 		apiGroup.GET("/:apiId/gateways", h.GetAPIDeployedGateways)
-		// DevPortal endpoints
-		apiGroup.POST("/:apiId/devportals/publish", h.PublishToDevPortal)
-		apiGroup.POST("/:apiId/devportals/unpublish", h.UnpublishFromDevPortal)
+		apiGroup.POST("/:apiId/api-portals/publish", h.PublishToApiPortal)
+		apiGroup.POST("/:apiId/api-portals/unpublish", h.UnpublishFromApiPortal)
 	}
 }
