@@ -66,6 +66,7 @@ var (
 	ErrDevPortalHeaderKeyNameRequired   = errors.New("header key name is required for header transmission mode")
 	ErrDevPortalIdentifierExists        = errors.New("devportal identifier already exists in organization")
 	ErrDevPortalHostnameExists          = errors.New("devportal hostname already exists in organization")
+	ErrDevPortalAPIUrlExists            = errors.New("devportal API URL already exists in organization")
 	ErrDevPortalDefaultAlreadyExists    = errors.New("default devportal already exists for organization")
 	ErrDevPortalCannotDeleteDefault     = errors.New("cannot delete default devportal")
 	ErrDevPortalCannotDeactivateDefault = errors.New("cannot deactivate default devportal")

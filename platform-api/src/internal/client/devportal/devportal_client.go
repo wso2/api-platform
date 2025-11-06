@@ -344,18 +344,19 @@ func (c *DevPortalClient) addAuthentication(req *http.Request) {
 //   - error: DevPortalError if creation fails after retries
 func (c *DevPortalClient) CreateOrganization(req *dto.OrganizationCreateRequest) (*dto.OrganizationCreateResponse, error) {
 	// First check if organization already exists
-	exists, err := c.CheckOrganizationExists(req.OrgID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check organization existence: %w", err)
-	}
+	if trimmedOrgID := strings.TrimSpace(req.OrgID); trimmedOrgID != "" {
+		exists, err := c.CheckOrganizationExists(trimmedOrgID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check organization existence: %w", err)
+		}
 
-	if exists {
-		// Return a response indicating the organization already exists
-		// Note: We construct a minimal response since the DevPortal doesn't return full details for existing orgs
-		return &dto.OrganizationCreateResponse{
-			OrgID:   req.OrgID,
-			OrgName: req.OrgName,
-		}, nil
+		if exists {
+			// Return a response indicating the organization already exists
+			return &dto.OrganizationCreateResponse{
+				OrgID:   trimmedOrgID,
+				OrgName: req.OrgName,
+			}, nil
+		}
 	}
 
 	// Organization doesn't exist, proceed with creation

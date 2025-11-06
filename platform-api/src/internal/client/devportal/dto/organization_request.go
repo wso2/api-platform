@@ -22,7 +22,7 @@ package dto
 // This DTO is used when platform-api synchronizes organizations to the api portal
 // during organization creation workflow. Fields match the actual api portal API spec.
 type OrganizationCreateRequest struct {
-	OrgID                  string `json:"orgId,omitempty"`                 // Organization UUID (optional, auto-generated if not provided)
+	OrgID                  string `json:"orgId"`                 		   // Organization UUID (optional, auto-generated if not provided)
 	OrgName                string `json:"orgName"`                         // Organization name (required, unique)
 	OrgHandle              string `json:"orgHandle"`                       // URL-friendly handle (required, unique)
 	OrganizationIdentifier string `json:"organizationIdentifier"`          // Organization identifier (required, unique)

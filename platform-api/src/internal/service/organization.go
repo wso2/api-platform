@@ -87,9 +87,7 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	}
 
 	// Create default DevPortal if enabled (inactive state)
-	if s.devPortalManager != nil && s.config.DefaultDevPortal.Enabled {
-		log.Printf("[OrganizationService] Creating default DevPortal for organization: %s", name)
-
+	if s.devPortalManager != nil && s.config != nil && s.config.DefaultDevPortal.Enabled {
 		defaultDevPortal, devPortalErr := s.devPortalManager.CreateDefaultDevPortal(id)
 		if devPortalErr != nil {
 			log.Printf("[OrganizationService] Failed to create default DevPortal for organization %s: %v", name, devPortalErr)
@@ -97,13 +95,8 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		} else if defaultDevPortal != nil {
 			log.Printf("[OrganizationService] Created default DevPortal %s for organization %s (inactive state)",
 				defaultDevPortal.Name, name)
-		} else {
-			log.Printf("[OrganizationService] Default DevPortal creation skipped for organization %s", name)
 		}
-
 		// No organization sync during creation - sync happens during DevPortal activation
-	} else {
-		log.Printf("[OrganizationService] Default DevPortal disabled, skipping DevPortal creation")
 	}
 
 	// Create default project for the organization

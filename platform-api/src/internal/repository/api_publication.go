@@ -34,6 +34,7 @@ type APIPublicationRepository interface {
 	Create(publication *model.APIPublication) error
 	GetByAPIAndDevPortal(apiUUID, devPortalUUID, orgUUID string) (*model.APIPublication, error)
 	Update(publication *model.APIPublication) error
+	UpsertPublication(publication *model.APIPublication) error
 }
 
 // APIPublicationRepo implements the APIPublicationRepository interface
@@ -44,6 +45,53 @@ type APIPublicationRepo struct {
 // NewAPIPublicationRepository creates a new API publication repository
 func NewAPIPublicationRepository(db *database.DB) APIPublicationRepository {
 	return &APIPublicationRepo{db: db}
+}
+
+// UpsertPublication creates or updates a publication record in a single query
+// This eliminates the need for separate existence checks and reduces database round trips
+func (r *APIPublicationRepo) UpsertPublication(publication *model.APIPublication) error {
+	if publication.UUID == "" {
+		publication.UUID = uuid.New().String()
+	}
+
+	publication.UpdatedAt = time.Now()
+	if publication.CreatedAt.IsZero() {
+		publication.CreatedAt = time.Now()
+	}
+
+	// Validate the publication
+	if err := publication.Validate(); err != nil {
+		return fmt.Errorf("validation error: %w", err)
+	}
+
+	// Use UPSERT to create or update in a single query
+	// This leverages the UNIQUE constraint on (api_uuid, devportal_uuid, organization_uuid)
+	query := `
+		INSERT INTO api_publications (
+			uuid, api_uuid, devportal_uuid, organization_uuid,
+			status, api_version, devportal_ref_id,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (api_uuid, devportal_uuid, organization_uuid) DO UPDATE SET
+			status = EXCLUDED.status,
+			api_version = EXCLUDED.api_version,
+			devportal_ref_id = EXCLUDED.devportal_ref_id,
+			updated_at = EXCLUDED.updated_at
+		WHERE api_publications.status != EXCLUDED.status OR
+			  api_publications.api_version != EXCLUDED.api_version OR
+			  api_publications.devportal_ref_id != EXCLUDED.devportal_ref_id`
+
+	_, err := r.db.Exec(query,
+		publication.UUID, publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID,
+		publication.Status, publication.APIVersion, publication.DevPortalRefID,
+		publication.CreatedAt, publication.UpdatedAt,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to upsert API publication: %w", err)
+	}
+
+	return nil
 }
 
 // Create creates a new API publication record

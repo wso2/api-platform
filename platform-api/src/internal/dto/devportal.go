@@ -41,7 +41,6 @@ type UpdateDevPortalRequest struct {
 	Hostname      *string `json:"hostname,omitempty" validate:"omitempty,hostname"`
 	APIKey        *string `json:"apiKey,omitempty"`
 	HeaderKeyName *string `json:"headerKeyName,omitempty"`
-	IsActive      *bool   `json:"isActive,omitempty"`
 	Visibility    *string `json:"visibility,omitempty" validate:"omitempty,oneof=public private"`
 	Description   *string `json:"description,omitempty" validate:"omitempty,max=500"`
 }

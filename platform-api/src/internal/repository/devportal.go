@@ -44,16 +44,19 @@ func (r *devPortalRepository) checkUniquenessConstraints(devPortal *model.DevPor
 		SELECT 
 			CASE 
 				WHEN EXISTS(SELECT 1 FROM devportals WHERE organization_uuid = ? AND identifier = ?) THEN 1 ELSE 0 END as identifier_exists,
-				CASE 
-					WHEN EXISTS(SELECT 1 FROM devportals WHERE organization_uuid = ? AND hostname = ?) THEN 1 ELSE 0 END as hostname_exists,
-				CASE 
-					WHEN ? AND EXISTS(SELECT 1 FROM devportals WHERE organization_uuid = ? AND is_default = true) THEN 1 ELSE 0 END as default_exists`
+			CASE 
+				WHEN EXISTS(SELECT 1 FROM devportals WHERE organization_uuid = ? AND hostname = ?) THEN 1 ELSE 0 END as hostname_exists,
+			CASE 
+				WHEN EXISTS(SELECT 1 FROM devportals WHERE organization_uuid = ? AND api_url = ?) THEN 1 ELSE 0 END as api_url_exists,
+			CASE 
+				WHEN ? AND EXISTS(SELECT 1 FROM devportals WHERE organization_uuid = ? AND is_default = true) THEN 1 ELSE 0 END as default_exists`
 
-	var identifierExists, hostnameExists, defaultExists int
+	var identifierExists, hostnameExists, apiURLExists, defaultExists int
 	err := r.db.QueryRow(query,
 		devPortal.OrganizationUUID, devPortal.Identifier,
 		devPortal.OrganizationUUID, devPortal.Hostname,
-		devPortal.IsDefault, devPortal.OrganizationUUID).Scan(&identifierExists, &hostnameExists, &defaultExists)
+		devPortal.OrganizationUUID, devPortal.APIUrl,
+		devPortal.IsDefault, devPortal.OrganizationUUID).Scan(&identifierExists, &hostnameExists, &apiURLExists, &defaultExists)
 
 	if err != nil {
 		log.Printf("[DevPortalRepository] Failed to check uniqueness constraints: %v", err)
@@ -66,8 +69,39 @@ func (r *devPortalRepository) checkUniquenessConstraints(devPortal *model.DevPor
 	if hostnameExists == 1 {
 		return constants.ErrDevPortalHostnameExists
 	}
+	if apiURLExists == 1 {
+		return constants.ErrDevPortalAPIUrlExists
+	}
 	if defaultExists == 1 {
 		return constants.ErrDevPortalDefaultAlreadyExists
+	}
+
+	return nil
+}
+
+// checkUniquenessConstraintsForUpdate ensures unique constraints are maintained during updates
+func (r *devPortalRepository) checkUniquenessConstraintsForUpdate(devPortal *model.DevPortal) error {
+	query := `
+		SELECT 
+			CASE 
+				WHEN EXISTS(SELECT 1 FROM devportals WHERE organization_uuid = ? AND api_url = ? AND uuid != ?) THEN 1 ELSE 0 END as api_url_exists,
+			CASE 
+				WHEN EXISTS(SELECT 1 FROM devportals WHERE organization_uuid = ? AND hostname = ? AND uuid != ?) THEN 1 ELSE 0 END as hostname_exists`
+
+	var apiURLExists, hostnameExists int
+	err := r.db.QueryRow(query,
+		devPortal.OrganizationUUID, devPortal.APIUrl, devPortal.UUID,
+		devPortal.OrganizationUUID, devPortal.Hostname, devPortal.UUID).Scan(&apiURLExists, &hostnameExists)
+	if err != nil {
+		log.Printf("[DevPortalRepository] Failed to check uniqueness constraints for update: %v", err)
+		return err
+	}
+
+	if apiURLExists == 1 {
+		return constants.ErrDevPortalAPIUrlExists
+	}
+	if hostnameExists == 1 {
+		return constants.ErrDevPortalHostnameExists
 	}
 
 	return nil
@@ -194,16 +228,21 @@ func (r *devPortalRepository) Update(devPortal *model.DevPortal, orgUUID string)
 		return err
 	}
 
+	// Ensure uniqueness constraints are maintained during update operations
+	if err := r.checkUniquenessConstraintsForUpdate(devPortal); err != nil {
+		return err
+	}
+
 	query := `
 		UPDATE devportals SET 
 			name = ?, api_url = ?, hostname = ?,
-			is_active = ?, api_key = ?, header_key_name = ?, is_default = ?,
+			api_key = ?, header_key_name = ?, is_default = ?,
 			visibility = ?, description = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?`
 
 	result, err := r.db.Exec(query,
 		devPortal.Name, devPortal.APIUrl, devPortal.Hostname,
-		devPortal.IsActive, devPortal.APIKey, devPortal.HeaderKeyName,
+		devPortal.APIKey, devPortal.HeaderKeyName,
 		devPortal.IsDefault, devPortal.Visibility, devPortal.Description, devPortal.UpdatedAt, devPortal.UUID, orgUUID)
 	if err != nil {
 		log.Printf("[DevPortalRepository] Failed to update DevPortal %s: %v", devPortal.UUID, err)
@@ -322,15 +361,22 @@ func (r *devPortalRepository) SetAsDefault(uuid, orgUUID string) error {
 		return err
 	}
 
-	// Unset any existing default for this organization
-	_, err = r.db.Exec(`UPDATE devportals SET is_default = 0 WHERE organization_uuid = ? AND is_default = 1`,
+	// Start transaction
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// if req.IsActive != nil {
+	_, err = tx.Exec(`UPDATE devportals SET is_default = 0 WHERE organization_uuid = ? AND is_default = 1`,
 		devPortal.OrganizationUUID)
 	if err != nil {
 		return err
 	}
 
 	// Set the new default
-	result, err := r.db.Exec(`UPDATE devportals SET is_default = 1, updated_at = ? WHERE uuid = ? AND organization_uuid = ?`,
+	result, err := tx.Exec(`UPDATE devportals SET is_default = 1, updated_at = ? WHERE uuid = ? AND organization_uuid = ?`,
 		time.Now(), uuid, orgUUID)
 	if err != nil {
 		return err
@@ -342,6 +388,11 @@ func (r *devPortalRepository) SetAsDefault(uuid, orgUUID string) error {
 	}
 	if rowsAffected == 0 {
 		return constants.ErrDevPortalNotFound
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return err
 	}
 
 	log.Printf("[DevPortalRepository] Set DevPortal %s as default for organization %s", uuid, devPortal.OrganizationUUID)
