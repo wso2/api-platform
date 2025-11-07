@@ -1,4 +1,3 @@
-// src/pages/APIs.tsx
 import React from "react";
 import {
   Box,
@@ -9,6 +8,7 @@ import {
   Grid,
   Rating,
   Stack,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
@@ -29,6 +29,7 @@ import ApiEmptyState, {
 } from "../components/apis/ApiEmptyState";
 import { SearchBar } from "../components/src/components/SearchBar";
 import EndPointCreationFlow from "./apis/CreationFlows/EndPointCreationFlow";
+import APIContractCreationFlow from "./apis/CreationFlows/APIContractCreationFlow";
 
 /* ---------------- helpers ---------------- */
 
@@ -60,6 +61,7 @@ const ApiCard: React.FC<{
       position: "relative",
       maxWidth: 350,
       minWidth: 300,
+      minHeight: 260,
     }}
     testId={api.id}
   >
@@ -119,9 +121,27 @@ ${theme.palette.augmentColor({ color: { main: "#059669" } }).dark} 100%)`,
           </Box>
         </Stack>
 
-        <Typography fontSize={12} color="text.secondary" sx={{ mb: 1.25 }}>
-          {api.description}
-        </Typography>
+        {(() => {
+          const desc = api.description ?? "";
+          const isTruncated = desc.length > 90;
+          const short = isTruncated ? desc.slice(0, 90).trimEnd() + "…" : desc;
+
+          return isTruncated ? (
+            <Tooltip title={desc} placement="top" arrow>
+              <Typography
+                fontSize={12}
+                color="#bbbabaff"
+                sx={{ mb: 1.25 }}
+              >
+                {short}
+              </Typography>
+            </Tooltip>
+          ) : (
+            <Typography fontSize={12} color="#bbbabaff" sx={{ mb: 1.25 }}>
+              {desc}
+            </Typography>
+          );
+        })()}
 
         <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", mb: 1 }}>
           {api.tags.map((t) => (
@@ -185,6 +205,7 @@ const ApiListContent: React.FC = () => {
   const [query, setQuery] = React.useState("");
   const [wizardOpen, setWizardOpen] = React.useState(false);
   const [templatesOpen, setTemplatesOpen] = React.useState(false);
+  const [contractOpen, setContractOpen] = React.useState(false);
 
   const orgHandle = organization?.handle ?? params.orgHandle ?? "";
   const projectSlugParam = params.projectHandle ?? null;
@@ -250,12 +271,13 @@ const ApiListContent: React.FC = () => {
     [navigate, orgHandle, projectSlug, selectApi]
   );
 
-  // Determine if first-time empty (no search) — hide toolbar in this case
+  // First-time empty (no search & no apis) -> hide toolbar
   const isFirstTimeEmpty =
     !loading && !query.trim() && filteredApis.length === 0;
 
-  // Show toolbar when not inside flows and not first-time empty
-  const showToolbar = !wizardOpen && !templatesOpen && !isFirstTimeEmpty;
+  // Show toolbar when not inside flows/templates and not first-time empty
+  const showToolbar =
+    !wizardOpen && !templatesOpen && !contractOpen && !isFirstTimeEmpty;
 
   const handleEmptyStateAction = React.useCallback(
     (action: EmptyStateAction) => {
@@ -264,6 +286,12 @@ const ApiListContent: React.FC = () => {
         setWizardOpen(true);
         return;
       }
+      if (action.type === "learnMore" && action.template === "contract") {
+        setTemplatesOpen(false);
+        setContractOpen(true);
+        return;
+      }
+      // other templates can be wired similarly
       console.info("Learn more clicked", action.template);
     },
     []
@@ -289,7 +317,7 @@ const ApiListContent: React.FC = () => {
 
   return (
     <Box>
-      {/* Toolbar (top of page, hidden during first-time empty or flows) */}
+      {/* Toolbar (top of page, hidden during first-time empty or flows/templates) */}
       {showToolbar && (
         <Box
           sx={{
@@ -333,18 +361,31 @@ const ApiListContent: React.FC = () => {
           createApi={createApi}
           onClose={() => {
             setWizardOpen(false);
-            setTemplatesOpen(false); // return to list
+            setTemplatesOpen(false);
+          }}
+        />
+      )}
+
+      {/* Contract Creation Flow */}
+      {contractOpen && (
+        <APIContractCreationFlow
+          open={contractOpen}
+          selectedProjectId={selectedProject.id}
+          createApi={createApi}
+          onClose={() => {
+            setContractOpen(false);
+            setTemplatesOpen(false);
           }}
         />
       )}
 
       {/* Template grid (visible when user presses Create) */}
-      {templatesOpen && !wizardOpen && (
+      {templatesOpen && !wizardOpen && !contractOpen && (
         <ApiEmptyState onAction={handleEmptyStateAction} />
       )}
 
       {/* Main content area */}
-      {!wizardOpen && !templatesOpen && (
+      {!wizardOpen && !templatesOpen && !contractOpen && (
         <>
           {loading ? (
             <Box
@@ -356,7 +397,7 @@ const ApiListContent: React.FC = () => {
               <CircularProgress size={28} />
             </Box>
           ) : query.trim() && filteredApis.length === 0 ? (
-            // Search active but no matches: show message below (toolbar is visible above)
+            // Search active but no matches: show message below the toolbar
             <Box textAlign="center" mt={6}>
               <Typography variant="h5" fontWeight={700}>
                 No APIs match “{query}”
@@ -374,7 +415,10 @@ const ApiListContent: React.FC = () => {
               {filteredApis.map((apiSummary) => {
                 const card = toCardData(apiSummary);
                 return (
-                  <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3, xl: 3 }} key={apiSummary.id}>
+                  <Grid
+                    size={{ xs: 12, sm: 6, md: 4, lg: 3, xl: 3 }}
+                    key={apiSummary.id}
+                  >
                     <ApiCard
                       api={card}
                       onClick={() => handleNavigate(apiSummary)}

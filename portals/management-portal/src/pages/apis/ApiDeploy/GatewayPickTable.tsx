@@ -32,12 +32,14 @@ type Props = {
 
 const headerOverline = { opacity: 0.7 } as const;
 
-// Grid used by body pills (keep header widths in sync)
+// Keep header widths in sync with the body grid
 const GRID = {
   checkboxColPx: 56,
-  nameColWidth: "28%",
+  nameColWidth: "24%", // tightened a bit to make room for vHost/APIs
   nameColMinPx: 220,
-  updatedColPx: 230,
+  vhostColPx: 220,
+  apisColPx: 100,
+  updatedColPx: 200,
 };
 
 const GatewayPickTable: React.FC<Props> = ({
@@ -103,9 +105,11 @@ const GatewayPickTable: React.FC<Props> = ({
           </Button>
         </Box>
       )}
-      <Typography variant="h4" fontWeight={600}>
+
+      <Typography variant="h4" fontWeight={600} sx={{ mb: 1 }}>
         Select Gateways
       </Typography>
+
       <TableContainer>
         <TableDefault
           variant="default"
@@ -117,73 +121,83 @@ const GatewayPickTable: React.FC<Props> = ({
           <TableHead>
             <TableRow>
               <TableCell
-                padding="checkbox"
+                colSpan={6}
                 sx={{
-                  width: GRID.checkboxColPx,
+                  p: 0,
                   borderBottom: "none",
                   backgroundColor: "transparent",
                 }}
               >
-                <Tooltip title="Select all" placement="bottom-start">
-                  <Checkbox
-                    indeterminate={someSelected}
-                    checked={allSelected}
-                    onChange={(e: any) => {
-                      e.stopPropagation();
-                      handleToggleAllVisible();
-                    }}
-                    onClick={(e: any) => e.stopPropagation()}
-                    disableRipple
-                    inputProps={{ "aria-label": "select all gateways" }}
-                    testId="table-head"
-                  />
-                </Tooltip>
-              </TableCell>
+                <Box
+                  sx={{
+                    display: "grid",
+                    gridTemplateColumns: `
+            ${GRID.checkboxColPx}px
+            minmax(${GRID.nameColMinPx}px, ${GRID.nameColWidth})
+            1fr
+            ${GRID.vhostColPx}px
+            ${GRID.apisColPx}px
+            ${GRID.updatedColPx}px
+          `,
+                    alignItems: "center",
+                    columnGap: 2,
+                    px: 2, // <-- matches body pill padding
+                    py: 1, // subtle vertical breathing room
+                  }}
+                >
+                  {/* Checkbox header (Select All) */}
+                  <Box>
+                    <Tooltip title="Select all" placement="bottom-start">
+                      <Checkbox
+                        indeterminate={someSelected}
+                        checked={allSelected}
+                        onChange={(e: any) => {
+                          e.stopPropagation();
+                          handleToggleAllVisible();
+                        }}
+                        onClick={(e: any) => e.stopPropagation()}
+                        disableRipple
+                        inputProps={{ "aria-label": "select all gateways" }}
+                        testId="table-head"
+                      />
+                    </Tooltip>
+                  </Box>
 
-              <TableCell
-                sx={{
-                  width: GRID.nameColWidth,
-                  minWidth: GRID.nameColMinPx,
-                  borderBottom: "none",
-                  backgroundColor: "transparent",
-                }}
-              >
-                <Typography variant="overline" sx={headerOverline}>
-                  Name
-                </Typography>
-              </TableCell>
+                  {/* Name */}
+                  <Typography variant="overline" sx={headerOverline}>
+                    Name
+                  </Typography>
 
-              <TableCell
-                sx={{
-                  borderBottom: "none",
-                  backgroundColor: "transparent",
-                }}
-              >
-                <Typography variant="overline" sx={headerOverline}>
-                  Description
-                </Typography>
-              </TableCell>
+                  {/* Description */}
+                  <Typography variant="overline" sx={headerOverline}>
+                    Description
+                  </Typography>
 
-              <TableCell
-                sx={{
-                  width: GRID.updatedColPx,
-                  borderBottom: "none",
-                  backgroundColor: "transparent",
-                }}
-              >
-                <Typography variant="overline" sx={headerOverline}>
-                  Last Updated
-                </Typography>
+                  {/* vHost */}
+                  <Typography variant="overline" sx={headerOverline}>
+                    vHost
+                  </Typography>
+
+                  {/* APIs */}
+                  <Typography variant="overline" sx={headerOverline}>
+                    APIs
+                  </Typography>
+
+                  {/* Last Updated */}
+                  <Typography variant="overline" sx={headerOverline}>
+                    Last Updated
+                  </Typography>
+                </Box>
               </TableCell>
             </TableRow>
           </TableHead>
 
-          {/* BODY: each row is one pill inside a single colSpan cell */}
+          {/* BODY: each row is a pill across all columns */}
           <TableBody>
             {visibleGateways.length === 0 ? (
               <TableRowNoData
                 testId="no-data-row"
-                colSpan={4}
+                colSpan={6}
                 message="No undeployed gateways to show"
               />
             ) : (
@@ -192,12 +206,14 @@ const GatewayPickTable: React.FC<Props> = ({
                 const title = gw.displayName || gw.name || "Gateway";
                 const initial = (title || "?").trim().charAt(0).toUpperCase();
                 const last = gw.updatedAt || gw.createdAt || null;
+                const vhost = gw.vhost || "—";
+                const apisCount = 2; // hard-coded as requested
 
                 return (
                   <React.Fragment key={gw.id}>
                     <TableRow>
                       <TableCell
-                        colSpan={4}
+                        colSpan={6}
                         sx={{ p: 0, border: 0, background: "transparent" }}
                       >
                         <Box
@@ -209,6 +225,8 @@ const GatewayPickTable: React.FC<Props> = ({
                               ${GRID.checkboxColPx}px
                               minmax(${GRID.nameColMinPx}px, ${GRID.nameColWidth})
                               1fr
+                              ${GRID.vhostColPx}px
+                              ${GRID.apisColPx}px
                               ${GRID.updatedColPx}px
                             `,
                             alignItems: "center",
@@ -229,7 +247,7 @@ const GatewayPickTable: React.FC<Props> = ({
                             "&:hover": { backgroundColor: "grey.100" },
                           }}
                         >
-                          {/* 1) Checkbox (leftmost) */}
+                          {/* 1) Checkbox */}
                           <Box
                             sx={{
                               display: "flex",
@@ -250,7 +268,7 @@ const GatewayPickTable: React.FC<Props> = ({
                             />
                           </Box>
 
-                          {/* 2) Name with avatar initial */}
+                          {/* 2) Name (with avatar initial) */}
                           <Box
                             sx={{
                               display: "flex",
@@ -288,7 +306,7 @@ const GatewayPickTable: React.FC<Props> = ({
                           </Box>
 
                           {/* 3) Description */}
-                          <Box sx={{ minWidth: 0, maxWidth: 500 }}>
+                          <Box sx={{ minWidth: 0, maxWidth: 500, marginRight: 3 }}>
                             <Typography
                               variant="body2"
                               color="text.primary"
@@ -299,7 +317,30 @@ const GatewayPickTable: React.FC<Props> = ({
                             </Typography>
                           </Box>
 
-                          {/* 4) Last Updated */}
+                          {/* 4) vHost */}
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography
+                              variant="body2"
+                              color="text.primary"
+                              noWrap
+                              title={vhost}
+                            >
+                              {vhost}
+                            </Typography>
+                          </Box>
+
+                          {/* 5) APIs (hard-coded 2) */}
+                          <Box>
+                            <Typography
+                              variant="body2"
+                              color="text.primary"
+                              fontWeight={600}
+                            >
+                              {apisCount}
+                            </Typography>
+                          </Box>
+
+                          {/* 6) Last Updated */}
                           <Box
                             sx={{
                               display: "flex",
@@ -328,7 +369,7 @@ const GatewayPickTable: React.FC<Props> = ({
                     {idx < visibleGateways.length - 1 && (
                       <TableRow aria-hidden>
                         <TableCell
-                          colSpan={4}
+                          colSpan={6}
                           sx={{
                             py: 0.75,
                             border: 0,
