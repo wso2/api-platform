@@ -1,17 +1,16 @@
 import React from "react";
-import {
-  Box,
-  Card,
-  CardActionArea,
-  CardContent,
-  Typography,
-  Stack,
-} from "@mui/material";
+import { Box, Typography, Stack } from "@mui/material";
 import RocketLaunchRoundedIcon from "@mui/icons-material/RocketLaunchRounded";
 import CloudUploadRoundedIcon from "@mui/icons-material/CloudUploadRounded";
 import BuildRoundedIcon from "@mui/icons-material/BuildRounded";
 import SmartToyRoundedIcon from "@mui/icons-material/SmartToyRounded";
 import { Button } from "../src/components/Button";
+import WithEndpointIcon from "./WithEndpoint.svg";
+import WithGenAIIcon from "./WithGenAI.svg";
+import APIContractIcon from "./APIContract.svg";
+import FromScratchIcon from "./FromScratch.svg";
+
+import { Card, CardActionArea, CardContent } from "../src/components/Card";
 
 type TemplateKey = "endpoint" | "contract" | "scratch" | "genai";
 
@@ -38,7 +37,7 @@ const templates = [
     key: "scratch" as TemplateKey,
     title: "Start from Scratch",
     description: "Design your API resources and operations manually.",
-    icon: <BuildRoundedIcon color="success" fontSize="large" />, 
+    icon: <BuildRoundedIcon color="success" fontSize="large" />,
     showLearnMore: true,
   },
   {
@@ -50,19 +49,26 @@ const templates = [
   },
 ];
 
+const iconMap: Record<TemplateKey, string> = {
+  endpoint: WithEndpointIcon,
+  genai: WithGenAIIcon,
+  contract: APIContractIcon,
+  scratch: FromScratchIcon,
+};
+
 type ApiEmptyStateProps = {
   onAction: (action: EmptyStateAction) => void;
 };
 
 const ApiEmptyState: React.FC<ApiEmptyStateProps> = ({ onAction }) => (
   <Box>
-    <Typography variant="h5" fontWeight={700} gutterBottom>
+    <Typography variant="h3" fontWeight={700} gutterBottom>
       Create API Proxy
     </Typography>
 
-    <Typography color="text.secondary" sx={{ mb: 3 }}>
-      Choose a starting point to create your API. You can also explore
-      resources to learn the basics.
+    <Typography color="#787575ff" sx={{ mb: 3 }}>
+      Choose a starting point to create your API. You can also explore resources
+      to learn the basics.
     </Typography>
 
     <Box
@@ -73,23 +79,15 @@ const ApiEmptyState: React.FC<ApiEmptyStateProps> = ({ onAction }) => (
       }}
     >
       {templates.map((template) => (
-        <Card
-          key={template.key}
-          variant="outlined"
-          sx={{
-            borderRadius: 3,
-            height: "100%",
-            borderColor: "divider",
-          }}
-        >
+        <Card key={template.key} variant="outlined" testId={""}>
           <CardActionArea
-            disableRipple
             sx={{ height: "100%" }}
             onClick={() =>
               template.key === "endpoint"
                 ? onAction({ type: "createFromEndpoint" })
                 : onAction({ type: "learnMore", template: template.key })
             }
+            testId={""}
           >
             <CardContent
               sx={{
@@ -99,21 +97,32 @@ const ApiEmptyState: React.FC<ApiEmptyStateProps> = ({ onAction }) => (
                 height: "100%",
               }}
             >
-              <Box>{template.icon}</Box>
+              <Box
+                component="img"
+                src={iconMap[template.key]}
+                alt={template.title}
+                sx={{
+                  width: 56,
+                  height: 56,
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              />
 
-              <Typography variant="h6" fontWeight={700}>
-                {template.title}
-              </Typography>
-
-              <Typography color="text.secondary" sx={{ flexGrow: 1 }}>
-                {template.description}
-              </Typography>
+              <Box>
+                <Typography variant="h4" fontWeight={600}>
+                  {template.title}
+                </Typography>
+                <Typography color="#828181ff" sx={{ flexGrow: 1 }}>
+                  You need to create a project to work with components
+                </Typography>
+              </Box>
 
               <Stack direction="row" spacing={1}>
                 <Button
                   variant="contained"
                   color="success"
-                  onClick={(event: { stopPropagation: () => void; }) => {
+                  onClick={(event: { stopPropagation: () => void }) => {
                     event.stopPropagation();
                     if (template.key === "endpoint") {
                       onAction({ type: "createFromEndpoint" });
@@ -128,11 +137,11 @@ const ApiEmptyState: React.FC<ApiEmptyStateProps> = ({ onAction }) => (
                 {template.showLearnMore && (
                   <Button
                     variant="text"
-                    onClick={(event: { stopPropagation: () => void; }) => {
+                    onClick={(event: { stopPropagation: () => void }) => {
                       event.stopPropagation();
                       onAction({ type: "learnMore", template: template.key });
                     }}
-                    sx={{ textTransform: "none" }}
+                    sx={{ textTransform: "none", color: "success.main" }}
                   >
                     Learn More
                   </Button>
@@ -143,34 +152,6 @@ const ApiEmptyState: React.FC<ApiEmptyStateProps> = ({ onAction }) => (
         </Card>
       ))}
     </Box>
-
-    {/* <Box
-      sx={{
-        mt: 4,
-        p: 2.5,
-        borderRadius: 3,
-        border: "1px solid",
-        borderColor: "divider",
-      }}
-    >
-      <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
-        Explore More
-      </Typography>
-      <Stack direction="row" spacing={3} flexWrap="wrap">
-        <Button variant="text" sx={{ textTransform: "none" }}>
-          Create Your First REST API
-        </Button>
-        <Button variant="text" sx={{ textTransform: "none" }}>
-          Build an API From Scratch
-        </Button>
-        <Button variant="text" sx={{ textTransform: "none" }}>
-          Connect Your GitHub Repository
-        </Button>
-        <Button variant="text" sx={{ textTransform: "none" }}>
-          Manage Components with DevOps
-        </Button>
-      </Stack>
-    </Box> */}
   </Box>
 );
 

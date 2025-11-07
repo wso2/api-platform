@@ -209,7 +209,7 @@ const HeroBanner: React.FC<Props> = ({
         {slide.subtitle && (
           <Typography
             variant="body2"
-            color="text.secondary"
+            color="#6a6868ff"
             sx={{ mt: 0.25, maxWidth: 720, position: "relative", zIndex: 1 }}
           >
             {slide.subtitle}

@@ -100,7 +100,7 @@ export default function APIGatewayWidget({ height = 220, href }: Props) {
                 />
                 <Typography
                   variant="body2"
-                  color="text.secondary"
+                  color="#6a6969ff"
                   sx={{ mb: 1.5 }}
                 >
                   No Gateways available
@@ -128,7 +128,7 @@ export default function APIGatewayWidget({ height = 220, href }: Props) {
                     px: 1.25,
                     py: 1,
                     borderRadius: 2,
-                    border: `1px solid ${t.palette.success.light}`,
+                    border: `1px solid ${t.palette.success.dark}`,
                     bgcolor:
                       t.palette.mode === "dark"
                         ? t.palette.success.dark + "22"
@@ -164,7 +164,7 @@ export default function APIGatewayWidget({ height = 220, href }: Props) {
                     py: 1,
                     borderRadius: 2,
                     border: `1px solid ${
-                      hasInactive ? t.palette.error.light : t.palette.divider
+                      hasInactive ? t.palette.error.dark : t.palette.divider
                     }`,
                     bgcolor: hasInactive
                       ? t.palette.mode === "dark"
@@ -207,7 +207,7 @@ export default function APIGatewayWidget({ height = 220, href }: Props) {
               {/* Gateway Types */}
               <Typography
                 variant="caption"
-                color="text.secondary"
+                color="#787575ff"
                 sx={{ mt: 1 }}
               >
                 Gateway Types

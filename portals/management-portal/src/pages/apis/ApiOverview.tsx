@@ -2,7 +2,6 @@ import React from "react";
 import {
   Alert,
   Box,
-  Button,
   Chip,
   CircularProgress,
   Accordion,
@@ -28,10 +27,11 @@ import {
   useApiPublishContext,
 } from "../../context/ApiPublishContext";
 
-import { ApiProvider, useApisContext } from "../../context/ApiContext";
+import { useApisContext } from "../../context/ApiContext";
 import type { ApiSummary } from "../../hooks/apis";
 import { slugEquals, slugify } from "../../utils/slug";
 import theme from "../../theme";
+import { Button } from "../../components/src/components/Button";
 
 const RESERVED_SLUGS = new Set([
   "overview",
@@ -75,7 +75,7 @@ const ApiOverviewContent: React.FC = () => {
   } = useApiPublishContext();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { apis, fetchApiById, loading } = useApisContext();
+  const { apis, fetchApiById, loading, selectApi } = useApisContext();
 
   const [apiId, setApiId] = React.useState<string | null>(
     searchParams.get("apiId") ?? legacyApiId ?? null
@@ -146,6 +146,7 @@ const ApiOverviewContent: React.FC = () => {
     if (match) {
       setApi(match);
       setApiId(match.id);
+      selectApi(match, { slug: slugify(match.name) });
       const params = new URLSearchParams(searchString);
       params.set("apiId", match.id);
       if (!orgHandle) {
@@ -158,7 +159,16 @@ const ApiOverviewContent: React.FC = () => {
       const base = `/${segments.join("/")}`;
       navigate(`${base}/overview?${params.toString()}`, { replace: true });
     }
-  }, [apiId, apiSlug, apis, navigate, searchString, orgHandle, projectHandle]);
+  }, [
+    apiId,
+    apiSlug,
+    apis,
+    navigate,
+    searchString,
+    orgHandle,
+    projectHandle,
+    selectApi,
+  ]);
 
   React.useEffect(() => {
     if (!apiId) return;
@@ -167,6 +177,7 @@ const ApiOverviewContent: React.FC = () => {
       .then((data) => {
         setApi(data);
         setError(null);
+        selectApi(data, { slug: apiSlug ?? slugify(data.name) });
       })
       .catch((err) => {
         const message =
@@ -174,7 +185,7 @@ const ApiOverviewContent: React.FC = () => {
         setError(message);
       })
       .finally(() => setDetailsLoading(false));
-  }, [apiId, fetchApiById]);
+  }, [apiId, apiSlug, fetchApiById, selectApi]);
 
   const relativeTime = (value?: string | Date | null) => {
     if (!value) return "-";
@@ -317,21 +328,20 @@ const ApiOverviewContent: React.FC = () => {
               <ProtocolBadge
                 label={(api.transport?.[0] ?? "HTTP").toUpperCase()}
               />
-              <Typography variant="h6" fontWeight={800}>
+              <Typography variant="h3" fontWeight={800}>
                 {api.name}
               </Typography>
             </Stack>
 
             <Typography
               variant="body2"
-              color="text.secondary"
+              color="#636262ff"
               sx={{ maxWidth: 600 }}
             >
-              {api.description ||
-                "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s."}
+              {api.description}
             </Typography>
             <Box sx={{ mt: 2, display: "flex", alignItems: "center" }}>
-              <Typography variant="subtitle1" sx={{ color: "text.secondary" }}>
+              <Typography variant="subtitle1" sx={{ color: "#636262ff" }}>
                 Created
               </Typography>
 
@@ -379,7 +389,7 @@ const ApiOverviewContent: React.FC = () => {
                   </svg>
                 </Box>
 
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="#636262ff">
                   {/* {api.createdAt ? relativeTime(new Date(api.createdAt)) : "—"} */}
                   {relativeTime(api.createdAt)}
                 </Typography>
@@ -414,16 +424,6 @@ const ApiOverviewContent: React.FC = () => {
               (isPublished ? unpublish(api.id) : publish(api.id)).catch(
                 () => {}
               );
-            }}
-            sx={{
-              textTransform: "none",
-              bgcolor: isPublished ? "transparent" : "#069668",
-              color: isPublished ? "#069668" : undefined,
-              borderColor: "#069668",
-              "&:hover": {
-                bgcolor: isPublished ? "rgba(6,150,104,0.05)" : "#047857",
-                borderColor: "#069668",
-              },
             }}
           >
             {isPublished ? "Unpublish API" : "Publish API"}
@@ -728,9 +728,7 @@ const ApiOverviewContent: React.FC = () => {
 
 const ApiOverview: React.FC = () => (
   <ApiPublishProvider>
-    <ApiProvider>
-      <ApiOverviewContent />
-    </ApiProvider>
+    <ApiOverviewContent />
   </ApiPublishProvider>
 );
 

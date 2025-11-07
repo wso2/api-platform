@@ -40,7 +40,7 @@ export default function APIPortalWidget({ height = 220, href, portals = [] }: Pr
                   alt=""
                   sx={{ width: 50, height: 50, display: "block", opacity: 0.9 }}
                 />
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="#5f5e5eff">
                   No portals configured.
                 </Typography>
               </Stack>

@@ -33,6 +33,8 @@ import {
 } from "../utils/navigation";
 import type { Project } from "../hooks/projects";
 import { TextInput } from "./src";
+import { useApisContext } from "../context/ApiContext";
+import { slugify } from "../utils/slug";
 
 /** Simple tag pill like MCP / Proxy on the right */
 function TypeChip({ type }: { type?: string }) {
@@ -60,8 +62,16 @@ const Header: React.FC = () => {
   const { organization, organizations, setSelectedOrganization } =
     useOrganization();
   const { projects, selectedProject, setSelectedProject } = useProjects();
+  const {
+    apis,
+    loading: apisLoading,
+    refreshApis,
+    selectApi,
+    currentApi,
+  } = useApisContext();
 
-  const [proxy, setProxy] = React.useState("Select Proxy/MCP");
+  const proxyPlaceholder = "Select API";
+  const [proxy, setProxy] = React.useState(proxyPlaceholder);
   const [showOrg, setShowOrg] = React.useState(true);
   const [showProxy, setShowProxy] = React.useState(false);
   const [menuAnchor, setMenuAnchor] = React.useState<HTMLElement | null>(null);
@@ -100,10 +110,29 @@ const Header: React.FC = () => {
       setShowProxy(false);
     }
 
-    if (proxy !== "Select Proxy/MCP") {
-      setProxy("Select Proxy/MCP");
+    if (proxy !== proxyPlaceholder) {
+      setProxy(proxyPlaceholder);
     }
-  }, [selectedProject, showProxy, proxy]);
+  }, [selectedProject, showProxy, proxy, proxyPlaceholder]);
+
+  React.useEffect(() => {
+    if (currentApi && selectedProject) {
+      if (proxy !== currentApi.name) {
+        setProxy(currentApi.name);
+      }
+      if (!showProxy) {
+        setShowProxy(true);
+      }
+    } else if (!currentApi && selectedProject && proxy !== proxyPlaceholder) {
+      setProxy(proxyPlaceholder);
+    }
+  }, [
+    currentApi,
+    proxy,
+    proxyPlaceholder,
+    selectedProject,
+    showProxy,
+  ]);
 
   const projectMenuItems = React.useMemo<MenuItem[]>(
     () =>
@@ -121,19 +150,32 @@ const Header: React.FC = () => {
     [organizations]
   );
 
-  const recentProxies: MenuItem[] = [
-    { label: "Reading List API 042cb", type: "HTTP" },
-    { label: "Reading List API", type: "HTTP" },
-    { label: "Reading List API24", type: "MCP" },
-  ];
-  const allProxies: MenuItem[] = [
-    { label: "existingmcp", type: "MCP" },
-    { label: "Reading List API", type: "HTTP" },
-    { label: "Reading List API 042cb", type: "HTTP" },
-    { label: "Reading List API1234", type: "HTTP" },
-    { label: "Reading List API24", type: "MCP" },
-    { label: "testmcp23", type: "MCP" },
-  ];
+  const apiMenuItems = React.useMemo<MenuItem[]>(() => {
+    if (!selectedProject) return [];
+    return apis
+      .map<MenuItem>((api) => ({
+        label: api.name,
+        type: api.type ?? api.transport?.[0],
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [apis, selectedProject]);
+
+  const proxyMenuSections = React.useMemo<MenuSection[] | undefined>(() => {
+    if (!apiMenuItems.length) return undefined;
+    return [
+      {
+        title: "All APIs",
+        items: apiMenuItems,
+      },
+    ];
+  }, [apiMenuItems]);
+
+  const hasApis = apiMenuItems.length > 0;
+
+  const proxyValue = React.useMemo(
+    () => (apisLoading && !hasApis ? "Loading APIs..." : proxy),
+    [apisLoading, hasApis, proxy]
+  );
 
   const closeActiveMenu = React.useCallback(() => {
     setActiveMenu(null);
@@ -211,6 +253,41 @@ const Header: React.FC = () => {
     return `/${currentOrgHandle}/${restPath}`;
   }, [currentOrgHandle, currentProjectSlug, getRestSegments]);
 
+  const buildApiOverviewPath = React.useCallback(
+    (apiSlug: string, apiId: string) => {
+      if (!apiSlug) {
+        if (currentOrgHandle && currentProjectSlug) {
+          return `/${currentOrgHandle}/${currentProjectSlug}/apis`;
+        }
+        if (currentOrgHandle) {
+          return `/${currentOrgHandle}/apis`;
+        }
+        return "/apis";
+      }
+      const query = new URLSearchParams({ apiId }).toString();
+      if (currentOrgHandle && currentProjectSlug) {
+        return `/${currentOrgHandle}/${currentProjectSlug}/${apiSlug}/apioverview?${query}`;
+      }
+      if (currentOrgHandle) {
+        return `/${currentOrgHandle}/${apiSlug}/apioverview?${query}`;
+      }
+      return `/${apiSlug}/apioverview?${query}`;
+    },
+    [currentOrgHandle, currentProjectSlug]
+  );
+
+  const navigateToApiList = React.useCallback(() => {
+    if (currentOrgHandle && currentProjectSlug) {
+      navigate(`/${currentOrgHandle}/${currentProjectSlug}/apis`);
+      return;
+    }
+    if (currentOrgHandle) {
+      navigate(`/${currentOrgHandle}/apis`);
+      return;
+    }
+    navigate("/apis");
+  }, [currentOrgHandle, currentProjectSlug, navigate]);
+
   const handleRevealProject = (event: React.MouseEvent<HTMLButtonElement>) => {
     setMenuAnchor(event.currentTarget);
     setActiveMenu("project");
@@ -218,6 +295,11 @@ const Header: React.FC = () => {
 
   const handleRevealProxy = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (!selectedProject) return;
+    if (!hasApis && !apisLoading) {
+      refreshApis(selectedProject.id).catch(() => {
+        /* errors handled in context */
+      });
+    }
     setMenuAnchor(event.currentTarget);
     setActiveMenu("proxy");
   };
@@ -227,10 +309,11 @@ const Header: React.FC = () => {
       const slug = projectSlugFromName(project.name, project.id);
       setSelectedProject(project);
       setShowProxy(false);
-      setProxy("Select Proxy/MCP");
+      setProxy(proxyPlaceholder);
+      selectApi(null);
       navigate(buildPathForProject(slug));
     },
-    [buildPathForProject, navigate, setSelectedProject]
+    [buildPathForProject, navigate, proxyPlaceholder, selectApi, setSelectedProject]
   );
 
   const handleMenuSelect = (label: string) => {
@@ -243,6 +326,12 @@ const Header: React.FC = () => {
     } else if (activeMenu === "proxy") {
       setProxy(label);
       setShowProxy(true);
+      const matchedApi = apis.find((item) => item.name === label);
+      if (matchedApi) {
+        const apiSlug = slugify(matchedApi.name);
+        selectApi(matchedApi, { slug: apiSlug });
+        navigate(buildApiOverviewPath(apiSlug, matchedApi.id));
+      }
     }
     closeActiveMenu();
   };
@@ -268,7 +357,8 @@ const Header: React.FC = () => {
       setSelectedOrganization(org);
       setSelectedProject(null);
       setShowProxy(false);
-      setProxy("Select Proxy/MCP");
+      setProxy(proxyPlaceholder);
+      selectApi(null);
       navigate(`/${org.handle}/overview`);
     }
   };
@@ -348,7 +438,7 @@ const Header: React.FC = () => {
                 lastSelectedProjectNameRef.current = null;
                 setSelectedProject(null);
                 setShowProxy(false);
-                setProxy("Select Proxy/MCP");
+                setProxy(proxyPlaceholder);
                 navigate(buildPathWithoutProject());
               }}
             />
@@ -376,21 +466,22 @@ const Header: React.FC = () => {
           {showProxy && (
             <FieldPicker
               label="Proxies/MCP"
-              value={proxy}
+              value={proxyValue}
               onChange={(label) => {
                 setProxy(label);
               }}
               width={220}
               height={50}
-              menuSections={[
-                { title: "Recent", items: recentProxies },
-                { title: "All Proxies/MCP", items: allProxies },
-              ]}
+              menuTitle="All APIs"
+              menuSections={proxyMenuSections}
+              menuItems={!proxyMenuSections ? apiMenuItems : undefined}
               onCreateNew={handleCreateProxy}
               onRemove={() => {
                 closeActiveMenu();
                 setShowProxy(false);
-                setProxy("Select Proxy/MCP");
+                setProxy(proxyPlaceholder);
+                selectApi(null);
+                navigateToApiList();
               }}
             />
           )}
@@ -406,16 +497,16 @@ const Header: React.FC = () => {
         open={Boolean(activeMenu)}
         onClose={closeActiveMenu}
         onSelect={handleMenuSelect}
-        menuTitle={activeMenu === "proxy" ? "All Proxies/MCP" : "All Projects"}
-        menuItems={activeMenu === "project" ? projectMenuItems : undefined}
-        menuSections={
-          activeMenu === "proxy"
-            ? [
-                { title: "Recent", items: recentProxies },
-                { title: "All Proxies/MCP", items: allProxies },
-              ]
+        currentValue={activeMenu === "proxy" ? proxy : projectPickerValue}
+        menuTitle={activeMenu === "proxy" ? "All APIs" : "All Projects"}
+        menuItems={
+          activeMenu === "project"
+            ? projectMenuItems
+            : activeMenu === "proxy" && !proxyMenuSections
+            ? apiMenuItems
             : undefined
         }
+        menuSections={activeMenu === "proxy" ? proxyMenuSections : undefined}
         onCreateNew={
           activeMenu === "project"
             ? handleCreateProject

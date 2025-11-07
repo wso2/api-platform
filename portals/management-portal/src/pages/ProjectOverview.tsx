@@ -18,8 +18,6 @@ import PredictiveAnalytics from "./undraw_predictive-analytics_6vi1.svg";
 // Cards section (the new overview grid)
 import ProjectFeatureCards from "./overview/ProjectFeatureCards";
 
-// Providers required by cards (for counts, etc.)
-import { ApiProvider } from "../context/ApiContext";
 import { GatewayProvider } from "../context/GatewayContext";
 import GatewayWizard from "./overview/StepHeader";
 
@@ -142,14 +140,12 @@ const ProjectOverview: React.FC = () => {
 
           {/* Cards */}
           <Box mt={1.5} pr={6} pl={6}>
-            <ApiProvider>
-              <GatewayProvider>
-                <ProjectFeatureCards
-                  orgHandle={orgHandle}
-                  projectSlug={projectSlug}
-                />
-              </GatewayProvider>
-            </ApiProvider>
+            <GatewayProvider>
+              <ProjectFeatureCards
+                orgHandle={orgHandle}
+                projectSlug={projectSlug}
+              />
+            </GatewayProvider>
           </Box>
         </>
       )}
