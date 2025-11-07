@@ -1,11 +1,11 @@
-kind: api
-version: v1
+version: api-platform.wso2.com/v1
+kind: http/rest
 data:
   uuid: 3f3b1e2e-6dcb-4f7c-8f3a-1c4e5e6b7a8c
   name: petstore_api
   displayName: Pet Store
   version: v1.0
-  description: ""
+  description: "This is a sample Pet Store API"
   context: "/petstore/api/v3"
   provider: 07df4d04-dc27-42fb-a01b-9ef3202f5eaf
   createdTime: "2024-06-15T10:00:00Z"
