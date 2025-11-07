@@ -1,5 +1,13 @@
 import * as React from "react";
-import { Box, Stack, Typography, Stepper, Step, StepLabel, Alert } from "@mui/material";
+import {
+  Box,
+  Stack,
+  Typography,
+  Stepper,
+  Step,
+  StepLabel,
+  Alert,
+} from "@mui/material";
 import { Button } from "../../../components/src/components/Button";
 import { Card } from "../../../components/src/components/Card";
 import { TextInput } from "../../../components/src/components/TextInput";
@@ -42,7 +50,8 @@ const EndPointCreationFlow: React.FC<Props> = ({
   createApi,
   onClose,
 }) => {
-  const [wizardStep, setWizardStep] = React.useState<EndpointWizardStep>("endpoint");
+  const [wizardStep, setWizardStep] =
+    React.useState<EndpointWizardStep>("endpoint");
   const [wizardState, setWizardState] = React.useState<EndpointCreationState>({
     endpointUrl: "",
     name: "",
@@ -74,9 +83,12 @@ const EndPointCreationFlow: React.FC<Props> = ({
     []
   );
 
-  const handleContextChange = React.useCallback((value: string) => {
-    handleChange({ context: value, contextEdited: true });
-  }, [handleChange]);
+  const handleContextChange = React.useCallback(
+    (value: string) => {
+      handleChange({ context: value, contextEdited: true });
+    },
+    [handleChange]
+  );
 
   const inferNameFromEndpoint = React.useCallback((url: string) => {
     try {
@@ -109,22 +121,28 @@ const EndPointCreationFlow: React.FC<Props> = ({
     });
   }, []);
 
-  const handleStepChange = React.useCallback((next: EndpointWizardStep) => {
-    if (next === "details") {
-      const inferred = inferNameFromEndpoint(wizardState.endpointUrl);
-      if (!wizardState.name.trim()) {
-        handleNameChange(inferred);
+  const handleStepChange = React.useCallback(
+    (next: EndpointWizardStep) => {
+      if (next === "details") {
+        const inferred = inferNameFromEndpoint(wizardState.endpointUrl);
+        if (!wizardState.name.trim()) {
+          handleNameChange(inferred);
+        }
+        if (!wizardState.contextEdited && !wizardState.context.trim()) {
+          const slug = inferred
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "");
+          handleChange({
+            context: slug ? `/${slug}` : "",
+            contextEdited: false,
+          });
+        }
       }
-      if (!wizardState.contextEdited && !wizardState.context.trim()) {
-        const slug = inferred
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "");
-        handleChange({ context: slug ? `/${slug}` : "", contextEdited: false });
-      }
-    }
-    setWizardStep(next);
-  }, [handleChange, handleNameChange, inferNameFromEndpoint, wizardState]);
+      setWizardStep(next);
+    },
+    [handleChange, handleNameChange, inferNameFromEndpoint, wizardState]
+  );
 
   const handleCreate = React.useCallback(async () => {
     const endpointUrl = wizardState.endpointUrl.trim();
@@ -140,9 +158,9 @@ const EndPointCreationFlow: React.FC<Props> = ({
     try {
       setWizardError(null);
       setCreating(true);
-      const uniqueBackendName = `default-backend-${Date.now().toString(36)}${Math.random()
-        .toString(36)
-        .slice(2, 8)}`;
+      const uniqueBackendName = `default-backend-${Date.now().toString(
+        36
+      )}${Math.random().toString(36).slice(2, 8)}`;
 
       await createApi({
         name,
@@ -154,7 +172,9 @@ const EndPointCreationFlow: React.FC<Props> = ({
           {
             name: uniqueBackendName,
             isDefault: true,
-            endpoints: [{ url: endpointUrl, description: "Default backend endpoint" }],
+            endpoints: [
+              { url: endpointUrl, description: "Default backend endpoint" },
+            ],
             retries: 0,
           },
         ],
@@ -163,7 +183,8 @@ const EndPointCreationFlow: React.FC<Props> = ({
       reset();
       onClose();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to create API";
+      const message =
+        err instanceof Error ? err.message : "Failed to create API";
       setWizardError(message);
     } finally {
       setCreating(false);
@@ -183,14 +204,19 @@ const EndPointCreationFlow: React.FC<Props> = ({
           activeStep={wizardStep === "endpoint" ? 0 : 1}
           sx={{ pt: 1, pb: 3, width: 500, maxWidth: "100%", mx: "auto" }}
         >
-          <Step><StepLabel>Endpoint</StepLabel></Step>
-          <Step><StepLabel>API Details</StepLabel></Step>
+          <Step>
+            <StepLabel>Endpoint</StepLabel>
+          </Step>
+          <Step>
+            <StepLabel>API Details</StepLabel>
+          </Step>
         </Stepper>
 
         {wizardStep === "endpoint" ? (
           <Stack spacing={2}>
             <Typography color="#848181ff">
-              Provide the backend service URL. We'll use it to configure the default endpoint of your API.
+              Provide the backend service URL. We'll use it to configure the
+              default endpoint of your API.
             </Typography>
             <TextInput
               label="Endpoint URL"
@@ -209,6 +235,7 @@ const EndPointCreationFlow: React.FC<Props> = ({
               value={wizardState.name}
               onChange={(v: string) => handleNameChange(v)}
               testId=""
+              size="medium"
             />
             <TextInput
               label="Context"
@@ -216,6 +243,7 @@ const EndPointCreationFlow: React.FC<Props> = ({
               value={wizardState.context}
               onChange={(v: string) => handleContextChange(v)}
               testId=""
+              size="medium"
             />
             <TextInput
               label="Version"
@@ -223,6 +251,7 @@ const EndPointCreationFlow: React.FC<Props> = ({
               value={wizardState.version}
               onChange={(v: string) => handleChange({ version: v })}
               testId=""
+              size="medium"
             />
             <TextInput
               label="Description"
@@ -234,13 +263,19 @@ const EndPointCreationFlow: React.FC<Props> = ({
             />
             <Box sx={{ mt: 1 }}>
               <Typography variant="body2" color="text.secondary">
-                The endpoint URL will be added as the default backend of this API.
+                The endpoint URL will be added as the default backend of this
+                API.
               </Typography>
             </Box>
           </Stack>
         )}
 
-        <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 3 }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          justifyContent="flex-end"
+          sx={{ mt: 3 }}
+        >
           <Button
             variant="outlined"
             onClick={() => {

@@ -14,12 +14,14 @@ export type ApiBackendService = {
 };
 
 export type ApiOperation = {
-  name?: string;
+  name: string;
   description?: string;
-  request?: {
-    method?: string;
-    path?: string;
+  request: {
+    method: string;
+    path: string;
     authentication?: Record<string, unknown>;
+    /** service references used by the request */
+    ["backend-services"]?: Array<{ name: string }>;
   };
 };
 
@@ -59,6 +61,9 @@ export type CreateApiPayload = {
   projectId: string;
   description?: string;
   backendServices?: ApiBackendService[];
+  operations?: ApiOperation[];
+  /** raw OAS (yaml/json) if your backend uses it */
+  contract?: string;
 };
 
 /** ---------- Gateways bound to an API ---------- */
@@ -126,7 +131,7 @@ export const useApisApi = () => {
   const createApi = useCallback(
     async (payload: CreateApiPayload): Promise<ApiSummary> => {
       const { token, baseUrl } = getApiConfig();
-      const { backendServices, ...rest } = payload;
+      const { backendServices, operations, contract, ...rest } = payload;
 
       const body: Record<string, unknown> = { ...rest };
 
@@ -137,6 +142,14 @@ export const useApisApi = () => {
       const mappedServices = mapBackendServices(backendServices);
       if (mappedServices && mappedServices.length > 0) {
         body["backend-services"] = mappedServices;
+      }
+
+      if (operations && operations.length > 0) {
+        body.operations = operations;
+      }
+
+      if (contract) {
+        body.contract = contract;
       }
 
       const response = await fetch(`${baseUrl}/api/v1/apis`, {
