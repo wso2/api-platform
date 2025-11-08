@@ -584,6 +584,7 @@ func (s *APIService) AddGatewaysToAPI(apiId string, gatewayIds []string, orgId s
 			if err := s.apiRepo.CreateAPIGatewayAssociation(association); err != nil {
 				return nil, err
 			}
+			existingGatewayIds[gateway.ID] = true
 		}
 	}
 
