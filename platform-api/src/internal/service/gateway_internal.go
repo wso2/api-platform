@@ -136,6 +136,7 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 	}
 
 	apiCreated := false
+	now := time.Now()
 	if existingAPI == nil {
 		// Create backend services from upstream configurations
 		var backendServiceUUIDs []string
@@ -162,6 +163,7 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 		}
 
 		// Create new API from notification (without backend services in the model)
+
 		newAPI := &model.API{
 			ID:               apiID,
 			Name:             notification.Configuration.Data.Name,
@@ -177,8 +179,8 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 			IsRevision:       false,
 			RevisionID:       0,
 			Operations:       operations,
-			CreatedAt:        time.Now(),
-			UpdatedAt:        time.Now(),
+			CreatedAt:        now,
+			UpdatedAt:        now,
 		}
 
 		err = s.apiRepo.CreateAPI(newAPI)
@@ -236,6 +238,8 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 			ApiID:          apiID,
 			OrganizationID: orgID,
 			GatewayID:      gatewayID,
+			CreatedAt:      now,
+			UpdatedAt:      now,
 		}
 
 		if err := s.apiRepo.CreateAPIGatewayAssociation(association); err != nil {
@@ -248,7 +252,7 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 		ApiID:          apiID,
 		GatewayID:      gatewayID,
 		OrganizationID: orgID,
-		CreatedAt:      time.Now(),
+		CreatedAt:      now,
 	}
 
 	err = s.apiRepo.CreateDeployment(deployment)

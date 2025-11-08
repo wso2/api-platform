@@ -460,6 +460,8 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 				ApiID:          apiId,
 				OrganizationID: orgId,
 				GatewayID:      deploymentReq.GatewayID,
+				CreatedAt:      time.Now(),
+				UpdatedAt:      time.Now(),
 			}
 
 			if err := s.apiRepo.CreateAPIGatewayAssociation(association); err != nil {
