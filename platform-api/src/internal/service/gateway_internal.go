@@ -215,6 +215,34 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 		}
 	}
 
+	// Check if API-gateway association exists, create if not
+	existingAssociations, err := s.apiRepo.GetAPIGatewayAssociations(apiID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check existing API-gateway associations: %w", err)
+	}
+
+	// Check if gateway is already associated with the API
+	isAssociated := false
+	for _, assoc := range existingAssociations {
+		if assoc.GatewayID == gatewayID {
+			isAssociated = true
+			break
+		}
+	}
+
+	// If gateway is not associated with the API, create the association
+	if !isAssociated {
+		association := &model.APIGatewayAssociation{
+			ApiID:          apiID,
+			OrganizationID: orgID,
+			GatewayID:      gatewayID,
+		}
+
+		if err := s.apiRepo.CreateAPIGatewayAssociation(association); err != nil {
+			return nil, fmt.Errorf("failed to create API-gateway association: %w", err)
+		}
+	}
+
 	// Create deployment record
 	deployment := &model.APIDeployment{
 		ApiID:          apiID,

@@ -429,13 +429,16 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 		return nil, constants.ErrAPINotFound
 	}
 
-	// Convert to DTO for easier manipulation
-	api := s.apiUtil.ModelToDTO(apiModel)
-
-	// Generate API deployment YAML
-	apiYAML, err := s.apiUtil.GenerateAPIDeploymentYAML(api)
+	// Get existing associations to check which gateways need association
+	existingAssociations, err := s.apiRepo.GetAPIGatewayAssociations(apiId, orgId)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate API deployment YAML: %w", err)
+		return nil, fmt.Errorf("failed to check existing API-gateway associations: %w", err)
+	}
+
+	// Create a map of existing gateway associations for quick lookup
+	existingGatewayIds := make(map[string]bool)
+	for _, assoc := range existingAssociations {
+		existingGatewayIds[assoc.GatewayID] = true
 	}
 
 	// Process deployment requests and create deployment responses
@@ -443,12 +446,31 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 	currentTime := time.Now().Format(time.RFC3339)
 
 	for _, deploymentReq := range deploymentRequests {
-		// Validate deployment request including API-gateway association
+		// Validate deployment request (gateway existence and organization)
 		if err := s.validateDeploymentRequest(&deploymentReq, apiId, orgId); err != nil {
-			if errors.Is(err, constants.ErrGatewayNotAssociated) {
-				return nil, fmt.Errorf("gateway %s is not associated with API. Associate the gateway with the API before deployment", deploymentReq.GatewayID)
-			}
 			return nil, constants.ErrInvalidAPIDeployment
+		}
+
+		// If gateway is not associated with the API, create the association
+		if !existingGatewayIds[deploymentReq.GatewayID] {
+			log.Printf("[INFO] Creating API-gateway association: apiId=%s gatewayId=%s",
+				apiId, deploymentReq.GatewayID)
+
+			association := &model.APIGatewayAssociation{
+				ApiID:          apiId,
+				OrganizationID: orgId,
+				GatewayID:      deploymentReq.GatewayID,
+			}
+
+			if err := s.apiRepo.CreateAPIGatewayAssociation(association); err != nil {
+				return nil, fmt.Errorf("failed to create API-gateway association for gateway %s: %w",
+					deploymentReq.GatewayID, err)
+			}
+
+			// Add to the map to avoid duplicate creation in the same request
+			existingGatewayIds[deploymentReq.GatewayID] = true
+			log.Printf("[INFO] Created API-gateway association: apiId=%s gatewayId=%s associationId=%d",
+				apiId, deploymentReq.GatewayID, association.ID)
 		}
 
 		deployment := &dto.APIRevisionDeployment{
@@ -495,9 +517,6 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 			}
 		}
 	}
-
-	// Log the generated YAML for debugging/monitoring purposes
-	fmt.Printf("Generated API Deployment YAML for API %s:\n%s\n", apiId, apiYAML)
 
 	return deployments, nil
 }
@@ -650,25 +669,6 @@ func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, a
 	}
 	if gateway.OrganizationID != orgId {
 		return fmt.Errorf("failed to get gateway: %w", err)
-	}
-
-	// Check if API is associated with the gateway
-	associations, err := s.apiRepo.GetAPIGatewayAssociations(apiId, orgId)
-	if err != nil {
-		return fmt.Errorf("failed to check API-gateway associations: %w", err)
-	}
-
-	// Verify that the gateway is associated with the API
-	isAssociated := false
-	for _, assoc := range associations {
-		if assoc.GatewayID == req.GatewayID {
-			isAssociated = true
-			break
-		}
-	}
-
-	if !isAssociated {
-		return constants.ErrGatewayNotAssociated
 	}
 
 	return nil
