@@ -38,6 +38,10 @@ export const usePortalNavigation = (): UsePortalNavigationReturn => {
   const navigateToList = () => {
     const pathSegments = location.pathname.split('/').filter(Boolean);
     const portalsIndex = pathSegments.indexOf('portals');
+    if (portalsIndex === -1) {
+      console.warn('usePortalNavigation: portals segment not found in path');
+      return;
+    }
     const basePath = '/' + pathSegments.slice(0, portalsIndex + 1).join('/');
     navigate(basePath);
   };
@@ -45,6 +49,10 @@ export const usePortalNavigation = (): UsePortalNavigationReturn => {
   const navigateToCreate = () => {
     const pathSegments = location.pathname.split('/').filter(Boolean);
     const portalsIndex = pathSegments.indexOf('portals');
+    if (portalsIndex === -1) {
+      console.warn('usePortalNavigation: portals segment not found in path');
+      return;
+    }
     const basePath = '/' + pathSegments.slice(0, portalsIndex + 1).join('/');
     navigate(`${basePath}/create`);
   };
@@ -52,6 +60,10 @@ export const usePortalNavigation = (): UsePortalNavigationReturn => {
   const navigateToTheme = (portalId: string) => {
     const pathSegments = location.pathname.split('/').filter(Boolean);
     const portalsIndex = pathSegments.indexOf('portals');
+    if (portalsIndex === -1) {
+      console.warn('usePortalNavigation: portals segment not found in path');
+      return;
+    }
     const basePath = '/' + pathSegments.slice(0, portalsIndex + 1).join('/');
     navigate(`${basePath}/${portalId}/theme`);
   };
@@ -59,6 +71,10 @@ export const usePortalNavigation = (): UsePortalNavigationReturn => {
   const navigateToEdit = (portalId: string) => {
     const pathSegments = location.pathname.split('/').filter(Boolean);
     const portalsIndex = pathSegments.indexOf('portals');
+    if (portalsIndex === -1) {
+      console.warn('usePortalNavigation: portals segment not found in path');
+      return;
+    }
     const basePath = '/' + pathSegments.slice(0, portalsIndex + 1).join('/');
     navigate(`${basePath}/${portalId}/edit`);
   };
