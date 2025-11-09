@@ -1,16 +1,13 @@
-import React, {
+import {
   createContext,
   useCallback,
-  useContext,
   useMemo,
   useState,
+  useTransition,
   type ReactNode,
 } from "react";
-import {
-  useApiPublishApi,
-  type PublishResponse,
-  type UnpublishResponse,
-} from "../hooks/apiPublish";
+import { type PublicationAPIModel } from "../hooks/useApiPublications";
+import { publishToDevPortalApi, unpublishFromDevPortalApi } from "../hooks/apiPublishApi";
 
 /* ---------- Local publish state shape ---------- */
 
@@ -27,110 +24,123 @@ type ApiPublishContextValue = {
   publishStateByApi: Record<string, ApiPublishState>;
 
   // Status & errors
-  loading: boolean;
+  isPending: boolean;
   error: string | null;
 
   // Actions
-  publish: (apiId: string) => Promise<PublishResponse>;
-  unpublish: (apiId: string) => Promise<UnpublishResponse>;
+  publishToDevPortal: (apiId: string, devPortalUuid: string, sandboxGatewayId: string, productionGatewayId: string) => Promise<PublicationAPIModel>;
+  unpublishFromDevPortal: (apiId: string, publicationUuid: string) => Promise<void>;
 
-  // Optional helper to query current state
+  // Helper methods
   getPublishState: (apiId: string) => ApiPublishState | undefined;
 };
 
 const ApiPublishContext = createContext<ApiPublishContextValue | undefined>(undefined);
-
 type Props = { children: ReactNode };
 
 export const ApiPublishProvider = ({ children }: Props) => {
-  const { publishApi, unpublishApi } = useApiPublishApi();
-
   const [publishStateByApi, setPublishStateByApi] = useState<Record<string, ApiPublishState>>({});
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
-  const publish = useCallback(
-    async (apiId: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const resp = await publishApi(apiId);
-
-        setPublishStateByApi((prev) => ({
-          ...prev,
-          [apiId]: {
-            isPublished: true,
-            lastPublishedAt: resp.publishedAt,
-            apiPortalRefId: resp.apiPortalRefId,
-            lastMessage: resp.message,
-          },
-        }));
-
-        return resp;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Failed to publish API";
-        setError(msg);
-        throw err;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [publishApi]
-  );
-
-  const unpublish = useCallback(
-    async (apiId: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const resp = await unpublishApi(apiId);
-
-        setPublishStateByApi((prev) => ({
-          ...prev,
-          [apiId]: {
-            ...(prev[apiId] ?? { isPublished: false }),
-            isPublished: false,
-            lastUnpublishedAt: resp.unpublishedAt,
-            lastMessage: resp.message,
-          },
-        }));
-
-        return resp;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Failed to unpublish API";
-        setError(msg);
-        throw err;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [unpublishApi]
-  );
 
   const getPublishState = useCallback(
     (apiId: string) => publishStateByApi[apiId],
     [publishStateByApi]
   );
 
+  // New publish method using the updated endpoint (delegates HTTP I/O to helper)
+  const publishToDevPortal = useCallback(
+    async (
+      apiId: string,
+      devPortalUuid: string,
+      sandboxGatewayId: string,
+      productionGatewayId: string
+    ): Promise<PublicationAPIModel> => {
+      setError(null);
+
+      try {
+        // Optimistically mark as pending (cleared/updated on success)
+        startTransition(() => {
+          setPublishStateByApi((prev) => ({
+            ...prev,
+            [apiId]: {
+              ...(prev[apiId] ?? { isPublished: false }),
+              lastMessage: `Publishing to devportal ${devPortalUuid}`,
+            },
+          }));
+        });
+
+        const publication = await publishToDevPortalApi(
+          apiId,
+          devPortalUuid,
+          sandboxGatewayId,
+          productionGatewayId
+        );
+
+        // Update local publish state
+        startTransition(() => {
+          setPublishStateByApi((prev) => ({
+            ...prev,
+            [apiId]: {
+              ...(prev[apiId] ?? {}),
+              isPublished: true,
+              lastPublishedAt: new Date().toISOString(),
+              apiPortalRefId: publication.devPortalUuid,
+              lastMessage: "Published to devportal",
+            },
+          }));
+        });
+
+        return publication;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to publish API to devportal";
+        setError(msg);
+        // mark publish as failed
+        startTransition(() => {
+          setPublishStateByApi((prev) => ({
+            ...prev,
+            [apiId]: {
+              ...(prev[apiId] ?? {}),
+              isPublished: false,
+              lastMessage: msg,
+            },
+          }));
+        });
+        throw err;
+      }
+    },
+    []
+  );
+
+  // New unpublish method (delegates HTTP I/O to helper)
+  const unpublishFromDevPortal = useCallback(
+    async (apiId: string, publicationUuid: string): Promise<void> => {
+      setError(null);
+      try {
+        await unpublishFromDevPortalApi(apiId, publicationUuid);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to unpublish API from devportal";
+        setError(msg);
+        throw err;
+      }
+    },
+    []
+  );
+
   const value = useMemo<ApiPublishContextValue>(
     () => ({
       publishStateByApi,
-      loading,
+      isPending,
       error,
-      publish,
-      unpublish,
+      publishToDevPortal,
+      unpublishFromDevPortal,
       getPublishState,
     }),
-    [publishStateByApi, loading, error, publish, unpublish, getPublishState]
+    [publishStateByApi, isPending, error, publishToDevPortal, unpublishFromDevPortal, getPublishState]
   );
 
   return <ApiPublishContext.Provider value={value}>{children}</ApiPublishContext.Provider>;
 };
 
-export const useApiPublishContext = () => {
-  const ctx = useContext(ApiPublishContext);
-  if (!ctx) {
-    throw new Error("useApiPublishContext must be used within an ApiPublishProvider");
-  }
-  return ctx;
-};
+export { ApiPublishContext };

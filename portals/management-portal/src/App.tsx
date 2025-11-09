@@ -15,6 +15,7 @@ import ApiDeploy from "./pages/apis/ApiDeploy";
 import ApiPolicies from "./pages/apis/ApiPolicies";
 import ApiOverview from "./pages/apis/ApiOverview";
 import ApiDevelop from "./pages/apis/ApiDevelop"; // <-- ADD
+import ApiPublish from "./pages/apis/ApiPublish";
 
 // MCP Servers
 import McpServers from "./pages/McpServers";
@@ -62,6 +63,9 @@ const App: React.FC = () => {
             <Route path="overview" element={<Overview />} />
             <Route path="gateways" element={<Gateways />} />
             <Route path="portals" element={<Portals />} />
+            <Route path="portals/create" element={<Portals />} />
+            <Route path="portals/:portalId/edit" element={<Portals />} />
+            <Route path="portals/:portalId/theme" element={<Portals />} />
             <Route path="policies" element={<Policies />} />
             {/* API Proxies (org scope) */}
             <Route path="apis" element={<APIs />} />
@@ -70,6 +74,7 @@ const App: React.FC = () => {
             <Route path="apis/deploy" element={<ApiDeploy />} />
             <Route path="apis/policies" element={<ApiPolicies />} />
             <Route path="apis/:apiId/overview" element={<ApiOverview />} />
+            <Route path="apis/:apiId/publish" element={<ApiPublish />} />
             <Route path=":apiSlug/apioverview" element={<ApiOverview />} />
 
             {/* MCP + Products + Admin */}
@@ -89,6 +94,9 @@ const App: React.FC = () => {
               <Route path="overview" element={<ProjectOverview />} />
               <Route path="gateways" element={<Gateways />} />
               <Route path="portals" element={<Portals />} />
+              <Route path="portals/create" element={<Portals />} />
+              <Route path="portals/:portalId/edit" element={<Portals />} />
+              <Route path="portals/:portalId/theme" element={<Portals />} />
               <Route path="policies" element={<Policies />} />
               {/* API Proxies (project scope) */}
               <Route path="apis" element={<APIs />} />
@@ -97,6 +105,7 @@ const App: React.FC = () => {
               <Route path="apis/deploy" element={<ApiDeploy />} />
               <Route path="apis/policies" element={<ApiPolicies />} />
               <Route path="apis/:apiId/overview" element={<ApiOverview />} />
+              <Route path="apis/:apiId/publish" element={<ApiPublish />} />
               <Route path=":apiSlug/apioverview" element={<ApiOverview />} />
               {/* MCP + Products + Admin */}
               <Route path="mcp" element={<McpServers />} />
