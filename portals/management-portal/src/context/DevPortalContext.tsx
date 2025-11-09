@@ -73,8 +73,13 @@ export const DevPortalProvider = ({ children }: DevPortalProviderProps) => {
 
   const activateDevPortal = useCallback(async (uuid: string): Promise<void> => {
     await activateRequest(uuid);
-    // Refresh the list after activation
-    await refreshDevPortals();
+    // Refresh the list after activation (non-blocking)
+    try {
+      await refreshDevPortals();
+    } catch (err) {
+      console.error('Failed to refresh portal list after activation:', err);
+      // Don't throw - activation was successful
+    }
   }, [activateRequest, refreshDevPortals]);
 
   const createDevPortal = useCallback(async (portalData: {
@@ -87,8 +92,13 @@ export const DevPortalProvider = ({ children }: DevPortalProviderProps) => {
     description: string;
   }): Promise<DevPortalUIModel> => {
     const createdPortal = await createRequest(portalData);
-    // Refresh the list after creation
-    await refreshDevPortals();
+    // Refresh the list after creation (non-blocking)
+    try {
+      await refreshDevPortals();
+    } catch (err) {
+      console.error('Failed to refresh portal list after creation:', err);
+      // Don't throw - creation was successful
+    }
     return mapDevPortalToUI(createdPortal);
   }, [createRequest, refreshDevPortals]);
 
@@ -102,8 +112,13 @@ export const DevPortalProvider = ({ children }: DevPortalProviderProps) => {
     description: string;
   }): Promise<DevPortalUIModel> => {
     const updatedPortal = await updateRequest(uuid, portalData);
-    // Refresh the list after update
-    await refreshDevPortals();
+    // Refresh the list after update (non-blocking)
+    try {
+      await refreshDevPortals();
+    } catch (err) {
+      console.error('Failed to refresh portal list after update:', err);
+      // Don't throw - update was successful
+    }
     return mapDevPortalToUI(updatedPortal);
   }, [updateRequest, refreshDevPortals]);
 
