@@ -112,6 +112,8 @@ export const ApiPublishProvider = ({ children }: Props) => {
   const unpublishFromDevPortal = useCallback(
     async (apiId: string, publicationUuid: string): Promise<void> => {
       setError(null);
+      setIsPending(true);
+      
       try {
         await unpublishFromDevPortalApi(apiId, publicationUuid);
         
@@ -130,6 +132,8 @@ export const ApiPublishProvider = ({ children }: Props) => {
         const msg = err instanceof Error ? err.message : "Failed to unpublish API from devportal";
         setError(msg);
         throw err;
+      } finally {
+        setIsPending(false);
       }
     },
     []

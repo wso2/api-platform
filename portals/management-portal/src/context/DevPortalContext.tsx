@@ -51,7 +51,7 @@ export const DevPortalProvider = ({ children }: DevPortalProviderProps) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refreshDevPortals = useCallback(async (): Promise<DevPortalUIModel[]> => {
+  const refreshDevPortals = useCallback(async (checkMounted?: () => boolean): Promise<DevPortalUIModel[]> => {
     if (!organization?.id) {
       setDevportals([]);
       return [];
@@ -61,13 +61,19 @@ export const DevPortalProvider = ({ children }: DevPortalProviderProps) => {
       setLoading(true);
       setError(null);
       const data = await fetchDevPortals();
-      setDevportals(data);
+      if (!checkMounted || checkMounted()) {
+        setDevportals(data);
+      }
       return data;
     } catch (err) {
-      setError('An error occurred while loading developer portals.');
+      if (!checkMounted || checkMounted()) {
+        setError('An error occurred while loading developer portals.');
+      }
       throw err;
     } finally {
-      setLoading(false);
+      if (!checkMounted || checkMounted()) {
+        setLoading(false);
+      }
     }
   }, [fetchDevPortals, organization?.id]);
 
@@ -123,12 +129,23 @@ export const DevPortalProvider = ({ children }: DevPortalProviderProps) => {
   }, [updateRequest, refreshDevPortals]);
 
   useEffect(() => {
+    let isMounted = true;
+    const checkMounted = () => isMounted;
+
     if (!organizationLoading && organization?.id) {
-      refreshDevPortals();
+      refreshDevPortals(checkMounted).catch(() => {
+        // Error already handled in refreshDevPortals
+      });
     } else if (!organization?.id) {
-      setDevportals([]);
-      setLoading(false);
+      if (isMounted) {
+        setDevportals([]);
+        setLoading(false);
+      }
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, [organization?.id, organizationLoading, refreshDevPortals]);
 
   const value: DevPortalContextValue = {

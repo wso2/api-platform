@@ -363,7 +363,7 @@ const ApiPublishContent: React.FC = () => {
   const { fetchApiById, loading: apiLoading } = useApisContext();
   const { devportals, loading: portalsLoading, error: portalsError } = useDevPortals();
   const { loading: gatewaysLoading } = useGateways();
-  const { publishToDevPortal, unpublishFromDevPortal, isPending: publishPending, getPublishState } = useApiPublishContext();
+  const { publishToDevPortal, unpublishFromDevPortal, getPublishState } = useApiPublishContext();
 
   // Use new hooks for API-specific data - prioritize route param over query string
   const apiId = apiIdFromPath ?? searchParams.get("apiId") ?? "";
@@ -610,7 +610,7 @@ const ApiPublishContent: React.FC = () => {
   const publishState = getPublishState(apiId);
   const isPublished = isPublishedToPortal(portal.uuid) || publishState?.apiPortalRefId === portal.uuid;
   const selection = selections[portal.uuid] || { sandbox: '', production: '' };
-  const isPublishing = publishing.has(portal.uuid) || publishPending;
+  const isPublishing = publishing.has(portal.uuid);
 
         return (
           <PortalPublishCard
