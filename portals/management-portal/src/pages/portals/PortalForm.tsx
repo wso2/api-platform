@@ -158,6 +158,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
                   value={formData.apiKey}
                   onChange={(value) => updateField('apiKey', value)}
                   disabled={isSubmitting}
+                  type="password"
                   testId=""
                 />
               </FormControl>
