@@ -919,14 +919,14 @@ func (r *APIRepo) GetDeploymentsByAPIUUID(apiId string) ([]*model.APIDeployment,
 	return deployments, rows.Err()
 }
 
-// CreateAPIGatewayAssociation creates an association between an API and a gateway
-func (r *APIRepo) CreateAPIGatewayAssociation(association *model.APIGatewayAssociation) error {
+// CreateAPIAssociation creates an association between an API and resource (e.g., gateway or dev portal)
+func (r *APIRepo) CreateAPIAssociation(association *model.APIAssociation) error {
 	query := `
-		INSERT INTO api_gateway_associations (api_uuid, organization_uuid, gateway_uuid, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO api_associations (api_uuid, organization_uuid, resource_uuid, association_type, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
 	`
-	result, err := r.db.Exec(query, association.ApiID, association.OrganizationID,
-		association.GatewayID, association.CreatedAt, association.UpdatedAt)
+	result, err := r.db.Exec(query, association.ApiID, association.OrganizationID, association.ResourceID,
+		association.AssociationType, association.CreatedAt, association.UpdatedAt)
 	if err != nil {
 		return err
 	}
@@ -941,35 +941,35 @@ func (r *APIRepo) CreateAPIGatewayAssociation(association *model.APIGatewayAssoc
 	return nil
 }
 
-// UpdateAPIGatewayAssociation updates the updated_at timestamp for an existing API-gateway association
-func (r *APIRepo) UpdateAPIGatewayAssociation(apiId, gatewayId, orgId string) error {
+// UpdateAPIAssociation updates the updated_at timestamp for an existing API resource association
+func (r *APIRepo) UpdateAPIAssociation(apiId, resourceId, associationType, orgId string) error {
 	query := `
-		UPDATE api_gateway_associations 
+		UPDATE api_associations 
 		SET updated_at = ?
-		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ?
+		WHERE api_uuid = ? AND resource_uuid = ? AND association_type = ? AND organization_uuid = ?
 	`
-	_, err := r.db.Exec(query, time.Now(), apiId, gatewayId, orgId)
+	_, err := r.db.Exec(query, time.Now(), apiId, resourceId, associationType, orgId)
 	return err
 }
 
-// GetAPIGatewayAssociations retrieves all gateway associations for an API
-func (r *APIRepo) GetAPIGatewayAssociations(apiId, orgId string) ([]*model.APIGatewayAssociation, error) {
+// GetAPIAssociations retrieves all resource associations for an API of a specific type
+func (r *APIRepo) GetAPIAssociations(apiId, associationType, orgId string) ([]*model.APIAssociation, error) {
 	query := `
-		SELECT id, api_uuid, organization_uuid, gateway_uuid, created_at, updated_at
-		FROM api_gateway_associations
-		WHERE api_uuid = ? AND organization_uuid = ?
+		SELECT id, api_uuid, organization_uuid, resource_uuid, association_type, created_at, updated_at
+		FROM api_associations
+		WHERE api_uuid = ? AND association_type = ? AND organization_uuid = ?
 	`
-	rows, err := r.db.Query(query, apiId, orgId)
+	rows, err := r.db.Query(query, apiId, associationType, orgId)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var associations []*model.APIGatewayAssociation
+	var associations []*model.APIAssociation
 	for rows.Next() {
-		var association model.APIGatewayAssociation
+		var association model.APIAssociation
 		err := rows.Scan(&association.ID, &association.ApiID, &association.OrganizationID,
-			&association.GatewayID, &association.CreatedAt, &association.UpdatedAt)
+			&association.ResourceID, &association.AssociationType, &association.CreatedAt, &association.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -994,15 +994,15 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiId, organizationId string) ([]*mo
 			g.is_active,
 			g.created_at,
 			g.updated_at,
-			aga.created_at as associated_at,
-			aga.updated_at as association_updated_at,
+			aa.created_at as associated_at,
+			aa.updated_at as association_updated_at,
 			CASE WHEN ad.id IS NOT NULL THEN 1 ELSE 0 END as is_deployed,
 			ad.created_at as deployed_at
 		FROM gateways g
-		INNER JOIN api_gateway_associations aga ON g.uuid = aga.gateway_uuid
+		INNER JOIN api_associations aa ON g.uuid = aa.resource_uuid AND association_type = 'gateway'
 		LEFT JOIN api_deployments ad ON g.uuid = ad.gateway_uuid AND ad.api_uuid = ?
-		WHERE aga.api_uuid = ? AND g.organization_uuid = ?
-		ORDER BY aga.created_at DESC
+		WHERE aa.api_uuid = ? AND g.organization_uuid = ?
+		ORDER BY aa.created_at DESC
 	`
 
 	rows, err := r.db.Query(query, apiId, apiId, organizationId)
