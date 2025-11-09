@@ -353,9 +353,10 @@ const PortalPublishCard: React.FC<{
 };
 
 const ApiPublishContent: React.FC = () => {
-  const { orgHandle, projectHandle } = useParams<{
+  const { orgHandle, projectHandle, apiId: apiIdFromPath } = useParams<{
     orgHandle?: string;
     projectHandle?: string;
+    apiId?: string;
   }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -364,8 +365,8 @@ const ApiPublishContent: React.FC = () => {
   const { loading: gatewaysLoading } = useGateways();
   const { publishToDevPortal, unpublishFromDevPortal, isPending: publishPending, getPublishState } = useApiPublishContext();
 
-  // Use new hooks for API-specific data
-  const apiId = searchParams.get("apiId") || "";
+  // Use new hooks for API-specific data - prioritize route param over query string
+  const apiId = apiIdFromPath ?? searchParams.get("apiId") ?? "";
   const { gateways: apiGateways, loading: apiGatewaysLoading, error: apiGatewaysError } = useApiGateways(apiId);
   const { publications, loading: publicationsLoading, error: publicationsError, refetch: refetchPublications } = useApiPublications(apiId);
 
@@ -606,7 +607,8 @@ const ApiPublishContent: React.FC = () => {
 
       <Grid container spacing={2} ml={1} mb={1}>
       {devportals.filter((portal) => portal.isActive).map((portal) => {
-  const isPublished = isPublishedToPortal(portal.uuid) || Boolean(getPublishState(apiId)?.isPublished);
+  const publishState = getPublishState(apiId);
+  const isPublished = isPublishedToPortal(portal.uuid) || publishState?.apiPortalRefId === portal.uuid;
   const selection = selections[portal.uuid] || { sandbox: '', production: '' };
   const isPublishing = publishing.has(portal.uuid) || publishPending;
 
