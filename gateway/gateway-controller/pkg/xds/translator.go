@@ -49,8 +49,8 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/types/known/anypb"
-	"google.golang.org/protobuf/types/known/durationpb"
+	anypb "google.golang.org/protobuf/types/known/anypb"
+	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
@@ -266,7 +266,7 @@ func (t *Translator) TranslateAsyncConfigs(configs []*models.StoredAPIConfig, co
 		// This ensures existing APIs are not overridden when deploying new APIs
 
 		// Create routes and clusters for this Async API
-		routesList, clusterList, err := t.translateAPIConfig(cfg)
+		routesList, clusterList, err := t.translateAsyncAPIConfig(cfg)
 		if err != nil {
 			log.Error("Failed to translate config",
 				zap.String("id", cfg.ID),
@@ -333,6 +333,37 @@ func (t *Translator) TranslateAsyncConfigs(configs []*models.StoredAPIConfig, co
 	resources[resource.ClusterType] = clusters
 
 	return resources, nil
+}
+
+// translateAsyncAPIConfig translates a single API configuration
+func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredAPIConfig) ([]*route.Route, []*cluster.Cluster, error) {
+	apiData := cfg.Configuration.Data
+
+	// Parse upstream URL
+	if len(apiData.Upstream) == 0 {
+		return nil, nil, fmt.Errorf("no upstream configured")
+	}
+
+	upstreamURL := apiData.Upstream[0].Url
+	parsedURL, err := url.Parse(upstreamURL)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid upstream URL: %w", err)
+	}
+
+	// Create cluster for this upstream
+	clusterName := t.sanitizeClusterName(parsedURL.Host)
+	c := t.createCluster(clusterName, parsedURL)
+
+	// Create routes for each operation
+	routesList := make([]*route.Route, 0)
+	for _, op := range apiData.Operations {
+		updatedPath := apiData.Context + "/" + apiData.Version + op.Path
+		r := t.createRoutePerTopic(string(op.Method), updatedPath, clusterName, parsedURL.Path)
+		routesList = append(routesList, r)
+		break
+	}
+
+	return routesList, []*cluster.Cluster{c}, nil
 }
 
 // translateAPIConfig translates a single API configuration
@@ -523,9 +554,50 @@ func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal ext_proc config: %w", err)
 	}
+	dnsCacheConfig := &common_dfp.DnsCacheConfig{
+		// Required: unique name for the shared DNS cache
+		Name: "dynamic_forward_proxy_cache",
 
-	// // Dynamic forward proxy filter config placeholder (typed config fields omitted for compatibility with current go-control-plane version)
-	// dynamicFwdAny := &anypb.Any{TypeUrl: "type.googleapis.com/envoy.extensions.filters.http.dynamic_forward_proxy.v3.FilterConfig"}
+		// Optional: how often DNS entries are refreshed
+		DnsRefreshRate: durationpb.New(60 * time.Second),
+
+		// Optional: how long hosts stay cached
+		HostTtl: durationpb.New(300 * time.Second),
+
+		// Optional: which DNS families to use (AUTO, V4_ONLY, V6_ONLY)
+		DnsLookupFamily: cluster.Cluster_V4_ONLY,
+
+		// Optional: configure Envoy’s DNS resolution behavior
+		// DnsResolutionConfig: &corev3.DnsResolutionConfig{
+		// 	Resolvers: []*corev3.Address{
+		// 		{
+		// 			Address: &corev3.Address_SocketAddress{
+		// 				SocketAddress: &corev3.SocketAddress{
+		// 					Address: "8.8.8.8",
+		// 					PortSpecifier: &corev3.SocketAddress_PortValue{
+		// 						PortValue: 53,
+		// 					},
+		// 				},
+		// 			},
+		// 		},
+		// 	},
+		// 	DnsResolverOptions: &corev3.DnsResolverOptions{
+		// 		UseTcpForDnsLookups: true, // Use TCP for reliability
+		// 	},
+		// },
+
+		// Optional: maximum number of cached hosts
+		MaxHosts: &wrapperspb.UInt32Value{Value: 1024},
+	}
+
+	dfpFilterConfig := &dfpv3.FilterConfig{
+		ImplementationSpecifier: &dfpv3.FilterConfig_DnsCacheConfig{
+			DnsCacheConfig: dnsCacheConfig,
+		},
+	}
+
+	// Dynamic forward proxy filter config placeholder (typed config fields omitted for compatibility with current go-control-plane version)
+	dynamicFwdAny, err := anypb.New(dfpFilterConfig)
 
 	// Router filter
 	routerConfig := &router.Router{}
@@ -533,8 +605,6 @@ func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal router config: %w", err)
 	}
-
-	dynamicForwardProxyRouteAny, err := anypb.New(dynamicForwardProxyRouteConfig)
 
 	httpConnManager := &hcm.HttpConnectionManager{
 		StatPrefix:     "websubhub_http_8082",
@@ -547,7 +617,7 @@ func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
 			},
 			{ // dynamic forward proxy filter
 				Name:       "envoy.filters.http.dynamic_forward_proxy",
-				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: dynamicForwardProxyRouteAny},
+				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: dynamicFwdAny},
 			},
 			{ // router filter must be last
 				Name:       wellknown.Router,
@@ -696,6 +766,61 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 			Regex: "^" + escapedContext + "(.*)$",
 		},
 		Substitution: upstreamPath + "\\1",
+	}
+
+	return r
+}
+
+// createRoutePerTopic creates a route for an operation
+func (t *Translator) createRoutePerTopic(method, path, clusterName, upstreamPath string) *route.Route {
+	r := &route.Route{
+		Match: &route.RouteMatch{
+			Headers: []*route.HeaderMatcher{{
+				Name: ":method",
+				HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+					StringMatch: &matcher.StringMatcher{
+						MatchPattern: &matcher.StringMatcher_Exact{
+							Exact: method,
+						},
+					},
+				},
+			}},
+			// QueryParameters: []*route.QueryParameterMatcher{{
+			// 	Name: "topic",
+			// 	QueryParameterMatchSpecifier: &route.QueryParameterMatcher_StringMatch{
+			// 		StringMatch: &matcher.StringMatcher{
+			// 			MatchPattern: &matcher.StringMatcher_SafeRegex{
+			// 				SafeRegex: &matcher.RegexMatcher{
+			// 					Regex: ".+",
+			// 				},
+			// 			},
+			// 		},
+			// 	},
+			// }},
+		},
+		Action: &route.Route_Route{
+			Route: &route.RouteAction{
+				ClusterSpecifier: &route.RouteAction_Cluster{
+					Cluster: clusterName,
+				},
+			},
+		},
+	}
+
+	r.Match.PathSpecifier = &route.RouteMatch_Path{
+		Path: path,
+	}
+
+	// Add path rewriting for WebSubHub
+	// Rewrite path to /hub and add query parameters:
+	// - hub.mode=publish (fixed)
+	// - hub.topic=<last_path_segment> (extracted from request path)
+	// Example: /websub/v1/event -> /hub?hub.mode=publish&hub.topic=event
+	r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+		Pattern: &matcher.RegexMatcher{
+			Regex: "^.*/([^/]+)$", // Capture last path segment
+		},
+		Substitution: upstreamPath + "?hub.mode=publish&hub.topic=\\1",
 	}
 
 	return r
@@ -1197,9 +1322,39 @@ func (t *Translator) processEndpoint(
 func (t *Translator) createDynamicForwardProxyCluster() *cluster.Cluster {
 	// Note: Due to go-control-plane API limitations, we use a placeholder Any for the typed config
 	// The actual DNS cache config should match the filter config in createListenerForWebSubHub
-	clusterTypeAny := &anypb.Any{
-		TypeUrl: "type.googleapis.com/envoy.extensions.clusters.dynamic_forward_proxy.v3.ClusterConfig",
+	clusterConfig := &dfpcluster.ClusterConfig{
+		// optional: control connection pooling / subclusters here
 	}
+	clusterTypeAny, _ := anypb.New(clusterConfig)
+	// clusterTypeAny := &anypb.Any{
+	// 	//TypeUrl: "type.googleapis.com/envoy.extensions.clusters.dynamic_forward_proxy.v3.ClusterConfig",
+	// }
+
+	// dfpClusterConfig := &dfpCluster.ClusterConfig{
+	// 	DnsCacheConfig: &dfp.DnsCacheConfig{
+	// 		Name:              "dynamic_forward_proxy_cache_config",
+	// 		DnsLookupFamily:   dfp.DnsLookupFamily_V4_ONLY,
+	// 		MaxHosts:          1024,
+	// 		DnsRefreshRate:    durationpb.New(60 * time.Second),
+	// 		DnsMinRefreshRate: durationpb.New(5 * time.Second),
+	// 	},
+	// }
+
+	// dfpClusterAny, _ := anypb.New(dfpClusterConfig)
+	// dynamicForwardProxyCluster := &cluster.Cluster{
+	// 	Name:           "dynamic_forward_proxy_cluster",
+	// 	LbPolicy:       cluster.Cluster_CLUSTER_PROVIDED,
+	// 	ConnectTimeout: durationpb.New(5 * time.Second),
+	// 	ClusterType: &cluster.ClusterType{
+	// 		Name:        "envoy.clusters.dynamic_forward_proxy",
+	// 		TypedConfig: dfpClusterAny,
+	// 	},
+	// 	UpstreamConnectionOptions: &cluster.UpstreamConnectionOptions{
+	// 		TcpKeepalive: &core.TcpKeepalive{
+	// 			KeepaliveTime: &core.UInt32Value{Value: 300},
+	// 		},
+	// 	},
+	// }
 
 	return &cluster.Cluster{
 		Name:           "dynamic_forward_proxy_cluster",
@@ -1222,8 +1377,47 @@ func (t *Translator) createDynamicForwardProxyCluster() *cluster.Cluster {
 // createExternalProcessorCluster creates the external processor gRPC cluster
 func (t *Translator) createExternalProcessorCluster() *cluster.Cluster {
 	// Create HTTP/2 protocol options for gRPC
-	http2Options := &anypb.Any{
-		TypeUrl: "type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions",
+	httpProtocolOptions := &upstreamhttp.HttpProtocolOptions{
+		UpstreamProtocolOptions: &upstreamhttp.HttpProtocolOptions_ExplicitHttpConfig_{
+			ExplicitHttpConfig: &upstreamhttp.HttpProtocolOptions_ExplicitHttpConfig{
+				ProtocolConfig: &upstreamhttp.HttpProtocolOptions_ExplicitHttpConfig_Http2ProtocolOptions{
+					Http2ProtocolOptions: &core.Http2ProtocolOptions{},
+				},
+			},
+		},
+	}
+
+	http2OptionsAny, err := anypb.New(httpProtocolOptions)
+	if err != nil {
+		// Log error but return cluster anyway (graceful degradation)
+		return &cluster.Cluster{
+			Name:                 "ext-processor-grpc-service",
+			ConnectTimeout:       durationpb.New(5 * time.Second),
+			ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+			LbPolicy:             cluster.Cluster_ROUND_ROBIN,
+			LoadAssignment: &endpoint.ClusterLoadAssignment{
+				ClusterName: "ext-processor-grpc-service",
+				Endpoints: []*endpoint.LocalityLbEndpoints{{
+					LbEndpoints: []*endpoint.LbEndpoint{{
+						HostIdentifier: &endpoint.LbEndpoint_Endpoint{
+							Endpoint: &endpoint.Endpoint{
+								Address: &core.Address{
+									Address: &core.Address_SocketAddress{
+										SocketAddress: &core.SocketAddress{
+											Protocol: core.SocketAddress_TCP,
+											Address:  "host.docker.internal",
+											PortSpecifier: &core.SocketAddress_PortValue{
+												PortValue: 9001,
+											},
+										},
+									},
+								},
+							},
+						},
+					}},
+				}},
+			},
+		}
 	}
 
 	return &cluster.Cluster{
@@ -1232,7 +1426,7 @@ func (t *Translator) createExternalProcessorCluster() *cluster.Cluster {
 		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
 		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
 		TypedExtensionProtocolOptions: map[string]*anypb.Any{
-			"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": http2Options,
+			"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": http2OptionsAny,
 		},
 		LoadAssignment: &endpoint.ClusterLoadAssignment{
 			ClusterName: "ext-processor-grpc-service",
