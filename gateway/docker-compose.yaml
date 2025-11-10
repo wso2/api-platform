@@ -22,6 +22,7 @@ services:
       context: ./gateway-controller
       dockerfile: Dockerfile
     container_name: gateway-controller
+    image: wso2/gateway-controller:latest
     ports:
       - "9090:9090"   # REST API
       - "18000:18000" # xDS gRPC
@@ -50,6 +51,7 @@ services:
       context: ./router
       dockerfile: Dockerfile
     container_name: router
+    image: wso2/gateway-router:latest
     ports:
       - "8080:8080"   # HTTP traffic
       - "9901:9901"   # Envoy admin
