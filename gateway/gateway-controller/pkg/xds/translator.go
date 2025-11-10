@@ -125,6 +125,7 @@ func (t *Translator) TranslateConfigs(
 	if correlationID != "" {
 		log = t.logger.With(zap.String("correlation_id", correlationID))
 	}
+
 	resources := make(map[resource.Type][]types.Resource)
 
 	var listeners []types.Resource
@@ -236,6 +237,93 @@ func (t *Translator) TranslateConfigs(
 				zap.Uint32("port", listenerProto.GetAddress().GetSocketAddress().GetPortValue()))
 		}
 	}
+
+	return resources, nil
+}
+
+// TranslateConfigs translates all Async API configurations to Envoy resources
+// The correlationID parameter is optional and used for request tracing in logs
+func (t *Translator) TranslateAsyncConfigs(configs []*models.StoredAPIConfig, correlationID string) (map[resource.Type][]types.Resource, error) {
+	// Create a logger with correlation ID if provided
+	log := t.logger
+	if correlationID != "" {
+		log = t.logger.With(zap.String("correlation_id", correlationID))
+	}
+
+	resources := make(map[resource.Type][]types.Resource)
+
+	var listeners []types.Resource
+	var routes []types.Resource
+	var clusters []types.Resource
+
+	// We'll use a single listener on port 8080 with a single virtual host
+	// All API routes are consolidated into one virtual host to avoid wildcard domain conflicts
+	allRoutes := make([]*route.Route, 0)
+	clusterMap := make(map[string]*cluster.Cluster)
+
+	for _, cfg := range configs {
+		// Include ALL configs (both deployed and pending) in the snapshot
+		// This ensures existing APIs are not overridden when deploying new APIs
+
+		// Create routes and clusters for this Async API
+		routesList, clusterList, err := t.translateAPIConfig(cfg)
+		if err != nil {
+			log.Error("Failed to translate config",
+				zap.String("id", cfg.ID),
+				zap.String("name", cfg.GetAPIName()),
+				zap.Error(err))
+			continue
+		}
+
+		allRoutes = append(allRoutes, routesList...)
+
+		// Add clusters (avoiding duplicates)
+		for _, c := range clusterList {
+			clusterMap[c.Name] = c
+		}
+	}
+
+	// Add a catch-all route that returns 404 for unmatched requests
+	// This should be the last route (lowest priority)
+	allRoutes = append(allRoutes, &route.Route{
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_Prefix{
+				Prefix: "/",
+			},
+		},
+		Action: &route.Route_DirectResponse{
+			DirectResponse: &route.DirectResponseAction{
+				Status: 404,
+			},
+		},
+	})
+
+	// Create a single virtual host with all routes
+	virtualHost := &route.VirtualHost{
+		Name:    "all_apis",
+		Domains: []string{"*"},
+		Routes:  allRoutes,
+	}
+
+	// Always create the listener, even with no APIs deployed
+	l, err := t.createListener([]*route.VirtualHost{virtualHost})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create listener: %w", err)
+	}
+	websublistener, err := t.createListenerForWebSubHub()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create listener for websubhub communication: %w", err)
+	}
+	listeners = append(listeners, l, websublistener)
+
+	// Add all clusters
+	for _, c := range clusterMap {
+		clusters = append(clusters, c)
+	}
+
+	resources[resource.ListenerType] = listeners
+	resources[resource.RouteType] = routes
+	resources[resource.ClusterType] = clusters
 
 	return resources, nil
 }
@@ -381,6 +469,113 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 			},
 		},
 		FilterChains: []*listener.FilterChain{filterChain},
+	}, nil
+}
+
+// createListenerForWebSubHub creates an Envoy listener with access logging
+func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
+	// Build the route configuration for dynamic forward proxy listener
+	// We ignore the passed virtualHosts here and construct the required one matching the sample.
+	dynamicForwardProxyRouteConfig := &route.RouteConfiguration{
+		Name: "dynamic-forward-proxy-routing",
+		VirtualHosts: []*route.VirtualHost{{
+			Name:    "all-domains",
+			Domains: []string{"*"}, // this should be websubhub domains
+			Routes: []*route.Route{{
+				Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Prefix{Prefix: "/"}},
+				Action: &route.Route_Route{Route: &route.RouteAction{
+					ClusterSpecifier: &route.RouteAction_Cluster{Cluster: "dynamic_forward_proxy_cluster"},
+					Timeout:          durationpb.New(30 * time.Second),
+					RetryPolicy: &route.RetryPolicy{
+						RetryOn:    "5xx,reset,connect-failure,refused-stream",
+						NumRetries: wrapperspb.UInt32(1),
+					},
+				}},
+			}},
+		}},
+	}
+
+	// External Processor filter config
+	extProcConfig := &extproc.ExternalProcessor{
+		GrpcService: &core.GrpcService{
+			TargetSpecifier: &core.GrpcService_EnvoyGrpc_{EnvoyGrpc: &core.GrpcService_EnvoyGrpc{ClusterName: "ext-processor-grpc-service"}},
+			Timeout:         durationpb.New(250 * time.Millisecond), // 0.250s
+		},
+		FailureModeAllow: false,
+		ProcessingMode: &extproc.ProcessingMode{
+			RequestHeaderMode:   extproc.ProcessingMode_SEND,
+			ResponseHeaderMode:  extproc.ProcessingMode_SEND,
+			RequestTrailerMode:  extproc.ProcessingMode_SEND,
+			ResponseTrailerMode: extproc.ProcessingMode_SEND,
+			RequestBodyMode:     extproc.ProcessingMode_BUFFERED,
+			ResponseBodyMode:    extproc.ProcessingMode_BUFFERED,
+		},
+		MessageTimeout: &durationpb.Duration{Seconds: 20, Nanos: 250000000}, // 20.25s
+	}
+	extProcAny, err := anypb.New(extProcConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal ext_proc config: %w", err)
+	}
+
+	// // Dynamic forward proxy filter config placeholder (typed config fields omitted for compatibility with current go-control-plane version)
+	// dynamicFwdAny := &anypb.Any{TypeUrl: "type.googleapis.com/envoy.extensions.filters.http.dynamic_forward_proxy.v3.FilterConfig"}
+
+	// Router filter
+	routerConfig := &router.Router{}
+	routerAny, err := anypb.New(routerConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal router config: %w", err)
+	}
+
+	dynamicForwardProxyRouteAny, err := anypb.New(dynamicForwardProxyRouteConfig)
+
+	httpConnManager := &hcm.HttpConnectionManager{
+		StatPrefix:     "websubhub_http_8082",
+		CodecType:      hcm.HttpConnectionManager_AUTO,
+		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{RouteConfig: dynamicForwardProxyRouteConfig},
+		HttpFilters: []*hcm.HttpFilter{
+			{ // ext_proc filter
+				Name:       "envoy.filters.http.ext_proc",
+				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: extProcAny},
+			},
+			{ // dynamic forward proxy filter
+				Name:       "envoy.filters.http.dynamic_forward_proxy",
+				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: dynamicForwardProxyRouteAny},
+			},
+			{ // router filter must be last
+				Name:       wellknown.Router,
+				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: routerAny},
+			},
+		},
+	}
+
+	// Attach access logs if enabled
+	if t.accessLogConfig.Enabled {
+		accessLogs, err := t.createAccessLogConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create access log config: %w", err)
+		}
+		httpConnManager.AccessLog = accessLogs
+	}
+
+	hcmAny, err := anypb.New(httpConnManager)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal http connection manager: %w", err)
+	}
+
+	return &listener.Listener{
+		Name: "dynamic-forward-proxy-8082",
+		Address: &core.Address{Address: &core.Address_SocketAddress{SocketAddress: &core.SocketAddress{
+			Protocol:      core.SocketAddress_TCP,
+			Address:       "0.0.0.0",
+			PortSpecifier: &core.SocketAddress_PortValue{PortValue: 8082},
+		}}},
+		FilterChains: []*listener.FilterChain{{
+			Filters: []*listener.Filter{{
+				Name:       wellknown.HTTPConnectionManager,
+				ConfigType: &listener.Filter_TypedConfig{TypedConfig: hcmAny},
+			}},
+		}},
 	}, nil
 }
 

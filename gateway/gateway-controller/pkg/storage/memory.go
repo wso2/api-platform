@@ -27,10 +27,10 @@ import (
 
 // ConfigStore holds all API configurations in memory for fast access
 type ConfigStore struct {
-	mu          sync.RWMutex                        // Protects concurrent access
-	configs     map[string]*models.StoredAPIConfig  // Key: config ID
-	nameVersion map[string]string                   // Key: "name:version" → Value: config ID
-	snapVersion int64                               // Current xDS snapshot version
+	mu          sync.RWMutex                       // Protects concurrent access
+	configs     map[string]*models.StoredAPIConfig // Key: config ID
+	nameVersion map[string]string                  // Key: "name:version" → Value: config ID
+	snapVersion int64                              // Current xDS snapshot version
 }
 
 // NewConfigStore creates a new in-memory config store
@@ -140,6 +140,19 @@ func (cs *ConfigStore) GetAll() []*models.StoredAPIConfig {
 	result := make([]*models.StoredAPIConfig, 0, len(cs.configs))
 	for _, cfg := range cs.configs {
 		result = append(result, cfg)
+	}
+	return result
+}
+
+func (cs *ConfigStore) GetAllAsyncAPIs() []*models.StoredAPIConfig {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	var result []*models.StoredAPIConfig
+	for _, cfg := range cs.configs {
+		if cfg.Configuration.Kind == "http/websub" {
+			result = append(result, cfg)
+		}
 	}
 	return result
 }

@@ -142,12 +142,26 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
-			params.Logger.Error("Failed to update xDS snapshot",
-				zap.Error(err),
-				zap.String("api_id", apiID),
-				zap.String("correlation_id", params.CorrelationID))
+		if apiConfig.Kind == "http/websub" {
+			if err := s.snapshotManager.UpdateSnapshotofAsyncAPI(ctx, params.CorrelationID); err != nil {
+				params.Logger.Error("Failed to update xDS snapshot",
+					zap.Error(err),
+					zap.String("api_id", apiID),
+					zap.String("correlation_id", params.CorrelationID))
+			}
+		} else {
+			if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
+				params.Logger.Error("Failed to update xDS snapshot",
+					zap.Error(err),
+					zap.String("api_id", apiID),
+					zap.String("correlation_id", params.CorrelationID))
+			}
 		}
+
+		// if apiConfig.Kind == "http/websub" {
+		// 	for _, cfg := range s.store.GetAll() {
+		// 		s.snapshotManager.statusCallback
+		// }
 	}()
 
 	return &APIDeploymentResult{
