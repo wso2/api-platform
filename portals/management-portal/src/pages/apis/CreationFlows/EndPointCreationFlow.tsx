@@ -12,15 +12,15 @@ import { Button } from "../../../components/src/components/Button";
 import { Card } from "../../../components/src/components/Card";
 import { TextInput } from "../../../components/src/components/TextInput";
 
+import {
+  useCreateComponentBuildpackContext,
+} from "../../../context/CreateComponentBuildpackContext";
+import CreationMetaData from "./CreationMetaData";
+
 type EndpointWizardStep = "endpoint" | "details";
 
 type EndpointCreationState = {
   endpointUrl: string;
-  name: string;
-  context: string;
-  version: string;
-  description?: string;
-  contextEdited: boolean;
 };
 
 type CreateApiFn = (payload: {
@@ -52,42 +52,35 @@ const EndPointCreationFlow: React.FC<Props> = ({
 }) => {
   const [wizardStep, setWizardStep] =
     React.useState<EndpointWizardStep>("endpoint");
+
   const [wizardState, setWizardState] = React.useState<EndpointCreationState>({
     endpointUrl: "",
-    name: "",
-    context: "",
-    version: "1.0.0",
-    description: "",
-    contextEdited: false,
   });
+
+  const {
+    endpointMeta,
+    setEndpointMeta,
+    resetEndpointMeta,
+  } = useCreateComponentBuildpackContext();
+
   const [wizardError, setWizardError] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
 
-  const reset = React.useCallback(() => {
-    setWizardStep("endpoint");
-    setWizardState({
-      endpointUrl: "",
-      name: "",
-      context: "",
-      version: "1.0.0",
-      description: "",
-      contextEdited: false,
-    });
-    setWizardError(null);
-  }, []);
+  // Reset this flow's slice when opened
+  React.useEffect(() => {
+    if (open) {
+      resetEndpointMeta();
+      setWizardStep("endpoint");
+      setWizardState({ endpointUrl: "" });
+      setWizardError(null);
+    }
+  }, [open, resetEndpointMeta]);
 
   const handleChange = React.useCallback(
     (patch: Partial<EndpointCreationState>) => {
       setWizardState((p) => ({ ...p, ...patch }));
     },
     []
-  );
-
-  const handleContextChange = React.useCallback(
-    (value: string) => {
-      handleChange({ context: value, contextEdited: true });
-    },
-    [handleChange]
   );
 
   const inferNameFromEndpoint = React.useCallback((url: string) => {
@@ -106,49 +99,36 @@ const EndPointCreationFlow: React.FC<Props> = ({
     }
   }, []);
 
-  const handleNameChange = React.useCallback((value: string) => {
-    setWizardState((prev) => {
-      const next = { ...prev, name: value };
-      if (!prev.contextEdited) {
-        const slug = value
-          .trim()
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-+|-+$/g, "");
-        next.context = slug ? `/${slug}` : "";
-      }
-      return next;
-    });
-  }, []);
-
   const handleStepChange = React.useCallback(
     (next: EndpointWizardStep) => {
       if (next === "details") {
         const inferred = inferNameFromEndpoint(wizardState.endpointUrl);
-        if (!wizardState.name.trim()) {
-          handleNameChange(inferred);
-        }
-        if (!wizardState.contextEdited && !wizardState.context.trim()) {
-          const slug = inferred
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-+|-+$/g, "");
-          handleChange({
-            context: slug ? `/${slug}` : "",
-            contextEdited: false,
-          });
-        }
+        const needsName = !(endpointMeta?.name || "").trim();
+        const needsContext = !(endpointMeta?.context || "").trim();
+        setEndpointMeta((prev: any) => {
+          const base = prev || {};
+          const nextMeta = { ...base };
+          if (needsName) nextMeta.name = inferred;
+          if (needsContext && !base?.contextEdited) {
+            const slug = inferred
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-+|-+$/g, "");
+            nextMeta.context = slug ? `/${slug}` : "";
+          }
+          return nextMeta;
+        });
       }
       setWizardStep(next);
     },
-    [handleChange, handleNameChange, inferNameFromEndpoint, wizardState]
+    [inferNameFromEndpoint, endpointMeta, setEndpointMeta, wizardState.endpointUrl]
   );
 
   const handleCreate = React.useCallback(async () => {
     const endpointUrl = wizardState.endpointUrl.trim();
-    const name = wizardState.name.trim();
-    const context = wizardState.context.trim();
-    const version = wizardState.version.trim() || "1.0.0";
+    const name = (endpointMeta?.name || "").trim();
+    const context = (endpointMeta?.context || "").trim();
+    const version = (endpointMeta?.version || "").trim() || "1.0.0";
 
     if (!endpointUrl || !name || !context) {
       setWizardError("Please complete all required fields.");
@@ -166,7 +146,7 @@ const EndPointCreationFlow: React.FC<Props> = ({
         name,
         context: context.startsWith("/") ? context : `/${context}`,
         version,
-        description: wizardState.description?.trim() || undefined,
+        description: endpointMeta?.description?.trim() || undefined,
         projectId: selectedProjectId,
         backendServices: [
           {
@@ -180,7 +160,9 @@ const EndPointCreationFlow: React.FC<Props> = ({
         ],
       });
 
-      reset();
+      // fresh state for the next time it's opened
+      resetEndpointMeta();
+      setWizardState({ endpointUrl: "" });
       onClose();
     } catch (err) {
       const message =
@@ -189,7 +171,7 @@ const EndPointCreationFlow: React.FC<Props> = ({
     } finally {
       setCreating(false);
     }
-  }, [createApi, onClose, reset, selectedProjectId, wizardState]);
+  }, [createApi, endpointMeta, onClose, resetEndpointMeta, selectedProjectId, wizardState.endpointUrl]);
 
   if (!open) return null;
 
@@ -229,38 +211,7 @@ const EndPointCreationFlow: React.FC<Props> = ({
           </Stack>
         ) : (
           <Stack spacing={2}>
-            <TextInput
-              label="Name"
-              placeholder="Sample API"
-              value={wizardState.name}
-              onChange={(v: string) => handleNameChange(v)}
-              testId=""
-              size="medium"
-            />
-            <TextInput
-              label="Context"
-              placeholder="/sample"
-              value={wizardState.context}
-              onChange={(v: string) => handleContextChange(v)}
-              testId=""
-              size="medium"
-            />
-            <TextInput
-              label="Version"
-              placeholder="1.0.0"
-              value={wizardState.version}
-              onChange={(v: string) => handleChange({ version: v })}
-              testId=""
-              size="medium"
-            />
-            <TextInput
-              label="Description"
-              placeholder="Optional description"
-              value={wizardState.description ?? ""}
-              onChange={(v: string) => handleChange({ description: v })}
-              multiline
-              testId=""
-            />
+            <CreationMetaData scope="endpoint" title="API Details" />
             <Box sx={{ mt: 1 }}>
               <Typography variant="body2" color="text.secondary">
                 The endpoint URL will be added as the default backend of this
@@ -280,7 +231,8 @@ const EndPointCreationFlow: React.FC<Props> = ({
             variant="outlined"
             onClick={() => {
               if (!creating) {
-                reset();
+                resetEndpointMeta();
+                setWizardState({ endpointUrl: "" });
                 onClose();
               }
             }}
@@ -296,9 +248,9 @@ const EndPointCreationFlow: React.FC<Props> = ({
               onClick={handleCreate}
               disabled={
                 creating ||
-                !wizardState.name.trim() ||
-                !wizardState.context.trim() ||
-                !wizardState.version.trim()
+                !(endpointMeta?.name || "").trim() ||
+                !(endpointMeta?.context || "").trim() ||
+                !(endpointMeta?.version || "").trim()
               }
               sx={{ textTransform: "none" }}
             >

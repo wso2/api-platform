@@ -11,6 +11,7 @@ import "@fontsource/poppins/700.css";
 import { OrganizationProvider } from "./context/OrganizationContext";
 import { ProjectProvider } from "./context/ProjectContext";
 import { ApiProvider } from "./context/ApiContext";
+import { CreateComponentBuildpackProvider } from "./context/CreateComponentBuildpackContext";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
@@ -19,7 +20,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <OrganizationProvider>
           <ProjectProvider>
             <ApiProvider>
-              <App />
+              <CreateComponentBuildpackProvider>
+                <App />
+              </CreateComponentBuildpackProvider>
             </ApiProvider>
           </ProjectProvider>
         </OrganizationProvider>
