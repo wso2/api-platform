@@ -8,8 +8,6 @@ import {
   IconButton,
   AccordionSummary,
   AccordionDetails,
-  ListItemText,
-  Paper,
   Stack,
   Typography,
   Tooltip,
@@ -22,10 +20,8 @@ import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
-import {
-  ApiPublishProvider,
-  useApiPublishContext,
-} from "../../context/ApiPublishContext";
+import { ApiPublishProvider } from "../../context/ApiPublishContext";
+import { useApiPublishContext } from "../../hooks/useApiPublishContext";
 
 import { useApisContext } from "../../context/ApiContext";
 import type { ApiSummary } from "../../hooks/apis";
@@ -68,10 +64,8 @@ const ApiOverviewContent: React.FC = () => {
     apiId?: string;
   }>();
   const {
-    publish,
-    unpublish,
     getPublishState,
-    loading: publishLoading,
+    isPending: publishLoading,
   } = useApiPublishContext();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -159,16 +153,7 @@ const ApiOverviewContent: React.FC = () => {
       const base = `/${segments.join("/")}`;
       navigate(`${base}/overview?${params.toString()}`, { replace: true });
     }
-  }, [
-    apiId,
-    apiSlug,
-    apis,
-    navigate,
-    searchString,
-    orgHandle,
-    projectHandle,
-    selectApi,
-  ]);
+  }, [apiId, apiSlug, apis, navigate, searchString, orgHandle, projectHandle]);
 
   React.useEffect(() => {
     if (!apiId) return;
@@ -401,32 +386,28 @@ const ApiOverviewContent: React.FC = () => {
         {/* Right section: Buttons + status */}
         <Stack spacing={1.25} alignItems="flex-end">
           <Button
-            variant="outlined"
-            endIcon={<LaunchIcon />}
-            disabled={!isPublished || publishLoading}
+            variant="contained"
+            disabled={publishLoading}
+            onClick={() => {
+              // Navigate to publish screen
+              const base =
+                orgHandle && projectHandle
+                  ? `/${orgHandle}/${projectHandle}/apis/${api.id}/publish`
+                  : orgHandle
+                  ? `/${orgHandle}/apis/${api.id}/publish`
+                  : `/apis/${api.id}/publish`;
+              navigate(`${base}?apiId=${api.id}`);
+            }}
             sx={{
               textTransform: "none",
-              borderColor: "#069668",
-              color: "#069668",
+              bgcolor: "#069668",
+              color: "white",
               "&:hover": {
-                borderColor: "#069668",
-                bgcolor: "rgba(6,150,104,0.05)",
+                bgcolor: "#047857",
               },
             }}
           >
-            View on API Portal
-          </Button>
-          <Button
-            variant={isPublished ? "outlined" : "contained"}
-            disabled={publishLoading}
-            onClick={() => {
-              if (!api?.id) return;
-              (isPublished ? unpublish(api.id) : publish(api.id)).catch(
-                () => {}
-              );
-            }}
-          >
-            {isPublished ? "Unpublish API" : "Publish API"}
+            Add to DevPortal
           </Button>
 
           <Stack spacing={0.25} alignItems="flex-end" sx={{ mt: 0.5 }}>

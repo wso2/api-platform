@@ -1,6 +1,6 @@
 // REPLACE your existing OptionCard with this
 import * as React from "react";
-import { Box, Divider, Typography } from "@mui/material";
+import { Box, Divider, Typography, Tooltip, CircularProgress } from "@mui/material";
 import LaunchOutlinedIcon from "@mui/icons-material/LaunchOutlined";
 import {
   Card,
@@ -12,6 +12,8 @@ import { Link } from "../../components/src/components/Link";
 import { Button } from "../../components/src/components/Button";
 import { IconButton } from "../../components/src/components/IconButton";
 import { Chip } from "../../components/src/components/Chip";
+import { PORTAL_CONSTANTS } from "../../constants/portal";
+import type { PortalCardProps } from "../../types/portal";
 
 const valuePill = (
   text: string,
@@ -26,41 +28,23 @@ const valuePill = (
   return <Chip label={text} variant="outlined" color="default" />;
 };
 
-type OptionCardProps = {
-  title: string;
-  description: string;
-  selected: boolean;
-  onClick: () => void;
-
-  /** optional extras */
-  logoSrc?: string;
-  logoAlt?: string;
-  portalUrl?: string;
-  userAuthLabel?: string;
-  authStrategyLabel?: string;
-  visibilityLabel?: string;
-
-  /** NEW: action callbacks */
-  onEdit?: () => void;
-  onActivate?: () => void;
-};
-
-const PortalCard: React.FC<OptionCardProps> = ({
+const PortalCard: React.FC<PortalCardProps> = ({
   title,
   description,
   selected, // currently unused visually, but kept for parity
   onClick,
   logoSrc,
-  logoAlt = "Portal logo",
-  portalUrl = "https://test12345.eu.wso2.com",
-  userAuthLabel = "Asgardeo Thunder",
-  authStrategyLabel = "Auth-Key",
-  visibilityLabel = "Private",
+  logoAlt = PORTAL_CONSTANTS.DEFAULT_LOGO_ALT,
+  portalUrl = PORTAL_CONSTANTS.DEFAULT_PORTAL_URL,
+  userAuthLabel = PORTAL_CONSTANTS.DEFAULT_USER_AUTH_LABEL,
+  authStrategyLabel = PORTAL_CONSTANTS.DEFAULT_AUTH_STRATEGY_LABEL,
+  visibilityLabel = PORTAL_CONSTANTS.DEFAULT_VISIBILITY_LABEL,
   onEdit,
   onActivate,
+  activating,
 }) => {
   return (
-    <Card testId={""}>
+    <Card testId={""} style={{ maxWidth: 450 }}>
       <CardActionArea onClick={onClick} testId={""}>
         <CardContent>
           <Box
@@ -114,11 +98,13 @@ const PortalCard: React.FC<OptionCardProps> = ({
                   {title}
                 </Typography>
                 <IconButton
+                  component="span"
                   size="small"
                   onClick={(e: React.MouseEvent) => {
                     e.stopPropagation(); // prevent CardActionArea click
                     onEdit?.();
                   }}
+                  aria-label={PORTAL_CONSTANTS.ARIA_LABELS.EDIT_PORTAL}
                 >
                   <Edit style={{ fontSize: 16 }} />
                 </IconButton>
@@ -137,26 +123,64 @@ const PortalCard: React.FC<OptionCardProps> = ({
               </Typography>
 
               <Box sx={{ mt: 1, display: "flex", alignItems: "center" }}>
-                <Link
-                  href={portalUrl}
-                  underline="hover"
-                  target="_blank"
-                  rel="noopener"
-                  sx={{ fontWeight: 600 }}
-                  onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                >
-                  {portalUrl}
-                </Link>
-                <IconButton
-                  size="small"
-                  sx={{ ml: 0.5 }}
-                  onClick={(e: React.MouseEvent) => {
-                    e.stopPropagation();
-                    window.open(portalUrl, "_blank", "noopener,noreferrer");
+                <Box
+                  sx={{
+                    flex: 1,
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    mr: 0.5
                   }}
                 >
-                  <LaunchOutlinedIcon fontSize="inherit" />
-                </IconButton>
+                  <Tooltip
+                    title={selected ? "" : PORTAL_CONSTANTS.MESSAGES.URL_NOT_AVAILABLE}
+                    placement="top"
+                  >
+                    <span>
+                      <Link
+                        href={selected ? portalUrl : undefined}
+                        underline="hover"
+                        target="_blank"
+                        rel="noopener"
+                        sx={{
+                          fontWeight: 600,
+                          color: selected ? 'inherit' : 'text.disabled',
+                          cursor: selected ? 'pointer' : 'not-allowed'
+                        }}
+                        onClick={(e: React.MouseEvent) => {
+                          if (!selected) {
+                            e.preventDefault();
+                            return;
+                          }
+                          e.stopPropagation();
+                        }}
+                      >
+                        {portalUrl}
+                      </Link>
+                    </span>
+                  </Tooltip>
+                </Box>
+                <Tooltip
+                  title={selected ? PORTAL_CONSTANTS.MESSAGES.OPEN_PORTAL_URL : PORTAL_CONSTANTS.MESSAGES.URL_NOT_AVAILABLE}
+                  placement="top"
+                >
+                  <span>
+                    <IconButton
+                      size="small"
+                      sx={{ ml: 0.5 }}
+                      disabled={!selected}
+                      onClick={(e: React.MouseEvent) => {
+                        if (!selected) return;
+                        e.stopPropagation();
+                        window.open(portalUrl, "_blank", "noopener,noreferrer");
+                      }}
+                      aria-label={PORTAL_CONSTANTS.ARIA_LABELS.OPEN_PORTAL_URL}
+                    >
+                      <LaunchOutlinedIcon fontSize="inherit" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
               </Box>
             </Box>
 
@@ -202,21 +226,48 @@ const PortalCard: React.FC<OptionCardProps> = ({
               }}
             >
               <Typography>Visibility</Typography>
-              {valuePill(visibilityLabel, "red")}
+              {valuePill(visibilityLabel, selected ? "green" : "grey")}
             </Box>
           </Box>
 
           {/* CTA */}
           <Box sx={{ mt: 2 }}>
-            <Button
-              fullWidth
-              onClick={(e: React.MouseEvent) => {
-                e.stopPropagation(); // don’t trigger card onClick
-                onActivate?.();
-              }}
-            >
-              Activate Developer Portal
-            </Button>
+            {selected ? (
+              <Button
+                fullWidth
+                disabled
+                variant="outlined"
+                sx={{
+                  backgroundColor: 'success.main',
+                  color: 'success.contrastText',
+                  '&:hover': {
+                    backgroundColor: 'success.main',
+                  }
+                }}
+              >
+                {PORTAL_CONSTANTS.STATUS_LABELS.ACTIVATED}
+              </Button>
+            ) : (
+              <Button
+                fullWidth
+                onClick={(e: React.MouseEvent) => {
+                  e.stopPropagation(); // don't trigger card onClick
+                  onActivate?.();
+                }}
+                aria-label={PORTAL_CONSTANTS.ARIA_LABELS.ACTIVATE_PORTAL}
+                disabled={Boolean(activating)}
+                sx={{ position: 'relative' }}
+              >
+                {activating ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                    <CircularProgress size={18} color="inherit" />
+                    <span>Activating...</span>
+                  </Box>
+                ) : (
+                  PORTAL_CONSTANTS.STATUS_LABELS.ACTIVATE_PORTAL
+                )}
+              </Button>
+            )}
           </Box>
         </CardContent>
       </CardActionArea>

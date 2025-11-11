@@ -8,4 +8,5 @@ export const RESERVED_PATH_SEGMENTS = new Set([
   "products",
   "admin",
   "apioverview",
+  "publish",
 ]);
