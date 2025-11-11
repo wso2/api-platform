@@ -232,8 +232,7 @@ func (s *DevPortalService) createDevPortalWithSync(devPortal *model.DevPortal, o
 
 	// Update DevPortal state in repository
 	if err := s.updateDevPortalStateInternal(devPortal, &devPortal.IsActive, &devPortal.IsEnabled); err != nil {
-		// If update fails, DevPortal is created but with default state
-		return nil
+		return fmt.Errorf("failed to update DevPortal state after sync: %w", err)
 	}
 
 	return nil
