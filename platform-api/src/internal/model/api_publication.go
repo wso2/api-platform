@@ -105,11 +105,6 @@ func (e *ValidationError) Error() string {
 	return e.Message
 }
 
-// TableName returns the table name for the APIPublication model
-func (APIPublication) TableName() string {
-	return "api_publications"
-}
-
 // IsPublished returns true if the API is currently published to the DevPortal
 func (ap *APIPublication) IsPublished() bool {
 	return ap.Status == PublishedStatus
@@ -127,13 +122,19 @@ func (ap *APIPublication) IsPending() bool {
 
 // SetPublished marks the publication as published
 func (ap *APIPublication) SetPublished(devPortalRefID string) error {
+	if devPortalRefID == "" {
+		return &ValidationError{
+			Field:   "devPortalRefId",
+			Message: "DevPortal RefID is required when setting published",
+		}
+	}
 	sm := NewPublicationStateMachine(ap.Status)
 	if err := sm.TransitionTo(PublishedStatus); err != nil {
 		return err
 	}
 	ap.Status = PublishedStatus
 	ap.DevPortalRefID = &devPortalRefID
-	ap.UpdatedAt = time.Now()
+	ap.UpdatedAt = time.Now().UTC()
 	return nil
 }
 
@@ -145,7 +146,7 @@ func (ap *APIPublication) SetUnpublished() error {
 	}
 	ap.Status = UnpublishedStatus
 	ap.DevPortalRefID = nil
-	ap.UpdatedAt = time.Now()
+	ap.UpdatedAt = time.Now().UTC()
 	return nil
 }
 
@@ -156,7 +157,7 @@ func (ap *APIPublication) SetFailed() error {
 		return err
 	}
 	ap.Status = FailedStatus
-	ap.UpdatedAt = time.Now()
+	ap.UpdatedAt = time.Now().UTC()
 	return nil
 }
 
@@ -167,7 +168,7 @@ func (ap *APIPublication) SetPublishing() error {
 		return err
 	}
 	ap.Status = PublishingStatus
-	ap.UpdatedAt = time.Now()
+	ap.UpdatedAt = time.Now().UTC()
 	return nil
 }
 
@@ -178,7 +179,7 @@ func (ap *APIPublication) SetUnpublishing() error {
 		return err
 	}
 	ap.Status = UnpublishingStatus
-	ap.UpdatedAt = time.Now()
+	ap.UpdatedAt = time.Now().UTC()
 	return nil
 }
 

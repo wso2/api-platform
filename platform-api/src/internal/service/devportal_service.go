@@ -202,20 +202,30 @@ func (s *DevPortalService) createDevPortalWithSync(devPortal *model.DevPortal, o
 
 	// Attempt to sync and initialize (handle gracefully based on allowSyncFailure flag)
 	if err := s.syncAndInitializeDevPortalInternal(devPortal, organization); err != nil {
-		// Check if organization already exists in DevPortal
+		// Check if organization already exists in DevPortal (remote side)
 		if errors.Is(err, constants.ErrDevPortalAlreadyExist) {
-			return err
+			// Organization already exists remotely - this is OK!
+			// It means the organization was previously synced to the remote DevPortal
+			// We should keep the DB record and mark it as active
+			log.Printf("[DevPortalService] Organization %s already exists in DevPortal %s - marking as active", organization.ID, devPortal.Name)
+			devPortal.IsActive = true   // Already synced remotely
+			devPortal.IsEnabled = false // User can enable it when ready
+		} else {
+			// Other sync errors - apply rollback logic based on allowSyncFailure flag
+			if !allowSyncFailure {
+				// If sync failure is not allowed, rollback and return error
+				if deleteErr := s.devPortalRepo.Delete(devPortal.UUID, devPortal.OrganizationUUID); deleteErr != nil {
+					log.Printf("[DevPortalService] Failed to rollback DevPortal creation: %v", deleteErr)
+					return fmt.Errorf("sync failed and rollback failed: %w (rollback error: %v)", err, deleteErr)
+				}
+				return err
+			}
+			// Sync failed but allowed - DevPortal remains inactive
+			devPortal.IsActive = false
+			devPortal.IsEnabled = false
 		}
-
-		if !allowSyncFailure {
-			// If sync failure is not allowed, return error (DevPortal creation will be rolled back)
-			return err
-		}
-		// Sync failed but allowed - DevPortal remains inactive
-		devPortal.IsActive = false
-		devPortal.IsEnabled = false
 	} else {
-		// Sync successful
+		// Sync successful - organization created in remote DevPortal
 		devPortal.IsActive = true
 		devPortal.IsEnabled = false // New DevPortals start disabled
 	}
@@ -494,16 +504,20 @@ func (s *DevPortalService) publishAPIToDevPortalInternal(
 	productionURL := s.constructEndpointURL(api, productionGateway)
 
 	// Build API metadata request for the devportal_client
+	description := api.Description
+	if description == "" {
+		description = "No description provided."
+	}
 	apiMetadata := devportal_dto.APIMetadataRequest{
 		APIInfo: devportal_dto.APIInfo{
 			APIID:          api.ID,
 			ReferenceID:    api.ID,
 			APIName:        api.Name,
-			APIHandle:      fmt.Sprintf("%s-%s", api.Name, api.Version),
+			APIHandle:      api.Context,
 			APIVersion:     api.Version,
 			APIType:        "REST",
 			Provider:       org.Name,
-			APIDescription: "api.Description",
+			APIDescription: description,
 			APIStatus:      "PUBLISHED",
 			Visibility:     "PUBLIC",
 			Labels:         []string{"default"},
