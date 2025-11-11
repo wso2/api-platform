@@ -87,11 +87,17 @@ func (s *apisService) Publish(orgID string, meta dto.APIMetadataRequest, apiDefi
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodPost, url, body)
+	// Buffer payload to byte slice for retry support
+	payload := append([]byte(nil), body.Bytes()...)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", contentType)
+	// Enable request body replay for retries
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(payload)), nil
+	}
 	resp, err := s.DevPortalClient.do(req)
 	if err != nil {
 		return nil, err
@@ -115,11 +121,17 @@ func (s *apisService) Update(orgID, apiID string, meta dto.APIMetadataRequest, a
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodPut, url, body)
+	// Buffer payload to byte slice for retry support
+	payload := append([]byte(nil), body.Bytes()...)
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", contentType)
+	// Enable request body replay for retries
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(payload)), nil
+	}
 	resp, err := s.DevPortalClient.do(req)
 	if err != nil {
 		return nil, err
@@ -225,11 +237,18 @@ func (s *apisService) UploadTemplate(orgID, apiID string, r io.Reader, filename 
 	if err := mw.Close(); err != nil {
 		return ErrMultipartCreationFailed
 	}
-	req, err := http.NewRequest(http.MethodPost, url, buf)
+	// Buffer payload to byte slice for retry support
+	payload := append([]byte(nil), buf.Bytes()...)
+	contentType := mw.FormDataContentType()
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Content-Type", contentType)
+	// Enable request body replay for retries
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(payload)), nil
+	}
 	resp, err := s.DevPortalClient.do(req)
 	if err != nil {
 		return err
@@ -256,11 +275,18 @@ func (s *apisService) UpdateTemplate(orgID, apiID string, r io.Reader, filename 
 	if err := mw.Close(); err != nil {
 		return ErrMultipartCreationFailed
 	}
-	req, err := http.NewRequest(http.MethodPut, url, buf)
+	// Buffer payload to byte slice for retry support
+	payload := append([]byte(nil), buf.Bytes()...)
+	contentType := mw.FormDataContentType()
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Content-Type", contentType)
+	// Enable request body replay for retries
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(payload)), nil
+	}
 	resp, err := s.DevPortalClient.do(req)
 	if err != nil {
 		return err

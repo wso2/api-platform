@@ -7,20 +7,26 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
 // buildURL joins base URL with path segments ensuring single slashes.
 func (c *DevPortalClient) buildURL(parts ...string) string {
 	base := strings.TrimRight(c.cfg.BaseURL, "/")
-	// join parts with / and trim any leading slashes
-	for i, p := range parts {
-		parts[i] = strings.Trim(p, "/")
+	// Escape each path segment and collect non-empty ones
+	escaped := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.Trim(p, "/")
+		if trimmed == "" {
+			continue
+		}
+		escaped = append(escaped, url.PathEscape(trimmed))
 	}
-	if len(parts) == 0 {
+	if len(escaped) == 0 {
 		return base
 	}
-	return base + "/" + strings.Join(parts, "/")
+	return base + "/" + strings.Join(escaped, "/")
 }
 
 // newJSONRequest marshals v to JSON (if non-nil) and returns an *http.Request with Content-Type set.
@@ -61,7 +67,7 @@ func (c *DevPortalClient) doAndDecode(req *http.Request, expectedCodes []int, ou
 		return err
 	}
 
-	log.Printf("Response: status=%d body=%s", resp.StatusCode, string(b))
+	log.Printf("doAndDecode: status=%d", resp.StatusCode)
 
 	ok := false
 	for _, code := range expectedCodes {

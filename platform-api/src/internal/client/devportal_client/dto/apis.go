@@ -34,8 +34,8 @@ type EndPoints struct {
 
 // APIMetadataRequest is the JSON payload placed in multipart field `apiMetadata`
 type APIMetadataRequest struct {
-	APIInfo              APIInfo             `json:"apiInfo"`
-	EndPoints            EndPoints           `json:"endPoints,omitempty"`
+	APIInfo              APIInfo              `json:"apiInfo"`
+	EndPoints            EndPoints            `json:"endPoints,omitempty"`
 	SubscriptionPolicies []SubscriptionPolicy `json:"subscriptionPolicies,omitempty"`
 }
 

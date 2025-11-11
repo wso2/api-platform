@@ -1,7 +1,6 @@
 package devportal_client
 
 import (
-	"log"
 	dto "platform-api/src/internal/client/devportal_client/dto"
 )
 
@@ -74,7 +73,6 @@ func (s *organizationsService) List() (dto.OrganizationListResponse, error) {
 // Update sends an update for an organization. Assumes PUT {baseURL}/organizations/{orgID}
 func (s *organizationsService) Update(orgID string, req dto.OrganizationUpdateRequest) (*dto.OrganizationResponse, error) {
 	url := s.DevPortalClient.buildURL("organizations", orgID)
-	log.Printf("Updating organization %s with data %+v", orgID, req)
 	httpReq, err := s.DevPortalClient.newJSONRequest("PUT", url, req)
 	if err != nil {
 		return nil, err
