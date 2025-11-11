@@ -27,18 +27,20 @@ import (
 
 // ConfigStore holds all API configurations in memory for fast access
 type ConfigStore struct {
-	mu          sync.RWMutex                       // Protects concurrent access
-	configs     map[string]*models.StoredAPIConfig // Key: config ID
-	nameVersion map[string]string                  // Key: "name:version" → Value: config ID
-	snapVersion int64                              // Current xDS snapshot version
+	mu           sync.RWMutex                       // Protects concurrent access
+	configs      map[string]*models.StoredAPIConfig // Key: config ID
+	nameVersion  map[string]string                  // Key: "name:version" → Value: config ID
+	snapVersion  int64                              // Current xDS snapshot version
+	TopicManager *TopicManager
 }
 
 // NewConfigStore creates a new in-memory config store
 func NewConfigStore() *ConfigStore {
 	return &ConfigStore{
-		configs:     make(map[string]*models.StoredAPIConfig),
-		nameVersion: make(map[string]string),
-		snapVersion: 0,
+		configs:      make(map[string]*models.StoredAPIConfig),
+		nameVersion:  make(map[string]string),
+		snapVersion:  0,
+		TopicManager: NewTopicManager(),
 	}
 }
 
@@ -55,6 +57,30 @@ func (cs *ConfigStore) Add(cfg *models.StoredAPIConfig) error {
 
 	cs.configs[cfg.ID] = cfg
 	cs.nameVersion[key] = cfg.ID
+
+	// Maintaining a topic map to process topics
+	// Running these inside Add or Delete configs might add extra latency to the API Deployment process
+	// TODO: Optimize topic management if needed by maintaining a separate topic manager struct
+	for _, topic := range cfg.Configuration.Data.Operations {
+		modifiedTopic := fmt.Sprintf("%s/%s%s", cfg.Configuration.Data.Context, cfg.Configuration.Data.Version, topic.Path)
+		if _, exist := cs.TopicManager.topics[modifiedTopic]; !exist {
+			cs.TopicManager.Add(modifiedTopic)
+			// cs.topics[modifiedTopic] = cfg.Configuration.Data.Name
+		}
+	}
+
+	apiTopicsPerRevision := make(map[string]bool)
+	for _, topic := range cfg.Configuration.Data.Operations {
+		modifiedTopic := fmt.Sprintf("%s/%s%s", cfg.Configuration.Data.Context, cfg.Configuration.Data.Version, topic.Path)
+		apiTopicsPerRevision[modifiedTopic] = true
+	}
+
+	for topic := range cs.TopicManager.topics {
+		if _, exists := apiTopicsPerRevision[topic]; !exists {
+			cs.TopicManager.Remove(topic)
+			//delete(cs.topics, topic)
+		}
+	}
 	return nil
 }
 
@@ -97,6 +123,29 @@ func (cs *ConfigStore) Delete(id string) error {
 	}
 
 	key := cfg.GetCompositeKey()
+	// Maintaining a topic map to process topics
+	// Running these inside Add or Delete configs might add extra latency to the API Deployment process
+	// TODO: Optimize topic management if needed by maintaining a separate topic manager struct
+	for _, topic := range cfg.Configuration.Data.Operations {
+		modifiedTopic := fmt.Sprintf("%s/%s/%s", cfg.Configuration.Data.Context, cfg.Configuration.Data.Version, topic.Path)
+		if _, exist := cs.TopicManager.topics[modifiedTopic]; !exist {
+			cs.TopicManager.Add(modifiedTopic)
+			//cs.TopicManager.topics[modifiedTopic] = cfg.Configuration.Data.Name
+		}
+	}
+
+	apiTopicsPerRevision := make(map[string]bool)
+	for _, topic := range cfg.Configuration.Data.Operations {
+		modifiedTopic := fmt.Sprintf("%s/%s/%s", cfg.Configuration.Data.Context, cfg.Configuration.Data.Version, topic.Path)
+		apiTopicsPerRevision[modifiedTopic] = true
+	}
+
+	for _, topic := range cs.TopicManager.topics {
+		if _, exists := apiTopicsPerRevision[topic]; !exists {
+			cs.TopicManager.Remove(topic)
+			//delete(cs.TopicManager.topics, topic)
+		}
+	}
 	delete(cs.nameVersion, key)
 	delete(cs.configs, id)
 	return nil
@@ -113,6 +162,16 @@ func (cs *ConfigStore) Get(id string) (*models.StoredAPIConfig, error) {
 	}
 	return cfg, nil
 }
+
+// func (cs *ConfigStore) GetAllTopics() map[string]string {
+// 	cs.mu.RLock()
+// 	defer cs.mu.RUnlock()
+// 	result := make(map[string]string)
+// 	for topic, apiId := range cs.topics {
+// 		result[topic] = apiId
+// 	}
+// 	return result
+// }
 
 // GetByNameVersion retrieves a configuration by name and version
 func (cs *ConfigStore) GetByNameVersion(name, version string) (*models.StoredAPIConfig, error) {

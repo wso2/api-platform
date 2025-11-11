@@ -21,6 +21,9 @@ package utils
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -116,6 +119,11 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		DeployedVersion: 0,
 	}
 
+	// Before saving to the cache we get the topics to register and unregister per API
+	// Topic URLs are in the format of /<context>/<version>/<topic_path> which is unique per API
+	// We maintain only the latest revision of the API in the store so we can get the delta topics here
+	topicsToRegister, topicsToUnregister := s.getAllTopicsToRegisterAndUnregister(*storedCfg)
+
 	// Try to save/update the configuration
 	isUpdate, err := s.saveOrUpdateConfig(storedCfg, params.Logger)
 	if err != nil {
@@ -148,7 +156,69 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 					zap.Error(err),
 					zap.String("api_id", apiID),
 					zap.String("correlation_id", params.CorrelationID))
+				return // Do not proceed with topic lifecycle if snapshot failed
 			}
+
+			// Grace period to let Envoy apply new resources
+			select {
+			case <-time.After(6 * time.Second):
+			case <-ctx.Done():
+				params.Logger.Warn("Context cancelled before topic lifecycle",
+					zap.String("api_id", apiID))
+				return
+			}
+
+			var wg sync.WaitGroup
+
+			// Register topics
+			if len(topicsToRegister) > 0 {
+				wg.Add(1)
+				go func(list []string) {
+					defer wg.Done()
+					for _, topic := range list {
+						if err := s.registerTopicWithHub(topic, "http://localhost", params.Logger); err != nil {
+							params.Logger.Error("Failed to register topic with WebSubHub",
+								zap.Error(err),
+								zap.String("topic", topic),
+								zap.String("api_id", apiID))
+						} else {
+							params.Logger.Info("Successfully registered topic with WebSubHub",
+								zap.String("topic", topic),
+								zap.String("api_id", apiID))
+						}
+					}
+				}(topicsToRegister)
+			}
+
+			// Deregister topics
+			if len(topicsToUnregister) > 0 {
+				wg.Add(1)
+				go func(list []string) {
+					defer wg.Done()
+					for _, topic := range list {
+						if err := s.unregisterTopicWithHub(topic, "http://localhost", params.Logger); err != nil {
+							params.Logger.Error("Failed to deregister topic from WebSubHub",
+								zap.Error(err),
+								zap.String("topic", topic),
+								zap.String("api_id", apiID))
+						} else {
+							params.Logger.Info("Successfully deregistered topic from WebSubHub",
+								zap.String("topic", topic),
+								zap.String("api_id", apiID))
+						}
+					}
+				}(topicsToUnregister)
+			}
+
+			// Log completion (non-blocking to caller)
+			go func() {
+				wg.Wait()
+				params.Logger.Info("Topic lifecycle operations completed",
+					zap.String("api_id", apiID),
+					zap.Int("registered", len(topicsToRegister)),
+					zap.Int("deregistered", len(topicsToUnregister)))
+			}()
+
 		} else {
 			if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
 				params.Logger.Error("Failed to update xDS snapshot",
@@ -157,17 +227,39 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 					zap.String("correlation_id", params.CorrelationID))
 			}
 		}
-
-		// if apiConfig.Kind == "http/websub" {
-		// 	for _, cfg := range s.store.GetAll() {
-		// 		s.snapshotManager.statusCallback
-		// }
 	}()
 
 	return &APIDeploymentResult{
 		StoredConfig: storedCfg,
 		IsUpdate:     isUpdate,
 	}, nil
+}
+
+func (s *APIDeploymentService) getAllTopicsToRegisterAndUnregister(apiConfig models.StoredAPIConfig) ([]string, []string) {
+	topics := s.store.TopicManager.GetAll()
+	topicsToRegister := []string{}
+	topicsToUnregister := []string{}
+	apiTopicsPerRevision := make(map[string]bool)
+	for _, topic := range apiConfig.Configuration.Data.Operations {
+		modifiedTopic := fmt.Sprintf("%s/%s%s", apiConfig.Configuration.Data.Context, apiConfig.Configuration.Data.Version, topic.Path)
+		apiTopicsPerRevision[modifiedTopic] = true
+	}
+
+	for topic := range topics {
+		if _, exists := apiTopicsPerRevision[topic]; !exists {
+			topicsToUnregister = append(topicsToUnregister, topic)
+			fmt.Println("Topic to unregister:", topic)
+		}
+	}
+
+	for topic := range apiTopicsPerRevision {
+		if _, exists := topics[topic]; !exists {
+			topicsToRegister = append(topicsToRegister, topic)
+			fmt.Println("Topic to register:", topic)
+		}
+	}
+
+	return topicsToRegister, topicsToUnregister
 }
 
 // saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
@@ -246,6 +338,82 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredAPIC
 	*newConfig = *existing
 
 	return true, nil // Successfully updated existing config
+}
+
+// registerTopicWithHub registers a topic with the WebSubHub
+func (s *APIDeploymentService) registerTopicWithHub(topic, gwHost string, logger *zap.Logger) error {
+	return s.sendTopicRequestToHub(topic, "register", gwHost, logger)
+}
+
+// unregisterTopicWithHub unregisters a topic from the WebSubHub
+func (s *APIDeploymentService) unregisterTopicWithHub(topic, gwHost string, logger *zap.Logger) error {
+	return s.sendTopicRequestToHub(topic, "deregister", gwHost, logger)
+}
+
+// sendTopicRequestToHub sends a topic registration/unregistration request to the WebSubHub
+func (s *APIDeploymentService) sendTopicRequestToHub(topic string, mode string, gwHost string, logger *zap.Logger) error {
+	// Prepare form data
+	formData := fmt.Sprintf("hub.mode=%s&hub.topic=%s", mode, topic)
+
+	endpoint := fmt.Sprintf("%s:8080%s", gwHost, topic)
+
+	// HTTP client with timeout
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	// Retry on 404 Not Found (hub might not be ready immediately)
+	const maxRetries = 5
+	backoff := 500 * time.Millisecond
+	var lastStatus int
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Create a fresh request each attempt (body readers are one-shot)
+		req, err := http.NewRequest("POST", endpoint, strings.NewReader(formData))
+		if err != nil {
+			return fmt.Errorf("failed to create HTTP request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed to send HTTP request: %w", err)
+		}
+
+		// Ensure body is closed before next loop/return
+		func() {
+			defer resp.Body.Close()
+
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				logger.Debug("Topic request sent to WebSubHub",
+					zap.String("topic", topic),
+					zap.String("mode", mode),
+					zap.Int("status", resp.StatusCode))
+				err = nil
+				return
+			}
+
+			lastStatus = resp.StatusCode
+		}()
+
+		// Success path returned above
+		if lastStatus == 0 {
+			return nil
+		}
+
+		// Retry only on 404
+		if lastStatus == http.StatusNotFound || lastStatus == http.StatusServiceUnavailable && attempt < maxRetries {
+			time.Sleep(backoff)
+			// Exponential backoff
+			backoff *= 2
+			// Reset lastStatus for next attempt's success detection
+			lastStatus = 0
+			continue
+		}
+
+		// Non-retryable status or retries exhausted
+		return fmt.Errorf("WebSubHub returned non-success status: %d", lastStatus)
+	}
+
+	return fmt.Errorf("WebSubHub request failed after %d retries; last status: %d", maxRetries, lastStatus)
 }
 
 // generateUUID generates a new UUID string

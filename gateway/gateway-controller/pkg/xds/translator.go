@@ -360,7 +360,6 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredAPIConfig) ([]*ro
 		updatedPath := apiData.Context + "/" + apiData.Version + op.Path
 		r := t.createRoutePerTopic(string(op.Method), updatedPath, clusterName, parsedURL.Path)
 		routesList = append(routesList, r)
-		break
 	}
 
 	return routesList, []*cluster.Cluster{c}, nil
@@ -811,17 +810,22 @@ func (t *Translator) createRoutePerTopic(method, path, clusterName, upstreamPath
 		Path: path,
 	}
 
-	// Add path rewriting for WebSubHub
-	// Rewrite path to /hub and add query parameters:
-	// - hub.mode=publish (fixed)
-	// - hub.topic=<last_path_segment> (extracted from request path)
-	// Example: /websub/v1/event -> /hub?hub.mode=publish&hub.topic=event
-	r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
-		Pattern: &matcher.RegexMatcher{
-			Regex: "^.*/([^/]+)$", // Capture last path segment
-		},
-		Substitution: upstreamPath + "?hub.mode=publish&hub.topic=\\1",
-	}
+	r.GetRoute().PrefixRewrite = "/hub"
+
+	// // WebSubHub path rewriting:
+	// // For cluster_host_docker_internal_9098: rewrite only the path to /hub and preserve original query params.
+	// // For other clusters: rewrite to /hub with injected hub.mode=publish & hub.topic=<last segment>.
+	// if clusterName == "cluster_host_docker_internal_9098" {
+	// 	// Use PrefixRewrite so Envoy keeps existing query parameters untouched.
+	// 	r.GetRoute().PrefixRewrite = "/hub"
+	// } else {
+	// 	r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+	// 		Pattern: &matcher.RegexMatcher{
+	// 			Regex: "^.*/([^/]+)$", // Capture last path segment
+	// 		},
+	// 		Substitution: "/hub?hub.mode=publish&hub.topic=\\1",
+	// 	}
+	// }
 
 	return r
 }

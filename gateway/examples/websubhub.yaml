@@ -23,7 +23,9 @@ data:
   version: v1.0
   context: /websubnewapi
   upstream:
-    - url: http://host.docker.internal:2000/webhook
+    - url: http://host.docker.internal:9098/hub
   operations:
     - method: POST
       path: /webhooks_events_receiver_resource/issues
+    - method: POST
+      path: /webhooks_events_receiver_resource/prs
