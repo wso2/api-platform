@@ -357,15 +357,19 @@ func (c *GitHubClient) ParseRepoURL(repoURL string) (owner, repo string, err err
 
 // ValidateName validates GitHub username/repository name format
 func (c *GitHubClient) ValidateName(name string) bool {
-	// GitHub usernames and repo names can contain alphanumeric characters and hyphens
-	// They cannot start or end with hyphens and cannot have consecutive hyphens
+	// GitHub username validation rules:
+	// - May only contain alphanumeric characters or hyphens
+	// - Cannot have multiple consecutive hyphens
+	// - Cannot begin or end with a hyphen
+	// - Maximum is 39 characters
 	if len(name) == 0 || len(name) > 39 {
 		return false
 	}
 
-	// Check for valid characters and patterns
-	validPattern := regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?$`)
-	return validPattern.MatchString(name)
+	// Use the official GitHub username regex pattern
+	// ^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i
+	validPattern := regexp.MustCompile(`^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$`)
+	return validPattern.MatchString(strings.ToLower(name))
 }
 
 // sortTreeItems sorts items with directories first, then files, both alphabetically
