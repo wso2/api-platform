@@ -92,6 +92,11 @@ type GatewayRepository interface {
 	UpdateGateway(gateway *model.Gateway) error
 	UpdateActiveStatus(gatewayId string, isActive bool) error
 
+	// Gateway association checking operations
+	HasGatewayAPIDeployments(gatewayID, organizationID string) (bool, error)
+	HasGatewayAPIAssociations(gatewayID, organizationID string) (bool, error)
+	HasGatewayAssociations(gatewayID, organizationID string) (bool, error)
+
 	// Token operations
 	CreateToken(token *model.GatewayToken) error
 	GetActiveTokensByGatewayUUID(gatewayId string) ([]*model.GatewayToken, error)

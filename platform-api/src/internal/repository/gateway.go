@@ -152,7 +152,7 @@ func (r *GatewayRepo) List() ([]*model.Gateway, error) {
 	return gateways, nil
 }
 
-// Delete removes a gateway with organization isolation (cascade deletes tokens via FK)
+// Delete removes a gateway with organization isolation and cleans up all associations
 func (r *GatewayRepo) Delete(gatewayID, organizationID string) error {
 	// Start transaction for atomicity
 	tx, err := r.db.Begin()
@@ -161,9 +161,17 @@ func (r *GatewayRepo) Delete(gatewayID, organizationID string) error {
 	}
 	defer tx.Rollback()
 
-	// Delete gateway with organization isolation
-	query := `DELETE FROM gateways WHERE uuid = ? AND organization_uuid = ?`
-	result, err := tx.Exec(query, gatewayID, organizationID)
+	// Delete API associations for this gateway
+	deleteAssocQuery := `DELETE FROM api_associations 
+	                     WHERE resource_uuid = ? AND association_type = 'gateway' AND organization_uuid = ?`
+	_, err = tx.Exec(deleteAssocQuery, gatewayID, organizationID)
+	if err != nil {
+		return err
+	}
+
+	// Delete gateway with organization isolation (gateway_tokens and api_deployments will be cascade deleted via FK)
+	deleteGatewayQuery := `DELETE FROM gateways WHERE uuid = ? AND organization_uuid = ?`
+	result, err := tx.Exec(deleteGatewayQuery, gatewayID, organizationID)
 	if err != nil {
 		return err
 	}
@@ -286,4 +294,44 @@ func (r *GatewayRepo) CountActiveTokens(gatewayId string) (int, error) {
 	`
 	err := r.db.QueryRow(query, gatewayId).Scan(&count)
 	return count, err
+}
+
+// HasGatewayAPIDeployments checks if a gateway has any API deployments
+func (r *GatewayRepo) HasGatewayAPIDeployments(gatewayID, organizationID string) (bool, error) {
+	var deploymentCount int
+	deploymentQuery := `SELECT COUNT(*) FROM api_deployments WHERE gateway_uuid = ? AND organization_uuid = ?`
+	err := r.db.QueryRow(deploymentQuery, gatewayID, organizationID).Scan(&deploymentCount)
+	if err != nil {
+		return false, err
+	}
+
+	return deploymentCount > 0, nil
+}
+
+// HasGatewayAPIAssociations checks if a gateway has any API associations
+func (r *GatewayRepo) HasGatewayAPIAssociations(gatewayID, organizationID string) (bool, error) {
+	var associationCount int
+	associationQuery := `SELECT COUNT(*) FROM api_associations WHERE resource_uuid = ? AND association_type = 'gateway' AND organization_uuid = ?`
+	err := r.db.QueryRow(associationQuery, gatewayID, organizationID).Scan(&associationCount)
+	if err != nil {
+		return false, err
+	}
+
+	return associationCount > 0, nil
+}
+
+// HasGatewayAssociations checks if a gateway has any API associations (deployments or associations)
+func (r *GatewayRepo) HasGatewayAssociations(gatewayID, organizationID string) (bool, error) {
+	// Check deployments first
+	hasDeployments, err := r.HasGatewayAPIDeployments(gatewayID, organizationID)
+	if err != nil {
+		return false, err
+	}
+
+	if hasDeployments {
+		return true, nil
+	}
+
+	// Check associations
+	return r.HasGatewayAPIAssociations(gatewayID, organizationID)
 }
