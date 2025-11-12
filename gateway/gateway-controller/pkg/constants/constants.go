@@ -49,4 +49,17 @@ const (
 	EnvoyTLSTransportSocket = "envoy.transport_sockets.tls"
 	DefaultCertificateKey   = "default"
 	DefaultMatchID          = "0"
+
+	// Configuration Validation Constants
+	MaxReasonableTimeoutSeconds = uint32(3600) // 1 hour in seconds
+
+	// Cipher Suite Validation
+	CipherInvalidChars1 = ";"
+	CipherInvalidChars2 = "|"
+
+	// TLS Version Ordering
+	TLSVersionOrderTLS10 = 0
+	TLSVersionOrderTLS11 = 1
+	TLSVersionOrderTLS12 = 2
+	TLSVersionOrderTLS13 = 3
 )

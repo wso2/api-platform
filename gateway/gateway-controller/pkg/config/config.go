@@ -29,6 +29,7 @@ import (
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 )
 
 // Config holds all configuration for the gateway-controller
@@ -240,8 +241,6 @@ func getDefaults() map[string]interface{} {
 		"controlplane.insecure_skip_verify":                            true, // Default true for dev environments with self-signed certs
 		"router.envoy_upstream.tls.minimum_protocol_version":           "TLS1_2",
 		"router.envoy_upstream.tls.maximum_protocol_version":           "TLS1_3",
-		"router.envoy_upstream.tls.ciphers":                            "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256",
-		"router.envoy_upstream.tls.trusted_cert_path":                  "/etc/ssl/certs/ca-certificates.crt",
 		"router.envoy_upstream.tls.verify_host_name":                   true,
 		"router.envoy_upstream.tls.disable_ssl_verification":           false,
 		"router.envoy_upstream.timeouts.route_timeout_in_seconds":      60,
@@ -334,6 +333,16 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Validate TLS configuration
+	if err := c.validateTLSConfig(); err != nil {
+		return err
+	}
+
+	// Validate timeout configuration
+	if err := c.validateTimeoutConfig(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -364,6 +373,134 @@ func (c *Config) validateControlPlaneConfig() error {
 	// Validate polling interval
 	if c.ControlPlane.PollingInterval <= 0 {
 		return fmt.Errorf("controlplane.polling_interval must be positive, got: %s", c.ControlPlane.PollingInterval)
+	}
+
+	return nil
+}
+
+// validateTLSConfig validates the TLS configuration
+func (c *Config) validateTLSConfig() error {
+	// Validate TLS protocol versions
+	validTLSVersions := []string{
+		constants.TLSVersion10,
+		constants.TLSVersion11,
+		constants.TLSVersion12,
+		constants.TLSVersion13,
+	}
+
+	// Validate minimum TLS version
+	minVersion := c.Router.Upstream.TLS.MinimumProtocolVersion
+	if minVersion == "" {
+		return fmt.Errorf("router.envoy_upstream.tls.minimum_protocol_version is required")
+	}
+
+	isValidMinVersion := false
+	for _, version := range validTLSVersions {
+		if minVersion == version {
+			isValidMinVersion = true
+			break
+		}
+	}
+	if !isValidMinVersion {
+		return fmt.Errorf("router.envoy_upstream.tls.minimum_protocol_version must be one of: %s, got: %s",
+			strings.Join(validTLSVersions, ", "), minVersion)
+	}
+
+	// Validate maximum TLS version
+	maxVersion := c.Router.Upstream.TLS.MaximumProtocolVersion
+	if maxVersion == "" {
+		return fmt.Errorf("router.envoy_upstream.tls.maximum_protocol_version is required")
+	}
+
+	isValidMaxVersion := false
+	for _, version := range validTLSVersions {
+		if maxVersion == version {
+			isValidMaxVersion = true
+			break
+		}
+	}
+	if !isValidMaxVersion {
+		return fmt.Errorf("router.envoy_upstream.tls.maximum_protocol_version must be one of: %s, got: %s",
+			strings.Join(validTLSVersions, ", "), maxVersion)
+	}
+
+	// Validate that minimum version is not greater than maximum version
+	tlsVersionOrder := map[string]int{
+		constants.TLSVersion10: constants.TLSVersionOrderTLS10,
+		constants.TLSVersion11: constants.TLSVersionOrderTLS11,
+		constants.TLSVersion12: constants.TLSVersionOrderTLS12,
+		constants.TLSVersion13: constants.TLSVersionOrderTLS13,
+	}
+
+	if tlsVersionOrder[minVersion] > tlsVersionOrder[maxVersion] {
+		return fmt.Errorf("router.envoy_upstream.tls.minimum_protocol_version (%s) cannot be greater than maximum_protocol_version (%s)",
+			minVersion, maxVersion)
+	}
+
+	// Validate cipher suites format (basic validation - ensure it's not empty if provided)
+	ciphers := c.Router.Upstream.TLS.Ciphers
+	if ciphers != "" {
+		// Basic validation: ensure ciphers don't contain invalid characters
+		if strings.Contains(ciphers, constants.CipherInvalidChars1) || strings.Contains(ciphers, constants.CipherInvalidChars2) {
+			return fmt.Errorf("router.envoy_upstream.tls.ciphers contains invalid characters (use comma-separated values)")
+		}
+
+		// Ensure cipher list is not just whitespace
+		if strings.TrimSpace(ciphers) == "" {
+			return fmt.Errorf("router.envoy_upstream.tls.ciphers cannot be empty or whitespace only")
+		}
+	}
+
+	// Validate trusted cert path if SSL verification is enabled
+	if !c.Router.Upstream.TLS.DisableSslVerification && c.Router.Upstream.TLS.TrustedCertPath == "" {
+		return fmt.Errorf("router.envoy_upstream.tls.trusted_cert_path is required when SSL verification is enabled")
+	}
+
+	return nil
+}
+
+// validateTimeoutConfig validates the timeout configuration
+func (c *Config) validateTimeoutConfig() error {
+	timeouts := c.Router.Upstream.Timeouts
+
+	// Validate route timeout
+	if timeouts.RouteTimeoutInSeconds <= 0 {
+		return fmt.Errorf("router.envoy_upstream.timeouts.route_timeout_in_seconds must be positive, got: %d",
+			timeouts.RouteTimeoutInSeconds)
+	}
+
+	// Validate max route timeout
+	if timeouts.MaxRouteTimeoutInSeconds <= 0 {
+		return fmt.Errorf("router.envoy_upstream.timeouts.max_route_timeout_in_seconds must be positive, got: %d",
+			timeouts.MaxRouteTimeoutInSeconds)
+	}
+
+	// Validate idle timeout
+	if timeouts.RouteIdleTimeoutInSeconds <= 0 {
+		return fmt.Errorf("router.envoy_upstream.timeouts.route_idle_timeout_in_seconds must be positive, got: %d",
+			timeouts.RouteIdleTimeoutInSeconds)
+	}
+
+	// Validate that route timeout is not greater than max route timeout
+	if timeouts.RouteTimeoutInSeconds > timeouts.MaxRouteTimeoutInSeconds {
+		return fmt.Errorf("router.envoy_upstream.timeouts.route_timeout_in_seconds (%d) cannot be greater than max_route_timeout_in_seconds (%d)",
+			timeouts.RouteTimeoutInSeconds, timeouts.MaxRouteTimeoutInSeconds)
+	}
+
+	// Validate reasonable timeout ranges (prevent extremely long timeouts)
+	if timeouts.RouteTimeoutInSeconds > constants.MaxReasonableTimeoutSeconds {
+		return fmt.Errorf("router.envoy_upstream.timeouts.route_timeout_in_seconds (%d) exceeds maximum reasonable timeout of %d seconds",
+			timeouts.RouteTimeoutInSeconds, constants.MaxReasonableTimeoutSeconds)
+	}
+
+	if timeouts.MaxRouteTimeoutInSeconds > constants.MaxReasonableTimeoutSeconds {
+		return fmt.Errorf("router.envoy_upstream.timeouts.max_route_timeout_in_seconds (%d) exceeds maximum reasonable timeout of %d seconds",
+			timeouts.MaxRouteTimeoutInSeconds, constants.MaxReasonableTimeoutSeconds)
+	}
+
+	if timeouts.RouteIdleTimeoutInSeconds > constants.MaxReasonableTimeoutSeconds {
+		return fmt.Errorf("router.envoy_upstream.timeouts.route_idle_timeout_in_seconds (%d) exceeds maximum reasonable timeout of %d seconds",
+			timeouts.RouteIdleTimeoutInSeconds, constants.MaxReasonableTimeoutSeconds)
 	}
 
 	return nil

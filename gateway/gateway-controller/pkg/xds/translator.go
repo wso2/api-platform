@@ -372,9 +372,6 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 		},
 	}
 
-	// Configure ALPN protocols for TLS to enable HTTP/2 and HTTP/1.1 negotiation with the upstream.
-	upstreamTLSContext.CommonTlsContext.AlpnProtocols = []string{constants.ALPNProtocolHTTP2, constants.ALPNProtocolHTTP11}
-
 	// Determine if address is IP or hostname and set SNI accordingly
 	isIP := net.ParseIP(address) != nil
 	if !isIP {
@@ -398,6 +395,7 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 			}
 		}
 
+		// Set trusted CA for validation if provided. Otherwise, Envoy will fall back to the system default trust store.
 		if trustedCASource != nil {
 			upstreamTLSContext.CommonTlsContext.ValidationContextType = &tlsv3.CommonTlsContext_ValidationContext{
 				ValidationContext: &tlsv3.CertificateValidationContext{
