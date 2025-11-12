@@ -283,6 +283,91 @@ func (h *APIHandler) DeleteAPI(c *gin.Context) {
 	c.JSON(http.StatusNoContent, nil)
 }
 
+// AddGatewaysToAPI handles POST /api/v1/apis/:apiId/gateways to associate gateways with an API
+func (h *APIHandler) AddGatewaysToAPI(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	apiId := c.Param("apiId")
+	if apiId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API ID is required"))
+		return
+	}
+
+	var req []dto.AddGatewayToAPIRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		return
+	}
+
+	if len(req) == 0 {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"At least one gateway ID is required"))
+		return
+	}
+
+	// Extract gateway IDs from request
+	gatewayIds := make([]string, len(req))
+	for i, gw := range req {
+		gatewayIds[i] = gw.GatewayID
+	}
+
+	gateways, err := h.apiService.AddGatewaysToAPI(apiId, gatewayIds, orgId)
+	if err != nil {
+		if errors.Is(err, constants.ErrAPINotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"API not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrGatewayNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"One or more gateways not found"))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to associate gateways with API"))
+		return
+	}
+
+	c.JSON(http.StatusOK, gateways)
+}
+
+// GetAPIGateways handles GET /api/v1/apis/:apiId/gateways to get gateways associated with an API including deployment details
+func (h *APIHandler) GetAPIGateways(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	apiId := c.Param("apiId")
+	if apiId == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API ID is required"))
+		return
+	}
+
+	gateways, err := h.apiService.GetAPIGateways(apiId, orgId)
+	if err != nil {
+		if errors.Is(err, constants.ErrAPINotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"API not found"))
+			return
+		}
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to get API gateways"))
+		return
+	}
+
+	c.JSON(http.StatusOK, gateways)
+}
+
 // DeployAPIRevision handles POST /api/v1/apis/:apiId/deploy-revision to deploy an API revision
 func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
@@ -338,36 +423,6 @@ func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, deployments)
-}
-
-// GetAPIDeployedGateways handles GET /api/v1/apis/{apiId}/gateways
-func (h *APIHandler) GetAPIDeployedGateways(c *gin.Context) {
-	orgId, exists := middleware.GetOrganizationFromContext(c)
-	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in token"))
-		return
-	}
-
-	apiId := c.Param("apiId")
-	if apiId == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", "API ID is required"))
-		return
-	}
-
-	// Get paginated gateways for the API
-	gatewayListResponse, err := h.apiService.GetGatewaysForAPI(apiId, orgId)
-	if err != nil {
-		if errors.Is(err, constants.ErrAPINotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found", "API not found"))
-			return
-		}
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", "Failed to get API gateways"))
-		return
-	}
-
-	// Return paginated gateway list
-	c.JSON(http.StatusOK, gatewayListResponse)
 }
 
 // PublishToDevPortal handles POST /api/v1/apis/:apiId/devportals/publish
@@ -554,8 +609,8 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		apiGroup.PUT("/:apiId", h.UpdateAPI)
 		apiGroup.DELETE("/:apiId", h.DeleteAPI)
 		apiGroup.POST("/:apiId/deploy-revision", h.DeployAPIRevision)
-		apiGroup.GET("/:apiId/gateways", h.GetAPIDeployedGateways)
-		// DevPortal endpoints
+		apiGroup.GET("/:apiId/gateways", h.GetAPIGateways)
+		apiGroup.POST("/:apiId/gateways", h.AddGatewaysToAPI)
 		apiGroup.POST("/:apiId/devportals/publish", h.PublishToDevPortal)
 		apiGroup.POST("/:apiId/devportals/unpublish", h.UnpublishFromDevPortal)
 		apiGroup.GET("/:apiId/publications", h.GetAPIPublications)

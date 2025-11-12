@@ -136,6 +136,7 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 	}
 
 	apiCreated := false
+	now := time.Now()
 	if existingAPI == nil {
 		// Create backend services from upstream configurations
 		var backendServiceUUIDs []string
@@ -162,6 +163,7 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 		}
 
 		// Create new API from notification (without backend services in the model)
+
 		newAPI := &model.API{
 			ID:               apiID,
 			Name:             notification.Configuration.Data.Name,
@@ -177,8 +179,8 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 			IsRevision:       false,
 			RevisionID:       0,
 			Operations:       operations,
-			CreatedAt:        time.Now(),
-			UpdatedAt:        time.Now(),
+			CreatedAt:        now,
+			UpdatedAt:        now,
 		}
 
 		err = s.apiRepo.CreateAPI(newAPI)
@@ -215,12 +217,42 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 		}
 	}
 
+	// Check if API-gateway association exists, create if not
+	existingAssociations, err := s.apiRepo.GetAPIGatewayAssociations(apiID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check existing API-gateway associations: %w", err)
+	}
+
+	// Check if gateway is already associated with the API
+	isAssociated := false
+	for _, assoc := range existingAssociations {
+		if assoc.GatewayID == gatewayID {
+			isAssociated = true
+			break
+		}
+	}
+
+	// If gateway is not associated with the API, create the association
+	if !isAssociated {
+		association := &model.APIGatewayAssociation{
+			ApiID:          apiID,
+			OrganizationID: orgID,
+			GatewayID:      gatewayID,
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		}
+
+		if err := s.apiRepo.CreateAPIGatewayAssociation(association); err != nil {
+			return nil, fmt.Errorf("failed to create API-gateway association: %w", err)
+		}
+	}
+
 	// Create deployment record
 	deployment := &model.APIDeployment{
 		ApiID:          apiID,
 		GatewayID:      gatewayID,
 		OrganizationID: orgID,
-		CreatedAt:      time.Now(),
+		CreatedAt:      now,
 	}
 
 	err = s.apiRepo.CreateDeployment(deployment)

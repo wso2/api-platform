@@ -54,6 +54,12 @@ type APIRepository interface {
 	DeleteAPI(apiId string) error
 	CreateDeployment(deployment *model.APIDeployment) error
 	GetDeploymentsByAPIUUID(apiId string) ([]*model.APIDeployment, error)
+
+	// API-Gateway association methods
+	CreateAPIGatewayAssociation(association *model.APIGatewayAssociation) error
+	GetAPIGatewayAssociations(apiId, orgId string) ([]*model.APIGatewayAssociation, error)
+	UpdateAPIGatewayAssociation(apiId, gatewayId, orgId string) error
+	GetAPIGatewaysWithDetails(apiId, organizationId string) ([]*model.APIGatewayWithDetails, error)
 }
 
 // BackendServiceRepository defines the interface for backend service data operations
@@ -79,7 +85,6 @@ type GatewayRepository interface {
 	GetByUUID(gatewayId string) (*model.Gateway, error)
 	GetByOrganizationID(orgID string) ([]*model.Gateway, error)
 	GetByNameAndOrgID(name, orgID string) (*model.Gateway, error)
-	GetGatewaysByAPIID(apiID, organizationID string) ([]*model.Gateway, error)
 	List() ([]*model.Gateway, error)
 	Delete(gatewayID, organizationID string) error
 	UpdateGateway(gateway *model.Gateway) error

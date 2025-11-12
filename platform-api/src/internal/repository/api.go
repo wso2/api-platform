@@ -918,3 +918,132 @@ func (r *APIRepo) GetDeploymentsByAPIUUID(apiId string) ([]*model.APIDeployment,
 
 	return deployments, rows.Err()
 }
+
+// CreateAPIGatewayAssociation creates an association between an API and a gateway
+func (r *APIRepo) CreateAPIGatewayAssociation(association *model.APIGatewayAssociation) error {
+	query := `
+		INSERT INTO api_gateway_associations (api_uuid, organization_uuid, gateway_uuid, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+	`
+	result, err := r.db.Exec(query, association.ApiID, association.OrganizationID,
+		association.GatewayID, association.CreatedAt, association.UpdatedAt)
+	if err != nil {
+		return err
+	}
+
+	// Get the auto-generated ID
+	id, err := result.LastInsertId()
+	if err != nil {
+		return err
+	}
+	association.ID = int(id)
+
+	return nil
+}
+
+// UpdateAPIGatewayAssociation updates the updated_at timestamp for an existing API-gateway association
+func (r *APIRepo) UpdateAPIGatewayAssociation(apiId, gatewayId, orgId string) error {
+	query := `
+		UPDATE api_gateway_associations 
+		SET updated_at = ?
+		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ?
+	`
+	_, err := r.db.Exec(query, time.Now(), apiId, gatewayId, orgId)
+	return err
+}
+
+// GetAPIGatewayAssociations retrieves all gateway associations for an API
+func (r *APIRepo) GetAPIGatewayAssociations(apiId, orgId string) ([]*model.APIGatewayAssociation, error) {
+	query := `
+		SELECT id, api_uuid, organization_uuid, gateway_uuid, created_at, updated_at
+		FROM api_gateway_associations
+		WHERE api_uuid = ? AND organization_uuid = ?
+	`
+	rows, err := r.db.Query(query, apiId, orgId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var associations []*model.APIGatewayAssociation
+	for rows.Next() {
+		var association model.APIGatewayAssociation
+		err := rows.Scan(&association.ID, &association.ApiID, &association.OrganizationID,
+			&association.GatewayID, &association.CreatedAt, &association.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		associations = append(associations, &association)
+	}
+
+	return associations, rows.Err()
+}
+
+// GetAPIGatewaysWithDetails retrieves all gateways associated with an API including deployment details
+func (r *APIRepo) GetAPIGatewaysWithDetails(apiId, organizationId string) ([]*model.APIGatewayWithDetails, error) {
+	query := `
+		SELECT 
+			g.uuid as id,
+			g.organization_uuid as organization_id,
+			g.name,
+			g.display_name,
+			g.description,
+			g.vhost,
+			g.is_critical,
+			g.gateway_functionality_type as functionality_type,
+			g.is_active,
+			g.created_at,
+			g.updated_at,
+			aga.created_at as associated_at,
+			aga.updated_at as association_updated_at,
+			CASE WHEN ad.id IS NOT NULL THEN 1 ELSE 0 END as is_deployed,
+			ad.created_at as deployed_at
+		FROM gateways g
+		INNER JOIN api_gateway_associations aga ON g.uuid = aga.gateway_uuid
+		LEFT JOIN api_deployments ad ON g.uuid = ad.gateway_uuid AND ad.api_uuid = ?
+		WHERE aga.api_uuid = ? AND g.organization_uuid = ?
+		ORDER BY aga.created_at DESC
+	`
+
+	rows, err := r.db.Query(query, apiId, apiId, organizationId)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var gateways []*model.APIGatewayWithDetails
+	for rows.Next() {
+		gateway := &model.APIGatewayWithDetails{}
+		var deployedAt *time.Time
+
+		err := rows.Scan(
+			&gateway.ID,
+			&gateway.OrganizationID,
+			&gateway.Name,
+			&gateway.DisplayName,
+			&gateway.Description,
+			&gateway.Vhost,
+			&gateway.IsCritical,
+			&gateway.FunctionalityType,
+			&gateway.IsActive,
+			&gateway.CreatedAt,
+			&gateway.UpdatedAt,
+			&gateway.AssociatedAt,
+			&gateway.AssociationUpdatedAt,
+			&gateway.IsDeployed,
+			&deployedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		gateway.DeployedAt = deployedAt
+		// For now, we don't have revision information in api_deployments table
+		// This can be enhanced when revision support is added
+		gateway.DeployedRevision = nil
+
+		gateways = append(gateways, gateway)
+	}
+
+	return gateways, rows.Err()
+}

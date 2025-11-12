@@ -232,6 +232,19 @@ CREATE TABLE IF NOT EXISTS api_deployments (
     UNIQUE(api_uuid, gateway_uuid)
 );
 
+-- API Gateway Associations table
+CREATE TABLE IF NOT EXISTS api_gateway_associations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    api_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    gateway_uuid VARCHAR(40) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
+    UNIQUE(api_uuid, gateway_uuid, organization_uuid)
+);
 
 -- Gateways table (scoped to organizations)
 CREATE TABLE IF NOT EXISTS gateways (
@@ -340,3 +353,6 @@ CREATE INDEX IF NOT EXISTS idx_api_publications_org ON api_publications(organiza
 CREATE INDEX IF NOT EXISTS idx_api_publications_api_devportal_org ON api_publications(api_uuid, devportal_uuid, organization_uuid);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_devportals_default_per_org ON devportals(organization_uuid) WHERE is_default = TRUE;
+CREATE INDEX IF NOT EXISTS idx_api_gateway_associations_api ON api_gateway_associations(api_uuid, organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_gateway_associations_gateway ON api_gateway_associations(gateway_uuid, organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_gateway_associations_org ON api_gateway_associations(organization_uuid);

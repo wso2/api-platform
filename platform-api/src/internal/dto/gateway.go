@@ -91,6 +91,34 @@ type GatewayStatusListResponse struct {
 	Pagination Pagination              `json:"pagination"`
 }
 
+// AddGatewayToAPIRequest represents the request to associate a gateway with an API
+type AddGatewayToAPIRequest struct {
+	GatewayID string `json:"gatewayId" binding:"required"`
+}
+
+// APIDeploymentDetails represents deployment details for an API on a gateway
+type APIDeploymentDetails struct {
+	RevisionID string    `json:"revisionId"`
+	Status     string    `json:"status"` // CREATED, APPROVED, REJECTED
+	DeployedAt time.Time `json:"deployedAt"`
+}
+
+// APIGatewayResponse represents a gateway with API association and deployment details
+// This extends GatewayResponse with additional association and deployment fields
+type APIGatewayResponse struct {
+	GatewayResponse                       // Embedded gateway details
+	AssociatedAt    time.Time             `json:"associatedAt"`
+	IsDeployed      bool                  `json:"isDeployed"`
+	Deployment      *APIDeploymentDetails `json:"deployment,omitempty"` // Only present when isDeployed is true
+}
+
+// APIGatewayListResponse represents a paginated list of gateways with API association and deployment details
+type APIGatewayListResponse struct {
+	Count      int                  `json:"count"`      // Number of items in current response
+	List       []APIGatewayResponse `json:"list"`       // Array of gateway objects with deployment details
+	Pagination Pagination           `json:"pagination"` // Pagination metadata
+}
+
 // GatewayArtifact represents an artifact (API, MCP, API Product) deployed to a gateway
 type GatewayArtifact struct {
 	ID          string    `json:"id"`
