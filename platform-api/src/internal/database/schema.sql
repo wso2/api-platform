@@ -278,6 +278,58 @@ CREATE TABLE IF NOT EXISTS gateway_tokens (
     CHECK (revoked_at IS NULL OR status = 'revoked')
 );
 
+-- DevPortals table
+CREATE TABLE IF NOT EXISTS devportals (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    identifier VARCHAR(100) NOT NULL,
+    api_url VARCHAR(255) NOT NULL,
+    hostname VARCHAR(255) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    api_key VARCHAR(255) NOT NULL,
+    header_key_name VARCHAR(100) DEFAULT 'x-wso2-api-key',
+    is_default BOOLEAN DEFAULT FALSE,
+    is_enabled BOOLEAN DEFAULT FALSE,
+    visibility VARCHAR(20) NOT NULL DEFAULT 'private',
+    description VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, api_url),
+    UNIQUE(identifier, api_url),
+    UNIQUE(organization_uuid, hostname)
+);
+
+-- API-DevPortal Publication Tracking Table
+-- This table tracks which APIs are published to which DevPortals
+
+CREATE TABLE IF NOT EXISTS api_publications (
+    api_uuid VARCHAR(40) NOT NULL,
+    devportal_uuid VARCHAR(40) NOT NULL,
+    organization_uuid VARCHAR(40) NOT NULL,
+    status VARCHAR(20) NOT NULL CHECK (status IN ('published', 'unpublished', 'failed', 'publishing', 'unpublishing')),
+    api_version VARCHAR(50),
+    devportal_ref_id VARCHAR(100),
+
+    -- Gateway endpoints for sandbox and production
+    sandbox_gateway_uuid VARCHAR(40) NOT NULL,
+    production_gateway_uuid VARCHAR(40) NOT NULL,
+
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- Foreign key constraints
+    PRIMARY KEY (api_uuid, devportal_uuid, organization_uuid),
+    FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (devportal_uuid) REFERENCES devportals(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (sandbox_gateway_uuid) REFERENCES gateways(uuid),
+    FOREIGN KEY (production_gateway_uuid) REFERENCES gateways(uuid),
+    UNIQUE (api_uuid, devportal_uuid, organization_uuid)
+);
+
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_projects_organization_id ON projects(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_organizations_handle ON organizations(handle);
@@ -293,6 +345,14 @@ CREATE INDEX IF NOT EXISTS idx_operation_backend_services_operation_id ON operat
 CREATE INDEX IF NOT EXISTS idx_operation_backend_services_backend_uuid ON operation_backend_services(backend_service_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateways_org ON gateways(organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_gateway_tokens_status ON gateway_tokens(gateway_uuid, status);
+CREATE INDEX IF NOT EXISTS idx_devportals_org ON devportals(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_devportals_active ON devportals(organization_uuid, is_active);
+CREATE INDEX IF NOT EXISTS idx_api_publications_api ON api_publications(api_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_publications_devportal ON api_publications(devportal_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_publications_org ON api_publications(organization_uuid);
+CREATE INDEX IF NOT EXISTS idx_api_publications_api_devportal_org ON api_publications(api_uuid, devportal_uuid, organization_uuid);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_devportals_default_per_org ON devportals(organization_uuid) WHERE is_default = TRUE;
 CREATE INDEX IF NOT EXISTS idx_api_gateway_associations_api ON api_gateway_associations(api_uuid, organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_gateway_associations_gateway ON api_gateway_associations(gateway_uuid, organization_uuid);
 CREATE INDEX IF NOT EXISTS idx_api_gateway_associations_org ON api_gateway_associations(organization_uuid);

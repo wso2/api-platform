@@ -34,11 +34,11 @@ import (
 	"time"
 
 	"platform-api/src/config"
-	"platform-api/src/internal/client/apiportal"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/handler"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/service"
+	"platform-api/src/internal/utils"
 	"platform-api/src/internal/websocket"
 
 	"github.com/gin-contrib/cors"
@@ -73,6 +73,8 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	apiRepo := repository.NewAPIRepo(db)
 	gatewayRepo := repository.NewGatewayRepo(db)
 	backendServiceRepo := repository.NewBackendServiceRepo(db)
+	devPortalRepo := repository.NewDevPortalRepository(db)
+	publicationRepo := repository.NewAPIPublicationRepository(db)
 
 	// Initialize WebSocket manager first (needed for GatewayEventsService)
 	wsConfig := websocket.ManagerConfig{
@@ -82,15 +84,18 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	}
 	wsManager := websocket.NewManager(wsConfig)
 
-	// Initialize api portal client
-	apiPortalClient := apiportal.NewApiPortalClient(cfg.ApiPortal)
+	// Initialize utilities
+	apiUtil := &utils.APIUtil{}
+
+	// Initialize DevPortal service
+	devPortalService := service.NewDevPortalService(devPortalRepo, orgRepo, publicationRepo, gatewayRepo, apiRepo, apiUtil, cfg)
 
 	// Initialize services
-	orgService := service.NewOrganizationService(orgRepo, projectRepo, apiPortalClient)
+	orgService := service.NewOrganizationService(orgRepo, projectRepo, devPortalService, cfg)
 	projectService := service.NewProjectService(projectRepo, orgRepo, apiRepo)
 	gatewayEventsService := service.NewGatewayEventsService(wsManager)
 	upstreamService := service.NewUpstreamService(backendServiceRepo)
-	apiService := service.NewAPIService(apiRepo, projectRepo, gatewayRepo, upstreamService, gatewayEventsService, apiPortalClient)
+	apiService := service.NewAPIService(apiRepo, projectRepo, gatewayRepo, devPortalRepo, publicationRepo, upstreamService, gatewayEventsService, devPortalService, apiUtil)
 	gatewayService := service.NewGatewayService(gatewayRepo, orgRepo, apiRepo)
 	internalGatewayService := service.NewGatewayInternalAPIService(apiRepo, gatewayRepo, orgRepo, projectRepo, upstreamService)
 
@@ -98,6 +103,7 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	orgHandler := handler.NewOrganizationHandler(orgService)
 	projectHandler := handler.NewProjectHandler(projectService)
 	apiHandler := handler.NewAPIHandler(apiService)
+	devPortalHandler := handler.NewDevPortalHandler(devPortalService)
 	gatewayHandler := handler.NewGatewayHandler(gatewayService)
 	wsHandler := handler.NewWebSocketHandler(wsManager, gatewayService, cfg.WebSocket.RateLimitPerMin)
 	internalGatewayHandler := handler.NewGatewayInternalAPIHandler(gatewayService, internalGatewayService)
@@ -126,6 +132,7 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	orgHandler.RegisterRoutes(router)
 	projectHandler.RegisterRoutes(router)
 	apiHandler.RegisterRoutes(router)
+	devPortalHandler.RegisterRoutes(router)
 	gatewayHandler.RegisterRoutes(router)
 	wsHandler.RegisterRoutes(router)
 	internalGatewayHandler.RegisterRoutes(router)

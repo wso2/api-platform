@@ -19,6 +19,7 @@ package service
 
 import (
 	"log"
+	"platform-api/src/config"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
@@ -28,23 +29,22 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
-	"platform-api/src/internal/client/apiportal"
-	apiportalDto "platform-api/src/internal/client/apiportal/dto"
 )
 
 type OrganizationService struct {
-	orgRepo         repository.OrganizationRepository
-	projectRepo     repository.ProjectRepository
-	apiPortalClient *apiportal.ApiPortalClient
+	orgRepo          repository.OrganizationRepository
+	projectRepo      repository.ProjectRepository
+	devPortalService *DevPortalService
+	config           *config.Server
 }
 
 func NewOrganizationService(orgRepo repository.OrganizationRepository,
-	projectRepo repository.ProjectRepository, apiPortalClient *apiportal.ApiPortalClient) *OrganizationService {
+	projectRepo repository.ProjectRepository, devPortalService *DevPortalService, cfg *config.Server) *OrganizationService {
 	return &OrganizationService{
-		orgRepo:         orgRepo,
-		projectRepo:     projectRepo,
-		apiPortalClient: apiPortalClient,
+		orgRepo:          orgRepo,
+		projectRepo:      projectRepo,
+		devPortalService: devPortalService,
+		config:           cfg,
 	}
 }
 
@@ -70,48 +70,7 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 		name = handle // Default name to handle if not provided
 	}
 
-	// Synchronize with api portal if enabled
-	if s.apiPortalClient != nil && s.apiPortalClient.IsEnabled() {
-		log.Printf("[OrganizationService] api portal enabled, synchronizing organization: %s", name)
-
-		// Create organization in api portal
-		// Map platform-api organization to apiportal format
-		orgReq := &apiportalDto.OrganizationCreateRequest{
-			OrgID:                  id,                    // Platform-api organization UUID
-			OrgName:                name,                  // Organization display name
-			OrgHandle:              handle,                // URL-friendly handle
-			OrganizationIdentifier: handle,                // Use handle as identifier
-			RoleClaimName:          "roles",               // Default JWT claim for roles
-			GroupsClaimName:        "groups",              // Default JWT claim for groups
-			OrganizationClaimName:  "organizationID",      // Default JWT claim for organization
-			AdminRole:              "admin",               // Default admin role
-			SubscriberRole:         "Internal/subscriber", // Default subscriber role
-			SuperAdminRole:         "superAdmin",          // Default super admin role
-		}
-
-		orgResp, err := s.apiPortalClient.CreateOrganization(orgReq)
-		if err != nil {
-			log.Printf("[OrganizationService] Failed to create organization in api portal: %v", err)
-			return nil, constants.ErrApiPortalSync
-		}
-
-		log.Printf("[OrganizationService] Organization synced to api portal: %s (ID: %s)", orgResp.OrgName, orgResp.OrgID)
-
-		// Create default "unlimited" subscription policy
-		policyReq := s.apiPortalClient.CreateDefaultSubscriptionPolicy()
-		policyResp, err := s.apiPortalClient.CreateSubscriptionPolicy(id, policyReq)
-		if err != nil {
-			log.Printf("[OrganizationService] Failed to create subscription policy in api portal: %v", err)
-			// Note: Organization already created in apiportal, but policy creation failed
-			return nil, constants.ErrApiPortalSync
-		}
-
-		log.Printf("[OrganizationService] Default subscription policy created: %s (ID: %s)", policyResp.PolicyName, policyResp.ID)
-	} else {
-		log.Printf("[OrganizationService] api portal disabled, skipping synchronization")
-	}
-
-	// CreateOrganization organization in platform-api
+	// Create organization in platform-api database first
 	org := &dto.Organization{
 		ID:        id,
 		Handle:    handle,
@@ -125,6 +84,19 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	err = s.orgRepo.CreateOrganization(orgModel)
 	if err != nil {
 		return nil, err
+	}
+
+	// Create default DevPortal if enabled
+	if s.devPortalService != nil && s.config != nil && s.config.DefaultDevPortal.Enabled {
+		defaultDevPortal, devPortalErr := s.devPortalService.CreateDefaultDevPortal(id)
+		if devPortalErr != nil {
+			log.Printf("[OrganizationService] Failed to create default DevPortal for organization %s: %v", name, devPortalErr)
+			// Don't fail organization creation, but log the error
+		} else if defaultDevPortal != nil {
+			log.Printf("[OrganizationService] Created default DevPortal %s for organization %s (inactive state)",
+				defaultDevPortal.Name, name)
+		}
+		// No organization sync during creation - sync happens during DevPortal activation
 	}
 
 	// Create default project for the organization

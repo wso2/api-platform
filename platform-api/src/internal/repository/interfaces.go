@@ -97,3 +97,19 @@ type GatewayRepository interface {
 	RevokeToken(tokenId string) error
 	CountActiveTokens(gatewayId string) (int, error)
 }
+
+// DevPortalRepository interface for DevPortal-related database operations
+type DevPortalRepository interface {
+	// Basic CRUD operations
+	Create(devPortal *model.DevPortal) error
+	GetByUUID(uuid, orgUUID string) (*model.DevPortal, error)
+	GetByOrganizationUUID(orgUUID string, isDefault, isActive *bool, limit, offset int) ([]*model.DevPortal, error)
+	Update(devPortal *model.DevPortal, orgUUID string) error
+	Delete(uuid, orgUUID string) error
+
+	// Special operations
+	GetDefaultByOrganizationUUID(orgUUID string) (*model.DevPortal, error)
+	CountByOrganizationUUID(orgUUID string, isDefault, isActive *bool) (int, error)
+	UpdateEnabledStatus(uuid, orgUUID string, isEnabled bool) error
+	SetAsDefault(uuid, orgUUID string) error
+}
