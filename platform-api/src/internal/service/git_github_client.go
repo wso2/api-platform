@@ -67,38 +67,63 @@ func (c *GitHubClient) GetProvider() GitProvider {
 
 // FetchRepoBranches fetches the branches of a GitHub repository
 func (c *GitHubClient) FetchRepoBranches(owner, repo string) (*dto.GitRepoBranchesResponse, error) {
-	// Use GitHub API to fetch repository branches
-	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/branches?per_page=100&page=1", owner, repo)
+	// Start with initial request URL without hardcoded page
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/branches?per_page=100", owner, repo)
 
-	// Make API request
-	resp, err := c.httpClient.Get(apiURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch repository branches: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Handle different HTTP status codes
-	switch resp.StatusCode {
-	case http.StatusOK:
-		// Continue processing
-	case http.StatusNotFound:
-		return nil, fmt.Errorf("repository not found or is private")
-	case http.StatusForbidden:
-		return nil, fmt.Errorf("access forbidden - repository may be private or rate limit exceeded")
-	case http.StatusUnauthorized:
-		return nil, fmt.Errorf("unauthorized access - repository may be private")
-	default:
-		return nil, fmt.Errorf("unexpected response status: %d", resp.StatusCode)
-	}
-
-	// Parse GitHub API response
-	var githubBranches []struct {
+	var allBranches []struct {
 		Name      string `json:"name"`
 		Protected bool   `json:"protected"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&githubBranches); err != nil {
-		return nil, fmt.Errorf("failed to parse repository branches: %w", err)
+	// Loop through all pages using GitHub pagination
+	for apiURL != "" {
+		// Make API request
+		resp, err := c.httpClient.Get(apiURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch repository branches: %w", err)
+		}
+
+		// Handle different HTTP status codes
+		switch resp.StatusCode {
+		case http.StatusOK:
+			// Continue processing
+		case http.StatusNotFound:
+			resp.Body.Close()
+			return nil, fmt.Errorf("repository not found or is private")
+		case http.StatusForbidden:
+			resp.Body.Close()
+			return nil, fmt.Errorf("access forbidden - repository may be private or rate limit exceeded")
+		case http.StatusUnauthorized:
+			resp.Body.Close()
+			return nil, fmt.Errorf("unauthorized access - repository may be private")
+		default:
+			resp.Body.Close()
+			return nil, fmt.Errorf("unexpected response status: %d", resp.StatusCode)
+		}
+
+		// Parse current page's branches
+		var pageBranches []struct {
+			Name      string `json:"name"`
+			Protected bool   `json:"protected"`
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&pageBranches); err != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("failed to parse repository branches: %w", err)
+		}
+
+		// Append current page's branches to the complete list
+		allBranches = append(allBranches, pageBranches...)
+
+		// Extract next page URL from Link header
+		linkHeader := resp.Header.Get("link")
+		nextURL := c.extractNextLink(linkHeader)
+
+		// Close response body before next iteration
+		resp.Body.Close()
+
+		// Set next URL or empty to stop the loop
+		apiURL = nextURL
 	}
 
 	// Get default branch info
@@ -106,14 +131,14 @@ func (c *GitHubClient) FetchRepoBranches(owner, repo string) (*dto.GitRepoBranch
 	if err != nil {
 		// If we can't get default branch, assume "main" or first branch
 		defaultBranch = "main"
-		if len(githubBranches) > 0 {
-			defaultBranch = githubBranches[0].Name
+		if len(allBranches) > 0 {
+			defaultBranch = allBranches[0].Name
 		}
 	}
 
 	// Convert GitHub API response to our DTO format
-	branches := make([]dto.GitRepoBranch, 0, len(githubBranches))
-	for _, branch := range githubBranches {
+	branches := make([]dto.GitRepoBranch, 0, len(allBranches))
+	for _, branch := range allBranches {
 		isDefault := "false"
 		if branch.Name == defaultBranch {
 			isDefault = "true"
@@ -167,6 +192,11 @@ func (c *GitHubClient) FetchRepoContent(owner, repo, branch string) (*dto.GitRep
 		return nil, fmt.Errorf("failed to parse repository content: %w", err)
 	}
 
+	if treeResponse.Truncated {
+		return nil, fmt.Errorf("GitHub returned a truncated tree for %s/%s@%s; fetch the tree non-recursively"+
+			" to avoid data loss", owner, repo, branch)
+	}
+
 	// Build tree structure from the flat list of paths
 	rootItems, totalItems, maxDepth := c.buildTreeFromPaths(treeResponse.Tree)
 
@@ -181,6 +211,31 @@ func (c *GitHubClient) FetchRepoContent(owner, repo, branch string) (*dto.GitRep
 	}
 
 	return response, nil
+}
+
+// extractNextLink parses the GitHub Link header to find the next page URL
+func (c *GitHubClient) extractNextLink(linkHeader string) string {
+	if linkHeader == "" {
+		return ""
+	}
+
+	// GitHub Link header format: <https://api.github.com/repos/.../branches?page=2>; rel="next", <https://...>; rel="last"
+	links := strings.Split(linkHeader, ",")
+	for _, link := range links {
+		parts := strings.Split(strings.TrimSpace(link), ";")
+		if len(parts) != 2 {
+			continue
+		}
+
+		url := strings.Trim(strings.TrimSpace(parts[0]), "<>")
+		rel := strings.TrimSpace(parts[1])
+
+		if strings.Contains(rel, `rel="next"`) {
+			return url
+		}
+	}
+
+	return ""
 }
 
 // buildTreeFromPaths builds a hierarchical tree structure from a flat list of Git tree entries
