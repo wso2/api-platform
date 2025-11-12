@@ -433,7 +433,7 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 	}
 
 	// Get existing associations to check which gateways need association
-	existingAssociations, err := s.apiRepo.GetAPIGatewayAssociations(apiId, orgId)
+	existingAssociations, err := s.apiRepo.GetAPIAssociations(apiId, constants.AssociationTypeGateway, orgId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing API-gateway associations: %w", err)
 	}
@@ -441,7 +441,7 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 	// Create a map of existing gateway associations for quick lookup
 	existingGatewayIds := make(map[string]bool)
 	for _, assoc := range existingAssociations {
-		existingGatewayIds[assoc.GatewayID] = true
+		existingGatewayIds[assoc.ResourceID] = true
 	}
 
 	// Process deployment requests and create deployment responses
@@ -459,15 +459,16 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 			log.Printf("[INFO] Creating API-gateway association: apiId=%s gatewayId=%s",
 				apiId, deploymentReq.GatewayID)
 
-			association := &model.APIGatewayAssociation{
-				ApiID:          apiId,
-				OrganizationID: orgId,
-				GatewayID:      deploymentReq.GatewayID,
-				CreatedAt:      time.Now(),
-				UpdatedAt:      time.Now(),
+			association := &model.APIAssociation{
+				ApiID:           apiId,
+				OrganizationID:  orgId,
+				ResourceID:      deploymentReq.GatewayID,
+				AssociationType: constants.AssociationTypeGateway,
+				CreatedAt:       time.Now(),
+				UpdatedAt:       time.Now(),
 			}
 
-			if err := s.apiRepo.CreateAPIGatewayAssociation(association); err != nil {
+			if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
 				return nil, fmt.Errorf("failed to create API-gateway association for gateway %s: %w",
 					deploymentReq.GatewayID, err)
 			}
@@ -557,34 +558,35 @@ func (s *APIService) AddGatewaysToAPI(apiId string, gatewayIds []string, orgId s
 	}
 
 	// Get existing associations to determine which are new vs existing
-	existingAssociations, err := s.apiRepo.GetAPIGatewayAssociations(apiId, orgId)
+	existingAssociations, err := s.apiRepo.GetAPIAssociations(apiId, constants.AssociationTypeGateway, orgId)
 	if err != nil {
 		return nil, err
 	}
 
 	existingGatewayIds := make(map[string]bool)
 	for _, assoc := range existingAssociations {
-		existingGatewayIds[assoc.GatewayID] = true
+		existingGatewayIds[assoc.ResourceID] = true
 	}
 
 	// Process each gateway: create new associations or update existing ones
 	for _, gateway := range validGateways {
 		if existingGatewayIds[gateway.ID] {
 			// Update existing association timestamp
-			if err := s.apiRepo.UpdateAPIGatewayAssociation(apiId, gateway.ID, orgId); err != nil {
+			if err := s.apiRepo.UpdateAPIAssociation(apiId, gateway.ID, constants.AssociationTypeGateway, orgId); err != nil {
 				return nil, err
 			}
 		} else {
 			// Create new association
-			association := &model.APIGatewayAssociation{
-				ApiID:          apiId,
-				OrganizationID: orgId,
-				GatewayID:      gateway.ID,
-				CreatedAt:      time.Now(),
-				UpdatedAt:      time.Now(),
+			association := &model.APIAssociation{
+				ApiID:           apiId,
+				OrganizationID:  orgId,
+				ResourceID:      gateway.ID,
+				AssociationType: constants.AssociationTypeGateway,
+				CreatedAt:       time.Now(),
+				UpdatedAt:       time.Now(),
 			}
 
-			if err := s.apiRepo.CreateAPIGatewayAssociation(association); err != nil {
+			if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
 				return nil, err
 			}
 			existingGatewayIds[gateway.ID] = true

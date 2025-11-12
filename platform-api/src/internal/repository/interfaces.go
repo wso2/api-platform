@@ -56,10 +56,12 @@ type APIRepository interface {
 	GetDeploymentsByAPIUUID(apiId string) ([]*model.APIDeployment, error)
 
 	// API-Gateway association methods
-	CreateAPIGatewayAssociation(association *model.APIGatewayAssociation) error
-	GetAPIGatewayAssociations(apiId, orgId string) ([]*model.APIGatewayAssociation, error)
-	UpdateAPIGatewayAssociation(apiId, gatewayId, orgId string) error
 	GetAPIGatewaysWithDetails(apiId, organizationId string) ([]*model.APIGatewayWithDetails, error)
+
+	// Unified API association methods (supports both gateways and dev portals)
+	CreateAPIAssociation(association *model.APIAssociation) error
+	GetAPIAssociations(apiId, associationType, orgId string) ([]*model.APIAssociation, error)
+	UpdateAPIAssociation(apiId, resourceId, associationType, orgId string) error
 }
 
 // BackendServiceRepository defines the interface for backend service data operations
@@ -89,6 +91,11 @@ type GatewayRepository interface {
 	Delete(gatewayID, organizationID string) error
 	UpdateGateway(gateway *model.Gateway) error
 	UpdateActiveStatus(gatewayId string, isActive bool) error
+
+	// Gateway association checking operations
+	HasGatewayAPIDeployments(gatewayID, organizationID string) (bool, error)
+	HasGatewayAPIAssociations(gatewayID, organizationID string) (bool, error)
+	HasGatewayAssociations(gatewayID, organizationID string) (bool, error)
 
 	// Token operations
 	CreateToken(token *model.GatewayToken) error

@@ -69,21 +69,6 @@ func (t *GatewayToken) Revoke() {
 	t.RevokedAt = &now
 }
 
-// APIGatewayAssociation represents the association between an API and a gateway
-type APIGatewayAssociation struct {
-	ID             int       `json:"id" db:"id"`
-	ApiID          string    `json:"apiId" db:"api_uuid"`
-	OrganizationID string    `json:"organizationId" db:"organization_uuid"`
-	GatewayID      string    `json:"gatewayId" db:"gateway_uuid"`
-	CreatedAt      time.Time `json:"createdAt" db:"created_at"`
-	UpdatedAt      time.Time `json:"updatedAt" db:"updated_at"`
-}
-
-// TableName returns the table name for the APIGatewayAssociation model
-func (APIGatewayAssociation) TableName() string {
-	return "api_gateway_associations"
-}
-
 // APIGatewayWithDetails represents a gateway with its association and deployment details for an API
 type APIGatewayWithDetails struct {
 	// Gateway information

@@ -246,3 +246,19 @@ type APIDeployment struct {
 func (APIDeployment) TableName() string {
 	return "api_deployments"
 }
+
+// APIAssociation represents the association between an API and a resource (gateway or dev portal)
+type APIAssociation struct {
+	ID              int       `json:"id" db:"id"`
+	ApiID           string    `json:"apiId" db:"api_uuid"`
+	OrganizationID  string    `json:"organizationId" db:"organization_uuid"`
+	ResourceID      string    `json:"resourceId" db:"resource_uuid"`
+	AssociationType string    `json:"associationType" db:"association_type"`
+	CreatedAt       time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt       time.Time `json:"updatedAt" db:"updated_at"`
+}
+
+// TableName returns the table name for the APIAssociation model
+func (APIAssociation) TableName() string {
+	return "api_associations"
+}

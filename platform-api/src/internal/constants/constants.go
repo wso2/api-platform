@@ -100,3 +100,9 @@ var ValidArtifactTypes = map[string]bool{
 	ArtifactTypeMCP:        true,
 	ArtifactTypeAPIProduct: true,
 }
+
+// Constants for association types
+const (
+	AssociationTypeGateway   = "gateway"
+	AssociationTypeDevPortal = "dev_portal"
+)

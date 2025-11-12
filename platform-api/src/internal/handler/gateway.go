@@ -257,6 +257,12 @@ func (h *GatewayHandler) DeleteGateway(c *gin.Context) {
 				"The specified resource does not exist"))
 			return
 		}
+		if errors.Is(err, constants.ErrGatewayHasAssociatedAPIs) {
+			utils.LogError("Gateway has associated APIs during deletion", err)
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"The gateway has associated APIs. Please remove all API associations before deleting the gateway"))
+			return
+		}
 
 		if strings.Contains(err.Error(), "invalid UUID") {
 			utils.LogError("Invalid UUID during gateway deletion", err)
