@@ -46,10 +46,12 @@ var (
 	ErrInvalidAPIType        = errors.New("invalid api type")
 	ErrInvalidTransport      = errors.New("invalid transport protocol")
 	ErrInvalidAPIDeployment  = errors.New("invalid api deployment")
+	ErrGatewayNotAssociated  = errors.New("api is not associated with gateway")
 )
 
 var (
-	ErrGatewayNotFound = errors.New("gateway not found")
+	ErrGatewayNotFound          = errors.New("gateway not found")
+	ErrGatewayAlreadyAssociated = errors.New("gateway already associated with API")
 )
 
 var (

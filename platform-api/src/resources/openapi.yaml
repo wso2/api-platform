@@ -417,8 +417,8 @@ paths:
     get:
       summary: Get gateways for API
       description: |
-        Retrieves all gateways where the specified API is deployed with pagination support.
-        This endpoint returns a paginated list of gateway instances that currently have the API deployed to them.
+        Retrieves all gateways associated with the specified API, including deployment details.
+        Returns gateway information along with association timestamps and deployment status.
         Access is validated against the organization in the JWT token.
       operationId: GetAPIGateways
       tags:
@@ -428,11 +428,48 @@ paths:
         - $ref: '#/components/parameters/apiID'
       responses:
         '200':
-          description: Paginated list of gateways where the API is deployed
+          description: List of gateways associated with the API, including deployment details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GatewayListResponse'
+                $ref: '#/components/schemas/APIGatewayListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Add gateways for API
+      description: |
+        Associates gateways to the specified API. If gateways are already associated,
+        updates the association timestamp. Returns all gateways associated with the API
+        including deployment details. Access is validated against the organization 
+        in the JWT token.
+      operationId: AddGatewaysToAPI
+      tags:
+        - APIs
+        - Gateways
+      parameters:
+        - $ref: '#/components/parameters/apiID'
+      requestBody:
+        description: List of gateways to associate with the API
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/AddGatewayToAPIRequest'
+      responses:
+        '200':
+          description: List of all gateways associated with the API, including deployment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIGatewayListResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1549,6 +1586,85 @@ components:
             key: "MyHeader"
             value: "MyValue"
 
+    AddGatewayToAPIRequest:
+      title: AddGatewayToAPIRequest object with basic gateway details
+      type: object
+      required:
+        - gatewayId
+      properties:
+        gatewayId:
+          type: string
+          format: uuid
+          example: "987e6543-e21b-45d3-a789-426614174999"
+
+    APIGatewayListResponse:
+      type: object
+      required:
+        - count
+        - list
+        - pagination
+      properties:
+        count:
+          type: integer
+          description: Number of gateways in current response
+          example: 3
+        list:
+          type: array
+          description: List of gateways associated with the API, including deployment details when deployed
+          items:
+            $ref: '#/components/schemas/APIGatewayResponse'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    APIGatewayResponse:
+      type: object
+      allOf:
+        - $ref: '#/components/schemas/GatewayResponse'
+        - type: object
+          required:
+            - associatedAt
+            - isDeployed
+          properties:
+            associatedAt:
+              type: string
+              format: date-time
+              description: Timestamp when the gateway was associated with the API
+              example: "2025-10-15T10:30:00Z"
+            isDeployed:
+              type: boolean
+              description: Whether the API is currently deployed to this gateway
+              example: true
+            deployment:
+              $ref: '#/components/schemas/APIDeploymentDetails'
+              description: Deployment details (only present when isDeployed is true)
+
+    APIDeploymentDetails:
+      type: object
+      description: Details about API deployment to a specific gateway
+      required:
+        - revisionId
+        - status
+        - deployedAt
+      properties:
+        revisionId:
+          type: string
+          description: ID of the deployed API revision
+          example: "c26b2b9b-4632-4ca4-b6f3-521c8863990c"
+        status:
+          description: Current deployment status
+          type: string
+          example: CREATED
+          default: CREATED
+          enum:
+            - CREATED
+            - APPROVED
+            - REJECTED
+        deployedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the API was deployed
+          example: "2025-10-15T11:00:00Z"
+
     APIRevisionDeployment:
       title: APIRevisionDeployment Info object with basic API deployment details
       properties:
@@ -1563,6 +1679,7 @@ components:
           example: "987e6543-e21b-45d3-a789-426614174999"
         status:
           type: string
+          description: Current deployment status
           example: CREATED
           default: CREATED
           enum:
@@ -1748,6 +1865,7 @@ components:
           example: 10
 
     GatewayListResponse:
+      title: GatewayListResponse for paginated gateway results
       type: object
       required:
         - count

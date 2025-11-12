@@ -429,13 +429,16 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 		return nil, constants.ErrAPINotFound
 	}
 
-	// Convert to DTO for easier manipulation
-	api := s.apiUtil.ModelToDTO(apiModel)
-
-	// Generate API deployment YAML
-	apiYAML, err := s.apiUtil.GenerateAPIDeploymentYAML(api)
+	// Get existing associations to check which gateways need association
+	existingAssociations, err := s.apiRepo.GetAPIGatewayAssociations(apiId, orgId)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate API deployment YAML: %w", err)
+		return nil, fmt.Errorf("failed to check existing API-gateway associations: %w", err)
+	}
+
+	// Create a map of existing gateway associations for quick lookup
+	existingGatewayIds := make(map[string]bool)
+	for _, assoc := range existingAssociations {
+		existingGatewayIds[assoc.GatewayID] = true
 	}
 
 	// Process deployment requests and create deployment responses
@@ -443,9 +446,33 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 	currentTime := time.Now().Format(time.RFC3339)
 
 	for _, deploymentReq := range deploymentRequests {
-		// Validate deployment request
-		if err := s.validateDeploymentRequest(&deploymentReq, orgId); err != nil {
+		// Validate deployment request (gateway existence and organization)
+		if err := s.validateDeploymentRequest(&deploymentReq, apiId, orgId); err != nil {
 			return nil, constants.ErrInvalidAPIDeployment
+		}
+
+		// If gateway is not associated with the API, create the association
+		if !existingGatewayIds[deploymentReq.GatewayID] {
+			log.Printf("[INFO] Creating API-gateway association: apiId=%s gatewayId=%s",
+				apiId, deploymentReq.GatewayID)
+
+			association := &model.APIGatewayAssociation{
+				ApiID:          apiId,
+				OrganizationID: orgId,
+				GatewayID:      deploymentReq.GatewayID,
+				CreatedAt:      time.Now(),
+				UpdatedAt:      time.Now(),
+			}
+
+			if err := s.apiRepo.CreateAPIGatewayAssociation(association); err != nil {
+				return nil, fmt.Errorf("failed to create API-gateway association for gateway %s: %w",
+					deploymentReq.GatewayID, err)
+			}
+
+			// Add to the map to avoid duplicate creation in the same request
+			existingGatewayIds[deploymentReq.GatewayID] = true
+			log.Printf("[INFO] Created API-gateway association: apiId=%s gatewayId=%s associationId=%d",
+				apiId, deploymentReq.GatewayID, association.ID)
 		}
 
 		deployment := &dto.APIRevisionDeployment{
@@ -493,15 +520,12 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 		}
 	}
 
-	// Log the generated YAML for debugging/monitoring purposes
-	fmt.Printf("Generated API Deployment YAML for API %s:\n%s\n", apiId, apiYAML)
-
 	return deployments, nil
 }
 
-// GetGatewaysForAPI retrieves all gateways where the specified API is deployed with pagination
-func (s *APIService) GetGatewaysForAPI(apiId, orgId string) (*dto.GatewayListResponse, error) {
-	// First validate that the API exists and belongs to the organization
+// AddGatewaysToAPI associates multiple gateways with an API
+func (s *APIService) AddGatewaysToAPI(apiId string, gatewayIds []string, orgId string) (*dto.APIGatewayListResponse, error) {
+	// Validate that the API exists and belongs to the organization
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiId)
 	if err != nil {
 		return nil, err
@@ -513,38 +537,117 @@ func (s *APIService) GetGatewaysForAPI(apiId, orgId string) (*dto.GatewayListRes
 		return nil, constants.ErrAPINotFound
 	}
 
-	// Get all gateways where this API is deployed (without pagination for total count)
-	gateways, err := s.gatewayRepo.GetGatewaysByAPIID(apiId, orgId)
+	// Validate that all gateways exist and belong to the same organization
+	var validGateways []*model.Gateway
+	for _, gatewayId := range gatewayIds {
+		gateway, err := s.gatewayRepo.GetByUUID(gatewayId)
+		if err != nil {
+			return nil, err
+		}
+		if gateway == nil {
+			return nil, constants.ErrGatewayNotFound
+		}
+		if gateway.OrganizationID != orgId {
+			return nil, constants.ErrGatewayNotFound
+		}
+		validGateways = append(validGateways, gateway)
+	}
+
+	// Get existing associations to determine which are new vs existing
+	existingAssociations, err := s.apiRepo.GetAPIGatewayAssociations(apiId, orgId)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert models to DTOs
-	responses := make([]dto.GatewayResponse, 0, len(gateways))
-	for _, gw := range gateways {
-		responses = append(responses, dto.GatewayResponse{
-			ID:                gw.ID,
-			OrganizationID:    gw.OrganizationID,
-			Name:              gw.Name,
-			DisplayName:       gw.DisplayName,
-			Description:       gw.Description,
-			Vhost:             gw.Vhost,
-			IsCritical:        gw.IsCritical,
-			FunctionalityType: gw.FunctionalityType,
-			IsActive:          gw.IsActive,
-			CreatedAt:         gw.CreatedAt,
-			UpdatedAt:         gw.UpdatedAt,
-		})
+	existingGatewayIds := make(map[string]bool)
+	for _, assoc := range existingAssociations {
+		existingGatewayIds[assoc.GatewayID] = true
 	}
 
-	// Create paginated response
-	listResponse := &dto.GatewayListResponse{
+	// Process each gateway: create new associations or update existing ones
+	for _, gateway := range validGateways {
+		if existingGatewayIds[gateway.ID] {
+			// Update existing association timestamp
+			if err := s.apiRepo.UpdateAPIGatewayAssociation(apiId, gateway.ID, orgId); err != nil {
+				return nil, err
+			}
+		} else {
+			// Create new association
+			association := &model.APIGatewayAssociation{
+				ApiID:          apiId,
+				OrganizationID: orgId,
+				GatewayID:      gateway.ID,
+				CreatedAt:      time.Now(),
+				UpdatedAt:      time.Now(),
+			}
+
+			if err := s.apiRepo.CreateAPIGatewayAssociation(association); err != nil {
+				return nil, err
+			}
+			existingGatewayIds[gateway.ID] = true
+		}
+	}
+
+	// Return all gateways currently associated with the API including deployment details
+	gatewayDetails, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert all associated gateways to DTOs with deployment details for response
+	responses := make([]dto.APIGatewayResponse, 0, len(gatewayDetails))
+	for _, gwd := range gatewayDetails {
+		responses = append(responses, s.convertToAPIGatewayResponse(gwd))
+	}
+
+	// Create response with all associated gateways
+	listResponse := &dto.APIGatewayListResponse{
 		Count: len(responses),
 		List:  responses,
 		Pagination: dto.Pagination{
-			Total:  len(responses), // For now, total equals count (no pagination yet)
-			Offset: 0,              // Starting from first item
-			Limit:  len(responses), // Returning all items
+			Total:  len(responses),
+			Offset: 0,
+			Limit:  len(responses),
+		},
+	}
+
+	return listResponse, nil
+}
+
+// GetAPIGateways retrieves all gateways associated with an API including deployment details
+func (s *APIService) GetAPIGateways(apiId, orgId string) (*dto.APIGatewayListResponse, error) {
+	// Validate that the API exists and belongs to the organization
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiId)
+	if err != nil {
+		return nil, err
+	}
+	if apiModel == nil {
+		return nil, constants.ErrAPINotFound
+	}
+	if apiModel.OrganizationID != orgId {
+		return nil, constants.ErrAPINotFound
+	}
+
+	// Get all gateways associated with this API including deployment details
+	gatewayDetails, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert models to DTOs with deployment details
+	responses := make([]dto.APIGatewayResponse, 0, len(gatewayDetails))
+	for _, gwd := range gatewayDetails {
+		responses = append(responses, s.convertToAPIGatewayResponse(gwd))
+	}
+
+	// Create paginated response
+	listResponse := &dto.APIGatewayListResponse{
+		Count: len(responses),
+		List:  responses,
+		Pagination: dto.Pagination{
+			Total:  len(responses),
+			Offset: 0,
+			Limit:  len(responses),
 		},
 	}
 
@@ -552,7 +655,7 @@ func (s *APIService) GetGatewaysForAPI(apiId, orgId string) (*dto.GatewayListRes
 }
 
 // validateDeploymentRequest validates the deployment request
-func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, orgId string) error {
+func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, apiId, orgId string) error {
 	if req.GatewayID == "" {
 		return errors.New("gateway Id is required")
 	}
@@ -731,6 +834,7 @@ type UpdateAPIRequest struct {
 	Operations       *[]dto.Operation        `json:"operations,omitempty"`
 }
 
+// generateDefaultOperations creates default CRUD operations for an API
 func (s *APIService) generateDefaultOperations() []dto.Operation {
 	return []dto.Operation{
 		{
@@ -956,4 +1060,44 @@ func (s *APIService) UnpublishAPI(apiID string, orgID string, apiPortalID string
 
 	log.Printf("[APIService] API unpublished successfully: %s", api.ID)
 	return response, nil
+}
+
+// convertToAPIGatewayResponse converts APIGatewayWithDetails to APIGatewayResponse
+func (s *APIService) convertToAPIGatewayResponse(gwd *model.APIGatewayWithDetails) dto.APIGatewayResponse {
+	// Create the base gateway response
+	gatewayResponse := dto.GatewayResponse{
+		ID:                gwd.ID,
+		OrganizationID:    gwd.OrganizationID,
+		Name:              gwd.Name,
+		DisplayName:       gwd.DisplayName,
+		Description:       gwd.Description,
+		Vhost:             gwd.Vhost,
+		IsCritical:        gwd.IsCritical,
+		FunctionalityType: gwd.FunctionalityType,
+		IsActive:          gwd.IsActive,
+		CreatedAt:         gwd.CreatedAt,
+		UpdatedAt:         gwd.UpdatedAt,
+	}
+
+	// Create API gateway response with embedded gateway response
+	apiGatewayResponse := dto.APIGatewayResponse{
+		GatewayResponse: gatewayResponse,
+		AssociatedAt:    gwd.AssociatedAt,
+		IsDeployed:      gwd.IsDeployed,
+	}
+
+	// Add deployment details if deployed
+	if gwd.IsDeployed && gwd.DeployedAt != nil {
+		revisionID := ""
+		if gwd.DeployedRevision != nil {
+			revisionID = *gwd.DeployedRevision
+		}
+		apiGatewayResponse.Deployment = &dto.APIDeploymentDetails{
+			RevisionID: revisionID,
+			Status:     "CREATED", // Default status, can be enhanced later
+			DeployedAt: *gwd.DeployedAt,
+		}
+	}
+
+	return apiGatewayResponse
 }
