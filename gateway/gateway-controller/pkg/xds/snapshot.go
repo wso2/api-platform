@@ -34,22 +34,22 @@ type StatusUpdateCallback func(configID string, success bool, version int64, cor
 
 // SnapshotManager manages xDS snapshots for Envoy
 type SnapshotManager struct {
-	cache            cache.SnapshotCache
-	translator       *Translator
-	store            *storage.ConfigStore
-	logger           *zap.Logger
-	nodeID           string // Node ID for Envoy (default: "router-node")
-	statusCallback   StatusUpdateCallback
+	cache          cache.SnapshotCache
+	translator     *Translator
+	store          *storage.ConfigStore
+	logger         *zap.Logger
+	nodeID         string // Node ID for Envoy (default: "router-node")
+	statusCallback StatusUpdateCallback
 }
 
 // NewSnapshotManager creates a new snapshot manager
-func NewSnapshotManager(store *storage.ConfigStore, logger *zap.Logger, accessLogConfig config.AccessLogsConfig) *SnapshotManager {
+func NewSnapshotManager(store *storage.ConfigStore, logger *zap.Logger, routerConfig *config.RouterConfig) *SnapshotManager {
 	// Create a snapshot cache with a simple node ID hasher
 	snapshotCache := cache.NewSnapshotCache(false, cache.IDHash{}, logger.Sugar())
 
 	return &SnapshotManager{
 		cache:          snapshotCache,
-		translator:     NewTranslator(logger, accessLogConfig),
+		translator:     NewTranslator(logger, routerConfig),
 		store:          store,
 		logger:         logger,
 		nodeID:         "router-node",

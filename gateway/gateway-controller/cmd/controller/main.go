@@ -91,8 +91,8 @@ func main() {
 		log.Info("Loaded configurations", zap.Int("count", len(configStore.GetAll())))
 	}
 
-	// Initialize xDS snapshot manager with access log config
-	snapshotManager := xds.NewSnapshotManager(configStore, log, cfg.Router.AccessLogs)
+	// Initialize xDS snapshot manager with router config
+	snapshotManager := xds.NewSnapshotManager(configStore, log, &cfg.Router)
 
 	// Generate initial xDS snapshot
 	log.Info("Generating initial xDS snapshot")

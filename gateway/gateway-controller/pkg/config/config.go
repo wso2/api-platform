@@ -73,6 +73,31 @@ type PostgresConfig struct {
 type RouterConfig struct {
 	AccessLogs   AccessLogsConfig `koanf:"access_logs"`
 	ListenerPort int              `koanf:"listener_port"`
+	Upstream     envoyUpstream    `koanf:"envoy_upstream"`
+}
+
+// envoyUpstream holds envoy upstream related configurations
+type envoyUpstream struct {
+	// UpstreamTLS related Configuration
+	TLS      upstreamTLS     `koanf:"tls"`
+	Timeouts upstreamTimeout `koanf:"timeouts"`
+}
+
+// upstreamTLS holds envoy upstream TLS related configurations
+type upstreamTLS struct {
+	MinimumProtocolVersion string `koanf:"minimum_protocol_version"`
+	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
+	Ciphers                string `koanf:"ciphers"`
+	TrustedCertPath        string `koanf:"trusted_cert_path"`
+	VerifyHostName         bool   `koanf:"verify_host_name"`
+	DisableSslVerification bool   `koanf:"disable_ssl_verification"`
+}
+
+// upstreamTimeout holds envoy upstream timeout related configurations
+type upstreamTimeout struct {
+	RouteTimeoutInSeconds     uint32 `koanf:"route_timeout_in_seconds"`
+	MaxRouteTimeoutInSeconds  uint32 `koanf:"max_route_timeout_in_seconds"`
+	RouteIdleTimeoutInSeconds uint32 `koanf:"route_idle_timeout_in_seconds"`
 }
 
 // AccessLogsConfig holds access log configuration
@@ -204,15 +229,24 @@ func getDefaults() map[string]interface{} {
 			"%RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
 			"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
 			"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
-		"router.listener_port":              8080,
-		"logging.level":                     "info",
-		"logging.format":                    "json",
-		"controlplane.host":                 "localhost:8443",
-		"controlplane.token":                "",
-		"controlplane.reconnect_initial":    "1s",
-		"controlplane.reconnect_max":        "5m",
-		"controlplane.polling_interval":     "15m",
-		"controlplane.insecure_skip_verify": true, // Default true for dev environments with self-signed certs
+		"router.listener_port":                                         8080,
+		"logging.level":                                                "info",
+		"logging.format":                                               "json",
+		"controlplane.host":                                            "localhost:8443",
+		"controlplane.token":                                           "",
+		"controlplane.reconnect_initial":                               "1s",
+		"controlplane.reconnect_max":                                   "5m",
+		"controlplane.polling_interval":                                "15m",
+		"controlplane.insecure_skip_verify":                            true, // Default true for dev environments with self-signed certs
+		"router.envoy_upstream.tls.minimum_protocol_version":           "TLS1_2",
+		"router.envoy_upstream.tls.maximum_protocol_version":           "TLS1_3",
+		"router.envoy_upstream.tls.ciphers":                            "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256",
+		"router.envoy_upstream.tls.trusted_cert_path":                  "/etc/ssl/certs/ca-certificates.crt",
+		"router.envoy_upstream.tls.verify_host_name":                   true,
+		"router.envoy_upstream.tls.disable_ssl_verification":           false,
+		"router.envoy_upstream.timeouts.route_timeout_in_seconds":      60,
+		"router.envoy_upstream.timeouts.max_route_timeout_in_seconds":  60,
+		"router.envoy_upstream.timeouts.route_idle_timeout_in_seconds": 300,
 	}
 }
 
