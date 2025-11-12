@@ -1,0 +1,344 @@
+/*
+ *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+package service
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"platform-api/src/internal/dto"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+)
+
+type GitHubClient struct {
+	httpClient *http.Client
+}
+
+// NewGitHubClient creates a new GitHub client
+func NewGitHubClient() GitProviderClient {
+	return &GitHubClient{
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
+}
+
+// GitTreeEntry represents a single entry in GitHub's Git Trees API response
+type GitTreeEntry struct {
+	Path string `json:"path"`
+	Mode string `json:"mode"`
+	Type string `json:"type"`
+	SHA  string `json:"sha"`
+	Size int64  `json:"size,omitempty"`
+	URL  string `json:"url"`
+}
+
+// GitTreeResponse represents the complete GitHub Git Trees API response
+type GitTreeResponse struct {
+	SHA       string         `json:"sha"`
+	URL       string         `json:"url"`
+	Tree      []GitTreeEntry `json:"tree"`
+	Truncated bool           `json:"truncated"`
+}
+
+// GetProvider returns the provider name
+func (c *GitHubClient) GetProvider() GitProvider {
+	return GitProviderGitHub
+}
+
+// FetchRepoBranches fetches the branches of a GitHub repository
+func (c *GitHubClient) FetchRepoBranches(owner, repo string) (*dto.GitRepoBranchesResponse, error) {
+	// Use GitHub API to fetch repository branches
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/branches?per_page=100&page=1", owner, repo)
+
+	// Make API request
+	resp, err := c.httpClient.Get(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch repository branches: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Handle different HTTP status codes
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// Continue processing
+	case http.StatusNotFound:
+		return nil, fmt.Errorf("repository not found or is private")
+	case http.StatusForbidden:
+		return nil, fmt.Errorf("access forbidden - repository may be private or rate limit exceeded")
+	case http.StatusUnauthorized:
+		return nil, fmt.Errorf("unauthorized access - repository may be private")
+	default:
+		return nil, fmt.Errorf("unexpected response status: %d", resp.StatusCode)
+	}
+
+	// Parse GitHub API response
+	var githubBranches []struct {
+		Name      string `json:"name"`
+		Protected bool   `json:"protected"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&githubBranches); err != nil {
+		return nil, fmt.Errorf("failed to parse repository branches: %w", err)
+	}
+
+	// Get default branch info
+	defaultBranch, err := c.getDefaultBranch(owner, repo)
+	if err != nil {
+		// If we can't get default branch, assume "main" or first branch
+		defaultBranch = "main"
+		if len(githubBranches) > 0 {
+			defaultBranch = githubBranches[0].Name
+		}
+	}
+
+	// Convert GitHub API response to our DTO format
+	branches := make([]dto.GitRepoBranch, 0, len(githubBranches))
+	for _, branch := range githubBranches {
+		isDefault := "false"
+		if branch.Name == defaultBranch {
+			isDefault = "true"
+		}
+
+		branches = append(branches, dto.GitRepoBranch{
+			Name:      branch.Name,
+			IsDefault: isDefault,
+		})
+	}
+
+	repoURL := fmt.Sprintf("https://github.com/%s/%s", owner, repo)
+	response := &dto.GitRepoBranchesResponse{
+		RepoURL:  repoURL,
+		Branches: branches,
+	}
+
+	return response, nil
+}
+
+// FetchRepoContent fetches the contents of a GitHub repository branch using Git Trees API
+func (c *GitHubClient) FetchRepoContent(owner, repo, branch string) (*dto.GitRepoContentResponse, error) {
+	// Use GitHub Git Trees API to get all content in one request
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1", owner, repo, branch)
+
+	// Make API request
+	resp, err := c.httpClient.Get(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch repository content: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Handle different HTTP status codes
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// Continue processing
+	case http.StatusNotFound:
+		return nil, fmt.Errorf("repository not found, branch not found, or repository is private")
+	case http.StatusForbidden:
+		return nil, fmt.Errorf("access forbidden - repository may be private or rate limit exceeded")
+	case http.StatusUnauthorized:
+		return nil, fmt.Errorf("unauthorized access - repository may be private")
+	default:
+		return nil, fmt.Errorf("unexpected response status: %d", resp.StatusCode)
+	}
+
+	// Parse GitHub Git Trees API response
+	var treeResponse GitTreeResponse
+
+	if err := json.NewDecoder(resp.Body).Decode(&treeResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse repository content: %w", err)
+	}
+
+	// Build tree structure from the flat list of paths
+	rootItems, totalItems, maxDepth := c.buildTreeFromPaths(treeResponse.Tree)
+
+	repoURL := fmt.Sprintf("https://github.com/%s/%s", owner, repo)
+	response := &dto.GitRepoContentResponse{
+		RepoURL:        repoURL,
+		Branch:         branch,
+		Items:          rootItems,
+		TotalItems:     totalItems,
+		MaxDepth:       maxDepth,
+		RequestedDepth: 0, // No depth limit for this implementation
+	}
+
+	return response, nil
+}
+
+// buildTreeFromPaths builds a hierarchical tree structure from a flat list of Git tree entries
+func (c *GitHubClient) buildTreeFromPaths(treeEntries []GitTreeEntry) ([]dto.GitRepoItem, int, int) {
+	// Create a map to store all items by their path for easy lookup
+	itemMap := make(map[string]*dto.GitRepoItem)
+	totalItems := len(treeEntries)
+	maxDepth := 0
+
+	// First pass: create all items and store in map
+	for _, entry := range treeEntries {
+		// Calculate depth from path separators
+		depth := len(strings.Split(entry.Path, "/")) - 1
+		if depth > maxDepth {
+			maxDepth = depth
+		}
+
+		pathParts := strings.Split(entry.Path, "/")
+		itemName := pathParts[len(pathParts)-1]
+
+		// Create the item
+		item := &dto.GitRepoItem{
+			Path:     entry.Path,
+			SubPath:  itemName,
+			Type:     entry.Type, // "blob" or "tree"
+			Children: []*dto.GitRepoItem{},
+		}
+
+		itemMap[entry.Path] = item
+	}
+
+	// Second pass: build parent-child relationships
+	for path, item := range itemMap {
+		pathParts := strings.Split(path, "/")
+
+		// If this is not a root-level item, find its parent and add it as a child
+		if len(pathParts) > 1 {
+			parentPath := strings.Join(pathParts[:len(pathParts)-1], "/")
+			if parentItem, exists := itemMap[parentPath]; exists {
+				parentItem.Children = append(parentItem.Children, item)
+			} else {
+				// Parent not found - this should not happen in a well-formed tree
+				log.Println("Warning: parent item not found for path:", path)
+			}
+		}
+	}
+
+	// Third pass: collect only root-level items (they will contain all their children)
+	var rootItems []dto.GitRepoItem
+	for path, item := range itemMap {
+		pathParts := strings.Split(path, "/")
+		if len(pathParts) == 1 {
+			// This is a root-level item
+			c.sortChildrenRecursively(item)
+			rootItems = append(rootItems, *item)
+		}
+	}
+
+	// Sort root items
+	c.sortTreeItems(rootItems)
+
+	return rootItems, totalItems, maxDepth
+}
+
+// sortChildrenRecursively sorts children at all levels of the tree
+func (c *GitHubClient) sortChildrenRecursively(item *dto.GitRepoItem) {
+	// Sort children of current item
+	c.sortTreeItemsPointers(item.Children)
+
+	// Recursively sort children of each child
+	for _, child := range item.Children {
+		c.sortChildrenRecursively(child)
+	}
+}
+
+// getDefaultBranch gets the default branch of a GitHub repository
+func (c *GitHubClient) getDefaultBranch(owner, repo string) (string, error) {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s", owner, repo)
+
+	resp, err := c.httpClient.Get(apiURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to get repository info")
+	}
+
+	var repoInfo struct {
+		DefaultBranch string `json:"default_branch"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&repoInfo); err != nil {
+		return "", err
+	}
+
+	return repoInfo.DefaultBranch, nil
+}
+
+// ParseRepoURL parses a GitHub repository URL and extracts owner and repository name
+func (c *GitHubClient) ParseRepoURL(repoURL string) (owner, repo string, err error) {
+	repoInfo, err := ParseRepositoryURL(repoURL)
+	if err != nil {
+		return "", "", err
+	}
+
+	if repoInfo.Provider != GitProviderGitHub {
+		return "", "", fmt.Errorf("not a GitHub repository URL")
+	}
+
+	// Additional GitHub-specific validation
+	if !c.ValidateName(repoInfo.Owner) || !c.ValidateName(repoInfo.Repo) {
+		return "", "", fmt.Errorf("invalid GitHub repository owner or name")
+	}
+
+	return repoInfo.Owner, repoInfo.Repo, nil
+}
+
+// ValidateName validates GitHub username/repository name format
+func (c *GitHubClient) ValidateName(name string) bool {
+	// GitHub usernames and repo names can contain alphanumeric characters and hyphens
+	// They cannot start or end with hyphens and cannot have consecutive hyphens
+	if len(name) == 0 || len(name) > 39 {
+		return false
+	}
+
+	// Check for valid characters and patterns
+	validPattern := regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?$`)
+	return validPattern.MatchString(name)
+}
+
+// sortTreeItems sorts items with directories first, then files, both alphabetically
+func (c *GitHubClient) sortTreeItems(items []dto.GitRepoItem) {
+	sort.Slice(items, func(i, j int) bool {
+		// Directories come before files
+		if items[i].Type == "tree" && items[j].Type == "blob" {
+			return true
+		}
+		if items[i].Type == "blob" && items[j].Type == "tree" {
+			return false
+		}
+		// Within same type, sort alphabetically by name
+		return items[i].SubPath < items[j].SubPath
+	})
+}
+
+// sortTreeItemsPointers sorts pointer items with directories first, then files, both alphabetically
+func (c *GitHubClient) sortTreeItemsPointers(items []*dto.GitRepoItem) {
+	sort.Slice(items, func(i, j int) bool {
+		// Directories come before files
+		if items[i].Type == "tree" && items[j].Type == "blob" {
+			return true
+		}
+		if items[i].Type == "blob" && items[j].Type == "tree" {
+			return false
+		}
+		// Within same type, sort alphabetically by name
+		return items[i].SubPath < items[j].SubPath
+	})
+}
