@@ -884,6 +884,128 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /git/repo/fetch-branches:
+    post:
+      summary: Fetch Git repository branches
+      description: |
+        Fetches and returns the list of branches from a specified public Git repository.
+        This endpoint supports multiple Git providers including GitHub, GitLab, and Bitbucket.
+        The provider can be specified explicitly or will be auto-detected from the repository URL.
+        This endpoint is used to verify repository accessibility and display branch options in the API Platform UI
+        for API import functionality. Only public repositories are supported.
+      operationId: FetchGitRepoBranches
+      tags:
+        - Git Operations
+      requestBody:
+        description: Git repository URL to fetch branches from
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GitRepoBranchesRequest'
+      responses:
+        '200':
+          description: Repository branches fetched successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepoBranchesResponse'
+        '400':
+          description: Invalid repository URL or request payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepoError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Repository not found or is private
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepoError'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepoError'
+        '502':
+          description: Failed to fetch repository branches from Git provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepoError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /git/repo/branch/fetch-content:
+    post:
+      summary: Fetch Git repository content
+      description: |
+        Fetches and returns the directory and file structure of a specified public Git repository with depth-based pagination.
+        This endpoint supports multiple Git providers including GitHub, GitLab, and Bitbucket.
+        The provider can be specified explicitly or will be auto-detected from the repository URL.
+        
+        **Depth-Based Pagination:**
+        Use the optional `depth` query parameter to limit repository traversal depth. For example:
+        - `depth=1`: Returns only root-level files and directories
+        - `depth=2`: Returns files and directories within two levels from the root
+        - `depth=0` or omitted: Returns all content (default behavior)
+        
+        This approach helps balance data completeness and performance by allowing incremental loading of deeper structures.
+        The response includes directories (both empty and non-empty) and files at the specified depth levels.
+        
+        This endpoint is used to verify repository accessibility and display its structure in the API Platform UI
+        for API import functionality. Only public repositories are supported.
+      operationId: FetchGitRepoContent
+      tags:
+        - Git Operations
+      parameters:
+        - $ref: '#/components/parameters/depth-Q'
+      requestBody:
+        description: Git repository URL to fetch content from
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GitRepoContentRequest'
+      responses:
+        '200':
+          description: Repository content fetched successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepoContentResponse'
+        '400':
+          description: Invalid repository URL or request payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepoError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Repository not found or is private
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepoError'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepoError'
+        '502':
+          description: Failed to fetch repository content from Git provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitRepoError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -1982,6 +2104,157 @@ components:
           description: Informational message about token rotation
           example: "New token generated successfully. Old token remains active until revoked."
 
+    GitRepoBranchesRequest:
+      type: object
+      required:
+        - repoUrl
+      properties:
+        repoUrl:
+          type: string
+          format: uri
+          description: URL of the public Git repository to fetch branches from
+          example: "https://github.com/example-org/sample-api"
+        provider:
+          type: string
+          enum: ["github", "gitlab", "bitbucket"]
+          description: Git provider (optional - will be auto-detected if not provided)
+          example: "github"
+
+    GitRepoBranchesResponse:
+        type: object
+        required:
+          - repoUrl
+          - branches
+        properties:
+          repoUrl:
+            type: string
+            format: uri
+            description: URL of the repository that was fetched
+            example: "https://github.com/example-org/sample-api"
+          branches:
+            type: array
+            items:
+              $ref: '#/components/schemas/GitRepoBranch'
+
+    GitRepoBranch:
+      type: object
+      required:
+        - name
+        - isDefault
+      properties:
+        name:
+          type: string
+          description: Name of the branch
+          example: "main"
+        isDefault:
+          type: string
+          description: Whether this branch is the default branch
+          example: "true"
+
+    GitRepoContentRequest:
+      type: object
+      required:
+        - repoUrl
+        - branch
+      properties:
+        repoUrl:
+          type: string
+          format: uri
+          description: URL of the public Git repository to fetch content from
+          example: "https://github.com/example-org/sample-api"
+        branch:
+          type: string
+          description: Branch of the repository to fetch content from
+          example: "main"
+        provider:
+          type: string
+          enum: ["github", "gitlab", "bitbucket"]
+          description: Git provider (optional - will be auto-detected if not provided)
+          example: "github"
+
+    GitRepoContentResponse:
+      type: object
+      required:
+        - repoUrl
+        - branch
+        - items
+        - totalItems
+        - maxDepth
+        - requestedDepth
+      properties:
+        repoUrl:
+          type: string
+          format: uri
+          description: URL of the repository that was fetched
+          example: "https://github.com/example-org/sample-api"
+        branch:
+          type: string
+          description: Branch of the repository that was fetched
+          example: "main"
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/GitRepoItem'
+          description: List of files and directories in the repository
+        totalItems:
+          type: integer
+          description: Total number of items returned
+          example: 15
+        maxDepth:
+          type: integer
+          description: Maximum depth level that was actually traversed
+          example: 2
+        requestedDepth:
+          type: integer
+          description: Requested depth level (0 = unlimited)
+          example: 2
+
+    GitRepoItem:
+      type: object
+      required:
+        - path
+        - subPath
+        - children
+        - type
+      properties:
+        path:
+          type: string
+          description: Full path of the item within the repository
+          example: "docs/README.md"
+        subPath:
+          type: string
+          description: Name of the item (file or directory)
+          example: "README.md"
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/GitRepoItem'
+        type:
+          type: string
+          description: Type of the item (file or directory)
+          enum: [ tree, blob, EOF ]
+          example: "tree"
+
+    GitRepoError:
+      type: object
+      required:
+        - error
+        - code
+        - message
+      properties:
+        error:
+          type: string
+          description: High-level error type
+          example: "FETCH_FAILED"
+        code:
+          type: string
+          description: Specific error code for programmatic handling
+          example: "GIT_003"
+        message:
+          type: string
+          description: Human-readable error message
+          example: "Repository not found or is private"
+
     TokenInfoResponse:
       type: object
       properties:
@@ -2299,6 +2572,23 @@ components:
         type: string
         enum: ["API", "MCP", "API_PRODUCT"]
       example: "API"
+
+    depth-Q:
+      name: depth
+      in: query
+      required: false
+      description: |
+        Limits the depth of directory traversal when fetching Git repository content.
+        - `0` or omitted: Returns all content (unlimited depth)
+        - `1`: Returns only root-level files and directories
+        - `2`: Returns content within two levels from the root
+        - Maximum allowed depth is 10 for performance reasons
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 10
+        default: 0
+      example: 2
 
 tags:
   - name: Health
