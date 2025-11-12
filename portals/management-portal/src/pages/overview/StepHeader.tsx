@@ -44,9 +44,9 @@ import { Button } from "../../components/src/components/Button";
 
 type Step = { title: string; subtitle: string };
 const STEPS: Step[] = [
-  { title: "Add Your Gateway", subtitle: "Lorem Ipsum is simply" },
-  { title: "Add Your APIs", subtitle: "Lorem Ipsum is simply" },
-  { title: "Test Your APIs", subtitle: "Lorem Ipsum is simply" },
+  { title: "Add Your Gateway", subtitle: "Connect & secure your backend service" },
+  { title: "Add Your APIs", subtitle: "Add your First API" },
+  { title: "Test Your APIs", subtitle: "Validate requests before publishing" },
 ];
 
 /** Top-level wrapper that provides the Gateway context */
@@ -250,7 +250,7 @@ function CreatedGatewaySummary({
               </Typography>
               {ui.description && (
                 <Typography
-                  color="text.secondary"
+                  color="#666666"
                   sx={{ mt: 0.2, maxWidth: 900 }}
                 >
                   {ui.description}
@@ -272,9 +272,9 @@ function CreatedGatewaySummary({
             >
               <AccessTimeIcon
                 fontSize="small"
-                sx={{ color: "text.secondary" }}
+                sx={{ color: "#666666" }}
               />
-              <Typography color="text.secondary">
+              <Typography color="#666666">
                 {relativeTime(ui.createdAt)}
               </Typography>
               {isActive ? (

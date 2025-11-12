@@ -1,8 +1,15 @@
 import React from "react";
-import { Box, Typography, Stack, TextField, FormControlLabel, Checkbox } from "@mui/material";
+import {
+  Box,
+  Typography,
+  Stack,
+  FormControlLabel,
+  Checkbox,
+} from "@mui/material";
 import type { GwType, GatewayRecord } from "./types";
 import { slugify } from "./utils";
 import { Button } from "../../components/src/components/Button";
+import { TextInput } from "../../components/src/components/TextInput";
 
 export default function GatewayForm({
   type,
@@ -49,45 +56,44 @@ export default function GatewayForm({
       </Typography>
 
       <Stack spacing={2} width="100%">
-        {/* <TextInput
-          placeholder="API Name"
-          testId="api-name"
-          value="api-name"
-          onChange={(text: string) => setName(text)}
-        /> */}
-        <TextField
+        <TextInput
           label="Display name"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          fullWidth
-          autoFocus
           placeholder="e.g., My Production Gateway"
+          value={displayName}
+          onChange={(v: string) => setDisplayName(v)}
+          fullWidth
+          testId="gateway-display-name"
+          size="medium"
         />
 
-        <TextField
+        <TextInput
           label="Name"
           value={name}
+          onChange={() => {}}
           fullWidth
-          InputProps={{ readOnly: true }}
-          helperText="Generated from Display name (read-only)"
+          testId="gateway-name"
+          size="medium"
+          readonly
         />
 
-        <TextField
+        <TextInput
           label="Host"
-          value={host}
-          onChange={(e) => setHost(e.target.value)}
-          fullWidth
           placeholder="e.g., gateway.dev.local"
+          value={host}
+          onChange={(v: string) => setHost(v)}
+          fullWidth
+          testId="gateway-host"
+          size="medium"
         />
 
-        <TextField
+        <TextInput
           label="Description"
+          placeholder="Optional description for your gateway"
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={(v: string) => setDescription(v)}
           fullWidth
           multiline
-          minRows={3}
-          placeholder="Optional description for your gateway"
+          testId="gateway-description"
         />
 
         <FormControlLabel
@@ -104,19 +110,17 @@ export default function GatewayForm({
           <Button
             variant="outlined"
             onClick={onCancel}
-            sx={{
-              textTransform: "none",
-            }}
+            sx={{ textTransform: "none" }}
           >
             Cancel
           </Button>
           <Button
             variant="contained"
-            onClick={() => onSubmit({ displayName, name, host, description, isCritical })}
+            onClick={() =>
+              onSubmit({ displayName, name, host, description, isCritical })
+            }
             disabled={!displayName.trim()}
-            sx={{
-              textTransform: "none",
-            }}
+            sx={{ textTransform: "none" }}
           >
             {defaults?.id ? "Save" : "Add"}
           </Button>

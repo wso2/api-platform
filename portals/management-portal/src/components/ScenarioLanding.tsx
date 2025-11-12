@@ -1,0 +1,405 @@
+import React from "react";
+import {
+  Avatar,
+  Box,
+  Card,
+  Chip,
+  Paper,
+  Radio,
+  Stack,
+  Typography,
+} from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
+import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
+import AutoAwesomeOutlinedIcon from "@mui/icons-material/AutoAwesomeOutlined";
+import { useOrganization } from "../context/OrganizationContext";
+import { SCENARIOS, type Scenario } from "../data/scenarios";
+import { Button } from "./src/components/Button";
+import vscodeSvg from "../../src/components/src/Images/svgs/Various/vs-code.svg";
+import { Link as MuiLink } from "@mui/material";
+
+const ACCENT = "#049669";
+const TEXT_SECONDARY = "#AEAEAE";
+
+type ScenarioLandingProps = {
+  onContinue: (scenarioId: string) => void;
+  onSkip: () => void;
+};
+
+const CARD_SHADOW =
+  "0px 24px 80px rgba(15, 23, 42, 0.08), 0px 2px 6px rgba(15, 23, 42, 0.04)";
+
+const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
+  onContinue,
+  onSkip,
+}) => {
+  const theme = useTheme();
+  const { organization } = useOrganization();
+  const displayName = organization?.name || "there";
+
+  const [activeScenarioId, setActiveScenarioId] = React.useState(
+    SCENARIOS[0].id
+  );
+  const [selectedScenarioIds, setSelectedScenarioIds] = React.useState<
+    string[]
+  >([SCENARIOS[0].id]);
+
+  const activeScenario = React.useMemo(
+    () =>
+      SCENARIOS.find((item) => item.id === activeScenarioId) ?? SCENARIOS[0],
+    [activeScenarioId]
+  );
+
+  const toggleScenario = (scenarioId: string) => {
+    setActiveScenarioId(scenarioId);
+    setSelectedScenarioIds((prev) =>
+      prev.includes(scenarioId)
+        ? prev.filter((id) => id !== scenarioId)
+        : [...prev, scenarioId]
+    );
+  };
+
+  return (
+    <Box>
+      {/* ===== FIXED, FULL-WIDTH HEADER (no outer top spacing) ===== */}
+      <Paper
+        elevation={0}
+        sx={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          width: "100%",
+          borderRadius: 0,
+          borderBottom: "1px solid",
+          borderColor: "divider",
+          px: { xs: 2, md: 3 },
+          py: 1.25,
+          boxShadow:
+            "0 2px 6px rgba(15,23,42,0.05), 0 1px 2px rgba(15,23,42,0.04)",
+          bgcolor: "background.paper",
+          zIndex: (t) => t.zIndex.appBar,
+        }}
+      >
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+          spacing={2}
+        >
+          {/* Left: brand */}
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Avatar
+              variant="rounded"
+              sx={{
+                width: 36,
+                height: 36,
+                fontSize: 14,
+                fontWeight: 700,
+                color: "#fff",
+                boxShadow: "0 6px 18px rgba(4,150,105,0.30)",
+                background:
+                  "linear-gradient(180deg, rgba(4,150,105,0.95) 0%, #049669 100%)",
+              }}
+            >
+              AP
+            </Avatar>
+            <Typography fontWeight={600}>APIM Platform</Typography>
+          </Stack>
+
+          {/* Right: input-like assistant chip */}
+          <Box
+            sx={{
+              borderRadius: 2,
+              border: "1px solid",
+              borderColor: "divider",
+              px: 1.75,
+              py: 0.75,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 1,
+              boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+              bgcolor: "background.paper",
+            }}
+          >
+            <AutoAwesomeOutlinedIcon sx={{ fontSize: 18, color: ACCENT }} />
+            <Typography variant="body2" sx={{ color: TEXT_SECONDARY }}>
+              Ask the AI Assistant anything...
+            </Typography>
+          </Box>
+        </Stack>
+      </Paper>
+
+      {/* ===== MAIN CARD CONTENT ===== */}
+      <Card
+        elevation={0}
+        sx={{
+          p: { xs: 3, md: 4 },
+          mb: 4,
+          mt: 12,
+          borderRadius: 4,
+          border: "1px solid",
+          borderColor: "divider",
+          boxShadow: CARD_SHADOW,
+          bgcolor: (t) =>
+            t.palette.mode === "dark" ? "background.default" : "#fffdfa",
+        }}
+      >
+        <Typography variant="h3" fontWeight={600} mt={0.5}>
+          <Box component="span" fontWeight={800}>
+            Hi {displayName},
+          </Box>{" "}
+          Welcome to the API Platform
+        </Typography>
+
+        <Typography sx={{ color: TEXT_SECONDARY }}>
+          <Box
+            component="span"
+            sx={{ fontWeight: 600, fontSize: { xs: 12, sm: 14, md: 16 } }}
+          >
+            What would you like to do today?
+          </Box>{" "}
+          Pick one or more journeys to get a head start.
+        </Typography>
+
+        <Stack
+          direction={{ xs: "column", lg: "row" }}
+          spacing={4}
+          mt={4}
+          alignItems="stretch"
+        >
+          {/* Left column - scenarios */}
+          <Box flex={{ xs: "auto", lg: 1.2 }}>
+            <Stack spacing={2}>
+              {SCENARIOS.map((scenario: Scenario) => {
+                const Icon = scenario.icon;
+                const isChecked = selectedScenarioIds.includes(scenario.id);
+                const isActive = activeScenarioId === scenario.id;
+
+                return (
+                  <Card
+                    key={scenario.id}
+                    onClick={() => toggleScenario(scenario.id)}
+                    sx={{
+                      cursor: "pointer",
+                      border: "1px solid",
+                      borderColor: isActive ? ACCENT : "divider",
+                      bgcolor: isChecked
+                        ? alpha(ACCENT, 0.1)
+                        : "background.paper",
+                      transition:
+                        "border-color 150ms ease, box-shadow 150ms ease",
+                      boxShadow: isActive ? CARD_SHADOW : "none",
+                    }}
+                  >
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      spacing={2}
+                      px={2}
+                      py={2.25}
+                    >
+                      <Radio
+                        checked={activeScenarioId === scenario.id}
+                        tabIndex={-1}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setActiveScenarioId(scenario.id);
+                        }}
+                        sx={{
+                          color: ACCENT,
+                          "&.Mui-checked": { color: ACCENT },
+                        }}
+                      />
+
+                      <Avatar
+                        variant="rounded"
+                        sx={{
+                          bgcolor: alpha(ACCENT, 0.15),
+                          color: ACCENT,
+                          width: 44,
+                          height: 44,
+                        }}
+                      >
+                        <Icon />
+                      </Avatar>
+                      <Box flexGrow={1}>
+                        <Stack
+                          direction="row"
+                          alignItems={{ xs: "flex-start", sm: "center" }}
+                          spacing={1}
+                        >
+                          <Typography fontWeight={600}>
+                            {scenario.title}
+                          </Typography>
+                          {scenario.badge && (
+                            <Chip
+                              size="small"
+                              label={scenario.badge}
+                              sx={{
+                                fontWeight: 600,
+                                bgcolor: alpha(ACCENT, 0.15),
+                                color: ACCENT,
+                              }}
+                            />
+                          )}
+                        </Stack>
+                        <Typography
+                          variant="body2"
+                          sx={{ color: TEXT_SECONDARY }}
+                          mt={0.5}
+                        >
+                          {scenario.description}
+                        </Typography>
+                      </Box>
+                      <ChevronRightRoundedIcon
+                        sx={{
+                          color: isActive
+                            ? ACCENT
+                            : theme.palette.action.disabled,
+                        }}
+                      />
+                    </Stack>
+                  </Card>
+                );
+              })}
+            </Stack>
+
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={2}
+              mt={3}
+              justifyContent="space-between"
+            >
+              <Button
+                variant="contained"
+                size="large"
+                component={
+                  activeScenario.id === "design-api"
+                    ? (MuiLink as any)
+                    : undefined
+                }
+                href={
+                  activeScenario.id === "design-api" ? "vscode://" : undefined
+                }
+                onClick={
+                  activeScenario.id === "design-api"
+                    ? undefined
+                    : () => onContinue(activeScenarioId)
+                }
+                startIcon={
+                  activeScenario.id === "design-api" ? (
+                    <Box
+                      component="img"
+                      src={vscodeSvg}
+                      alt=""
+                      sx={{
+                        width: 16,
+                        height: 16,
+                        display: "block",
+                        filter: "brightness(0) invert(1)",
+                      }}
+                    />
+                  ) : undefined
+                }
+                sx={{ bgcolor: ACCENT, "&:hover": { bgcolor: ACCENT } }}
+              >
+                {activeScenario.id === "design-api"
+                  ? "OPEN VS CODE"
+                  : "CONTINUE"}
+              </Button>
+
+              <Button variant="text" onClick={onSkip}>
+                SKIP FOR NOW
+              </Button>
+            </Stack>
+          </Box>
+
+          {/* Right column - recommendations */}
+          <Box flex={{ xs: "auto", lg: 0.8 }}>
+            <Card
+              sx={{
+                borderRadius: 3,
+                overflow: "hidden",
+                border: "1px solid",
+                borderColor: "divider",
+                height: "100%",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <Box px={3} pt={3}>
+                <Typography variant="subtitle2" sx={{ color: TEXT_SECONDARY }}>
+                  We Recommend
+                </Typography>
+              </Box>
+              <Box
+                mx={3}
+                mt={2}
+                borderRadius={3}
+                sx={{
+                  position: "relative",
+                  overflow: "hidden",
+                  height: { xs: 180, sm: 200, md: 220 },
+                }}
+              >
+                <Box
+                  component="img"
+                  src={activeScenario.imageSrc}
+                  alt={activeScenario.title}
+                  sx={{
+                    width: "100%",
+                    height: "100%",
+                    display: "block",
+                    objectFit: "cover",
+                  }}
+                />
+              </Box>
+
+              <Box px={3} py={3} flexGrow={1}>
+                <Typography fontWeight={600}>
+                  Setup Steps for {activeScenario.title}
+                </Typography>
+                <Stack spacing={2} mt={2}>
+                  {activeScenario.steps.map((step, index) => (
+                    <Stack
+                      key={step.title}
+                      direction="row"
+                      spacing={2}
+                      alignItems="flex-start"
+                    >
+                      <Box
+                        width={32}
+                        height={32}
+                        borderRadius="50%"
+                        bgcolor={alpha(ACCENT, 0.15)}
+                        color={ACCENT}
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
+                        fontWeight={700}
+                      >
+                        {index + 1}
+                      </Box>
+                      <Box>
+                        <Typography fontWeight={600}>{step.title}</Typography>
+                        <Typography
+                          variant="body2"
+                          sx={{ color: TEXT_SECONDARY }}
+                        >
+                          {step.subtitle}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Box>
+            </Card>
+          </Box>
+        </Stack>
+      </Card>
+    </Box>
+  );
+};
+
+export default ScenarioLanding;

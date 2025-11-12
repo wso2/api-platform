@@ -92,11 +92,11 @@ const ProjectOverview: React.FC = () => {
   return (
     <>
       {/* Header always visible */}
-      <Box textAlign="center" mt={3}>
+      <Box textAlign="center" mt={1}>
         <Typography variant="h3" fontWeight={600}>
           Welcome to {displayName} Project
         </Typography>
-        <Typography color="text.secondary">
+        <Typography color="#666666" mb={2}>
           Manage all aspects of the {displayName} project from here.
         </Typography>
       </Box>
@@ -106,33 +106,87 @@ const ProjectOverview: React.FC = () => {
           <GatewayWizard onFinish={() => setShowWizard(false)} />
         </Box>
       ) : (
-        // Otherwise show Banner + Cards
         <>
           {/* Banner */}
           <Box mt={3} pr={6} pl={6}>
             <HeroBanner
-              onStart={() => setShowWizard(true)}
+              intervalMs={5000}
               slides={[
                 {
-                  id: "1",
+                  id: "s1",
+                  tag: "Quick Start",
                   title: "Create a Gateway in minutes",
                   subtitle:
                     "Spin up a Hybrid or Cloud gateway and start proxying traffic with a single command.",
-                  imageUrl: typingCodeImg,
+                  ctaLabel: "Create Gateway",
+                  imageNode: (
+                    <Box
+                      sx={{
+                        width: 180,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Box
+                        component="img"
+                        src={typingCodeImg}
+                        alt="Add API illustration"
+                        sx={{ width: "100%", height: "auto" }}
+                      />
+                    </Box>
+                  ),
                 },
                 {
-                  id: "2",
+                  id: "s2",
+                  tag: "APIs",
                   title: "Import and discover your APIs",
                   subtitle:
                     "Push your OpenAPI / AsyncAPI definition and curate them with tags, versions, and contexts.",
-                  imageUrl: deepWorkImg,
+                  ctaLabel: "Add APIs",
+                  imageNode: (
+                    <Box
+                      sx={{
+                        width: 180,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Box
+                        component="img"
+                        src={deepWorkImg}
+                        alt="Add API illustration"
+                        sx={{ width: "100%", height: "auto" }}
+                      />
+                    </Box>
+                  ),
                 },
                 {
-                  id: "3",
+                  id: "s3",
+                  tag: "Testing",
                   title: "Validate & monitor in one place",
                   subtitle:
                     "Run smoke tests and observe latency, errors, and throughput—before and after deploy.",
-                  imageUrl: PredictiveAnalytics,
+                  ctaLabel: "Run Tests",
+                  imageNode: (
+                    <Box
+                      sx={{
+                        width: 180,
+                        borderRadius: 2,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Box
+                        component="img"
+                        src={PredictiveAnalytics}
+                        alt="Predictive analytics illustration"
+                        sx={{ width: "100%", height: "auto" }}
+                      />
+                    </Box>
+                  ),
                 },
               ]}
             />
