@@ -48,3 +48,20 @@ type SpectralRuleset struct {
 	FileName           string `yaml:"fileName"`
 	RulesetContentPath string `yaml:"rulesetContentPath"`
 }
+
+// ValidateAPIProjectRequest represents the request payload for validating an API project from Git
+type ValidateAPIProjectRequest struct {
+	RepoURL  string `json:"repoUrl" binding:"required"`
+	Provider string `json:"provider,omitempty"` // Optional: "github", "gitlab", "bitbucket", etc.
+	Branch   string `json:"branch" binding:"required"`
+	Path     string `json:"path" binding:"required"`
+}
+
+// APIProjectValidationResponse represents the response for API project validation
+type APIProjectValidationResponse struct {
+	IsAPIProjectValid    bool     `json:"isAPIProjectValid"`
+	IsAPIConfigValid     bool     `json:"isAPIConfigValid"`
+	IsAPIDefinitionValid bool     `json:"isAPIDefinitionValid"`
+	Errors               []string `json:"errors,omitempty"`
+	API                  *API     `json:"api,omitempty"`
+}

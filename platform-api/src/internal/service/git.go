@@ -141,6 +141,7 @@ func (s *gitService) ValidateAPIProject(repoURL, branch, path string) (*dto.APIP
 		return nil, fmt.Errorf("api project not found: .api-platform directory or config.yaml not found")
 	}
 
+	// 2. Parse config.yaml
 	var config dto.APIProjectConfig
 	if err := yaml.Unmarshal(configContent, &config); err != nil {
 		return nil, fmt.Errorf("malformed api project: invalid config.yaml format")

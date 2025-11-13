@@ -728,6 +728,46 @@ func (h *APIHandler) ImportAPIProject(c *gin.Context) {
 	c.JSON(http.StatusCreated, api)
 }
 
+// ValidateAPIProject handles POST /validate/api-project
+func (h *APIHandler) ValidateAPIProject(c *gin.Context) {
+	var req dto.ValidateAPIProjectRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		return
+	}
+
+	// Validate required fields
+	if req.RepoURL == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Repository URL is required"))
+		return
+	}
+	if req.Branch == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Branch is required"))
+		return
+	}
+	if req.Path == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Path is required"))
+		return
+	}
+
+	// Create Git service
+	gitService := service.NewGitService()
+
+	// Validate API project
+	response, err := h.apiService.ValidateAPIProject(&req, gitService)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to validate API project"))
+		return
+	}
+
+	// Return validation response (200 OK even if validation fails - errors are in the response body)
+	c.JSON(http.StatusOK, response)
+}
+
 // RegisterRoutes registers all API routes
 func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	// API routes
@@ -748,5 +788,9 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	importGroup := r.Group("/api/v1/import")
 	{
 		importGroup.POST("/api-project", h.ImportAPIProject)
+	}
+	validateGroup := r.Group("/api/v1/validate")
+	{
+		validateGroup.POST("/api-project", h.ValidateAPIProject)
 	}
 }

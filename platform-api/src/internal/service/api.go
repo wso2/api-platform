@@ -32,6 +32,7 @@ import (
 	"platform-api/src/internal/constants"
 
 	"github.com/google/uuid"
+	"gopkg.in/yaml.v3"
 )
 
 // APIService handles business logic for API operations
@@ -1061,6 +1062,83 @@ func (s *APIService) mergeAPIData(artifact *dto.APIYAMLData2, userAPIData *dto.A
 	}
 
 	return apiDTO
+}
+
+// ValidateAPIProject validates an API project from Git repository with comprehensive checks
+func (s *APIService) ValidateAPIProject(req *dto.ValidateAPIProjectRequest, gitService GitService) (*dto.APIProjectValidationResponse, error) {
+	response := &dto.APIProjectValidationResponse{
+		IsAPIProjectValid:    false,
+		IsAPIConfigValid:     false,
+		IsAPIDefinitionValid: false,
+		Errors:               []string{},
+	}
+
+	// Step 1: Check if .api-platform directory exists and validate config
+	config, err := gitService.ValidateAPIProject(req.RepoURL, req.Branch, req.Path)
+	if err != nil {
+		response.Errors = append(response.Errors, err.Error())
+		return response, nil
+	}
+
+	// Process the first API entry (assuming single API per project for now)
+	apiEntry := config.APIs[0]
+
+	// Step 3: Fetch and validate OpenAPI definition
+	openAPIPath := req.Path + "/" + apiEntry.OpenAPI
+	openAPIContent, err := gitService.FetchFileContent(req.RepoURL, req.Branch, openAPIPath)
+	if err != nil {
+		response.Errors = append(response.Errors, fmt.Sprintf("failed to fetch OpenAPI file: %s", err.Error()))
+		return response, nil
+	}
+
+	// Basic OpenAPI validation (check if it's valid YAML/JSON with required fields)
+	if err := s.apiUtil.ValidateOpenAPIDefinition(openAPIContent); err != nil {
+		response.Errors = append(response.Errors, fmt.Sprintf("invalid OpenAPI definition: %s", err.Error()))
+		return response, nil
+	}
+
+	response.IsAPIDefinitionValid = true
+
+	// Step 4: Fetch and validate WSO2 artifact
+	wso2ArtifactPath := req.Path + "/" + apiEntry.WSO2Artifact
+	wso2ArtifactContent, err := gitService.FetchFileContent(req.RepoURL, req.Branch, wso2ArtifactPath)
+	if err != nil {
+		response.Errors = append(response.Errors, fmt.Sprintf("failed to fetch WSO2 artifact file: %s", err.Error()))
+		return response, nil
+	}
+
+	var wso2Artifact dto.APIDeploymentYAML
+	if err := yaml.Unmarshal(wso2ArtifactContent, &wso2Artifact); err != nil {
+		response.Errors = append(response.Errors, fmt.Sprintf("invalid WSO2 artifact format: %s", err.Error()))
+		return response, nil
+	}
+
+	// Step 5: Validate WSO2 artifact structure
+	if err := s.apiUtil.ValidateWSO2Artifact(&wso2Artifact); err != nil {
+		response.Errors = append(response.Errors, fmt.Sprintf("invalid WSO2 artifact: %s", err.Error()))
+		return response, nil
+	}
+
+	response.IsAPIConfigValid = true
+
+	// Step 6: Check if OpenAPI and WSO2 artifact match (optional validation)
+	if err := s.apiUtil.ValidateAPIDefinitionConsistency(openAPIContent, &wso2Artifact); err != nil {
+		response.Errors = append(response.Errors, fmt.Sprintf("API definitions mismatch: %s", err.Error()))
+		response.IsAPIProjectValid = false
+		return response, nil
+	}
+
+	// Step 7: If all validations pass, convert to API DTO
+	api, err := s.apiUtil.ConvertAPIYAMLDataToDTO(&wso2Artifact)
+	if err != nil {
+		response.Errors = append(response.Errors, fmt.Sprintf("failed to convert API data: %s", err.Error()))
+		return response, nil
+	}
+
+	response.API = api
+	response.IsAPIProjectValid = response.IsAPIConfigValid && response.IsAPIDefinitionValid
+
+	return response, nil
 }
 
 // PublishAPIToDevPortal publishes an API to a specific DevPortal

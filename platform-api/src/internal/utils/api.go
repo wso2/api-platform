@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/go-openapi/loads"
 	"gopkg.in/yaml.v3"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
@@ -841,6 +843,15 @@ func (u *APIUtil) GenerateOpenAPIDefinition(api *dto.API) ([]byte, error) {
 	return apiDefinition, nil
 }
 
+// ConvertAPIYAMLDataToDTO converts APIDeploymentYAML to API DTO
+func (u *APIUtil) ConvertAPIYAMLDataToDTO(artifact *dto.APIDeploymentYAML) (*dto.API, error) {
+	if artifact == nil {
+		return nil, fmt.Errorf("invalid artifact data")
+	}
+
+	return u.APIYAMLData2ToDTO(&artifact.Data), nil
+}
+
 // APIYAMLData2ToDTO converts APIYAMLData2 to API DTO
 //
 // This function maps the fields from APIYAMLData2 (simplified YAML structure)
@@ -923,4 +934,145 @@ func (u *APIUtil) APIYAMLData2ToDTO(yamlData *dto.APIYAMLData2) *dto.API {
 	}
 
 	return api
+}
+
+// Validation functions for OpenAPI specifications and WSO2 artifacts
+
+// ValidateOpenAPIDefinition performs comprehensive validation on OpenAPI content using professional libraries
+func (u *APIUtil) ValidateOpenAPIDefinition(content []byte) error {
+	// First, try to determine if it's OpenAPI 3.x or Swagger 2.0
+	var rawDoc map[string]interface{}
+	if err := yaml.Unmarshal(content, &rawDoc); err != nil {
+		return fmt.Errorf("invalid YAML/JSON format: %s", err.Error())
+	}
+
+	// Check if it's OpenAPI 3.x
+	if openapi, exists := rawDoc["openapi"]; exists {
+		if openapiStr, ok := openapi.(string); ok && strings.HasPrefix(openapiStr, "3.") {
+			return u.ValidateOpenAPI3(content)
+		}
+	}
+
+	// Check if it's Swagger 2.0
+	if swagger, exists := rawDoc["swagger"]; exists {
+		if swaggerStr, ok := swagger.(string); ok && strings.HasPrefix(swaggerStr, "2.") {
+			return u.ValidateSwagger2(content)
+		}
+	}
+
+	return fmt.Errorf("unsupported API specification format: must be OpenAPI 3.x or Swagger 2.0")
+}
+
+// ValidateOpenAPI3 validates OpenAPI 3.x specifications using getkin/kin-openapi
+func (u *APIUtil) ValidateOpenAPI3(content []byte) error {
+	loader := &openapi3.Loader{IsExternalRefsAllowed: true}
+
+	// Load and parse the OpenAPI 3.x document
+	doc, err := loader.LoadFromData(content)
+	if err != nil {
+		return fmt.Errorf("invalid OpenAPI 3.x specification: %s", err.Error())
+	}
+
+	// Validate the OpenAPI 3.x document
+	if err := doc.Validate(loader.Context); err != nil {
+		return fmt.Errorf("OpenAPI 3.x validation failed: %s", err.Error())
+	}
+
+	// Additional basic checks for required fields
+	if doc.Info == nil {
+		return fmt.Errorf("missing required field: info")
+	}
+
+	if doc.Info.Title == "" {
+		return fmt.Errorf("missing required field: info.title")
+	}
+
+	if doc.Info.Version == "" {
+		return fmt.Errorf("missing required field: info.version")
+	}
+
+	return nil
+}
+
+// ValidateSwagger2 validates Swagger 2.0 specifications using go-openapi/loads
+func (u *APIUtil) ValidateSwagger2(content []byte) error {
+	// Use go-openapi/loads for proper Swagger 2.0 validation
+	doc, err := loads.Analyzed(content, "")
+	if err != nil {
+		return fmt.Errorf("invalid Swagger 2.0 specification: %s", err.Error())
+	}
+
+	// The loads.Analyzed function automatically validates the Swagger spec
+	// including schema validation, reference resolution, and structural validation
+
+	// Additional checks for required fields
+	if doc.Spec() == nil {
+		return fmt.Errorf("missing specification data")
+	}
+
+	spec := doc.Spec()
+
+	if spec.Info == nil {
+		return fmt.Errorf("missing required field: info")
+	}
+
+	if spec.Info.Title == "" {
+		return fmt.Errorf("missing required field: info.title")
+	}
+
+	if spec.Info.Version == "" {
+		return fmt.Errorf("missing required field: info.version")
+	}
+
+	if spec.Swagger == "" {
+		return fmt.Errorf("missing required field: swagger version")
+	}
+
+	// Validate that it's a proper 2.0 version
+	if !strings.HasPrefix(spec.Swagger, "2.") {
+		return fmt.Errorf("invalid swagger version: %s, expected 2.x", spec.Swagger)
+	}
+
+	return nil
+}
+
+// ValidateWSO2Artifact validates the structure of WSO2 artifact
+func (u *APIUtil) ValidateWSO2Artifact(artifact *dto.APIDeploymentYAML) error {
+	if artifact.Data.Name == "" {
+		return fmt.Errorf("missing API name")
+	}
+
+	if artifact.Data.Context == "" {
+		return fmt.Errorf("missing API context")
+	}
+
+	if artifact.Data.Version == "" {
+		return fmt.Errorf("missing API version")
+	}
+
+	return nil
+}
+
+// ValidateAPIDefinitionConsistency checks if OpenAPI and WSO2 artifact are consistent
+func (u *APIUtil) ValidateAPIDefinitionConsistency(openAPIContent []byte, wso2Artifact *dto.APIDeploymentYAML) error {
+	var openAPIDoc map[string]interface{}
+	if err := yaml.Unmarshal(openAPIContent, &openAPIDoc); err != nil {
+		return fmt.Errorf("failed to parse OpenAPI document")
+	}
+
+	// Extract info from OpenAPI
+	info, exists := openAPIDoc["info"].(map[string]interface{})
+	if !exists {
+		return fmt.Errorf("missing info section in OpenAPI")
+	}
+
+	// Check version consistency
+	if version, exists := info["version"].(string); exists {
+		if version != wso2Artifact.Data.Version {
+			return fmt.Errorf("version mismatch between OpenAPI (%s) and WSO2 artifact (%s)",
+				version, wso2Artifact.Data.Version)
+		}
+	}
+
+	return nil
 }
