@@ -161,6 +161,9 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 		return nil, fmt.Errorf("failed to create api: %w", err)
 	}
 
+	api.CreatedAt = time.Now()
+	api.UpdatedAt = time.Now()
+
 	// Associate backend services with the API
 	for i, backendServiceUUID := range backendServiceIdList {
 		isDefault := i == 0 // First backend service is default
@@ -942,6 +945,122 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 			},
 		},
 	}
+}
+
+// ImportAPIProject imports an API project from a Git repository
+func (s *APIService) ImportAPIProject(req *dto.ImportAPIProjectRequest, orgId string, gitService GitService) (*dto.API, error) {
+	// 1. Validate if there is a .api-platform directory with config.yaml
+	config, err := gitService.ValidateAPIProject(req.RepoURL, req.Branch, req.Path)
+	if err != nil {
+		if strings.Contains(err.Error(), "api project not found") {
+			return nil, constants.ErrAPIProjectNotFound
+		}
+		if strings.Contains(err.Error(), "malformed api project") {
+			return nil, constants.ErrMalformedAPIProject
+		}
+		if strings.Contains(err.Error(), "invalid api project") {
+			return nil, constants.ErrInvalidAPIProject
+		}
+		return nil, err
+	}
+
+	// For now, we'll process the first API in the config (can be extended later for multiple APIs)
+	if len(config.APIs) == 0 {
+		return nil, constants.ErrMalformedAPIProject
+	}
+
+	apiConfig := config.APIs[0]
+
+	// 5. Fetch the WSO2 artifact file content
+	wso2ArtifactPath := req.Path + "/" + apiConfig.WSO2Artifact
+	artifactData, err := gitService.FetchWSO2Artifact(req.RepoURL, req.Branch, wso2ArtifactPath)
+	if err != nil {
+		return nil, constants.ErrWSO2ArtifactNotFound
+	}
+
+	// 6. Create API with details from WSO2 artifact, overwritten by request details
+	apiData := s.mergeAPIData(&artifactData.Data, &req.API)
+
+	// 7. Create API using the existing CreateAPI flow
+	createReq := &CreateAPIRequest{
+		Name:             apiData.Name,
+		DisplayName:      apiData.DisplayName,
+		Description:      apiData.Description,
+		Context:          apiData.Context,
+		Version:          apiData.Version,
+		Provider:         apiData.Provider,
+		ProjectID:        apiData.ProjectID,
+		LifeCycleStatus:  apiData.LifeCycleStatus,
+		HasThumbnail:     apiData.HasThumbnail,
+		IsDefaultVersion: apiData.IsDefaultVersion,
+		IsRevision:       apiData.IsRevision,
+		RevisionedAPIID:  apiData.RevisionedAPIID,
+		RevisionID:       apiData.RevisionID,
+		Type:             apiData.Type,
+		Transport:        apiData.Transport,
+		MTLS:             apiData.MTLS,
+		Security:         apiData.Security,
+		CORS:             apiData.CORS,
+		BackendServices:  apiData.BackendServices,
+		APIRateLimiting:  apiData.APIRateLimiting,
+		Operations:       apiData.Operations,
+	}
+
+	return s.CreateAPI(createReq, orgId)
+}
+
+// mergeAPIData merges WSO2 artifact data with user-provided API data (user data takes precedence)
+func (s *APIService) mergeAPIData(artifact *dto.APIYAMLData2, userAPIData *dto.API) *dto.API {
+	apiDTO := s.apiUtil.APIYAMLData2ToDTO(artifact)
+
+	// Overwrite with user-provided data (if not empty)
+	if userAPIData.Name != "" {
+		apiDTO.Name = userAPIData.Name
+	}
+	if userAPIData.DisplayName != "" {
+		apiDTO.DisplayName = userAPIData.DisplayName
+	}
+	if userAPIData.Description != "" {
+		apiDTO.Description = userAPIData.Description
+	}
+	if userAPIData.Context != "" {
+		apiDTO.Context = userAPIData.Context
+	}
+	if userAPIData.Version != "" {
+		apiDTO.Version = userAPIData.Version
+	}
+	if userAPIData.Provider != "" {
+		apiDTO.Provider = userAPIData.Provider
+	}
+	if userAPIData.ProjectID != "" {
+		apiDTO.ProjectID = userAPIData.ProjectID
+	}
+	if userAPIData.LifeCycleStatus != "" {
+		apiDTO.LifeCycleStatus = userAPIData.LifeCycleStatus
+	}
+	if userAPIData.Type != "" {
+		apiDTO.Type = userAPIData.Type
+	}
+	if len(userAPIData.Transport) > 0 {
+		apiDTO.Transport = userAPIData.Transport
+	}
+	if userAPIData.BackendServices != nil && len(userAPIData.BackendServices) > 0 {
+		apiDTO.BackendServices = userAPIData.BackendServices
+	}
+
+	// Handle boolean fields
+	apiDTO.HasThumbnail = userAPIData.HasThumbnail
+	apiDTO.IsDefaultVersion = userAPIData.IsDefaultVersion
+	apiDTO.IsRevision = userAPIData.IsRevision
+
+	if userAPIData.RevisionedAPIID != "" {
+		apiDTO.RevisionedAPIID = userAPIData.RevisionedAPIID
+	}
+	if userAPIData.RevisionID != 0 {
+		apiDTO.RevisionID = userAPIData.RevisionID
+	}
+
+	return apiDTO
 }
 
 // PublishAPIToDevPortal publishes an API to a specific DevPortal

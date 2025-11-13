@@ -83,4 +83,12 @@ var (
 	ErrAPIPublicationNotFound   = errors.New("api publication not found")
 	ErrAPIPublicationInProgress = errors.New("api publication is currently in progress")
 	ErrAPIAlreadyPublished      = errors.New("api is already published to devportal")
+
+	// API Project Import errors
+	ErrAPIProjectNotFound   = errors.New("api project not found")
+	ErrMalformedAPIProject  = errors.New("malformed api project")
+	ErrInvalidAPIProject    = errors.New("invalid api project")
+	ErrConfigFileNotFound   = errors.New("config.yaml file not found")
+	ErrOpenAPIFileNotFound  = errors.New("openapi file not found")
+	ErrWSO2ArtifactNotFound = errors.New("wso2 artifact file not found")
 )

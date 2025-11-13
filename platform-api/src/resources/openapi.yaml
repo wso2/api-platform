@@ -230,6 +230,41 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /import/api-project:
+    post:
+      summary: Import API project
+      description: |
+        Imports an API project into the platform from a provided Git Repository URL.
+        An API is created from the imported API project and is associated with a specified project within the
+        organization in the JWT token.
+      operationId: ImportAPIProject
+      tags:
+        - APIs
+      requestBody:
+        description: API project import details
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportAPIProjectRequest'
+      responses:
+        '201':
+          description: API project imported successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/API'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /apis:
     get:
       summary: Get all APIs for an organization
@@ -2421,6 +2456,43 @@ components:
           format: date-time
           description: Timestamp when API was unpublished
           example: "2025-10-29T21:08:59.834784232+05:30"
+    
+    ImportAPIProjectRequest:
+        type: object
+        required:
+            - repoUrl
+            - branch
+            - path
+            - api
+        properties:
+          repoUrl:
+            type: string
+            format: uri
+            description: URL of the public Git repository
+            example: "https://github.com/example-org/sample-api"
+          provider:
+            type: string
+            enum: [ "github", "gitlab", "bitbucket" ]
+            description: Git provider (optional - will be auto-detected if not provided)
+            example: "github"
+          branch:
+            type: string
+            description: Branch of the repository to import from
+            example: "main"
+          path:
+            type: string
+            description: Path within the repository where the API project is located
+            example: "apis/inventory-api"
+          api:
+            allOf:
+              - $ref: '#/components/schemas/API'
+              - type: object
+                description: API details for the imported project
+                required:
+                  - name
+                  - context
+                  - version
+                  - projectId
 
   responses:
     Unauthorized:

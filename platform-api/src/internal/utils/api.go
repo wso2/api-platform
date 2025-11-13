@@ -840,3 +840,87 @@ func (u *APIUtil) GenerateOpenAPIDefinition(api *dto.API) ([]byte, error) {
 
 	return apiDefinition, nil
 }
+
+// APIYAMLData2ToDTO converts APIYAMLData2 to API DTO
+//
+// This function maps the fields from APIYAMLData2 (simplified YAML structure)
+// to the complete API DTO structure. Fields that don't exist in APIYAMLData2
+// are left with their zero values and should be populated by the caller.
+//
+// Parameters:
+//   - yamlData: The APIYAMLData2 source data
+//
+// Returns:
+//   - *dto.API: Converted API DTO with mapped fields
+func (u *APIUtil) APIYAMLData2ToDTO(yamlData *dto.APIYAMLData2) *dto.API {
+	if yamlData == nil {
+		return nil
+	}
+
+	// Convert upstreams to backend services if present
+	var backendServices []dto.BackendService
+	if len(yamlData.Upstreams) > 0 {
+		backendServices = make([]dto.BackendService, len(yamlData.Upstreams))
+		for i, upstream := range yamlData.Upstreams {
+			backendServices[i] = dto.BackendService{
+				IsDefault: i == 0, // First backend service is default
+				Endpoints: []dto.BackendEndpoint{
+					{
+						URL:         upstream.URL,
+						Description: upstream.Description,
+						Weight:      upstream.Weight,
+						HealthCheck: upstream.HealthCheck,
+						MTLS:        upstream.MTLS,
+					},
+				},
+			}
+		}
+	}
+
+	// Convert operations if present
+	var operations []dto.Operation
+	if len(yamlData.Operations) > 0 {
+		operations = make([]dto.Operation, len(yamlData.Operations))
+		for i, op := range yamlData.Operations {
+			operations[i] = dto.Operation{
+				Name:        fmt.Sprintf("Operation-%d", i+1),
+				Description: fmt.Sprintf("Operation for %s %s", op.Method, op.Path),
+				Request: &dto.OperationRequest{
+					Method: op.Method,
+					Path:   op.Path,
+				},
+			}
+		}
+	}
+
+	// Create and populate API DTO with available fields
+	api := &dto.API{
+		ID:              yamlData.Id,
+		Name:            yamlData.Name,
+		DisplayName:     yamlData.DisplayName,
+		Description:     yamlData.Description,
+		Context:         yamlData.Context,
+		Version:         yamlData.Version,
+		Provider:        yamlData.Provider,
+		BackendServices: backendServices,
+		Operations:      operations,
+
+		// Set reasonable defaults for required fields that aren't in APIYAMLData2
+		LifeCycleStatus:  "CREATED",
+		Type:             "HTTP",
+		Transport:        []string{"http", "https"},
+		HasThumbnail:     false,
+		IsDefaultVersion: false,
+		IsRevision:       false,
+		RevisionID:       0,
+
+		// Fields that need to be set by caller:
+		// - ProjectID (required)
+		// - OrganizationID (required)
+		// - CreatedAt, UpdatedAt (timestamps)
+		// - RevisionedAPIID (if applicable)
+		// - MTLS, Security, CORS, APIRateLimiting configs
+	}
+
+	return api
+}

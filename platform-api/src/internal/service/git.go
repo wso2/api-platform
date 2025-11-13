@@ -19,6 +19,7 @@ package service
 
 import (
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"platform-api/src/internal/dto"
 )
 
@@ -26,6 +27,9 @@ type GitService interface {
 	FetchRepoBranches(repoURL string) (*dto.GitRepoBranchesResponse, error)
 	FetchRepoContent(repoURL, branch string) (*dto.GitRepoContentResponse, error)
 	GetSupportedProviders() []string
+	FetchFileContent(repoURL, branch, path string) ([]byte, error)
+	ValidateAPIProject(repoURL, branch, path string) (*dto.APIProjectConfig, error)
+	FetchWSO2Artifact(repoURL, branch, path string) (*dto.APIDeploymentYAML, error)
 }
 
 type gitService struct {
@@ -103,4 +107,83 @@ func (s *gitService) GetSupportedProviders() []string {
 		providers = append(providers, string(provider))
 	}
 	return providers
+}
+
+// FetchFileContent fetches the content of a specific file from a Git repository
+func (s *gitService) FetchFileContent(repoURL, branch, path string) ([]byte, error) {
+	// Parse repository URL to determine provider and extract owner/repo
+	repoInfo, err := ParseRepositoryURL(repoURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid repository URL: %w", err)
+	}
+
+	// Get the appropriate provider client
+	providerClient, exists := s.providers[repoInfo.Provider]
+	if !exists {
+		return nil, fmt.Errorf("unsupported Git provider: %s", repoInfo.Provider)
+	}
+
+	// Use the provider-specific client to fetch file content
+	content, err := providerClient.FetchFileContent(repoInfo.Owner, repoInfo.Repo, branch, path)
+	if err != nil {
+		return nil, err
+	}
+
+	return content, nil
+}
+
+// ValidateAPIProject validates an API project structure in a Git repository
+func (s *gitService) ValidateAPIProject(repoURL, branch, path string) (*dto.APIProjectConfig, error) {
+	// 1. Check if .api-platform directory exists
+	apiPlatformPath := path + "/.api-platform"
+	configContent, err := s.FetchFileContent(repoURL, branch, apiPlatformPath+"/config.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("api project not found: .api-platform directory or config.yaml not found")
+	}
+
+	var config dto.APIProjectConfig
+	if err := yaml.Unmarshal(configContent, &config); err != nil {
+		return nil, fmt.Errorf("malformed api project: invalid config.yaml format")
+	}
+
+	// 3. Validate config structure
+	if len(config.APIs) == 0 {
+		return nil, fmt.Errorf("malformed api project: no APIs defined in config.yaml")
+	}
+
+	for _, api := range config.APIs {
+		if api.OpenAPI == "" || api.WSO2Artifact == "" {
+			return nil, fmt.Errorf("malformed api project: apis.openapi and apis.wso2Artifact fields are required")
+		}
+
+		// 4. Check if the referenced files exist in the project path
+		openAPIPath := path + "/" + api.OpenAPI
+		_, err := s.FetchFileContent(repoURL, branch, openAPIPath)
+		if err != nil {
+			return nil, fmt.Errorf("invalid api project: openapi file not found: %s", api.OpenAPI)
+		}
+
+		wso2ArtifactPath := path + "/" + api.WSO2Artifact
+		_, err = s.FetchFileContent(repoURL, branch, wso2ArtifactPath)
+		if err != nil {
+			return nil, fmt.Errorf("invalid api project: wso2 artifact file not found: %s", api.WSO2Artifact)
+		}
+	}
+
+	return &config, nil
+}
+
+// FetchWSO2Artifact fetches and parses the WSO2 artifact file from a Git repository
+func (s *gitService) FetchWSO2Artifact(repoURL, branch, path string) (*dto.APIDeploymentYAML, error) {
+	content, err := s.FetchFileContent(repoURL, branch, path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch WSO2 artifact file: %w", err)
+	}
+
+	var artifact dto.APIDeploymentYAML
+	if err := yaml.Unmarshal(content, &artifact); err != nil {
+		return nil, fmt.Errorf("failed to parse WSO2 artifact file: %w", err)
+	}
+
+	return &artifact, nil
 }

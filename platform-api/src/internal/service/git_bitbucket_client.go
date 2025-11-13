@@ -20,6 +20,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"platform-api/src/internal/dto"
 	"regexp"
@@ -113,6 +114,37 @@ func (c *BitbucketClient) FetchRepoBranches(owner, repo string) (*dto.GitRepoBra
 	}
 
 	return response, nil
+}
+
+// FetchFileContent fetches the content of a specific file from a Bitbucket repository
+func (c *BitbucketClient) FetchFileContent(owner, repo, branch, path string) ([]byte, error) {
+	apiURL := fmt.Sprintf("https://api.bitbucket.org/2.0/repositories/%s/%s/src/%s/%s", owner, repo, branch, path)
+
+	resp, err := c.httpClient.Get(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch file content: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// Continue processing
+	case http.StatusNotFound:
+		return nil, fmt.Errorf("file not found: %s", path)
+	case http.StatusForbidden:
+		return nil, fmt.Errorf("access forbidden - repository may be private or rate limit exceeded")
+	case http.StatusUnauthorized:
+		return nil, fmt.Errorf("unauthorized access - repository may be private")
+	default:
+		return nil, fmt.Errorf("unexpected response status: %d", resp.StatusCode)
+	}
+
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file content: %w", err)
+	}
+
+	return content, nil
 }
 
 // FetchRepoContent fetches the contents of a Bitbucket repository branch

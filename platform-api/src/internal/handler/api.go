@@ -610,6 +610,124 @@ func (h *APIHandler) GetAPIPublications(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// ImportAPIProject handles POST /api/v1/import/api-project
+func (h *APIHandler) ImportAPIProject(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	var req dto.ImportAPIProjectRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		return
+	}
+
+	// Validate required fields
+	if req.RepoURL == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Repository URL is required"))
+		return
+	}
+	if req.Branch == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Branch is required"))
+		return
+	}
+	if req.Path == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Path is required"))
+		return
+	}
+	if req.API.Name == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API name is required"))
+		return
+	}
+	if req.API.Context == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API context is required"))
+		return
+	}
+	if req.API.Version == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API version is required"))
+		return
+	}
+	if req.API.ProjectID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Project ID is required"))
+		return
+	}
+
+	// Create Git service
+	gitService := service.NewGitService()
+
+	// Import API project
+	api, err := h.apiService.ImportAPIProject(&req, orgId, gitService)
+	if err != nil {
+		if errors.Is(err, constants.ErrAPIProjectNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "API Project Not Found",
+				"API project not found: .api-platform directory not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrMalformedAPIProject) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Malformed API Project",
+				"Malformed API project: config.yaml is missing or invalid"))
+			return
+		}
+		if errors.Is(err, constants.ErrInvalidAPIProject) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Invalid API Project",
+				"Invalid API project: referenced files not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrConfigFileNotFound) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Config File Not Found",
+				"config.yaml file not found in .api-platform directory"))
+			return
+		}
+		if errors.Is(err, constants.ErrOpenAPIFileNotFound) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "OpenAPI File Not Found",
+				"OpenAPI file not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrWSO2ArtifactNotFound) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "WSO2 Artifact Not Found",
+				"WSO2 artifact file not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrAPIAlreadyExists) {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"API already exists in the project"))
+			return
+		}
+		if errors.Is(err, constants.ErrProjectNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Project not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrInvalidAPIName) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid API name format"))
+			return
+		}
+		if errors.Is(err, constants.ErrInvalidAPIContext) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid API context format"))
+			return
+		}
+
+		log.Printf("Failed to import API project: %v", err)
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to import API project"))
+		return
+	}
+
+	c.JSON(http.StatusCreated, api)
+}
+
 // RegisterRoutes registers all API routes
 func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	// API routes
@@ -626,5 +744,9 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		apiGroup.POST("/:apiId/devportals/publish", h.PublishToDevPortal)
 		apiGroup.POST("/:apiId/devportals/unpublish", h.UnpublishFromDevPortal)
 		apiGroup.GET("/:apiId/publications", h.GetAPIPublications)
+	}
+	importGroup := r.Group("/api/v1/import")
+	{
+		importGroup.POST("/api-project", h.ImportAPIProject)
 	}
 }
