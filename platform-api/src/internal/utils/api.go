@@ -22,8 +22,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/go-openapi/loads"
+	"github.com/pb33f/libopenapi"
+	v2high "github.com/pb33f/libopenapi/datamodel/high/v2"
+	v3high "github.com/pb33f/libopenapi/datamodel/high/v3"
 	"gopkg.in/yaml.v3"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
@@ -938,47 +939,77 @@ func (u *APIUtil) APIYAMLData2ToDTO(yamlData *dto.APIYAMLData2) *dto.API {
 
 // Validation functions for OpenAPI specifications and WSO2 artifacts
 
-// ValidateOpenAPIDefinition performs comprehensive validation on OpenAPI content using professional libraries
+// ValidateOpenAPIDefinition performs comprehensive validation on OpenAPI content using libopenapi
 func (u *APIUtil) ValidateOpenAPIDefinition(content []byte) error {
-	// First, try to determine if it's OpenAPI 3.x or Swagger 2.0
-	var rawDoc map[string]interface{}
-	if err := yaml.Unmarshal(content, &rawDoc); err != nil {
-		return fmt.Errorf("invalid YAML/JSON format: %s", err.Error())
+	// Create a new document from the content
+	document, err := libopenapi.NewDocument(content)
+	if err != nil {
+		return fmt.Errorf("failed to parse document: %s", err.Error())
 	}
 
-	// Check if it's OpenAPI 3.x
-	if openapi, exists := rawDoc["openapi"]; exists {
-		if openapiStr, ok := openapi.(string); ok && strings.HasPrefix(openapiStr, "3.") {
-			return u.ValidateOpenAPI3(content)
-		}
+	// Check the specification version
+	specInfo := document.GetSpecInfo()
+	if specInfo == nil {
+		return fmt.Errorf("unable to determine specification version")
 	}
 
-	// Check if it's Swagger 2.0
-	if swagger, exists := rawDoc["swagger"]; exists {
-		if swaggerStr, ok := swagger.(string); ok && strings.HasPrefix(swaggerStr, "2.") {
-			return u.ValidateSwagger2(content)
-		}
+	// Handle different specification versions based on version string
+	switch {
+	case specInfo.Version != "" && strings.HasPrefix(specInfo.Version, "3."):
+		return u.validateOpenAPI3Document(document)
+	case specInfo.Version != "" && strings.HasPrefix(specInfo.Version, "2."):
+		return u.validateSwagger2Document(document)
+	default:
+		// Try to determine from the document structure
+		return u.validateDocumentByStructure(document)
 	}
-
-	return fmt.Errorf("unsupported API specification format: must be OpenAPI 3.x or Swagger 2.0")
 }
 
-// ValidateOpenAPI3 validates OpenAPI 3.x specifications using getkin/kin-openapi
-func (u *APIUtil) ValidateOpenAPI3(content []byte) error {
-	loader := &openapi3.Loader{IsExternalRefsAllowed: true}
+// validateDocumentByStructure tries to validate by attempting to build both models
+func (u *APIUtil) validateDocumentByStructure(document libopenapi.Document) error {
+	// Try OpenAPI 3.x first
+	v3Model, v3Errs := document.BuildV3Model()
+	if v3Errs == nil && v3Model != nil {
+		return u.validateOpenAPI3Model(v3Model)
+	}
 
-	// Load and parse the OpenAPI 3.x document
-	doc, err := loader.LoadFromData(content)
+	// Try Swagger 2.0
+	v2Model, v2Errs := document.BuildV2Model()
+	if v2Errs == nil && v2Model != nil {
+		return u.validateSwagger2Model(v2Model)
+	}
+
+	// Both failed, return error
+	var errorMessages []string
+	if v3Errs != nil {
+		errorMessages = append(errorMessages, "OpenAPI 3.x: "+v3Errs.Error())
+	}
+	if v2Errs != nil {
+		errorMessages = append(errorMessages, "Swagger 2.0: "+v2Errs.Error())
+	}
+
+	return fmt.Errorf("document validation failed: %s", strings.Join(errorMessages, "; "))
+}
+
+// validateOpenAPI3Document validates OpenAPI 3.x documents using libopenapi
+func (u *APIUtil) validateOpenAPI3Document(document libopenapi.Document) error {
+	// Build the OpenAPI 3.x model
+	docModel, err := document.BuildV3Model()
 	if err != nil {
-		return fmt.Errorf("invalid OpenAPI 3.x specification: %s", err.Error())
+		return fmt.Errorf("OpenAPI 3.x model build error: %s", err.Error())
 	}
 
-	// Validate the OpenAPI 3.x document
-	if err := doc.Validate(loader.Context); err != nil {
-		return fmt.Errorf("OpenAPI 3.x validation failed: %s", err.Error())
+	return u.validateOpenAPI3Model(docModel)
+}
+
+// validateOpenAPI3Model validates an OpenAPI 3.x model
+func (u *APIUtil) validateOpenAPI3Model(docModel *libopenapi.DocumentModel[v3high.Document]) error {
+	if docModel == nil {
+		return fmt.Errorf("invalid OpenAPI 3.x document model")
 	}
 
-	// Additional basic checks for required fields
+	// Get the OpenAPI document
+	doc := &docModel.Model
 	if doc.Info == nil {
 		return fmt.Errorf("missing required field: info")
 	}
@@ -994,46 +1025,69 @@ func (u *APIUtil) ValidateOpenAPI3(content []byte) error {
 	return nil
 }
 
-// ValidateSwagger2 validates Swagger 2.0 specifications using go-openapi/loads
-func (u *APIUtil) ValidateSwagger2(content []byte) error {
-	// Use go-openapi/loads for proper Swagger 2.0 validation
-	doc, err := loads.Analyzed(content, "")
+// validateSwagger2Document validates Swagger 2.0 documents using libopenapi
+func (u *APIUtil) validateSwagger2Document(document libopenapi.Document) error {
+	// Build the Swagger 2.0 model
+	docModel, err := document.BuildV2Model()
 	if err != nil {
-		return fmt.Errorf("invalid Swagger 2.0 specification: %s", err.Error())
+		return fmt.Errorf("Swagger 2.0 model build error: %s", err.Error())
 	}
 
-	// The loads.Analyzed function automatically validates the Swagger spec
-	// including schema validation, reference resolution, and structural validation
+	return u.validateSwagger2Model(docModel)
+}
 
-	// Additional checks for required fields
-	if doc.Spec() == nil {
-		return fmt.Errorf("missing specification data")
+// validateSwagger2Model validates a Swagger 2.0 model
+func (u *APIUtil) validateSwagger2Model(docModel *libopenapi.DocumentModel[v2high.Swagger]) error {
+	if docModel == nil {
+		return fmt.Errorf("invalid Swagger 2.0 document model")
 	}
 
-	spec := doc.Spec()
-
-	if spec.Info == nil {
+	// Get the Swagger document
+	doc := &docModel.Model
+	if doc.Info == nil {
 		return fmt.Errorf("missing required field: info")
 	}
 
-	if spec.Info.Title == "" {
+	if doc.Info.Title == "" {
 		return fmt.Errorf("missing required field: info.title")
 	}
 
-	if spec.Info.Version == "" {
+	if doc.Info.Version == "" {
 		return fmt.Errorf("missing required field: info.version")
 	}
 
-	if spec.Swagger == "" {
+	if doc.Swagger == "" {
 		return fmt.Errorf("missing required field: swagger version")
 	}
 
 	// Validate that it's a proper 2.0 version
-	if !strings.HasPrefix(spec.Swagger, "2.") {
-		return fmt.Errorf("invalid swagger version: %s, expected 2.x", spec.Swagger)
+	if !strings.HasPrefix(doc.Swagger, "2.") {
+		return fmt.Errorf("invalid swagger version: %s, expected 2.x", doc.Swagger)
 	}
 
 	return nil
+}
+
+// ValidateOpenAPI3 validates OpenAPI 3.x specifications using libopenapi
+func (u *APIUtil) ValidateOpenAPI3(content []byte) error {
+	// Create a new document from the content
+	document, err := libopenapi.NewDocument(content)
+	if err != nil {
+		return fmt.Errorf("failed to parse OpenAPI 3.x document: %s", err.Error())
+	}
+
+	return u.validateOpenAPI3Document(document)
+}
+
+// ValidateSwagger2 validates Swagger 2.0 specifications using libopenapi
+func (u *APIUtil) ValidateSwagger2(content []byte) error {
+	// Create a new document from the content
+	document, err := libopenapi.NewDocument(content)
+	if err != nil {
+		return fmt.Errorf("failed to parse Swagger 2.0 document: %s", err.Error())
+	}
+
+	return u.validateSwagger2Document(document)
 }
 
 // ValidateWSO2Artifact validates the structure of WSO2 artifact
