@@ -91,7 +91,6 @@ yarn-debug.log*
 
 *.DS_Store
 
-data
 
 # Go-specific patterns
 *.exe

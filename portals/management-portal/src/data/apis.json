@@ -1,0 +1,62 @@
+[
+  {
+    "id": "api-1",
+    "name": "SwaggerPetStore",
+    "owner": "Admin",
+    "version": "1.0.0",
+    "context": "/swaggerpetstore",
+    "description": "Initiate payments and retrieve information on the status of the transaction. Initiate payments and retrieve information on the status of the transaction.",
+    "tags": ["Payment", "Trending", "REST"],
+    "extraTagsCount": 4,
+    "rating": 4.0,
+    "disabled": false
+  },
+  {
+    "id": "test-api",
+    "name": "Accounts",
+    "owner": "Admin",
+    "version": "2.1.0",
+    "context": "/accounts",
+    "description": "Account services for profile and security management. Provides endpoints for user, role and MFA flows.",
+    "tags": ["Security", "REST"],
+    "extraTagsCount": 2,
+    "rating": 4.0,
+    "disabled": false
+  },
+  {
+    "id": "api-3",
+    "name": "Payments",
+    "owner": "Admin",
+    "version": "3.0.0",
+    "context": "/payments",
+    "description": "Card and bank payments with webhooks for settlement notifications and reconciliation.",
+    "tags": ["Payment", "Trending", "REST"],
+    "extraTagsCount": 3,
+    "rating": 4.0,
+    "disabled": true
+  },
+  {
+    "id": "api-4",
+    "name": "Orders",
+    "owner": "Admin",
+    "version": "1.5.2",
+    "context": "/orders",
+    "description": "Create and manage orders, returns and tracking information for customers.",
+    "tags": ["Retail", "REST"],
+    "extraTagsCount": 1,
+    "rating": 4.0,
+    "disabled": false
+  },
+  {
+    "id": "api-5",
+    "name": "Catalog",
+    "owner": "Admin",
+    "version": "1.8.0",
+    "context": "/catalog",
+    "description": "Product catalog search, categories and inventory queries optimized for storefronts.",
+    "tags": ["Search", "REST"],
+    "extraTagsCount": 4,
+    "rating": 4.0,
+    "disabled": false
+  }
+]
