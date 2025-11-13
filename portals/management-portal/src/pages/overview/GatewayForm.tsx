@@ -57,7 +57,7 @@ export default function GatewayForm({
 
       <Stack spacing={2} width="100%">
         <TextInput
-          label="Display name"
+          label="Name"
           placeholder="e.g., My Production Gateway"
           value={displayName}
           onChange={(v: string) => setDisplayName(v)}
@@ -67,7 +67,7 @@ export default function GatewayForm({
         />
 
         <TextInput
-          label="Name"
+          label="Identifier"
           value={name}
           onChange={() => {}}
           fullWidth

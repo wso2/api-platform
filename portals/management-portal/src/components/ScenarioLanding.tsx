@@ -305,12 +305,12 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
                 sx={{ bgcolor: ACCENT, "&:hover": { bgcolor: ACCENT } }}
               >
                 {activeScenario.id === "design-api"
-                  ? "OPEN VS CODE"
-                  : "CONTINUE"}
+                  ? "Open VS Code"
+                  : "Continue"}
               </Button>
 
               <Button variant="text" onClick={onSkip}>
-                SKIP FOR NOW
+                Skip for now
               </Button>
             </Stack>
           </Box>

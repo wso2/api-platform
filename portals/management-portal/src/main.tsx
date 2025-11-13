@@ -11,24 +11,21 @@ import "@fontsource/poppins/600.css";
 import "@fontsource/poppins/700.css";
 import { OrganizationProvider } from "./context/OrganizationContext";
 import { ProjectProvider } from "./context/ProjectContext";
-import { ApiProvider } from "./context/ApiContext";
-import { CreateComponentBuildpackProvider } from "./context/CreateComponentBuildpackContext";
+import { APIFeatureProviders } from "./Providers/APIFeatureProviders";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <OrganizationProvider>
-          <ProjectProvider>
-            <ApiProvider>
-              <CreateComponentBuildpackProvider>
-                <BrowserRouter>
-                  <App />
-                </BrowserRouter>
-              </CreateComponentBuildpackProvider>
-            </ApiProvider>
-          </ProjectProvider>
-        </OrganizationProvider>
+      <CssBaseline />
+      <OrganizationProvider>
+        <ProjectProvider>
+          <APIFeatureProviders>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </APIFeatureProviders>
+        </ProjectProvider>
+      </OrganizationProvider>
     </ThemeProvider>
   </React.StrictMode>
 );

@@ -76,7 +76,7 @@ const GatewayForm: React.FC<Props> = ({
         {/* Row 1: Display name + Identifier */}
         <Grid size={{ xs: 12, md: 6}}>
           <TextInput
-            label="Display name"
+            label="Name"
             value={displayName}
             onChange={onChangeDisplayName}
             placeholder="e.g., My Production Gateway"

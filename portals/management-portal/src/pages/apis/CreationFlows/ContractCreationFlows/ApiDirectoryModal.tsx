@@ -12,131 +12,297 @@ import {
   ListItemIcon,
   ListItemText,
   Divider,
+  Collapse,
+  Chip,
+  InputAdornment,
 } from "@mui/material";
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
+import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
+import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
+import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import { TextInput } from "../../../../components/src/components/TextInput";
 import { Button } from "../../../../components/src/components/Button";
+
+/** Align with hook types; inline here for convenience */
+type GitTreeItemType = "tree" | "blob";
+type GitTreeItem = {
+  path: string;
+  subPath: string;
+  children: GitTreeItem[];
+  type: GitTreeItemType;
+};
 
 type Props = {
   open: boolean;
   currentPath: string;
-  rootLabel: string; // e.g., "bijira-samples"
+  rootLabel: string; // e.g., "repo-name"
+  items: GitTreeItem[]; // full tree for branch
   onCancel: () => void;
   onContinue: (path: string) => void;
 };
+
+const normalizePath = (value: string) => `/${value}`.replace(/\/+/g, "/");
 
 const ApiDirectoryModal: React.FC<Props> = ({
   open,
   currentPath,
   rootLabel,
+  items,
   onCancel,
   onContinue,
 }) => {
-  // UI only; static list
   const [path, setPath] = React.useState(currentPath || "/");
   const [query, setQuery] = React.useState("");
+
+  // track expanded folders (keyed by item.path)
+  const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
 
   React.useEffect(() => {
     if (open) {
       setPath(currentPath || "/");
       setQuery("");
+      setExpanded({});
     }
   }, [open, currentPath]);
 
-  const items = [
-    ".samples",
-    "chat-service-api",
-    "cloudmersive-currency-api",
-    "external-lib",
-    "mcp-card-promotion-server",
-    "mcp-chat-agent",
-  ];
+  const toggle = (key: string) =>
+    setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  const filtered = items.filter((n) =>
-    n.toLowerCase().includes(query.toLowerCase())
-  );
+  const matchesQuery = (node: GitTreeItem, q: string) => {
+    if (!q.trim()) return true;
+    const s = q.toLowerCase();
+    return (
+      node.path.toLowerCase().includes(s) ||
+      node.subPath.toLowerCase().includes(s)
+    );
+  };
+
+  /** Recursively render tree; only folders (type==="tree") are selectable */
+  const renderNodes = (nodes: GitTreeItem[], depth = 0): React.ReactNode => {
+    return nodes.map((n) => {
+      const childMatches =
+        n.children?.some((c) => matchesQuery(c, query)) || false;
+      const show = matchesQuery(n, query) || childMatches;
+      if (!show) return null;
+
+      const isFolder = n.type === "tree";
+      const normalizedPath = normalizePath(n.path);
+      const shouldForceOpen =
+        !!query.trim() && (matchesQuery(n, query) || childMatches);
+      const isOpen = shouldForceOpen || !!expanded[n.path];
+      const isSelected = normalizedPath === path;
+
+      return (
+        <React.Fragment key={n.path}>
+          <ListItem disablePadding sx={{ pl: 2 + depth * 2, pr: 2 }}>
+            <ListItemButton
+              onClick={() => {
+                if (isFolder) {
+                  setPath(normalizedPath);
+                  toggle(n.path);
+                }
+              }}
+              disabled={!isFolder}
+              sx={{
+                px: 1.5,
+                py: 1.25,
+                borderRadius: 2,
+                border: "1px solid",
+                borderColor: isSelected ? "#afe7caff" : "transparent",
+                backgroundColor: isSelected
+                  ? "rgba(171, 225, 198, 0.32)"
+                  : "transparent",
+                opacity: isFolder ? 1 : 0.85,
+                "&:hover": {
+                  backgroundColor: isFolder
+                    ? "rgba(171, 225, 182, 0.25)"
+                    : "transparent",
+                },
+                "&.Mui-disabled": {
+                  opacity: 0.8,
+                },
+              }}
+            >
+              <ListItemIcon
+                sx={{
+                  minWidth: 32,
+                  color: isFolder ? "#585c5aff" : "#626467ff",
+                }}
+              >
+                {isFolder ? (
+                  <FolderOutlinedIcon fontSize="small" />
+                ) : (
+                  <InsertDriveFileOutlinedIcon fontSize="small" />
+                )}
+              </ListItemIcon>
+              <ListItemText
+                primary={
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <Typography
+                      variant="h6"
+                      sx={{
+                        fontWeight: isFolder ? 600 : 400,
+                        color: "#1F2937",
+                      }}
+                    >
+                      {n.subPath}
+                    </Typography>
+                    {!isFolder && (
+                      <Chip
+                        size="small"
+                        label="file"
+                        variant="outlined"
+                        sx={{
+                          borderRadius: 1,
+                          fontSize: 10,
+                          color: "#6B7280",
+                          borderColor: "#E5E7EB",
+                        }}
+                      />
+                    )}
+                  </Box>
+                }
+              />
+              {isFolder ? (
+                isOpen ? (
+                  <ExpandMoreRoundedIcon fontSize="small" />
+                ) : (
+                  <ChevronRightRoundedIcon fontSize="small" />
+                )
+              ) : null}
+            </ListItemButton>
+          </ListItem>
+          <Divider
+            sx={{ borderColor: "rgba(15, 23, 42, 0.06)", ml: 6 + depth * 2 }}
+          />
+
+          {isFolder && n.children && n.children.length > 0 && (
+            <Collapse in={isOpen} timeout="auto" unmountOnExit>
+              <List disablePadding>{renderNodes(n.children, depth + 1)}</List>
+            </Collapse>
+          )}
+        </React.Fragment>
+      );
+    });
+  };
+
+  const isRootSelected = path === "/";
 
   return (
     <Dialog open={open} onClose={onCancel} maxWidth="md" fullWidth>
-      <DialogTitle sx={{ textAlign: "center", fontWeight: 700, fontSize: 28, mt: 1 }}>
+      <DialogTitle sx={{ textAlign: "center", fontWeight: 600, fontSize: 24 }}>
         API directory
       </DialogTitle>
 
-      <DialogContent sx={{ pt: 1 }}>
-        {/* Current path */}
+      <DialogContent>
         <TextInput
           label=""
           placeholder="/"
           value={path}
-          onChange={(v: string) => setPath(v)}
+          onChange={() => {}}
           size="medium"
-          testId=""
+          testId="GH-repo-path-input"
+          fullWidth
           disabled
         />
 
-        {/* Search */}
-        <Box sx={{ mt: 2 }}>
+        <Box sx={{ mt: 1 }}>
           <TextInput
             label=""
             placeholder="Search Directories"
             value={query}
             onChange={(v: string) => setQuery(v)}
             size="medium"
-            testId=""
+            testId="GH-repo-search-input"
+            fullWidth
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchRoundedIcon sx={{ color: "#A0AEC0" }} />
+                </InputAdornment>
+              ),
+            }}
           />
         </Box>
 
-        {/* Directory list */}
         <Box
           sx={{
             mt: 2,
-            border: "1px solid",
-            borderColor: "divider",
-            borderRadius: 2,
+            border: "1px solid #E2E8F0",
+            borderRadius: 1,
+            backgroundColor: "#fff",
           }}
         >
+          {/* Header */}
           <Box
             sx={{
-              px: 2,
-              py: 1.25,
-              borderBottom: "1px solid",
-              borderColor: "divider",
+              px: 2.5,
+              py: 1.5,
+              borderBottom: "1px solid #E2E8F0",
               display: "flex",
               alignItems: "center",
-              gap: 1,
+              gap: 1.5,
             }}
           >
-            <FolderOutlinedIcon fontSize="small" />
-            <Typography variant="subtitle2" fontWeight={700}>
+            <FolderOutlinedIcon sx={{ color: "#6C8CAB" }} fontSize="small" />
+            <Typography variant="h5" fontWeight={600}>
               {rootLabel}
             </Typography>
           </Box>
 
-          <Box sx={{ maxHeight: 360, overflow: "auto" }}>
-            <List disablePadding>
-              {filtered.map((name) => (
-                <React.Fragment key={name}>
-                  <ListItem disablePadding>
-                    <ListItemButton onClick={() => setPath(`/${name}`)} sx={{ px: 2 }}>
-                      <ListItemIcon sx={{ minWidth: 32 }}>
-                        <FolderOutlinedIcon fontSize="small" />
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={
-                          <Typography variant="body2" sx={{ fontSize: 14 }}>
-                            {name}
-                          </Typography>
-                        }
+          {/* Selectable Root row */}
+          <List disablePadding>
+            <ListItem disablePadding sx={{ pl: 2, pr: 2 }}>
+              <ListItemButton
+                onClick={() => setPath("/")}
+                sx={{
+                  px: 1.5,
+                  py: 1.1,
+                  borderRadius: 2,
+                  border: "1px solid",
+                  borderColor: isRootSelected ? "#afe7caff" : "transparent",
+                  backgroundColor: isRootSelected
+                    ? "rgba(171, 225, 198, 0.32)"
+                    : "transparent",
+                }}
+              >
+                <ListItemIcon sx={{ minWidth: 32, color: "#585c5aff" }}>
+                  <FolderOutlinedIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText
+                  primary={
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <Typography
+                        variant="h6"
+                        sx={{ fontWeight: 600, color: "#1F2937" }}
+                      >
+                        /
+                      </Typography>
+                      <Chip
+                        size="small"
+                        label="root"
+                        variant="outlined"
+                        sx={{
+                          borderRadius: 1,
+                          fontSize: 10,
+                          color: "#6B7280",
+                          borderColor: "#E5E7EB",
+                        }}
                       />
-                      <ChevronRightRoundedIcon fontSize="small" />
-                    </ListItemButton>
-                  </ListItem>
-                  <Divider />
-                </React.Fragment>
-              ))}
-            </List>
-          </Box>
+                    </Box>
+                  }
+                />
+              </ListItemButton>
+            </ListItem>
+
+            <Divider sx={{ borderColor: "rgba(15, 23, 42, 0.06)", ml: 6 }} />
+
+            {/* Tree */}
+            <Box sx={{ maxHeight: 420, overflow: "auto", px: 0.5, py: 1 }}>
+              <List disablePadding>{renderNodes(items)}</List>
+            </Box>
+          </List>
         </Box>
       </DialogContent>
 
@@ -144,7 +310,11 @@ const ApiDirectoryModal: React.FC<Props> = ({
         <Button variant="outlined" onClick={onCancel}>
           Cancel
         </Button>
-        <Button variant="contained" onClick={() => onContinue(path)}>
+        <Button
+          variant="contained"
+          onClick={() => onContinue(path)}
+          disabled={!path} // allow "/" now
+        >
           Continue
         </Button>
       </DialogActions>
