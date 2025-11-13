@@ -82,7 +82,7 @@ func (s *DevPortalService) getDevPortalByUUID(uuid, orgUUID string) (*model.DevP
 		return nil, fmt.Errorf("failed to get devPortal %s: %w", uuid, err)
 	}
 	if devPortal == nil {
-		return nil, fmt.Errorf("devPortal %s not found", uuid)
+		return nil, constants.ErrDevPortalNotFound
 	}
 	return devPortal, nil
 }
@@ -514,8 +514,8 @@ func (s *DevPortalService) preparePublication(api *dto.API, req *dto.PublishToDe
 		}
 
 	case existing.Status == model.PublishedStatus:
-		// Already published – do nothing, just return success
-		return existing, false, nil
+		// Already published – return error to enforce lifecycle
+		return nil, false, constants.ErrAPIAlreadyPublished
 
 	case existing.Status == model.FailedStatus:
 		// Retry failed publication - update all fields including endpoints
