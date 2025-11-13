@@ -20,7 +20,9 @@ package service
 import (
 	"fmt"
 	"gopkg.in/yaml.v3"
+	pathpkg "path"
 	"platform-api/src/internal/dto"
+	"strings"
 )
 
 type GitService interface {
@@ -123,8 +125,12 @@ func (s *gitService) FetchFileContent(repoURL, branch, path string) ([]byte, err
 		return nil, fmt.Errorf("unsupported Git provider: %s", repoInfo.Provider)
 	}
 
+	normalizedPath := strings.TrimSpace(path)
+	normalizedPath = strings.TrimPrefix(normalizedPath, "/")
+	normalizedPath = strings.TrimPrefix(pathpkg.Clean("/"+normalizedPath), "/")
+
 	// Use the provider-specific client to fetch file content
-	content, err := providerClient.FetchFileContent(repoInfo.Owner, repoInfo.Repo, branch, path)
+	content, err := providerClient.FetchFileContent(repoInfo.Owner, repoInfo.Repo, branch, normalizedPath)
 	if err != nil {
 		return nil, err
 	}
