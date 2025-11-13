@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	pathpkg "path"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
@@ -32,6 +33,7 @@ import (
 	"platform-api/src/internal/constants"
 
 	"github.com/google/uuid"
+	"gopkg.in/yaml.v3"
 )
 
 // APIService handles business logic for API operations
@@ -160,6 +162,9 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 	if err := s.apiRepo.CreateAPI(apiModel); err != nil {
 		return nil, fmt.Errorf("failed to create api: %w", err)
 	}
+
+	api.CreatedAt = apiModel.CreatedAt
+	api.UpdatedAt = apiModel.UpdatedAt
 
 	// Associate backend services with the API
 	for i, backendServiceUUID := range backendServiceIdList {
@@ -942,6 +947,203 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 			},
 		},
 	}
+}
+
+// ImportAPIProject imports an API project from a Git repository
+func (s *APIService) ImportAPIProject(req *dto.ImportAPIProjectRequest, orgId string, gitService GitService) (*dto.API, error) {
+	// 1. Validate if there is a .api-platform directory with config.yaml
+	config, err := gitService.ValidateAPIProject(req.RepoURL, req.Branch, req.Path)
+	if err != nil {
+		if strings.Contains(err.Error(), "api project not found") {
+			return nil, constants.ErrAPIProjectNotFound
+		}
+		if strings.Contains(err.Error(), "malformed api project") {
+			return nil, constants.ErrMalformedAPIProject
+		}
+		if strings.Contains(err.Error(), "invalid api project") {
+			return nil, constants.ErrInvalidAPIProject
+		}
+		return nil, err
+	}
+
+	// For now, we'll process the first API in the config (can be extended later for multiple APIs)
+	if len(config.APIs) == 0 {
+		return nil, constants.ErrMalformedAPIProject
+	}
+
+	apiConfig := config.APIs[0]
+
+	// 5. Fetch the WSO2 artifact file content
+	wso2ArtifactClean := pathpkg.Clean(apiConfig.WSO2Artifact)
+	wso2ArtifactPath := pathpkg.Join(req.Path, wso2ArtifactClean)
+	artifactData, err := gitService.FetchWSO2Artifact(req.RepoURL, req.Branch, wso2ArtifactPath)
+	if err != nil {
+		return nil, constants.ErrWSO2ArtifactNotFound
+	}
+
+	// 6. Create API with details from WSO2 artifact, overwritten by request details
+	apiData := s.mergeAPIData(&artifactData.Data, &req.API)
+
+	// 7. Create API using the existing CreateAPI flow
+	createReq := &CreateAPIRequest{
+		Name:             apiData.Name,
+		DisplayName:      apiData.DisplayName,
+		Description:      apiData.Description,
+		Context:          apiData.Context,
+		Version:          apiData.Version,
+		Provider:         apiData.Provider,
+		ProjectID:        apiData.ProjectID,
+		LifeCycleStatus:  apiData.LifeCycleStatus,
+		HasThumbnail:     apiData.HasThumbnail,
+		IsDefaultVersion: apiData.IsDefaultVersion,
+		IsRevision:       apiData.IsRevision,
+		RevisionedAPIID:  apiData.RevisionedAPIID,
+		RevisionID:       apiData.RevisionID,
+		Type:             apiData.Type,
+		Transport:        apiData.Transport,
+		MTLS:             apiData.MTLS,
+		Security:         apiData.Security,
+		CORS:             apiData.CORS,
+		BackendServices:  apiData.BackendServices,
+		APIRateLimiting:  apiData.APIRateLimiting,
+		Operations:       apiData.Operations,
+	}
+
+	return s.CreateAPI(createReq, orgId)
+}
+
+// mergeAPIData merges WSO2 artifact data with user-provided API data (user data takes precedence)
+func (s *APIService) mergeAPIData(artifact *dto.APIYAMLData2, userAPIData *dto.API) *dto.API {
+	apiDTO := s.apiUtil.APIYAMLData2ToDTO(artifact)
+
+	// Overwrite with user-provided data (if not empty)
+	if userAPIData.Name != "" {
+		apiDTO.Name = userAPIData.Name
+	}
+	if userAPIData.DisplayName != "" {
+		apiDTO.DisplayName = userAPIData.DisplayName
+	}
+	if userAPIData.Description != "" {
+		apiDTO.Description = userAPIData.Description
+	}
+	if userAPIData.Context != "" {
+		apiDTO.Context = userAPIData.Context
+	}
+	if userAPIData.Version != "" {
+		apiDTO.Version = userAPIData.Version
+	}
+	if userAPIData.Provider != "" {
+		apiDTO.Provider = userAPIData.Provider
+	}
+	if userAPIData.ProjectID != "" {
+		apiDTO.ProjectID = userAPIData.ProjectID
+	}
+	if userAPIData.LifeCycleStatus != "" {
+		apiDTO.LifeCycleStatus = userAPIData.LifeCycleStatus
+	}
+	if userAPIData.Type != "" {
+		apiDTO.Type = userAPIData.Type
+	}
+	if len(userAPIData.Transport) > 0 {
+		apiDTO.Transport = userAPIData.Transport
+	}
+	if userAPIData.BackendServices != nil && len(userAPIData.BackendServices) > 0 {
+		apiDTO.BackendServices = userAPIData.BackendServices
+	}
+
+	// Handle boolean fields
+	apiDTO.HasThumbnail = userAPIData.HasThumbnail
+	apiDTO.IsDefaultVersion = userAPIData.IsDefaultVersion
+	apiDTO.IsRevision = userAPIData.IsRevision
+
+	if userAPIData.RevisionedAPIID != "" {
+		apiDTO.RevisionedAPIID = userAPIData.RevisionedAPIID
+	}
+	if userAPIData.RevisionID != 0 {
+		apiDTO.RevisionID = userAPIData.RevisionID
+	}
+
+	return apiDTO
+}
+
+// ValidateAndRetrieveAPIProject validates an API project from Git repository with comprehensive checks
+func (s *APIService) ValidateAndRetrieveAPIProject(req *dto.ValidateAPIProjectRequest,
+	gitService GitService) (*dto.APIProjectValidationResponse, error) {
+	response := &dto.APIProjectValidationResponse{
+		IsAPIProjectValid:    false,
+		IsAPIConfigValid:     false,
+		IsAPIDefinitionValid: false,
+		Errors:               []string{},
+	}
+
+	// Step 1: Check if .api-platform directory exists and validate config
+	config, err := gitService.ValidateAPIProject(req.RepoURL, req.Branch, req.Path)
+	if err != nil {
+		response.Errors = append(response.Errors, err.Error())
+		return response, nil
+	}
+
+	// Process the first API entry (assuming single API per project for now)
+	apiEntry := config.APIs[0]
+
+	// Step 3: Fetch OpenAPI definition
+	openAPIClean := pathpkg.Clean(apiEntry.OpenAPI)
+	openAPIPath := pathpkg.Join(req.Path, openAPIClean)
+	openAPIContent, err := gitService.FetchFileContent(req.RepoURL, req.Branch, openAPIPath)
+	if err != nil {
+		response.Errors = append(response.Errors, fmt.Sprintf("failed to fetch OpenAPI file: %s", err.Error()))
+		return response, nil
+	}
+
+	// Basic OpenAPI validation (check if it's valid YAML/JSON with required fields)
+	if err := s.apiUtil.ValidateOpenAPIDefinition(openAPIContent); err != nil {
+		response.Errors = append(response.Errors, fmt.Sprintf("invalid OpenAPI definition: %s", err.Error()))
+		return response, nil
+	}
+
+	response.IsAPIDefinitionValid = true
+
+	// Step 4: Fetch WSO2 artifact (api.yaml)
+	wso2ArtifactClean := pathpkg.Clean(apiEntry.WSO2Artifact)
+	wso2ArtifactPath := pathpkg.Join(req.Path, wso2ArtifactClean)
+	wso2ArtifactContent, err := gitService.FetchFileContent(req.RepoURL, req.Branch, wso2ArtifactPath)
+	if err != nil {
+		response.Errors = append(response.Errors, fmt.Sprintf("failed to fetch WSO2 artifact file: %s", err.Error()))
+		return response, nil
+	}
+
+	var wso2Artifact dto.APIDeploymentYAML
+	if err := yaml.Unmarshal(wso2ArtifactContent, &wso2Artifact); err != nil {
+		response.Errors = append(response.Errors, fmt.Sprintf("invalid WSO2 artifact format: %s", err.Error()))
+		return response, nil
+	}
+
+	// Step 5: Validate WSO2 artifact structure
+	if err := s.apiUtil.ValidateWSO2Artifact(&wso2Artifact); err != nil {
+		response.Errors = append(response.Errors, fmt.Sprintf("invalid WSO2 artifact: %s", err.Error()))
+		return response, nil
+	}
+
+	response.IsAPIConfigValid = true
+
+	// Step 6: Check if OpenAPI and WSO2 artifact match (optional validation)
+	if err := s.apiUtil.ValidateAPIDefinitionConsistency(openAPIContent, &wso2Artifact); err != nil {
+		response.Errors = append(response.Errors, fmt.Sprintf("API definitions mismatch: %s", err.Error()))
+		response.IsAPIProjectValid = false
+		return response, nil
+	}
+
+	// Step 7: If all validations pass, convert to API DTO
+	api, err := s.apiUtil.ConvertAPIYAMLDataToDTO(&wso2Artifact)
+	if err != nil {
+		response.Errors = append(response.Errors, fmt.Sprintf("failed to convert API data: %s", err.Error()))
+		return response, nil
+	}
+
+	response.API = api
+	response.IsAPIProjectValid = response.IsAPIConfigValid && response.IsAPIDefinitionValid
+
+	return response, nil
 }
 
 // PublishAPIToDevPortal publishes an API to a specific DevPortal

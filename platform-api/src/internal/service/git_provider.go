@@ -38,6 +38,7 @@ const (
 type GitProviderClient interface {
 	FetchRepoBranches(owner, repo string) (*dto.GitRepoBranchesResponse, error)
 	FetchRepoContent(owner, repo, branch string) (*dto.GitRepoContentResponse, error)
+	FetchFileContent(owner, repo, branch, path string) ([]byte, error)
 	ParseRepoURL(repoURL string) (owner, repo string, err error)
 	ValidateName(name string) bool
 	GetProvider() GitProvider

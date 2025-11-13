@@ -18,8 +18,10 @@
 package service
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"platform-api/src/internal/dto"
@@ -211,6 +213,72 @@ func (c *GitHubClient) FetchRepoContent(owner, repo, branch string) (*dto.GitRep
 	}
 
 	return response, nil
+}
+
+// FetchFileContent fetches the content of a specific file from a GitHub repository
+func (c *GitHubClient) FetchFileContent(owner, repo, branch, path string) ([]byte, error) {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s?ref=%s", owner, repo, path, branch)
+
+	resp, err := c.httpClient.Get(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch file content: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		// Continue processing
+	case http.StatusNotFound:
+		return nil, fmt.Errorf("file not found: %s", path)
+	case http.StatusForbidden:
+		return nil, fmt.Errorf("access forbidden - repository may be private or rate limit exceeded")
+	case http.StatusUnauthorized:
+		return nil, fmt.Errorf("unauthorized access - repository may be private")
+	default:
+		return nil, fmt.Errorf("unexpected response status: %d", resp.StatusCode)
+	}
+
+	var fileResponse struct {
+		Content     string `json:"content"`
+		Encoding    string `json:"encoding"`
+		DownloadURL string `json:"download_url"`
+		Size        int    `json:"size"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&fileResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse file content response: %w", err)
+	}
+
+	// If content is available and base64 encoded, decode it
+	if fileResponse.Content != "" && fileResponse.Encoding == "base64" {
+		decoded, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(fileResponse.Content, "\n", ""))
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode base64 content: %w", err)
+		}
+		return decoded, nil
+	}
+
+	// If content is not available (large files), use download_url
+	if fileResponse.DownloadURL != "" {
+		downloadResp, err := c.httpClient.Get(fileResponse.DownloadURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to download file from raw URL: %w", err)
+		}
+		defer downloadResp.Body.Close()
+
+		if downloadResp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("failed to download file, status: %d", downloadResp.StatusCode)
+		}
+
+		content, err := io.ReadAll(downloadResp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read downloaded content: %w", err)
+		}
+		return content, nil
+	}
+
+	// If neither content nor download_url is available
+	return nil, fmt.Errorf("file content not available in GitHub API response")
 }
 
 // extractNextLink parses the GitHub Link header to find the next page URL

@@ -181,9 +181,9 @@ type APIRevisionDeployment struct {
 
 // APIDeploymentYAML represents the API deployment YAML structure
 type APIDeploymentYAML struct {
-	Kind    string       `yaml:"kind"`
-	Version string       `yaml:"version"`
-	Data    APIYAMLData2 `yaml:"data"`
+	Kind    string       `yaml:"kind" binding:"required"`
+	Version string       `yaml:"version" binding:"required"`
+	Data    APIYAMLData2 `yaml:"data" binding:"required"`
 }
 
 // APIYAMLData2 represents a basic data section of the API deployment YAML

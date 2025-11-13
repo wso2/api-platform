@@ -257,3 +257,9 @@ func (c *GitLabClient) ValidateName(name string) bool {
 	validPattern := regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`)
 	return validPattern.MatchString(name)
 }
+
+// FetchFileContent fetches the content of a specific file from a GitLab repository
+// TODO: Implement proper GitLab file content fetching
+func (c *GitLabClient) FetchFileContent(owner, repo, branch, path string) ([]byte, error) {
+	return nil, fmt.Errorf("FetchFileContent not implemented for GitLab client - only GitHub is currently supported")
+}
