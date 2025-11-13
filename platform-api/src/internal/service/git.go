@@ -141,8 +141,8 @@ func (s *gitService) FetchFileContent(repoURL, branch, path string) ([]byte, err
 // ValidateAPIProject validates an API project structure in a Git repository
 func (s *gitService) ValidateAPIProject(repoURL, branch, path string) (*dto.APIProjectConfig, error) {
 	// 1. Check if .api-platform directory exists
-	apiPlatformPath := path + "/.api-platform"
-	configContent, err := s.FetchFileContent(repoURL, branch, apiPlatformPath+"/config.yaml")
+	configPath := pathpkg.Join(path, ".api-platform", "config.yaml")
+	configContent, err := s.FetchFileContent(repoURL, branch, configPath)
 	if err != nil {
 		return nil, fmt.Errorf("api project not found: .api-platform directory or config.yaml not found")
 	}
@@ -164,13 +164,13 @@ func (s *gitService) ValidateAPIProject(repoURL, branch, path string) (*dto.APIP
 		}
 
 		// 4. Check if the referenced files exist in the project path
-		openAPIPath := path + "/" + api.OpenAPI
+		openAPIPath := pathpkg.Join(path, api.OpenAPI)
 		_, err := s.FetchFileContent(repoURL, branch, openAPIPath)
 		if err != nil {
 			return nil, fmt.Errorf("invalid api project: openapi file not found: %s", api.OpenAPI)
 		}
 
-		wso2ArtifactPath := path + "/" + api.WSO2Artifact
+		wso2ArtifactPath := pathpkg.Join(path, api.WSO2Artifact)
 		_, err = s.FetchFileContent(repoURL, branch, wso2ArtifactPath)
 		if err != nil {
 			return nil, fmt.Errorf("invalid api project: wso2 artifact file not found: %s", api.WSO2Artifact)
@@ -184,12 +184,12 @@ func (s *gitService) ValidateAPIProject(repoURL, branch, path string) (*dto.APIP
 func (s *gitService) FetchWSO2Artifact(repoURL, branch, path string) (*dto.APIDeploymentYAML, error) {
 	content, err := s.FetchFileContent(repoURL, branch, path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch WSO2 artifact file: %w", err)
+		return nil, fmt.Errorf("failed to fetch WSO2 artifact file at %s: %w", path, err)
 	}
 
 	var artifact dto.APIDeploymentYAML
 	if err := yaml.Unmarshal(content, &artifact); err != nil {
-		return nil, fmt.Errorf("failed to parse WSO2 artifact file: %w", err)
+		return nil, fmt.Errorf("failed to parse WSO2 artifact file at %s: %w", path, err)
 	}
 
 	return &artifact, nil
