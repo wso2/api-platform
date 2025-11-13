@@ -37,7 +37,7 @@ type Props = {
   open: boolean;
   currentPath: string;
   rootLabel: string; // e.g., "repo-name"
-  items: GitTreeItem[]; // ⬅️ NEW: full tree for branch
+  items: GitTreeItem[]; // full tree for branch
   onCancel: () => void;
   onContinue: (path: string) => void;
 };
@@ -95,13 +95,7 @@ const ApiDirectoryModal: React.FC<Props> = ({
 
       return (
         <React.Fragment key={n.path}>
-          <ListItem
-            disablePadding
-            sx={{
-              pl: 2 + depth * 2,
-              pr: 2,
-            }}
-          >
+          <ListItem disablePadding sx={{ pl: 2 + depth * 2, pr: 2 }}>
             <ListItemButton
               onClick={() => {
                 if (isFolder) {
@@ -193,15 +187,11 @@ const ApiDirectoryModal: React.FC<Props> = ({
     });
   };
 
+  const isRootSelected = path === "/";
+
   return (
     <Dialog open={open} onClose={onCancel} maxWidth="md" fullWidth>
-      <DialogTitle
-        sx={{
-          textAlign: "center",
-          fontWeight: 600,
-          fontSize: 24,
-        }}
-      >
+      <DialogTitle sx={{ textAlign: "center", fontWeight: 600, fontSize: 24 }}>
         API directory
       </DialogTitle>
 
@@ -210,12 +200,13 @@ const ApiDirectoryModal: React.FC<Props> = ({
           label=""
           placeholder="/"
           value={path}
-          onChange={(v: string) => setPath(v)}
+          onChange={() => {}}
           size="medium"
           testId="GH-repo-path-input"
           fullWidth
           disabled
         />
+
         <Box sx={{ mt: 1 }}>
           <TextInput
             label=""
@@ -243,6 +234,7 @@ const ApiDirectoryModal: React.FC<Props> = ({
             backgroundColor: "#fff",
           }}
         >
+          {/* Header */}
           <Box
             sx={{
               px: 2.5,
@@ -259,32 +251,69 @@ const ApiDirectoryModal: React.FC<Props> = ({
             </Typography>
           </Box>
 
-          <Box
-            sx={{
-              maxHeight: 420,
-              overflow: "auto",
-              px: 0.5,
-              py: 1,
-            }}
-          >
-            <List disablePadding>{renderNodes(items)}</List>
-          </Box>
+          {/* Selectable Root row */}
+          <List disablePadding>
+            <ListItem disablePadding sx={{ pl: 2, pr: 2 }}>
+              <ListItemButton
+                onClick={() => setPath("/")}
+                sx={{
+                  px: 1.5,
+                  py: 1.1,
+                  borderRadius: 2,
+                  border: "1px solid",
+                  borderColor: isRootSelected ? "#afe7caff" : "transparent",
+                  backgroundColor: isRootSelected
+                    ? "rgba(171, 225, 198, 0.32)"
+                    : "transparent",
+                }}
+              >
+                <ListItemIcon sx={{ minWidth: 32, color: "#585c5aff" }}>
+                  <FolderOutlinedIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText
+                  primary={
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <Typography
+                        variant="h6"
+                        sx={{ fontWeight: 600, color: "#1F2937" }}
+                      >
+                        /
+                      </Typography>
+                      <Chip
+                        size="small"
+                        label="root"
+                        variant="outlined"
+                        sx={{
+                          borderRadius: 1,
+                          fontSize: 10,
+                          color: "#6B7280",
+                          borderColor: "#E5E7EB",
+                        }}
+                      />
+                    </Box>
+                  }
+                />
+              </ListItemButton>
+            </ListItem>
+
+            <Divider sx={{ borderColor: "rgba(15, 23, 42, 0.06)", ml: 6 }} />
+
+            {/* Tree */}
+            <Box sx={{ maxHeight: 420, overflow: "auto", px: 0.5, py: 1 }}>
+              <List disablePadding>{renderNodes(items)}</List>
+            </Box>
+          </List>
         </Box>
       </DialogContent>
 
-      <DialogActions
-        sx={{
-          px: 3,
-          pb: 2,
-        }}
-      >
+      <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button variant="outlined" onClick={onCancel}>
           Cancel
         </Button>
         <Button
           variant="contained"
           onClick={() => onContinue(path)}
-          disabled={!path || path === "/"}
+          disabled={!path} // allow "/" now
         >
           Continue
         </Button>

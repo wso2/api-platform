@@ -3,13 +3,19 @@ import { Alert, Box, Grid, Paper, Stack, Typography } from "@mui/material";
 import UploadRoundedIcon from "@mui/icons-material/UploadRounded";
 import { Button } from "../../../../components/src/components/Button";
 import yaml from "js-yaml";
-import { Chip } from "../../../../components/src/components/Chip";
 import { IconButton } from "../../../../components/src/components/IconButton";
 import Delete from "../../../../components/src/Icons/generated/Delete";
 import CreationMetaData from "../CreationMetaData";
 import {
   useCreateComponentBuildpackContext,
 } from "../../../../context/CreateComponentBuildpackContext";
+
+// NEW shared list & helper
+import {
+  ApiOperationsList,
+  buildOperationsFromOpenAPI,
+  type OpenAPI as SharedOpenAPI,
+} from "../,,/../../../../components/src/components/Common/ApiOperationsList";
 
 /* ---------- Types ---------- */
 type Props = {
@@ -43,36 +49,10 @@ type Props = {
 
 type Step = "upload" | "details";
 
-type OpenAPI = {
-  openapi?: string;
-  swagger?: string;
-  info?: { title?: string; version?: string; description?: string };
-  servers?: { url?: string }[];
-  paths?: Record<
-    string,
-    Record<
-      string,
-      { summary?: string; description?: string; operationId?: string }
-    >
-  >;
-};
+// reuse shared OpenAPI type
+type OpenAPI = SharedOpenAPI;
 
 /* ---------- helpers ---------- */
-
-const METHOD_COLORS: Record<
-  string,
-  "primary" | "success" | "warning" | "error" | "info" | "secondary"
-> = {
-  get: "info",
-  post: "success",
-  put: "warning",
-  delete: "error",
-  patch: "secondary",
-  head: "primary",
-  options: "primary",
-};
-
-const methodOrder = ["get", "post", "put", "delete", "patch", "head", "options"];
 
 function slugify(val: string) {
   return val.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -102,55 +82,7 @@ function deriveContext(doc: OpenAPI, fallbackTitle?: string) {
   return `/${t}`;
 }
 
-const SwaggerPathList: React.FC<{ doc?: OpenAPI }> = ({ doc }) => {
-  if (!doc) return null;
-  const paths = doc.paths ?? {};
-  const ordered = Object.entries(paths).sort(([a], [b]) => a.localeCompare(b));
-  if (!ordered.length) return null;
-
-  return (
-    <Box sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2, overflow: "hidden", bgcolor: "background.paper" }}>
-      <Box sx={{ px: 2, py: 1.25, borderBottom: "1px solid", borderColor: "divider", fontWeight: 700 }}>
-        Fetched OAS Definition
-      </Box>
-      <Box sx={{ maxHeight: 500, overflow: "auto" }}>
-        {ordered.flatMap(([path, ops], i) => {
-          const opsOrdered = methodOrder
-            .filter((m) => (ops as any)[m])
-            .map((m) => [m, (ops as any)[m]!] as const);
-
-          return opsOrdered.map(([method, op], j) => (
-            <Box
-              key={`${path}-${method}`}
-              sx={{
-                px: 2,
-                py: 1.5,
-                display: "grid",
-                gridTemplateColumns: "120px 1fr",
-                alignItems: "center",
-                borderBottom: i === ordered.length - 1 && j === opsOrdered.length - 1 ? "none" : "1px solid",
-                borderColor: "divider",
-              }}
-            >
-              <Chip size="large" color={METHOD_COLORS[method] ?? "primary"} label={method.toUpperCase()} sx={{ fontWeight: 700, width: 72, justifySelf: "start" }} />
-              <Stack direction="row" spacing={1.5} alignItems="center">
-                <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                  {path}
-                </Typography>
-                <Typography variant="body2" color="#7c7c7cff" noWrap>
-                  {op?.summary || op?.description || ""}
-                </Typography>
-              </Stack>
-            </Box>
-          ));
-        })}
-      </Box>
-    </Box>
-  );
-};
-
 /* ---------- component ---------- */
-
 const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, createApi, onClose }) => {
   const [step, setStep] = React.useState<Step>("upload");
   const [rawSpec, setRawSpec] = React.useState<string>("");
@@ -238,52 +170,18 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, createAp
     setFileKey((k) => k + 1);
   };
 
-  const buildOperationsFromDoc = React.useCallback((d?: OpenAPI, serviceName?: string) => {
-    if (!d?.paths)
-      return [] as Array<{
-        name: string;
-        description?: string;
-        request: { method: string; path: string; ["backend-services"]: Array<{ name: string }> };
-      }>;
-
-    const ops: Array<{
-      name: string;
-      description?: string;
-      request: { method: string; path: string; ["backend-services"]: Array<{ name: string }> };
-    }> = [];
-
-    const serviceRef = serviceName ? [{ name: serviceName }] : [];
-
-    const sortedPaths = Object.keys(d.paths).sort((a, b) => a.localeCompare(b));
-    for (const path of sortedPaths) {
-      const methods = d.paths[path] || {};
-      for (const m of methodOrder) {
-        const op = (methods as any)[m];
-        if (!op) continue;
-        const opId = (op.operationId as string | undefined)?.trim();
-        const pretty =
-          opId ||
-          `${m.toUpperCase()} ${path}`.replace(/[{}]/g, "").replace(/\s+/g, "_");
-        ops.push({
-          name: pretty,
-          description: op.summary || op.description || undefined,
-          request: { method: m.toUpperCase(), path, "backend-services": serviceRef },
-        });
-      }
-    }
-    return ops;
-  }, []);
-
   const finishAndClose = React.useCallback(() => {
-    // clean up this flow slice so next open starts fresh
     resetContractMeta();
     setStep("upload");
     setRawSpec("");
     setDoc(undefined);
     setFileName("");
     setError(null);
-    onClose(); // hand back to list view
+    onClose();
   }, [onClose, resetContractMeta]);
+
+  // Preview operations built from OAS (no backend-service binding here)
+  const previewOps = React.useMemo(() => buildOperationsFromOpenAPI(doc), [doc]);
 
   const onCreate = async () => {
     const name = (contractMeta?.name || "").trim();
@@ -322,7 +220,8 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, createAp
             ]
           : [];
 
-      const operations = buildOperationsFromDoc(doc, serviceName);
+      // Build operations and bind to backend-service if present
+      const operations = buildOperationsFromOpenAPI(doc, serviceName);
 
       await createApi({
         name,
@@ -335,7 +234,6 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, createAp
         operations,
       });
 
-      // success → close to list immediately
       finishAndClose();
     } catch (e: any) {
       setError(e?.message || "Failed to create API");
@@ -445,7 +343,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, createAp
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }}>
-            <SwaggerPathList doc={doc} />
+            <ApiOperationsList title="Fetched OAS Definition" operations={previewOps} />
           </Grid>
         </Grid>
       )}
@@ -484,7 +382,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, createAp
             </Grid>
 
             <Grid size={{ xs: 12, md: 6 }}>
-              <SwaggerPathList doc={doc} />
+              <ApiOperationsList title="Fetched OAS Definition" operations={previewOps} />
             </Grid>
           </Grid>
         </Box>
@@ -494,4 +392,3 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, createAp
 };
 
 export default UploadCreationFlow;
-

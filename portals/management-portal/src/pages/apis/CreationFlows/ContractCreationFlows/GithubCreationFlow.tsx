@@ -6,6 +6,7 @@ import {
   InputAdornment,
   Grid,
   keyframes,
+  Alert,
 } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import { Button } from "../../../../components/src/components/Button";
@@ -19,23 +20,38 @@ import { IconButton } from "../../../../components/src/components/IconButton";
 import Edit from "../../../../components/src/Icons/generated/Edit";
 import CreationMetaData from "../CreationMetaData";
 
-// Context
+// Contexts
 import { useGithubAPICreationContext } from "../../../../context/GithubAPICreationContext";
+import { useCreateComponentBuildpackContext } from "../../../../context/CreateComponentBuildpackContext";
+import { useGithubProjectValidationContext } from "../../../../context/validationContext";
 import Branch from "../../../../components/src/Icons/generated/Branch";
+import { ApiOperationsList } from "../../../../components/src/components/Common/ApiOperationsList";
+import { useGithubAPICreation } from "../../../../hooks/GithubAPICreation";
 
+/* ---------- Types ---------- */
 type Props = {
   open: boolean;
   onClose: () => void;
-  selectedProjectId?: string;
+  selectedProjectId?: string; // must be provided to enable Create
 };
 
 type BranchOption = { label: string; value: string };
 type Step = "form" | "details";
 
+/* ---------- Utils ---------- */
 const isLikelyGithubRepo = (url: string) =>
   /^https:\/\/github\.com\/[^\/\s]+\/[^\/\s#]+$/i.test(url.trim());
 
-const GithubCreationFlow: React.FC<Props> = ({ open, onClose }) => {
+const spin = keyframes`
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+`;
+
+const GithubCreationFlow: React.FC<Props> = ({
+  open,
+  onClose,
+  selectedProjectId,
+}) => {
   const {
     repoUrl,
     setRepoUrl,
@@ -49,15 +65,44 @@ const GithubCreationFlow: React.FC<Props> = ({ open, onClose }) => {
     error: ghError,
   } = useGithubAPICreationContext();
 
+  const {
+    validate,
+    result: validationResult,
+    loading: validating,
+    error: validateError,
+    reset: resetValidation,
+  } = useGithubProjectValidationContext();
+
+  // 👇 We will read meta (name, context, version, target, description) for the POST
+  const { contractMeta, setContractMeta } =
+    useCreateComponentBuildpackContext();
+
+  // 👇 POST /api/v1/import/api-project
+  const { importApiProject } = useGithubAPICreation();
+
   const [apiDir, setApiDir] = React.useState("/");
   const [dirModalOpen, setDirModalOpen] = React.useState(false);
   const [step, setStep] = React.useState<Step>("form");
 
-  // NEW: validation state for API directory
   const [dirError, setDirError] = React.useState<string | null>(null);
   const [isDirValid, setIsDirValid] = React.useState(false);
 
-  // Reset local bits when dialog closes
+  const [validatedOps, setValidatedOps] = React.useState<
+    Array<{
+      name?: string;
+      description?: string;
+      request?: { method?: string; path?: string };
+    }>
+  >([]);
+
+  // Create flow state
+  const [creating, setCreating] = React.useState(false);
+  const [createError, setCreateError] = React.useState<string | null>(null);
+  const [createSuccessMsg, setCreateSuccessMsg] = React.useState<string | null>(
+    null
+  );
+
+  // Reset when closed
   React.useEffect(() => {
     if (!open) {
       setApiDir("/");
@@ -65,23 +110,23 @@ const GithubCreationFlow: React.FC<Props> = ({ open, onClose }) => {
       setStep("form");
       setDirError(null);
       setIsDirValid(false);
+      setValidatedOps([]);
+      resetValidation?.();
+      setCreating(false);
+      setCreateError(null);
+      setCreateSuccessMsg(null);
     }
-  }, [open]);
+  }, [open, resetValidation]);
 
   if (!open) return null;
 
   const showInitial = (repoUrl ?? "").trim().length === 0;
 
-  // Build select options from fetched branches
+  // options for branches
   const branchOptions: BranchOption[] = React.useMemo(
     () => branches.map((b) => ({ label: b.name, value: b.name })),
     [branches]
   );
-
-  const spin = keyframes`
-  0%   { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-`;
 
   const selectedBranchOption = React.useMemo<BranchOption | null>(
     () =>
@@ -99,7 +144,7 @@ const GithubCreationFlow: React.FC<Props> = ({ open, onClose }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repoUrl]);
 
-  // Auto-select default branch (or first) once branches are available and nothing is selected yet
+  // Auto-select default branch (or first) once branches are available
   React.useEffect(() => {
     if (!branches.length || selectedBranch) return;
     const def =
@@ -108,28 +153,28 @@ const GithubCreationFlow: React.FC<Props> = ({ open, onClose }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branches, selectedBranch]);
 
-  // Whenever branch changes:
-  //  - fetch branch content
-  //  - clear API directory (force re-pick)
+  // Fetch content when branch changes and clear selections
   React.useEffect(() => {
     if (!selectedBranch) return;
-    setApiDir("/"); // clear any selected directory because branch changed
+    setApiDir("/");
     setDirError(null);
     setIsDirValid(false);
+    setValidatedOps([]);
+    resetValidation?.();
     loadBranchContent(selectedBranch, { force: true }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBranch]);
 
   const setSampleRepo = () => {
     const sample = "https://github.com/thivindu/api-platform-demo";
-    // changing repo clears state and will auto-fetch branches
     setSelectedBranch(null);
     setApiDir("/");
     setDirModalOpen(false);
     setDirError(null);
     setIsDirValid(false);
+    setValidatedOps([]);
+    resetValidation?.();
     setRepoUrl(sample);
-    // immediate fetch (optional; debounced effect will also do it)
     loadBranches(sample, { force: true }).catch(() => {});
   };
 
@@ -138,8 +183,6 @@ const GithubCreationFlow: React.FC<Props> = ({ open, onClose }) => {
     loadBranches(repoUrl, { force: true }).catch(() => {});
   };
 
-  // Manual change handler for repo URL:
-  //  - always clears selected branch, apiDir, modal & dir validation
   const onRepoChange = (v: string) => {
     if (v !== repoUrl) {
       setSelectedBranch(null);
@@ -147,26 +190,17 @@ const GithubCreationFlow: React.FC<Props> = ({ open, onClose }) => {
       setDirModalOpen(false);
       setDirError(null);
       setIsDirValid(false);
+      setValidatedOps([]);
+      resetValidation?.();
     }
     setRepoUrl(v);
   };
 
-  // Branch change (UI): simply set; effects above will fetch+reset dir
   const handleBranchChange = (opt: BranchOption | null) => {
     setSelectedBranch(opt ? opt.value : null);
   };
 
-  const cancelForm = () => {
-    setRepoUrl("");
-    setSelectedBranch(null);
-    setApiDir("/");
-    setDirModalOpen(false);
-    setStep("form");
-    setDirError(null);
-    setIsDirValid(false);
-  };
-
-  // ===== Directory validation: require a "config.yaml" somewhere under selected folder =====
+  // ----- Local directory validation for config.yaml presence -----
   const normalizePath = (p: string) =>
     p.replace(/^\/+/, "").replace(/\/+$/, "");
 
@@ -196,13 +230,12 @@ const GithubCreationFlow: React.FC<Props> = ({ open, onClose }) => {
   }, []);
 
   React.useEffect(() => {
-    // No branch content yet, or no directory selected => reset validation state
     if (!content?.items?.length || !apiDir || apiDir === "/") {
       setDirError(null);
       setIsDirValid(false);
       return;
     }
-    const target = normalizePath(apiDir); // e.g. "apis/petstore-api"
+    const target = normalizePath(apiDir);
     const node = findNodeByPath(content.items, target);
     if (!node) {
       setDirError("Selected directory not found in branch content.");
@@ -213,6 +246,132 @@ const GithubCreationFlow: React.FC<Props> = ({ open, onClose }) => {
     setIsDirValid(ok);
     setDirError(ok ? null : 'Selected directory must contain a "config.yaml".');
   }, [apiDir, content, findNodeByPath, nodeHasConfigYaml]);
+
+  // ----- Validate on Next, prefill meta, move to details -----
+  const onNext = async () => {
+    if (
+      !repoUrl.trim() ||
+      !selectedBranch ||
+      !apiDir ||
+      apiDir === "/" ||
+      !isDirValid
+    ) {
+      return;
+    }
+
+    try {
+      const path = normalizePath(apiDir);
+      const res = await validate({
+        repoUrl,
+        provider: "github",
+        branch: selectedBranch,
+        path,
+      });
+
+      const api = (res as any)?.api;
+      if (api) {
+        const target =
+          api["backend-services"]?.[0]?.endpoints?.[0]?.url?.trim() || "";
+        // Prefill Meta
+        setContractMeta((prev: any) => ({
+          ...prev,
+          name: api.name || prev?.name || "",
+          context: api.context || prev?.context || "",
+          version: api.version || prev?.version || "1.0.0",
+          description: api.description || prev?.description || "",
+          target: target || prev?.target || "",
+        }));
+        setValidatedOps(Array.isArray(api.operations) ? api.operations : []);
+      } else {
+        setValidatedOps([]);
+      }
+
+      setStep("details");
+    } catch {
+      setValidatedOps([]);
+      setStep("details");
+    }
+  };
+
+  // ----- Create: POST /api/v1/import/api-project -----
+  const onCreate = async () => {
+    setCreateError(null);
+    setCreateSuccessMsg(null);
+
+    // Guard required fields
+    const name = (contractMeta?.name || "").trim();
+    const context = (contractMeta?.context || "").trim();
+    const version = (contractMeta?.version || "").trim();
+    const description = (contractMeta?.description || "").trim() || undefined;
+    const target = (contractMeta?.target || "").trim();
+
+    if (!name || !context || !version) {
+      setCreateError("Please complete Name, Context, and Version.");
+      return;
+    }
+    if (!repoUrl?.trim() || !selectedBranch) {
+      setCreateError("Repository URL and Branch are required.");
+      return;
+    }
+    if (!apiDir || apiDir === "/") {
+      setCreateError(
+        "Please select the API project directory (contains config.yaml)."
+      );
+      return;
+    }
+    if (!selectedProjectId) {
+      setCreateError("Project is required (missing projectId).");
+      return;
+    }
+
+    // build payload
+    const payload = {
+      repoUrl: repoUrl.trim(),
+      provider: "github" as const,
+      branch: selectedBranch,
+      path: normalizePath(apiDir), // e.g., "apis/test-api"
+      api: {
+        name,
+        displayName: name, // or customize if you prefer a separate display name
+        description,
+        context: context.startsWith("/") ? context : `/${context}`,
+        version,
+        projectId: selectedProjectId,
+        ...(target
+          ? {
+              ["backend-services"]: [
+                {
+                  endpoints: [{ url: target }],
+                },
+              ],
+            }
+          : {}),
+      },
+    };
+
+    try {
+      setCreating(true);
+      await importApiProject(payload);
+      setCreateSuccessMsg("API project imported successfully.");
+      onClose();
+    } catch (e: any) {
+      setCreateError(e?.message || "Failed to import API project.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const canCreate =
+    step === "details" &&
+    !validating &&
+    !ghLoading &&
+    !!selectedProjectId &&
+    !!repoUrl?.trim() &&
+    !!selectedBranch &&
+    !!isDirValid &&
+    !!(contractMeta?.name || "").trim() &&
+    !!(contractMeta?.context || "").trim() &&
+    !!(contractMeta?.version || "").trim();
 
   return (
     <Box>
@@ -373,23 +532,42 @@ const GithubCreationFlow: React.FC<Props> = ({ open, onClose }) => {
           {/* Actions row */}
           <Grid size={{ xs: 12 }}>
             <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-              <Button variant="outlined" onClick={cancelForm}>
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  setRepoUrl("");
+                  setSelectedBranch(null);
+                  setApiDir("/");
+                  setDirModalOpen(false);
+                  setStep("form");
+                  setDirError(null);
+                  setIsDirValid(false);
+                  setValidatedOps([]);
+                  resetValidation?.();
+                }}
+              >
                 Cancel
               </Button>
               <Button
                 variant="contained"
-                onClick={() => setStep("details")}
+                onClick={onNext}
                 disabled={
                   !repoUrl.trim() ||
                   !selectedBranch ||
                   !apiDir ||
                   apiDir === "/" ||
-                  !isDirValid // NEW: block Next unless config.yaml is present
+                  !isDirValid ||
+                  validating
                 }
               >
-                Next
+                {validating ? "Validating…" : "Next"}
               </Button>
             </Stack>
+            {!!validateError && (
+              <Typography variant="caption" color="error" sx={{ mt: 1 }}>
+                {validateError}
+              </Typography>
+            )}
           </Grid>
         </Grid>
       )}
@@ -397,30 +575,79 @@ const GithubCreationFlow: React.FC<Props> = ({ open, onClose }) => {
       {/* ------------ Details ------------ */}
       {step === "details" && (
         <Grid container spacing={2}>
+          {/* Validation banner */}
+          {validationResult && validationResult.isAPIProjectValid === false && (
+            <Grid size={{ xs: 12 }}>
+              <Alert severity="error" sx={{ mb: 1.5 }}>
+                <Box>
+                  <Typography fontWeight={700} mb={0.5}>
+                    API project validation failed
+                  </Typography>
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    {(validationResult.errors || []).map(
+                      (e: string, i: number) => (
+                        <li key={i}>
+                          <Typography variant="body2">{e}</Typography>
+                        </li>
+                      )
+                    )}
+                  </ul>
+                </Box>
+              </Alert>
+            </Grid>
+          )}
+
           <Grid size={{ xs: 12, md: 6 }}>
-            <Card testId={""}>
+            <Card testId="">
               <CardContent sx={{ p: 3 }}>
                 <CreationMetaData scope="contract" title="API Details" />
+
+                {!!createError && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    {createError}
+                  </Alert>
+                )}
+                {!!createSuccessMsg && (
+                  <Alert severity="success" sx={{ mt: 2 }}>
+                    {createSuccessMsg}
+                  </Alert>
+                )}
+
                 <Stack
                   direction="row"
                   spacing={1}
                   justifyContent="flex-end"
                   sx={{ mt: 3 }}
                 >
-                  <Button variant="outlined" onClick={() => setStep("form")}>
+                  <Button
+                    variant="outlined"
+                    onClick={() => setStep("form")}
+                    disabled={creating}
+                  >
                     Back
                   </Button>
-                  <Button variant="contained" onClick={onClose}>
-                    Create
+                  <Button
+                    variant="contained"
+                    onClick={onCreate}
+                    disabled={!canCreate || creating}
+                  >
+                    {creating ? "Creating..." : "Create"}
                   </Button>
                 </Stack>
               </CardContent>
             </Card>
           </Grid>
+
+          <Grid size={{ xs: 12, md: 6 }}>
+            <ApiOperationsList
+              title="API Operations (from validation)"
+              operations={validatedOps as any}
+            />
+          </Grid>
         </Grid>
       )}
 
-      {/* Directory picker modal — pass fetched items */}
+      {/* Directory picker modal */}
       <ApiDirectoryModal
         open={dirModalOpen}
         currentPath={apiDir}
@@ -432,7 +659,6 @@ const GithubCreationFlow: React.FC<Props> = ({ open, onClose }) => {
         onContinue={(newPath) => {
           setApiDir(newPath);
           setDirModalOpen(false);
-          // validation effect will re-run automatically based on apiDir/content
         }}
       />
     </Box>

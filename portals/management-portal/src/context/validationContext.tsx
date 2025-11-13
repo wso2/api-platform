@@ -40,6 +40,9 @@ type GithubProjectValidationContextValue = {
   // convenience
   isValid: boolean | null; // null when no result yet
   errors: string[]; // [] when valid or no result
+
+  // NEW: allow consumers to clear error/result/loading
+  reset: () => void;
 };
 
 const Ctx = createContext<GithubProjectValidationContextValue | undefined>(
@@ -48,9 +51,7 @@ const Ctx = createContext<GithubProjectValidationContextValue | undefined>(
 
 type Props = { children: ReactNode };
 
-export const GithubProjectValidationProvider: React.FC<Props> = ({
-  children,
-}) => {
+export const GithubProjectValidationProvider: React.FC<Props> = ({ children }) => {
   const { validateGithubApiProject } = useGithubProjectValidation();
 
   // inputs
@@ -62,9 +63,7 @@ export const GithubProjectValidationProvider: React.FC<Props> = ({
   // state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<GithubProjectValidationResponse | null>(
-    null
-  );
+  const [result, setResult] = useState<GithubProjectValidationResponse | null>(null);
 
   // lifecycle guards
   const mountedRef = useRef(true);
@@ -102,9 +101,7 @@ export const GithubProjectValidationProvider: React.FC<Props> = ({
       setError(null);
 
       try {
-        const res = await validateGithubApiProject(effective, {
-          signal: ac.signal,
-        });
+        const res = await validateGithubApiProject(effective, { signal: ac.signal });
         if (mountedRef.current) setResult(res);
         return res;
       } catch (e) {
@@ -134,8 +131,16 @@ export const GithubProjectValidationProvider: React.FC<Props> = ({
   const errors = useMemo<string[]>(() => {
     if (!result) return [];
     return Array.isArray((result as any).errors) ? (result as any).errors : [];
-    // empty array when valid
   }, [result]);
+
+  // NEW: reset helper
+  const reset = useCallback(() => {
+    pendingRef.current = 0;
+    if (!mountedRef.current) return;
+    setLoading(false);
+    setError(null);
+    setResult(null);
+  }, []);
 
   const value = useMemo<GithubProjectValidationContextValue>(
     () => ({
@@ -157,6 +162,8 @@ export const GithubProjectValidationProvider: React.FC<Props> = ({
       // convenience
       isValid,
       errors,
+      // new
+      reset,
     }),
     [
       repoUrl,
@@ -169,6 +176,7 @@ export const GithubProjectValidationProvider: React.FC<Props> = ({
       validate,
       isValid,
       errors,
+      reset,
     ]
   );
 
