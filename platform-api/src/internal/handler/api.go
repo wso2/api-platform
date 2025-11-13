@@ -757,7 +757,7 @@ func (h *APIHandler) ValidateAPIProject(c *gin.Context) {
 	gitService := service.NewGitService()
 
 	// Validate API project
-	response, err := h.apiService.ValidateAPIProject(&req, gitService)
+	response, err := h.apiService.ValidateAndRetrieveAPIProject(&req, gitService)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to validate API project"))

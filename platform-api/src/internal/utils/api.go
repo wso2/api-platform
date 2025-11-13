@@ -898,8 +898,12 @@ func (u *APIUtil) APIYAMLData2ToDTO(yamlData *dto.APIYAMLData2) *dto.API {
 				Name:        fmt.Sprintf("Operation-%d", i+1),
 				Description: fmt.Sprintf("Operation for %s %s", op.Method, op.Path),
 				Request: &dto.OperationRequest{
-					Method: op.Method,
-					Path:   op.Path,
+					Method:           op.Method,
+					Path:             op.Path,
+					BackendServices:  op.BackendServices,
+					Authentication:   op.Authentication,
+					RequestPolicies:  op.RequestPolicies,
+					ResponsePolicies: op.ResponsePolicies,
 				},
 			}
 		}
@@ -1068,30 +1072,16 @@ func (u *APIUtil) validateSwagger2Model(docModel *libopenapi.DocumentModel[v2hig
 	return nil
 }
 
-// ValidateOpenAPI3 validates OpenAPI 3.x specifications using libopenapi
-func (u *APIUtil) ValidateOpenAPI3(content []byte) error {
-	// Create a new document from the content
-	document, err := libopenapi.NewDocument(content)
-	if err != nil {
-		return fmt.Errorf("failed to parse OpenAPI 3.x document: %s", err.Error())
-	}
-
-	return u.validateOpenAPI3Document(document)
-}
-
-// ValidateSwagger2 validates Swagger 2.0 specifications using libopenapi
-func (u *APIUtil) ValidateSwagger2(content []byte) error {
-	// Create a new document from the content
-	document, err := libopenapi.NewDocument(content)
-	if err != nil {
-		return fmt.Errorf("failed to parse Swagger 2.0 document: %s", err.Error())
-	}
-
-	return u.validateSwagger2Document(document)
-}
-
 // ValidateWSO2Artifact validates the structure of WSO2 artifact
 func (u *APIUtil) ValidateWSO2Artifact(artifact *dto.APIDeploymentYAML) error {
+	if artifact.Kind == "" {
+		return fmt.Errorf("invalid artifact: missing kind")
+	}
+
+	if artifact.Version == "" {
+		return fmt.Errorf("invalid artifact: missing version")
+	}
+
 	if artifact.Data.Name == "" {
 		return fmt.Errorf("missing API name")
 	}

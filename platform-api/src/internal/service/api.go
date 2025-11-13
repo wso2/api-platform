@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	pathpkg "path"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
@@ -973,7 +974,8 @@ func (s *APIService) ImportAPIProject(req *dto.ImportAPIProjectRequest, orgId st
 	apiConfig := config.APIs[0]
 
 	// 5. Fetch the WSO2 artifact file content
-	wso2ArtifactPath := req.Path + "/" + apiConfig.WSO2Artifact
+	wso2ArtifactClean := pathpkg.Clean(apiConfig.WSO2Artifact)
+	wso2ArtifactPath := pathpkg.Join(req.Path, wso2ArtifactClean)
 	artifactData, err := gitService.FetchWSO2Artifact(req.RepoURL, req.Branch, wso2ArtifactPath)
 	if err != nil {
 		return nil, constants.ErrWSO2ArtifactNotFound
@@ -1064,8 +1066,9 @@ func (s *APIService) mergeAPIData(artifact *dto.APIYAMLData2, userAPIData *dto.A
 	return apiDTO
 }
 
-// ValidateAPIProject validates an API project from Git repository with comprehensive checks
-func (s *APIService) ValidateAPIProject(req *dto.ValidateAPIProjectRequest, gitService GitService) (*dto.APIProjectValidationResponse, error) {
+// ValidateAndRetrieveAPIProject validates an API project from Git repository with comprehensive checks
+func (s *APIService) ValidateAndRetrieveAPIProject(req *dto.ValidateAPIProjectRequest,
+	gitService GitService) (*dto.APIProjectValidationResponse, error) {
 	response := &dto.APIProjectValidationResponse{
 		IsAPIProjectValid:    false,
 		IsAPIConfigValid:     false,
@@ -1083,8 +1086,9 @@ func (s *APIService) ValidateAPIProject(req *dto.ValidateAPIProjectRequest, gitS
 	// Process the first API entry (assuming single API per project for now)
 	apiEntry := config.APIs[0]
 
-	// Step 3: Fetch and validate OpenAPI definition
-	openAPIPath := req.Path + "/" + apiEntry.OpenAPI
+	// Step 3: Fetch OpenAPI definition
+	openAPIClean := pathpkg.Clean(apiEntry.OpenAPI)
+	openAPIPath := pathpkg.Join(req.Path, openAPIClean)
 	openAPIContent, err := gitService.FetchFileContent(req.RepoURL, req.Branch, openAPIPath)
 	if err != nil {
 		response.Errors = append(response.Errors, fmt.Sprintf("failed to fetch OpenAPI file: %s", err.Error()))
@@ -1099,8 +1103,9 @@ func (s *APIService) ValidateAPIProject(req *dto.ValidateAPIProjectRequest, gitS
 
 	response.IsAPIDefinitionValid = true
 
-	// Step 4: Fetch and validate WSO2 artifact
-	wso2ArtifactPath := req.Path + "/" + apiEntry.WSO2Artifact
+	// Step 4: Fetch WSO2 artifact (api.yaml)
+	wso2ArtifactClean := pathpkg.Clean(apiEntry.WSO2Artifact)
+	wso2ArtifactPath := pathpkg.Join(req.Path, wso2ArtifactClean)
 	wso2ArtifactContent, err := gitService.FetchFileContent(req.RepoURL, req.Branch, wso2ArtifactPath)
 	if err != nil {
 		response.Errors = append(response.Errors, fmt.Sprintf("failed to fetch WSO2 artifact file: %s", err.Error()))
