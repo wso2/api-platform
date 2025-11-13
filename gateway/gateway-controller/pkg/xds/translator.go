@@ -20,6 +20,7 @@ package xds
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 	"time"
@@ -31,37 +32,43 @@ import (
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	fileaccesslog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
-	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
+	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
+	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // Translator converts API configurations to Envoy xDS resources
 type Translator struct {
-	logger          *zap.Logger
-	accessLogConfig config.AccessLogsConfig
+	logger       *zap.Logger
+	routerConfig *config.RouterConfig
 }
 
 // NewTranslator creates a new translator
-func NewTranslator(logger *zap.Logger, accessLogConfig config.AccessLogsConfig) *Translator {
+func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig) *Translator {
 	return &Translator{
-		logger:          logger,
-		accessLogConfig: accessLogConfig,
+		logger:       logger,
+		routerConfig: routerConfig,
 	}
 }
 
 // TranslateConfigs translates all API configurations to Envoy resources
 // The correlationID parameter is optional and used for request tracing in logs
-func (t *Translator) TranslateConfigs(configs []*models.StoredAPIConfig, correlationID string) (map[resource.Type][]types.Resource, error) {
+func (t *Translator) TranslateConfigs(
+	configs []*models.StoredAPIConfig,
+	correlationID string,
+) (map[resource.Type][]types.Resource, error) {
 	// Create a logger with correlation ID if provided
 	log := t.logger
 	if correlationID != "" {
@@ -158,7 +165,8 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredAPIConfig) ([]*route.R
 
 	// Create cluster for this upstream
 	clusterName := t.sanitizeClusterName(parsedURL.Host)
-	c := t.createCluster(clusterName, parsedURL)
+	// @TODO: Handle upstream certificates and pass them to createCluster
+	c := t.createCluster(clusterName, parsedURL, nil)
 
 	// Create routes for each operation
 	routesList := make([]*route.Route, 0)
@@ -197,7 +205,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost) (*listene
 	}
 
 	// Add access logs if enabled
-	if t.accessLogConfig.Enabled {
+	if t.routerConfig.AccessLogs.Enabled {
 		accessLogs, err := t.createAccessLogConfig()
 		if err != nil {
 			return nil, fmt.Errorf("failed to create access log config: %w", err)
@@ -276,6 +284,17 @@ func (t *Translator) createRoute(context, method, path, clusterName, upstreamPat
 		},
 		Action: &route.Route_Route{
 			Route: &route.RouteAction{
+				HostRewriteSpecifier: &route.RouteAction_AutoHostRewrite{
+					AutoHostRewrite: &wrapperspb.BoolValue{
+						Value: true,
+					},
+				},
+				Timeout: durationpb.New(
+					time.Duration(t.routerConfig.Upstream.Timeouts.RouteTimeoutInSeconds) * time.Second,
+				),
+				IdleTimeout: durationpb.New(
+					time.Duration(t.routerConfig.Upstream.Timeouts.RouteIdleTimeoutInSeconds) * time.Second,
+				),
 				ClusterSpecifier: &route.RouteAction_Cluster{
 					Cluster: clusterName,
 				},
@@ -312,42 +331,219 @@ func (t *Translator) createRoute(context, method, path, clusterName, upstreamPat
 }
 
 // createCluster creates an Envoy cluster
-func (t *Translator) createCluster(name string, upstreamURL *url.URL) *cluster.Cluster {
-	port := uint32(80)
-	if upstreamURL.Scheme == "https" {
-		port = 443
-	}
-	if upstreamURL.Port() != "" {
-		fmt.Sscanf(upstreamURL.Port(), "%d", &port)
-	}
+func (t *Translator) createCluster(
+	name string,
+	upstreamURL *url.URL,
+	upstreamCerts map[string][]byte,
+) *cluster.Cluster {
+	endpoints, transportSocketMatch := t.processEndpoint(upstreamURL, upstreamCerts)
 
-	return &cluster.Cluster{
+	c := &cluster.Cluster{
 		Name:                 name,
 		ConnectTimeout:       durationpb.New(5 * time.Second),
 		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
 		LoadAssignment: &endpoint.ClusterLoadAssignment{
 			ClusterName: name,
-			Endpoints: []*endpoint.LocalityLbEndpoints{{
-				LbEndpoints: []*endpoint.LbEndpoint{{
-					HostIdentifier: &endpoint.LbEndpoint_Endpoint{
-						Endpoint: &endpoint.Endpoint{
-							Address: &core.Address{
-								Address: &core.Address_SocketAddress{
-									SocketAddress: &core.SocketAddress{
-										Protocol: core.SocketAddress_TCP,
-										Address:  upstreamURL.Hostname(),
-										PortSpecifier: &core.SocketAddress_PortValue{
-											PortValue: port,
-										},
-									},
+			Endpoints:   endpoints,
+		},
+	}
+
+	if transportSocketMatch != nil {
+		c.TransportSocketMatches = []*cluster.Cluster_TransportSocketMatch{transportSocketMatch}
+	}
+
+	return c
+}
+
+// createUpstreamTLSContext creates an upstream TLS context for secure connections
+func (t *Translator) createUpstreamTLSContext(certificate []byte, address string) *tlsv3.UpstreamTlsContext {
+	// Create TLS context with base configuration
+	upstreamTLSContext := &tlsv3.UpstreamTlsContext{
+		CommonTlsContext: &tlsv3.CommonTlsContext{
+			TlsParams: &tlsv3.TlsParameters{
+				TlsMinimumProtocolVersion: t.createTLSProtocolVersion(
+					t.routerConfig.Upstream.TLS.MinimumProtocolVersion,
+				),
+				TlsMaximumProtocolVersion: t.createTLSProtocolVersion(
+					t.routerConfig.Upstream.TLS.MaximumProtocolVersion,
+				),
+				CipherSuites: t.parseCipherSuites(t.routerConfig.Upstream.TLS.Ciphers),
+			},
+		},
+	}
+
+	// Determine if address is IP or hostname and set SNI accordingly
+	isIP := net.ParseIP(address) != nil
+	if !isIP {
+		upstreamTLSContext.Sni = address
+	}
+
+	// Configure SSL verification unless disabled
+	if !t.routerConfig.Upstream.TLS.DisableSslVerification {
+		var trustedCASource *core.DataSource
+		if len(certificate) > 0 {
+			trustedCASource = &core.DataSource{
+				Specifier: &core.DataSource_InlineBytes{
+					InlineBytes: certificate,
+				},
+			}
+		} else if t.routerConfig.Upstream.TLS.TrustedCertPath != "" {
+			trustedCASource = &core.DataSource{
+				Specifier: &core.DataSource_Filename{
+					Filename: t.routerConfig.Upstream.TLS.TrustedCertPath,
+				},
+			}
+		}
+
+		// Set trusted CA for validation if provided. Otherwise, Envoy will fall back to the system default trust store.
+		if trustedCASource != nil {
+			upstreamTLSContext.CommonTlsContext.ValidationContextType = &tlsv3.CommonTlsContext_ValidationContext{
+				ValidationContext: &tlsv3.CertificateValidationContext{
+					TrustedCa: trustedCASource,
+				},
+			}
+		}
+
+		// Add hostname verification if enabled
+		if t.routerConfig.Upstream.TLS.VerifyHostName {
+			sanType := tlsv3.SubjectAltNameMatcher_DNS
+			if isIP {
+				sanType = tlsv3.SubjectAltNameMatcher_IP_ADDRESS
+			}
+
+			if validationContext := upstreamTLSContext.CommonTlsContext.GetValidationContext(); validationContext != nil {
+				validationContext.MatchTypedSubjectAltNames = []*tlsv3.SubjectAltNameMatcher{
+					{
+						SanType: sanType,
+						Matcher: &matcher.StringMatcher{
+							MatchPattern: &matcher.StringMatcher_Exact{
+								Exact: address,
+							},
+						},
+					},
+				}
+			}
+		}
+	}
+
+	return upstreamTLSContext
+}
+
+// createTLSProtocolVersion converts string TLS version to Envoy TLS version enum
+func (t *Translator) createTLSProtocolVersion(version string) tlsv3.TlsParameters_TlsProtocol {
+	switch strings.ToUpper(version) {
+	case constants.TLSVersion10:
+		return tlsv3.TlsParameters_TLSv1_0
+	case constants.TLSVersion11:
+		return tlsv3.TlsParameters_TLSv1_1
+	case constants.TLSVersion12:
+		return tlsv3.TlsParameters_TLSv1_2
+	case constants.TLSVersion13:
+		return tlsv3.TlsParameters_TLSv1_3
+	default:
+		return tlsv3.TlsParameters_TLS_AUTO
+	}
+}
+
+// parseCipherSuites splits and trims cipher suite string into array
+func (t *Translator) parseCipherSuites(ciphers string) []string {
+	if ciphers == "" {
+		return nil
+	}
+	ciphersList := strings.Split(ciphers, constants.CipherSuiteSeparator)
+	for i := range ciphersList {
+		ciphersList[i] = strings.TrimSpace(ciphersList[i])
+	}
+	return ciphersList
+}
+
+// processEndpoint creates locality load endpoints for the given upstream URL and returns both endpoints and transport socket match if TLS is enabled
+func (t *Translator) processEndpoint(
+	upstreamURL *url.URL,
+	upstreamCerts map[string][]byte,
+) ([]*endpoint.LocalityLbEndpoints, *cluster.Cluster_TransportSocketMatch) {
+	port := constants.HTTPDefaultPort
+	if upstreamURL.Scheme == constants.SchemeHTTPS {
+		port = constants.HTTPSDefaultPort
+	}
+	if upstreamURL.Port() != "" {
+		var parsedPort uint32
+		if _, err := fmt.Sscanf(upstreamURL.Port(), "%d", &parsedPort); err == nil {
+			port = parsedPort
+		}
+	}
+
+	localityLbEndpoints := &endpoint.LocalityLbEndpoints{
+		LbEndpoints: []*endpoint.LbEndpoint{{
+			HostIdentifier: &endpoint.LbEndpoint_Endpoint{
+				Endpoint: &endpoint.Endpoint{
+					Address: &core.Address{
+						Address: &core.Address_SocketAddress{
+							SocketAddress: &core.SocketAddress{
+								Protocol: core.SocketAddress_TCP,
+								Address:  upstreamURL.Hostname(),
+								PortSpecifier: &core.SocketAddress_PortValue{
+									PortValue: port,
 								},
 							},
 						},
 					},
-				}},
-			}},
-		},
+				},
+			},
+		}},
 	}
+
+	if upstreamURL.Scheme == constants.SchemeHTTPS {
+		var epCert []byte
+		if cert, found := upstreamCerts[upstreamURL.String()]; found {
+			epCert = cert
+		} else if defaultCerts, found := upstreamCerts[constants.DefaultCertificateKey]; found {
+			epCert = defaultCerts
+		}
+
+		upstreamtlsContext := t.createUpstreamTLSContext(epCert, upstreamURL.Hostname())
+		marshalledTLSContext, err := anypb.New(upstreamtlsContext)
+		if err != nil {
+			t.logger.Error("internal Error while marshalling the upstream TLS Context", zap.Error(err))
+			return []*endpoint.LocalityLbEndpoints{localityLbEndpoints}, nil
+		}
+
+		// Create transport socket match with a unique identifier
+		// We use index 0 since we're dealing with a single endpoint
+		matchID := constants.DefaultMatchID
+		transportSocketMatch := &cluster.Cluster_TransportSocketMatch{
+			// Name format: ts0 (transport socket + match ID)
+			Name: constants.TransportSocketPrefix + matchID,
+			Match: &structpb.Struct{
+				Fields: map[string]*structpb.Value{
+					// The lb_id field is used to match the endpoint with its transport socket
+					constants.LoadBalancerIDKey: structpb.NewStringValue(matchID),
+				},
+			},
+			TransportSocket: &core.TransportSocket{
+				Name: constants.EnvoyTLSTransportSocket,
+				ConfigType: &core.TransportSocket_TypedConfig{
+					TypedConfig: marshalledTLSContext,
+				},
+			},
+		}
+
+		// Set metadata for transport socket matching
+		// This metadata links the endpoint to its transport socket configuration
+		localityLbEndpoints.LbEndpoints[0].Metadata = &core.Metadata{
+			FilterMetadata: map[string]*structpb.Struct{
+				constants.TransportSocketMatchKey: {
+					Fields: map[string]*structpb.Value{
+						constants.LoadBalancerIDKey: structpb.NewStringValue(matchID),
+					},
+				},
+			},
+		}
+
+		return []*endpoint.LocalityLbEndpoints{localityLbEndpoints}, transportSocketMatch
+	}
+
+	return []*endpoint.LocalityLbEndpoints{localityLbEndpoints}, nil
 }
 
 // pathToRegex converts a path with parameters to a regex pattern
@@ -392,9 +588,9 @@ func (t *Translator) sanitizeName(name string) string {
 func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	var fileAccessLog *fileaccesslog.FileAccessLog
 
-	if t.accessLogConfig.Format == "json" {
+	if t.routerConfig.AccessLogs.Format == "json" {
 		// Use JSON log format fields from config
-		jsonFormat := t.accessLogConfig.JSONFields
+		jsonFormat := t.routerConfig.AccessLogs.JSONFields
 		if jsonFormat == nil || len(jsonFormat) == 0 {
 			return nil, fmt.Errorf("json_fields not configured in access log config")
 		}
@@ -417,7 +613,7 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 		}
 	} else {
 		// Use text format from config
-		textFormat := t.accessLogConfig.TextFormat
+		textFormat := t.routerConfig.AccessLogs.TextFormat
 		if textFormat == "" {
 			return nil, fmt.Errorf("text_format not configured in access log config")
 		}
