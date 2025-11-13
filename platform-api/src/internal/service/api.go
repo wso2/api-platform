@@ -163,8 +163,8 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 		return nil, fmt.Errorf("failed to create api: %w", err)
 	}
 
-	api.CreatedAt = time.Now()
-	api.UpdatedAt = time.Now()
+	api.CreatedAt = apiModel.CreatedAt
+	api.UpdatedAt = apiModel.UpdatedAt
 
 	// Associate backend services with the API
 	for i, backendServiceUUID := range backendServiceIdList {
