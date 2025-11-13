@@ -164,7 +164,7 @@ EOF`;
 
   return (
     <Box py={1}>
-      <Typography variant="h6" fontWeight={600}>
+      <Typography variant="h5" fontWeight={600}>
         Add Your APIs
       </Typography>
 

@@ -57,10 +57,10 @@ export default function GatewayCards({
                 sx={{ width: 140, height: "auto" }}
               />
             </Box>
-            <Typography variant="h6" fontWeight={600}>
+            <Typography variant="h4" fontWeight={600}>
               {label}
             </Typography>
-            <Typography color="text.secondary" align="center" fontSize={14}>
+            <Typography color="#666666" align="center" fontSize={14}>
               Let’s get started with creating your Gateways
             </Typography>
           </CardContent>

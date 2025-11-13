@@ -1,129 +1,127 @@
 // src/App.tsx
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Box } from "@mui/material";
 import MainLayout from "./layout/MainLayout";
 
-// Pages
-import Overview from "./pages/Overview";
-import Gateways from "./pages/Gateway";
-import Portals from "./pages/PortalManagement";
-
-// API Proxies
-import APIs from "./pages/APIs";
-import ApiTest from "./pages/apis/ApiTest";
-import ApiDeploy from "./pages/apis/ApiDeploy";
-import ApiPolicies from "./pages/apis/ApiPolicies";
-import ApiOverview from "./pages/apis/ApiOverview";
-import ApiDevelop from "./pages/apis/ApiDevelop"; // <-- ADD
-import ApiPublish from "./pages/apis/ApiPublish";
-
-// MCP Servers
-import McpServers from "./pages/McpServers";
-import McpTest from "./pages/mcp/McpTest";
-import McpDeploy from "./pages/mcp/McpDeploy";
-import McpPolicies from "./pages/mcp/McpPolicies";
-
-// API Products
-import ApiProducts from "./pages/ApiProducts";
-import ProductsTest from "./pages/products/ProductsTest";
-import ProductsDeploy from "./pages/products/ProductsDeploy";
-import ProductsPolicies from "./pages/products/ProductsPolicies";
-
-import Admin from "./pages/Admin";
-import Policies from "./pages/Policies";
 import { useOrganization } from "./context/OrganizationContext";
 import { useProjects } from "./context/ProjectContext";
 import { projectSlugFromName } from "./utils/projectSlug";
-import ProjectOverview from "./pages/ProjectOverview";
 
-const OverviewEntry: React.FC = () => {
-  const { organization, loading } = useOrganization();
-  const { selectedProject } = useProjects();
+import ScenarioLanding from "./components/ScenarioLanding";
+import AppRoutes from "./routes";
+import ExposeServiceWizard from "./pages/userScenarios/ExposeServiceWizard";
 
-  if (loading || !organization) return null;
-
-  const projectSegment = selectedProject
-    ? `/${projectSlugFromName(selectedProject.name, selectedProject.id)}`
-    : "";
-
-  return <Navigate to={`/${organization.handle}${projectSegment}/overview`} replace />;
-};
+type ExperienceStage = "landing" | "wizard" | "platform";
+const EXPERIENCE_STAGE_KEY = "apim-platform-experience-stage";
 
 const App: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const [experienceStage, setExperienceStage] = React.useState<ExperienceStage>(
+    () => {
+      if (typeof window === "undefined") return "landing";
+      const stored = window.localStorage.getItem(EXPERIENCE_STAGE_KEY);
+      return stored === "platform" ? "platform" : "landing";
+    }
+  );
+
+  const { organization } = useOrganization();
+  const { selectedProject } = useProjects();
+
+  const defaultOrgPath = React.useMemo(() => {
+    if (!organization) return "/";
+    const projectSegment = selectedProject
+      ? `/${projectSlugFromName(selectedProject.name, selectedProject.id)}`
+      : "";
+    return `/${organization.handle}${projectSegment}/overview`;
+  }, [organization, selectedProject]);
+
+  React.useEffect(() => {
+    if (experienceStage === "platform" && typeof window !== "undefined") {
+      window.localStorage.setItem(EXPERIENCE_STAGE_KEY, "platform");
+    }
+  }, [experienceStage]);
+
+  // Always treat "/" and "/userSenario" as the ScenarioLanding view
+  const isScenarioPath =
+    location.pathname === "/userSenario" || location.pathname === "/";
+
+  const handleScenarioSkip = React.useCallback(() => {
+    setExperienceStage("platform");
+    // Avoid navigating to "/" before org/project is ready
+    if (defaultOrgPath !== "/") {
+      navigate(defaultOrgPath, { replace: true });
+    }
+  }, [defaultOrgPath, navigate]);
+
+  const handleScenarioContinue = React.useCallback(
+    (scenarioId: string) => {
+      setExperienceStage(
+        scenarioId === "expose-service" ? "wizard" : "platform"
+      );
+      if (defaultOrgPath !== "/") {
+        navigate(defaultOrgPath, { replace: true });
+      }
+    },
+    [defaultOrgPath, navigate]
+  );
+
+  const handleWizardFinish = React.useCallback(() => {
+    setExperienceStage("platform");
+    if (defaultOrgPath !== "/") {
+      navigate(defaultOrgPath, { replace: true });
+    }
+  }, [defaultOrgPath, navigate]);
+
+  const handleBackToChoices = React.useCallback(() => {
+    setExperienceStage("landing");
+    navigate("/userSenario", { replace: true });
+  }, [navigate]);
+
+  // Show ScenarioLanding if we're at "/" or "/userSenario", or if stage is landing
+  const showScenarioLanding = isScenarioPath || experienceStage === "landing";
+
+  let layoutContent: React.ReactNode = null;
+  if (experienceStage === "wizard") {
+    layoutContent = (
+      <ExposeServiceWizard
+        onBackToChoices={handleBackToChoices}
+        onSkip={handleScenarioSkip}
+        onFinish={handleWizardFinish}
+      />
+    );
+  } else {
+    layoutContent = <AppRoutes />;
+  }
+
   return (
-    <BrowserRouter>
-      <MainLayout>
-        <Routes>
-          <Route path="/" element={<OverviewEntry />} />
-          <Route path="/overview" element={<OverviewEntry />} />
-          <Route path="/policies" element={<Policies />} />
-
-          <Route path="/:orgHandle">
-            <Route index element={<Navigate to="overview" replace />} />
-            <Route path="overview" element={<Overview />} />
-            <Route path="gateways" element={<Gateways />} />
-            <Route path="portals" element={<Portals />} />
-            <Route path="portals/create" element={<Portals />} />
-            <Route path="portals/:portalId/edit" element={<Portals />} />
-            <Route path="portals/:portalId/theme" element={<Portals />} />
-            <Route path="policies" element={<Policies />} />
-            {/* API Proxies (org scope) */}
-            <Route path="apis" element={<APIs />} />
-            <Route path="apis/develop" element={<ApiDevelop />} />   {/* <-- ADD */}
-            <Route path="apis/test" element={<ApiTest />} />
-            <Route path="apis/deploy" element={<ApiDeploy />} />
-            <Route path="apis/policies" element={<ApiPolicies />} />
-            <Route path="apis/:apiId/overview" element={<ApiOverview />} />
-            <Route path="apis/:apiId/publish" element={<ApiPublish />} />
-            <Route path=":apiSlug/apioverview" element={<ApiOverview />} />
-
-            {/* MCP + Products + Admin */}
-            <Route path="mcp" element={<McpServers />} />
-            <Route path="mcp/test" element={<McpTest />} />
-            <Route path="mcp/deploy" element={<McpDeploy />} />
-            <Route path="mcp/policies" element={<McpPolicies />} />
-            <Route path="products" element={<ApiProducts />} />
-            <Route path="products/test" element={<ProductsTest />} />
-            <Route path="products/deploy" element={<ProductsDeploy />} />
-            <Route path="products/policies" element={<ProductsPolicies />} />
-            <Route path="admin" element={<Admin />} />
-
-            {/* Project scope */}
-            <Route path=":projectHandle">
-              <Route index element={<Navigate to="overview" replace />} />
-              <Route path="overview" element={<ProjectOverview />} />
-              <Route path="gateways" element={<Gateways />} />
-              <Route path="portals" element={<Portals />} />
-              <Route path="portals/create" element={<Portals />} />
-              <Route path="portals/:portalId/edit" element={<Portals />} />
-              <Route path="portals/:portalId/theme" element={<Portals />} />
-              <Route path="policies" element={<Policies />} />
-              {/* API Proxies (project scope) */}
-              <Route path="apis" element={<APIs />} />
-              <Route path="apis/develop" element={<ApiDevelop />} /> {/* <-- ADD */}
-              <Route path="apis/test" element={<ApiTest />} />
-              <Route path="apis/deploy" element={<ApiDeploy />} />
-              <Route path="apis/policies" element={<ApiPolicies />} />
-              <Route path="apis/:apiId/overview" element={<ApiOverview />} />
-              <Route path="apis/:apiId/publish" element={<ApiPublish />} />
-              <Route path=":apiSlug/apioverview" element={<ApiOverview />} />
-              {/* MCP + Products + Admin */}
-              <Route path="mcp" element={<McpServers />} />
-              <Route path="mcp/test" element={<McpTest />} />
-              <Route path="mcp/deploy" element={<McpDeploy />} />
-              <Route path="mcp/policies" element={<McpPolicies />} />
-              <Route path="products" element={<ApiProducts />} />
-              <Route path="products/test" element={<ProductsTest />} />
-              <Route path="products/deploy" element={<ProductsDeploy />} />
-              <Route path="products/policies" element={<ProductsPolicies />} />
-              <Route path="admin" element={<Admin />} />
-            </Route>
-          </Route>
-
-          <Route path="*" element={<OverviewEntry />} />
-        </Routes>
-      </MainLayout>
-    </BrowserRouter>
+    <>
+      {showScenarioLanding ? (
+        <Box
+          minHeight="100vh"
+          display="flex"
+          alignItems="flex-start"
+          justifyContent="center"
+          px={{ xs: 2, md: 4 }}
+          py={{ xs: 3, md: 6 }}
+          sx={{
+            backgroundImage:
+              "linear-gradient(190deg, #f4fffbff 0%, #F2F4F7 100%)",
+          }}
+        >
+          <Box width="100%" maxWidth={1280}>
+            <ScenarioLanding
+              onContinue={handleScenarioContinue}
+              onSkip={handleScenarioSkip}
+            />
+          </Box>
+        </Box>
+      ) : (
+        <MainLayout>{layoutContent}</MainLayout>
+      )}
+    </>
   );
 };
 

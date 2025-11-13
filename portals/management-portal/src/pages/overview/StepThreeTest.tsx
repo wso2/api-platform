@@ -152,10 +152,10 @@ export default function StepThreeTest({
 
   return (
     <Box py={2}>
-      <Typography variant="h6" fontWeight={600}>
+      <Typography variant="h5" fontWeight={600}>
         Test Your APIs
       </Typography>
-      <Typography fontSize={13} color="text.secondary">
+      <Typography fontSize={13} color="#666666" >
         Run the test command locally, then review live analytics.
       </Typography>
 

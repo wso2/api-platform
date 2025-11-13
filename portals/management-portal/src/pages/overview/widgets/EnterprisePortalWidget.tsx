@@ -12,7 +12,7 @@ export default function EnterprisePortalWidget({ height = 220, href }: Props) {
         <Typography variant="subtitle1" fontWeight={700}>
           Enterprise Portal
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+        <Typography variant="body2" color="#666666" sx={{ mt: 0.5 }}>
           Centralize developer onboarding, docs, and governance for your org.
         </Typography>
 
