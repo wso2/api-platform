@@ -15,7 +15,7 @@ import {
   ApiOperationsList,
   buildOperationsFromOpenAPI,
   type OpenAPI as SharedOpenAPI,
-} from "../,,/../../../../components/src/components/Common/ApiOperationsList";
+} from "../../../../components/src/components/Common/ApiOperationsList";
 
 /* ---------- Types ---------- */
 type Props = {
