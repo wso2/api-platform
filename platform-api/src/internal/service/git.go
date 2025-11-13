@@ -163,14 +163,24 @@ func (s *gitService) ValidateAPIProject(repoURL, branch, path string) (*dto.APIP
 			return nil, fmt.Errorf("malformed api project: apis.openapi and apis.wso2Artifact fields are required")
 		}
 
+		// Sanitize paths to prevent traversal attacks
+		openAPIClean := pathpkg.Clean(api.OpenAPI)
+		if strings.HasPrefix(openAPIClean, "..") || pathpkg.IsAbs(openAPIClean) {
+			return nil, fmt.Errorf("malformed api project: invalid openapi path: %s", api.OpenAPI)
+		}
+		wso2ArtifactClean := pathpkg.Clean(api.WSO2Artifact)
+		if strings.HasPrefix(wso2ArtifactClean, "..") || pathpkg.IsAbs(wso2ArtifactClean) {
+			return nil, fmt.Errorf("malformed api project: invalid wso2Artifact path: %s", api.WSO2Artifact)
+		}
+
 		// 4. Check if the referenced files exist in the project path
-		openAPIPath := pathpkg.Join(path, api.OpenAPI)
+		openAPIPath := pathpkg.Join(path, openAPIClean)
 		_, err := s.FetchFileContent(repoURL, branch, openAPIPath)
 		if err != nil {
 			return nil, fmt.Errorf("invalid api project: openapi file not found: %s", api.OpenAPI)
 		}
 
-		wso2ArtifactPath := pathpkg.Join(path, api.WSO2Artifact)
+		wso2ArtifactPath := pathpkg.Join(path, wso2ArtifactClean)
 		_, err = s.FetchFileContent(repoURL, branch, wso2ArtifactPath)
 		if err != nil {
 			return nil, fmt.Errorf("invalid api project: wso2 artifact file not found: %s", api.WSO2Artifact)
@@ -190,6 +200,11 @@ func (s *gitService) FetchWSO2Artifact(repoURL, branch, path string) (*dto.APIDe
 	var artifact dto.APIDeploymentYAML
 	if err := yaml.Unmarshal(content, &artifact); err != nil {
 		return nil, fmt.Errorf("failed to parse WSO2 artifact file at %s: %w", path, err)
+	}
+
+	// Validate required fields
+	if artifact.Kind == "" || artifact.Version == "" {
+		return nil, fmt.Errorf("malformed WSO2 artifact at %s: kind and version are required", path)
 	}
 
 	return &artifact, nil
