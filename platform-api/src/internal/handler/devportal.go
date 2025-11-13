@@ -65,7 +65,17 @@ func (h *DevPortalHandler) CreateDevPortal(c *gin.Context) {
 	// Create DevPortal
 	response, err := h.devPortalService.CreateDevPortal(orgID, &req)
 	if err != nil {
-		// Handle specific errors
+		// Handle duplicate DevPortal errors
+		if errors.Is(err, constants.ErrDevPortalAlreadyExists) {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"DevPortal with these attributes already exists"))
+			return
+		}
+		if errors.Is(err, constants.ErrDevPortalAPIUrlExists) {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"DevPortal with this API URL already exists in the organization"))
+			return
+		}
 		if errors.Is(err, constants.ErrDevPortalIdentifierExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
 				"DevPortal with this identifier already exists in the organization"))

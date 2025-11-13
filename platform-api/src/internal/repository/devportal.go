@@ -19,7 +19,6 @@ package repository
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
@@ -84,8 +83,7 @@ func (r *devPortalRepository) Create(devPortal *model.DevPortal) error {
 			if strings.Contains(errStr, "idx_devportals_default_per_org") {
 				return constants.ErrDevPortalDefaultAlreadyExists
 			}
-			// Generic uniqueness error
-			return fmt.Errorf("DevPortal with these attributes already exists")
+			return constants.ErrDevPortalAlreadyExists
 		}
 		log.Printf("[DevPortalRepository] Failed to create DevPortal %s: %v", devPortal.Name, err)
 		return err

@@ -21,23 +21,24 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"platform-api/src/config"
+	"platform-api/src/internal/client/devportal_client"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 
-	devportal_dto "platform-api/src/internal/client/devportal_client/dto"
-
 	"github.com/google/uuid"
 )
 
 // Constants for DevPortal operations
 const (
-	DevPortalServiceTimeout = 10
+	DevPortalServiceTimeout   = 10
+	PublicationStuckThreshold = 2 * time.Minute
 )
 
 // DevPortalService manages DevPortal operations using optimized data fetching and delegating client calls
@@ -72,6 +73,18 @@ func NewDevPortalService(
 		config:             config,
 		devPortalClientSvc: NewDevPortalClientService(config),
 	}
+}
+
+// getDevPortalByUUID retrieves a DevPortal by UUID with error handling
+func (s *DevPortalService) getDevPortalByUUID(uuid, orgUUID string) (*model.DevPortal, error) {
+	devPortal, err := s.devPortalRepo.GetByUUID(uuid, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get devPortal %s: %w", uuid, err)
+	}
+	if devPortal == nil {
+		return nil, fmt.Errorf("devPortal %s not found", uuid)
+	}
+	return devPortal, nil
 }
 
 func (s *DevPortalService) CreateDefaultDevPortal(orgUUID string) (*model.DevPortal, error) {
@@ -141,12 +154,9 @@ func (s *DevPortalService) CreateDevPortal(orgUUID string, req *dto.CreateDevPor
 // EnableDevPortal enables a DevPortal for use (activates/syncs it first if needed)
 func (s *DevPortalService) EnableDevPortal(uuid, orgUUID string) (*dto.ActivateDevPortalResponse, error) {
 	// Get DevPortal (cache for reuse)
-	devPortal, err := s.devPortalRepo.GetByUUID(uuid, orgUUID)
+	devPortal, err := s.getDevPortalByUUID(uuid, orgUUID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get devPortal %s: %w", uuid, err)
-	}
-	if devPortal == nil {
-		return nil, fmt.Errorf("devPortal %s not found", uuid)
+		return nil, err
 	}
 
 	if devPortal.IsEnabled {
@@ -170,9 +180,17 @@ func (s *DevPortalService) EnableDevPortal(uuid, orgUUID string) (*dto.ActivateD
 	// If DevPortal is not activated (synced), activate it first
 	if !devPortal.IsActive {
 		if err := s.syncAndInitializeDevPortalInternal(devPortal, org); err != nil {
-			return nil, fmt.Errorf("failed to sync and initialize DevPortal during enable: %w", err)
+			if errors.Is(err, constants.ErrDevPortalAlreadyExist) {
+				// Organization already exists remotely - this is OK!
+				// It means the organization was previously synced to the remote DevPortal
+				// We should keep the DB record and mark it as active
+				log.Printf("[DevPortalService] Organization %s already exists in DevPortal %s - marking as active", org.ID, devPortal.Name)
+				devPortal.IsActive = true
+				devPortal.IsEnabled = true
+			} else {
+				return nil, fmt.Errorf("failed to sync and initialize DevPortal during enable: %w", err)
+			}
 		}
-
 		// Mark as active in memory
 		devPortal.IsActive = true
 	}
@@ -208,8 +226,8 @@ func (s *DevPortalService) createDevPortalWithSync(devPortal *model.DevPortal, o
 			// It means the organization was previously synced to the remote DevPortal
 			// We should keep the DB record and mark it as active
 			log.Printf("[DevPortalService] Organization %s already exists in DevPortal %s - marking as active", organization.ID, devPortal.Name)
-			devPortal.IsActive = true   // Already synced remotely
-			devPortal.IsEnabled = false // User can enable it when ready
+			devPortal.IsActive = true
+			devPortal.IsEnabled = true
 		} else {
 			// Other sync errors - apply rollback logic based on allowSyncFailure flag
 			if !allowSyncFailure {
@@ -227,7 +245,7 @@ func (s *DevPortalService) createDevPortalWithSync(devPortal *model.DevPortal, o
 	} else {
 		// Sync successful - organization created in remote DevPortal
 		devPortal.IsActive = true
-		devPortal.IsEnabled = false // New DevPortals start disabled
+		devPortal.IsEnabled = true
 	}
 
 	// Update DevPortal state in repository
@@ -312,12 +330,9 @@ func (s *DevPortalService) ListDevPortals(orgUUID string, isDefault, isEnabled *
 // UpdateDevPortal updates an existing DevPortal
 func (s *DevPortalService) UpdateDevPortal(uuid, orgUUID string, req *dto.UpdateDevPortalRequest) (*dto.DevPortalResponse, error) {
 	// Get existing DevPortal
-	devPortal, err := s.devPortalRepo.GetByUUID(uuid, orgUUID)
+	devPortal, err := s.getDevPortalByUUID(uuid, orgUUID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get devPortal %s: %w", uuid, err)
-	}
-	if devPortal == nil {
-		return nil, fmt.Errorf("devPortal %s not found", uuid)
+		return nil, err
 	}
 
 	// Update fields from request
@@ -378,12 +393,9 @@ func (s *DevPortalService) DisableDevPortal(uuid, orgUUID string) (*dto.Deactiva
 // SetAsDefault sets a DevPortal as the default for its organization
 func (s *DevPortalService) SetAsDefault(uuid, orgUUID string) error {
 	// Get DevPortal to ensure it exists
-	devPortal, err := s.devPortalRepo.GetByUUID(uuid, orgUUID)
+	_, err := s.getDevPortalByUUID(uuid, orgUUID)
 	if err != nil {
-		return fmt.Errorf("failed to get devPortal %s: %w", uuid, err)
-	}
-	if devPortal == nil {
-		return fmt.Errorf("devPortal %s not found", uuid)
+		return err
 	}
 
 	// Set as default in repository
@@ -400,207 +412,295 @@ func (s *DevPortalService) GetDefaultDevPortal(orgUUID string) (*dto.DevPortalRe
 	return dto.ToDevPortalResponse(devPortal), nil
 }
 
-func (s *DevPortalService) PublishAPIToDevPortal(devPortalUUID, sandboxGatewayID, productionGatewayID, orgUUID, apiID string, api *model.API) (*dto.PublishToDevPortalResponse, error) {
-	// Get DevPortal
-	devPortal, err := s.devPortalRepo.GetByUUID(devPortalUUID, orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get devPortal %s: %w", devPortalUUID, err)
-	}
-	if devPortal == nil {
-		return nil, fmt.Errorf("devPortal %s not found", devPortalUUID)
-	}
-
-	// Get organization
-	org, err := s.orgRepo.GetOrganizationByUUID(orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get organization %s: %w", orgUUID, err)
-	}
-	if org == nil {
-		return nil, fmt.Errorf("organization %s not found", orgUUID)
-	}
-
-	// Get gateways
-	sandboxGateway, err := s.gatewayRepo.GetByUUID(sandboxGatewayID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get sandbox gateway %s: %w", sandboxGatewayID, err)
-	}
-	if sandboxGateway == nil {
-		return nil, fmt.Errorf("sandbox gateway %s not found", sandboxGatewayID)
-	}
-
-	productionGateway, err := s.gatewayRepo.GetByUUID(productionGatewayID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get production gateway %s: %w", productionGatewayID, err)
-	}
-	if productionGateway == nil {
-		return nil, fmt.Errorf("production gateway %s not found", productionGatewayID)
-	}
-
-	// Use internal methods that work with objects (no repeated fetching)
-	return s.publishAPIToDevPortalInternal(devPortal, org, api, sandboxGateway, productionGateway)
-}
-
-func (s *DevPortalService) publishAPIToDevPortalInternal(
-	devPortal *model.DevPortal,
-	org *model.Organization,
-	api *model.API,
-	sandboxGateway *model.Gateway,
-	productionGateway *model.Gateway,
-) (*dto.PublishToDevPortalResponse, error) {
-
-	// Validate DevPortal is ready for publishing
-	err := s.validateDevPortalForPublishingInternal(devPortal)
+func (s *DevPortalService) PublishAPIToDevPortal(api *dto.API, req *dto.PublishToDevPortalRequest, orgUUID string) (*dto.PublishToDevPortalResponse, error) {
+	// --- Phase 1: Validate Inputs ---
+	devPortal, org, err := s.validatePublishInputs(req, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Validate gateways belong to the organization
-	if sandboxGateway.OrganizationID != org.ID {
-		return nil, fmt.Errorf("sandbox gateway %s does not belong to organization %s", sandboxGateway.ID, org.ID)
-	}
-	if productionGateway.OrganizationID != org.ID {
-		return nil, fmt.Errorf("production gateway %s does not belong to organization %s", productionGateway.ID, org.ID)
-	}
-
-	// Validate API deployments (simplified version - checking if gateways exist)
-	deployments, err := s.apiRepo.GetDeploymentsByAPIUUID(api.ID)
+	// --- Phase 2: Prepare or Resume Publication ---
+	publication, isRetry, err := s.preparePublication(api, req, devPortal, orgUUID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get API deployments: %w", err)
+		return nil, err
 	}
 
-	sandboxDeployed := false
-	productionDeployed := false
-	for _, deployment := range deployments {
-		if deployment.GatewayID == sandboxGateway.ID && deployment.OrganizationID == org.ID {
-			sandboxDeployed = true
+	// --- Phase 3: Build API Metadata ---
+	apiMetadata := s.prepareAPIMetadata(api, req, org)
+
+	fmt.Printf("[DevPortalService] Publishing API %s to DevPortal %s (isRetry=%v)\n", api.ID, devPortal.Name, isRetry)
+
+	// --- Phase 4: Publish API to DevPortal ---
+	response, err := s.publishToDevPortal(api, org, devPortal, publication, apiMetadata, isRetry)
+	if err != nil {
+		fmt.Printf("[DevPortalService] Failed to publish API %s to DevPortal %s: %v\n", api.ID, devPortal.Name, err)
+		return nil, err
+	}
+
+	return response, nil
+}
+
+// validatePublishInputs validates DevPortal and Organization for publishing
+func (s *DevPortalService) validatePublishInputs(req *dto.PublishToDevPortalRequest, orgUUID string) (*model.DevPortal, *model.Organization, error) {
+	devPortal, err := s.getDevPortalByUUID(req.DevPortalUUID, orgUUID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !devPortal.IsEnabled {
+		return nil, nil, fmt.Errorf("devPortal %s is not enabled", devPortal.Name)
+	}
+	if !devPortal.IsActive {
+		return nil, nil, fmt.Errorf("devPortal %s is not activated (synced)", devPortal.Name)
+	}
+
+	org, err := s.orgRepo.GetOrganizationByUUID(orgUUID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get organization %s: %w", orgUUID, err)
+	}
+	if org == nil {
+		return nil, nil, fmt.Errorf("organization %s not found", orgUUID)
+	}
+
+	return devPortal, org, nil
+}
+
+// preparePublication handles publication record creation/update based on current state
+func (s *DevPortalService) preparePublication(api *dto.API, req *dto.PublishToDevPortalRequest, devPortal *model.DevPortal, orgUUID string) (*model.APIPublication, bool, error) {
+	existing, err := s.publicationRepo.GetByAPIAndDevPortal(api.ID, req.DevPortalUUID, orgUUID)
+	if err != nil && !errors.Is(err, constants.ErrAPIPublicationNotFound) {
+		return nil, false, fmt.Errorf("failed to check existing publication: %w", err)
+	}
+
+
+	var pub *model.APIPublication
+	isRetry := false
+
+	switch {
+	case existing == nil:
+		// New publication - create both association and publication
+
+		// Step 1: Create API-DevPortal association if it doesn't exist
+		association := &model.APIAssociation{
+			ApiID:           api.ID,
+			OrganizationID:  orgUUID,
+			ResourceID:      devPortal.UUID,
+			AssociationType: "dev_portal",
+			CreatedAt:       time.Now(),
+			UpdatedAt:       time.Now(),
 		}
-		if deployment.GatewayID == productionGateway.ID && deployment.OrganizationID == org.ID {
-			productionDeployed = true
+		if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
+			// Check if this is a duplicate key error (association already exists)
+			if strings.Contains(err.Error(), "UNIQUE constraint failed") ||
+				strings.Contains(err.Error(), "duplicate key") {
+			} else {
+				return nil, false, fmt.Errorf("failed to create API association: %w", err)
+			}
 		}
+
+		// Step 2: Create publication record
+		pub = &model.APIPublication{
+			APIUUID:               api.ID,
+			DevPortalUUID:         devPortal.UUID,
+			OrganizationUUID:      orgUUID,
+			Status:                model.PublishingStatus,
+			APIVersion:            &api.Version,
+			SandboxEndpointURL:    req.EndPoints.SandboxURL,
+			ProductionEndpointURL: req.EndPoints.ProductionURL,
+			CreatedAt:             time.Now(),
+			UpdatedAt:             time.Now(),
+		}
+		if err := s.publicationRepo.Create(pub); err != nil {
+			return nil, false, fmt.Errorf("failed to create publication: %w", err)
+		}
+
+	case existing.Status == model.PublishedStatus:
+		// Already published – do nothing, just return success
+		return existing, false, nil
+
+	case existing.Status == model.FailedStatus:
+		// Retry failed publication - update all fields including endpoints
+		isRetry = true
+		pub = existing
+		pub.Status = model.PublishingStatus
+		pub.APIVersion = &api.Version
+		pub.SandboxEndpointURL = req.EndPoints.SandboxURL
+		pub.ProductionEndpointURL = req.EndPoints.ProductionURL
+		pub.UpdatedAt = time.Now()
+		if err := s.publicationRepo.Update(pub); err != nil {
+			return nil, false, fmt.Errorf("failed to update failed publication record: %w", err)
+		}
+
+	case existing.Status == model.PublishingStatus:
+		// Check if publication is stuck (older than threshold duration)
+		stuckThreshold := time.Now().Add(-PublicationStuckThreshold)
+		if existing.UpdatedAt.Before(stuckThreshold) {
+			// Treat as failed and retry
+			isRetry = true
+			pub = existing
+			pub.Status = model.PublishingStatus
+			pub.APIVersion = &api.Version
+			pub.SandboxEndpointURL = req.EndPoints.SandboxURL
+			pub.ProductionEndpointURL = req.EndPoints.ProductionURL
+			pub.UpdatedAt = time.Now()
+			if err := s.publicationRepo.Update(pub); err != nil {
+				return nil, false, fmt.Errorf("failed to update stuck publication record: %w", err)
+			}
+		} else {
+			return nil, false, constants.ErrAPIPublicationInProgress
+		}
+
+	default:
+		return nil, false, fmt.Errorf("unknown publication status: %s", existing.Status)
 	}
 
-	if !sandboxDeployed {
-		return nil, fmt.Errorf("API %s is not deployed to sandbox gateway %s", api.ID, sandboxGateway.ID)
-	}
-	if !productionDeployed {
-		return nil, fmt.Errorf("API %s is not deployed to production gateway %s", api.ID, productionGateway.ID)
+	return pub, isRetry, nil
+}
+
+// prepareAPIMetadata builds API metadata request with defaults and user overrides
+func (s *DevPortalService) prepareAPIMetadata(api *dto.API, req *dto.PublishToDevPortalRequest, org *model.Organization) devportal_client.APIMetadataRequest {
+	// Default values - system fields from API
+	apiInfo := devportal_client.APIInfo{
+		APIID:          api.ID,
+		ReferenceID:    api.ID,
+		APIName:        api.Name,
+		APIHandle:      api.Context,
+		APIVersion:     api.Version,
+		APIType:        devportal_client.APIType("REST"),
+		Provider:       api.Provider,
+		APIDescription: api.Description,
+		APIStatus:      "PUBLISHED",
+		Visibility:     devportal_client.APIVisibility("PUBLIC"),
+		Labels:         []string{"default"},
 	}
 
-	// Prepare publication record (simplified version)
-	publication := &model.APIPublication{
-		APIUUID:               api.ID,
-		DevPortalUUID:         devPortal.UUID,
-		OrganizationUUID:      org.ID,
-		SandboxGatewayUUID:    sandboxGateway.ID,
-		ProductionGatewayUUID: productionGateway.ID,
-		Status:                model.PublishedStatus,
-		CreatedAt:             time.Now(),
-		UpdatedAt:             time.Now(),
+	// Apply user overrides
+	if v := req.APIInfo; v != nil {
+		if v.APIName != "" {
+			apiInfo.APIName = v.APIName
+		}
+		if v.APIDescription != "" {
+			apiInfo.APIDescription = v.APIDescription
+		}
+		if v.APIType != "" {
+			apiInfo.APIType = devportal_client.APIType(v.APIType)
+		}
+		if v.Visibility != "" {
+			apiInfo.Visibility = devportal_client.APIVisibility(v.Visibility)
+		}
+		if len(v.VisibleGroups) > 0 {
+			apiInfo.VisibleGroups = v.VisibleGroups
+		}
+		if len(v.Tags) > 0 {
+			apiInfo.Tags = v.Tags
+		}
+		if len(v.Labels) > 0 {
+			apiInfo.Labels = v.Labels
+		}
+		apiInfo.Owners = devportal_client.Owners(v.Owners)
 	}
 
-	// Generate endpoint URLs
-	sandboxURL := s.constructEndpointURL(api, sandboxGateway)
-	productionURL := s.constructEndpointURL(api, productionGateway)
-
-	// Build API metadata request for the devportal_client
-	description := api.Description
-	if description == "" {
-		description = "No description provided."
+	return devportal_client.APIMetadataRequest{
+		APIInfo: apiInfo,
+		EndPoints: devportal_client.EndPoints{
+			ProductionURL: req.EndPoints.ProductionURL,
+			SandboxURL:    req.EndPoints.SandboxURL,
+		},
+		SubscriptionPolicies: req.SubscriptionPolicies,
 	}
-	apiMetadata := devportal_dto.APIMetadataRequest{
-		APIInfo: devportal_dto.APIInfo{
+}
+
+// publishToDevPortal handles the actual DevPortal API call and publication record updates
+func (s *DevPortalService) publishToDevPortal(
+	api *dto.API,
+	org *model.Organization,
+	devPortal *model.DevPortal,
+	pub *model.APIPublication,
+	apiMetadata devportal_client.APIMetadataRequest,
+	isRetry bool,
+) (*dto.PublishToDevPortalResponse, error) {
+
+	// If publication is already published (from update case), return success immediately
+	if pub.Status == model.PublishedStatus {
+		refID := ""
+		if pub.DevPortalRefID != nil {
+			refID = *pub.DevPortalRefID
+		}
+		return &dto.PublishToDevPortalResponse{
+			Message:        fmt.Sprintf("API already published to DevPortal '%s'", devPortal.Name),
 			APIID:          api.ID,
-			ReferenceID:    api.ID,
-			APIName:        api.Name,
-			APIHandle:      api.Context,
-			APIVersion:     api.Version,
-			APIType:        "REST",
-			Provider:       org.Name,
-			APIDescription: description,
-			APIStatus:      "PUBLISHED",
-			Visibility:     "PUBLIC",
-			Labels:         []string{"default"},
-		},
-		SubscriptionPolicies: []devportal_dto.SubscriptionPolicy{
-			{PolicyName: "Default"},
-		},
-		EndPoints: devportal_dto.EndPoints{
-			ProductionURL: productionURL,
-			SandboxURL:    sandboxURL,
-		},
+			DevPortalUUID:  devPortal.UUID,
+			DevPortalName:  devPortal.Name,
+			ApiPortalRefID: refID,
+			PublishedAt:    time.Now(),
+		}, nil
 	}
 
-	// Create DevPortal client for publishing
 	client := s.devPortalClientSvc.CreateDevPortalClient(devPortal)
 
-	// Convert string reader to byte array
-	apiDefinitionBytes := []byte(fmt.Sprintf(`{
-		"openapi": "3.0.0",
-		"info": {
-			"title": "%s",
-			"version": "%s",
-			"description": "%s"
-		},
-		"paths": {}
-	}`, api.Name, api.Version, api.Description))
-
-	// Check if API already exists in DevPortal
-	exists, err := s.devPortalClientSvc.CheckAPIExists(client, org.ID, api.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check if API exists in DevPortal: %w", err)
+	// Check if API exists (skip for retry)
+	if !isRetry {
+		exists, err := s.devPortalClientSvc.CheckAPIExists(client, org.ID, api.ID)
+		if err != nil {
+			s.markFailed(pub)
+			return nil, fmt.Errorf("failed to check if API exists: %w", err)
+		}
+		if exists {
+			s.markFailed(pub)
+			return nil, fmt.Errorf("API %s already exists in DevPortal %s", api.ID, devPortal.Name)
+		}
 	}
-	if exists {
-		return nil, fmt.Errorf("API %s already exists in DevPortal %s", api.ID, devPortal.Name)
+	// Generate OpenAPI definition
+	apiDef, err := s.apiUtil.GenerateOpenAPIDefinition(api)
+	if err != nil {
+		s.markFailed(pub)
+		return nil, fmt.Errorf("failed to generate OpenAPI definition for API %s: %w", api.ID, err)
 	}
 
-	// Publish API using client service
-	_, err = s.devPortalClientSvc.PublishAPIToDevPortal(client, org.ID, apiMetadata, apiDefinitionBytes)
+	resp, err := s.devPortalClientSvc.PublishAPIToDevPortal(client, org.ID, apiMetadata, apiDef)
 	if err != nil {
+		s.markFailed(pub)
 		return nil, fmt.Errorf("failed to publish API to DevPortal: %w", err)
 	}
 
-	// Create publication record in database
-	if err := s.publicationRepo.Create(publication); err != nil {
-		return nil, fmt.Errorf("failed to create publication record: %w", err)
+	// Update publication record
+	pub.Status = model.PublishedStatus
+	pub.DevPortalRefID = &resp.ID
+	pub.UpdatedAt = time.Now()
+	if err := s.publicationRepo.Update(pub); err != nil {
+		return nil, fmt.Errorf("failed to update publication record: %w", err)
+	}
+
+	msg := fmt.Sprintf("API published successfully to DevPortal '%s'", devPortal.Name)
+	if isRetry {
+		msg += " (retry)"
 	}
 
 	return &dto.PublishToDevPortalResponse{
-		Message:        fmt.Sprintf("API published successfully to DevPortal '%s'", devPortal.Name),
+		Message:        msg,
 		APIID:          api.ID,
 		DevPortalUUID:  devPortal.UUID,
 		DevPortalName:  devPortal.Name,
-		ApiPortalRefID: api.ID, // Using API ID as reference for simplicity
+		ApiPortalRefID: resp.ID,
 		PublishedAt:    time.Now(),
 	}, nil
 }
 
-// validateDevPortalForPublishingInternal validates DevPortal for publishing using objects
-func (s *DevPortalService) validateDevPortalForPublishingInternal(devPortal *model.DevPortal) error {
-	if !devPortal.IsEnabled {
-		return fmt.Errorf("devportal %s is not enabled", devPortal.Name)
-	}
-
-	if !devPortal.IsActive {
-		return fmt.Errorf("devportal %s is not activated (synced)", devPortal.Name)
-	}
-	return nil
-}
-
-// constructEndpointURL constructs the endpoint URL for an API on a specific gateway
-func (s *DevPortalService) constructEndpointURL(api *model.API, gateway *model.Gateway) string {
-	// Simplified URL construction - in reality, this would be more complex
-	return fmt.Sprintf("https://%s%s/%s", gateway.Vhost, api.Context, api.Version)
+// markFailed marks a publication as failed
+func (s *DevPortalService) markFailed(pub *model.APIPublication) {
+	pub.Status = model.FailedStatus
+	pub.UpdatedAt = time.Now()
+	_ = s.publicationRepo.Update(pub)
 }
 
 // UnpublishAPIFromDevPortal unpublishes an API from a DevPortal
+// Note: This removes the publication record but keeps the API-DevPortal association intact
+// The DevPortal will still be listed as "associated" but not "published" in GetAPIPublications
 func (s *DevPortalService) UnpublishAPIFromDevPortal(devPortalUUID, orgID, apiID string) (*dto.UnpublishFromDevPortalResponse, error) {
+
 	// Get DevPortal
-	devPortal, err := s.devPortalRepo.GetByUUID(devPortalUUID, orgID)
+	devPortal, err := s.getDevPortalByUUID(devPortalUUID, orgID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get devPortal %s: %w", devPortalUUID, err)
-	}
-	if devPortal == nil {
-		return nil, fmt.Errorf("devPortal %s not found", devPortalUUID)
+		return nil, err
 	}
 
 	// Create DevPortal client for unpublishing
@@ -609,11 +709,21 @@ func (s *DevPortalService) UnpublishAPIFromDevPortal(devPortalUUID, orgID, apiID
 	// Unpublish API using client service
 	err = s.devPortalClientSvc.UnpublishAPIFromDevPortal(client, orgID, apiID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unpublish API from DevPortal: %w", err)
+		// If API not found in DevPortal, treat as success (idempotent unpublish)
+		if !errors.Is(err, devportal_client.ErrAPINotFound) {
+			return nil, fmt.Errorf("failed to unpublish API from DevPortal: %w", err)
+		}
+		// API already gone from DevPortal - proceed to delete local record
 	}
 
-	// Remove publication record from database
-	// TODO: Implement deletion of publication record
+	// Delete publication record after successful unpublish
+	// NOTE: We intentionally keep the api_associations record to maintain the association history
+	if err := s.publicationRepo.Delete(apiID, devPortalUUID, orgID); err != nil {
+		// Log error but don't fail the unpublish operation if record doesn't exist
+		if !errors.Is(err, constants.ErrAPIPublicationNotFound) {
+			return nil, fmt.Errorf("failed to delete publication record: %w", err)
+		}
+	}
 
 	return &dto.UnpublishFromDevPortalResponse{
 		Message:       fmt.Sprintf("API unpublished successfully from DevPortal '%s'", devPortal.Name),

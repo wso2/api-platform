@@ -287,11 +287,11 @@ CREATE TABLE IF NOT EXISTS devportals (
     identifier VARCHAR(100) NOT NULL,
     api_url VARCHAR(255) NOT NULL,
     hostname VARCHAR(255) NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
     api_key VARCHAR(255) NOT NULL,
     header_key_name VARCHAR(100) DEFAULT 'x-wso2-api-key',
-    is_default BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT FALSE,
     is_enabled BOOLEAN DEFAULT FALSE,
+    is_default BOOLEAN DEFAULT FALSE,
     visibility VARCHAR(20) NOT NULL DEFAULT 'private',
     description VARCHAR(500),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -309,13 +309,13 @@ CREATE TABLE IF NOT EXISTS api_publications (
     api_uuid VARCHAR(40) NOT NULL,
     devportal_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
-    status VARCHAR(20) NOT NULL CHECK (status IN ('published', 'unpublished', 'failed', 'publishing', 'unpublishing')),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('published', 'failed', 'publishing')),
     api_version VARCHAR(50),
     devportal_ref_id VARCHAR(100),
 
     -- Gateway endpoints for sandbox and production
-    sandbox_gateway_uuid VARCHAR(40) NOT NULL,
-    production_gateway_uuid VARCHAR(40) NOT NULL,
+    sandbox_endpoint_url VARCHAR(500) NOT NULL,
+    production_endpoint_url VARCHAR(500) NOT NULL,
 
     -- Timestamps
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -326,8 +326,6 @@ CREATE TABLE IF NOT EXISTS api_publications (
     FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
     FOREIGN KEY (devportal_uuid) REFERENCES devportals(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
-    FOREIGN KEY (sandbox_gateway_uuid) REFERENCES gateways(uuid),
-    FOREIGN KEY (production_gateway_uuid) REFERENCES gateways(uuid),
     UNIQUE (api_uuid, devportal_uuid, organization_uuid)
 );
 

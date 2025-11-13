@@ -468,6 +468,18 @@ func (h *APIHandler) PublishToDevPortal(c *gin.Context) {
 				"DevPortal not found"))
 			return
 		}
+		if errors.Is(err, constants.ErrAPIPublicationInProgress) {
+			// Publication already in progress
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"API publication is already in progress. Please wait for the current operation to complete or try again in a few minutes."))
+			return
+		}
+		if errors.Is(err, constants.ErrAPIAlreadyPublished) {
+			// API already published
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"API is already published to this DevPortal"))
+			return
+		}
 		if errors.Is(err, constants.ErrApiPortalSync) {
 			// Devportal unavailable or sync failed
 			c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable",
@@ -560,7 +572,7 @@ func (h *APIHandler) UnpublishFromDevPortal(c *gin.Context) {
 
 // GetAPIPublications handles GET /api/v1/apis/:apiId/publications
 //
-// This endpoint retrieves all publication records for a specific API with gateway details.
+// This endpoint retrieves all DevPortals associated with an API including publication details.
 func (h *APIHandler) GetAPIPublications(c *gin.Context) {
 	// Extract organization ID from context
 	orgID, exists := middleware.GetOrganizationFromContext(c)

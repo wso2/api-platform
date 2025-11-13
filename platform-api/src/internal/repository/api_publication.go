@@ -26,16 +26,6 @@ import (
 	"time"
 )
 
-// APIPublicationRepository interface defines operations for API publication tracking
-type APIPublicationRepository interface {
-	// Basic CRUD operations - only the ones used by DevPortal manager
-	Create(publication *model.APIPublication) error
-	GetByAPIAndDevPortal(apiUUID, devPortalUUID, orgUUID string) (*model.APIPublication, error)
-	GetByAPIUUID(apiUUID, orgUUID string) ([]*model.APIPublication, error)
-	Update(publication *model.APIPublication) error
-	UpsertPublication(publication *model.APIPublication) error
-}
-
 // APIPublicationRepo implements the APIPublicationRepository interface
 type APIPublicationRepo struct {
 	db *database.DB
@@ -80,13 +70,13 @@ func (r *APIPublicationRepo) UpsertPublication(publication *model.APIPublication
 			INSERT INTO api_publications (
 				api_uuid, devportal_uuid, organization_uuid,
 				status, api_version, devportal_ref_id,
-				sandbox_gateway_uuid, production_gateway_uuid,
+				sandbox_endpoint_url, production_endpoint_url,
 				created_at, updated_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 		_, err = tx.Exec(insertQuery,
 			publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID,
 			publication.Status, publication.APIVersion, publication.DevPortalRefID,
-			publication.SandboxGatewayUUID, publication.ProductionGatewayUUID,
+			publication.SandboxEndpointURL, publication.ProductionEndpointURL,
 			publication.CreatedAt, publication.UpdatedAt,
 		)
 		if err != nil {
@@ -97,11 +87,11 @@ func (r *APIPublicationRepo) UpsertPublication(publication *model.APIPublication
 		updateQuery := `
 			UPDATE api_publications 
 			SET status = ?, api_version = ?, devportal_ref_id = ?, 
-			    sandbox_gateway_uuid = ?, production_gateway_uuid = ?, updated_at = ?
+			    sandbox_endpoint_url = ?, production_endpoint_url = ?, updated_at = ?
 			WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
 		result, err := tx.Exec(updateQuery,
 			publication.Status, publication.APIVersion, publication.DevPortalRefID,
-			publication.SandboxGatewayUUID, publication.ProductionGatewayUUID, publication.UpdatedAt,
+			publication.SandboxEndpointURL, publication.ProductionEndpointURL, publication.UpdatedAt,
 			publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID,
 		)
 		if err != nil {
@@ -147,14 +137,14 @@ func (r *APIPublicationRepo) Create(publication *model.APIPublication) error {
 		INSERT INTO api_publications (
 			api_uuid, devportal_uuid, organization_uuid,
 			status, api_version, devportal_ref_id,
-			sandbox_gateway_uuid, production_gateway_uuid,
+			sandbox_endpoint_url, production_endpoint_url,
 			created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := r.db.Exec(query,
 		publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID,
 		publication.Status, publication.APIVersion, publication.DevPortalRefID,
-		publication.SandboxGatewayUUID, publication.ProductionGatewayUUID,
+		publication.SandboxEndpointURL, publication.ProductionEndpointURL,
 		publication.CreatedAt, publication.UpdatedAt,
 	)
 
@@ -170,7 +160,7 @@ func (r *APIPublicationRepo) GetByAPIAndDevPortal(apiUUID, devPortalUUID, orgUUI
 	query := `
 		SELECT api_uuid, devportal_uuid, organization_uuid,
 			   status, api_version, devportal_ref_id,
-			   sandbox_gateway_uuid, production_gateway_uuid,
+			   sandbox_endpoint_url, production_endpoint_url,
 			   created_at, updated_at
 		FROM api_publications
 		WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
@@ -181,7 +171,7 @@ func (r *APIPublicationRepo) GetByAPIAndDevPortal(apiUUID, devPortalUUID, orgUUI
 	err := row.Scan(
 		&publication.APIUUID, &publication.DevPortalUUID, &publication.OrganizationUUID,
 		&publication.Status, &publication.APIVersion, &publication.DevPortalRefID,
-		&publication.SandboxGatewayUUID, &publication.ProductionGatewayUUID,
+		&publication.SandboxEndpointURL, &publication.ProductionEndpointURL,
 		&publication.CreatedAt, &publication.UpdatedAt,
 	)
 
@@ -200,7 +190,7 @@ func (r *APIPublicationRepo) GetByAPIUUID(apiUUID, orgUUID string) ([]*model.API
 	query := `
 		SELECT api_uuid, devportal_uuid, organization_uuid,
 			   status, api_version, devportal_ref_id,
-			   sandbox_gateway_uuid, production_gateway_uuid,
+			   sandbox_endpoint_url, production_endpoint_url,
 			   created_at, updated_at
 		FROM api_publications
 		WHERE api_uuid = ? AND organization_uuid = ?
@@ -218,7 +208,7 @@ func (r *APIPublicationRepo) GetByAPIUUID(apiUUID, orgUUID string) ([]*model.API
 		err := rows.Scan(
 			&publication.APIUUID, &publication.DevPortalUUID, &publication.OrganizationUUID,
 			&publication.Status, &publication.APIVersion, &publication.DevPortalRefID,
-			&publication.SandboxGatewayUUID, &publication.ProductionGatewayUUID,
+			&publication.SandboxEndpointURL, &publication.ProductionEndpointURL,
 			&publication.CreatedAt, &publication.UpdatedAt,
 		)
 		if err != nil {
@@ -246,12 +236,12 @@ func (r *APIPublicationRepo) Update(publication *model.APIPublication) error {
 	query := `
 		UPDATE api_publications 
 		SET status = ?, api_version = ?, devportal_ref_id = ?, 
-		    sandbox_gateway_uuid = ?, production_gateway_uuid = ?, updated_at = ?
+		    sandbox_endpoint_url = ?, production_endpoint_url = ?, updated_at = ?
 		WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
 
 	result, err := r.db.Exec(query,
 		publication.Status, publication.APIVersion, publication.DevPortalRefID,
-		publication.SandboxGatewayUUID, publication.ProductionGatewayUUID, publication.UpdatedAt,
+		publication.SandboxEndpointURL, publication.ProductionEndpointURL, publication.UpdatedAt,
 		publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID,
 	)
 
@@ -282,4 +272,124 @@ func (r *APIPublicationRepo) Update(publication *model.APIPublication) error {
 	}
 
 	return nil
+}
+
+// Delete removes a publication record
+func (r *APIPublicationRepo) Delete(apiUUID, devPortalUUID, orgUUID string) error {
+	query := `
+		DELETE FROM api_publications 
+		WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
+
+	result, err := r.db.Exec(query, apiUUID, devPortalUUID, orgUUID)
+	if err != nil {
+		return fmt.Errorf("failed to delete API publication: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get affected rows: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return constants.ErrAPIPublicationNotFound
+	}
+
+	return nil
+}
+
+// GetAPIDevPortalsWithDetails retrieves all DevPortals associated with an API including publication details
+// This mirrors the GetAPIGatewaysWithDetails pattern for consistency
+func (r *APIPublicationRepo) GetAPIDevPortalsWithDetails(apiUUID, orgUUID string) ([]*model.APIDevPortalWithDetails, error) {
+	query := `
+		SELECT 
+			-- DevPortal information
+			d.uuid,
+			d.organization_uuid,
+			d.name,
+			d.identifier,
+			d.api_url,
+			d.hostname,
+			d.is_active,
+			d.is_enabled,
+			d.is_default,
+			d.visibility,
+			d.description,
+			d.created_at,
+			d.updated_at,
+			
+			-- Association information
+			aa.created_at as associated_at,
+			aa.updated_at as association_updated_at,
+			
+			-- Publication information (NULL if not published)
+			CASE WHEN ap.api_uuid IS NOT NULL THEN 1 ELSE 0 END as is_published,
+			ap.status as publication_status,
+			ap.api_version,
+			ap.devportal_ref_id,
+			ap.sandbox_endpoint_url,
+			ap.production_endpoint_url,
+			ap.created_at as published_at,
+			ap.updated_at as publication_updated_at
+			
+		FROM api_associations aa
+		INNER JOIN devportals d 
+			ON aa.resource_uuid = d.uuid
+		LEFT JOIN api_publications ap 
+			ON ap.api_uuid = aa.api_uuid 
+			AND ap.devportal_uuid = aa.resource_uuid 
+			AND ap.organization_uuid = aa.organization_uuid
+			
+		WHERE aa.api_uuid = ? 
+		  AND aa.organization_uuid = ?
+		  AND aa.association_type = 'dev_portal'
+		ORDER BY aa.created_at DESC`
+
+	rows, err := r.db.Query(query, apiUUID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query API-DevPortal associations: %w", err)
+	}
+	defer rows.Close()
+
+	var devPortals []*model.APIDevPortalWithDetails
+	for rows.Next() {
+		var dp model.APIDevPortalWithDetails
+		err := rows.Scan(
+			// DevPortal information
+			&dp.UUID,
+			&dp.OrganizationUUID,
+			&dp.Name,
+			&dp.Identifier,
+			&dp.APIUrl,
+			&dp.Hostname,
+			&dp.IsActive,
+			&dp.IsEnabled,
+			&dp.IsDefault,
+			&dp.Visibility,
+			&dp.Description,
+			&dp.CreatedAt,
+			&dp.UpdatedAt,
+			// Association information
+			&dp.AssociatedAt,
+			&dp.AssociationUpdatedAt,
+			// Publication information (nullable)
+			&dp.IsPublished,
+			&dp.PublicationStatus,
+			&dp.APIVersion,
+			&dp.DevPortalRefID,
+			&dp.SandboxEndpointURL,
+			&dp.ProductionEndpointURL,
+			&dp.PublishedAt,
+			&dp.PublicationUpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan DevPortal row: %w", err)
+		}
+		devPortals = append(devPortals, &dp)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating DevPortal rows: %w", err)
+	}
+
+	return devPortals, nil
 }

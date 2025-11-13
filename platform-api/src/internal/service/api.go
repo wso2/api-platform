@@ -174,6 +174,12 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 		}
 	}
 
+	// Automatically create DevPortal association for default DevPortal
+	if err := s.createDefaultDevPortalAssociation(apiId, orgId); err != nil {
+		// Log error but don't fail API creation if default DevPortal association fails
+		log.Printf("[APIService] Failed to create default DevPortal association for API %s: %v", apiId, err)
+	}
+
 	return api, nil
 }
 
@@ -682,6 +688,43 @@ func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, a
 	return nil
 }
 
+// createDefaultDevPortalAssociation creates an association between the API and the default DevPortal
+func (s *APIService) createDefaultDevPortalAssociation(apiId, orgId string) error {
+	// Get default DevPortal for the organization
+	defaultDevPortal, err := s.devPortalRepo.GetDefaultByOrganizationUUID(orgId)
+	if err != nil {
+		// If no default DevPortal exists, skip association (not an error)
+		if errors.Is(err, constants.ErrDevPortalNotFound) {
+			log.Printf("[APIService] No default DevPortal found for organization %s, skipping association", orgId)
+			return nil
+		}
+		return fmt.Errorf("failed to get default DevPortal: %w", err)
+	}
+
+	// Create API-DevPortal association
+	association := &model.APIAssociation{
+		ApiID:           apiId,
+		OrganizationID:  orgId,
+		ResourceID:      defaultDevPortal.UUID,
+		AssociationType: "dev_portal",
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+	}
+
+	if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
+		// Check if association already exists (shouldn't happen, but handle gracefully)
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") ||
+			strings.Contains(err.Error(), "duplicate key") {
+			log.Printf("[APIService] API association with default DevPortal already exists for API %s", apiId)
+			return nil
+		}
+		return fmt.Errorf("failed to create API-DevPortal association: %w", err)
+	}
+
+	log.Printf("[APIService] Successfully created association between API %s and default DevPortal %s", apiId, defaultDevPortal.UUID)
+	return nil
+}
+
 // Validation methods
 
 // validateCreateAPIRequest checks the validity of the create API request
@@ -909,136 +952,55 @@ func (s *APIService) PublishAPIToDevPortal(apiID string, req *dto.PublishToDevPo
 		return nil, err
 	}
 
-	// Convert API DTO to model for DevPortal manager
-	apiModel := s.apiUtil.DTOToModel(api)
-
 	// Publish API to DevPortal
-	return s.devPortalService.PublishAPIToDevPortal(req.DevPortalUUID, req.SandboxGatewayID, req.ProductionGatewayID, orgID, apiID, apiModel)
+	return s.devPortalService.PublishAPIToDevPortal(api, req, orgID)
 }
 
 // UnpublishAPIFromDevPortal unpublishes an API from a specific DevPortal
 func (s *APIService) UnpublishAPIFromDevPortal(apiID, devPortalUUID, orgID string) (*dto.UnpublishFromDevPortalResponse, error) {
-	// TODO : Relevant logics needs to be implemented. (before unpublishing whether that api have active subscriptions in devportal)
 	// Unpublish API from DevPortal
 	return s.devPortalService.UnpublishAPIFromDevPortal(devPortalUUID, orgID, apiID)
 }
 
-// GetAPIPublications retrieves all publication records for a specific API with gateway details
-func (s *APIService) GetAPIPublications(apiID, orgID string) ([]dto.APIPublicationInfo, error) {
-	if apiID == "" {
-		return nil, errors.New("API id is required")
-	}
-
-	// Verify API exists and belongs to organization
-	api, err := s.GetAPIByUUID(apiID, orgID)
+// GetAPIPublications retrieves all DevPortals associated with an API including publication details
+// This mirrors the GetAPIGateways implementation for consistency
+func (s *APIService) GetAPIPublications(apiID, orgID string) (*dto.APIDevPortalListResponse, error) {
+	// Validate that the API exists and belongs to the organization
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiID)
 	if err != nil {
 		return nil, err
 	}
-	if api == nil {
+	if apiModel == nil {
+		return nil, constants.ErrAPINotFound
+	}
+	if apiModel.OrganizationID != orgID {
 		return nil, constants.ErrAPINotFound
 	}
 
-	// Get all publications for this API
-	publications, err := s.publicationRepo.GetByAPIUUID(apiID, orgID)
+	// Get all DevPortals associated with this API including publication details
+	devPortalDetails, err := s.publicationRepo.GetAPIDevPortalsWithDetails(apiID, orgID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get publications: %w", err)
+		return nil, fmt.Errorf("failed to get API-DevPortal associations: %w", err)
 	}
 
-	if len(publications) == 0 {
-		return []dto.APIPublicationInfo{}, nil
+	// Convert models to DTOs with publication details
+	responses := make([]dto.APIDevPortalResponse, 0, len(devPortalDetails))
+	for _, dpd := range devPortalDetails {
+		responses = append(responses, s.convertToAPIDevPortalResponse(dpd))
 	}
 
-	// Collect all unique DevPortal and Gateway UUIDs to fetch in bulk
-	devPortalUUIDs := make(map[string]bool)
-	gatewayUUIDs := make(map[string]bool)
-	for _, pub := range publications {
-		devPortalUUIDs[pub.DevPortalUUID] = true
-		gatewayUUIDs[pub.SandboxGatewayUUID] = true
-		gatewayUUIDs[pub.ProductionGatewayUUID] = true
+	// Create paginated response
+	listResponse := &dto.APIDevPortalListResponse{
+		Count: len(responses),
+		List:  responses,
+		Pagination: dto.Pagination{
+			Total:  len(responses),
+			Offset: 0,
+			Limit:  len(responses),
+		},
 	}
 
-	// Fetch all DevPortals in bulk
-	devPortalMap := make(map[string]*model.DevPortal)
-	for devPortalUUID := range devPortalUUIDs {
-		devPortal, err := s.devPortalRepo.GetByUUID(devPortalUUID, orgID)
-		if err == nil && devPortal != nil {
-			devPortalMap[devPortalUUID] = devPortal
-		}
-	}
-
-	// Fetch all Gateways in bulk
-	gatewayMap := make(map[string]*model.Gateway)
-	for gatewayUUID := range gatewayUUIDs {
-		gateway, err := s.gatewayRepo.GetByUUID(gatewayUUID)
-		if err == nil && gateway != nil {
-			gatewayMap[gatewayUUID] = gateway
-		}
-	}
-
-	// Convert to response DTOs
-	var publicationInfos []dto.APIPublicationInfo
-	for _, pub := range publications {
-		// Get DevPortal from map
-		devPortal, devPortalExists := devPortalMap[pub.DevPortalUUID]
-		if !devPortalExists {
-			log.Printf("[APIService] DevPortal %s not found for publication %s-%s-%s", pub.DevPortalUUID, pub.APIUUID, pub.DevPortalUUID, pub.OrganizationUUID)
-			continue
-		}
-
-		// Get sandbox gateway from map
-		sandboxGateway, sandboxExists := gatewayMap[pub.SandboxGatewayUUID]
-		if !sandboxExists {
-			log.Printf("[APIService] Sandbox gateway %s not found for publication %s-%s-%s", pub.SandboxGatewayUUID, pub.APIUUID, pub.DevPortalUUID, pub.OrganizationUUID)
-			continue
-		}
-
-		// Get production gateway from map
-		productionGateway, productionExists := gatewayMap[pub.ProductionGatewayUUID]
-		if !productionExists {
-			log.Printf("[APIService] Production gateway %s not found for publication %s-%s-%s", pub.ProductionGatewayUUID, pub.APIUUID, pub.DevPortalUUID, pub.OrganizationUUID)
-			continue
-		}
-
-		// Construct endpoint URLs
-		context := api.Context
-		if !strings.HasPrefix(context, "/") {
-			context = "/" + context
-		}
-		sandboxURL := fmt.Sprintf("https://%s%s", sandboxGateway.Vhost, context)
-		productionURL := fmt.Sprintf("https://%s%s", productionGateway.Vhost, context)
-
-		apiVersion := ""
-		if pub.APIVersion != nil {
-			apiVersion = *pub.APIVersion
-		}
-
-		publicationInfo := dto.APIPublicationInfo{
-			DevPortalUUID: pub.DevPortalUUID,
-			DevPortalName: devPortal.Name,
-			Status:        string(pub.Status),
-			SandboxEndpoint: dto.GatewayEndpointInfo{
-				GatewayID:         pub.SandboxGatewayUUID,
-				DisplayName:       sandboxGateway.DisplayName,
-				FunctionalityType: sandboxGateway.FunctionalityType,
-				Vhost:             sandboxGateway.Vhost,
-			},
-			ProductionEndpoint: dto.GatewayEndpointInfo{
-				GatewayID:         pub.ProductionGatewayUUID,
-				DisplayName:       productionGateway.DisplayName,
-				FunctionalityType: productionGateway.FunctionalityType,
-				Vhost:             productionGateway.Vhost,
-			},
-			PublicationDetails: dto.PublicationDetails{
-				SandboxEndpointURL:    sandboxURL,
-				ProductionEndpointURL: productionURL,
-				APIVersion:            apiVersion,
-			},
-		}
-
-		publicationInfos = append(publicationInfos, publicationInfo)
-	}
-
-	return publicationInfos, nil
+	return listResponse, nil
 }
 
 // convertToAPIGatewayResponse converts APIGatewayWithDetails to APIGatewayResponse
@@ -1079,4 +1041,73 @@ func (s *APIService) convertToAPIGatewayResponse(gwd *model.APIGatewayWithDetail
 	}
 
 	return apiGatewayResponse
+}
+
+// convertToAPIDevPortalResponse converts APIDevPortalWithDetails to APIDevPortalResponse
+func (s *APIService) convertToAPIDevPortalResponse(dpd *model.APIDevPortalWithDetails) dto.APIDevPortalResponse {
+	// Create the base DevPortal response
+	devPortalResponse := dto.DevPortalResponse{
+		UUID:             dpd.UUID,
+		OrganizationUUID: dpd.OrganizationUUID,
+		Name:             dpd.Name,
+		Identifier:       dpd.Identifier,
+		UIUrl:            fmt.Sprintf("%s/%s/views/default/apis", dpd.APIUrl, dpd.Identifier), // Computed field
+		APIUrl:           dpd.APIUrl,
+		Hostname:         dpd.Hostname,
+		IsActive:         dpd.IsActive,
+		IsEnabled:        dpd.IsEnabled,
+		HeaderKeyName:    "", // Not included in response for security
+		IsDefault:        dpd.IsDefault,
+		Visibility:       dpd.Visibility,
+		Description:      dpd.Description,
+		CreatedAt:        dpd.CreatedAt,
+		UpdatedAt:        dpd.UpdatedAt,
+	}
+
+	// Create API DevPortal response with embedded DevPortal response
+	apiDevPortalResponse := dto.APIDevPortalResponse{
+		DevPortalResponse: devPortalResponse,
+		AssociatedAt:      dpd.AssociatedAt,
+		IsPublished:       dpd.IsPublished,
+	}
+
+	// Add publication details if published
+	if dpd.IsPublished && dpd.PublishedAt != nil {
+		status := ""
+		if dpd.PublicationStatus != nil {
+			status = *dpd.PublicationStatus
+		}
+		apiVersion := ""
+		if dpd.APIVersion != nil {
+			apiVersion = *dpd.APIVersion
+		}
+		devPortalRefID := ""
+		if dpd.DevPortalRefID != nil {
+			devPortalRefID = *dpd.DevPortalRefID
+		}
+		sandboxEndpoint := ""
+		if dpd.SandboxEndpointURL != nil {
+			sandboxEndpoint = *dpd.SandboxEndpointURL
+		}
+		productionEndpoint := ""
+		if dpd.ProductionEndpointURL != nil {
+			productionEndpoint = *dpd.ProductionEndpointURL
+		}
+		updatedAt := time.Now()
+		if dpd.PublicationUpdatedAt != nil {
+			updatedAt = *dpd.PublicationUpdatedAt
+		}
+
+		apiDevPortalResponse.Publication = &dto.APIPublicationDetails{
+			Status:             status,
+			APIVersion:         apiVersion,
+			DevPortalRefID:     devPortalRefID,
+			SandboxEndpoint:    sandboxEndpoint,
+			ProductionEndpoint: productionEndpoint,
+			PublishedAt:        *dpd.PublishedAt,
+			UpdatedAt:          updatedAt,
+		}
+	}
+
+	return apiDevPortalResponse
 }
