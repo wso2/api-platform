@@ -120,3 +120,15 @@ type DevPortalRepository interface {
 	UpdateEnabledStatus(uuid, orgUUID string, isEnabled bool) error
 	SetAsDefault(uuid, orgUUID string) error
 }
+
+// APIPublicationRepository interface defines operations for API publication tracking
+type APIPublicationRepository interface {
+	// Basic CRUD operations
+	Create(publication *model.APIPublication) error
+	GetByAPIAndDevPortal(apiUUID, devPortalUUID, orgUUID string) (*model.APIPublication, error)
+	GetByAPIUUID(apiUUID, orgUUID string) ([]*model.APIPublication, error)
+	Update(publication *model.APIPublication) error
+	Delete(apiUUID, devPortalUUID, orgUUID string) error
+	UpsertPublication(publication *model.APIPublication) error
+	GetAPIDevPortalsWithDetails(apiUUID, orgUUID string) ([]*model.APIDevPortalWithDetails, error)
+}

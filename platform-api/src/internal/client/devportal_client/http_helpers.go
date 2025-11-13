@@ -1,3 +1,20 @@
+/*
+ *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
 package devportal_client
 
 import (
@@ -14,19 +31,25 @@ import (
 // buildURL joins base URL with path segments ensuring single slashes.
 func (c *DevPortalClient) buildURL(parts ...string) string {
 	base := strings.TrimRight(c.cfg.BaseURL, "/")
-	// Escape each path segment and collect non-empty ones
-	escaped := make([]string, 0, len(parts))
+	// Split each part by "/" and collect non-empty segments
+	segments := make([]string, 0, len(parts))
 	for _, p := range parts {
 		trimmed := strings.Trim(p, "/")
 		if trimmed == "" {
 			continue
 		}
-		escaped = append(escaped, url.PathEscape(trimmed))
+		// Split by "/" to handle parts like "devportal/organizations"
+		subParts := strings.Split(trimmed, "/")
+		for _, subPart := range subParts {
+			if subPart != "" {
+				segments = append(segments, url.PathEscape(subPart))
+			}
+		}
 	}
-	if len(escaped) == 0 {
+	if len(segments) == 0 {
 		return base
 	}
-	return base + "/" + strings.Join(escaped, "/")
+	return base + "/" + strings.Join(segments, "/")
 }
 
 // newJSONRequest marshals v to JSON (if non-nil) and returns an *http.Request with Content-Type set.

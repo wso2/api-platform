@@ -32,7 +32,7 @@ type DevPortal struct {
 	APIUrl           string    `json:"apiUrl" db:"api_url"`
 	Hostname         string    `json:"hostname" db:"hostname"`
 	IsActive         bool      `json:"isActive" db:"is_active"`
-	IsEnabled		 bool      `json:"isEnabled" db:"is_enabled"`
+	IsEnabled        bool      `json:"isEnabled" db:"is_enabled"`
 	APIKey           string    `json:"apiKey" db:"api_key"`
 	HeaderKeyName    string    `json:"headerKeyName" db:"header_key_name"`
 	IsDefault        bool      `json:"isDefault" db:"is_default"`
@@ -40,12 +40,6 @@ type DevPortal struct {
 	Description      string    `json:"description" db:"description"`
 	CreatedAt        time.Time `json:"createdAt" db:"created_at"`
 	UpdatedAt        time.Time `json:"updatedAt" db:"updated_at"`
-}
-
-// GetAuthHeader returns the authentication header name and value
-// Always returns header authentication since we use header mode exclusively
-func (d *DevPortal) GetAuthHeader() (string, string) {
-	return d.HeaderKeyName, d.APIKey
 }
 
 // GetUIUrl returns the computed UI URL based on API URL and identifier
@@ -79,50 +73,34 @@ func (d *DevPortal) Validate() error {
 	return nil
 }
 
-// CanBeActivated checks if the DevPortal can be activated
-// Business rule: DevPortal must have valid configuration and not already be active
-func (d *DevPortal) CanBeActivated() error {
-	if d.IsActive {
-		return fmt.Errorf("DevPortal %s is already active", d.Name)
-	}
+// APIDevPortalWithDetails represents a DevPortal with its association and publication details for an API
+type APIDevPortalWithDetails struct {
+	// DevPortal information
+	UUID             string    `json:"uuid" db:"uuid"`
+	OrganizationUUID string    `json:"organizationUuid" db:"organization_uuid"`
+	Name             string    `json:"name" db:"name"`
+	Identifier       string    `json:"identifier" db:"identifier"`
+	APIUrl           string    `json:"apiUrl" db:"api_url"`
+	Hostname         string    `json:"hostname" db:"hostname"`
+	IsActive         bool      `json:"isActive" db:"is_active"`
+	IsEnabled        bool      `json:"isEnabled" db:"is_enabled"`
+	IsDefault        bool      `json:"isDefault" db:"is_default"`
+	Visibility       string    `json:"visibility" db:"visibility"`
+	Description      string    `json:"description" db:"description"`
+	CreatedAt        time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt        time.Time `json:"updatedAt" db:"updated_at"`
 
-	if err := d.Validate(); err != nil {
-		return fmt.Errorf("DevPortal %s cannot be activated due to validation errors: %w", d.Name, err)
-	}
+	// Association information (from api_associations table)
+	AssociatedAt         time.Time `json:"associatedAt" db:"associated_at"`
+	AssociationUpdatedAt time.Time `json:"associationUpdatedAt" db:"association_updated_at"`
 
-	return nil
-}
-
-// CanBeDeactivated checks if the DevPortal can be deactivated
-// Business rule: Default DevPortals cannot be deactivated
-func (d *DevPortal) CanBeDeactivated() error {
-	if d.IsDefault {
-		return constants.ErrDevPortalCannotDeactivateDefault
-	}
-
-	if !d.IsActive {
-		return fmt.Errorf("DevPortal %s is not active", d.Name)
-	}
-
-	return nil
-}
-
-// RequiresSync checks if the DevPortal requires synchronization
-// Business rule: Active DevPortals should be synchronized
-func (d *DevPortal) RequiresSync() bool {
-	return d.IsActive
-}
-
-// IsReadyForPublishing checks if the DevPortal is ready for API publishing
-// Business rule: DevPortal must be active and properly configured
-func (d *DevPortal) IsReadyForPublishing() error {
-	if !d.IsActive {
-		return fmt.Errorf("DevPortal %s is not active", d.Name)
-	}
-
-	if err := d.Validate(); err != nil {
-		return fmt.Errorf("DevPortal %s is not properly configured for publishing: %w", d.Name, err)
-	}
-
-	return nil
+	// Publication information (nullable if not published - from api_publications table)
+	IsPublished           bool       `json:"isPublished" db:"is_published"`
+	PublicationStatus     *string    `json:"publicationStatus,omitempty" db:"publication_status"`
+	APIVersion            *string    `json:"apiVersion,omitempty" db:"api_version"`
+	DevPortalRefID        *string    `json:"devPortalRefId,omitempty" db:"devportal_ref_id"`
+	SandboxEndpointURL    *string    `json:"sandboxEndpointUrl,omitempty" db:"sandbox_endpoint_url"`
+	ProductionEndpointURL *string    `json:"productionEndpointUrl,omitempty" db:"production_endpoint_url"`
+	PublishedAt           *time.Time `json:"publishedAt,omitempty" db:"published_at"`
+	PublicationUpdatedAt  *time.Time `json:"publicationUpdatedAt,omitempty" db:"publication_updated_at"`
 }

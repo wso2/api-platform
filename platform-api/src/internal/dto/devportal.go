@@ -72,11 +72,65 @@ type DevPortalListResponse struct {
 	Pagination Pagination           `json:"pagination"`
 }
 
+// Platform-specific DTOs for API publishing
+
+// Owners describes API owners information
+type Owners struct {
+	TechnicalOwner      string `json:"technicalOwner,omitempty"`
+	TechnicalOwnerEmail string `json:"technicalOwnerEmail,omitempty"`
+	BusinessOwner       string `json:"businessOwner,omitempty"`
+	BusinessOwnerEmail  string `json:"businessOwnerEmail,omitempty"`
+}
+
+// PublishAPIInfo contains user-overridable API metadata for publishing
+type PublishAPIInfo struct {
+	APIName        string   `json:"apiName,omitempty"`
+	APIDescription string   `json:"apiDescription,omitempty"`
+	APIType        string   `json:"apiType,omitempty"`
+	Visibility     string   `json:"visibility,omitempty"`
+	VisibleGroups  []string `json:"visibleGroups,omitempty"`
+	Tags           []string `json:"tags,omitempty"`
+	Owners         Owners   `json:"owners,omitempty"`
+	Labels         []string `json:"labels,omitempty"`
+}
+
+// APIInfo contains basic API metadata for platform API publishing
+type APIInfo struct {
+	APIID          string   `json:"apiId,omitempty"`
+	ReferenceID    string   `json:"referenceId,omitempty"`
+	APIName        string   `json:"apiName"`
+	APIHandle      string   `json:"apiHandle,omitempty"`
+	APIDescription string   `json:"apiDescription,omitempty"`
+	APIVersion     string   `json:"apiVersion,omitempty"`
+	APIType        string   `json:"apiType,omitempty"`
+	APIStatus      string   `json:"apiStatus,omitempty"`
+	Provider       string   `json:"provider,omitempty"`
+	Visibility     string   `json:"visibility,omitempty"`
+	VisibleGroups  []string `json:"visibleGroups,omitempty"`
+	Tags           []string `json:"tags,omitempty"`
+	Owners         Owners   `json:"owners,omitempty"`
+	Labels         []string `json:"labels,omitempty"`
+}
+
+// EndPoints describes production/sandbox endpoints
+type EndPoints struct {
+	ProductionURL string `json:"productionURL,omitempty"`
+	SandboxURL    string `json:"sandboxURL,omitempty"`
+}
+
+// APIMetadataRequest is the platform API metadata request with string-based subscription policies
+type APIMetadataRequest struct {
+	APIInfo              APIInfo   `json:"apiInfo"`
+	EndPoints            EndPoints `json:"endPoints,omitempty"`
+	SubscriptionPolicies []string  `json:"subscriptionPolicies,omitempty"`
+}
+
 // PublishToDevPortalRequest represents the request to publish an API to a specific DevPortal
 type PublishToDevPortalRequest struct {
-	DevPortalUUID       string `json:"devPortalUuid" binding:"required"`
-	SandboxGatewayID    string `json:"sandboxGatewayId" binding:"required"`
-	ProductionGatewayID string `json:"productionGatewayId" binding:"required"`
+	DevPortalUUID        string          `json:"devPortalUuid" binding:"required"`
+	APIInfo              *PublishAPIInfo `json:"apiInfo,omitempty"` // Made optional for defaults
+	EndPoints            EndPoints       `json:"endPoints" binding:"required"`
+	SubscriptionPolicies []string        `json:"subscriptionPolicies,omitempty"`
 }
 
 // PublishToDevPortalResponse represents the response after publishing an API to a DevPortal
@@ -119,29 +173,32 @@ type DeactivateDevPortalResponse struct {
 	DeactivatedAt time.Time `json:"deactivatedAt"`
 }
 
-// GatewayEndpointInfo represents gateway endpoint information for publications
-type GatewayEndpointInfo struct {
-	GatewayID         string `json:"gatewayId"`
-	DisplayName       string `json:"DisplayName"`
-	FunctionalityType string `json:"FunctionalityType"`
-	Vhost             string `json:"vhost"`
+// APIPublicationDetails represents publication-specific information
+// This mirrors the deployment details structure used for gateways
+type APIPublicationDetails struct {
+	Status             string    `json:"status"` // published, failed, publishing
+	APIVersion         string    `json:"apiVersion,omitempty"`
+	DevPortalRefID     string    `json:"devPortalRefId,omitempty"`
+	SandboxEndpoint    string    `json:"sandboxEndpoint"`
+	ProductionEndpoint string    `json:"productionEndpoint"`
+	PublishedAt        time.Time `json:"publishedAt"`
+	UpdatedAt          time.Time `json:"updatedAt"`
 }
 
-// PublicationDetails represents additional publication details
-type PublicationDetails struct {
-	SandboxEndpointURL    string `json:"sandboxEndpointUrl"`
-	ProductionEndpointURL string `json:"productionEndpointUrl"`
-	APIVersion            string `json:"apiVersion"`
+// APIDevPortalResponse represents a DevPortal with API association and publication details
+// This extends DevPortalResponse with additional association and publication fields
+type APIDevPortalResponse struct {
+	DevPortalResponse                        // Embedded DevPortal details
+	AssociatedAt      time.Time              `json:"associatedAt"`
+	IsPublished       bool                   `json:"isPublished"`
+	Publication       *APIPublicationDetails `json:"publication,omitempty"` // Only present when isPublished is true
 }
 
-// APIPublicationInfo represents a single API publication with gateway details
-type APIPublicationInfo struct {
-	DevPortalUUID      string              `json:"devPortalUuid"`
-	DevPortalName      string              `json:"devPortalName"`
-	Status             string              `json:"status"`
-	SandboxEndpoint    GatewayEndpointInfo `json:"sandboxEndpoint"`
-	ProductionEndpoint GatewayEndpointInfo `json:"productionEndpoint"`
-	PublicationDetails PublicationDetails  `json:"publicationDetails"`
+// APIDevPortalListResponse represents a paginated list of DevPortals with API association and publication details
+type APIDevPortalListResponse struct {
+	Count      int                    `json:"count"`      // Number of items in current response
+	List       []APIDevPortalResponse `json:"list"`       // Array of DevPortal objects with publication details
+	Pagination Pagination             `json:"pagination"` // Pagination metadata
 }
 
 // ToModel converts CreateDevPortalRequest to DevPortal model

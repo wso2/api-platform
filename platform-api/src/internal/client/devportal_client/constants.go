@@ -15,14 +15,18 @@
  *
  */
 
-package dto
+package devportal_client
 
-// SubscriptionPolicy represents a subscription policy in DevPortal.
-type SubscriptionPolicy struct {
-	PolicyName   string           `json:"policyName"`
-	DisplayName  string           `json:"displayName,omitempty"`
-	Description  string           `json:"description,omitempty"`
-	BillingPlan  string           `json:"billingPlan,omitempty"`
-	Type         SubscriptionType `json:"type,omitempty"`
-	RequestCount string           `json:"requestCount,omitempty"`
-}
+// API path constants for DevPortal client
+const (
+	// Base paths
+	devportalOrganizationsPath = "devportal/organizations"
+	organizationsPath          = "organizations"
+
+	// Resource paths
+	apisPath                 = "apis"
+	subscriptionPoliciesPath = "subscription-policies"
+	labelsPath               = "labels"
+	viewsPath                = "views"
+	templatePath             = "template"
+)

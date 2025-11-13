@@ -1,3 +1,20 @@
+/*
+ *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
 package devportal_client
 
 import (
@@ -82,7 +99,7 @@ func createAPIMultipart(meta dto.APIMetadataRequest, apiDef io.Reader, apiDefNam
 
 // Publish creates a new API (multipart/form-data)
 func (s *apisService) Publish(orgID string, meta dto.APIMetadataRequest, apiDefinition io.Reader, apiDefFilename string, schemaDefinition io.Reader, schemaFilename string) (*dto.APIResponse, error) {
-	url := s.DevPortalClient.buildURL("organizations", orgID, "apis")
+	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, apisPath)
 	body, contentType, err := createAPIMultipart(meta, apiDefinition, apiDefFilename, schemaDefinition, schemaFilename)
 	if err != nil {
 		return nil, err
@@ -116,7 +133,7 @@ func (s *apisService) Publish(orgID string, meta dto.APIMetadataRequest, apiDefi
 
 // Update updates API metadata and optional files
 func (s *apisService) Update(orgID, apiID string, meta dto.APIMetadataRequest, apiDefinition io.Reader, apiDefFilename string, schemaDefinition io.Reader, schemaFilename string) (*dto.APIResponse, error) {
-	url := s.DevPortalClient.buildURL("organizations", orgID, "apis", apiID)
+	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, apisPath, apiID)
 	body, contentType, err := createAPIMultipart(meta, apiDefinition, apiDefFilename, schemaDefinition, schemaFilename)
 	if err != nil {
 		return nil, err
@@ -153,7 +170,7 @@ func (s *apisService) Update(orgID, apiID string, meta dto.APIMetadataRequest, a
 
 // Delete removes an API
 func (s *apisService) Delete(orgID, apiID string) error {
-	url := s.DevPortalClient.buildURL("organizations", orgID, "apis", apiID)
+	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, apisPath, apiID)
 	req, err := http.NewRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err
@@ -175,7 +192,7 @@ func (s *apisService) Delete(orgID, apiID string) error {
 
 // Get retrieves an API
 func (s *apisService) Get(orgID, apiID string) (*dto.APIResponse, error) {
-	url := s.DevPortalClient.buildURL("organizations", orgID, "apis", apiID)
+	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, apisPath, apiID)
 	req, err := s.DevPortalClient.newJSONRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -199,9 +216,9 @@ func (s *apisService) Get(orgID, apiID string) (*dto.APIResponse, error) {
 	return &out, nil
 }
 
-// List returns all APIs for org
+// List retrieves all APIs for an organization
 func (s *apisService) List(orgID string) ([]dto.APIResponse, error) {
-	url := s.DevPortalClient.buildURL("organizations", orgID, "apis")
+	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, apisPath)
 	req, err := s.DevPortalClient.newJSONRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -224,7 +241,7 @@ func (s *apisService) List(orgID string) ([]dto.APIResponse, error) {
 
 // Template operations
 func (s *apisService) UploadTemplate(orgID, apiID string, r io.Reader, filename string) error {
-	url := s.DevPortalClient.buildURL("organizations", orgID, "apis", apiID, "template")
+	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, apisPath, apiID, templatePath)
 	buf := &bytes.Buffer{}
 	mw := multipart.NewWriter(buf)
 	fw, err := mw.CreateFormFile("apiContent", filepath.Base(filename))
@@ -262,7 +279,7 @@ func (s *apisService) UploadTemplate(orgID, apiID string, r io.Reader, filename 
 }
 
 func (s *apisService) UpdateTemplate(orgID, apiID string, r io.Reader, filename string) error {
-	url := s.DevPortalClient.buildURL("organizations", orgID, "apis", apiID, "template")
+	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, apisPath, apiID, templatePath)
 	buf := &bytes.Buffer{}
 	mw := multipart.NewWriter(buf)
 	fw, err := mw.CreateFormFile("apiContent", filepath.Base(filename))
@@ -300,7 +317,7 @@ func (s *apisService) UpdateTemplate(orgID, apiID string, r io.Reader, filename 
 }
 
 func (s *apisService) GetTemplate(orgID, apiID string) (io.ReadCloser, error) {
-	url := s.DevPortalClient.buildURL("organizations", orgID, "apis", apiID, "template")
+	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, apisPath, apiID, templatePath)
 	req, err := s.DevPortalClient.newJSONRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -319,7 +336,7 @@ func (s *apisService) GetTemplate(orgID, apiID string) (io.ReadCloser, error) {
 }
 
 func (s *apisService) DeleteTemplate(orgID, apiID string) error {
-	url := s.DevPortalClient.buildURL("organizations", orgID, "apis", apiID, "template")
+	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, apisPath, apiID, templatePath)
 	req, err := http.NewRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return err
