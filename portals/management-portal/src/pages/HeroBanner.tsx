@@ -1,8 +1,7 @@
 // src/pages/overview/HeroBanner.tsx
 import React from "react";
-import { Box, Paper, Stack, Typography } from "@mui/material";
+import { Box, Paper, Typography } from "@mui/material";
 import { keyframes } from "@emotion/react";
-import { Button } from "../components/src/components/Button";
 
 export type BannerSlide = {
   id: string;

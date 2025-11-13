@@ -9,7 +9,6 @@ import { useProjects } from "./context/ProjectContext";
 import { projectSlugFromName } from "./utils/projectSlug";
 
 import ScenarioLanding from "./components/ScenarioLanding";
-
 import AppRoutes from "./routes";
 import ExposeServiceWizard from "./pages/userScenarios/ExposeServiceWizard";
 
@@ -45,26 +44,35 @@ const App: React.FC = () => {
     }
   }, [experienceStage]);
 
+  // Always treat "/" and "/userSenario" as the ScenarioLanding view
+  const isScenarioPath =
+    location.pathname === "/userSenario" || location.pathname === "/";
+
   const handleScenarioSkip = React.useCallback(() => {
     setExperienceStage("platform");
-    navigate(defaultOrgPath, { replace: true });
+    // Avoid navigating to "/" before org/project is ready
+    if (defaultOrgPath !== "/") {
+      navigate(defaultOrgPath, { replace: true });
+    }
   }, [defaultOrgPath, navigate]);
 
   const handleScenarioContinue = React.useCallback(
     (scenarioId: string) => {
-      if (scenarioId === "expose-service") {
-        setExperienceStage("wizard");
-      } else {
-        setExperienceStage("platform");
+      setExperienceStage(
+        scenarioId === "expose-service" ? "wizard" : "platform"
+      );
+      if (defaultOrgPath !== "/") {
+        navigate(defaultOrgPath, { replace: true });
       }
-      navigate(defaultOrgPath, { replace: true });
     },
     [defaultOrgPath, navigate]
   );
 
   const handleWizardFinish = React.useCallback(() => {
     setExperienceStage("platform");
-    navigate(defaultOrgPath, { replace: true });
+    if (defaultOrgPath !== "/") {
+      navigate(defaultOrgPath, { replace: true });
+    }
   }, [defaultOrgPath, navigate]);
 
   const handleBackToChoices = React.useCallback(() => {
@@ -72,12 +80,10 @@ const App: React.FC = () => {
     navigate("/userSenario", { replace: true });
   }, [navigate]);
 
-  const isScenarioPath =
-    location.pathname === "/userSenario" || location.pathname === "/";
-  const showScenarioLanding = experienceStage === "landing" || isScenarioPath;
+  // Show ScenarioLanding if we're at "/" or "/userSenario", or if stage is landing
+  const showScenarioLanding = isScenarioPath || experienceStage === "landing";
 
   let layoutContent: React.ReactNode = null;
-
   if (experienceStage === "wizard") {
     layoutContent = (
       <ExposeServiceWizard
@@ -95,7 +101,6 @@ const App: React.FC = () => {
       {showScenarioLanding ? (
         <Box
           minHeight="100vh"
-          // bgcolor="background.default"
           display="flex"
           alignItems="flex-start"
           justifyContent="center"
