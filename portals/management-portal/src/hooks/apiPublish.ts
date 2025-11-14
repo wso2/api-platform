@@ -123,7 +123,7 @@ export const useApiPublishApi = () => {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ devPortalId }),
     });
 
     if (!response.ok) {

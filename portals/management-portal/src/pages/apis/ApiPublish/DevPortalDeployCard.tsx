@@ -55,7 +55,6 @@ const DevPortalDeployCard: React.FC<Props> = ({
 }) => {
   const isPublished = portal.isPublished;
   const publication = portal.publication;
-  console.log("DevPortalDeployCard publication:", publication?.status);
 
   const description = portal.description || "";
 

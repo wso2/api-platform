@@ -52,10 +52,6 @@ const DevPortalPickTable: React.FC<Props> = ({
   publishedIds,
   onBack,
 }) => {
-  console.log("Rendering DevPortalPickTable");
-  console.log("portals:", portals);
-  console.log("selectedIds:", Array.from(selectedIds));
-  console.log("publishedIds:", publishedIds);
   // Normalize published set
   const publishedSet: Set<string> = React.useMemo(() => {
     if (!publishedIds) return new Set();

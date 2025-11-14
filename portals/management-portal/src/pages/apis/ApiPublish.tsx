@@ -93,24 +93,30 @@ const DevelopContent: React.FC = () => {
 
     (async () => {
       setLoading(true);
-      const apiData = await fetchApiById(effectiveApiId);
-      setApi(apiData);
-      selectApi(apiData);
+      try {
+        const apiData = await fetchApiById(effectiveApiId);
+        setApi(apiData);
+        selectApi(apiData);
 
-      // Refresh devportals and published APIs
-      await Promise.all([
-        refreshDevPortals(),
-        refreshPublishedApis(effectiveApiId).then((pubs) => {
-          if (pubs.length > 0) {
-            setStagedIds(pubs.map(p => p.uuid));
-            setMode("cards");
-          } else {
-            setMode("empty");
-          }
-        })
-      ]);
-
-      setLoading(false);
+        // Refresh devportals and published APIs
+        await Promise.all([
+          refreshDevPortals(),
+          refreshPublishedApis(effectiveApiId).then((pubs) => {
+            if (pubs.length > 0) {
+              setStagedIds(pubs.map(p => p.uuid));
+              setMode("cards");
+            } else {
+              setMode("empty");
+            }
+          })
+        ]);
+      } catch (error) {
+        console.error('Failed to load API data:', error);
+        setApi(null);
+        setMode("empty");
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [effectiveApiId, fetchApiById, selectApi, refreshDevPortals, refreshPublishedApis]);
 
@@ -244,12 +250,29 @@ const DevelopContent: React.FC = () => {
       if (published) return published;
       const portal = devportalsById.get(id);
       if (portal) {
+        // Properly construct ApiPublicationWithPortal from Portal
         return {
-          ...portal,
+          uuid: portal.uuid,
+          name: portal.name,
+          identifier: portal.identifier,
+          description: portal.description,
+          portalUrl: portal.uiUrl || "",
+          apiUrl: portal.apiUrl || "",
+          hostname: portal.hostname || "",
+          isActive: portal.isActive || false,
+          createdAt: portal.createdAt || "",
+          updatedAt: portal.updatedAt || "",
           associatedAt: "",
           isPublished: false,
-          publication: null,
-        } as unknown as ApiPublicationWithPortal;
+          publication: {
+            status: "UNPUBLISHED",
+            apiVersion: "",
+            sandboxEndpoint: "",
+            productionEndpoint: "",
+            publishedAt: "",
+            updatedAt: "",
+          },
+        } as ApiPublicationWithPortal;
       }
       return null;
     }).filter((p): p is ApiPublicationWithPortal => Boolean(p));
