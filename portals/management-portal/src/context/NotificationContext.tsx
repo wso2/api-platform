@@ -1,6 +1,8 @@
 // src/context/NotificationContext.tsx
-import React, { createContext, useContext, ReactNode } from 'react';
-import { Snackbar, Alert, AlertColor } from '@mui/material';
+import React, { createContext, useContext } from 'react';
+import type { ReactNode } from 'react';
+import { Snackbar, Alert } from '@mui/material';
+import type { AlertColor } from '@mui/material';
 
 interface NotificationContextValue {
   showNotification: (message: string, severity?: AlertColor) => void;

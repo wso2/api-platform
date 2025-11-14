@@ -12,20 +12,23 @@ import "@fontsource/poppins/700.css";
 import { OrganizationProvider } from "./context/OrganizationContext";
 import { ProjectProvider } from "./context/ProjectContext";
 import { APIFeatureProviders } from "./Providers/APIFeatureProviders";
+import { NotificationProvider } from "./context/NotificationContext";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <OrganizationProvider>
-        <ProjectProvider>
-          <APIFeatureProviders>
-            <BrowserRouter>
-              <App />
-            </BrowserRouter>
-          </APIFeatureProviders>
-        </ProjectProvider>
-      </OrganizationProvider>
+        <NotificationProvider>
+        <OrganizationProvider>
+          <ProjectProvider>
+            <APIFeatureProviders>
+              <BrowserRouter>
+                <App />
+              </BrowserRouter>
+            </APIFeatureProviders>
+          </ProjectProvider>
+        </OrganizationProvider>
+      </NotificationProvider>
     </ThemeProvider>
   </React.StrictMode>
 );

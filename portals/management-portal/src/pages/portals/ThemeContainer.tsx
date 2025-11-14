@@ -6,16 +6,39 @@ import ThemeSettingsPanel from './ThemeSettingsPanel';
 import { PrivatePreview } from './PortalPreviews';
 import { PORTAL_CONSTANTS } from '../../constants/portal';
 import type { ThemeContainerProps } from '../../types/portal';
+import { useNotifications } from '../../context/NotificationContext';
 
 const ThemeContainer: React.FC<ThemeContainerProps> = ({
   portalName,
   onBack,
   onPublish,
 }) => {
-  const handlePublish = useCallback(() => {
-    // TODO: Implement theme publishing logic
-    onPublish?.();
-  }, [onPublish]);
+
+  const { showNotification } = useNotifications();
+
+  const handlePublish = useCallback(async () => {
+    // Theme publishing may be implemented by the parent via onPublish
+    // We'll call it and surface a toast for success / failure.
+    try {
+      const result = onPublish ? onPublish() : undefined;
+      await Promise.resolve(result);
+      showNotification('Theme published successfully', 'success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to publish theme';
+      showNotification(message, 'error');
+    }
+  }, [onPublish, showNotification]);
+
+  const handlePromoBannerClick = useCallback(async () => {
+    try {
+      const result = onPublish ? onPublish() : undefined;
+      await Promise.resolve(result);
+      showNotification('Promo action completed', 'success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Promo action failed';
+      showNotification(message, 'error');
+    }
+  }, [onPublish, showNotification]);
 
   return (
     <Box>
@@ -34,6 +57,7 @@ const ThemeContainer: React.FC<ThemeContainerProps> = ({
         </Box>
       </Box>
 
+      {/* Description */}
       <Box sx={{ mb: 3 }}>
         Manage and customize the theme settings for your organization.
       </Box>
@@ -45,23 +69,24 @@ const ThemeContainer: React.FC<ThemeContainerProps> = ({
         alignItems="flex-start"
         sx={{ flexWrap: 'nowrap', minWidth: 960 }}
       >
+        {/* Left Column: Banner + Settings */}
         <Grid>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
             <PromoBanner
               imageSrc="/AITheming.svg" // TODO: Use proper asset path
-              onPrimary={() => onPublish?.()}
+              onPrimary={handlePromoBannerClick}
             />
             <ThemeSettingsPanel />
           </Box>
         </Grid>
 
-        {/* Right column (preview) */}
+        {/* Right Column: Preview + Publish Button */}
         <Grid>
           <Box sx={{ position: 'sticky', top: 24 }}>
             <PrivatePreview />
           </Box>
 
-          {/* Publish Theme button */}
+          {/* Publish Theme Button */}
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
             <Button
               variant="contained"

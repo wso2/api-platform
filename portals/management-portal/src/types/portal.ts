@@ -1,5 +1,6 @@
 // src/types/portal.ts
 import { PORTAL_CONSTANTS } from '../constants/portal';
+import type { Portal } from '../hooks/devportals';
 
 export interface PortalFormData {
   name: string;
@@ -49,7 +50,7 @@ export interface PortalCardProps {
 export type PortalManagementProps = Record<string, never>;
 
 export interface PortalListProps {
-  portals: PortalUIModel[];
+  portals: Portal[];
   loading: boolean;
   error: string | null;
   onPortalClick: (portalId: string) => void;
@@ -82,23 +83,6 @@ export type ThemeSettingsPanelProps = Record<string, never>;
 
 export interface PortalPreviewProps {
   type: typeof PORTAL_CONSTANTS.PORTAL_TYPES.PRIVATE | typeof PORTAL_CONSTANTS.PORTAL_TYPES.PUBLIC;
-}
-
-// Hook return types
-export interface UsePortalFormReturn {
-  formData: PortalFormData;
-  updateField: <K extends keyof PortalFormData>(field: K, value: PortalFormData[K]) => void;
-  resetForm: () => void;
-  isValid: boolean;
-}
-
-export interface UsePortalNavigationReturn {
-  mode: typeof PORTAL_CONSTANTS.MODES[keyof typeof PORTAL_CONSTANTS.MODES];
-  selectedPortalId: string | null;
-  navigateToList: () => void;
-  navigateToCreate: () => void;
-  navigateToTheme: (portalId: string) => void;
-  navigateToEdit: (portalId: string) => void;
 }
 
 // API types

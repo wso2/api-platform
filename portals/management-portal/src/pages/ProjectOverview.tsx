@@ -20,6 +20,7 @@ import ProjectFeatureCards from "./overview/ProjectFeatureCards";
 
 import { GatewayProvider } from "../context/GatewayContext";
 import GatewayWizard from "./overview/StepHeader";
+import { DevPortalProvider } from "../context/DevPortalContext";
 
 // Wizard header to show after clicking "Get Start"
 
@@ -195,10 +196,12 @@ const ProjectOverview: React.FC = () => {
           {/* Cards */}
           <Box mt={1.5} pr={6} pl={6}>
             <GatewayProvider>
-              <ProjectFeatureCards
-                orgHandle={orgHandle}
-                projectSlug={projectSlug}
-              />
+              <DevPortalProvider>
+                <ProjectFeatureCards
+                  orgHandle={orgHandle}
+                  projectSlug={projectSlug}
+                />
+              </DevPortalProvider>
             </GatewayProvider>
           </Box>
         </>

@@ -1,162 +1,225 @@
 import {
   createContext,
   useCallback,
+  useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
-import { useDevPortalsApi, type DevPortalUIModel, mapDevPortalToUI } from "../hooks/devportals";
+import {
+  useDevPortalsApi,
+  type CreatePortalData,
+  type Portal,
+  type UpdatePortalPayload,
+} from "../hooks/devportals";
 import { useOrganization } from "./OrganizationContext";
 
 type DevPortalContextValue = {
-  devportals: DevPortalUIModel[];
+  devportals: Portal[];
   loading: boolean;
   error: string | null;
-  refreshDevPortals: () => Promise<DevPortalUIModel[]>;
-  activateDevPortal: (uuid: string) => Promise<void>;
-  createDevPortal: (portalData: {
-    name: string;
-    identifier: string;
-    apiUrl: string;
-    hostname: string;
-    apiKey: string;
-    headerKeyName: string;
-    description: string;
-  }) => Promise<DevPortalUIModel>;
-  updateDevPortal: (uuid: string, portalData: {
-    name: string;
-    identifier: string;
-    apiUrl: string;
-    hostname: string;
-    apiKey: string;
-    headerKeyName: string;
-    description: string;
-  }) => Promise<DevPortalUIModel>;
+  refreshDevPortals: () => Promise<Portal[]>;
+  createDevPortal: (payload: CreatePortalData) => Promise<Portal>;
+  updateDevPortal: (
+    portalId: string,
+    updates: UpdatePortalPayload
+  ) => Promise<Portal>;
+  deleteDevPortal: (portalId: string) => Promise<void>;
+  fetchDevPortalById: (portalId: string) => Promise<Portal>;
+  activateDevPortal: (portalId: string) => Promise<void>;
 };
 
-const DevPortalContext = createContext<DevPortalContextValue | undefined>(undefined);
-
-export type { DevPortalContextValue };
-export { DevPortalContext };
+export const DevPortalContext = createContext<DevPortalContextValue | undefined>(undefined);
 
 type DevPortalProviderProps = {
   children: ReactNode;
 };
 
 export const DevPortalProvider = ({ children }: DevPortalProviderProps) => {
-  const { fetchDevPortals, activateDevPortal: activateRequest, createDevPortal: createRequest, updateDevPortal: updateRequest } = useDevPortalsApi();
+  const {
+    createDevPortal: createDevPortalRequest,
+    fetchDevPortals,
+    fetchDevPortal,
+    updateDevPortal: updateDevPortalRequest,
+    deleteDevPortal: deleteDevPortalRequest,
+    activateDevPortal: activateDevPortalRequest,
+  } = useDevPortalsApi();
+
   const { organization, loading: organizationLoading } = useOrganization();
 
-  const [devportals, setDevportals] = useState<DevPortalUIModel[]>([]);
+  const [devportals, setDevportals] = useState<Portal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refreshDevPortals = useCallback(async (checkMounted?: () => boolean): Promise<DevPortalUIModel[]> => {
-    if (!organization?.id) {
-      setDevportals([]);
-      return [];
-    }
+  const refreshDevPortals = useCallback(async () => {
+    setLoading(true);
+    setError(null);
 
     try {
-      setLoading(true);
-      setError(null);
-      const data = await fetchDevPortals();
-      if (!checkMounted || checkMounted()) {
-        setDevportals(data);
-      }
-      return data;
+      const result = await fetchDevPortals();
+      setDevportals(result);
+      return result;
     } catch (err) {
-      if (!checkMounted || checkMounted()) {
-        setError('An error occurred while loading developer portals.');
-      }
+      const message =
+        err instanceof Error ? err.message : "Unknown error occurred";
+      setError(message);
       throw err;
     } finally {
-      if (!checkMounted || checkMounted()) {
-        setLoading(false);
+      setLoading(false);
+    }
+  }, [fetchDevPortals]);
+
+  const createDevPortal = useCallback(
+    async (payload: CreatePortalData) => {
+      setError(null);
+
+      try {
+        const portal = await createDevPortalRequest(payload);
+        setDevportals((prev) => [portal, ...prev]);
+        return portal;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Unknown error occurred";
+        setError(message);
+        throw err;
       }
-    }
-  }, [fetchDevPortals, organization?.id]);
+    },
+    [createDevPortalRequest]
+  );
 
-  const activateDevPortal = useCallback(async (uuid: string): Promise<void> => {
-    await activateRequest(uuid);
-    // Refresh the list after activation (non-blocking)
-    try {
-      await refreshDevPortals();
-    } catch (err) {
-      console.error('Failed to refresh portal list after activation:', err);
-      // Don't throw - activation was successful
-    }
-  }, [activateRequest, refreshDevPortals]);
+  const updateDevPortal = useCallback(
+    async (portalId: string, updates: UpdatePortalPayload) => {
+      setError(null);
 
-  const createDevPortal = useCallback(async (portalData: {
-    name: string;
-    identifier: string;
-    apiUrl: string;
-    hostname: string;
-    apiKey: string;
-    headerKeyName: string;
-    description: string;
-  }): Promise<DevPortalUIModel> => {
-    const createdPortal = await createRequest(portalData);
-    // Refresh the list after creation (non-blocking)
-    try {
-      await refreshDevPortals();
-    } catch (err) {
-      console.error('Failed to refresh portal list after creation:', err);
-      // Don't throw - creation was successful
-    }
-    return mapDevPortalToUI(createdPortal);
-  }, [createRequest, refreshDevPortals]);
+      try {
+        const portal = await updateDevPortalRequest(portalId, updates as any);
+        setDevportals((prev) =>
+          prev.map((p) => (p.uuid === portalId ? portal : p))
+        );
+        return portal;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Unknown error occurred";
+        setError(message);
+        throw err;
+      }
+    },
+    [updateDevPortalRequest]
+  );
 
-  const updateDevPortal = useCallback(async (uuid: string, portalData: {
-    name: string;
-    identifier: string;
-    apiUrl: string;
-    hostname: string;
-    apiKey: string;
-    headerKeyName: string;
-    description: string;
-  }): Promise<DevPortalUIModel> => {
-    const updatedPortal = await updateRequest(uuid, portalData);
-    // Refresh the list after update (non-blocking)
-    try {
-      await refreshDevPortals();
-    } catch (err) {
-      console.error('Failed to refresh portal list after update:', err);
-      // Don't throw - update was successful
-    }
-    return mapDevPortalToUI(updatedPortal);
-  }, [updateRequest, refreshDevPortals]);
+  const deleteDevPortal = useCallback(
+    async (portalId: string) => {
+      setError(null);
 
+      try {
+        await deleteDevPortalRequest(portalId);
+        setDevportals((prev) =>
+          prev.filter((portal) => portal.uuid !== portalId)
+        );
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Unknown error occurred";
+        setError(message);
+        throw err;
+      }
+    },
+    [deleteDevPortalRequest]
+  );
+
+  const fetchDevPortalById = useCallback(
+    async (portalId: string) => {
+      setError(null);
+
+      try {
+        const portal = await fetchDevPortal(portalId);
+        let normalized: Portal | undefined;
+        setDevportals((prev) => {
+          const existing = prev.find((item) => item.uuid === portal.uuid);
+          normalized = existing ? { ...existing, ...portal } : portal;
+          const others = prev.filter((item) => item.uuid !== portal.uuid);
+          return normalized ? [normalized, ...others] : prev;
+        });
+
+        if (!normalized) {
+          normalized = portal;
+        }
+
+        return normalized;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Unknown error occurred";
+        setError(message);
+        throw err;
+      }
+    },
+    [fetchDevPortal]
+  );
+
+  const activateDevPortal = useCallback(
+    async (portalId: string) => {
+      setError(null);
+
+      try {
+        await activateDevPortalRequest(portalId);
+        setDevportals((prev) =>
+          prev.map((portal) =>
+            portal.uuid === portalId
+              ? { ...portal, isActive: true }
+              : portal
+          )
+        );
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to activate devportal";
+        setError(message);
+        throw err;
+      }
+    },
+    [activateDevPortalRequest]
+  );
+
+  // When org changes
   useEffect(() => {
-    let isMounted = true;
-    const checkMounted = () => isMounted;
-
-    if (!organizationLoading && organization?.id) {
-      refreshDevPortals(checkMounted).catch(() => {
-        // Error already handled in refreshDevPortals
-      });
-    } else if (!organization?.id) {
-      if (isMounted) {
-        setDevportals([]);
-        setLoading(false);
-      }
+    if (organizationLoading) {
+      return;
     }
 
-    return () => {
-      isMounted = false;
-    };
-  }, [organization?.id, organizationLoading, refreshDevPortals]);
+    if (!organization) {
+      setDevportals([]);
+      setLoading(false);
+      return;
+    }
 
-  const value: DevPortalContextValue = {
-    devportals,
-    loading,
-    error,
-    refreshDevPortals,
-    activateDevPortal,
-    createDevPortal,
-    updateDevPortal,
-  };
+    refreshDevPortals().catch(() => {
+      /* errors captured in state */
+    });
+  }, [organization, organizationLoading, refreshDevPortals]);
+
+  const value = useMemo<DevPortalContextValue>(
+    () => ({
+      devportals,
+      loading,
+      error,
+      refreshDevPortals,
+      createDevPortal,
+      updateDevPortal,
+      deleteDevPortal,
+      fetchDevPortalById,
+      activateDevPortal,
+    }),
+    [
+      devportals,
+      loading,
+      error,
+      refreshDevPortals,
+      createDevPortal,
+      updateDevPortal,
+      deleteDevPortal,
+      fetchDevPortalById,
+      activateDevPortal,
+    ]
+  );
 
   return (
     <DevPortalContext.Provider value={value}>
@@ -164,3 +227,15 @@ export const DevPortalProvider = ({ children }: DevPortalProviderProps) => {
     </DevPortalContext.Provider>
   );
 };
+
+export const useDevPortals = () => {
+  const context = useContext(DevPortalContext);
+
+  if (!context) {
+    throw new Error("useDevPortals must be used within a DevPortalProvider");
+  }
+
+  return context;
+};
+
+export type { DevPortalContextValue };
