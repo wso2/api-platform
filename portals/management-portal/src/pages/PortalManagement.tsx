@@ -1,98 +1,108 @@
 // src/pages/PortalManagement.tsx
-import React from "react";
-import { Box, Typography, Snackbar, Alert } from "@mui/material";
-import { DevPortalProvider } from "../context/DevPortalContext";
-import { useDevPortals } from "../hooks/useDevPortals";
-import { usePortalNavigation } from "../hooks/usePortalNavigation";
-import { usePortalOperations } from "../hooks/usePortalOperations";
+import React, { useCallback, useMemo, useState } from "react";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { Box, Typography } from "@mui/material";
+import { DevPortalProvider, useDevPortals } from "../context/DevPortalContext";
+import { useNotifications } from "../context/NotificationContext";
 import ErrorBoundary from "../components/ErrorBoundary";
 import PortalList from "./portals/PortalList";
 import PortalForm from "./portals/PortalForm";
 import ThemeContainer from "./portals/ThemeContainer";
 import { PORTAL_CONSTANTS } from "../constants/portal";
+import { getPortalMode, getPortalIdFromPath, navigateToPortalList, navigateToPortalCreate, navigateToPortalTheme, navigateToPortalEdit } from "../utils/portalUtils";
 import type { PortalManagementProps, PortalFormData } from "../types/portal";
 
 const PortalManagementContent: React.FC<PortalManagementProps> = () => {
-  const { devportals, loading, error } = useDevPortals();
-  const { mode, selectedPortalId, navigateToList, navigateToCreate, navigateToTheme, navigateToEdit } = usePortalNavigation();
-  const { createPortal, updatePortal, activatePortal } = usePortalOperations();
+  // Context access (from DevPortalProvider)
+  const { devportals, loading, error, createDevPortal, updateDevPortal, activateDevPortal } = useDevPortals();
 
-  const [snackbar, setSnackbar] = React.useState<{
-    open: boolean;
-    message: string;
-    severity: 'success' | 'error';
-  }>({
-    open: false,
-    message: '',
-    severity: 'success',
-  });
+  // Router access
+  const navigate = useNavigate();
+  const location = useLocation();
+  const params = useParams();
 
-  const [creatingPortal, setCreatingPortal] = React.useState(false);
+  const [creatingPortal, setCreatingPortal] = useState(false);
+  const { showNotification } = useNotifications();
 
-  const selectedPortal = React.useMemo(() =>
-    devportals.find(p => p.uuid === selectedPortalId),
+  const mode = useMemo(() => getPortalMode(location.pathname), [location.pathname]);
+  const selectedPortalId = useMemo(
+    () => getPortalIdFromPath(location.pathname) || params.portalId || null,
+    [location.pathname, params.portalId]
+  );
+
+  const selectedPortal = useMemo(
+    () => devportals.find(p => p.uuid === selectedPortalId),
     [devportals, selectedPortalId]
   );
 
-  const handlePortalClick = React.useCallback((portalId: string) => {
+  const navigateToList = useCallback(
+    () => navigateToPortalList(navigate, location.pathname),
+    [navigate, location.pathname]
+  );
+
+  const navigateToCreate = useCallback(
+    () => navigateToPortalCreate(navigate, location.pathname),
+    [navigate, location.pathname]
+  );
+
+  const navigateToTheme = useCallback(
+    (portalId: string) => navigateToPortalTheme(navigate, location.pathname, portalId),
+    [navigate, location.pathname]
+  );
+
+  const navigateToEdit = useCallback(
+    (portalId: string) => navigateToPortalEdit(navigate, location.pathname, portalId),
+    [navigate, location.pathname]
+  );
+
+  const handlePortalClick = useCallback((portalId: string) => {
     navigateToTheme(portalId);
   }, [navigateToTheme]);
 
-  const handlePortalActivate = React.useCallback(async (portalId: string) => {
+  const handlePortalActivate = useCallback(async (portalId: string) => {
     try {
-      await activatePortal(portalId);
-      setSnackbar({
-        open: true,
-        message: PORTAL_CONSTANTS.MESSAGES.PORTAL_ACTIVATED,
-        severity: 'success',
-      });
+      await activateDevPortal(portalId);
+      showNotification(PORTAL_CONSTANTS.MESSAGES.PORTAL_ACTIVATED, 'success');
     } catch (error) {
-      setSnackbar({
-        open: true,
-        message: error instanceof Error ? error.message : PORTAL_CONSTANTS.MESSAGES.ACTIVATION_FAILED,
-        severity: 'error',
-      });
+      const errorMessage = error instanceof Error ? error.message : PORTAL_CONSTANTS.MESSAGES.ACTIVATION_FAILED;
+      showNotification(errorMessage, 'error');
     }
-  }, [activatePortal]);
+  }, [activateDevPortal, showNotification]);
 
-  const handlePortalEdit = React.useCallback((portalId: string) => {
+  const handlePortalEdit = useCallback((portalId: string) => {
     navigateToEdit(portalId);
   }, [navigateToEdit]);
 
   const handleCreatePortal = React.useCallback(async (formData: PortalFormData) => {
     setCreatingPortal(true);
     try {
-      const createdPortal = await createPortal(formData);
-      const activationMessage = createdPortal.isActive 
-        ? 'Developer portal created and activated successfully.' 
+      const createdPortal = await createDevPortal(formData);
+      const activationMessage = createdPortal.isActive
+        ? 'Developer portal created and activated successfully.'
         : 'Developer portal created successfully, but not activated.';
-      setSnackbar({
-        open: true,
-        message: activationMessage,
-        severity: 'success',
-      });
+      showNotification(activationMessage, 'success');
       // Navigate to theme screen for the new portal
       navigateToTheme(createdPortal.uuid);
     } catch (error) {
-      setSnackbar({
-        open: true,
-        message: error instanceof Error ? error.message : PORTAL_CONSTANTS.MESSAGES.CREATION_FAILED,
-        severity: 'error',
-      });
+      const errorMessage = error instanceof Error ? error.message : PORTAL_CONSTANTS.MESSAGES.CREATION_FAILED;
+      showNotification(errorMessage, 'error');
     } finally {
       setCreatingPortal(false);
     }
-  }, [createPortal, navigateToTheme]);
+  }, [createDevPortal, navigateToTheme, showNotification]);
 
-  const handleUpdatePortal = React.useCallback(async (formData: PortalFormData) => {
-    if (selectedPortalId) {
-      await updatePortal(selectedPortalId, formData);
+  const handleUpdatePortal = useCallback(async (formData: PortalFormData) => {
+    if (!selectedPortalId) return;
+
+    try {
+      await updateDevPortal(selectedPortalId, formData);
+      showNotification('Developer Portal updated successfully.', 'success');
+      navigateToList();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : PORTAL_CONSTANTS.MESSAGES.CREATION_FAILED;
+      showNotification(errorMessage, 'error');
     }
-  }, [selectedPortalId, updatePortal]);
-
-  const handleCloseSnackbar = React.useCallback(() => {
-    setSnackbar(prev => ({ ...prev, open: false }));
-  }, []);
+  }, [selectedPortalId, updateDevPortal, navigateToList, showNotification]);
 
   const renderContent = () => {
     switch (mode) {
@@ -170,22 +180,6 @@ const PortalManagementContent: React.FC<PortalManagementProps> = () => {
 
         {/* Content */}
         {renderContent()}
-
-        {/* Snackbar */}
-        <Snackbar
-          open={snackbar.open}
-          autoHideDuration={4000}
-          onClose={handleCloseSnackbar}
-          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        >
-          <Alert
-            onClose={handleCloseSnackbar}
-            severity={snackbar.severity}
-            sx={{ width: "100%" }}
-          >
-            {snackbar.message}
-          </Alert>
-        </Snackbar>
       </Box>
     </ErrorBoundary>
   );

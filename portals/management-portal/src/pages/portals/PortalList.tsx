@@ -1,5 +1,5 @@
 // src/pages/portals/PortalList.tsx
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Box, Grid, Typography, Alert, CircularProgress, Card, CardContent, Stack } from '@mui/material';
 import ConfirmationDialog from '../../common/ConfirmationDialog';
 import { Button } from '../../components/src/components/Button';
@@ -8,6 +8,23 @@ import { PORTAL_CONSTANTS } from '../../constants/portal';
 import type { PortalListProps } from '../../types/portal';
 import BijiraDPLogo from "../BijiraDPLogo.png";
 import NewDP from "../undraw_windows_kqsk.svg";
+
+type ConfirmationDialogState = {
+  open: boolean;
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  confirmText?: string;
+  severity?: 'info' | 'warning' | 'error';
+};
+
+const initialDialogState: ConfirmationDialogState = {
+  open: false,
+  title: '',
+  message: '',
+  onConfirm: () => {},
+};
+
 
 const PortalList: React.FC<PortalListProps> = ({
   portals,
@@ -18,30 +35,25 @@ const PortalList: React.FC<PortalListProps> = ({
   onPortalEdit,
   onCreateNew,
 }) => {
+
+  const [activating, setActivating] = useState<Set<string>>(new Set());
+  const [confirmationDialog, setConfirmationDialog] = useState<ConfirmationDialogState>(initialDialogState);
+
   const handlePortalClick = useCallback((portalId: string) => {
     onPortalClick(portalId);
   }, [onPortalClick]);
 
-  // activation will be requested via requestActivate which shows a confirmation dialog
+  const handlePortalEdit = useCallback((portalId: string) => {
+    onPortalEdit(portalId);
+  }, [onPortalEdit]);
 
-  const [activating, setActivating] = React.useState<Set<string>>(new Set());
-
-  const [confirmationDialog, setConfirmationDialog] = React.useState<{
-    open: boolean;
-    title: string;
-    message: string;
-    onConfirm: () => void;
-    confirmText?: string;
-    severity?: 'info' | 'warning' | 'error';
-  }>({ open: false, title: '', message: '', onConfirm: () => {} });
-
-  const requestActivate = React.useCallback((portalId: string) => {
+  const requestActivate = useCallback((portalId: string) => {
     setConfirmationDialog({
       open: true,
       title: 'Activate Developer Portal',
       message: 'Are you sure you want to activate this developer portal? This will make it available to publish APIs to.',
       onConfirm: () => {
-        // set activating state then call parent activation; cleanup when done
+        // Set activating state, call parent activation, cleanup when done
         setActivating(prev => new Set(prev).add(portalId));
         const run = async () => {
           try {
@@ -52,6 +64,8 @@ const PortalList: React.FC<PortalListProps> = ({
               next.delete(portalId);
               return next;
             });
+            // Close dialog after activation
+            setConfirmationDialog(prev => ({ ...prev, open: false }));
           }
         };
         void run();
@@ -61,9 +75,9 @@ const PortalList: React.FC<PortalListProps> = ({
     });
   }, [onPortalActivate]);
 
-  const handlePortalEdit = useCallback((portalId: string) => {
-    onPortalEdit(portalId);
-  }, [onPortalEdit]);
+  const closeConfirmationDialog = useCallback(() => {
+    setConfirmationDialog(prev => ({ ...prev, open: false }));
+  }, []);
 
   if (loading) {
     return (
@@ -85,7 +99,7 @@ const PortalList: React.FC<PortalListProps> = ({
     <>
       <Grid container spacing={2} ml={1} mb={1}>
         {portals.map((portal) => (
-          <Grid key={portal.uuid}>
+          <Grid key={portal.uuid} sx={{ display: 'flex' }}>
             <PortalCard
               title={portal.name}
               description={portal.description}
@@ -93,10 +107,10 @@ const PortalList: React.FC<PortalListProps> = ({
               onClick={() => handlePortalClick(portal.uuid)}
               logoSrc={portal.logoSrc || BijiraDPLogo}
               logoAlt={portal.logoAlt || PORTAL_CONSTANTS.DEFAULT_LOGO_ALT}
-              portalUrl={portal.portalUrl || PORTAL_CONSTANTS.DEFAULT_PORTAL_URL}
-              userAuthLabel={portal.userAuthLabel || PORTAL_CONSTANTS.DEFAULT_USER_AUTH_LABEL}
-              authStrategyLabel={portal.authStrategyLabel || PORTAL_CONSTANTS.DEFAULT_AUTH_STRATEGY_LABEL}
-              visibilityLabel={portal.visibilityLabel || PORTAL_CONSTANTS.DEFAULT_VISIBILITY_LABEL}
+              portalUrl={portal.uiUrl || PORTAL_CONSTANTS.DEFAULT_PORTAL_URL}
+              userAuthLabel={PORTAL_CONSTANTS.DEFAULT_USER_AUTH_LABEL}
+              authStrategyLabel={PORTAL_CONSTANTS.DEFAULT_AUTH_STRATEGY_LABEL}
+              visibilityLabel={portal.visibility === 'public' ? 'Public' : 'Private'}
               onEdit={() => handlePortalEdit(portal.uuid)}
               onActivate={() => requestActivate(portal.uuid)}
               activating={activating.has(portal.uuid)}
@@ -104,23 +118,25 @@ const PortalList: React.FC<PortalListProps> = ({
           </Grid>
         ))}
 
-        {/* Add New Developer Portal card */}
-        <Grid>
+        {/* Add New Developer Portal Card */}
+        <Grid sx={{ display: 'flex' }}>
           <Card
             variant="outlined"
             sx={{
-              minHeight: 365, maxHeight: 363,
+              height: '100%',
               borderRadius: 2,
               borderColor: "divider",
-              maxWidth:400
+              maxWidth: 400,
+              width: '100%'
             }}
           >
-            <CardContent sx={{ p: 3, height: '100%' , minHeight:350, display: 'flex' }} >
+            <CardContent sx={{ p: 3, height: '100%', display: 'flex' }}>
               <Stack
                 spacing={3}
                 alignItems="center"
                 justifyContent="center"
-                display={'flex'}
+                display="flex"
+                sx={{ width: '100%' }}
               >
                 <Box
                   component="img"
@@ -151,13 +167,13 @@ const PortalList: React.FC<PortalListProps> = ({
         </Grid>
       </Grid>
 
-      {/* Confirmation dialog for activation */}
+      {/* Confirmation Dialog for Activation */}
       <ConfirmationDialog
         open={confirmationDialog.open}
-        onClose={() => setConfirmationDialog((prev) => ({ ...prev, open: false }))}
+        onClose={closeConfirmationDialog}
         onConfirm={() => {
-          // caller has already wired onConfirm to start activation and manage state
           confirmationDialog.onConfirm();
+          closeConfirmationDialog();
         }}
         title={confirmationDialog.title}
         message={confirmationDialog.message}

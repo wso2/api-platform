@@ -20,8 +20,6 @@ import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
-import { ApiPublishProvider } from "../../context/ApiPublishContext";
-import { useApiPublishContext } from "../../hooks/useApiPublishContext";
 
 import { useApisContext } from "../../context/ApiContext";
 import type { ApiSummary } from "../../hooks/apis";
@@ -63,10 +61,6 @@ const ApiOverviewContent: React.FC = () => {
     apiSlug?: string;
     apiId?: string;
   }>();
-  const {
-    getPublishState,
-    isPending: publishLoading,
-  } = useApiPublishContext();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { apis, fetchApiById, loading, selectApi } = useApisContext();
@@ -263,8 +257,6 @@ const ApiOverviewContent: React.FC = () => {
       </Box>
     );
   }
-  const publishState = getPublishState(api.id);
-  const isPublished = publishState?.isPublished ?? false;
 
   return (
     <Box>
@@ -387,7 +379,6 @@ const ApiOverviewContent: React.FC = () => {
         <Stack spacing={1.25} alignItems="flex-end">
           <Button
             variant="contained"
-            disabled={publishLoading}
             onClick={() => {
               // Navigate to publish screen
               const base =
@@ -708,9 +699,7 @@ const ApiOverviewContent: React.FC = () => {
 };
 
 const ApiOverview: React.FC = () => (
-  <ApiPublishProvider>
-    <ApiOverviewContent />
-  </ApiPublishProvider>
+  <ApiOverviewContent />
 );
 
 export default ApiOverview;
