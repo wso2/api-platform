@@ -16,9 +16,9 @@ import { NotificationProvider } from "./context/NotificationContext";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <NotificationProvider>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+        <NotificationProvider>
         <OrganizationProvider>
           <ProjectProvider>
             <APIFeatureProviders>
@@ -28,7 +28,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             </APIFeatureProviders>
           </ProjectProvider>
         </OrganizationProvider>
-      </ThemeProvider>
-    </NotificationProvider>
+      </NotificationProvider>
+    </ThemeProvider>
   </React.StrictMode>
 );
