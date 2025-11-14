@@ -41,6 +41,13 @@ const (
 	PublicationStuckThreshold = 2 * time.Minute
 )
 
+// sanitizeAPIHandle removes forward slashes and backslashes from API handle
+func sanitizeAPIHandle(handle string) string {
+	handle = strings.ReplaceAll(handle, "/", "")
+	handle = strings.ReplaceAll(handle, "\\", "")
+	return handle
+}
+
 // DevPortalService manages DevPortal operations using optimized data fetching and delegating client calls
 type DevPortalService struct {
 	devPortalRepo      repository.DevPortalRepository
@@ -563,7 +570,7 @@ func (s *DevPortalService) prepareAPIMetadata(api *dto.API, req *dto.PublishToDe
 		APIID:          api.ID,
 		ReferenceID:    api.ID,
 		APIName:        api.Name,
-		APIHandle:      api.Context,
+		APIHandle:      sanitizeAPIHandle(api.Context),
 		APIVersion:     api.Version,
 		APIType:        devportal_client.APIType("REST"),
 		Provider:       api.Provider,
