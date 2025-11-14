@@ -92,7 +92,7 @@ export const useApiPublishApi = () => {
     return (data.list ?? []).map(normalizePublication);
   }, []);
 
-  const publishApiToDevPortal = useCallback(async (apiId: string, payload: any): Promise<PublishResponse> => {
+  const publishApiToDevPortal = useCallback(async (apiId: string, payload: ApiPublishPayload): Promise<PublishResponse> => {
     const { token, baseUrl } = getApiConfig();
 
     const response = await fetch(`${baseUrl}/api/v1/apis/${apiId}/devportals/publish`, {

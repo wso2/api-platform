@@ -5,6 +5,7 @@ import {
   Grid,
   Stack,
   Typography,
+  Alert,
 } from "@mui/material";
 import { useSearchParams } from "react-router-dom";
 import { useApisContext } from "../../context/ApiContext";
@@ -20,24 +21,7 @@ import DevPortalDeployCard from "./ApiPublish/DevPortalDeployCard";
 import DevPortalPickTable from "./ApiPublish/DevPortalPickTable";
 import ApiPublishModal from "./ApiPublish/ApiPublishModal";
 import type { ApiPublicationWithPortal } from "../../hooks/apiPublish";
-
-/* ---------------- helpers ---------------- */
-
-const relativeTime = (d?: string | Date | null) => {
-  if (!d) return "";
-  const date = typeof d === "string" ? new Date(d) : d;
-  const diff = Math.max(0, Date.now() - date.getTime());
-  const min = Math.floor(diff / 60000);
-  const hr = Math.floor(min / 60);
-  const mo = Math.floor(hr / (24 * 30));
-  if (mo >= 1) return `${mo} month${mo > 1 ? "s" : ""} ago`;
-  if (hr >= 24) {
-    const dd = Math.floor(hr / 24);
-    return `${dd} day${dd > 1 ? "s" : ""} ago`;
-  }
-  if (hr >= 1) return `${hr} hr${hr > 1 ? "s" : ""} ago`;
-  return `${min} min ago`;
-};
+import { relativeTime } from "../overview/utils";
 
 type Mode = "empty" | "pick" | "cards";
 
@@ -335,6 +319,12 @@ const DevelopContent: React.FC = () => {
             </Button>
           </Stack>
         </Stack>
+
+        {filteredPortals.length === 0 && selectedPortals.length > 0 && query ? (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            No dev portals match "{query}". Try a different search term.
+          </Alert>
+        ) : null}
 
         <Grid container spacing={3}>
           {filteredPortals.map((portal) => (

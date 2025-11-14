@@ -190,7 +190,7 @@ const DevPortalPickTable: React.FC<Props> = ({
             {visiblePortals.length === 0 ? (
               <TableRowNoData
                 testId="no-data-row"
-                colSpan={5}
+                colSpan={6}
                 message="No unpublished dev portals to show"
               />
             ) : (
@@ -323,7 +323,7 @@ const DevPortalPickTable: React.FC<Props> = ({
                                 }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  window.open(portal.uiUrl, "_blank");
+                                  window.open(portal.uiUrl, "_blank", "noopener,noreferrer");
                                 }}
                                 title={portal.uiUrl}
                               >

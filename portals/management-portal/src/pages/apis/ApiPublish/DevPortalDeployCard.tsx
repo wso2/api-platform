@@ -10,7 +10,6 @@ import {
 import LaunchOutlinedIcon from "@mui/icons-material/LaunchOutlined";
 import { Button } from "../../../components/src/components/Button";
 import { IconButton } from "../../../components/src/components/IconButton";
-import { Link } from "../../../components/src/components/Link";
 import { Chip } from "../../../components/src/components/Chip";
 import { PORTAL_CONSTANTS } from "../../../constants/portal";
 import BijiraDPLogo from "../../BijiraDPLogo.png";
@@ -162,26 +161,19 @@ const DevPortalDeployCard: React.FC<Props> = ({
                     mr: 0.5
                   }}
                 >
-                  
-                    <span>
-                      <Link
-                        href={portalUrl}
-                        underline="hover"
-                        target="_blank"
-                        rel="noopener"
-                        sx={{
-                          fontWeight: 600,
-                          color: 'inherit',
-                          cursor: 'pointer'
-                        }}
-                        onClick={(e: React.MouseEvent) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }}
-                      >
-                        {portalUrl}
-                      </Link>
-                    </span>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontWeight: 600,
+                      color: 'inherit',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}
+                    title={portalUrl}
+                  >
+                    {portalUrl}
+                  </Typography>
                 </Box>
                 <Tooltip
                   title={PORTAL_CONSTANTS.MESSAGES.OPEN_PORTAL_URL}

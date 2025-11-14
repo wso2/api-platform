@@ -131,14 +131,13 @@ export const ApiPublishProvider = ({ children }: ApiPublishProviderProps) => {
     [unpublishRequest]
   );
 
-  // Clear published APIs when organization changes
+  // Clear published APIs when organization changes (including when switching between orgs)
   useEffect(() => {
     if (organizationLoading) return;
-    if (!organization) {
-      setPublishedApis({});
-      setLoading(false);
-      return;
-    }
+    // Always clear when org changes, not just when it becomes null
+    // This prevents data leakage when switching between organizations
+    setPublishedApis({});
+    setLoading(false);
   }, [organization, organizationLoading]);
 
   const value = useMemo<ApiPublishContextValue>(
