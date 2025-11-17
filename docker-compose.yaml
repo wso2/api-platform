@@ -1,0 +1,15 @@
+version: "3.8"
+services:
+  envoy:
+    image: envoyproxy/envoy:v1.36.2
+    volumes:
+      - ./envoy.yaml:/etc/envoy/envoy.yaml
+    command: /usr/local/bin/envoy -c /etc/envoy/envoy.yaml --service-cluster front-proxy --file-flush-interval-msec 50
+    ports:
+      - "9000:9000"
+      - "8000:8000"
+  request_info:
+    image: renukafernando/request-info:latest
+    command: ["-addr", ":8080", "-logH", "-logB"]
+    environment:
+      - NAME=Service-1
