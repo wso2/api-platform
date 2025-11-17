@@ -114,15 +114,15 @@ graph TB
   - Extract metadata key from request
   - Get policy list for route
   - Call Core.ExecuteRequestPolicies()
-  - Translate `[]RequestPolicyResult` → ext_proc response
+  - Translate `[]RequestPolicyAction` → ext_proc response
 - `ProcessResponse()` - Handle response phase from Envoy (ext_proc)
   - Extract metadata key from request
   - Get policy list for route
   - Call Core.ExecuteResponsePolicies()
-  - Translate `[]ResponsePolicyResult` → ext_proc response
+  - Translate `[]ResponsePolicyAction` → ext_proc response
 - `GetPoliciesForKey(key string)` - Retrieve policy chain for route
 - `StreamPolicyMappings()` - xDS stream for policy configuration updates
-- `TranslatePolicyResults()` - Convert array of policy results to ext_proc format
+- `TranslatePolicyActions()` - Convert array of policy actions to ext_proc format
 
 **Configuration Storage:**
 - In-memory map: `metadata_key → []PolicyConfig`
@@ -139,31 +139,35 @@ graph TB
 - Pass arrays of policy results back to Kernel (no aggregation/transformation)
 
 **Key Functions:**
-- `ExecuteRequestPolicies(policies []Policy, ctx *RequestContext) ([]RequestPolicyResult, error)`
+- `ExecuteRequestPolicies(policies []Policy, ctx *RequestContext) ([]RequestPolicyAction, error)`
   - Iterate through policies
   - Check if policy implements `RequestPolicy` interface
-  - Execute policy and collect result
+  - Execute policy and collect action
   - Short-circuit on critical failure or ImmediateResponse
-  - Return array of results to Kernel
-- `ExecuteResponsePolicies(policies []Policy, ctx *ResponseContext) ([]ResponsePolicyResult, error)`
+  - Return array of actions to Kernel
+- `ExecuteResponsePolicies(policies []Policy, ctx *ResponseContext) ([]ResponsePolicyAction, error)`
   - Iterate through policies
   - Check if policy implements `ResponsePolicy` interface
-  - Execute policy and collect result
+  - Execute policy and collect action
   - Short-circuit on critical failure
-  - Return array of results to Kernel
+  - Return array of actions to Kernel
 
-**Policy Result Types:**
+**Policy Action Types:**
 
-Core uses separate result types for request and response phases. Request phase policies can either modify the request and continue to upstream, or return an immediate response. Response phase policies can only modify the response.
+Core uses separate action types for request and response phases. The oneof pattern is enforced using Go interfaces with private marker methods, ensuring type safety and clear semantics.
 
 ```go
 // ============ Request Phase ============
 
-// RequestPolicyResult is returned by policies during request processing
-// Contains either upstream modifications OR immediate response (oneof pattern)
-type RequestPolicyResult struct {
-    UpstreamRequest   *UpstreamRequestModifications  // continue to upstream with modifications
-    ImmediateResponse *ImmediateResponse              // short-circuit and return immediately
+// RequestPolicyAction is returned by policies during request processing
+type RequestPolicyAction struct {
+    Action RequestAction  // Contains either UpstreamRequestModifications or ImmediateResponse
+}
+
+// RequestAction is a marker interface for the oneof pattern
+// Only UpstreamRequestModifications and ImmediateResponse implement this interface
+type RequestAction interface {
+    isRequestAction()  // private marker method
 }
 
 // UpstreamRequestModifications contains all modifications to apply to the request
@@ -182,6 +186,8 @@ type UpstreamRequestModifications struct {
     Method        *string                // nil = no change (GET, POST, PUT, DELETE, etc.)
 }
 
+func (UpstreamRequestModifications) isRequestAction() {}
+
 // ImmediateResponse short-circuits policy execution and returns response immediately
 // Only valid during request phase
 type ImmediateResponse struct {
@@ -190,12 +196,19 @@ type ImmediateResponse struct {
     Body       []byte
 }
 
+func (ImmediateResponse) isRequestAction() {}
+
 // ============ Response Phase ============
 
-// ResponsePolicyResult is returned by policies during response processing
-// Can only modify the response (no short-circuit option at this phase)
-type ResponsePolicyResult struct {
-    UpstreamResponse *UpstreamResponseModifications
+// ResponsePolicyAction is returned by policies during response processing
+type ResponsePolicyAction struct {
+    Action ResponseAction  // Contains UpstreamResponseModifications
+}
+
+// ResponseAction is a marker interface for the oneof pattern
+// Only UpstreamResponseModifications implements this interface
+type ResponseAction interface {
+    isResponseAction()  // private marker method
 }
 
 // UpstreamResponseModifications contains all modifications to apply to the response
@@ -212,36 +225,41 @@ type UpstreamResponseModifications struct {
     // Response-specific modifications
     StatusCode    *int                   // nil = no change, pointer allows setting any valid code
 }
+
+func (UpstreamResponseModifications) isResponseAction() {}
 ```
 
 **Design Benefits:**
+- **True Oneof Semantics:** Single interface field enforces exactly one action type
 - **Type Safety:** Compiler prevents invalid operations (e.g., ImmediateResponse in response phase)
+- **No Nil Pointer Checks:** Interface value is never nil, always contains a concrete type
+- **Clean Type Switching:** Easy to handle different action types in Kernel
 - **Clear Semantics:** Request can fork (upstream or immediate), response can only modify
-- **No Ambiguity:** Single result type per phase, clear oneof pattern
 - **Efficient:** Pointers allow nil = no change, avoiding unnecessary allocations
 - **Matches Envoy Model:** Aligns with ext_proc protocol (continue or short-circuit)
-- **Simple API:** Policy authors work with plain structs, no instruction lists to manage
+- **Simple API:** Policy authors work with plain structs, no complex builders needed
+- **Clear Intent:** "Action" clearly indicates what the policy wants to do
 
 **Execution Flow:**
 1. Receive policy list and context from Kernel
-2. Initialize results array: `results := []RequestPolicyResult{}` (or ResponsePolicyResult)
+2. Initialize actions array: `actions := []RequestPolicyAction{}` (or ResponsePolicyAction)
 3. For each policy in order:
    - Check if policy implements appropriate interface (RequestPolicy/ResponsePolicy)
    - If not, skip to next policy
    - Execute policy with context and configuration
-   - Collect result into results array
+   - Collect action into actions array
    - Check for errors:
-     - If error and policy marked as critical → short-circuit, return results + error
-     - If ImmediateResponse (request phase only) → short-circuit, return results
+     - If error and policy marked as critical → short-circuit, return actions + error
+     - If ImmediateResponse (request phase only) → short-circuit, return actions
      - If non-critical error → log and continue
-4. Return results array to Kernel (Core does NOT aggregate or transform)
-5. Kernel translates results array into ext_proc response format
+4. Return actions array to Kernel (Core does NOT aggregate or transform)
+5. Kernel translates actions array into ext_proc response format
 
 **Execution Flow Diagram:**
 
 ```mermaid
 flowchart TD
-    Start([Receive Policy List<br/>& Context from Kernel]) --> Init[Initialize results array:<br/>results = []]
+    Start([Receive Policy List<br/>& Context from Kernel]) --> Init[Initialize actions array:<br/>actions = []]
     Init --> LoadFirst[Load First Policy]
     LoadFirst --> CheckInterface{Implements<br/>RequestPolicy?}
 
@@ -250,14 +268,14 @@ flowchart TD
 
     Execute --> CheckError{Error?}
 
-    CheckError -->|No Error| AddResult[Add result to<br/>results array]
+    CheckError -->|No Error| AddAction[Add action to<br/>actions array]
     CheckError -->|Error| CheckCritical{Policy<br/>Critical?}
 
-    CheckCritical -->|Yes| ShortCircuit[Short-circuit:<br/>Return results + error<br/>to Kernel]
+    CheckCritical -->|Yes| ShortCircuit[Short-circuit:<br/>Return actions + error<br/>to Kernel]
     CheckCritical -->|No| LogError[Log Error<br/>Continue]
 
-    LogError --> AddResult
-    AddResult --> CheckImmediate{ImmediateResponse<br/>in result?}
+    LogError --> AddAction
+    AddAction --> CheckImmediate{ImmediateResponse<br/>in action?}
 
     CheckImmediate -->|Yes| ShortCircuit
     CheckImmediate -->|No| MorePolicies{More<br/>Policies?}
@@ -265,16 +283,16 @@ flowchart TD
     Skip --> MorePolicies
     MorePolicies -->|Yes| LoadNext[Load Next Policy]
     LoadNext --> CheckInterface
-    MorePolicies -->|No| ReturnResults[Return results array<br/>to Kernel]
+    MorePolicies -->|No| ReturnActions[Return actions array<br/>to Kernel]
 
-    ReturnResults --> KernelTranslate[Kernel translates results<br/>to ext_proc response]
+    ReturnActions --> KernelTranslate[Kernel translates actions<br/>to ext_proc response]
     KernelTranslate --> End([End])
     ShortCircuit --> End
 
     style Start fill:#e1f5ff,stroke:#01579b
     style End fill:#e1f5ff,stroke:#01579b
     style ShortCircuit fill:#ffcdd2,stroke:#c62828
-    style ReturnResults fill:#c8e6c9,stroke:#2e7d32
+    style ReturnActions fill:#c8e6c9,stroke:#2e7d32
     style KernelTranslate fill:#fff9c4,stroke:#f57f17
     style CheckError fill:#fff9c4,stroke:#f57f17
     style CheckCritical fill:#fff9c4,stroke:#f57f17
@@ -303,8 +321,8 @@ type RequestPolicy interface {
     Policy
 
     // ExecuteRequest runs during request processing
-    // Returns nil result to skip (no modifications)
-    ExecuteRequest(ctx *RequestContext, config map[string]interface{}) (*RequestPolicyResult, error)
+    // Returns nil action to skip (no modifications)
+    ExecuteRequest(ctx *RequestContext, config map[string]interface{}) (*RequestPolicyAction, error)
 }
 
 // ResponsePolicy processes responses before they reach the client
@@ -312,8 +330,8 @@ type ResponsePolicy interface {
     Policy
 
     // ExecuteResponse runs during response processing
-    // Returns nil result to skip (no modifications)
-    ExecuteResponse(ctx *ResponseContext, config map[string]interface{}) (*ResponsePolicyResult, error)
+    // Returns nil action to skip (no modifications)
+    ExecuteResponse(ctx *ResponseContext, config map[string]interface{}) (*ResponsePolicyAction, error)
 }
 
 // ============ Context Types ============
@@ -369,12 +387,12 @@ func (p *JWTPolicy) Validate(config map[string]interface{}) error {
     return nil
 }
 
-func (p *JWTPolicy) ExecuteRequest(ctx *RequestContext, config map[string]interface{}) (*RequestPolicyResult, error) {
+func (p *JWTPolicy) ExecuteRequest(ctx *RequestContext, config map[string]interface{}) (*RequestPolicyAction, error) {
     token := extractToken(ctx.Headers["Authorization"])
 
     if !isValid(token) {
-        return &RequestPolicyResult{
-            ImmediateResponse: &ImmediateResponse{
+        return &RequestPolicyAction{
+            Action: ImmediateResponse{
                 StatusCode: 401,
                 Headers:    map[string]string{"WWW-Authenticate": "Bearer"},
                 Body:       []byte("Unauthorized"),
@@ -383,8 +401,8 @@ func (p *JWTPolicy) ExecuteRequest(ctx *RequestContext, config map[string]interf
     }
 
     // JWT is valid, add user ID header
-    return &RequestPolicyResult{
-        UpstreamRequest: &UpstreamRequestModifications{
+    return &RequestPolicyAction{
+        Action: UpstreamRequestModifications{
             SetHeaders: map[string]string{
                 "X-User-ID": token.Claims.Subject,
                 "X-User-Email": token.Claims.Email,
@@ -404,9 +422,9 @@ func (p *SecurityHeadersPolicy) Validate(config map[string]interface{}) error {
     return nil
 }
 
-func (p *SecurityHeadersPolicy) ExecuteResponse(ctx *ResponseContext, config map[string]interface{}) (*ResponsePolicyResult, error) {
-    return &ResponsePolicyResult{
-        UpstreamResponse: &UpstreamResponseModifications{
+func (p *SecurityHeadersPolicy) ExecuteResponse(ctx *ResponseContext, config map[string]interface{}) (*ResponsePolicyAction, error) {
+    return &ResponsePolicyAction{
+        Action: UpstreamResponseModifications{
             SetHeaders: map[string]string{
                 "X-Content-Type-Options": "nosniff",
                 "X-Frame-Options":        "DENY",
@@ -428,12 +446,12 @@ func (p *LoggingPolicy) Validate(config map[string]interface{}) error {
     return nil
 }
 
-func (p *LoggingPolicy) ExecuteRequest(ctx *RequestContext, config map[string]interface{}) (*RequestPolicyResult, error) {
+func (p *LoggingPolicy) ExecuteRequest(ctx *RequestContext, config map[string]interface{}) (*RequestPolicyAction, error) {
     log.Info("Request: %s %s", ctx.Method, ctx.Path)
     return nil, nil  // No modifications, just logging
 }
 
-func (p *LoggingPolicy) ExecuteResponse(ctx *ResponseContext, config map[string]interface{}) (*ResponsePolicyResult, error) {
+func (p *LoggingPolicy) ExecuteResponse(ctx *ResponseContext, config map[string]interface{}) (*ResponsePolicyAction, error) {
     log.Info("Response: %d for %s %s", ctx.ResponseStatus, ctx.RequestMethod, ctx.RequestPath)
     return nil, nil  // No modifications, just logging
 }
@@ -442,9 +460,9 @@ func (p *LoggingPolicy) ExecuteResponse(ctx *ResponseContext, config map[string]
 **Core Executor Integration:**
 
 ```go
-// Core executes request policies and returns array of results
-func (c *Core) ExecuteRequestPolicies(policies []Policy, ctx *RequestContext) ([]RequestPolicyResult, error) {
-    results := make([]RequestPolicyResult, 0, len(policies))
+// Core executes request policies and returns array of actions
+func (c *Core) ExecuteRequestPolicies(policies []Policy, ctx *RequestContext) ([]RequestPolicyAction, error) {
+    actions := make([]RequestPolicyAction, 0, len(policies))
 
     for _, policy := range policies {
         // Check if policy handles request phase
@@ -453,21 +471,23 @@ func (c *Core) ExecuteRequestPolicies(policies []Policy, ctx *RequestContext) ([
             continue  // Skip policies that don't implement RequestPolicy
         }
 
-        result, err := rp.ExecuteRequest(ctx, c.getConfig(policy))
+        action, err := rp.ExecuteRequest(ctx, c.getConfig(policy))
 
-        // Add result to array (even if nil)
-        if result != nil {
-            results = append(results, *result)
+        // Add action to array (even if nil)
+        if action != nil {
+            actions = append(actions, *action)
         }
 
         // Check for critical failure
         if err != nil && c.isCritical(policy) {
-            return results, err  // Short-circuit: return collected results + error
+            return actions, err  // Short-circuit: return collected actions + error
         }
 
         // Check for immediate response (short-circuit)
-        if result != nil && result.ImmediateResponse != nil {
-            return results, nil  // Short-circuit: return collected results
+        if action != nil {
+            if _, isImmediate := action.Action.(ImmediateResponse); isImmediate {
+                return actions, nil  // Short-circuit: return collected actions
+            }
         }
 
         // Non-critical errors are logged but don't stop execution
@@ -476,13 +496,13 @@ func (c *Core) ExecuteRequestPolicies(policies []Policy, ctx *RequestContext) ([
         }
     }
 
-    // Return all collected results to Kernel
-    return results, nil
+    // Return all collected actions to Kernel
+    return actions, nil
 }
 
-// Core executes response policies and returns array of results
-func (c *Core) ExecuteResponsePolicies(policies []Policy, ctx *ResponseContext) ([]ResponsePolicyResult, error) {
-    results := make([]ResponsePolicyResult, 0, len(policies))
+// Core executes response policies and returns array of actions
+func (c *Core) ExecuteResponsePolicies(policies []Policy, ctx *ResponseContext) ([]ResponsePolicyAction, error) {
+    actions := make([]ResponsePolicyAction, 0, len(policies))
 
     for _, policy := range policies {
         // Check if policy handles response phase
@@ -491,16 +511,16 @@ func (c *Core) ExecuteResponsePolicies(policies []Policy, ctx *ResponseContext) 
             continue  // Skip policies that don't implement ResponsePolicy
         }
 
-        result, err := rp.ExecuteResponse(ctx, c.getConfig(policy))
+        action, err := rp.ExecuteResponse(ctx, c.getConfig(policy))
 
-        // Add result to array (even if nil)
-        if result != nil {
-            results = append(results, *result)
+        // Add action to array (even if nil)
+        if action != nil {
+            actions = append(actions, *action)
         }
 
         // Check for critical failure
         if err != nil && c.isCritical(policy) {
-            return results, err  // Short-circuit: return collected results + error
+            return actions, err  // Short-circuit: return collected actions + error
         }
 
         // Non-critical errors are logged but don't stop execution
@@ -509,8 +529,75 @@ func (c *Core) ExecuteResponsePolicies(policies []Policy, ctx *ResponseContext) 
         }
     }
 
-    // Return all collected results to Kernel
-    return results, nil
+    // Return all collected actions to Kernel
+    return actions, nil
+}
+```
+
+**Kernel Translation Example:**
+
+```go
+// Kernel translates policy actions to ext_proc response
+func (k *Kernel) TranslateRequestActions(actions []RequestPolicyAction) (*extproc.ProcessingResponse, error) {
+    // Check for immediate response (short-circuit)
+    for _, action := range actions {
+        switch a := action.Action.(type) {
+        case ImmediateResponse:
+            return &extproc.ProcessingResponse{
+                Response: &extproc.ProcessingResponse_ImmediateResponse{
+                    ImmediateResponse: &extproc.ImmediateResponse{
+                        Status: &extproc.HttpStatus{Code: uint32(a.StatusCode)},
+                        Headers: convertHeaders(a.Headers),
+                        Body: string(a.Body),
+                    },
+                },
+            }, nil
+        }
+    }
+
+    // Aggregate upstream modifications from all actions
+    var allSetHeaders = make(map[string]string)
+    var allRemoveHeaders []string
+    var allAppendHeaders = make(map[string][]string)
+    var finalBody []byte
+    var finalPath *string
+    var finalMethod *string
+
+    for _, action := range actions {
+        switch a := action.Action.(type) {
+        case UpstreamRequestModifications:
+            // Merge headers
+            for k, v := range a.SetHeaders {
+                allSetHeaders[k] = v
+            }
+            allRemoveHeaders = append(allRemoveHeaders, a.RemoveHeaders...)
+            for k, v := range a.AppendHeaders {
+                allAppendHeaders[k] = append(allAppendHeaders[k], v...)
+            }
+
+            // Last non-nil body wins
+            if a.Body != nil {
+                finalBody = a.Body
+            }
+
+            // Last non-nil path/method wins
+            if a.Path != nil {
+                finalPath = a.Path
+            }
+            if a.Method != nil {
+                finalMethod = a.Method
+            }
+        }
+    }
+
+    // Build ext_proc response with header mutations
+    return &extproc.ProcessingResponse{
+        Response: &extproc.ProcessingResponse_RequestHeaders{
+            RequestHeaders: &extproc.HeadersResponse{
+                Response: buildHeaderMutations(allSetHeaders, allRemoveHeaders, allAppendHeaders),
+            },
+        },
+    }, nil
 }
 ```
 
@@ -520,6 +607,7 @@ func (c *Core) ExecuteResponsePolicies(policies []Policy, ctx *ResponseContext) 
 - **Type Safety:** Compiler ensures correct return types per phase
 - **Flexible:** Policies can implement one or both phases
 - **Extensible:** New policy types can be added without breaking existing code
+- **Clean Type Switching:** Kernel easily handles different result types with type switches
 
 ---
 
@@ -638,13 +726,13 @@ sequenceDiagram
     Envoy->>Kernel: ProcessingRequest (gRPC)<br/>metadata: {"route_key": "api-v1-users"}<br/>+ headers + body
     Note over Kernel: Extract key: "api-v1-users"<br/>Lookup policies:<br/>[apiKey, jwt, setHeader]
     Kernel->>Core: ExecuteRequestPolicies(policies, context)
-    Note over Core: Initialize results = []<br/>Check apiKeyValidation<br/>implements RequestPolicy ✓
+    Note over Core: Initialize actions = []<br/>Check apiKeyValidation<br/>implements RequestPolicy ✓
     Core->>Policy: ExecuteRequest(ctx, config)
     Note over Policy: Check API key<br/>Result: FAILURE
-    Policy-->>Core: RequestPolicyResult{<br/>ImmediateResponse: {<br/>status: 403,<br/>body: "Invalid API Key"<br/>}}, error
-    Note over Core: Critical policy failed!<br/>Short-circuit: Stop execution<br/>Add result to results array
-    Core-->>Kernel: []RequestPolicyResult{<br/>[0]: ImmediateResponse{403}<br/>}, error
-    Note over Kernel: Translate results array<br/>to ext_proc response
+    Policy-->>Core: RequestPolicyAction{<br/>Action: ImmediateResponse{<br/>status: 403,<br/>body: "Invalid API Key"<br/>}}, error
+    Note over Core: Critical policy failed!<br/>Short-circuit: Stop execution<br/>Add action to actions array
+    Core-->>Kernel: []RequestPolicyAction{<br/>[0]: ImmediateResponse{403}<br/>}, error
+    Note over Kernel: Translate actions array<br/>to ext_proc response
     Kernel-->>Envoy: ProcessingResponse<br/>(ImmediateResponse)
     Envoy->>Client: 403 Forbidden<br/>"Invalid API Key"
     Note over Envoy: Skip upstream
@@ -666,26 +754,26 @@ sequenceDiagram
     Client->>Envoy: HTTP Request
     Envoy->>Kernel: ProcessingRequest (gRPC)<br/>metadata + headers + body
     Kernel->>Core: ExecuteRequestPolicies(policies, context)
-    Note over Core: Initialize results = []
+    Note over Core: Initialize actions = []
 
     Core->>P1: ExecuteRequest(ctx, config)
     Note over P1: Validate API key<br/>SUCCESS
-    P1-->>Core: RequestPolicyResult{<br/>UpstreamRequest: nil<br/>}
-    Note over Core: Add to results[0]
+    P1-->>Core: RequestPolicyAction{<br/>Action: UpstreamRequest{}<br/>}
+    Note over Core: Add to actions[0]
 
     Core->>P2: ExecuteRequest(ctx, config)
     Note over P2: Validate JWT<br/>Extract claims<br/>SUCCESS
-    P2-->>Core: RequestPolicyResult{<br/>UpstreamRequest: {<br/>SetHeaders: {"X-User-ID": "12345"}<br/>}}
-    Note over Core: Add to results[1]
+    P2-->>Core: RequestPolicyAction{<br/>Action: UpstreamRequest{<br/>SetHeaders: {"X-User-ID": "12345"}<br/>}}
+    Note over Core: Add to actions[1]
 
     Core->>P3: ExecuteRequest(ctx, config)
     Note over P3: Add custom headers<br/>SUCCESS
-    P3-->>Core: RequestPolicyResult{<br/>UpstreamRequest: {<br/>SetHeaders: {"X-Custom": "value"}<br/>}}
-    Note over Core: Add to results[2]
+    P3-->>Core: RequestPolicyAction{<br/>Action: UpstreamRequest{<br/>SetHeaders: {"X-Custom": "value"}<br/>}}
+    Note over Core: Add to actions[2]
 
-    Note over Core: All policies complete<br/>Return results array
-    Core-->>Kernel: []RequestPolicyResult{<br/>[0]: nil modifications,<br/>[1]: SetHeaders{"X-User-ID": "12345"},<br/>[2]: SetHeaders{"X-Custom": "value"}<br/>}
-    Note over Kernel: Aggregate & translate<br/>results array to<br/>ext_proc HeaderMutation
+    Note over Core: All policies complete<br/>Return actions array
+    Core-->>Kernel: []RequestPolicyAction{<br/>[0]: nil modifications,<br/>[1]: SetHeaders{"X-User-ID": "12345"},<br/>[2]: SetHeaders{"X-Custom": "value"}<br/>}
+    Note over Kernel: Aggregate & translate<br/>actions array to<br/>ext_proc HeaderMutation
     Kernel-->>Envoy: ProcessingResponse<br/>(HeaderMutations)
     Note over Envoy: Apply header mutations
     Envoy->>Upstream: Forward request with<br/>modified headers
