@@ -103,29 +103,33 @@ graph TB
 
 **Responsibilities:**
 - Implement Envoy ext_proc gRPC service (port 9001)
-- Maintain route-to-policy mappings (key → policy list)
+- Maintain route-to-policy mappings (key → request policy list, response policy list)
 - Extract metadata key from Envoy requests
-- Invoke Worker Core with appropriate policy chain
+- Invoke Worker Core with appropriate policy chain (request or response flow)
 - **Translate policy results to ext_proc responses** (Core → Envoy format)
 - Expose xDS-based Policy Discovery Service (gRPC streaming, port 9002)
 
 **Key Functions:**
 - `ProcessRequest()` - Handle request phase from Envoy (ext_proc)
   - Extract metadata key from request
-  - Get policy list for route
+  - Get request policy list for route
   - Call Core.ExecuteRequestPolicies()
   - Translate `[]RequestPolicyAction` → ext_proc response
 - `ProcessResponse()` - Handle response phase from Envoy (ext_proc)
   - Extract metadata key from request
-  - Get policy list for route
+  - Get response policy list for route
   - Call Core.ExecuteResponsePolicies()
   - Translate `[]ResponsePolicyAction` → ext_proc response
-- `GetPoliciesForKey(key string)` - Retrieve policy chain for route
+- `GetRequestPoliciesForKey(key string)` - Retrieve request policy chain for route
+- `GetResponsePoliciesForKey(key string)` - Retrieve response policy chain for route
 - `StreamPolicyMappings()` - xDS stream for policy configuration updates
 - `TranslatePolicyActions()` - Convert array of policy actions to ext_proc format
 
 **Configuration Storage:**
-- In-memory map: `metadata_key → []PolicyConfig`
+- In-memory map: `metadata_key → RouteConfig`
+- RouteConfig contains:
+  - `RequestPolicies []PolicyConfig` - Policies executed during request flow
+  - `ResponsePolicies []PolicyConfig` - Policies executed during response flow
 - PolicyConfig includes: policy name, parameters, enabled flag
 - Version tracking for xDS protocol (resource version strings)
 
@@ -134,7 +138,7 @@ graph TB
 **Responsibilities:**
 - Maintain policy registry (name → Policy implementation)
 - Execute policy chains in order
-- Implement short-circuit logic (stop on first critical policy failure)
+- Implement short-circuit logic (stop when action.Action.StopExecution() returns true)
 - Collect policy results into arrays
 - Pass arrays of policy results back to Kernel (no aggregation/transformation)
 
@@ -889,11 +893,14 @@ message PolicyMapping {
   // Route key (metadata key from Envoy)
   string route_key = 1;
 
-  // List of policies to execute for this route
-  repeated PolicyConfig policies = 2;
+  // Policies to execute during request flow
+  repeated PolicyConfig request_policies = 2;
+
+  // Policies to execute during response flow
+  repeated PolicyConfig response_policies = 3;
 
   // Resource metadata
-  ResourceMetadata metadata = 3;
+  ResourceMetadata metadata = 4;
 }
 
 // Individual policy configuration
@@ -949,7 +956,7 @@ message ResourceMetadata {
 ```json
 {
   "route_key": "api-v1-users",
-  "policies": [
+  "request_policies": [
     {
       "name": "apiKeyValidation",
       "enabled": true,
@@ -977,6 +984,26 @@ message ResourceMetadata {
           {
             "name": "X-Custom-Header",
             "value": "custom-value",
+            "action": "SET"
+          }
+        ]
+      }
+    }
+  ],
+  "response_policies": [
+    {
+      "name": "securityHeaders",
+      "enabled": true,
+      "config": {
+        "headers": [
+          {
+            "name": "X-Content-Type-Options",
+            "value": "nosniff",
+            "action": "SET"
+          },
+          {
+            "name": "X-Frame-Options",
+            "value": "DENY",
             "action": "SET"
           }
         ]
