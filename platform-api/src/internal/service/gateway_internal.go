@@ -172,6 +172,7 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 			Version:          notification.Configuration.Data.Version,
 			ProjectID:        projectID,
 			OrganizationID:   orgID,
+			Provider:         "admin", // Default provider
 			LifeCycleStatus:  "CREATED",
 			Type:             "HTTP",
 			Transport:        []string{"http", "https"},
