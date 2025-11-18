@@ -297,9 +297,18 @@ type ValidationRules struct {
 
 **Policy Definition & Versioning:**
 
+Policy definitions are specified in **YAML files** alongside the policy implementation. This approach provides:
+- ✅ Separation of schema from code (no recompilation needed for schema changes)
+- ✅ Language-agnostic schema definition (supports Go plugins, WASM, external processors)
+- ✅ Auto-discovery at startup (scan policies directory)
+- ✅ Easy version management (directory-based versioning)
+- ✅ Tooling support (validation, documentation generation, UI forms)
+
+**Go Type Definitions (Internal Representation):**
+
 ```go
 // PolicyDefinition describes a specific version of a policy
-// Each version is a separate PolicyDefinition with its own schema
+// Loaded from YAML at startup or defined in Go for built-in policies
 type PolicyDefinition struct {
     // Policy name (e.g., "jwtValidation", "rateLimiting")
     Name string
@@ -336,218 +345,319 @@ type PolicyRegistry struct {
     // Alternative nested structure for easier version lookup:
     // map[policyName]map[version]*PolicyDefinition
 }
+
+// LoadPolicyDefinitionFromYAML loads a policy schema from YAML file
+func LoadPolicyDefinitionFromYAML(schemaPath string) (*PolicyDefinition, error) {
+    data, err := os.ReadFile(schemaPath)
+    if err != nil {
+        return nil, err
+    }
+
+    var def PolicyDefinition
+    if err := yaml.Unmarshal(data, &def); err != nil {
+        return nil, err
+    }
+
+    // Validate the schema definition itself
+    if err := validateSchemaDefinition(&def); err != nil {
+        return nil, fmt.Errorf("invalid schema: %w", err)
+    }
+
+    return &def, nil
+}
+
+// RegisterFromDirectory auto-discovers and registers all policies in a directory
+func (r *PolicyRegistry) RegisterFromDirectory(policiesDir string) error {
+    return filepath.Walk(policiesDir, func(path string, info os.FileInfo, err error) error {
+        if filepath.Base(path) == "policy.yaml" {
+            def, err := LoadPolicyDefinitionFromYAML(path)
+            if err != nil {
+                return fmt.Errorf("failed to load %s: %w", path, err)
+            }
+
+            key := fmt.Sprintf("%s:%s", def.Name, def.Version)
+            r.definitions[key] = def
+            log.Info("Registered policy", "name", def.Name, "version", def.Version)
+        }
+        return nil
+    })
+}
 ```
 
-**Example Policy Definitions:**
+**Policy Directory Structure:**
 
-```go
-// JWT Validation v1.0.0 - Basic validation
-var JWTValidationV1 = PolicyDefinition{
-    Name:        "jwtValidation",
-    Version:     "v1.0.0",
-    Description: "Validates JWT tokens using JWKS",
-    SupportsRequestPhase:  true,
-    SupportsResponsePhase: false,
-    ParameterSchemas: []ParameterSchema{
-        {
-            Name:        "headerName",
-            Type:        ParameterTypeString,
-            Description: "HTTP header containing the JWT",
-            Required:    true,
-            Default:     "Authorization",
-            Validation: ValidationRules{
-                MinLength: ptr(1),
-                MaxLength: ptr(256),
-                Pattern:   ptr("^[A-Za-z0-9-]+$"),
-            },
-        },
-        {
-            Name:        "tokenPrefix",
-            Type:        ParameterTypeString,
-            Description: "Prefix to strip from header value (e.g., 'Bearer ')",
-            Required:    false,
-            Default:     "Bearer ",
-        },
-        {
-            Name:        "jwksUrl",
-            Type:        ParameterTypeURI,
-            Description: "URL to fetch JSON Web Key Set",
-            Required:    true,
-            Validation: ValidationRules{
-                Pattern: ptr("^https://.*"),
-            },
-        },
-        {
-            Name:        "issuer",
-            Type:        ParameterTypeString,
-            Description: "Expected JWT issuer claim",
-            Required:    true,
-            Validation: ValidationRules{
-                MinLength: ptr(1),
-                MaxLength: ptr(256),
-            },
-        },
-        {
-            Name:        "audiences",
-            Type:        ParameterTypeStringArray,
-            Description: "Accepted audience values",
-            Required:    true,
-            Validation: ValidationRules{
-                MinItems: ptr(1),
-                MaxItems: ptr(10),
-            },
-        },
-        {
-            Name:        "clockSkew",
-            Type:        ParameterTypeDuration,
-            Description: "Allowed clock skew for exp/nbf validation",
-            Required:    false,
-            Default:     "30s",
-            Validation: ValidationRules{
-                MinDuration: ptr(0 * time.Second),
-                MaxDuration: ptr(5 * time.Minute),
-            },
-        },
-    },
-    Examples: []PolicyExample{
-        {
-            Description: "Basic JWT validation with Auth0",
-            Config: map[string]interface{}{
-                "headerName":  "Authorization",
-                "tokenPrefix": "Bearer ",
-                "jwksUrl":     "https://your-tenant.auth0.com/.well-known/jwks.json",
-                "issuer":      "https://your-tenant.auth0.com/",
-                "audiences":   []string{"https://api.example.com"},
-                "clockSkew":   "30s",
-            },
-        },
-    },
-}
+```
+policies/
+├── jwt-validation/
+│   ├── v1.0.0/
+│   │   ├── policy.yaml          # Schema definition (required)
+│   │   ├── jwt.go               # Go implementation
+│   │   └── README.md            # Developer documentation
+│   └── v2.0.0/
+│       ├── policy.yaml          # Different schema for v2
+│       ├── jwt.go               # Enhanced implementation
+│       └── README.md
+├── rate-limiting/
+│   └── v1.0.0/
+│       ├── policy.yaml
+│       ├── ratelimit.go
+│       └── examples/
+│           ├── basic.yaml       # Example configurations
+│           └── advanced.yaml
+└── api-key-validation/
+    └── v1.0.0/
+        ├── policy.yaml
+        └── apikey.go
+```
 
-// JWT Validation v2.0.0 - Extended with caching and claim extraction
-var JWTValidationV2 = PolicyDefinition{
-    Name:        "jwtValidation",
-    Version:     "v2.0.0",
-    Description: "Validates JWT tokens with advanced caching and claim extraction",
-    SupportsRequestPhase:  true,
-    SupportsResponsePhase: false,
-    ParameterSchemas: []ParameterSchema{
-        // All v1.0.0 parameters (inherited conceptually)
-        {Name: "headerName", Type: ParameterTypeString, Required: true, Default: "Authorization"},
-        {Name: "tokenPrefix", Type: ParameterTypeString, Required: false, Default: "Bearer "},
-        {Name: "jwksUrl", Type: ParameterTypeURI, Required: true},
-        {Name: "issuer", Type: ParameterTypeString, Required: true},
-        {Name: "audiences", Type: ParameterTypeStringArray, Required: true},
-        {Name: "clockSkew", Type: ParameterTypeDuration, Required: false, Default: "30s"},
+**Example Policy Definitions (YAML Format):**
 
-        // New parameters in v2.0.0
-        {
-            Name:        "cacheTTL",
-            Type:        ParameterTypeDuration,
-            Description: "How long to cache JWKS keys",
-            Required:    false,
-            Default:     "1h",
-            Validation: ValidationRules{
-                MinDuration: ptr(1 * time.Minute),
-                MaxDuration: ptr(24 * time.Hour),
-            },
-        },
-        {
-            Name:        "extractClaims",
-            Type:        ParameterTypeStringArray,
-            Description: "JWT claims to extract and inject as headers",
-            Required:    false,
-            Validation: ValidationRules{
-                MaxItems: ptr(20),
-            },
-        },
-        {
-            Name:        "claimHeaderPrefix",
-            Type:        ParameterTypeString,
-            Description: "Prefix for injected claim headers",
-            Required:    false,
-            Default:     "X-JWT-",
-        },
-    },
-}
+**JWT Validation v1.0.0** (`policies/jwt-validation/v1.0.0/policy.yaml`):
 
-// Rate Limiting v1.0.0
-var RateLimitingV1 = PolicyDefinition{
-    Name:        "rateLimiting",
-    Version:     "v1.0.0",
-    Description: "Token bucket rate limiting per identifier",
-    SupportsRequestPhase:  true,
-    SupportsResponsePhase: false,
-    ParameterSchemas: []ParameterSchema{
-        {
-            Name:        "requestsPerSecond",
-            Type:        ParameterTypeFloat,
-            Description: "Maximum requests per second",
-            Required:    true,
-            Validation: ValidationRules{
-                Minimum:    ptr(0.1),
-                Maximum:    ptr(1000000.0),
-                MultipleOf: ptr(0.1),
-            },
-        },
-        {
-            Name:        "burstSize",
-            Type:        ParameterTypeInt,
-            Description: "Maximum burst size (tokens in bucket)",
-            Required:    true,
-            Validation: ValidationRules{
-                Minimum: ptr(1.0),
-                Maximum: ptr(10000.0),
-            },
-        },
-        {
-            Name:        "identifierSource",
-            Type:        ParameterTypeString,
-            Description: "How to identify the client",
-            Required:    true,
-            Validation: ValidationRules{
-                Enum: []string{"ip", "header", "jwt_claim"},
-            },
-        },
-        {
-            Name:        "identifierKey",
-            Type:        ParameterTypeString,
-            Description: "Header name or JWT claim name for identification",
-            Required:    false,
-            Validation: ValidationRules{
-                MinLength: ptr(1),
-                MaxLength: ptr(256),
-            },
-        },
-        {
-            Name:        "rejectStatusCode",
-            Type:        ParameterTypeInt,
-            Description: "HTTP status code when rate limit exceeded",
-            Required:    false,
-            Default:     429,
-            Validation: ValidationRules{
-                Minimum: ptr(400.0),
-                Maximum: ptr(599.0),
-            },
-        },
-        {
-            Name:        "enableRetryAfterHeader",
-            Type:        ParameterTypeBool,
-            Description: "Include Retry-After header in response",
-            Required:    false,
-            Default:     true,
-        },
-    },
-}
+```yaml
+name: jwtValidation
+version: v1.0.0
+description: Validates JWT tokens using JWKS
+supportsRequestPhase: true
+supportsResponsePhase: false
+
+parameters:
+  - name: headerName
+    type: string
+    description: HTTP header containing the JWT
+    required: true
+    default: "Authorization"
+    validation:
+      minLength: 1
+      maxLength: 256
+      pattern: "^[A-Za-z0-9-]+$"
+
+  - name: tokenPrefix
+    type: string
+    description: "Prefix to strip from header value (e.g., 'Bearer ')"
+    required: false
+    default: "Bearer "
+
+  - name: jwksUrl
+    type: uri
+    description: URL to fetch JSON Web Key Set
+    required: true
+    validation:
+      pattern: "^https://.*"
+
+  - name: issuer
+    type: string
+    description: Expected JWT issuer claim
+    required: true
+    validation:
+      minLength: 1
+      maxLength: 256
+
+  - name: audiences
+    type: string_array
+    description: Accepted audience values
+    required: true
+    validation:
+      minItems: 1
+      maxItems: 10
+
+  - name: clockSkew
+    type: duration
+    description: Allowed clock skew for exp/nbf validation
+    required: false
+    default: "30s"
+    validation:
+      minDuration: "0s"
+      maxDuration: "5m"
+
+examples:
+  - description: Basic JWT validation with Auth0
+    config:
+      headerName: "Authorization"
+      tokenPrefix: "Bearer "
+      jwksUrl: "https://your-tenant.auth0.com/.well-known/jwks.json"
+      issuer: "https://your-tenant.auth0.com/"
+      audiences:
+        - "https://api.example.com"
+      clockSkew: "30s"
+```
+
+**JWT Validation v2.0.0** (`policies/jwt-validation/v2.0.0/policy.yaml`):
+
+```yaml
+name: jwtValidation
+version: v2.0.0
+description: Validates JWT tokens with advanced caching and claim extraction
+supportsRequestPhase: true
+supportsResponsePhase: false
+
+parameters:
+  # All v1.0.0 parameters (maintained for backward compatibility)
+  - name: headerName
+    type: string
+    description: HTTP header containing the JWT
+    required: true
+    default: "Authorization"
+
+  - name: tokenPrefix
+    type: string
+    description: "Prefix to strip from header value"
+    required: false
+    default: "Bearer "
+
+  - name: jwksUrl
+    type: uri
+    description: URL to fetch JSON Web Key Set
+    required: true
+    validation:
+      pattern: "^https://.*"
+
+  - name: issuer
+    type: string
+    description: Expected JWT issuer claim
+    required: true
+
+  - name: audiences
+    type: string_array
+    description: Accepted audience values
+    required: true
+    validation:
+      minItems: 1
+      maxItems: 10
+
+  - name: clockSkew
+    type: duration
+    description: Allowed clock skew for exp/nbf validation
+    required: false
+    default: "30s"
+
+  # New parameters in v2.0.0
+  - name: cacheTTL
+    type: duration
+    description: How long to cache JWKS keys
+    required: false
+    default: "1h"
+    validation:
+      minDuration: "1m"
+      maxDuration: "24h"
+
+  - name: extractClaims
+    type: string_array
+    description: JWT claims to extract and inject as headers
+    required: false
+    validation:
+      maxItems: 20
+
+  - name: claimHeaderPrefix
+    type: string
+    description: Prefix for injected claim headers
+    required: false
+    default: "X-JWT-"
+
+examples:
+  - description: JWT validation with claim extraction
+    config:
+      jwksUrl: "https://auth.example.com/.well-known/jwks.json"
+      issuer: "https://auth.example.com/"
+      audiences: ["https://api.example.com"]
+      cacheTTL: "2h"
+      extractClaims: ["sub", "email", "roles"]
+      claimHeaderPrefix: "X-JWT-"
+```
+
+**Rate Limiting v1.0.0** (`policies/rate-limiting/v1.0.0/policy.yaml`):
+
+```yaml
+name: rateLimiting
+version: v1.0.0
+description: Token bucket rate limiting per identifier
+supportsRequestPhase: true
+supportsResponsePhase: false
+
+parameters:
+  - name: requestsPerSecond
+    type: float
+    description: Maximum requests per second
+    required: true
+    validation:
+      minimum: 0.1
+      maximum: 1000000.0
+      multipleOf: 0.1
+
+  - name: burstSize
+    type: int
+    description: Maximum burst size (tokens in bucket)
+    required: true
+    validation:
+      minimum: 1
+      maximum: 10000
+
+  - name: identifierSource
+    type: string
+    description: How to identify the client
+    required: true
+    validation:
+      enum:
+        - ip
+        - header
+        - jwt_claim
+
+  - name: identifierKey
+    type: string
+    description: Header name or JWT claim name for identification
+    required: false
+    validation:
+      minLength: 1
+      maxLength: 256
+
+  - name: rejectStatusCode
+    type: int
+    description: HTTP status code when rate limit exceeded
+    required: false
+    default: 429
+    validation:
+      minimum: 400
+      maximum: 599
+
+  - name: enableRetryAfterHeader
+    type: bool
+    description: Include Retry-After header in response
+    required: false
+    default: true
+
+examples:
+  - description: Basic rate limiting by IP
+    config:
+      requestsPerSecond: 100
+      burstSize: 20
+      identifierSource: ip
+      rejectStatusCode: 429
+      enableRetryAfterHeader: true
+
+  - description: Rate limiting by API key header
+    config:
+      requestsPerSecond: 1000
+      burstSize: 50
+      identifierSource: header
+      identifierKey: X-API-Key
 ```
 
 **Validation Flow:**
 
-1. **Configuration Time** (when xDS config is received):
+1. **Startup Time** (policy engine initialization):
+   - Scan policies directory (e.g., `/opt/policy-engine/policies`)
+   - For each `policy.yaml` file found:
+     - Load and parse YAML into PolicyDefinition struct
+     - Validate the schema definition itself (required fields, valid types, etc.)
+     - Register in PolicyRegistry with key "name:version"
+     - Log successful registration
+   - Load corresponding policy implementations (Go code, plugins, or WASM modules)
+
+2. **Configuration Time** (when xDS config is received):
    - Kernel receives PolicySpec from xDS with name, version, and raw parameters
    - Looks up PolicyDefinition from registry using "name:version" key
-   - If version not found → reject configuration with clear error
-   - Validates each parameter against ParameterSchema:
+   - If version not found → reject configuration with clear error message
+   - Validates each parameter against ParameterSchema from loaded YAML:
      - Type checking (string, int, duration, etc.)
      - Format validation (email, URI, regex, etc.)
      - Constraint validation (min/max, pattern, enum, etc.)
@@ -708,10 +818,13 @@ type CELEvaluator interface {
 **Design Benefits:**
 
 - ✅ **Type Safety**: Strong typing with Go type system
-- ✅ **Version Independence**: Each policy version has its own complete definition
+- ✅ **YAML-Based Schemas**: Policy definitions in YAML for easy authoring and tooling support
+- ✅ **Separation of Concerns**: Schema definition (YAML) separate from implementation (Go code)
+- ✅ **Auto-Discovery**: Policies automatically loaded from directory at startup
+- ✅ **Version Independence**: Each policy version has its own complete definition and directory
 - ✅ **Validation at Config Time**: Fail fast with clear errors, not during request processing
 - ✅ **Industry Standard**: Follows OpenAPI v3 / JSON Schema / Kubernetes CRD patterns
-- ✅ **Self-Documenting**: ParameterSchema serves as living documentation
+- ✅ **Self-Documenting**: YAML schemas serve as living documentation
 - ✅ **Backward Compatibility**: Multiple versions can coexist, gradual migration
 - ✅ **Extensible**: Easy to add new types and validation rules
 - ✅ **CEL Support**: Custom validation expressions for complex constraints and conditional execution
@@ -722,6 +835,8 @@ type CELEvaluator interface {
 - ✅ **Protobuf Compatible**: Can be mapped to protobuf messages for xDS
 - ✅ **Flexible Policies**: Same policy can behave differently based on path, method, headers, environment
 - ✅ **Cost Efficiency**: Skip expensive policies when conditions not met (e.g., skip JWT validation for public endpoints)
+- ✅ **Tooling Friendly**: YAML schemas enable UI generation, CLI tools, and IDE support
+- ✅ **Language Agnostic**: Schema format supports future plugin systems (WASM, external processors)
 
 ### 2.2 Worker: Core
 
@@ -1770,14 +1885,30 @@ policy-engine/
 ├── worker/
 │   ├── core/
 │   │   ├── executor.go       # Policy chain executor
-│   │   ├── registry.go       # Policy registry
+│   │   ├── registry.go       # Policy registry (loads from YAML)
+│   │   ├── loader.go         # YAML schema loader
 │   │   └── action.go         # Action types
 │   └── policies/
 │       ├── interface.go      # Policy interface
-│       ├── setheader.go      # SetHeader policy
-│       ├── jwt.go            # JWT validation policy
-│       ├── apikey.go         # API Key validation policy
-│       └── transform.go      # Request transformation policy
+│       ├── setheader/
+│       │   ├── v1.0.0/
+│       │   │   ├── policy.yaml       # Schema definition
+│       │   │   └── setheader.go      # Implementation
+│       ├── jwt-validation/
+│       │   ├── v1.0.0/
+│       │   │   ├── policy.yaml       # Schema definition
+│       │   │   └── jwt.go            # Implementation
+│       │   └── v2.0.0/
+│       │       ├── policy.yaml       # Enhanced schema
+│       │       └── jwt.go            # Enhanced implementation
+│       ├── api-key-validation/
+│       │   └── v1.0.0/
+│       │       ├── policy.yaml
+│       │       └── apikey.go
+│       └── request-transformation/
+│           └── v1.0.0/
+│               ├── policy.yaml
+│               └── transform.go
 ├── proto/
 │   ├── envoy/                # Envoy ext_proc proto (from go-control-plane)
 │   └── policyengine/         # Policy Discovery Service protos
@@ -1787,9 +1918,12 @@ policy-engine/
 │               ├── policy_mapping.proto # PolicyMapping resource
 │               └── admin.proto         # Optional admin service
 ├── pkg/
-│   └── xds/
-│       ├── cache.go          # xDS snapshot cache
-│       └── server.go         # xDS server helpers
+│   ├── xds/
+│   │   ├── cache.go          # xDS snapshot cache
+│   │   └── server.go         # xDS server helpers
+│   └── validation/
+│       ├── schema.go         # Schema validation logic
+│       └── cel.go            # CEL expression evaluator
 ├── config/
 │   └── config.go             # Configuration structures
 └── go.mod
@@ -1800,7 +1934,9 @@ policy-engine/
 - **Envoy go-control-plane:** `github.com/envoyproxy/go-control-plane` - For ext_proc proto definitions and xDS types
 - **gRPC:** `google.golang.org/grpc` - For both ext_proc and xDS gRPC services
 - **Protocol Buffers:** `google.golang.org/protobuf` - For proto message handling
+- **YAML:** `gopkg.in/yaml.v3` - For parsing policy.yaml schema files
 - **JWT:** `github.com/golang-jwt/jwt/v5` - For JWT validation policy
+- **CEL:** `github.com/google/cel-go` - For CEL expression evaluation (ExecutionCondition, custom validations)
 - **Testing:** Standard library `testing` + `github.com/stretchr/testify`
 
 ### 6.3 Configuration
@@ -1816,7 +1952,16 @@ worker:
   policyTimeout: 5s
 
 policies:
-  pluginDir: "/opt/policy-engine/plugins"
+  # Directory containing policy definitions and implementations
+  # Each policy should be in <policiesDir>/<policy-name>/<version>/
+  # with a policy.yaml schema file and implementation
+  policiesDir: "/opt/policy-engine/policies"
+
+  # Auto-reload policy schemas when YAML files change (development mode)
+  autoReload: false
+
+  # Watch interval for auto-reload (if enabled)
+  watchInterval: 5s
 
 logging:
   level: "info"
@@ -1867,23 +2012,25 @@ logging:
 ### 8.2 Enhanced Features
 
 - **Policy Composition:** Support policy groups and sub-chains
-- **Conditional Execution:** Execute policies based on conditions (if-then-else)
-- **Policy Versioning:** Support multiple versions of same policy
 - **A/B Testing:** Route percentage of traffic to different policy chains
 - **Caching:** Cache policy results for idempotent operations
+- **Policy Templates:** Reusable parameter templates for common configurations
 
 ### 8.3 Integration & Extensibility
 
-- **Plugin System:** Dynamic loading of policies via Go plugins or WASM
+- **Plugin System:** Dynamic loading of policies via Go plugins or WASM modules
 - **External Policy Servers:** Delegate policy evaluation to external services (OPA, etc.)
-- **Policy Language:** DSL for defining policies without code
+- **Custom Validators:** Allow policy authors to define custom validation functions
+- **Schema Extensions:** Support for custom parameter types beyond built-in types
 
 ### 8.4 Operations
 
-- **Hot Reload:** Reload policy configurations without restart
-- **Admin UI:** Web dashboard for policy management
-- **Policy Testing:** Test framework for validating policies
+- **Hot Reload:** Watch YAML files and reload policy schemas without restart (partially implemented with `autoReload` config)
+- **Admin UI:** Web dashboard for policy management with form generation from YAML schemas
+- **Policy Testing:** Test framework for validating policies with example configurations
 - **Policy Simulation:** Dry-run mode to test policies without enforcement
+- **Schema Validation CLI:** Command-line tool to validate policy.yaml files before deployment
+- **Documentation Generator:** Auto-generate policy documentation from YAML schemas
 
 ---
 
