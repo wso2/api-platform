@@ -23,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/pb33f/libopenapi"
 	v2high "github.com/pb33f/libopenapi/datamodel/high/v2"
@@ -1125,7 +1126,10 @@ func (u *APIUtil) ValidateAPIDefinitionConsistency(openAPIContent []byte, wso2Ar
 
 // FetchOpenAPIFromURL fetches OpenAPI content from a URL
 func (u *APIUtil) FetchOpenAPIFromURL(url string) ([]byte, error) {
-	resp, err := http.Get(url)
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	resp, err := client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch URL: %w", err)
 	}
