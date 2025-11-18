@@ -1404,6 +1404,10 @@ func (u *APIUtil) extractOperationsFromV2Paths(paths *v2high.Paths) []dto.Operat
 func (u *APIUtil) convertSwagger2ToBackendServices(host, basePath string, schemes []string) []dto.BackendService {
 	var backendServices []dto.BackendService
 
+	if host == "" {
+		return backendServices // No host specified, cannot create backend services
+	}
+
 	if len(schemes) == 0 {
 		schemes = []string{"https"} // Default to HTTPS
 	}

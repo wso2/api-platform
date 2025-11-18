@@ -1329,8 +1329,8 @@ func (s *APIService) ValidateOpenAPIDefinition(req *dto.ValidateOpenAPIRequest) 
 	if req.URL != "" {
 		content, err = s.apiUtil.FetchOpenAPIFromURL(req.URL)
 		if err != nil {
+			content = make([]byte, 0)
 			response.Errors = append(response.Errors, fmt.Sprintf("failed to fetch OpenAPI from URL: %s", err.Error()))
-			return response, nil
 		}
 	}
 
@@ -1362,8 +1362,6 @@ func (s *APIService) ValidateOpenAPIDefinition(req *dto.ValidateOpenAPIRequest) 
 		return response, nil
 	}
 
-	response.IsAPIDefinitionValid = true
-
 	// Parse API specification to extract metadata directly into API DTO using libopenapi
 	api, err := s.apiUtil.ParseAPIDefinition(content)
 	if err != nil {
@@ -1372,6 +1370,7 @@ func (s *APIService) ValidateOpenAPIDefinition(req *dto.ValidateOpenAPIRequest) 
 	}
 
 	// Set the parsed API for response
+	response.IsAPIDefinitionValid = true
 	response.API = api
 
 	return response, nil
