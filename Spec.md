@@ -104,6 +104,9 @@ graph TB
 - Implement Envoy ext_proc gRPC service (port 9001)
 - Maintain route-to-policy mappings (key → request policy list, response policy list)
 - Extract metadata key from Envoy requests
+- Determine ext_proc processing mode based on policy body requirements
+  - If any policy in chain requires request/response body → configure BUFFERED body mode
+  - If no policy requires body → configure SKIP body mode (headers only, optimal performance)
 - Invoke Worker Core with appropriate policy chain (request or response flow)
 - Translate policy results to ext_proc responses (Core → Envoy format)
 - Expose xDS-based Policy Discovery Service (gRPC streaming, port 9002)
@@ -111,27 +114,163 @@ graph TB
 **Key Functions:**
 - `ProcessRequest()` - Handle request phase from Envoy (ext_proc)
   - Extract metadata key from request
-  - Get request policy list for route
+  - Get PolicyChain for route
+  - Initialize fresh shared metadata for request
+  - Build initial RequestContext from Envoy data
   - Call Core.ExecuteRequestPolicies()
+  - Store context and chain for response phase
   - Translate `RequestExecutionResult` → ext_proc response
 - `ProcessResponse()` - Handle response phase from Envoy (ext_proc)
-  - Extract metadata key from request
-  - Get response policy list for route
+  - Extract request ID from response
+  - Retrieve stored RequestContext and PolicyChain from request phase
+  - Build ResponseContext with request data + response data
+  - Metadata is shared from request phase
   - Call Core.ExecuteResponsePolicies()
   - Translate `ResponseExecutionResult` → ext_proc response
-- `GetRequestPoliciesForKey(key string)` - Retrieve request policy chain for route
-- `GetResponsePoliciesForKey(key string)` - Retrieve response policy chain for route
+- `GetPolicyChainForKey(key string)` - Retrieve PolicyChain (request + response policies) for route
+- `storeContextForResponse(requestID, ctx, chain)` - Store context between request and response phases
+- `getStoredContext(requestID)` - Retrieve stored context and chain for response phase
 - `StreamPolicyMappings()` - xDS stream for policy configuration updates
-- `TranslatePolicyActions()` - Convert execution results to ext_proc format
+- `TranslateRequestActions(result)` - Convert request execution results to ext_proc format by applying all actions in order
+- `TranslateResponseActions(result)` - Convert response execution results to ext_proc format by applying all actions in order
 
 **Configuration Storage:**
-- In-memory map: `metadata_key → RouteConfig`
-- RouteConfig contains:
+- In-memory map: `metadata_key → PolicyChain`
+- PolicyChain contains:
   - `RequestPolicies []RequestPolicy` - Policies executed during request flow (type-safe)
   - `ResponsePolicies []ResponsePolicy` - Policies executed during response flow (type-safe)
+  - `Metadata map[string]interface{}` - Shared metadata initialized fresh for each request
+  - `RequiresRequestBody bool` - Computed flag: true if any RequestPolicy needs request body
+  - `RequiresResponseBody bool` - Computed flag: true if any ResponsePolicy needs response body
 - PolicySpec includes: policy name, version, validated parameters, enabled flag
 - Version tracking for xDS protocol (resource version strings)
-- Policies are filtered by interface type when loaded into RouteConfig
+- Policies are filtered by interface type when loaded into PolicyChain
+- Body requirement flags are computed by checking all policies' RequiresRequestBody/RequiresResponseBody from PolicyDefinition
+- Context storage: In-memory map `request_id → (RequestContext, PolicyChain)` for preserving state between request and response phases
+
+**Body Processing Mode Optimization:**
+
+The Kernel dynamically determines ext_proc processing mode based on policy body requirements to optimize performance:
+
+**Processing Modes:**
+- **SKIP Mode (Headers Only):** When no policy requires body access
+  - Envoy sends only headers to ext_proc
+  - Minimal latency overhead (~1-2ms)
+  - Body is streamed directly to upstream without buffering
+  - Ideal for authentication, header manipulation, routing policies
+
+- **BUFFERED Mode (Headers + Body):** When any policy requires body access
+  - Envoy buffers complete request/response body before sending to ext_proc
+  - Higher latency overhead (~5-10ms depending on body size)
+  - Required for body transformation, content inspection, WAF policies
+  - Body size limits apply (configurable in Envoy, typically 1-10MB)
+
+**Mode Selection Logic:**
+```go
+// Kernel builds PolicyChain and computes body requirements
+func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []PolicySpec) *PolicyChain {
+    chain := &PolicyChain{
+        Metadata: make(map[string]interface{}),
+    }
+
+    // Load policies and check body requirements
+    for _, spec := range policySpecs {
+        policy := k.registry.GetPolicy(spec.Name, spec.Version)
+        definition := k.registry.GetDefinition(spec.Name, spec.Version)
+
+        // Add to appropriate phase
+        if reqPolicy, ok := policy.(RequestPolicy); ok {
+            chain.RequestPolicies = append(chain.RequestPolicies, reqPolicy)
+
+            // Check if this policy requires request body
+            if definition.RequiresRequestBody {
+                chain.RequiresRequestBody = true
+            }
+        }
+
+        if respPolicy, ok := policy.(ResponsePolicy); ok {
+            chain.ResponsePolicies = append(chain.ResponsePolicies, respPolicy)
+
+            // Check if this policy requires response body
+            if definition.RequiresResponseBody {
+                chain.RequiresResponseBody = true
+            }
+        }
+    }
+
+    return chain
+}
+
+// Kernel uses chain flags to determine processing mode in ext_proc response
+func (k *Kernel) ProcessRequest(req *extproc.ProcessingRequest) *extproc.ProcessingResponse {
+    routeKey := k.extractMetadataKey(req)
+    chain := k.GetPolicyChainForKey(routeKey)
+
+    // Determine body processing mode for this request
+    bodyMode := extproc.ProcessingMode_SKIP
+    if chain.RequiresRequestBody {
+        bodyMode = extproc.ProcessingMode_BUFFERED
+    }
+
+    // Execute policy chain...
+    execResult := k.core.ExecuteRequestPolicies(chain.RequestPolicies, ctx)
+
+    // Include mode_override in response to configure body processing
+    response := k.TranslateRequestActions(execResult)
+    response.ModeOverride = &extproc.ProcessingMode{
+        RequestBodyMode:  bodyMode,
+        ResponseBodyMode: determineResponseBodyMode(chain),
+    }
+
+    return response
+}
+```
+
+**Performance Impact:**
+
+| Policy Combination | Body Mode | Latency (p95) | Throughput |
+|-------------------|-----------|---------------|------------|
+| JWT + APIKey + SetHeader | SKIP | < 5ms | 15,000 rps |
+| JWT + APIKey + RequestTransform | BUFFERED | 10-20ms | 5,000 rps |
+| SetHeader only | SKIP | < 2ms | 20,000 rps |
+
+**Example Policy Chains:**
+
+```yaml
+# Example 1: Headers-only chain (optimal performance)
+# All policies work with headers only → SKIP mode
+route_key: "api-auth-only"
+request_policies:
+  - name: jwtValidation        # requiresRequestBody: false
+  - name: apiKeyValidation     # requiresRequestBody: false
+  - name: setHeader            # requiresRequestBody: false
+# Result: request_body_mode = SKIP, response_body_mode = SKIP
+
+# Example 2: Body-requiring chain (buffered mode)
+# One policy needs body → BUFFERED mode
+route_key: "api-with-transform"
+request_policies:
+  - name: jwtValidation           # requiresRequestBody: false
+  - name: requestTransformation   # requiresRequestBody: true ← triggers BUFFERED
+  - name: setHeader               # requiresRequestBody: false
+# Result: request_body_mode = BUFFERED, response_body_mode = SKIP
+
+# Example 3: Mixed chain with response body
+route_key: "api-with-response-transform"
+request_policies:
+  - name: jwtValidation           # requiresRequestBody: false
+response_policies:
+  - name: responseTransformation  # requiresResponseBody: true ← triggers BUFFERED
+  - name: securityHeaders         # requiresResponseBody: false
+# Result: request_body_mode = SKIP, response_body_mode = BUFFERED
+```
+
+**Benefits:**
+- ✅ **Performance:** Headers-only policies run with minimal latency
+- ✅ **Resource Efficiency:** No unnecessary memory buffering
+- ✅ **Declarative:** Policy authors declare requirements, Kernel optimizes automatically
+- ✅ **Transparency:** Operators can audit body requirements via policy definitions
+- ✅ **Flexibility:** Mix headers-only and body-requiring policies in same deployment
 
 ### 2.1.1 Policy Configuration Schema
 
@@ -324,6 +463,15 @@ type PolicyDefinition struct {
     SupportsRequestPhase  bool
     SupportsResponsePhase bool
 
+    // Body processing requirements
+    // If true, policy needs access to request body during request phase
+    // Kernel will configure ext_proc in BUFFERED body mode if any policy requires body
+    RequiresRequestBody  bool
+
+    // If true, policy needs access to response body during response phase
+    // Kernel will configure ext_proc in BUFFERED body mode if any policy requires body
+    RequiresResponseBody bool
+
     // Parameter schemas for THIS version
     ParameterSchemas []ParameterSchema
 
@@ -420,6 +568,8 @@ version: v1.0.0
 description: Validates JWT tokens using JWKS
 supportsRequestPhase: true
 supportsResponsePhase: false
+requiresRequestBody: false
+requiresResponseBody: false
 
 parameters:
   - name: headerName
@@ -490,6 +640,8 @@ version: v2.0.0
 description: Validates JWT tokens with advanced caching and claim extraction
 supportsRequestPhase: true
 supportsResponsePhase: false
+requiresRequestBody: false
+requiresResponseBody: false
 
 parameters:
   # All v1.0.0 parameters (maintained for backward compatibility)
@@ -573,6 +725,8 @@ version: v1.0.0
 description: Token bucket rate limiting per identifier
 supportsRequestPhase: true
 supportsResponsePhase: false
+requiresRequestBody: false
+requiresResponseBody: false
 
 parameters:
   - name: requestsPerSecond
@@ -734,10 +888,35 @@ parameters:
       value: "true"
 ```
 
-**Core Execution Flow with Conditions:**
+**Policy Chain Structure:**
+
+Policies are encapsulated in a PolicyChain that holds both request and response policies, along with shared metadata for inter-policy communication across the entire request → response lifecycle.
+
+```go
+// PolicyChain encapsulates both request and response policies
+// with shared metadata across the entire request → response lifecycle
+type PolicyChain struct {
+    RequestPolicies  []RequestPolicy
+    ResponsePolicies []ResponsePolicy
+
+    // Shared metadata across entire request → response flow
+    // Policies can store/read data here for inter-policy communication
+    // Initialized fresh for each request, persists through response phase
+    Metadata map[string]interface{}
+
+    // Body processing requirements (computed at chain construction)
+    // These flags determine ext_proc processing mode
+    RequiresRequestBody  bool  // true if any RequestPolicy requires request body
+    RequiresResponseBody bool  // true if any ResponsePolicy requires response body
+}
+```
+
+**Core Execution Flow with Conditions and Context Updates:**
 
 ```go
 // Core executes request policies with condition evaluation
+// Context is updated in-place as each policy executes, so later policies
+// see modifications made by earlier policies (pipeline pattern)
 func (c *Core) ExecuteRequestPolicies(policies []RequestPolicy, ctx *RequestContext) RequestExecutionResult {
     startTime := time.Now()
     results := make([]RequestPolicyResult, 0, len(policies))
@@ -752,15 +931,17 @@ func (c *Core) ExecuteRequestPolicies(policies []RequestPolicy, ctx *RequestCont
             continue  // Policy disabled, skip
         }
 
-        // Evaluate execution condition (if specified)
+        // Evaluate execution condition with CURRENT context values (if specified)
+        // Conditions see the updated state from previous policies
         if spec.ExecutionCondition != nil {
-            conditionMet := c.celEvaluator.EvaluateWithContext(*spec.ExecutionCondition, ctx)
+            conditionMet := c.celEvaluator.EvaluateWithRequestContext(*spec.ExecutionCondition, ctx)
             if !conditionMet {
                 continue  // Condition not met, skip policy
             }
         }
 
-        // Execute policy
+        // Execute policy with current context
+        // Policy can read/write ctx.Metadata for inter-policy communication
         action := policy.ExecuteRequest(ctx, c.getConfig(policy))
 
         // Record result with metrics
@@ -772,9 +953,19 @@ func (c *Core) ExecuteRequestPolicies(policies []RequestPolicy, ctx *RequestCont
         }
         results = append(results, result)
 
+        // Apply modifications to context for next policy
+        if action != nil {
+            switch a := action.Action.(type) {
+            case UpstreamRequestModifications:
+                applyRequestModifications(ctx, a)
+            case ImmediateResponse:
+                shortCircuited = true
+                break
+            }
+        }
+
         // Check for short-circuit
-        if action != nil && action.Action.StopExecution() {
-            shortCircuited = true
+        if shortCircuited {
             break
         }
     }
@@ -785,23 +976,75 @@ func (c *Core) ExecuteRequestPolicies(policies []RequestPolicy, ctx *RequestCont
         ShortCircuited: shortCircuited,
     }
 }
+
+// applyRequestModifications updates context with action's modifications
+func applyRequestModifications(ctx *RequestContext, mods UpstreamRequestModifications) {
+    // Apply SetHeaders (replace values)
+    for k, v := range mods.SetHeaders {
+        ctx.Headers[k] = []string{v}
+    }
+
+    // Apply RemoveHeaders (delete from map)
+    for _, k := range mods.RemoveHeaders {
+        delete(ctx.Headers, k)
+    }
+
+    // Apply AppendHeaders (add to existing values)
+    for k, values := range mods.AppendHeaders {
+        ctx.Headers[k] = append(ctx.Headers[k], values...)
+    }
+
+    // Update body if specified
+    if mods.Body != nil {
+        ctx.Body = mods.Body
+    }
+
+    // Update path if specified
+    if mods.Path != nil {
+        ctx.Path = *mods.Path
+    }
+
+    // Update method if specified
+    if mods.Method != nil {
+        ctx.Method = *mods.Method
+    }
+}
 ```
 
 **CEL Evaluation Context:**
 
-The Core provides a CEL evaluator that has access to the full RequestContext or ResponseContext:
+The Core provides a CEL evaluator that has access to the full RequestContext or ResponseContext, including the current (possibly modified) state and shared metadata:
 
 ```go
 // CEL Evaluator interface
 type CELEvaluator interface {
     // Evaluate CEL expression with RequestContext
+    // Expression sees CURRENT values (after previous policies executed)
     EvaluateWithRequestContext(expression string, ctx *RequestContext) bool
 
     // Evaluate CEL expression with ResponseContext
+    // Expression sees CURRENT values (after previous policies executed)
     EvaluateWithResponseContext(expression string, ctx *ResponseContext) bool
 }
 
+// Available context variables in CEL expressions:
+
+// Request Phase (RequestContext):
+//   - request.Path       (string) - Current path (possibly modified by previous policies)
+//   - request.Method     (string) - Current method (possibly modified)
+//   - request.Headers    (map[string][]string) - Current headers (possibly modified)
+//   - request.Body       ([]byte) - Current body (possibly modified)
+//   - metadata           (map[string]interface{}) - Shared metadata for inter-policy communication
+
+// Response Phase (ResponseContext):
+//   - request.Path, request.Method, request.Headers (from request phase, immutable)
+//   - response.Status    (int) - Current status (possibly modified by previous policies)
+//   - response.Headers   (map[string][]string) - Current headers (possibly modified)
+//   - response.Body      ([]byte) - Current body (possibly modified)
+//   - metadata           (map[string]interface{}) - Same metadata from request phase
+
 // Example CEL expressions and their evaluation:
+
 // Expression: `request.Path.startsWith("/api/")`
 // Context: RequestContext{Path: "/api/users"}
 // Result: true
@@ -813,6 +1056,18 @@ type CELEvaluator interface {
 // Expression: `has(request.Headers["authorization"])`
 // Context: RequestContext{Headers: {"content-type": ["application/json"]}}
 // Result: false
+
+// Expression: `has(metadata["authenticated"]) && metadata["authenticated"] == true`
+// Context: RequestContext{Metadata: {"authenticated": true}}
+// Result: true (execute only if previous policy set authenticated flag)
+
+// Expression: `has(request.Headers["x-user-id"])`
+// Context: RequestContext{Headers: {"x-user-id": ["123"]}} (set by previous JWT policy)
+// Result: true (execute only if JWT policy added user ID header)
+
+// Expression: `response.Status >= 500 && has(metadata["user_id"])`
+// Context: ResponseContext{ResponseStatus: 503, Metadata: {"user_id": "123"}}
+// Result: true (log server errors only for authenticated users)
 ```
 
 **Design Benefits:**
@@ -828,15 +1083,20 @@ type CELEvaluator interface {
 - ✅ **Backward Compatibility**: Multiple versions can coexist, gradual migration
 - ✅ **Extensible**: Easy to add new types and validation rules
 - ✅ **CEL Support**: Custom validation expressions for complex constraints and conditional execution
-- ✅ **Conditional Execution**: Dynamic runtime policy execution based on request/response context
+- ✅ **Conditional Execution**: Dynamic runtime policy execution based on current request/response context
+- ✅ **Pipeline Pattern**: Each policy sees modifications from previous policies (middleware-style)
+- ✅ **Shared Metadata**: Policies can communicate across request → response lifecycle
 - ✅ **Developer Experience**: Clear, actionable error messages during configuration
 - ✅ **Performance**: Zero runtime validation overhead, efficient CEL evaluation
 - ✅ **Format Validation**: Built-in validators for email, URI, IP, UUID, etc.
 - ✅ **Protobuf Compatible**: Can be mapped to protobuf messages for xDS
-- ✅ **Flexible Policies**: Same policy can behave differently based on path, method, headers, environment
+- ✅ **Flexible Policies**: Same policy can behave differently based on path, method, headers, environment, or previous policy actions
 - ✅ **Cost Efficiency**: Skip expensive policies when conditions not met (e.g., skip JWT validation for public endpoints)
+- ✅ **Inter-Policy Communication**: Policies coordinate via shared metadata without tight coupling
+- ✅ **Observability**: Track request lifecycle metrics from request through response
 - ✅ **Tooling Friendly**: YAML schemas enable UI generation, CLI tools, and IDE support
 - ✅ **Language Agnostic**: Schema format supports future plugin systems (WASM, external processors)
+- ✅ **Body Processing Optimization**: Policies declare body requirements, Kernel automatically optimizes ext_proc mode (SKIP vs BUFFERED) for minimal latency
 
 ### 2.2 Worker: Core
 
@@ -852,15 +1112,17 @@ type CELEvaluator interface {
 - `ExecuteRequestPolicies(policies []RequestPolicy, ctx *RequestContext) RequestExecutionResult`
   - Iterate through request policies (type-safe, no runtime type checking needed)
   - Check if policy is enabled
-  - Evaluate ExecutionCondition with RequestContext (skip if condition not met)
+  - Evaluate ExecutionCondition with current RequestContext values (skip if condition not met)
   - Execute each policy and collect action with timing metrics
+  - Apply action modifications to context in-place (so next policy sees updated state)
   - Short-circuit if action.Action.StopExecution() returns true
   - Return execution result with actions and metrics to Kernel
 - `ExecuteResponsePolicies(policies []ResponsePolicy, ctx *ResponseContext) ResponseExecutionResult`
   - Iterate through response policies (type-safe, no runtime type checking needed)
   - Check if policy is enabled
-  - Evaluate ExecutionCondition with ResponseContext (skip if condition not met)
+  - Evaluate ExecutionCondition with current ResponseContext values (skip if condition not met)
   - Execute each policy and collect action with timing metrics
+  - Apply action modifications to context in-place (so next policy sees updated state)
   - Short-circuit if action.Action.StopExecution() returns true
   - Return execution result with actions and metrics to Kernel
 
@@ -1013,7 +1275,7 @@ type ResponsePolicyResult struct {
 
 ```mermaid
 flowchart TD
-    Start([Receive []RequestPolicy<br/>& Context from Kernel]) --> Init["Initialize results array<br/>Start total timer"]
+    Start("[Receive []RequestPolicy<br/>& Context from Kernel]") --> Init["Initialize results array<br/>Start total timer"]
     Init --> LoadFirst[Load First Policy]
     LoadFirst --> CheckEnabled{Policy<br/>Enabled?}
 
@@ -1027,14 +1289,14 @@ flowchart TD
     ConditionMet -->|No| MorePolicies
     ConditionMet -->|Yes| StartTimer
 
-    StartTimer --> Execute[Execute Policy:<br/>action = policy.ExecuteRequest()]
+    StartTimer --> Execute["Execute Policy:<br/>action = policy.ExecuteRequest()"]
 
     Execute --> RecordResult[Record result:<br/>PolicyName, Duration,<br/>Action, Index]
 
     RecordResult --> CheckNil{Action<br/>is nil?}
 
     CheckNil -->|Yes| MorePolicies
-    CheckNil -->|No| CheckStop{action.Action.<br/>StopExecution()?}
+    CheckNil -->|No| CheckStop{"action.Action.<br/>StopExecution()?"}
 
     CheckStop -->|Yes| ShortCircuit[Short-circuit:<br/>Set ShortCircuited=true<br/>Return result]
     CheckStop -->|No| MorePolicies
@@ -1098,39 +1360,48 @@ type ResponsePolicy interface {
 
 // ============ Context Types ============
 
-// RequestContext provides request data to policies during request phase
+// RequestContext holds the current request state during request phase
+// This context is MUTABLE - it gets updated as each policy executes
+// Later policies see modifications made by earlier policies (pipeline pattern)
 type RequestContext struct {
-    // Request data
+    // Current request state (mutable, updated by each policy)
     Headers  map[string][]string
     Body     []byte
     Path     string
     Method   string
 
-    // Metadata from Envoy (route key, etc.)
-    Metadata map[string]string
-
-    // Additional context
+    // Request identifier
     RequestID string
+
+    // Shared metadata for inter-policy communication
+    // Policies can read/write this map to coordinate behavior
+    // This same metadata map persists from request phase to response phase
+    // References PolicyChain.Metadata
+    Metadata map[string]interface{}
 }
 
-// ResponseContext provides request and response data during response phase
+// ResponseContext holds request and response state during response phase
+// Response data is MUTABLE - it gets updated as each policy executes
+// Request data is immutable (preserved from request phase)
 type ResponseContext struct {
-    // Original request data
+    // Original request data (immutable, from request phase)
     RequestHeaders map[string][]string
     RequestBody    []byte
     RequestPath    string
     RequestMethod  string
 
-    // Response data
+    // Current response state (mutable, updated by each policy)
     ResponseHeaders map[string][]string
     ResponseBody    []byte
     ResponseStatus  int
 
-    // Metadata from Envoy
-    Metadata map[string]string
-
-    // Additional context
+    // Request identifier
     RequestID string
+
+    // Shared metadata from request phase (same reference as RequestContext.Metadata)
+    // Policies can read data stored by request phase policies
+    // References PolicyChain.Metadata
+    Metadata map[string]interface{}
 }
 ```
 
@@ -1138,6 +1409,7 @@ type ResponseContext struct {
 
 ```go
 // Example 1: Request-only policy (JWT validation)
+// Stores user info in metadata for use by later policies
 type JWTPolicy struct{}
 
 var _ RequestPolicy = (*JWTPolicy)(nil)  // Compile-time interface check
@@ -1162,6 +1434,12 @@ func (p *JWTPolicy) ExecuteRequest(ctx *RequestContext, config map[string]interf
         }
     }
 
+    // Store user info in shared metadata for later policies
+    ctx.Metadata["user_id"] = token.Claims.Subject
+    ctx.Metadata["user_email"] = token.Claims.Email
+    ctx.Metadata["user_roles"] = token.Claims.Roles
+    ctx.Metadata["authenticated"] = true
+
     // JWT is valid, add user ID header
     return &RequestPolicyAction{
         Action: UpstreamRequestModifications{
@@ -1174,6 +1452,7 @@ func (p *JWTPolicy) ExecuteRequest(ctx *RequestContext, config map[string]interf
 }
 
 // Example 2: Response-only policy (add security headers)
+// Reads metadata from request phase to customize response
 type SecurityHeadersPolicy struct{}
 
 var _ ResponsePolicy = (*SecurityHeadersPolicy)(nil)
@@ -1185,18 +1464,28 @@ func (p *SecurityHeadersPolicy) Validate(config map[string]interface{}) error {
 }
 
 func (p *SecurityHeadersPolicy) ExecuteResponse(ctx *ResponseContext, config map[string]interface{}) *ResponsePolicyAction {
+    headers := map[string]string{
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options":        "DENY",
+        "X-XSS-Protection":       "1; mode=block",
+    }
+
+    // Add user context header if authenticated (from request phase metadata)
+    if authenticated, ok := ctx.Metadata["authenticated"].(bool); ok && authenticated {
+        if userID, ok := ctx.Metadata["user_id"].(string); ok {
+            headers["X-Authenticated-User"] = userID
+        }
+    }
+
     return &ResponsePolicyAction{
         Action: UpstreamResponseModifications{
-            SetHeaders: map[string]string{
-                "X-Content-Type-Options": "nosniff",
-                "X-Frame-Options":        "DENY",
-                "X-XSS-Protection":       "1; mode=block",
-            },
+            SetHeaders: headers,
         },
     }
 }
 
 // Example 3: Both phases (logging policy)
+// Demonstrates using metadata to correlate request and response
 type LoggingPolicy struct{}
 
 var _ RequestPolicy = (*LoggingPolicy)(nil)
@@ -1209,13 +1498,60 @@ func (p *LoggingPolicy) Validate(config map[string]interface{}) error {
 }
 
 func (p *LoggingPolicy) ExecuteRequest(ctx *RequestContext, config map[string]interface{}) *RequestPolicyAction {
+    // Store request timestamp in metadata
+    ctx.Metadata["request_start_time"] = time.Now()
+
     log.Info("Request: %s %s", ctx.Method, ctx.Path)
     return nil  // No modifications, just logging
 }
 
 func (p *LoggingPolicy) ExecuteResponse(ctx *ResponseContext, config map[string]interface{}) *ResponsePolicyAction {
-    log.Info("Response: %d for %s %s", ctx.ResponseStatus, ctx.RequestMethod, ctx.RequestPath)
+    // Calculate request duration using metadata from request phase
+    var duration time.Duration
+    if startTime, ok := ctx.Metadata["request_start_time"].(time.Time); ok {
+        duration = time.Since(startTime)
+    }
+
+    // Access user info from metadata (if JWT policy ran)
+    userID := "anonymous"
+    if uid, ok := ctx.Metadata["user_id"].(string); ok {
+        userID = uid
+    }
+
+    log.Info("Response: %d for %s %s (user: %s, duration: %v)",
+        ctx.ResponseStatus, ctx.RequestMethod, ctx.RequestPath, userID, duration)
     return nil  // No modifications, just logging
+}
+
+// Example 4: Conditional policy using metadata
+// Only executes if previous policy set metadata flag
+type ConditionalTransformPolicy struct{}
+
+var _ RequestPolicy = (*ConditionalTransformPolicy)(nil)
+
+func (p *ConditionalTransformPolicy) Name() string { return "conditionalTransform" }
+
+func (p *ConditionalTransformPolicy) Validate(config map[string]interface{}) error {
+    return nil
+}
+
+func (p *ConditionalTransformPolicy) ExecuteRequest(ctx *RequestContext, config map[string]interface{}) *RequestPolicyAction {
+    // Check if previous policy (e.g., feature flag policy) set a flag
+    if enableTransform, ok := ctx.Metadata["enable_transform"].(bool); !ok || !enableTransform {
+        return nil  // Skip transformation
+    }
+
+    // Previous policy enabled transform, proceed
+    transformedBody := transformRequest(ctx.Body)
+
+    return &RequestPolicyAction{
+        Action: UpstreamRequestModifications{
+            Body: transformedBody,
+            SetHeaders: map[string]string{
+                "Content-Type": "application/json",
+            },
+        },
+    }
 }
 ```
 
@@ -1223,6 +1559,7 @@ func (p *LoggingPolicy) ExecuteResponse(ctx *ResponseContext, config map[string]
 
 ```go
 // Core executes request policies and returns execution result with metrics
+// Context is updated in-place as policies execute
 func (c *Core) ExecuteRequestPolicies(policies []RequestPolicy, ctx *RequestContext) RequestExecutionResult {
     startTime := time.Now()
     results := make([]RequestPolicyResult, 0, len(policies))
@@ -1231,7 +1568,21 @@ func (c *Core) ExecuteRequestPolicies(policies []RequestPolicy, ctx *RequestCont
     for i, policy := range policies {
         policyStart := time.Now()
 
-        // Execute policy
+        // Check if policy is enabled
+        spec := policy.GetSpec()
+        if !spec.Enabled {
+            continue
+        }
+
+        // Evaluate ExecutionCondition with current context (if specified)
+        if spec.ExecutionCondition != nil {
+            conditionMet := c.celEvaluator.EvaluateWithRequestContext(*spec.ExecutionCondition, ctx)
+            if !conditionMet {
+                continue
+            }
+        }
+
+        // Execute policy with current context
         action := policy.ExecuteRequest(ctx, c.getConfig(policy))
 
         // Record result with metrics
@@ -1243,9 +1594,19 @@ func (c *Core) ExecuteRequestPolicies(policies []RequestPolicy, ctx *RequestCont
         }
         results = append(results, result)
 
+        // Apply modifications to context for next policy
+        if action != nil {
+            switch a := action.Action.(type) {
+            case UpstreamRequestModifications:
+                applyRequestModifications(ctx, a)
+            case ImmediateResponse:
+                shortCircuited = true
+                break
+            }
+        }
+
         // Check for short-circuit
-        if action != nil && action.Action.StopExecution() {
-            shortCircuited = true
+        if shortCircuited {
             break
         }
     }
@@ -1258,6 +1619,7 @@ func (c *Core) ExecuteRequestPolicies(policies []RequestPolicy, ctx *RequestCont
 }
 
 // Core executes response policies and returns execution result with metrics
+// Context is updated in-place as policies execute
 func (c *Core) ExecuteResponsePolicies(policies []ResponsePolicy, ctx *ResponseContext) ResponseExecutionResult {
     startTime := time.Now()
     results := make([]ResponsePolicyResult, 0, len(policies))
@@ -1266,7 +1628,21 @@ func (c *Core) ExecuteResponsePolicies(policies []ResponsePolicy, ctx *ResponseC
     for i, policy := range policies {
         policyStart := time.Now()
 
-        // Execute policy
+        // Check if policy is enabled
+        spec := policy.GetSpec()
+        if !spec.Enabled {
+            continue
+        }
+
+        // Evaluate ExecutionCondition with current context (if specified)
+        if spec.ExecutionCondition != nil {
+            conditionMet := c.celEvaluator.EvaluateWithResponseContext(*spec.ExecutionCondition, ctx)
+            if !conditionMet {
+                continue
+            }
+        }
+
+        // Execute policy with current context
         action := policy.ExecuteResponse(ctx, c.getConfig(policy))
 
         // Record result with metrics
@@ -1278,7 +1654,15 @@ func (c *Core) ExecuteResponsePolicies(policies []ResponsePolicy, ctx *ResponseC
         }
         results = append(results, result)
 
-        // Check for short-circuit
+        // Apply modifications to context for next policy
+        if action != nil {
+            switch a := action.Action.(type) {
+            case UpstreamResponseModifications:
+                applyResponseModifications(ctx, a)
+            }
+        }
+
+        // Check for short-circuit (response phase doesn't support ImmediateResponse)
         if action != nil && action.Action.StopExecution() {
             shortCircuited = true
             break
@@ -1291,26 +1675,70 @@ func (c *Core) ExecuteResponsePolicies(policies []ResponsePolicy, ctx *ResponseC
         ShortCircuited: shortCircuited,
     }
 }
+
+// applyResponseModifications updates response context with action's modifications
+func applyResponseModifications(ctx *ResponseContext, mods UpstreamResponseModifications) {
+    // Apply SetHeaders (replace values)
+    for k, v := range mods.SetHeaders {
+        ctx.ResponseHeaders[k] = []string{v}
+    }
+
+    // Apply RemoveHeaders (delete from map)
+    for _, k := range mods.RemoveHeaders {
+        delete(ctx.ResponseHeaders, k)
+    }
+
+    // Apply AppendHeaders (add to existing values)
+    for k, values := range mods.AppendHeaders {
+        ctx.ResponseHeaders[k] = append(ctx.ResponseHeaders[k], values...)
+    }
+
+    // Update body if specified
+    if mods.Body != nil {
+        ctx.ResponseBody = mods.Body
+    }
+
+    // Update status code if specified
+    if mods.StatusCode != nil {
+        ctx.ResponseStatus = *mods.StatusCode
+    }
+}
 ```
 
-**Kernel Translation Example:**
+**Kernel Integration Example:**
 
 ```go
-// Kernel processes execution result and translates to ext_proc response
+// Kernel processes request and translates to ext_proc response
 func (k *Kernel) ProcessRequest(req *extproc.ProcessingRequest) *extproc.ProcessingResponse {
-    // Extract metadata and build context
-    key := k.extractMetadataKey(req)
-    ctx := k.buildRequestContext(req)
+    // Extract route key from Envoy metadata
+    routeKey := k.extractMetadataKey(req)
 
-    // Get type-safe request policies for this route
-    requestPolicies := k.GetRequestPoliciesForKey(key)
+    // Get PolicyChain for this route
+    chain := k.GetPolicyChainForKey(routeKey)
 
-    // Execute policies and get result with metrics
-    execResult := k.core.ExecuteRequestPolicies(requestPolicies, ctx)
+    // Initialize fresh shared metadata for this request
+    chain.Metadata = make(map[string]interface{})
+
+    // Build initial request context from Envoy data
+    ctx := &RequestContext{
+        Headers:   extractHeaders(req),
+        Body:      extractBody(req),
+        Path:      extractPath(req),
+        Method:    extractMethod(req),
+        RequestID: generateRequestID(),
+        Metadata:  chain.Metadata,  // Reference to shared metadata
+    }
+
+    // Execute request policies (context updated in-place)
+    execResult := k.core.ExecuteRequestPolicies(chain.RequestPolicies, ctx)
+
+    // Store context and chain for response phase
+    // This preserves the metadata for response policies
+    k.storeContextForResponse(ctx.RequestID, ctx, chain)
 
     // Log execution metrics
     k.logger.Info("Request policy chain executed",
-        "route_key", key,
+        "route_key", routeKey,
         "total_duration", execResult.TotalDuration,
         "num_policies", len(execResult.PolicyResults),
         "short_circuited", execResult.ShortCircuited,
@@ -1329,76 +1757,161 @@ func (k *Kernel) ProcessRequest(req *extproc.ProcessingRequest) *extproc.Process
         k.metrics.RecordPolicyDuration(pr.PolicyName, pr.Duration)
     }
 
-    // Extract actions from results
-    actions := make([]RequestPolicyAction, 0, len(execResult.PolicyResults))
-    for _, pr := range execResult.PolicyResults {
-        if pr.Action != nil {
-            actions = append(actions, *pr.Action)
-        }
-    }
-
-    // Translate actions to ext_proc response
-    return k.TranslateRequestActions(actions)
+    // Translate execution results to ext_proc response
+    return k.TranslateRequestActions(execResult)
 }
 
-// Kernel translates policy actions to ext_proc response
-func (k *Kernel) TranslateRequestActions(actions []RequestPolicyAction) *extproc.ProcessingResponse {
+// Kernel processes response phase
+func (k *Kernel) ProcessResponse(resp *extproc.ProcessingResponse) *extproc.ProcessingResponse {
+    requestID := extractRequestID(resp)
+
+    // Retrieve stored context and chain from request phase
+    reqCtx, chain := k.getStoredContext(requestID)
+
+    // Build response context with request data + response data
+    // Metadata is shared with request phase
+    respCtx := &ResponseContext{
+        // Request data (from request phase, immutable)
+        RequestHeaders: reqCtx.Headers,
+        RequestBody:    reqCtx.Body,
+        RequestPath:    reqCtx.Path,
+        RequestMethod:  reqCtx.Method,
+
+        // Response data (from Envoy, mutable)
+        ResponseHeaders: extractResponseHeaders(resp),
+        ResponseBody:    extractResponseBody(resp),
+        ResponseStatus:  extractStatus(resp),
+
+        RequestID: reqCtx.RequestID,
+        Metadata:  chain.Metadata,  // Same metadata from request phase!
+    }
+
+    // Execute response policies (can read metadata from request phase)
+    execResult := k.core.ExecuteResponsePolicies(chain.ResponsePolicies, respCtx)
+
+    // Clean up stored context
+    k.removeStoredContext(requestID)
+
+    // Log execution metrics
+    k.logger.Info("Response policy chain executed",
+        "request_id", requestID,
+        "total_duration", execResult.TotalDuration,
+        "num_policies", len(execResult.PolicyResults),
+    )
+
+    // Translate execution results to ext_proc response
+    return k.TranslateResponseActions(execResult)
+}
+
+// Kernel translates execution result to ext_proc response
+// Applies all actions in order to compute final state
+func (k *Kernel) TranslateRequestActions(result RequestExecutionResult) *extproc.ProcessingResponse {
     // Check for immediate response (short-circuit)
-    for _, action := range actions {
-        switch a := action.Action.(type) {
-        case ImmediateResponse:
-            return &extproc.ProcessingResponse{
-                Response: &extproc.ProcessingResponse_ImmediateResponse{
-                    ImmediateResponse: &extproc.ImmediateResponse{
-                        Status: &extproc.HttpStatus{Code: uint32(a.StatusCode)},
-                        Headers: convertHeaders(a.Headers),
-                        Body: string(a.Body),
+    for _, pr := range result.PolicyResults {
+        if pr.Action != nil {
+            if ir, ok := pr.Action.Action.(ImmediateResponse); ok {
+                return &extproc.ProcessingResponse{
+                    Response: &extproc.ProcessingResponse_ImmediateResponse{
+                        ImmediateResponse: &extproc.ImmediateResponse{
+                            Status: &extproc.HttpStatus{Code: uint32(ir.StatusCode)},
+                            Headers: convertHeaders(ir.Headers),
+                            Body: string(ir.Body),
+                        },
                     },
-                },
+                }
             }
         }
     }
 
-    // Aggregate upstream modifications from all actions
-    var allSetHeaders = make(map[string]string)
-    var allRemoveHeaders []string
-    var allAppendHeaders = make(map[string][]string)
+    // Apply all UpstreamRequestModifications in order to compute final state
+    finalHeaders := make(map[string][]string)
     var finalBody []byte
     var finalPath *string
     var finalMethod *string
 
-    for _, action := range actions {
-        switch a := action.Action.(type) {
-        case UpstreamRequestModifications:
-            // Merge headers
-            for k, v := range a.SetHeaders {
-                allSetHeaders[k] = v
-            }
-            allRemoveHeaders = append(allRemoveHeaders, a.RemoveHeaders...)
-            for k, v := range a.AppendHeaders {
-                allAppendHeaders[k] = append(allAppendHeaders[k], v...)
-            }
+    for _, pr := range result.PolicyResults {
+        if pr.Action != nil {
+            if mods, ok := pr.Action.Action.(UpstreamRequestModifications); ok {
+                // Apply SetHeaders (replace values)
+                for k, v := range mods.SetHeaders {
+                    finalHeaders[k] = []string{v}
+                }
 
-            // Last non-nil body wins
-            if a.Body != nil {
-                finalBody = a.Body
-            }
+                // Apply RemoveHeaders (delete from map)
+                for _, k := range mods.RemoveHeaders {
+                    delete(finalHeaders, k)
+                }
 
-            // Last non-nil path/method wins
-            if a.Path != nil {
-                finalPath = a.Path
-            }
-            if a.Method != nil {
-                finalMethod = a.Method
+                // Apply AppendHeaders (add to existing values)
+                for k, values := range mods.AppendHeaders {
+                    finalHeaders[k] = append(finalHeaders[k], values...)
+                }
+
+                // Last non-nil body/path/method wins
+                if mods.Body != nil {
+                    finalBody = mods.Body
+                }
+                if mods.Path != nil {
+                    finalPath = mods.Path
+                }
+                if mods.Method != nil {
+                    finalMethod = mods.Method
+                }
             }
         }
     }
 
-    // Build ext_proc response with header mutations
+    // Build ext_proc response with computed modifications
     return &extproc.ProcessingResponse{
         Response: &extproc.ProcessingResponse_RequestHeaders{
             RequestHeaders: &extproc.HeadersResponse{
-                Response: buildHeaderMutations(allSetHeaders, allRemoveHeaders, allAppendHeaders),
+                Response: buildHeaderMutations(finalHeaders, finalBody, finalPath, finalMethod),
+            },
+        },
+    }
+}
+
+// Kernel translates response execution result to ext_proc response
+func (k *Kernel) TranslateResponseActions(result ResponseExecutionResult) *extproc.ProcessingResponse {
+    // Apply all UpstreamResponseModifications in order to compute final state
+    finalHeaders := make(map[string][]string)
+    var finalBody []byte
+    var finalStatus *int
+
+    for _, pr := range result.PolicyResults {
+        if pr.Action != nil {
+            if mods, ok := pr.Action.Action.(UpstreamResponseModifications); ok {
+                // Apply SetHeaders (replace values)
+                for k, v := range mods.SetHeaders {
+                    finalHeaders[k] = []string{v}
+                }
+
+                // Apply RemoveHeaders (delete from map)
+                for _, k := range mods.RemoveHeaders {
+                    delete(finalHeaders, k)
+                }
+
+                // Apply AppendHeaders (add to existing values)
+                for k, values := range mods.AppendHeaders {
+                    finalHeaders[k] = append(finalHeaders[k], values...)
+                }
+
+                // Last non-nil body/status wins
+                if mods.Body != nil {
+                    finalBody = mods.Body
+                }
+                if mods.StatusCode != nil {
+                    finalStatus = mods.StatusCode
+                }
+            }
+        }
+    }
+
+    // Build ext_proc response with computed modifications
+    return &extproc.ProcessingResponse{
+        Response: &extproc.ProcessingResponse_ResponseHeaders{
+            ResponseHeaders: &extproc.HeadersResponse{
+                Response: buildResponseMutations(finalHeaders, finalBody, finalStatus),
             },
         },
     }
@@ -1491,7 +2004,29 @@ parameters:
 
 **Purpose:** Transform request body and/or path
 
-**Configuration:**
+**Policy Definition** (`policies/request-transformation/v1.0.0/policy.yaml`):
+```yaml
+name: requestTransformation
+version: v1.0.0
+description: Transform request body and path before sending to upstream
+supportsRequestPhase: true
+supportsResponsePhase: false
+requiresRequestBody: true    # REQUIRES body access for JSON transformation
+requiresResponseBody: false
+
+parameters:
+  - name: bodyTransform
+    type: object
+    description: JSON body transformation rules
+    required: false
+
+  - name: pathRewrite
+    type: object
+    description: Path rewrite configuration
+    required: false
+```
+
+**Configuration Example:**
 ```yaml
 name: requestTransformation
 parameters:
@@ -1506,7 +2041,7 @@ parameters:
 ```
 
 **Behavior:**
-- Apply JSON transformations to request body
+- Apply JSON transformations to request body (requires body buffering)
 - Rewrite request path using regex
 - Return action with body and/or header modifications
 - Non-critical (logs errors but continues)
@@ -2134,6 +2669,8 @@ http_filters:
       processing_mode:
         request_header_mode: SEND
         response_header_mode: SEND
+        # Default body modes (can be overridden per-request by policy engine)
+        # Policy engine dynamically sets these based on policy body requirements
         request_body_mode: BUFFERED
         response_body_mode: BUFFERED
       metadata_options:
@@ -2170,6 +2707,22 @@ routes:
           route_key: "api-v1-users"
 ```
 
+**Dynamic Body Processing Mode:**
+
+The Policy Engine dynamically overrides Envoy's default `processing_mode` based on policy requirements for each request:
+
+- **Headers-only policies:** Policy Engine returns `mode_override` with `request_body_mode: SKIP` and `response_body_mode: SKIP`
+  - Envoy streams body directly to upstream without buffering
+  - Minimal latency overhead
+  - Example: JWT validation, API key validation, header manipulation
+
+- **Body-requiring policies:** Policy Engine returns `mode_override` with `request_body_mode: BUFFERED` and/or `response_body_mode: BUFFERED`
+  - Envoy buffers complete body before sending to Policy Engine
+  - Higher latency but enables body transformation, inspection, WAF
+  - Example: Request transformation, content validation, body encryption
+
+This dynamic mode selection is automatic based on policy definitions (see section 2.1 "Body Processing Mode Optimization" for details).
+
 ### 11.2 Glossary
 
 - **ext_proc:** Envoy External Processor filter
@@ -2179,6 +2732,7 @@ routes:
 - **Action:** The result returned by a policy indicating how to modify the request/response or whether to short-circuit execution
 - **Short-circuit:** Stopping policy chain execution when a policy returns an action with StopExecution() = true
 - **Route Key:** Metadata key used to identify which policy chain to execute
+- **Body Processing Mode:** Envoy ext_proc configuration that determines whether request/response bodies are buffered and sent to the policy engine (BUFFERED) or streamed directly to upstream (SKIP). Dynamically controlled per-request by the policy engine based on policy body requirements.
 
 ---
 
