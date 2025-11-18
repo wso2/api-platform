@@ -768,6 +768,48 @@ func (h *APIHandler) ValidateAPIProject(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// ValidateOpenAPI handles POST /validate/open-api
+func (h *APIHandler) ValidateOpenAPI(c *gin.Context) {
+	// Parse multipart form
+	err := c.Request.ParseMultipartForm(10 << 20) // 10 MB max
+	if err != nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Failed to parse multipart form"))
+		return
+	}
+
+	var req dto.ValidateOpenAPIRequest
+
+	// Get URL from form if provided
+	if url := c.PostForm("url"); url != "" {
+		req.URL = url
+	}
+
+	// Get definition file from form if provided
+	if file, header, err := c.Request.FormFile("definition"); err == nil {
+		req.Definition = header
+		defer file.Close()
+	}
+
+	// Validate that at least one input is provided
+	if req.URL == "" && req.Definition == nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Either URL or definition file must be provided"))
+		return
+	}
+
+	// Validate OpenAPI definition
+	response, err := h.apiService.ValidateOpenAPIDefinition(&req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to validate OpenAPI definition"))
+		return
+	}
+
+	// Return validation response (200 OK even if validation fails - errors are in the response body)
+	c.JSON(http.StatusOK, response)
+}
+
 // RegisterRoutes registers all API routes
 func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	// API routes
@@ -792,5 +834,6 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	validateGroup := r.Group("/api/v1/validate")
 	{
 		validateGroup.POST("/api-project", h.ValidateAPIProject)
+		validateGroup.POST("/open-api", h.ValidateOpenAPI)
 	}
 }

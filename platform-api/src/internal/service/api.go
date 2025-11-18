@@ -20,17 +20,18 @@ package service
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	pathpkg "path"
-	"platform-api/src/internal/dto"
-	"platform-api/src/internal/model"
-	"platform-api/src/internal/repository"
-	"platform-api/src/internal/utils"
 	"regexp"
 	"strings"
 	"time"
 
 	"platform-api/src/internal/constants"
+	"platform-api/src/internal/dto"
+	"platform-api/src/internal/model"
+	"platform-api/src/internal/repository"
+	"platform-api/src/internal/utils"
 
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
@@ -1312,4 +1313,66 @@ func (s *APIService) convertToAPIDevPortalResponse(dpd *model.APIDevPortalWithDe
 	}
 
 	return apiDevPortalResponse
+}
+
+// ValidateOpenAPIDefinition validates an OpenAPI definition from multipart form data
+func (s *APIService) ValidateOpenAPIDefinition(req *dto.ValidateOpenAPIRequest) (*dto.OpenAPIValidationResponse, error) {
+	response := &dto.OpenAPIValidationResponse{
+		IsAPIDefinitionValid: false,
+		Errors:               []string{},
+	}
+
+	var content []byte
+	var err error
+
+	// If URL is provided, fetch content from URL
+	if req.URL != "" {
+		content, err = s.apiUtil.FetchOpenAPIFromURL(req.URL)
+		if err != nil {
+			response.Errors = append(response.Errors, fmt.Sprintf("failed to fetch OpenAPI from URL: %s", err.Error()))
+			return response, nil
+		}
+	}
+
+	// If definition file is provided, read from file
+	if req.Definition != nil {
+		file, err := req.Definition.Open()
+		if err != nil {
+			response.Errors = append(response.Errors, fmt.Sprintf("failed to open definition file: %s", err.Error()))
+			return response, nil
+		}
+		defer file.Close()
+
+		content, err = io.ReadAll(file)
+		if err != nil {
+			response.Errors = append(response.Errors, fmt.Sprintf("failed to read definition file: %s", err.Error()))
+			return response, nil
+		}
+	}
+
+	// If neither URL nor file is provided
+	if len(content) == 0 {
+		response.Errors = append(response.Errors, "either URL or definition file must be provided")
+		return response, nil
+	}
+
+	// Validate the OpenAPI definition
+	if err := s.apiUtil.ValidateOpenAPIDefinition(content); err != nil {
+		response.Errors = append(response.Errors, fmt.Sprintf("invalid OpenAPI definition: %s", err.Error()))
+		return response, nil
+	}
+
+	response.IsAPIDefinitionValid = true
+
+	// Parse API specification to extract metadata directly into API DTO using libopenapi
+	api, err := s.apiUtil.ParseAPIDefinition(content)
+	if err != nil {
+		response.Errors = append(response.Errors, fmt.Sprintf("failed to parse API specification: %s", err.Error()))
+		return response, nil
+	}
+
+	// Set the parsed API for response
+	response.API = api
+
+	return response, nil
 }

@@ -265,6 +265,37 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /validate/open-api:
+    post:
+      summary: Validate OpenAPI definition
+      description: |
+        Validates an OpenAPI definition provided either via URL or as a file upload.
+        Returns validation results including any errors found and extracted metadata
+        such as name, and operations if the definition is valid.
+      operationId: ValidateOpenAPI
+      tags:
+        - APIs
+      requestBody:
+        description: OpenAPI definition validation details
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ValidateOpenAPIRequest'
+      responses:
+        '200':
+          description: OpenAPI definition validation completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAPIValidationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /import/api-project:
     post:
       summary: Import API project
@@ -2518,6 +2549,25 @@ components:
           description: Path within the repository where the API project is located
           example: "apis/inventory-api"
 
+    ValidateOpenAPIRequest:
+      type: object
+      description: |
+        Request for validating OpenAPI definition. Can include either a URL, a file upload, 
+        or both. If both are provided, the validation service can choose which to prioritize.
+      properties:
+        url:
+          type: string
+          format: uri
+          description: URL to fetch the OpenAPI definition from
+          example: "https://petstore3.swagger.io/api/v3/openapi.json"
+        definition:
+          type: string
+          format: binary
+          description: OpenAPI definition file upload (YAML or JSON)
+      anyOf:
+        - required: [url]
+        - required: [definition]
+
     APIProjectValidationResponse:
       type: object
       required:
@@ -2556,6 +2606,31 @@ components:
                 - version
                 - backend-services
                 - projectId
+                - operations
+
+    OpenAPIValidationResponse:
+      type: object
+      required:
+        - isAPIDefinitionValid
+      properties:
+        isAPIDefinitionValid:
+          type: boolean
+          description: Indicates if the API definition file is valid
+          example: true
+        errors:
+          type: array
+          description: List of validation errors encountered
+          items:
+            type: string
+          example: [ "Missing OpenAPI definition", "Invalid OpenAPI definition" ]
+        api:
+          allOf:
+            - $ref: '#/components/schemas/API'
+            - type: object
+              description: Details for the validated API
+              required:
+                - name
+                - version
                 - operations
     
     ImportAPIProjectRequest:
