@@ -22,74 +22,150 @@ import (
 	"sync"
 )
 
-// TopicManager manages a thread-safe collection of registered topics
+// TopicManager manages a thread-safe collection of registered topics per API configuration
 type TopicManager struct {
-	topics map[string]string
+	topics map[string]map[string]bool // map[configId]map[topic]bool
 	mu     sync.RWMutex
 }
 
 // NewTopicManager creates a new TopicManager instance
 func NewTopicManager() *TopicManager {
 	return &TopicManager{
-		topics: make(map[string]string),
+		topics: make(map[string]map[string]bool),
 	}
 }
 
-// Add adds a topic to the manager
+// Add adds a topic for a specific config ID to the manager
 // Returns true if the topic was added, false if it already exists
-func (tm *TopicManager) Add(topic string) bool {
+func (tm *TopicManager) Add(configID, topic string) bool {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	if _, exists := tm.topics[topic]; exists {
-		return false
+	if _, exists := tm.topics[configID]; !exists {
+		tm.topics[configID] = make(map[string]bool)
 	}
 
-	tm.topics[topic] = topic
+	if tm.topics[configID][topic] {
+		return false // Topic already exists for this config
+	}
+
+	tm.topics[configID][topic] = true
 	return true
 }
 
-// Remove removes a topic from the manager
+// Remove removes a topic for a specific config ID from the manager
 // Returns true if the topic was removed, false if it doesn't exist
-func (tm *TopicManager) Remove(topic string) bool {
+func (tm *TopicManager) Remove(configID, topic string) bool {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	if _, exists := tm.topics[topic]; !exists {
+	if _, exists := tm.topics[configID]; !exists {
 		return false
 	}
 
-	delete(tm.topics, topic)
+	if !tm.topics[configID][topic] {
+		return false
+	}
+
+	delete(tm.topics[configID], topic)
+
+	// Clean up empty config map
+	if len(tm.topics[configID]) == 0 {
+		delete(tm.topics, configID)
+	}
+
 	return true
 }
 
-// Contains checks if a topic exists in the manager
-func (tm *TopicManager) Contains(topic string) bool {
+// RemoveAllForConfig removes all topics for a specific config ID
+func (tm *TopicManager) RemoveAllForConfig(configID string) {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	delete(tm.topics, configID)
+}
+
+// Contains checks if a topic exists for a specific config ID
+func (tm *TopicManager) Contains(configID, topic string) bool {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 
-	_, exists := tm.topics[topic]
-	return exists
+	if _, exists := tm.topics[configID]; !exists {
+		return false
+	}
+
+	return tm.topics[configID][topic]
 }
 
-// GetAll returns all registered topics as a slice
-func (tm *TopicManager) GetAll() map[string]string {
+// GetAllForConfig returns all topics for a specific config ID
+func (tm *TopicManager) GetAllForConfig(configID string) []string {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 
-	// topics := make([]string, 0, len(tm.topics))
-	// for topic := range tm.topics {
-	// 	topics = append(topics, topic)
-	// }
-	return tm.topics
+	if _, exists := tm.topics[configID]; !exists {
+		return []string{}
+	}
+
+	topics := make([]string, 0, len(tm.topics[configID]))
+	for topic := range tm.topics[configID] {
+		topics = append(topics, topic)
+	}
+	return topics
 }
 
-// Count returns the number of registered topics
+// GetAll returns all topics across all configs as a map[topic]bool
+func (tm *TopicManager) GetAll() map[string]bool {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+
+	allTopics := make(map[string]bool)
+	for _, configTopics := range tm.topics {
+		for topic := range configTopics {
+			allTopics[topic] = true
+		}
+	}
+	return allTopics
+}
+
+// GetAllByConfig returns the full nested map structure (for debugging/inspection)
+func (tm *TopicManager) GetAllByConfig() map[string]map[string]bool {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+
+	result := make(map[string]map[string]bool)
+	for configID, configTopics := range tm.topics {
+		result[configID] = make(map[string]bool)
+		for topic := range configTopics {
+			result[configID][topic] = true
+		}
+	}
+	return result
+}
+
+// Count returns the total number of unique topics across all configs
 func (tm *TopicManager) Count() int {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 
-	return len(tm.topics)
+	uniqueTopics := make(map[string]bool)
+	for _, configTopics := range tm.topics {
+		for topic := range configTopics {
+			uniqueTopics[topic] = true
+		}
+	}
+	return len(uniqueTopics)
+}
+
+// CountForConfig returns the number of topics for a specific config ID
+func (tm *TopicManager) CountForConfig(configID string) int {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+
+	if _, exists := tm.topics[configID]; !exists {
+		return 0
+	}
+
+	return len(tm.topics[configID])
 }
 
 // Clear removes all topics from the manager
@@ -97,5 +173,5 @@ func (tm *TopicManager) Clear() {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	tm.topics = make(map[string]string)
+	tm.topics = make(map[string]map[string]bool)
 }

@@ -75,8 +75,15 @@ func createTestConfig(name, version string) *models.StoredAPIConfig {
 						Method: api.GET,
 						Path:   "/test",
 					},
-				},
-			},
+					Operations: []api.Operation{
+						{
+							Method: api.GET,
+							Path:   "/test",
+						},
+					},
+				})
+				return d
+			}(),
 		},
 		Status:          models.StatusPending,
 		DeployedVersion: 0,

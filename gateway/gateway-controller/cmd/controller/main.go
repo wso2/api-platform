@@ -132,8 +132,15 @@ func main() {
 	// Generate initial xDS snapshot
 	log.Info("Generating initial xDS snapshot")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	if err := snapshotManager.UpdateSnapshot(ctx, ""); err != nil {
-		log.Warn("Failed to generate initial xDS snapshot", zap.Error(err))
+	if cfg.WebSubHub.Enabled {
+		log.Info("WebSubHub integration is enabled")
+		if err := snapshotManager.UpdateSnapshotofAsyncAPI(ctx, ""); err != nil {
+			log.Warn("Failed to generate initial xDS snapshot", zap.Error(err))
+		}
+	} else {
+		if err := snapshotManager.UpdateSnapshot(ctx, ""); err != nil {
+			log.Warn("Failed to generate initial xDS snapshot", zap.Error(err))
+		}
 	}
 	cancel()
 

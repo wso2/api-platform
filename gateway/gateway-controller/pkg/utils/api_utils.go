@@ -24,13 +24,14 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
+
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 
 	"go.uber.org/zap"
 )
@@ -283,6 +284,20 @@ func (s *APIUtilsService) NotifyAPIDeployment(apiID string, apiConfig *models.St
 		zap.String("api_id", apiID),
 		zap.Int("status_code", resp.StatusCode),
 		zap.String("response", string(bodyBytes)))
+
+	return nil
+}
+func MapToStruct(data map[string]interface{}, out interface{}) error {
+	// Convert map -> JSON bytes
+	jsonBytes, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal map to JSON: %w", err)
+	}
+
+	// Unmarshal JSON bytes -> target struct
+	if err := json.Unmarshal(jsonBytes, out); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON to struct: %w", err)
+	}
 
 	return nil
 }

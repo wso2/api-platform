@@ -81,8 +81,10 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 	// Get all configurations from in-memory store
 	configs := sm.store.GetAll()
 
-	// Translate configurations to Envoy resources
-	resources, err := sm.translator.TranslateConfigs(configs, correlationID)
+	// Translate configurations to Envoy resources if this is not event gw
+	//resources, err := sm.translator.TranslateConfigs(configs, correlationID)
+	// If event gw,
+	resources, err := sm.translator.TranslateAsyncConfigs(configs, correlationID)
 	if err != nil {
 		log.Error("Failed to translate configurations", zap.Error(err))
 		// Mark all pending configs as failed
