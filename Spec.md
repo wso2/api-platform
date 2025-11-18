@@ -149,11 +149,40 @@ type PolicySpec struct {
     // Enables backward compatibility and gradual rollouts
     Version string
 
-    // Whether this policy is active
+    // Static enable/disable toggle
+    // If false, policy never executes regardless of ExecutionCondition
     Enabled bool
 
     // Typed and validated configuration parameters
     Parameters PolicyParameters
+
+    // Optional: CEL expression for dynamic conditional execution
+    // If nil, policy always executes (when Enabled=true)
+    // If not nil, policy only executes when expression evaluates to true
+    // Expression evaluated with RequestContext (request phase) or ResponseContext (response phase)
+    //
+    // Available context variables:
+    //   Request Phase (RequestContext):
+    //     - request.Path       (string)
+    //     - request.Method     (string)
+    //     - request.Headers    (map[string][]string)
+    //     - request.Body       ([]byte)
+    //     - request.Metadata   (map[string]string)
+    //
+    //   Response Phase (ResponseContext):
+    //     - request.Path, request.Method, request.Headers (original request)
+    //     - response.Status    (int)
+    //     - response.Headers   (map[string][]string)
+    //     - response.Body      ([]byte)
+    //     - metadata           (map[string]string)
+    //
+    // Example expressions:
+    //   - `request.Path.startsWith("/api/v1")`
+    //   - `request.Method in ["POST", "PUT", "PATCH"]`
+    //   - `has(request.Headers["content-type"]) && request.Headers["content-type"][0].contains("application/json")`
+    //   - `request.Metadata["environment"] == "production"`
+    //   - `response.Status >= 500`  (response phase)
+    ExecutionCondition *string
 }
 
 // PolicyParameters holds the configuration with type-safe access
@@ -523,13 +552,158 @@ var RateLimitingV1 = PolicyDefinition{
      - Format validation (email, URI, regex, etc.)
      - Constraint validation (min/max, pattern, enum, etc.)
      - CEL expression evaluation (if specified)
+   - If ExecutionCondition specified → validate CEL syntax
    - Converts validated parameters to TypedValue
    - Stores validated PolicySpec in RouteConfig
 
 2. **Execution Time**:
+   - Check if policy.Enabled == false → skip policy
+   - Evaluate ExecutionCondition (if specified) with context → skip if false
+   - Execute policy with pre-validated parameters
    - No validation overhead - parameters already validated
    - Policies access pre-validated TypedValue from Parameters.Validated
    - Type-safe access with guaranteed constraints
+
+**Conditional Execution Examples:**
+
+```yaml
+# Example 1: JWT validation only for /api/* paths
+name: jwtValidation
+version: v1.0.0
+enabled: true
+executionCondition: 'request.Path.startsWith("/api/")'
+parameters:
+  jwksUrl: "https://auth.example.com/.well-known/jwks.json"
+  issuer: "https://auth.example.com/"
+  audiences: ["https://api.example.com"]
+
+# Example 2: Rate limiting only for write operations
+name: rateLimiting
+version: v1.0.0
+enabled: true
+executionCondition: 'request.Method in ["POST", "PUT", "DELETE", "PATCH"]'
+parameters:
+  requestsPerSecond: 100
+  burstSize: 20
+
+# Example 3: CORS only when Origin header present
+name: corsPolicy
+version: v1.0.0
+enabled: true
+executionCondition: 'has(request.Headers["origin"])'
+parameters:
+  allowedOrigins: ["https://app.example.com"]
+
+# Example 4: Content transformation only for JSON
+name: requestTransformation
+version: v1.0.0
+enabled: true
+executionCondition: |
+  has(request.Headers["content-type"]) &&
+  request.Headers["content-type"][0].contains("application/json")
+parameters:
+  transformRules: [...]
+
+# Example 5: Error logging only for server errors (response phase)
+name: errorLogging
+version: v1.0.0
+enabled: true
+executionCondition: 'response.Status >= 500'
+parameters:
+  logLevel: "error"
+  includeBody: true
+
+# Example 6: Environment-specific policy
+name: debugHeaders
+version: v1.0.0
+enabled: true
+executionCondition: 'request.Metadata["environment"] in ["dev", "staging"]'
+parameters:
+  headers:
+    - name: "X-Debug-Mode"
+      value: "true"
+```
+
+**Core Execution Flow with Conditions:**
+
+```go
+// Core executes request policies with condition evaluation
+func (c *Core) ExecuteRequestPolicies(policies []RequestPolicy, ctx *RequestContext) RequestExecutionResult {
+    startTime := time.Now()
+    results := make([]RequestPolicyResult, 0, len(policies))
+    shortCircuited := false
+
+    for i, policy := range policies {
+        policyStart := time.Now()
+
+        // Check if policy is enabled
+        spec := policy.GetSpec()
+        if !spec.Enabled {
+            continue  // Policy disabled, skip
+        }
+
+        // Evaluate execution condition (if specified)
+        if spec.ExecutionCondition != nil {
+            conditionMet := c.celEvaluator.EvaluateWithContext(*spec.ExecutionCondition, ctx)
+            if !conditionMet {
+                continue  // Condition not met, skip policy
+            }
+        }
+
+        // Execute policy
+        action := policy.ExecuteRequest(ctx, c.getConfig(policy))
+
+        // Record result with metrics
+        result := RequestPolicyResult{
+            Action:     action,
+            PolicyName: policy.Name(),
+            Duration:   time.Since(policyStart),
+            Index:      i,
+        }
+        results = append(results, result)
+
+        // Check for short-circuit
+        if action != nil && action.Action.StopExecution() {
+            shortCircuited = true
+            break
+        }
+    }
+
+    return RequestExecutionResult{
+        PolicyResults:  results,
+        TotalDuration:  time.Since(startTime),
+        ShortCircuited: shortCircuited,
+    }
+}
+```
+
+**CEL Evaluation Context:**
+
+The Core provides a CEL evaluator that has access to the full RequestContext or ResponseContext:
+
+```go
+// CEL Evaluator interface
+type CELEvaluator interface {
+    // Evaluate CEL expression with RequestContext
+    EvaluateWithRequestContext(expression string, ctx *RequestContext) bool
+
+    // Evaluate CEL expression with ResponseContext
+    EvaluateWithResponseContext(expression string, ctx *ResponseContext) bool
+}
+
+// Example CEL expressions and their evaluation:
+// Expression: `request.Path.startsWith("/api/")`
+// Context: RequestContext{Path: "/api/users"}
+// Result: true
+
+// Expression: `request.Method in ["POST", "PUT"]`
+// Context: RequestContext{Method: "GET"}
+// Result: false
+
+// Expression: `has(request.Headers["authorization"])`
+// Context: RequestContext{Headers: {"content-type": ["application/json"]}}
+// Result: false
+```
 
 **Design Benefits:**
 
@@ -540,17 +714,21 @@ var RateLimitingV1 = PolicyDefinition{
 - ✅ **Self-Documenting**: ParameterSchema serves as living documentation
 - ✅ **Backward Compatibility**: Multiple versions can coexist, gradual migration
 - ✅ **Extensible**: Easy to add new types and validation rules
-- ✅ **CEL Support**: Custom validation expressions for complex constraints
+- ✅ **CEL Support**: Custom validation expressions for complex constraints and conditional execution
+- ✅ **Conditional Execution**: Dynamic runtime policy execution based on request/response context
 - ✅ **Developer Experience**: Clear, actionable error messages during configuration
-- ✅ **Performance**: Zero runtime validation overhead
+- ✅ **Performance**: Zero runtime validation overhead, efficient CEL evaluation
 - ✅ **Format Validation**: Built-in validators for email, URI, IP, UUID, etc.
 - ✅ **Protobuf Compatible**: Can be mapped to protobuf messages for xDS
+- ✅ **Flexible Policies**: Same policy can behave differently based on path, method, headers, environment
+- ✅ **Cost Efficiency**: Skip expensive policies when conditions not met (e.g., skip JWT validation for public endpoints)
 
 ### 2.2 Worker: Core
 
 **Responsibilities:**
 - Maintain policy registry (name → Policy implementation)
 - Execute policy chains in order
+- Evaluate ExecutionCondition (CEL expressions) for each policy
 - Implement short-circuit logic (stop when action.Action.StopExecution() returns true)
 - Collect policy results with execution metrics
 - Pass execution results back to Kernel (includes actions and timing data)
@@ -558,11 +736,15 @@ var RateLimitingV1 = PolicyDefinition{
 **Key Functions:**
 - `ExecuteRequestPolicies(policies []RequestPolicy, ctx *RequestContext) RequestExecutionResult`
   - Iterate through request policies (type-safe, no runtime type checking needed)
+  - Check if policy is enabled
+  - Evaluate ExecutionCondition with RequestContext (skip if condition not met)
   - Execute each policy and collect action with timing metrics
   - Short-circuit if action.Action.StopExecution() returns true
   - Return execution result with actions and metrics to Kernel
 - `ExecuteResponsePolicies(policies []ResponsePolicy, ctx *ResponseContext) ResponseExecutionResult`
   - Iterate through response policies (type-safe, no runtime type checking needed)
+  - Check if policy is enabled
+  - Evaluate ExecutionCondition with ResponseContext (skip if condition not met)
   - Execute each policy and collect action with timing metrics
   - Short-circuit if action.Action.StopExecution() returns true
   - Return execution result with actions and metrics to Kernel
@@ -700,6 +882,8 @@ type ResponsePolicyResult struct {
 1. Receive type-safe policy list ([]RequestPolicy or []ResponsePolicy) and context from Kernel
 2. Initialize results array and start total timer
 3. For each policy in order:
+   - Check if policy.Enabled == false → skip to next policy
+   - Evaluate ExecutionCondition with context (if specified) → skip if false
    - Start policy timer
    - Execute policy with context and configuration
    - Record policy name, duration, and action in result
@@ -716,7 +900,17 @@ type ResponsePolicyResult struct {
 flowchart TD
     Start([Receive []RequestPolicy<br/>& Context from Kernel]) --> Init["Initialize results array<br/>Start total timer"]
     Init --> LoadFirst[Load First Policy]
-    LoadFirst --> StartTimer[Start policy timer]
+    LoadFirst --> CheckEnabled{Policy<br/>Enabled?}
+
+    CheckEnabled -->|No| MorePolicies{More<br/>Policies?}
+    CheckEnabled -->|Yes| CheckCondition{Has<br/>ExecutionCondition?}
+
+    CheckCondition -->|No| StartTimer[Start policy timer]
+    CheckCondition -->|Yes| EvalCondition[Evaluate CEL<br/>expression with context]
+
+    EvalCondition --> ConditionMet{Condition<br/>true?}
+    ConditionMet -->|No| MorePolicies
+    ConditionMet -->|Yes| StartTimer
 
     StartTimer --> Execute[Execute Policy:<br/>action = policy.ExecuteRequest()]
 
@@ -724,14 +918,14 @@ flowchart TD
 
     RecordResult --> CheckNil{Action<br/>is nil?}
 
-    CheckNil -->|Yes| MorePolicies{More<br/>Policies?}
+    CheckNil -->|Yes| MorePolicies
     CheckNil -->|No| CheckStop{action.Action.<br/>StopExecution()?}
 
     CheckStop -->|Yes| ShortCircuit[Short-circuit:<br/>Set ShortCircuited=true<br/>Return result]
     CheckStop -->|No| MorePolicies
 
     MorePolicies -->|Yes| LoadNext[Load Next Policy]
-    LoadNext --> StartTimer
+    LoadNext --> CheckEnabled
     MorePolicies -->|No| ReturnResult[Return RequestExecutionResult<br/>to Kernel]
 
     ReturnResult --> KernelExtract[Kernel extracts actions<br/>and logs metrics]
@@ -747,6 +941,10 @@ flowchart TD
     style KernelExtract fill:#fff9c4,stroke:#f57f17
     style CheckStop fill:#fff9c4,stroke:#f57f17
     style CheckNil fill:#e1bee7,stroke:#4a148c
+    style CheckEnabled fill:#e1bee7,stroke:#4a148c
+    style CheckCondition fill:#e1bee7,stroke:#4a148c
+    style EvalCondition fill:#fff3e0,stroke:#e65100
+    style ConditionMet fill:#fff3e0,stroke:#e65100
 ```
 
 ### 2.3 Worker: Policies
