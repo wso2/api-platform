@@ -14,6 +14,14 @@ The system consists of three major components:
 2. **Policy Engine Builder**: Build-time tooling that compiles custom policy implementations into the engine
 3. **Sample Policy Implementations**: Reference implementations demonstrating the policy framework
 
+## Clarifications
+
+### Session 2025-11-18
+
+- Q: Observability scope (metrics export format, logging patterns) → A: Remove observability from initial scope, defer to future enhancements
+- Q: xDS configuration source for policy chains → A: File-based config for development, xDS for production
+- Q: Builder incremental build strategy → A: Always full rebuild (simple, no change detection needed)
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Route-Based Policy Execution (Priority: P1)
@@ -119,11 +127,11 @@ The Policy Engine automatically optimizes request/response buffering based on po
 
 ### User Story 7 - Inter-Policy Communication via Metadata (Priority: P3)
 
-Policies in a chain communicate by reading and writing shared metadata. JWT validation extracts user ID and stores it in metadata. Subsequent rate limiting policy reads the user ID to apply per-user limits. Logging policy in response phase reads metadata to correlate request and response.
+Policies in a chain communicate by reading and writing shared metadata. JWT validation extracts user ID and stores it in metadata. Subsequent rate limiting policy reads the user ID to apply per-user limits. Response phase policies can read metadata set during request phase for coordinated behavior.
 
 **Why this priority**: Enables sophisticated policy coordination without tight coupling - valuable but not required for basic operation
 
-**Independent Test**: Configure JWT policy that writes user ID to metadata and logging policy that reads it. Send authenticated request and verify logs contain user ID from JWT. Delivers policy coordination independently.
+**Independent Test**: Configure JWT policy that writes user ID to metadata and rate limiting policy that reads it. Send authenticated requests and verify rate limiting applies per-user limits. Delivers policy coordination independently.
 
 **Acceptance Scenarios**:
 
@@ -158,7 +166,7 @@ An operator attempts to configure a policy with invalid parameters (e.g., malfor
 - **Policy version mismatch**: How does system handle when configuration references policy version not present in binary? System rejects configuration at validation time with clear error.
 - **Metadata key collision**: What happens when multiple policies write to same metadata key? Last writer wins, documented in policy execution order.
 - **Body size limits**: How does system handle requests/responses exceeding body buffer limits? Configurable limit in Envoy ext_proc filter with size rejection.
-- **CEL evaluation errors**: What happens when CEL expression has runtime errors? Policy is skipped and error is logged with request ID for troubleshooting.
+- **CEL evaluation errors**: What happens when CEL expression has runtime errors? Policy is skipped and execution continues to next policy in chain.
 - **Policy chain empty**: What happens when route has no policies configured? Request passes through unchanged to upstream.
 - **xDS connection loss**: How does system behave when xDS configuration stream disconnects? Continues operating with last known good configuration until reconnection.
 - **Concurrent policy modifications**: What happens when policy is being updated while requests are processing? Uses copy-on-write semantics - in-flight requests use old version, new requests use new version.
@@ -183,50 +191,50 @@ An operator attempts to configure a policy with invalid parameters (e.g., malfor
 
 - **FR-008**: System MUST support route-to-policy mapping using metadata keys from Envoy
 - **FR-009**: System MUST accept dynamic policy configuration updates via xDS streaming protocol without service restart
-- **FR-010**: System MUST validate policy parameters against policy-defined schemas at configuration time
-- **FR-011**: System MUST reject invalid policy configurations with descriptive error messages before activation
-- **FR-012**: System MUST support multiple versions of the same policy coexisting in the same binary
-- **FR-013**: System MUST allow policy specifications to declare required and optional configuration parameters with type constraints
-- **FR-014**: System MUST support conditional policy execution using CEL expressions evaluated against request/response context
+- **FR-010**: System MUST support file-based policy configuration for development and testing environments
+- **FR-011**: System MUST validate policy parameters against policy-defined schemas at configuration time
+- **FR-012**: System MUST reject invalid policy configurations with descriptive error messages before activation
+- **FR-013**: System MUST support multiple versions of the same policy coexisting in the same binary
+- **FR-014**: System MUST allow policy specifications to declare required and optional configuration parameters with type constraints
+- **FR-015**: System MUST support conditional policy execution using CEL expressions evaluated against request/response context
 
 **Policy Types:**
 
-- **FR-015**: System MUST support policies that execute only during request processing phase
-- **FR-016**: System MUST support policies that execute only during response processing phase
-- **FR-017**: System MUST support policies that execute during both request and response phases
-- **FR-018**: System MUST allow policies to modify request headers before upstream delivery
-- **FR-019**: System MUST allow policies to modify request body before upstream delivery
-- **FR-020**: System MUST allow policies to modify request path and method before upstream delivery
-- **FR-021**: System MUST allow policies to modify response headers before client delivery
-- **FR-022**: System MUST allow policies to modify response body before client delivery
-- **FR-023**: System MUST allow policies to modify response status code before client delivery
+- **FR-016**: System MUST support policies that execute only during request processing phase
+- **FR-017**: System MUST support policies that execute only during response processing phase
+- **FR-018**: System MUST support policies that execute during both request and response phases
+- **FR-019**: System MUST allow policies to modify request headers before upstream delivery
+- **FR-020**: System MUST allow policies to modify request body before upstream delivery
+- **FR-021**: System MUST allow policies to modify request path and method before upstream delivery
+- **FR-022**: System MUST allow policies to modify response headers before client delivery
+- **FR-023**: System MUST allow policies to modify response body before client delivery
+- **FR-024**: System MUST allow policies to modify response status code before client delivery
 
 **Body Processing Optimization:**
 
-- **FR-024**: System MUST analyze policy chain to determine if request body buffering is required
-- **FR-025**: System MUST analyze policy chain to determine if response body buffering is required
-- **FR-026**: System MUST configure Envoy ext_proc in SKIP body mode when no policies require body access
-- **FR-027**: System MUST configure Envoy ext_proc in BUFFERED body mode when any policy requires body access
-- **FR-028**: System MUST update body processing mode dynamically when policy configuration changes
+- **FR-025**: System MUST analyze policy chain to determine if request body buffering is required
+- **FR-026**: System MUST analyze policy chain to determine if response body buffering is required
+- **FR-027**: System MUST configure Envoy ext_proc in SKIP body mode when no policies require body access
+- **FR-028**: System MUST configure Envoy ext_proc in BUFFERED body mode when any policy requires body access
+- **FR-029**: System MUST update body processing mode dynamically when policy configuration changes
 
 **Policy Registry:**
 
-- **FR-029**: System MUST maintain registry of available policies indexed by name and version
-- **FR-030**: System MUST load policy definitions from YAML files at startup
-- **FR-031**: System MUST validate policy definition YAML files conform to required schema
-- **FR-032**: System MUST support auto-discovery of policies from configured directory structure
+- **FR-030**: System MUST maintain registry of available policies indexed by name and version
+- **FR-031**: System MUST load policy definitions from YAML files at startup
+- **FR-032**: System MUST validate policy definition YAML files conform to required schema
+- **FR-033**: System MUST support auto-discovery of policies from configured directory structure
 
 **Policy Builder:**
 
-- **FR-033**: Builder MUST discover custom policies from mounted directory structure
-- **FR-034**: Builder MUST validate custom policy directory structure (policy.yaml, go.mod, *.go files present)
-- **FR-035**: Builder MUST validate custom policy YAML definitions against schema
-- **FR-036**: Builder MUST validate custom policy Go code implements required interfaces
-- **FR-037**: Builder MUST generate import registry code linking custom policies into engine binary
-- **FR-038**: Builder MUST compile final binary with all custom policies included
-- **FR-039**: Builder MUST generate runtime Dockerfile for deploying compiled binary
-- **FR-040**: Builder MUST fail with detailed error report when validation fails
-- **FR-041**: Builder MUST support incremental builds when only specific policies change
+- **FR-034**: Builder MUST discover custom policies from mounted directory structure
+- **FR-035**: Builder MUST validate custom policy directory structure (policy.yaml, go.mod, *.go files present)
+- **FR-036**: Builder MUST validate custom policy YAML definitions against schema
+- **FR-037**: Builder MUST validate custom policy Go code implements required interfaces
+- **FR-038**: Builder MUST generate import registry code linking custom policies into engine binary
+- **FR-039**: Builder MUST compile final binary with all custom policies included
+- **FR-040**: Builder MUST generate runtime Dockerfile for deploying compiled binary
+- **FR-041**: Builder MUST fail with detailed error report when validation fails
 - **FR-042**: Builder MUST embed build metadata (timestamp, version, loaded policies) in binary
 
 **Sample Policies:**
@@ -237,20 +245,11 @@ An operator attempts to configure a policy with invalid parameters (e.g., malfor
 - **FR-046**: JWT validation policy MUST extract and inject JWT claims as headers for upstream services
 - **FR-047**: JWT validation policy MUST cache JWKS keys to minimize external lookups
 
-**Observability:**
-
-- **FR-048**: System MUST log policy execution results with request ID for correlation
-- **FR-049**: System MUST record timing metrics for each policy execution
-- **FR-050**: System MUST record total policy chain execution time
-- **FR-051**: System MUST emit metrics for policy success/failure rates
-- **FR-052**: System MUST include policy name and version in execution logs
-
 **Error Handling:**
 
-- **FR-053**: System MUST handle policy execution errors gracefully without crashing
-- **FR-054**: System MUST support configurable failure modes (fail-open vs fail-closed) per policy
-- **FR-055**: System MUST log policy errors with sufficient context for debugging
-- **FR-056**: System MUST continue processing remaining policies when non-critical policy fails
+- **FR-048**: System MUST handle policy execution errors gracefully without crashing
+- **FR-049**: System MUST support configurable failure modes (fail-open vs fail-closed) per policy
+- **FR-050**: System MUST continue processing remaining policies when non-critical policy fails
 
 ### Key Entities
 
@@ -276,8 +275,7 @@ An operator attempts to configure a policy with invalid parameters (e.g., malfor
 - **SC-006**: Policy configuration validation catches 100% of schema violations before configuration activation
 - **SC-007**: System maintains 99.9% uptime when processing production traffic through policy chains
 - **SC-008**: Policy versioning enables safe rollout of policy updates with zero downtime for existing routes
-- **SC-009**: All policy execution failures are logged with request ID and sufficient context for troubleshooting within 100ms of failure
-- **SC-010**: System handles 10,000 concurrent requests with policy chains containing up to 5 policies without performance degradation
+- **SC-009**: System handles 10,000 concurrent requests with policy chains containing up to 5 policies without performance degradation
 
 ## Dependencies and Assumptions
 
@@ -293,7 +291,7 @@ An operator attempts to configure a policy with invalid parameters (e.g., malfor
 - **Deployment model**: Policy Engine runs as separate service, not embedded in Envoy process
 - **Network reliability**: Policy Engine and Envoy communicate over reliable low-latency network (typically same host or pod)
 - **Policy trust**: Custom policies are trusted code - no sandboxing or security isolation between policies
-- **Configuration source**: xDS configuration originates from trusted control plane
+- **Configuration source**: File-based configuration for development/testing environments, xDS stream from trusted control plane for production deployments
 - **Body size limits**: Requests/responses requiring body access are limited to reasonable sizes (< 10MB) configured in Envoy
 - **Policy execution time**: Policies complete execution within reasonable timeframes (< 1 second) to avoid request timeouts
 - **YAML format**: Policy definitions use YAML format, not JSON or protobuf
@@ -305,6 +303,8 @@ An operator attempts to configure a policy with invalid parameters (e.g., malfor
 
 The following capabilities are not included in this initial version but may be considered for future releases:
 
+- **Observability & Monitoring**: Structured logging with request IDs, metrics export (Prometheus/OpenTelemetry), execution timing, policy success/failure rates, distributed tracing integration
+- **Incremental Builder**: Change detection (content hash or timestamp-based) to rebuild only modified policies, reducing build times for large policy sets
 - **Policy plugin system**: Runtime loading of policies without recompilation
 - **Distributed policy coordination**: Cross-instance policy state synchronization (e.g., distributed rate limiting)
 - **Policy A/B testing framework**: Gradual rollout of policy versions with traffic splitting
