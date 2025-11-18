@@ -129,9 +129,422 @@ graph TB
 - RouteConfig contains:
   - `RequestPolicies []RequestPolicy` - Policies executed during request flow (type-safe)
   - `ResponsePolicies []ResponsePolicy` - Policies executed during response flow (type-safe)
-- PolicyConfig includes: policy name, parameters, enabled flag
+- PolicySpec includes: policy name, version, validated parameters, enabled flag
 - Version tracking for xDS protocol (resource version strings)
 - Policies are filtered by interface type when loaded into RouteConfig
+
+### 2.1.1 Policy Configuration Schema
+
+Following industry standards (Kubernetes CRDs, OpenAPI v3, Protobuf validation), the engine uses a robust parameter typing and validation system.
+
+**Core Configuration Types:**
+
+```go
+// PolicySpec defines a policy instance with version and validated parameters
+type PolicySpec struct {
+    // Policy identifier (e.g., "jwtValidation", "rateLimiting")
+    Name string
+
+    // Semantic version of the policy implementation (e.g., "v1.0.0", "v2.1.0")
+    // Enables backward compatibility and gradual rollouts
+    Version string
+
+    // Whether this policy is active
+    Enabled bool
+
+    // Typed and validated configuration parameters
+    Parameters PolicyParameters
+}
+
+// PolicyParameters holds the configuration with type-safe access
+type PolicyParameters struct {
+    // Raw parameter values as JSON (from xDS config)
+    Raw map[string]interface{}
+
+    // Validated parameters matching the policy's schema
+    // Validated at configuration time, not execution time
+    Validated map[string]TypedValue
+}
+
+// TypedValue represents a validated parameter value with its type information
+type TypedValue struct {
+    Type  ParameterType
+    Value interface{}  // Actual value after validation
+}
+```
+
+**Parameter Type System:**
+
+```go
+// ParameterType defines supported parameter types
+type ParameterType string
+
+const (
+    // Scalar Types
+    ParameterTypeString     ParameterType = "string"
+    ParameterTypeInt        ParameterType = "int"        // int64
+    ParameterTypeFloat      ParameterType = "float"      // float64
+    ParameterTypeBool       ParameterType = "bool"
+    ParameterTypePercentage ParameterType = "percentage" // float64 [0.0-100.0]
+    ParameterTypeDuration   ParameterType = "duration"   // time.Duration
+
+    // Complex Types
+    ParameterTypeStringArray ParameterType = "string_array"
+    ParameterTypeIntArray    ParameterType = "int_array"
+    ParameterTypeMap         ParameterType = "map"        // map[string]interface{}
+    ParameterTypeObject      ParameterType = "object"     // nested structure
+
+    // Format-Specific Types (strings with validation)
+    ParameterTypeEmail      ParameterType = "email"       // RFC 5322 email
+    ParameterTypeURI        ParameterType = "uri"         // RFC 3986 URI
+    ParameterTypeHostname   ParameterType = "hostname"    // RFC 1123 hostname
+    ParameterTypeIPv4       ParameterType = "ipv4"        // IPv4 address
+    ParameterTypeIPv6       ParameterType = "ipv6"        // IPv6 address
+    ParameterTypeUUID       ParameterType = "uuid"        // RFC 4122 UUID
+    ParameterTypeJSONPath   ParameterType = "jsonpath"    // JSONPath expression
+    ParameterTypeRegex      ParameterType = "regex"       // Valid regex pattern
+)
+```
+
+**Validation Schema:**
+
+```go
+// ParameterSchema defines the validation rules for a policy parameter
+// Follows OpenAPI v3 / JSON Schema conventions
+type ParameterSchema struct {
+    // Parameter name (e.g., "jwksUrl", "maxRequests", "allowedOrigins")
+    Name string
+
+    // Parameter type
+    Type ParameterType
+
+    // Human-readable description
+    Description string
+
+    // Whether this parameter is required
+    Required bool
+
+    // Default value if not provided (must match Type)
+    Default interface{}
+
+    // Validation rules based on type
+    Validation ValidationRules
+}
+
+// ValidationRules contains type-specific validation constraints
+type ValidationRules struct {
+    // String validations
+    MinLength *int    // Minimum string length
+    MaxLength *int    // Maximum string length
+    Pattern   *string // Regex pattern (Go regexp syntax)
+    Format    *string // Predefined format (email, uri, hostname, etc.)
+    Enum      []string // Allowed values
+
+    // Numeric validations (int, float, percentage)
+    Minimum          *float64 // Minimum value (inclusive)
+    Maximum          *float64 // Maximum value (inclusive)
+    ExclusiveMinimum *float64 // Minimum value (exclusive)
+    ExclusiveMaximum *float64 // Maximum value (exclusive)
+    MultipleOf       *float64 // Value must be multiple of this
+
+    // Array validations
+    MinItems *int  // Minimum array length
+    MaxItems *int  // Maximum array length
+    UniqueItems bool // All items must be unique
+
+    // Duration validations
+    MinDuration *time.Duration // Minimum duration
+    MaxDuration *time.Duration // Maximum duration
+
+    // Object/Map validations
+    MinProperties *int // Minimum number of properties
+    MaxProperties *int // Maximum number of properties
+
+    // Custom validation using CEL (Common Expression Language)
+    // Example: "this.maxRequests > 0 && this.maxRequests <= 10000"
+    CELExpression *string
+}
+```
+
+**Policy Definition & Versioning:**
+
+```go
+// PolicyDefinition describes a specific version of a policy
+// Each version is a separate PolicyDefinition with its own schema
+type PolicyDefinition struct {
+    // Policy name (e.g., "jwtValidation", "rateLimiting")
+    Name string
+
+    // Semantic version of THIS definition (e.g., "v1.0.0", "v2.0.0")
+    // Each version gets its own PolicyDefinition
+    Version string
+
+    // Description of what this policy version does
+    Description string
+
+    // Which phases this policy version supports
+    SupportsRequestPhase  bool
+    SupportsResponsePhase bool
+
+    // Parameter schemas for THIS version
+    ParameterSchemas []ParameterSchema
+
+    // Examples of valid configurations for THIS version
+    Examples []PolicyExample
+}
+
+// PolicyExample provides a documented example configuration
+type PolicyExample struct {
+    Description string
+    Config      map[string]interface{}
+}
+
+// PolicyRegistry stores policy definitions by composite key
+type PolicyRegistry struct {
+    // Key format: "policyName:version" (e.g., "jwtValidation:v1.0.0")
+    definitions map[string]*PolicyDefinition
+
+    // Alternative nested structure for easier version lookup:
+    // map[policyName]map[version]*PolicyDefinition
+}
+```
+
+**Example Policy Definitions:**
+
+```go
+// JWT Validation v1.0.0 - Basic validation
+var JWTValidationV1 = PolicyDefinition{
+    Name:        "jwtValidation",
+    Version:     "v1.0.0",
+    Description: "Validates JWT tokens using JWKS",
+    SupportsRequestPhase:  true,
+    SupportsResponsePhase: false,
+    ParameterSchemas: []ParameterSchema{
+        {
+            Name:        "headerName",
+            Type:        ParameterTypeString,
+            Description: "HTTP header containing the JWT",
+            Required:    true,
+            Default:     "Authorization",
+            Validation: ValidationRules{
+                MinLength: ptr(1),
+                MaxLength: ptr(256),
+                Pattern:   ptr("^[A-Za-z0-9-]+$"),
+            },
+        },
+        {
+            Name:        "tokenPrefix",
+            Type:        ParameterTypeString,
+            Description: "Prefix to strip from header value (e.g., 'Bearer ')",
+            Required:    false,
+            Default:     "Bearer ",
+        },
+        {
+            Name:        "jwksUrl",
+            Type:        ParameterTypeURI,
+            Description: "URL to fetch JSON Web Key Set",
+            Required:    true,
+            Validation: ValidationRules{
+                Pattern: ptr("^https://.*"),
+            },
+        },
+        {
+            Name:        "issuer",
+            Type:        ParameterTypeString,
+            Description: "Expected JWT issuer claim",
+            Required:    true,
+            Validation: ValidationRules{
+                MinLength: ptr(1),
+                MaxLength: ptr(256),
+            },
+        },
+        {
+            Name:        "audiences",
+            Type:        ParameterTypeStringArray,
+            Description: "Accepted audience values",
+            Required:    true,
+            Validation: ValidationRules{
+                MinItems: ptr(1),
+                MaxItems: ptr(10),
+            },
+        },
+        {
+            Name:        "clockSkew",
+            Type:        ParameterTypeDuration,
+            Description: "Allowed clock skew for exp/nbf validation",
+            Required:    false,
+            Default:     "30s",
+            Validation: ValidationRules{
+                MinDuration: ptr(0 * time.Second),
+                MaxDuration: ptr(5 * time.Minute),
+            },
+        },
+    },
+    Examples: []PolicyExample{
+        {
+            Description: "Basic JWT validation with Auth0",
+            Config: map[string]interface{}{
+                "headerName":  "Authorization",
+                "tokenPrefix": "Bearer ",
+                "jwksUrl":     "https://your-tenant.auth0.com/.well-known/jwks.json",
+                "issuer":      "https://your-tenant.auth0.com/",
+                "audiences":   []string{"https://api.example.com"},
+                "clockSkew":   "30s",
+            },
+        },
+    },
+}
+
+// JWT Validation v2.0.0 - Extended with caching and claim extraction
+var JWTValidationV2 = PolicyDefinition{
+    Name:        "jwtValidation",
+    Version:     "v2.0.0",
+    Description: "Validates JWT tokens with advanced caching and claim extraction",
+    SupportsRequestPhase:  true,
+    SupportsResponsePhase: false,
+    ParameterSchemas: []ParameterSchema{
+        // All v1.0.0 parameters (inherited conceptually)
+        {Name: "headerName", Type: ParameterTypeString, Required: true, Default: "Authorization"},
+        {Name: "tokenPrefix", Type: ParameterTypeString, Required: false, Default: "Bearer "},
+        {Name: "jwksUrl", Type: ParameterTypeURI, Required: true},
+        {Name: "issuer", Type: ParameterTypeString, Required: true},
+        {Name: "audiences", Type: ParameterTypeStringArray, Required: true},
+        {Name: "clockSkew", Type: ParameterTypeDuration, Required: false, Default: "30s"},
+
+        // New parameters in v2.0.0
+        {
+            Name:        "cacheTTL",
+            Type:        ParameterTypeDuration,
+            Description: "How long to cache JWKS keys",
+            Required:    false,
+            Default:     "1h",
+            Validation: ValidationRules{
+                MinDuration: ptr(1 * time.Minute),
+                MaxDuration: ptr(24 * time.Hour),
+            },
+        },
+        {
+            Name:        "extractClaims",
+            Type:        ParameterTypeStringArray,
+            Description: "JWT claims to extract and inject as headers",
+            Required:    false,
+            Validation: ValidationRules{
+                MaxItems: ptr(20),
+            },
+        },
+        {
+            Name:        "claimHeaderPrefix",
+            Type:        ParameterTypeString,
+            Description: "Prefix for injected claim headers",
+            Required:    false,
+            Default:     "X-JWT-",
+        },
+    },
+}
+
+// Rate Limiting v1.0.0
+var RateLimitingV1 = PolicyDefinition{
+    Name:        "rateLimiting",
+    Version:     "v1.0.0",
+    Description: "Token bucket rate limiting per identifier",
+    SupportsRequestPhase:  true,
+    SupportsResponsePhase: false,
+    ParameterSchemas: []ParameterSchema{
+        {
+            Name:        "requestsPerSecond",
+            Type:        ParameterTypeFloat,
+            Description: "Maximum requests per second",
+            Required:    true,
+            Validation: ValidationRules{
+                Minimum:    ptr(0.1),
+                Maximum:    ptr(1000000.0),
+                MultipleOf: ptr(0.1),
+            },
+        },
+        {
+            Name:        "burstSize",
+            Type:        ParameterTypeInt,
+            Description: "Maximum burst size (tokens in bucket)",
+            Required:    true,
+            Validation: ValidationRules{
+                Minimum: ptr(1.0),
+                Maximum: ptr(10000.0),
+            },
+        },
+        {
+            Name:        "identifierSource",
+            Type:        ParameterTypeString,
+            Description: "How to identify the client",
+            Required:    true,
+            Validation: ValidationRules{
+                Enum: []string{"ip", "header", "jwt_claim"},
+            },
+        },
+        {
+            Name:        "identifierKey",
+            Type:        ParameterTypeString,
+            Description: "Header name or JWT claim name for identification",
+            Required:    false,
+            Validation: ValidationRules{
+                MinLength: ptr(1),
+                MaxLength: ptr(256),
+            },
+        },
+        {
+            Name:        "rejectStatusCode",
+            Type:        ParameterTypeInt,
+            Description: "HTTP status code when rate limit exceeded",
+            Required:    false,
+            Default:     429,
+            Validation: ValidationRules{
+                Minimum: ptr(400.0),
+                Maximum: ptr(599.0),
+            },
+        },
+        {
+            Name:        "enableRetryAfterHeader",
+            Type:        ParameterTypeBool,
+            Description: "Include Retry-After header in response",
+            Required:    false,
+            Default:     true,
+        },
+    },
+}
+```
+
+**Validation Flow:**
+
+1. **Configuration Time** (when xDS config is received):
+   - Kernel receives PolicySpec from xDS with name, version, and raw parameters
+   - Looks up PolicyDefinition from registry using "name:version" key
+   - If version not found → reject configuration with clear error
+   - Validates each parameter against ParameterSchema:
+     - Type checking (string, int, duration, etc.)
+     - Format validation (email, URI, regex, etc.)
+     - Constraint validation (min/max, pattern, enum, etc.)
+     - CEL expression evaluation (if specified)
+   - Converts validated parameters to TypedValue
+   - Stores validated PolicySpec in RouteConfig
+
+2. **Execution Time**:
+   - No validation overhead - parameters already validated
+   - Policies access pre-validated TypedValue from Parameters.Validated
+   - Type-safe access with guaranteed constraints
+
+**Design Benefits:**
+
+- ✅ **Type Safety**: Strong typing with Go type system
+- ✅ **Version Independence**: Each policy version has its own complete definition
+- ✅ **Validation at Config Time**: Fail fast with clear errors, not during request processing
+- ✅ **Industry Standard**: Follows OpenAPI v3 / JSON Schema / Kubernetes CRD patterns
+- ✅ **Self-Documenting**: ParameterSchema serves as living documentation
+- ✅ **Backward Compatibility**: Multiple versions can coexist, gradual migration
+- ✅ **Extensible**: Easy to add new types and validation rules
+- ✅ **CEL Support**: Custom validation expressions for complex constraints
+- ✅ **Developer Experience**: Clear, actionable error messages during configuration
+- ✅ **Performance**: Zero runtime validation overhead
+- ✅ **Format Validation**: Built-in validators for email, URI, IP, UUID, etc.
+- ✅ **Protobuf Compatible**: Can be mapped to protobuf messages for xDS
 
 ### 2.2 Worker: Core
 
