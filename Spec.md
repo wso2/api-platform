@@ -10,11 +10,11 @@
 ## 1. Overview
 
 ### 1.1 Purpose
-The Envoy Policy Engine is an external processor (ext_proc) service for Envoy Proxy that provides a flexible, extensible framework for enforcing policies on HTTP requests and responses. The engine allows dynamic configuration of policy chains per route, enabling capabilities such as authentication, authorization, header manipulation, and request transformation without modifying Envoy configuration.
+The Envoy Policy Engine is an external processor (ext_proc) service for Envoy Proxy that provides a flexible, extensible framework for processing HTTP requests and responses through configurable policies. The engine allows dynamic configuration of policy chains per route, enabling capabilities such as authentication, authorization, header manipulation, and request transformation without modifying Envoy configuration.
 
 ### 1.2 Goals
 - Provide a clean separation between policy logic and proxy infrastructure
-- Enable dynamic policy configuration without Envoy restarts
+- Enable dynamic policy configuration without restarting Envoy or the policy engine
 - Support extensible policy framework through Go interfaces
 - Achieve low-latency policy evaluation
 - Allow policy composition and chaining with failure handling
@@ -32,15 +32,14 @@ graph TB
         subgraph Kernel["KERNEL"]
             GRPCServer["gRPC Server<br/>(ext_proc implementation)"]
             Mapper["Route-to-Policy Mapping<br/>(by metadata key)"]
-            Translator["Instruction → ext_proc<br/>Response Translator"]
+            Translator["Action → ext_proc<br/>Response Translator"]
             ConfigAPI["Configuration<br/>Management API"]
         end
 
         subgraph WorkerCore["WORKER: CORE"]
             Registry["Policy Registry"]
-            Executor["Policy Chain Executor"]
-            InstructionGen["Instruction Generator"]
-            FailureHandler["Failure Handling<br/>(short-circuit on failure)"]
+            Executor["Policy Chain Executor<br/>(with short-circuit logic)"]
+            ActionCollector["Action Collector"]
         end
 
         subgraph WorkerPolicies["WORKER: POLICIES"]
@@ -106,7 +105,7 @@ graph TB
 - Maintain route-to-policy mappings (key → request policy list, response policy list)
 - Extract metadata key from Envoy requests
 - Invoke Worker Core with appropriate policy chain (request or response flow)
-- **Translate policy results to ext_proc responses** (Core → Envoy format)
+- Translate policy results to ext_proc responses (Core → Envoy format)
 - Expose xDS-based Policy Discovery Service (gRPC streaming, port 9002)
 
 **Key Functions:**
@@ -114,24 +113,25 @@ graph TB
   - Extract metadata key from request
   - Get request policy list for route
   - Call Core.ExecuteRequestPolicies()
-  - Translate `[]RequestPolicyAction` → ext_proc response
+  - Translate `RequestExecutionResult` → ext_proc response
 - `ProcessResponse()` - Handle response phase from Envoy (ext_proc)
   - Extract metadata key from request
   - Get response policy list for route
   - Call Core.ExecuteResponsePolicies()
-  - Translate `[]ResponsePolicyAction` → ext_proc response
+  - Translate `ResponseExecutionResult` → ext_proc response
 - `GetRequestPoliciesForKey(key string)` - Retrieve request policy chain for route
 - `GetResponsePoliciesForKey(key string)` - Retrieve response policy chain for route
 - `StreamPolicyMappings()` - xDS stream for policy configuration updates
-- `TranslatePolicyActions()` - Convert array of policy actions to ext_proc format
+- `TranslatePolicyActions()` - Convert execution results to ext_proc format
 
 **Configuration Storage:**
 - In-memory map: `metadata_key → RouteConfig`
 - RouteConfig contains:
-  - `RequestPolicies []PolicyConfig` - Policies executed during request flow
-  - `ResponsePolicies []PolicyConfig` - Policies executed during response flow
+  - `RequestPolicies []RequestPolicy` - Policies executed during request flow (type-safe)
+  - `ResponsePolicies []ResponsePolicy` - Policies executed during response flow (type-safe)
 - PolicyConfig includes: policy name, parameters, enabled flag
 - Version tracking for xDS protocol (resource version strings)
+- Policies are filtered by interface type when loaded into RouteConfig
 
 ### 2.2 Worker: Core
 
@@ -139,22 +139,20 @@ graph TB
 - Maintain policy registry (name → Policy implementation)
 - Execute policy chains in order
 - Implement short-circuit logic (stop when action.Action.StopExecution() returns true)
-- Collect policy results into arrays
-- Pass arrays of policy results back to Kernel (no aggregation/transformation)
+- Collect policy results with execution metrics
+- Pass execution results back to Kernel (includes actions and timing data)
 
 **Key Functions:**
-- `ExecuteRequestPolicies(policies []Policy, ctx *RequestContext) []RequestPolicyAction`
-  - Iterate through policies
-  - Check if policy implements `RequestPolicy` interface
-  - Execute policy and collect action
+- `ExecuteRequestPolicies(policies []RequestPolicy, ctx *RequestContext) RequestExecutionResult`
+  - Iterate through request policies (type-safe, no runtime type checking needed)
+  - Execute each policy and collect action with timing metrics
   - Short-circuit if action.Action.StopExecution() returns true
-  - Return array of actions to Kernel
-- `ExecuteResponsePolicies(policies []Policy, ctx *ResponseContext) []ResponsePolicyAction`
-  - Iterate through policies
-  - Check if policy implements `ResponsePolicy` interface
-  - Execute policy and collect action
+  - Return execution result with actions and metrics to Kernel
+- `ExecuteResponsePolicies(policies []ResponsePolicy, ctx *ResponseContext) ResponseExecutionResult`
+  - Iterate through response policies (type-safe, no runtime type checking needed)
+  - Execute each policy and collect action with timing metrics
   - Short-circuit if action.Action.StopExecution() returns true
-  - Return array of actions to Kernel
+  - Return execution result with actions and metrics to Kernel
 
 **Policy Action Types:**
 
@@ -236,6 +234,39 @@ type UpstreamResponseModifications struct {
 
 func (UpstreamResponseModifications) isResponseAction() {}
 func (UpstreamResponseModifications) StopExecution() bool { return false }
+
+// ============ Execution Results (with Metrics) ============
+
+// RequestExecutionResult encapsulates all policy execution results for request phase
+// Includes both actions and timing metrics for observability
+type RequestExecutionResult struct {
+    PolicyResults  []RequestPolicyResult  // One result per policy executed
+    TotalDuration  time.Duration          // Total time for entire chain
+    ShortCircuited bool                   // True if execution stopped early
+}
+
+// RequestPolicyResult contains the action and metrics for a single policy execution
+type RequestPolicyResult struct {
+    Action       *RequestPolicyAction  // nil if policy returned nil
+    PolicyName   string                // Name of the policy
+    Duration     time.Duration         // Time taken to execute this policy
+    Index        int                   // Execution order (0-based)
+}
+
+// ResponseExecutionResult encapsulates all policy execution results for response phase
+type ResponseExecutionResult struct {
+    PolicyResults  []ResponsePolicyResult
+    TotalDuration  time.Duration
+    ShortCircuited bool
+}
+
+// ResponsePolicyResult contains the action and metrics for a single policy execution
+type ResponsePolicyResult struct {
+    Action       *ResponsePolicyAction
+    PolicyName   string
+    Duration     time.Duration
+    Index        int
+}
 ```
 
 **Design Benefits:**
@@ -248,57 +279,59 @@ func (UpstreamResponseModifications) StopExecution() bool { return false }
 - **Matches Envoy Model:** Aligns with ext_proc protocol (continue or short-circuit)
 - **Simple API:** Policy authors work with plain structs, no complex builders needed
 - **Clear Intent:** "Action" clearly indicates what the policy wants to do
+- **Observability:** Execution results include timing metrics for each policy and total chain
+- **1:1 Mapping:** Each action is paired with its execution metadata
+- **Type-Safe Execution:** Core receives []RequestPolicy or []ResponsePolicy, eliminating runtime type checks
 
 **Execution Flow:**
-1. Receive policy list and context from Kernel
-2. Initialize actions array: `actions := []RequestPolicyAction{}` (or ResponsePolicyAction)
+1. Receive type-safe policy list ([]RequestPolicy or []ResponsePolicy) and context from Kernel
+2. Initialize results array and start total timer
 3. For each policy in order:
-   - Check if policy implements appropriate interface (RequestPolicy/ResponsePolicy)
-   - If not, skip to next policy
+   - Start policy timer
    - Execute policy with context and configuration
-   - Collect action into actions array
+   - Record policy name, duration, and action in result
    - Check if action.Action.StopExecution() returns true:
-     - If true → short-circuit, return actions
+     - If true → short-circuit, mark ShortCircuited=true, return results
      - If false → continue to next policy
-4. Return actions array to Kernel (Core does NOT aggregate or transform)
-5. Kernel translates actions array into ext_proc response format
+4. Return execution result to Kernel (includes all actions with timing metrics)
+5. Kernel extracts actions and translates into ext_proc response format
+6. Kernel can log/export metrics from execution result
 
 **Execution Flow Diagram:**
 
 ```mermaid
 flowchart TD
-    Start([Receive Policy List<br/>& Context from Kernel]) --> Init["Initialize actions array:<br/>actions = []"]
+    Start([Receive []RequestPolicy<br/>& Context from Kernel]) --> Init["Initialize results array<br/>Start total timer"]
     Init --> LoadFirst[Load First Policy]
-    LoadFirst --> CheckInterface{Implements<br/>RequestPolicy?}
+    LoadFirst --> StartTimer[Start policy timer]
 
-    CheckInterface -->|No| Skip[Skip Policy]
-    CheckInterface -->|Yes| Execute[Execute Policy:<br/>action = policy.ExecuteRequest()]
+    StartTimer --> Execute[Execute Policy:<br/>action = policy.ExecuteRequest()]
 
-    Execute --> CheckNil{Action<br/>is nil?}
+    Execute --> RecordResult[Record result:<br/>PolicyName, Duration,<br/>Action, Index]
+
+    RecordResult --> CheckNil{Action<br/>is nil?}
 
     CheckNil -->|Yes| MorePolicies{More<br/>Policies?}
-    CheckNil -->|No| AddAction[Add action to<br/>actions array]
+    CheckNil -->|No| CheckStop{action.Action.<br/>StopExecution()?}
 
-    AddAction --> CheckStop{action.Action.<br/>StopExecution()?}
-
-    CheckStop -->|Yes| ShortCircuit[Short-circuit:<br/>Return actions<br/>to Kernel]
+    CheckStop -->|Yes| ShortCircuit[Short-circuit:<br/>Set ShortCircuited=true<br/>Return result]
     CheckStop -->|No| MorePolicies
 
-    Skip --> MorePolicies
     MorePolicies -->|Yes| LoadNext[Load Next Policy]
-    LoadNext --> CheckInterface
-    MorePolicies -->|No| ReturnActions[Return actions array<br/>to Kernel]
+    LoadNext --> StartTimer
+    MorePolicies -->|No| ReturnResult[Return RequestExecutionResult<br/>to Kernel]
 
-    ReturnActions --> KernelTranslate[Kernel translates actions<br/>to ext_proc response]
+    ReturnResult --> KernelExtract[Kernel extracts actions<br/>and logs metrics]
+    KernelExtract --> KernelTranslate[Kernel translates actions<br/>to ext_proc response]
     KernelTranslate --> End([End])
-    ShortCircuit --> KernelTranslate
+    ShortCircuit --> KernelExtract
 
     style Start fill:#e1f5ff,stroke:#01579b
     style End fill:#e1f5ff,stroke:#01579b
     style ShortCircuit fill:#ffcdd2,stroke:#c62828
-    style ReturnActions fill:#c8e6c9,stroke:#2e7d32
+    style ReturnResult fill:#c8e6c9,stroke:#2e7d32
     style KernelTranslate fill:#fff9c4,stroke:#f57f17
-    style CheckInterface fill:#e1bee7,stroke:#4a148c
+    style KernelExtract fill:#fff9c4,stroke:#f57f17
     style CheckStop fill:#fff9c4,stroke:#f57f17
     style CheckNil fill:#e1bee7,stroke:#4a148c
 ```
@@ -463,66 +496,125 @@ func (p *LoggingPolicy) ExecuteResponse(ctx *ResponseContext, config map[string]
 **Core Executor Integration:**
 
 ```go
-// Core executes request policies and returns array of actions
-func (c *Core) ExecuteRequestPolicies(policies []Policy, ctx *RequestContext) []RequestPolicyAction {
-    actions := make([]RequestPolicyAction, 0, len(policies))
+// Core executes request policies and returns execution result with metrics
+func (c *Core) ExecuteRequestPolicies(policies []RequestPolicy, ctx *RequestContext) RequestExecutionResult {
+    startTime := time.Now()
+    results := make([]RequestPolicyResult, 0, len(policies))
+    shortCircuited := false
 
-    for _, policy := range policies {
-        // Check if policy handles request phase
-        rp, ok := policy.(RequestPolicy)
-        if !ok {
-            continue  // Skip policies that don't implement RequestPolicy
+    for i, policy := range policies {
+        policyStart := time.Now()
+
+        // Execute policy
+        action := policy.ExecuteRequest(ctx, c.getConfig(policy))
+
+        // Record result with metrics
+        result := RequestPolicyResult{
+            Action:     action,
+            PolicyName: policy.Name(),
+            Duration:   time.Since(policyStart),
+            Index:      i,
         }
+        results = append(results, result)
 
-        action := rp.ExecuteRequest(ctx, c.getConfig(policy))
-
-        // Add action to array (even if nil)
-        if action != nil {
-            actions = append(actions, *action)
-
-            // Check if action requests stop execution
-            if action.Action.StopExecution() {
-                return actions  // Short-circuit: return collected actions
-            }
+        // Check for short-circuit
+        if action != nil && action.Action.StopExecution() {
+            shortCircuited = true
+            break
         }
     }
 
-    // Return all collected actions to Kernel
-    return actions
+    return RequestExecutionResult{
+        PolicyResults:  results,
+        TotalDuration:  time.Since(startTime),
+        ShortCircuited: shortCircuited,
+    }
 }
 
-// Core executes response policies and returns array of actions
-func (c *Core) ExecuteResponsePolicies(policies []Policy, ctx *ResponseContext) []ResponsePolicyAction {
-    actions := make([]ResponsePolicyAction, 0, len(policies))
+// Core executes response policies and returns execution result with metrics
+func (c *Core) ExecuteResponsePolicies(policies []ResponsePolicy, ctx *ResponseContext) ResponseExecutionResult {
+    startTime := time.Now()
+    results := make([]ResponsePolicyResult, 0, len(policies))
+    shortCircuited := false
 
-    for _, policy := range policies {
-        // Check if policy handles response phase
-        rp, ok := policy.(ResponsePolicy)
-        if !ok {
-            continue  // Skip policies that don't implement ResponsePolicy
+    for i, policy := range policies {
+        policyStart := time.Now()
+
+        // Execute policy
+        action := policy.ExecuteResponse(ctx, c.getConfig(policy))
+
+        // Record result with metrics
+        result := ResponsePolicyResult{
+            Action:     action,
+            PolicyName: policy.Name(),
+            Duration:   time.Since(policyStart),
+            Index:      i,
         }
+        results = append(results, result)
 
-        action := rp.ExecuteResponse(ctx, c.getConfig(policy))
-
-        // Add action to array (even if nil)
-        if action != nil {
-            actions = append(actions, *action)
-
-            // Check if action requests stop execution
-            if action.Action.StopExecution() {
-                return actions  // Short-circuit: return collected actions
-            }
+        // Check for short-circuit
+        if action != nil && action.Action.StopExecution() {
+            shortCircuited = true
+            break
         }
     }
 
-    // Return all collected actions to Kernel
-    return actions
+    return ResponseExecutionResult{
+        PolicyResults:  results,
+        TotalDuration:  time.Since(startTime),
+        ShortCircuited: shortCircuited,
+    }
 }
 ```
 
 **Kernel Translation Example:**
 
 ```go
+// Kernel processes execution result and translates to ext_proc response
+func (k *Kernel) ProcessRequest(req *extproc.ProcessingRequest) *extproc.ProcessingResponse {
+    // Extract metadata and build context
+    key := k.extractMetadataKey(req)
+    ctx := k.buildRequestContext(req)
+
+    // Get type-safe request policies for this route
+    requestPolicies := k.GetRequestPoliciesForKey(key)
+
+    // Execute policies and get result with metrics
+    execResult := k.core.ExecuteRequestPolicies(requestPolicies, ctx)
+
+    // Log execution metrics
+    k.logger.Info("Request policy chain executed",
+        "route_key", key,
+        "total_duration", execResult.TotalDuration,
+        "num_policies", len(execResult.PolicyResults),
+        "short_circuited", execResult.ShortCircuited,
+    )
+
+    // Log individual policy metrics
+    for _, pr := range execResult.PolicyResults {
+        k.logger.Debug("Policy executed",
+            "name", pr.PolicyName,
+            "duration", pr.Duration,
+            "index", pr.Index,
+            "has_action", pr.Action != nil,
+        )
+
+        // Export metrics to monitoring system
+        k.metrics.RecordPolicyDuration(pr.PolicyName, pr.Duration)
+    }
+
+    // Extract actions from results
+    actions := make([]RequestPolicyAction, 0, len(execResult.PolicyResults))
+    for _, pr := range execResult.PolicyResults {
+        if pr.Action != nil {
+            actions = append(actions, *pr.Action)
+        }
+    }
+
+    // Translate actions to ext_proc response
+    return k.TranslateRequestActions(actions)
+}
+
 // Kernel translates policy actions to ext_proc response
 func (k *Kernel) TranslateRequestActions(actions []RequestPolicyAction) *extproc.ProcessingResponse {
     // Check for immediate response (short-circuit)
@@ -594,6 +686,8 @@ func (k *Kernel) TranslateRequestActions(actions []RequestPolicyAction) *extproc
 - **Flexible:** Policies can implement one or both phases
 - **Extensible:** New policy types can be added without breaking existing code
 - **Clean Type Switching:** Kernel easily handles different result types with type switches
+- **No Runtime Type Checks:** Core receives type-safe []RequestPolicy or []ResponsePolicy slices
+- **Built-in Observability:** Execution timing automatically collected for all policies
 
 ---
 
@@ -617,7 +711,7 @@ parameters:
 
 **Behavior:**
 - Read header operations from configuration
-- Generate instructions for each header operation
+- Return action with header modifications
 - Never fails (non-critical)
 
 ### 3.2 JWT Validation Policy
@@ -688,7 +782,7 @@ parameters:
 **Behavior:**
 - Apply JSON transformations to request body
 - Rewrite request path using regex
-- Generate SET_BODY and/or SET_HEADER instructions
+- Return action with body and/or header modifications
 - Non-critical (logs errors but continues)
 
 ---
@@ -697,7 +791,7 @@ parameters:
 
 ### 4.1 Request Processing Flow
 
-#### 4.1.1 Failure Path (Short-Circuit)
+#### 4.1.1 Early Termination Path (Short-Circuit)
 
 ```mermaid
 sequenceDiagram
@@ -712,13 +806,13 @@ sequenceDiagram
     Envoy->>Kernel: ProcessingRequest (gRPC)<br/>metadata: {"route_key": "api-v1-users"}<br/>+ headers + body
     Note over Kernel: Extract key: "api-v1-users"<br/>Lookup policies:<br/>[apiKey, jwt, setHeader]
     Kernel->>Core: ExecuteRequestPolicies(policies, context)
-    Note over Core: Initialize actions = []<br/>Check apiKeyValidation<br/>implements RequestPolicy ✓
+    Note over Core: Initialize results = []<br/>Start total timer<br/>Policy 0: apiKeyValidation
     Core->>Policy: ExecuteRequest(ctx, config)
     Note over Policy: Check API key<br/>Result: FAILURE
     Policy-->>Core: RequestPolicyAction{<br/>Action: ImmediateResponse{<br/>status: 403,<br/>body: "Invalid API Key"<br/>}}
-    Note over Core: Add action to actions array<br/>action.Action.StopExecution() == true<br/>Short-circuit: Stop execution
-    Core-->>Kernel: []RequestPolicyAction{<br/>[0]: ImmediateResponse{403}<br/>}
-    Note over Kernel: Translate actions array<br/>to ext_proc response
+    Note over Core: Record result with metrics<br/>action.Action.StopExecution() == true<br/>Short-circuit: Stop execution
+    Core-->>Kernel: RequestExecutionResult{<br/>PolicyResults[0]: {Action, Name, Duration},<br/>TotalDuration, ShortCircuited: true<br/>}
+    Note over Kernel: Log metrics<br/>Extract actions<br/>Translate to ext_proc response
     Kernel-->>Envoy: ProcessingResponse<br/>(ImmediateResponse)
     Envoy->>Client: 403 Forbidden<br/>"Invalid API Key"
     Note over Envoy: Skip upstream
@@ -739,27 +833,27 @@ sequenceDiagram
 
     Client->>Envoy: HTTP Request
     Envoy->>Kernel: ProcessingRequest (gRPC)<br/>metadata + headers + body
-    Kernel->>Core: ExecuteRequestPolicies(policies, context)
-    Note over Core: Initialize actions = []
+    Kernel->>Core: ExecuteRequestPolicies([]RequestPolicy, context)
+    Note over Core: Initialize results = []<br/>Start total timer
 
     Core->>P1: ExecuteRequest(ctx, config)
     Note over P1: Validate API key<br/>SUCCESS
     P1-->>Core: RequestPolicyAction{<br/>Action: UpstreamRequest{}<br/>}
-    Note over Core: Add to actions[0]<br/>StopExecution() == false<br/>Continue
+    Note over Core: Record PolicyResult[0]<br/>with name, duration, action<br/>StopExecution() == false
 
     Core->>P2: ExecuteRequest(ctx, config)
     Note over P2: Validate JWT<br/>Extract claims<br/>SUCCESS
     P2-->>Core: RequestPolicyAction{<br/>Action: UpstreamRequest{<br/>SetHeaders: {"X-User-ID": "12345"}<br/>}}
-    Note over Core: Add to actions[1]<br/>StopExecution() == false<br/>Continue
+    Note over Core: Record PolicyResult[1]<br/>with metrics<br/>StopExecution() == false
 
     Core->>P3: ExecuteRequest(ctx, config)
     Note over P3: Add custom headers<br/>SUCCESS
     P3-->>Core: RequestPolicyAction{<br/>Action: UpstreamRequest{<br/>SetHeaders: {"X-Custom": "value"}<br/>}}
-    Note over Core: Add to actions[2]<br/>StopExecution() == false<br/>Continue
+    Note over Core: Record PolicyResult[2]<br/>with metrics<br/>StopExecution() == false
 
-    Note over Core: All policies complete<br/>Return actions array
-    Core-->>Kernel: []RequestPolicyAction{<br/>[0]: UpstreamRequest{},<br/>[1]: UpstreamRequest{SetHeaders...},<br/>[2]: UpstreamRequest{SetHeaders...}<br/>}
-    Note over Kernel: Aggregate & translate<br/>actions array to<br/>ext_proc HeaderMutation
+    Note over Core: All policies complete<br/>Calculate total duration
+    Core-->>Kernel: RequestExecutionResult{<br/>PolicyResults: [3 results with metrics],<br/>TotalDuration, ShortCircuited: false<br/>}
+    Note over Kernel: Log metrics<br/>Extract actions<br/>Translate to ext_proc
     Kernel-->>Envoy: ProcessingResponse<br/>(HeaderMutations)
     Note over Envoy: Apply header mutations
     Envoy->>Upstream: Forward request with<br/>modified headers
@@ -1060,13 +1154,13 @@ policy-engine/
 │   ├── extproc.go            # gRPC ext_proc server
 │   ├── xds.go                # xDS Policy Discovery Service server
 │   ├── mapper.go             # Route-to-policy mapping storage
-│   ├── translator.go         # Instruction translator
+│   ├── translator.go         # Action translator
 │   └── admin.go              # Optional admin gRPC service
 ├── worker/
 │   ├── core/
 │   │   ├── executor.go       # Policy chain executor
 │   │   ├── registry.go       # Policy registry
-│   │   └── instruction.go    # Instruction types
+│   │   └── action.go         # Action types
 │   └── policies/
 │       ├── interface.go      # Policy interface
 │       ├── setheader.go      # SetHeader policy
@@ -1189,7 +1283,7 @@ logging:
 - ✅ Kernel successfully handles ext_proc requests from Envoy
 - ✅ Dynamic policy configuration via API works without restarts
 - ✅ All four initial policies implemented and tested
-- ✅ Short-circuit behavior works correctly on policy failures
+- ✅ Short-circuit behavior works correctly when action.StopExecution() returns true
 - ✅ Metadata-based routing maps to correct policy chains
 
 ### 9.2 Technical Success
@@ -1218,7 +1312,7 @@ gantt
     Kernel gRPC Server           :p1a, 2025-11-17, 7d
     Worker Core & Registry       :p1b, 2025-11-17, 7d
     Policy Interface             :p1c, after p1b, 3d
-    Instruction Translation      :p1d, after p1b, 4d
+    Action Translation           :p1d, after p1b, 4d
 
     section Phase 2: Initial Policies
     SetHeader Policy             :p2a, after p1d, 2d
@@ -1243,7 +1337,7 @@ gantt
 - Implement Kernel with ext_proc gRPC server
 - Implement Worker Core with policy registry and executor
 - Define Policy interface
-- Basic instruction translation
+- Basic action translation
 
 ### Phase 2: Initial Policies (Week 3)
 - SetHeader policy
@@ -1324,8 +1418,8 @@ routes:
 - **Kernel:** The gRPC server component that interfaces with Envoy
 - **Worker Core:** The policy execution engine
 - **Policy:** A discrete unit of request/response processing logic
-- **Instruction:** A directive from Core to Kernel on how to modify the request/response
-- **Short-circuit:** Stopping policy chain execution upon first failure
+- **Action:** The result returned by a policy indicating how to modify the request/response or whether to short-circuit execution
+- **Short-circuit:** Stopping policy chain execution when a policy returns an action with StopExecution() = true
 - **Route Key:** Metadata key used to identify which policy chain to execute
 
 ---
