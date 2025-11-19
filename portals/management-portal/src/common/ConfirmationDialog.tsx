@@ -6,6 +6,7 @@ import {
   DialogActions,
   Typography,
   Box,
+  TextField,
 } from "@mui/material";
 import { Button } from "../components/src/components/Button";
 
@@ -18,6 +19,8 @@ type ConfirmationDialogProps = {
   confirmText?: string;
   cancelText?: string;
   severity?: 'info' | 'warning' | 'error';
+  confirmationText?: string;
+  confirmationLabel?: string;
 };
 
 const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
@@ -29,7 +32,19 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   confirmText = "Confirm",
   cancelText = "Cancel",
   severity = "warning",
+  confirmationText,
+  confirmationLabel = "Type to confirm",
 }) => {
+  const [inputValue, setInputValue] = React.useState("");
+  const requiresConfirmation = confirmationText && confirmationText.trim();
+  const isConfirmDisabled = requiresConfirmation && inputValue !== confirmationText;
+
+  React.useEffect(() => {
+    if (open) {
+      setInputValue("");
+    }
+  }, [open]);
+
   const getSeverityColor = () => {
     switch (severity) {
       case 'error':
@@ -85,10 +100,36 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
             fontSize: '0.9375rem',
             lineHeight: 1.6,
             opacity: 0.7,
+            mb: requiresConfirmation ? 2 : 0,
           }}
         >
           {message}
         </Typography>
+
+        {requiresConfirmation && (
+          <Box sx={{ mt: 2 }}>
+            <Typography 
+              variant="caption" 
+              color="text.secondary"
+              sx={{ mb: 1, display: 'block' }}
+            >
+              {confirmationLabel}
+            </Typography>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder={`Type "${confirmationText}" to confirm`}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              autoFocus
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  fontSize: '0.875rem',
+                },
+              }}
+            />
+          </Box>
+        )}
       </DialogContent>
 
       <DialogActions sx={{ px: 3, pb: 3, gap: 1 }}>
@@ -101,6 +142,7 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         </Button>
         <Button
           variant="contained"
+          disabled={isConfirmDisabled}
           onClick={() => {
             // start the parent operation and close immediately so caller can manage background state
             try {

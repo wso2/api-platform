@@ -480,6 +480,8 @@ const ApiListContent: React.FC = () => {
         confirmText="Delete"
         cancelText="Cancel"
         severity="error"
+        confirmationText={deleteDialog.apiName}
+        confirmationLabel={`Type the API name to confirm deletion`}
       />
     </Box>
   );
