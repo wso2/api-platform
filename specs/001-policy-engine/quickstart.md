@@ -17,14 +17,14 @@
 ### 1. Build Policy Engine Binary with Sample Policies
 
 ```bash
-# Clone repository
+# Clone repository (only for sample policies)
 git clone <repository-url>
 cd envoy-policy-engine-simplified
 
 # Build Policy Engine with sample policies using the Builder
-# The Builder will discover, validate, and compile sample policies into the binary
+# The Builder image CONTAINS the policy engine framework source code
+# You ONLY mount your policy implementations - NOT the framework source
 docker run --rm \
-    -v $(pwd)/src:/src \
     -v $(pwd)/policies:/policies \
     -v $(pwd)/output:/output \
     -e BUILD_VERSION=v1.0.0 \
@@ -240,6 +240,7 @@ EOF
 
 ```bash
 # Build using Policy Engine Builder
+# The Builder image contains the framework source - you only provide your policies
 docker run --rm \
     -v $(pwd)/my-policies:/policies \
     -v $(pwd)/output:/output \
@@ -247,9 +248,9 @@ docker run --rm \
     policy-engine-builder:v1.0.0
 
 # Expected output:
-# ✅ Discovered 1 policies
+# ✅ Discovered 1 policy (customAuth:v1.0.0)
 # ✅ Validation passed
-# ✅ Code generated
+# ✅ Code generated (plugin_registry.go with imports for customAuth)
 # ✅ Binary compiled: /output/policy-engine
 # ✅ Dockerfile generated: /output/Dockerfile
 ```

@@ -239,6 +239,8 @@ An operator attempts to configure a policy with invalid parameters (e.g., malfor
 - **FR-041**: Builder MUST fail with detailed error report when validation fails
 - **FR-042**: Builder MUST embed build metadata (timestamp, version, loaded policies) in binary
 
+**Builder Architecture Note**: The Policy Engine Builder is distributed as a Docker image that CONTAINS the complete Policy Engine framework source code (`src/`), build tools, and build scripts. Users run the Builder image and ONLY mount their policy implementations (via `/policies` volume) - they do NOT need to provide or mount the framework source. The Builder compiles the embedded framework source together with user-provided policies to produce the final binary.
+
 **Sample Policy Implementations (Reference Examples):**
 
 - **FR-043**: SHOULD provide SetHeader reference policy implementation that adds, removes, or modifies request/response headers

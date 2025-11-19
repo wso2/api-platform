@@ -388,12 +388,14 @@ This project uses a multi-component structure:
 
 ### US5: Builder - Docker Image
 
+**CRITICAL**: The Builder image CONTAINS the Policy Engine framework source code (`src/`). Users ONLY mount their policies - NOT the framework source.
+
 - [ ] T184 [US5] Create Dockerfile.builder with golang:1.23-alpine base
 - [ ] T185 [US5] Install build tools (bash, jq, yq, make, upx) in Dockerfile.builder
-- [ ] T186 [US5] Copy policy engine source code to builder image in Dockerfile.builder
-- [ ] T187 [US5] Copy build scripts to builder image in Dockerfile.builder
+- [ ] T186 [US5] Copy policy engine framework source code (src/) to /src in builder image in Dockerfile.builder
+- [ ] T187 [US5] Copy build scripts (build/, templates/, tools/) to builder image in Dockerfile.builder
 - [ ] T188 [US5] Set entrypoint to build.sh in Dockerfile.builder
-- [ ] T189 [US5] Pre-download Go dependencies in Dockerfile.builder
+- [ ] T189 [US5] Pre-download Go dependencies for framework in Dockerfile.builder
 
 ### US5: Builder - Utilities
 

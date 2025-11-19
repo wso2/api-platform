@@ -184,9 +184,10 @@ tools/
     ├── main.go
     └── go.mod
 
-# Docker images
-Dockerfile.builder               # Builder image with build tools
-Dockerfile.runtime              # GENERATED: Final runtime image
+# Docker Images
+Dockerfile.builder               # Builder image with build tools + framework source (src/)
+                                 # Users ONLY mount policies/ - framework source is IN the image
+Dockerfile.runtime              # GENERATED: Final runtime image with compiled binary
 
 # Testing
 tests/
@@ -221,6 +222,18 @@ docker-compose.yml              # Local development setup
 3. **Sample Policies** (`policies/`): OPTIONAL reference implementations - NOT bundled with runtime
 
 **Critical Separation**: The runtime and sample policies are architecturally separate. The runtime is a policy-agnostic framework. Sample policies demonstrate the framework but are not required. Users can build a binary with zero policies, only sample policies, only their custom policies, or any combination via the Builder.
+
+**Builder Image Architecture**: The `Dockerfile.builder` creates a complete build environment containing:
+- Go toolchain and build tools
+- **Policy Engine framework source code** (`src/` directory)
+- Build scripts (`build/`, `templates/`, `tools/`)
+- Everything needed to compile the final binary
+
+**User Workflow**: Users run the Builder image and ONLY mount:
+- `/policies` - Their custom policy implementations (or sample policies)
+- `/output` - Where the compiled binary and Dockerfile will be generated
+
+The framework source (`src/`) is already IN the Builder image - users never need to mount or provide it.
 
 ## Complexity Tracking
 

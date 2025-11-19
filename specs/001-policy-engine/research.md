@@ -184,10 +184,12 @@ This document captures research findings and technical decisions for implementin
 
 **Implementation Notes**:
 - Builder image: golang:1.23-alpine with build tools (jq, yq, bash)
-- Discovery: Find all policy.yaml files, extract name/version/path
+- **Builder image CONTAINS**: Policy Engine framework source code (`src/`), build scripts (`build/`, `templates/`, `tools/`)
+- **Users ONLY mount**: `/policies` (their custom policy implementations) and `/output` (generated artifacts)
+- Discovery: Find all policy.yaml files from mounted `/policies`, extract name/version/path
 - Validation: Check YAML schema, Go module, interface implementation
 - Generation: Create plugin_registry.go with imports, update go.mod with replace directives
-- Compilation: CGO_ENABLED=0 for static binary, ldflags for metadata injection
+- Compilation: CGO_ENABLED=0 for static binary, compile framework (`/src`) + mounted policies, ldflags for metadata injection
 - Packaging: Generate Dockerfile.runtime from template with build metadata
 
 **References**:
