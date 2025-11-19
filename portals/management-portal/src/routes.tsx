@@ -11,7 +11,6 @@ import Portals from "./pages/PortalManagement";
 import APIs from "./pages/APIs";
 import ApiTest from "./pages/apis/ApiTest";
 import ApiDeploy from "./pages/apis/ApiDeploy";
-import ApiPolicies from "./pages/apis/ApiPolicies";
 import ApiOverview from "./pages/apis/ApiOverview";
 import ApiDevelop from "./pages/apis/ApiDevelop";
 import ApiPublish from "./pages/apis/ApiPublish";
@@ -20,7 +19,6 @@ import ApiPublish from "./pages/apis/ApiPublish";
 import McpServers from "./pages/McpServers";
 import McpTest from "./pages/mcp/McpTest";
 import McpDeploy from "./pages/mcp/McpDeploy";
-import McpPolicies from "./pages/mcp/McpPolicies";
 
 // API Products
 import ApiProducts from "./pages/ApiProducts";
@@ -28,8 +26,11 @@ import ProductsTest from "./pages/products/ProductsTest";
 import ProductsDeploy from "./pages/products/ProductsDeploy";
 import ProductsPolicies from "./pages/products/ProductsPolicies";
 
+// Policies
+import OrgPolicies from "./pages/policies/orgPolicies/PolicyLandingPage";
+import ApiPolicies from "./pages/policies/apiPolicies/PolicyLandingPage";
+
 import Admin from "./pages/Admin";
-import Policies from "./pages/Policies";
 import ProjectOverview from "./pages/ProjectOverview";
 
 import { useOrganization } from "./context/OrganizationContext";
@@ -55,7 +56,6 @@ const AppRoutes: React.FC = () => {
     <Routes>
       <Route path="/" element={<OverviewEntry />} />
       <Route path="/overview" element={<OverviewEntry />} />
-      <Route path="/policies" element={<Policies />} />
 
       <Route path="/:orgHandle">
         <Route index element={<Navigate to="overview" replace />} />
@@ -65,14 +65,13 @@ const AppRoutes: React.FC = () => {
         <Route path="portals/create" element={<Portals />} />
         <Route path="portals/:portalId/edit" element={<Portals />} />
         <Route path="portals/:portalId/theme" element={<Portals />} />
-        <Route path="policies" element={<Policies />} />
+        <Route path="policies" element={<OrgPolicies />} />
 
         {/* API Proxies (org scope) */}
         <Route path="apis" element={<APIs />} />
         <Route path="apis/develop" element={<ApiDevelop />} />
         <Route path="apis/test" element={<ApiTest />} />
         <Route path="apis/deploy" element={<ApiDeploy />} />
-        <Route path="apis/policies" element={<ApiPolicies />} />
         <Route path="apis/:apiId/overview" element={<ApiOverview />} />
         <Route path="apis/:apiId/publish" element={<ApiPublish />} />
         <Route path=":apiSlug/apioverview" element={<ApiOverview />} />
@@ -81,7 +80,6 @@ const AppRoutes: React.FC = () => {
         <Route path="mcp" element={<McpServers />} />
         <Route path="mcp/test" element={<McpTest />} />
         <Route path="mcp/deploy" element={<McpDeploy />} />
-        <Route path="mcp/policies" element={<McpPolicies />} />
         <Route path="products" element={<ApiProducts />} />
         <Route path="products/test" element={<ProductsTest />} />
         <Route path="products/deploy" element={<ProductsDeploy />} />
@@ -97,14 +95,13 @@ const AppRoutes: React.FC = () => {
           <Route path="portals/create" element={<Portals />} />
           <Route path="portals/:portalId/edit" element={<Portals />} />
           <Route path="portals/:portalId/theme" element={<Portals />} />
-          <Route path="policies" element={<Policies />} />
+          <Route path="policies" element={<OrgPolicies />} />
 
           {/* API Proxies (project scope) */}
           <Route path="apis" element={<APIs />} />
           <Route path="apis/develop" element={<ApiDevelop />} />
           <Route path="apis/test" element={<ApiTest />} />
           <Route path="apis/deploy" element={<ApiDeploy />} />
-          <Route path="apis/policies" element={<ApiPolicies />} />
           <Route path="apis/:apiId/overview" element={<ApiOverview />} />
           <Route path="apis/:apiId/publish" element={<ApiPublish />} />
           <Route path=":apiSlug/apioverview" element={<ApiOverview />} />
@@ -113,7 +110,6 @@ const AppRoutes: React.FC = () => {
           <Route path="mcp" element={<McpServers />} />
           <Route path="mcp/test" element={<McpTest />} />
           <Route path="mcp/deploy" element={<McpDeploy />} />
-          <Route path="mcp/policies" element={<McpPolicies />} />
           <Route path="products" element={<ApiProducts />} />
           <Route path="products/test" element={<ProductsTest />} />
           <Route path="products/deploy" element={<ProductsDeploy />} />
