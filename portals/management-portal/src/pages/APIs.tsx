@@ -12,10 +12,12 @@ import {
   Typography,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import DeleteIcon from "@mui/icons-material/Delete";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { Card } from "../components/src/components/Card";
 import { Button } from "../components/src/components/Button";
+import { IconButton } from "../components/src/components/IconButton";
 import theme from "../theme";
 import { openSidebarGroup } from "../utils/sidebar";
 import { useApisContext } from "../context/ApiContext";
@@ -30,6 +32,7 @@ import ApiEmptyState, {
 import { SearchBar } from "../components/src/components/SearchBar";
 import EndPointCreationFlow from "./apis/CreationFlows/EndPointCreationFlow";
 import APIContractCreationFlow from "./apis/CreationFlows/APIContractCreationFlow";
+import ConfirmationDialog from "../common/ConfirmationDialog";
 
 /* ---------------- helpers ---------------- */
 
@@ -54,7 +57,8 @@ const initials = (name: string) => {
 const ApiCard: React.FC<{
   api: ApiCardData;
   onClick: () => void;
-}> = ({ api, onClick }) => (
+  onDelete: (e: React.MouseEvent) => void;
+}> = ({ api, onClick, onDelete }) => (
   <Card
     style={{
       padding: 16,
@@ -171,6 +175,19 @@ ${theme.palette.augmentColor({ color: { main: "#059669" } }).dark} 100%)`,
         </Stack>
       </CardContent>
     </CardActionArea>
+    <IconButton
+      onClick={onDelete}
+      size="small"
+      color="error"
+      aria-label="Delete API"
+      sx={{
+        position: "absolute",
+        bottom: 8,
+        right: 8,
+      }}
+    >
+      <DeleteIcon fontSize="small" />
+    </IconButton>
   </Card>
 );
 
@@ -200,12 +217,17 @@ const ApiListContent: React.FC = () => {
   const { organization } = useOrganization();
   const { projects, selectedProject, setSelectedProject, projectsLoaded } =
     useProjects();
-  const { apis, loading, createApi, selectApi } = useApisContext();
+  const { apis, loading, createApi, selectApi, deleteApi } = useApisContext();
 
   const [query, setQuery] = React.useState("");
   const [wizardOpen, setWizardOpen] = React.useState(false);
   const [templatesOpen, setTemplatesOpen] = React.useState(false);
   const [contractOpen, setContractOpen] = React.useState(false);
+  const [deleteDialog, setDeleteDialog] = React.useState<{
+    open: boolean;
+    apiId: string;
+    apiName: string;
+  }>({ open: false, apiId: "", apiName: "" });
 
   const orgHandle = organization?.handle ?? params.orgHandle ?? "";
   const projectSlugParam = params.projectHandle ?? null;
@@ -270,6 +292,23 @@ const ApiListContent: React.FC = () => {
     },
     [navigate, orgHandle, projectSlug, selectApi]
   );
+
+  const handleDelete = React.useCallback(
+    (apiId: string, apiName: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      setDeleteDialog({ open: true, apiId, apiName });
+    },
+    []
+  );
+
+  const confirmDelete = React.useCallback(async () => {
+    try {
+      await deleteApi(deleteDialog.apiId);
+      setDeleteDialog({ open: false, apiId: "", apiName: "" });
+    } catch (error) {
+      console.error("Failed to delete API:", error);
+    }
+  }, [deleteApi, deleteDialog.apiId]);
 
   // First-time empty (no search & no apis) -> hide toolbar
   const isFirstTimeEmpty =
@@ -422,6 +461,7 @@ const ApiListContent: React.FC = () => {
                     <ApiCard
                       api={card}
                       onClick={() => handleNavigate(apiSummary)}
+                      onDelete={(e) => handleDelete(apiSummary.id, apiSummary.name, e)}
                     />
                   </Grid>
                 );
@@ -430,6 +470,19 @@ const ApiListContent: React.FC = () => {
           )}
         </>
       )}
+
+      <ConfirmationDialog
+        open={deleteDialog.open}
+        onClose={() => setDeleteDialog({ open: false, apiId: "", apiName: "" })}
+        onConfirm={confirmDelete}
+        title="Delete API"
+        message={`Are you sure you want to delete "${deleteDialog.apiName}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        severity="error"
+        confirmationText={deleteDialog.apiName}
+        confirmationLabel={`Type the API name to confirm deletion`}
+      />
     </Box>
   );
 };
