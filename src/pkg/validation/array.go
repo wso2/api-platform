@@ -3,7 +3,7 @@ package validation
 import (
 	"fmt"
 
-	"github.com/yourorg/policy-engine/worker/policies"
+	"github.com/envoy-policy-engine/sdk/policies"
 )
 
 // validateStringArray validates string array parameters

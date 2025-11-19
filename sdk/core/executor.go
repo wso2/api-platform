@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/yourorg/policy-engine/worker/policies"
+	"github.com/envoy-policy-engine/sdk/policies"
 )
 
 // RequestPolicyResult represents the result of executing a single request policy

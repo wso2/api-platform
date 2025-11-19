@@ -9,7 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/yourorg/policy-engine/worker/policies"
+	"github.com/envoy-policy-engine/sdk/policies"
 )
 
 // LoadPolicyDefinitionFromYAML loads a policy definition from a YAML file

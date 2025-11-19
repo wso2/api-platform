@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/cel-go/cel"
 
-	"github.com/yourorg/policy-engine/worker/policies"
+	"github.com/envoy-policy-engine/sdk/policies"
 )
 
 // CELEvaluator provides CEL expression evaluation for RequestContext and ResponseContext

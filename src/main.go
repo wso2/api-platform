@@ -13,9 +13,9 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"google.golang.org/grpc"
 
-	"github.com/yourorg/policy-engine/kernel"
-	"github.com/yourorg/policy-engine/pkg/cel"
-	"github.com/yourorg/policy-engine/worker/core"
+	"github.com/envoy-policy-engine/policy-engine/kernel"
+	"github.com/envoy-policy-engine/policy-engine/pkg/cel"
+	"github.com/envoy-policy-engine/sdk/core"
 )
 
 // T091: Command-line flags implementation

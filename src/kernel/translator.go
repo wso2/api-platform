@@ -6,8 +6,8 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 
-	"github.com/yourorg/policy-engine/worker/core"
-	"github.com/yourorg/policy-engine/worker/policies"
+	"github.com/envoy-policy-engine/sdk/core"
+	"github.com/envoy-policy-engine/sdk/policies"
 )
 
 // TranslateRequestActions converts policy execution result to ext_proc response

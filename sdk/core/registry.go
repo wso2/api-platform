@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/yourorg/policy-engine/worker/policies"
+	"github.com/envoy-policy-engine/sdk/policies"
 )
 
 // PolicyChain is a container for a complete policy processing pipeline for a route
@@ -106,6 +106,18 @@ func (r *PolicyRegistry) Register(def *policies.PolicyDefinition, impl policies.
 	r.Definitions[key] = def
 	r.Implementations[key] = impl
 	return nil
+}
+
+// RegisterImplementation is a convenience method to register a policy implementation
+// without a full PolicyDefinition. It creates a minimal definition automatically.
+// This is primarily used by the generated plugin_registry.go code.
+func (r *PolicyRegistry) RegisterImplementation(name, version string, impl policies.Policy) error {
+	// Create a minimal policy definition
+	def := &policies.PolicyDefinition{
+		Name:    name,
+		Version: version,
+	}
+	return r.Register(def, impl)
 }
 
 // compositeKey creates a composite key from name and version

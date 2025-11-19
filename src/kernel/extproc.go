@@ -12,8 +12,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/yourorg/policy-engine/worker/core"
-	"github.com/yourorg/policy-engine/worker/policies"
+	"github.com/envoy-policy-engine/sdk/core"
+	"github.com/envoy-policy-engine/sdk/policies"
 )
 
 // ExternalProcessorServer implements the Envoy external processor service

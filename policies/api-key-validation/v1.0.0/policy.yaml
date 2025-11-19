@@ -1,0 +1,84 @@
+name: APIKeyValidation
+version: v1.0.0
+description: Validates API keys from request headers against a configured key store
+category: Authentication
+
+parameters:
+  headerName:
+    type: string
+    description: Name of the header containing the API key
+    required: true
+    default: X-API-Key
+    validation:
+      minLength: 1
+      maxLength: 100
+      pattern: "^[A-Za-z0-9-]+$"
+    example: X-API-Key
+
+  validKeys:
+    type: array
+    description: List of valid API keys
+    required: true
+    validation:
+      minItems: 1
+      maxItems: 1000
+    items:
+      type: string
+      validation:
+        minLength: 16
+        maxLength: 256
+    example:
+      - "test-key-abc123def456"
+      - "prod-key-xyz789uvw012"
+
+  caseSensitive:
+    type: boolean
+    description: Whether API key comparison is case-sensitive
+    required: false
+    default: true
+    example: true
+
+  storeMetadata:
+    type: boolean
+    description: Store API key metadata for downstream policies
+    required: false
+    default: true
+    example: true
+
+  unauthorizedMessage:
+    type: string
+    description: Custom error message for invalid API key
+    required: false
+    default: "Unauthorized: Invalid or missing API key"
+    validation:
+      maxLength: 500
+    example: "Access denied: Valid API key required"
+
+executionCondition:
+  supported: true
+  description: Can be conditionally executed based on request attributes
+
+bodyRequirements:
+  request: false
+  response: false
+
+examples:
+  - name: Basic API Key Validation
+    description: Simple validation with two API keys
+    config:
+      headerName: X-API-Key
+      validKeys:
+        - "dev-key-12345"
+        - "test-key-67890"
+      caseSensitive: true
+      storeMetadata: true
+
+  - name: Custom Header and Message
+    description: Custom header name with friendly error message
+    config:
+      headerName: Authorization
+      validKeys:
+        - "Bearer secret-token-abc"
+      caseSensitive: false
+      unauthorizedMessage: "Please provide a valid authorization token"
+      storeMetadata: false

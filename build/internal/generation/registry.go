@@ -1,0 +1,100 @@
+package generation
+
+import (
+	"bytes"
+	"fmt"
+	"path/filepath"
+	"strings"
+	"text/template"
+
+	"github.com/envoy-policy-engine/builder/pkg/types"
+)
+
+// PolicyImport represents a policy import for code generation
+type PolicyImport struct {
+	Name        string
+	Version     string
+	ImportPath  string
+	ImportAlias string
+}
+
+// GeneratePluginRegistry generates the plugin_registry.go file
+func GeneratePluginRegistry(policies []*types.DiscoveredPolicy, srcDir string) (string, error) {
+	// Create import list
+	imports := make([]PolicyImport, 0, len(policies))
+	for _, policy := range policies {
+		importPath := generateImportPath(policy)
+		importAlias := generateImportAlias(policy.Name, policy.Version)
+
+		imports = append(imports, PolicyImport{
+			Name:        policy.Name,
+			Version:     policy.Version,
+			ImportPath:  importPath,
+			ImportAlias: importAlias,
+		})
+	}
+
+	// Load template
+	tmplPath := filepath.Join("templates", "plugin_registry.go.tmpl")
+	tmpl, err := template.ParseFiles(tmplPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse template: %w", err)
+	}
+
+	// Execute template
+	var buf bytes.Buffer
+	data := struct {
+		Policies []PolicyImport
+	}{
+		Policies: imports,
+	}
+
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("failed to execute template: %w", err)
+	}
+
+	return buf.String(), nil
+}
+
+// generateImportPath creates the Go import path for a policy
+func generateImportPath(policy *types.DiscoveredPolicy) string {
+	// The policy path will be available as a local module via go.mod replace directive
+	// Format: github.com/envoy-policy-engine/policies/{policy-name}
+	// Note: We don't include the version in the import path because Go module paths
+	// cannot have dots (like v1.0.0). The version is tracked in the replace directive.
+	policyName := strings.ToLower(policy.Name)
+	policyName = strings.ReplaceAll(policyName, " ", "-")
+	policyName = strings.ReplaceAll(policyName, "_", "-")
+
+	return fmt.Sprintf("github.com/envoy-policy-engine/policies/%s", policyName)
+}
+
+// generateImportAlias creates a valid Go identifier for import alias
+func generateImportAlias(name, version string) string {
+	// Sanitize name and version to create a valid Go identifier
+	alias := sanitizeIdentifier(name)
+	versionSuffix := sanitizeIdentifier(version)
+
+	// Combine name and version to ensure uniqueness
+	return fmt.Sprintf("%s_%s", alias, versionSuffix)
+}
+
+// sanitizeIdentifier converts a string to a valid Go identifier
+func sanitizeIdentifier(s string) string {
+	// Remove 'v' prefix from versions
+	s = strings.TrimPrefix(s, "v")
+
+	// Replace invalid characters
+	var result strings.Builder
+	for i, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r == '_') {
+			result.WriteRune(r)
+		} else if i > 0 && r >= '0' && r <= '9' {
+			result.WriteRune(r)
+		} else if r == '.' || r == '-' || r == ' ' {
+			result.WriteRune('_')
+		}
+	}
+
+	return result.String()
+}
