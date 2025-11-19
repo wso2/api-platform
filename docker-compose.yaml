@@ -1,15 +1,59 @@
 version: "3.8"
+
 services:
+  # T098: Envoy Proxy with ext_proc filter pointing to policy-engine
   envoy:
     image: envoyproxy/envoy:v1.36.2
+    container_name: envoy-proxy
     volumes:
-      - ./envoy.yaml:/etc/envoy/envoy.yaml
+      - ./configs/envoy.yaml:/etc/envoy/envoy.yaml
     command: /usr/local/bin/envoy -c /etc/envoy/envoy.yaml --service-cluster front-proxy --file-flush-interval-msec 50
     ports:
-      - "9000:9000"
-      - "8000:8000"
-  request_info:
+      - "10000:10000"  # HTTP proxy port
+      - "9901:9901"  # Admin interface
+    depends_on:
+      - policy-engine
+      - backend
+    networks:
+      - policy-network
+
+  # T099: Policy Engine Service (ext_proc + xDS)
+  policy-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+    container_name: policy-engine
+    volumes:
+      - ./configs:/configs
+      - ./policies:/policies
+    command: ["-extproc-port=9001", "-config-file=/configs/policy-chains.yaml"]
+    ports:
+      - "9001:9001"  # ext_proc gRPC server
+      - "9002:9002"  # xDS gRPC server (future)
+    networks:
+      - policy-network
+
+  # T100: Test backend service (request-info container)
+  backend:
     image: renukafernando/request-info:latest
+    container_name: backend
     command: ["-addr", ":8080", "-logH", "-logB"]
     environment:
-      - NAME=Service-1
+      - NAME=Test-Backend
+    ports:
+      - "8080:8080"
+    networks:
+      - policy-network
+
+networks:
+  policy-network:
+    driver: bridge
+
+# T101: Volume mounts for configs/ directory
+volumes:
+  configs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./configs

@@ -1,0 +1,28 @@
+# T096: Simple route with SetHeader policy
+
+- route_key: default
+  policies:
+    - name: setHeader
+      version: v1.0.0
+      enabled: true
+      parameters:
+        action: SET
+        headerName: x-processed-by
+        headerValue: policy-engine
+
+- route_key: api-route
+  policies:
+    - name: setHeader
+      version: v1.0.0
+      enabled: true
+      parameters:
+        action: SET
+        headerName: x-api-version
+        headerValue: v1
+    - name: setHeader
+      version: v1.0.0
+      enabled: true
+      parameters:
+        action: SET
+        headerName: x-route
+        headerValue: api

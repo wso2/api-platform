@@ -1,0 +1,33 @@
+# T097: Route with JWT policy placeholder (for future US2 implementation)
+# This configuration demonstrates how JWT validation would be configured
+# when the JWT policy is implemented in Phase 4 (User Story 2)
+
+- route_key: private-api
+  policies:
+    # JWT validation policy (to be implemented in US2)
+    # - name: jwtValidation
+    #   version: v1.0.0
+    #   enabled: true
+    #   parameters:
+    #     jwksUrl: https://example.com/.well-known/jwks.json
+    #     issuer: https://example.com
+    #     audience: my-api
+
+    # SetHeader policy (working now)
+    - name: setHeader
+      version: v1.0.0
+      enabled: true
+      parameters:
+        action: SET
+        headerName: x-api-authenticated
+        headerValue: "true"
+
+- route_key: public-api
+  policies:
+    - name: setHeader
+      version: v1.0.0
+      enabled: true
+      parameters:
+        action: SET
+        headerName: x-api-public
+        headerValue: "true"

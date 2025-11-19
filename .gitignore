@@ -1,0 +1,52 @@
+# Go artifacts
+*.exe
+*.test
+*.out
+vendor/
+/src/plugin_registry.go
+/src/build_info.go
+
+# Build outputs
+output/
+*.so
+*.a
+*.rlib
+*.prof*
+
+# IDE and editor files
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment and secrets
+.env
+.env.*
+*.secret
+*.key
+*.crt
+secrets/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+tmp/
+
+# Coverage reports
+coverage.out
+coverage.html
+
+# Docker volumes
+data/
+
+# Test outputs
+test-results/
