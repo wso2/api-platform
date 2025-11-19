@@ -1432,3 +1432,100 @@ func (u *APIUtil) convertSwagger2ToBackendServices(host, basePath string, scheme
 
 	return backendServices
 }
+
+// ValidateAndParseOpenAPI validates and parses OpenAPI definition content
+func (u *APIUtil) ValidateAndParseOpenAPI(content []byte) (*dto.API, error) {
+	// Validate the OpenAPI definition
+	if err := u.ValidateOpenAPIDefinition(content); err != nil {
+		return nil, fmt.Errorf("invalid OpenAPI definition: %w", err)
+	}
+
+	// Parse and extract API details
+	api, err := u.ParseAPIDefinition(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse OpenAPI definition: %w", err)
+	}
+
+	return api, nil
+}
+
+// MergeAPIDetails merges user-provided API details with extracted OpenAPI details
+// User-provided details take precedence over extracted details
+func (u *APIUtil) MergeAPIDetails(userAPI *dto.API, extractedAPI *dto.API) *dto.API {
+	merged := &dto.API{}
+
+	// Required fields from user input (these must be provided)
+	merged.Name = userAPI.Name
+	merged.Context = userAPI.Context
+	merged.Version = userAPI.Version
+	merged.ProjectID = userAPI.ProjectID
+
+	// Optional fields - use user input if provided, otherwise use extracted values
+	if userAPI.DisplayName != "" {
+		merged.DisplayName = userAPI.DisplayName
+	} else {
+		merged.DisplayName = extractedAPI.DisplayName
+	}
+
+	if userAPI.Description != "" {
+		merged.Description = userAPI.Description
+	} else {
+		merged.Description = extractedAPI.Description
+	}
+
+	if userAPI.Provider != "" {
+		merged.Provider = userAPI.Provider
+	} else {
+		merged.Provider = extractedAPI.Provider
+	}
+
+	if userAPI.Type != "" {
+		merged.Type = userAPI.Type
+	} else {
+		merged.Type = extractedAPI.Type
+	}
+
+	if len(userAPI.Transport) > 0 {
+		merged.Transport = userAPI.Transport
+	} else {
+		merged.Transport = extractedAPI.Transport
+	}
+
+	if userAPI.LifeCycleStatus != "" {
+		merged.LifeCycleStatus = userAPI.LifeCycleStatus
+	} else {
+		merged.LifeCycleStatus = extractedAPI.LifeCycleStatus
+	}
+
+	if len(userAPI.BackendServices) > 0 {
+		merged.BackendServices = userAPI.BackendServices
+	} else {
+		merged.BackendServices = extractedAPI.BackendServices
+	}
+
+	// Use extracted operations from OpenAPI
+	merged.Operations = extractedAPI.Operations
+
+	// Use user-provided configuration if available
+	if userAPI.MTLS != nil {
+		merged.MTLS = userAPI.MTLS
+	}
+	if userAPI.Security != nil {
+		merged.Security = userAPI.Security
+	}
+	if userAPI.CORS != nil {
+		merged.CORS = userAPI.CORS
+	}
+	if userAPI.APIRateLimiting != nil {
+		merged.APIRateLimiting = userAPI.APIRateLimiting
+	}
+
+	// Copy boolean fields from user input
+	merged.HasThumbnail = userAPI.HasThumbnail
+	merged.IsDefaultVersion = userAPI.IsDefaultVersion
+	merged.IsRevision = userAPI.IsRevision
+	merged.RevisionedAPIID = userAPI.RevisionedAPIID
+	merged.RevisionID = userAPI.RevisionID
+
+	return merged
+}

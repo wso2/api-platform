@@ -1375,3 +1375,78 @@ func (s *APIService) ValidateOpenAPIDefinition(req *dto.ValidateOpenAPIRequest) 
 
 	return response, nil
 }
+
+// ImportFromOpenAPI imports an API from an OpenAPI definition
+func (s *APIService) ImportFromOpenAPI(req *dto.ImportOpenAPIRequest, orgId string) (*dto.API, error) {
+	var content []byte
+	var err error
+	var errorList []string
+
+	// If URL is provided, fetch content from URL
+	if req.URL != "" {
+		content, err = s.apiUtil.FetchOpenAPIFromURL(req.URL)
+		if err != nil {
+			content = make([]byte, 0)
+			errorList = append(errorList, fmt.Sprintf("failed to fetch OpenAPI from URL: %s", err.Error()))
+		}
+	}
+
+	// If definition file is provided, read from file
+	if req.Definition != nil {
+		file, err := req.Definition.Open()
+		if err != nil {
+			errorList = append(errorList, fmt.Sprintf("failed to open definition file: %s", err.Error()))
+			return nil, fmt.Errorf(strings.Join(errorList, "; "))
+		}
+		defer file.Close()
+
+		content, err = io.ReadAll(file)
+		if err != nil {
+			errorList = append(errorList, fmt.Sprintf("failed to read definition file: %s", err.Error()))
+			return nil, fmt.Errorf(strings.Join(errorList, "; "))
+		}
+	}
+
+	// If neither URL nor file is provided
+	if len(content) == 0 {
+		errorList = append(errorList, "either URL or definition file must be provided")
+		return nil, fmt.Errorf(strings.Join(errorList, "; "))
+	}
+
+	// Validate and parse the OpenAPI definition
+	apiDetails, err := s.apiUtil.ValidateAndParseOpenAPI(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate OpenAPI definition: %w", err)
+	}
+
+	// Merge provided API details with extracted details from OpenAPI
+	mergedAPI := s.apiUtil.MergeAPIDetails(&req.API, apiDetails)
+
+	// Create API using existing CreateAPI logic
+	createReq := &CreateAPIRequest{
+		Name:            mergedAPI.Name,
+		DisplayName:     mergedAPI.DisplayName,
+		Description:     mergedAPI.Description,
+		Context:         mergedAPI.Context,
+		Version:         mergedAPI.Version,
+		Provider:        mergedAPI.Provider,
+		ProjectID:       mergedAPI.ProjectID,
+		LifeCycleStatus: mergedAPI.LifeCycleStatus,
+		Type:            mergedAPI.Type,
+		Transport:       mergedAPI.Transport,
+		MTLS:            mergedAPI.MTLS,
+		Security:        mergedAPI.Security,
+		CORS:            mergedAPI.CORS,
+		BackendServices: mergedAPI.BackendServices,
+		APIRateLimiting: mergedAPI.APIRateLimiting,
+		Operations:      mergedAPI.Operations,
+	}
+
+	// Validate the merged API details
+	if err := s.validateCreateAPIRequest(createReq); err != nil {
+		return nil, err
+	}
+
+	// Create the API
+	return s.CreateAPI(createReq, orgId)
+}

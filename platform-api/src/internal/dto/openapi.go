@@ -35,3 +35,10 @@ type OpenAPIValidationResponse struct {
 	Errors               []string `json:"errors,omitempty"`
 	API                  *API     `json:"api,omitempty"`
 }
+
+// ImportOpenAPIRequest represents the request for importing an OpenAPI definition
+type ImportOpenAPIRequest struct {
+	URL        string                `form:"url"`        // Optional: URL to fetch OpenAPI definition
+	Definition *multipart.FileHeader `form:"definition"` // Optional: Uploaded OpenAPI file (JSON/YAML)
+	API        API                   `json:"api"`        // API details for the imported definition
+}
