@@ -179,6 +179,7 @@ ${theme.palette.augmentColor({ color: { main: "#059669" } }).dark} 100%)`,
       onClick={onDelete}
       size="small"
       color="error"
+      aria-label="Delete API"
       sx={{
         position: "absolute",
         bottom: 8,
