@@ -1,7 +1,9 @@
 package core
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -49,7 +51,11 @@ func (r *PolicyRegistry) RegisterFromDirectory(path string) error {
 			// Note: Implementation registration happens via generated plugin_registry.go
 			// Here we only load definitions
 			policyDir := filepath.Dir(filePath)
-			fmt.Printf("Discovered policy: %s:%s at %s\n", def.Name, def.Version, policyDir)
+			ctx := context.Background()
+			slog.InfoContext(ctx, "Discovered policy",
+				"name", def.Name,
+				"version", def.Version,
+				"path", policyDir)
 
 			// Store definition (implementation will be registered by plugin code)
 			key := compositeKey(def.Name, def.Version)

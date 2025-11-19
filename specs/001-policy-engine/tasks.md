@@ -37,12 +37,12 @@ This project uses a multi-component structure:
 
 **Purpose**: Project initialization and basic structure for all three components (runtime, builder, policies)
 
-- [ ] T001 Create project directory structure per plan.md (src/, policies/, build/, tests/, configs/, templates/, tools/)
-- [ ] T002 Initialize Go module for policy engine runtime in src/go.mod
-- [ ] T003 [P] Create Dockerfile.builder for builder image
-- [ ] T004 [P] Create docker-compose.yml for local development (Envoy + Policy Engine + test backend)
-- [ ] T005 [P] Create .gitignore for Go project artifacts
-- [ ] T006 [P] Create basic README.md with project overview and quickstart reference
+- [x] T001 Create project directory structure per plan.md (src/, policies/, build/, tests/, configs/, templates/, tools/)
+- [x] T002 Initialize Go module for policy engine runtime in src/go.mod
+- [x] T003 [P] Create Dockerfile.builder for builder image
+- [x] T004 [P] Create docker-compose.yml for local development (Envoy + Policy Engine + test backend)
+- [x] T005 [P] Create .gitignore for Go project artifacts
+- [x] T006 [P] Create basic README.md with project overview and quickstart reference
 
 ---
 
@@ -54,87 +54,87 @@ This project uses a multi-component structure:
 
 ### Core Type Definitions and Interfaces
 
-- [ ] T007 [P] Define ParameterType enum and TypedValue struct in src/worker/policies/types.go
-- [ ] T008 [P] Define ValidationRules struct in src/worker/policies/types.go
-- [ ] T009 [P] Define ParameterSchema and PolicyParameters structs in src/worker/policies/schema.go
-- [ ] T010 [P] Define PolicyDefinition and PolicyExample structs in src/worker/policies/schema.go
-- [ ] T011 [P] Define PolicySpec struct in src/worker/policies/schema.go
-- [ ] T012 [P] Define RequestContext struct in src/worker/core/context.go
-- [ ] T013 [P] Define ResponseContext struct in src/worker/core/context.go
+- [x] T007 [P] Define ParameterType enum and TypedValue struct in src/worker/policies/types.go
+- [x] T008 [P] Define ValidationRules struct in src/worker/policies/types.go
+- [x] T009 [P] Define ParameterSchema and PolicyParameters structs in src/worker/policies/schema.go
+- [x] T010 [P] Define PolicyDefinition and PolicyExample structs in src/worker/policies/schema.go
+- [x] T011 [P] Define PolicySpec struct in src/worker/policies/schema.go
+- [x] T012 [P] Define RequestContext struct in src/worker/core/context.go
+- [x] T013 [P] Define ResponseContext struct in src/worker/core/context.go
 
 ### Policy Action Types
 
-- [ ] T014 [P] Define RequestAction interface with marker method in src/worker/core/action.go
-- [ ] T015 [P] Define ResponseAction interface with marker method in src/worker/core/action.go
-- [ ] T016 [P] Define UpstreamRequestModifications struct implementing RequestAction in src/worker/core/action.go
-- [ ] T017 [P] Define ImmediateResponse struct implementing RequestAction in src/worker/core/action.go
-- [ ] T018 [P] Define UpstreamResponseModifications struct implementing ResponseAction in src/worker/core/action.go
-- [ ] T019 [P] Define RequestPolicyAction and ResponsePolicyAction wrapper structs in src/worker/core/action.go
+- [x] T014 [P] Define RequestAction interface with marker method in src/worker/core/action.go
+- [x] T015 [P] Define ResponseAction interface with marker method in src/worker/core/action.go
+- [x] T016 [P] Define UpstreamRequestModifications struct implementing RequestAction in src/worker/core/action.go
+- [x] T017 [P] Define ImmediateResponse struct implementing RequestAction in src/worker/core/action.go
+- [x] T018 [P] Define UpstreamResponseModifications struct implementing ResponseAction in src/worker/core/action.go
+- [x] T019 [P] Define RequestPolicyAction and ResponsePolicyAction wrapper structs in src/worker/core/action.go
 
 ### Policy Interfaces
 
-- [ ] T020 [P] Define Policy base interface in src/worker/policies/interface.go
-- [ ] T021 [P] Define RequestPolicy interface in src/worker/policies/interface.go
-- [ ] T022 [P] Define ResponsePolicy interface in src/worker/policies/interface.go
+- [x] T020 [P] Define Policy base interface in src/worker/policies/interface.go
+- [x] T021 [P] Define RequestPolicy interface in src/worker/policies/interface.go
+- [x] T022 [P] Define ResponsePolicy interface in src/worker/policies/interface.go
 
 ### Execution Result Types
 
-- [ ] T023 [P] Define RequestPolicyResult and RequestExecutionResult structs in src/worker/core/executor.go
-- [ ] T024 [P] Define ResponsePolicyResult and ResponseExecutionResult structs in src/worker/core/executor.go
+- [x] T023 [P] Define RequestPolicyResult and RequestExecutionResult structs in src/worker/core/executor.go
+- [x] T024 [P] Define ResponsePolicyResult and ResponseExecutionResult structs in src/worker/core/executor.go
 
 ### PolicyChain and Registry
 
-- [ ] T025 Define PolicyChain struct in src/worker/core/registry.go
-- [ ] T026 Define PolicyRegistry struct with definitions and implementations maps in src/worker/core/registry.go
-- [ ] T027 Implement PolicyRegistry.GetDefinition(name, version) method in src/worker/core/registry.go
-- [ ] T028 Implement PolicyRegistry.GetImplementation(name, version) method in src/worker/core/registry.go
-- [ ] T029 Implement PolicyRegistry global singleton initialization in src/worker/core/registry.go
+- [x] T025 Define PolicyChain struct in src/worker/core/registry.go
+- [x] T026 Define PolicyRegistry struct with definitions and implementations maps in src/worker/core/registry.go
+- [x] T027 Implement PolicyRegistry.GetDefinition(name, version) method in src/worker/core/registry.go
+- [x] T028 Implement PolicyRegistry.GetImplementation(name, version) method in src/worker/core/registry.go
+- [x] T029 Implement PolicyRegistry global singleton initialization in src/worker/core/registry.go
 
 ### YAML Schema Loader
 
-- [ ] T030 Implement LoadPolicyDefinitionFromYAML(path) function in src/worker/core/loader.go
-- [ ] T031 Implement PolicyRegistry.RegisterFromDirectory(path) with filepath.Walk in src/worker/core/loader.go
-- [ ] T032 Implement schema validation for policy.yaml structure in src/worker/core/loader.go
+- [x] T030 Implement LoadPolicyDefinitionFromYAML(path) function in src/worker/core/loader.go
+- [x] T031 Implement PolicyRegistry.RegisterFromDirectory(path) with filepath.Walk in src/worker/core/loader.go
+- [x] T032 Implement schema validation for policy.yaml structure in src/worker/core/loader.go
 
 ### Parameter Validation Engine
 
-- [ ] T033 [P] Implement ValidateParameter(value, schema) function in src/pkg/validation/validator.go
-- [ ] T034 [P] Implement string validation (minLength, maxLength, pattern, format, enum) in src/pkg/validation/string.go
-- [ ] T035 [P] Implement numeric validation (min, max, multipleOf) in src/pkg/validation/numeric.go
-- [ ] T036 [P] Implement array validation (minItems, maxItems, uniqueItems) in src/pkg/validation/array.go
-- [ ] T037 [P] Implement duration validation in src/pkg/validation/duration.go
-- [ ] T038 [P] Implement format-specific validation (email, uri, hostname, ipv4, ipv6, uuid) in src/pkg/validation/formats.go
+- [x] T033 [P] Implement ValidateParameter(value, schema) function in src/pkg/validation/validator.go
+- [x] T034 [P] Implement string validation (minLength, maxLength, pattern, format, enum) in src/pkg/validation/string.go
+- [x] T035 [P] Implement numeric validation (min, max, multipleOf) in src/pkg/validation/numeric.go
+- [x] T036 [P] Implement array validation (minItems, maxItems, uniqueItems) in src/pkg/validation/array.go
+- [x] T037 [P] Implement duration validation in src/pkg/validation/duration.go
+- [x] T038 [P] Implement format-specific validation (email, uri, hostname, ipv4, ipv6, uuid) in src/pkg/validation/formats.go
 
 ### CEL Expression Evaluator
 
-- [ ] T039 Define CELEvaluator interface in src/pkg/cel/evaluator.go
-- [ ] T040 Implement CELEvaluator with google/cel-go for RequestContext evaluation in src/pkg/cel/evaluator.go
-- [ ] T041 Implement CELEvaluator with google/cel-go for ResponseContext evaluation in src/pkg/cel/evaluator.go
-- [ ] T042 Implement CEL expression compilation and caching in src/pkg/cel/evaluator.go
+- [x] T039 Define CELEvaluator interface in src/pkg/cel/evaluator.go
+- [x] T040 Implement CELEvaluator with google/cel-go for RequestContext evaluation in src/pkg/cel/evaluator.go
+- [x] T041 Implement CELEvaluator with google/cel-go for ResponseContext evaluation in src/pkg/cel/evaluator.go
+- [x] T042 Implement CEL expression compilation and caching in src/pkg/cel/evaluator.go
 
 ### Policy Executor Core
 
-- [ ] T043 Implement Core.ExecuteRequestPolicies(policies, ctx) with condition evaluation in src/worker/core/executor.go
-- [ ] T044 Implement Core.ExecuteResponsePolicies(policies, ctx) with condition evaluation in src/worker/core/executor.go
-- [ ] T045 Implement applyRequestModifications(ctx, mods) helper in src/worker/core/executor.go
-- [ ] T046 Implement applyResponseModifications(ctx, mods) helper in src/worker/core/executor.go
-- [ ] T047 Implement short-circuit logic in ExecuteRequestPolicies in src/worker/core/executor.go
-- [ ] T048 Implement policy timing metrics collection in executor in src/worker/core/executor.go
+- [x] T043 Implement Core.ExecuteRequestPolicies(policies, ctx) with condition evaluation in src/worker/core/executor.go
+- [x] T044 Implement Core.ExecuteResponsePolicies(policies, ctx) with condition evaluation in src/worker/core/executor.go
+- [x] T045 Implement applyRequestModifications(ctx, mods) helper in src/worker/core/executor.go
+- [x] T046 Implement applyResponseModifications(ctx, mods) helper in src/worker/core/executor.go
+- [x] T047 Implement short-circuit logic in ExecuteRequestPolicies in src/worker/core/executor.go
+- [x] T048 Implement policy timing metrics collection in executor in src/worker/core/executor.go
 
 ### Kernel - Route Mapping
 
-- [ ] T049 Define RouteMapping struct in src/kernel/mapper.go
-- [ ] T050 Define Kernel struct with Routes map and ContextStorage map in src/kernel/mapper.go
-- [ ] T051 Implement Kernel.GetPolicyChainForKey(key) method in src/kernel/mapper.go
-- [ ] T052 Implement Kernel.storeContextForResponse(requestID, ctx, chain) in src/kernel/context_storage.go
-- [ ] T053 Implement Kernel.getStoredContext(requestID) in src/kernel/context_storage.go
-- [ ] T054 Implement Kernel.removeStoredContext(requestID) in src/kernel/context_storage.go
+- [x] T049 Define RouteMapping struct in src/kernel/mapper.go
+- [x] T050 Define Kernel struct with Routes map and ContextStorage map in src/kernel/mapper.go
+- [x] T051 Implement Kernel.GetPolicyChainForKey(key) method in src/kernel/mapper.go
+- [x] T052 Implement Kernel.storeContextForResponse(requestID, ctx, chain) in src/kernel/context_storage.go
+- [x] T053 Implement Kernel.getStoredContext(requestID) in src/kernel/context_storage.go
+- [x] T054 Implement Kernel.removeStoredContext(requestID) in src/kernel/context_storage.go
 
 ### Kernel - Body Mode Determination
 
-- [ ] T055 Implement Kernel.BuildPolicyChain(routeKey, policySpecs) with body requirement computation in src/kernel/body_mode.go
-- [ ] T056 Implement determineRequestBodyMode(chain) helper in src/kernel/body_mode.go
-- [ ] T057 Implement determineResponseBodyMode(chain) helper in src/kernel/body_mode.go
+- [x] T055 Implement Kernel.BuildPolicyChain(routeKey, policySpecs) with body requirement computation in src/kernel/body_mode.go
+- [x] T056 Implement determineRequestBodyMode(chain) helper in src/kernel/body_mode.go
+- [x] T057 Implement determineResponseBodyMode(chain) helper in src/kernel/body_mode.go
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -148,70 +148,70 @@ This project uses a multi-component structure:
 
 ### US1: Kernel - ext_proc gRPC Server
 
-- [ ] T058 [US1] Import Envoy ext_proc protobuf definitions in src/kernel/extproc.go
-- [ ] T059 [US1] Implement ExternalProcessorServer gRPC service struct in src/kernel/extproc.go
-- [ ] T060 [US1] Implement Process(stream) bidirectional streaming RPC handler in src/kernel/extproc.go
-- [ ] T061 [US1] Implement extractMetadataKey(req) from ProcessingRequest in src/kernel/extproc.go
-- [ ] T062 [US1] Implement ProcessRequest phase handler (request headers) in src/kernel/extproc.go
-- [ ] T063 [US1] Implement ProcessResponse phase handler (response headers) in src/kernel/extproc.go
-- [ ] T064 [US1] Implement request ID generation in src/kernel/extproc.go
+- [x] T058 [US1] Import Envoy ext_proc protobuf definitions in src/kernel/extproc.go
+- [x] T059 [US1] Implement ExternalProcessorServer gRPC service struct in src/kernel/extproc.go
+- [x] T060 [US1] Implement Process(stream) bidirectional streaming RPC handler in src/kernel/extproc.go
+- [x] T061 [US1] Implement extractMetadataKey(req) from ProcessingRequest in src/kernel/extproc.go
+- [x] T062 [US1] Implement ProcessRequest phase handler (request headers) in src/kernel/extproc.go
+- [x] T063 [US1] Implement ProcessResponse phase handler (response headers) in src/kernel/extproc.go
+- [x] T064 [US1] Implement request ID generation in src/kernel/extproc.go
 
 ### US1: Kernel - Action Translator
 
-- [ ] T065 [US1] Implement TranslateRequestActions(result) for UpstreamRequestModifications in src/kernel/translator.go
-- [ ] T066 [US1] Implement TranslateRequestActions(result) for ImmediateResponse in src/kernel/translator.go
-- [ ] T067 [US1] Implement TranslateResponseActions(result) for UpstreamResponseModifications in src/kernel/translator.go
-- [ ] T068 [US1] Implement buildHeaderMutations(headers, body, path, method) helper in src/kernel/translator.go
-- [ ] T069 [US1] Implement buildResponseMutations(headers, body, status) helper in src/kernel/translator.go
-- [ ] T070 [US1] Implement mode override configuration in ext_proc response in src/kernel/translator.go
+- [x] T065 [US1] Implement TranslateRequestActions(result) for UpstreamRequestModifications in src/kernel/translator.go
+- [x] T066 [US1] Implement TranslateRequestActions(result) for ImmediateResponse in src/kernel/translator.go
+- [x] T067 [US1] Implement TranslateResponseActions(result) for UpstreamResponseModifications in src/kernel/translator.go
+- [x] T068 [US1] Implement buildHeaderMutations(headers, body, path, method) helper in src/kernel/translator.go
+- [x] T069 [US1] Implement buildResponseMutations(headers, body, status) helper in src/kernel/translator.go
+- [x] T070 [US1] Implement mode override configuration in ext_proc response in src/kernel/translator.go
 
 ### US1: Kernel - xDS Configuration Service
 
-- [ ] T071 [US1] Import xDS protocol definitions in src/kernel/xds.go
-- [ ] T072 [US1] Define PolicyChainConfig protobuf message (or use custom struct) in src/kernel/xds.go
-- [ ] T073 [US1] Implement PolicyDiscoveryService gRPC service struct in src/kernel/xds.go
-- [ ] T074 [US1] Implement StreamPolicyMappings(stream) handler with snapshot versioning in src/kernel/xds.go
-- [ ] T075 [US1] Implement configuration validation before applying in src/kernel/xds.go
-- [ ] T076 [US1] Implement atomic PolicyChain replacement in Routes map in src/kernel/xds.go
-- [ ] T077 [US1] Implement file-based configuration loader as fallback in src/kernel/xds.go
+- [x] T071 [US1] Import xDS protocol definitions in src/kernel/xds.go
+- [x] T072 [US1] Define PolicyChainConfig protobuf message (or use custom struct) in src/kernel/xds.go
+- [x] T073 [US1] Implement PolicyDiscoveryService gRPC service struct in src/kernel/xds.go
+- [x] T074 [US1] Implement StreamPolicyMappings(stream) handler with snapshot versioning in src/kernel/xds.go
+- [x] T075 [US1] Implement configuration validation before applying in src/kernel/xds.go
+- [x] T076 [US1] Implement atomic PolicyChain replacement in Routes map in src/kernel/xds.go
+- [x] T077 [US1] Implement file-based configuration loader as fallback in src/kernel/xds.go
 
 ### US1: Sample Policy - SetHeader (OPTIONAL Reference Implementation)
 
 **Note**: These tasks create a sample/reference policy to demonstrate the framework. This policy is NOT bundled with the runtime - it must be compiled in using the Builder. Users can skip these tasks if they only want the core framework.
 
-- [ ] T078 [P] [US1] Create policies/set-header/v1.0.0/ directory structure
-- [ ] T079 [P] [US1] Create policy.yaml for SetHeader policy in policies/set-header/v1.0.0/policy.yaml
-- [ ] T080 [P] [US1] Create go.mod for SetHeader policy in policies/set-header/v1.0.0/go.mod
-- [ ] T081 [US1] Implement SetHeaderPolicy struct in policies/set-header/v1.0.0/setheader.go
-- [ ] T082 [US1] Implement SetHeaderPolicy.Name() method in policies/set-header/v1.0.0/setheader.go
-- [ ] T083 [US1] Implement SetHeaderPolicy.Validate(config) method in policies/set-header/v1.0.0/setheader.go
-- [ ] T084 [US1] Implement SetHeaderPolicy.ExecuteRequest(ctx, config) for SET action in policies/set-header/v1.0.0/setheader.go
-- [ ] T085 [US1] Implement SetHeaderPolicy.ExecuteRequest(ctx, config) for DELETE action in policies/set-header/v1.0.0/setheader.go
-- [ ] T086 [US1] Implement SetHeaderPolicy.ExecuteRequest(ctx, config) for APPEND action in policies/set-header/v1.0.0/setheader.go
-- [ ] T087 [US1] Implement SetHeaderPolicy.ExecuteResponse(ctx, config) for response headers in policies/set-header/v1.0.0/setheader.go
-- [ ] T088 [US1] Implement NewPolicy() factory function in policies/set-header/v1.0.0/setheader.go
-- [ ] T089 [P] [US1] Create README.md for SetHeader policy in policies/set-header/v1.0.0/README.md
+- [x] T078 [P] [US1] Create policies/set-header/v1.0.0/ directory structure
+- [x] T079 [P] [US1] Create policy.yaml for SetHeader policy in policies/set-header/v1.0.0/policy.yaml
+- [x] T080 [P] [US1] Create go.mod for SetHeader policy in policies/set-header/v1.0.0/go.mod
+- [x] T081 [US1] Implement SetHeaderPolicy struct in policies/set-header/v1.0.0/setheader.go
+- [x] T082 [US1] Implement SetHeaderPolicy.Name() method in policies/set-header/v1.0.0/setheader.go
+- [x] T083 [US1] Implement SetHeaderPolicy.Validate(config) method in policies/set-header/v1.0.0/setheader.go
+- [x] T084 [US1] Implement SetHeaderPolicy.ExecuteRequest(ctx, config) for SET action in policies/set-header/v1.0.0/setheader.go
+- [x] T085 [US1] Implement SetHeaderPolicy.ExecuteRequest(ctx, config) for DELETE action in policies/set-header/v1.0.0/setheader.go
+- [x] T086 [US1] Implement SetHeaderPolicy.ExecuteRequest(ctx, config) for APPEND action in policies/set-header/v1.0.0/setheader.go
+- [x] T087 [US1] Implement SetHeaderPolicy.ExecuteResponse(ctx, config) for response headers in policies/set-header/v1.0.0/setheader.go
+- [x] T088 [US1] Implement NewPolicy() factory function in policies/set-header/v1.0.0/setheader.go
+- [x] T089 [P] [US1] Create README.md for SetHeader policy in policies/set-header/v1.0.0/README.md
 
 ### US1: Main Entry Point
 
-- [ ] T090 [US1] Create src/main.go with gRPC server initialization
-- [ ] T091 [US1] Implement command-line flags (--extproc-port, --xds-port, --config-file) in src/main.go
-- [ ] T092 [US1] Implement graceful shutdown handling in src/main.go
-- [ ] T093 [US1] Wire Kernel and Core components in src/main.go
+- [x] T090 [US1] Create src/main.go with gRPC server initialization
+- [x] T091 [US1] Implement command-line flags (--extproc-port, --xds-port, --config-file) in src/main.go
+- [x] T092 [US1] Implement graceful shutdown handling in src/main.go
+- [x] T093 [US1] Wire Kernel and Core components in src/main.go
 
 ### US1: Configuration Files
 
-- [ ] T094 [P] [US1] Create configs/policy-engine.yaml with runtime configuration
-- [ ] T095 [P] [US1] Create configs/envoy.yaml with ext_proc filter configuration
-- [ ] T096 [P] [US1] Create configs/xds/route-simple.yaml with public route + SetHeader policy
-- [ ] T097 [P] [US1] Create configs/xds/route-with-jwt.yaml with private route + JWT policy (placeholder for US2)
+- [x] T094 [P] [US1] Create configs/policy-engine.yaml with runtime configuration
+- [x] T095 [P] [US1] Create configs/envoy.yaml with ext_proc filter configuration
+- [x] T096 [P] [US1] Create configs/xds/route-simple.yaml with public route + SetHeader policy
+- [x] T097 [P] [US1] Create configs/xds/route-with-jwt.yaml with private route + JWT policy (placeholder for US2)
 
 ### US1: Docker Compose Setup
 
-- [ ] T098 [US1] Configure Envoy service in docker-compose.yml with ext_proc pointing to policy-engine:9001
-- [ ] T099 [US1] Configure Policy Engine service in docker-compose.yml exposing ports 9001, 9002
-- [ ] T100 [US1] Configure test backend service (request-info container) in docker-compose.yml
-- [ ] T101 [US1] Add volume mounts for configs/ directory in docker-compose.yml
+- [x] T098 [US1] Configure Envoy service in docker-compose.yml with ext_proc pointing to policy-engine:9001
+- [x] T099 [US1] Configure Policy Engine service in docker-compose.yml exposing ports 9001, 9002
+- [x] T100 [US1] Configure test backend service (request-info container) in docker-compose.yml
+- [x] T101 [US1] Add volume mounts for configs/ directory in docker-compose.yml
 
 **Checkpoint**: At this point, User Story 1 should be fully functional - route-based policy execution with SetHeader policy and dynamic xDS updates
 

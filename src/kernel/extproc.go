@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
@@ -45,20 +45,20 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			return nil
 		}
 		if err != nil {
-			log.Printf("Error receiving from stream: %v", err)
+			slog.ErrorContext(ctx, "Error receiving from stream", "error", err)
 			return status.Errorf(codes.Unknown, "failed to receive request: %v", err)
 		}
 
 		// Process the request based on phase
 		resp, err := s.processRequest(ctx, req)
 		if err != nil {
-			log.Printf("Error processing request: %v", err)
+			slog.ErrorContext(ctx, "Error processing request", "error", err)
 			return err
 		}
 
 		// Send response back to Envoy
 		if err := stream.Send(resp); err != nil {
-			log.Printf("Error sending response: %v", err)
+			slog.ErrorContext(ctx, "Error sending response", "error", err)
 			return status.Errorf(codes.Unknown, "failed to send response: %v", err)
 		}
 	}
@@ -84,7 +84,7 @@ func (s *ExternalProcessorServer) processRequest(ctx context.Context, req *extpr
 		return s.handleResponseBody(ctx, v.ResponseBody)
 
 	default:
-		log.Printf("Unknown request type: %T", v)
+		slog.WarnContext(ctx, "Unknown request type", "type", fmt.Sprintf("%T", v))
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 				ImmediateResponse: &extprocv3.ImmediateResponse{
@@ -104,7 +104,7 @@ func (s *ExternalProcessorServer) handleRequestHeaders(ctx context.Context, head
 	// Get policy chain for this route
 	chain, err := s.kernel.GetPolicyChainForKey(metadataKey)
 	if err != nil {
-		log.Printf("No policy chain found for route %s: %v", metadataKey, err)
+		slog.WarnContext(ctx, "No policy chain found for route", "route", metadataKey, "error", err)
 		// No policy chain = allow request to proceed unmodified
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_RequestHeaders{
@@ -126,7 +126,7 @@ func (s *ExternalProcessorServer) handleRequestHeaders(ctx context.Context, head
 		chain.RequestPolicySpecs,
 	)
 	if err != nil {
-		log.Printf("Error executing request policies: %v", err)
+		slog.ErrorContext(ctx, "Error executing request policies", "error", err)
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 				ImmediateResponse: &extprocv3.ImmediateResponse{
@@ -164,7 +164,7 @@ func (s *ExternalProcessorServer) handleResponseHeaders(ctx context.Context, hea
 	// Retrieve stored context from request phase
 	storedCtx, chain, err := s.kernel.getStoredContext(requestID)
 	if err != nil {
-		log.Printf("No stored context for request %s: %v", requestID, err)
+		slog.WarnContext(ctx, "No stored context for request", "request_id", requestID, "error", err)
 		// No stored context = allow response through unmodified
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ResponseHeaders{
@@ -186,7 +186,7 @@ func (s *ExternalProcessorServer) handleResponseHeaders(ctx context.Context, hea
 		chain.ResponsePolicySpecs,
 	)
 	if err != nil {
-		log.Printf("Error executing response policies: %v", err)
+		slog.ErrorContext(ctx, "Error executing response policies", "error", err)
 		// Allow response through unmodified on error
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ResponseHeaders{

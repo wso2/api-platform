@@ -1,8 +1,9 @@
 package kernel
 
 import (
+	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -79,10 +80,13 @@ func (cl *ConfigLoader) LoadFromFile(path string) error {
 	cl.kernel.mu.Lock()
 	defer cl.kernel.mu.Unlock()
 
+	ctx := context.Background()
 	for routeKey, chain := range chains {
 		cl.kernel.Routes[routeKey] = chain
-		log.Printf("Loaded policy chain for route: %s with %d request policies, %d response policies",
-			routeKey, len(chain.RequestPolicies), len(chain.ResponsePolicies))
+		slog.InfoContext(ctx, "Loaded policy chain for route",
+			"route", routeKey,
+			"request_policies", len(chain.RequestPolicies),
+			"response_policies", len(chain.ResponsePolicies))
 	}
 
 	return nil
