@@ -178,7 +178,7 @@ ${theme.palette.augmentColor({ color: { main: "#059669" } }).dark} 100%)`,
     <IconButton
       onClick={onDelete}
       size="small"
-      color="success"
+      color="error"
       sx={{
         position: "absolute",
         bottom: 8,
