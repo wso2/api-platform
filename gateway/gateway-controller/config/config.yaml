@@ -76,7 +76,7 @@ router:
 # Logging configuration
 logging:
   # Log level: "debug", "info", "warn", or "error"
-  level: debug
+  level: info
 
   # Log format: "json" or "console"
   # - json: Structured JSON format (recommended for production)
