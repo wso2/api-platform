@@ -30,7 +30,20 @@ export type GithubProjectValidationResponse =
   | GithubProjectValidationOK
   | GithubProjectValidationErr;
 
-/** ----- Helpers ----- */
+export type OpenApiValidationOK = {
+  isAPIDefinitionValid: true;
+  api: Record<string, unknown>;
+};
+
+export type OpenApiValidationErr = {
+  isAPIDefinitionValid: false;
+  errors: string[];
+};
+
+export type OpenApiValidationResponse =
+  | OpenApiValidationOK
+  | OpenApiValidationErr;
+
 
 const parseError = async (res: Response) => {
   let body = "";
@@ -92,4 +105,70 @@ export const useGithubProjectValidation = () => {
   );
 
   return { validateGithubApiProject };
+};
+
+export const useOpenApiValidation = () => {
+  const validateOpenApiUrl = useCallback(
+    async (
+      url: string,
+      opts?: { signal?: AbortSignal }
+    ): Promise<OpenApiValidationResponse> => {
+      const { token, baseUrl } = getApiConfig();
+
+      const formData = new FormData();
+      formData.append("url", url);
+
+      const res = await fetch(`${baseUrl}/api/v1/validate/open-api`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+        signal: opts?.signal,
+      });
+
+      if (!res.ok) {
+        throw new Error(
+          `Failed to validate OpenAPI from URL: ${await parseError(res)}`
+        );
+      }
+
+      const data = (await res.json()) as OpenApiValidationResponse;
+      return data;
+    },
+    []
+  );
+
+  const validateOpenApiFile = useCallback(
+    async (
+      file: File,
+      opts?: { signal?: AbortSignal }
+    ): Promise<OpenApiValidationResponse> => {
+      const { token, baseUrl } = getApiConfig();
+
+      const formData = new FormData();
+      formData.append("definition", file);
+
+      const res = await fetch(`${baseUrl}/api/v1/validate/open-api`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+        signal: opts?.signal,
+      });
+
+      if (!res.ok) {
+        throw new Error(
+          `Failed to validate OpenAPI file: ${await parseError(res)}`
+        );
+      }
+
+      const data = (await res.json()) as OpenApiValidationResponse;
+      return data;
+    },
+    []
+  );
+
+  return { validateOpenApiUrl, validateOpenApiFile };
 };
