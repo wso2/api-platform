@@ -56,18 +56,19 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
     >
       <DialogTitle
         sx={{
-          fontWeight: 700,
-          fontSize: 20,
-          pb: 1,
+          fontWeight: 600,
+          fontSize: '1.25rem',
+          pb: 2,
+          pt: 2.5,
           display: 'flex',
           alignItems: 'center',
-          gap: 1,
+          gap: 1.5,
         }}
       >
         <Box
           sx={{
-            width: 6,
-            height: 6,
+            width: 8,
+            height: 8,
             borderRadius: '50%',
             backgroundColor: getSeverityColor(),
             flexShrink: 0,
@@ -76,13 +77,14 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         {title}
       </DialogTitle>
 
-      <DialogContent sx={{ pt: 1, pb: 3 }}>
+      <DialogContent sx={{ pt: 0, pb: 3, px: 3 }}>
         <Typography 
-          variant="body1" 
+          variant="body2" 
+          color="text.primary"
           sx={{ 
-            color: 'text.primary',
-            fontSize: '1rem',
-            lineHeight: 1.5,
+            fontSize: '0.9375rem',
+            lineHeight: 1.6,
+            opacity: 0.7,
           }}
         >
           {message}
