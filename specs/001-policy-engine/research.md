@@ -168,29 +168,46 @@ This document captures research findings and technical decisions for implementin
 
 ### 7. Builder Architecture
 
-**Decision**: Docker multi-stage build with discovery → validation → generation → compilation → packaging pipeline
+**Decision**: Go-based builder application with discovery → validation → generation → compilation → packaging pipeline, packaged in Docker image
 
 **Rationale**:
-- Reproducible builds with controlled environment
+- **Go implementation**: Type-safe, testable, maintainable - consistent with policy engine language
+- Reproducible builds with controlled Docker environment
 - Auto-discovery eliminates manual policy registration
-- Validation catches errors before compilation
-- Generated import code ensures all policies linked
-- Final distroless image minimizes attack surface
+- Validation catches errors before compilation with detailed error reporting
+- Generated import code ensures all policies linked correctly
+- Better error handling and user feedback compared to shell scripts
+- Cross-platform compatibility (Go compiles for any platform)
+- Final distroless runtime image minimizes attack surface
 
 **Alternatives Considered**:
+- **Shell scripts**: Rejected - Poor error handling, hard to test, limited type safety, platform-specific
 - **Go plugins**: Rejected - Runtime loading has versioning issues, security concerns, performance impact
 - **WASM plugins**: Rejected - Limited Go support, complex build chain, debugging difficulties
 - **Manual compilation**: Rejected - Error-prone, doesn't scale with many custom policies
 
 **Implementation Notes**:
-- Builder image: golang:1.23-alpine with build tools (jq, yq, bash)
-- **Builder image CONTAINS**: Policy Engine framework source code (`src/`), build scripts (`build/`, `templates/`, `tools/`)
-- **Users ONLY mount**: `/policies` (their custom policy implementations) and `/output` (generated artifacts)
-- Discovery: Find all policy.yaml files from mounted `/policies`, extract name/version/path
-- Validation: Check YAML schema, Go module, interface implementation
-- Generation: Create plugin_registry.go with imports, update go.mod with replace directives
-- Compilation: CGO_ENABLED=0 for static binary, compile framework (`/src`) + mounted policies, ldflags for metadata injection
-- Packaging: Generate Dockerfile.runtime from template with build metadata
+- Builder image: golang:1.23-alpine base
+- **Builder Go application structure**:
+  - `build/cmd/builder/main.go` - CLI entry point
+  - `build/internal/discovery/` - Policy discovery from /policies mount
+  - `build/internal/validation/` - YAML, Go interface, and structure validation
+  - `build/internal/generation/` - Code generation using text/template
+  - `build/internal/compilation/` - Binary compilation using os/exec
+  - `build/internal/packaging/` - Dockerfile generation
+- **Builder image CONTAINS**:
+  - Policy Engine framework source (`src/`)
+  - Builder Go application (`build/`)
+  - Code generation templates (`templates/`)
+- **Users ONLY mount**:
+  - `/policies` - Custom policy implementations
+  - `/output` - Generated binary and Dockerfile
+- **Build phases**:
+  1. Discovery: Walk `/policies`, parse policy.yaml files using gopkg.in/yaml.v3
+  2. Validation: Validate YAML schema, check Go interfaces with go/parser, verify directory structure
+  3. Generation: Generate plugin_registry.go and build_info.go using text/template
+  4. Compilation: Execute `go build` with CGO_ENABLED=0, ldflags for metadata
+  5. Packaging: Generate Dockerfile.runtime with embedded policy list and build metadata
 
 **References**:
 - Multi-stage builds: https://docs.docker.com/build/building/multi-stage/

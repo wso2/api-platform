@@ -161,32 +161,51 @@ policies/                        # Optional examples directory
         ├── go.mod
         └── README.md
 
-# Policy Engine Builder
+# Policy Engine Builder (Go Implementation)
 build/
-├── build.sh                     # Main orchestrator
-├── discover.sh                  # Policy discovery
-├── validate.sh                  # Policy validation
-├── generate.sh                  # Code generation
-├── compile.sh                   # Binary compilation
-├── package.sh                   # Runtime image packaging
-└── utils.sh                     # Common utilities
+├── cmd/
+│   └── builder/
+│       └── main.go              # Builder CLI entry point
+├── internal/
+│   ├── discovery/
+│   │   ├── discovery.go         # Policy discovery from /policies mount
+│   │   └── policy.go            # Policy metadata extraction
+│   ├── validation/
+│   │   ├── validator.go         # Policy validation orchestrator
+│   │   ├── yaml.go              # YAML schema validation
+│   │   ├── golang.go            # Go interface validation
+│   │   └── structure.go         # Directory structure validation
+│   ├── generation/
+│   │   ├── generator.go         # Code generation orchestrator
+│   │   ├── registry.go          # plugin_registry.go generation
+│   │   ├── buildinfo.go         # build_info.go generation
+│   │   └── gomod.go             # go.mod replace directive generation
+│   ├── compilation/
+│   │   ├── compiler.go          # Binary compilation
+│   │   └── options.go           # Build options and flags
+│   └── packaging/
+│       ├── packager.go          # Runtime Dockerfile generation
+│       └── metadata.go          # Docker image metadata/labels
+├── pkg/
+│   ├── types/
+│   │   └── policy.go            # Shared policy types
+│   └── errors/
+│       └── errors.go            # Builder error types
+└── go.mod                       # Builder module dependencies
 
 templates/
 ├── plugin_registry.go.tmpl      # Import generation template
 ├── build_info.go.tmpl           # Build metadata template
 └── Dockerfile.runtime.tmpl      # Runtime image template
 
-tools/
-├── policy-validator/            # YAML schema validator tool
-│   ├── main.go
-│   └── go.mod
-└── schema-checker/              # Go interface checker tool
-    ├── main.go
-    └── go.mod
-
 # Docker Images
-Dockerfile.builder               # Builder image with build tools + framework source (src/)
-                                 # Users ONLY mount policies/ - framework source is IN the image
+Dockerfile.builder               # Builder image with:
+                                 #   - Go 1.23+ toolchain
+                                 #   - Policy Engine framework source (src/)
+                                 #   - Builder Go application (build/)
+                                 #   - Templates (templates/)
+                                 # Entry point: /build/cmd/builder/main.go
+                                 # Users ONLY mount: /policies and /output
 Dockerfile.runtime              # GENERATED: Final runtime image with compiled binary
 
 # Testing
@@ -224,10 +243,11 @@ docker-compose.yml              # Local development setup
 **Critical Separation**: The runtime and sample policies are architecturally separate. The runtime is a policy-agnostic framework. Sample policies demonstrate the framework but are not required. Users can build a binary with zero policies, only sample policies, only their custom policies, or any combination via the Builder.
 
 **Builder Image Architecture**: The `Dockerfile.builder` creates a complete build environment containing:
-- Go toolchain and build tools
+- Go 1.23+ toolchain
 - **Policy Engine framework source code** (`src/` directory)
-- Build scripts (`build/`, `templates/`, `tools/`)
-- Everything needed to compile the final binary
+- **Builder Go application** (`build/` - discovery, validation, generation, compilation, packaging modules)
+- Code generation templates (`templates/`)
+- Everything needed to discover policies, validate them, generate code, and compile the final binary
 
 **User Workflow**: Users run the Builder image and ONLY mount:
 - `/policies` - Their custom policy implementations (or sample policies)

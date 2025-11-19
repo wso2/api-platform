@@ -327,80 +327,80 @@ This project uses a multi-component structure:
 
 **Dependencies**: None (independent of other user stories - requires only foundation)
 
-### US5: Builder - Discovery Phase
+### US5: Builder - Discovery Phase (Go Implementation)
 
-- [ ] T143 [P] [US5] Create build/discover.sh script with policy.yaml file discovery
-- [ ] T144 [US5] Implement policy.yaml parsing with yq in build/discover.sh
-- [ ] T145 [US5] Implement policies.json manifest generation in build/discover.sh
-- [ ] T146 [US5] Add directory structure validation in build/discover.sh
-- [ ] T147 [US5] Add version consistency check (directory vs YAML) in build/discover.sh
+- [ ] T143 [P] [US5] Create build/internal/discovery/discovery.go with policy.yaml file discovery from /policies mount
+- [ ] T144 [US5] Implement policy.yaml parsing using gopkg.in/yaml.v3 in build/internal/discovery/policy.go
+- [ ] T145 [US5] Implement DiscoveredPolicy struct and discovery result types in build/pkg/types/policy.go
+- [ ] T146 [US5] Add directory structure validation (policy.yaml, go.mod, *.go files) in build/internal/discovery/discovery.go
+- [ ] T147 [US5] Add version consistency check (directory name vs YAML version) in build/internal/discovery/discovery.go
 
-### US5: Builder - Validation Phase
+### US5: Builder - Validation Phase (Go Implementation)
 
-- [ ] T148 [P] [US5] Create build/validate.sh script for policy validation
-- [ ] T149 [US5] Create tools/policy-validator/ Go tool for YAML schema validation
-- [ ] T150 [US5] Implement policy.yaml schema validation in tools/policy-validator/main.go
-- [ ] T151 [US5] Create tools/schema-checker/ Go tool for interface validation
-- [ ] T152 [US5] Implement Go interface checking using go/parser in tools/schema-checker/main.go
-- [ ] T153 [US5] Implement go.mod existence check in build/validate.sh
-- [ ] T154 [US5] Implement *.go file existence check in build/validate.sh
-- [ ] T155 [US5] Implement validation_report.json generation in build/validate.sh
-- [ ] T156 [US5] Add duplicate policy name/version detection in build/validate.sh
+- [ ] T148 [P] [US5] Create build/internal/validation/validator.go with validation orchestrator
+- [ ] T149 [US5] Implement YAML schema validation in build/internal/validation/yaml.go
+- [ ] T150 [US5] Implement policy.yaml required fields validation (name, version, parameters) in build/internal/validation/yaml.go
+- [ ] T151 [US5] Implement Go interface validation using go/parser in build/internal/validation/golang.go
+- [ ] T152 [US5] Check for Policy interface implementation (Name, Validate, ExecuteRequest/ExecuteResponse) in build/internal/validation/golang.go
+- [ ] T153 [US5] Implement directory structure validation (go.mod, *.go files present) in build/internal/validation/structure.go
+- [ ] T154 [US5] Implement ValidationResult struct with errors and warnings in build/pkg/types/policy.go
+- [ ] T155 [US5] Implement validation error reporting with file paths and line numbers in build/internal/validation/validator.go
+- [ ] T156 [US5] Add duplicate policy name/version detection across all discovered policies in build/internal/validation/validator.go
 
-### US5: Builder - Code Generation Phase
+### US5: Builder - Code Generation Phase (Go Implementation)
 
-- [ ] T157 [P] [US5] Create build/generate.sh script for code generation
-- [ ] T158 [P] [US5] Create templates/plugin_registry.go.tmpl template
-- [ ] T159 [US5] Implement plugin_registry.go generation with policy imports in build/generate.sh
-- [ ] T160 [US5] Implement import alias generation (sanitize name+version) in build/generate.sh
-- [ ] T161 [US5] Implement policy registration code generation in build/generate.sh
-- [ ] T162 [US5] Implement go.mod replace directive generation for local policies in build/generate.sh
-- [ ] T163 [P] [US5] Create templates/build_info.go.tmpl template
-- [ ] T164 [US5] Implement build_info.go generation with metadata in build/generate.sh
+- [ ] T157 [P] [US5] Create build/internal/generation/generator.go with code generation orchestrator
+- [ ] T158 [P] [US5] Create templates/plugin_registry.go.tmpl template for policy imports
+- [ ] T159 [US5] Implement plugin_registry.go generation using text/template in build/internal/generation/registry.go
+- [ ] T160 [US5] Implement import alias generation (sanitize policy name+version to valid Go identifier) in build/internal/generation/registry.go
+- [ ] T161 [US5] Implement policy registration code generation (import statements + init() registrations) in build/internal/generation/registry.go
+- [ ] T162 [US5] Implement go.mod replace directive generation for local policy paths in build/internal/generation/gomod.go
+- [ ] T163 [P] [US5] Create templates/build_info.go.tmpl template for build metadata
+- [ ] T164 [US5] Implement build_info.go generation with timestamp, version, policy list in build/internal/generation/buildinfo.go
 
-### US5: Builder - Compilation Phase
+### US5: Builder - Compilation Phase (Go Implementation)
 
-- [ ] T165 [P] [US5] Create build/compile.sh script for binary compilation
-- [ ] T166 [US5] Implement go mod download in build/compile.sh
-- [ ] T167 [US5] Implement go mod tidy in build/compile.sh
-- [ ] T168 [US5] Implement CGO_ENABLED=0 static binary build in build/compile.sh
-- [ ] T169 [US5] Implement ldflags for build metadata injection in build/compile.sh
-- [ ] T170 [US5] Add optional UPX compression in build/compile.sh
+- [ ] T165 [P] [US5] Create build/internal/compilation/compiler.go with compilation orchestrator
+- [ ] T166 [US5] Implement go mod download execution using os/exec in build/internal/compilation/compiler.go
+- [ ] T167 [US5] Implement go mod tidy execution using os/exec in build/internal/compilation/compiler.go
+- [ ] T168 [US5] Implement static binary compilation (CGO_ENABLED=0) with os/exec in build/internal/compilation/compiler.go
+- [ ] T169 [US5] Implement ldflags generation for build metadata injection in build/internal/compilation/options.go
+- [ ] T170 [US5] Add optional UPX compression execution in build/internal/compilation/compiler.go
 
-### US5: Builder - Packaging Phase
+### US5: Builder - Packaging Phase (Go Implementation)
 
-- [ ] T171 [P] [US5] Create build/package.sh script for Docker image generation
-- [ ] T172 [P] [US5] Create templates/Dockerfile.runtime.tmpl template
-- [ ] T173 [US5] Implement Dockerfile.runtime generation in build/package.sh
-- [ ] T174 [US5] Add policy list to Docker image labels in build/package.sh
-- [ ] T175 [US5] Add build metadata to Docker image labels in build/package.sh
+- [ ] T171 [P] [US5] Create build/internal/packaging/packager.go with Docker image generation
+- [ ] T172 [P] [US5] Create templates/Dockerfile.runtime.tmpl template for runtime image
+- [ ] T173 [US5] Implement Dockerfile.runtime generation using text/template in build/internal/packaging/packager.go
+- [ ] T174 [US5] Implement policy list formatting for Docker LABEL in build/internal/packaging/metadata.go
+- [ ] T175 [US5] Implement build metadata (timestamp, version, builder version) for Docker LABELs in build/internal/packaging/metadata.go
 
-### US5: Builder - Main Orchestrator
+### US5: Builder - Main CLI (Go Implementation)
 
-- [ ] T176 [US5] Create build/build.sh main orchestrator script
-- [ ] T177 [US5] Implement phase 1 (discovery) invocation in build/build.sh
-- [ ] T178 [US5] Implement phase 2 (validation) invocation with error handling in build/build.sh
-- [ ] T179 [US5] Implement phase 3 (generation) invocation in build/build.sh
-- [ ] T180 [US5] Implement phase 4 (compilation) invocation in build/build.sh
-- [ ] T181 [US5] Implement phase 5 (packaging) invocation in build/build.sh
-- [ ] T182 [US5] Add build banner and summary output in build/build.sh
-- [ ] T183 [US5] Add error reporting and exit codes in build/build.sh
+- [ ] T176 [US5] Create build/cmd/builder/main.go with CLI entry point
+- [ ] T177 [US5] Implement phase 1 (discovery) execution in build/cmd/builder/main.go
+- [ ] T178 [US5] Implement phase 2 (validation) execution with error handling and early exit in build/cmd/builder/main.go
+- [ ] T179 [US5] Implement phase 3 (generation) execution in build/cmd/builder/main.go
+- [ ] T180 [US5] Implement phase 4 (compilation) execution in build/cmd/builder/main.go
+- [ ] T181 [US5] Implement phase 5 (packaging) execution in build/cmd/builder/main.go
+- [ ] T182 [US5] Add build banner and summary output with colored/formatted logging in build/cmd/builder/main.go
+- [ ] T183 [US5] Implement structured error reporting and exit codes in build/pkg/errors/errors.go
 
-### US5: Builder - Docker Image
+### US5: Builder - Docker Image (Go Implementation)
 
-**CRITICAL**: The Builder image CONTAINS the Policy Engine framework source code (`src/`). Users ONLY mount their policies - NOT the framework source.
+**CRITICAL**: The Builder image CONTAINS the Policy Engine framework source code (`src/`) and Builder Go application (`build/`). Users ONLY mount their policies - NOT the framework source.
 
 - [ ] T184 [US5] Create Dockerfile.builder with golang:1.23-alpine base
-- [ ] T185 [US5] Install build tools (bash, jq, yq, make, upx) in Dockerfile.builder
+- [ ] T185 [US5] Install build dependencies (upx for optional compression) in Dockerfile.builder
 - [ ] T186 [US5] Copy policy engine framework source code (src/) to /src in builder image in Dockerfile.builder
-- [ ] T187 [US5] Copy build scripts (build/, templates/, tools/) to builder image in Dockerfile.builder
-- [ ] T188 [US5] Set entrypoint to build.sh in Dockerfile.builder
-- [ ] T189 [US5] Pre-download Go dependencies for framework in Dockerfile.builder
+- [ ] T187 [US5] Copy Builder Go application (build/) and templates (templates/) to builder image in Dockerfile.builder
+- [ ] T188 [US5] Build Builder Go binary and set as ENTRYPOINT in Dockerfile.builder
+- [ ] T189 [US5] Pre-download Go dependencies for framework and builder in Dockerfile.builder
 
-### US5: Builder - Utilities
+### US5: Builder - Module Setup (Go Implementation)
 
-- [ ] T190 [P] [US5] Create build/utils.sh with common helper functions
-- [ ] T191 [P] [US5] Add logging functions (log, error, success, warn) to build/utils.sh
+- [ ] T190 [P] [US5] Create build/go.mod for Builder Go module
+- [ ] T191 [P] [US5] Add Builder dependencies (gopkg.in/yaml.v3, text/template) to build/go.mod
 
 ### US5: Sample Custom Policy - API Key Validation (OPTIONAL Reference Implementation)
 
