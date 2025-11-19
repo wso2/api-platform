@@ -109,24 +109,27 @@ src/
 │   ├── translator.go           # Action → ext_proc response translator
 │   ├── context_storage.go      # Request context storage (request → response)
 │   └── body_mode.go            # Body processing mode determination
-├── worker/                      # Worker layer
-│   ├── core/                   # Core execution engine
-│   │   ├── executor.go         # Policy chain executor
-│   │   ├── registry.go         # Policy registry
-│   │   ├── loader.go           # YAML schema loader
-│   │   ├── action.go           # Action type definitions
-│   │   ├── context.go          # RequestContext, ResponseContext
-│   │   ├── cel_evaluator.go   # CEL expression evaluator
-│   │   └── validation.go       # Configuration validation
-│   └── policies/               # Policy interfaces and base types
-│       ├── interface.go        # Policy, RequestPolicy, ResponsePolicy interfaces
-│       ├── types.go            # Parameter types, validation rules
-│       └── schema.go           # PolicyDefinition, PolicySpec structures
 ├── pkg/                        # Shared packages
-│   ├── xds/                    # xDS protocol utilities
 │   ├── validation/             # Parameter validation engine
 │   └── cel/                    # CEL utilities
-└── go.mod
+└── go.mod                      # Main module: github.com/envoy-policy-engine/policy-engine
+
+# ========================================
+# SDK Module (Separate module to avoid cyclic dependencies)
+# ========================================
+sdk/
+├── core/                       # Core execution engine
+│   ├── executor.go             # Policy chain executor
+│   ├── registry.go             # Policy registry
+│   ├── loader.go               # YAML schema loader
+│   └── types.go                # Core types (PolicyChain, etc.)
+├── policies/                   # Policy interfaces and base types
+│   ├── interface.go            # Policy, RequestPolicy, ResponsePolicy interfaces
+│   ├── types.go                # Parameter types, validation rules
+│   ├── schema.go               # PolicyDefinition, PolicySpec structures
+│   ├── action.go               # Action type definitions
+│   └── context.go              # RequestContext, ResponseContext
+└── go.mod                      # SDK module: github.com/envoy-policy-engine/sdk
 
 # ========================================
 # Sample Policy Implementations (OPTIONAL Reference Examples)

@@ -14,31 +14,57 @@
 
 ## Quick Start: Build Policy Engine with Sample Policies
 
-### 1. Build Policy Engine Binary with Sample Policies
+### 1. Create Policy Manifest
 
 ```bash
 # Clone repository (only for sample policies)
 git clone <repository-url>
 cd envoy-policy-engine-simplified
 
-# Build Policy Engine with sample policies using the Builder
+# Create policy manifest file that declares which policies to compile
+cat > policies.yaml <<EOF
+version: v1
+policies:
+  - name: SetHeader
+    version: v1.0.0
+    uri: ./policies/set-header/v1.0.0
+
+  - name: JWTValidation
+    version: v1.0.0
+    uri: ./policies/jwt-validation/v1.0.0
+
+  - name: ApiKeyValidation
+    version: v1.0.0
+    uri: ./policies/api-key-validation/v1.0.0
+EOF
+```
+
+### 2. Build Policy Engine Binary with Sample Policies
+
+```bash
+# Build Policy Engine with policies declared in manifest
 # The Builder image CONTAINS the policy engine framework source code
-# You ONLY mount your policy implementations - NOT the framework source
+# You provide the manifest file and mount the policy directories
 docker run --rm \
+    -v $(pwd)/policies.yaml:/policies.yaml \
     -v $(pwd)/policies:/policies \
     -v $(pwd)/output:/output \
     -e BUILD_VERSION=v1.0.0 \
-    policy-engine-builder:v1.0.0
+    policy-engine-builder:v1.0.0 \
+    --manifest /policies.yaml
 
 # Expected output:
-# ✅ Discovered 6 policies (setHeader:v1.0.0, jwtValidation:v1.0.0, jwtValidation:v2.0.0, apiKeyValidation:v1.0.0, rateLimiting:v1.0.0, securityHeaders:v1.0.0)
+# ✅ Loaded manifest: 3 policies declared
+# ✅ Discovered SetHeader v1.0.0 at ./policies/set-header/v1.0.0
+# ✅ Discovered JWTValidation v1.0.0 at ./policies/jwt-validation/v1.0.0
+# ✅ Discovered ApiKeyValidation v1.0.0 at ./policies/api-key-validation/v1.0.0
 # ✅ Validation passed
 # ✅ Code generated (plugin_registry.go, build_info.go)
 # ✅ Binary compiled: /output/policy-engine
 # ✅ Dockerfile generated: /output/Dockerfile
 ```
 
-### 2. Build Runtime Docker Image
+### 3. Build Runtime Docker Image
 
 ```bash
 cd output
@@ -55,7 +81,7 @@ docker inspect policy-engine:v1.0.0 | \
 cd ..
 ```
 
-### 3. Start the Development Environment
+### 4. Start the Development Environment
 
 ```bash
 # Start Envoy + Policy Engine + Test Backend
@@ -73,7 +99,7 @@ policy-engine       Up 30 seconds       0.0.0.0:9001->9001/tcp, 0.0.0.0:9002->90
 test-backend        Up 30 seconds       8080/tcp
 ```
 
-### 4. Test Basic Policy Execution
+### 5. Test Basic Policy Execution
 
 **Test public route (no authentication)**:
 ```bash
@@ -99,7 +125,7 @@ curl -i -H "Authorization: Bearer $JWT" http://localhost:8000/api/v1/private/use
 # X-User-ID header added by JWT policy
 ```
 
-### 5. Update Policy Configuration (Zero Downtime)
+### 6. Update Policy Configuration (Zero Downtime)
 
 ```bash
 # Edit configuration
@@ -111,7 +137,7 @@ curl -X POST http://localhost:9002/reload
 # Verify new policies apply immediately without restart
 ```
 
-### 6. View Logs
+### 7. View Logs
 
 ```bash
 # Policy Engine logs
@@ -121,13 +147,31 @@ docker-compose logs -f policy-engine
 docker-compose logs -f envoy-proxy
 ```
 
-### 7. Cleanup
+### 8. Cleanup
 
 ```bash
 docker-compose down
 ```
 
 ---
+
+## Understanding the Policy Manifest
+
+The `policies.yaml` manifest is the source of truth for which policies to compile. Key benefits:
+
+- **Explicit declaration**: No directory scanning - you explicitly list what to include
+- **Flexible directory structure**: URIs can point anywhere - no naming conventions required
+- **Version control**: Centralized view of all policy versions
+- **Validation**: Builder validates manifest entries match actual policy definitions
+
+**Manifest Structure**:
+```yaml
+version: v1              # Manifest schema version
+policies:
+  - name: PolicyName     # Must match name in policy.yaml at URI
+    version: v1.0.0      # Must match version in policy.yaml at URI
+    uri: ./path/to/policy # Relative or absolute path to policy directory
+```
 
 ## Building Policy Engine with Custom Policies
 
@@ -166,13 +210,15 @@ EOF
 
 # Create go.mod
 cat > go.mod <<EOF
-module github.com/myorg/policies/custom-auth/v1.0.0
+module github.com/envoy-policy-engine/policies/custom-auth
 
 go 1.23
 
 require (
-    github.com/yourorg/policy-engine v1.0.0
+    github.com/envoy-policy-engine/sdk v1.0.0
 )
+
+replace github.com/envoy-policy-engine/sdk => ../../../sdk
 EOF
 
 # Create custom_auth.go
@@ -180,7 +226,7 @@ cat > custom_auth.go <<'EOF'
 package custom_auth
 
 import (
-    "github.com/yourorg/policy-engine/worker/policies"
+    "github.com/envoy-policy-engine/sdk/policies"
 )
 
 type CustomAuthPolicy struct{}

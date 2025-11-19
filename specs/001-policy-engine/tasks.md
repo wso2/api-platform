@@ -54,47 +54,47 @@ This project uses a multi-component structure:
 
 ### Core Type Definitions and Interfaces
 
-- [x] T007 [P] Define ParameterType enum and TypedValue struct in src/worker/policies/types.go
-- [x] T008 [P] Define ValidationRules struct in src/worker/policies/types.go
-- [x] T009 [P] Define ParameterSchema and PolicyParameters structs in src/worker/policies/schema.go
-- [x] T010 [P] Define PolicyDefinition and PolicyExample structs in src/worker/policies/schema.go
-- [x] T011 [P] Define PolicySpec struct in src/worker/policies/schema.go
-- [x] T012 [P] Define RequestContext struct in src/worker/core/context.go
-- [x] T013 [P] Define ResponseContext struct in src/worker/core/context.go
+- [x] T007 [P] Define ParameterType enum and TypedValue struct in sdk/policies/types.go
+- [x] T008 [P] Define ValidationRules struct in sdk/policies/types.go
+- [x] T009 [P] Define ParameterSchema and PolicyParameters structs in sdk/policies/schema.go
+- [x] T010 [P] Define PolicyDefinition and PolicyExample structs in sdk/policies/schema.go
+- [x] T011 [P] Define PolicySpec struct in sdk/policies/schema.go
+- [x] T012 [P] Define RequestContext struct in sdk/core/context.go
+- [x] T013 [P] Define ResponseContext struct in sdk/core/context.go
 
 ### Policy Action Types
 
-- [x] T014 [P] Define RequestAction interface with marker method in src/worker/core/action.go
-- [x] T015 [P] Define ResponseAction interface with marker method in src/worker/core/action.go
-- [x] T016 [P] Define UpstreamRequestModifications struct implementing RequestAction in src/worker/core/action.go
-- [x] T017 [P] Define ImmediateResponse struct implementing RequestAction in src/worker/core/action.go
-- [x] T018 [P] Define UpstreamResponseModifications struct implementing ResponseAction in src/worker/core/action.go
-- [x] T019 [P] Define RequestPolicyAction and ResponsePolicyAction wrapper structs in src/worker/core/action.go
+- [x] T014 [P] Define RequestAction interface with marker method in sdk/core/action.go
+- [x] T015 [P] Define ResponseAction interface with marker method in sdk/core/action.go
+- [x] T016 [P] Define UpstreamRequestModifications struct implementing RequestAction in sdk/core/action.go
+- [x] T017 [P] Define ImmediateResponse struct implementing RequestAction in sdk/core/action.go
+- [x] T018 [P] Define UpstreamResponseModifications struct implementing ResponseAction in sdk/core/action.go
+- [x] T019 [P] Define RequestPolicyAction and ResponsePolicyAction wrapper structs in sdk/core/action.go
 
 ### Policy Interfaces
 
-- [x] T020 [P] Define Policy base interface in src/worker/policies/interface.go
-- [x] T021 [P] Define RequestPolicy interface in src/worker/policies/interface.go
-- [x] T022 [P] Define ResponsePolicy interface in src/worker/policies/interface.go
+- [x] T020 [P] Define Policy base interface in sdk/policies/interface.go
+- [x] T021 [P] Define RequestPolicy interface in sdk/policies/interface.go
+- [x] T022 [P] Define ResponsePolicy interface in sdk/policies/interface.go
 
 ### Execution Result Types
 
-- [x] T023 [P] Define RequestPolicyResult and RequestExecutionResult structs in src/worker/core/executor.go
-- [x] T024 [P] Define ResponsePolicyResult and ResponseExecutionResult structs in src/worker/core/executor.go
+- [x] T023 [P] Define RequestPolicyResult and RequestExecutionResult structs in sdk/core/executor.go
+- [x] T024 [P] Define ResponsePolicyResult and ResponseExecutionResult structs in sdk/core/executor.go
 
 ### PolicyChain and Registry
 
-- [x] T025 Define PolicyChain struct in src/worker/core/registry.go
-- [x] T026 Define PolicyRegistry struct with definitions and implementations maps in src/worker/core/registry.go
-- [x] T027 Implement PolicyRegistry.GetDefinition(name, version) method in src/worker/core/registry.go
-- [x] T028 Implement PolicyRegistry.GetImplementation(name, version) method in src/worker/core/registry.go
-- [x] T029 Implement PolicyRegistry global singleton initialization in src/worker/core/registry.go
+- [x] T025 Define PolicyChain struct in sdk/core/registry.go
+- [x] T026 Define PolicyRegistry struct with definitions and implementations maps in sdk/core/registry.go
+- [x] T027 Implement PolicyRegistry.GetDefinition(name, version) method in sdk/core/registry.go
+- [x] T028 Implement PolicyRegistry.GetImplementation(name, version) method in sdk/core/registry.go
+- [x] T029 Implement PolicyRegistry global singleton initialization in sdk/core/registry.go
 
 ### YAML Schema Loader
 
-- [x] T030 Implement LoadPolicyDefinitionFromYAML(path) function in src/worker/core/loader.go
-- [x] T031 Implement PolicyRegistry.RegisterFromDirectory(path) with filepath.Walk in src/worker/core/loader.go
-- [x] T032 Implement schema validation for policy.yaml structure in src/worker/core/loader.go
+- [x] T030 Implement LoadPolicyDefinitionFromYAML(path) function in sdk/core/loader.go
+- [x] T031 Implement PolicyRegistry.RegisterFromDirectory(path) with filepath.Walk in sdk/core/loader.go
+- [x] T032 Implement schema validation for policy.yaml structure in sdk/core/loader.go
 
 ### Parameter Validation Engine
 
@@ -114,12 +114,12 @@ This project uses a multi-component structure:
 
 ### Policy Executor Core
 
-- [x] T043 Implement Core.ExecuteRequestPolicies(policies, ctx) with condition evaluation in src/worker/core/executor.go
-- [x] T044 Implement Core.ExecuteResponsePolicies(policies, ctx) with condition evaluation in src/worker/core/executor.go
-- [x] T045 Implement applyRequestModifications(ctx, mods) helper in src/worker/core/executor.go
-- [x] T046 Implement applyResponseModifications(ctx, mods) helper in src/worker/core/executor.go
-- [x] T047 Implement short-circuit logic in ExecuteRequestPolicies in src/worker/core/executor.go
-- [x] T048 Implement policy timing metrics collection in executor in src/worker/core/executor.go
+- [x] T043 Implement Core.ExecuteRequestPolicies(policies, ctx) with condition evaluation in sdk/core/executor.go
+- [x] T044 Implement Core.ExecuteResponsePolicies(policies, ctx) with condition evaluation in sdk/core/executor.go
+- [x] T045 Implement applyRequestModifications(ctx, mods) helper in sdk/core/executor.go
+- [x] T046 Implement applyResponseModifications(ctx, mods) helper in sdk/core/executor.go
+- [x] T047 Implement short-circuit logic in ExecuteRequestPolicies in sdk/core/executor.go
+- [x] T048 Implement policy timing metrics collection in executor in sdk/core/executor.go
 
 ### Kernel - Route Mapping
 
@@ -329,94 +329,94 @@ This project uses a multi-component structure:
 
 ### US5: Builder - Discovery Phase (Go Implementation)
 
-- [ ] T143 [P] [US5] Create build/internal/discovery/discovery.go with policy.yaml file discovery from /policies mount
-- [ ] T144 [US5] Implement policy.yaml parsing using gopkg.in/yaml.v3 in build/internal/discovery/policy.go
-- [ ] T145 [US5] Implement DiscoveredPolicy struct and discovery result types in build/pkg/types/policy.go
-- [ ] T146 [US5] Add directory structure validation (policy.yaml, go.mod, *.go files) in build/internal/discovery/discovery.go
-- [ ] T147 [US5] Add version consistency check (directory name vs YAML version) in build/internal/discovery/discovery.go
+- [x] T143 [P] [US5] Create build/internal/discovery/discovery.go with policy.yaml file discovery from /policies mount
+- [x] T144 [US5] Implement policy.yaml parsing using gopkg.in/yaml.v3 in build/internal/discovery/policy.go
+- [x] T145 [US5] Implement DiscoveredPolicy struct and discovery result types in build/pkg/types/policy.go
+- [x] T146 [US5] Add directory structure validation (policy.yaml, go.mod, *.go files) in build/internal/discovery/discovery.go
+- [x] T147 [US5] Add version consistency check (directory name vs YAML version) in build/internal/discovery/discovery.go
 
 ### US5: Builder - Validation Phase (Go Implementation)
 
-- [ ] T148 [P] [US5] Create build/internal/validation/validator.go with validation orchestrator
-- [ ] T149 [US5] Implement YAML schema validation in build/internal/validation/yaml.go
-- [ ] T150 [US5] Implement policy.yaml required fields validation (name, version, parameters) in build/internal/validation/yaml.go
-- [ ] T151 [US5] Implement Go interface validation using go/parser in build/internal/validation/golang.go
-- [ ] T152 [US5] Check for Policy interface implementation (Name, Validate, ExecuteRequest/ExecuteResponse) in build/internal/validation/golang.go
-- [ ] T153 [US5] Implement directory structure validation (go.mod, *.go files present) in build/internal/validation/structure.go
-- [ ] T154 [US5] Implement ValidationResult struct with errors and warnings in build/pkg/types/policy.go
-- [ ] T155 [US5] Implement validation error reporting with file paths and line numbers in build/internal/validation/validator.go
-- [ ] T156 [US5] Add duplicate policy name/version detection across all discovered policies in build/internal/validation/validator.go
+- [x] T148 [P] [US5] Create build/internal/validation/validator.go with validation orchestrator
+- [x] T149 [US5] Implement YAML schema validation in build/internal/validation/yaml.go
+- [x] T150 [US5] Implement policy.yaml required fields validation (name, version, parameters) in build/internal/validation/yaml.go
+- [x] T151 [US5] Implement Go interface validation using go/parser in build/internal/validation/golang.go
+- [x] T152 [US5] Check for Policy interface implementation (Name, Validate, ExecuteRequest/ExecuteResponse) in build/internal/validation/golang.go
+- [x] T153 [US5] Implement directory structure validation (go.mod, *.go files present) in build/internal/validation/structure.go
+- [x] T154 [US5] Implement ValidationResult struct with errors and warnings in build/pkg/types/policy.go
+- [x] T155 [US5] Implement validation error reporting with file paths and line numbers in build/internal/validation/validator.go
+- [x] T156 [US5] Add duplicate policy name/version detection across all discovered policies in build/internal/validation/validator.go
 
 ### US5: Builder - Code Generation Phase (Go Implementation)
 
-- [ ] T157 [P] [US5] Create build/internal/generation/generator.go with code generation orchestrator
-- [ ] T158 [P] [US5] Create templates/plugin_registry.go.tmpl template for policy imports
-- [ ] T159 [US5] Implement plugin_registry.go generation using text/template in build/internal/generation/registry.go
-- [ ] T160 [US5] Implement import alias generation (sanitize policy name+version to valid Go identifier) in build/internal/generation/registry.go
-- [ ] T161 [US5] Implement policy registration code generation (import statements + init() registrations) in build/internal/generation/registry.go
-- [ ] T162 [US5] Implement go.mod replace directive generation for local policy paths in build/internal/generation/gomod.go
-- [ ] T163 [P] [US5] Create templates/build_info.go.tmpl template for build metadata
-- [ ] T164 [US5] Implement build_info.go generation with timestamp, version, policy list in build/internal/generation/buildinfo.go
+- [x] T157 [P] [US5] Create build/internal/generation/generator.go with code generation orchestrator
+- [x] T158 [P] [US5] Create templates/plugin_registry.go.tmpl template for policy imports
+- [x] T159 [US5] Implement plugin_registry.go generation using text/template in build/internal/generation/registry.go
+- [x] T160 [US5] Implement import alias generation (sanitize policy name+version to valid Go identifier) in build/internal/generation/registry.go
+- [x] T161 [US5] Implement policy registration code generation (import statements + init() registrations) in build/internal/generation/registry.go
+- [x] T162 [US5] Implement go.mod replace directive generation for local policy paths in build/internal/generation/gomod.go
+- [x] T163 [P] [US5] Create templates/build_info.go.tmpl template for build metadata
+- [x] T164 [US5] Implement build_info.go generation with timestamp, version, policy list in build/internal/generation/buildinfo.go
 
 ### US5: Builder - Compilation Phase (Go Implementation)
 
-- [ ] T165 [P] [US5] Create build/internal/compilation/compiler.go with compilation orchestrator
-- [ ] T166 [US5] Implement go mod download execution using os/exec in build/internal/compilation/compiler.go
-- [ ] T167 [US5] Implement go mod tidy execution using os/exec in build/internal/compilation/compiler.go
-- [ ] T168 [US5] Implement static binary compilation (CGO_ENABLED=0) with os/exec in build/internal/compilation/compiler.go
-- [ ] T169 [US5] Implement ldflags generation for build metadata injection in build/internal/compilation/options.go
-- [ ] T170 [US5] Add optional UPX compression execution in build/internal/compilation/compiler.go
+- [x] T165 [P] [US5] Create build/internal/compilation/compiler.go with compilation orchestrator
+- [x] T166 [US5] Implement go mod download execution using os/exec in build/internal/compilation/compiler.go
+- [x] T167 [US5] Implement go mod tidy execution using os/exec in build/internal/compilation/compiler.go
+- [x] T168 [US5] Implement static binary compilation (CGO_ENABLED=0) with os/exec in build/internal/compilation/compiler.go
+- [x] T169 [US5] Implement ldflags generation for build metadata injection in build/internal/compilation/options.go
+- [x] T170 [US5] Add optional UPX compression execution in build/internal/compilation/compiler.go
 
 ### US5: Builder - Packaging Phase (Go Implementation)
 
-- [ ] T171 [P] [US5] Create build/internal/packaging/packager.go with Docker image generation
-- [ ] T172 [P] [US5] Create templates/Dockerfile.runtime.tmpl template for runtime image
-- [ ] T173 [US5] Implement Dockerfile.runtime generation using text/template in build/internal/packaging/packager.go
-- [ ] T174 [US5] Implement policy list formatting for Docker LABEL in build/internal/packaging/metadata.go
-- [ ] T175 [US5] Implement build metadata (timestamp, version, builder version) for Docker LABELs in build/internal/packaging/metadata.go
+- [x] T171 [P] [US5] Create build/internal/packaging/packager.go with Docker image generation
+- [x] T172 [P] [US5] Create templates/Dockerfile.runtime.tmpl template for runtime image
+- [x] T173 [US5] Implement Dockerfile.runtime generation using text/template in build/internal/packaging/packager.go
+- [x] T174 [US5] Implement policy list formatting for Docker LABEL in build/internal/packaging/metadata.go
+- [x] T175 [US5] Implement build metadata (timestamp, version, builder version) for Docker LABELs in build/internal/packaging/metadata.go
 
 ### US5: Builder - Main CLI (Go Implementation)
 
-- [ ] T176 [US5] Create build/cmd/builder/main.go with CLI entry point
-- [ ] T177 [US5] Implement phase 1 (discovery) execution in build/cmd/builder/main.go
-- [ ] T178 [US5] Implement phase 2 (validation) execution with error handling and early exit in build/cmd/builder/main.go
-- [ ] T179 [US5] Implement phase 3 (generation) execution in build/cmd/builder/main.go
-- [ ] T180 [US5] Implement phase 4 (compilation) execution in build/cmd/builder/main.go
-- [ ] T181 [US5] Implement phase 5 (packaging) execution in build/cmd/builder/main.go
-- [ ] T182 [US5] Add build banner and summary output with colored/formatted logging in build/cmd/builder/main.go
-- [ ] T183 [US5] Implement structured error reporting and exit codes in build/pkg/errors/errors.go
+- [x] T176 [US5] Create build/cmd/builder/main.go with CLI entry point
+- [x] T177 [US5] Implement phase 1 (discovery) execution in build/cmd/builder/main.go
+- [x] T178 [US5] Implement phase 2 (validation) execution with error handling and early exit in build/cmd/builder/main.go
+- [x] T179 [US5] Implement phase 3 (generation) execution in build/cmd/builder/main.go
+- [x] T180 [US5] Implement phase 4 (compilation) execution in build/cmd/builder/main.go
+- [x] T181 [US5] Implement phase 5 (packaging) execution in build/cmd/builder/main.go
+- [x] T182 [US5] Add build banner and summary output with colored/formatted logging in build/cmd/builder/main.go
+- [x] T183 [US5] Implement structured error reporting and exit codes in build/pkg/errors/errors.go
 
 ### US5: Builder - Docker Image (Go Implementation)
 
 **CRITICAL**: The Builder image CONTAINS the Policy Engine framework source code (`src/`) and Builder Go application (`build/`). Users ONLY mount their policies - NOT the framework source.
 
-- [ ] T184 [US5] Create Dockerfile.builder with golang:1.23-alpine base
-- [ ] T185 [US5] Install build dependencies (upx for optional compression) in Dockerfile.builder
-- [ ] T186 [US5] Copy policy engine framework source code (src/) to /src in builder image in Dockerfile.builder
-- [ ] T187 [US5] Copy Builder Go application (build/) and templates (templates/) to builder image in Dockerfile.builder
-- [ ] T188 [US5] Build Builder Go binary and set as ENTRYPOINT in Dockerfile.builder
-- [ ] T189 [US5] Pre-download Go dependencies for framework and builder in Dockerfile.builder
+- [x] T184 [US5] Create Dockerfile.builder with golang:1.23-alpine base
+- [x] T185 [US5] Install build dependencies (upx for optional compression) in Dockerfile.builder
+- [x] T186 [US5] Copy policy engine framework source code (src/) to /src in builder image in Dockerfile.builder
+- [x] T187 [US5] Copy Builder Go application (build/) and templates (templates/) to builder image in Dockerfile.builder
+- [x] T188 [US5] Build Builder Go binary and set as ENTRYPOINT in Dockerfile.builder
+- [x] T189 [US5] Pre-download Go dependencies for framework and builder in Dockerfile.builder
 
 ### US5: Builder - Module Setup (Go Implementation)
 
-- [ ] T190 [P] [US5] Create build/go.mod for Builder Go module
-- [ ] T191 [P] [US5] Add Builder dependencies (gopkg.in/yaml.v3, text/template) to build/go.mod
+- [x] T190 [P] [US5] Create build/go.mod for Builder Go module
+- [x] T191 [P] [US5] Add Builder dependencies (gopkg.in/yaml.v3, text/template) to build/go.mod
 
 ### US5: Sample Custom Policy - API Key Validation (OPTIONAL Reference Implementation)
 
 **Note**: API Key policy demonstrates custom policy development. Sample implementation only - NOT bundled with runtime.
 
-- [ ] T192 [P] [US5] Create policies/api-key-validation/v1.0.0/ directory structure
-- [ ] T193 [P] [US5] Create policy.yaml for API Key validation in policies/api-key-validation/v1.0.0/policy.yaml
-- [ ] T194 [P] [US5] Create go.mod for API Key validation in policies/api-key-validation/v1.0.0/go.mod
-- [ ] T195 [US5] Implement APIKeyPolicy struct in policies/api-key-validation/v1.0.0/apikey.go
-- [ ] T196 [US5] Implement APIKeyPolicy.Name() method in policies/api-key-validation/v1.0.0/apikey.go
-- [ ] T197 [US5] Implement APIKeyPolicy.Validate(config) method in policies/api-key-validation/v1.0.0/apikey.go
-- [ ] T198 [US5] Implement APIKeyPolicy.ExecuteRequest(ctx, config) with key validation in policies/api-key-validation/v1.0.0/apikey.go
-- [ ] T199 [US5] Implement ImmediateResponse on invalid key in policies/api-key-validation/v1.0.0/apikey.go
-- [ ] T200 [US5] Implement metadata storage on valid key in policies/api-key-validation/v1.0.0/apikey.go
-- [ ] T201 [US5] Implement NewPolicy() factory function in policies/api-key-validation/v1.0.0/apikey.go
-- [ ] T202 [P] [US5] Create README.md for API Key policy in policies/api-key-validation/v1.0.0/README.md
+- [x] T192 [P] [US5] Create policies/api-key-validation/v1.0.0/ directory structure
+- [x] T193 [P] [US5] Create policy.yaml for API Key validation in policies/api-key-validation/v1.0.0/policy.yaml
+- [x] T194 [P] [US5] Create go.mod for API Key validation in policies/api-key-validation/v1.0.0/go.mod
+- [x] T195 [US5] Implement APIKeyPolicy struct in policies/api-key-validation/v1.0.0/apikey.go
+- [x] T196 [US5] Implement APIKeyPolicy.Name() method in policies/api-key-validation/v1.0.0/apikey.go
+- [x] T197 [US5] Implement APIKeyPolicy.Validate(config) method in policies/api-key-validation/v1.0.0/apikey.go
+- [x] T198 [US5] Implement APIKeyPolicy.ExecuteRequest(ctx, config) with key validation in policies/api-key-validation/v1.0.0/apikey.go
+- [x] T199 [US5] Implement ImmediateResponse on invalid key in policies/api-key-validation/v1.0.0/apikey.go
+- [x] T200 [US5] Implement metadata storage on valid key in policies/api-key-validation/v1.0.0/apikey.go
+- [x] T201 [US5] Implement NewPolicy() factory function in policies/api-key-validation/v1.0.0/apikey.go
+- [x] T202 [P] [US5] Create README.md for API Key policy in policies/api-key-validation/v1.0.0/README.md
 
 **Checkpoint**: At this point, User Story 5 should be fully functional - developers can create custom policies and use the Builder to compile custom binaries
 

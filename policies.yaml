@@ -1,0 +1,23 @@
+# Policy Manifest
+# This file declares which policies to compile into the Policy Engine binary
+# Run with: docker run --rm -v $(pwd)/policies.yaml:/policies.yaml \
+#           -v $(pwd)/policies:/policies -v $(pwd)/output:/output \
+#           policy-engine-builder:v1.0.0 --manifest /policies.yaml
+
+version: v1
+
+policies:
+  # API Key Validation Policy
+  - name: APIKeyValidation
+    version: v1.0.0
+    uri: ./policies/api-key-validation/v1.0.0
+
+  # Add more policies here
+  # Example with different directory structure:
+  # - name: JWTValidation
+  #   version: v1.0.0
+  #   uri: ./policies/jwt/v1
+  #
+  # - name: CustomAuth
+  #   version: v2.0.0
+  #   uri: /custom/path/to/auth-policy

@@ -6,6 +6,45 @@
 
 This document defines the Go interface contracts that all policies must implement. These interfaces are the extension points for custom policy development.
 
+## Module Architecture
+
+The Policy Engine uses a **multi-module architecture** to avoid cyclic dependencies:
+
+```
+┌─────────────────────────────────────┐
+│  SDK Module                         │
+│  github.com/envoy-policy-engine/sdk │
+│  ┌───────────────────────────────┐  │
+│  │ policies/                     │  │  ← Policy interfaces & types
+│  │ - Policy, RequestPolicy, etc. │  │
+│  │ - RequestContext, etc.        │  │
+│  │ - RequestPolicyAction, etc.   │  │
+│  └───────────────────────────────┘  │
+│  ┌───────────────────────────────┐  │
+│  │ core/                         │  │  ← Registry & executor
+│  │ - PolicyRegistry              │  │
+│  │ - PolicyChain                 │  │
+│  └───────────────────────────────┘  │
+└─────────────────────────────────────┘
+           ↑                    ↑
+           │                    │
+    ┌──────┴─────┐       ┌─────┴──────────┐
+    │  Policy    │       │  Main Engine   │
+    │  Modules   │       │  (Worker)      │
+    └────────────┘       └────────────────┘
+```
+
+**Benefits**:
+- **No cyclic dependencies**: Policies depend only on SDK, not the main engine
+- **Clean separation**: Framework code (SDK) separate from implementation (policies, engine)
+- **Versioned SDK**: Policies can specify SDK version requirements
+- **External policies**: Policies can be developed in separate repositories
+
+**Import Rules**:
+- ✅ Policy implementations: Import `github.com/envoy-policy-engine/sdk/policies`
+- ✅ Policy implementations: Import `github.com/envoy-policy-engine/sdk/core` (if needed for registry)
+- ❌ Policy implementations: Never import `github.com/envoy-policy-engine/policy-engine`
+
 ---
 
 ## Core Policy Interfaces
@@ -825,15 +864,26 @@ policies/jwt-validation/v1.0.0/
 
 **go.mod example**:
 ```go
-module github.com/myorg/policies/jwt-validation/v1.0.0
+module github.com/envoy-policy-engine/policies/jwt-validation
 
 go 1.23
 
 require (
-    github.com/yourorg/policy-engine v1.0.0
+    github.com/envoy-policy-engine/sdk v1.0.0
     github.com/golang-jwt/jwt/v5 v5.2.0
 )
+
+// For local development
+replace github.com/envoy-policy-engine/sdk => ../../../sdk
 ```
+
+**Note**: Policies depend on the **SDK module** (`github.com/envoy-policy-engine/sdk`), not the main policy-engine module. The SDK provides:
+- Policy interfaces (`policies.Policy`, `policies.RequestPolicy`, `policies.ResponsePolicy`)
+- Context types (`policies.RequestContext`, `policies.ResponseContext`)
+- Action types (`policies.RequestPolicyAction`, `policies.ImmediateResponse`, etc.)
+- Core registry (`core.PolicyRegistry`)
+
+This architecture prevents cyclic dependencies between policies and the main engine.
 
 **policy.yaml** must match implementation:
 - `name` matches `Policy.Name()` return value

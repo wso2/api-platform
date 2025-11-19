@@ -229,33 +229,41 @@ An operator attempts to configure a policy with invalid parameters (e.g., malfor
 
 **Policy Builder:**
 
-- **FR-034**: Builder MUST discover custom policies from mounted directory structure
-- **FR-035**: Builder MUST validate custom policy directory structure (policy.yaml, go.mod, *.go files present)
-- **FR-036**: Builder MUST validate custom policy YAML definitions against schema
-- **FR-037**: Builder MUST validate custom policy Go code implements required interfaces
-- **FR-038**: Builder MUST generate import registry code linking custom policies into engine binary
-- **FR-039**: Builder MUST compile final binary with all custom policies included
-- **FR-040**: Builder MUST generate runtime Dockerfile for deploying compiled binary
-- **FR-041**: Builder MUST fail with detailed error report when validation fails
-- **FR-042**: Builder MUST embed build metadata (timestamp, version, loaded policies) in binary
+- **FR-034**: Builder MUST accept a policy manifest file (policies.yaml) that explicitly declares policies to compile
+- **FR-035**: Builder MUST validate manifest schema includes required fields (name, version, uri for each policy)
+- **FR-036**: Builder MUST load policies from URIs specified in manifest (supporting relative and absolute paths)
+- **FR-037**: Builder MUST validate policy name and version in manifest matches policy.yaml at the URI
+- **FR-038**: Builder MUST validate custom policy directory structure at URI (policy.yaml, go.mod, *.go files present)
+- **FR-039**: Builder MUST validate custom policy YAML definitions against schema
+- **FR-040**: Builder MUST validate custom policy Go code implements required interfaces
+- **FR-041**: Builder MUST generate import registry code linking custom policies into engine binary
+- **FR-042**: Builder MUST compile final binary with all custom policies included
+- **FR-043**: Builder MUST generate runtime Dockerfile for deploying compiled binary
+- **FR-044**: Builder MUST fail with detailed error report when validation fails
+- **FR-045**: Builder MUST embed build metadata (timestamp, version, loaded policies) in binary
+- **FR-046**: Builder MUST support --manifest flag to specify path to policy manifest file
 
-**Builder Architecture Note**: The Policy Engine Builder is distributed as a Docker image that CONTAINS the complete Policy Engine framework source code (`src/`) and a Go-based builder application (`build/`). The builder is implemented in Go (not shell scripts) for better error handling, testability, and maintainability. Users run the Builder image and ONLY mount their policy implementations (via `/policies` volume) - they do NOT need to provide or mount the framework source. The Builder discovers, validates, and compiles the embedded framework source together with user-provided policies to produce the final binary.
+**Builder Architecture Note**: The Policy Engine Builder is distributed as a Docker image that CONTAINS the complete Policy Engine framework source code (`src/`) and a Go-based builder application (`build/`). The builder is implemented in Go (not shell scripts) for better error handling, testability, and maintainability. Users run the Builder image and provide:
+1. A policy manifest file (policies.yaml) via `--manifest` flag that explicitly declares which policies to compile with their names, versions, and URIs
+2. Policy implementation directories mounted or accessible from the declared URIs
+
+The Builder loads policies from the URIs in the manifest, validates them, and compiles the embedded framework source together with the declared policies to produce the final binary. This manifest-based approach provides explicit control over which policies are included and removes directory structure constraints.
 
 **Sample Policy Implementations (Reference Examples):**
 
-- **FR-043**: SHOULD provide SetHeader reference policy implementation that adds, removes, or modifies request/response headers
-- **FR-044**: SHOULD provide JWT validation reference policy that validates tokens using JWKS, issuer, audience, and expiration
-- **FR-045**: SHOULD provide API Key validation reference policy that validates keys against configured key store
-- **FR-046**: JWT validation reference policy SHOULD extract and inject JWT claims as headers for upstream services
-- **FR-047**: JWT validation reference policy SHOULD cache JWKS keys to minimize external lookups
+- **FR-047**: SHOULD provide SetHeader reference policy implementation that adds, removes, or modifies request/response headers
+- **FR-048**: SHOULD provide JWT validation reference policy that validates tokens using JWKS, issuer, audience, and expiration
+- **FR-049**: SHOULD provide API Key validation reference policy that validates keys against configured key store
+- **FR-050**: JWT validation reference policy SHOULD extract and inject JWT claims as headers for upstream services
+- **FR-051**: JWT validation reference policy SHOULD cache JWKS keys to minimize external lookups
 
 **Note**: Sample policies are NOT bundled with the Policy Engine runtime. They are reference implementations provided separately that users can optionally compile into their custom binary using the Policy Engine Builder. The runtime itself contains ZERO policies by default.
 
 **Error Handling:**
 
-- **FR-048**: System MUST handle policy execution errors gracefully without crashing
-- **FR-049**: System MUST support configurable failure modes (fail-open vs fail-closed) per policy
-- **FR-050**: System MUST continue processing remaining policies when non-critical policy fails
+- **FR-052**: System MUST handle policy execution errors gracefully without crashing
+- **FR-053**: System MUST support configurable failure modes (fail-open vs fail-closed) per policy
+- **FR-054**: System MUST continue processing remaining policies when non-critical policy fails
 
 ### Key Entities
 
