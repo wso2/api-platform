@@ -20,7 +20,10 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/pb33f/libopenapi"
 	v2high "github.com/pb33f/libopenapi/datamodel/high/v2"
@@ -1119,4 +1122,313 @@ func (u *APIUtil) ValidateAPIDefinitionConsistency(openAPIContent []byte, wso2Ar
 	}
 
 	return nil
+}
+
+// FetchOpenAPIFromURL fetches OpenAPI content from a URL
+func (u *APIUtil) FetchOpenAPIFromURL(url string) ([]byte, error) {
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch URL: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP error: %d", resp.StatusCode)
+	}
+
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	return content, nil
+}
+
+// ParseAPIDefinition parses OpenAPI 3.x or Swagger 2.0 content and extracts metadata directly into API DTO
+func (u *APIUtil) ParseAPIDefinition(content []byte) (*dto.API, error) {
+	// Create a new document from the content using libopenapi
+	document, err := libopenapi.NewDocument(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse API definition: %w", err)
+	}
+
+	// Check the specification version
+	specInfo := document.GetSpecInfo()
+	if specInfo == nil {
+		return nil, fmt.Errorf("unable to determine API specification version")
+	}
+
+	// Handle different specification versions
+	switch {
+	case specInfo.Version != "" && strings.HasPrefix(specInfo.Version, "3."):
+		return u.parseOpenAPI3Document(document)
+	case specInfo.Version != "" && strings.HasPrefix(specInfo.Version, "2."):
+		return u.parseSwagger2Document(document)
+	default:
+		// Try to determine from document structure if version detection fails
+		return u.parseDocumentByStructure(document)
+	}
+}
+
+// parseOpenAPI3Document parses OpenAPI 3.x documents using libopenapi and returns API DTO directly
+func (u *APIUtil) parseOpenAPI3Document(document libopenapi.Document) (*dto.API, error) {
+	// Build the OpenAPI 3.x model
+	docModel, err := document.BuildV3Model()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build OpenAPI 3.x model: %w", err)
+	}
+
+	if docModel == nil {
+		return nil, fmt.Errorf("invalid OpenAPI 3.x document model")
+	}
+
+	doc := &docModel.Model
+	if doc.Info == nil {
+		return nil, fmt.Errorf("missing required field: info")
+	}
+
+	// Create API DTO directly
+	api := &dto.API{
+		Name:        doc.Info.Title,
+		DisplayName: doc.Info.Title,
+		Description: doc.Info.Description,
+		Version:     doc.Info.Version,
+		Type:        "HTTP",
+		Transport:   []string{"http", "https"},
+	}
+
+	// Extract operations from paths
+	operations := u.extractOperationsFromV3Paths(doc.Paths)
+	api.Operations = operations
+
+	// Extract backend services from servers
+	var backendServices []dto.BackendService
+	if doc.Servers != nil {
+		for _, server := range doc.Servers {
+			service := dto.BackendService{
+				Name:        server.Name,
+				Description: server.Description,
+				Endpoints: []dto.BackendEndpoint{
+					{
+						URL:    server.URL,
+						Weight: 100,
+					},
+				},
+			}
+			backendServices = append(backendServices, service)
+		}
+	}
+
+	api.BackendServices = backendServices
+
+	return api, nil
+}
+
+// parseSwagger2Document parses Swagger 2.0 documents using libopenapi and returns API DTO directly
+func (u *APIUtil) parseSwagger2Document(document libopenapi.Document) (*dto.API, error) {
+	// Build the Swagger 2.0 model
+	docModel, err := document.BuildV2Model()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build Swagger 2.0 model: %w", err)
+	}
+
+	if docModel == nil {
+		return nil, fmt.Errorf("invalid Swagger 2.0 document model")
+	}
+
+	doc := &docModel.Model
+	if doc.Info == nil {
+		return nil, fmt.Errorf("missing required field: info")
+	}
+
+	// Create API DTO directly
+	api := &dto.API{
+		Name:        doc.Info.Title,
+		DisplayName: doc.Info.Title,
+		Description: doc.Info.Description,
+		Version:     doc.Info.Version,
+		Type:        "HTTP",
+		Transport:   []string{"http", "https"},
+	}
+
+	// Extract operations from paths
+	operations := u.extractOperationsFromV2Paths(doc.Paths)
+	api.Operations = operations
+
+	// Convert Swagger 2.0 host/basePath/schemes to backend services
+	backendServices := u.convertSwagger2ToBackendServices(doc.Host, doc.BasePath, doc.Schemes)
+
+	api.BackendServices = backendServices
+
+	return api, nil
+}
+
+// parseDocumentByStructure tries to parse by attempting to build both models
+func (u *APIUtil) parseDocumentByStructure(document libopenapi.Document) (*dto.API, error) {
+	// Try OpenAPI 3.x first
+	v3Model, v3Errs := document.BuildV3Model()
+	if v3Errs == nil && v3Model != nil {
+		return u.parseOpenAPI3Document(document)
+	}
+
+	// Try Swagger 2.0
+	v2Model, v2Errs := document.BuildV2Model()
+	if v2Errs == nil && v2Model != nil {
+		return u.parseSwagger2Document(document)
+	}
+
+	// Both failed, return error
+	var errorMessages []string
+	if v3Errs != nil {
+		errorMessages = append(errorMessages, "OpenAPI 3.x: "+v3Errs.Error())
+	}
+	if v2Errs != nil {
+		errorMessages = append(errorMessages, "Swagger 2.0: "+v2Errs.Error())
+	}
+
+	return nil, fmt.Errorf("document parsing failed: %s", strings.Join(errorMessages, "; "))
+}
+
+// extractOperationsFromV3Paths extracts operations from OpenAPI 3.x paths
+func (u *APIUtil) extractOperationsFromV3Paths(paths *v3high.Paths) []dto.Operation {
+	var operations []dto.Operation
+
+	if paths == nil || paths.PathItems == nil {
+		return operations
+	}
+
+	for pair := paths.PathItems.First(); pair != nil; pair = pair.Next() {
+		path := pair.Key()
+		pathItem := pair.Value()
+		if pathItem == nil {
+			continue
+		}
+
+		// Extract operations for each HTTP method
+		methodOps := map[string]*v3high.Operation{
+			"GET":     pathItem.Get,
+			"POST":    pathItem.Post,
+			"PUT":     pathItem.Put,
+			"PATCH":   pathItem.Patch,
+			"DELETE":  pathItem.Delete,
+			"OPTIONS": pathItem.Options,
+			"HEAD":    pathItem.Head,
+			"TRACE":   pathItem.Trace,
+		}
+
+		for method, operation := range methodOps {
+			if operation == nil {
+				continue
+			}
+
+			op := dto.Operation{
+				Name:        operation.Summary,
+				Description: operation.Description,
+				Request: &dto.OperationRequest{
+					Method: method,
+					Path:   path,
+					Authentication: &dto.AuthenticationConfig{
+						Required: false,
+						Scopes:   []string{},
+					},
+					RequestPolicies:  []dto.Policy{},
+					ResponsePolicies: []dto.Policy{},
+				},
+			}
+
+			operations = append(operations, op)
+		}
+	}
+
+	return operations
+}
+
+// extractOperationsFromV2Paths extracts operations from Swagger 2.0 paths
+func (u *APIUtil) extractOperationsFromV2Paths(paths *v2high.Paths) []dto.Operation {
+	var operations []dto.Operation
+
+	if paths == nil || paths.PathItems == nil {
+		return operations
+	}
+
+	for pair := paths.PathItems.First(); pair != nil; pair = pair.Next() {
+		path := pair.Key()
+		pathItem := pair.Value()
+
+		if pathItem == nil {
+			continue
+		}
+
+		// Extract operations for each HTTP method
+		methodOps := map[string]*v2high.Operation{
+			"GET":     pathItem.Get,
+			"POST":    pathItem.Post,
+			"PUT":     pathItem.Put,
+			"PATCH":   pathItem.Patch,
+			"DELETE":  pathItem.Delete,
+			"OPTIONS": pathItem.Options,
+			"HEAD":    pathItem.Head,
+		}
+
+		for method, operation := range methodOps {
+			if operation == nil {
+				continue
+			}
+
+			op := dto.Operation{
+				Name:        operation.Summary,
+				Description: operation.Description,
+				Request: &dto.OperationRequest{
+					Method: method,
+					Path:   path,
+					Authentication: &dto.AuthenticationConfig{
+						Required: false,
+						Scopes:   []string{},
+					},
+					RequestPolicies:  []dto.Policy{},
+					ResponsePolicies: []dto.Policy{},
+				},
+			}
+
+			operations = append(operations, op)
+		}
+	}
+
+	return operations
+}
+
+// convertSwagger2ToBackendServices converts Swagger 2.0 host/basePath/schemes to backend services
+func (u *APIUtil) convertSwagger2ToBackendServices(host, basePath string, schemes []string) []dto.BackendService {
+	var backendServices []dto.BackendService
+
+	if host == "" {
+		return backendServices // No host specified, cannot create backend services
+	}
+
+	if len(schemes) == 0 {
+		schemes = []string{"https"} // Default to HTTPS
+	}
+
+	if basePath == "" {
+		basePath = "/"
+	}
+
+	// Create backend services for each scheme
+	for _, scheme := range schemes {
+		url := fmt.Sprintf("%s://%s%s", scheme, host, basePath)
+		service := dto.BackendService{
+			Endpoints: []dto.BackendEndpoint{
+				{
+					URL:    url,
+					Weight: 100,
+				},
+			},
+		}
+		backendServices = append(backendServices, service)
+	}
+
+	return backendServices
 }
