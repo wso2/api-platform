@@ -8,6 +8,14 @@
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
+**IMPORTANT - Sample Policies Architecture**:
+- The Policy Engine runtime (src/) contains ZERO built-in policies
+- ALL policies must be compiled via the Policy Engine Builder
+- Tasks creating "sample policies" (SetHeader, JWT, API Key, etc.) are OPTIONAL reference implementations
+- These sample policy tasks demonstrate the framework and can be compiled in using the Builder
+- Users can build binaries with zero policies, only sample policies, only custom policies, or any combination
+- The core framework (kernel + worker + interfaces) is separate from sample policy implementations
+
 ## Format: `- [ ] [ID] [P?] [Story?] Description with file path`
 
 - **[P]**: Can run in parallel (different files, no dependencies)
@@ -167,7 +175,9 @@ This project uses a multi-component structure:
 - [ ] T076 [US1] Implement atomic PolicyChain replacement in Routes map in src/kernel/xds.go
 - [ ] T077 [US1] Implement file-based configuration loader as fallback in src/kernel/xds.go
 
-### US1: Sample Policy - SetHeader
+### US1: Sample Policy - SetHeader (OPTIONAL Reference Implementation)
+
+**Note**: These tasks create a sample/reference policy to demonstrate the framework. This policy is NOT bundled with the runtime - it must be compiled in using the Builder. Users can skip these tasks if they only want the core framework.
 
 - [ ] T078 [P] [US1] Create policies/set-header/v1.0.0/ directory structure
 - [ ] T079 [P] [US1] Create policy.yaml for SetHeader policy in policies/set-header/v1.0.0/policy.yaml
@@ -215,7 +225,9 @@ This project uses a multi-component structure:
 
 **Dependencies**: Requires US1 (route-based execution) to be complete
 
-### US2: Sample Policy - JWT Validation v1.0.0
+### US2: Sample Policy - JWT Validation v1.0.0 (OPTIONAL Reference Implementation)
+
+**Note**: JWT policy is a sample/reference implementation demonstrating authentication. NOT bundled with runtime - must be compiled via Builder.
 
 - [ ] T102 [P] [US2] Create policies/jwt-validation/v1.0.0/ directory structure
 - [ ] T103 [P] [US2] Create policy.yaml for JWT validation in policies/jwt-validation/v1.0.0/policy.yaml
@@ -252,7 +264,9 @@ This project uses a multi-component structure:
 
 **Dependencies**: Requires US1 (route-based execution) to be complete
 
-### US3: JWT Policy v2.0.0 (Enhanced)
+### US3: JWT Policy v2.0.0 - Enhanced (OPTIONAL Reference Implementation)
+
+**Note**: JWT v2.0.0 demonstrates policy versioning. Sample implementation only - NOT bundled with runtime.
 
 - [ ] T121 [P] [US3] Create policies/jwt-validation/v2.0.0/ directory structure
 - [ ] T122 [P] [US3] Create policy.yaml for JWT v2.0.0 with new parameters (cacheTTL, extractClaims, claimHeaderPrefix) in policies/jwt-validation/v2.0.0/policy.yaml
@@ -386,7 +400,9 @@ This project uses a multi-component structure:
 - [ ] T190 [P] [US5] Create build/utils.sh with common helper functions
 - [ ] T191 [P] [US5] Add logging functions (log, error, success, warn) to build/utils.sh
 
-### US5: Sample Custom Policy - API Key Validation
+### US5: Sample Custom Policy - API Key Validation (OPTIONAL Reference Implementation)
+
+**Note**: API Key policy demonstrates custom policy development. Sample implementation only - NOT bundled with runtime.
 
 - [ ] T192 [P] [US5] Create policies/api-key-validation/v1.0.0/ directory structure
 - [ ] T193 [P] [US5] Create policy.yaml for API Key validation in policies/api-key-validation/v1.0.0/policy.yaml
@@ -425,7 +441,9 @@ This project uses a multi-component structure:
 - [ ] T208 [US6] Verify JWT policy.yaml has requiresRequestBody=false and requiresResponseBody=false
 - [ ] T209 [US6] Verify API Key policy.yaml has requiresRequestBody=false and requiresResponseBody=false
 
-### US6: Sample Body-Requiring Policy (For Testing)
+### US6: Sample Body-Requiring Policy - Request Transformation (OPTIONAL Reference Implementation)
+
+**Note**: Request transformation demonstrates body processing. Sample implementation only - NOT bundled with runtime.
 
 - [ ] T210 [P] [US6] Create policies/request-transformation/v1.0.0/ directory structure
 - [ ] T211 [P] [US6] Create policy.yaml with requiresRequestBody=true in policies/request-transformation/v1.0.0/policy.yaml
@@ -458,7 +476,9 @@ This project uses a multi-component structure:
 - [ ] T220 [US7] Verify Metadata persists from request phase to response phase (foundation, test here)
 - [ ] T221 [US7] Verify later policies see metadata written by earlier policies (foundation, test here)
 
-### US7: Sample Policy Using Metadata - Rate Limiting
+### US7: Sample Policy Using Metadata - Rate Limiting (OPTIONAL Reference Implementation)
+
+**Note**: Rate limiting demonstrates metadata usage. Sample implementation only - NOT bundled with runtime.
 
 - [ ] T222 [P] [US7] Create policies/rate-limiting/v1.0.0/ directory structure
 - [ ] T223 [P] [US7] Create policy.yaml for rate limiting in policies/rate-limiting/v1.0.0/policy.yaml
@@ -474,7 +494,9 @@ This project uses a multi-component structure:
 - [ ] T233 [US7] Implement NewPolicy() factory function in policies/rate-limiting/v1.0.0/ratelimit.go
 - [ ] T234 [P] [US7] Create README.md for rate limiting policy in policies/rate-limiting/v1.0.0/README.md
 
-### US7: Response Phase Policy Using Request Metadata
+### US7: Response Phase Policy Using Request Metadata - Security Headers (OPTIONAL Reference Implementation)
+
+**Note**: Security headers demonstrates response phase policies. Sample implementation only - NOT bundled with runtime.
 
 - [ ] T235 [P] [US7] Create policies/security-headers/v1.0.0/ directory structure
 - [ ] T236 [P] [US7] Create policy.yaml for security headers in policies/security-headers/v1.0.0/policy.yaml
@@ -828,7 +850,15 @@ With multiple developers:
 - Each user story includes "Independent Test" criteria for validation
 - Foundation phase is CRITICAL - blocks all user story work
 - US5 (Builder) can proceed in parallel with other stories after Foundation
-- Multiple sample policies provided across user stories
+
+**IMPORTANT - Sample Policy Architecture**:
+- **Policy Engine Runtime** (src/): Core framework ONLY - contains ZERO built-in policies
+- **Sample Policies** (policies/): OPTIONAL reference implementations demonstrating the framework
+- Sample policy tasks (SetHeader, JWT, API Key, Rate Limiting, etc.) are NOT mandatory
+- Users can build binaries with: zero policies, only sample policies, only custom policies, or any combination
+- ALL policies (including samples) must be compiled via the Policy Engine Builder
+- Sample policies demonstrate framework capabilities but are architecturally separate from runtime
+
 - Configuration examples demonstrate all features
 - Docker Compose setup enables immediate local testing
 - Builder system enables custom policy extensibility

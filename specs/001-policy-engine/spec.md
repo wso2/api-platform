@@ -10,9 +10,11 @@
 The Envoy Policy Engine is an external processor service that integrates with Envoy Proxy to provide flexible, extensible HTTP request and response processing through configurable policies. The system enables dynamic policy configuration, version management, and custom policy implementation without requiring Envoy restarts or recompilation.
 
 The system consists of three major components:
-1. **Policy Engine**: Runtime service that executes policy chains on HTTP traffic
-2. **Policy Engine Builder**: Build-time tooling that compiles custom policy implementations into the engine
-3. **Sample Policy Implementations**: Reference implementations demonstrating the policy framework
+1. **Policy Engine Runtime**: Framework service (kernel + worker + interfaces) with NO built-in policies - executes policy chains compiled into the binary
+2. **Policy Engine Builder**: Build-time tooling that discovers, validates, and compiles custom policy implementations into the engine binary
+3. **Sample Policy Implementations**: Reference policy examples (SetHeader, JWT, API Key, etc.) that demonstrate the framework and can be optionally compiled via the builder
+
+**Important**: The Policy Engine runtime ships with ZERO policies by default. ALL policies (including sample/reference policies) must be compiled into the binary using the Policy Engine Builder. This ensures a minimal, secure baseline and allows organizations to include only the policies they need.
 
 ## Clarifications
 
@@ -237,13 +239,15 @@ An operator attempts to configure a policy with invalid parameters (e.g., malfor
 - **FR-041**: Builder MUST fail with detailed error report when validation fails
 - **FR-042**: Builder MUST embed build metadata (timestamp, version, loaded policies) in binary
 
-**Sample Policies:**
+**Sample Policy Implementations (Reference Examples):**
 
-- **FR-043**: System MUST include SetHeader policy implementation that adds, removes, or modifies request/response headers
-- **FR-044**: System MUST include JWT validation policy that validates tokens using JWKS, issuer, audience, and expiration
-- **FR-045**: System MUST include API Key validation policy that validates keys against configured key store
-- **FR-046**: JWT validation policy MUST extract and inject JWT claims as headers for upstream services
-- **FR-047**: JWT validation policy MUST cache JWKS keys to minimize external lookups
+- **FR-043**: SHOULD provide SetHeader reference policy implementation that adds, removes, or modifies request/response headers
+- **FR-044**: SHOULD provide JWT validation reference policy that validates tokens using JWKS, issuer, audience, and expiration
+- **FR-045**: SHOULD provide API Key validation reference policy that validates keys against configured key store
+- **FR-046**: JWT validation reference policy SHOULD extract and inject JWT claims as headers for upstream services
+- **FR-047**: JWT validation reference policy SHOULD cache JWKS keys to minimize external lookups
+
+**Note**: Sample policies are NOT bundled with the Policy Engine runtime. They are reference implementations provided separately that users can optionally compile into their custom binary using the Policy Engine Builder. The runtime itself contains ZERO policies by default.
 
 **Error Handling:**
 

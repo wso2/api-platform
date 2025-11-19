@@ -8,15 +8,56 @@
 - Go 1.23+ (for custom policy development)
 - make (optional, for convenience commands)
 
-## Quick Start (Pre-built Sample Policies)
+## Important Architecture Note
 
-### 1. Start the Development Environment
+**The Policy Engine runtime ships with ZERO policies by default.** ALL policies (including sample/reference policies) must be compiled into the binary using the Policy Engine Builder. This ensures minimal attack surface and allows you to include only the policies you need.
+
+## Quick Start: Build Policy Engine with Sample Policies
+
+### 1. Build Policy Engine Binary with Sample Policies
 
 ```bash
 # Clone repository
 git clone <repository-url>
 cd envoy-policy-engine-simplified
 
+# Build Policy Engine with sample policies using the Builder
+# The Builder will discover, validate, and compile sample policies into the binary
+docker run --rm \
+    -v $(pwd)/src:/src \
+    -v $(pwd)/policies:/policies \
+    -v $(pwd)/output:/output \
+    -e BUILD_VERSION=v1.0.0 \
+    policy-engine-builder:v1.0.0
+
+# Expected output:
+# ✅ Discovered 6 policies (setHeader:v1.0.0, jwtValidation:v1.0.0, jwtValidation:v2.0.0, apiKeyValidation:v1.0.0, rateLimiting:v1.0.0, securityHeaders:v1.0.0)
+# ✅ Validation passed
+# ✅ Code generated (plugin_registry.go, build_info.go)
+# ✅ Binary compiled: /output/policy-engine
+# ✅ Dockerfile generated: /output/Dockerfile
+```
+
+### 2. Build Runtime Docker Image
+
+```bash
+cd output
+
+# Build the final runtime image with compiled policies
+docker build -t policy-engine:v1.0.0 .
+
+# Verify loaded policies
+docker inspect policy-engine:v1.0.0 | \
+    jq '.[0].Config.Labels["policy-engine.loaded-policies"]'
+
+# Output: "setHeader:v1.0.0, jwtValidation:v1.0.0, jwtValidation:v2.0.0, apiKeyValidation:v1.0.0, rateLimiting:v1.0.0, securityHeaders:v1.0.0"
+
+cd ..
+```
+
+### 3. Start the Development Environment
+
+```bash
 # Start Envoy + Policy Engine + Test Backend
 docker-compose up -d
 
@@ -32,7 +73,7 @@ policy-engine       Up 30 seconds       0.0.0.0:9001->9001/tcp, 0.0.0.0:9002->90
 test-backend        Up 30 seconds       8080/tcp
 ```
 
-### 2. Test Basic Policy Execution
+### 4. Test Basic Policy Execution
 
 **Test public route (no authentication)**:
 ```bash
@@ -58,7 +99,7 @@ curl -i -H "Authorization: Bearer $JWT" http://localhost:8000/api/v1/private/use
 # X-User-ID header added by JWT policy
 ```
 
-### 3. Update Policy Configuration (Zero Downtime)
+### 5. Update Policy Configuration (Zero Downtime)
 
 ```bash
 # Edit configuration
@@ -70,7 +111,7 @@ curl -X POST http://localhost:9002/reload
 # Verify new policies apply immediately without restart
 ```
 
-### 4. View Logs
+### 6. View Logs
 
 ```bash
 # Policy Engine logs
@@ -80,7 +121,7 @@ docker-compose logs -f policy-engine
 docker-compose logs -f envoy-proxy
 ```
 
-### 5. Cleanup
+### 7. Cleanup
 
 ```bash
 docker-compose down
@@ -88,7 +129,9 @@ docker-compose down
 
 ---
 
-## Building Custom Policy Engine
+## Building Policy Engine with Custom Policies
+
+**Note**: The process above showed building with sample policies. This section shows how to add YOUR OWN custom policies. The Builder process is the same - it compiles any policies (sample or custom) into the runtime framework.
 
 ### Step 1: Create Custom Policy
 
@@ -402,10 +445,14 @@ hey -n 10000 -c 100 -m POST \
 ## Next Steps
 
 1. **Explore Sample Policies**: Review `policies/` directory for reference implementations
-2. **Customize Policies**: Modify sample policies or create new ones
-3. **Configure Routes**: Add policy chains for your API routes
-4. **Monitor Performance**: Use Envoy admin interface at http://localhost:9000
-5. **Production Deployment**: Review BUILDER_DESIGN.md for CI/CD integration
+2. **Understand Architecture**: The runtime (`src/`) is policy-agnostic - ALL policies (including samples) are compiled via Builder
+3. **Create Custom Policies**: Write your own policies following the sample policy patterns
+4. **Build Custom Binaries**: Use the Builder to compile only the policies you need (zero policies, sample only, custom only, or any combination)
+5. **Configure Routes**: Add policy chains for your API routes in xDS configuration
+6. **Monitor Performance**: Use Envoy admin interface at http://localhost:9000
+7. **Production Deployment**: Review BUILDER_DESIGN.md for CI/CD integration
+
+**Remember**: The Policy Engine runtime ships with ZERO policies. You control exactly which policies are included by selecting what the Builder compiles.
 
 ---
 
