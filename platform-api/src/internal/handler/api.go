@@ -929,19 +929,25 @@ func (h *APIHandler) ImportOpenAPI(c *gin.Context) {
 			return
 		}
 		// Handle OpenAPI-specific errors
-		if strings.Contains(err.Error(), "failed to fetch OpenAPI definition") {
+		if strings.Contains(err.Error(), "failed to fetch OpenAPI from URL") {
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Failed to fetch OpenAPI definition from URL"))
 			return
 		}
-		if strings.Contains(err.Error(), "failed to validate OpenAPI definition") {
+		if strings.Contains(err.Error(), "failed to open OpenAPI definition file") ||
+			strings.Contains(err.Error(), "failed to read OpenAPI definition file") {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Failed to fetch OpenAPI definition from file"))
+			return
+		}
+		if strings.Contains(err.Error(), "failed to validate and parse OpenAPI definition") {
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Invalid OpenAPI definition"))
 			return
 		}
-		if strings.Contains(err.Error(), "failed to parse OpenAPI definition") {
+		if strings.Contains(err.Error(), "failed to merge API details") {
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Failed to parse OpenAPI definition"))
+				"Failed to create API from OpenAPI definition: incompatible details"))
 			return
 		}
 

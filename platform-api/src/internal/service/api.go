@@ -1395,14 +1395,14 @@ func (s *APIService) ImportFromOpenAPI(req *dto.ImportOpenAPIRequest, orgId stri
 	if req.Definition != nil {
 		file, err := req.Definition.Open()
 		if err != nil {
-			errorList = append(errorList, fmt.Sprintf("failed to open definition file: %s", err.Error()))
+			errorList = append(errorList, fmt.Sprintf("failed to open OpenAPI definition file: %s", err.Error()))
 			return nil, fmt.Errorf(strings.Join(errorList, "; "))
 		}
 		defer file.Close()
 
 		content, err = io.ReadAll(file)
 		if err != nil {
-			errorList = append(errorList, fmt.Sprintf("failed to read definition file: %s", err.Error()))
+			errorList = append(errorList, fmt.Sprintf("failed to read OpenAPI definition file: %s", err.Error()))
 			return nil, fmt.Errorf(strings.Join(errorList, "; "))
 		}
 	}
@@ -1416,11 +1416,14 @@ func (s *APIService) ImportFromOpenAPI(req *dto.ImportOpenAPIRequest, orgId stri
 	// Validate and parse the OpenAPI definition
 	apiDetails, err := s.apiUtil.ValidateAndParseOpenAPI(content)
 	if err != nil {
-		return nil, fmt.Errorf("failed to validate OpenAPI definition: %w", err)
+		return nil, fmt.Errorf("failed to validate and parse OpenAPI definition: %w", err)
 	}
 
 	// Merge provided API details with extracted details from OpenAPI
 	mergedAPI := s.apiUtil.MergeAPIDetails(&req.API, apiDetails)
+	if mergedAPI == nil {
+		return nil, errors.New("failed to merge API details")
+	}
 
 	// Create API using existing CreateAPI logic
 	createReq := &CreateAPIRequest{
@@ -1440,11 +1443,6 @@ func (s *APIService) ImportFromOpenAPI(req *dto.ImportOpenAPIRequest, orgId stri
 		BackendServices: mergedAPI.BackendServices,
 		APIRateLimiting: mergedAPI.APIRateLimiting,
 		Operations:      mergedAPI.Operations,
-	}
-
-	// Validate the merged API details
-	if err := s.validateCreateAPIRequest(createReq); err != nil {
-		return nil, err
 	}
 
 	// Create the API

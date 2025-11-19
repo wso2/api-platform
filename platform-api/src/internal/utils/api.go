@@ -1452,6 +1452,10 @@ func (u *APIUtil) ValidateAndParseOpenAPI(content []byte) (*dto.API, error) {
 // MergeAPIDetails merges user-provided API details with extracted OpenAPI details
 // User-provided details take precedence over extracted details
 func (u *APIUtil) MergeAPIDetails(userAPI *dto.API, extractedAPI *dto.API) *dto.API {
+	if userAPI == nil || extractedAPI == nil {
+		return nil
+	}
+
 	merged := &dto.API{}
 
 	// Required fields from user input (these must be provided)

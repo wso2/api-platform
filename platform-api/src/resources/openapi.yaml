@@ -310,9 +310,19 @@ paths:
         description: OpenAPI import details
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               $ref: '#/components/schemas/ImportOpenAPIRequest'
+            encoding:
+              url:
+                contentType: text/plain
+                style: form
+              definition:
+                contentType: application/octet-stream, application/json, application/yaml, text/yaml
+                style: form
+              api:
+                contentType: application/json
+                style: form
       responses:
         '201':
           description: OpenAPI imported successfully
@@ -2617,25 +2627,32 @@ components:
           type: string
           format: uri
           description: |
-            Form field: URL to fetch the OpenAPI definition from. 
-            Provide this as a form field when importing from a URL.
+            Form field containing URL to fetch the OpenAPI definition from.
           example: "https://petstore3.swagger.io/api/v3/openapi.json"
         definition:
           type: string
           format: binary
           description: |
-            Form field: OpenAPI definition file upload (YAML or JSON).
-            Provide this as a file upload field when importing from a local file.
+            Form field for OpenAPI definition file upload (YAML or JSON).
+            This should be provided as a file upload in the multipart form.
         api:
-          allOf:
-            - $ref: '#/components/schemas/API'
-            - type: object
-              description: API details for the imported project
-              required:
-                - name
-                - context
-                - version
-                - projectId
+          type: string
+          description: |
+            Form field containing JSON-encoded API details for the imported OpenAPI.
+            This must be a JSON string containing the API configuration.
+            Required fields within the JSON: name, context, version, projectId.
+          example: |
+            {
+              "name": "PetStore API",
+              "displayName": "PetStore API v3",
+              "description": "This is a sample Pet Store Server",
+              "context": "/petstore",
+              "version": "1.0.0",
+              "provider": "PetStore Inc",
+              "projectId": "550e8400-e29b-41d4-a716-446655440000",
+              "type": "HTTP",
+              "transport": ["http", "https"]
+            }
       anyOf:
         - required: [ url ]
         - required: [ definition ]

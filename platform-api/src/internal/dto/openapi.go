@@ -40,5 +40,5 @@ type OpenAPIValidationResponse struct {
 type ImportOpenAPIRequest struct {
 	URL        string                `form:"url"`        // Optional: URL to fetch OpenAPI definition
 	Definition *multipart.FileHeader `form:"definition"` // Optional: Uploaded OpenAPI file (JSON/YAML)
-	API        API                   `json:"api"`        // API details for the imported definition
+	API        API                   `form:"api"`        // API details for the imported definition
 }
