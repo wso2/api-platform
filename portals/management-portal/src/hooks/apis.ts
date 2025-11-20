@@ -324,7 +324,8 @@ export const useApisApi = () => {
         formData.append("url", payload.url);
       }
       if (payload.definition) {
-        formData.append("definition", payload.definition);
+        const blob = new Blob([payload.definition], { type: "application/json" });
+        formData.append("definition", blob, "openapi.json");
       }
 
       const res = await fetch(`${baseUrl}/api/v1/import/open-api`, {
