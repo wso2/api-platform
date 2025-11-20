@@ -410,7 +410,6 @@ const ApiListContent: React.FC = () => {
         <APIContractCreationFlow
           open={contractOpen}
           selectedProjectId={selectedProject.id}
-          createApi={createApi}
           importOpenApi={importOpenApi}
           refreshApis={refreshApis}
           onClose={() => {

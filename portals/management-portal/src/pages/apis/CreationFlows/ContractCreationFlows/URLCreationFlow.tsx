@@ -13,29 +13,6 @@ import { ApiOperationsList } from "../../../../components/src/components/Common/
 type Props = {
   open: boolean;
   selectedProjectId: string;
-  createApi: (payload: {
-    name: string;
-    context: string;
-    version: string;
-    description?: string;
-    projectId: string;
-    contract?: string;
-    backendServices?: Array<{
-      name: string;
-      isDefault?: boolean;
-      endpoints: Array<{ url: string; description?: string }>;
-      retries?: number;
-    }>;
-    operations?: Array<{
-      name: string;
-      description?: string;
-      request: {
-        method: string;
-        path: string;
-        ["backend-services"]?: Array<{ name: string }>;
-      };
-    }>;
-  }) => Promise<any>;
   importOpenApi: (payload: {
     api: {
       name: string;
