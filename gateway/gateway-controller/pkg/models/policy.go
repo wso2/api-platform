@@ -30,17 +30,16 @@ type PolicyConfiguration struct {
 
 // RoutePolicy represents policy configuration for a specific route
 type RoutePolicy struct {
-	RouteKey         string   `json:"route_key"`
-	RequestPolicies  []Policy `json:"request_policies"`
-	ResponsePolicies []Policy `json:"response_policies"`
+	RouteKey string   `json:"route_key"`
+	Policies []Policy `json:"policies"`
 }
 
 // Policy represents a single policy (request or response)
 type Policy struct {
 	Name               string                 `json:"name"`
 	Version            string                 `json:"version"`
-	ExecutionCondition *string                `json:"executionCondition"`
-	Config             map[string]interface{} `json:"config"`
+	ExecutionCondition *string                `json:"executionCondition,omitempty"`
+	Params             map[string]interface{} `json:"params"`
 }
 
 // Metadata contains metadata about the policy configuration
@@ -55,7 +54,7 @@ type Metadata struct {
 
 // GetConfigAsJSON returns the policy config as a JSON string
 func (p *Policy) GetConfigAsJSON() (string, error) {
-	data, err := json.Marshal(p.Config)
+	data, err := json.Marshal(p.Params)
 	if err != nil {
 		return "", err
 	}

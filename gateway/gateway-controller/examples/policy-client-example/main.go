@@ -327,21 +327,16 @@ func printPolicyDetails(policy *models.StoredPolicyConfig) {
 	for i, route := range policy.Configuration.Routes {
 		fmt.Printf("│\n")
 		fmt.Printf("│    Route #%d: %s\n", i+1, route.RouteKey)
-		fmt.Printf("│    ├─ Request Policies (%d):\n", len(route.RequestPolicies))
-		for j, rp := range route.RequestPolicies {
-			fmt.Printf("│    │  %d. %s (v%s)\n", j+1, rp.Name, rp.Version)
-			if len(rp.Config) > 0 {
-				configJSON, _ := json.MarshalIndent(rp.Config, "│    │     ", "  ")
-				fmt.Printf("│    │     Config: %s\n", string(configJSON))
+
+		fmt.Printf("│    └─ Policies (%d):\n", len(route.Policies))
+		for j, p := range route.Policies {
+			fmt.Printf("│       %d. %s (v%s)\n", j+1, p.Name, p.Version)
+			if p.ExecutionCondition != nil {
+				fmt.Printf("│          Condition: %s\n", *p.ExecutionCondition)
 			}
-		}
-		fmt.Printf("│    │\n")
-		fmt.Printf("│    └─ Response Policies (%d):\n", len(route.ResponsePolicies))
-		for j, rp := range route.ResponsePolicies {
-			fmt.Printf("│       %d. %s (v%s)\n", j+1, rp.Name, rp.Version)
-			if len(rp.Config) > 0 {
-				configJSON, _ := json.MarshalIndent(rp.Config, "│          ", "  ")
-				fmt.Printf("│          Config: %s\n", string(configJSON))
+			if len(p.Params) > 0 {
+				paramsJSON, _ := json.MarshalIndent(p.Params, "│          ", "  ")
+				fmt.Printf("│          Params: %s\n", string(paramsJSON))
 			}
 		}
 	}

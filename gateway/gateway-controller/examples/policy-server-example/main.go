@@ -121,8 +121,8 @@ func main() {
 					// Update execution conditions on all policies
 					newCondition := "request.method == 'GET' && user.authenticated == true"
 					for i := range existingPolicy.Configuration.Routes {
-						for j := range existingPolicy.Configuration.Routes[i].RequestPolicies {
-							existingPolicy.Configuration.Routes[i].RequestPolicies[j].ExecutionCondition = &newCondition
+						for j := range existingPolicy.Configuration.Routes[i].Policies {
+							existingPolicy.Configuration.Routes[i].Policies[j].ExecutionCondition = &newCondition
 						}
 					}
 					existingPolicy.Configuration.Metadata.UpdatedAt = time.Now().Unix()
@@ -164,11 +164,11 @@ func addSamplePolicies(pm *policyxds.PolicyManager, log *zap.Logger) error {
 			Routes: []models.RoutePolicy{
 				{
 					RouteKey: "/pets",
-					RequestPolicies: []models.Policy{
+					Policies: []models.Policy{
 						{
 							Name:    "RateLimitPolicy",
 							Version: "v1",
-							Config: map[string]interface{}{
+							Params: map[string]interface{}{
 								"requestsPerMinute": 100,
 								"burstSize":         10,
 							},
@@ -176,17 +176,15 @@ func addSamplePolicies(pm *policyxds.PolicyManager, log *zap.Logger) error {
 						{
 							Name:    "AuthenticationPolicy",
 							Version: "v1",
-							Config: map[string]interface{}{
+							Params: map[string]interface{}{
 								"type":   "oauth2",
 								"scopes": []string{"read:pets"},
 							},
 						},
-					},
-					ResponsePolicies: []models.Policy{
 						{
 							Name:    "CachePolicy",
 							Version: "v1",
-							Config: map[string]interface{}{
+							Params: map[string]interface{}{
 								"ttl":      300,
 								"cacheKey": "default",
 							},
@@ -195,11 +193,11 @@ func addSamplePolicies(pm *policyxds.PolicyManager, log *zap.Logger) error {
 				},
 				{
 					RouteKey: "/pets/{petId}",
-					RequestPolicies: []models.Policy{
+					Policies: []models.Policy{
 						{
 							Name:    "ValidationPolicy",
 							Version: "v1",
-							Config: map[string]interface{}{
+							Params: map[string]interface{}{
 								"validatePathParams": true,
 								"requiredParams":     []string{"petId"},
 							},
@@ -231,11 +229,11 @@ func addSamplePolicies(pm *policyxds.PolicyManager, log *zap.Logger) error {
 			Routes: []models.RoutePolicy{
 				{
 					RouteKey: "/users",
-					RequestPolicies: []models.Policy{
+					Policies: []models.Policy{
 						{
 							Name:    "AuthenticationPolicy",
 							Version: "v1",
-							Config: map[string]interface{}{
+							Params: map[string]interface{}{
 								"type":   "jwt",
 								"issuer": "example.com",
 							},
@@ -243,17 +241,15 @@ func addSamplePolicies(pm *policyxds.PolicyManager, log *zap.Logger) error {
 						{
 							Name:    "LoggingPolicy",
 							Version: "v1",
-							Config: map[string]interface{}{
+							Params: map[string]interface{}{
 								"level":      "INFO",
 								"logHeaders": true,
 							},
 						},
-					},
-					ResponsePolicies: []models.Policy{
 						{
 							Name:    "TransformPolicy",
 							Version: "v1",
-							Config: map[string]interface{}{
+							Params: map[string]interface{}{
 								"removeFields": []string{"internal_id"},
 							},
 						},
@@ -288,12 +284,12 @@ func createDynamicPolicy(id string, counter int) *models.StoredPolicyConfig {
 			Routes: []models.RoutePolicy{
 				{
 					RouteKey: fmt.Sprintf("/dynamic/%d", counter),
-					RequestPolicies: []models.Policy{
+					Policies: []models.Policy{
 						{
 							Name:               "DynamicPolicy",
 							Version:            "v1",
 							ExecutionCondition: &condition,
-							Config: map[string]interface{}{
+							Params: map[string]interface{}{
 								"counter":   counter,
 								"timestamp": time.Now().Unix(),
 							},
