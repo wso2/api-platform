@@ -28,6 +28,7 @@ import { useDevPortals } from "../../context/DevPortalContext";
 import { PORTAL_CONSTANTS } from "../../constants/portal";
 import BijiraDPLogo from "../BijiraDPLogo.png";
 import type { Portal } from "../../hooks/devportals";
+import { TextField, MenuItem } from "@mui/material";
 
 type Step = { title: string; subtitle: string };
 const STEPS: Step[] = [
@@ -93,6 +94,8 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   const [selectedPortalId, setSelectedPortalId] = React.useState<string | null>(
     null,
   );
+  const [portalVisibility, setPortalVisibility] = React.useState<string>("PUBLIC");
+  const [portalEndpoint, setPortalEndpoint] = React.useState<string>("");
 
   const { contractMeta, setContractMeta, resetContractMeta } =
     useCreateComponentBuildpackContext();
@@ -233,6 +236,8 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
         portalId: selectedPortalId,
         portalName: selectedPortal?.name,
         apiName: contractMeta?.name,
+        portalVisibility,
+        portalEndpoint,
       });
 
       resetContractMeta();
@@ -283,86 +288,148 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
           {activeStep === 0 && (
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}>
-                <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                    Public Specification URL
-                  </Typography>
-                  <TextInput
-                    label=""
-                    placeholder="https://example.com/openapi.yaml"
-                    value={specUrl}
-                    onChange={(v: string) => setSpecUrl(v)}
-                    testId=""
-                    size="medium"
-                  />
+                <Stack spacing={2} sx={{ height: '100%' }}>
+                  <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      Public Specification URL
+                    </Typography>
+                    <TextInput
+                      label=""
+                      placeholder="https://example.com/openapi.yaml"
+                      value={specUrl}
+                      onChange={(v: string) => setSpecUrl(v)}
+                      testId=""
+                      size="medium"
+                    />
 
-                  <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                    <Button
-                      variant="text"
-                      onClick={() =>
-                        setSpecUrl(
-                          "https://petstore.swagger.io/v2/swagger.json",
-                        )
-                      }
-                      disabled={validating}
-                    >
-                      Try with Sample URL
-                    </Button>
-                    <Box flex={1} />
-                    <Button
+                    <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                      <Button
+                        variant="text"
+                        onClick={() =>
+                          setSpecUrl(
+                            "https://petstore.swagger.io/v2/swagger.json",
+                          )
+                        }
+                        disabled={validating}
+                      >
+                        Try with Sample URL
+                      </Button>
+                      <Box flex={1} />
+                      <Button
+                        variant="outlined"
+                        onClick={handleFetchAndValidate}
+                        disabled={!specUrl.trim() || validating}
+                      >
+                        {validating ? "Validating..." : "Fetch & Validate"}
+                      </Button>
+                    </Stack>
+
+                    {error && (
+                      <Alert severity="error" sx={{ mt: 2 }}>
+                        {error}
+                      </Alert>
+                    )}
+                  </Paper>
+
+                  {validationResult?.isAPIDefinitionValid ? (
+                    <ApiOperationsList
+                      title="Fetched OAS Definition"
+                      operations={previewOps}
+                    />
+                  ) : validating ? (
+                    <Paper
                       variant="outlined"
-                      onClick={handleFetchAndValidate}
-                      disabled={!specUrl.trim() || validating}
+                      sx={{
+                        p: 3,
+                        borderRadius: 2,
+                        color: "text.secondary",
+                        flexGrow: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
                     >
-                      {validating ? "Validating..." : "Fetch & Validate"}
-                    </Button>
-                  </Stack>
-
-                  {error && (
-                    <Alert severity="error" sx={{ mt: 2 }}>
-                      {error}
-                    </Alert>
+                      <Typography variant="body2">
+                        Validating OpenAPI definition...
+                      </Typography>
+                    </Paper>
+                  ) : (
+                    <Paper
+                      variant="outlined"
+                      sx={{
+                        p: 3,
+                        borderRadius: 2,
+                        color: "text.secondary",
+                        flexGrow: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      <Typography variant="body2">
+                        Enter a direct URL to an OpenAPI/Swagger document
+                        (YAML or JSON). We'll fetch and preview it here.
+                      </Typography>
+                    </Paper>
                   )}
-                </Paper>
-
-                {validationResult?.isAPIDefinitionValid ? (
-                  <ApiOperationsList
-                    title="Fetched OAS Definition"
-                    operations={previewOps}
-                  />
-                ) : validating ? (
-                  <Paper
-                    variant="outlined"
-                    sx={{ p: 3, borderRadius: 2, color: "text.secondary", mt: 2 }}
-                  >
-                    <Typography variant="body2">
-                      Validating OpenAPI definition...
-                    </Typography>
-                  </Paper>
-                ) : (
-                  <Paper
-                    variant="outlined"
-                    sx={{ p: 3, borderRadius: 2, color: "text.secondary", mt: 2 }}
-                  >
-                    <Typography variant="body2">
-                      Enter a direct URL to an OpenAPI/Swagger document
-                      (YAML or JSON). We'll fetch and preview it here.
-                    </Typography>
-                  </Paper>
-                )}
+                </Stack>
               </Grid>
 
               <Grid size={{ xs: 12, md: 6 }}>
                 {validationResult?.isAPIDefinitionValid && (
-                  <>
-                    <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+                  <Stack spacing={2} sx={{ height: '100%' }}>
+                    <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, flexGrow: 1 }}>
                       <CreationMetaData scope="contract" title="Configure API" />
+
+                      <Box sx={{ mt: 3 }}>
+                        <Typography
+                          variant="subtitle1"
+                          fontWeight={600}
+                          sx={{ mb: 2 }}
+                        >
+                          Developer Portal Settings
+                        </Typography>
+
+                        <Stack spacing={2}>
+                          <TextField
+                            select
+                            label="Access Visibility in Developer Portal"
+                            value={portalVisibility}
+                            onChange={(e) => setPortalVisibility(e.target.value)}
+                            fullWidth
+                            variant="outlined"
+                            helperText="Control who can discover your API in the portal"
+                          >
+                            <MenuItem value="PUBLIC">
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <span>🌍</span>
+                                <Typography variant="body2">Public</Typography>
+                              </Box>
+                            </MenuItem>
+                            <MenuItem value="PRIVATE">
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <span>🔒</span>
+                                <Typography variant="body2">Private</Typography>
+                              </Box>
+                            </MenuItem>
+                          </TextField>
+
+                          <TextField
+                            label="Endpoint in Developer Portal"
+                            value={portalEndpoint}
+                            onChange={(e) => setPortalEndpoint(e.target.value)}
+                            fullWidth
+                            variant="outlined"
+                            placeholder="https://api.example.com"
+                            helperText="The endpoint URL that will be displayed to developers"
+                          />
+                        </Stack>
+                      </Box>
                     </Paper>
 
                     <Stack
                       direction="row"
                       spacing={1}
-                      sx={{ mt: 2 }}
                       justifyContent="flex-end"
                     >
                       <Button
@@ -378,7 +445,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                         {creating ? "Creating..." : "Create API"}
                       </Button>
                     </Stack>
-                  </>
+                  </Stack>
                 )}
               </Grid>
             </Grid>
