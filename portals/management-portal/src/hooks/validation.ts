@@ -30,8 +30,7 @@ export type GithubProjectValidationResponse =
   | GithubProjectValidationOK
   | GithubProjectValidationErr;
 
-/** ----- Helpers ----- */
-export type OpenApiValidationOK = {
+  export type OpenApiValidationOK = {
   isAPIDefinitionValid: true;
   api: Record<string, unknown>;
 };
@@ -45,7 +44,7 @@ export type OpenApiValidationResponse =
   | OpenApiValidationOK
   | OpenApiValidationErr;
 
-
+/** ----- Helpers ----- */
 const parseError = async (res: Response) => {
   let body = "";
   try {
