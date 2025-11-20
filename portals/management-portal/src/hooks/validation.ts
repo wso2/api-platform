@@ -30,6 +30,7 @@ export type GithubProjectValidationResponse =
   | GithubProjectValidationOK
   | GithubProjectValidationErr;
 
+/** ----- Helpers ----- */
 export type OpenApiValidationOK = {
   isAPIDefinitionValid: true;
   api: Record<string, unknown>;
