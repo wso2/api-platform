@@ -428,7 +428,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
               </Typography>
 
               <Grid container spacing={2}>
-                <Grid size={{ xs: 12, md: 6 }}>
+                <Grid size={{ xs: 12 }}>
                   <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
                     <CreationMetaData scope="contract" title="Configure API" />
 
