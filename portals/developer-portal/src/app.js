@@ -237,33 +237,35 @@ let claimNames = {
 };
 // configurePassport(config.identityProvider, claimNames);
 
-const strategy = new OAuth2Strategy({
-    name: 'Asgardeo',
-    issuer: config.identityProvider.issuer,
-    authorizationURL: config.identityProvider.authorizationURL,
-    tokenURL: config.identityProvider.tokenURL,
-    userInfoURL: config.identityProvider.userInfoURL,
-    clientID: config.identityProvider.clientId,
-    callbackURL: config.identityProvider.callbackURL,
-    pkce: true,
-    state: true,
-    logoutURL: process.env.OAUTH2_LOGOUT_ENDPOINT,
-    logoutRedirectURI: process.env.OAUTH2_POST_LOGOUT_REDIRECT_URI,
-    certificate: '',
-    jwksURL: process.env.OAUTH2_JWKS_ENDPOINT,
-    passReqToCallback: true,
-    scope: ['openid', 'profile', 'email'],
-}, async (req, accessToken, refreshToken, params, profile, done) => {
+// Only initialize OAuth2 strategy if identity provider is enabled
+if (config.identityProvider && config.identityProvider.enabled !== false) {
+    const strategy = new OAuth2Strategy({
+        name: 'Asgardeo',
+        issuer: config.identityProvider.issuer,
+        authorizationURL: config.identityProvider.authorizationURL,
+        tokenURL: config.identityProvider.tokenURL,
+        userInfoURL: config.identityProvider.userInfoURL,
+        clientID: config.identityProvider.clientId,
+        callbackURL: config.identityProvider.callbackURL,
+        pkce: true,
+        state: true,
+        logoutURL: process.env.OAUTH2_LOGOUT_ENDPOINT,
+        logoutRedirectURI: process.env.OAUTH2_POST_LOGOUT_REDIRECT_URI,
+        certificate: '',
+        jwksURL: process.env.OAUTH2_JWKS_ENDPOINT,
+        passReqToCallback: true,
+        scope: ['openid', 'profile', 'email'],
+    }, async (req, accessToken, refreshToken, params, profile, done) => {
     if (!accessToken) {
         return done(new Error('Access token missing'));
     }
     let orgList, userOrg;
     if (config.advanced.tokenExchanger?.enabled) {
-        const exchangedToken = await util.tokenExchanger(accessToken, req.session.returnTo.split("/")[1]);
-        const decodedExchangedToken = jwt.decode(exchangedToken);
-        orgList = decodedExchangedToken.organizations;
-        userOrg = decodedExchangedToken.organization.uuid;
-        req['exchangedToken'] = exchangedToken;
+            const exchangedToken = await util.tokenExchanger(accessToken, req.session.returnTo.split("/")[1]);
+            const decodedExchangedToken = jwt.decode(exchangedToken);
+            orgList = decodedExchangedToken.organizations;
+            userOrg = decodedExchangedToken.organization.uuid;
+            req['exchangedToken'] = exchangedToken;
     }
     const decodedJWT = jwt.decode(params.id_token);
     const decodedAccessToken = jwt.decode(accessToken);
@@ -338,79 +340,82 @@ const strategy = new OAuth2Strategy({
 
     logger.debug('Returning profile', { userId: profile.sub, organization: userOrg });
 
-    //return done(null, profile);
-});
+        //return done(null, profile);
+    });
 
-strategy.authorizationParams = function (options) {
-    const params = {};
-    if (options.prompt) {
-        params.prompt = options.prompt;
-    }
-    if (options.fidp) {
-        params.fidp = options.fidp;
-    }
-    if (options.username) {
-        params.username = options.username;
-    }
-    return params;
-};
-
-passport.use(strategy);
-
-// Serialize user into the session
-passport.serializeUser((user, done) => {
-    logger.debug('Serializing user', { userId: user.sub });
-    const profile = {
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        imageURL: user.imageURL,
-        view: user.view,
-        idToken: user.idToken,
-        [constants.ROLES.ORGANIZATION_CLAIM]: user[constants.ROLES.ORGANIZATION_CLAIM],
-        'returnTo': user.returnTo,
-        accessToken: user.accessToken,
-        refreshToken: user.refreshToken,
-        'exchangeToken': user.exchangeToken,
-        'authorizedOrgs': user.authorizedOrgs,
-        [constants.ROLES.ROLE_CLAIM]: user.roles,
-        [constants.ROLES.GROUP_CLAIM]: user.groups,
-        'isAdmin': user.isAdmin,
-        'isSuperAdmin': user.isSuperAdmin,
-        [constants.USER_ID]: user[constants.USER_ID],
-        'userOrg': user.userOrg
+    strategy.authorizationParams = function (options) {
+        const params = {};
+        if (options.prompt) {
+            params.prompt = options.prompt;
+        }
+        if (options.fidp) {
+            params.fidp = options.fidp;
+        }
+        if (options.username) {
+            params.username = options.username;
+        }
+        return params;
     };
-    lock.acquire('serialize', (release) => {
-        release(null, profile);
-    }, (err, ret) => {
-        if (err) {
-            return done(err);
-        }
-        done(null, ret);
-    });
-    //done(null, user);
-});
 
-// Deserialize user from the session
-passport.deserializeUser(async (sessionData, done) => {
-    //return done(null, sessionData);
-    lock.acquire('deserialize', async (release) => {
-        try {
-            release(null, sessionData);
-        } catch (err) {
-            release(err);
-        }
-    }, (err, ret) => {
-        if (err) {
-            return done(err);
-        }
-        done(null, ret);
-    });
-});
+    passport.use(strategy);
 
-// passport.deserializeUser((obj, done) => {
-//     done(null, obj)
-// });
+    // Serialize user into the session
+    passport.serializeUser((user, done) => {
+        logger.debug('Serializing user', { userId: user.sub });
+        const profile = {
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            imageURL: user.imageURL,
+            view: user.view,
+            idToken: user.idToken,
+            [constants.ROLES.ORGANIZATION_CLAIM]: user[constants.ROLES.ORGANIZATION_CLAIM],
+            'returnTo': user.returnTo,
+            accessToken: user.accessToken,
+            refreshToken: user.refreshToken,
+            'exchangeToken': user.exchangeToken,
+            'authorizedOrgs': user.authorizedOrgs,
+            [constants.ROLES.ROLE_CLAIM]: user.roles,
+            [constants.ROLES.GROUP_CLAIM]: user.groups,
+            'isAdmin': user.isAdmin,
+            'isSuperAdmin': user.isSuperAdmin,
+            [constants.USER_ID]: user[constants.USER_ID],
+            'userOrg': user.userOrg
+        };
+        lock.acquire('serialize', (release) => {
+            release(null, profile);
+        }, (err, ret) => {
+            if (err) {
+                return done(err);
+            }
+            done(null, ret);
+        });
+        //done(null, user);
+    });
+
+    // Deserialize user from the session
+    passport.deserializeUser(async (sessionData, done) => {
+        //return done(null, sessionData);
+        lock.acquire('deserialize', async (release) => {
+            try {
+                release(null, sessionData);
+            } catch (err) {
+                release(err);
+            }
+        }, (err, ret) => {
+            if (err) {
+                return done(err);
+            }
+            done(null, ret);
+        });
+    });
+
+    // passport.deserializeUser((obj, done) => {
+    //     done(null, obj)
+    // });
+} else {
+    logger.info('Identity Provider is disabled - running in anonymous mode');
+}
 
 app.use(constants.ROUTE.TECHNICAL_STYLES, express.static(path.join(require.main.filename, '../styles')));
 app.use(constants.ROUTE.TECHNICAL_SCRIPTS, express.static(path.join(require.main.filename, '../scripts')));
