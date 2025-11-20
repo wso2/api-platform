@@ -917,7 +917,7 @@ func (u *APIUtil) buildPathsSection(api *dto.API) map[string]interface{} {
 		}
 
 		// Add parameters
-		if parameters := u.buildParameters(path, operation); len(parameters) > 0 {
+		if parameters := u.buildParameters(path, operation, api); len(parameters) > 0 {
 			operationSpec["parameters"] = parameters
 		}
 
@@ -942,7 +942,7 @@ func (u *APIUtil) buildPathsSection(api *dto.API) map[string]interface{} {
 }
 
 // buildParameters extracts path, query, and header parameters from the path
-func (u *APIUtil) buildParameters(path string, operation dto.Operation) []map[string]interface{} {
+func (u *APIUtil) buildParameters(path string, operation dto.Operation, api *dto.API) []map[string]interface{} {
 	var parameters []map[string]interface{}
 
 	// Extract path parameters (e.g., {id} -> id)
@@ -966,13 +966,27 @@ func (u *APIUtil) buildParameters(path string, operation dto.Operation) []map[st
 	if operation.Request != nil {
 		// Add authentication-related parameters
 		if operation.Request.Authentication != nil && operation.Request.Authentication.Required {
-			parameters = append(parameters, map[string]interface{}{
-				"name":        "Authorization",
-				"in":          "header",
-				"required":    true,
-				"schema":      map[string]interface{}{"type": "string"},
-				"description": "Bearer token for authentication",
-			})
+			if api.Security != nil && api.Security.OAuth2 != nil && len(api.Security.OAuth2.Scopes) > 0 {
+				// For OAuth2, add Authorization header
+				parameters = append(parameters, map[string]interface{}{
+					"name":        "Authorization",
+					"in":          "header",
+					"required":    true,
+					"schema":      map[string]interface{}{"type": "string"},
+					"description": "Bearer token for authentication",
+				})
+			} else if api.Security != nil && api.Security.APIKey != nil && api.Security.APIKey.Enabled {
+				// For API Key, add the key parameter
+				paramName := u.getAPIKeyName(api.Security.APIKey)
+				in := u.getAPIKeyLocation(api.Security.APIKey)
+				parameters = append(parameters, map[string]interface{}{
+					"name":        paramName,
+					"in":          in,
+					"required":    true,
+					"schema":      map[string]interface{}{"type": "string"},
+					"description": "API key for authentication",
+				})
+			}
 		}
 	}
 
@@ -1077,8 +1091,8 @@ func (u *APIUtil) buildSecuritySchemes(api *dto.API) map[string]interface{} {
 				"type": "oauth2",
 				"flows": map[string]interface{}{
 					"authorizationCode": map[string]interface{}{
-						"authorizationUrl": "https://auth.example.com/oauth/authorize",
-						"tokenUrl":         "https://auth.example.com/oauth/token",
+						"authorizationUrl": "", // TODO: source from configuration
+						"tokenUrl":         "", // TODO: source from configuration
 						"scopes":           u.buildOAuthScopes(api.Security.OAuth2.Scopes),
 					},
 				},

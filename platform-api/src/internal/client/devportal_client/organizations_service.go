@@ -71,6 +71,7 @@ func (s *organizationsService) Create(req dto.OrganizationCreateRequest) (*dto.O
 					return nil, ErrOrganizationCreationFailed
 				}
 				// Other errors (network, auth, etc.) - preserve context
+				log.Printf("Failed to fetch existing organization during conflict resolution for orgID=%s: %v", req.OrgID, fetchErr)
 				return nil, ErrOrganizationCreationFailed
 			}
 			// Compare key fields

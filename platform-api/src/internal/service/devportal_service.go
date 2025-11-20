@@ -467,7 +467,7 @@ func (s *DevPortalService) PublishAPIToDevPortal(api *dto.API, req *dto.PublishT
 	}
 
 	// --- Phase 3: Build API Metadata ---
-	apiMetadata, err := s.prepareAPIMetadata(api, req, org)
+	apiMetadata, err := s.prepareAPIMetadata(api, req)
 	if err != nil {
 		return nil, err
 	}
@@ -600,7 +600,7 @@ func (s *DevPortalService) preparePublication(api *dto.API, req *dto.PublishToDe
 }
 
 // prepareAPIMetadata builds API metadata request with defaults and user overrides
-func (s *DevPortalService) prepareAPIMetadata(api *dto.API, req *dto.PublishToDevPortalRequest, org *model.Organization) (devportal_client.APIMetadataRequest, error) {
+func (s *DevPortalService) prepareAPIMetadata(api *dto.API, req *dto.PublishToDevPortalRequest) (devportal_client.APIMetadataRequest, error) {
 	// Default values - system fields from API
 	apiInfo := devportal_client.APIInfo{
 		APIID:          api.ID,

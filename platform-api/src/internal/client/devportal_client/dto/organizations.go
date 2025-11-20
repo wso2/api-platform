@@ -55,7 +55,7 @@ type OrganizationResponse struct {
 
 // IsSameAs compares key fields with an OrganizationCreateRequest to check if they represent the same organization.
 func (o *OrganizationResponse) IsSameAs(req OrganizationCreateRequest) bool {
-	return o.OrgID == req.OrgID && o.OrgName == req.OrgName && o.OrgHandle == req.OrgHandle
+	return o.OrgID == req.OrgID && o.OrgName == req.OrgName && o.OrgHandle == req.OrgHandle && o.OrganizationIdentifier == req.OrganizationIdentifier
 }
 
 // OrganizationUpdateRequest contains fields allowed for updates.

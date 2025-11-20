@@ -202,6 +202,9 @@ func (s *apisService) UploadTemplate(orgID, apiID string, r io.Reader, filename 
 	if filename == "" || strings.ContainsAny(filename, "\x00") || len(filename) > 255 {
 		return fmt.Errorf("invalid filename")
 	}
+	if r == nil {
+		return fmt.Errorf("template reader cannot be nil")
+	}
 	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, apisPath, apiID, templatePath)
 	buf, contentType, err := createTemplateMultipart(r, filename)
 	if err != nil {
@@ -234,6 +237,9 @@ func (s *apisService) UploadTemplate(orgID, apiID string, r io.Reader, filename 
 func (s *apisService) UpdateTemplate(orgID, apiID string, r io.Reader, filename string) error {
 	if filename == "" || strings.ContainsAny(filename, "\x00") || len(filename) > 255 {
 		return fmt.Errorf("invalid filename")
+	}
+	if r == nil {
+		return fmt.Errorf("template reader cannot be nil")
 	}
 	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, apisPath, apiID, templatePath)
 	buf, contentType, err := createTemplateMultipart(r, filename)
@@ -280,7 +286,7 @@ func (s *apisService) GetTemplate(orgID, apiID string) ([]byte, error) {
 		devPortalErr := NewDevPortalError(resp.StatusCode, fmt.Sprintf("template retrieval failed: %s", string(b)), resp.StatusCode >= 500, nil)
 		return nil, handleAPIError(devPortalErr)
 	}
-	// Read the entire template into memory to prevent memory leaks
+	// Read the entire template into memory to simplify the API surface
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read template: %w", err)
@@ -328,7 +334,7 @@ func createAPIMultipart(meta dto.APIMetadataRequest, apiDef io.Reader, apiDefNam
 	}
 
 	// Create apiMetadata field with application/json content type
-	metadataField, err := mw.CreateFormFile("apiMetadata", "metadata.json")
+	metadataField, err := mw.CreateFormField("apiMetadata")
 	if err != nil {
 		return nil, "", ErrFormFieldCreationFailed
 	}

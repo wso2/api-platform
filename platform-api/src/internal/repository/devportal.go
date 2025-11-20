@@ -142,32 +142,32 @@ func (r *devPortalRepository) checkForConflictsTx(tx *sql.Tx, devPortal *model.D
 }
 
 // checkForUpdateConflictsTx checks for update conflicts within a transaction
-func (r *devPortalRepository) checkForUpdateConflictsTx(tx *sql.Tx, devPortal *model.DevPortal) error {
+func (r *devPortalRepository) checkForUpdateConflictsTx(tx *sql.Tx, devPortal *model.DevPortal, orgUUID string) error {
 	// Check for existing DevPortal with same API URL in the same organization (excluding this one)
 	var count int
 	err := tx.QueryRow(`
 		SELECT COUNT(*) FROM devportals
 		WHERE organization_uuid = ? AND api_url = ? AND uuid != ?`,
-		devPortal.OrganizationUUID, devPortal.APIUrl, devPortal.UUID).Scan(&count)
+		orgUUID, devPortal.APIUrl, devPortal.UUID).Scan(&count)
 	if err != nil {
 		return fmt.Errorf("failed to check for existing API URL during update: %w", err)
 	}
 	if count > 0 {
 		return fmt.Errorf("devportal with API URL %s already exists in organization %s: %w",
-			devPortal.APIUrl, devPortal.OrganizationUUID, constants.ErrDevPortalAPIUrlExists)
+			devPortal.APIUrl, orgUUID, constants.ErrDevPortalAPIUrlExists)
 	}
 
 	// Check for existing DevPortal with same hostname in the same organization (excluding this one)
 	err = tx.QueryRow(`
 		SELECT COUNT(*) FROM devportals
 		WHERE organization_uuid = ? AND hostname = ? AND uuid != ?`,
-		devPortal.OrganizationUUID, devPortal.Hostname, devPortal.UUID).Scan(&count)
+		orgUUID, devPortal.Hostname, devPortal.UUID).Scan(&count)
 	if err != nil {
 		return fmt.Errorf("failed to check for existing hostname during update: %w", err)
 	}
 	if count > 0 {
 		return fmt.Errorf("devportal with hostname %s already exists in organization %s: %w",
-			devPortal.Hostname, devPortal.OrganizationUUID, constants.ErrDevPortalHostnameExists)
+			devPortal.Hostname, orgUUID, constants.ErrDevPortalHostnameExists)
 	}
 
 	return nil
@@ -264,7 +264,7 @@ func (r *devPortalRepository) Update(devPortal *model.DevPortal, orgUUID string)
 	defer tx.Rollback()
 
 	// Check for conflicts within the transaction
-	if err := r.checkForUpdateConflictsTx(tx, devPortal); err != nil {
+	if err := r.checkForUpdateConflictsTx(tx, devPortal, orgUUID); err != nil {
 		return err
 	}
 

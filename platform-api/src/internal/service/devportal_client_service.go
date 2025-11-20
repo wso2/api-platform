@@ -116,7 +116,7 @@ func (s *DevPortalClientService) SyncOrganizationToDevPortal(devPortal *model.De
 			return constants.ErrDevPortalOrganizationConflict
 		}
 		if errors.Is(err, devportal_client.ErrOrganizationAlreadySynced) {
-			return constants.ErrDevPortalAlreadyExist
+			return constants.ErrDevPortalAlreadyExists
 		}
 
 		// For other errors, return a generic sync failure

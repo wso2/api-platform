@@ -80,9 +80,8 @@ var (
 	ErrDevPortalAuthenticationFailed    = errors.New("devportal authentication failed")
 	ErrDevPortalForbidden               = errors.New("devportal access forbidden")
 	ErrDevPortalConnectivityFailed      = errors.New("devportal connectivity check failed")
-	ErrDevPortalEndpointInvalid         = errors.New("devportal endpoint invalid")
 	ErrDevPortalInvalidVisibility       = errors.New("devportal visibility must be 'public' or 'private'")
-	ErrDevPortalOrganizationConflict    = errors.New("organization conflict in DevPortal: an organization with the same handle exists but differs from the one being synced")
+	ErrDevPortalOrganizationConflict    = errors.New("organization conflict in DevPortal: an organization with the same organization ID exists but differs from the one being synced")
 
 	// API Publication errors
 	ErrAPIPublicationNotFound   = errors.New("api publication not found")
