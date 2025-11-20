@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/envoy-policy-engine/builder/pkg/errors"
-	"github.com/envoy-policy-engine/builder/pkg/types"
+	"github.com/envoy-policy-engine/policy-builder/pkg/errors"
+	"github.com/envoy-policy-engine/policy-builder/pkg/types"
 	"gopkg.in/yaml.v3"
 )
 

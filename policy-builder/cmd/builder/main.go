@@ -8,13 +8,13 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/envoy-policy-engine/builder/internal/compilation"
-	"github.com/envoy-policy-engine/builder/internal/discovery"
-	"github.com/envoy-policy-engine/builder/internal/generation"
-	"github.com/envoy-policy-engine/builder/internal/packaging"
-	"github.com/envoy-policy-engine/builder/internal/validation"
-	"github.com/envoy-policy-engine/builder/pkg/errors"
-	"github.com/envoy-policy-engine/builder/pkg/types"
+	"github.com/envoy-policy-engine/policy-builder/internal/compilation"
+	"github.com/envoy-policy-engine/policy-builder/internal/discovery"
+	"github.com/envoy-policy-engine/policy-builder/internal/generation"
+	"github.com/envoy-policy-engine/policy-builder/internal/packaging"
+	"github.com/envoy-policy-engine/policy-builder/internal/validation"
+	"github.com/envoy-policy-engine/policy-builder/pkg/errors"
+	"github.com/envoy-policy-engine/policy-builder/pkg/types"
 )
 
 const (

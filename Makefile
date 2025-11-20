@@ -14,7 +14,7 @@ RUNTIME_TAG := $(RUNTIME_IMAGE):$(RUNTIME_VERSION)
 RUNTIME_DIR := policy-engine
 CMD_DIR := $(RUNTIME_DIR)/cmd/policy-engine
 INTERNAL_DIR := $(RUNTIME_DIR)/internal
-BUILD_DIR := build
+BUILDER_DIR := policy-builder
 POLICIES_DIR := policies
 CONFIGS_DIR := configs
 OUTPUT_DIR := output
@@ -143,7 +143,7 @@ tidy:
 	@echo "Running go mod tidy..."
 	cd $(RUNTIME_DIR) && $(GOMOD) tidy
 	cd sdk && $(GOMOD) tidy
-	cd build && $(GOMOD) tidy
+	cd $(BUILDER_DIR) && $(GOMOD) tidy
 	@echo "✅ go mod tidy completed for all modules"
 
 ## lint: Run Go linter (requires golangci-lint)

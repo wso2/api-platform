@@ -3,11 +3,11 @@ package generation
 import (
 	"bytes"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"text/template"
 
-	"github.com/envoy-policy-engine/builder/pkg/types"
+	"github.com/envoy-policy-engine/policy-builder/pkg/types"
+	"github.com/envoy-policy-engine/policy-builder/templates"
 )
 
 // PolicyImport represents a policy import for code generation
@@ -34,9 +34,8 @@ func GeneratePluginRegistry(policies []*types.DiscoveredPolicy, srcDir string) (
 		})
 	}
 
-	// Load template
-	tmplPath := filepath.Join("templates", "plugin_registry.go.tmpl")
-	tmpl, err := template.ParseFiles(tmplPath)
+	// Parse embedded template
+	tmpl, err := template.New("plugin_registry").Parse(templates.PluginRegistryTemplate)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse template: %w", err)
 	}

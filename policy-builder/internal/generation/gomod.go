@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/envoy-policy-engine/builder/pkg/types"
+	"github.com/envoy-policy-engine/policy-builder/pkg/types"
 	"golang.org/x/mod/modfile"
 )
 

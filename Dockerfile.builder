@@ -20,9 +20,8 @@ COPY policy-engine/ /workspace/policy-engine/
 # Copy SDK components
 COPY sdk/ /workspace/sdk/
 
-# Copy Builder Go application and templates
-COPY build/ /workspace/build/
-COPY templates/ /workspace/templates/
+# Copy Policy Builder application (includes templates)
+COPY policy-builder/ /workspace/policy-builder/
 
 # Pre-download Go dependencies for runtime
 WORKDIR /workspace/policy-engine
@@ -32,11 +31,11 @@ RUN go mod download
 WORKDIR /workspace/sdk
 RUN go mod download
 
-# Pre-download Go dependencies for builder
-WORKDIR /workspace/build
+# Pre-download Go dependencies for policy-builder
+WORKDIR /workspace/policy-builder
 RUN go mod download || true
 
-# Build the Builder Go binary
+# Build the Policy Builder binary
 RUN go build -o /usr/local/bin/policy-engine-builder ./cmd/builder
 
 # Set working directory back to workspace

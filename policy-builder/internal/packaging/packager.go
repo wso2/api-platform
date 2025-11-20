@@ -8,8 +8,9 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/envoy-policy-engine/builder/pkg/errors"
-	"github.com/envoy-policy-engine/builder/pkg/types"
+	"github.com/envoy-policy-engine/policy-builder/pkg/errors"
+	"github.com/envoy-policy-engine/policy-builder/pkg/types"
+	"github.com/envoy-policy-engine/policy-builder/templates"
 )
 
 // GenerateDockerfile generates the runtime Dockerfile
@@ -34,9 +35,8 @@ func GenerateDockerfile(outputDir string, policies []*types.DiscoveredPolicy, bu
 	// Generate labels
 	labels := GenerateDockerLabels(metadata)
 
-	// Load template
-	tmplPath := filepath.Join("templates", "Dockerfile.runtime.tmpl")
-	tmpl, err := template.ParseFiles(tmplPath)
+	// Parse embedded template
+	tmpl, err := template.New("dockerfile").Parse(templates.DockerfileRuntimeTemplate)
 	if err != nil {
 		return errors.NewPackagingError("failed to parse Dockerfile template", err)
 	}

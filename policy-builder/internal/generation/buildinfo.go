@@ -3,11 +3,11 @@ package generation
 import (
 	"bytes"
 	"fmt"
-	"path/filepath"
 	"text/template"
 	"time"
 
-	"github.com/envoy-policy-engine/builder/pkg/types"
+	"github.com/envoy-policy-engine/policy-builder/pkg/types"
+	"github.com/envoy-policy-engine/policy-builder/templates"
 )
 
 // GenerateBuildInfo generates the build_info.go file with metadata
@@ -22,9 +22,8 @@ func GenerateBuildInfo(policies []*types.DiscoveredPolicy, builderVersion string
 		})
 	}
 
-	// Load template
-	tmplPath := filepath.Join("templates", "build_info.go.tmpl")
-	tmpl, err := template.ParseFiles(tmplPath)
+	// Parse embedded template
+	tmpl, err := template.New("build_info").Parse(templates.BuildInfoTemplate)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse template: %w", err)
 	}
