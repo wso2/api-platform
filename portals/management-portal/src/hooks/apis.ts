@@ -74,6 +74,7 @@ export type ImportOpenApiRequest = {
     projectId: string;
     target?: string;
     description?: string;
+    backendServices?: any[];
   };
   url?: string;
   definition?: string;

@@ -21,6 +21,7 @@ type Props = {
       projectId: string;
       target?: string;
       description?: string;
+      backendServices?: any[];
     };
     url?: string;
     definition?: string;
@@ -182,6 +183,19 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
       setCreating(true);
       setError(null);
 
+      const serviceName = defaultServiceName(name);
+      const backendServices =
+        target
+          ? [
+              {
+                name: serviceName,
+                isDefault: true,
+                retries: 2,
+                endpoints: [{ url: target, description: "Primary backend" }],
+              },
+            ]
+          : [];
+
       await importOpenApi({
         api: {
           name,
@@ -190,6 +204,7 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
           projectId: selectedProjectId,
           target,
           description,
+          backendServices,
         },
         url: specUrl.trim(),
       });

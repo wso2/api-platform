@@ -23,6 +23,7 @@ type Props = {
       projectId: string;
       target?: string;
       description?: string;
+      backendServices?: any[];
     };
     url?: string;
     definition?: string;
@@ -209,6 +210,19 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
       setCreating(true);
       setError(null);
 
+      const serviceName = defaultServiceName(name);
+      const backendServices =
+        target
+          ? [
+              {
+                name: serviceName,
+                isDefault: true,
+                retries: 2,
+                endpoints: [{ url: target, description: "Primary backend" }],
+              },
+            ]
+          : [];
+
       await importOpenApi({
         api: {
           name,
@@ -217,6 +231,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
           projectId: selectedProjectId,
           target,
           description,
+          backendServices,
         },
         definition: rawSpec,
       });
