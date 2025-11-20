@@ -18,7 +18,7 @@ type PolicyDefinition struct {
 	Name        string                 `yaml:"name"`
 	Version     string                 `yaml:"version"`
 	Description string                 `yaml:"description"`
-	Category    string                 `yaml:"category"`
+	Category    string                 `yaml:"category"` // TODO: (renuka) change this to Tags an make this an array of string. This is only for documentation purpose.
 	Parameters  map[string]interface{} `yaml:"parameters"`
 	Condition   *ConditionDef          `yaml:"executionCondition,omitempty"`
 	Body        *BodyRequirements      `yaml:"bodyRequirements,omitempty"`
@@ -76,13 +76,13 @@ type PolicyInfo struct {
 
 // CompilationOptions contains settings for the compilation phase
 type CompilationOptions struct {
-	OutputPath      string
-	EnableUPX       bool
-	LDFlags         string
-	BuildTags       []string
-	CGOEnabled      bool
-	TargetOS        string
-	TargetArch      string
+	OutputPath string
+	EnableUPX  bool
+	LDFlags    string
+	BuildTags  []string
+	CGOEnabled bool
+	TargetOS   string
+	TargetArch string
 }
 
 // PackagingMetadata contains Docker image metadata

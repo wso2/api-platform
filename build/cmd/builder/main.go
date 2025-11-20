@@ -154,12 +154,12 @@ func main() {
 // printBanner displays the builder banner
 func printBanner() {
 	banner := `
-╔═══════════════════════════════════════════════════════════╗
-║                                                           ║
-║       Policy Engine Builder                               ║
-║       Version: ` + BuilderVersion + `                     ║
-║                                                           ║
-╚═══════════════════════════════════════════════════════════╝
+═══════════════════════════════════════════════════════════
+                                                           
+       Policy Engine Builder                               
+       Version: ` + BuilderVersion + `                     
+                                                           
+═══════════════════════════════════════════════════════════
 `
 	fmt.Println(banner)
 }

@@ -17,12 +17,19 @@ WORKDIR /workspace
 # Copy Policy Engine framework source code (src/)
 COPY src/ /workspace/src/
 
+# Copy SDK components
+COPY sdk/ /workspace/sdk/
+
 # Copy Builder Go application and templates
 COPY build/ /workspace/build/
 COPY templates/ /workspace/templates/
 
 # Pre-download Go dependencies for framework
 WORKDIR /workspace/src
+RUN go mod download
+
+# Pre-download Go dependencies for SDK
+WORKDIR /workspace/sdk
 RUN go mod download
 
 # Pre-download Go dependencies for builder

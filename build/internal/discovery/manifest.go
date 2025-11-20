@@ -114,7 +114,7 @@ func DiscoverPoliciesFromManifest(manifestPath string, baseDir string) ([]*types
 	// Process each manifest entry
 	for _, entry := range manifest.Policies {
 		// Resolve URI (support relative and absolute paths)
-		policyPath := entry.URI
+		policyPath := entry.URI // TODO: (renuka) This URI is not the exact path of the policy. It is the path to discover policies.
 		if !filepath.IsAbs(policyPath) {
 			// Relative to base directory (or manifest directory if baseDir not provided)
 			if baseDir == "" {
@@ -134,7 +134,7 @@ func DiscoverPoliciesFromManifest(manifestPath string, baseDir string) ([]*types
 		policyPath = absPath
 
 		// Check path exists
-		if _, err := os.Stat(policyPath); os.IsNotExist(err) {
+		if _, err := os.Stat(policyPath); os.IsNotExist(err) { // TODO: (renuka) check other errors as well.
 			return nil, errors.NewDiscoveryError(
 				fmt.Sprintf("policy path does not exist: %s (from manifest entry %s:%s)",
 					policyPath, entry.Name, entry.Version),

@@ -36,13 +36,13 @@ func ParsePolicyYAML(path string) (*types.PolicyDefinition, error) {
 func ValidateDirectoryStructure(policyDir string) error {
 	// Check for policy.yaml
 	policyYAML := filepath.Join(policyDir, "policy.yaml")
-	if _, err := os.Stat(policyYAML); os.IsNotExist(err) {
+	if _, err := os.Stat(policyYAML); os.IsNotExist(err) { // TODO: (renuka) check here as well.
 		return fmt.Errorf("missing policy.yaml in %s", policyDir)
 	}
 
 	// Check for go.mod
 	goMod := filepath.Join(policyDir, "go.mod")
-	if _, err := os.Stat(goMod); os.IsNotExist(err) {
+	if _, err := os.Stat(goMod); os.IsNotExist(err) { // TODO: (renuka) check here as well.
 		return fmt.Errorf("missing go.mod in %s", policyDir)
 	}
 
