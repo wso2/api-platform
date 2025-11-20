@@ -15,7 +15,7 @@ import { TextInput } from "../../components/src/components/TextInput";
 import { Button } from "../../components/src/components/Button";
 import { ApiOperationsList } from "../../components/src/components/Common/ApiOperationsList";
 import CreationMetaData from "../apis/CreationFlows/CreationMetaData";
-import PortalCard from "../portals/PortalCard";
+import WizardPortalCard from "../portals/WizardPortalCard";
 import {
   useCreateComponentBuildpackContext,
   CreateComponentBuildpackProvider,
@@ -390,35 +390,27 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                   ) : (
                     <Grid container spacing={2}>
                       {portals.map((portal: Portal) => (
-                        <Grid key={portal.uuid}>
-                          <PortalCard
+                        <Grid key={portal.uuid} size={{ xs: 6, sm: 4, md: 3 }}>
+                          <WizardPortalCard
                             title={portal.name}
                             description={portal.description}
+                            portalUrl={portal.uiUrl}
                             selected={selectedPortalId === portal.uuid}
-                            onClick={() => setSelectedPortalId(portal.uuid)}
+                            onSelect={() => {
+                              if (selectedPortalId === portal.uuid) {
+                                setSelectedPortalId(null);
+                              } else {
+                                setSelectedPortalId(portal.uuid);
+                                setTimeout(() => {
+                                  handlePortalSelect(portal.uuid);
+                                }, 300);
+                              }
+                            }}
                             logoSrc={portal.logoSrc || BijiraDPLogo}
                             logoAlt={
                               portal.logoAlt ||
                               PORTAL_CONSTANTS.DEFAULT_LOGO_ALT
                             }
-                            portalUrl={
-                              portal.uiUrl ||
-                              PORTAL_CONSTANTS.DEFAULT_PORTAL_URL
-                            }
-                            userAuthLabel={
-                              PORTAL_CONSTANTS.DEFAULT_USER_AUTH_LABEL
-                            }
-                            authStrategyLabel={
-                              PORTAL_CONSTANTS.DEFAULT_AUTH_STRATEGY_LABEL
-                            }
-                            visibilityLabel={
-                              portal.visibility === "public"
-                                ? "Public"
-                                : "Private"
-                            }
-                            onActivate={() => handlePortalSelect(portal.uuid)}
-                            activating={false}
-                            activateButtonText="Add to Developer Portal"
                           />
                         </Grid>
                       ))}
