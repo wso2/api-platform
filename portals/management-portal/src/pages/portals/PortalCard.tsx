@@ -42,6 +42,7 @@ const PortalCard: React.FC<PortalCardProps> = ({
   onEdit,
   onActivate,
   activating,
+  activateButtonText,
 }) => {
   return (
     <Card testId={""} style={{ maxWidth: 450 }}>
@@ -264,7 +265,7 @@ const PortalCard: React.FC<PortalCardProps> = ({
                     <span>Activating...</span>
                   </Box>
                 ) : (
-                  PORTAL_CONSTANTS.STATUS_LABELS.ACTIVATE_PORTAL
+                  activateButtonText || PORTAL_CONSTANTS.STATUS_LABELS.ACTIVATE_PORTAL
                 )}
               </Button>
             )}
