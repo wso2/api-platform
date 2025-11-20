@@ -36,6 +36,18 @@ type Props = {
       };
     }>;
   }) => Promise<any>;
+  importOpenApi: (payload: {
+    api: {
+      name: string;
+      context: string;
+      version: string;
+      projectId: string;
+      target?: string;
+      description?: string;
+    };
+    url?: string;
+    definition?: string;
+  }, opts?: { signal?: AbortSignal }) => Promise<void>;
   onClose: () => void;
 };
 
@@ -83,7 +95,7 @@ function mapOperations(
 
 /* ---------- component ---------- */
 
-const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, createApi, onClose }) => {
+const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenApi, onClose }) => {
   const [step, setStep] = React.useState<Step>("url");
   const [specUrl, setSpecUrl] = React.useState<string>("");
   const [validationResult, setValidationResult] = React.useState<OpenApiValidationResponse | null>(null);
@@ -192,34 +204,16 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, createApi, 
       setCreating(true);
       setError(null);
 
-      const serviceName = defaultServiceName(name);
-      const backendServices =
-        target
-          ? [
-              {
-                name: serviceName,
-                isDefault: true,
-                retries: 2,
-                endpoints: [{ url: target, description: "Primary backend" }],
-              },
-            ]
-          : [];
-
-      const validatedApi = validationResult.api as any;
-      const operations = mapOperations(
-        validatedApi?.operations || [],
-        target ? { serviceName } : undefined
-      );
-
-      await createApi({
-        name,
-        context: context.startsWith("/") ? context : `/${context}`,
-        version,
-        description,
-        projectId: selectedProjectId,
-        contract: specUrl,
-        backendServices,
-        operations,
+      await importOpenApi({
+        api: {
+          name,
+          context,
+          version,
+          projectId: selectedProjectId,
+          target,
+          description,
+        },
+        url: specUrl.trim(),
       });
 
       finishAndClose();

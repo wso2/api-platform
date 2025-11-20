@@ -32,6 +32,18 @@ type Props = {
       };
     }>;
   }) => Promise<any>;
+  importOpenApi: (payload: {
+    api: {
+      name: string;
+      context: string;
+      version: string;
+      projectId: string;
+      target?: string;
+      description?: string;
+    };
+    url?: string;
+    definition?: string;
+  }, opts?: { signal?: AbortSignal }) => Promise<void>;
   onClose: () => void;
 };
 
@@ -41,6 +53,7 @@ const APIContractCreationFlow: React.FC<Props> = ({
   open,
   selectedProjectId,
   createApi,
+  importOpenApi,
   onClose,
 }) => {
   const [tab, setTab] = React.useState<TabKey>("upload");
@@ -102,6 +115,7 @@ const APIContractCreationFlow: React.FC<Props> = ({
           open={open}
           selectedProjectId={selectedProjectId}
           createApi={createApi}
+          importOpenApi={importOpenApi}
           onClose={onClose}
         />
       )}
@@ -118,6 +132,7 @@ const APIContractCreationFlow: React.FC<Props> = ({
           open={open}
           selectedProjectId={selectedProjectId}
           createApi={createApi}
+          importOpenApi={importOpenApi}
           onClose={onClose}
         />
       )}
