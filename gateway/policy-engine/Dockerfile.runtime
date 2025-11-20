@@ -1,0 +1,43 @@
+# Runtime Dockerfile for Policy Engine
+# This Dockerfile builds the policy engine with the SetHeader sample policy
+
+FROM golang:1.23-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache git
+
+# Set working directory
+WORKDIR /build
+
+# Copy source code
+COPY src/ ./src/
+COPY policies/ ./policies/
+
+# Copy go.mod and go.sum
+COPY src/go.mod src/go.sum ./src/
+
+# Build the binary
+WORKDIR /build/src
+RUN go mod download && \
+    go mod tidy && \
+    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-s -w" -o /policy-engine .
+
+# Runtime stage
+FROM alpine:latest
+
+RUN apk --no-cache add ca-certificates
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /policy-engine /app/policy-engine
+
+# Copy policy definitions (needed for loading at runtime)
+COPY policies/ /app/policies/
+
+# Expose ports
+EXPOSE 9001 9002
+
+# Run the binary
+ENTRYPOINT ["/app/policy-engine"]
+CMD ["-extproc-port=9001", "-config-file=/configs/policy-chains.yaml"]
