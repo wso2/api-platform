@@ -44,6 +44,7 @@ type Props = {
     url?: string;
     definition?: string;
   }, opts?: { signal?: AbortSignal }) => Promise<void>;
+  refreshApis: (projectId?: string) => Promise<any[]>;
   onClose: () => void;
 };
 
@@ -54,6 +55,7 @@ const APIContractCreationFlow: React.FC<Props> = ({
   selectedProjectId,
   createApi,
   importOpenApi,
+  refreshApis,
   onClose,
 }) => {
   const [tab, setTab] = React.useState<TabKey>("upload");
@@ -116,6 +118,7 @@ const APIContractCreationFlow: React.FC<Props> = ({
           selectedProjectId={selectedProjectId}
           createApi={createApi}
           importOpenApi={importOpenApi}
+          refreshApis={refreshApis}
           onClose={onClose}
         />
       )}
@@ -133,6 +136,7 @@ const APIContractCreationFlow: React.FC<Props> = ({
           selectedProjectId={selectedProjectId}
           createApi={createApi}
           importOpenApi={importOpenApi}
+          refreshApis={refreshApis}
           onClose={onClose}
         />
       )}

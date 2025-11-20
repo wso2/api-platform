@@ -217,7 +217,7 @@ const ApiListContent: React.FC = () => {
   const { organization } = useOrganization();
   const { projects, selectedProject, setSelectedProject, projectsLoaded } =
     useProjects();
-  const { apis, loading, createApi, selectApi, deleteApi, importOpenApi } = useApisContext();
+  const { apis, loading, createApi, selectApi, deleteApi, importOpenApi, refreshApis } = useApisContext();
 
   const [query, setQuery] = React.useState("");
   const [wizardOpen, setWizardOpen] = React.useState(false);
@@ -412,6 +412,7 @@ const ApiListContent: React.FC = () => {
           selectedProjectId={selectedProject.id}
           createApi={createApi}
           importOpenApi={importOpenApi}
+          refreshApis={refreshApis}
           onClose={() => {
             setContractOpen(false);
             setTemplatesOpen(false);

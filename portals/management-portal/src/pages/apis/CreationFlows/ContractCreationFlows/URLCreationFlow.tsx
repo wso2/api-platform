@@ -48,6 +48,7 @@ type Props = {
     url?: string;
     definition?: string;
   }, opts?: { signal?: AbortSignal }) => Promise<void>;
+  refreshApis: (projectId?: string) => Promise<any[]>;
   onClose: () => void;
 };
 
@@ -95,7 +96,7 @@ function mapOperations(
 
 /* ---------- component ---------- */
 
-const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenApi, onClose }) => {
+const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenApi, refreshApis, onClose }) => {
   const [step, setStep] = React.useState<Step>("url");
   const [specUrl, setSpecUrl] = React.useState<string>("");
   const [validationResult, setValidationResult] = React.useState<OpenApiValidationResponse | null>(null);
@@ -216,6 +217,7 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
         url: specUrl.trim(),
       });
 
+      await refreshApis(selectedProjectId);
       finishAndClose();
     } catch (e: any) {
       setError(e?.message || "Failed to create API");
