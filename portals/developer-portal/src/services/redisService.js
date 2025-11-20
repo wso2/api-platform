@@ -505,8 +505,25 @@ class RedisService extends EventEmitter {
     }
 
 }
-// Create singleton instance
-const redisService = new RedisService();
 
-module.exports = redisService;
+// Create singleton instance only if Redis is enabled
+let redisService = null;
+
+if (config && config.redis && config.redis.enabled) {
+    redisService = new RedisService();
+}
+
+// Export either the real service or a no-op service
+module.exports = redisService || {
+    // No-op implementations for when Redis is disabled
+    init: () => Promise.resolve(),
+    publishProgress: () => Promise.resolve(false),
+    storeFileWithRetry: () => Promise.resolve(false),
+    retrieveFileWithRetry: () => Promise.resolve(null),
+    registerSSEConnection: () => {},
+    unregisterSSEConnection: () => {},
+    emitLocal: () => {},
+    podId: 'no-redis',
+    isEnabled: () => false
+};
 module.exports.RedisService = RedisService;
