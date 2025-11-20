@@ -12,6 +12,11 @@ policies:
     version: v1.0.0
     uri: ./policies/api-key-validation/v1.0.0
 
+  # Set Header Policy
+  - name: SetHeader
+    version: v1.0.0
+    uri: ./policies/set-header/v1.0.0
+
   # Add more policies here
   # Example with different directory structure:
   # - name: JWTValidation

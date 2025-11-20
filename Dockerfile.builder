@@ -14,8 +14,8 @@ RUN apk add --no-cache \
 # Set working directory
 WORKDIR /workspace
 
-# Copy Policy Engine framework source code (src/)
-COPY src/ /workspace/src/
+# Copy Policy Engine framework source code (policy-engine/)
+COPY policy-engine/ /workspace/policy-engine/
 
 # Copy SDK components
 COPY sdk/ /workspace/sdk/
@@ -24,8 +24,8 @@ COPY sdk/ /workspace/sdk/
 COPY build/ /workspace/build/
 COPY templates/ /workspace/templates/
 
-# Pre-download Go dependencies for framework
-WORKDIR /workspace/src
+# Pre-download Go dependencies for runtime
+WORKDIR /workspace/policy-engine
 RUN go mod download
 
 # Pre-download Go dependencies for SDK
@@ -45,7 +45,7 @@ WORKDIR /workspace
 # Set environment variables for default paths
 ENV POLICIES_DIR=/policies
 ENV OUTPUT_DIR=/output
-ENV SRC_DIR=/workspace/src
+ENV RUNTIME_DIR=/workspace/policy-engine
 
 # Set entrypoint to builder binary
 ENTRYPOINT ["/usr/local/bin/policy-engine-builder"]

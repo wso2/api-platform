@@ -3,7 +3,7 @@
 
 - route_key: default
   policies:
-    - name: setHeader
+    - name: SetHeader
       version: v1.0.0
       enabled: true
       parameters:
@@ -13,7 +13,7 @@
 
 - route_key: api-route
   policies:
-    - name: setHeader
+    - name: SetHeader
       version: v1.0.0
       enabled: true
       parameters:

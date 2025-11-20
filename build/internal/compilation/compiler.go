@@ -113,8 +113,8 @@ func runGoBuild(srcDir string, options *types.CompilationOptions) error {
 	// Add output path
 	args = append(args, "-o", options.OutputPath)
 
-	// Add main package
-	args = append(args, ".")
+	// Add main package (cmd/policy-engine)
+	args = append(args, "./cmd/policy-engine")
 
 	// Create command
 	cmd := exec.Command("go", args...)

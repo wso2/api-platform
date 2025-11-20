@@ -11,7 +11,9 @@ BUILDER_TAG := $(BUILDER_IMAGE):$(BUILDER_VERSION)
 RUNTIME_TAG := $(RUNTIME_IMAGE):$(RUNTIME_VERSION)
 
 # Directories
-SRC_DIR := src
+RUNTIME_DIR := policy-engine
+CMD_DIR := $(RUNTIME_DIR)/cmd/policy-engine
+INTERNAL_DIR := $(RUNTIME_DIR)/internal
 BUILD_DIR := build
 POLICIES_DIR := policies
 CONFIGS_DIR := configs
@@ -100,19 +102,19 @@ stop-runtime:
 ## build: Build the binary locally (for development)
 build:
 	@echo "Building $(BINARY_NAME) locally..."
-	cd $(SRC_DIR) && CGO_ENABLED=0 $(GOBUILD) -o ../$(BINARY_NAME) -v
+	CGO_ENABLED=0 $(GOBUILD) -o ./$(BINARY_NAME) -v ./$(CMD_DIR)
 	@echo "✅ Binary built: ./$(BINARY_NAME)"
 
 ## test: Run tests
 test:
 	@echo "Running tests..."
-	cd $(SRC_DIR) && $(GOTEST) -v ./...
+	cd $(RUNTIME_DIR) && $(GOTEST) -v ./...
 	@echo "✅ Tests completed"
 
 ## clean: Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
-	cd $(SRC_DIR) && $(GOCLEAN)
+	cd $(RUNTIME_DIR) && $(GOCLEAN)
 	rm -f $(BINARY_NAME)
 	rm -rf $(OUTPUT_DIR)
 	@echo "✅ Clean completed"
@@ -139,14 +141,16 @@ full-build: build-builder run-builder build-runtime
 ## tidy: Run go mod tidy
 tidy:
 	@echo "Running go mod tidy..."
-	cd $(SRC_DIR) && $(GOMOD) tidy
-	@echo "✅ go mod tidy completed"
+	cd $(RUNTIME_DIR) && $(GOMOD) tidy
+	cd sdk && $(GOMOD) tidy
+	cd build && $(GOMOD) tidy
+	@echo "✅ go mod tidy completed for all modules"
 
 ## lint: Run Go linter (requires golangci-lint)
 lint:
 	@echo "Running linter..."
 	@if command -v golangci-lint >/dev/null 2>&1; then \
-		cd $(SRC_DIR) && golangci-lint run ./...; \
+		cd $(RUNTIME_DIR) && golangci-lint run ./...; \
 		echo "✅ Linting completed"; \
 	else \
 		echo "⚠️  golangci-lint not installed. Install with:"; \
@@ -174,7 +178,7 @@ rebuild: build-runtime restart
 ## dev-build: Quick development build (local binary only)
 dev-build:
 	@echo "Quick development build..."
-	cd $(SRC_DIR) && $(GOBUILD) -o ../$(BINARY_NAME)
+	$(GOBUILD) -o ./$(BINARY_NAME) ./$(CMD_DIR)
 	@echo "✅ Built: ./$(BINARY_NAME)"
 
 ## dev-run: Run the binary locally (without Docker)

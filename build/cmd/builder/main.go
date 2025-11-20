@@ -20,7 +20,7 @@ import (
 const (
 	DefaultPoliciesDir = "/policies"
 	DefaultOutputDir   = "/output"
-	DefaultSrcDir      = "/src"
+	DefaultRuntimeDir  = "/workspace/policy-engine"
 	BuilderVersion     = "v1.0.0"
 )
 
@@ -46,10 +46,10 @@ func main() {
 	// Get directories from environment or use defaults
 	policiesDir := getEnvOrDefault("POLICIES_DIR", DefaultPoliciesDir)
 	outputDir := getEnvOrDefault("OUTPUT_DIR", DefaultOutputDir)
-	srcDir := getEnvOrDefault("SRC_DIR", DefaultSrcDir)
+	runtimeDir := getEnvOrDefault("RUNTIME_DIR", DefaultRuntimeDir)
 
 	fmt.Printf("Output Directory: %s\n", outputDir)
-	fmt.Printf("Source Directory: %s\n", srcDir)
+	fmt.Printf("Runtime Directory: %s\n", runtimeDir)
 
 	// Ensure output directory exists
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
@@ -106,7 +106,7 @@ func main() {
 	fmt.Println("========================================")
 	fmt.Println("PHASE 3: CODE GENERATION")
 	fmt.Println("========================================")
-	if err := generation.GenerateCode(srcDir, policies); err != nil {
+	if err := generation.GenerateCode(runtimeDir, policies); err != nil {
 		errors.FatalError(err)
 	}
 	fmt.Println()
@@ -133,7 +133,7 @@ func main() {
 	binaryPath := filepath.Join(outputDir, "policy-engine")
 	compileOpts := compilation.BuildOptions(binaryPath, buildMetadata)
 
-	if err := compilation.CompileBinary(srcDir, compileOpts); err != nil {
+	if err := compilation.CompileBinary(runtimeDir, compileOpts); err != nil {
 		errors.FatalError(err)
 	}
 	fmt.Println()

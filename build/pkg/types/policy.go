@@ -15,14 +15,8 @@ type DiscoveredPolicy struct {
 
 // PolicyDefinition mirrors the structure from policy.yaml files
 type PolicyDefinition struct {
-	Name        string                 `yaml:"name"`
-	Version     string                 `yaml:"version"`
-	Description string                 `yaml:"description"`
-	Category    string                 `yaml:"category"` // TODO: (renuka) change this to Tags an make this an array of string. This is only for documentation purpose.
-	Parameters  map[string]interface{} `yaml:"parameters"`
-	Condition   *ConditionDef          `yaml:"executionCondition,omitempty"`
-	Body        *BodyRequirements      `yaml:"bodyRequirements,omitempty"`
-	Examples    []interface{}          `yaml:"examples,omitempty"`
+	Name    string `yaml:"name"`
+	Version string `yaml:"version"`
 }
 
 // ConditionDef represents execution conditions

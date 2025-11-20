@@ -1,21 +1,16 @@
-# T079: SetHeader policy definition
-name: setHeader
+name: SetHeader
 version: v1.0.0
 description: |
   Sets, appends, or deletes HTTP headers on requests and responses.
   This policy supports three actions: SET (replace), APPEND (add), and DELETE (remove).
 
-author: Policy Engine Team
-license: MIT
+# Policy execution phases
+supportsRequestPhase: true
+supportsResponsePhase: true
 
-# Header-only policy - does not require body access
+# Body access requirements - header-only policy
 requiresRequestBody: false
 requiresResponseBody: false
-
-# Policy can execute on both request and response phases
-executionPhases:
-  - request
-  - response
 
 parameters:
   - name: action

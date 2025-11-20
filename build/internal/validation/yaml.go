@@ -31,34 +31,6 @@ func ValidateYAMLSchema(policy *types.DiscoveredPolicy) []types.ValidationError 
 		})
 	}
 
-	if def.Description == "" {
-		errors = append(errors, types.ValidationError{
-			PolicyName:    policy.Name,
-			PolicyVersion: policy.Version,
-			FilePath:      policy.YAMLPath,
-			Message:       "policy description is required",
-		})
-	}
-
-	if def.Category == "" {
-		errors = append(errors, types.ValidationError{
-			PolicyName:    policy.Name,
-			PolicyVersion: policy.Version,
-			FilePath:      policy.YAMLPath,
-			Message:       "policy category is required",
-		})
-	}
-
-	// Validate parameters section exists (can be empty map)
-	if def.Parameters == nil {
-		errors = append(errors, types.ValidationError{
-			PolicyName:    policy.Name,
-			PolicyVersion: policy.Version,
-			FilePath:      policy.YAMLPath,
-			Message:       "parameters section is required (use empty map {} if no parameters)",
-		})
-	}
-
 	// Validate version format (basic semver check)
 	if !isValidVersion(def.Version) {
 		errors = append(errors, types.ValidationError{

@@ -13,13 +13,16 @@ const BuilderVersion = "v1.0.0"
 
 // GenerateCode orchestrates all code generation tasks
 func GenerateCode(srcDir string, policies []*types.DiscoveredPolicy) error {
+	// Generated files go in cmd/policy-engine (main package)
+	mainPkgDir := filepath.Join(srcDir, "cmd", "policy-engine")
+
 	// Generate plugin_registry.go
 	registryCode, err := GeneratePluginRegistry(policies, srcDir)
 	if err != nil {
 		return errors.NewGenerationError("failed to generate plugin registry", err)
 	}
 
-	registryPath := filepath.Join(srcDir, "plugin_registry.go")
+	registryPath := filepath.Join(mainPkgDir, "plugin_registry.go")
 	if err := os.WriteFile(registryPath, []byte(registryCode), 0644); err != nil {
 		return errors.NewGenerationError("failed to write plugin_registry.go", err)
 	}
@@ -32,7 +35,7 @@ func GenerateCode(srcDir string, policies []*types.DiscoveredPolicy) error {
 		return errors.NewGenerationError("failed to generate build info", err)
 	}
 
-	buildInfoPath := filepath.Join(srcDir, "build_info.go")
+	buildInfoPath := filepath.Join(mainPkgDir, "build_info.go")
 	if err := os.WriteFile(buildInfoPath, []byte(buildInfoCode), 0644); err != nil {
 		return errors.NewGenerationError("failed to write build_info.go", err)
 	}
