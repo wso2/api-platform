@@ -45,6 +45,7 @@ export type OpenApiValidationResponse =
   | OpenApiValidationErr;
 
 /** ----- Helpers ----- */
+
 const parseError = async (res: Response) => {
   let body = "";
   try {
