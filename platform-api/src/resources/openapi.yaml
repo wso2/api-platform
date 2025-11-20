@@ -296,6 +296,51 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /import/open-api:
+    post:
+      summary: Import and create API from OpenAPI definition
+      description: |
+        Imports an OpenAPI definition into the platform from a provided URL or file upload.
+        An API is created from the imported OpenAPI definition and is associated with a specified project within the
+        organization in the JWT token.
+      operationId: ImportOpenAPI
+      tags:
+        - APIs
+      requestBody:
+        description: OpenAPI import details
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ImportOpenAPIRequest'
+            encoding:
+              url:
+                contentType: text/plain
+                style: form
+              definition:
+                contentType: application/octet-stream, application/json, application/yaml, text/yaml
+                style: form
+              api:
+                contentType: application/json
+                style: form
+      responses:
+        '201':
+          description: OpenAPI imported successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/API'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /import/api-project:
     post:
       summary: Import API project
@@ -2567,6 +2612,50 @@ components:
       anyOf:
         - required: [url]
         - required: [definition]
+
+    ImportOpenAPIRequest:
+      type: object
+      required:
+        - api
+      description: |
+        Multipart form data request for importing OpenAPI definition. All fields are provided as form data.
+        Either 'url' or 'definition' must be provided to specify the OpenAPI source, and 'api' is required
+        to provide the API details for creation. If the OpenAPI definition is valid and successfully imported,
+        and the api details are valid an API will be created.
+      properties:
+        url:
+          type: string
+          format: uri
+          description: |
+            Form field containing URL to fetch the OpenAPI definition from.
+          example: "https://petstore3.swagger.io/api/v3/openapi.json"
+        definition:
+          type: string
+          format: binary
+          description: |
+            Form field for OpenAPI definition file upload (YAML or JSON).
+            This should be provided as a file upload in the multipart form.
+        api:
+          type: string
+          description: |
+            Form field containing JSON-encoded API details for the imported OpenAPI.
+            This must be a JSON string containing the API configuration.
+            Required fields within the JSON: name, context, version, projectId.
+          example: |
+            {
+              "name": "PetStore API",
+              "displayName": "PetStore API v3",
+              "description": "This is a sample Pet Store Server",
+              "context": "/petstore",
+              "version": "1.0.0",
+              "provider": "PetStore Inc",
+              "projectId": "550e8400-e29b-41d4-a716-446655440000",
+              "type": "HTTP",
+              "transport": ["http", "https"]
+            }
+      anyOf:
+        - required: [ url ]
+        - required: [ definition ]
 
     APIProjectValidationResponse:
       type: object
