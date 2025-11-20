@@ -61,6 +61,7 @@ func (e *DevPortalError) IsRetryable() bool {
 // Organization-related errors
 var (
 	ErrOrganizationAlreadyExists  = errors.New("organization already exists")
+	ErrOrganizationAlreadySynced  = errors.New("organization already synced")
 	ErrOrganizationNotFound       = errors.New("organization not found")
 	ErrOrganizationCreationFailed = errors.New("organization creation failed")
 	ErrOrganizationUpdateFailed   = errors.New("organization update failed")
@@ -92,7 +93,15 @@ var (
 	ErrDevPortalConnectionFailed     = errors.New("devportal connection failed")
 	ErrDevPortalTimeout              = errors.New("devportal request timeout")
 	ErrDevPortalAuthenticationFailed = errors.New("devportal authentication failed")
+	ErrDevPortalForbidden            = errors.New("devportal access forbidden")
+	ErrDevPortalEndpointInvalid      = errors.New("devportal endpoint invalid")
+	ErrDevPortalBackendUnreachable   = errors.New("devportal backend unreachable")
+	ErrDevPortalProxyAuthRequired    = errors.New("devportal proxy authentication required")
+	ErrDevPortalTooManyRequests      = errors.New("devportal too many requests")
 	ErrDevPortalInvalidRequest       = errors.New("devportal invalid request")
+	ErrDevPortalUnprocessableEntity  = errors.New("devportal unprocessable entity")
+	ErrDevPortalPayloadTooLarge      = errors.New("devportal payload too large")
+	ErrDevPortalUnsupportedMediaType = errors.New("devportal unsupported media type")
 	ErrDevPortalServerError          = errors.New("devportal server error")
 	ErrDevPortalServiceUnavailable   = errors.New("devportal service unavailable")
 )

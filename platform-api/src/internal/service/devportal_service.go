@@ -32,8 +32,12 @@ import (
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 )
+
+// Shared validator instance to reduce memory usage
+var sharedValidator = validator.New()
 
 // Constants for DevPortal operations
 const (
@@ -53,11 +57,11 @@ type DevPortalService struct {
 	devPortalRepo      repository.DevPortalRepository
 	orgRepo            repository.OrganizationRepository
 	publicationRepo    repository.APIPublicationRepository
-	gatewayRepo        repository.GatewayRepository
 	apiRepo            repository.APIRepository
 	apiUtil            *utils.APIUtil
 	config             *config.Server          // Global configuration for role mapping
 	devPortalClientSvc *DevPortalClientService // Handles all DevPortal client interactions
+	validator          *validator.Validate
 }
 
 // NewDevPortalService creates a new DevPortalService with optimized data fetching
@@ -65,7 +69,6 @@ func NewDevPortalService(
 	devPortalRepo repository.DevPortalRepository,
 	orgRepo repository.OrganizationRepository,
 	publicationRepo repository.APIPublicationRepository,
-	gatewayRepo repository.GatewayRepository,
 	apiRepo repository.APIRepository,
 	apiUtil *utils.APIUtil,
 	config *config.Server,
@@ -74,11 +77,11 @@ func NewDevPortalService(
 		devPortalRepo:      devPortalRepo,
 		orgRepo:            orgRepo,
 		publicationRepo:    publicationRepo,
-		gatewayRepo:        gatewayRepo,
 		apiRepo:            apiRepo,
 		apiUtil:            apiUtil,
 		config:             config,
 		devPortalClientSvc: NewDevPortalClientService(config),
+		validator:          sharedValidator,
 	}
 }
 
@@ -86,10 +89,7 @@ func NewDevPortalService(
 func (s *DevPortalService) getDevPortalByUUID(uuid, orgUUID string) (*model.DevPortal, error) {
 	devPortal, err := s.devPortalRepo.GetByUUID(uuid, orgUUID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get devPortal %s: %w", uuid, err)
-	}
-	if devPortal == nil {
-		return nil, constants.ErrDevPortalNotFound
+		return nil, err
 	}
 	return devPortal, nil
 }
@@ -141,20 +141,26 @@ func (s *DevPortalService) CreateDevPortal(orgUUID string, req *dto.CreateDevPor
 	// Get organization details to derive identifier (cache for reuse)
 	org, err := s.orgRepo.GetOrganizationByUUID(orgUUID)
 	if err != nil {
+		log.Printf("[DevPortalService] Failed to get organization %s for DevPortal creation: %v", orgUUID, err)
 		return nil, fmt.Errorf("failed to get organization %s: %w", orgUUID, err)
 	}
 	if org == nil {
-		return nil, fmt.Errorf("organization %s not found", orgUUID)
+		log.Printf("[DevPortalService] Organization %s not found for DevPortal creation", orgUUID)
+		return nil, constants.ErrOrganizationNotFound
 	}
 
 	// Convert request to model
 	devPortal := req.ToModel(orgUUID)
 
+	log.Printf("[DevPortalService] Attempting to create DevPortal %s for organization %s", devPortal.Name, orgUUID)
+
 	// Use common method to create with sync (don't allow sync failure for user-created DevPortals)
 	if err := s.createDevPortalWithSync(devPortal, org, false); err != nil {
+		log.Printf("[DevPortalService] Failed to create DevPortal %s for organization %s: %v", devPortal.Name, orgUUID, err)
 		return nil, err
 	}
 
+	log.Printf("[DevPortalService] Successfully created DevPortal %s for organization %s", devPortal.Name, orgUUID)
 	return dto.ToDevPortalResponse(devPortal), nil
 }
 
@@ -163,10 +169,12 @@ func (s *DevPortalService) EnableDevPortal(uuid, orgUUID string) (*dto.ActivateD
 	// Get DevPortal (cache for reuse)
 	devPortal, err := s.getDevPortalByUUID(uuid, orgUUID)
 	if err != nil {
+		log.Printf("[DevPortalService] Failed to get DevPortal %s for organization %s during enable: %v", uuid, orgUUID, err)
 		return nil, err
 	}
 
 	if devPortal.IsEnabled {
+		log.Printf("[DevPortalService] DevPortal %s for organization %s is already enabled", uuid, orgUUID)
 		return &dto.ActivateDevPortalResponse{
 			Message:       "DevPortal is already enabled",
 			DevPortalUUID: uuid,
@@ -175,17 +183,22 @@ func (s *DevPortalService) EnableDevPortal(uuid, orgUUID string) (*dto.ActivateD
 		}, nil
 	}
 
+	log.Printf("[DevPortalService] Attempting to enable DevPortal %s for organization %s", uuid, orgUUID)
+
 	// Get organization (cache for reuse)
 	org, err := s.orgRepo.GetOrganizationByUUID(orgUUID)
 	if err != nil {
+		log.Printf("[DevPortalService] Failed to get organization %s for DevPortal %s enable: %v", orgUUID, uuid, err)
 		return nil, fmt.Errorf("failed to get organization %s: %w", orgUUID, err)
 	}
 	if org == nil {
-		return nil, fmt.Errorf("organization %s not found", orgUUID)
+		log.Printf("[DevPortalService] Organization %s not found for DevPortal %s enable", orgUUID, uuid)
+		return nil, constants.ErrOrganizationNotFound
 	}
 
 	// If DevPortal is not activated (synced), activate it first
 	if !devPortal.IsActive {
+		log.Printf("[DevPortalService] DevPortal %s not active, attempting to sync and initialize", uuid)
 		if err := s.syncAndInitializeDevPortalInternal(devPortal, org); err != nil {
 			if errors.Is(err, constants.ErrDevPortalAlreadyExist) {
 				// Organization already exists remotely - this is OK!
@@ -195,6 +208,7 @@ func (s *DevPortalService) EnableDevPortal(uuid, orgUUID string) (*dto.ActivateD
 				devPortal.IsActive = true
 				devPortal.IsEnabled = true
 			} else {
+				log.Printf("[DevPortalService] Failed to sync and initialize DevPortal %s for organization %s: %v", uuid, orgUUID, err)
 				return nil, fmt.Errorf("failed to sync and initialize DevPortal during enable: %w", err)
 			}
 		}
@@ -207,9 +221,11 @@ func (s *DevPortalService) EnableDevPortal(uuid, orgUUID string) (*dto.ActivateD
 	devPortal.UpdatedAt = time.Now()
 
 	if err := s.devPortalRepo.Update(devPortal, orgUUID); err != nil {
+		log.Printf("[DevPortalService] Failed to update DevPortal %s in repository during enable: %v", uuid, err)
 		return nil, fmt.Errorf("failed to enable DevPortal: %w", err)
 	}
 
+	log.Printf("[DevPortalService] Successfully enabled DevPortal %s for organization %s", uuid, orgUUID)
 	return &dto.ActivateDevPortalResponse{
 		Message:       "DevPortal enabled successfully",
 		DevPortalUUID: uuid,
@@ -339,8 +355,11 @@ func (s *DevPortalService) UpdateDevPortal(uuid, orgUUID string, req *dto.Update
 	// Get existing DevPortal
 	devPortal, err := s.getDevPortalByUUID(uuid, orgUUID)
 	if err != nil {
+		log.Printf("[DevPortalService] Failed to get DevPortal %s for organization %s during update: %v", uuid, orgUUID, err)
 		return nil, err
 	}
+
+	log.Printf("[DevPortalService] Attempting to update DevPortal %s for organization %s", uuid, orgUUID)
 
 	// Update fields from request
 	if req.Name != nil {
@@ -368,27 +387,35 @@ func (s *DevPortalService) UpdateDevPortal(uuid, orgUUID string, req *dto.Update
 
 	// Update in repository
 	if err := s.devPortalRepo.Update(devPortal, orgUUID); err != nil {
+		log.Printf("[DevPortalService] Failed to update DevPortal %s in repository: %v", uuid, err)
 		return nil, err
 	}
 
+	log.Printf("[DevPortalService] Successfully updated DevPortal %s for organization %s", uuid, orgUUID)
 	return dto.ToDevPortalResponse(devPortal), nil
 }
 
 // DeleteDevPortal deletes a DevPortal
 func (s *DevPortalService) DeleteDevPortal(uuid, orgUUID string) error {
+	log.Printf("[DevPortalService] Attempting to delete DevPortal %s for organization %s", uuid, orgUUID)
 	err := s.devPortalRepo.Delete(uuid, orgUUID)
 	if err != nil {
+		log.Printf("[DevPortalService] Failed to delete DevPortal %s for organization %s: %v", uuid, orgUUID, err)
 		return err
 	}
+	log.Printf("[DevPortalService] Successfully deleted DevPortal %s for organization %s", uuid, orgUUID)
 	return nil
 }
 
 // DisableDevPortal disables a DevPortal for use
 func (s *DevPortalService) DisableDevPortal(uuid, orgUUID string) (*dto.DeactivateDevPortalResponse, error) {
+	log.Printf("[DevPortalService] Attempting to disable DevPortal %s for organization %s", uuid, orgUUID)
 	// Attempt to disable DevPortal in a single repository call (no prior fetch)
 	if err := s.devPortalRepo.UpdateEnabledStatus(uuid, orgUUID, false); err != nil {
+		log.Printf("[DevPortalService] Failed to disable DevPortal %s for organization %s: %v", uuid, orgUUID, err)
 		return nil, fmt.Errorf("failed to disable DevPortal: %w", err)
 	}
+	log.Printf("[DevPortalService] Successfully disabled DevPortal %s for organization %s", uuid, orgUUID)
 	return &dto.DeactivateDevPortalResponse{
 		Message:       "DevPortal disabled successfully",
 		DevPortalUUID: uuid,
@@ -399,14 +426,21 @@ func (s *DevPortalService) DisableDevPortal(uuid, orgUUID string) (*dto.Deactiva
 
 // SetAsDefault sets a DevPortal as the default for its organization
 func (s *DevPortalService) SetAsDefault(uuid, orgUUID string) error {
+	log.Printf("[DevPortalService] Attempting to set DevPortal %s as default for organization %s", uuid, orgUUID)
 	// Get DevPortal to ensure it exists
 	_, err := s.getDevPortalByUUID(uuid, orgUUID)
 	if err != nil {
+		log.Printf("[DevPortalService] Failed to get DevPortal %s for organization %s during set as default: %v", uuid, orgUUID, err)
 		return err
 	}
 
 	// Set as default in repository
-	return s.devPortalRepo.SetAsDefault(uuid, orgUUID)
+	if err := s.devPortalRepo.SetAsDefault(uuid, orgUUID); err != nil {
+		log.Printf("[DevPortalService] Failed to set DevPortal %s as default for organization %s: %v", uuid, orgUUID, err)
+		return err
+	}
+	log.Printf("[DevPortalService] Successfully set DevPortal %s as default for organization %s", uuid, orgUUID)
+	return nil
 }
 
 // GetDefaultDevPortal retrieves the default DevPortal for an organization
@@ -433,7 +467,10 @@ func (s *DevPortalService) PublishAPIToDevPortal(api *dto.API, req *dto.PublishT
 	}
 
 	// --- Phase 3: Build API Metadata ---
-	apiMetadata := s.prepareAPIMetadata(api, req, org)
+	apiMetadata, err := s.prepareAPIMetadata(api, req, org)
+	if err != nil {
+		return nil, err
+	}
 
 	fmt.Printf("[DevPortalService] Publishing API %s to DevPortal %s (isRetry=%v)\n", api.ID, devPortal.Name, isRetry)
 
@@ -477,7 +514,6 @@ func (s *DevPortalService) preparePublication(api *dto.API, req *dto.PublishToDe
 	if err != nil && !errors.Is(err, constants.ErrAPIPublicationNotFound) {
 		return nil, false, fmt.Errorf("failed to check existing publication: %w", err)
 	}
-
 
 	var pub *model.APIPublication
 	isRetry := false
@@ -564,7 +600,7 @@ func (s *DevPortalService) preparePublication(api *dto.API, req *dto.PublishToDe
 }
 
 // prepareAPIMetadata builds API metadata request with defaults and user overrides
-func (s *DevPortalService) prepareAPIMetadata(api *dto.API, req *dto.PublishToDevPortalRequest, org *model.Organization) devportal_client.APIMetadataRequest {
+func (s *DevPortalService) prepareAPIMetadata(api *dto.API, req *dto.PublishToDevPortalRequest, org *model.Organization) (devportal_client.APIMetadataRequest, error) {
 	// Default values - system fields from API
 	apiInfo := devportal_client.APIInfo{
 		APIID:          api.ID,
@@ -578,6 +614,14 @@ func (s *DevPortalService) prepareAPIMetadata(api *dto.API, req *dto.PublishToDe
 		APIStatus:      "PUBLISHED",
 		Visibility:     devportal_client.APIVisibility("PUBLIC"),
 		Labels:         []string{"default"},
+	}
+
+	// Handle empty Provider and Description
+	if apiInfo.Provider == "" {
+		apiInfo.Provider = "N/A"
+	}
+	if apiInfo.APIDescription == "" {
+		apiInfo.APIDescription = "N/A"
 	}
 
 	// Apply user overrides
@@ -606,7 +650,12 @@ func (s *DevPortalService) prepareAPIMetadata(api *dto.API, req *dto.PublishToDe
 		apiInfo.Owners = devportal_client.Owners(v.Owners)
 	}
 
-	return devportal_client.APIMetadataRequest{
+	// Validate the APIInfo
+	if err := s.validator.Struct(apiInfo); err != nil {
+		return devportal_client.APIMetadataRequest{}, err
+	}
+
+	apiMetadata := devportal_client.APIMetadataRequest{
 		APIInfo: apiInfo,
 		EndPoints: devportal_client.EndPoints{
 			ProductionURL: req.EndPoints.ProductionURL,
@@ -614,6 +663,13 @@ func (s *DevPortalService) prepareAPIMetadata(api *dto.API, req *dto.PublishToDe
 		},
 		SubscriptionPolicies: req.SubscriptionPolicies,
 	}
+
+	// Validate the entire API metadata request
+	if err := s.validator.Struct(apiMetadata); err != nil {
+		return devportal_client.APIMetadataRequest{}, err
+	}
+
+	return apiMetadata, nil
 }
 
 // publishToDevPortal handles the actual DevPortal API call and publication record updates
@@ -716,8 +772,9 @@ func (s *DevPortalService) UnpublishAPIFromDevPortal(devPortalUUID, orgID, apiID
 	// Unpublish API using client service
 	err = s.devPortalClientSvc.UnpublishAPIFromDevPortal(client, orgID, apiID)
 	if err != nil {
-		// If API not found in DevPortal, treat as success (idempotent unpublish)
-		if !errors.Is(err, devportal_client.ErrAPINotFound) {
+		// If API not found in DevPortal (404), treat as success (idempotent unpublish)
+		var devPortalErr *devportal_client.DevPortalError
+		if !(errors.As(err, &devPortalErr) && devPortalErr.Code == 404) {
 			return nil, fmt.Errorf("failed to unpublish API from DevPortal: %w", err)
 		}
 		// API already gone from DevPortal - proceed to delete local record

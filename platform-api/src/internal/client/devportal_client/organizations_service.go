@@ -18,7 +18,13 @@
 package devportal_client
 
 import (
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
 	dto "platform-api/src/internal/client/devportal_client/dto"
+
+	"github.com/go-playground/validator/v10"
 )
 
 // OrganizationsService defines organization-related operations supported by the DevPortal DevPortalClient.
@@ -33,21 +39,45 @@ type OrganizationsService interface {
 // organizationsService is the concrete implementation of OrganizationsService.
 type organizationsService struct {
 	DevPortalClient *DevPortalClient
+	validator       *validator.Validate
 }
 
 // Create posts a new organization to the DevPortal.
 // Assumes endpoint POST {baseURL}/devportal/organizations
 func (s *organizationsService) Create(req dto.OrganizationCreateRequest) (*dto.OrganizationResponse, error) {
+	if err := s.validator.Struct(req); err != nil {
+		return nil, fmt.Errorf("organization creation validation failed for orgID=%s: %w", req.OrgID, err)
+	}
 	url := s.DevPortalClient.buildURL(devportalOrganizationsPath)
-	httpReq, err := s.DevPortalClient.newJSONRequest("POST", url, req)
+
+	httpReq, err := s.DevPortalClient.NewRequest(http.MethodPost, url).
+		WithJSONBody(req).
+		WithPreflightCheck().
+		Build()
 	if err != nil {
 		return nil, err
 	}
 	var out dto.OrganizationResponse
 	if err := s.DevPortalClient.doAndDecode(httpReq, []int{200, 201}, &out); err != nil {
-		if de, ok := err.(*DevPortalError); ok {
-			if de.Code == 409 {
-				return nil, ErrOrganizationAlreadyExists
+		if de, ok := err.(*DevPortalError); ok && de.Code == 409 {
+			// Organization might already exist - verify if it's the same one
+			existing, fetchErr := s.Get(req.OrgID)
+			if fetchErr != nil {
+				// Distinguish between different failure scenarios
+				if errors.Is(fetchErr, ErrOrganizationNotFound) {
+					log.Println("Organization conflict detected but GET returned not found for orgID=", req.OrgID)
+					// Race condition: org was deleted between 409 and GET
+					// This is unusual but possible - treat as create failure with context
+					return nil, ErrOrganizationCreationFailed
+				}
+				// Other errors (network, auth, etc.) - preserve context
+				return nil, ErrOrganizationCreationFailed
+			}
+			// Compare key fields
+			if existing.IsSameAs(req) {
+				return existing, nil // Matches - treat as success
+			} else {
+				return nil, ErrOrganizationAlreadyExists // Mismatch - true conflict
 			}
 		}
 		return nil, err
@@ -58,7 +88,8 @@ func (s *organizationsService) Create(req dto.OrganizationCreateRequest) (*dto.O
 // Get retrieves an organization by ID. Assumes GET {baseURL}/devportal/organizations/{orgID}
 func (s *organizationsService) Get(orgID string) (*dto.OrganizationResponse, error) {
 	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID)
-	httpReq, err := s.DevPortalClient.newJSONRequest("GET", url, nil)
+	httpReq, err := s.DevPortalClient.NewRequest(http.MethodGet, url).
+		Build()
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +107,7 @@ func (s *organizationsService) Get(orgID string) (*dto.OrganizationResponse, err
 // List returns all devportal/organizations. Assumes GET {baseURL}/devportal/organizations
 func (s *organizationsService) List() (dto.OrganizationListResponse, error) {
 	url := s.DevPortalClient.buildURL(devportalOrganizationsPath)
-	httpReq, err := s.DevPortalClient.newJSONRequest("GET", url, nil)
+	httpReq, err := s.DevPortalClient.NewRequest(http.MethodGet, url).Build()
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +121,9 @@ func (s *organizationsService) List() (dto.OrganizationListResponse, error) {
 // Update sends an update for an organization. Assumes PUT {baseURL}/devportal/organizations/{orgID}
 func (s *organizationsService) Update(orgID string, req dto.OrganizationUpdateRequest) (*dto.OrganizationResponse, error) {
 	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID)
-	httpReq, err := s.DevPortalClient.newJSONRequest("PUT", url, req)
+	httpReq, err := s.DevPortalClient.NewRequest(http.MethodPut, url).
+		WithJSONBody(req).
+		Build()
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +137,8 @@ func (s *organizationsService) Update(orgID string, req dto.OrganizationUpdateRe
 // Delete removes an organization. Assumes DELETE {baseURL}/devportal/organizations/{orgID}
 func (s *organizationsService) Delete(orgID string) error {
 	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID)
-	httpReq, err := s.DevPortalClient.newJSONRequest("DELETE", url, nil)
+	httpReq, err := s.DevPortalClient.NewRequest(http.MethodDelete, url).
+		Build()
 	if err != nil {
 		return err
 	}
@@ -113,5 +147,8 @@ func (s *organizationsService) Delete(orgID string) error {
 
 // Organizations returns a service for organization-related operations.
 func (c *DevPortalClient) Organizations() OrganizationsService {
-	return &organizationsService{DevPortalClient: c}
+	return &organizationsService{
+		DevPortalClient: c,
+		validator:       c.validator,
+	}
 }

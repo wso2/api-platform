@@ -29,9 +29,13 @@ import (
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/model"
 
+	"github.com/go-playground/validator/v10"
+
 	devportal_client "platform-api/src/internal/client/devportal_client"
 	devportal_dto "platform-api/src/internal/client/devportal_client/dto"
 )
+
+var validate = validator.New()
 
 // DevPortalClientService handles all interactions with external DevPortal clients
 type DevPortalClientService struct {
@@ -87,11 +91,31 @@ func (s *DevPortalClientService) SyncOrganizationToDevPortal(devPortal *model.De
 		SuperAdminRole:        s.config.DefaultDevPortal.SuperAdminRole,
 	}
 
+	// Validate the organization request
+	if err := validate.Struct(orgReq); err != nil {
+		return fmt.Errorf("invalid organization request: %w", err)
+	}
+
 	// Sync organization to DevPortal
 	_, err := client.Organizations().Create(orgReq)
 	if err != nil {
-		// Check if organization already exists
+		// Check for connectivity/validation errors (from checkEndpointConnectivity)
+		if errors.Is(err, devportal_client.ErrDevPortalEndpointInvalid) {
+			return constants.ErrDevPortalConnectivityFailed
+		}
+		if errors.Is(err, devportal_client.ErrDevPortalBackendUnreachable) {
+			return constants.ErrDevPortalBackendUnreachable
+		}
+		if errors.Is(err, devportal_client.ErrDevPortalAuthenticationFailed) {
+			return constants.ErrDevPortalAuthenticationFailed
+		}
+		if errors.Is(err, devportal_client.ErrDevPortalForbidden) {
+			return constants.ErrDevPortalForbidden
+		}
 		if errors.Is(err, devportal_client.ErrOrganizationAlreadyExists) {
+			return constants.ErrDevPortalOrganizationConflict
+		}
+		if errors.Is(err, devportal_client.ErrOrganizationAlreadySynced) {
 			return constants.ErrDevPortalAlreadyExist
 		}
 
@@ -128,6 +152,13 @@ func (s *DevPortalClientService) CreateDefaultSubscriptionPolicy(devPortal *mode
 	// Create subscription policies in DevPortal
 	_, err := client.SubscriptionPolicies().Create(devPortal.OrganizationUUID, policies)
 	if err != nil {
+		// Check for authentication errors first
+		if errors.Is(err, devportal_client.ErrDevPortalAuthenticationFailed) {
+			return constants.ErrDevPortalAuthenticationFailed
+		}
+		if errors.Is(err, devportal_client.ErrDevPortalForbidden) {
+			return constants.ErrDevPortalForbidden
+		}
 		// Check if this is a connectivity/timeout error
 		errStr := err.Error()
 		if strings.Contains(errStr, "context deadline exceeded") ||
@@ -159,6 +190,11 @@ func (s *DevPortalClientService) PublishAPIToDevPortal(
 	apiMetadata devportal_dto.APIMetadataRequest,
 	apiDefinition []byte,
 ) (*devportal_dto.APIResponse, error) {
+	// Validate the API metadata
+	if err := validate.Struct(apiMetadata); err != nil {
+		return nil, err
+	}
+
 	return client.APIs().Publish(orgID, apiMetadata, bytes.NewReader(apiDefinition), "api.yaml", nil, "")
 }
 
@@ -170,7 +206,6 @@ func (s *DevPortalClientService) CheckAPIExists(
 ) (bool, error) {
 	_, err := client.APIs().Get(orgID, apiID)
 	if err != nil {
-		// Check if it's a "not found" error
 		if errors.Is(err, devportal_client.ErrAPINotFound) {
 			return false, nil
 		}
