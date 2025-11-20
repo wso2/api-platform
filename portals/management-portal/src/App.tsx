@@ -11,8 +11,10 @@ import { projectSlugFromName } from "./utils/projectSlug";
 import ScenarioLanding from "./components/ScenarioLanding";
 import AppRoutes from "./routes";
 import ExposeServiceWizard from "./pages/userScenarios/ExposeServiceWizard";
+import PublishPortalWizard from "./pages/userScenarios/PublishPortalWizard";
 
 type ExperienceStage = "landing" | "wizard" | "platform";
+type WizardType = "expose-service" | "publish-portal" | null;
 const EXPERIENCE_STAGE_KEY = "apim-platform-experience-stage";
 
 const App: React.FC = () => {
@@ -26,6 +28,8 @@ const App: React.FC = () => {
       return stored === "platform" ? "platform" : "landing";
     }
   );
+
+  const [activeWizardType, setActiveWizardType] = React.useState<WizardType>(null);
 
   const { organization } = useOrganization();
   const { selectedProject } = useProjects();
@@ -58,9 +62,13 @@ const App: React.FC = () => {
 
   const handleScenarioContinue = React.useCallback(
     (scenarioId: string) => {
-      setExperienceStage(
-        scenarioId === "expose-service" ? "wizard" : "platform"
-      );
+      if (scenarioId === "expose-service" || scenarioId === "publish-portal") {
+        setExperienceStage("wizard");
+        setActiveWizardType(scenarioId);
+      } else {
+        setExperienceStage("platform");
+        setActiveWizardType(null);
+      }
       if (defaultOrgPath !== "/") {
         navigate(defaultOrgPath, { replace: true });
       }
@@ -70,6 +78,7 @@ const App: React.FC = () => {
 
   const handleWizardFinish = React.useCallback(() => {
     setExperienceStage("platform");
+    setActiveWizardType(null);
     if (defaultOrgPath !== "/") {
       navigate(defaultOrgPath, { replace: true });
     }
@@ -77,6 +86,7 @@ const App: React.FC = () => {
 
   const handleBackToChoices = React.useCallback(() => {
     setExperienceStage("landing");
+    setActiveWizardType(null);
     navigate("/userSenario", { replace: true });
   }, [navigate]);
 
@@ -85,13 +95,23 @@ const App: React.FC = () => {
 
   let layoutContent: React.ReactNode = null;
   if (experienceStage === "wizard") {
-    layoutContent = (
-      <ExposeServiceWizard
-        onBackToChoices={handleBackToChoices}
-        onSkip={handleScenarioSkip}
-        onFinish={handleWizardFinish}
-      />
-    );
+    if (activeWizardType === "publish-portal") {
+      layoutContent = (
+        <PublishPortalWizard
+          onBackToChoices={handleBackToChoices}
+          onSkip={handleScenarioSkip}
+          onFinish={handleWizardFinish}
+        />
+      );
+    } else {
+      layoutContent = (
+        <ExposeServiceWizard
+          onBackToChoices={handleBackToChoices}
+          onSkip={handleScenarioSkip}
+          onFinish={handleWizardFinish}
+        />
+      );
+    }
   } else {
     layoutContent = <AppRoutes />;
   }
