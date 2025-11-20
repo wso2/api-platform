@@ -32,10 +32,10 @@ import type { Portal } from "../../hooks/devportals";
 type Step = { title: string; subtitle: string };
 const STEPS: Step[] = [
   {
-    title: "Import API Definition",
-    subtitle: "Validate your OpenAPI spec & select portal",
+    title: "Create API",
+    subtitle: "Validate OpenAPI spec & create API",
   },
-  { title: "Configure API Details", subtitle: "Set API metadata and publish" },
+  { title: "Select Portal", subtitle: "Choose developer portal to publish" },
 ];
 
 function slugify(val: string) {
@@ -93,7 +93,6 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   const [selectedPortalId, setSelectedPortalId] = React.useState<string | null>(
     null,
   );
-  const [showPortalSelection, setShowPortalSelection] = React.useState(false);
 
   const { contractMeta, setContractMeta, resetContractMeta } =
     useCreateComponentBuildpackContext();
@@ -132,7 +131,6 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
 
       if (result.isAPIDefinitionValid) {
         autoFill(result.api);
-        setShowPortalSelection(false);
       } else {
         const errorMsg =
           result.errors?.join(", ") || "Invalid OpenAPI definition";
@@ -152,27 +150,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
     return mapOperations(api?.operations || [], { withFallbackName: true });
   }, [validationResult]);
 
-  const handleContinueToPortalSelection = () => {
-    if (validationResult?.isAPIDefinitionValid) {
-      setShowPortalSelection(true);
-      setError(null);
-    }
-  };
-
-  const handlePortalSelect = (portalId: string) => {
-    setSelectedPortalId(portalId);
-    const selectedPortal = portals.find((p: Portal) => p.uuid === portalId);
-    console.log("Selected Portal:", {
-      id: portalId,
-      name: selectedPortal?.name,
-      url: selectedPortal?.uiUrl,
-    });
-    console.log("API URL:", specUrl);
-    setActiveStep(1);
-    setError(null);
-  };
-
-  const handleCreateAndPublish = async () => {
+  const handleCreateApi = async () => {
     const name = (contractMeta?.name || "").trim();
     const context = (contractMeta?.context || "").trim();
     const version = (contractMeta?.version || "").trim();
@@ -181,10 +159,6 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
 
     if (!name || !context || !version) {
       setError("Please complete all required fields.");
-      return;
-    }
-    if (!selectedPortalId) {
-      setError("Please select a developer portal.");
       return;
     }
     if (target) {
@@ -208,13 +182,13 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
       const serviceName = defaultServiceName(name);
       const backendServices = target
         ? [
-          {
-            name: serviceName,
-            isDefault: true,
-            retries: 2,
-            endpoints: [{ url: target, description: "Primary backend" }],
-          },
-        ]
+            {
+              name: serviceName,
+              isDefault: true,
+              retries: 2,
+              endpoints: [{ url: target, description: "Primary backend" }],
+            },
+          ]
         : [];
 
       const validatedApi = validationResult.api as any;
@@ -223,8 +197,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
         target ? { serviceName } : undefined,
       );
 
-      // TODO: Implement actual createApi and publishToPortal logic
-      // This is a placeholder for the API creation and portal publishing
+      // TODO: Implement actual createApi logic
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
       console.log("Creating API with:", {
@@ -235,7 +208,31 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
         contract: specUrl,
         backendServices,
         operations,
+      });
+      setActiveStep(1);
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message || "Failed to create API");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handlePublishToPortal = async () => {
+    if (!selectedPortalId) {
+      setError("Please select a developer portal.");
+      return;
+    }
+
+    try {
+      setCreating(true);
+      setError(null);
+      const selectedPortal = portals.find((p: Portal) => p.uuid === selectedPortalId);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      console.log("Publishing to Portal:", {
         portalId: selectedPortalId,
+        portalName: selectedPortal?.name,
+        apiName: contractMeta?.name,
       });
 
       resetContractMeta();
@@ -245,7 +242,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
       setSelectedPortalId(null);
       onFinish?.();
     } catch (e: any) {
-      setError(e?.message || "Failed to create and publish API");
+      setError(e?.message || "Failed to publish to portal");
     } finally {
       setCreating(false);
     }
@@ -284,186 +281,165 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
           }}
         >
           {activeStep === 0 && (
-            <>
-              {!showPortalSelection ? (
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, md: 6 }}>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Public Specification URL
+                  </Typography>
+                  <TextInput
+                    label=""
+                    placeholder="https://example.com/openapi.yaml"
+                    value={specUrl}
+                    onChange={(v: string) => setSpecUrl(v)}
+                    testId=""
+                    size="medium"
+                  />
+
+                  <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                    <Button
+                      variant="text"
+                      onClick={() =>
+                        setSpecUrl(
+                          "https://petstore.swagger.io/v2/swagger.json",
+                        )
+                      }
+                      disabled={validating}
+                    >
+                      Try with Sample URL
+                    </Button>
+                    <Box flex={1} />
+                    <Button
+                      variant="outlined"
+                      onClick={handleFetchAndValidate}
+                      disabled={!specUrl.trim() || validating}
+                    >
+                      {validating ? "Validating..." : "Fetch & Validate"}
+                    </Button>
+                  </Stack>
+
+                  {error && (
+                    <Alert severity="error" sx={{ mt: 2 }}>
+                      {error}
+                    </Alert>
+                  )}
+                </Paper>
+
+                {validationResult?.isAPIDefinitionValid ? (
+                  <ApiOperationsList
+                    title="Fetched OAS Definition"
+                    operations={previewOps}
+                  />
+                ) : validating ? (
+                  <Paper
+                    variant="outlined"
+                    sx={{ p: 3, borderRadius: 2, color: "text.secondary", mt: 2 }}
+                  >
+                    <Typography variant="body2">
+                      Validating OpenAPI definition...
+                    </Typography>
+                  </Paper>
+                ) : (
+                  <Paper
+                    variant="outlined"
+                    sx={{ p: 3, borderRadius: 2, color: "text.secondary", mt: 2 }}
+                  >
+                    <Typography variant="body2">
+                      Enter a direct URL to an OpenAPI/Swagger document
+                      (YAML or JSON). We'll fetch and preview it here.
+                    </Typography>
+                  </Paper>
+                )}
+              </Grid>
+
+              <Grid size={{ xs: 12, md: 6 }}>
+                {validationResult?.isAPIDefinitionValid && (
+                  <>
                     <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-                      <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                        Public Specification URL
-                      </Typography>
-                      <TextInput
-                        label=""
-                        placeholder="https://example.com/openapi.yaml"
-                        value={specUrl}
-                        onChange={(v: string) => setSpecUrl(v)}
-                        testId=""
-                        size="medium"
-                      />
-
-                      <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                        <Button
-                          variant="text"
-                          onClick={() =>
-                            setSpecUrl(
-                              "https://petstore.swagger.io/v2/swagger.json",
-                            )
-                          }
-                          disabled={validating}
-                        >
-                          Try with Sample URL
-                        </Button>
-                        <Box flex={1} />
-                        <Button
-                          variant="outlined"
-                          onClick={handleFetchAndValidate}
-                          disabled={!specUrl.trim() || validating}
-                        >
-                          {validating ? "Validating..." : "Fetch & Validate"}
-                        </Button>
-                      </Stack>
-
-                      {error && (
-                        <Alert severity="error" sx={{ mt: 2 }}>
-                          {error}
-                        </Alert>
-                      )}
+                      <CreationMetaData scope="contract" title="Configure API" />
                     </Paper>
 
-                    {validationResult?.isAPIDefinitionValid && (
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        sx={{ mt: 2 }}
-                        justifyContent="flex-end"
-                      >
-                        <Button
-                          variant="contained"
-                          onClick={handleContinueToPortalSelection}
-                        >
-                          Continue
-                        </Button>
-                      </Stack>
-                    )}
-                  </Grid>
-
-                  <Grid size={{ xs: 12, md: 6 }}>
-                    {validating ? (
-                      <Paper
-                        variant="outlined"
-                        sx={{ p: 3, borderRadius: 2, color: "text.secondary" }}
-                      >
-                        <Typography variant="body2">
-                          Validating OpenAPI definition...
-                        </Typography>
-                      </Paper>
-                    ) : validationResult?.isAPIDefinitionValid ? (
-                      <ApiOperationsList
-                        title="Fetched OAS Definition"
-                        operations={previewOps}
-                      />
-                    ) : (
-                      <Paper
-                        variant="outlined"
-                        sx={{ p: 3, borderRadius: 2, color: "text.secondary" }}
-                      >
-                        <Typography variant="body2">
-                          Enter a direct URL to an OpenAPI/Swagger document
-                          (YAML or JSON). We'll fetch and preview it here.
-                        </Typography>
-                      </Paper>
-                    )}
-                  </Grid>
-                </Grid>
-              ) : (
-                <Box>
-                  <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
-                    Select Developer Portal
-                  </Typography>
-
-                  {portalsLoading ? (
-                    <Box
-                      sx={{ display: "flex", justifyContent: "center", p: 4 }}
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      sx={{ mt: 2 }}
+                      justifyContent="flex-end"
                     >
-                      <CircularProgress />
-                    </Box>
-                  ) : (
-                    <Grid container spacing={2}>
-                      {portals.map((portal: Portal) => (
-                        <Grid key={portal.uuid} size={{ xs: 6, sm: 4, md: 3 }}>
-                          <WizardPortalCard
-                            title={portal.name}
-                            description={portal.description}
-                            portalUrl={portal.uiUrl}
-                            selected={selectedPortalId === portal.uuid}
-                            onSelect={() => {
-                              if (selectedPortalId === portal.uuid) {
-                                setSelectedPortalId(null);
-                              } else {
-                                setSelectedPortalId(portal.uuid);
-                                setTimeout(() => {
-                                  handlePortalSelect(portal.uuid);
-                                }, 300);
-                              }
-                            }}
-                            logoSrc={portal.logoSrc || BijiraDPLogo}
-                            logoAlt={
-                              portal.logoAlt ||
-                              PORTAL_CONSTANTS.DEFAULT_LOGO_ALT
-                            }
-                          />
-                        </Grid>
-                      ))}
-                    </Grid>
-                  )}
-                </Box>
-              )}
-            </>
+                      <Button
+                        variant="contained"
+                        disabled={
+                          creating ||
+                          !(contractMeta?.name || "").trim() ||
+                          !(contractMeta?.context || "").trim() ||
+                          !(contractMeta?.version || "").trim()
+                        }
+                        onClick={handleCreateApi}
+                      >
+                        {creating ? "Creating..." : "Create API"}
+                      </Button>
+                    </Stack>
+                  </>
+                )}
+              </Grid>
+            </Grid>
           )}
 
           {activeStep === 1 && (
             <Box>
               <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
-                API Details
+                Select Developer Portal
               </Typography>
 
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12 }}>
-                  <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-                    <CreationMetaData scope="contract" title="Configure API" />
-
-                    {error && (
-                      <Alert severity="error" sx={{ mt: 2 }}>
-                        {error}
-                      </Alert>
-                    )}
-                  </Paper>
-
-                  <Stack
-                    direction="row"
-                    spacing={1}
-                    sx={{ mt: 2 }}
-                    justifyContent="space-between"
-                  >
-                    <Button variant="outlined" onClick={() => setActiveStep(0)}>
-                      Back
-                    </Button>
-                    <Button
-                      variant="contained"
-                      disabled={
-                        creating ||
-                        !selectedPortalId ||
-                        !(contractMeta?.name || "").trim() ||
-                        !(contractMeta?.context || "").trim() ||
-                        !(contractMeta?.version || "").trim()
-                      }
-                      onClick={handleCreateAndPublish}
-                    >
-                      {creating ? "Publishing..." : "Create & Publish"}
-                    </Button>
-                  </Stack>
+              {portalsLoading ? (
+                <Box
+                  sx={{ display: "flex", justifyContent: "center", p: 4 }}
+                >
+                  <CircularProgress />
+                </Box>
+              ) : (
+                <Grid container spacing={2}>
+                  {portals.map((portal: Portal) => (
+                    <Grid key={portal.uuid} size={{ xs: 6, sm: 4, md: 3 }}>
+                      <WizardPortalCard
+                        title={portal.name}
+                        description={portal.description}
+                        portalUrl={portal.uiUrl}
+                        selected={selectedPortalId === portal.uuid}
+                        onSelect={() => {
+                          if (selectedPortalId === portal.uuid) {
+                            setSelectedPortalId(null);
+                          } else {
+                            setSelectedPortalId(portal.uuid);
+                          }
+                        }}
+                        logoSrc={portal.logoSrc || BijiraDPLogo}
+                        logoAlt={
+                          portal.logoAlt ||
+                          PORTAL_CONSTANTS.DEFAULT_LOGO_ALT
+                        }
+                      />
+                    </Grid>
+                  ))}
                 </Grid>
-              </Grid>
+              )}
+
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{ mt: 3 }}
+                justifyContent="space-between"
+              >
+                <Button variant="outlined" onClick={() => setActiveStep(0)}>
+                  Back
+                </Button>
+                <Button
+                  variant="contained"
+                  disabled={creating || !selectedPortalId}
+                  onClick={handlePublishToPortal}
+                >
+                  {creating ? "Publishing..." : "Publish to Portal"}
+                </Button>
+              </Stack>
             </Box>
           )}
         </Box>
