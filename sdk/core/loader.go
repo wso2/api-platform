@@ -102,11 +102,6 @@ func validatePolicyDefinition(def *policies.PolicyDefinition) error {
 		if param.Type == "" {
 			return fmt.Errorf("parameter type cannot be empty for parameter: %s", param.Name)
 		}
-
-		// Required parameters should not have defaults
-		if param.Required && param.Default != nil {
-			return fmt.Errorf("required parameter cannot have default value: %s", param.Name)
-		}
 	}
 
 	return nil

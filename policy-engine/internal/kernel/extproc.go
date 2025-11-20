@@ -66,25 +66,25 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 
 // processRequest routes processing to the appropriate handler based on request phase
 func (s *ExternalProcessorServer) processRequest(ctx context.Context, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
-	switch v := req.Request.(type) {
+	switch req.Request.(type) {
 	case *extprocv3.ProcessingRequest_RequestHeaders:
 		// T062: ProcessRequest phase handler (request headers)
-		return s.handleRequestHeaders(ctx, v.RequestHeaders)
+		return s.handleRequestHeaders(ctx, req)
 
 	case *extprocv3.ProcessingRequest_RequestBody:
 		// Handle request body if needed (for body-requiring policies)
-		return s.handleRequestBody(ctx, v.RequestBody)
+		return s.handleRequestBody(ctx, req)
 
 	case *extprocv3.ProcessingRequest_ResponseHeaders:
 		// T063: ProcessResponse phase handler (response headers)
-		return s.handleResponseHeaders(ctx, v.ResponseHeaders)
+		return s.handleResponseHeaders(ctx, req)
 
 	case *extprocv3.ProcessingRequest_ResponseBody:
 		// Handle response body if needed
-		return s.handleResponseBody(ctx, v.ResponseBody)
+		return s.handleResponseBody(ctx, req)
 
 	default:
-		slog.WarnContext(ctx, "Unknown request type", "type", fmt.Sprintf("%T", v))
+		slog.WarnContext(ctx, "Unknown request type", "type", fmt.Sprintf("%T", req.Request))
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 				ImmediateResponse: &extprocv3.ImmediateResponse{
@@ -97,9 +97,11 @@ func (s *ExternalProcessorServer) processRequest(ctx context.Context, req *extpr
 
 // handleRequestHeaders processes request headers phase
 // T062: ProcessRequest phase handler implementation
-func (s *ExternalProcessorServer) handleRequestHeaders(ctx context.Context, headers *extprocv3.HttpHeaders) (*extprocv3.ProcessingResponse, error) {
+func (s *ExternalProcessorServer) handleRequestHeaders(ctx context.Context, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
+	headers := req.GetRequestHeaders()
+
 	// T061: Extract metadata key from request
-	metadataKey := s.extractMetadataKey(headers)
+	metadataKey := s.extractMetadataKey(req)
 
 	// Get policy chain for this route
 	chain, err := s.kernel.GetPolicyChainForKey(metadataKey)
@@ -145,7 +147,7 @@ func (s *ExternalProcessorServer) handleRequestHeaders(ctx context.Context, head
 }
 
 // handleRequestBody processes request body phase
-func (s *ExternalProcessorServer) handleRequestBody(ctx context.Context, body *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+func (s *ExternalProcessorServer) handleRequestBody(ctx context.Context, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
 	// For now, allow body through unmodified
 	// Body modification policies would be implemented here
 	return &extprocv3.ProcessingResponse{
@@ -157,7 +159,9 @@ func (s *ExternalProcessorServer) handleRequestBody(ctx context.Context, body *e
 
 // handleResponseHeaders processes response headers phase
 // T063: ProcessResponse phase handler implementation
-func (s *ExternalProcessorServer) handleResponseHeaders(ctx context.Context, headers *extprocv3.HttpHeaders) (*extprocv3.ProcessingResponse, error) {
+func (s *ExternalProcessorServer) handleResponseHeaders(ctx context.Context, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
+	headers := req.GetResponseHeaders()
+
 	// Extract request ID to retrieve stored context
 	requestID := s.extractRequestID(headers)
 
@@ -200,7 +204,7 @@ func (s *ExternalProcessorServer) handleResponseHeaders(ctx context.Context, hea
 }
 
 // handleResponseBody processes response body phase
-func (s *ExternalProcessorServer) handleResponseBody(ctx context.Context, body *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
+func (s *ExternalProcessorServer) handleResponseBody(ctx context.Context, req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, error) {
 	// For now, allow body through unmodified
 	// Body modification policies would be implemented here
 	return &extprocv3.ProcessingResponse{
@@ -212,12 +216,17 @@ func (s *ExternalProcessorServer) handleResponseBody(ctx context.Context, body *
 
 // extractMetadataKey extracts the route identifier from Envoy metadata
 // T061: extractMetadataKey implementation
-func (s *ExternalProcessorServer) extractMetadataKey(headers *extprocv3.HttpHeaders) string {
-	// Look for x-route-key header (set by Envoy via header mutation)
-	if headers.Headers != nil {
-		for _, header := range headers.Headers.GetHeaders() {
-			if header.Key == "x-route-key" {
-				return string(header.RawValue)
+func (s *ExternalProcessorServer) extractMetadataKey(req *extprocv3.ProcessingRequest) string {
+	// Extract route name from Envoy attributes
+	// Path: req.Attributes["envoy.filters.http.ext_proc"].Fields["xds.route_name"]
+	if req.Attributes != nil {
+		if extProcAttrs, ok := req.Attributes["envoy.filters.http.ext_proc"]; ok {
+			if extProcAttrs.Fields != nil {
+				if routeNameValue, ok := extProcAttrs.Fields["xds.route_name"]; ok {
+					if stringValue := routeNameValue.GetStringValue(); stringValue != "" {
+						return stringValue
+					}
+				}
 			}
 		}
 	}

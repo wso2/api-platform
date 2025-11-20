@@ -137,6 +137,8 @@ static_resources:
                       route_cache_action: RETAIN
                       mutation_rules:
                         allow_all_routing: true
+                      request_attributes:
+                        - xds.route_name
                       processing_mode:
                         request_header_mode: SEND
                         response_header_mode: SEND

@@ -3,6 +3,8 @@ module github.com/envoy-policy-engine/policy-engine
 go 1.24.0
 
 require (
+	github.com/envoy-policy-engine/policies/apikeyvalidation v0.0.0-00010101000000-000000000000
+	github.com/envoy-policy-engine/policies/setheader v0.0.0-00010101000000-000000000000
 	github.com/envoy-policy-engine/sdk v1.0.0
 	github.com/envoyproxy/go-control-plane/envoy v1.36.0
 	github.com/google/cel-go v0.18.2
@@ -31,3 +33,7 @@ require (
 )
 
 replace github.com/envoy-policy-engine/sdk => ../sdk
+
+replace github.com/envoy-policy-engine/policies/apikeyvalidation => ../policies/api-key-validation/v1.0.0
+
+replace github.com/envoy-policy-engine/policies/setheader => ../policies/set-header/v1.0.0
