@@ -45,7 +45,6 @@ export interface PortalCardProps {
   onActivate?: () => void;
   activating?: boolean;
   testId?: string;
-  activateButtonText?: string;
 }
 
 export type PortalManagementProps = Record<string, never>;
