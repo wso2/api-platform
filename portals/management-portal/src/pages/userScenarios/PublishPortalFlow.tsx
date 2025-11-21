@@ -40,6 +40,7 @@ import { useProjects } from "../../context/ProjectContext";
 import { ApiPublishProvider, useApiPublishing } from "../../context/ApiPublishContext";
 import { DevPortalProvider } from "../../context/DevPortalContext";
 import { useNavigate } from "react-router-dom";
+import { useNotifications } from "../../context/NotificationContext";
 
 type Step = { title: string; subtitle: string };
 const STEPS: Step[] = [
@@ -105,6 +106,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   const { selectedProject } = useProjects();
   const { publishApiToDevPortal } = useApiPublishing();
   const navigate = useNavigate();
+  const { showNotification } = useNotifications();
   const typedApis = React.useMemo<ApiSummary[]>(() => apis, [apis]);
   
   const portals = React.useMemo(() => allPortals.filter(p => p.isActive), [allPortals]);
@@ -210,6 +212,8 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
 
       await refreshApis();
       
+      showNotification(`API "${name}" created successfully!`, 'success');
+      
       setActiveStep(1);
       setError(null);
     } catch (e: any) {
@@ -307,6 +311,10 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
       }
 
       await publishApiToDevPortal(apiId, publishPayload);
+
+      const selectedPortal = portals.find((p: Portal) => p.uuid === selectedPortalId);
+      const portalName = selectedPortal?.name || 'portal';
+      showNotification(`API "${apiToPublish.name}" successfully published to ${portalName}!`, 'success');
 
       resetContractMeta();
       setActiveStep(0);
