@@ -27,6 +27,9 @@ const (
 func main() {
 	// Parse command-line flags
 	manifestPath := flag.String("manifest", "", "Path to policy manifest file (policies.yaml)")
+	policiesDir := flag.String("policies-dir", DefaultPoliciesDir, "Directory containing policies (for legacy directory-based discovery)")
+	outputDir := flag.String("output-dir", DefaultOutputDir, "Directory for build output (binary and Dockerfile)")
+	runtimeDir := flag.String("runtime-dir", DefaultRuntimeDir, "Path to policy-engine runtime source directory")
 	debug := flag.Bool("debug", false, "Enable debug logging")
 	flag.Parse()
 
@@ -43,16 +46,11 @@ func main() {
 	// Print banner
 	printBanner()
 
-	// Get directories from environment or use defaults
-	policiesDir := getEnvOrDefault("POLICIES_DIR", DefaultPoliciesDir)
-	outputDir := getEnvOrDefault("OUTPUT_DIR", DefaultOutputDir)
-	runtimeDir := getEnvOrDefault("RUNTIME_DIR", DefaultRuntimeDir)
-
-	fmt.Printf("Output Directory: %s\n", outputDir)
-	fmt.Printf("Runtime Directory: %s\n", runtimeDir)
+	fmt.Printf("Output Directory: %s\n", *outputDir)
+	fmt.Printf("Runtime Directory: %s\n", *runtimeDir)
 
 	// Ensure output directory exists
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(*outputDir, 0755); err != nil {
 		errors.FatalError(errors.NewGenerationError("failed to create output directory", err))
 	}
 
@@ -74,9 +72,9 @@ func main() {
 		fmt.Printf("✓ Loaded manifest: %d policies declared\n", len(policies))
 	} else {
 		// Legacy directory-based discovery
-		fmt.Printf("Policies Directory: %s\n", policiesDir)
+		fmt.Printf("Policies Directory: %s\n", *policiesDir)
 		fmt.Println("⚠ Warning: Directory-based discovery is deprecated. Use --manifest flag instead.")
-		policies, err = discovery.DiscoverPolicies(policiesDir)
+		policies, err = discovery.DiscoverPolicies(*policiesDir)
 		if err != nil {
 			errors.FatalError(err)
 		}
@@ -106,7 +104,7 @@ func main() {
 	fmt.Println("========================================")
 	fmt.Println("PHASE 3: CODE GENERATION")
 	fmt.Println("========================================")
-	if err := generation.GenerateCode(runtimeDir, policies); err != nil {
+	if err := generation.GenerateCode(*runtimeDir, policies); err != nil {
 		errors.FatalError(err)
 	}
 	fmt.Println()
@@ -130,10 +128,10 @@ func main() {
 		})
 	}
 
-	binaryPath := filepath.Join(outputDir, "policy-engine")
+	binaryPath := filepath.Join(*outputDir, "policy-engine")
 	compileOpts := compilation.BuildOptions(binaryPath, buildMetadata)
 
-	if err := compilation.CompileBinary(runtimeDir, compileOpts); err != nil {
+	if err := compilation.CompileBinary(*runtimeDir, compileOpts); err != nil {
 		errors.FatalError(err)
 	}
 	fmt.Println()
@@ -142,13 +140,13 @@ func main() {
 	fmt.Println("========================================")
 	fmt.Println("PHASE 5: PACKAGING")
 	fmt.Println("========================================")
-	if err := packaging.GenerateDockerfile(outputDir, policies, BuilderVersion); err != nil {
+	if err := packaging.GenerateDockerfile(*outputDir, policies, BuilderVersion); err != nil {
 		errors.FatalError(err)
 	}
 	fmt.Println()
 
 	// Success summary
-	printSummary(policies, binaryPath, outputDir)
+	printSummary(policies, binaryPath, *outputDir)
 }
 
 // printBanner displays the builder banner
@@ -183,10 +181,3 @@ func printSummary(policies []*types.DiscoveredPolicy, binaryPath, outputDir stri
 	fmt.Println()
 }
 
-// getEnvOrDefault returns environment variable value or default
-func getEnvOrDefault(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
