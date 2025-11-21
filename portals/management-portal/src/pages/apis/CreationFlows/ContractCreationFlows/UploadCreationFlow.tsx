@@ -10,25 +10,14 @@ import {
 } from "../../../../context/CreateComponentBuildpackContext";
 import { useOpenApiValidation, type OpenApiValidationResponse } from "../../../../hooks/validation";
 import { ApiOperationsList } from "../../../../components/src/components/Common/ApiOperationsList";
+import type { ImportOpenApiRequest, ApiSummary } from "../../../../hooks/apis";
 
 /* ---------- Types ---------- */
 type Props = {
   open: boolean;
   selectedProjectId: string;
-  importOpenApi: (payload: {
-    api: {
-      name: string;
-      context: string;
-      version: string;
-      projectId: string;
-      target?: string;
-      description?: string;
-      backendServices?: any[];
-    };
-    url?: string;
-    definition?: string;
-  }, opts?: { signal?: AbortSignal }) => Promise<void>;
-  refreshApis: (projectId?: string) => Promise<any[]>;
+  importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<void>;
+  refreshApis: (projectId?: string) => Promise<ApiSummary[]>;
   onClose: () => void;
 };
 
@@ -63,7 +52,9 @@ function mapOperations(
   
   return operations.map((op: any) => ({
     name: options?.withFallbackName 
-      ? (op.name || op.request?.path || "Unknown")
+      ? (op.name || (op.request?.method && op.request?.path
+          ? `${op.request.method.toUpperCase()} ${op.request.path}`
+          : op.request?.path || "Unknown"))
       : op.name,
     description: op.description,
     request: {
@@ -77,7 +68,7 @@ function mapOperations(
 /* ---------- component ---------- */
 const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenApi, refreshApis, onClose }) => {
   const [step, setStep] = React.useState<Step>("upload");
-  const [rawSpec, setRawSpec] = React.useState<string>("");
+  const [uploadedFile, setUploadedFile] = React.useState<File | null>(null);
   const [validationResult, setValidationResult] = React.useState<OpenApiValidationResponse | null>(null);
   const [fileName, setFileName] = React.useState<string>("");
   const [error, setError] = React.useState<string | null>(null);
@@ -96,7 +87,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
     if (open) {
       resetContractMeta();
       setStep("upload");
-      setRawSpec("");
+      setUploadedFile(null);
       setValidationResult(null);
       setFileName("");
       setError(null);
@@ -133,8 +124,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
         setValidating(true);
         setValidationResult(null);
 
-        const text = await file.text();
-        setRawSpec(text);
+        setUploadedFile(file);
         setFileName(file.name);
 
         const result = await validateOpenApiFile(file);
@@ -166,7 +156,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
   const finishAndClose = React.useCallback(() => {
     resetContractMeta();
     setStep("upload");
-    setRawSpec("");
+    setUploadedFile(null);
     setValidationResult(null);
     setFileName("");
     setError(null);
@@ -200,7 +190,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
       }
     }
 
-    if (!validationResult?.isAPIDefinitionValid) {
+    if (!validationResult?.isAPIDefinitionValid || !uploadedFile) {
       setError("Please upload a valid OpenAPI definition.");
       return;
     }
@@ -232,7 +222,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
           description,
           backendServices,
         },
-        definition: rawSpec,
+        definition: uploadedFile,
       });
     } catch (e: any) {
       setError(e?.message || "Failed to create API");
@@ -292,7 +282,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
                   backgroundColor: "#f5f5f5ff",
                 }}
               >
-                {!rawSpec ? (
+                {!uploadedFile ? (
                   <Stack spacing={1} alignItems="center">
                     {validating ? (
                       <Typography variant="h5" fontWeight={600}>
@@ -324,7 +314,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
                         color="error"
                         disabled={validating}
                         onClick={() => {
-                          setRawSpec("");
+                          setUploadedFile(null);
                           setValidationResult(null);
                           setFileName("");
                           setError(null);

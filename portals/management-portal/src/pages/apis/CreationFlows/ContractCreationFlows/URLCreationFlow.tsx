@@ -8,25 +8,14 @@ import {
 } from "../../../../context/CreateComponentBuildpackContext";
 import { useOpenApiValidation, type OpenApiValidationResponse } from "../../../../hooks/validation";
 import { ApiOperationsList } from "../../../../components/src/components/Common/ApiOperationsList";
+import type { ImportOpenApiRequest, ApiSummary } from "../../../../hooks/apis";
 
 /* ---------- Types ---------- */
 type Props = {
   open: boolean;
   selectedProjectId: string;
-  importOpenApi: (payload: {
-    api: {
-      name: string;
-      context: string;
-      version: string;
-      projectId: string;
-      target?: string;
-      description?: string;
-      backendServices?: any[];
-    };
-    url?: string;
-    definition?: string;
-  }, opts?: { signal?: AbortSignal }) => Promise<void>;
-  refreshApis: (projectId?: string) => Promise<any[]>;
+  importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<void>;
+  refreshApis: (projectId?: string) => Promise<ApiSummary[]>;
   onClose: () => void;
 };
 
@@ -61,7 +50,9 @@ function mapOperations(
   
   return operations.map((op: any) => ({
     name: options?.withFallbackName 
-      ? (op.name || op.request?.path || "Unknown")
+      ? (op.name || (op.request?.method && op.request?.path
+          ? `${op.request.method.toUpperCase()} ${op.request.path}`
+          : op.request?.path || "Unknown"))
       : op.name,
     description: op.description,
     request: {
