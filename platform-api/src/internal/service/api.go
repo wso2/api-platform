@@ -91,14 +91,14 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 		return nil, constants.ErrProjectNotFound
 	}
 
-	// Check if API context already exists in the project
-	existingAPIs, err := s.apiRepo.GetAPIsByProjectID(req.ProjectID)
+	// Check if API name already exists in the organization
+	existingAPIsByOrg, err := s.apiRepo.GetAPIsByOrganizationID(orgId, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, api := range existingAPIs {
-		if api.Name == req.Name && api.Context == req.Context && api.Version == req.Version {
+	for _, api := range existingAPIsByOrg {
+		if api.Name == req.Name {
 			return nil, constants.ErrAPIAlreadyExists
 		}
 	}
@@ -653,6 +653,21 @@ func (s *APIService) AddGatewaysToAPI(apiId string, gatewayIds []string, orgId s
 				AssociationType: constants.AssociationTypeGateway,
 				CreatedAt:       time.Now(),
 				UpdatedAt:       time.Now(),
+			}
+
+			// Check for duplicate API context + version before creating new association
+			existingAPIs, err := s.apiRepo.GetAPIsByGatewayID(gateway.ID, orgId)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get existing gateway APIs: %w", err)
+			}
+
+			// Check for duplicate context + version combination
+			for _, existingAPI := range existingAPIs {
+				if existingAPI.Context == apiModel.Context && existingAPI.Version == apiModel.Version {
+					log.Printf("WARNING: API with context '%s' and version '%s' already exists in gateway '%s'.",
+						apiModel.Context, apiModel.Version, gateway.Name)
+					break
+				}
 			}
 
 			if err := s.apiRepo.CreateAPIAssociation(association); err != nil {

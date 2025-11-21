@@ -498,7 +498,7 @@ func (s *GatewayService) GetGatewayArtifacts(gatewayID, orgID, artifactType stri
 	}
 
 	// Get all APIs deployed to this gateway
-	apis, err := s.apiRepo.GetAPIsByGatewayID(gatewayID, orgID)
+	apis, err := s.apiRepo.GetDeployedAPIsByGatewayID(gatewayID, orgID)
 	if err != nil {
 		return nil, err
 	}
