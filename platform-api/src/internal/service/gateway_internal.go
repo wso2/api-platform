@@ -19,6 +19,7 @@ package service
 
 import (
 	"fmt"
+	"log"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
@@ -242,6 +243,22 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 			AssociationType: constants.AssociationTypeGateway,
 			CreatedAt:       now,
 			UpdatedAt:       now,
+		}
+
+		// Check for duplicate API context + version before creating new association
+		associatedAPIs, err := s.apiRepo.GetAPIsByGatewayID(gatewayID, orgID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get existing gateway APIs: %w", err)
+		}
+
+		// Check for duplicate context + version combination
+		for _, associatedAPI := range associatedAPIs {
+			if associatedAPI.Context == notification.Configuration.Data.Context &&
+				associatedAPI.Version == notification.Configuration.Data.Version {
+				log.Printf("WARNING: API with context '%s' and version '%s' already exists in gateway '%s'.",
+					notification.Configuration.Data.Context, notification.Configuration.Data.Version, gatewayModel.Name)
+				break
+			}
 		}
 
 		if err := s.apiRepo.CreateAPIAssociation(association); err != nil {

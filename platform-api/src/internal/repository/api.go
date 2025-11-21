@@ -264,10 +264,11 @@ func (r *APIRepo) GetAPIsByOrganizationID(orgID string, projectID *string) ([]*m
 	return apis, rows.Err()
 }
 
-// GetAPIsByGatewayID retrieves all APIs deployed to a specific gateway
-func (r *APIRepo) GetAPIsByGatewayID(gatewayID, organizationID string) ([]*model.API, error) {
+// GetDeployedAPIsByGatewayID retrieves all APIs deployed to a specific gateway
+func (r *APIRepo) GetDeployedAPIsByGatewayID(gatewayID, organizationID string) ([]*model.API, error) {
 	query := `
-		SELECT a.uuid, a.name, a.display_name, a.type, a.created_at, a.updated_at
+		SELECT a.uuid, a.name, a.display_name, a.description, a.context, a.version, a.provider,
+		       a.project_uuid, a.organization_uuid, a.type, a.created_at, a.updated_at
 		FROM apis a
 		INNER JOIN api_deployments ad ON a.uuid = ad.api_uuid
 		WHERE ad.gateway_uuid = ? AND a.organization_uuid = ?
@@ -283,11 +284,43 @@ func (r *APIRepo) GetAPIsByGatewayID(gatewayID, organizationID string) ([]*model
 	var apis []*model.API
 	for rows.Next() {
 		api := &model.API{}
-		err := rows.Scan(
-			&api.ID, &api.Name, &api.DisplayName, &api.Type, &api.CreatedAt, &api.UpdatedAt,
-		)
+		err := rows.Scan(&api.ID, &api.Name, &api.DisplayName, &api.Description,
+			&api.Context, &api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID,
+			&api.Type, &api.CreatedAt, &api.UpdatedAt)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan API row: %w", err)
+		}
+		apis = append(apis, api)
+	}
+
+	return apis, nil
+}
+
+// GetAPIsByGatewayID retrieves all APIs associated with a specific gateway
+func (r *APIRepo) GetAPIsByGatewayID(gatewayID, organizationID string) ([]*model.API, error) {
+	query := `
+		SELECT a.uuid, a.name, a.display_name, a.description, a.context, a.version, a.provider,
+			a.project_uuid, a.organization_uuid, a.type, a.created_at, a.updated_at
+		FROM apis a
+		INNER JOIN api_associations aa ON a.uuid = aa.api_uuid
+		WHERE aa.resource_uuid = ? AND aa.association_type = 'gateway' AND a.organization_uuid = ?
+		ORDER BY a.created_at DESC
+	`
+
+	rows, err := r.db.Query(query, gatewayID, organizationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query APIs associated with gateway: %w", err)
+	}
+	defer rows.Close()
+
+	var apis []*model.API
+	for rows.Next() {
+		api := &model.API{}
+		err := rows.Scan(&api.ID, &api.Name, &api.DisplayName, &api.Description,
+			&api.Context, &api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID,
+			&api.Type, &api.CreatedAt, &api.UpdatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan API row: %w", err)
 		}
 		apis = append(apis, api)
 	}

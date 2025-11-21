@@ -87,14 +87,14 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 		return nil, constants.ErrProjectNotFound
 	}
 
-	// Check if API context already exists in the project
+	// Check if API already exists in the project
 	existingAPIs, err := s.apiRepo.GetAPIsByProjectID(req.ProjectID)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, api := range existingAPIs {
-		if api.Name == req.Name && api.Context == req.Context && api.Version == req.Version {
+		if api.Name == req.Name {
 			return nil, constants.ErrAPIAlreadyExists
 		}
 	}
@@ -461,9 +461,9 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 	currentTime := time.Now().Format(time.RFC3339)
 
 	for _, deploymentReq := range deploymentRequests {
-		// Validate deployment request (gateway existence and organization)
-		if err := s.validateDeploymentRequest(&deploymentReq, apiId, orgId); err != nil {
-			return nil, constants.ErrInvalidAPIDeployment
+		// Validate deployment request
+		if err := s.validateDeploymentRequest(&deploymentReq, apiModel, orgId); err != nil {
+			return nil, fmt.Errorf("invalid api deployment: %w", err)
 		}
 
 		// If gateway is not associated with the API, create the association
@@ -598,6 +598,21 @@ func (s *APIService) AddGatewaysToAPI(apiId string, gatewayIds []string, orgId s
 				UpdatedAt:       time.Now(),
 			}
 
+			// Check for duplicate API context + version before creating new association
+			existingAPIs, err := s.apiRepo.GetAPIsByGatewayID(gateway.ID, orgId)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get existing gateway APIs: %w", err)
+			}
+
+			// Check for duplicate context + version combination
+			for _, existingAPI := range existingAPIs {
+				if existingAPI.Context == apiModel.Context && existingAPI.Version == apiModel.Version {
+					log.Printf("WARNING: API with context '%s' and version '%s' already exists in gateway '%s'.",
+						apiModel.Context, apiModel.Version, gateway.Name)
+					break
+				}
+			}
+
 			if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
 				return nil, err
 			}
@@ -672,7 +687,7 @@ func (s *APIService) GetAPIGateways(apiId, orgId string) (*dto.APIGatewayListRes
 }
 
 // validateDeploymentRequest validates the deployment request
-func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, apiId, orgId string) error {
+func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, api *model.API, orgId string) error {
 	if req.GatewayID == "" {
 		return errors.New("gateway Id is required")
 	}
@@ -689,6 +704,26 @@ func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, a
 	}
 	if gateway.OrganizationID != orgId {
 		return fmt.Errorf("failed to get gateway: %w", err)
+	}
+
+	// Get all APIs currently deployed to this gateway
+	existingAPIs, err := s.apiRepo.GetDeployedAPIsByGatewayID(req.GatewayID, orgId)
+	if err != nil {
+		return fmt.Errorf("failed to get deployed APIs for gateway: %w", err)
+	}
+
+	// Check for duplicate context+version combination
+	for _, existingAPI := range existingAPIs {
+		// Skip checking against the same API (in case of redeployment)
+		if existingAPI.ID == api.ID {
+			continue
+		}
+
+		// Check if context and version match
+		if existingAPI.Context == api.Context && existingAPI.Version == api.Version {
+			return fmt.Errorf("an API with the same context '%s' and version '%s' is already deployed"+
+				" in the gateway '%s'", api.Context, api.Version, gateway.ID)
+		}
 	}
 
 	return nil
