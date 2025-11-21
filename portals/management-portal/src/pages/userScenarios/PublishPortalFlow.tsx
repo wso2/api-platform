@@ -9,6 +9,14 @@ import {
   Alert,
   CircularProgress,
   useTheme,
+  List,
+  ListItemButton,
+  ListItemText,
+  Divider,
+  Chip,
+  Step,
+  TextField,
+  MenuItem,
 } from "@mui/material";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import { TextInput } from "../../components/src/components/TextInput";
@@ -28,13 +36,14 @@ import { useDevPortals } from "../../context/DevPortalContext";
 import { PORTAL_CONSTANTS } from "../../constants/portal";
 import BijiraDPLogo from "../BijiraDPLogo.png";
 import type { Portal } from "../../hooks/devportals";
-import { TextField, MenuItem } from "@mui/material";
+import { useApisContext } from "../../context/ApiContext";
+import type { ApiSummary } from "../../hooks/apis";
 
 type Step = { title: string; subtitle: string };
 const STEPS: Step[] = [
   {
-    title: "Create API",
-    subtitle: "Validate OpenAPI spec & create API",
+    title: "Select or Create API",
+    subtitle: "Choose existing API or create new one",
   },
   { title: "Select Portal", subtitle: "Choose developer portal to publish" },
 ];
@@ -96,11 +105,14 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   );
   const [portalVisibility, setPortalVisibility] = React.useState<string>("PUBLIC");
   const [portalEndpoint, setPortalEndpoint] = React.useState<string>("");
+  const [selectedExistingApi, setSelectedExistingApi] = React.useState<ApiSummary | null>(null);
+  const [selectionMode, setSelectionMode] = React.useState<"url" | "existing">("url");
 
   const { contractMeta, setContractMeta, resetContractMeta } =
     useCreateComponentBuildpackContext();
   const { validateOpenApiUrl } = useOpenApiValidation();
   const { devportals: portals, loading: portalsLoading } = useDevPortals();
+  const { apis, loading: apisLoading } = useApisContext();
 
   const autoFill = React.useCallback(
     (api: any) => {
@@ -221,6 +233,31 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
     }
   };
 
+  const handleContinueWithExistingApi = () => {
+    if (!selectedExistingApi) {
+      setError("Please select an API.");
+      return;
+    }
+    setError(null);
+    setActiveStep(1);
+  };
+
+  const handleSelectExistingApi = (api: ApiSummary) => {
+    setSelectedExistingApi(api);
+    setError(null);
+  };
+
+  const isStep0Complete = 
+    selectionMode === "url" 
+      ? validationResult?.isAPIDefinitionValid && 
+        (contractMeta?.name || "").trim() && 
+        (contractMeta?.context || "").trim() && 
+        (contractMeta?.version || "").trim()
+      : selectedExistingApi !== null;
+
+  const step0ButtonLabel = selectionMode === "url" ? "Create API" : "Continue";
+  const step0ButtonAction = selectionMode === "url" ? handleCreateApi : handleContinueWithExistingApi;
+
   const handlePublishToPortal = async () => {
     if (!selectedPortalId) {
       setError("Please select a developer portal.");
@@ -289,54 +326,78 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, md: 6 }}>
                 <Stack spacing={2} sx={{ height: '100%' }}>
-                  <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                      Public Specification URL
+                  <Paper 
+                    variant="outlined" 
+                    sx={{ 
+                      p: 3, 
+                      borderRadius: 2,
+                      borderColor: selectionMode === "url" ? "primary.main" : "divider",
+                      borderWidth: selectionMode === "url" ? 2 : 1,
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                      "&:hover": {
+                        borderColor: "primary.main",
+                      }
+                    }}
+                    onClick={() => {
+                      setSelectionMode("url");
+                      setSelectedExistingApi(null);
+                      setError(null);
+                    }}
+                  >
+                    <Typography variant="subtitle2" sx={{ mb: 1 }} fontWeight={600}>
+                      🌐 Create New API from URL
                     </Typography>
-                    <TextInput
-                      label=""
-                      placeholder="https://example.com/openapi.yaml"
-                      value={specUrl}
-                      onChange={(v: string) => setSpecUrl(v)}
-                      testId=""
-                      size="medium"
-                    />
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Import from a public OpenAPI specification URL
+                    </Typography>
+                    
+                    {selectionMode === "url" && (
+                      <>
+                        <TextInput
+                          label=""
+                          placeholder="https://example.com/openapi.yaml"
+                          value={specUrl}
+                          onChange={(v: string) => setSpecUrl(v)}
+                          testId=""
+                          size="medium"
+                        />
 
-                    <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                      <Button
-                        variant="text"
-                        onClick={() =>
-                          setSpecUrl(
-                            "https://petstore.swagger.io/v2/swagger.json",
-                          )
-                        }
-                        disabled={validating}
-                      >
-                        Try with Sample URL
-                      </Button>
-                      <Box flex={1} />
-                      <Button
-                        variant="outlined"
-                        onClick={handleFetchAndValidate}
-                        disabled={!specUrl.trim() || validating}
-                      >
-                        {validating ? "Validating..." : "Fetch & Validate"}
-                      </Button>
-                    </Stack>
-
-                    {error && (
-                      <Alert severity="error" sx={{ mt: 2 }}>
-                        {error}
-                      </Alert>
+                        <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                          <Button
+                            variant="text"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSpecUrl(
+                                "https://petstore.swagger.io/v2/swagger.json",
+                              );
+                            }}
+                            disabled={validating}
+                          >
+                            Try Sample
+                          </Button>
+                          <Box flex={1} />
+                          <Button
+                            variant="outlined"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleFetchAndValidate();
+                            }}
+                            disabled={!specUrl.trim() || validating}
+                          >
+                            {validating ? "Validating..." : "Fetch & Validate"}
+                          </Button>
+                        </Stack>
+                      </>
                     )}
                   </Paper>
 
-                  {validationResult?.isAPIDefinitionValid ? (
+                  {selectionMode === "url" && validationResult?.isAPIDefinitionValid ? (
                     <ApiOperationsList
                       title="Fetched OAS Definition"
                       operations={previewOps}
                     />
-                  ) : validating ? (
+                  ) : selectionMode === "url" && validating ? (
                     <Paper
                       variant="outlined"
                       sx={{
@@ -353,7 +414,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                         Validating OpenAPI definition...
                       </Typography>
                     </Paper>
-                  ) : (
+                  ) : selectionMode === "url" ? (
                     <Paper
                       variant="outlined"
                       sx={{
@@ -371,62 +432,208 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                         (YAML or JSON). We'll fetch and preview it here.
                       </Typography>
                     </Paper>
+                  ) : null}
+
+                  {error && selectionMode === "url" && (
+                    <Alert severity="error">
+                      {error}
+                    </Alert>
                   )}
                 </Stack>
               </Grid>
 
               <Grid size={{ xs: 12, md: 6 }}>
-                {validationResult?.isAPIDefinitionValid && (
-                  <Stack spacing={2} sx={{ height: '100%' }}>
-                    <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, flexGrow: 1 }}>
-                      <CreationMetaData scope="contract" title="Configure API" />
+                <Stack spacing={2} sx={{ height: '100%' }}>
+                  <Paper 
+                    variant="outlined" 
+                    sx={{ 
+                      p: 3, 
+                      borderRadius: 2,
+                      borderColor: selectionMode === "existing" ? "primary.main" : "divider",
+                      borderWidth: selectionMode === "existing" ? 2 : 1,
+                      cursor: "pointer",
+                      transition: "all 0.2s",
+                      "&:hover": {
+                        borderColor: "primary.main",
+                      }
+                    }}
+                    onClick={() => {
+                      setSelectionMode("existing");
+                      setValidationResult(null);
+                      setSpecUrl("");
+                      setError(null);
+                    }}
+                  >
+                    <Typography variant="subtitle2" sx={{ mb: 1 }} fontWeight={600}>
+                      📋 Select Existing API
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Choose from your created APIs
+                    </Typography>
 
-                      <Box sx={{ mt: 3 }}>
-                        <Typography
-                          variant="subtitle1"
-                          fontWeight={600}
-                          sx={{ mb: 2 }}
-                        >
-                          Developer Portal Settings
-                        </Typography>
-
-                        <Stack spacing={2}>
-                          <TextField
-                            select
-                            label="Access Visibility in Developer Portal"
-                            value={portalVisibility}
-                            onChange={(e) => setPortalVisibility(e.target.value)}
-                            fullWidth
-                            variant="outlined"
-                            helperText="Control who can discover your API in the portal"
+                    {selectionMode === "existing" && (
+                      <>
+                        {apisLoading ? (
+                          <Box sx={{ display: "flex", justifyContent: "center", p: 2 }}>
+                            <CircularProgress size={24} />
+                          </Box>
+                        ) : apis.length === 0 ? (
+                          <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", py: 2 }}>
+                            No APIs found. Create one first.
+                          </Typography>
+                        ) : (
+                          <Paper 
+                            variant="outlined" 
+                            sx={{ 
+                              maxHeight: 300, 
+                              overflow: "auto",
+                              borderRadius: 1
+                            }}
                           >
-                            <MenuItem value="PUBLIC">
-                              <Box display="flex" alignItems="center" gap={1}>
-                                <span>🌍</span>
-                                <Typography variant="body2">Public</Typography>
-                              </Box>
-                            </MenuItem>
-                            <MenuItem value="PRIVATE">
-                              <Box display="flex" alignItems="center" gap={1}>
-                                <span>🔒</span>
-                                <Typography variant="body2">Private</Typography>
-                              </Box>
-                            </MenuItem>
-                          </TextField>
+                            <List dense disablePadding>
+                              {apis.map((api, index) => (
+                                <React.Fragment key={api.id}>
+                                  {index > 0 && <Divider />}
+                                  <ListItemButton
+                                    selected={selectedExistingApi?.id === api.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSelectExistingApi(api);
+                                    }}
+                                  >
+                                    <ListItemText
+                                      primary={
+                                        <Box display="flex" alignItems="center" gap={1}>
+                                          <Typography variant="body2" fontWeight={500}>
+                                            {api.name}
+                                          </Typography>
+                                          <Chip 
+                                            label={api.version} 
+                                            size="small" 
+                                            sx={{ height: 20, fontSize: "0.7rem" }}
+                                          />
+                                        </Box>
+                                      }
+                                      secondary={
+                                        <Typography variant="caption" color="text.secondary" noWrap>
+                                          {api.context}
+                                        </Typography>
+                                      }
+                                    />
+                                  </ListItemButton>
+                                </React.Fragment>
+                              ))}
+                            </List>
+                          </Paper>
+                        )}
+                      </>
+                    )}
+                  </Paper>
 
-                          <TextField
-                            label="Endpoint in Developer Portal"
-                            value={portalEndpoint}
-                            onChange={(e) => setPortalEndpoint(e.target.value)}
-                            fullWidth
-                            variant="outlined"
-                            placeholder="https://api.example.com"
-                            helperText="The endpoint URL that will be displayed to developers"
-                          />
-                        </Stack>
-                      </Box>
+                  {selectionMode === "existing" && selectedExistingApi && (
+                    <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
+                      <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+                        Selected API Details
+                      </Typography>
+                      <Stack spacing={1.5}>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">
+                            Name
+                          </Typography>
+                          <Typography variant="body2" fontWeight={500}>
+                            {selectedExistingApi.name}
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">
+                            Version
+                          </Typography>
+                          <Typography variant="body2">
+                            {selectedExistingApi.version}
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">
+                            Context
+                          </Typography>
+                          <Typography variant="body2">
+                            {selectedExistingApi.context}
+                          </Typography>
+                        </Box>
+                        {selectedExistingApi.description && (
+                          <Box>
+                            <Typography variant="caption" color="text.secondary">
+                              Description
+                            </Typography>
+                            <Typography variant="body2">
+                              {selectedExistingApi.description}
+                            </Typography>
+                          </Box>
+                        )}
+                      </Stack>
                     </Paper>
+                  )}
 
+                  {error && selectionMode === "existing" && (
+                    <Alert severity="error">
+                      {error}
+                    </Alert>
+                  )}
+
+                  {selectionMode === "url" && validationResult?.isAPIDefinitionValid && (
+                    <>
+                      <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, flexGrow: 1 }}>
+                        <CreationMetaData scope="contract" title="Configure API" />
+
+                        <Box sx={{ mt: 3 }}>
+                          <Typography
+                            variant="subtitle1"
+                            fontWeight={600}
+                            sx={{ mb: 2 }}
+                          >
+                            Developer Portal Settings
+                          </Typography>
+
+                          <Stack spacing={2}>
+                            <TextField
+                              select
+                              label="Access Visibility in Developer Portal"
+                              value={portalVisibility}
+                              onChange={(e) => setPortalVisibility(e.target.value)}
+                              fullWidth
+                              variant="outlined"
+                              helperText="Control who can discover your API in the portal"
+                            >
+                              <MenuItem value="PUBLIC">
+                                <Box display="flex" alignItems="center" gap={1}>
+                                  <span>🌍</span>
+                                  <Typography variant="body2">Public</Typography>
+                                </Box>
+                              </MenuItem>
+                              <MenuItem value="PRIVATE">
+                                <Box display="flex" alignItems="center" gap={1}>
+                                  <span>🔒</span>
+                                  <Typography variant="body2">Private</Typography>
+                                </Box>
+                              </MenuItem>
+                            </TextField>
+
+                            <TextField
+                              label="Endpoint in Developer Portal"
+                              value={portalEndpoint}
+                              onChange={(e) => setPortalEndpoint(e.target.value)}
+                              fullWidth
+                              variant="outlined"
+                              placeholder="https://api.example.com"
+                              helperText="The endpoint URL that will be displayed to developers"
+                            />
+                          </Stack>
+                        </Box>
+                      </Paper>
+                    </>
+                  )}
+
+                  {(isStep0Complete || (selectionMode === "url" && validationResult?.isAPIDefinitionValid)) && (
                     <Stack
                       direction="row"
                       spacing={1}
@@ -434,19 +641,14 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                     >
                       <Button
                         variant="contained"
-                        disabled={
-                          creating ||
-                          !(contractMeta?.name || "").trim() ||
-                          !(contractMeta?.context || "").trim() ||
-                          !(contractMeta?.version || "").trim()
-                        }
-                        onClick={handleCreateApi}
+                        disabled={creating || !isStep0Complete}
+                        onClick={step0ButtonAction}
                       >
-                        {creating ? "Creating..." : "Create API"}
+                        {creating ? (selectionMode === "url" ? "Creating..." : "Loading...") : step0ButtonLabel}
                       </Button>
                     </Stack>
-                  </Stack>
-                )}
+                  )}
+                </Stack>
               </Grid>
             </Grid>
           )}
