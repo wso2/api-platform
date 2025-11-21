@@ -123,15 +123,16 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
   }, [setContractMeta]);
 
   const handleFiles = React.useCallback(
-    async (files: FileList | null) => {
+    async (files: FileList | null) => {  
       if (!files || !files[0]) return;
+      if (validating) return;   
       const file = files[0];
-      
+
       try {
         setError(null);
         setValidating(true);
         setValidationResult(null);
-        
+
         const text = await file.text();
         setRawSpec(text);
         setFileName(file.name);
@@ -154,14 +155,12 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
         setFileKey((k) => k + 1);
       }
     },
-    [autoFill, validateOpenApiFile]
+    [validating, autoFill, validateOpenApiFile]
   );
 
   const onDrop = (e: React.DragEvent<HTMLLabelElement>) => {
     e.preventDefault();
     handleFiles(e.dataTransfer.files);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    setFileKey((k) => k + 1);
   };
 
   const finishAndClose = React.useCallback(() => {
@@ -206,23 +205,23 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
       return;
     }
 
+    setCreating(true);
+    setError(null);
+
+    const serviceName = defaultServiceName(name);
+    const backendServices =
+      target
+        ? [
+            {
+              name: serviceName,
+              isDefault: true,
+              retries: 2,
+              endpoints: [{ url: target, description: "Primary backend" }],
+            },
+          ]
+        : [];
+
     try {
-      setCreating(true);
-      setError(null);
-
-      const serviceName = defaultServiceName(name);
-      const backendServices =
-        target
-          ? [
-              {
-                name: serviceName,
-                isDefault: true,
-                retries: 2,
-                endpoints: [{ url: target, description: "Primary backend" }],
-              },
-            ]
-          : [];
-
       await importOpenApi({
         api: {
           name,
@@ -235,14 +234,21 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
         },
         definition: rawSpec,
       });
-
-      await refreshApis(selectedProjectId);
-      finishAndClose();
     } catch (e: any) {
       setError(e?.message || "Failed to create API");
+      setCreating(false);
+      return;
+    }
+
+    try {
+      await refreshApis(selectedProjectId);
+    } catch (refreshError) {
+      console.warn("Failed to refresh API list after creation:", refreshError);
     } finally {
       setCreating(false);
     }
+
+    finishAndClose();
   };
 
   return (
@@ -255,6 +261,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
         type="file"
         accept=".yaml,.yml,.json,.yamal"
         style={{ display: "none" }}
+        disabled={validating}
         onChange={(e) => {
           handleFiles(e.target.files);
           e.currentTarget.value = "";
@@ -269,7 +276,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
               htmlFor={inputId}
               onDragOver={(e) => e.preventDefault()}
               onDrop={onDrop}
-              sx={{ display: "block", cursor: "pointer" }}
+              sx={{ display: "block", cursor: validating ? "not-allowed" : "pointer", opacity: validating ? 0.6 : 1 }}
             >
               <Paper
                 variant="outlined"
@@ -287,15 +294,23 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
               >
                 {!rawSpec ? (
                   <Stack spacing={1} alignItems="center">
-                    <Typography variant="h5" fontWeight={600}>
-                      Upload API Contract
-                    </Typography>
-                    <Typography color="#aeacacff">
-                      Drag &amp; Drop your files, click, or paste raw spec
-                    </Typography>
-                    <Button component="label" startIcon={<UploadRoundedIcon />} htmlFor={inputId}>
-                      Upload
-                    </Button>
+                    {validating ? (
+                      <Typography variant="h5" fontWeight={600}>
+                        Validating API Contract...
+                      </Typography>
+                    ) : (
+                      <>
+                        <Typography variant="h5" fontWeight={600}>
+                          Upload API Contract
+                        </Typography>
+                        <Typography color="#aeacacff">
+                          Drag &amp; Drop your files, click, or paste raw spec
+                        </Typography>
+                        <Button component="label" startIcon={<UploadRoundedIcon />} htmlFor={inputId}>
+                          Upload
+                        </Button>
+                      </>
+                    )}
                   </Stack>
                 ) : (
                   <Stack spacing={2} alignItems="center">

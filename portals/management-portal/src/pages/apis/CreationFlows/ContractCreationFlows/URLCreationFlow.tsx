@@ -179,23 +179,23 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
       return;
     }
 
+    setCreating(true);
+    setError(null);
+
+    const serviceName = defaultServiceName(name);
+    const backendServices =
+      target
+        ? [
+            {
+              name: serviceName,
+              isDefault: true,
+              retries: 2,
+              endpoints: [{ url: target, description: "Primary backend" }],
+            },
+          ]
+        : [];
+
     try {
-      setCreating(true);
-      setError(null);
-
-      const serviceName = defaultServiceName(name);
-      const backendServices =
-        target
-          ? [
-              {
-                name: serviceName,
-                isDefault: true,
-                retries: 2,
-                endpoints: [{ url: target, description: "Primary backend" }],
-              },
-            ]
-          : [];
-
       await importOpenApi({
         api: {
           name,
@@ -208,14 +208,21 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
         },
         url: specUrl.trim(),
       });
-
-      await refreshApis(selectedProjectId);
-      finishAndClose();
     } catch (e: any) {
       setError(e?.message || "Failed to create API");
+      setCreating(false);
+      return;
+    }
+
+    try {
+      await refreshApis(selectedProjectId);
+    } catch (refreshError) {
+      console.warn("Failed to refresh API list after creation:", refreshError);
     } finally {
       setCreating(false);
     }
+
+    finishAndClose();
   };
 
   if (!open) return null;
