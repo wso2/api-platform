@@ -83,7 +83,6 @@ paths:
                     executionCondition: "request.metadata[authenticated] != true"
                     params:
                       header: X-API-Key
-                      optional: true
                       mandatory: true
                   - name: setHeaders
                     version: v1.0.0
@@ -101,7 +100,6 @@ paths:
                         executionCondition: "request.metadata[authenticated] != true"
                         params:
                           header: X-API-Key
-                          optional: true
                           mandatory: true
                   - method: POST
                     path: /pet
@@ -131,7 +129,6 @@ paths:
                     executionCondition: "request.metadata[authenticated] != true"
                     params:
                       header: X-API-Key
-                      optional: true
                       mandatory: true
                   - name: setHeaders
                     version: v1.0.0
@@ -149,7 +146,6 @@ paths:
                         executionCondition: "request.metadata[authenticated] != true"
                         params:
                           header: X-API-Key
-                          optional: true
                           mandatory: true
                   - method: POST
                     path: /pet

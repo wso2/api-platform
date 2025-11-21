@@ -580,10 +580,13 @@ func (s *APIServer) ListPolicies(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to load policy definitions"})
 			return
 		}
+		// Double-checked locking: re-verify map is still empty after acquiring write lock
 		s.policyDefMu.Lock()
-		for _, d := range defs {
-			key := d.Name + "|" + d.Version
-			s.policyDefinitions[key] = d
+		if len(s.policyDefinitions) == 0 {
+			for _, d := range defs {
+				key := d.Name + "|" + d.Version
+				s.policyDefinitions[key] = d
+			}
 		}
 		s.policyDefMu.Unlock()
 	}
