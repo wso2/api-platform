@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/envoy-policy-engine/policy-builder/pkg/errors"
-	"github.com/envoy-policy-engine/policy-builder/pkg/types"
+	"github.com/policy-engine/policy-builder/pkg/errors"
+	"github.com/policy-engine/policy-builder/pkg/types"
 )
 
 // CompileBinary compiles the policy engine binary with all discovered policies

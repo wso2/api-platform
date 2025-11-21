@@ -6,8 +6,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/envoy-policy-engine/policy-builder/pkg/types"
-	"github.com/envoy-policy-engine/policy-builder/templates"
+	"github.com/policy-engine/policy-builder/pkg/types"
+	"github.com/policy-engine/policy-builder/templates"
 )
 
 // GenerateBuildInfo generates the build_info.go file with metadata

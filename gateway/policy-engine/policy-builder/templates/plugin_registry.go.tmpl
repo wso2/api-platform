@@ -4,7 +4,7 @@ package main
 import (
 	"log/slog"
 
-	"github.com/envoy-policy-engine/sdk/core"
+	"github.com/policy-engine/sdk/core"
 {{- range .Policies }}
 	{{ .ImportAlias }} "{{ .ImportPath }}"
 {{- end }}

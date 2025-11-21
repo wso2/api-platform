@@ -3,8 +3,8 @@ package kernel
 import (
 	"fmt"
 
-	"github.com/envoy-policy-engine/sdk/core"
-	"github.com/envoy-policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/core"
+	"github.com/policy-engine/sdk/policies"
 )
 
 // storeContextForResponse stores request context and policy chain for response phase retrieval

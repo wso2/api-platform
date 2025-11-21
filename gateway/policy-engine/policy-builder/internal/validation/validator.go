@@ -3,8 +3,8 @@ package validation
 import (
 	"fmt"
 
-	"github.com/envoy-policy-engine/policy-builder/pkg/errors"
-	"github.com/envoy-policy-engine/policy-builder/pkg/types"
+	"github.com/policy-engine/policy-builder/pkg/errors"
+	"github.com/policy-engine/policy-builder/pkg/types"
 )
 
 // ValidatePolicies runs all validation checks on discovered policies

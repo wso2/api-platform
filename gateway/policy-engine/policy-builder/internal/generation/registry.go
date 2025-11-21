@@ -6,8 +6,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/envoy-policy-engine/policy-builder/pkg/types"
-	"github.com/envoy-policy-engine/policy-builder/templates"
+	"github.com/policy-engine/policy-builder/pkg/types"
+	"github.com/policy-engine/policy-builder/templates"
 )
 
 // PolicyImport represents a policy import for code generation
@@ -58,14 +58,14 @@ func GeneratePluginRegistry(policies []*types.DiscoveredPolicy, srcDir string) (
 // generateImportPath creates the Go import path for a policy
 func generateImportPath(policy *types.DiscoveredPolicy) string {
 	// The policy path will be available as a local module via go.mod replace directive
-	// Format: github.com/envoy-policy-engine/policies/{policy-name}
+	// Format: github.com/policy-engine/policies/{policy-name}
 	// Note: We don't include the version in the import path because Go module paths
 	// cannot have dots (like v1.0.0). The version is tracked in the replace directive.
 	policyName := strings.ToLower(policy.Name)
 	policyName = strings.ReplaceAll(policyName, " ", "-")
 	policyName = strings.ReplaceAll(policyName, "_", "-")
 
-	return fmt.Sprintf("github.com/envoy-policy-engine/policies/%s", policyName)
+	return fmt.Sprintf("github.com/policy-engine/policies/%s", policyName)
 }
 
 // generateImportAlias creates a valid Go identifier for import alias

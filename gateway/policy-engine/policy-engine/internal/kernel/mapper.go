@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/envoy-policy-engine/sdk/core"
-	"github.com/envoy-policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/core"
+	"github.com/policy-engine/sdk/policies"
 )
 
 // RouteMapping maps Envoy metadata keys to PolicyChains for route-specific processing

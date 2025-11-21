@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/envoy-policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policies"
 )
 
 // validateInt validates integer parameters with constraints

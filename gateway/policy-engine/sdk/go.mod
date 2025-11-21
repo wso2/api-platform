@@ -1,4 +1,4 @@
-module github.com/envoy-policy-engine/sdk
+module github.com/policy-engine/sdk
 
 go 1.23.0
 

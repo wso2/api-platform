@@ -13,9 +13,9 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"google.golang.org/grpc"
 
-	"github.com/envoy-policy-engine/policy-engine/internal/kernel"
-	"github.com/envoy-policy-engine/policy-engine/internal/pkg/cel"
-	"github.com/envoy-policy-engine/sdk/core"
+	"github.com/policy-engine/policy-engine/internal/kernel"
+	"github.com/policy-engine/policy-engine/internal/pkg/cel"
+	"github.com/policy-engine/sdk/core"
 )
 
 // T091: Command-line flags implementation
@@ -61,7 +61,7 @@ func main() {
 	slog.InfoContext(ctx, "Policy registration would happen here via Builder-generated code")
 
 	// Load policy definitions from directory
-	if err := registry.RegisterFromDirectory("/Users/renuka/google-workspace/envoy-policy-engine-simplified/policies"); err != nil {
+	if err := registry.RegisterFromDirectory("/Users/renuka/google-workspace/policy-engine-simplified/policies"); err != nil {
 		slog.WarnContext(ctx, "Failed to register policies from directory", "error", err)
 		slog.WarnContext(ctx, "This is expected if policies haven't been compiled via Builder")
 	}

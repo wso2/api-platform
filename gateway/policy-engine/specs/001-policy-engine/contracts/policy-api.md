@@ -13,7 +13,7 @@ The Policy Engine uses a **multi-module architecture** to avoid cyclic dependenc
 ```
 ┌─────────────────────────────────────┐
 │  SDK Module                         │
-│  github.com/envoy-policy-engine/sdk │
+│  github.com/policy-engine/sdk │
 │  ┌───────────────────────────────┐  │
 │  │ policies/                     │  │  ← Policy interfaces & types
 │  │ - Policy, RequestPolicy, etc. │  │
@@ -41,9 +41,9 @@ The Policy Engine uses a **multi-module architecture** to avoid cyclic dependenc
 - **External policies**: Policies can be developed in separate repositories
 
 **Import Rules**:
-- ✅ Policy implementations: Import `github.com/envoy-policy-engine/sdk/policies`
-- ✅ Policy implementations: Import `github.com/envoy-policy-engine/sdk/core` (if needed for registry)
-- ❌ Policy implementations: Never import `github.com/envoy-policy-engine/policy-engine`
+- ✅ Policy implementations: Import `github.com/policy-engine/sdk/policies`
+- ✅ Policy implementations: Import `github.com/policy-engine/sdk/core` (if needed for registry)
+- ❌ Policy implementations: Never import `github.com/policy-engine/policy-engine`
 
 ---
 
@@ -864,20 +864,20 @@ policies/jwt-validation/v1.0.0/
 
 **go.mod example**:
 ```go
-module github.com/envoy-policy-engine/policies/jwt-validation
+module github.com/policy-engine/policies/jwt-validation
 
 go 1.23
 
 require (
-    github.com/envoy-policy-engine/sdk v1.0.0
+    github.com/policy-engine/sdk v1.0.0
     github.com/golang-jwt/jwt/v5 v5.2.0
 )
 
 // For local development
-replace github.com/envoy-policy-engine/sdk => ../../../sdk
+replace github.com/policy-engine/sdk => ../../../sdk
 ```
 
-**Note**: Policies depend on the **SDK module** (`github.com/envoy-policy-engine/sdk`), not the main policy-engine module. The SDK provides:
+**Note**: Policies depend on the **SDK module** (`github.com/policy-engine/sdk`), not the main policy-engine module. The SDK provides:
 - Policy interfaces (`policies.Policy`, `policies.RequestPolicy`, `policies.ResponsePolicy`)
 - Context types (`policies.RequestContext`, `policies.ResponseContext`)
 - Action types (`policies.RequestPolicyAction`, `policies.ImmediateResponse`, etc.)

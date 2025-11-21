@@ -19,7 +19,7 @@
 ```bash
 # Clone repository (only for sample policies)
 git clone <repository-url>
-cd envoy-policy-engine-simplified
+cd policy-engine
 
 # Create policy manifest file that declares which policies to compile
 cat > policies.yaml <<EOF
@@ -210,15 +210,15 @@ EOF
 
 # Create go.mod
 cat > go.mod <<EOF
-module github.com/envoy-policy-engine/policies/custom-auth
+module github.com/policy-engine/policies/custom-auth
 
 go 1.23
 
 require (
-    github.com/envoy-policy-engine/sdk v1.0.0
+    github.com/policy-engine/sdk v1.0.0
 )
 
-replace github.com/envoy-policy-engine/sdk => ../../../sdk
+replace github.com/policy-engine/sdk => ../../../sdk
 EOF
 
 # Create custom_auth.go
@@ -226,7 +226,7 @@ cat > custom_auth.go <<'EOF'
 package custom_auth
 
 import (
-    "github.com/envoy-policy-engine/sdk/policies"
+    "github.com/policy-engine/sdk/policies"
 )
 
 type CustomAuthPolicy struct{}

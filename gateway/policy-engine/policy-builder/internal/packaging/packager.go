@@ -8,9 +8,9 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/envoy-policy-engine/policy-builder/pkg/errors"
-	"github.com/envoy-policy-engine/policy-builder/pkg/types"
-	"github.com/envoy-policy-engine/policy-builder/templates"
+	"github.com/policy-engine/policy-builder/pkg/errors"
+	"github.com/policy-engine/policy-builder/pkg/types"
+	"github.com/policy-engine/policy-builder/templates"
 )
 
 // GenerateDockerfile generates the runtime Dockerfile

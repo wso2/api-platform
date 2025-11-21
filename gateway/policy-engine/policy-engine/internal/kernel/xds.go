@@ -8,8 +8,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/envoy-policy-engine/sdk/core"
-	"github.com/envoy-policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/core"
+	"github.com/policy-engine/sdk/policies"
 )
 
 // PolicyChainConfig represents the configuration for a policy chain on a route

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/envoy-policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policies"
 )
 
 // PolicyChain is a container for a complete policy processing pipeline for a route

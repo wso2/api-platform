@@ -3,7 +3,7 @@ package validation
 import (
 	"fmt"
 
-	"github.com/envoy-policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policies"
 )
 
 // ValidateParameter validates a parameter value against its schema

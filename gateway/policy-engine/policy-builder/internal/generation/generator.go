@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/envoy-policy-engine/policy-builder/pkg/errors"
-	"github.com/envoy-policy-engine/policy-builder/pkg/types"
+	"github.com/policy-engine/policy-builder/pkg/errors"
+	"github.com/policy-engine/policy-builder/pkg/types"
 )
 
 const BuilderVersion = "v1.0.0"

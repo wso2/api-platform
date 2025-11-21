@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/envoy-policy-engine/policy-builder/pkg/types"
+	"github.com/policy-engine/policy-builder/pkg/types"
 )
 
 // GenerateDockerLabels creates Docker labels for the runtime image

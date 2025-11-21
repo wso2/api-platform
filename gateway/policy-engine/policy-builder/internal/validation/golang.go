@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/envoy-policy-engine/policy-builder/pkg/types"
+	"github.com/policy-engine/policy-builder/pkg/types"
 )
 
 // ValidateGoInterface checks if the policy implements required Policy interfaces

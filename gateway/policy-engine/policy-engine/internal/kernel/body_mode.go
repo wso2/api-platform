@@ -1,8 +1,8 @@
 package kernel
 
 import (
-	"github.com/envoy-policy-engine/sdk/core"
-	"github.com/envoy-policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/core"
+	"github.com/policy-engine/sdk/policies"
 )
 
 // BodyMode represents ext_proc body processing mode

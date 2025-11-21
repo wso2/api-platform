@@ -1,14 +1,12 @@
-module github.com/envoy-policy-engine/policy-engine
+module github.com/policy-engine/policy-engine
 
 go 1.24.0
 
 require (
-	github.com/envoy-policy-engine/policies/apikeyvalidation v0.0.0-00010101000000-000000000000
-	github.com/envoy-policy-engine/policies/setheader v0.0.0-00010101000000-000000000000
-	github.com/envoy-policy-engine/sdk v1.0.0
 	github.com/envoyproxy/go-control-plane/envoy v1.36.0
 	github.com/google/cel-go v0.18.2
 	github.com/google/uuid v1.6.0
+	github.com/policy-engine/sdk v1.0.0
 	google.golang.org/grpc v1.77.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -32,8 +30,8 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
 
-replace github.com/envoy-policy-engine/sdk => ../sdk
+replace github.com/policy-engine/sdk => ../sdk
 
-replace github.com/envoy-policy-engine/policies/apikeyvalidation => ../policies/api-key-validation/v1.0.0
+replace github.com/policy-engine/policies/apikeyvalidation => ../policies/api-key-validation/v1.0.0
 
-replace github.com/envoy-policy-engine/policies/setheader => ../policies/set-header/v1.0.0
+replace github.com/policy-engine/policies/setheader => ../policies/set-header/v1.0.0

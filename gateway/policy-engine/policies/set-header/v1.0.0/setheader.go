@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/envoy-policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policies"
 )
 
 // HeaderAction represents the action to perform on a header

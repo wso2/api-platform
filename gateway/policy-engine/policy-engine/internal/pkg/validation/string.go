@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/envoy-policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policies"
 )
 
 // validateString validates string parameters with constraints

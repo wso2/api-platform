@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/envoy-policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policies"
 )
 
 // validateDuration validates duration parameters (e.g., "30s", "5m", "1h")

@@ -3,7 +3,7 @@ package validation
 import (
 	"fmt"
 
-	"github.com/envoy-policy-engine/policy-builder/pkg/types"
+	"github.com/policy-engine/policy-builder/pkg/types"
 )
 
 // ValidateYAMLSchema validates the policy.yaml structure and required fields

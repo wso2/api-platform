@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/envoy-policy-engine/policy-builder/pkg/types"
+	"github.com/policy-engine/policy-builder/pkg/types"
 )
 
 // BuildOptions creates compilation options for the policy engine binary

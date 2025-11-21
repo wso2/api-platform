@@ -1,4 +1,4 @@
-module github.com/envoy-policy-engine/policy-builder
+module github.com/policy-engine/policy-builder
 
 go 1.24.0
 

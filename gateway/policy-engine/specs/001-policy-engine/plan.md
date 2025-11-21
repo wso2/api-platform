@@ -112,7 +112,7 @@ src/
 ├── pkg/                        # Shared packages
 │   ├── validation/             # Parameter validation engine
 │   └── cel/                    # CEL utilities
-└── go.mod                      # Main module: github.com/envoy-policy-engine/policy-engine
+└── go.mod                      # Main module: github.com/policy-engine/policy-engine
 
 # ========================================
 # SDK Module (Separate module to avoid cyclic dependencies)
@@ -129,7 +129,7 @@ sdk/
 │   ├── schema.go               # PolicyDefinition, PolicySpec structures
 │   ├── action.go               # Action type definitions
 │   └── context.go              # RequestContext, ResponseContext
-└── go.mod                      # SDK module: github.com/envoy-policy-engine/sdk
+└── go.mod                      # SDK module: github.com/policy-engine/sdk
 
 # ========================================
 # Sample Policy Implementations (OPTIONAL Reference Examples)
