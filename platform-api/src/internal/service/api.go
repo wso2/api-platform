@@ -519,8 +519,8 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 
 	for _, deploymentReq := range deploymentRequests {
 		// Validate deployment request
-		if err := s.validateDeploymentRequest(&deploymentReq, apiId, orgId); err != nil {
-			return nil, constants.ErrInvalidAPIDeployment
+		if err := s.validateDeploymentRequest(&deploymentReq, apiModel, orgId); err != nil {
+			return nil, fmt.Errorf("invalid api deployment: %w", err)
 		}
 
 		// If gateway is not associated with the API, create the association
@@ -744,7 +744,7 @@ func (s *APIService) GetAPIGateways(apiId, orgId string) (*dto.APIGatewayListRes
 }
 
 // validateDeploymentRequest validates the deployment request
-func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, apiId, orgId string) error {
+func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, api *model.API, orgId string) error {
 	if req.GatewayID == "" {
 		return errors.New("gateway Id is required")
 	}
@@ -763,8 +763,28 @@ func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, a
 		return fmt.Errorf("failed to get gateway: %w", err)
 	}
 
+	// Get all APIs currently deployed to this gateway
+	existingAPIs, err := s.apiRepo.GetDeployedAPIsByGatewayID(req.GatewayID, orgId)
+	if err != nil {
+		return fmt.Errorf("failed to get deployed APIs for gateway: %w", err)
+	}
+
+	// Check for duplicate context+version combination
+	for _, existingAPI := range existingAPIs {
+		// Skip checking against the same API (in case of redeployment)
+		if existingAPI.ID == api.ID {
+			continue
+		}
+
+		// Check if context and version match
+		if existingAPI.Context == api.Context && existingAPI.Version == api.Version {
+			return fmt.Errorf("an API with the same context '%s' and version '%s' is already deployed"+
+				" in the gateway '%s'", api.Context, api.Version, gateway.ID)
+		}
+	}
+
 	// Validate that the API has at least one backend service attached
-	backendServices, err := s.backendServiceRepo.GetBackendServicesByAPIID(apiId)
+	backendServices, err := s.backendServiceRepo.GetBackendServicesByAPIID(api.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get backend services for API: %w", err)
 	}
