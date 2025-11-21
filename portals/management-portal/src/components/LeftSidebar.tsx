@@ -63,7 +63,7 @@ const LeftSidebar: React.FC = () => {
   const mcpChildActive = segments.includes("mcp");
   const prodChildActive = segments.includes("products");
   const portalsChildActive = segments.includes("portals");
-  const policiesChildActive = segments.includes("policies");
+  const policiesChildActive = segments.includes("policies") && !segments.includes("apis");
   const adminChildActive = segments.includes("admin");
   const { organization, organizations } = useOrganization();
   const { selectedProject, projects } = useProjects();
@@ -476,6 +476,16 @@ const LeftSidebar: React.FC = () => {
             }
             icon={<MenuTest fontSize="small" />}
             label="Test"
+          />
+          <NavItem
+            child
+            to={
+              projectBasePath
+                ? `${projectBasePath}/apis/policies`
+                : `${baseOrgPath}/apis/policies`
+            }
+            icon={<MenuPolicies fontSize="small" />}
+            label="Policies"
           />
         </Collapse>
 

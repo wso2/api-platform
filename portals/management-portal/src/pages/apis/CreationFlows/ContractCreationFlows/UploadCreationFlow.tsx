@@ -2,186 +2,145 @@ import * as React from "react";
 import { Alert, Box, Grid, Paper, Stack, Typography } from "@mui/material";
 import UploadRoundedIcon from "@mui/icons-material/UploadRounded";
 import { Button } from "../../../../components/src/components/Button";
-import yaml from "js-yaml";
 import { IconButton } from "../../../../components/src/components/IconButton";
 import Delete from "../../../../components/src/Icons/generated/Delete";
 import CreationMetaData from "../CreationMetaData";
 import {
   useCreateComponentBuildpackContext,
 } from "../../../../context/CreateComponentBuildpackContext";
-
-// NEW shared list & helper
-import {
-  ApiOperationsList,
-  buildOperationsFromOpenAPI,
-  type OpenAPI as SharedOpenAPI,
-} from "../../../../components/src/components/Common/ApiOperationsList";
+import { useOpenApiValidation, type OpenApiValidationResponse } from "../../../../hooks/validation";
+import { ApiOperationsList } from "../../../../components/src/components/Common/ApiOperationsList";
+import type { ImportOpenApiRequest, ApiSummary } from "../../../../hooks/apis";
+import { defaultServiceName, firstServerUrl, deriveContext, mapOperations } from "../../../../helpers/openApiHelpers";
 
 /* ---------- Types ---------- */
 type Props = {
   open: boolean;
   selectedProjectId: string;
-  createApi: (payload: {
-    name: string;
-    context: string;
-    version: string;
-    description?: string;
-    projectId: string;
-    contract?: string;
-    backendServices?: Array<{
-      name: string;
-      isDefault?: boolean;
-      endpoints: Array<{ url: string; description?: string }>;
-      retries?: number;
-    }>;
-    operations?: Array<{
-      name: string;
-      description?: string;
-      request: {
-        method: string;
-        path: string;
-        ["backend-services"]?: Array<{ name: string }>;
-      };
-    }>;
-  }) => Promise<any>;
+  importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<void>;
+  refreshApis: (projectId?: string) => Promise<ApiSummary[]>;
   onClose: () => void;
 };
 
 type Step = "upload" | "details";
 
-// reuse shared OpenAPI type
-type OpenAPI = SharedOpenAPI;
-
-/* ---------- helpers ---------- */
-
-function slugify(val: string) {
-  return val.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
-function defaultServiceName(apiName: string) {
-  const base = apiName?.trim() || "service";
-  return `${slugify(base)}-service`;
-}
-function firstServerUrl(doc?: OpenAPI) {
-  const u = doc?.servers?.find((s) => !!s?.url)?.url?.trim();
-  return u || "";
-}
-function deriveContext(doc: OpenAPI, fallbackTitle?: string) {
-  const urlStr = doc?.servers?.[0]?.url;
-  if (urlStr) {
-    try {
-      const u = new URL(urlStr, "https://placeholder.local");
-      const p = u.pathname || "/";
-      const segs = p.split("/").filter(Boolean);
-      if (segs.length > 0) return `/${segs[0]}`;
-      return "/";
-    } catch {
-      if (urlStr.startsWith("/")) return urlStr;
-    }
-  }
-  const t = fallbackTitle ? slugify(fallbackTitle) : "api";
-  return `/${t}`;
-}
-
 /* ---------- component ---------- */
-const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, createApi, onClose }) => {
+const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenApi, refreshApis, onClose }) => {
   const [step, setStep] = React.useState<Step>("upload");
-  const [rawSpec, setRawSpec] = React.useState<string>("");
-  const [doc, setDoc] = React.useState<OpenAPI | undefined>(undefined);
+  const [uploadedFile, setUploadedFile] = React.useState<File | null>(null);
+  const [validationResult, setValidationResult] = React.useState<OpenApiValidationResponse | null>(null);
   const [fileName, setFileName] = React.useState<string>("");
   const [error, setError] = React.useState<string | null>(null);
+  const [validating, setValidating] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
 
   const { contractMeta, setContractMeta, resetContractMeta } = useCreateComponentBuildpackContext();
+  const { validateOpenApiFile } = useOpenApiValidation();
 
   // Always-mounted input + stable id/label wiring
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const inputId = React.useId();
   const [fileKey, setFileKey] = React.useState(0);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   React.useEffect(() => {
     if (open) {
       resetContractMeta();
       setStep("upload");
-      setRawSpec("");
-      setDoc(undefined);
+      setUploadedFile(null);
+      setValidationResult(null);
       setFileName("");
       setError(null);
+      setValidating(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
       setFileKey((k) => k + 1);
     }
   }, [open, resetContractMeta]);
 
-  const parseSpec = React.useCallback((text: string) => {
-    try {
-      const trimmed = text.trim();
-      if (!trimmed) throw new Error("Empty definition");
-      let parsed: any;
-      if (trimmed.startsWith("{")) parsed = JSON.parse(trimmed);
-      else parsed = yaml.load(text);
-      if (!parsed || typeof parsed !== "object") throw new Error("Invalid OpenAPI definition");
-      return parsed as OpenAPI;
-    } catch (e: any) {
-      throw new Error(e?.message || "Invalid OpenAPI definition");
-    }
-  }, []);
-
-  const autoFill = React.useCallback((d: OpenAPI) => {
-    const title = d?.info?.title?.trim() || "";
-    const version = d?.info?.version?.trim() || "1.0.0";
-    const description = d?.info?.description || "";
-    const targetUrl = firstServerUrl(d);
+  const autoFill = React.useCallback((api: any) => {
+    const title = api?.name?.trim() || api?.displayName?.trim() || "";
+    const version = api?.version?.trim() || "1.0.0";
+    const description = api?.description || "";
+    const targetUrl = firstServerUrl(api);
 
     setContractMeta((prev: any) => ({
       ...prev,
       name: title || prev?.name || "Sample API",
       version,
       description,
-      context: deriveContext(d, title),
+      context: deriveContext(api),
       target: prev?.target || targetUrl || "",
     }));
   }, [setContractMeta]);
 
   const handleFiles = React.useCallback(
-    async (files: FileList | null) => {
+    async (files: FileList | null) => {  
       if (!files || !files[0]) return;
-      const f = files[0];
+      if (validating) return;   
+      const file = files[0];
+
+      abortControllerRef.current?.abort();
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+
       try {
         setError(null);
-        const text = await f.text();
-        const parsed = parseSpec(text);
-        setRawSpec(text);
-        setDoc(parsed);
-        setFileName(f.name);
-        autoFill(parsed);
+        setValidating(true);
+        setValidationResult(null);
+
+        setUploadedFile(file);
+        setFileName(file.name);
+
+        const result = await validateOpenApiFile(file, { signal: abortController.signal });
+        setValidationResult(result);
+
+        if (result.isAPIDefinitionValid) {
+          autoFill(result.api);
+        } else {
+          const errorMsg = result.errors?.join(", ") || "Invalid OpenAPI definition";
+          setError(errorMsg);
+        }
       } catch (e: any) {
-        setError(e?.message || "OpenAPI Definition validation failed");
+        if (e.name === 'AbortError') return;
+        setError(e?.message || "Failed to validate OpenAPI definition");
+        setValidationResult(null);
       } finally {
+        setValidating(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
         setFileKey((k) => k + 1);
       }
     },
-    [autoFill, parseSpec]
+    [validating, autoFill, validateOpenApiFile]
   );
 
   const onDrop = (e: React.DragEvent<HTMLLabelElement>) => {
     e.preventDefault();
     handleFiles(e.dataTransfer.files);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    setFileKey((k) => k + 1);
   };
 
   const finishAndClose = React.useCallback(() => {
+    abortControllerRef.current?.abort();
     resetContractMeta();
     setStep("upload");
-    setRawSpec("");
-    setDoc(undefined);
+    setUploadedFile(null);
+    setValidationResult(null);
     setFileName("");
     setError(null);
+    setValidating(false);
     onClose();
   }, [onClose, resetContractMeta]);
 
-  // Preview operations built from OAS (no backend-service binding here)
-  const previewOps = React.useMemo(() => buildOperationsFromOpenAPI(doc), [doc]);
+  const previewOps = React.useMemo(() => {
+    if (!validationResult?.isAPIDefinitionValid) return [];
+    const api = validationResult.api as any;
+    return mapOperations(api?.operations || [], { withFallbackName: true });
+  }, [validationResult]);
 
   const onCreate = async () => {
     const name = (contractMeta?.name || "").trim();
@@ -203,43 +162,55 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, createAp
       }
     }
 
+    if (!validationResult?.isAPIDefinitionValid || !uploadedFile) {
+      setError("Please upload a valid OpenAPI definition.");
+      return;
+    }
+
+    setCreating(true);
+    setError(null);
+
+    const serviceName = defaultServiceName(name);
+    const backendServices =
+      target
+        ? [
+            {
+              name: serviceName,
+              isDefault: true,
+              retries: 2,
+              endpoints: [{ url: target, description: "Primary backend" }],
+            },
+          ]
+        : [];
+
     try {
-      setCreating(true);
-      setError(null);
-
-      const serviceName = defaultServiceName(name);
-      const backendServices =
-        target
-          ? [
-              {
-                name: serviceName,
-                isDefault: true,
-                retries: 2,
-                endpoints: [{ url: target, description: "Primary backend" }],
-              },
-            ]
-          : [];
-
-      // Build operations and bind to backend-service if present
-      const operations = buildOperationsFromOpenAPI(doc, serviceName);
-
-      await createApi({
-        name,
-        context: context.startsWith("/") ? context : `/${context}`,
-        version,
-        description,
-        projectId: selectedProjectId,
-        contract: rawSpec,
-        backendServices,
-        operations,
+      await importOpenApi({
+        api: {
+          name,
+          context,
+          version,
+          projectId: selectedProjectId,
+          target,
+          description,
+          backendServices,
+        },
+        definition: uploadedFile,
       });
-
-      finishAndClose();
     } catch (e: any) {
       setError(e?.message || "Failed to create API");
+      setCreating(false);
+      return;
+    }
+
+    try {
+      await refreshApis(selectedProjectId);
+    } catch (refreshError) {
+      console.warn("Failed to refresh API list after creation:", refreshError);
     } finally {
       setCreating(false);
     }
+
+    finishAndClose();
   };
 
   return (
@@ -250,8 +221,9 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, createAp
         ref={fileInputRef}
         key={fileKey}
         type="file"
-        accept=".yaml,.yml,.json,.yamal"
+        accept=".yaml,.yml,.json"
         style={{ display: "none" }}
+        disabled={validating}
         onChange={(e) => {
           handleFiles(e.target.files);
           e.currentTarget.value = "";
@@ -266,7 +238,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, createAp
               htmlFor={inputId}
               onDragOver={(e) => e.preventDefault()}
               onDrop={onDrop}
-              sx={{ display: "block", cursor: "pointer" }}
+              sx={{ display: "block", cursor: validating ? "not-allowed" : "pointer", opacity: validating ? 0.6 : 1 }}
             >
               <Paper
                 variant="outlined"
@@ -282,31 +254,40 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, createAp
                   backgroundColor: "#f5f5f5ff",
                 }}
               >
-                {!rawSpec ? (
+                {!uploadedFile ? (
                   <Stack spacing={1} alignItems="center">
-                    <Typography variant="h5" fontWeight={600}>
-                      Upload API Contract
-                    </Typography>
-                    <Typography color="#aeacacff">
-                      Drag &amp; Drop your files, click, or paste raw spec
-                    </Typography>
-                    <Button component="label" startIcon={<UploadRoundedIcon />} htmlFor={inputId}>
-                      Upload
-                    </Button>
+                    {validating ? (
+                      <Typography variant="h5" fontWeight={600}>
+                        Validating API Contract...
+                      </Typography>
+                    ) : (
+                      <>
+                        <Typography variant="h5" fontWeight={600}>
+                          Upload API Contract
+                        </Typography>
+                        <Typography color="#aeacacff">
+                          Drag &amp; drop your file or click to upload
+                        </Typography>
+                        <Button component="label" startIcon={<UploadRoundedIcon />} htmlFor={inputId}>
+                          Upload
+                        </Button>
+                      </>
+                    )}
                   </Stack>
                 ) : (
                   <Stack spacing={2} alignItems="center">
                     <Typography variant="h6" fontWeight={700}>
-                      Uploaded file
+                      {validating ? "Validating..." : "Uploaded file"}
                     </Typography>
                     <Stack direction="row" spacing={1} alignItems="center">
                       <Typography color="primary">{fileName}</Typography>
                       <IconButton
                         size="small"
                         color="error"
+                        disabled={validating}
                         onClick={() => {
-                          setRawSpec("");
-                          setDoc(undefined);
+                          setUploadedFile(null);
+                          setValidationResult(null);
                           setFileName("");
                           setError(null);
                           if (fileInputRef.current) fileInputRef.current.value = "";
@@ -316,6 +297,11 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, createAp
                         <Delete fontSize="small" />
                       </IconButton>
                     </Stack>
+                    {validating && (
+                      <Typography variant="caption" color="text.secondary">
+                        Validating OpenAPI definition...
+                      </Typography>
+                    )}
                   </Stack>
                 )}
               </Paper>
@@ -327,7 +313,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, createAp
               </Button>
               <Button
                 variant="contained"
-                disabled={!rawSpec}
+                disabled={!validationResult?.isAPIDefinitionValid || validating}
                 onClick={() => setStep("details")}
                 sx={{ textTransform: "none" }}
               >
