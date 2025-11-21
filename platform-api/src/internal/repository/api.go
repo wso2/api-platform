@@ -267,7 +267,8 @@ func (r *APIRepo) GetAPIsByOrganizationID(orgID string, projectID *string) ([]*m
 // GetDeployedAPIsByGatewayID retrieves all APIs deployed to a specific gateway
 func (r *APIRepo) GetDeployedAPIsByGatewayID(gatewayID, organizationID string) ([]*model.API, error) {
 	query := `
-		SELECT a.uuid, a.name, a.display_name, a.type, a.created_at, a.updated_at
+		SELECT a.uuid, a.name, a.display_name, a.description, a.context, a.version, a.provider,
+		       a.project_uuid, a.organization_uuid, a.type, a.created_at, a.updated_at
 		FROM apis a
 		INNER JOIN api_deployments ad ON a.uuid = ad.api_uuid
 		WHERE ad.gateway_uuid = ? AND a.organization_uuid = ?
@@ -283,11 +284,11 @@ func (r *APIRepo) GetDeployedAPIsByGatewayID(gatewayID, organizationID string) (
 	var apis []*model.API
 	for rows.Next() {
 		api := &model.API{}
-		err := rows.Scan(
-			&api.ID, &api.Name, &api.DisplayName, &api.Type, &api.CreatedAt, &api.UpdatedAt,
-		)
+		err := rows.Scan(&api.ID, &api.Name, &api.DisplayName, &api.Description,
+			&api.Context, &api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID,
+			&api.Type, &api.CreatedAt, &api.UpdatedAt)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan API row: %w", err)
 		}
 		apis = append(apis, api)
 	}

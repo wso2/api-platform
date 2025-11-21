@@ -412,9 +412,9 @@ func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
 				"API not found"))
 			return
 		}
-		if errors.Is(err, constants.ErrInvalidAPIDeployment) {
+		if strings.Contains(err.Error(), "invalid api deployment") {
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Invalid API deployment configuration"))
+				"Invalid API deployment configuration: "+err.Error()))
 			return
 		}
 		log.Printf("[ERROR] Failed to deploy API revision: apiUUID=%s revisionID=%s error=%v",

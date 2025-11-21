@@ -253,10 +253,10 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 
 		// Check for duplicate context + version combination
 		for _, associatedAPI := range associatedAPIs {
-			if associatedAPI.Context == notification.Configuration.Data.Context &&
-				associatedAPI.Version == notification.Configuration.Data.Version {
+			if associatedAPI.Context == notification.Configuration.Spec.Context &&
+				associatedAPI.Version == notification.Configuration.Spec.Version {
 				log.Printf("WARNING: API with context '%s' and version '%s' already exists in gateway '%s'.",
-					notification.Configuration.Data.Context, notification.Configuration.Data.Version, gatewayModel.Name)
+					notification.Configuration.Spec.Context, notification.Configuration.Spec.Version, gatewayModel.Name)
 				break
 			}
 		}
