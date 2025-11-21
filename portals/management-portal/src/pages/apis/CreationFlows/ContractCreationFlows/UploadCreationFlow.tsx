@@ -221,7 +221,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
         ref={fileInputRef}
         key={fileKey}
         type="file"
-        accept=".yaml,.yml,.json,.yamal"
+        accept=".yaml,.yml,.json"
         style={{ display: "none" }}
         disabled={validating}
         onChange={(e) => {
@@ -266,7 +266,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
                           Upload API Contract
                         </Typography>
                         <Typography color="#aeacacff">
-                          Drag &amp; Drop your files, click, or paste raw spec
+                          Drag &amp; drop your file or click to upload
                         </Typography>
                         <Button component="label" startIcon={<UploadRoundedIcon />} htmlFor={inputId}>
                           Upload
