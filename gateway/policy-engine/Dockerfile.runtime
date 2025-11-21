@@ -1,39 +1,73 @@
 # Runtime Dockerfile for Policy Engine
-# This Dockerfile builds the policy engine with the SetHeader sample policy
+# This Dockerfile builds the complete policy engine by running the policy-builder
 
-FROM golang:1.23-alpine AS builder
+# Stage 1: Builder Base - Contains framework source and builder tooling
+FROM golang:1.24-alpine AS builder-base
 
 # Install build dependencies
-RUN apk add --no-cache git
+RUN apk add --no-cache \
+    git \
+    make \
+    ca-certificates
 
 # Set working directory
-WORKDIR /build
+WORKDIR /workspace
 
-# Copy source code
-COPY src/ ./src/
-COPY policies/ ./policies/
+# Copy Policy Engine framework source code
+COPY policy-engine/ /workspace/policy-engine/
 
-# Copy go.mod and go.sum
-COPY src/go.mod src/go.sum ./src/
+# Copy SDK components
+COPY sdk/ /workspace/sdk/
 
-# Build the binary
-WORKDIR /build/src
-RUN go mod download && \
-    go mod tidy && \
-    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-s -w" -o /policy-engine .
+# Copy Policy Builder application
+COPY policy-builder/ /workspace/policy-builder/
 
-# Runtime stage
+# Pre-download Go dependencies for runtime
+WORKDIR /workspace/policy-engine
+RUN go mod download
+
+# Pre-download Go dependencies for SDK
+WORKDIR /workspace/sdk
+RUN go mod download
+
+# Pre-download Go dependencies for policy-builder
+WORKDIR /workspace/policy-builder
+RUN go mod download
+
+# Build the Policy Builder binary
+RUN go build -o /usr/local/bin/policy-engine-builder ./cmd/builder
+
+# Stage 2: Policy Compilation - Run builder to compile policies
+FROM builder-base AS policy-compiler
+
+# Copy policy implementations
+COPY policies/ /workspace/policies/
+
+# Copy policy manifest
+COPY policies.yaml /workspace/policies.yaml
+
+# Create output directory
+RUN mkdir -p /workspace/output
+
+# Set working directory
+WORKDIR /workspace
+
+# Run the policy builder with manifest
+RUN /usr/local/bin/policy-engine-builder \
+    --manifest /workspace/policies.yaml \
+    --policies-dir /workspace/policies \
+    --output-dir /workspace/output \
+    --runtime-dir /workspace/policy-engine
+
+# Stage 3: Runtime - Minimal image with compiled binary
 FROM alpine:3.19
 
 RUN apk --no-cache add ca-certificates
 
 WORKDIR /app
 
-# Copy binary from builder
-COPY --from=builder /policy-engine /app/policy-engine
-
-# Copy policy definitions (needed for loading at runtime)
-COPY policies/ /app/policies/
+# Copy compiled binary from policy-compiler stage
+COPY --from=policy-compiler /workspace/output/policy-engine /app/policy-engine
 
 # Expose ports
 EXPOSE 9001 9002
