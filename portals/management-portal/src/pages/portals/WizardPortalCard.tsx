@@ -133,9 +133,10 @@ const WizardPortalCard: React.FC<WizardPortalCardProps> = ({
               WebkitLineClamp: 2,
               WebkitBoxOrient: 'vertical',
               lineHeight: '20px',
+              fontStyle: 'normal',
             }}
           >
-            {description || ''}
+            {description || 'No description provided'}
           </Typography>
         </Box>
       </CardActionArea>

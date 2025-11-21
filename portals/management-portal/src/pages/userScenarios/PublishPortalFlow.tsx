@@ -37,6 +37,9 @@ import type { Portal } from "../../hooks/devportals";
 import { useApisContext } from "../../context/ApiContext";
 import type { ApiSummary } from "../../hooks/apis";
 import { useProjects } from "../../context/ProjectContext";
+import { ApiPublishProvider, useApiPublishing } from "../../context/ApiPublishContext";
+import { DevPortalProvider } from "../../context/DevPortalContext";
+import { useNavigate } from "react-router-dom";
 
 type Step = { title: string; subtitle: string };
 const STEPS: Step[] = [
@@ -97,10 +100,14 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   const { contractMeta, setContractMeta, resetContractMeta } =
     useCreateComponentBuildpackContext();
   const { validateOpenApiUrl } = useOpenApiValidation();
-  const { devportals: portals, loading: portalsLoading } = useDevPortals();
+  const { devportals: allPortals, loading: portalsLoading } = useDevPortals();
   const { apis, loading: apisLoading, importOpenApi, refreshApis } = useApisContext();
   const { selectedProject } = useProjects();
+  const { publishApiToDevPortal } = useApiPublishing();
+  const navigate = useNavigate();
   const typedApis = React.useMemo<ApiSummary[]>(() => apis, [apis]);
+  
+  const portals = React.useMemo(() => allPortals.filter(p => p.isActive), [allPortals]);
 
   const autoFill = React.useCallback(
     (api: any) => {
@@ -253,24 +260,69 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
     try {
       setCreating(true);
       setError(null);
-      const selectedPortal = portals.find((p: Portal) => p.uuid === selectedPortalId);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      console.log("Publishing to Portal:", {
-        portalId: selectedPortalId,
-        portalName: selectedPortal?.name,
-        apiName: contractMeta?.name,
-        portalVisibility,
-        portalEndpoint,
-      });
+      
+      const apiToPublish = selectionMode === "url" 
+        ? contractMeta 
+        : selectedExistingApi;
+      
+      if (!apiToPublish) {
+        setError("No API selected for publishing.");
+        return;
+      }
+
+      const publishPayload = {
+        devPortalUUID: selectedPortalId,
+        endPoints: {
+          productionURL: portalEndpoint.trim(),
+          sandboxURL: portalEndpoint.trim(),
+        },
+        apiInfo: {
+          apiName: apiToPublish.name,
+          apiDescription: apiToPublish.description || "",
+          visibility: portalVisibility as 'PUBLIC' | 'PRIVATE',
+          tags: [],
+          labels: [],
+          owners: {
+            technicalOwner: "",
+            technicalOwnerEmail: "",
+            businessOwner: "",
+            businessOwnerEmail: "",
+          },
+        },
+        subscriptionPolicies: [],
+      };
+
+      let apiId: string;
+      if (selectionMode === "existing" && selectedExistingApi) {
+        apiId = selectedExistingApi.id;
+      } else {
+        const createdApi = apis.find(
+          api => api.name === contractMeta?.name && api.version === contractMeta?.version
+        );
+        if (!createdApi) {
+          setError("Could not find the created API. Please try again.");
+          return;
+        }
+        apiId = createdApi.id;
+      }
+
+      await publishApiToDevPortal(apiId, publishPayload);
 
       resetContractMeta();
       setActiveStep(0);
       setSpecUrl("");
       setValidationResult(null);
       setSelectedPortalId(null);
+      setSelectedExistingApi(null);
+      setPortalVisibility("PUBLIC");
+      setPortalEndpoint("");
       onFinish?.();
     } catch (e: any) {
-      setError(e?.message || "Failed to publish to portal");
+      const errorMessage = e?.response?.data?.message 
+        || e?.response?.data?.description
+        || e?.message 
+        || "Failed to publish to portal";
+      setError(errorMessage);
     } finally {
       setCreating(false);
     }
@@ -852,6 +904,30 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                 >
                   <CircularProgress />
                 </Box>
+              ) : portals.length === 0 ? (
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 4,
+                    textAlign: "center",
+                    borderRadius: 2,
+                    bgcolor: "background.default",
+                  }}
+                >
+                  <Typography variant="h6" sx={{ mb: 2 }} color="text.secondary">
+                    No Active Developer Portals
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    You need to activate a developer portal before you can publish APIs.
+                    Go to the Portals page to activate one.
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    onClick={() => navigate("/portals")}
+                  >
+                    Go to Portals
+                  </Button>
+                </Paper>
               ) : (
                 <Grid container spacing={2}>
                   {portals.map((portal: Portal) => (
@@ -1083,8 +1159,12 @@ export default function PublishPortalFlow({
   onFinish?: () => void;
 }) {
   return (
-    <CreateComponentBuildpackProvider>
-      <PublishPortalFlowContent onFinish={onFinish} />
-    </CreateComponentBuildpackProvider>
+    <DevPortalProvider>
+      <ApiPublishProvider>
+        <CreateComponentBuildpackProvider>
+          <PublishPortalFlowContent onFinish={onFinish} />
+        </CreateComponentBuildpackProvider>
+      </ApiPublishProvider>
+    </DevPortalProvider>
   );
 }
