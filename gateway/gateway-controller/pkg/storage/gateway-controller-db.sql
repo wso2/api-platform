@@ -46,3 +46,19 @@ CREATE INDEX IF NOT EXISTS idx_kind ON api_configs(kind);
 
 -- Set schema version
 PRAGMA user_version = 1;
+
+-- Policy definitions catalog (added in schema version 2)
+CREATE TABLE IF NOT EXISTS policy_definitions (
+    name TEXT NOT NULL,
+    version TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    description TEXT,
+    flows_request_require_header INTEGER, -- 0/1
+    flows_request_require_body INTEGER,
+    flows_response_require_header INTEGER,
+    flows_response_require_body INTEGER,
+    parameters_schema TEXT, -- JSON document
+    PRIMARY KEY (name, version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_policy_provider ON policy_definitions(provider);

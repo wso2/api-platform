@@ -72,16 +72,47 @@ paths:
               version: api-platform.wso2.com/v1
               kind: http/rest
               data:
-                name: weather-api
+                name: PetStore API
                 version: v1.0
-                context: /weather
+                context: /petstore
                 upstream:
-                  - url: https://api.weather.com/api/v2
+                  - url: http://petstore.swagger.io/v2
+                policies:
+                  - name: apiKeyValidation
+                    version: v1.0.0
+                    executionCondition: "request.metadata[authenticated] != true"
+                    params:
+                      header: X-API-Key
+                      optional: true
+                      mandatory: true
+                  - name: setHeaders
+                    version: v1.0.0
+                    params:
+                      requestHeaders:
+                        - X-Request-Source: WSO2 API Manager
+                      responseHeaders:
+                        - X-Response-Source: WSO2 API Manager
                 operations:
                   - method: GET
-                    path: /{country_code}/{city}
+                    path: /pet/{petId}
+                    policies:
+                      - name: apiKeyValidation
+                        version: v1.0.0
+                        executionCondition: "request.metadata[authenticated] != true"
+                        params:
+                          header: X-API-Key
+                          optional: true
+                          mandatory: true
                   - method: POST
-                    path: /{country_code}/{city}
+                    path: /pet
+                  - method: PUT
+                    path: /pet
+                  - method: DELETE
+                    path: /pet/{petId}
+                  - method: GET
+                    path: /store/inventory
+                  - method: POST
+                    path: /store/order
           application/json:
             schema:
               $ref: '#/components/schemas/APIConfiguration'
@@ -89,16 +120,47 @@ paths:
               version: api-platform.wso2.com/v1
               kind: http/rest
               data:
-                name: weather-api
+                name: PetStore API
                 version: v1.0
-                context: /weather
+                context: /petstore
                 upstream:
-                  - url: https://api.weather.com/api/v2
+                  - url: http://petstore.swagger.io/v2
+                policies:
+                  - name: apiKeyValidation
+                    version: v1.0.0
+                    executionCondition: "request.metadata[authenticated] != true"
+                    params:
+                      header: X-API-Key
+                      optional: true
+                      mandatory: true
+                  - name: setHeaders
+                    version: v1.0.0
+                    params:
+                      requestHeaders:
+                        - X-Request-Source: WSO2 API Manager
+                      responseHeaders:
+                        - X-Response-Source: WSO2 API Manager
                 operations:
                   - method: GET
-                    path: /{country_code}/{city}
+                    path: /pet/{petId}
+                    policies:
+                      - name: apiKeyValidation
+                        version: v1.0.0
+                        executionCondition: "request.metadata[authenticated] != true"
+                        params:
+                          header: X-API-Key
+                          optional: true
+                          mandatory: true
                   - method: POST
-                    path: /{country_code}/{city}
+                    path: /pet
+                  - method: PUT
+                    path: /pet
+                  - method: DELETE
+                    path: /pet/{petId}
+                  - method: GET
+                    path: /store/inventory
+                  - method: POST
+                    path: /store/order
       responses:
         '201':
           description: API configuration created successfully
@@ -318,6 +380,126 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /policies:
+    post:
+      summary: Create policy definitions
+      description: |
+        Register one or more reusable policy definitions in the gateway. These definitions
+        represent executable policy modules (e.g. API key validation, JWT validation) which can
+        later be referenced within API configurations under `data.policies` or operation-level `policies`.
+
+        Duplicate (name + version) entries are rejected.
+      operationId: createPolicies
+      tags:
+        - Policy Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/PolicyDefinition'
+            example: |
+              - name: APIKeyValidation
+                version: v1.0.0
+                provider: WSO2
+                description: Validates API keys from request headers against a configured key store
+                flows:
+                  request:
+                    requireHeader: true
+                    requireBody: true
+                  response:
+                    requireHeader: false
+                    requireBody: false
+                parametersSchema: {}
+              - name: JWTValidation
+                version: v1.0.0
+                provider: WSO2
+                description: Validates JWT tokens from request headers against a configured key store
+                flows:
+                  request:
+                    requireHeader: true
+                    requireBody: true
+                  response:
+                    requireHeader: false
+                    requireBody: false
+                parametersSchema: {}
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/PolicyDefinition'
+            example:
+              - name: APIKeyValidation
+                version: v1.0.0
+                provider: WSO2
+                description: Validates API keys from request headers against a configured key store
+                flows:
+                  request:
+                    requireHeader: true
+                    requireBody: true
+                  response:
+                    requireHeader: false
+                    requireBody: false
+                parametersSchema: {}
+              - name: JWTValidation
+                version: v1.0.0
+                provider: WSO2
+                description: Validates JWT tokens from request headers against a configured key store
+                flows:
+                  request:
+                    requireHeader: true
+                    requireBody: true
+                  response:
+                    requireHeader: false
+                    requireBody: false
+                parametersSchema: {}
+      responses:
+        '201':
+          description: Policy definitions created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyCreateResponse'
+        '400':
+          description: Invalid request or duplicate policies
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - one or more policies already exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      summary: List registered policy definitions
+      description: Retrieve all currently stored policy definitions (authoritative catalog)
+      operationId: listPolicies
+      tags:
+        - Policy Management
+      responses:
+        '200':
+          description: List of policy definitions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyListResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   schemas:
     APIConfiguration:
@@ -376,6 +558,11 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/Upstream'
+        policies:
+          type: array
+          description: List of API-level policies applied to all operations unless overridden
+          items:
+            $ref: '#/components/schemas/Policy'
         operations:
           type: array
           description: List of HTTP operations/routes
@@ -417,6 +604,114 @@ components:
           description: Route path with optional {param} placeholders
           pattern: '^\/.*$'
           example: /{country_code}/{city}
+        policies:
+          type: array
+          description: List of policies applied only to this operation (overrides or adds to API-level policies)
+          items:
+            $ref: '#/components/schemas/Policy'
+
+    Policy:
+      type: object
+      required:
+        - name
+        - version
+      properties:
+        name:
+          type: string
+          description: Name of the policy
+          example: apiKeyValidation
+        version:
+          type: string
+          description: Semantic version of the policy
+          pattern: '^v\d+\.\d+\.\d+$'
+          example: v1.0.0
+        executionCondition:
+          type: string
+          description: Expression controlling conditional execution of the policy
+          example: "request.metadata[authenticated] != true"
+        params:
+          type: object
+          description: Arbitrary parameters for the policy (free-form key/value structure)
+          additionalProperties: true
+    # Reusable policy definition (catalog entry)
+    PolicyDefinition:
+      type: object
+      required:
+        - name
+        - version
+        - provider
+        - flows
+      properties:
+        name:
+          type: string
+          description: Unique policy name
+          example: APIKeyValidation
+        version:
+          type: string
+          description: Semantic version of the policy definition
+          pattern: '^v\d+\.\d+\.\d+$'
+          example: v1.0.0
+        provider:
+          type: string
+          description: Organization or entity providing the policy implementation
+          example: WSO2
+        description:
+          type: string
+          description: Human readable description of the policy's purpose
+        flows:
+          type: object
+          description: Indicates required request/response components for policy execution
+          properties:
+            request:
+              $ref: '#/components/schemas/PolicyFlowRequirements'
+            response:
+              $ref: '#/components/schemas/PolicyFlowRequirements'
+        parametersSchema:
+          type: object
+          description: JSON schema (or arbitrary structure) describing parameters accepted when attaching this policy
+          additionalProperties: true
+
+    PolicyFlowRequirements:
+      type: object
+      properties:
+        requireHeader:
+          type: boolean
+          description: Whether request/response headers are required for execution
+          example: true
+        requireBody:
+          type: boolean
+          description: Whether request/response body content is required for execution
+          example: false
+
+    PolicyCreateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: Policy definitions created successfully
+        count:
+          type: integer
+          example: 2
+        created:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyDefinition'
+    PolicyListResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        count:
+          type: integer
+          example: 2
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyDefinition'
 
     APICreateResponse:
       type: object
@@ -436,7 +731,6 @@ components:
           type: string
           format: date-time
           example: 2025-10-11T10:30:00Z
-
     APIUpdateResponse:
       type: object
       properties:
@@ -561,3 +855,5 @@ tags:
     description: System health and status endpoints
   - name: API Management
     description: CRUD operations for API configurations
+  - name: Policy Management
+    description: Registration of reusable policy definitions

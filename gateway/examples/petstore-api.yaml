@@ -19,14 +19,37 @@
 version: api-platform.wso2.com/v1
 kind: http/rest
 data:
-  name: PetStore API
+  name: PetStore API test
   version: v1.0
-  context: /petstore
+  context: /petstoretest
   upstream:
     - url: http://petstore.swagger.io/v2
+  policies:
+    - name: apiKeyValidation
+      version: v1.0.0
+      executionCondition: "request.metadata[authenticated] != true"
+      params: # any object
+        header: "X-API-Key"
+        optional: true
+        mandatory: true
+    - name: setHeaders
+      version: v1.0.0
+      params: # any object
+        requestHeaders:
+          - X-Request-Source: WSO2 API Manager test
+        responseHeaders:
+          - X-Response-Source: WSO2 API Manager
   operations:
     - method: GET
       path: /pet/{petId}
+      policies:
+        - name: apiKeyValidation
+          version: v1.0.0
+          executionCondition: "request.metadata[authenticated] != true"
+          params: # any object
+            header: "X-API-Key"
+            optional: true
+            mandatory: true
     - method: POST
       path: /pet
     - method: PUT

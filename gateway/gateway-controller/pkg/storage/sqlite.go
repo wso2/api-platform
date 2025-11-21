@@ -27,6 +27,7 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"go.uber.org/zap"
 )
@@ -92,6 +93,31 @@ func (s *SQLiteStorage) initSchema() error {
 
 		s.logger.Info("Database schema initialized successfully")
 	} else {
+		// Migrations
+		if version == 1 {
+			// Add policy_definitions table (idempotent due to IF NOT EXISTS in embedded schema)
+			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS policy_definitions (
+				name TEXT NOT NULL,
+				version TEXT NOT NULL,
+				provider TEXT NOT NULL,
+				description TEXT,
+				flows_request_require_header INTEGER,
+				flows_request_require_body INTEGER,
+				flows_response_require_header INTEGER,
+				flows_response_require_body INTEGER,
+				parameters_schema TEXT,
+				PRIMARY KEY (name, version)
+			);`); err != nil {
+				return fmt.Errorf("failed to migrate schema to version 2: %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_policy_provider ON policy_definitions(provider);`); err != nil {
+				return fmt.Errorf("failed to create policy_definitions index: %w", err)
+			}
+			if _, err := s.db.Exec("PRAGMA user_version = 2"); err != nil {
+				return fmt.Errorf("failed to set schema version to 2: %w", err)
+			}
+			s.logger.Info("Schema migrated to version 2 (policy_definitions)")
+		}
 		s.logger.Info("Database schema already exists", zap.Int("version", version))
 	}
 
@@ -385,6 +411,149 @@ func (s *SQLiteStorage) Close() error {
 		return fmt.Errorf("failed to close database: %w", err)
 	}
 	return nil
+}
+
+// ReplacePolicyDefinitions atomically replaces all policy definitions
+func (s *SQLiteStorage) ReplacePolicyDefinitions(defs []api.PolicyDefinition) error {
+	Tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			Tx.Rollback()
+		}
+	}()
+
+	// Clear existing
+	if _, err = Tx.Exec("DELETE FROM policy_definitions"); err != nil {
+		return fmt.Errorf("failed to clear existing policy definitions: %w", err)
+	}
+
+	insertStmt, err := Tx.Prepare(`INSERT INTO policy_definitions (
+		name, version, provider, description,
+		flows_request_require_header, flows_request_require_body,
+		flows_response_require_header, flows_response_require_body,
+		parameters_schema
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare insert statement: %w", err)
+	}
+	defer insertStmt.Close()
+
+	for _, d := range defs {
+		// Serialize parameters schema
+		paramsJSON := "{}"
+		if d.ParametersSchema != nil {
+			b, mErr := json.Marshal(d.ParametersSchema)
+			if mErr != nil {
+				return fmt.Errorf("failed to marshal parametersSchema for policy %s:%s: %w", d.Name, d.Version, mErr)
+			}
+			paramsJSON = string(b)
+		}
+		var reqHeader, reqBody, respHeader, respBody int
+		if d.Flows.Request != nil {
+			if d.Flows.Request.RequireHeader != nil && *d.Flows.Request.RequireHeader {
+				reqHeader = 1
+			}
+			if d.Flows.Request.RequireBody != nil && *d.Flows.Request.RequireBody {
+				reqBody = 1
+			}
+		}
+		if d.Flows.Response != nil {
+			if d.Flows.Response.RequireHeader != nil && *d.Flows.Response.RequireHeader {
+				respHeader = 1
+			}
+			if d.Flows.Response.RequireBody != nil && *d.Flows.Response.RequireBody {
+				respBody = 1
+			}
+		}
+		if _, err = insertStmt.Exec(
+			d.Name,
+			d.Version,
+			d.Provider,
+			d.Description,
+			reqHeader,
+			reqBody,
+			respHeader,
+			respBody,
+			paramsJSON,
+		); err != nil {
+			return fmt.Errorf("failed to insert policy definition %s:%s: %w", d.Name, d.Version, err)
+		}
+	}
+
+	if err = Tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit policy definitions replace: %w", err)
+	}
+
+	s.logger.Info("Policy definitions replaced", zap.Int("count", len(defs)))
+	return nil
+}
+
+// GetAllPolicyDefinitions retrieves all policies
+func (s *SQLiteStorage) GetAllPolicyDefinitions() ([]api.PolicyDefinition, error) {
+	query := `SELECT name, version, provider, description,
+		flows_request_require_header, flows_request_require_body,
+		flows_response_require_header, flows_response_require_body,
+		parameters_schema FROM policy_definitions ORDER BY name, version`
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query policy definitions: %w", err)
+	}
+	defer rows.Close()
+
+	defs := make([]api.PolicyDefinition, 0)
+	for rows.Next() {
+		var name, version, provider string
+		var description sql.NullString
+		var reqHeader, reqBody, respHeader, respBody sql.NullInt64
+		var paramsJSON sql.NullString
+		if err := rows.Scan(&name, &version, &provider, &description, &reqHeader, &reqBody, &respHeader, &respBody, &paramsJSON); err != nil {
+			return nil, fmt.Errorf("failed to scan policy definition: %w", err)
+		}
+		def := api.PolicyDefinition{Name: name, Version: version, Provider: provider}
+		if description.Valid {
+			def.Description = &description.String
+		}
+		// Flows
+		if reqHeader.Valid || reqBody.Valid || respHeader.Valid || respBody.Valid {
+			// Initialize flow structs only if any value present
+			if reqHeader.Valid || reqBody.Valid {
+				def.Flows.Request = &api.PolicyFlowRequirements{}
+			}
+			if respHeader.Valid || respBody.Valid {
+				def.Flows.Response = &api.PolicyFlowRequirements{}
+			}
+			if reqHeader.Valid {
+				b := reqHeader.Int64 == 1
+				def.Flows.Request.RequireHeader = &b
+			}
+			if reqBody.Valid {
+				b := reqBody.Int64 == 1
+				def.Flows.Request.RequireBody = &b
+			}
+			if respHeader.Valid {
+				b := respHeader.Int64 == 1
+				def.Flows.Response.RequireHeader = &b
+			}
+			if respBody.Valid {
+				b := respBody.Int64 == 1
+				def.Flows.Response.RequireBody = &b
+			}
+		}
+		if paramsJSON.Valid && paramsJSON.String != "" {
+			var m map[string]interface{}
+			if err := json.Unmarshal([]byte(paramsJSON.String), &m); err == nil {
+				def.ParametersSchema = &m
+			}
+		}
+		defs = append(defs, def)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating policy definitions rows: %w", err)
+	}
+	return defs, nil
 }
 
 // LoadFromDatabase loads all configurations from database into the in-memory cache
