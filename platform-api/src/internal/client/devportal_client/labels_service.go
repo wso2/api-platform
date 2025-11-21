@@ -17,7 +17,10 @@
 
 package devportal_client
 
-import dto "platform-api/src/internal/client/devportal_client/dto"
+import (
+	"net/http"
+	dto "platform-api/src/internal/client/devportal_client/dto"
+)
 
 // LabelsService manages label operations for an organization.
 type LabelsService interface {
@@ -33,7 +36,9 @@ type labelsService struct {
 
 func (s *labelsService) Create(orgID string, labels []dto.Label) ([]dto.Label, error) {
 	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, labelsPath)
-	req, err := s.DevPortalClient.newJSONRequest("POST", url, labels)
+	req, err := s.DevPortalClient.NewRequest(http.MethodPost, url).
+		WithJSONBody(labels).
+		Build()
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +64,7 @@ func (s *labelsService) Create(orgID string, labels []dto.Label) ([]dto.Label, e
 
 func (s *labelsService) List(orgID string) ([]dto.Label, error) {
 	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, labelsPath)
-	req, err := s.DevPortalClient.newJSONRequest("GET", url, nil)
+	req, err := s.DevPortalClient.NewRequest(http.MethodGet, url).Build()
 	if err != nil {
 		return nil, err
 	}

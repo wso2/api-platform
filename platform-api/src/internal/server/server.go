@@ -88,7 +88,7 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	apiUtil := &utils.APIUtil{}
 
 	// Initialize DevPortal service
-	devPortalService := service.NewDevPortalService(devPortalRepo, orgRepo, publicationRepo, gatewayRepo, apiRepo, apiUtil, cfg)
+	devPortalService := service.NewDevPortalService(devPortalRepo, orgRepo, publicationRepo, apiRepo, apiUtil, cfg)
 
 	// Initialize services
 	orgService := service.NewOrganizationService(orgRepo, projectRepo, devPortalService, cfg)

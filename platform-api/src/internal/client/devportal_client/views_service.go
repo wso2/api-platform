@@ -18,6 +18,7 @@
 package devportal_client
 
 import (
+	"net/http"
 	dto "platform-api/src/internal/client/devportal_client/dto"
 )
 
@@ -41,7 +42,9 @@ func (s *viewsService) baseURL(orgID string) string {
 
 func (s *viewsService) Create(orgID string, req dto.ViewRequest) (*dto.ViewResponse, error) {
 	url := s.baseURL(orgID)
-	httpReq, err := s.DevPortalClient.newJSONRequest("POST", url, req)
+	httpReq, err := s.DevPortalClient.NewRequest(http.MethodPost, url).
+		WithJSONBody(req).
+		Build()
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +57,7 @@ func (s *viewsService) Create(orgID string, req dto.ViewRequest) (*dto.ViewRespo
 
 func (s *viewsService) Get(orgID, name string) (*dto.ViewResponse, error) {
 	url := s.DevPortalClient.buildURL(organizationsPath, orgID, viewsPath, name)
-	httpReq, err := s.DevPortalClient.newJSONRequest("GET", url, nil)
+	httpReq, err := s.DevPortalClient.NewRequest(http.MethodGet, url).Build()
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +73,7 @@ func (s *viewsService) Get(orgID, name string) (*dto.ViewResponse, error) {
 
 func (s *viewsService) List(orgID string) ([]dto.ViewResponse, error) {
 	url := s.baseURL(orgID)
-	httpReq, err := s.DevPortalClient.newJSONRequest("GET", url, nil)
+	httpReq, err := s.DevPortalClient.NewRequest(http.MethodGet, url).Build()
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +86,9 @@ func (s *viewsService) List(orgID string) ([]dto.ViewResponse, error) {
 
 func (s *viewsService) Update(orgID, name string, req dto.ViewUpdateRequest) (*dto.ViewResponse, error) {
 	url := s.DevPortalClient.buildURL(organizationsPath, orgID, viewsPath, name)
-	httpReq, err := s.DevPortalClient.newJSONRequest("PUT", url, req)
+	httpReq, err := s.DevPortalClient.NewRequest(http.MethodPut, url).
+		WithJSONBody(req).
+		Build()
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +101,8 @@ func (s *viewsService) Update(orgID, name string, req dto.ViewUpdateRequest) (*d
 
 func (s *viewsService) Delete(orgID, name string) error {
 	url := s.DevPortalClient.buildURL(organizationsPath, orgID, viewsPath, name)
-	httpReq, err := s.DevPortalClient.newJSONRequest("DELETE", url, nil)
+	httpReq, err := s.DevPortalClient.NewRequest(http.MethodDelete, url).
+		Build()
 	if err != nil {
 		return err
 	}

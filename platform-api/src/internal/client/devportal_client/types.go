@@ -48,7 +48,7 @@ type (
 
 	// Re-export enum types from dto so callers only import devportal_client.
 	SubscriptionType = dto.SubscriptionType
-	APIVisibility       = dto.APIVisibility
+	APIVisibility    = dto.APIVisibility
 	APIStatus        = dto.APIStatus
 	APIType          = dto.APIType
 )

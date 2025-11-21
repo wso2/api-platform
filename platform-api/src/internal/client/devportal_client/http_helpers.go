@@ -72,8 +72,32 @@ func (c *DevPortalClient) newJSONRequest(method, url string, v interface{}) (*ht
 	return req, nil
 }
 
-// doAndDecode executes the request, checks the status against expectedCodes,
-// and decodes the response JSON into out. If out is nil, the body is discarded.
+// checkEndpointConnectivity performs a lightweight reachability check.
+//   - Transport/network error → returned as-is
+//   - HTTP 404               → ErrDevPortalEndpointInvalid
+//   - Any other HTTP status  → considered reachable
+func (c *DevPortalClient) checkEndpointConnectivity(url string) error {
+	req, err := http.NewRequest(http.MethodHead, url, nil)
+	if err != nil {
+		return NewDevPortalError(0, "failed to create connectivity check request", false, err)
+	}
+
+	resp, err := c.do(req)
+	if err != nil {
+		return err // return original error as-is
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+
+	if resp.StatusCode == http.StatusNotFound {
+		return ErrDevPortalEndpointInvalid
+	}
+
+	return nil
+}
+
+// doAndDecode executes the HTTP request, validates status codes,
+// and decodes JSON response into 'out' (if non-nil).
 func (c *DevPortalClient) doAndDecode(req *http.Request, expectedCodes []int, out interface{}) error {
 	// Execute the request first. Only use resp after confirming err==nil.
 	resp, err := c.do(req)
@@ -101,7 +125,10 @@ func (c *DevPortalClient) doAndDecode(req *http.Request, expectedCodes []int, ou
 	}
 	if !ok {
 		log.Printf("doAndDecode: unexpected status=%d body=%s", resp.StatusCode, string(b))
-		return NewDevPortalError(resp.StatusCode, fmt.Sprintf("unexpected status %d: %s", resp.StatusCode, string(b)), resp.StatusCode >= 500, nil)
+		return NewDevPortalError(resp.StatusCode,
+			fmt.Sprintf("unexpected status %d: %s", resp.StatusCode, string(b)),
+			resp.StatusCode >= 500,
+			nil)
 	}
 
 	if out == nil {
@@ -109,9 +136,7 @@ func (c *DevPortalClient) doAndDecode(req *http.Request, expectedCodes []int, ou
 		return nil
 	}
 
-	// Decode from the buffered bytes
-	decoder := json.NewDecoder(bytes.NewReader(b))
-	if err := decoder.Decode(out); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(b)).Decode(out); err != nil {
 		log.Printf("doAndDecode: decode failed: %v; body=%s", err, string(b))
 		return err
 	}
@@ -133,5 +158,8 @@ func (c *DevPortalClient) doNoContent(req *http.Request, expectedCodes []int) er
 		}
 	}
 	b, _ := io.ReadAll(resp.Body)
-	return NewDevPortalError(resp.StatusCode, fmt.Sprintf("unexpected status %d: %s", resp.StatusCode, string(b)), resp.StatusCode >= 500, nil)
+	return NewDevPortalError(resp.StatusCode,
+		fmt.Sprintf("unexpected status %d: %s", resp.StatusCode, string(b)),
+		resp.StatusCode >= 500,
+		nil)
 }
