@@ -30,7 +30,7 @@ data:
       executionCondition: "request.metadata[authenticated] != true"
       params: # any object
         header: "X-API-Key"
-        optional: true
+        optional: false
         mandatory: true
     - name: setHeaders
       version: v1.0.0
@@ -48,7 +48,7 @@ data:
           executionCondition: "request.metadata[authenticated] != true"
           params: # any object
             header: "X-API-Key"
-            optional: true
+            optional: false
             mandatory: true
     - method: POST
       path: /pet

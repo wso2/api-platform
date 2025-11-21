@@ -414,23 +414,24 @@ func (s *SQLiteStorage) Close() error {
 }
 
 // ReplacePolicyDefinitions atomically replaces all policy definitions
-func (s *SQLiteStorage) ReplacePolicyDefinitions(defs []api.PolicyDefinition) error {
-	Tx, err := s.db.Begin()
+func (s *SQLiteStorage) ReplacePolicyDefinitions(defs []api.PolicyDefinition) (err error) {
+	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if err != nil {
-			Tx.Rollback()
+			tx.Rollback()
 		}
 	}()
 
 	// Clear existing
-	if _, err = Tx.Exec("DELETE FROM policy_definitions"); err != nil {
+	if _, err = tx.Exec("DELETE FROM policy_definitions"); err != nil {
 		return fmt.Errorf("failed to clear existing policy definitions: %w", err)
 	}
 
-	insertStmt, err := Tx.Prepare(`INSERT INTO policy_definitions (
+	var insertStmt *sql.Stmt
+	insertStmt, err = tx.Prepare(`INSERT INTO policy_definitions (
 		name, version, provider, description,
 		flows_request_require_header, flows_request_require_body,
 		flows_response_require_header, flows_response_require_body,
@@ -445,9 +446,10 @@ func (s *SQLiteStorage) ReplacePolicyDefinitions(defs []api.PolicyDefinition) er
 		// Serialize parameters schema
 		paramsJSON := "{}"
 		if d.ParametersSchema != nil {
-			b, mErr := json.Marshal(d.ParametersSchema)
-			if mErr != nil {
-				return fmt.Errorf("failed to marshal parametersSchema for policy %s:%s: %w", d.Name, d.Version, mErr)
+			var b []byte
+			b, err = json.Marshal(d.ParametersSchema)
+			if err != nil {
+				return fmt.Errorf("failed to marshal parametersSchema for policy %s:%s: %w", d.Name, d.Version, err)
 			}
 			paramsJSON = string(b)
 		}
@@ -468,11 +470,18 @@ func (s *SQLiteStorage) ReplacePolicyDefinitions(defs []api.PolicyDefinition) er
 				respBody = 1
 			}
 		}
+
+		// Convert *string to concrete string for DB driver
+		var desc string
+		if d.Description != nil {
+			desc = *d.Description
+		}
+
 		if _, err = insertStmt.Exec(
 			d.Name,
 			d.Version,
 			d.Provider,
-			d.Description,
+			desc,
 			reqHeader,
 			reqBody,
 			respHeader,
@@ -483,7 +492,7 @@ func (s *SQLiteStorage) ReplacePolicyDefinitions(defs []api.PolicyDefinition) er
 		}
 	}
 
-	if err = Tx.Commit(); err != nil {
+	if err = tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit policy definitions replace: %w", err)
 	}
 

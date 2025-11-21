@@ -382,13 +382,27 @@ paths:
 
   /policies:
     post:
-      summary: Create policy definitions
+      summary: Replace all policy definitions
       description: |
-        Register one or more reusable policy definitions in the gateway. These definitions
-        represent executable policy modules (e.g. API key validation, JWT validation) which can
-        later be referenced within API configurations under `data.policies` or operation-level `policies`.
+        Atomically replace all policy definitions in the gateway with the provided set.
+        This is a destructive operation that deletes all existing policy definitions
+        and replaces them with the submitted definitions in a single transaction.
 
-        Duplicate (name + version) entries are rejected.
+        **Important Behavior:**
+        - All existing policy definitions are deleted
+        - The new set of definitions is persisted atomically
+        - This operation is idempotent - submitting the same set multiple times produces the same result
+        - Duplicate (name + version) entries within the request are rejected with 400 Bad Request
+        - No conflict detection against existing storage (409 is never returned)
+
+        **Use Cases:**
+        - Initial policy catalog setup
+        - Complete policy catalog updates
+        - Synchronizing policy definitions from an external source
+
+        Policy definitions represent executable policy modules (e.g. API key validation,
+        JWT validation) which can be referenced within API configurations under
+        `data.policies` or operation-level `policies`.
       operationId: createPolicies
       tags:
         - Policy Management
@@ -457,19 +471,13 @@ paths:
                 parametersSchema: {}
       responses:
         '201':
-          description: Policy definitions created successfully
+          description: Policy definitions replaced successfully
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/PolicyCreateResponse'
         '400':
-          description: Invalid request or duplicate policies
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '409':
-          description: Conflict - one or more policies already exist
+          description: Invalid request or duplicate policies within the request
           content:
             application/json:
               schema:
@@ -481,8 +489,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
     get:
-      summary: List registered policy definitions
-      description: Retrieve all currently stored policy definitions (authoritative catalog)
+      summary: List all registered policy definitions
+      description: |
+        Retrieve all currently stored policy definitions (authoritative catalog).
+        This returns the complete set of policy definitions that were last submitted
+        via POST /policies.
       operationId: listPolicies
       tags:
         - Policy Management
@@ -691,12 +702,14 @@ components:
           example: success
         message:
           type: string
-          example: Policy definitions created successfully
+          example: Policy definitions updated successfully
         count:
           type: integer
+          description: Number of policy definitions in the new authoritative set
           example: 2
         created:
           type: array
+          description: The complete set of policy definitions now stored (same as the request body)
           items:
             $ref: '#/components/schemas/PolicyDefinition'
     PolicyListResponse:

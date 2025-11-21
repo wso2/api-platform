@@ -62,7 +62,7 @@ services:
     container_name: router
     image: wso2/api-platform-gateway-router:v1.0.0-m4
     ports:
-      - "8080:8080"   # HTTP traffic
+      - "8081:8080"   # HTTP traffic
       - "9901:9901"   # Envoy admin
     environment:
       - XDS_SERVER_HOST=${XDS_SERVER_HOST:-gateway-controller}

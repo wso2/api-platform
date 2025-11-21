@@ -541,16 +541,7 @@ func (s *APIServer) CreatePolicies(c *gin.Context) {
 		seen[key] = struct{}{}
 	}
 
-	// Replace in-memory snapshot atomically
-	s.policyDefMu.Lock()
-	s.policyDefinitions = make(map[string]api.PolicyDefinition, len(defs))
-	for _, d := range defs {
-		key := d.Name + "|" + d.Version
-		s.policyDefinitions[key] = d
-	}
-	s.policyDefMu.Unlock()
-
-	// Persist authoritative state if persistent storage configured
+	// Persist authoritative state first if persistent storage configured
 	if s.db != nil {
 		if err := s.db.ReplacePolicyDefinitions(defs); err != nil {
 			log.Error("Failed to persist policy definitions", zap.Error(err))
@@ -558,6 +549,15 @@ func (s *APIServer) CreatePolicies(c *gin.Context) {
 			return
 		}
 	}
+
+	// Replace in-memory snapshot atomically after successful persistence
+	s.policyDefMu.Lock()
+	s.policyDefinitions = make(map[string]api.PolicyDefinition, len(defs))
+	for _, d := range defs {
+		key := d.Name + "|" + d.Version
+		s.policyDefinitions[key] = d
+	}
+	s.policyDefMu.Unlock()
 
 	count := len(defs)
 	resp := api.PolicyCreateResponse{Status: stringPtr("success"), Message: stringPtr("Policy definitions updated successfully"), Count: &count, Created: &defs}
