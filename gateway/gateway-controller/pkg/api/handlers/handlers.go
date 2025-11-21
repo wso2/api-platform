@@ -614,7 +614,9 @@ func (s *APIServer) ListPolicies(c *gin.Context) {
 }
 
 // buildStoredPolicyFromAPI constructs a StoredPolicyConfig from an API config
-// Merging rules: Operation-level policies override API-level policies with same name; API-level policies are appended otherwise.
+// Merging rules: When operation has policies, they define the order (can reorder, override, or extend API policies).
+// Remaining API-level policies not mentioned in operation policies are appended at the end.
+// When operation has no policies, API-level policies are used in their declared order.
 // RouteKey uses the fully qualified route path (context + operation path).
 func buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *models.StoredPolicyConfig {
 	apiCfg := &cfg.Configuration
@@ -631,24 +633,37 @@ func buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *models.StoredPolicyC
 	// Build routes with merged policies
 	routes := make([]models.RoutePolicy, 0)
 	for _, op := range apiData.Operations {
-		// Map to track operation-level policies by name
-		merged := make(map[string]models.Policy)
-		if op.Policies != nil {
-			for _, p := range *op.Policies {
-				merged[p.Name] = convertAPIPolicy(p)
+		var finalPolicies []models.Policy
+
+		if op.Policies != nil && len(*op.Policies) > 0 {
+			// Operation has policies: use operation policy order as authoritative
+			// This allows operations to reorder, override, or extend API-level policies
+			finalPolicies = make([]models.Policy, 0, len(*op.Policies))
+			addedNames := make(map[string]struct{})
+
+			for _, opPolicy := range *op.Policies {
+				finalPolicies = append(finalPolicies, convertAPIPolicy(opPolicy))
+				addedNames[opPolicy.Name] = struct{}{}
+			}
+
+			// Add any API-level policies not mentioned in operation policies (append at end)
+			if apiData.Policies != nil {
+				for _, apiPolicy := range *apiData.Policies {
+					if _, exists := addedNames[apiPolicy.Name]; !exists {
+						finalPolicies = append(finalPolicies, apiPolicies[apiPolicy.Name])
+					}
+				}
+			}
+		} else {
+			// No operation policies: use API-level policies in their declared order
+			if apiData.Policies != nil {
+				finalPolicies = make([]models.Policy, 0, len(*apiData.Policies))
+				for _, p := range *apiData.Policies {
+					finalPolicies = append(finalPolicies, apiPolicies[p.Name])
+				}
 			}
 		}
-		// Add API-level policies not overridden
-		for name, pol := range apiPolicies {
-			if _, exists := merged[name]; !exists {
-				merged[name] = pol
-			}
-		}
-		// Convert map to slice preserving no particular order
-		finalPolicies := make([]models.Policy, 0, len(merged))
-		for _, pol := range merged {
-			finalPolicies = append(finalPolicies, pol)
-		}
+
 		// Construct route key including HTTP method and API version for uniqueness and correlation.
 		// Format: <METHOD>|<API_VERSION>|<CONTEXT><PATH>
 		// Example: GET|1.0.0|/petstore/v1/pets
