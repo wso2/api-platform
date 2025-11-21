@@ -11,9 +11,6 @@ services:
     ports:
       - "8000:8000"  # HTTP proxy port
       - "9901:9901"  # Admin interface
-    depends_on:
-      - policy-engine
-      - backend
     networks:
       - policy-network
 
@@ -35,9 +32,9 @@ services:
       - policy-network
 
   # T100: Test backend service (request-info container)
-  backend:
+  request_info:
     image: renukafernando/request-info:latest
-    container_name: backend
+    container_name: request_info
     command: ["-addr", ":8080", "-logH", "-logB"]
     environment:
       - NAME=Test-Backend

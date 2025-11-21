@@ -13,7 +13,8 @@ import (
 // TranslateRequestActions converts policy execution result to ext_proc response
 // T065: TranslateRequestActions for UpstreamRequestModifications
 // T066: TranslateRequestActions for ImmediateResponse
-func TranslateRequestActions(result *core.RequestExecutionResult, chain *core.PolicyChain) *extprocv3.ProcessingResponse {
+// The execCtx parameter is optional - if provided, uses its computed mode override
+func TranslateRequestActions(result *core.RequestExecutionResult, chain *core.PolicyChain, execCtx *PolicyExecutionContext) *extprocv3.ProcessingResponse {
 	if result.ShortCircuited && result.FinalAction != nil {
 		// Short-circuited with ImmediateResponse
 		if immediateResp, ok := result.FinalAction.Action.(policies.ImmediateResponse); ok {
@@ -62,7 +63,7 @@ func TranslateRequestActions(result *core.RequestExecutionResult, chain *core.Po
 
 	// T070: Implement mode override configuration
 	// Determine if we need to override body processing mode
-	modeOverride := determineModeOverride(chain, true)
+	modeOverride := execCtx.getModeOverride()
 
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{

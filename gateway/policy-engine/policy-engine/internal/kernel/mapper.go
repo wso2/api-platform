@@ -1,11 +1,9 @@
 package kernel
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/policy-engine/sdk/core"
-	"github.com/policy-engine/sdk/policies"
 )
 
 // RouteMapping maps Envoy metadata keys to PolicyChains for route-specific processing
@@ -21,7 +19,7 @@ type RouteMapping struct {
 }
 
 // Kernel represents the integration layer between Envoy and the policy execution engine
-// T050: Kernel struct with Routes map and ContextStorage map
+// T050: Kernel struct with Routes map
 type Kernel struct {
 	mu sync.RWMutex
 
@@ -29,39 +27,23 @@ type Kernel struct {
 	// Key: metadata key from Envoy
 	// Value: PolicyChain for that route
 	Routes map[string]*core.PolicyChain
-
-	// Request context storage (request → response phase)
-	// Key: request ID
-	// Value: (RequestContext, PolicyChain)
-	ContextStorage map[string]*storedContext
-}
-
-// storedContext holds context and chain for response phase retrieval
-type storedContext struct {
-	RequestContext *policies.RequestContext
-	PolicyChain    *core.PolicyChain
 }
 
 // NewKernel creates a new Kernel instance
 func NewKernel() *Kernel {
 	return &Kernel{
-		Routes:         make(map[string]*core.PolicyChain),
-		ContextStorage: make(map[string]*storedContext),
+		Routes: make(map[string]*core.PolicyChain),
 	}
 }
 
 // GetPolicyChainForKey retrieves the policy chain for a given metadata key
 // T051: GetPolicyChainForKey method implementation
-func (k *Kernel) GetPolicyChainForKey(key string) (*core.PolicyChain, error) {
+// Returns nil when no policy chain exists for the route (not an error condition)
+func (k *Kernel) GetPolicyChainForKey(key string) *core.PolicyChain {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 
-	chain, ok := k.Routes[key]
-	if !ok {
-		return nil, fmt.Errorf("no policy chain found for route key: %s", key)
-	}
-
-	return chain, nil
+	return k.Routes[key]
 }
 
 // RegisterRoute registers a policy chain for a route

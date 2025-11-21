@@ -84,19 +84,19 @@ func determineResponseBodyMode(chain *core.PolicyChain) BodyMode {
 }
 
 // GetRequestBodyMode returns the body mode for request phase
-func (k *Kernel) GetRequestBodyMode(routeKey string) (BodyMode, error) {
-	chain, err := k.GetPolicyChainForKey(routeKey)
-	if err != nil {
-		return BodyModeSkip, err
+func (k *Kernel) GetRequestBodyMode(routeKey string) BodyMode {
+	chain := k.GetPolicyChainForKey(routeKey)
+	if chain == nil {
+		return BodyModeSkip
 	}
-	return determineRequestBodyMode(chain), nil
+	return determineRequestBodyMode(chain)
 }
 
 // GetResponseBodyMode returns the body mode for response phase
-func (k *Kernel) GetResponseBodyMode(routeKey string) (BodyMode, error) {
-	chain, err := k.GetPolicyChainForKey(routeKey)
-	if err != nil {
-		return BodyModeSkip, err
+func (k *Kernel) GetResponseBodyMode(routeKey string) BodyMode {
+	chain := k.GetPolicyChainForKey(routeKey)
+	if chain == nil {
+		return BodyModeSkip
 	}
-	return determineResponseBodyMode(chain), nil
+	return determineResponseBodyMode(chain)
 }
