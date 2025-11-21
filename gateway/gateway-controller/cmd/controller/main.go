@@ -17,6 +17,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 	"go.uber.org/zap"
@@ -110,6 +111,36 @@ func main() {
 		}
 	}()
 
+	// Initialize policy store and start policy xDS server if enabled
+	var policyXDSServer *policyxds.Server
+	if cfg.PolicyServer.Enabled {
+		log.Info("Initializing Policy xDS server", zap.Int("port", cfg.PolicyServer.Port))
+
+		// Initialize policy store
+		policyStore := storage.NewPolicyStore()
+
+		// Initialize policy snapshot manager
+		policySnapshotManager := policyxds.NewSnapshotManager(policyStore, log)
+
+		// Generate initial policy snapshot
+		log.Info("Generating initial policy xDS snapshot")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := policySnapshotManager.UpdateSnapshot(ctx); err != nil {
+			log.Warn("Failed to generate initial policy xDS snapshot", zap.Error(err))
+		}
+		cancel()
+
+		// Start policy xDS server in a separate goroutine
+		policyXDSServer = policyxds.NewServer(policySnapshotManager, cfg.PolicyServer.Port, log)
+		go func() {
+			if err := policyXDSServer.Start(); err != nil {
+				log.Fatal("Policy xDS server failed", zap.Error(err))
+			}
+		}()
+	} else {
+		log.Info("Policy xDS server is disabled")
+	}
+
 	// Initialize and start control plane client with dependencies for API creation
 	cpClient := controlplane.NewClient(cfg.ControlPlane, log, configStore, db, snapshotManager)
 	if err := cpClient.Start(); err != nil {
@@ -172,6 +203,11 @@ func main() {
 	}
 
 	xdsServer.Stop()
+
+	// Stop policy xDS server if it was started
+	if policyXDSServer != nil {
+		policyXDSServer.Stop()
+	}
 
 	log.Info("Gateway-Controller stopped")
 }

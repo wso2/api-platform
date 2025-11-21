@@ -39,6 +39,7 @@ type Config struct {
 	Router       RouterConfig       `koanf:"router"`
 	Logging      LoggingConfig      `koanf:"logging"`
 	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
+	PolicyServer PolicyServerConfig `koanf:"policyserver"`
 }
 
 // ServerConfig holds server-related configuration
@@ -46,6 +47,12 @@ type ServerConfig struct {
 	APIPort         int           `koanf:"api_port"`
 	XDSPort         int           `koanf:"xds_port"`
 	ShutdownTimeout time.Duration `koanf:"shutdown_timeout"`
+}
+
+// PolicyServerConfig holds policy xDS server-related configuration
+type PolicyServerConfig struct {
+	Enabled bool `koanf:"enabled"`
+	Port    int  `koanf:"port"`
 }
 
 // StorageConfig holds storage-related configuration
@@ -203,6 +210,8 @@ func getDefaults() map[string]interface{} {
 		"server.api_port":            9090,
 		"server.xds_port":            18000,
 		"server.shutdown_timeout":    "15s",
+		"policyserver.enabled":       true,
+		"policyserver.port":          18001,
 		"storage.type":               "memory",
 		"storage.sqlite.path":        "./data/gateway.db",
 		"router.access_logs.enabled": true,

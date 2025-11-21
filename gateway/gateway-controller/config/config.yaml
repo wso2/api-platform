@@ -12,6 +12,14 @@ server:
   # Graceful shutdown timeout
   shutdown_timeout: 15s
 
+# Policy xDS Server configuration
+policyserver:
+  # Enable or disable the policy xDS server
+  enabled: true
+
+  # Policy xDS gRPC port for policy distribution
+  port: 18001
+
 # Storage configuration
 storage:
   # Storage type: "sqlite", "postgres" (future), or "memory"
