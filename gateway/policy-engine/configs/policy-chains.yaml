@@ -1,0 +1,22 @@
+# Policy chain configuration
+# This file defines which policies execute for each route
+
+- route_key: default
+  policies:
+    - name: SetHeader
+      version: v1.0.0
+      enabled: true
+      parameters:
+        action: SET
+        headerName: x-processed-by
+        headerValue: policy-engine-v1
+
+- route_key: api-route
+  policies:
+    - name: SetHeader
+      version: v1.0.0
+      enabled: true
+      parameters:
+        action: SET
+        headerName: x-api-version
+        headerValue: v1

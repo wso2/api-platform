@@ -1,0 +1,77 @@
+# Runtime Dockerfile for Policy Engine
+# This Dockerfile builds the complete policy engine by running the policy-builder
+
+# Stage 1: Builder Base - Contains framework source and builder tooling
+FROM golang:1.24-alpine AS builder-base
+
+# Install build dependencies
+RUN apk add --no-cache \
+    git \
+    make \
+    ca-certificates
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy Policy Engine framework source code
+COPY policy-engine/ /workspace/policy-engine/
+
+# Copy SDK components
+COPY sdk/ /workspace/sdk/
+
+# Copy Policy Builder application
+COPY policy-builder/ /workspace/policy-builder/
+
+# Pre-download Go dependencies for runtime
+WORKDIR /workspace/policy-engine
+RUN go mod download
+
+# Pre-download Go dependencies for SDK
+WORKDIR /workspace/sdk
+RUN go mod download
+
+# Pre-download Go dependencies for policy-builder
+WORKDIR /workspace/policy-builder
+RUN go mod download
+
+# Build the Policy Builder binary
+RUN go build -o /usr/local/bin/policy-engine-builder ./cmd/builder
+
+# Stage 2: Policy Compilation - Run builder to compile policies
+FROM builder-base AS policy-compiler
+
+# Copy policy implementations
+COPY policies/ /workspace/policies/
+
+# Copy policy manifest
+COPY policies.yaml /workspace/policies.yaml
+
+# Create output directory
+RUN mkdir -p /workspace/output
+
+# Set working directory
+WORKDIR /workspace
+
+# Run the policy builder with manifest
+RUN /usr/local/bin/policy-engine-builder \
+    --manifest /workspace/policies.yaml \
+    --policies-dir /workspace/policies \
+    --output-dir /workspace/output \
+    --runtime-dir /workspace/policy-engine
+
+# Stage 3: Runtime - Minimal image with compiled binary
+FROM alpine:3.19
+
+RUN apk --no-cache add ca-certificates
+
+WORKDIR /app
+
+# Copy compiled binary from policy-compiler stage
+COPY --from=policy-compiler /workspace/output/policy-engine /app/policy-engine
+
+# Expose ports
+EXPOSE 9001 9002
+
+# Run the binary
+ENTRYPOINT ["/app/policy-engine"]
+CMD ["-extproc-port=9001", "-config-file=/configs/policy-chains.yaml"]
