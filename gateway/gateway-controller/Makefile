@@ -28,8 +28,7 @@ help: ## Show this help message
 
 generate: ## Generate API server code from OpenAPI spec
 	@echo "Generating API server code from OpenAPI spec..."
-	@go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1
-	@oapi-codegen --config=oapi-codegen.yaml api/openapi.yaml
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen.yaml api/openapi.yaml
 
 build: ## Build the Gateway-Controller binary
 	@echo "Building Gateway-Controller..."

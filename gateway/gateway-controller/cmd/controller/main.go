@@ -113,6 +113,7 @@ func main() {
 
 	// Initialize policy store and start policy xDS server if enabled
 	var policyXDSServer *policyxds.Server
+	var policyManager *policyxds.PolicyManager
 	if cfg.PolicyServer.Enabled {
 		log.Info("Initializing Policy xDS server", zap.Int("port", cfg.PolicyServer.Port))
 
@@ -121,6 +122,8 @@ func main() {
 
 		// Initialize policy snapshot manager
 		policySnapshotManager := policyxds.NewSnapshotManager(policyStore, log)
+		// Initialize policy manager (used to derive policies from API configurations)
+		policyManager = policyxds.NewPolicyManager(policyStore, policySnapshotManager, log)
 
 		// Generate initial policy snapshot
 		log.Info("Generating initial policy xDS snapshot")
@@ -163,7 +166,7 @@ func main() {
 	router.Use(gin.Recovery())
 
 	// Initialize API server
-	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, log, cpClient)
+	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient)
 
 	// Register API routes
 	api.RegisterHandlers(router, apiServer)

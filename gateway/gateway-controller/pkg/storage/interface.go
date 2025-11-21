@@ -19,6 +19,7 @@
 package storage
 
 import (
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -98,6 +99,14 @@ type Storage interface {
 	// Returns an empty slice if no configurations exist.
 	// May be expensive for large datasets; consider pagination in future versions.
 	GetAllConfigs() ([]*models.StoredAPIConfig, error)
+
+	// ReplacePolicyDefinitions atomically replaces all stored policy definitions with the provided slice.
+	// Treats the input as the authoritative state of the world. Existing definitions are removed.
+	// Should be executed within a single transaction for consistency.
+	ReplacePolicyDefinitions(defs []api.PolicyDefinition) error
+
+	// GetAllPolicyDefinitions retrieves all stored policy definitions.
+	GetAllPolicyDefinitions() ([]api.PolicyDefinition, error)
 
 	// Close closes the storage connection and releases resources.
 	//

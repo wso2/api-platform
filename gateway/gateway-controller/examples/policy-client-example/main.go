@@ -42,7 +42,7 @@ import (
 )
 
 const (
-	serverAddress = "localhost:18000"
+	serverAddress = "localhost:18001"
 	nodeID        = "policy-node"
 )
 
