@@ -74,7 +74,7 @@ export type ImportOpenApiRequest = {
     projectId: string;
     target?: string;
     description?: string;
-    backendServices?: any[];
+    backendServices?: ApiBackendService[];
   };
   url?: string;
   definition?: File;

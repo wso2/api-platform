@@ -9,6 +9,7 @@ import {
 import { useOpenApiValidation, type OpenApiValidationResponse } from "../../../../hooks/validation";
 import { ApiOperationsList } from "../../../../components/src/components/Common/ApiOperationsList";
 import type { ImportOpenApiRequest, ApiSummary } from "../../../../hooks/apis";
+import { defaultServiceName, firstServerUrl, deriveContext, mapOperations } from "../../../../helpers/openApiHelpers";
 
 /* ---------- Types ---------- */
 type Props = {
@@ -20,48 +21,6 @@ type Props = {
 };
 
 type Step = "url" | "details";
-
-/* ---------- helpers ---------- */
-
-function slugify(val: string) {
-  return val.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
-
-function defaultServiceName(apiName: string) {
-  const base = apiName?.trim() || "service";
-  return `${slugify(base)}-service`;
-}
-
-function firstServerUrl(api: any) {
-  const services = api?.["backend-services"] || [];
-  const endpoint = services[0]?.endpoints?.[0]?.url;
-  return endpoint?.trim() || "";
-}
-
-function deriveContext(api: any) {
-  return api?.context || "/api";
-}
-
-function mapOperations(
-  operations: any[],
-  options?: { serviceName?: string; withFallbackName?: boolean }
-) {
-  if (!Array.isArray(operations)) return [];
-  
-  return operations.map((op: any) => ({
-    name: options?.withFallbackName 
-      ? (op.name || (op.request?.method && op.request?.path
-          ? `${op.request.method.toUpperCase()} ${op.request.path}`
-          : op.request?.path || "Unknown"))
-      : op.name,
-    description: op.description,
-    request: {
-      method: op.request?.method || "GET",
-      path: op.request?.path || "/",
-      ...(options?.serviceName && { ["backend-services"]: [{ name: options.serviceName }] }),
-    },
-  }));
-}
 
 /* ---------- component ---------- */
 
@@ -106,12 +65,14 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
   const handleFetchAndPreview = React.useCallback(async () => {
     if (!specUrl.trim()) return;
 
+    const abortController = new AbortController();
+
     try {
       setError(null);
       setValidating(true);
       setValidationResult(null);
 
-      const result = await validateOpenApiUrl(specUrl.trim());
+      const result = await validateOpenApiUrl(specUrl.trim(), { signal: abortController.signal });
       setValidationResult(result);
 
       if (result.isAPIDefinitionValid) {
@@ -122,6 +83,7 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
         setError(errorMsg);
       }
     } catch (e: any) {
+      if (e.name === 'AbortError') return;
       setError(e?.message || "Failed to validate OpenAPI from URL");
       setValidationResult(null);
     } finally {
