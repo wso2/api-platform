@@ -38,7 +38,7 @@ var (
 
 var (
 	ErrAPINotFound               = errors.New("api not found")
-	ErrAPIAlreadyExists          = errors.New("api already exists in organization")
+	ErrAPIAlreadyExists          = errors.New("api already exists in project")
 	ErrInvalidAPIContext         = errors.New("invalid api context format")
 	ErrInvalidAPIVersion         = errors.New("invalid api version format")
 	ErrInvalidAPIName            = errors.New("invalid api name format")
