@@ -91,13 +91,13 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 		return nil, constants.ErrProjectNotFound
 	}
 
-	// Check if API name already exists in the organization
-	existingAPIsByOrg, err := s.apiRepo.GetAPIsByOrganizationID(orgId, nil)
+	// Check if API already exists in the project
+	existingAPIs, err := s.apiRepo.GetAPIsByProjectID(req.ProjectID)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, api := range existingAPIsByOrg {
+	for _, api := range existingAPIs {
 		if api.Name == req.Name {
 			return nil, constants.ErrAPIAlreadyExists
 		}
