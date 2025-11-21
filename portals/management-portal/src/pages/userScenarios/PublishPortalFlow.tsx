@@ -41,6 +41,8 @@ import { ApiPublishProvider, useApiPublishing } from "../../context/ApiPublishCo
 import { DevPortalProvider } from "../../context/DevPortalContext";
 import { useNavigate } from "react-router-dom";
 import { useNotifications } from "../../context/NotificationContext";
+import { useOrganization } from "../../context/OrganizationContext";
+import { projectSlugFromName } from "../../utils/projectSlug";
 
 type Step = { title: string; subtitle: string };
 const STEPS: Step[] = [
@@ -107,9 +109,29 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   const { publishApiToDevPortal } = useApiPublishing();
   const navigate = useNavigate();
   const { showNotification } = useNotifications();
+  const { organization } = useOrganization();
   const typedApis = React.useMemo<ApiSummary[]>(() => apis, [apis]);
   
   const portals = React.useMemo(() => allPortals.filter(p => p.isActive), [allPortals]);
+
+  const portalsPath = React.useMemo(() => {
+    if (!organization) return "/portals";
+    const projectSegment = selectedProject
+      ? `/${projectSlugFromName(selectedProject.name, selectedProject.id)}`
+      : "";
+    return `/${organization.handle}${projectSegment}/portals`;
+  }, [organization, selectedProject]);
+
+  const handleGoToPortals = React.useCallback(() => {
+    if (onFinish) {
+      onFinish();
+      setTimeout(() => {
+        navigate(portalsPath);
+      }, 100);
+    } else {
+      navigate(portalsPath);
+    }
+  }, [onFinish, navigate, portalsPath]);
 
   const autoFill = React.useCallback(
     (api: any) => {
@@ -931,7 +953,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                   </Typography>
                   <Button
                     variant="contained"
-                    onClick={() => navigate("/portals")}
+                    onClick={handleGoToPortals}
                   >
                     Go to Portals
                   </Button>
