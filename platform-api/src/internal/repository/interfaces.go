@@ -50,6 +50,7 @@ type APIRepository interface {
 	GetAPIsByProjectID(projectID string) ([]*model.API, error)
 	GetAPIsByOrganizationID(orgID string, projectID *string) ([]*model.API, error)
 	GetAPIsByGatewayID(gatewayID, organizationID string) ([]*model.API, error)
+	GetDeployedAPIsByGatewayID(gatewayID, organizationID string) ([]*model.API, error)
 	UpdateAPI(api *model.API) error
 	DeleteAPI(apiId string) error
 	CreateDeployment(deployment *model.APIDeployment) error

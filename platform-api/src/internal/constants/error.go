@@ -37,16 +37,17 @@ var (
 )
 
 var (
-	ErrAPINotFound           = errors.New("api not found")
-	ErrAPIAlreadyExists      = errors.New("api already exists in project")
-	ErrInvalidAPIContext     = errors.New("invalid api context format")
-	ErrInvalidAPIVersion     = errors.New("invalid api version format")
-	ErrInvalidAPIName        = errors.New("invalid api name format")
-	ErrInvalidLifecycleState = errors.New("invalid lifecycle state")
-	ErrInvalidAPIType        = errors.New("invalid api type")
-	ErrInvalidTransport      = errors.New("invalid transport protocol")
-	ErrInvalidAPIDeployment  = errors.New("invalid api deployment")
-	ErrGatewayNotAssociated  = errors.New("api is not associated with gateway")
+	ErrAPINotFound               = errors.New("api not found")
+	ErrAPIAlreadyExists          = errors.New("api already exists in organization")
+	ErrInvalidAPIContext         = errors.New("invalid api context format")
+	ErrInvalidAPIVersion         = errors.New("invalid api version format")
+	ErrInvalidAPIName            = errors.New("invalid api name format")
+	ErrInvalidLifecycleState     = errors.New("invalid lifecycle state")
+	ErrInvalidAPIType            = errors.New("invalid api type")
+	ErrInvalidTransport          = errors.New("invalid transport protocol")
+	ErrInvalidAPIDeployment      = errors.New("invalid api deployment")
+	ErrGatewayNotAssociated      = errors.New("api is not associated with gateway")
+	ErrAPIContextVersionConflict = errors.New("api with same context and version already deployed in gateway")
 )
 
 var (
