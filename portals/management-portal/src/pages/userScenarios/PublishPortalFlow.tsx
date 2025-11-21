@@ -14,7 +14,6 @@ import {
   ListItemText,
   Divider,
   Chip,
-  Step,
   TextField,
   MenuItem,
 } from "@mui/material";
@@ -22,7 +21,6 @@ import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import { TextInput } from "../../components/src/components/TextInput";
 import { Button } from "../../components/src/components/Button";
 import { ApiOperationsList } from "../../components/src/components/Common/ApiOperationsList";
-import CreationMetaData from "../apis/CreationFlows/CreationMetaData";
 import WizardPortalCard from "../portals/WizardPortalCard";
 import {
   useCreateComponentBuildpackContext,
@@ -38,6 +36,7 @@ import BijiraDPLogo from "../BijiraDPLogo.png";
 import type { Portal } from "../../hooks/devportals";
 import { useApisContext } from "../../context/ApiContext";
 import type { ApiSummary } from "../../hooks/apis";
+import { useProjects } from "../../context/ProjectContext";
 
 type Step = { title: string; subtitle: string };
 const STEPS: Step[] = [
@@ -47,19 +46,6 @@ const STEPS: Step[] = [
   },
   { title: "Select Portal", subtitle: "Choose developer portal to publish" },
 ];
-
-function slugify(val: string) {
-  return val
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function defaultServiceName(apiName: string) {
-  const base = apiName?.trim() || "service";
-  return `${slugify(base)}-service`;
-}
 
 function firstServerUrl(api: any) {
   const services = api?.["backend-services"] || [];
@@ -112,7 +98,9 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
     useCreateComponentBuildpackContext();
   const { validateOpenApiUrl } = useOpenApiValidation();
   const { devportals: portals, loading: portalsLoading } = useDevPortals();
-  const { apis, loading: apisLoading } = useApisContext();
+  const { apis, loading: apisLoading, importOpenApi, refreshApis } = useApisContext();
+  const { selectedProject } = useProjects();
+  const typedApis = React.useMemo<ApiSummary[]>(() => apis, [apis]);
 
   const autoFill = React.useCallback(
     (api: any) => {
@@ -167,22 +155,17 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
 
   const handleCreateApi = async () => {
     const name = (contractMeta?.name || "").trim();
-    const context = (contractMeta?.context || "").trim();
     const version = (contractMeta?.version || "").trim();
     const description = (contractMeta?.description || "").trim() || undefined;
-    const target = (contractMeta?.target || "").trim();
 
-    if (!name || !context || !version) {
-      setError("Please complete all required fields.");
+    if (!name || !version) {
+      setError("Please provide API name and version.");
       return;
     }
-    if (target) {
-      try {
-        if (/^https?:\/\//i.test(target)) new URL(target);
-      } catch {
-        setError("Target must be a valid URL (or leave it empty).");
-        return;
-      }
+    
+    if (!portalVisibility || !portalEndpoint.trim()) {
+      setError("Please provide visibility and endpoint for developer portal.");
+      return;
     }
 
     if (!validationResult?.isAPIDefinitionValid) {
@@ -194,40 +177,40 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
       setCreating(true);
       setError(null);
 
-      const serviceName = defaultServiceName(name);
-      const backendServices = target
-        ? [
-            {
-              name: serviceName,
-              isDefault: true,
-              retries: 2,
-              endpoints: [{ url: target, description: "Primary backend" }],
-            },
-          ]
-        : [];
+      if (!selectedProject?.id) {
+        setError("No project found.");
+        return;
+      }
 
       const validatedApi = validationResult.api as any;
-      const operations = mapOperations(
-        validatedApi?.operations || [],
-        target ? { serviceName } : undefined,
+      
+      const apiPayload = {
+        name,
+        version,
+        context: validatedApi?.context || deriveContext(validatedApi),
+        projectId: selectedProject.id,
+        description,
+        operations: validatedApi?.operations || [],
+        "backend-services": validatedApi?.["backend-services"] || [],
+      };
+
+      await importOpenApi(
+        {
+          api: apiPayload,
+          url: specUrl.trim(),
+        }
       );
 
-      // TODO: Implement actual createApi logic
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      console.log("Creating API with:", {
-        name,
-        context: context.startsWith("/") ? context : `/${context}`,
-        version,
-        description,
-        contract: specUrl,
-        backendServices,
-        operations,
-      });
+      await refreshApis();
+      
       setActiveStep(1);
       setError(null);
     } catch (e: any) {
-      setError(e?.message || "Failed to create API");
+      const errorMessage = e?.response?.data?.message 
+        || e?.response?.data?.description
+        || e?.message 
+        || "Failed to create API";
+      setError(errorMessage);
     } finally {
       setCreating(false);
     }
@@ -251,9 +234,12 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
     selectionMode === "url" 
       ? validationResult?.isAPIDefinitionValid && 
         (contractMeta?.name || "").trim() && 
-        (contractMeta?.context || "").trim() && 
-        (contractMeta?.version || "").trim()
-      : selectedExistingApi !== null;
+        (contractMeta?.version || "").trim() &&
+        portalVisibility.trim() &&
+        portalEndpoint.trim()
+      : selectedExistingApi !== null &&
+        portalVisibility.trim() &&
+        portalEndpoint.trim();
 
   const step0ButtonLabel = selectionMode === "url" ? "Create API" : "Continue";
   const step0ButtonAction = selectionMode === "url" ? handleCreateApi : handleContinueWithExistingApi;
@@ -323,334 +309,535 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
           }}
         >
           {activeStep === 0 && (
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Stack spacing={2} sx={{ height: '100%' }}>
-                  <Paper 
-                    variant="outlined" 
-                    sx={{ 
-                      p: 3, 
-                      borderRadius: 2,
-                      borderColor: selectionMode === "url" ? "primary.main" : "divider",
-                      borderWidth: selectionMode === "url" ? 2 : 1,
-                      cursor: "pointer",
-                      transition: "all 0.2s",
-                      "&:hover": {
-                        borderColor: "primary.main",
-                      }
-                    }}
-                    onClick={() => {
-                      setSelectionMode("url");
-                      setSelectedExistingApi(null);
-                      setError(null);
+            <>
+              {!validationResult?.isAPIDefinitionValid && !selectedExistingApi && (
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'stretch' }}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Stack spacing={2}>
+                      <Paper 
+                        variant="outlined" 
+                        sx={{ 
+                          p: 3, 
+                          borderRadius: 2,
+                          borderColor: selectionMode === "url" ? "primary.main" : "divider",
+                          borderWidth: selectionMode === "url" ? 2 : 1,
+                          cursor: "pointer",
+                          transition: "all 0.2s",
+                          "&:hover": {
+                            borderColor: "primary.main",
+                          }
+                        }}
+                        onClick={() => {
+                          setSelectionMode("url");
+                          setSelectedExistingApi(null);
+                          setError(null);
+                        }}
+                      >
+                        <Typography variant="subtitle2" sx={{ mb: 1 }} fontWeight={600}>
+                          🌐 Create New API from OpenAPI Specification URL
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          Import from a public OpenAPI specification URL
+                        </Typography>
+                        
+                        {selectionMode === "url" && (
+                          <>
+                            <TextInput
+                              label=""
+                              placeholder="https://example.com/openapi.yaml"
+                              value={specUrl}
+                              onChange={(v: string) => setSpecUrl(v)}
+                              testId=""
+                              size="medium"
+                            />
+
+                            <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                              <Button
+                                variant="text"
+                                onClick={(e: React.MouseEvent) => {
+                                  e.stopPropagation();
+                                  setSpecUrl(
+                                    "https://petstore.swagger.io/v2/swagger.json",
+                                  );
+                                }}
+                                disabled={validating}
+                              >
+                                Try Sample
+                              </Button>
+                              <Box flex={1} />
+                              <Button
+                                variant="outlined"
+                                onClick={(e: React.MouseEvent) => {
+                                  e.stopPropagation();
+                                  handleFetchAndValidate();
+                                }}
+                                disabled={!specUrl.trim() || validating}
+                              >
+                                {validating ? "Validating..." : "Fetch & Validate"}
+                              </Button>
+                            </Stack>
+                          </>
+                        )}
+                      </Paper>
+
+                      {selectionMode === "url" && validating && (
+                        <Paper
+                          variant="outlined"
+                          sx={{
+                            p: 3,
+                            borderRadius: 2,
+                            color: "text.secondary",
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <CircularProgress size={24} sx={{ mr: 2 }} />
+                          <Typography variant="body2">
+                            Validating OpenAPI definition...
+                          </Typography>
+                        </Paper>
+                      )}
+
+                      {error && selectionMode === "url" && (
+                        <Alert severity="error">
+                          {error}
+                        </Alert>
+                      )}
+                    </Stack>
+                  </Box>
+
+                  <Box
+                    sx={{
+                      display: { xs: 'none', md: 'flex' },
+                      alignItems: 'stretch',
+                      justifyContent: 'center',
+                      position: 'relative',
+                      width: 40,
+                      py: 0,
                     }}
                   >
-                    <Typography variant="subtitle2" sx={{ mb: 1 }} fontWeight={600}>
-                      🌐 Create New API from URL
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Import from a public OpenAPI specification URL
-                    </Typography>
-                    
-                    {selectionMode === "url" && (
-                      <>
-                        <TextInput
-                          label=""
-                          placeholder="https://example.com/openapi.yaml"
-                          value={specUrl}
-                          onChange={(v: string) => setSpecUrl(v)}
-                          testId=""
-                          size="medium"
-                        />
-
-                        <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-                          <Button
-                            variant="text"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSpecUrl(
-                                "https://petstore.swagger.io/v2/swagger.json",
-                              );
-                            }}
-                            disabled={validating}
-                          >
-                            Try Sample
-                          </Button>
-                          <Box flex={1} />
-                          <Button
-                            variant="outlined"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleFetchAndValidate();
-                            }}
-                            disabled={!specUrl.trim() || validating}
-                          >
-                            {validating ? "Validating..." : "Fetch & Validate"}
-                          </Button>
-                        </Stack>
-                      </>
-                    )}
-                  </Paper>
-
-                  {selectionMode === "url" && validationResult?.isAPIDefinitionValid ? (
-                    <ApiOperationsList
-                      title="Fetched OAS Definition"
-                      operations={previewOps}
+                    <Divider 
+                      orientation="vertical" 
+                      sx={{ 
+                        height: '100%',
+                        alignSelf: 'stretch'
+                      }} 
                     />
-                  ) : selectionMode === "url" && validating ? (
-                    <Paper
-                      variant="outlined"
+                    <Box
                       sx={{
-                        p: 3,
-                        borderRadius: 2,
-                        color: "text.secondary",
-                        flexGrow: 1,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
+                        position: 'absolute',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        bgcolor: 'background.paper',
+                        px: 1,
+                        color: 'text.secondary',
+                        fontWeight: 500,
+                        fontSize: '0.875rem',
                       }}
                     >
-                      <Typography variant="body2">
-                        Validating OpenAPI definition...
-                      </Typography>
-                    </Paper>
-                  ) : selectionMode === "url" ? (
-                    <Paper
-                      variant="outlined"
-                      sx={{
-                        p: 3,
-                        borderRadius: 2,
-                        color: "text.secondary",
-                        flexGrow: 1,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}
-                    >
-                      <Typography variant="body2">
-                        Enter a direct URL to an OpenAPI/Swagger document
-                        (YAML or JSON). We'll fetch and preview it here.
-                      </Typography>
-                    </Paper>
-                  ) : null}
+                      OR
+                    </Box>
+                  </Box>
 
-                  {error && selectionMode === "url" && (
-                    <Alert severity="error">
-                      {error}
-                    </Alert>
-                  )}
-                </Stack>
-              </Grid>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Stack spacing={2}>
+                      <Paper 
+                        variant="outlined" 
+                        sx={{ 
+                          p: 3, 
+                          borderRadius: 2,
+                          borderColor: selectionMode === "existing" ? "primary.main" : "divider",
+                          borderWidth: selectionMode === "existing" ? 2 : 1,
+                          cursor: "pointer",
+                          transition: "all 0.2s",
+                          "&:hover": {
+                            borderColor: "primary.main",
+                          }
+                        }}
+                        onClick={() => {
+                          setSelectionMode("existing");
+                          setValidationResult(null);
+                          setSpecUrl("");
+                          setError(null);
+                        }}
+                      >
+                        <Typography variant="subtitle2" sx={{ mb: 1 }} fontWeight={600}>
+                          📋 Select Existing API
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          Choose from your existing APIs and configure portal settings
+                        </Typography>
 
-              <Grid size={{ xs: 12, md: 6 }}>
-                <Stack spacing={2} sx={{ height: '100%' }}>
-                  <Paper 
-                    variant="outlined" 
-                    sx={{ 
-                      p: 3, 
-                      borderRadius: 2,
-                      borderColor: selectionMode === "existing" ? "primary.main" : "divider",
-                      borderWidth: selectionMode === "existing" ? 2 : 1,
-                      cursor: "pointer",
-                      transition: "all 0.2s",
-                      "&:hover": {
-                        borderColor: "primary.main",
-                      }
-                    }}
-                    onClick={() => {
-                      setSelectionMode("existing");
-                      setValidationResult(null);
-                      setSpecUrl("");
-                      setError(null);
-                    }}
-                  >
-                    <Typography variant="subtitle2" sx={{ mb: 1 }} fontWeight={600}>
-                      📋 Select Existing API
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Choose from your created APIs
-                    </Typography>
+                        {selectionMode === "existing" && (() => {
+                          const currentSelection: ApiSummary | null = selectedExistingApi;
+                          
+                          return (
+                          <>
+                            {apisLoading ? (
+                              <Box sx={{ display: "flex", justifyContent: "center", p: 2 }}>
+                                <CircularProgress size={24} />
+                              </Box>
+                            ) : typedApis.length === 0 ? (
+                              <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", py: 2 }}>
+                                No APIs found. Create one first.
+                              </Typography>
+                            ) : (
+                              <Paper 
+                                variant="outlined" 
+                                sx={{ 
+                                  maxHeight: 300, 
+                                  overflow: "auto",
+                                  borderRadius: 1
+                                }}
+                              >
+                                <List dense disablePadding>
+                                  {typedApis.map((api, index) => {
+                                    const apiId = api.id;
+                                    const apiName = api.name;
+                                    const apiVersion = api.version;
+                                    const apiContext = api.context;
+                                    const isSelected = currentSelection !== null && (currentSelection as ApiSummary).name === apiName;
+                                    
+                                    return (
+                                    <React.Fragment key={apiId}>
+                                      {index > 0 && <Divider />}
+                                      <ListItemButton
+                                        selected={isSelected}
+                                        onClick={(e: React.MouseEvent) => {
+                                          e.stopPropagation();
+                                          handleSelectExistingApi(api);
+                                        }}
+                                      >
+                                        <ListItemText
+                                          primary={
+                                            <Box display="flex" alignItems="center" gap={1}>
+                                              <Typography variant="body2" fontWeight={500}>
+                                                {apiName}
+                                              </Typography>
+                                              <Chip 
+                                                label={apiVersion} 
+                                                size="small" 
+                                                sx={{ height: 20, fontSize: "0.7rem" }}
+                                              />
+                                            </Box>
+                                          }
+                                          secondary={
+                                            <Typography variant="caption" color="text.secondary" noWrap>
+                                              {apiContext}
+                                            </Typography>
+                                          }
+                                        />
+                                      </ListItemButton>
+                                    </React.Fragment>
+                                  )})}
+                                </List>
+                              </Paper>
+                            )}
+                          </>
+                        )})()}
+                      </Paper>
 
-                    {selectionMode === "existing" && (
-                      <>
-                        {apisLoading ? (
-                          <Box sx={{ display: "flex", justifyContent: "center", p: 2 }}>
-                            <CircularProgress size={24} />
-                          </Box>
-                        ) : apis.length === 0 ? (
-                          <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", py: 2 }}>
-                            No APIs found. Create one first.
-                          </Typography>
-                        ) : (
-                          <Paper 
-                            variant="outlined" 
-                            sx={{ 
-                              maxHeight: 300, 
-                              overflow: "auto",
-                              borderRadius: 1
-                            }}
-                          >
-                            <List dense disablePadding>
-                              {apis.map((api, index) => (
-                                <React.Fragment key={api.id}>
-                                  {index > 0 && <Divider />}
-                                  <ListItemButton
-                                    selected={selectedExistingApi?.id === api.id}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleSelectExistingApi(api);
-                                    }}
-                                  >
-                                    <ListItemText
-                                      primary={
-                                        <Box display="flex" alignItems="center" gap={1}>
-                                          <Typography variant="body2" fontWeight={500}>
-                                            {api.name}
-                                          </Typography>
-                                          <Chip 
-                                            label={api.version} 
-                                            size="small" 
-                                            sx={{ height: 20, fontSize: "0.7rem" }}
-                                          />
-                                        </Box>
-                                      }
-                                      secondary={
-                                        <Typography variant="caption" color="text.secondary" noWrap>
-                                          {api.context}
-                                        </Typography>
-                                      }
-                                    />
-                                  </ListItemButton>
-                                </React.Fragment>
-                              ))}
-                            </List>
-                          </Paper>
-                        )}
-                      </>
-                    )}
-                  </Paper>
+                      {error && selectionMode === "existing" && (
+                        <Alert severity="error">
+                          {error}
+                        </Alert>
+                      )}
+                    </Stack>
+                  </Box>
+                </Box>
+              )}
 
-                  {selectionMode === "existing" && selectedExistingApi && (
-                    <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-                      <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
-                        Selected API Details
-                      </Typography>
-                      <Stack spacing={1.5}>
-                        <Box>
-                          <Typography variant="caption" color="text.secondary">
-                            Name
-                          </Typography>
-                          <Typography variant="body2" fontWeight={500}>
-                            {selectedExistingApi.name}
-                          </Typography>
-                        </Box>
-                        <Box>
-                          <Typography variant="caption" color="text.secondary">
-                            Version
-                          </Typography>
-                          <Typography variant="body2">
-                            {selectedExistingApi.version}
-                          </Typography>
-                        </Box>
-                        <Box>
-                          <Typography variant="caption" color="text.secondary">
-                            Context
-                          </Typography>
-                          <Typography variant="body2">
-                            {selectedExistingApi.context}
-                          </Typography>
-                        </Box>
-                        {selectedExistingApi.description && (
-                          <Box>
-                            <Typography variant="caption" color="text.secondary">
-                              Description
-                            </Typography>
-                            <Typography variant="body2">
-                              {selectedExistingApi.description}
-                            </Typography>
-                          </Box>
-                        )}
-                      </Stack>
-                    </Paper>
-                  )}
+              {selectionMode === "url" && validationResult?.isAPIDefinitionValid && (
+                <Stack spacing={3}>
+                  <Grid container spacing={3}>
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <Box>
+                        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
+                          Fetched OAS Definition
+                        </Typography>
+                        <ApiOperationsList
+                          title=""
+                          operations={previewOps}
+                        />
+                      </Box>
+                    </Grid>
 
-                  {error && selectionMode === "existing" && (
-                    <Alert severity="error">
-                      {error}
-                    </Alert>
-                  )}
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, height: '100%' }}>
+                        <Typography
+                          variant="subtitle1"
+                          fontWeight={600}
+                          sx={{ mb: 3 }}
+                        >
+                          Configure API
+                        </Typography>
 
-                  {selectionMode === "url" && validationResult?.isAPIDefinitionValid && (
-                    <>
-                      <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, flexGrow: 1 }}>
-                        <CreationMetaData scope="contract" title="Configure API" />
+                        <Stack spacing={2.5}>
+                          <Grid container spacing={2}>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                              <TextField
+                                label="Name"
+                                value={contractMeta?.name || ""}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                  setContractMeta((prev: any) => ({ ...prev, name: e.target.value }))
+                                }
+                                fullWidth
+                                required
+                                variant="outlined"
+                                placeholder="My API"
+                              />
+                            </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                              <TextField
+                                label="Version"
+                                value={contractMeta?.version || ""}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                  setContractMeta((prev: any) => ({ ...prev, version: e.target.value }))
+                                }
+                                fullWidth
+                                required
+                                variant="outlined"
+                                placeholder="1.0.0"
+                              />
+                            </Grid>
+                          </Grid>
 
-                        <Box sx={{ mt: 3 }}>
+                          <TextField
+                            label="Description"
+                            value={contractMeta?.description || ""}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                              setContractMeta((prev: any) => ({ ...prev, description: e.target.value }))
+                            }
+                            fullWidth
+                            multiline
+                            rows={3}
+                            variant="outlined"
+                            placeholder="Describe your API"
+                          />
+
+                          <Divider />
+
                           <Typography
                             variant="subtitle1"
                             fontWeight={600}
-                            sx={{ mb: 2 }}
                           >
                             Developer Portal Settings
                           </Typography>
 
-                          <Stack spacing={2}>
-                            <TextField
-                              select
-                              label="Access Visibility in Developer Portal"
-                              value={portalVisibility}
-                              onChange={(e) => setPortalVisibility(e.target.value)}
-                              fullWidth
-                              variant="outlined"
-                              helperText="Control who can discover your API in the portal"
-                            >
-                              <MenuItem value="PUBLIC">
-                                <Box display="flex" alignItems="center" gap={1}>
-                                  <span>🌍</span>
-                                  <Typography variant="body2">Public</Typography>
-                                </Box>
-                              </MenuItem>
-                              <MenuItem value="PRIVATE">
-                                <Box display="flex" alignItems="center" gap={1}>
-                                  <span>🔒</span>
-                                  <Typography variant="body2">Private</Typography>
-                                </Box>
-                              </MenuItem>
-                            </TextField>
+                          <TextField
+                            select
+                            label="Access Visibility"
+                            value={portalVisibility}
+                            onChange={(e) => setPortalVisibility(e.target.value)}
+                            fullWidth
+                            required
+                            variant="outlined"
+                            helperText="Control who can discover your API"
+                          >
+                            <MenuItem value="PUBLIC">
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <span>🌍</span>
+                                <Typography variant="body2">Public</Typography>
+                              </Box>
+                            </MenuItem>
+                            <MenuItem value="PRIVATE">
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <span>🔒</span>
+                                <Typography variant="body2">Private</Typography>
+                              </Box>
+                            </MenuItem>
+                          </TextField>
 
-                            <TextField
-                              label="Endpoint in Developer Portal"
-                              value={portalEndpoint}
-                              onChange={(e) => setPortalEndpoint(e.target.value)}
-                              fullWidth
-                              variant="outlined"
-                              placeholder="https://api.example.com"
-                              helperText="The endpoint URL that will be displayed to developers"
-                            />
-                          </Stack>
-                        </Box>
+                          <TextField
+                            label="Endpoint"
+                            value={portalEndpoint}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPortalEndpoint(e.target.value)}
+                            fullWidth
+                            required
+                            variant="outlined"
+                            placeholder="https://api.example.com"
+                            helperText="Endpoint URL displayed to developers"
+                            error={portalEndpoint.trim() !== '' && !/^https?:\/\/.+/.test(portalEndpoint.trim())}
+                          />
+                        </Stack>
                       </Paper>
-                    </>
+                    </Grid>
+                  </Grid>
+
+                  {error && (
+                    <Alert severity="error">
+                      {error}
+                    </Alert>
                   )}
 
-                  {(isStep0Complete || (selectionMode === "url" && validationResult?.isAPIDefinitionValid)) && (
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      justifyContent="flex-end"
+                  <Stack direction="row" spacing={2} justifyContent="flex-end">
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        setValidationResult(null);
+                        setSpecUrl("");
+                        setError(null);
+                      }}
                     >
-                      <Button
-                        variant="contained"
-                        disabled={creating || !isStep0Complete}
-                        onClick={step0ButtonAction}
-                      >
-                        {creating ? (selectionMode === "url" ? "Creating..." : "Loading...") : step0ButtonLabel}
-                      </Button>
-                    </Stack>
-                  )}
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="contained"
+                      disabled={creating || !isStep0Complete}
+                      onClick={step0ButtonAction}
+                    >
+                      {creating ? "Creating..." : step0ButtonLabel}
+                    </Button>
+                  </Stack>
                 </Stack>
-              </Grid>
-            </Grid>
+              )}
+
+              {/* Existing API Mode: After selection - Full width layout */}
+              {selectionMode === "existing" && selectedExistingApi && (
+                <Stack spacing={3}>
+                  <Grid container spacing={3}>
+                    {/* Left: API Info */}
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, height: '100%' }}>
+                        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 3 }}>
+                          Selected API
+                        </Typography>
+                        
+                        <Stack spacing={2.5}>
+                          <Box>
+                            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>
+                              API Name
+                            </Typography>
+                            <Typography variant="h6" fontWeight={500} sx={{ mt: 0.5 }}>
+                              {selectedExistingApi.name}
+                            </Typography>
+                          </Box>
+
+                          <Divider />
+
+                          <Box>
+                            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>
+                              Version
+                            </Typography>
+                            <Typography variant="body1" sx={{ mt: 0.5 }}>
+                              {selectedExistingApi.version}
+                            </Typography>
+                          </Box>
+
+                          <Box>
+                            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>
+                              Context Path
+                            </Typography>
+                            <Typography variant="body1" sx={{ mt: 0.5, fontFamily: 'monospace' }}>
+                              {selectedExistingApi.context}
+                            </Typography>
+                          </Box>
+
+                          {selectedExistingApi.description && (
+                            <>
+                              <Divider />
+                              <Box>
+                                <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>
+                                  Description
+                                </Typography>
+                                <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
+                                  {selectedExistingApi.description}
+                                </Typography>
+                              </Box>
+                            </>
+                          )}
+                        </Stack>
+                      </Paper>
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 6 }}>
+                      <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, height: '100%' }}>
+                        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 3 }}>
+                          Developer Portal Settings
+                        </Typography>
+
+                        <Stack spacing={2.5}>
+                          <TextField
+                            select
+                            label="Access Visibility"
+                            value={portalVisibility}
+                            onChange={(e) => setPortalVisibility(e.target.value)}
+                            fullWidth
+                            required
+                            variant="outlined"
+                            helperText="Control who can discover your API in the portal"
+                          >
+                            <MenuItem value="PUBLIC">
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <span>🌍</span>
+                                <Typography variant="body2">Public</Typography>
+                              </Box>
+                            </MenuItem>
+                            <MenuItem value="PRIVATE">
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <span>🔒</span>
+                                <Typography variant="body2">Private</Typography>
+                              </Box>
+                            </MenuItem>
+                          </TextField>
+
+                          <TextField
+                            label="Endpoint"
+                            value={portalEndpoint}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPortalEndpoint(e.target.value)}
+                            fullWidth
+                            required
+                            variant="outlined"
+                            placeholder="https://api.example.com"
+                            helperText="The endpoint URL that will be displayed to developers"
+                            error={portalEndpoint.trim() !== '' && !/^https?:\/\/.+/.test(portalEndpoint.trim())}
+                          />
+
+                          <Box 
+                            sx={{ 
+                              p: 2, 
+                              borderRadius: 1,
+                              border: '1px solid',
+                              borderColor: '#e0ebd5'
+                            }}
+                          >
+                            <Typography variant="caption" color="text.secondary">
+                              These settings are only for the developer portal and do not affect the API itself
+                            </Typography>
+                          </Box>
+                        </Stack>
+                      </Paper>
+                    </Grid>
+                  </Grid>
+
+                  {error && (
+                    <Alert severity="error">
+                      {error}
+                    </Alert>
+                  )}
+
+                  <Stack direction="row" spacing={2} justifyContent="flex-end">
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        setSelectedExistingApi(null);
+                        setError(null);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="contained"
+                      disabled={creating || !isStep0Complete}
+                      onClick={step0ButtonAction}
+                    >
+                      {creating ? "Loading..." : step0ButtonLabel}
+                    </Button>
+                  </Stack>
+                </Stack>
+              )}
+            </>
           )}
 
           {activeStep === 1 && (
