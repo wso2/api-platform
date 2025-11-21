@@ -41,6 +41,13 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const inputId = React.useId();
   const [fileKey, setFileKey] = React.useState(0);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   React.useEffect(() => {
     if (open) {
@@ -78,7 +85,9 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
       if (validating) return;   
       const file = files[0];
 
+      abortControllerRef.current?.abort();
       const abortController = new AbortController();
+      abortControllerRef.current = abortController;
 
       try {
         setError(null);
@@ -116,6 +125,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
   };
 
   const finishAndClose = React.useCallback(() => {
+    abortControllerRef.current?.abort();
     resetContractMeta();
     setStep("upload");
     setUploadedFile(null);

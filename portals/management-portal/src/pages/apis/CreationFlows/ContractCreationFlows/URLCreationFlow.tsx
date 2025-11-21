@@ -34,6 +34,13 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
 
   const { contractMeta, setContractMeta, resetContractMeta } = useCreateComponentBuildpackContext();
   const { validateOpenApiUrl } = useOpenApiValidation();
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   React.useEffect(() => {
     if (open) {
@@ -65,7 +72,9 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
   const handleFetchAndPreview = React.useCallback(async () => {
     if (!specUrl.trim()) return;
 
+    abortControllerRef.current?.abort();
     const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     try {
       setError(null);
@@ -92,6 +101,7 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
   }, [specUrl, autoFill, validateOpenApiUrl]);
 
   const finishAndClose = React.useCallback(() => {
+    abortControllerRef.current?.abort();
     resetContractMeta();
     setStep("url");
     setSpecUrl("");
