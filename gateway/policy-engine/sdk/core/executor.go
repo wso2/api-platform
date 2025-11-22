@@ -129,8 +129,10 @@ func (c *Core) ExecuteResponsePolicies(policyList []policies.ResponsePolicy, ctx
 		Results: make([]ResponsePolicyResult, 0, len(policyList)),
 	}
 
-	// Execute each policy in order
-	for i, policy := range policyList {
+	// Execute each policy in reverse order (last to first)
+	// This allows policies to "unwrap" in the reverse order they "wrapped" the request
+	for i := len(policyList) - 1; i >= 0; i-- {
+		policy := policyList[i]
 		policyStartTime := time.Now()
 		spec := specs[i]
 
