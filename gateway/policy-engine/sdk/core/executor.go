@@ -218,7 +218,11 @@ func applyRequestModifications(ctx *policies.RequestContext, mods *policies.Upst
 
 	// Update body (nil = no change, []byte{} = clear)
 	if mods.Body != nil {
-		ctx.Body = mods.Body
+		ctx.Body = &policies.Body{
+			Content:     mods.Body,
+			EndOfStream: true,  // Modifications are always complete
+			Present:     true,
+		}
 	}
 
 	// Update path
@@ -259,7 +263,11 @@ func applyResponseModifications(ctx *policies.ResponseContext, mods *policies.Up
 
 	// Update body (nil = no change, []byte{} = clear)
 	if mods.Body != nil {
-		ctx.ResponseBody = mods.Body
+		ctx.ResponseBody = &policies.Body{
+			Content:     mods.Body,
+			EndOfStream: true,  // Modifications are always complete
+			Present:     true,
+		}
 	}
 
 	// Update status code

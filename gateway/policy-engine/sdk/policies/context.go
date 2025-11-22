@@ -1,5 +1,20 @@
 package policies
 
+// Body represents HTTP request or response body data
+type Body struct {
+	// Content is the body payload (may be nil)
+	Content []byte
+
+	// EndOfStream indicates if this is the final chunk of body data
+	// true = complete body received, false = more chunks may follow
+	EndOfStream bool
+
+	// Present indicates if body data is available
+	// false = body was not sent or not buffered (e.g., streaming)
+	// true = body is available (Content may still be nil for empty bodies)
+	Present bool
+}
+
 // RequestContext is mutable context for request phase containing current request state
 type RequestContext struct {
 	// Current request headers (mutable)
@@ -10,7 +25,7 @@ type RequestContext struct {
 	// Current request body (mutable)
 	// nil if no body or body not required
 	// Updated in-place by body-modifying policies
-	Body []byte
+	Body *Body
 
 	// Current request path (mutable)
 	// Can be modified by routing policies
@@ -34,7 +49,7 @@ type RequestContext struct {
 type ResponseContext struct {
 	// Original request data (immutable, from request phase)
 	RequestHeaders map[string][]string
-	RequestBody    []byte
+	RequestBody    *Body
 	RequestPath    string
 	RequestMethod  string
 
@@ -44,7 +59,7 @@ type ResponseContext struct {
 
 	// Current response body (mutable)
 	// nil if no body or body not required
-	ResponseBody []byte
+	ResponseBody *Body
 
 	// Current response status code (mutable)
 	ResponseStatus int

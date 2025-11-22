@@ -1,7 +1,7 @@
 # Policy chain configuration
 # This file defines which policies execute for each route
 
-- route_key: default
+- route_key: my_upstream_service_route
   policies:
     - name: SetHeader
       version: v1.0.0

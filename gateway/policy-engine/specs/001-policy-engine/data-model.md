@@ -553,13 +553,59 @@ type Kernel struct {
     // Key: metadata key from Envoy
     // Value: PolicyChain for that route
     Routes map[string]*PolicyChain
-
-    // Request context storage (request → response phase)
-    // Key: request ID
-    // Value: (RequestContext, PolicyChain)
-    ContextStorage map[string](*RequestContext, *PolicyChain)
 }
 ```
+
+**Note**: Request context storage has been removed. Instead, `PolicyExecutionContext` manages the request-response lifecycle within the streaming RPC loop, eliminating the need for explicit context storage and cleanup.
+
+---
+
+### 13. PolicyExecutionContext
+
+**Purpose**: Manages the lifecycle of a single request through the policy chain
+
+**Fields**:
+```go
+type PolicyExecutionContext struct {
+    // Request context that carries request data and metadata
+    requestContext *RequestContext
+
+    // Policy chain for this request
+    policyChain *PolicyChain
+
+    // Request ID for correlation
+    requestID string
+
+    // Reference to server components
+    server *ExternalProcessorServer
+}
+```
+
+**Lifecycle**:
+- Created when request headers arrive from Envoy
+- Lives as a local variable in the Process() streaming loop
+- Automatically destroyed when the stream iteration completes (after response)
+- No explicit storage or cleanup needed
+
+**Relationships**:
+- Contains RequestContext (builds and owns it)
+- References PolicyChain (from Kernel's route mapping)
+- References ExternalProcessorServer (for accessing core engine)
+
+**Methods**:
+- `processRequestHeaders(ctx, headers) *ProcessingResponse` - Handles request header phase
+- `processRequestBody(ctx, body) *ProcessingResponse` - Handles request body phase
+- `processResponseHeaders(ctx, headers) *ProcessingResponse` - Handles response header phase
+- `processResponseBody(ctx, body) *ProcessingResponse` - Handles response body phase
+- `buildRequestContext(headers) *RequestContext` - Converts Envoy headers to RequestContext
+- `buildResponseContext(headers) *ResponseContext` - Builds ResponseContext from stored request data
+
+**Design Rationale**:
+This context encapsulates all state needed for a single request-response cycle. By keeping it as a local variable in the streaming loop rather than storing it in a global map, we achieve:
+- Automatic lifecycle management (no manual cleanup needed)
+- Better memory management (GC handles cleanup)
+- Simpler code flow (no storage/retrieval logic)
+- Thread safety (each request has its own context)
 
 ---
 
@@ -697,24 +743,29 @@ PolicyChain is constructed with computed flags:
 ## Data Flow
 
 ### Request Phase
-1. Envoy sends request → Kernel.ProcessRequest()
-2. Kernel extracts metadata key → looks up PolicyChain
-3. Kernel creates fresh RequestContext (clones Metadata)
-4. Kernel calls Core.ExecuteRequestPolicies(chain.RequestPolicies, ctx)
-5. Core executes each policy, updates ctx in-place
-6. Core returns RequestExecutionResult with actions
-7. Kernel translates actions → ext_proc response
-8. Kernel stores (RequestID → RequestContext, PolicyChain) for response phase
+1. Envoy sends request headers → ExternalProcessorServer.Process()
+2. Process() calls initializeExecutionContext():
+   - Extracts metadata key from request
+   - Looks up PolicyChain from Kernel
+   - Generates request ID
+   - Creates PolicyExecutionContext (local variable in loop)
+3. Process() calls execCtx.processRequestHeaders():
+   - Builds RequestContext from Envoy headers
+   - Calls Core.ExecuteRequestPolicies(chain.RequestPolicies, ctx)
+   - Core executes each policy, updates ctx in-place
+   - Returns RequestExecutionResult with actions
+   - Translates actions → ext_proc response
+4. execCtx remains in scope for subsequent phases
 
 ### Response Phase
-1. Envoy sends response → Kernel.ProcessResponse()
-2. Kernel extracts RequestID → retrieves stored (RequestContext, PolicyChain)
-3. Kernel creates ResponseContext (request data + response data + shared Metadata)
-4. Kernel calls Core.ExecuteResponsePolicies(chain.ResponsePolicies, ctx)
-5. Core executes each policy, updates ctx in-place
-6. Core returns ResponseExecutionResult with actions
-7. Kernel translates actions → ext_proc response
-8. Kernel removes stored context
+1. Envoy sends response headers → ExternalProcessorServer.Process()
+2. Process() calls execCtx.processResponseHeaders():
+   - Builds ResponseContext from stored RequestContext + Envoy response headers
+   - Calls Core.ExecuteResponsePolicies(chain.ResponsePolicies, ctx)
+   - Core executes each policy, updates ctx in-place
+   - Returns ResponseExecutionResult with actions
+   - Translates actions → ext_proc response
+3. Stream completes, execCtx goes out of scope (automatic cleanup)
 
 ---
 
@@ -753,8 +804,9 @@ PolicyChain is constructed with computed flags:
 4. **PolicySpec**: Parameters validated against PolicyDefinition before storage
 5. **PolicyRegistry**: Immutable after initialization, thread-safe reads
 6. **RouteMapping**: Atomic updates (replace entire PolicyChain, no partial updates)
-7. **Context Storage**: RequestContext stored before response, removed after response
+7. **PolicyExecutionContext**: Created once per request-response cycle, lives as local variable in Process() loop
 8. **Action Application**: Actions applied sequentially, later actions see earlier modifications
+9. **Context Lifecycle**: RequestContext created in request phase, accessible in response phase via PolicyExecutionContext
 
 ---
 

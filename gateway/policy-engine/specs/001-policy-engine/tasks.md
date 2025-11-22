@@ -124,11 +124,16 @@ This project uses a multi-component structure:
 ### Kernel - Route Mapping
 
 - [x] T049 Define RouteMapping struct in src/kernel/mapper.go
-- [x] T050 Define Kernel struct with Routes map and ContextStorage map in src/kernel/mapper.go
+- [x] T050 Define Kernel struct with Routes map in src/kernel/mapper.go
+  - **Refactored**: Removed ContextStorage map - replaced with PolicyExecutionContext pattern
 - [x] T051 Implement Kernel.GetPolicyChainForKey(key) method in src/kernel/mapper.go
-- [x] T052 Implement Kernel.storeContextForResponse(requestID, ctx, chain) in src/kernel/context_storage.go
-- [x] T053 Implement Kernel.getStoredContext(requestID) in src/kernel/context_storage.go
-- [x] T054 Implement Kernel.removeStoredContext(requestID) in src/kernel/context_storage.go
+- [x] T050a Define PolicyExecutionContext struct in src/kernel/execution_context.go
+  - Manages request-response lifecycle within streaming loop
+  - Fields: requestContext, policyChain, requestID, server reference
+  - Methods: processRequestHeaders, processRequestBody, processResponseHeaders, processResponseBody, buildRequestContext, buildResponseContext
+- [x] T052 ~~Implement Kernel.storeContextForResponse~~ **REMOVED** - Context lives in PolicyExecutionContext (local variable)
+- [x] T053 ~~Implement Kernel.getStoredContext~~ **REMOVED** - No storage/retrieval needed
+- [x] T054 ~~Implement Kernel.removeStoredContext~~ **REMOVED** - Automatic cleanup via scope
 
 ### Kernel - Body Mode Determination
 
@@ -151,9 +156,12 @@ This project uses a multi-component structure:
 - [x] T058 [US1] Import Envoy ext_proc protobuf definitions in src/kernel/extproc.go
 - [x] T059 [US1] Implement ExternalProcessorServer gRPC service struct in src/kernel/extproc.go
 - [x] T060 [US1] Implement Process(stream) bidirectional streaming RPC handler in src/kernel/extproc.go
+  - **Refactored**: Creates PolicyExecutionContext as local variable, calls handleProcessingPhase()
 - [x] T061 [US1] Implement extractMetadataKey(req) from ProcessingRequest in src/kernel/extproc.go
-- [x] T062 [US1] Implement ProcessRequest phase handler (request headers) in src/kernel/extproc.go
-- [x] T063 [US1] Implement ProcessResponse phase handler (response headers) in src/kernel/extproc.go
+- [x] T062 [US1] ~~Implement ProcessRequest phase handler~~ **REFACTORED** to initializeExecutionContext() + handleProcessingPhase()
+  - initializeExecutionContext: Extracts metadata, gets policy chain, generates request ID, creates PolicyExecutionContext
+  - handleProcessingPhase: Routes to appropriate phase handler based on request type
+- [x] T063 [US1] ~~Implement ProcessResponse phase handler~~ **MOVED** to PolicyExecutionContext.processResponseHeaders()
 - [x] T064 [US1] Implement request ID generation in src/kernel/extproc.go
 
 ### US1: Kernel - Action Translator

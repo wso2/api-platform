@@ -62,7 +62,7 @@ func createRequestEnv() (*cel.Env, error) {
 		// RequestContext variables
 		cel.Variable("request", cel.ObjectType("RequestContext")),
 		cel.Variable("request.Headers", cel.MapType(cel.StringType, cel.ListType(cel.StringType))),
-		cel.Variable("request.Body", cel.BytesType),
+		cel.Variable("request.Body", cel.MapType(cel.StringType, cel.DynType)), // Body struct with Content, EndOfStream, Present
 		cel.Variable("request.Path", cel.StringType),
 		cel.Variable("request.Method", cel.StringType),
 		cel.Variable("request.RequestID", cel.StringType),
@@ -76,11 +76,11 @@ func createResponseEnv() (*cel.Env, error) {
 		// ResponseContext variables
 		cel.Variable("response", cel.ObjectType("ResponseContext")),
 		cel.Variable("response.RequestHeaders", cel.MapType(cel.StringType, cel.ListType(cel.StringType))),
-		cel.Variable("response.RequestBody", cel.BytesType),
+		cel.Variable("response.RequestBody", cel.MapType(cel.StringType, cel.DynType)), // Body struct with Content, EndOfStream, Present
 		cel.Variable("response.RequestPath", cel.StringType),
 		cel.Variable("response.RequestMethod", cel.StringType),
 		cel.Variable("response.ResponseHeaders", cel.MapType(cel.StringType, cel.ListType(cel.StringType))),
-		cel.Variable("response.ResponseBody", cel.BytesType),
+		cel.Variable("response.ResponseBody", cel.MapType(cel.StringType, cel.DynType)), // Body struct with Content, EndOfStream, Present
 		cel.Variable("response.ResponseStatus", cel.IntType),
 		cel.Variable("response.RequestID", cel.StringType),
 		cel.Variable("response.Metadata", cel.MapType(cel.StringType, cel.DynType)),
@@ -95,11 +95,23 @@ func (e *celEvaluator) EvaluateRequestCondition(expression string, ctx *policies
 		return false, fmt.Errorf("failed to compile CEL expression: %w", err)
 	}
 
+	// Build body representation for CEL
+	var bodyForCEL interface{}
+	if ctx.Body != nil && ctx.Body.Present {
+		bodyForCEL = map[string]interface{}{
+			"Content":     ctx.Body.Content,
+			"EndOfStream": ctx.Body.EndOfStream,
+			"Present":     ctx.Body.Present,
+		}
+	} else {
+		bodyForCEL = nil
+	}
+
 	// Build evaluation context
 	evalCtx := map[string]interface{}{
 		"request": map[string]interface{}{
 			"Headers":   ctx.Headers,
-			"Body":      ctx.Body,
+			"Body":      bodyForCEL,
 			"Path":      ctx.Path,
 			"Method":    ctx.Method,
 			"RequestID": ctx.RequestID,
@@ -130,15 +142,38 @@ func (e *celEvaluator) EvaluateResponseCondition(expression string, ctx *policie
 		return false, fmt.Errorf("failed to compile CEL expression: %w", err)
 	}
 
+	// Build body representations for CEL
+	var requestBodyForCEL interface{}
+	if ctx.RequestBody != nil && ctx.RequestBody.Present {
+		requestBodyForCEL = map[string]interface{}{
+			"Content":     ctx.RequestBody.Content,
+			"EndOfStream": ctx.RequestBody.EndOfStream,
+			"Present":     ctx.RequestBody.Present,
+		}
+	} else {
+		requestBodyForCEL = nil
+	}
+
+	var responseBodyForCEL interface{}
+	if ctx.ResponseBody != nil && ctx.ResponseBody.Present {
+		responseBodyForCEL = map[string]interface{}{
+			"Content":     ctx.ResponseBody.Content,
+			"EndOfStream": ctx.ResponseBody.EndOfStream,
+			"Present":     ctx.ResponseBody.Present,
+		}
+	} else {
+		responseBodyForCEL = nil
+	}
+
 	// Build evaluation context
 	evalCtx := map[string]interface{}{
 		"response": map[string]interface{}{
 			"RequestHeaders":  ctx.RequestHeaders,
-			"RequestBody":     ctx.RequestBody,
+			"RequestBody":     requestBodyForCEL,
 			"RequestPath":     ctx.RequestPath,
 			"RequestMethod":   ctx.RequestMethod,
 			"ResponseHeaders": ctx.ResponseHeaders,
-			"ResponseBody":    ctx.ResponseBody,
+			"ResponseBody":    responseBodyForCEL,
 			"ResponseStatus":  ctx.ResponseStatus,
 			"RequestID":       ctx.RequestID,
 			"Metadata":        ctx.Metadata,

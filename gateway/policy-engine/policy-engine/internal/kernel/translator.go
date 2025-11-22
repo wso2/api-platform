@@ -239,6 +239,38 @@ func buildHeaderValueOptions(headers map[string]string) *extprocv3.HeaderMutatio
 	return mutation
 }
 
+// buildRequestMutations extracts header and body mutations from request execution result
+func buildRequestMutations(result *core.RequestExecutionResult) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation) {
+	headerMutation := &extprocv3.HeaderMutation{}
+	var bodyMutation *extprocv3.BodyMutation
+
+	// Accumulate modifications from all executed policies
+	for _, policyResult := range result.Results {
+		if policyResult.Skipped || policyResult.Error != nil {
+			continue
+		}
+
+		if policyResult.Action != nil {
+			if mods, ok := policyResult.Action.Action.(policies.UpstreamRequestModifications); ok {
+				// Build header mutations
+				applyRequestModifications(headerMutation, &mods)
+
+				// Handle body modifications if present
+				// mods.Body is []byte from the action
+				if mods.Body != nil {
+					bodyMutation = &extprocv3.BodyMutation{
+						Mutation: &extprocv3.BodyMutation_Body{
+							Body: mods.Body,
+						},
+					}
+				}
+			}
+		}
+	}
+
+	return headerMutation, bodyMutation
+}
+
 // determineModeOverride determines body processing mode based on chain requirements
 // T070: mode override configuration implementation
 func determineModeOverride(chain *core.PolicyChain, isRequest bool) *extprocconfigv3.ProcessingMode {
