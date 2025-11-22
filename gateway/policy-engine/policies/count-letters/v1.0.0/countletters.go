@@ -22,9 +22,9 @@ func (p *CountLettersPolicy) Name() string {
 }
 
 // Validate validates the policy configuration
-func (p *CountLettersPolicy) Validate(config map[string]interface{}) error {
+func (p *CountLettersPolicy) Validate(params map[string]interface{}) error {
 	// Validate letters parameter (required)
-	lettersRaw, ok := config["letters"]
+	lettersRaw, ok := params["letters"]
 	if !ok {
 		return fmt.Errorf("'letters' parameter is required")
 	}
@@ -49,7 +49,7 @@ func (p *CountLettersPolicy) Validate(config map[string]interface{}) error {
 	}
 
 	// Validate caseSensitive parameter (optional, defaults to false)
-	if caseSensitiveRaw, ok := config["caseSensitive"]; ok {
+	if caseSensitiveRaw, ok := params["caseSensitive"]; ok {
 		_, ok := caseSensitiveRaw.(bool)
 		if !ok {
 			return fmt.Errorf("'caseSensitive' must be a boolean")
@@ -57,7 +57,7 @@ func (p *CountLettersPolicy) Validate(config map[string]interface{}) error {
 	}
 
 	// Validate outputFormat parameter (optional, defaults to "json")
-	if outputFormatRaw, ok := config["outputFormat"]; ok {
+	if outputFormatRaw, ok := params["outputFormat"]; ok {
 		outputFormat, ok := outputFormatRaw.(string)
 		if !ok {
 			return fmt.Errorf("'outputFormat' must be a string")
@@ -72,27 +72,27 @@ func (p *CountLettersPolicy) Validate(config map[string]interface{}) error {
 }
 
 // OnResponse counts letters in the response body and replaces it with the count
-func (p *CountLettersPolicy) OnResponse(ctx *policies.ResponseContext, config map[string]interface{}) policies.ResponseAction {
+func (p *CountLettersPolicy) OnResponse(ctx *policies.ResponseContext, params map[string]interface{}) policies.ResponseAction {
 	// Check if response body is present
 	if ctx.ResponseBody == nil || !ctx.ResponseBody.Present {
 		// No body to process, return empty count
-		return p.generateEmptyResponse(config)
+		return p.generateEmptyResponse(params)
 	}
 
 	// Get configuration parameters
-	lettersRaw := config["letters"].([]interface{})
+	lettersRaw := params["letters"].([]interface{})
 	letters := make([]string, len(lettersRaw))
 	for i, letterRaw := range lettersRaw {
 		letters[i] = letterRaw.(string)
 	}
 
 	caseSensitive := false
-	if caseSensitiveRaw, ok := config["caseSensitive"]; ok {
+	if caseSensitiveRaw, ok := params["caseSensitive"]; ok {
 		caseSensitive = caseSensitiveRaw.(bool)
 	}
 
 	outputFormat := "json"
-	if outputFormatRaw, ok := config["outputFormat"]; ok {
+	if outputFormatRaw, ok := params["outputFormat"]; ok {
 		outputFormat = strings.ToLower(outputFormatRaw.(string))
 	}
 
@@ -171,9 +171,9 @@ func (p *CountLettersPolicy) generateTextOutput(counts map[string]int) []byte {
 }
 
 // generateEmptyResponse generates a response when no body is present
-func (p *CountLettersPolicy) generateEmptyResponse(config map[string]interface{}) policies.ResponseAction {
+func (p *CountLettersPolicy) generateEmptyResponse(params map[string]interface{}) policies.ResponseAction {
 	outputFormat := "json"
-	if outputFormatRaw, ok := config["outputFormat"]; ok {
+	if outputFormatRaw, ok := params["outputFormat"]; ok {
 		outputFormat = strings.ToLower(outputFormatRaw.(string))
 	}
 

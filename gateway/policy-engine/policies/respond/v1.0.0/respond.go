@@ -21,9 +21,9 @@ func (p *RespondPolicy) Name() string {
 }
 
 // Validate validates the policy configuration
-func (p *RespondPolicy) Validate(config map[string]interface{}) error {
+func (p *RespondPolicy) Validate(params map[string]interface{}) error {
 	// Validate statusCode parameter (optional, defaults to 200)
-	if statusCodeRaw, ok := config["statusCode"]; ok {
+	if statusCodeRaw, ok := params["statusCode"]; ok {
 		// Handle both float64 (from JSON) and int
 		switch v := statusCodeRaw.(type) {
 		case float64:
@@ -41,7 +41,7 @@ func (p *RespondPolicy) Validate(config map[string]interface{}) error {
 	}
 
 	// Validate body parameter (optional)
-	if bodyRaw, ok := config["body"]; ok {
+	if bodyRaw, ok := params["body"]; ok {
 		switch bodyRaw.(type) {
 		case string:
 			// Valid: string body
@@ -53,7 +53,7 @@ func (p *RespondPolicy) Validate(config map[string]interface{}) error {
 	}
 
 	// Validate headers parameter (optional)
-	if headersRaw, ok := config["headers"]; ok {
+	if headersRaw, ok := params["headers"]; ok {
 		headers, ok := headersRaw.([]interface{})
 		if !ok {
 			return fmt.Errorf("headers must be an array")
@@ -94,10 +94,10 @@ func (p *RespondPolicy) Validate(config map[string]interface{}) error {
 }
 
 // OnRequest returns an immediate response to the client
-func (p *RespondPolicy) OnRequest(ctx *policies.RequestContext, config map[string]interface{}) policies.RequestAction {
+func (p *RespondPolicy) OnRequest(ctx *policies.RequestContext, params map[string]interface{}) policies.RequestAction {
 	// Extract statusCode (default to 200 OK)
 	statusCode := 200
-	if statusCodeRaw, ok := config["statusCode"]; ok {
+	if statusCodeRaw, ok := params["statusCode"]; ok {
 		switch v := statusCodeRaw.(type) {
 		case float64:
 			statusCode = int(v)
@@ -108,7 +108,7 @@ func (p *RespondPolicy) OnRequest(ctx *policies.RequestContext, config map[strin
 
 	// Extract body
 	var body []byte
-	if bodyRaw, ok := config["body"]; ok {
+	if bodyRaw, ok := params["body"]; ok {
 		switch v := bodyRaw.(type) {
 		case string:
 			body = []byte(v)
@@ -119,7 +119,7 @@ func (p *RespondPolicy) OnRequest(ctx *policies.RequestContext, config map[strin
 
 	// Extract headers
 	headers := make(map[string]string)
-	if headersRaw, ok := config["headers"]; ok {
+	if headersRaw, ok := params["headers"]; ok {
 		if headersList, ok := headersRaw.([]interface{}); ok {
 			for _, headerRaw := range headersList {
 				if headerMap, ok := headerRaw.(map[string]interface{}); ok {

@@ -37,10 +37,10 @@ func (p *ModifyHeadersPolicy) Name() string {
 }
 
 // Validate validates the policy configuration
-func (p *ModifyHeadersPolicy) Validate(config map[string]interface{}) error {
+func (p *ModifyHeadersPolicy) Validate(params map[string]interface{}) error {
 	// At least one of requestHeaders or responseHeaders must be present
-	requestHeadersRaw, hasRequestHeaders := config["requestHeaders"]
-	responseHeadersRaw, hasResponseHeaders := config["responseHeaders"]
+	requestHeadersRaw, hasRequestHeaders := params["requestHeaders"]
+	responseHeadersRaw, hasResponseHeaders := params["responseHeaders"]
 
 	if !hasRequestHeaders && !hasResponseHeaders {
 		return fmt.Errorf("at least one of 'requestHeaders' or 'responseHeaders' must be specified")
@@ -173,9 +173,9 @@ func (p *ModifyHeadersPolicy) applyHeaderModifications(modifications []HeaderMod
 }
 
 // OnRequest modifies request headers
-func (p *ModifyHeadersPolicy) OnRequest(ctx *policies.RequestContext, config map[string]interface{}) policies.RequestAction {
+func (p *ModifyHeadersPolicy) OnRequest(ctx *policies.RequestContext, params map[string]interface{}) policies.RequestAction {
 	// Check if requestHeaders are configured
-	requestHeadersRaw, ok := config["requestHeaders"]
+	requestHeadersRaw, ok := params["requestHeaders"]
 	if !ok {
 		// No request headers to modify, pass through
 		return policies.UpstreamRequestModifications{}
@@ -198,9 +198,9 @@ func (p *ModifyHeadersPolicy) OnRequest(ctx *policies.RequestContext, config map
 }
 
 // OnResponse modifies response headers
-func (p *ModifyHeadersPolicy) OnResponse(ctx *policies.ResponseContext, config map[string]interface{}) policies.ResponseAction {
+func (p *ModifyHeadersPolicy) OnResponse(ctx *policies.ResponseContext, params map[string]interface{}) policies.ResponseAction {
 	// Check if responseHeaders are configured
-	responseHeadersRaw, ok := config["responseHeaders"]
+	responseHeadersRaw, ok := params["responseHeaders"]
 	if !ok {
 		// No response headers to modify, pass through
 		return policies.UpstreamResponseModifications{}

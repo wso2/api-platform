@@ -29,9 +29,9 @@ func (p *BasicAuthPolicy) Name() string {
 }
 
 // Validate validates the policy configuration
-func (p *BasicAuthPolicy) Validate(config map[string]interface{}) error {
+func (p *BasicAuthPolicy) Validate(params map[string]interface{}) error {
 	// Validate username parameter (required)
-	usernameRaw, ok := config["username"]
+	usernameRaw, ok := params["username"]
 	if !ok {
 		return fmt.Errorf("'username' parameter is required")
 	}
@@ -44,7 +44,7 @@ func (p *BasicAuthPolicy) Validate(config map[string]interface{}) error {
 	}
 
 	// Validate password parameter (required)
-	passwordRaw, ok := config["password"]
+	passwordRaw, ok := params["password"]
 	if !ok {
 		return fmt.Errorf("'password' parameter is required")
 	}
@@ -57,7 +57,7 @@ func (p *BasicAuthPolicy) Validate(config map[string]interface{}) error {
 	}
 
 	// Validate allowUnauthenticated parameter (optional, defaults to false)
-	if allowUnauthRaw, ok := config["allowUnauthenticated"]; ok {
+	if allowUnauthRaw, ok := params["allowUnauthenticated"]; ok {
 		_, ok := allowUnauthRaw.(bool)
 		if !ok {
 			return fmt.Errorf("'allowUnauthenticated' must be a boolean")
@@ -65,7 +65,7 @@ func (p *BasicAuthPolicy) Validate(config map[string]interface{}) error {
 	}
 
 	// Validate realm parameter (optional)
-	if realmRaw, ok := config["realm"]; ok {
+	if realmRaw, ok := params["realm"]; ok {
 		realm, ok := realmRaw.(string)
 		if !ok {
 			return fmt.Errorf("'realm' must be a string")
@@ -79,18 +79,18 @@ func (p *BasicAuthPolicy) Validate(config map[string]interface{}) error {
 }
 
 // OnRequest performs Basic Authentication
-func (p *BasicAuthPolicy) OnRequest(ctx *policies.RequestContext, config map[string]interface{}) policies.RequestAction {
+func (p *BasicAuthPolicy) OnRequest(ctx *policies.RequestContext, params map[string]interface{}) policies.RequestAction {
 	// Get configuration parameters
-	expectedUsername := config["username"].(string)
-	expectedPassword := config["password"].(string)
+	expectedUsername := params["username"].(string)
+	expectedPassword := params["password"].(string)
 
 	allowUnauthenticated := false
-	if allowUnauthRaw, ok := config["allowUnauthenticated"]; ok {
+	if allowUnauthRaw, ok := params["allowUnauthenticated"]; ok {
 		allowUnauthenticated = allowUnauthRaw.(bool)
 	}
 
 	realm := "Restricted"
-	if realmRaw, ok := config["realm"]; ok {
+	if realmRaw, ok := params["realm"]; ok {
 		realm = realmRaw.(string)
 	}
 
