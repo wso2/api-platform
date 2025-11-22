@@ -280,10 +280,15 @@ func (ec *PolicyExecutionContext) processResponseBody(
 
 // buildRequestContext converts Envoy headers to RequestContext
 func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHeaders) *policies.RequestContext {
-	ctx := &policies.RequestContext{
-		Headers:   make(map[string][]string),
+	// Create shared context that will persist across request/response phases
+	sharedCtx := &policies.SharedContext{
 		RequestID: ec.requestID,
 		Metadata:  ec.policyChain.Metadata, // Share chain metadata
+	}
+
+	ctx := &policies.RequestContext{
+		SharedContext: sharedCtx,
+		Headers:       make(map[string][]string),
 	}
 
 	// Extract headers
@@ -308,13 +313,12 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 // buildResponseContext converts Envoy response headers and stored request context
 func (ec *PolicyExecutionContext) buildResponseContext(headers *extprocv3.HttpHeaders) *policies.ResponseContext {
 	ctx := &policies.ResponseContext{
+		SharedContext:   ec.requestContext.SharedContext, // Reuse same shared context from request phase
 		RequestHeaders:  ec.requestContext.Headers,
 		RequestBody:     ec.requestContext.Body,
 		RequestPath:     ec.requestContext.Path,
 		RequestMethod:   ec.requestContext.Method,
-		RequestID:       ec.requestContext.RequestID,
 		ResponseHeaders: make(map[string][]string),
-		Metadata:        ec.requestContext.Metadata, // Share same metadata reference
 	}
 
 	// Extract response headers

@@ -51,6 +51,9 @@ func NewCELEvaluator() (CELEvaluator, error) {
 // policies that execute in both phases to use the same executionCondition expression
 func createCELEnv() (*cel.Env, error) {
 	return cel.NewEnv(
+		// Processing phase indicator - enables phase-specific logic in CEL expressions
+		// Values: "request", "response" (future: "request_headers", "request_body", "response_headers", "response_body")
+		cel.Variable("processing.phase", cel.StringType),
 		// RequestContext variables
 		cel.Variable("request", cel.ObjectType("RequestContext")),
 		cel.Variable("request.Headers", cel.MapType(cel.StringType, cel.ListType(cel.StringType))),
@@ -95,6 +98,8 @@ func (e *celEvaluator) EvaluateRequestCondition(expression string, ctx *policies
 
 	// Build evaluation context - flatten to match CEL variable declarations
 	evalCtx := map[string]interface{}{
+		// Processing phase indicator
+		"processing.phase": "request",
 		"request": map[string]interface{}{
 			"Headers":   ctx.Headers,
 			"Body":      bodyForCEL,
@@ -180,6 +185,8 @@ func (e *celEvaluator) EvaluateResponseCondition(expression string, ctx *policie
 
 	// Build evaluation context - flatten to match CEL variable declarations
 	evalCtx := map[string]interface{}{
+		// Processing phase indicator
+		"processing.phase": "response",
 		"response": map[string]interface{}{
 			"RequestHeaders":  ctx.RequestHeaders,
 			"RequestBody":     requestBodyForCEL,
