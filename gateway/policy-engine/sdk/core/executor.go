@@ -220,7 +220,7 @@ func applyRequestModifications(ctx *policies.RequestContext, mods *policies.Upst
 	if mods.Body != nil {
 		ctx.Body = &policies.Body{
 			Content:     mods.Body,
-			EndOfStream: true,  // Modifications are always complete
+			EndOfStream: true, // Modifications are always complete
 			Present:     true,
 		}
 	}
@@ -265,7 +265,7 @@ func applyResponseModifications(ctx *policies.ResponseContext, mods *policies.Up
 	if mods.Body != nil {
 		ctx.ResponseBody = &policies.Body{
 			Content:     mods.Body,
-			EndOfStream: true,  // Modifications are always complete
+			EndOfStream: true, // Modifications are always complete
 			Present:     true,
 		}
 	}

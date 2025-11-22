@@ -39,6 +39,7 @@
     - name: CountLetters
       version: v1.0.0
       enabled: true
+      executionCondition: '"count" in request.Headers'
       parameters:
         letters: ["error", "success", "warning", "info", "name", "path", "host"]
         caseSensitive: false

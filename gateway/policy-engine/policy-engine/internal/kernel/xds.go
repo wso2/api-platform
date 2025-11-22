@@ -15,17 +15,17 @@ import (
 // PolicyChainConfig represents the configuration for a policy chain on a route
 // T072: PolicyChainConfig structure for xDS or file-based config
 type PolicyChainConfig struct {
-	RouteKey string               `yaml:"route_key"`
+	RouteKey string                 `yaml:"route_key"`
 	Policies []PolicyInstanceConfig `yaml:"policies"`
 }
 
 // PolicyInstanceConfig represents a single policy instance in a chain
 type PolicyInstanceConfig struct {
-	Name              string                 `yaml:"name"`
-	Version           string                 `yaml:"version"`
-	Enabled           bool                   `yaml:"enabled"`
-	ExecutionCondition *string               `yaml:"execution_condition,omitempty"`
-	Parameters        map[string]interface{} `yaml:"parameters"`
+	Name               string                 `yaml:"name"`
+	Version            string                 `yaml:"version"`
+	Enabled            bool                   `yaml:"enabled"`
+	ExecutionCondition *string                `yaml:"executionCondition,omitempty"`
+	Parameters         map[string]interface{} `yaml:"parameters"`
 }
 
 // ConfigLoader loads policy chain configurations

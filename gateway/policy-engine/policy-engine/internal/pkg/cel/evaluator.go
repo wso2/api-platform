@@ -84,6 +84,14 @@ func createResponseEnv() (*cel.Env, error) {
 		cel.Variable("response.ResponseStatus", cel.IntType),
 		cel.Variable("response.RequestID", cel.StringType),
 		cel.Variable("response.Metadata", cel.MapType(cel.StringType, cel.DynType)),
+		// Request variables (aliases for response.Request* for consistency)
+		cel.Variable("request", cel.ObjectType("RequestContext")),
+		cel.Variable("request.Headers", cel.MapType(cel.StringType, cel.ListType(cel.StringType))),
+		cel.Variable("request.Body", cel.MapType(cel.StringType, cel.DynType)),
+		cel.Variable("request.Path", cel.StringType),
+		cel.Variable("request.Method", cel.StringType),
+		cel.Variable("request.RequestID", cel.StringType),
+		cel.Variable("request.Metadata", cel.MapType(cel.StringType, cel.DynType)),
 	)
 }
 
@@ -107,7 +115,7 @@ func (e *celEvaluator) EvaluateRequestCondition(expression string, ctx *policies
 		bodyForCEL = nil
 	}
 
-	// Build evaluation context
+	// Build evaluation context - flatten to match CEL variable declarations
 	evalCtx := map[string]interface{}{
 		"request": map[string]interface{}{
 			"Headers":   ctx.Headers,
@@ -117,6 +125,12 @@ func (e *celEvaluator) EvaluateRequestCondition(expression string, ctx *policies
 			"RequestID": ctx.RequestID,
 			"Metadata":  ctx.Metadata,
 		},
+		"request.Headers":   ctx.Headers,
+		"request.Body":      bodyForCEL,
+		"request.Path":      ctx.Path,
+		"request.Method":    ctx.Method,
+		"request.RequestID": ctx.RequestID,
+		"request.Metadata":  ctx.Metadata,
 	}
 
 	// Evaluate
@@ -165,7 +179,7 @@ func (e *celEvaluator) EvaluateResponseCondition(expression string, ctx *policie
 		responseBodyForCEL = nil
 	}
 
-	// Build evaluation context
+	// Build evaluation context - flatten to match CEL variable declarations
 	evalCtx := map[string]interface{}{
 		"response": map[string]interface{}{
 			"RequestHeaders":  ctx.RequestHeaders,
@@ -178,6 +192,30 @@ func (e *celEvaluator) EvaluateResponseCondition(expression string, ctx *policie
 			"RequestID":       ctx.RequestID,
 			"Metadata":        ctx.Metadata,
 		},
+		"response.RequestHeaders":  ctx.RequestHeaders,
+		"response.RequestBody":     requestBodyForCEL,
+		"response.RequestPath":     ctx.RequestPath,
+		"response.RequestMethod":   ctx.RequestMethod,
+		"response.ResponseHeaders": ctx.ResponseHeaders,
+		"response.ResponseBody":    responseBodyForCEL,
+		"response.ResponseStatus":  ctx.ResponseStatus,
+		"response.RequestID":       ctx.RequestID,
+		"response.Metadata":        ctx.Metadata,
+		// Request variables (aliases to request data for consistency across phases)
+		"request": map[string]interface{}{
+			"Headers":   ctx.RequestHeaders,
+			"Body":      requestBodyForCEL,
+			"Path":      ctx.RequestPath,
+			"Method":    ctx.RequestMethod,
+			"RequestID": ctx.RequestID,
+			"Metadata":  ctx.Metadata,
+		},
+		"request.Headers":   ctx.RequestHeaders,
+		"request.Body":      requestBodyForCEL,
+		"request.Path":      ctx.RequestPath,
+		"request.Method":    ctx.RequestMethod,
+		"request.RequestID": ctx.RequestID,
+		"request.Metadata":  ctx.Metadata,
 	}
 
 	// Evaluate

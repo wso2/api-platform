@@ -15,7 +15,7 @@ func init() {
 	slog.Info("Registering policies from Builder compilation")
 
 	{{- range .Policies }}
-	// Register {{ .Name }} v{{ .Version }}
+	// Register {{ .Name }} {{ .Version }}
 	policyDef_{{ .ImportAlias }} := &policies.PolicyDefinition{
 		Name:                   "{{ .Name }}",
 		Version:                "{{ .Version }}",
