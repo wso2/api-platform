@@ -67,14 +67,6 @@ func ValidateDirectoryStructure(policyDir string) error {
 	return nil
 }
 
-// ValidateVersionConsistency checks if directory name matches YAML version
-func ValidateVersionConsistency(dirName string, yamlVersion string) error {
-	if dirName != yamlVersion {
-		return fmt.Errorf("directory name %s does not match YAML version %s", dirName, yamlVersion)
-	}
-	return nil
-}
-
 // CollectSourceFiles finds all .go files in a policy directory
 func CollectSourceFiles(policyDir string) ([]string, error) {
 	var goFiles []string

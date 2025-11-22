@@ -103,10 +103,24 @@ func validateManifest(manifest *types.PolicyManifest) error {
 
 // DiscoverPoliciesFromManifest discovers policies declared in a manifest file
 func DiscoverPoliciesFromManifest(manifestPath string, baseDir string) ([]*types.DiscoveredPolicy, error) {
+	// Convert manifestPath to absolute at the start for consistent path handling
+	absManifestPath, err := filepath.Abs(manifestPath)
+	if err != nil {
+		return nil, errors.NewDiscoveryError(
+			"failed to resolve absolute path for manifest",
+			err,
+		)
+	}
+
 	// Load manifest
-	manifest, err := LoadManifest(manifestPath)
+	manifest, err := LoadManifest(absManifestPath)
 	if err != nil {
 		return nil, err
+	}
+
+	// Set baseDir to manifest's directory if not provided.
+	if baseDir == "" {
+		baseDir = filepath.Dir(absManifestPath)
 	}
 
 	var discovered []*types.DiscoveredPolicy
@@ -116,22 +130,9 @@ func DiscoverPoliciesFromManifest(manifestPath string, baseDir string) ([]*types
 		// Resolve URI (support relative and absolute paths)
 		policyPath := entry.URI // TODO: (renuka) This URI is not the exact path of the policy. It is the path to discover policies.
 		if !filepath.IsAbs(policyPath) {
-			// Relative to base directory (or manifest directory if baseDir not provided)
-			if baseDir == "" {
-				baseDir = filepath.Dir(manifestPath)
-			}
+			// Relative to base directory (now guaranteed absolute)
 			policyPath = filepath.Join(baseDir, entry.URI)
 		}
-
-		// Convert to absolute path
-		absPath, err := filepath.Abs(policyPath)
-		if err != nil {
-			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("failed to resolve absolute path for %s:%s", entry.Name, entry.Version),
-				err,
-			)
-		}
-		policyPath = absPath
 
 		// Check path exists
 		if _, err := os.Stat(policyPath); os.IsNotExist(err) { // TODO: (renuka) check other errors as well.
