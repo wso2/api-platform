@@ -65,7 +65,6 @@ type BuildMetadata struct {
 type PolicyInfo struct {
 	Name    string
 	Version string
-	Path    string
 }
 
 // CompilationOptions contains settings for the compilation phase

@@ -18,7 +18,6 @@ func GenerateBuildInfo(policies []*types.DiscoveredPolicy, builderVersion string
 		policyInfos = append(policyInfos, types.PolicyInfo{
 			Name:    policy.Name,
 			Version: policy.Version,
-			Path:    policy.Path,
 		})
 	}
 

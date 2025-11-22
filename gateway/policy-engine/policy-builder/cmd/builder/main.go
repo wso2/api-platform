@@ -124,7 +124,6 @@ func main() {
 		buildMetadata.Policies = append(buildMetadata.Policies, types.PolicyInfo{
 			Name:    p.Name,
 			Version: p.Version,
-			Path:    p.Path,
 		})
 	}
 
@@ -180,4 +179,3 @@ func printSummary(policies []*types.DiscoveredPolicy, binaryPath, outputDir stri
 	fmt.Println("   docker run -p 9001:9001 -p 9002:9002 policy-engine:custom")
 	fmt.Println()
 }
-

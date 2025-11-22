@@ -28,7 +28,6 @@ func GenerateDockerfile(outputDir string, policies []*types.DiscoveredPolicy, bu
 		metadata.Policies = append(metadata.Policies, types.PolicyInfo{
 			Name:    p.Name,
 			Version: p.Version,
-			Path:    p.Path,
 		})
 	}
 
