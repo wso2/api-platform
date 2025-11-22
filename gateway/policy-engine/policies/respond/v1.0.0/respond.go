@@ -15,11 +15,6 @@ func NewPolicy() policies.Policy {
 	return &RespondPolicy{}
 }
 
-// Name returns the policy name
-func (p *RespondPolicy) Name() string {
-	return "respond"
-}
-
 // Validate validates the policy configuration
 func (p *RespondPolicy) Validate(params map[string]interface{}) error {
 	// Validate statusCode parameter (optional, defaults to 200)

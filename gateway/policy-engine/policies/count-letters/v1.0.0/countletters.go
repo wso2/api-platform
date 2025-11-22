@@ -16,11 +16,6 @@ func NewPolicy() policies.Policy {
 	return &CountLettersPolicy{}
 }
 
-// Name returns the policy name
-func (p *CountLettersPolicy) Name() string {
-	return "countLetters"
-}
-
 // Validate validates the policy configuration
 func (p *CountLettersPolicy) Validate(params map[string]interface{}) error {
 	// Validate letters parameter (required)

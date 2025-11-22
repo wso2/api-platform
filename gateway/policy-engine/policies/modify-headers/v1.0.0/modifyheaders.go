@@ -31,11 +31,6 @@ func NewPolicy() policies.Policy {
 	return &ModifyHeadersPolicy{}
 }
 
-// Name returns the policy name
-func (p *ModifyHeadersPolicy) Name() string {
-	return "modifyHeaders"
-}
-
 // Validate validates the policy configuration
 func (p *ModifyHeadersPolicy) Validate(params map[string]interface{}) error {
 	// At least one of requestHeaders or responseHeaders must be present

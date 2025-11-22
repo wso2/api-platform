@@ -14,11 +14,6 @@ func NewPolicy() policies.Policy {
 	return &UppercaseBodyPolicy{}
 }
 
-// Name returns the policy name
-func (p *UppercaseBodyPolicy) Name() string {
-	return "uppercaseBody"
-}
-
 // Validate validates the policy configuration
 // This policy has no configuration parameters
 func (p *UppercaseBodyPolicy) Validate(params map[string]interface{}) error {

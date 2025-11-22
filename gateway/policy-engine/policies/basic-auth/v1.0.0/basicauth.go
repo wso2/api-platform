@@ -23,11 +23,6 @@ func NewPolicy() policies.Policy {
 	return &BasicAuthPolicy{}
 }
 
-// Name returns the policy name
-func (p *BasicAuthPolicy) Name() string {
-	return "basicAuth"
-}
-
 // Validate validates the policy configuration
 func (p *BasicAuthPolicy) Validate(params map[string]interface{}) error {
 	// Validate username parameter (required)
