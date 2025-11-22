@@ -3,20 +3,43 @@
 
 - route_key: my_upstream_service_route
   policies:
-    - name: SetHeader
+    - name: ModifyHeaders
       version: v1.0.0
       enabled: true
       parameters:
-        action: SET
-        headerName: x-processed-by
-        headerValue: policy-engine-v1
-
-- route_key: api-route
-  policies:
-    - name: SetHeader
+        requestHeaders:
+          - action: SET
+            name: x-request-id
+            value: req-12345
+          - action: DELETE
+            name: x-internal-token
+        responseHeaders:
+          - action: SET
+            name: x-frame-options
+            value: DENY
+          - action: SET
+            name: x-content-type-options
+            value: nosniff
+          - action: DELETE
+            name: server
+    # - name: Respond
+    #   version: v1.0.0
+    #   enabled: true
+    #   parameters:
+    #     statusCode: 200
+    #     body: '{"message": "This is a mock response", "status": "success"}'
+    #     headers:
+    #       - name: content-type
+    #         value: application/json
+    #       - name: x-mock-response
+    #         value: "true"
+    - name: UppercaseBody
+      version: v1.0.0
+      enabled: true
+    - name: CountLetters
       version: v1.0.0
       enabled: true
       parameters:
-        action: SET
-        headerName: x-api-version
-        headerValue: v1
+        letters: ["error", "success", "warning", "info", "name", "path", "host"]
+        caseSensitive: false
+        outputFormat: json

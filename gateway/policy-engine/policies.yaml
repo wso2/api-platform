@@ -7,15 +7,25 @@
 version: v1
 
 policies:
-  # API Key Validation Policy
-  - name: APIKeyValidation
+  # Respond Policy
+  - name: Respond
     version: v1.0.0
-    uri: ./policies/api-key-validation/v1.0.0
+    uri: ./policies/respond/v1.0.0
 
-  # Set Header Policy
-  - name: SetHeader
+  # UppercaseBody Policy
+  - name: UppercaseBody
     version: v1.0.0
-    uri: ./policies/set-header/v1.0.0
+    uri: ./policies/uppercase-body/v1.0.0
+
+  # ModifyHeaders Policy
+  - name: ModifyHeaders
+    version: v1.0.0
+    uri: ./policies/modify-headers/v1.0.0
+
+  # CountLetters Policy
+  - name: CountLetters
+    version: v1.0.0
+    uri: ./policies/count-letters/v1.0.0
 
   # Add more policies here
   # Example with different directory structure:

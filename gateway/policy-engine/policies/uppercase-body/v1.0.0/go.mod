@@ -1,5 +1,4 @@
-// T080: SetHeader policy go.mod
-module github.com/policy-engine/policies/set-header
+module github.com/policy-engine/policies/uppercase-body
 
 go 1.23.0
 

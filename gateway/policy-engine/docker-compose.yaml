@@ -35,7 +35,7 @@ services:
   request_info:
     image: renukafernando/request-info:latest
     container_name: request_info
-    command: ["-addr", ":8080", "-logH", "-logB"]
+    command: ["-addr", ":8080", "-logH", "-logB", "-pretty"]
     environment:
       - NAME=Test-Backend
     ports:

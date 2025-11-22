@@ -1,6 +1,8 @@
 package kernel
 
 import (
+	"fmt"
+
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocconfigv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -263,12 +265,63 @@ func buildRequestMutations(result *core.RequestExecutionResult) (*extprocv3.Head
 							Body: mods.Body,
 						},
 					}
+					// Update Content-Length header to match new body size
+					setContentLengthHeader(headerMutation, len(mods.Body))
 				}
 			}
 		}
 	}
 
 	return headerMutation, bodyMutation
+}
+
+// buildResponseMutations extracts header and body mutations from response execution result
+func buildResponseMutations(result *core.ResponseExecutionResult) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation) {
+	headerMutation := &extprocv3.HeaderMutation{}
+	var bodyMutation *extprocv3.BodyMutation
+
+	// Accumulate modifications from all executed policies
+	for _, policyResult := range result.Results {
+		if policyResult.Skipped || policyResult.Error != nil {
+			continue
+		}
+
+		if policyResult.Action != nil {
+			if mods, ok := policyResult.Action.Action.(policies.UpstreamResponseModifications); ok {
+				// Build header mutations
+				applyResponseModifications(headerMutation, &mods)
+
+				// Handle body modifications if present
+				// mods.Body is []byte from the action
+				if mods.Body != nil {
+					bodyMutation = &extprocv3.BodyMutation{
+						Mutation: &extprocv3.BodyMutation_Body{
+							Body: mods.Body,
+						},
+					}
+					// Update Content-Length header to match new body size
+					setContentLengthHeader(headerMutation, len(mods.Body))
+				}
+			}
+		}
+	}
+
+	return headerMutation, bodyMutation
+}
+
+// setContentLengthHeader sets the Content-Length header to match the body size
+func setContentLengthHeader(mutation *extprocv3.HeaderMutation, bodyLength int) {
+	if mutation.SetHeaders == nil {
+		mutation.SetHeaders = make([]*corev3.HeaderValueOption, 0, 1)
+	}
+
+	mutation.SetHeaders = append(mutation.SetHeaders, &corev3.HeaderValueOption{
+		Header: &corev3.HeaderValue{
+			Key:      "content-length",
+			RawValue: []byte(fmt.Sprintf("%d", bodyLength)),
+		},
+		AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+	})
 }
 
 // determineModeOverride determines body processing mode based on chain requirements

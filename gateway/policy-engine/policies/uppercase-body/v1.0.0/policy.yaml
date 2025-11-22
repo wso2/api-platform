@@ -1,0 +1,27 @@
+name: UppercaseBody
+version: v1.0.0
+description: |
+  Transforms the request body text to uppercase letters.
+  This policy reads the request body as text and converts all characters to uppercase
+  before forwarding to the upstream service.
+
+# Policy execution phases
+supportsRequestPhase: true
+supportsResponsePhase: false
+
+# Body access requirements - requires request body for transformation
+requiresRequestBody: true
+requiresResponseBody: false
+
+parameters: []  # No configuration parameters
+
+examples:
+  - name: Basic uppercase transformation
+    description: Converts request body to uppercase
+    config: {}
+
+  - name: API payload transformation
+    description: Transform JSON field values to uppercase
+    input: '{"message": "hello world"}'
+    output: '{"MESSAGE": "HELLO WORLD"}'
+    config: {}
