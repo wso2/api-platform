@@ -46,8 +46,8 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 	// Check for required methods
 	hasName := false
 	hasValidate := false
-	hasExecuteRequest := false
-	hasExecuteResponse := false
+	hasOnRequest := false
+	hasOnResponse := false
 	hasNewPolicy := false
 
 	for _, file := range files {
@@ -68,10 +68,10 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 						hasName = true
 					case "Validate":
 						hasValidate = true
-					case "ExecuteRequest":
-						hasExecuteRequest = true
-					case "ExecuteResponse":
-						hasExecuteResponse = true
+					case "OnRequest":
+						hasOnRequest = true
+					case "OnResponse":
+						hasOnResponse = true
 					}
 				}
 			}
@@ -97,12 +97,12 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 		})
 	}
 
-	if !hasExecuteRequest && !hasExecuteResponse {
+	if !hasOnRequest && !hasOnResponse {
 		errors = append(errors, types.ValidationError{
 			PolicyName:    policy.Name,
 			PolicyVersion: policy.Version,
 			FilePath:      policy.Path,
-			Message:       "must implement at least ExecuteRequest() or ExecuteResponse() method",
+			Message:       "must implement at least OnRequest() or OnResponse() method",
 		})
 	}
 

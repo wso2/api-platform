@@ -172,64 +172,52 @@ func (p *ModifyHeadersPolicy) applyHeaderModifications(modifications []HeaderMod
 	return setHeaders, removeHeaders, appendHeaders
 }
 
-// ExecuteRequest modifies request headers
-func (p *ModifyHeadersPolicy) ExecuteRequest(ctx *policies.RequestContext, config map[string]interface{}) *policies.RequestPolicyAction {
+// OnRequest modifies request headers
+func (p *ModifyHeadersPolicy) OnRequest(ctx *policies.RequestContext, config map[string]interface{}) policies.RequestAction {
 	// Check if requestHeaders are configured
 	requestHeadersRaw, ok := config["requestHeaders"]
 	if !ok {
 		// No request headers to modify, pass through
-		return &policies.RequestPolicyAction{
-			Action: policies.UpstreamRequestModifications{},
-		}
+		return policies.UpstreamRequestModifications{}
 	}
 
 	// Parse modifications
 	modifications := p.parseHeaderModifications(requestHeadersRaw)
 	if len(modifications) == 0 {
-		return &policies.RequestPolicyAction{
-			Action: policies.UpstreamRequestModifications{},
-		}
+		return policies.UpstreamRequestModifications{}
 	}
 
 	// Apply modifications
 	setHeaders, removeHeaders, appendHeaders := p.applyHeaderModifications(modifications)
 
-	return &policies.RequestPolicyAction{
-		Action: policies.UpstreamRequestModifications{
-			SetHeaders:    setHeaders,
-			RemoveHeaders: removeHeaders,
-			AppendHeaders: appendHeaders,
-		},
+	return policies.UpstreamRequestModifications{
+		SetHeaders:    setHeaders,
+		RemoveHeaders: removeHeaders,
+		AppendHeaders: appendHeaders,
 	}
 }
 
-// ExecuteResponse modifies response headers
-func (p *ModifyHeadersPolicy) ExecuteResponse(ctx *policies.ResponseContext, config map[string]interface{}) *policies.ResponsePolicyAction {
+// OnResponse modifies response headers
+func (p *ModifyHeadersPolicy) OnResponse(ctx *policies.ResponseContext, config map[string]interface{}) policies.ResponseAction {
 	// Check if responseHeaders are configured
 	responseHeadersRaw, ok := config["responseHeaders"]
 	if !ok {
 		// No response headers to modify, pass through
-		return &policies.ResponsePolicyAction{
-			Action: policies.UpstreamResponseModifications{},
-		}
+		return policies.UpstreamResponseModifications{}
 	}
 
 	// Parse modifications
 	modifications := p.parseHeaderModifications(responseHeadersRaw)
 	if len(modifications) == 0 {
-		return &policies.ResponsePolicyAction{
-			Action: policies.UpstreamResponseModifications{},
-		}
+		return policies.UpstreamResponseModifications{}
 	}
 
 	// Apply modifications
 	setHeaders, removeHeaders, appendHeaders := p.applyHeaderModifications(modifications)
 
-	return &policies.ResponsePolicyAction{
-		Action: policies.UpstreamResponseModifications{
-			SetHeaders:    setHeaders,
-			RemoveHeaders: removeHeaders,
-			AppendHeaders: appendHeaders,
-		},
+	return policies.UpstreamResponseModifications{
+		SetHeaders:    setHeaders,
+		RemoveHeaders: removeHeaders,
+		AppendHeaders: appendHeaders,
 	}
 }

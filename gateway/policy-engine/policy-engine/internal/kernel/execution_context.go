@@ -151,7 +151,7 @@ func (ec *PolicyExecutionContext) processRequestBody(
 
 		// Check if policies short-circuited with immediate response
 		if execResult.ShortCircuited && execResult.FinalAction != nil {
-			if immediateResp, ok := execResult.FinalAction.Action.(policies.ImmediateResponse); ok {
+			if immediateResp, ok := execResult.FinalAction.(policies.ImmediateResponse); ok {
 				return &extprocv3.ProcessingResponse{
 					Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 						ImmediateResponse: &extprocv3.ImmediateResponse{

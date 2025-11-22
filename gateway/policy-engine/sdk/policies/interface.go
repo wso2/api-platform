@@ -15,18 +15,18 @@ type Policy interface {
 type RequestPolicy interface {
 	Policy
 
-	// ExecuteRequest executes the policy during request phase
-	// Returns RequestPolicyAction with modifications or immediate response
+	// OnRequest executes the policy during request phase
+	// Returns RequestAction with modifications or immediate response
 	// Returns nil if policy has no action (pass-through)
-	ExecuteRequest(ctx *RequestContext, config map[string]interface{}) *RequestPolicyAction
+	OnRequest(ctx *RequestContext, config map[string]interface{}) RequestAction
 }
 
 // ResponsePolicy defines the interface for policies that execute during response phase
 type ResponsePolicy interface {
 	Policy
 
-	// ExecuteResponse executes the policy during response phase
-	// Returns ResponsePolicyAction with modifications
+	// OnResponse executes the policy during response phase
+	// Returns ResponseAction with modifications
 	// Returns nil if policy has no action (pass-through)
-	ExecuteResponse(ctx *ResponseContext, config map[string]interface{}) *ResponsePolicyAction
+	OnResponse(ctx *ResponseContext, config map[string]interface{}) ResponseAction
 }

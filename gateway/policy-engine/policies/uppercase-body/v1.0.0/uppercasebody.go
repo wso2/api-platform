@@ -26,23 +26,19 @@ func (p *UppercaseBodyPolicy) Validate(config map[string]interface{}) error {
 	return nil
 }
 
-// ExecuteRequest transforms the request body to uppercase
-func (p *UppercaseBodyPolicy) ExecuteRequest(ctx *policies.RequestContext, config map[string]interface{}) *policies.RequestPolicyAction {
+// OnRequest transforms the request body to uppercase
+func (p *UppercaseBodyPolicy) OnRequest(ctx *policies.RequestContext, config map[string]interface{}) policies.RequestAction {
 	// Check if body is present
 	if ctx.Body == nil || !ctx.Body.Present {
 		// No body to transform, pass through
-		return &policies.RequestPolicyAction{
-			Action: policies.UpstreamRequestModifications{},
-		}
+		return policies.UpstreamRequestModifications{}
 	}
 
 	// Transform body content to uppercase
 	uppercasedBody := []byte(strings.ToUpper(string(ctx.Body.Content)))
 
 	// Return modified body
-	return &policies.RequestPolicyAction{
-		Action: policies.UpstreamRequestModifications{
-			Body: uppercasedBody,
-		},
+	return policies.UpstreamRequestModifications{
+		Body: uppercasedBody,
 	}
 }

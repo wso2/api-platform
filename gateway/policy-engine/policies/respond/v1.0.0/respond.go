@@ -93,8 +93,8 @@ func (p *RespondPolicy) Validate(config map[string]interface{}) error {
 	return nil
 }
 
-// ExecuteRequest returns an immediate response to the client
-func (p *RespondPolicy) ExecuteRequest(ctx *policies.RequestContext, config map[string]interface{}) *policies.RequestPolicyAction {
+// OnRequest returns an immediate response to the client
+func (p *RespondPolicy) OnRequest(ctx *policies.RequestContext, config map[string]interface{}) policies.RequestAction {
 	// Extract statusCode (default to 200 OK)
 	statusCode := 200
 	if statusCodeRaw, ok := config["statusCode"]; ok {
@@ -132,11 +132,9 @@ func (p *RespondPolicy) ExecuteRequest(ctx *policies.RequestContext, config map[
 	}
 
 	// Return immediate response action
-	return &policies.RequestPolicyAction{
-		Action: policies.ImmediateResponse{
-			StatusCode: statusCode,
-			Headers:    headers,
-			Body:       body,
-		},
+	return policies.ImmediateResponse{
+		StatusCode: statusCode,
+		Headers:    headers,
+		Body:       body,
 	}
 }

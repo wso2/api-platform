@@ -11,7 +11,7 @@ import (
 type RequestPolicyResult struct {
 	PolicyName    string
 	PolicyVersion string
-	Action        *policies.RequestPolicyAction
+	Action        policies.RequestAction
 	Error         error
 	ExecutionTime time.Duration
 	Skipped       bool // true if condition evaluated to false
@@ -20,8 +20,8 @@ type RequestPolicyResult struct {
 // RequestExecutionResult represents the result of executing all request policies in a chain
 type RequestExecutionResult struct {
 	Results            []RequestPolicyResult
-	ShortCircuited     bool                          // true if chain stopped early due to ImmediateResponse
-	FinalAction        *policies.RequestPolicyAction // Final action to apply
+	ShortCircuited     bool                   // true if chain stopped early due to ImmediateResponse
+	FinalAction        policies.RequestAction // Final action to apply
 	TotalExecutionTime time.Duration
 }
 
@@ -29,7 +29,7 @@ type RequestExecutionResult struct {
 type ResponsePolicyResult struct {
 	PolicyName    string
 	PolicyVersion string
-	Action        *policies.ResponsePolicyAction
+	Action        policies.ResponseAction
 	Error         error
 	ExecutionTime time.Duration
 	Skipped       bool // true if condition evaluated to false
@@ -38,7 +38,7 @@ type ResponsePolicyResult struct {
 // ResponseExecutionResult represents the result of executing all response policies in a chain
 type ResponseExecutionResult struct {
 	Results            []ResponsePolicyResult
-	FinalAction        *policies.ResponsePolicyAction // Final action to apply
+	FinalAction        policies.ResponseAction // Final action to apply
 	TotalExecutionTime time.Duration
 }
 
@@ -88,7 +88,7 @@ func (c *Core) ExecuteRequestPolicies(policyList []policies.RequestPolicy, ctx *
 		}
 
 		// Execute policy
-		action := policy.ExecuteRequest(ctx, spec.Parameters.Raw)
+		action := policy.OnRequest(ctx, spec.Parameters.Raw)
 		executionTime := time.Since(policyStartTime)
 
 		policyResult := RequestPolicyResult{
@@ -102,16 +102,16 @@ func (c *Core) ExecuteRequestPolicies(policyList []policies.RequestPolicy, ctx *
 		result.Results = append(result.Results, policyResult)
 
 		// Apply action if present
-		if action != nil && action.Action != nil {
+		if action != nil {
 			// Check for short-circuit (T047)
-			if action.Action.StopExecution() {
+			if action.StopExecution() {
 				result.ShortCircuited = true
 				result.FinalAction = action
 				break
 			}
 
 			// Apply modifications to context (T045)
-			if mods, ok := action.Action.(policies.UpstreamRequestModifications); ok {
+			if mods, ok := action.(policies.UpstreamRequestModifications); ok {
 				applyRequestModifications(ctx, &mods)
 			}
 		}
@@ -168,7 +168,7 @@ func (c *Core) ExecuteResponsePolicies(policyList []policies.ResponsePolicy, ctx
 		}
 
 		// Execute policy
-		action := policy.ExecuteResponse(ctx, spec.Parameters.Raw)
+		action := policy.OnResponse(ctx, spec.Parameters.Raw)
 		executionTime := time.Since(policyStartTime)
 
 		policyResult := ResponsePolicyResult{
@@ -182,8 +182,8 @@ func (c *Core) ExecuteResponsePolicies(policyList []policies.ResponsePolicy, ctx
 		result.Results = append(result.Results, policyResult)
 
 		// Apply action if present (T046)
-		if action != nil && action.Action != nil {
-			if mods, ok := action.Action.(policies.UpstreamResponseModifications); ok {
+		if action != nil {
+			if mods, ok := action.(policies.UpstreamResponseModifications); ok {
 				applyResponseModifications(ctx, &mods)
 			}
 		}

@@ -36,6 +36,25 @@
     - name: UppercaseBody
       version: v1.0.0
       enabled: true
+    - name: BasicAuth
+      version: v1.0.0
+      enabled: true
+      parameters:
+        username: admin
+        password: secret123
+        allowUnauthenticated: false
+        realm: "Admin API"
+    - name: ModifyHeaders
+      version: v1.0.0
+      enabled: true
+      parameters:
+        requestHeaders:
+          - action: DELETE
+            name: authorization  # Remove auth header after validation
+        responseHeaders:
+          - action: SET
+            name: x-authenticated-user
+            value: admin
     - name: CountLetters
       version: v1.0.0
       enabled: true

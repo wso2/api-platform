@@ -52,16 +52,3 @@ func (u UpstreamResponseModifications) isResponseAction() {}
 func (u UpstreamResponseModifications) StopExecution() bool {
 	return false // Continue to next policy
 }
-
-// RequestPolicyAction wraps request action result
-type RequestPolicyAction struct {
-	// Action to take (oneof: UpstreamRequestModifications or ImmediateResponse)
-	// Never nil - always contains one concrete action type
-	Action RequestAction
-}
-
-// ResponsePolicyAction wraps response action result
-type ResponsePolicyAction struct {
-	// Action to take (UpstreamResponseModifications only)
-	Action ResponseAction
-}

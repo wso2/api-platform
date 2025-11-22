@@ -19,7 +19,7 @@ import (
 func TranslateRequestActions(result *core.RequestExecutionResult, chain *core.PolicyChain, execCtx *PolicyExecutionContext) *extprocv3.ProcessingResponse {
 	if result.ShortCircuited && result.FinalAction != nil {
 		// Short-circuited with ImmediateResponse
-		if immediateResp, ok := result.FinalAction.Action.(policies.ImmediateResponse); ok {
+		if immediateResp, ok := result.FinalAction.(policies.ImmediateResponse); ok {
 			// T066: Handle ImmediateResponse
 			return &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
@@ -47,7 +47,7 @@ func TranslateRequestActions(result *core.RequestExecutionResult, chain *core.Po
 		}
 
 		if policyResult.Action != nil {
-			if mods, ok := policyResult.Action.Action.(policies.UpstreamRequestModifications); ok {
+			if mods, ok := policyResult.Action.(policies.UpstreamRequestModifications); ok {
 				// T068: Build header mutations
 				applyRequestModifications(headerMutation, &mods)
 
@@ -98,7 +98,7 @@ func TranslateResponseActions(result *core.ResponseExecutionResult) *extprocv3.P
 		}
 
 		if policyResult.Action != nil {
-			if mods, ok := policyResult.Action.Action.(policies.UpstreamResponseModifications); ok {
+			if mods, ok := policyResult.Action.(policies.UpstreamResponseModifications); ok {
 				// T069: Build response mutations
 				applyResponseModifications(headerMutation, &mods)
 
@@ -253,7 +253,7 @@ func buildRequestMutations(result *core.RequestExecutionResult) (*extprocv3.Head
 		}
 
 		if policyResult.Action != nil {
-			if mods, ok := policyResult.Action.Action.(policies.UpstreamRequestModifications); ok {
+			if mods, ok := policyResult.Action.(policies.UpstreamRequestModifications); ok {
 				// Build header mutations
 				applyRequestModifications(headerMutation, &mods)
 
@@ -287,7 +287,7 @@ func buildResponseMutations(result *core.ResponseExecutionResult) (*extprocv3.He
 		}
 
 		if policyResult.Action != nil {
-			if mods, ok := policyResult.Action.Action.(policies.UpstreamResponseModifications); ok {
+			if mods, ok := policyResult.Action.(policies.UpstreamResponseModifications); ok {
 				// Build header mutations
 				applyResponseModifications(headerMutation, &mods)
 

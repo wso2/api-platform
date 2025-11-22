@@ -71,8 +71,8 @@ func (p *CountLettersPolicy) Validate(config map[string]interface{}) error {
 	return nil
 }
 
-// ExecuteResponse counts letters in the response body and replaces it with the count
-func (p *CountLettersPolicy) ExecuteResponse(ctx *policies.ResponseContext, config map[string]interface{}) *policies.ResponsePolicyAction {
+// OnResponse counts letters in the response body and replaces it with the count
+func (p *CountLettersPolicy) OnResponse(ctx *policies.ResponseContext, config map[string]interface{}) policies.ResponseAction {
 	// Check if response body is present
 	if ctx.ResponseBody == nil || !ctx.ResponseBody.Present {
 		// No body to process, return empty count
@@ -114,10 +114,8 @@ func (p *CountLettersPolicy) ExecuteResponse(ctx *policies.ResponseContext, conf
 		outputBody = p.generateTextOutput(counts)
 	}
 
-	return &policies.ResponsePolicyAction{
-		Action: policies.UpstreamResponseModifications{
-			Body: outputBody,
-		},
+	return policies.UpstreamResponseModifications{
+		Body: outputBody,
 	}
 }
 
@@ -173,7 +171,7 @@ func (p *CountLettersPolicy) generateTextOutput(counts map[string]int) []byte {
 }
 
 // generateEmptyResponse generates a response when no body is present
-func (p *CountLettersPolicy) generateEmptyResponse(config map[string]interface{}) *policies.ResponsePolicyAction {
+func (p *CountLettersPolicy) generateEmptyResponse(config map[string]interface{}) policies.ResponseAction {
 	outputFormat := "json"
 	if outputFormatRaw, ok := config["outputFormat"]; ok {
 		outputFormat = strings.ToLower(outputFormatRaw.(string))
@@ -186,9 +184,7 @@ func (p *CountLettersPolicy) generateEmptyResponse(config map[string]interface{}
 		outputBody = []byte("Letter Counts:\n(no response body)")
 	}
 
-	return &policies.ResponsePolicyAction{
-		Action: policies.UpstreamResponseModifications{
-			Body: outputBody,
-		},
+	return policies.UpstreamResponseModifications{
+		Body: outputBody,
 	}
 }
