@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/policy-engine/sdk/core"
+	"github.com/policy-engine/policy-engine/internal/executor"
 )
 
 // ExternalProcessorServer implements the Envoy external processor service
@@ -21,15 +21,15 @@ import (
 type ExternalProcessorServer struct {
 	extprocv3.UnimplementedExternalProcessorServer
 
-	kernel *Kernel
-	core   *core.Core
+	kernel   *Kernel
+	executor *executor.ChainExecutor
 }
 
 // NewExternalProcessorServer creates a new ExternalProcessorServer
-func NewExternalProcessorServer(kernel *Kernel, coreEngine *core.Core) *ExternalProcessorServer {
+func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExecutor) *ExternalProcessorServer {
 	return &ExternalProcessorServer{
-		kernel: kernel,
-		core:   coreEngine,
+		kernel:   kernel,
+		executor: chainExecutor,
 	}
 }
 

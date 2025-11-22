@@ -8,6 +8,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 
+	"github.com/policy-engine/policy-engine/internal/executor"
 	"github.com/policy-engine/sdk/core"
 	"github.com/policy-engine/sdk/policies"
 )
@@ -16,7 +17,7 @@ import (
 // T065: TranslateRequestActions for UpstreamRequestModifications
 // T066: TranslateRequestActions for ImmediateResponse
 // The execCtx parameter is optional - if provided, uses its computed mode override
-func TranslateRequestActions(result *core.RequestExecutionResult, chain *core.PolicyChain, execCtx *PolicyExecutionContext) *extprocv3.ProcessingResponse {
+func TranslateRequestActions(result *executor.RequestExecutionResult, chain *core.PolicyChain, execCtx *PolicyExecutionContext) *extprocv3.ProcessingResponse {
 	if result.ShortCircuited && result.FinalAction != nil {
 		// Short-circuited with ImmediateResponse
 		if immediateResp, ok := result.FinalAction.(policies.ImmediateResponse); ok {
@@ -87,7 +88,7 @@ func TranslateRequestActions(result *core.RequestExecutionResult, chain *core.Po
 
 // TranslateResponseActions converts response policy execution result to ext_proc response
 // T067: TranslateResponseActions for UpstreamResponseModifications
-func TranslateResponseActions(result *core.ResponseExecutionResult) *extprocv3.ProcessingResponse {
+func TranslateResponseActions(result *executor.ResponseExecutionResult) *extprocv3.ProcessingResponse {
 	headerMutation := &extprocv3.HeaderMutation{}
 	var bodyMutation *extprocv3.BodyMutation
 
@@ -242,7 +243,7 @@ func buildHeaderValueOptions(headers map[string]string) *extprocv3.HeaderMutatio
 }
 
 // buildRequestMutations extracts header and body mutations from request execution result
-func buildRequestMutations(result *core.RequestExecutionResult) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation) {
+func buildRequestMutations(result *executor.RequestExecutionResult) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation) {
 	headerMutation := &extprocv3.HeaderMutation{}
 	var bodyMutation *extprocv3.BodyMutation
 
@@ -276,7 +277,7 @@ func buildRequestMutations(result *core.RequestExecutionResult) (*extprocv3.Head
 }
 
 // buildResponseMutations extracts header and body mutations from response execution result
-func buildResponseMutations(result *core.ResponseExecutionResult) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation) {
+func buildResponseMutations(result *executor.ResponseExecutionResult) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation) {
 	headerMutation := &extprocv3.HeaderMutation{}
 	var bodyMutation *extprocv3.BodyMutation
 

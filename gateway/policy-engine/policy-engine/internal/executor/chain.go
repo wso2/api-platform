@@ -1,9 +1,10 @@
-package core
+package executor
 
 import (
 	"fmt"
 	"time"
 
+	"github.com/policy-engine/sdk/core"
 	"github.com/policy-engine/sdk/policies"
 )
 
@@ -44,7 +45,7 @@ type ResponseExecutionResult struct {
 
 // ExecuteRequestPolicies executes request policies with condition evaluation
 // T043: Implements execution with condition evaluation and short-circuit logic
-func (c *Core) ExecuteRequestPolicies(policyList []policies.RequestPolicy, ctx *policies.RequestContext, specs []policies.PolicySpec) (*RequestExecutionResult, error) {
+func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policies.RequestPolicy, ctx *policies.RequestContext, specs []policies.PolicySpec) (*RequestExecutionResult, error) {
 	startTime := time.Now()
 	result := &RequestExecutionResult{
 		Results:        make([]RequestPolicyResult, 0, len(policyList)),
@@ -123,7 +124,7 @@ func (c *Core) ExecuteRequestPolicies(policyList []policies.RequestPolicy, ctx *
 
 // ExecuteResponsePolicies executes response policies with condition evaluation
 // T044: Implements execution with condition evaluation
-func (c *Core) ExecuteResponsePolicies(policyList []policies.ResponsePolicy, ctx *policies.ResponseContext, specs []policies.PolicySpec) (*ResponseExecutionResult, error) {
+func (c *ChainExecutor) ExecuteResponsePolicies(policyList []policies.ResponsePolicy, ctx *policies.ResponseContext, specs []policies.PolicySpec) (*ResponseExecutionResult, error) {
 	startTime := time.Now()
 	result := &ResponseExecutionResult{
 		Results: make([]ResponsePolicyResult, 0, len(policyList)),
@@ -278,10 +279,10 @@ func applyResponseModifications(ctx *policies.ResponseContext, mods *policies.Up
 	}
 }
 
-// Core represents the policy execution engine
+// ChainExecutor represents the policy chain execution engine
 // T048: Added CEL evaluator for condition evaluation and metrics collection
-type Core struct {
-	registry     *PolicyRegistry
+type ChainExecutor struct {
+	registry     *core.PolicyRegistry
 	celEvaluator CELEvaluator
 }
 
@@ -291,9 +292,9 @@ type CELEvaluator interface {
 	EvaluateResponseCondition(expression string, ctx *policies.ResponseContext) (bool, error)
 }
 
-// NewCore creates a new Core execution engine
-func NewCore(registry *PolicyRegistry, celEvaluator CELEvaluator) *Core {
-	return &Core{
+// NewChainExecutor creates a new ChainExecutor execution engine
+func NewChainExecutor(registry *core.PolicyRegistry, celEvaluator CELEvaluator) *ChainExecutor {
+	return &ChainExecutor{
 		registry:     registry,
 		celEvaluator: celEvaluator,
 	}

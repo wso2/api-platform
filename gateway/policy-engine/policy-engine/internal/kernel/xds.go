@@ -33,15 +33,13 @@ type PolicyInstanceConfig struct {
 type ConfigLoader struct {
 	kernel   *Kernel
 	registry *core.PolicyRegistry
-	core     *core.Core
 }
 
 // NewConfigLoader creates a new configuration loader
-func NewConfigLoader(kernel *Kernel, registry *core.PolicyRegistry, coreEngine *core.Core) *ConfigLoader {
+func NewConfigLoader(kernel *Kernel, registry *core.PolicyRegistry) *ConfigLoader {
 	return &ConfigLoader{
 		kernel:   kernel,
 		registry: registry,
-		core:     coreEngine,
 	}
 }
 

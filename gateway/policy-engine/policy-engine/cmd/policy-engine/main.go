@@ -13,6 +13,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"google.golang.org/grpc"
 
+	"github.com/policy-engine/policy-engine/internal/executor"
 	"github.com/policy-engine/policy-engine/internal/kernel"
 	"github.com/policy-engine/policy-engine/internal/pkg/cel"
 	"github.com/policy-engine/sdk/core"
@@ -51,8 +52,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize core execution engine
-	coreEngine := core.NewCore(registry, celEvaluator)
+	// Initialize chain executor
+	chainExecutor := executor.NewChainExecutor(registry, celEvaluator)
 
 	// Policy registration happens automatically via Builder-generated plugin_registry.go
 	// The generated code in plugin_registry.go imports all compiled policies and registers
@@ -61,14 +62,14 @@ func main() {
 	slog.InfoContext(ctx, "Policies registered via Builder-generated code")
 
 	// Load policy chain configuration from file
-	configLoader := kernel.NewConfigLoader(k, registry, coreEngine)
+	configLoader := kernel.NewConfigLoader(k, registry)
 	if err := configLoader.LoadFromFile(*configFile); err != nil {
 		slog.ErrorContext(ctx, "Failed to load configuration", "error", err)
 		os.Exit(1)
 	}
 
 	// Create ext_proc gRPC server
-	extprocServer := kernel.NewExternalProcessorServer(k, coreEngine)
+	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor)
 
 	// Start gRPC server
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *extprocPort))
