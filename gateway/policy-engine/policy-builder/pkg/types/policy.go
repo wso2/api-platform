@@ -1,6 +1,10 @@
 package types
 
-import "time"
+import (
+	"time"
+
+	"github.com/policy-engine/sdk/policies"
+)
 
 // DiscoveredPolicy represents a policy found during the discovery phase
 type DiscoveredPolicy struct {
@@ -10,13 +14,7 @@ type DiscoveredPolicy struct {
 	YAMLPath    string
 	GoModPath   string
 	SourceFiles []string
-	Definition  *PolicyDefinition
-}
-
-// PolicyDefinition mirrors the structure from policy.yaml files
-type PolicyDefinition struct {
-	Name    string `yaml:"name"`
-	Version string `yaml:"version"`
+	Definition  *policies.PolicyDefinition
 }
 
 // ConditionDef represents execution conditions

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/policy-engine/sdk/core"
+	"github.com/policy-engine/sdk/policies"
 {{- range .Policies }}
 	{{ .ImportAlias }} "{{ .ImportPath }}"
 {{- end }}
@@ -15,7 +16,15 @@ func init() {
 
 	{{- range .Policies }}
 	// Register {{ .Name }} v{{ .Version }}
-	if err := core.GetRegistry().RegisterImplementation("{{ .Name }}", "{{ .Version }}", {{ .ImportAlias }}.NewPolicy()); err != nil {
+	policyDef_{{ .ImportAlias }} := &policies.PolicyDefinition{
+		Name:                   "{{ .Name }}",
+		Version:                "{{ .Version }}",
+		SupportsRequestPhase:   {{ .SupportsRequestPhase }},
+		SupportsResponsePhase:  {{ .SupportsResponsePhase }},
+		RequiresRequestBody:    {{ .RequiresRequestBody }},
+		RequiresResponseBody:   {{ .RequiresResponseBody }},
+	}
+	if err := core.GetRegistry().Register(policyDef_{{ .ImportAlias }}, {{ .ImportAlias }}.NewPolicy()); err != nil {
 		slog.Error("Failed to register policy", "policy", "{{ .Name }}", "version", "{{ .Version }}", "error", err)
 	} else {
 		slog.Info("Registered policy", "policy", "{{ .Name }}", "version", "{{ .Version }}")
