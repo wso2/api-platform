@@ -6,18 +6,18 @@ import (
 
 	"github.com/google/cel-go/cel"
 
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // CELEvaluator provides CEL expression evaluation for RequestContext and ResponseContext
 type CELEvaluator interface {
 	// EvaluateRequestCondition evaluates a CEL expression against RequestContext
 	// Returns true if condition passes, false if it fails
-	EvaluateRequestCondition(expression string, ctx *policies.RequestContext) (bool, error)
+	EvaluateRequestCondition(expression string, ctx *policy.RequestContext) (bool, error)
 
 	// EvaluateResponseCondition evaluates a CEL expression against ResponseContext
 	// Returns true if condition passes, false if it fails
-	EvaluateResponseCondition(expression string, ctx *policies.ResponseContext) (bool, error)
+	EvaluateResponseCondition(expression string, ctx *policy.ResponseContext) (bool, error)
 }
 
 // celEvaluator implements CELEvaluator with caching
@@ -77,7 +77,7 @@ func createCELEnv() (*cel.Env, error) {
 }
 
 // EvaluateRequestCondition evaluates a CEL expression against RequestContext
-func (e *celEvaluator) EvaluateRequestCondition(expression string, ctx *policies.RequestContext) (bool, error) {
+func (e *celEvaluator) EvaluateRequestCondition(expression string, ctx *policy.RequestContext) (bool, error) {
 	// Get or compile program
 	program, err := e.getOrCompileProgram(expression)
 	if err != nil {
@@ -153,7 +153,7 @@ func (e *celEvaluator) EvaluateRequestCondition(expression string, ctx *policies
 }
 
 // EvaluateResponseCondition evaluates a CEL expression against ResponseContext
-func (e *celEvaluator) EvaluateResponseCondition(expression string, ctx *policies.ResponseContext) (bool, error) {
+func (e *celEvaluator) EvaluateResponseCondition(expression string, ctx *policy.ResponseContext) (bool, error) {
 	// Get or compile program
 	program, err := e.getOrCompileProgram(expression)
 	if err != nil {

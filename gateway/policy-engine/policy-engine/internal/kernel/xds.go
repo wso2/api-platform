@@ -9,7 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/policy-engine/policy-engine/internal/registry"
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // PolicyChainConfig represents the configuration for a policy chain on a route
@@ -121,8 +121,8 @@ func (cl *ConfigLoader) validateConfig(config *PolicyChainConfig) error {
 
 // buildPolicyChain builds a PolicyChain from configuration
 func (cl *ConfigLoader) buildPolicyChain(config *PolicyChainConfig) (*registry.PolicyChain, error) {
-	var policyList []policies.Policy
-	var policySpecs []policies.PolicySpec
+	var policyList []policy.Policy
+	var policySpecs []policy.PolicySpec
 
 	requiresRequestBody := false
 	requiresResponseBody := false
@@ -135,12 +135,12 @@ func (cl *ConfigLoader) buildPolicyChain(config *PolicyChainConfig) (*registry.P
 		}
 
 		// Build PolicySpec
-		spec := policies.PolicySpec{
+		spec := policy.PolicySpec{
 			Name:               policyConfig.Name,
 			Version:            policyConfig.Version,
 			Enabled:            policyConfig.Enabled,
 			ExecutionCondition: policyConfig.ExecutionCondition,
-			Parameters: policies.PolicyParameters{
+			Parameters: policy.PolicyParameters{
 				Raw: policyConfig.Parameters,
 			},
 		}
@@ -153,12 +153,12 @@ func (cl *ConfigLoader) buildPolicyChain(config *PolicyChainConfig) (*registry.P
 		mode := impl.Mode()
 
 		// Update request body requirement (if any policy needs buffering)
-		if mode.RequestBodyMode == policies.BodyModeBuffer || mode.RequestBodyMode == policies.BodyModeStream {
+		if mode.RequestBodyMode == policy.BodyModeBuffer || mode.RequestBodyMode == policy.BodyModeStream {
 			requiresRequestBody = true
 		}
 
 		// Update response body requirement (if any policy needs buffering)
-		if mode.ResponseBodyMode == policies.BodyModeBuffer || mode.ResponseBodyMode == policies.BodyModeStream {
+		if mode.ResponseBodyMode == policy.BodyModeBuffer || mode.ResponseBodyMode == policy.BodyModeStream {
 			requiresResponseBody = true
 		}
 	}

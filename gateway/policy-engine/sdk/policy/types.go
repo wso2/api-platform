@@ -1,4 +1,4 @@
-package policies
+package policy
 
 import "time"
 
@@ -6,20 +6,20 @@ import "time"
 type ParameterType string
 
 const (
-	ParameterTypeString       ParameterType = "string"
-	ParameterTypeInt          ParameterType = "int"
-	ParameterTypeFloat        ParameterType = "float"
-	ParameterTypeBool         ParameterType = "bool"
-	ParameterTypeDuration     ParameterType = "duration"
-	ParameterTypeStringArray  ParameterType = "string_array"
-	ParameterTypeIntArray     ParameterType = "int_array"
-	ParameterTypeMap          ParameterType = "map"
-	ParameterTypeURI          ParameterType = "uri"
-	ParameterTypeEmail        ParameterType = "email"
-	ParameterTypeHostname     ParameterType = "hostname"
-	ParameterTypeIPv4         ParameterType = "ipv4"
-	ParameterTypeIPv6         ParameterType = "ipv6"
-	ParameterTypeUUID         ParameterType = "uuid"
+	ParameterTypeString      ParameterType = "string"
+	ParameterTypeInt         ParameterType = "int"
+	ParameterTypeFloat       ParameterType = "float"
+	ParameterTypeBool        ParameterType = "bool"
+	ParameterTypeDuration    ParameterType = "duration"
+	ParameterTypeStringArray ParameterType = "string_array"
+	ParameterTypeIntArray    ParameterType = "int_array"
+	ParameterTypeMap         ParameterType = "map"
+	ParameterTypeURI         ParameterType = "uri"
+	ParameterTypeEmail       ParameterType = "email"
+	ParameterTypeHostname    ParameterType = "hostname"
+	ParameterTypeIPv4        ParameterType = "ipv4"
+	ParameterTypeIPv6        ParameterType = "ipv6"
+	ParameterTypeUUID        ParameterType = "uuid"
 )
 
 // TypedValue represents a validated parameter value with type information

@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	DefaultManifestFile = "policies.yaml"
+	DefaultManifestFile = "policy.yaml"
 	DefaultOutputDir    = "/output"
 	DefaultRuntimeDir   = "/workspace/policy-engine"
 	BuilderVersion      = "v1.0.0"

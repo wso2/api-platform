@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // HeaderAction represents the action to perform on a header
@@ -27,17 +27,17 @@ type HeaderModification struct {
 type ModifyHeadersPolicy struct{}
 
 // NewPolicy creates a new ModifyHeadersPolicy instance
-func NewPolicy() policies.Policy {
+func NewPolicy() policy.Policy {
 	return &ModifyHeadersPolicy{}
 }
 
 // Mode returns the processing mode for this policy
-func (p *ModifyHeadersPolicy) Mode() policies.ProcessingMode {
-	return policies.ProcessingMode{
-		RequestHeaderMode:  policies.HeaderModeProcess, // Can modify request headers
-		RequestBodyMode:    policies.BodyModeSkip,      // Don't need request body
-		ResponseHeaderMode: policies.HeaderModeProcess, // Can modify response headers
-		ResponseBodyMode:   policies.BodyModeSkip,      // Don't need response body
+func (p *ModifyHeadersPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{
+		RequestHeaderMode:  policy.HeaderModeProcess, // Can modify request headers
+		RequestBodyMode:    policy.BodyModeSkip,      // Don't need request body
+		ResponseHeaderMode: policy.HeaderModeProcess, // Can modify response headers
+		ResponseBodyMode:   policy.BodyModeSkip,      // Don't need response body
 	}
 }
 
@@ -178,24 +178,24 @@ func (p *ModifyHeadersPolicy) applyHeaderModifications(modifications []HeaderMod
 }
 
 // OnRequest modifies request headers
-func (p *ModifyHeadersPolicy) OnRequest(ctx *policies.RequestContext, params map[string]interface{}) policies.RequestAction {
+func (p *ModifyHeadersPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	// Check if requestHeaders are configured
 	requestHeadersRaw, ok := params["requestHeaders"]
 	if !ok {
 		// No request headers to modify, pass through
-		return policies.UpstreamRequestModifications{}
+		return policy.UpstreamRequestModifications{}
 	}
 
 	// Parse modifications
 	modifications := p.parseHeaderModifications(requestHeadersRaw)
 	if len(modifications) == 0 {
-		return policies.UpstreamRequestModifications{}
+		return policy.UpstreamRequestModifications{}
 	}
 
 	// Apply modifications
 	setHeaders, removeHeaders, appendHeaders := p.applyHeaderModifications(modifications)
 
-	return policies.UpstreamRequestModifications{
+	return policy.UpstreamRequestModifications{
 		SetHeaders:    setHeaders,
 		RemoveHeaders: removeHeaders,
 		AppendHeaders: appendHeaders,
@@ -203,24 +203,24 @@ func (p *ModifyHeadersPolicy) OnRequest(ctx *policies.RequestContext, params map
 }
 
 // OnResponse modifies response headers
-func (p *ModifyHeadersPolicy) OnResponse(ctx *policies.ResponseContext, params map[string]interface{}) policies.ResponseAction {
+func (p *ModifyHeadersPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
 	// Check if responseHeaders are configured
 	responseHeadersRaw, ok := params["responseHeaders"]
 	if !ok {
 		// No response headers to modify, pass through
-		return policies.UpstreamResponseModifications{}
+		return policy.UpstreamResponseModifications{}
 	}
 
 	// Parse modifications
 	modifications := p.parseHeaderModifications(responseHeadersRaw)
 	if len(modifications) == 0 {
-		return policies.UpstreamResponseModifications{}
+		return policy.UpstreamResponseModifications{}
 	}
 
 	// Apply modifications
 	setHeaders, removeHeaders, appendHeaders := p.applyHeaderModifications(modifications)
 
-	return policies.UpstreamResponseModifications{
+	return policy.UpstreamResponseModifications{
 		SetHeaders:    setHeaders,
 		RemoveHeaders: removeHeaders,
 		AppendHeaders: appendHeaders,

@@ -2,7 +2,7 @@ package kernel
 
 import (
 	"github.com/policy-engine/policy-engine/internal/registry"
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // BodyMode represents ext_proc body processing mode
@@ -17,10 +17,10 @@ const (
 
 // BuildPolicyChain creates a PolicyChain from PolicySpecs with body requirement computation
 // T055: BuildPolicyChain with body requirement computation
-func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policies.PolicySpec, reg *registry.PolicyRegistry) (*registry.PolicyChain, error) {
+func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySpec, reg *registry.PolicyRegistry) (*registry.PolicyChain, error) {
 	chain := &registry.PolicyChain{
-		Policies:             make([]policies.Policy, 0),
-		PolicySpecs:          make([]policies.PolicySpec, 0),
+		Policies:             make([]policy.Policy, 0),
+		PolicySpecs:          make([]policy.PolicySpec, 0),
 		Metadata:             make(map[string]interface{}),
 		RequiresRequestBody:  false,
 		RequiresResponseBody: false,
@@ -42,12 +42,12 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policies.Policy
 		mode := impl.Mode()
 
 		// Update request body requirement (if any policy needs buffering)
-		if mode.RequestBodyMode == policies.BodyModeBuffer || mode.RequestBodyMode == policies.BodyModeStream {
+		if mode.RequestBodyMode == policy.BodyModeBuffer || mode.RequestBodyMode == policy.BodyModeStream {
 			chain.RequiresRequestBody = true
 		}
 
 		// Update response body requirement (if any policy needs buffering)
-		if mode.ResponseBodyMode == policies.BodyModeBuffer || mode.ResponseBodyMode == policies.BodyModeStream {
+		if mode.ResponseBodyMode == policy.BodyModeBuffer || mode.ResponseBodyMode == policy.BodyModeStream {
 			chain.RequiresResponseBody = true
 		}
 	}

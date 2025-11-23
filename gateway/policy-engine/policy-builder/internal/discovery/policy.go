@@ -5,18 +5,18 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 	"gopkg.in/yaml.v3"
 )
 
 // ParsePolicyYAML reads and parses a policy.yaml file
-func ParsePolicyYAML(path string) (*policies.PolicyDefinition, error) {
+func ParsePolicyYAML(path string) (*policy.PolicyDefinition, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read policy.yaml: %w", err)
 	}
 
-	var def policies.PolicyDefinition
+	var def policy.PolicyDefinition
 	if err := yaml.Unmarshal(data, &def); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML: %w", err)
 	}

@@ -5,14 +5,14 @@ import (
 	"time"
 
 	"github.com/policy-engine/policy-engine/internal/registry"
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // RequestPolicyResult represents the result of executing a single request policy
 type RequestPolicyResult struct {
 	PolicyName    string
 	PolicyVersion string
-	Action        policies.RequestAction
+	Action        policy.RequestAction
 	Error         error
 	ExecutionTime time.Duration
 	Skipped       bool // true if condition evaluated to false
@@ -21,8 +21,8 @@ type RequestPolicyResult struct {
 // RequestExecutionResult represents the result of executing all request policies in a chain
 type RequestExecutionResult struct {
 	Results            []RequestPolicyResult
-	ShortCircuited     bool                   // true if chain stopped early due to ImmediateResponse
-	FinalAction        policies.RequestAction // Final action to apply
+	ShortCircuited     bool                 // true if chain stopped early due to ImmediateResponse
+	FinalAction        policy.RequestAction // Final action to apply
 	TotalExecutionTime time.Duration
 }
 
@@ -30,7 +30,7 @@ type RequestExecutionResult struct {
 type ResponsePolicyResult struct {
 	PolicyName    string
 	PolicyVersion string
-	Action        policies.ResponseAction
+	Action        policy.ResponseAction
 	Error         error
 	ExecutionTime time.Duration
 	Skipped       bool // true if condition evaluated to false
@@ -39,13 +39,13 @@ type ResponsePolicyResult struct {
 // ResponseExecutionResult represents the result of executing all response policies in a chain
 type ResponseExecutionResult struct {
 	Results            []ResponsePolicyResult
-	FinalAction        policies.ResponseAction // Final action to apply
+	FinalAction        policy.ResponseAction // Final action to apply
 	TotalExecutionTime time.Duration
 }
 
 // ExecuteRequestPolicies executes request policies with condition evaluation
 // T043: Implements execution with condition evaluation and short-circuit logic
-func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policies.Policy, ctx *policies.RequestContext, specs []policies.PolicySpec) (*RequestExecutionResult, error) {
+func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policy.Policy, ctx *policy.RequestContext, specs []policy.PolicySpec) (*RequestExecutionResult, error) {
 	startTime := time.Now()
 	result := &RequestExecutionResult{
 		Results:        make([]RequestPolicyResult, 0, len(policyList)),
@@ -53,7 +53,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policies.Policy, ctx
 	}
 
 	// Execute each policy in order
-	for i, policy := range policyList {
+	for i, pol := range policyList {
 		policyStartTime := time.Now()
 		spec := specs[i]
 
@@ -89,7 +89,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policies.Policy, ctx
 		}
 
 		// Execute policy
-		action := policy.OnRequest(ctx, spec.Parameters.Raw)
+		action := pol.OnRequest(ctx, spec.Parameters.Raw)
 		executionTime := time.Since(policyStartTime)
 
 		policyResult := RequestPolicyResult{
@@ -112,7 +112,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policies.Policy, ctx
 			}
 
 			// Apply modifications to context (T045)
-			if mods, ok := action.(policies.UpstreamRequestModifications); ok {
+			if mods, ok := action.(policy.UpstreamRequestModifications); ok {
 				applyRequestModifications(ctx, &mods)
 			}
 		}
@@ -124,7 +124,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policies.Policy, ctx
 
 // ExecuteResponsePolicies executes response policies with condition evaluation
 // T044: Implements execution with condition evaluation
-func (c *ChainExecutor) ExecuteResponsePolicies(policyList []policies.Policy, ctx *policies.ResponseContext, specs []policies.PolicySpec) (*ResponseExecutionResult, error) {
+func (c *ChainExecutor) ExecuteResponsePolicies(policyList []policy.Policy, ctx *policy.ResponseContext, specs []policy.PolicySpec) (*ResponseExecutionResult, error) {
 	startTime := time.Now()
 	result := &ResponseExecutionResult{
 		Results: make([]ResponsePolicyResult, 0, len(policyList)),
@@ -133,7 +133,7 @@ func (c *ChainExecutor) ExecuteResponsePolicies(policyList []policies.Policy, ct
 	// Execute each policy in reverse order (last to first)
 	// This allows policies to "unwrap" in the reverse order they "wrapped" the request
 	for i := len(policyList) - 1; i >= 0; i-- {
-		policy := policyList[i]
+		pol := policyList[i]
 		policyStartTime := time.Now()
 		spec := specs[i]
 
@@ -169,7 +169,7 @@ func (c *ChainExecutor) ExecuteResponsePolicies(policyList []policies.Policy, ct
 		}
 
 		// Execute policy
-		action := policy.OnResponse(ctx, spec.Parameters.Raw)
+		action := pol.OnResponse(ctx, spec.Parameters.Raw)
 		executionTime := time.Since(policyStartTime)
 
 		policyResult := ResponsePolicyResult{
@@ -184,7 +184,7 @@ func (c *ChainExecutor) ExecuteResponsePolicies(policyList []policies.Policy, ct
 
 		// Apply action if present (T046)
 		if action != nil {
-			if mods, ok := action.(policies.UpstreamResponseModifications); ok {
+			if mods, ok := action.(policy.UpstreamResponseModifications); ok {
 				applyResponseModifications(ctx, &mods)
 			}
 		}
@@ -196,7 +196,7 @@ func (c *ChainExecutor) ExecuteResponsePolicies(policyList []policies.Policy, ct
 
 // applyRequestModifications applies request modifications to context
 // T045: Implements request context modification
-func applyRequestModifications(ctx *policies.RequestContext, mods *policies.UpstreamRequestModifications) {
+func applyRequestModifications(ctx *policy.RequestContext, mods *policy.UpstreamRequestModifications) {
 	// Set headers (replace existing)
 	if mods.SetHeaders != nil {
 		for key, value := range mods.SetHeaders {
@@ -221,7 +221,7 @@ func applyRequestModifications(ctx *policies.RequestContext, mods *policies.Upst
 
 	// Update body (nil = no change, []byte{} = clear)
 	if mods.Body != nil {
-		ctx.Body = &policies.Body{
+		ctx.Body = &policy.Body{
 			Content:     mods.Body,
 			EndOfStream: true, // Modifications are always complete
 			Present:     true,
@@ -241,7 +241,7 @@ func applyRequestModifications(ctx *policies.RequestContext, mods *policies.Upst
 
 // applyResponseModifications applies response modifications to context
 // T046: Implements response context modification
-func applyResponseModifications(ctx *policies.ResponseContext, mods *policies.UpstreamResponseModifications) {
+func applyResponseModifications(ctx *policy.ResponseContext, mods *policy.UpstreamResponseModifications) {
 	// Set headers (replace existing)
 	if mods.SetHeaders != nil {
 		for key, value := range mods.SetHeaders {
@@ -266,7 +266,7 @@ func applyResponseModifications(ctx *policies.ResponseContext, mods *policies.Up
 
 	// Update body (nil = no change, []byte{} = clear)
 	if mods.Body != nil {
-		ctx.ResponseBody = &policies.Body{
+		ctx.ResponseBody = &policy.Body{
 			Content:     mods.Body,
 			EndOfStream: true, // Modifications are always complete
 			Present:     true,
@@ -288,8 +288,8 @@ type ChainExecutor struct {
 
 // CELEvaluator interface for condition evaluation
 type CELEvaluator interface {
-	EvaluateRequestCondition(expression string, ctx *policies.RequestContext) (bool, error)
-	EvaluateResponseCondition(expression string, ctx *policies.ResponseContext) (bool, error)
+	EvaluateRequestCondition(expression string, ctx *policy.RequestContext) (bool, error)
+	EvaluateResponseCondition(expression string, ctx *policy.ResponseContext) (bool, error)
 }
 
 // NewChainExecutor creates a new ChainExecutor execution engine

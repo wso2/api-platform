@@ -5,24 +5,24 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // CountLettersPolicy counts occurrences of specified letters in the response body
 type CountLettersPolicy struct{}
 
 // NewPolicy creates a new CountLettersPolicy instance
-func NewPolicy() policies.Policy {
+func NewPolicy() policy.Policy {
 	return &CountLettersPolicy{}
 }
 
 // Mode returns the processing mode for this policy
-func (p *CountLettersPolicy) Mode() policies.ProcessingMode {
-	return policies.ProcessingMode{
-		RequestHeaderMode:  policies.HeaderModeSkip,   // Don't need request headers
-		RequestBodyMode:    policies.BodyModeSkip,     // Don't need request body
-		ResponseHeaderMode: policies.HeaderModeSkip,   // Don't process response headers
-		ResponseBodyMode:   policies.BodyModeBuffer,   // Need full buffered response body
+func (p *CountLettersPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{
+		RequestHeaderMode:  policy.HeaderModeSkip,   // Don't need request headers
+		RequestBodyMode:    policy.BodyModeSkip,     // Don't need request body
+		ResponseHeaderMode: policy.HeaderModeSkip,   // Don't process response headers
+		ResponseBodyMode:   policy.BodyModeBuffer,   // Need full buffered response body
 	}
 }
 
@@ -77,12 +77,12 @@ func (p *CountLettersPolicy) Validate(params map[string]interface{}) error {
 }
 
 // OnRequest is not used by this policy (only processes response body)
-func (p *CountLettersPolicy) OnRequest(ctx *policies.RequestContext, params map[string]interface{}) policies.RequestAction {
+func (p *CountLettersPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	return nil // No request processing needed
 }
 
 // OnResponse counts letters in the response body and replaces it with the count
-func (p *CountLettersPolicy) OnResponse(ctx *policies.ResponseContext, params map[string]interface{}) policies.ResponseAction {
+func (p *CountLettersPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
 	// Check if response body is present
 	if ctx.ResponseBody == nil || !ctx.ResponseBody.Present {
 		// No body to process, return empty count
@@ -124,7 +124,7 @@ func (p *CountLettersPolicy) OnResponse(ctx *policies.ResponseContext, params ma
 		outputBody = p.generateTextOutput(counts)
 	}
 
-	return policies.UpstreamResponseModifications{
+	return policy.UpstreamResponseModifications{
 		Body: outputBody,
 	}
 }
@@ -181,7 +181,7 @@ func (p *CountLettersPolicy) generateTextOutput(counts map[string]int) []byte {
 }
 
 // generateEmptyResponse generates a response when no body is present
-func (p *CountLettersPolicy) generateEmptyResponse(params map[string]interface{}) policies.ResponseAction {
+func (p *CountLettersPolicy) generateEmptyResponse(params map[string]interface{}) policy.ResponseAction {
 	outputFormat := "json"
 	if outputFormatRaw, ok := params["outputFormat"]; ok {
 		outputFormat = strings.ToLower(outputFormatRaw.(string))
@@ -194,7 +194,7 @@ func (p *CountLettersPolicy) generateEmptyResponse(params map[string]interface{}
 		outputBody = []byte("Letter Counts:\n(no response body)")
 	}
 
-	return policies.UpstreamResponseModifications{
+	return policy.UpstreamResponseModifications{
 		Body: outputBody,
 	}
 }

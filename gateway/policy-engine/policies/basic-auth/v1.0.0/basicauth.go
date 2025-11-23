@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 const (
@@ -19,17 +19,17 @@ const (
 type BasicAuthPolicy struct{}
 
 // NewPolicy creates a new BasicAuthPolicy instance
-func NewPolicy() policies.Policy {
+func NewPolicy() policy.Policy {
 	return &BasicAuthPolicy{}
 }
 
 // Mode returns the processing mode for this policy
-func (p *BasicAuthPolicy) Mode() policies.ProcessingMode {
-	return policies.ProcessingMode{
-		RequestHeaderMode:  policies.HeaderModeProcess, // Process request headers for auth
-		RequestBodyMode:    policies.BodyModeSkip,      // Don't need request body
-		ResponseHeaderMode: policies.HeaderModeSkip,    // Don't process response headers
-		ResponseBodyMode:   policies.BodyModeSkip,      // Don't need response body
+func (p *BasicAuthPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{
+		RequestHeaderMode:  policy.HeaderModeProcess, // Process request headers for auth
+		RequestBodyMode:    policy.BodyModeSkip,      // Don't need request body
+		ResponseHeaderMode: policy.HeaderModeSkip,    // Don't process response headers
+		ResponseBodyMode:   policy.BodyModeSkip,      // Don't need response body
 	}
 }
 
@@ -84,7 +84,7 @@ func (p *BasicAuthPolicy) Validate(params map[string]interface{}) error {
 }
 
 // OnRequest performs Basic Authentication
-func (p *BasicAuthPolicy) OnRequest(ctx *policies.RequestContext, params map[string]interface{}) policies.RequestAction {
+func (p *BasicAuthPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	// Get configuration parameters
 	expectedUsername := params["username"].(string)
 	expectedPassword := params["password"].(string)
@@ -139,30 +139,30 @@ func (p *BasicAuthPolicy) OnRequest(ctx *policies.RequestContext, params map[str
 }
 
 // handleAuthSuccess handles successful authentication
-func (p *BasicAuthPolicy) handleAuthSuccess(ctx *policies.RequestContext, username string) policies.RequestAction {
+func (p *BasicAuthPolicy) handleAuthSuccess(ctx *policy.RequestContext, username string) policy.RequestAction {
 	// Set metadata indicating successful authentication
 	ctx.Metadata[MetadataKeyAuthSuccess] = true
 	ctx.Metadata[MetadataKeyAuthUser] = username
 	ctx.Metadata[MetadataKeyAuthMethod] = "basic"
 
 	// Continue to upstream with no modifications
-	return policies.UpstreamRequestModifications{}
+	return policy.UpstreamRequestModifications{}
 }
 
 // OnResponse is not used by this policy (authentication is request-only)
-func (p *BasicAuthPolicy) OnResponse(ctx *policies.ResponseContext, params map[string]interface{}) policies.ResponseAction {
+func (p *BasicAuthPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
 	return nil // No response processing needed
 }
 
 // handleAuthFailure handles authentication failure
-func (p *BasicAuthPolicy) handleAuthFailure(ctx *policies.RequestContext, allowUnauthenticated bool, realm string, reason string) policies.RequestAction {
+func (p *BasicAuthPolicy) handleAuthFailure(ctx *policy.RequestContext, allowUnauthenticated bool, realm string, reason string) policy.RequestAction {
 	// Set metadata indicating failed authentication
 	ctx.Metadata[MetadataKeyAuthSuccess] = false
 	ctx.Metadata[MetadataKeyAuthMethod] = "basic"
 
 	// If allowUnauthenticated is true, allow request to proceed
 	if allowUnauthenticated {
-		return policies.UpstreamRequestModifications{}
+		return policy.UpstreamRequestModifications{}
 	}
 
 	// Return 401 Unauthorized response
@@ -173,7 +173,7 @@ func (p *BasicAuthPolicy) handleAuthFailure(ctx *policies.RequestContext, allowU
 
 	body := fmt.Sprintf(`{"error": "Unauthorized", "message": "Authentication required"}`)
 
-	return policies.ImmediateResponse{
+	return policy.ImmediateResponse{
 		StatusCode: 401,
 		Headers:    headers,
 		Body:       []byte(body),

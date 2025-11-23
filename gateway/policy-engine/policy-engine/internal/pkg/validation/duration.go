@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // validateDuration validates duration parameters (e.g., "30s", "5m", "1h")
-func validateDuration(value interface{}, schema policies.ParameterSchema) (*policies.TypedValue, error) {
+func validateDuration(value interface{}, schema policy.ParameterSchema) (*policy.TypedValue, error) {
 	var duration time.Duration
 
 	// Handle different input types
@@ -48,8 +48,8 @@ func validateDuration(value interface{}, schema policies.ParameterSchema) (*poli
 			schema.Name, schema.Validation.MaxDuration, duration)
 	}
 
-	return &policies.TypedValue{
-		Type:  policies.ParameterTypeDuration,
+	return &policy.TypedValue{
+		Type:  policy.ParameterTypeDuration,
 		Value: duration,
 	}, nil
 }

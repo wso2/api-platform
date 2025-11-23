@@ -3,7 +3,7 @@ package respond
 import (
 	"fmt"
 
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // RespondPolicy implements immediate response functionality
@@ -11,17 +11,17 @@ import (
 type RespondPolicy struct{}
 
 // NewPolicy creates a new RespondPolicy instance
-func NewPolicy() policies.Policy {
+func NewPolicy() policy.Policy {
 	return &RespondPolicy{}
 }
 
 // Mode returns the processing mode for this policy
-func (p *RespondPolicy) Mode() policies.ProcessingMode {
-	return policies.ProcessingMode{
-		RequestHeaderMode:  policies.HeaderModeProcess, // Can use request headers for context
-		RequestBodyMode:    policies.BodyModeSkip,      // Don't need request body
-		ResponseHeaderMode: policies.HeaderModeSkip,    // Returns immediate response
-		ResponseBodyMode:   policies.BodyModeSkip,      // Returns immediate response
+func (p *RespondPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{
+		RequestHeaderMode:  policy.HeaderModeProcess, // Can use request headers for context
+		RequestBodyMode:    policy.BodyModeSkip,      // Don't need request body
+		ResponseHeaderMode: policy.HeaderModeSkip,    // Returns immediate response
+		ResponseBodyMode:   policy.BodyModeSkip,      // Returns immediate response
 	}
 }
 
@@ -99,7 +99,7 @@ func (p *RespondPolicy) Validate(params map[string]interface{}) error {
 }
 
 // OnRequest returns an immediate response to the client
-func (p *RespondPolicy) OnRequest(ctx *policies.RequestContext, params map[string]interface{}) policies.RequestAction {
+func (p *RespondPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	// Extract statusCode (default to 200 OK)
 	statusCode := 200
 	if statusCodeRaw, ok := params["statusCode"]; ok {
@@ -137,7 +137,7 @@ func (p *RespondPolicy) OnRequest(ctx *policies.RequestContext, params map[strin
 	}
 
 	// Return immediate response action
-	return policies.ImmediateResponse{
+	return policy.ImmediateResponse{
 		StatusCode: statusCode,
 		Headers:    headers,
 		Body:       body,
@@ -145,6 +145,6 @@ func (p *RespondPolicy) OnRequest(ctx *policies.RequestContext, params map[strin
 }
 
 // OnResponse is not used by this policy (returns immediate response in request phase)
-func (p *RespondPolicy) OnResponse(ctx *policies.ResponseContext, params map[string]interface{}) policies.ResponseAction {
+func (p *RespondPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
 	return nil // No response processing needed
 }

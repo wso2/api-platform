@@ -128,7 +128,7 @@ func DiscoverPoliciesFromManifest(manifestPath string, baseDir string) ([]*types
 	// Process each manifest entry
 	for _, entry := range manifest.Policies {
 		// Resolve URI (support relative and absolute paths)
-		policyPath := entry.URI // TODO: (renuka) This URI is not the exact path of the policy. It is the path to discover policies.
+		policyPath := entry.URI // TODO: (renuka) This URI is not the exact path of the policy. It is the path to discover policy.
 		if !filepath.IsAbs(policyPath) {
 			// Relative to base directory (now guaranteed absolute)
 			policyPath = filepath.Join(baseDir, entry.URI)

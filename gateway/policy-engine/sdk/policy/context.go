@@ -1,4 +1,4 @@
-package policies
+package policy
 
 // Body represents HTTP request or response body data
 type Body struct {

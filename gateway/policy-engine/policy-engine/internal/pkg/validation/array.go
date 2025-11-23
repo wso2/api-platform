@@ -3,11 +3,11 @@ package validation
 import (
 	"fmt"
 
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // validateStringArray validates string array parameters
-func validateStringArray(value interface{}, schema policies.ParameterSchema) (*policies.TypedValue, error) {
+func validateStringArray(value interface{}, schema policy.ParameterSchema) (*policy.TypedValue, error) {
 	arrayVal, ok := value.([]interface{})
 	if !ok {
 		// Try direct string array (from Go config)
@@ -32,7 +32,7 @@ func validateStringArray(value interface{}, schema policies.ParameterSchema) (*p
 }
 
 // validateStringArrayDirect validates a []string directly
-func validateStringArrayDirect(strArray []string, schema policies.ParameterSchema) (*policies.TypedValue, error) {
+func validateStringArrayDirect(strArray []string, schema policy.ParameterSchema) (*policy.TypedValue, error) {
 	// MinItems validation
 	if schema.Validation.MinItems != nil && len(strArray) < *schema.Validation.MinItems {
 		return nil, fmt.Errorf("parameter '%s' must have at least %d items, got %d",
@@ -57,8 +57,8 @@ func validateStringArrayDirect(strArray []string, schema policies.ParameterSchem
 		}
 	}
 
-	return &policies.TypedValue{
-		Type:  policies.ParameterTypeStringArray,
+	return &policy.TypedValue{
+		Type:  policy.ParameterTypeStringArray,
 		Value: strArray,
 	}, nil
 }

@@ -10,7 +10,7 @@ import (
 
 	"github.com/policy-engine/policy-engine/internal/executor"
 	"github.com/policy-engine/policy-engine/internal/registry"
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // TranslateRequestActions converts policy execution result to ext_proc response
@@ -20,7 +20,7 @@ import (
 func TranslateRequestActions(result *executor.RequestExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) *extprocv3.ProcessingResponse {
 	if result.ShortCircuited && result.FinalAction != nil {
 		// Short-circuited with ImmediateResponse
-		if immediateResp, ok := result.FinalAction.(policies.ImmediateResponse); ok {
+		if immediateResp, ok := result.FinalAction.(policy.ImmediateResponse); ok {
 			// T066: Handle ImmediateResponse
 			return &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
@@ -48,7 +48,7 @@ func TranslateRequestActions(result *executor.RequestExecutionResult, chain *reg
 		}
 
 		if policyResult.Action != nil {
-			if mods, ok := policyResult.Action.(policies.UpstreamRequestModifications); ok {
+			if mods, ok := policyResult.Action.(policy.UpstreamRequestModifications); ok {
 				// T068: Build header mutations
 				applyRequestModifications(headerMutation, &mods)
 
@@ -99,7 +99,7 @@ func TranslateResponseActions(result *executor.ResponseExecutionResult) *extproc
 		}
 
 		if policyResult.Action != nil {
-			if mods, ok := policyResult.Action.(policies.UpstreamResponseModifications); ok {
+			if mods, ok := policyResult.Action.(policy.UpstreamResponseModifications); ok {
 				// T069: Build response mutations
 				applyResponseModifications(headerMutation, &mods)
 
@@ -129,7 +129,7 @@ func TranslateResponseActions(result *executor.ResponseExecutionResult) *extproc
 
 // applyRequestModifications applies request modifications to header mutation
 // T068: buildHeaderMutations helper implementation
-func applyRequestModifications(mutation *extprocv3.HeaderMutation, mods *policies.UpstreamRequestModifications) {
+func applyRequestModifications(mutation *extprocv3.HeaderMutation, mods *policy.UpstreamRequestModifications) {
 	// Set/Replace headers
 	if len(mods.SetHeaders) > 0 {
 		if mutation.SetHeaders == nil {
@@ -175,7 +175,7 @@ func applyRequestModifications(mutation *extprocv3.HeaderMutation, mods *policie
 
 // applyResponseModifications applies response modifications to header mutation
 // T069: buildResponseMutations helper implementation
-func applyResponseModifications(mutation *extprocv3.HeaderMutation, mods *policies.UpstreamResponseModifications) {
+func applyResponseModifications(mutation *extprocv3.HeaderMutation, mods *policy.UpstreamResponseModifications) {
 	// Set/Replace headers
 	if len(mods.SetHeaders) > 0 {
 		if mutation.SetHeaders == nil {
@@ -254,7 +254,7 @@ func buildRequestMutations(result *executor.RequestExecutionResult) (*extprocv3.
 		}
 
 		if policyResult.Action != nil {
-			if mods, ok := policyResult.Action.(policies.UpstreamRequestModifications); ok {
+			if mods, ok := policyResult.Action.(policy.UpstreamRequestModifications); ok {
 				// Build header mutations
 				applyRequestModifications(headerMutation, &mods)
 
@@ -288,7 +288,7 @@ func buildResponseMutations(result *executor.ResponseExecutionResult) (*extprocv
 		}
 
 		if policyResult.Action != nil {
-			if mods, ok := policyResult.Action.(policies.UpstreamResponseModifications); ok {
+			if mods, ok := policyResult.Action.(policy.UpstreamResponseModifications); ok {
 				// Build header mutations
 				applyResponseModifications(headerMutation, &mods)
 

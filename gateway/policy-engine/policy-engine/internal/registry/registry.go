@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // PolicyRegistry provides centralized policy lookup
@@ -13,11 +13,11 @@ type PolicyRegistry struct {
 
 	// Policy definitions indexed by "name:version" composite key
 	// Example key: "jwtValidation:v1.0.0"
-	Definitions map[string]*policies.PolicyDefinition
+	Definitions map[string]*policy.PolicyDefinition
 
 	// Policy implementations indexed by "name:version" composite key
 	// Value is Policy interface (can be cast to RequestPolicy/ResponsePolicy)
-	Implementations map[string]policies.Policy
+	Implementations map[string]policy.Policy
 }
 
 // Global singleton registry
@@ -28,15 +28,15 @@ var registryOnce sync.Once
 func GetRegistry() *PolicyRegistry {
 	registryOnce.Do(func() {
 		globalRegistry = &PolicyRegistry{
-			Definitions:     make(map[string]*policies.PolicyDefinition),
-			Implementations: make(map[string]policies.Policy),
+			Definitions:     make(map[string]*policy.PolicyDefinition),
+			Implementations: make(map[string]policy.Policy),
 		}
 	})
 	return globalRegistry
 }
 
 // GetDefinition retrieves a policy definition by name and version
-func (r *PolicyRegistry) GetDefinition(name, version string) (*policies.PolicyDefinition, error) {
+func (r *PolicyRegistry) GetDefinition(name, version string) (*policy.PolicyDefinition, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -49,7 +49,7 @@ func (r *PolicyRegistry) GetDefinition(name, version string) (*policies.PolicyDe
 }
 
 // GetImplementation retrieves a policy implementation by name and version
-func (r *PolicyRegistry) GetImplementation(name, version string) (policies.Policy, error) {
+func (r *PolicyRegistry) GetImplementation(name, version string) (policy.Policy, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -62,7 +62,7 @@ func (r *PolicyRegistry) GetImplementation(name, version string) (policies.Polic
 }
 
 // Register registers a policy definition and implementation
-func (r *PolicyRegistry) Register(def *policies.PolicyDefinition, impl policies.Policy) error {
+func (r *PolicyRegistry) Register(def *policy.PolicyDefinition, impl policy.Policy) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -81,9 +81,9 @@ func (r *PolicyRegistry) Register(def *policies.PolicyDefinition, impl policies.
 // RegisterImplementation is a convenience method to register a policy implementation
 // without a full PolicyDefinition. It creates a minimal definition automatically.
 // This is primarily used by the generated plugin_registry.go code.
-func (r *PolicyRegistry) RegisterImplementation(name, version string, impl policies.Policy) error {
+func (r *PolicyRegistry) RegisterImplementation(name, version string, impl policy.Policy) error {
 	// Create a minimal policy definition
-	def := &policies.PolicyDefinition{
+	def := &policy.PolicyDefinition{
 		Name:    name,
 		Version: version,
 	}

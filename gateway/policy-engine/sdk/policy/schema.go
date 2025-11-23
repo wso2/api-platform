@@ -1,4 +1,4 @@
-package policies
+package policy
 
 // ParameterSchema defines validation rules for a policy parameter
 type ParameterSchema struct {

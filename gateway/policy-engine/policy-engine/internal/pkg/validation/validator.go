@@ -3,11 +3,11 @@ package validation
 import (
 	"fmt"
 
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // ValidateParameter validates a parameter value against its schema
-func ValidateParameter(value interface{}, schema policies.ParameterSchema) (*policies.TypedValue, error) {
+func ValidateParameter(value interface{}, schema policy.ParameterSchema) (*policy.TypedValue, error) {
 	// Handle nil value
 	if value == nil {
 		if schema.Required {
@@ -22,33 +22,33 @@ func ValidateParameter(value interface{}, schema policies.ParameterSchema) (*pol
 
 	// Validate based on type
 	switch schema.Type {
-	case policies.ParameterTypeString:
+	case policy.ParameterTypeString:
 		return validateString(value, schema)
-	case policies.ParameterTypeInt:
+	case policy.ParameterTypeInt:
 		return validateInt(value, schema)
-	case policies.ParameterTypeFloat:
+	case policy.ParameterTypeFloat:
 		return validateFloat(value, schema)
-	case policies.ParameterTypeBool:
+	case policy.ParameterTypeBool:
 		return validateBool(value, schema)
-	case policies.ParameterTypeDuration:
+	case policy.ParameterTypeDuration:
 		return validateDuration(value, schema)
-	case policies.ParameterTypeStringArray:
+	case policy.ParameterTypeStringArray:
 		return validateStringArray(value, schema)
-	case policies.ParameterTypeIntArray:
+	case policy.ParameterTypeIntArray:
 		return validateIntArray(value, schema)
-	case policies.ParameterTypeMap:
+	case policy.ParameterTypeMap:
 		return validateMap(value, schema)
-	case policies.ParameterTypeURI:
+	case policy.ParameterTypeURI:
 		return validateURI(value, schema)
-	case policies.ParameterTypeEmail:
+	case policy.ParameterTypeEmail:
 		return validateEmail(value, schema)
-	case policies.ParameterTypeHostname:
+	case policy.ParameterTypeHostname:
 		return validateHostname(value, schema)
-	case policies.ParameterTypeIPv4:
+	case policy.ParameterTypeIPv4:
 		return validateIPv4(value, schema)
-	case policies.ParameterTypeIPv6:
+	case policy.ParameterTypeIPv6:
 		return validateIPv6(value, schema)
-	case policies.ParameterTypeUUID:
+	case policy.ParameterTypeUUID:
 		return validateUUID(value, schema)
 	default:
 		return nil, fmt.Errorf("unsupported parameter type: %s", schema.Type)
@@ -56,27 +56,27 @@ func ValidateParameter(value interface{}, schema policies.ParameterSchema) (*pol
 }
 
 // validateBool validates boolean parameters
-func validateBool(value interface{}, schema policies.ParameterSchema) (*policies.TypedValue, error) {
+func validateBool(value interface{}, schema policy.ParameterSchema) (*policy.TypedValue, error) {
 	boolVal, ok := value.(bool)
 	if !ok {
 		return nil, fmt.Errorf("parameter '%s' must be a boolean, got %T", schema.Name, value)
 	}
 
-	return &policies.TypedValue{
-		Type:  policies.ParameterTypeBool,
+	return &policy.TypedValue{
+		Type:  policy.ParameterTypeBool,
 		Value: boolVal,
 	}, nil
 }
 
 // validateMap validates map parameters
-func validateMap(value interface{}, schema policies.ParameterSchema) (*policies.TypedValue, error) {
+func validateMap(value interface{}, schema policy.ParameterSchema) (*policy.TypedValue, error) {
 	mapVal, ok := value.(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("parameter '%s' must be a map, got %T", schema.Name, value)
 	}
 
-	return &policies.TypedValue{
-		Type:  policies.ParameterTypeMap,
+	return &policy.TypedValue{
+		Type:  policy.ParameterTypeMap,
 		Value: mapVal,
 	}, nil
 }

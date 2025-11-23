@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/policy-engine/policy-engine/internal/registry"
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 {{- range .Policies }}
 	{{ .ImportAlias }} "{{ .ImportPath }}"
 {{- end }}
@@ -16,7 +16,7 @@ func init() {
 
 	{{- range .Policies }}
 	// Register {{ .Name }} {{ .Version }}
-	policyDef_{{ .ImportAlias }} := &policies.PolicyDefinition{
+	policyDef_{{ .ImportAlias }} := &policy.PolicyDefinition{
 		Name:    "{{ .Name }}",
 		Version: "{{ .Version }}",
 	}

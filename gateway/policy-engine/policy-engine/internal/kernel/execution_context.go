@@ -10,7 +10,7 @@ import (
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 
 	"github.com/policy-engine/policy-engine/internal/registry"
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // PolicyExecutionContext manages the lifecycle of a single request through the policy chain.
@@ -18,10 +18,10 @@ import (
 // It encapsulates all state needed for processing both request and response phases.
 type PolicyExecutionContext struct {
 	// Request context that carries request data and metadata
-	requestContext *policies.RequestContext
+	requestContext *policy.RequestContext
 
 	// Response context that carries response data and metadata
-	responseContext *policies.ResponseContext
+	responseContext *policy.ResponseContext
 
 	// Policy chain for this request
 	policyChain *registry.PolicyChain
@@ -60,8 +60,8 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 
 	// Set response header mode based on whether any policies process response headers
 	hasResponseHeaderProcessing := false
-	for _, policy := range ec.policyChain.Policies {
-		if policy.Mode().ResponseHeaderMode == policies.HeaderModeProcess {
+	for _, pol := range ec.policyChain.Policies {
+		if pol.Mode().ResponseHeaderMode == policy.HeaderModeProcess {
 			hasResponseHeaderProcessing = true
 			break
 		}
@@ -132,7 +132,7 @@ func (ec *PolicyExecutionContext) processRequestBody(
 	// If policy chain requires request body, execute policies with both headers and body
 	if ec.policyChain.RequiresRequestBody {
 		// Update request context with body data
-		ec.requestContext.Body = &policies.Body{
+		ec.requestContext.Body = &policy.Body{
 			Content:     body.Body,
 			EndOfStream: body.EndOfStream,
 			Present:     true,
@@ -158,7 +158,7 @@ func (ec *PolicyExecutionContext) processRequestBody(
 
 		// Check if policies short-circuited with immediate response
 		if execResult.ShortCircuited && execResult.FinalAction != nil {
-			if immediateResp, ok := execResult.FinalAction.(policies.ImmediateResponse); ok {
+			if immediateResp, ok := execResult.FinalAction.(policy.ImmediateResponse); ok {
 				return &extprocv3.ProcessingResponse{
 					Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 						ImmediateResponse: &extprocv3.ImmediateResponse{
@@ -241,7 +241,7 @@ func (ec *PolicyExecutionContext) processResponseBody(
 	// If policy chain requires response body, execute policies with both headers and body
 	if ec.policyChain.RequiresResponseBody {
 		// Update response context with body data
-		ec.responseContext.ResponseBody = &policies.Body{
+		ec.responseContext.ResponseBody = &policy.Body{
 			Content:     body.Body,
 			EndOfStream: body.EndOfStream,
 			Present:     true,
@@ -286,14 +286,14 @@ func (ec *PolicyExecutionContext) processResponseBody(
 }
 
 // buildRequestContext converts Envoy headers to RequestContext
-func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHeaders) *policies.RequestContext {
+func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHeaders) *policy.RequestContext {
 	// Create shared context that will persist across request/response phases
-	sharedCtx := &policies.SharedContext{
+	sharedCtx := &policy.SharedContext{
 		RequestID: ec.requestID,
 		Metadata:  ec.policyChain.Metadata, // Share chain metadata
 	}
 
-	ctx := &policies.RequestContext{
+	ctx := &policy.RequestContext{
 		SharedContext: sharedCtx,
 		Headers:       make(map[string][]string),
 	}
@@ -318,8 +318,8 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 }
 
 // buildResponseContext converts Envoy response headers and stored request context
-func (ec *PolicyExecutionContext) buildResponseContext(headers *extprocv3.HttpHeaders) *policies.ResponseContext {
-	ctx := &policies.ResponseContext{
+func (ec *PolicyExecutionContext) buildResponseContext(headers *extprocv3.HttpHeaders) *policy.ResponseContext {
+	ctx := &policy.ResponseContext{
 		SharedContext:   ec.requestContext.SharedContext, // Reuse same shared context from request phase
 		RequestHeaders:  ec.requestContext.Headers,
 		RequestBody:     ec.requestContext.Body,

@@ -1,16 +1,16 @@
 package registry
 
 import (
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // PolicyChain is a container for a complete policy processing pipeline for a route
 type PolicyChain struct {
 	// Ordered list of policies to execute (all implement Policy interface)
-	Policies []policies.Policy
+	Policies []policy.Policy
 
 	// Policy specifications (aligned with Policies)
-	PolicySpecs []policies.PolicySpec
+	PolicySpecs []policy.PolicySpec
 
 	// Shared metadata map for inter-policy communication
 	// Initialized fresh for each request, persists through response phase
