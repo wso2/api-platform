@@ -1,0 +1,18 @@
+# Policy Engine Configuration - Default
+# This is the default configuration file that uses file-based mode
+
+server:
+  extproc_port: 9001
+
+config_mode:
+  mode: file
+
+file_config:
+  path: configs/policy-chains.yaml
+
+xds:
+  enabled: false
+
+logging:
+  level: info
+  format: json

@@ -1,0 +1,29 @@
+# Policy Engine Configuration - File-based Mode
+# This configuration uses static YAML file for policy chain configuration
+
+server:
+  # Port for ext_proc gRPC server (receives requests from Envoy)
+  extproc_port: 9001
+
+config_mode:
+  # Configuration mode: "file" or "xds"
+  # - file: Load policy chains from static YAML file
+  # - xds: Subscribe to xDS server for dynamic configuration updates
+  mode: file
+
+# File-based configuration settings
+file_config:
+  # Path to the policy chains YAML file
+  path: configs/policy-chains.yaml
+
+# xDS client configuration (not used in file mode)
+xds:
+  enabled: false
+
+# Logging configuration
+logging:
+  # Log level: debug, info, warn, error
+  level: info
+
+  # Log format: json, text
+  format: json
