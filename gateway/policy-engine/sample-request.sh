@@ -9,4 +9,5 @@ curl 'http://localhost:8000/pets/myPetId123/history?bar=baz&param_to_remove=bbbb
 -H 'foo: hello-foo1' \
 -H 'foo: hello-foo2' \
 -H 'x-internal-token: my-password' \
+# -H 'count: true' \
 -iv 

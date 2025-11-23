@@ -1,9 +1,3 @@
-# Policy Manifest
-# This file declares which policies to compile into the Policy Engine binary
-# Run with: docker run --rm -v $(pwd)/policies.yaml:/policies.yaml \
-#           -v $(pwd)/policies:/policies -v $(pwd)/output:/output \
-#           policy-engine-builder:v1.0.0 --manifest /policies.yaml
-
 version: v1
 
 policies:
@@ -27,12 +21,7 @@ policies:
     version: v1.0.0
     uri: ./policies/count-letters/v1.0.0
 
-  # Add more policies here
-  # Example with different directory structure:
-  # - name: JWTValidation
-  #   version: v1.0.0
-  #   uri: ./policies/jwt/v1
-  #
-  # - name: CustomAuth
-  #   version: v2.0.0
-  #   uri: /custom/path/to/auth-policy
+  # BasicAuth Policy
+  - name: BasicAuth
+    version: v1.0.0
+    uri: ./policies/basic-auth/v1.0.0

@@ -9,7 +9,7 @@ import (
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 
 	"github.com/policy-engine/policy-engine/internal/executor"
-	"github.com/policy-engine/sdk/core"
+	"github.com/policy-engine/policy-engine/internal/registry"
 	"github.com/policy-engine/sdk/policies"
 )
 
@@ -17,7 +17,7 @@ import (
 // T065: TranslateRequestActions for UpstreamRequestModifications
 // T066: TranslateRequestActions for ImmediateResponse
 // The execCtx parameter is optional - if provided, uses its computed mode override
-func TranslateRequestActions(result *executor.RequestExecutionResult, chain *core.PolicyChain, execCtx *PolicyExecutionContext) *extprocv3.ProcessingResponse {
+func TranslateRequestActions(result *executor.RequestExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) *extprocv3.ProcessingResponse {
 	if result.ShortCircuited && result.FinalAction != nil {
 		// Short-circuited with ImmediateResponse
 		if immediateResp, ok := result.FinalAction.(policies.ImmediateResponse); ok {
@@ -327,7 +327,7 @@ func setContentLengthHeader(mutation *extprocv3.HeaderMutation, bodyLength int) 
 
 // determineModeOverride determines body processing mode based on chain requirements
 // T070: mode override configuration implementation
-func determineModeOverride(chain *core.PolicyChain, isRequest bool) *extprocconfigv3.ProcessingMode {
+func determineModeOverride(chain *registry.PolicyChain, isRequest bool) *extprocconfigv3.ProcessingMode {
 	if isRequest && !chain.RequiresRequestBody {
 		// Chain doesn't need request body - use NONE mode for performance
 		return &extprocconfigv3.ProcessingMode{

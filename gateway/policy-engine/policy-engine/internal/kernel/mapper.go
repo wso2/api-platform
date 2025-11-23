@@ -3,7 +3,7 @@ package kernel
 import (
 	"sync"
 
-	"github.com/policy-engine/sdk/core"
+	"github.com/policy-engine/policy-engine/internal/registry"
 )
 
 // RouteMapping maps Envoy metadata keys to PolicyChains for route-specific processing
@@ -15,7 +15,7 @@ type RouteMapping struct {
 
 	// PolicyChain to execute for this route
 	// Contains both request and response policies
-	Chain *core.PolicyChain
+	Chain *registry.PolicyChain
 }
 
 // Kernel represents the integration layer between Envoy and the policy execution engine
@@ -26,20 +26,20 @@ type Kernel struct {
 	// Route-to-chain mapping
 	// Key: metadata key from Envoy
 	// Value: PolicyChain for that route
-	Routes map[string]*core.PolicyChain
+	Routes map[string]*registry.PolicyChain
 }
 
 // NewKernel creates a new Kernel instance
 func NewKernel() *Kernel {
 	return &Kernel{
-		Routes: make(map[string]*core.PolicyChain),
+		Routes: make(map[string]*registry.PolicyChain),
 	}
 }
 
 // GetPolicyChainForKey retrieves the policy chain for a given metadata key
 // T051: GetPolicyChainForKey method implementation
 // Returns nil when no policy chain exists for the route (not an error condition)
-func (k *Kernel) GetPolicyChainForKey(key string) *core.PolicyChain {
+func (k *Kernel) GetPolicyChainForKey(key string) *registry.PolicyChain {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 
@@ -47,7 +47,7 @@ func (k *Kernel) GetPolicyChainForKey(key string) *core.PolicyChain {
 }
 
 // RegisterRoute registers a policy chain for a route
-func (k *Kernel) RegisterRoute(metadataKey string, chain *core.PolicyChain) {
+func (k *Kernel) RegisterRoute(metadataKey string, chain *registry.PolicyChain) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 

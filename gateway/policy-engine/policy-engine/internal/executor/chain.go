@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/policy-engine/sdk/core"
+	"github.com/policy-engine/policy-engine/internal/registry"
 	"github.com/policy-engine/sdk/policies"
 )
 
@@ -282,7 +282,7 @@ func applyResponseModifications(ctx *policies.ResponseContext, mods *policies.Up
 // ChainExecutor represents the policy chain execution engine
 // T048: Added CEL evaluator for condition evaluation and metrics collection
 type ChainExecutor struct {
-	registry     *core.PolicyRegistry
+	registry     *registry.PolicyRegistry
 	celEvaluator CELEvaluator
 }
 
@@ -293,9 +293,9 @@ type CELEvaluator interface {
 }
 
 // NewChainExecutor creates a new ChainExecutor execution engine
-func NewChainExecutor(registry *core.PolicyRegistry, celEvaluator CELEvaluator) *ChainExecutor {
+func NewChainExecutor(reg *registry.PolicyRegistry, celEvaluator CELEvaluator) *ChainExecutor {
 	return &ChainExecutor{
-		registry:     registry,
+		registry:     reg,
 		celEvaluator: celEvaluator,
 	}
 }

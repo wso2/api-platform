@@ -16,7 +16,7 @@ import (
 	"github.com/policy-engine/policy-engine/internal/executor"
 	"github.com/policy-engine/policy-engine/internal/kernel"
 	"github.com/policy-engine/policy-engine/internal/pkg/cel"
-	"github.com/policy-engine/sdk/core"
+	"github.com/policy-engine/policy-engine/internal/registry"
 )
 
 // T091: Command-line flags implementation
@@ -43,7 +43,7 @@ func main() {
 	// Initialize components
 	// T093: Wire Kernel and Core components
 	k := kernel.NewKernel()
-	registry := core.GetRegistry()
+	reg := registry.GetRegistry()
 
 	// Initialize CEL evaluator
 	celEvaluator, err := cel.NewCELEvaluator()
@@ -53,7 +53,7 @@ func main() {
 	}
 
 	// Initialize chain executor
-	chainExecutor := executor.NewChainExecutor(registry, celEvaluator)
+	chainExecutor := executor.NewChainExecutor(reg, celEvaluator)
 
 	// Policy registration happens automatically via Builder-generated plugin_registry.go
 	// The generated code in plugin_registry.go imports all compiled policies and registers
@@ -62,7 +62,7 @@ func main() {
 	slog.InfoContext(ctx, "Policies registered via Builder-generated code")
 
 	// Load policy chain configuration from file
-	configLoader := kernel.NewConfigLoader(k, registry)
+	configLoader := kernel.NewConfigLoader(k, reg)
 	if err := configLoader.LoadFromFile(*configFile); err != nil {
 		slog.ErrorContext(ctx, "Failed to load configuration", "error", err)
 		os.Exit(1)

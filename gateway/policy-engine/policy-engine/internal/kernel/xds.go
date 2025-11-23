@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/policy-engine/sdk/core"
+	"github.com/policy-engine/policy-engine/internal/registry"
 	"github.com/policy-engine/sdk/policies"
 )
 
@@ -32,14 +32,14 @@ type PolicyInstanceConfig struct {
 // T077: Implement file-based configuration loader as fallback
 type ConfigLoader struct {
 	kernel   *Kernel
-	registry *core.PolicyRegistry
+	registry *registry.PolicyRegistry
 }
 
 // NewConfigLoader creates a new configuration loader
-func NewConfigLoader(kernel *Kernel, registry *core.PolicyRegistry) *ConfigLoader {
+func NewConfigLoader(kernel *Kernel, reg *registry.PolicyRegistry) *ConfigLoader {
 	return &ConfigLoader{
 		kernel:   kernel,
-		registry: registry,
+		registry: reg,
 	}
 }
 
@@ -65,7 +65,7 @@ func (cl *ConfigLoader) LoadFromFile(path string) error {
 
 	// T076: Implement atomic PolicyChain replacement in Routes map
 	// Build all chains first, then replace atomically
-	chains := make(map[string]*core.PolicyChain)
+	chains := make(map[string]*registry.PolicyChain)
 	for _, config := range configs {
 		chain, err := cl.buildPolicyChain(&config)
 		if err != nil {
@@ -120,7 +120,7 @@ func (cl *ConfigLoader) validateConfig(config *PolicyChainConfig) error {
 }
 
 // buildPolicyChain builds a PolicyChain from configuration
-func (cl *ConfigLoader) buildPolicyChain(config *PolicyChainConfig) (*core.PolicyChain, error) {
+func (cl *ConfigLoader) buildPolicyChain(config *PolicyChainConfig) (*registry.PolicyChain, error) {
 	var policyList []policies.Policy
 	var policySpecs []policies.PolicySpec
 
@@ -163,7 +163,7 @@ func (cl *ConfigLoader) buildPolicyChain(config *PolicyChainConfig) (*core.Polic
 		}
 	}
 
-	chain := &core.PolicyChain{
+	chain := &registry.PolicyChain{
 		Policies:             policyList,
 		PolicySpecs:          policySpecs,
 		Metadata:             make(map[string]interface{}),

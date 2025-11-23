@@ -1,7 +1,7 @@
 package kernel
 
 import (
-	"github.com/policy-engine/sdk/core"
+	"github.com/policy-engine/policy-engine/internal/registry"
 	"github.com/policy-engine/sdk/policies"
 )
 
@@ -17,8 +17,8 @@ const (
 
 // BuildPolicyChain creates a PolicyChain from PolicySpecs with body requirement computation
 // T055: BuildPolicyChain with body requirement computation
-func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policies.PolicySpec, registry *core.PolicyRegistry) (*core.PolicyChain, error) {
-	chain := &core.PolicyChain{
+func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policies.PolicySpec, reg *registry.PolicyRegistry) (*registry.PolicyChain, error) {
+	chain := &registry.PolicyChain{
 		Policies:             make([]policies.Policy, 0),
 		PolicySpecs:          make([]policies.PolicySpec, 0),
 		Metadata:             make(map[string]interface{}),
@@ -29,7 +29,7 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policies.Policy
 	// Build policy list and compute body requirements
 	for _, spec := range policySpecs {
 		// Get policy implementation
-		impl, err := registry.GetImplementation(spec.Name, spec.Version)
+		impl, err := reg.GetImplementation(spec.Name, spec.Version)
 		if err != nil {
 			return nil, err
 		}
@@ -57,7 +57,7 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policies.Policy
 
 // determineRequestBodyMode determines the body mode for request phase
 // T056: Request body mode determination helper
-func determineRequestBodyMode(chain *core.PolicyChain) BodyMode {
+func determineRequestBodyMode(chain *registry.PolicyChain) BodyMode {
 	if chain.RequiresRequestBody {
 		return BodyModeBuffered
 	}
@@ -66,7 +66,7 @@ func determineRequestBodyMode(chain *core.PolicyChain) BodyMode {
 
 // determineResponseBodyMode determines the body mode for response phase
 // T057: Response body mode determination helper
-func determineResponseBodyMode(chain *core.PolicyChain) BodyMode {
+func determineResponseBodyMode(chain *registry.PolicyChain) BodyMode {
 	if chain.RequiresResponseBody {
 		return BodyModeBuffered
 	}

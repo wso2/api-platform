@@ -9,7 +9,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 
-	"github.com/policy-engine/sdk/core"
+	"github.com/policy-engine/policy-engine/internal/registry"
 	"github.com/policy-engine/sdk/policies"
 )
 
@@ -24,7 +24,7 @@ type PolicyExecutionContext struct {
 	responseContext *policies.ResponseContext
 
 	// Policy chain for this request
-	policyChain *core.PolicyChain
+	policyChain *registry.PolicyChain
 
 	// Request ID for correlation
 	requestID string
@@ -37,7 +37,7 @@ type PolicyExecutionContext struct {
 func newPolicyExecutionContext(
 	server *ExternalProcessorServer,
 	requestID string,
-	chain *core.PolicyChain,
+	chain *registry.PolicyChain,
 ) *PolicyExecutionContext {
 	return &PolicyExecutionContext{
 		server:      server,
