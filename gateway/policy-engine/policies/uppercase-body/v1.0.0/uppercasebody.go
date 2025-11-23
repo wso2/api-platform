@@ -14,6 +14,16 @@ func NewPolicy() policies.Policy {
 	return &UppercaseBodyPolicy{}
 }
 
+// Mode returns the processing mode for this policy
+func (p *UppercaseBodyPolicy) Mode() policies.ProcessingMode {
+	return policies.ProcessingMode{
+		RequestHeaderMode:  policies.HeaderModeSkip,   // Don't need request headers
+		RequestBodyMode:    policies.BodyModeBuffer,   // Need full buffered request body
+		ResponseHeaderMode: policies.HeaderModeSkip,   // Don't process response headers
+		ResponseBodyMode:   policies.BodyModeSkip,     // Don't need response body
+	}
+}
+
 // Validate validates the policy configuration
 // This policy has no configuration parameters
 func (p *UppercaseBodyPolicy) Validate(params map[string]interface{}) error {
@@ -36,4 +46,9 @@ func (p *UppercaseBodyPolicy) OnRequest(ctx *policies.RequestContext, params map
 	return policies.UpstreamRequestModifications{
 		Body: uppercasedBody,
 	}
+}
+
+// OnResponse is not used by this policy (only modifies request body)
+func (p *UppercaseBodyPolicy) OnResponse(ctx *policies.ResponseContext, params map[string]interface{}) policies.ResponseAction {
+	return nil // No response processing needed
 }

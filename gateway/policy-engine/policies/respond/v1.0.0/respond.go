@@ -15,6 +15,16 @@ func NewPolicy() policies.Policy {
 	return &RespondPolicy{}
 }
 
+// Mode returns the processing mode for this policy
+func (p *RespondPolicy) Mode() policies.ProcessingMode {
+	return policies.ProcessingMode{
+		RequestHeaderMode:  policies.HeaderModeProcess, // Can use request headers for context
+		RequestBodyMode:    policies.BodyModeSkip,      // Don't need request body
+		ResponseHeaderMode: policies.HeaderModeSkip,    // Returns immediate response
+		ResponseBodyMode:   policies.BodyModeSkip,      // Returns immediate response
+	}
+}
+
 // Validate validates the policy configuration
 func (p *RespondPolicy) Validate(params map[string]interface{}) error {
 	// Validate statusCode parameter (optional, defaults to 200)
@@ -132,4 +142,9 @@ func (p *RespondPolicy) OnRequest(ctx *policies.RequestContext, params map[strin
 		Headers:    headers,
 		Body:       body,
 	}
+}
+
+// OnResponse is not used by this policy (returns immediate response in request phase)
+func (p *RespondPolicy) OnResponse(ctx *policies.ResponseContext, params map[string]interface{}) policies.ResponseAction {
+	return nil // No response processing needed
 }

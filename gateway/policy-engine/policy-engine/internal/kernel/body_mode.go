@@ -19,45 +19,35 @@ const (
 // T055: BuildPolicyChain with body requirement computation
 func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policies.PolicySpec, registry *core.PolicyRegistry) (*core.PolicyChain, error) {
 	chain := &core.PolicyChain{
-		RequestPolicies:      make([]policies.RequestPolicy, 0),
-		ResponsePolicies:     make([]policies.ResponsePolicy, 0),
+		Policies:             make([]policies.Policy, 0),
+		PolicySpecs:          make([]policies.PolicySpec, 0),
 		Metadata:             make(map[string]interface{}),
 		RequiresRequestBody:  false,
 		RequiresResponseBody: false,
 	}
 
-	// Build policy lists and compute body requirements
+	// Build policy list and compute body requirements
 	for _, spec := range policySpecs {
-		// Get policy definition
-		def, err := registry.GetDefinition(spec.Name, spec.Version)
-		if err != nil {
-			return nil, err
-		}
-
 		// Get policy implementation
 		impl, err := registry.GetImplementation(spec.Name, spec.Version)
 		if err != nil {
 			return nil, err
 		}
 
-		// Add to appropriate policy list based on phase support
-		if def.SupportsRequestPhase {
-			if reqPolicy, ok := impl.(policies.RequestPolicy); ok {
-				chain.RequestPolicies = append(chain.RequestPolicies, reqPolicy)
-			}
-		}
+		// Add to policy list
+		chain.Policies = append(chain.Policies, impl)
+		chain.PolicySpecs = append(chain.PolicySpecs, spec)
 
-		if def.SupportsResponsePhase {
-			if respPolicy, ok := impl.(policies.ResponsePolicy); ok {
-				chain.ResponsePolicies = append(chain.ResponsePolicies, respPolicy)
-			}
-		}
+		// Get policy mode and update body requirements
+		mode := impl.Mode()
 
-		// Update body requirements (OR across all policies)
-		if def.RequiresRequestBody {
+		// Update request body requirement (if any policy needs buffering)
+		if mode.RequestBodyMode == policies.BodyModeBuffer || mode.RequestBodyMode == policies.BodyModeStream {
 			chain.RequiresRequestBody = true
 		}
-		if def.RequiresResponseBody {
+
+		// Update response body requirement (if any policy needs buffering)
+		if mode.ResponseBodyMode == policies.BodyModeBuffer || mode.ResponseBodyMode == policies.BodyModeStream {
 			chain.RequiresResponseBody = true
 		}
 	}

@@ -51,3 +51,45 @@ parameters:
           validation:
             maxLength: 8192
 
+examples:
+  - name: Mock JSON response
+    description: Returns a mocked API response with JSON data
+    config:
+      statusCode: 200
+      body: '{"message": "Mock response", "data": {"id": 123}}'
+      headers:
+        - name: content-type
+          value: application/json
+        - name: x-mock-response
+          value: "true"
+
+  - name: Access denied error
+    description: Returns a 403 Forbidden error response
+    config:
+      statusCode: 403
+      body: '{"error": "Access denied", "code": "FORBIDDEN"}'
+      headers:
+        - name: content-type
+          value: application/json
+        - name: x-error-code
+          value: ACCESS_DENIED
+
+  - name: Rate limit exceeded
+    description: Returns a 429 Too Many Requests response
+    config:
+      statusCode: 429
+      body: 'Rate limit exceeded. Please try again later.'
+      headers:
+        - name: content-type
+          value: text/plain
+        - name: retry-after
+          value: "60"
+
+  - name: Simple text response
+    description: Returns a simple text response
+    config:
+      statusCode: 200
+      body: 'Hello from the policy engine!'
+      headers:
+        - name: content-type
+          value: text/plain

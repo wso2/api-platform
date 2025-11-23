@@ -23,6 +23,16 @@ func NewPolicy() policies.Policy {
 	return &BasicAuthPolicy{}
 }
 
+// Mode returns the processing mode for this policy
+func (p *BasicAuthPolicy) Mode() policies.ProcessingMode {
+	return policies.ProcessingMode{
+		RequestHeaderMode:  policies.HeaderModeProcess, // Process request headers for auth
+		RequestBodyMode:    policies.BodyModeSkip,      // Don't need request body
+		ResponseHeaderMode: policies.HeaderModeSkip,    // Don't process response headers
+		ResponseBodyMode:   policies.BodyModeSkip,      // Don't need response body
+	}
+}
+
 // Validate validates the policy configuration
 func (p *BasicAuthPolicy) Validate(params map[string]interface{}) error {
 	// Validate username parameter (required)
@@ -137,6 +147,11 @@ func (p *BasicAuthPolicy) handleAuthSuccess(ctx *policies.RequestContext, userna
 
 	// Continue to upstream with no modifications
 	return policies.UpstreamRequestModifications{}
+}
+
+// OnResponse is not used by this policy (authentication is request-only)
+func (p *BasicAuthPolicy) OnResponse(ctx *policies.ResponseContext, params map[string]interface{}) policies.ResponseAction {
+	return nil // No response processing needed
 }
 
 // handleAuthFailure handles authentication failure

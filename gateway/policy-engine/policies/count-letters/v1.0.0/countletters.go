@@ -16,6 +16,16 @@ func NewPolicy() policies.Policy {
 	return &CountLettersPolicy{}
 }
 
+// Mode returns the processing mode for this policy
+func (p *CountLettersPolicy) Mode() policies.ProcessingMode {
+	return policies.ProcessingMode{
+		RequestHeaderMode:  policies.HeaderModeSkip,   // Don't need request headers
+		RequestBodyMode:    policies.BodyModeSkip,     // Don't need request body
+		ResponseHeaderMode: policies.HeaderModeSkip,   // Don't process response headers
+		ResponseBodyMode:   policies.BodyModeBuffer,   // Need full buffered response body
+	}
+}
+
 // Validate validates the policy configuration
 func (p *CountLettersPolicy) Validate(params map[string]interface{}) error {
 	// Validate letters parameter (required)
@@ -64,6 +74,11 @@ func (p *CountLettersPolicy) Validate(params map[string]interface{}) error {
 	}
 
 	return nil
+}
+
+// OnRequest is not used by this policy (only processes response body)
+func (p *CountLettersPolicy) OnRequest(ctx *policies.RequestContext, params map[string]interface{}) policies.RequestAction {
+	return nil // No request processing needed
 }
 
 // OnResponse counts letters in the response body and replaces it with the count

@@ -83,8 +83,7 @@ func (cl *ConfigLoader) LoadFromFile(path string) error {
 		cl.kernel.Routes[routeKey] = chain
 		slog.InfoContext(ctx, "Loaded policy chain for route",
 			"route", routeKey,
-			"request_policies", len(chain.RequestPolicies),
-			"response_policies", len(chain.ResponsePolicies))
+			"policies", len(chain.Policies))
 	}
 
 	return nil
@@ -122,21 +121,14 @@ func (cl *ConfigLoader) validateConfig(config *PolicyChainConfig) error {
 
 // buildPolicyChain builds a PolicyChain from configuration
 func (cl *ConfigLoader) buildPolicyChain(config *PolicyChainConfig) (*core.PolicyChain, error) {
-	var requestPolicies []policies.RequestPolicy
-	var responsePolicies []policies.ResponsePolicy
-	var requestSpecs []policies.PolicySpec
-	var responseSpecs []policies.PolicySpec
+	var policyList []policies.Policy
+	var policySpecs []policies.PolicySpec
 
 	requiresRequestBody := false
 	requiresResponseBody := false
 
 	for _, policyConfig := range config.Policies {
-		// Get policy definition and implementation
-		def, err := cl.registry.GetDefinition(policyConfig.Name, policyConfig.Version)
-		if err != nil {
-			return nil, err
-		}
-
+		// Get policy implementation
 		impl, err := cl.registry.GetImplementation(policyConfig.Name, policyConfig.Version)
 		if err != nil {
 			return nil, err
@@ -153,29 +145,27 @@ func (cl *ConfigLoader) buildPolicyChain(config *PolicyChainConfig) (*core.Polic
 			},
 		}
 
-		// Add to appropriate list based on policy type
-		if reqPolicy, ok := impl.(policies.RequestPolicy); ok {
-			requestPolicies = append(requestPolicies, reqPolicy)
-			requestSpecs = append(requestSpecs, spec)
-			if def.RequiresRequestBody {
-				requiresRequestBody = true
-			}
+		// Add to policy list
+		policyList = append(policyList, impl)
+		policySpecs = append(policySpecs, spec)
+
+		// Get policy mode and update body requirements
+		mode := impl.Mode()
+
+		// Update request body requirement (if any policy needs buffering)
+		if mode.RequestBodyMode == policies.BodyModeBuffer || mode.RequestBodyMode == policies.BodyModeStream {
+			requiresRequestBody = true
 		}
 
-		if respPolicy, ok := impl.(policies.ResponsePolicy); ok {
-			responsePolicies = append(responsePolicies, respPolicy)
-			responseSpecs = append(responseSpecs, spec)
-			if def.RequiresResponseBody {
-				requiresResponseBody = true
-			}
+		// Update response body requirement (if any policy needs buffering)
+		if mode.ResponseBodyMode == policies.BodyModeBuffer || mode.ResponseBodyMode == policies.BodyModeStream {
+			requiresResponseBody = true
 		}
 	}
 
 	chain := &core.PolicyChain{
-		RequestPolicies:      requestPolicies,
-		ResponsePolicies:     responsePolicies,
-		RequestPolicySpecs:   requestSpecs,
-		ResponsePolicySpecs:  responseSpecs,
+		Policies:             policyList,
+		PolicySpecs:          policySpecs,
 		Metadata:             make(map[string]interface{}),
 		RequiresRequestBody:  requiresRequestBody,
 		RequiresResponseBody: requiresResponseBody,

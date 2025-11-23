@@ -60,3 +60,25 @@ metadata:
       type: string
       description: Authentication method used (always "basic")
 
+examples:
+  - name: Strict authentication
+    description: Blocks unauthenticated requests with 401 response
+    config:
+      username: admin
+      password: secret123
+      allowUnauthenticated: false
+      realm: "Admin Portal"
+
+  - name: Permissive authentication
+    description: Allows all requests but records auth status in metadata
+    config:
+      username: admin
+      password: secret123
+      allowUnauthenticated: true
+      realm: "Optional Auth"
+
+  - name: Basic configuration
+    description: Minimal configuration with default realm
+    config:
+      username: apiuser
+      password: apipass

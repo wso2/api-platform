@@ -58,9 +58,16 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 		mode.RequestBodyMode = extprocconfigv3.ProcessingMode_NONE
 	}
 
-	// Set response header mode based on whether any response policies exist
-	// (all response policies process headers)
-	if len(ec.policyChain.ResponsePolicies) > 0 {
+	// Set response header mode based on whether any policies process response headers
+	hasResponseHeaderProcessing := false
+	for _, policy := range ec.policyChain.Policies {
+		if policy.Mode().ResponseHeaderMode == policies.HeaderModeProcess {
+			hasResponseHeaderProcessing = true
+			break
+		}
+	}
+
+	if hasResponseHeaderProcessing {
 		mode.ResponseHeaderMode = extprocconfigv3.ProcessingMode_SEND
 	} else {
 		mode.ResponseHeaderMode = extprocconfigv3.ProcessingMode_SKIP
@@ -97,9 +104,9 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 
 	// Execute request policy chain with headers only
 	execResult, err := ec.server.executor.ExecuteRequestPolicies(
-		ec.policyChain.RequestPolicies,
+		ec.policyChain.Policies,
 		ec.requestContext,
-		ec.policyChain.RequestPolicySpecs,
+		ec.policyChain.PolicySpecs,
 	)
 	if err != nil {
 		slog.ErrorContext(ctx, "Error executing request policies", "error", err)
@@ -133,9 +140,9 @@ func (ec *PolicyExecutionContext) processRequestBody(
 
 		// Execute request policy chain with headers and body
 		execResult, err := ec.server.executor.ExecuteRequestPolicies(
-			ec.policyChain.RequestPolicies,
+			ec.policyChain.Policies,
 			ec.requestContext,
-			ec.policyChain.RequestPolicySpecs,
+			ec.policyChain.PolicySpecs,
 		)
 		if err != nil {
 			slog.ErrorContext(ctx, "Error executing request policies", "error", err)
@@ -208,9 +215,9 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 
 	// Execute response policy chain with headers only
 	execResult, err := ec.server.executor.ExecuteResponsePolicies(
-		ec.policyChain.ResponsePolicies,
+		ec.policyChain.Policies,
 		ec.responseContext,
-		ec.policyChain.ResponsePolicySpecs,
+		ec.policyChain.PolicySpecs,
 	)
 	if err != nil {
 		slog.ErrorContext(ctx, "Error executing response policies", "error", err)
@@ -242,9 +249,9 @@ func (ec *PolicyExecutionContext) processResponseBody(
 
 		// Execute response policy chain with headers and body
 		execResult, err := ec.server.executor.ExecuteResponsePolicies(
-			ec.policyChain.ResponsePolicies,
+			ec.policyChain.Policies,
 			ec.responseContext,
-			ec.policyChain.ResponsePolicySpecs,
+			ec.policyChain.PolicySpecs,
 		)
 		if err != nil {
 			slog.ErrorContext(ctx, "Error executing response policies", "error", err)

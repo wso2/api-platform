@@ -17,12 +17,8 @@ func init() {
 	{{- range .Policies }}
 	// Register {{ .Name }} {{ .Version }}
 	policyDef_{{ .ImportAlias }} := &policies.PolicyDefinition{
-		Name:                   "{{ .Name }}",
-		Version:                "{{ .Version }}",
-		SupportsRequestPhase:   {{ .SupportsRequestPhase }},
-		SupportsResponsePhase:  {{ .SupportsResponsePhase }},
-		RequiresRequestBody:    {{ .RequiresRequestBody }},
-		RequiresResponseBody:   {{ .RequiresResponseBody }},
+		Name:    "{{ .Name }}",
+		Version: "{{ .Version }}",
 	}
 	if err := core.GetRegistry().Register(policyDef_{{ .ImportAlias }}, {{ .ImportAlias }}.NewPolicy()); err != nil {
 		slog.Error("Failed to register policy", "policy", "{{ .Name }}", "version", "{{ .Version }}", "error", err)

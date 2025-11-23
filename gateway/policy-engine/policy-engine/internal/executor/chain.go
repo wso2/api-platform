@@ -45,7 +45,7 @@ type ResponseExecutionResult struct {
 
 // ExecuteRequestPolicies executes request policies with condition evaluation
 // T043: Implements execution with condition evaluation and short-circuit logic
-func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policies.RequestPolicy, ctx *policies.RequestContext, specs []policies.PolicySpec) (*RequestExecutionResult, error) {
+func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policies.Policy, ctx *policies.RequestContext, specs []policies.PolicySpec) (*RequestExecutionResult, error) {
 	startTime := time.Now()
 	result := &RequestExecutionResult{
 		Results:        make([]RequestPolicyResult, 0, len(policyList)),
@@ -124,7 +124,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policies.RequestPoli
 
 // ExecuteResponsePolicies executes response policies with condition evaluation
 // T044: Implements execution with condition evaluation
-func (c *ChainExecutor) ExecuteResponsePolicies(policyList []policies.ResponsePolicy, ctx *policies.ResponseContext, specs []policies.PolicySpec) (*ResponseExecutionResult, error) {
+func (c *ChainExecutor) ExecuteResponsePolicies(policyList []policies.Policy, ctx *policies.ResponseContext, specs []policies.PolicySpec) (*ResponseExecutionResult, error) {
 	startTime := time.Now()
 	result := &ResponseExecutionResult{
 		Results: make([]ResponsePolicyResult, 0, len(policyList)),

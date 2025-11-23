@@ -9,30 +9,22 @@ import (
 
 // PolicyChain is a container for a complete policy processing pipeline for a route
 type PolicyChain struct {
-	// Ordered list of policies to execute during request phase
-	// Type-filtered at build time - all implement RequestPolicy interface
-	RequestPolicies []policies.RequestPolicy
+	// Ordered list of policies to execute (all implement Policy interface)
+	Policies []policies.Policy
 
-	// Ordered list of policies to execute during response phase
-	// Type-filtered at build time - all implement ResponsePolicy interface
-	ResponsePolicies []policies.ResponsePolicy
-
-	// Policy specifications for request policies (aligned with RequestPolicies)
-	RequestPolicySpecs []policies.PolicySpec
-
-	// Policy specifications for response policies (aligned with ResponsePolicies)
-	ResponsePolicySpecs []policies.PolicySpec
+	// Policy specifications (aligned with Policies)
+	PolicySpecs []policies.PolicySpec
 
 	// Shared metadata map for inter-policy communication
 	// Initialized fresh for each request, persists through response phase
 	// Key: string, Value: any (policy-specific data)
 	Metadata map[string]interface{}
 
-	// Computed flag: true if any RequestPolicy requires request body access
+	// Computed flag: true if any policy requires request body access
 	// Determines whether ext_proc uses SKIP or BUFFERED mode for request body
 	RequiresRequestBody bool
 
-	// Computed flag: true if any ResponsePolicy requires response body access
+	// Computed flag: true if any policy requires response body access
 	// Determines whether ext_proc uses SKIP or BUFFERED mode for response body
 	RequiresResponseBody bool
 }

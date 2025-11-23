@@ -46,38 +46,9 @@ type PolicyDefinition struct {
 	// Human-readable description of what this policy version does
 	Description string `yaml:"description" json:"description"`
 
-	// true if policy supports execution during request phase
-	SupportsRequestPhase bool `yaml:"supportsRequestPhase" json:"supportsRequestPhase"`
-
-	// true if policy supports execution during response phase
-	SupportsResponsePhase bool `yaml:"supportsResponsePhase" json:"supportsResponsePhase"`
-
-	// true if policy needs access to request body during request phase
-	// Kernel uses this to set ext_proc body mode
-	RequiresRequestBody bool `yaml:"requiresRequestBody" json:"requiresRequestBody"`
-
-	// true if policy needs access to response body during response phase
-	// Kernel uses this to set ext_proc body mode
-	RequiresResponseBody bool `yaml:"requiresResponseBody" json:"requiresResponseBody"`
-
 	// Parameter schemas for THIS version
 	// Each schema defines name, type, validation rules
 	ParameterSchemas []ParameterSchema `yaml:"parameters" json:"parameters"`
-
-	// Example configurations demonstrating valid usage
-	Examples []PolicyExample `yaml:"examples,omitempty" json:"examples,omitempty"`
-}
-
-// PolicyExample demonstrates valid policy usage
-type PolicyExample struct {
-	// Example name
-	Name string `yaml:"name" json:"name"`
-
-	// Example description
-	Description string `yaml:"description" json:"description"`
-
-	// Example configuration
-	Config map[string]interface{} `yaml:"config" json:"config"`
 }
 
 // PolicySpec is a configuration instance specifying how to use a policy

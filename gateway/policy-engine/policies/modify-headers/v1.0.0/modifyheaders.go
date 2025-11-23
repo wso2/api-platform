@@ -31,6 +31,16 @@ func NewPolicy() policies.Policy {
 	return &ModifyHeadersPolicy{}
 }
 
+// Mode returns the processing mode for this policy
+func (p *ModifyHeadersPolicy) Mode() policies.ProcessingMode {
+	return policies.ProcessingMode{
+		RequestHeaderMode:  policies.HeaderModeProcess, // Can modify request headers
+		RequestBodyMode:    policies.BodyModeSkip,      // Don't need request body
+		ResponseHeaderMode: policies.HeaderModeProcess, // Can modify response headers
+		ResponseBodyMode:   policies.BodyModeSkip,      // Don't need response body
+	}
+}
+
 // Validate validates the policy configuration
 func (p *ModifyHeadersPolicy) Validate(params map[string]interface{}) error {
 	// At least one of requestHeaders or responseHeaders must be present

@@ -12,14 +12,10 @@ import (
 
 // PolicyImport represents a policy import for code generation
 type PolicyImport struct {
-	Name                   string
-	Version                string
-	SupportsRequestPhase   bool
-	SupportsResponsePhase  bool
-	RequiresRequestBody    bool
-	RequiresResponseBody   bool
-	ImportPath             string
-	ImportAlias            string
+	Name        string
+	Version     string
+	ImportPath  string
+	ImportAlias string
 }
 
 // GeneratePluginRegistry generates the plugin_registry.go file
@@ -31,14 +27,10 @@ func GeneratePluginRegistry(policies []*types.DiscoveredPolicy, srcDir string) (
 		importAlias := generateImportAlias(policy.Name, policy.Version)
 
 		imports = append(imports, PolicyImport{
-			Name:                   policy.Name,
-			Version:                policy.Version,
-			SupportsRequestPhase:   policy.Definition.SupportsRequestPhase,
-			SupportsResponsePhase:  policy.Definition.SupportsResponsePhase,
-			RequiresRequestBody:    policy.Definition.RequiresRequestBody,
-			RequiresResponseBody:   policy.Definition.RequiresResponseBody,
-			ImportPath:             importPath,
-			ImportAlias:            importAlias,
+			Name:        policy.Name,
+			Version:     policy.Version,
+			ImportPath:  importPath,
+			ImportAlias: importAlias,
 		})
 	}
 
