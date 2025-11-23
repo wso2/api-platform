@@ -54,11 +54,11 @@ This project uses a multi-component structure:
 
 ### Core Type Definitions and Interfaces
 
-- [x] T007 [P] Define ParameterType enum and TypedValue struct in sdk/policies/types.go
-- [x] T008 [P] Define ValidationRules struct in sdk/policies/types.go
-- [x] T009 [P] Define ParameterSchema and PolicyParameters structs in sdk/policies/schema.go
-- [x] T010 [P] Define PolicyDefinition and PolicyExample structs in sdk/policies/schema.go
-- [x] T011 [P] Define PolicySpec struct in sdk/policies/schema.go
+- [x] T007 [P] Define ParameterType enum and TypedValue struct in sdk/policy/types.go
+- [x] T008 [P] Define ValidationRules struct in sdk/policy/types.go
+- [x] T009 [P] Define ParameterSchema and PolicyParameters structs in sdk/policy/schema.go
+- [x] T010 [P] Define PolicyDefinition and PolicyExample structs in sdk/policy/schema.go
+- [x] T011 [P] Define PolicySpec struct in sdk/policy/schema.go
 - [x] T012 [P] Define RequestContext struct in sdk/core/context.go
 - [x] T013 [P] Define ResponseContext struct in sdk/core/context.go
 
@@ -73,9 +73,9 @@ This project uses a multi-component structure:
 
 ### Policy Interfaces
 
-- [x] T020 [P] Define Policy base interface in sdk/policies/interface.go
-- [x] T021 [P] Define RequestPolicy interface in sdk/policies/interface.go
-- [x] T022 [P] Define ResponsePolicy interface in sdk/policies/interface.go
+- [x] T020 [P] Define Policy base interface in sdk/policy/interface.go
+- [x] T021 [P] Define RequestPolicy interface in sdk/policy/interface.go
+- [x] T022 [P] Define ResponsePolicy interface in sdk/policy/interface.go
 
 ### Execution Result Types
 

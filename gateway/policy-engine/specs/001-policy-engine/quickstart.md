@@ -226,7 +226,7 @@ cat > custom_auth.go <<'EOF'
 package custom_auth
 
 import (
-    "github.com/policy-engine/sdk/policies"
+    "github.com/policy-engine/sdk/policy"
 )
 
 type CustomAuthPolicy struct{}

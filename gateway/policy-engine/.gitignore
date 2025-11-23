@@ -3,9 +3,6 @@
 *.test
 *.out
 vendor/
-/policy-engine/cmd/policy-engine/plugin_registry.go
-/policy-engine/cmd/policy-engine/build_info.go
-policy-engine
 
 # Build outputs
 output/
