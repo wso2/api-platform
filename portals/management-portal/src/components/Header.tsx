@@ -378,7 +378,16 @@ const Header: React.FC = () => {
       <Toolbar variant="dense" sx={{ minHeight: 52 }}>
         <Typography
           variant="subtitle2"
-          sx={{ fontWeight: 800, letterSpacing: 0.2, marginRight: 7 }}
+          sx={{ 
+            fontWeight: 800, 
+            letterSpacing: 0.2, 
+            marginRight: 7,
+            cursor: 'pointer',
+            '&:hover': {
+              color: 'primary.main',
+            }
+          }}
+          onClick={() => navigate("/userSenario")}
         >
           Management Portal
         </Typography>
