@@ -136,6 +136,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   });
   const [newTag, setNewTag] = React.useState('');
   const [allPublishedToActivePortals, setAllPublishedToActivePortals] = React.useState(false);
+  const [publishedStatusLoading, setPublishedStatusLoading] = React.useState(false);
 
   const handleUrlChange = (type: 'production' | 'sandbox', url: string) => {
     setFormData((prev: any) => ({
@@ -193,6 +194,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
       }
 
       (async () => {
+        setPublishedStatusLoading(true);
         try {
           const targetApiId = selectionMode === 'existing' ? selectedExistingApi?.id : (apis.find((a: any) => a.name === contractMeta?.name && a.version === contractMeta?.version)?.id);
           if (!targetApiId) {
@@ -206,6 +208,8 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
           setAllPublishedToActivePortals(!!allPublished);
         } catch (e) {
           setAllPublishedToActivePortals(false);
+        } finally {
+          setPublishedStatusLoading(false);
         }
       })();
     }
@@ -253,8 +257,8 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
         name: title || prev?.name || "Sample API",
         version,
         description,
-        context: deriveContext(api),
-        target: prev?.target || targetUrl || "",
+          context: deriveContext(api),
+          target: prev?.target || targetUrl || "",
       }));
     },
     [setContractMeta],
@@ -814,7 +818,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
 
           {activeStep === 1 && (
             <Box>
-              {!allPublishedToActivePortals && (
+              {!publishedStatusLoading && !allPublishedToActivePortals && (
                 <>
                   {portals.length !== 1 && (
                     <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
@@ -897,7 +901,13 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                 </>
               )}
 
-              {!allPublishedToActivePortals ? (
+              {publishedStatusLoading ? (
+                <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, mb: 2, mt: 3 }}>
+                  <Box display="flex" alignItems="center" justifyContent="center" sx={{ py: 1 }}>
+                    <CircularProgress size={18} />
+                  </Box>
+                </Paper>
+              ) : !allPublishedToActivePortals ? (
                 <>
                   <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, mb: 2, mt: 3 }}>
                     <ApiPublishForm
@@ -938,32 +948,29 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                 </Paper>
               )}
 
-                <Stack
-                direction="row"
-                spacing={1}
-                sx={{ mt: 3 }}
-                justifyContent="space-between"
-              >
-                <Button variant="outlined" onClick={() => setActiveStep(0)}>
-                  Back
-                </Button>
-                
-                {!allPublishedToActivePortals && (
-                  <Button
-                    variant="contained"
-                    disabled={
-                      creating || !selectedPortalId || !formData.apiName || !formData.productionURL || (formData.productionURL.trim() !== '' && !/^https?:\/\/.+/.test(formData.productionURL.trim()))
-                    }
-                    onClick={async () => {
-                      if (!selectedPortalId) return;
-                      const payload = buildPublishPayload(formData, selectedPortalId);
-                      await handlePublishFromModal(selectedPortalId, payload);
-                    }}
-                  >
-                    {creating ? "Publishing..." : "Publish to Portal"}
+              {!publishedStatusLoading && (
+                <Stack direction="row" spacing={1} sx={{ mt: 3 }} justifyContent="space-between">
+                  <Button variant="outlined" onClick={() => setActiveStep(0)}>
+                    Back
                   </Button>
-                )}
-              </Stack>
+
+                  {!allPublishedToActivePortals && (
+                    <Button
+                      variant="contained"
+                      disabled={
+                        creating || !selectedPortalId || !formData.apiName || !formData.productionURL || (formData.productionURL.trim() !== '' && !/^https?:\/\/.+/.test(formData.productionURL.trim()))
+                      }
+                      onClick={async () => {
+                        if (!selectedPortalId) return;
+                        const payload = buildPublishPayload(formData, selectedPortalId);
+                        await handlePublishFromModal(selectedPortalId, payload);
+                      }}
+                    >
+                      {creating ? "Publishing..." : "Publish to Portal"}
+                    </Button>
+                  )}
+                </Stack>
+              )}
             </Box>
           )}    
         </Box>
