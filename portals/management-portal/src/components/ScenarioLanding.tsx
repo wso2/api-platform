@@ -179,9 +179,9 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
                 return (
                   <Card
                     key={scenario.id}
-                    onClick={() => toggleScenario(scenario.id)}
+                    onClick={() => !scenario.comingSoon && toggleScenario(scenario.id)}
                     sx={{
-                      cursor: "pointer",
+                      cursor: scenario.comingSoon ? "not-allowed" : "pointer",
                       border: "1px solid",
                       borderColor: isActive ? ACCENT : "divider",
                       bgcolor: isChecked
@@ -190,6 +190,8 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
                       transition:
                         "border-color 150ms ease, box-shadow 150ms ease",
                       boxShadow: isActive ? CARD_SHADOW : "none",
+                      opacity: scenario.comingSoon ? 0.6 : 1,
+                      pointerEvents: scenario.comingSoon ? "none" : "auto",
                     }}
                   >
                     <Stack
@@ -274,6 +276,7 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
               <Button
                 variant="contained"
                 size="large"
+                disabled={activeScenario.comingSoon}
                 component={
                   activeScenario.id === "design-api"
                     ? (MuiLink as any)
