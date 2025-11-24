@@ -57,6 +57,30 @@ const (
 	Pending  ConfigDumpResponseApisMetadataStatus = "pending"
 )
 
+// Defines values for MCPDetailResponseMcpMetadataStatus.
+const (
+	MCPDetailResponseMcpMetadataStatusDeployed MCPDetailResponseMcpMetadataStatus = "deployed"
+	MCPDetailResponseMcpMetadataStatusFailed   MCPDetailResponseMcpMetadataStatus = "failed"
+	MCPDetailResponseMcpMetadataStatusPending  MCPDetailResponseMcpMetadataStatus = "pending"
+)
+
+// Defines values for MCPProxyConfigurationKind.
+const (
+	Mcp MCPProxyConfigurationKind = "mcp"
+)
+
+// Defines values for MCPProxyConfigurationVersion.
+const (
+	AiApiPlatformWso2Comv1 MCPProxyConfigurationVersion = "ai.api-platform.wso2.com/v1"
+)
+
+// Defines values for MCPProxyListItemStatus.
+const (
+	MCPProxyListItemStatusDeployed MCPProxyListItemStatus = "deployed"
+	MCPProxyListItemStatusFailed   MCPProxyListItemStatus = "failed"
+	MCPProxyListItemStatusPending  MCPProxyListItemStatus = "pending"
+)
+
 // Defines values for OperationMethod.
 const (
 	DELETE  OperationMethod = "DELETE"
@@ -257,6 +281,131 @@ type ErrorResponse struct {
 	Status  string `json:"status"`
 }
 
+// MCPDetailResponse defines model for MCPDetailResponse.
+type MCPDetailResponse struct {
+	Mcp *struct {
+		Configuration *MCPProxyConfiguration `json:"configuration,omitempty"`
+		Id            *openapi_types.UUID    `json:"id,omitempty"`
+		Metadata      *struct {
+			CreatedAt  *time.Time                          `json:"created_at,omitempty"`
+			DeployedAt *time.Time                          `json:"deployed_at,omitempty"`
+			Status     *MCPDetailResponseMcpMetadataStatus `json:"status,omitempty"`
+			UpdatedAt  *time.Time                          `json:"updated_at,omitempty"`
+		} `json:"metadata,omitempty"`
+	} `json:"mcp,omitempty"`
+	Status *string `json:"status,omitempty"`
+}
+
+// MCPDetailResponseMcpMetadataStatus defines model for MCPDetailResponse.Mcp.Metadata.Status.
+type MCPDetailResponseMcpMetadataStatus string
+
+// MCPPrompt defines model for MCPPrompt.
+type MCPPrompt struct {
+	// Arguments Optional list of arguments for customization
+	Arguments *[]string `json:"arguments,omitempty"`
+
+	// Description Optional human-readable description
+	Description *string `json:"description,omitempty"`
+
+	// Name Unique identifier for the prompt
+	Name string `json:"name"`
+
+	// Title Optional human-readable name of the prompt for display purposes
+	Title *string `json:"title,omitempty"`
+}
+
+// MCPProxyConfigData defines model for MCPProxyConfigData.
+type MCPProxyConfigData struct {
+	// Context MCP Proxy context path
+	Context string `json:"context"`
+
+	// Name Human-readable MCP Proxy name
+	Name      string         `json:"name"`
+	Prompts   *[]MCPPrompt   `json:"prompts,omitempty"`
+	Resources *[]MCPResource `json:"resources,omitempty"`
+
+	// SpecVersion MCP specification version
+	SpecVersion *string    `json:"specVersion,omitempty"`
+	Tools       *[]MCPTool `json:"tools,omitempty"`
+	Upstream    []struct {
+		Url *string `json:"url,omitempty"`
+	} `json:"upstream"`
+
+	// Version MCP Proxy version
+	Version string `json:"version"`
+}
+
+// MCPProxyConfiguration defines model for MCPProxyConfiguration.
+type MCPProxyConfiguration struct {
+	Data MCPProxyConfigData `json:"data"`
+
+	// Kind MCP Proxy type
+	Kind MCPProxyConfigurationKind `json:"kind"`
+
+	// Version MCP Proxy specification version
+	Version MCPProxyConfigurationVersion `json:"version"`
+}
+
+// MCPProxyConfigurationKind MCP Proxy type
+type MCPProxyConfigurationKind string
+
+// MCPProxyConfigurationVersion MCP Proxy specification version
+type MCPProxyConfigurationVersion string
+
+// MCPProxyListItem defines model for MCPProxyListItem.
+type MCPProxyListItem struct {
+	Context     *string                 `json:"context,omitempty"`
+	CreatedAt   *time.Time              `json:"created_at,omitempty"`
+	Id          *openapi_types.UUID     `json:"id,omitempty"`
+	Name        *string                 `json:"name,omitempty"`
+	SpecVersion *string                 `json:"specVersion,omitempty"`
+	Status      *MCPProxyListItemStatus `json:"status,omitempty"`
+	UpdatedAt   *time.Time              `json:"updated_at,omitempty"`
+	Version     *string                 `json:"version,omitempty"`
+}
+
+// MCPProxyListItemStatus defines model for MCPProxyListItem.Status.
+type MCPProxyListItemStatus string
+
+// MCPResource defines model for MCPResource.
+type MCPResource struct {
+	// Description Optional description
+	Description *string `json:"description,omitempty"`
+
+	// MimeType Optional MIME type
+	MimeType *string `json:"mimeType,omitempty"`
+
+	// Name The name of the resource
+	Name string `json:"name"`
+
+	// Size Optional size in bytes
+	Size *int `json:"size,omitempty"`
+
+	// Title Optional human-readable name of the resource for display purposes
+	Title *string `json:"title,omitempty"`
+
+	// Uri Unique identifier for the resource
+	Uri string `json:"uri"`
+}
+
+// MCPTool defines model for MCPTool.
+type MCPTool struct {
+	// Description Human-readable description of functionality
+	Description string `json:"description"`
+
+	// InputSchema JSON Schema defining expected parameters
+	InputSchema string `json:"inputSchema"`
+
+	// Name Unique identifier for the tool
+	Name string `json:"name"`
+
+	// OutputSchema Optional JSON Schema defining expected output structure
+	OutputSchema *string `json:"outputSchema,omitempty"`
+
+	// Title Optional human-readable name of the tool for display purposes.
+	Title *string `json:"title,omitempty"`
+}
+
 // Operation defines model for Operation.
 type Operation struct {
 	// Method HTTP method
@@ -333,6 +482,12 @@ type UpdateAPIJSONRequestBody = APIConfiguration
 // UploadCertificateJSONRequestBody defines body for UploadCertificate for application/json ContentType.
 type UploadCertificateJSONRequestBody = CertificateUploadRequest
 
+// CreateMCPProxyJSONRequestBody defines body for CreateMCPProxy for application/json ContentType.
+type CreateMCPProxyJSONRequestBody = MCPProxyConfiguration
+
+// UpdateMCPProxyJSONRequestBody defines body for UpdateMCPProxy for application/json ContentType.
+type UpdateMCPProxyJSONRequestBody = MCPProxyConfiguration
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// List all API configurations
@@ -371,6 +526,21 @@ type ServerInterface interface {
 	// List all registered policy definitions
 	// (GET /policies)
 	ListPolicies(c *gin.Context)
+	// List all MCP Proxy configurations
+	// (GET /mcp-proxies)
+	ListMCPProxies(c *gin.Context)
+	// Create a new MCP Proxy configuration
+	// (POST /mcp-proxies)
+	CreateMCPProxy(c *gin.Context)
+	// Delete an MCP Proxy configuration
+	// (DELETE /mcp-proxies/{name}/{version})
+	DeleteMCPProxy(c *gin.Context, name string, version string)
+	// Get MCP Proxy configuration by name and version
+	// (GET /mcp-proxies/{name}/{version})
+	GetMCPProxyByNameVersion(c *gin.Context, name string, version string)
+	// Update an existing MCP Proxy configuration
+	// (PUT /mcp-proxies/{name}/{version})
+	UpdateMCPProxy(c *gin.Context, name string, version string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -609,6 +779,131 @@ func (siw *ServerInterfaceWrapper) ListPolicies(c *gin.Context) {
 	siw.Handler.ListPolicies(c)
 }
 
+// ListMCPProxies operation middleware
+func (siw *ServerInterfaceWrapper) ListMCPProxies(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListMCPProxies(c)
+}
+
+// CreateMCPProxy operation middleware
+func (siw *ServerInterfaceWrapper) CreateMCPProxy(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateMCPProxy(c)
+}
+
+// DeleteMCPProxy operation middleware
+func (siw *ServerInterfaceWrapper) DeleteMCPProxy(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteMCPProxy(c, name, version)
+}
+
+// GetMCPProxyByNameVersion operation middleware
+func (siw *ServerInterfaceWrapper) GetMCPProxyByNameVersion(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetMCPProxyByNameVersion(c, name, version)
+}
+
+// UpdateMCPProxy operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMCPProxy(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateMCPProxy(c, name, version)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -647,92 +942,77 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/certificates/:id", wrapper.DeleteCertificate)
 	router.GET(options.BaseURL+"/config_dump", wrapper.GetConfigDump)
 	router.GET(options.BaseURL+"/health", wrapper.HealthCheck)
+	router.GET(options.BaseURL+"/mcp-proxies", wrapper.ListMCPProxies)
+	router.POST(options.BaseURL+"/mcp-proxies", wrapper.CreateMCPProxy)
+	router.DELETE(options.BaseURL+"/mcp-proxies/:name/:version", wrapper.DeleteMCPProxy)
+	router.GET(options.BaseURL+"/mcp-proxies/:name/:version", wrapper.GetMCPProxyByNameVersion)
+	router.PUT(options.BaseURL+"/mcp-proxies/:name/:version", wrapper.UpdateMCPProxy)
 	router.GET(options.BaseURL+"/policies", wrapper.ListPolicies)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
+	"AA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
