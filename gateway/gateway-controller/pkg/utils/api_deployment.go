@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -72,14 +73,15 @@ func NewAPIDeploymentService(
 
 // DeployAPIConfiguration handles the complete API configuration deployment process
 func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams) (*APIDeploymentResult, error) {
+	var apiConfig api.APIConfiguration
 	// Parse configuration
-	apiConfig, err := s.parser.Parse(params.Data, params.ContentType)
+	err := s.parser.Parse(params.Data, params.ContentType, &apiConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse configuration: %w", err)
 	}
 
 	// Validate configuration
-	validationErrors := s.validator.Validate(apiConfig)
+	validationErrors := s.validator.Validate(&apiConfig)
 	if len(validationErrors) > 0 {
 		params.Logger.Warn("Configuration validation failed",
 			zap.String("api_id", params.APIID),
@@ -105,7 +107,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	now := time.Now()
 	storedCfg := &models.StoredAPIConfig{
 		ID:              apiID,
-		Configuration:   *apiConfig,
+		Configuration:   apiConfig,
 		Status:          models.StatusPending,
 		CreatedAt:       now,
 		UpdatedAt:       now,

@@ -21,10 +21,11 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 
 	"github.com/gin-gonic/gin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
@@ -267,7 +268,8 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 
 	// Parse configuration
 	contentType := c.GetHeader("Content-Type")
-	apiConfig, err := s.parser.Parse(body, contentType)
+	var apiConfig api.APIConfiguration
+	err = s.parser.Parse(body, contentType, &apiConfig)
 	if err != nil {
 		log.Error("Failed to parse configuration", zap.Error(err))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
@@ -278,7 +280,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 	}
 
 	// Validate configuration
-	validationErrors := s.validator.Validate(apiConfig)
+	validationErrors := s.validator.Validate(&apiConfig)
 	if len(validationErrors) > 0 {
 		log.Warn("Configuration validation failed",
 			zap.String("name", apiConfig.Data.Name),
@@ -315,7 +317,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 
 	// Update stored configuration
 	now := time.Now()
-	existing.Configuration = *apiConfig
+	existing.Configuration = apiConfig
 	existing.Status = models.StatusPending
 	existing.UpdatedAt = now
 	existing.DeployedAt = nil

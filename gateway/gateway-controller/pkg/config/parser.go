@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"gopkg.in/yaml.v3"
 )
 
@@ -35,46 +34,40 @@ func NewParser() *Parser {
 }
 
 // ParseYAML parses YAML content into an API configuration
-func (p *Parser) ParseYAML(data []byte) (*api.APIConfiguration, error) {
-	var config api.APIConfiguration
-
+func (p *Parser) ParseYAML(data []byte, config interface{}) error {
 	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse YAML: %w", err)
+		return fmt.Errorf("failed to parse YAML: %w", err)
 	}
 
-	return &config, nil
+	return nil
 }
 
 // ParseJSON parses JSON content into an API configuration
-func (p *Parser) ParseJSON(data []byte) (*api.APIConfiguration, error) {
-	var config api.APIConfiguration
-
-	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+func (p *Parser) ParseJSON(data []byte, config interface{}) error {
+	if err := json.Unmarshal(data, config); err != nil {
+		return fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
-	return &config, nil
+	return nil
 }
 
 // Parse attempts to parse data as either YAML or JSON
-func (p *Parser) Parse(data []byte, contentType string) (*api.APIConfiguration, error) {
+func (p *Parser) Parse(data []byte, contentType string, config interface{}) error {
 	switch contentType {
 	case "application/yaml", "application/x-yaml", "text/yaml":
-		return p.ParseYAML(data)
+		return p.ParseYAML(data, config)
 	case "application/json":
-		return p.ParseJSON(data)
+		return p.ParseJSON(data, config)
 	default:
 		// Try YAML first, then JSON
-		config, err := p.ParseYAML(data)
-		if err == nil {
-			return config, nil
+		if err := p.ParseYAML(data, config); err == nil {
+			return nil
 		}
 
-		config, err = p.ParseJSON(data)
-		if err == nil {
-			return config, nil
+		if err := p.ParseJSON(data, config); err == nil {
+			return nil
 		}
 
-		return nil, fmt.Errorf("failed to parse as YAML or JSON")
+		return fmt.Errorf("failed to parse as YAML or JSON")
 	}
 }
