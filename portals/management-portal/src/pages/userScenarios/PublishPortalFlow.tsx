@@ -164,12 +164,15 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
 
   React.useEffect(() => {
     if (activeStep === 1) {
+      const endpointFromSelected = selectionMode === 'existing' ? firstServerUrl(selectedExistingApi) : '';
+      const endpointFromValidation = (validationResult && validationResult.isAPIDefinitionValid) ? firstServerUrl((validationResult as any).api) : '';
+
       setFormData((prev: any) => ({
         ...prev,
         apiName: selectionMode === 'existing' ? selectedExistingApi?.name || prev.apiName : contractMeta?.name || prev.apiName,
         apiDescription: selectionMode === 'existing' ? selectedExistingApi?.description || prev.apiDescription : contractMeta?.description || prev.apiDescription,
-        productionURL: portalEndpoint || prev.productionURL,
-        sandboxURL: portalEndpoint || prev.sandboxURL,
+        productionURL: endpointFromSelected || endpointFromValidation || contractMeta?.target || portalEndpoint || prev.productionURL,
+        sandboxURL: endpointFromSelected || endpointFromValidation || contractMeta?.target || portalEndpoint || prev.sandboxURL,
         visibility: portalVisibility || prev.visibility,
       }));
 
@@ -188,7 +191,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
         })();
       }
     }
-  }, [activeStep, selectionMode, selectedExistingApi, contractMeta, portalEndpoint, portalVisibility, fetchGatewaysForApi]);
+  }, [activeStep, selectionMode, selectedExistingApi, contractMeta, portalEndpoint, portalVisibility, fetchGatewaysForApi, validationResult]);
 
   React.useEffect(() => {
     if (activeStep === 1 && portals.length > 0) {
