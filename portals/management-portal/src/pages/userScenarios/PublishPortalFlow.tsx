@@ -15,13 +15,15 @@ import {
   Divider,
   Chip,
   TextField,
-  MenuItem,
+  
 } from "@mui/material";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import { TextInput } from "../../components/src/components/TextInput";
 import { Button } from "../../components/src/components/Button";
 import { ApiOperationsList } from "../../components/src/components/Common/ApiOperationsList";
 import WizardPortalCard from "../portals/WizardPortalCard";
+import { buildPublishPayload } from "../apis/ApiPublish/mapper";
+import ApiPublishForm from "../apis/ApiPublish/ApiPublishForm";
 import {
   useCreateComponentBuildpackContext,
   CreateComponentBuildpackProvider,
@@ -104,7 +106,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
     useCreateComponentBuildpackContext();
   const { validateOpenApiUrl } = useOpenApiValidation();
   const { devportals: allPortals, loading: portalsLoading } = useDevPortals();
-  const { apis, loading: apisLoading, importOpenApi, refreshApis } = useApisContext();
+  const { apis, loading: apisLoading, importOpenApi, refreshApis, fetchGatewaysForApi } = useApisContext();
   const { selectedProject } = useProjects();
   const { publishApiToDevPortal } = useApiPublishing();
   const navigate = useNavigate();
@@ -113,6 +115,90 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   const typedApis = React.useMemo<ApiSummary[]>(() => apis, [apis]);
   
   const portals = React.useMemo(() => allPortals.filter(p => p.isActive), [allPortals]);
+
+  const [showAdvanced, setShowAdvanced] = React.useState(false);
+  const [gateways, setGateways] = React.useState<any[]>([]);
+  const [loadingGateways, setLoadingGateways] = React.useState(false);
+  const [formData, setFormData] = React.useState<any>({
+    apiName: contractMeta?.name || '',
+    productionURL: portalEndpoint || '',
+    sandboxURL: portalEndpoint || '',
+    apiDescription: contractMeta?.description || '',
+    visibility: portalVisibility || 'PUBLIC',
+    technicalOwner: '',
+    technicalOwnerEmail: '',
+    businessOwner: '',
+    businessOwnerEmail: '',
+    labels: ['default'],
+    subscriptionPolicies: [],
+    tags: [],
+    selectedDocumentIds: [],
+  });
+  const [newTag, setNewTag] = React.useState('');
+
+  const handleUrlChange = (type: 'production' | 'sandbox', url: string) => {
+    setFormData((prev: any) => ({
+      ...prev,
+      [`${type}URL`]: url,
+      ...(type === 'production' && !prev.sandboxURL ? { sandboxURL: url } : {}),
+    }));
+  };
+
+  const handleCheckboxChange = (field: 'labels' | 'subscriptionPolicies' | 'selectedDocumentIds', value: string, checked: boolean) => {
+    setFormData((prev: any) => ({
+      ...prev,
+      [field]: checked ? [...(prev[field] || []), value] : (prev[field] || []).filter((item: string) => item !== value),
+    }));
+  };
+
+  const handleAddTag = () => {
+    if (newTag.trim() && !formData.tags?.includes(newTag.trim())) {
+      setFormData((prev: any) => ({ ...prev, tags: [...(prev.tags || []), newTag.trim()] }));
+      setNewTag('');
+    }
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    setFormData((prev: any) => ({ ...prev, tags: (prev.tags || []).filter((t: string) => t !== tagToRemove) }));
+  };
+
+  React.useEffect(() => {
+    if (activeStep === 1) {
+      setFormData((prev: any) => ({
+        ...prev,
+        apiName: selectionMode === 'existing' ? selectedExistingApi?.name || prev.apiName : contractMeta?.name || prev.apiName,
+        apiDescription: selectionMode === 'existing' ? selectedExistingApi?.description || prev.apiDescription : contractMeta?.description || prev.apiDescription,
+        productionURL: portalEndpoint || prev.productionURL,
+        sandboxURL: portalEndpoint || prev.sandboxURL,
+        visibility: portalVisibility || prev.visibility,
+      }));
+
+      const apiId = selectionMode === 'existing' ? selectedExistingApi?.id : undefined;
+      if (apiId) {
+        (async () => {
+          setLoadingGateways(true);
+          try {
+            const apiGateways = await fetchGatewaysForApi(apiId);
+            setGateways(apiGateways || []);
+          } catch (err) {
+            setGateways([]);
+          } finally {
+            setLoadingGateways(false);
+          }
+        })();
+      }
+    }
+  }, [activeStep, selectionMode, selectedExistingApi, contractMeta, portalEndpoint, portalVisibility, fetchGatewaysForApi]);
+
+  React.useEffect(() => {
+    if (activeStep === 1 && portals.length > 0) {
+      if (portals.length === 1) {
+        setSelectedPortalId(portals[0].uuid);
+      } else if (!selectedPortalId) {
+        setSelectedPortalId(portals[0].uuid);
+      }
+    }
+  }, [activeStep, portals, selectedPortalId]);
 
   const portalsPath = React.useMemo(() => {
     if (!organization) return "/portals";
@@ -271,53 +357,19 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   const step0ButtonLabel = selectionMode === "url" ? "Create API" : "Continue";
   const step0ButtonAction = selectionMode === "url" ? handleCreateApi : handleContinueWithExistingApi;
 
-  const handlePublishToPortal = async () => {
-    if (!selectedPortalId) {
-      setError("Please select a developer portal.");
-      return;
-    }
 
+
+  const handlePublishFromModal = async (portalId: string, payload: any) => {
     try {
       setCreating(true);
       setError(null);
-      
-      const apiToPublish = selectionMode === "url" 
-        ? contractMeta 
-        : selectedExistingApi;
-      
-      if (!apiToPublish) {
-        setError("No API selected for publishing.");
-        return;
-      }
 
-      const publishPayload = {
-        devPortalUUID: selectedPortalId,
-        endPoints: {
-          productionURL: portalEndpoint.trim(),
-          sandboxURL: portalEndpoint.trim(),
-        },
-        apiInfo: {
-          apiName: apiToPublish.name,
-          apiDescription: apiToPublish.description || "",
-          visibility: portalVisibility as 'PUBLIC' | 'PRIVATE',
-          tags: [],
-          labels: [],
-          owners: {
-            technicalOwner: "",
-            technicalOwnerEmail: "",
-            businessOwner: "",
-            businessOwnerEmail: "",
-          },
-        },
-        subscriptionPolicies: [],
-      };
-
-      let apiId: string;
+      let apiId: string | undefined;
       if (selectionMode === "existing" && selectedExistingApi) {
         apiId = selectedExistingApi.id;
       } else {
         const createdApi = apis.find(
-          api => api.name === contractMeta?.name && api.version === contractMeta?.version
+          (a) => a.name === contractMeta?.name && a.version === contractMeta?.version,
         );
         if (!createdApi) {
           setError("Could not find the created API. Please try again.");
@@ -326,11 +378,11 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
         apiId = createdApi.id;
       }
 
-      await publishApiToDevPortal(apiId, publishPayload);
+      await publishApiToDevPortal(apiId, payload);
 
-      const selectedPortal = portals.find((p: Portal) => p.uuid === selectedPortalId);
+      const selectedPortal = portals.find((p: Portal) => p.uuid === portalId);
       const portalName = selectedPortal?.name || 'portal';
-      showNotification(`API "${apiToPublish.name}" successfully published to ${portalName}!`, 'success');
+      showNotification(`API "${contractMeta?.name || selectedExistingApi?.name}" successfully published to ${portalName}!`, 'success');
 
       resetContractMeta();
       setActiveStep(0);
@@ -741,53 +793,11 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
 
           {activeStep === 1 && (
             <Box>
-              <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
-                Select Developer Portal
-              </Typography>
-
-              <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, mb: 2 }}>
-                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
-                  Developer Portal Settings
+              {portals.length !== 1 && (
+                <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+                  Select Developer Portal
                 </Typography>
-
-                <Stack spacing={2}>
-                  <TextField
-                    select
-                    label="Access Visibility"
-                    value={portalVisibility}
-                    onChange={(e) => setPortalVisibility(e.target.value)}
-                    fullWidth
-                    required
-                    variant="outlined"
-                    helperText="Control who can discover your API"
-                  >
-                    <MenuItem value="PUBLIC">
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <span>🌍</span>
-                        <Typography variant="body2">Public</Typography>
-                      </Box>
-                    </MenuItem>
-                    <MenuItem value="PRIVATE">
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <span>🔒</span>
-                        <Typography variant="body2">Private</Typography>
-                      </Box>
-                    </MenuItem>
-                  </TextField>
-
-                  <TextField
-                    label="Endpoint"
-                    value={portalEndpoint}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPortalEndpoint(e.target.value)}
-                    fullWidth
-                    required
-                    variant="outlined"
-                    placeholder="https://api.example.com"
-                    helperText="Endpoint URL displayed to developers"
-                    error={portalEndpoint.trim() !== '' && !/^https?:\/\/.+/.test(portalEndpoint.trim())}
-                  />
-                </Stack>
-              </Paper>
+              )}
 
               {portalsLoading ? (
                 <Box
@@ -820,31 +830,74 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                   </Button>
                 </Paper>
               ) : (
-                <Grid container spacing={2}>
-                  {portals.map((portal: Portal) => (
-                    <Grid key={portal.uuid} size={{ xs: 6, sm: 4, md: 3 }}>
-                      <WizardPortalCard
-                        title={portal.name}
-                        description={portal.description}
-                        portalUrl={portal.uiUrl}
-                        selected={selectedPortalId === portal.uuid}
-                        onSelect={() => {
-                          if (selectedPortalId === portal.uuid) {
-                            setSelectedPortalId(null);
-                          } else {
-                            setSelectedPortalId(portal.uuid);
-                          }
-                        }}
-                        logoSrc={portal.logoSrc || BijiraDPLogo}
-                        logoAlt={
-                          portal.logoAlt ||
-                          PORTAL_CONSTANTS.DEFAULT_LOGO_ALT
-                        }
+                portals.length === 1 ? (
+                  <Paper
+                    variant="outlined"
+                    sx={{ p: 2, borderRadius: 2, display: 'flex', alignItems: 'center', gap: 2 }}
+                  >
+                    <Box sx={{ width: 56, height: 56, flexShrink: 0 }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={portals[0].logoSrc || BijiraDPLogo}
+                        alt={portals[0].logoAlt || PORTAL_CONSTANTS.DEFAULT_LOGO_ALT}
+                        style={{ width: 56, height: 56, objectFit: 'contain', borderRadius: 6 }}
                       />
-                    </Grid>
-                  ))}
-                </Grid>
+                    </Box>
+                    <Box>
+                      <Typography variant="subtitle1" fontWeight={600}>
+                        {portals[0].name}
+                      </Typography>
+                      {portals[0].description && (
+                        <Typography variant="body2" color="text.secondary">
+                          {portals[0].description}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Paper>
+                ) : (
+                  <Grid container spacing={2}>
+                    {portals.map((portal: Portal) => (
+                      <Grid key={portal.uuid} size={{ xs: 6, sm: 4, md: 3 }}>
+                        <WizardPortalCard
+                          title={portal.name}
+                          description={portal.description}
+                          portalUrl={portal.uiUrl}
+                          selected={selectedPortalId === portal.uuid}
+                          onSelect={() => {
+                            if (selectedPortalId === portal.uuid) {
+                              setSelectedPortalId(null);
+                            } else {
+                              setSelectedPortalId(portal.uuid);
+                            }
+                          }}
+                          logoSrc={portal.logoSrc || BijiraDPLogo}
+                          logoAlt={
+                            portal.logoAlt ||
+                            PORTAL_CONSTANTS.DEFAULT_LOGO_ALT
+                          }
+                        />
+                      </Grid>
+                    ))}
+                  </Grid>
+                )
               )}
+
+              <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, mb: 2, mt: 3 }}>
+                <ApiPublishForm
+                  formData={formData}
+                  setFormData={setFormData}
+                  showAdvanced={showAdvanced}
+                  setShowAdvanced={setShowAdvanced}
+                  gateways={gateways}
+                  loadingGateways={loadingGateways}
+                  newTag={newTag}
+                  setNewTag={setNewTag}
+                  handleAddTag={handleAddTag}
+                  handleRemoveTag={handleRemoveTag}
+                  handleCheckboxChange={handleCheckboxChange}
+                  handleUrlChange={handleUrlChange}
+                />
+              </Paper>
 
                 <Stack
                 direction="row"
@@ -855,18 +908,23 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                 <Button variant="outlined" onClick={() => setActiveStep(0)}>
                   Back
                 </Button>
+                
                 <Button
                   variant="contained"
                   disabled={
-                    creating || !selectedPortalId || !portalVisibility.trim() || portalEndpoint.trim() === '' || !/^https?:\/\/.+/.test(portalEndpoint.trim())
+                    creating || !selectedPortalId || !formData.apiName || !formData.productionURL || (formData.productionURL.trim() !== '' && !/^https?:\/\/.+/.test(formData.productionURL.trim()))
                   }
-                  onClick={handlePublishToPortal}
+                  onClick={async () => {
+                    if (!selectedPortalId) return;
+                    const payload = buildPublishPayload(formData, selectedPortalId);
+                    await handlePublishFromModal(selectedPortalId, payload);
+                  }}
                 >
                   {creating ? "Publishing..." : "Publish to Portal"}
                 </Button>
               </Stack>
             </Box>
-          )}
+          )}    
         </Box>
       </Container>
     </Box>
