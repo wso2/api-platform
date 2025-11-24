@@ -27,11 +27,13 @@ import (
 
 	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
+	mutationrules "github.com/envoyproxy/go-control-plane/envoy/config/common/mutation_rules/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	fileaccesslog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
+	extproc "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
@@ -189,6 +191,26 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost) (*listene
 		return nil, fmt.Errorf("failed to create router config: %w", err)
 	}
 
+	// Build HTTP filters chain
+	httpFilters := make([]*hcm.HttpFilter, 0)
+
+	// Add ext_proc filter if policy engine is enabled
+	if t.routerConfig.PolicyEngine.Enabled {
+		extProcFilter, err := t.createExtProcFilter()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create ext_proc filter: %w", err)
+		}
+		httpFilters = append(httpFilters, extProcFilter)
+	}
+
+	// Add router filter (must be last)
+	httpFilters = append(httpFilters, &hcm.HttpFilter{
+		Name: wellknown.Router,
+		ConfigType: &hcm.HttpFilter_TypedConfig{
+			TypedConfig: routerAny,
+		},
+	})
+
 	// Create HTTP connection manager
 	manager := &hcm.HttpConnectionManager{
 		CodecType:  hcm.HttpConnectionManager_AUTO,
@@ -196,12 +218,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost) (*listene
 		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{
 			RouteConfig: routeConfig,
 		},
-		HttpFilters: []*hcm.HttpFilter{{
-			Name: wellknown.Router,
-			ConfigType: &hcm.HttpFilter_TypedConfig{
-				TypedConfig: routerAny,
-			},
-		}},
+		HttpFilters: httpFilters,
 	}
 
 	// Add access logs if enabled
@@ -591,7 +608,7 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	if t.routerConfig.AccessLogs.Format == "json" {
 		// Use JSON log format fields from config
 		jsonFormat := t.routerConfig.AccessLogs.JSONFields
-		if jsonFormat == nil || len(jsonFormat) == 0 {
+		if len(jsonFormat) == 0 {
 			return nil, fmt.Errorf("json_fields not configured in access log config")
 		}
 
@@ -655,4 +672,63 @@ func convertToInterface(m map[string]string) map[string]interface{} {
 		result[k] = v
 	}
 	return result
+}
+
+// createExtProcFilter creates an Envoy ext_proc filter for policy engine integration
+func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
+	policyEngine := t.routerConfig.PolicyEngine
+
+	// Convert route cache action string to enum
+	routeCacheAction := extproc.ExternalProcessor_DEFAULT
+	switch policyEngine.RouteCacheAction {
+	case constants.ExtProcRouteCacheActionRetain:
+		routeCacheAction = extproc.ExternalProcessor_RETAIN
+	case constants.ExtProcRouteCacheActionClear:
+		routeCacheAction = extproc.ExternalProcessor_CLEAR
+	}
+
+	// Convert request header mode string to enum
+	requestHeaderMode := extproc.ProcessingMode_DEFAULT
+	switch policyEngine.RequestHeaderMode {
+	case constants.ExtProcHeaderModeSend:
+		requestHeaderMode = extproc.ProcessingMode_SEND
+	case constants.ExtProcHeaderModeSkip:
+		requestHeaderMode = extproc.ProcessingMode_SKIP
+	}
+
+	// Create ext_proc configuration
+	extProcConfig := &extproc.ExternalProcessor{
+		GrpcService: &core.GrpcService{
+			TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
+				EnvoyGrpc: &core.GrpcService_EnvoyGrpc{
+					ClusterName: policyEngine.ClusterName,
+				},
+			},
+			Timeout: durationpb.New(time.Duration(policyEngine.TimeoutMs) * time.Millisecond),
+		},
+		FailureModeAllow:  policyEngine.FailureModeAllow,
+		RouteCacheAction:  routeCacheAction,
+		AllowModeOverride: policyEngine.AllowModeOverride,
+		RequestAttributes: []string{constants.ExtProcRequestAttributeRouteName},
+		ProcessingMode: &extproc.ProcessingMode{
+			RequestHeaderMode: requestHeaderMode,
+		},
+		MessageTimeout: durationpb.New(time.Duration(policyEngine.MessageTimeoutMs) * time.Millisecond),
+		MutationRules: &mutationrules.HeaderMutationRules{
+			AllowAllRouting: wrapperspb.Bool(true),
+		},
+	}
+
+	// Marshal to Any
+	extProcAny, err := anypb.New(extProcConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal ext_proc config: %w", err)
+	}
+
+	return &hcm.HttpFilter{
+		Name: constants.ExtProcFilterName,
+		ConfigType: &hcm.HttpFilter_TypedConfig{
+			TypedConfig: extProcAny,
+		},
+	}, nil
 }

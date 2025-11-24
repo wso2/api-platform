@@ -90,6 +90,34 @@ router:
       max_route_timeout_in_seconds: 60
       route_idle_timeout_in_seconds: 300
 
+  # Policy Engine ext_proc filter configuration
+  policy_engine:
+    # Enable or disable policy engine ext_proc filter
+    enabled: false
+
+    # Cluster name for the policy engine gRPC service
+    cluster_name: policy-engine-grpc-service
+
+    # Timeout for gRPC service connection (in milliseconds)
+    timeout_ms: 250
+
+    # Failure mode: false = fail closed (deny requests on error), true = fail open (allow requests on error)
+    failure_mode_allow: false
+
+    # Route cache action: DEFAULT, RETAIN, or CLEAR
+    # RETAIN: Maintain the route cache across requests (recommended for performance)
+    route_cache_action: RETAIN
+
+    # Allow per-route override of ext_proc configuration
+    allow_mode_override: true
+
+    # Request header processing mode: DEFAULT, SEND, or SKIP
+    # SEND: Forward request headers to policy engine for processing
+    request_header_mode: SEND
+
+    # Message timeout for policy engine processing (in milliseconds)
+    message_timeout_ms: 250
+
 # Logging configuration
 logging:
   # Log level: "debug", "info", "warn", or "error"
