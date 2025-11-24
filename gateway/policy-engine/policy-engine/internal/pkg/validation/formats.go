@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"regexp"
 
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // UUID regex pattern (RFC 4122)
@@ -17,7 +17,7 @@ var uuidRegex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[8
 var hostnameRegex = regexp.MustCompile(`^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$`)
 
 // validateEmail validates email format parameters
-func validateEmail(value interface{}, schema policies.ParameterSchema) (*policies.TypedValue, error) {
+func validateEmail(value interface{}, schema policy.ParameterSchema) (*policy.TypedValue, error) {
 	strVal, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("parameter '%s' must be a string, got %T", schema.Name, value)
@@ -30,14 +30,14 @@ func validateEmail(value interface{}, schema policies.ParameterSchema) (*policie
 			schema.Name, strVal, err)
 	}
 
-	return &policies.TypedValue{
-		Type:  policies.ParameterTypeEmail,
+	return &policy.TypedValue{
+		Type:  policy.ParameterTypeEmail,
 		Value: strVal,
 	}, nil
 }
 
 // validateURI validates URI format parameters
-func validateURI(value interface{}, schema policies.ParameterSchema) (*policies.TypedValue, error) {
+func validateURI(value interface{}, schema policy.ParameterSchema) (*policy.TypedValue, error) {
 	strVal, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("parameter '%s' must be a string, got %T", schema.Name, value)
@@ -56,14 +56,14 @@ func validateURI(value interface{}, schema policies.ParameterSchema) (*policies.
 			schema.Name, strVal)
 	}
 
-	return &policies.TypedValue{
-		Type:  policies.ParameterTypeURI,
+	return &policy.TypedValue{
+		Type:  policy.ParameterTypeURI,
 		Value: strVal,
 	}, nil
 }
 
 // validateHostname validates hostname format parameters
-func validateHostname(value interface{}, schema policies.ParameterSchema) (*policies.TypedValue, error) {
+func validateHostname(value interface{}, schema policy.ParameterSchema) (*policy.TypedValue, error) {
 	strVal, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("parameter '%s' must be a string, got %T", schema.Name, value)
@@ -81,14 +81,14 @@ func validateHostname(value interface{}, schema policies.ParameterSchema) (*poli
 			schema.Name, len(strVal))
 	}
 
-	return &policies.TypedValue{
-		Type:  policies.ParameterTypeHostname,
+	return &policy.TypedValue{
+		Type:  policy.ParameterTypeHostname,
 		Value: strVal,
 	}, nil
 }
 
 // validateIPv4 validates IPv4 address format parameters
-func validateIPv4(value interface{}, schema policies.ParameterSchema) (*policies.TypedValue, error) {
+func validateIPv4(value interface{}, schema policy.ParameterSchema) (*policy.TypedValue, error) {
 	strVal, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("parameter '%s' must be a string, got %T", schema.Name, value)
@@ -107,14 +107,14 @@ func validateIPv4(value interface{}, schema policies.ParameterSchema) (*policies
 			schema.Name, strVal)
 	}
 
-	return &policies.TypedValue{
-		Type:  policies.ParameterTypeIPv4,
+	return &policy.TypedValue{
+		Type:  policy.ParameterTypeIPv4,
 		Value: strVal,
 	}, nil
 }
 
 // validateIPv6 validates IPv6 address format parameters
-func validateIPv6(value interface{}, schema policies.ParameterSchema) (*policies.TypedValue, error) {
+func validateIPv6(value interface{}, schema policy.ParameterSchema) (*policy.TypedValue, error) {
 	strVal, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("parameter '%s' must be a string, got %T", schema.Name, value)
@@ -133,14 +133,14 @@ func validateIPv6(value interface{}, schema policies.ParameterSchema) (*policies
 			schema.Name, strVal)
 	}
 
-	return &policies.TypedValue{
-		Type:  policies.ParameterTypeIPv6,
+	return &policy.TypedValue{
+		Type:  policy.ParameterTypeIPv6,
 		Value: strVal,
 	}, nil
 }
 
 // validateUUID validates UUID format parameters
-func validateUUID(value interface{}, schema policies.ParameterSchema) (*policies.TypedValue, error) {
+func validateUUID(value interface{}, schema policy.ParameterSchema) (*policy.TypedValue, error) {
 	strVal, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("parameter '%s' must be a string, got %T", schema.Name, value)
@@ -152,8 +152,8 @@ func validateUUID(value interface{}, schema policies.ParameterSchema) (*policies
 			schema.Name, strVal)
 	}
 
-	return &policies.TypedValue{
-		Type:  policies.ParameterTypeUUID,
+	return &policy.TypedValue{
+		Type:  policy.ParameterTypeUUID,
 		Value: strVal,
 	}, nil
 }

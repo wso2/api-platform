@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // validateString validates string parameters with constraints
-func validateString(value interface{}, schema policies.ParameterSchema) (*policies.TypedValue, error) {
+func validateString(value interface{}, schema policy.ParameterSchema) (*policy.TypedValue, error) {
 	strVal, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("parameter '%s' must be a string, got %T", schema.Name, value)
@@ -53,8 +53,8 @@ func validateString(value interface{}, schema policies.ParameterSchema) (*polici
 		}
 	}
 
-	return &policies.TypedValue{
-		Type:  policies.ParameterTypeString,
+	return &policy.TypedValue{
+		Type:  policy.ParameterTypeString,
 		Value: strVal,
 	}, nil
 }

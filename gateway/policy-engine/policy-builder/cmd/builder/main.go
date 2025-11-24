@@ -18,16 +18,15 @@ import (
 )
 
 const (
-	DefaultPoliciesDir = "/policies"
-	DefaultOutputDir   = "/output"
-	DefaultRuntimeDir  = "/workspace/policy-engine"
-	BuilderVersion     = "v1.0.0"
+	DefaultManifestFile = "policy.yaml"
+	DefaultOutputDir    = "/output"
+	DefaultRuntimeDir   = "/workspace/policy-engine"
+	BuilderVersion      = "v1.0.0"
 )
 
 func main() {
 	// Parse command-line flags
-	manifestPath := flag.String("manifest", "", "Path to policy manifest file (policies.yaml)")
-	policiesDir := flag.String("policies-dir", DefaultPoliciesDir, "Directory containing policies (for legacy directory-based discovery)")
+	manifestPath := flag.String("manifest", DefaultManifestFile, "Path to policy manifest file")
 	outputDir := flag.String("output-dir", DefaultOutputDir, "Directory for build output (binary and Dockerfile)")
 	runtimeDir := flag.String("runtime-dir", DefaultRuntimeDir, "Path to policy-engine runtime source directory")
 	debug := flag.Bool("debug", false, "Enable debug logging")
@@ -58,28 +57,13 @@ func main() {
 	fmt.Println("========================================")
 	fmt.Println("PHASE 1: DISCOVERY")
 	fmt.Println("========================================")
+	fmt.Printf("Using manifest: %s\n", *manifestPath)
 
-	var policies []*types.DiscoveredPolicy
-	var err error
-
-	if *manifestPath != "" {
-		// Manifest-based discovery
-		fmt.Printf("Using manifest: %s\n", *manifestPath)
-		policies, err = discovery.DiscoverPoliciesFromManifest(*manifestPath, "")
-		if err != nil {
-			errors.FatalError(err)
-		}
-		fmt.Printf("✓ Loaded manifest: %d policies declared\n", len(policies))
-	} else {
-		// Legacy directory-based discovery
-		fmt.Printf("Policies Directory: %s\n", *policiesDir)
-		fmt.Println("⚠ Warning: Directory-based discovery is deprecated. Use --manifest flag instead.")
-		policies, err = discovery.DiscoverPolicies(*policiesDir)
-		if err != nil {
-			errors.FatalError(err)
-		}
-		fmt.Printf("✓ Discovered %d policies\n", len(policies))
+	policies, err := discovery.DiscoverPoliciesFromManifest(*manifestPath, "")
+	if err != nil {
+		errors.FatalError(err)
 	}
+	fmt.Printf("✓ Loaded manifest: %d policies declared\n", len(policies))
 	fmt.Println()
 
 	// Print discovered policies
@@ -124,7 +108,6 @@ func main() {
 		buildMetadata.Policies = append(buildMetadata.Policies, types.PolicyInfo{
 			Name:    p.Name,
 			Version: p.Version,
-			Path:    p.Path,
 		})
 	}
 
@@ -153,10 +136,10 @@ func main() {
 func printBanner() {
 	banner := `
 ═══════════════════════════════════════════════════════════
-                                                           
-       Policy Engine Builder                               
-       Version: ` + BuilderVersion + `                     
-                                                           
+
+Policy Engine Builder
+Version: ` + BuilderVersion + `
+
 ═══════════════════════════════════════════════════════════
 `
 	fmt.Println(banner)
@@ -180,4 +163,3 @@ func printSummary(policies []*types.DiscoveredPolicy, binaryPath, outputDir stri
 	fmt.Println("   docker run -p 9001:9001 -p 9002:9002 policy-engine:custom")
 	fmt.Println()
 }
-

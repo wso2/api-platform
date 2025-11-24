@@ -2,23 +2,34 @@
 package main
 
 import (
+	"context"
 	"log/slog"
+	"os"
 
-	"github.com/policy-engine/sdk/core"
+	"github.com/policy-engine/policy-engine/internal/registry"
+	"github.com/policy-engine/sdk/policy"
 {{- range .Policies }}
 	{{ .ImportAlias }} "{{ .ImportPath }}"
 {{- end }}
 )
 
 func init() {
-	slog.Info("Registering policies from Builder compilation")
+	// Set up JSON logger early so init() logs match main() logs
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	
+	ctx := context.Background()
+	slog.InfoContext(ctx, "Registering policies from Builder compilation")
 
 	{{- range .Policies }}
-	// Register {{ .Name }} v{{ .Version }}
-	if err := core.GetRegistry().RegisterImplementation("{{ .Name }}", "{{ .Version }}", {{ .ImportAlias }}.NewPolicy()); err != nil {
-		slog.Error("Failed to register policy", "policy", "{{ .Name }}", "version", "{{ .Version }}", "error", err)
+	// Register {{ .Name }} {{ .Version }}
+	policyDef_{{ .ImportAlias }} := &policy.PolicyDefinition{
+		Name:    "{{ .Name }}",
+		Version: "{{ .Version }}",
+	}
+	if err := registry.GetRegistry().Register(policyDef_{{ .ImportAlias }}, {{ .ImportAlias }}.NewPolicy()); err != nil {
+		slog.ErrorContext(ctx, "Failed to register policy", "policy", "{{ .Name }}", "version", "{{ .Version }}", "error", err)
 	} else {
-		slog.Info("Registered policy", "policy", "{{ .Name }}", "version", "{{ .Version }}")
+		slog.InfoContext(ctx, "Registered policy", "policy", "{{ .Name }}", "version", "{{ .Version }}")
 	}
 	{{- end }}
 }

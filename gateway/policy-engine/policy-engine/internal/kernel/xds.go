@@ -8,40 +8,38 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/policy-engine/sdk/core"
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/policy-engine/internal/registry"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // PolicyChainConfig represents the configuration for a policy chain on a route
 // T072: PolicyChainConfig structure for xDS or file-based config
 type PolicyChainConfig struct {
-	RouteKey string               `yaml:"route_key"`
+	RouteKey string                 `yaml:"route_key"`
 	Policies []PolicyInstanceConfig `yaml:"policies"`
 }
 
 // PolicyInstanceConfig represents a single policy instance in a chain
 type PolicyInstanceConfig struct {
-	Name              string                 `yaml:"name"`
-	Version           string                 `yaml:"version"`
-	Enabled           bool                   `yaml:"enabled"`
-	ExecutionCondition *string               `yaml:"execution_condition,omitempty"`
-	Parameters        map[string]interface{} `yaml:"parameters"`
+	Name               string                 `yaml:"name"`
+	Version            string                 `yaml:"version"`
+	Enabled            bool                   `yaml:"enabled"`
+	ExecutionCondition *string                `yaml:"executionCondition,omitempty"`
+	Parameters         map[string]interface{} `yaml:"parameters"`
 }
 
 // ConfigLoader loads policy chain configurations
 // T077: Implement file-based configuration loader as fallback
 type ConfigLoader struct {
 	kernel   *Kernel
-	registry *core.PolicyRegistry
-	core     *core.Core
+	registry *registry.PolicyRegistry
 }
 
 // NewConfigLoader creates a new configuration loader
-func NewConfigLoader(kernel *Kernel, registry *core.PolicyRegistry, coreEngine *core.Core) *ConfigLoader {
+func NewConfigLoader(kernel *Kernel, reg *registry.PolicyRegistry) *ConfigLoader {
 	return &ConfigLoader{
 		kernel:   kernel,
-		registry: registry,
-		core:     coreEngine,
+		registry: reg,
 	}
 }
 
@@ -67,7 +65,7 @@ func (cl *ConfigLoader) LoadFromFile(path string) error {
 
 	// T076: Implement atomic PolicyChain replacement in Routes map
 	// Build all chains first, then replace atomically
-	chains := make(map[string]*core.PolicyChain)
+	chains := make(map[string]*registry.PolicyChain)
 	for _, config := range configs {
 		chain, err := cl.buildPolicyChain(&config)
 		if err != nil {
@@ -85,8 +83,7 @@ func (cl *ConfigLoader) LoadFromFile(path string) error {
 		cl.kernel.Routes[routeKey] = chain
 		slog.InfoContext(ctx, "Loaded policy chain for route",
 			"route", routeKey,
-			"request_policies", len(chain.RequestPolicies),
-			"response_policies", len(chain.ResponsePolicies))
+			"policies", len(chain.Policies))
 	}
 
 	return nil
@@ -123,61 +120,52 @@ func (cl *ConfigLoader) validateConfig(config *PolicyChainConfig) error {
 }
 
 // buildPolicyChain builds a PolicyChain from configuration
-func (cl *ConfigLoader) buildPolicyChain(config *PolicyChainConfig) (*core.PolicyChain, error) {
-	var requestPolicies []policies.RequestPolicy
-	var responsePolicies []policies.ResponsePolicy
-	var requestSpecs []policies.PolicySpec
-	var responseSpecs []policies.PolicySpec
+func (cl *ConfigLoader) buildPolicyChain(config *PolicyChainConfig) (*registry.PolicyChain, error) {
+	var policyList []policy.Policy
+	var policySpecs []policy.PolicySpec
 
 	requiresRequestBody := false
 	requiresResponseBody := false
 
 	for _, policyConfig := range config.Policies {
-		// Get policy definition and implementation
-		def, err := cl.registry.GetDefinition(policyConfig.Name, policyConfig.Version)
-		if err != nil {
-			return nil, err
-		}
-
+		// Get policy implementation
 		impl, err := cl.registry.GetImplementation(policyConfig.Name, policyConfig.Version)
 		if err != nil {
 			return nil, err
 		}
 
 		// Build PolicySpec
-		spec := policies.PolicySpec{
+		spec := policy.PolicySpec{
 			Name:               policyConfig.Name,
 			Version:            policyConfig.Version,
 			Enabled:            policyConfig.Enabled,
 			ExecutionCondition: policyConfig.ExecutionCondition,
-			Parameters: policies.PolicyParameters{
+			Parameters: policy.PolicyParameters{
 				Raw: policyConfig.Parameters,
 			},
 		}
 
-		// Add to appropriate list based on policy type
-		if reqPolicy, ok := impl.(policies.RequestPolicy); ok {
-			requestPolicies = append(requestPolicies, reqPolicy)
-			requestSpecs = append(requestSpecs, spec)
-			if def.RequiresRequestBody {
-				requiresRequestBody = true
-			}
+		// Add to policy list
+		policyList = append(policyList, impl)
+		policySpecs = append(policySpecs, spec)
+
+		// Get policy mode and update body requirements
+		mode := impl.Mode()
+
+		// Update request body requirement (if any policy needs buffering)
+		if mode.RequestBodyMode == policy.BodyModeBuffer || mode.RequestBodyMode == policy.BodyModeStream {
+			requiresRequestBody = true
 		}
 
-		if respPolicy, ok := impl.(policies.ResponsePolicy); ok {
-			responsePolicies = append(responsePolicies, respPolicy)
-			responseSpecs = append(responseSpecs, spec)
-			if def.RequiresResponseBody {
-				requiresResponseBody = true
-			}
+		// Update response body requirement (if any policy needs buffering)
+		if mode.ResponseBodyMode == policy.BodyModeBuffer || mode.ResponseBodyMode == policy.BodyModeStream {
+			requiresResponseBody = true
 		}
 	}
 
-	chain := &core.PolicyChain{
-		RequestPolicies:      requestPolicies,
-		ResponsePolicies:     responsePolicies,
-		RequestPolicySpecs:   requestSpecs,
-		ResponsePolicySpecs:  responseSpecs,
+	chain := &registry.PolicyChain{
+		Policies:             policyList,
+		PolicySpecs:          policySpecs,
 		Metadata:             make(map[string]interface{}),
 		RequiresRequestBody:  requiresRequestBody,
 		RequiresResponseBody: requiresResponseBody,

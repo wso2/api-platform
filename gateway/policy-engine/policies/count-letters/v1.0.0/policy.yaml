@@ -1,0 +1,39 @@
+name: CountLetters
+version: v1.0.0
+description: |
+  Analyzes the response body and counts occurrences of specified letters/characters.
+  Replaces the response body with the letter count results in JSON or text format.
+  Useful for analytics, debugging, and content analysis.
+
+parameters:
+  - name: letters
+    type: array
+    required: true
+    description: |
+      Array of letters/characters to count in the response body.
+      Each element should be a string (can be single character or multi-character string).
+    items:
+      type: string
+      validation:
+        minLength: 1
+
+  - name: caseSensitive
+    type: boolean
+    required: false
+    default: false
+    description: |
+      Whether letter counting should be case-sensitive.
+      If false (default), 'A' and 'a' are treated as the same letter.
+
+  - name: outputFormat
+    type: string
+    required: false
+    default: "json"
+    description: |
+      Output format for the letter counts.
+      Valid values: "json" or "text"
+    validation:
+      enum:
+        - json
+        - text
+

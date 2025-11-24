@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // validateInt validates integer parameters with constraints
-func validateInt(value interface{}, schema policies.ParameterSchema) (*policies.TypedValue, error) {
+func validateInt(value interface{}, schema policy.ParameterSchema) (*policy.TypedValue, error) {
 	var intVal int64
 
 	// Handle different numeric types
@@ -51,14 +51,14 @@ func validateInt(value interface{}, schema policies.ParameterSchema) (*policies.
 		}
 	}
 
-	return &policies.TypedValue{
-		Type:  policies.ParameterTypeInt,
+	return &policy.TypedValue{
+		Type:  policy.ParameterTypeInt,
 		Value: intVal,
 	}, nil
 }
 
 // validateFloat validates float parameters with constraints
-func validateFloat(value interface{}, schema policies.ParameterSchema) (*policies.TypedValue, error) {
+func validateFloat(value interface{}, schema policy.ParameterSchema) (*policy.TypedValue, error) {
 	var floatVal float64
 
 	// Handle different numeric types
@@ -97,14 +97,14 @@ func validateFloat(value interface{}, schema policies.ParameterSchema) (*policie
 		}
 	}
 
-	return &policies.TypedValue{
-		Type:  policies.ParameterTypeFloat,
+	return &policy.TypedValue{
+		Type:  policy.ParameterTypeFloat,
 		Value: floatVal,
 	}, nil
 }
 
 // validateIntArray validates integer array parameters
-func validateIntArray(value interface{}, schema policies.ParameterSchema) (*policies.TypedValue, error) {
+func validateIntArray(value interface{}, schema policy.ParameterSchema) (*policy.TypedValue, error) {
 	arrayVal, ok := value.([]interface{})
 	if !ok {
 		return nil, fmt.Errorf("parameter '%s' must be an array, got %T", schema.Name, value)
@@ -154,8 +154,8 @@ func validateIntArray(value interface{}, schema policies.ParameterSchema) (*poli
 		}
 	}
 
-	return &policies.TypedValue{
-		Type:  policies.ParameterTypeIntArray,
+	return &policy.TypedValue{
+		Type:  policy.ParameterTypeIntArray,
 		Value: intArray,
 	}, nil
 }

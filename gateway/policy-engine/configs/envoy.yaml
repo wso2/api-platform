@@ -123,30 +123,31 @@ static_resources:
                           cluster_name: ext-processor-grpc-service
                         timeout: 0.250s
                       failure_mode_allow: false
-                      metadata_options:
-                        forwarding_namespaces:
-                          typed:
-                            - "envoy.filters.http.ext_proc"
-                          untyped:
-                            - "envoy.filters.http.ext_proc"
-                        receiving_namespaces:
-                          typed:
-                            - "envoy.filters.http.ext_proc"
-                          untyped:
-                            - "envoy.filters.http.ext_proc"
+                      # metadata_options:
+                      #   forwarding_namespaces:
+                      #     typed:
+                      #       - "envoy.filters.http.ext_proc"
+                      #     untyped:
+                      #       - "envoy.filters.http.ext_proc"
+                      #   receiving_namespaces:
+                      #     typed:
+                      #       - "envoy.filters.http.ext_proc"
+                      #     untyped:
+                      #       - "envoy.filters.http.ext_proc"
                       route_cache_action: RETAIN
                       mutation_rules:
                         allow_all_routing: true
+                      allow_mode_override: true
                       request_attributes:
                         - xds.route_name
                       processing_mode:
                         request_header_mode: SEND
-                        response_header_mode: SEND
-                        request_trailer_mode: SEND
-                        response_trailer_mode: SEND
-                        # https://www.envoyproxy.io/docs/envoy/v1.33.0/api-v3/extensions/filters/http/ext_proc/v3/processing_mode.proto#envoy-v3-api-enum-extensions-filters-http-ext-proc-v3-processingmode-bodysendmode
-                        request_body_mode: FULL_DUPLEX_STREAMED
-                        response_body_mode: FULL_DUPLEX_STREAMED
+                        # response_header_mode: SEND
+                        # request_trailer_mode: SEND
+                        # response_trailer_mode: SEND
+                        # # https://www.envoyproxy.io/docs/envoy/v1.33.0/api-v3/extensions/filters/http/ext_proc/v3/processing_mode.proto#envoy-v3-api-enum-extensions-filters-http-ext-proc-v3-processingmode-bodysendmode
+                        # request_body_mode: FULL_DUPLEX_STREAMED
+                        # response_body_mode: FULL_DUPLEX_STREAMED
                       message_timeout:
                         seconds: 600
                         nanos: 250000000 # 250ms

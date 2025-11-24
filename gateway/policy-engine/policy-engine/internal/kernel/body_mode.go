@@ -1,8 +1,8 @@
 package kernel
 
 import (
-	"github.com/policy-engine/sdk/core"
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/policy-engine/internal/registry"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // BodyMode represents ext_proc body processing mode
@@ -17,47 +17,37 @@ const (
 
 // BuildPolicyChain creates a PolicyChain from PolicySpecs with body requirement computation
 // T055: BuildPolicyChain with body requirement computation
-func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policies.PolicySpec, registry *core.PolicyRegistry) (*core.PolicyChain, error) {
-	chain := &core.PolicyChain{
-		RequestPolicies:      make([]policies.RequestPolicy, 0),
-		ResponsePolicies:     make([]policies.ResponsePolicy, 0),
+func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySpec, reg *registry.PolicyRegistry) (*registry.PolicyChain, error) {
+	chain := &registry.PolicyChain{
+		Policies:             make([]policy.Policy, 0),
+		PolicySpecs:          make([]policy.PolicySpec, 0),
 		Metadata:             make(map[string]interface{}),
 		RequiresRequestBody:  false,
 		RequiresResponseBody: false,
 	}
 
-	// Build policy lists and compute body requirements
+	// Build policy list and compute body requirements
 	for _, spec := range policySpecs {
-		// Get policy definition
-		def, err := registry.GetDefinition(spec.Name, spec.Version)
-		if err != nil {
-			return nil, err
-		}
-
 		// Get policy implementation
-		impl, err := registry.GetImplementation(spec.Name, spec.Version)
+		impl, err := reg.GetImplementation(spec.Name, spec.Version)
 		if err != nil {
 			return nil, err
 		}
 
-		// Add to appropriate policy list based on phase support
-		if def.SupportsRequestPhase {
-			if reqPolicy, ok := impl.(policies.RequestPolicy); ok {
-				chain.RequestPolicies = append(chain.RequestPolicies, reqPolicy)
-			}
-		}
+		// Add to policy list
+		chain.Policies = append(chain.Policies, impl)
+		chain.PolicySpecs = append(chain.PolicySpecs, spec)
 
-		if def.SupportsResponsePhase {
-			if respPolicy, ok := impl.(policies.ResponsePolicy); ok {
-				chain.ResponsePolicies = append(chain.ResponsePolicies, respPolicy)
-			}
-		}
+		// Get policy mode and update body requirements
+		mode := impl.Mode()
 
-		// Update body requirements (OR across all policies)
-		if def.RequiresRequestBody {
+		// Update request body requirement (if any policy needs buffering)
+		if mode.RequestBodyMode == policy.BodyModeBuffer || mode.RequestBodyMode == policy.BodyModeStream {
 			chain.RequiresRequestBody = true
 		}
-		if def.RequiresResponseBody {
+
+		// Update response body requirement (if any policy needs buffering)
+		if mode.ResponseBodyMode == policy.BodyModeBuffer || mode.ResponseBodyMode == policy.BodyModeStream {
 			chain.RequiresResponseBody = true
 		}
 	}
@@ -67,7 +57,7 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policies.Policy
 
 // determineRequestBodyMode determines the body mode for request phase
 // T056: Request body mode determination helper
-func determineRequestBodyMode(chain *core.PolicyChain) BodyMode {
+func determineRequestBodyMode(chain *registry.PolicyChain) BodyMode {
 	if chain.RequiresRequestBody {
 		return BodyModeBuffered
 	}
@@ -76,7 +66,7 @@ func determineRequestBodyMode(chain *core.PolicyChain) BodyMode {
 
 // determineResponseBodyMode determines the body mode for response phase
 // T057: Response body mode determination helper
-func determineResponseBodyMode(chain *core.PolicyChain) BodyMode {
+func determineResponseBodyMode(chain *registry.PolicyChain) BodyMode {
 	if chain.RequiresResponseBody {
 		return BodyModeBuffered
 	}
@@ -84,19 +74,19 @@ func determineResponseBodyMode(chain *core.PolicyChain) BodyMode {
 }
 
 // GetRequestBodyMode returns the body mode for request phase
-func (k *Kernel) GetRequestBodyMode(routeKey string) (BodyMode, error) {
-	chain, err := k.GetPolicyChainForKey(routeKey)
-	if err != nil {
-		return BodyModeSkip, err
+func (k *Kernel) GetRequestBodyMode(routeKey string) BodyMode {
+	chain := k.GetPolicyChainForKey(routeKey)
+	if chain == nil {
+		return BodyModeSkip
 	}
-	return determineRequestBodyMode(chain), nil
+	return determineRequestBodyMode(chain)
 }
 
 // GetResponseBodyMode returns the body mode for response phase
-func (k *Kernel) GetResponseBodyMode(routeKey string) (BodyMode, error) {
-	chain, err := k.GetPolicyChainForKey(routeKey)
-	if err != nil {
-		return BodyModeSkip, err
+func (k *Kernel) GetResponseBodyMode(routeKey string) BodyMode {
+	chain := k.GetPolicyChainForKey(routeKey)
+	if chain == nil {
+		return BodyModeSkip
 	}
-	return determineResponseBodyMode(chain), nil
+	return determineResponseBodyMode(chain)
 }

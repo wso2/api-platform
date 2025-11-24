@@ -1,22 +1,26 @@
 package kernel
 
 import (
+	"fmt"
+
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocconfigv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 
-	"github.com/policy-engine/sdk/core"
-	"github.com/policy-engine/sdk/policies"
+	"github.com/policy-engine/policy-engine/internal/executor"
+	"github.com/policy-engine/policy-engine/internal/registry"
+	"github.com/policy-engine/sdk/policy"
 )
 
 // TranslateRequestActions converts policy execution result to ext_proc response
 // T065: TranslateRequestActions for UpstreamRequestModifications
 // T066: TranslateRequestActions for ImmediateResponse
-func TranslateRequestActions(result *core.RequestExecutionResult, chain *core.PolicyChain) *extprocv3.ProcessingResponse {
+// The execCtx parameter is optional - if provided, uses its computed mode override
+func TranslateRequestActions(result *executor.RequestExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) *extprocv3.ProcessingResponse {
 	if result.ShortCircuited && result.FinalAction != nil {
 		// Short-circuited with ImmediateResponse
-		if immediateResp, ok := result.FinalAction.Action.(policies.ImmediateResponse); ok {
+		if immediateResp, ok := result.FinalAction.(policy.ImmediateResponse); ok {
 			// T066: Handle ImmediateResponse
 			return &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
@@ -44,7 +48,7 @@ func TranslateRequestActions(result *core.RequestExecutionResult, chain *core.Po
 		}
 
 		if policyResult.Action != nil {
-			if mods, ok := policyResult.Action.Action.(policies.UpstreamRequestModifications); ok {
+			if mods, ok := policyResult.Action.(policy.UpstreamRequestModifications); ok {
 				// T068: Build header mutations
 				applyRequestModifications(headerMutation, &mods)
 
@@ -62,7 +66,7 @@ func TranslateRequestActions(result *core.RequestExecutionResult, chain *core.Po
 
 	// T070: Implement mode override configuration
 	// Determine if we need to override body processing mode
-	modeOverride := determineModeOverride(chain, true)
+	modeOverride := execCtx.getModeOverride()
 
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
@@ -84,7 +88,7 @@ func TranslateRequestActions(result *core.RequestExecutionResult, chain *core.Po
 
 // TranslateResponseActions converts response policy execution result to ext_proc response
 // T067: TranslateResponseActions for UpstreamResponseModifications
-func TranslateResponseActions(result *core.ResponseExecutionResult) *extprocv3.ProcessingResponse {
+func TranslateResponseActions(result *executor.ResponseExecutionResult) *extprocv3.ProcessingResponse {
 	headerMutation := &extprocv3.HeaderMutation{}
 	var bodyMutation *extprocv3.BodyMutation
 
@@ -95,7 +99,7 @@ func TranslateResponseActions(result *core.ResponseExecutionResult) *extprocv3.P
 		}
 
 		if policyResult.Action != nil {
-			if mods, ok := policyResult.Action.Action.(policies.UpstreamResponseModifications); ok {
+			if mods, ok := policyResult.Action.(policy.UpstreamResponseModifications); ok {
 				// T069: Build response mutations
 				applyResponseModifications(headerMutation, &mods)
 
@@ -125,7 +129,7 @@ func TranslateResponseActions(result *core.ResponseExecutionResult) *extprocv3.P
 
 // applyRequestModifications applies request modifications to header mutation
 // T068: buildHeaderMutations helper implementation
-func applyRequestModifications(mutation *extprocv3.HeaderMutation, mods *policies.UpstreamRequestModifications) {
+func applyRequestModifications(mutation *extprocv3.HeaderMutation, mods *policy.UpstreamRequestModifications) {
 	// Set/Replace headers
 	if len(mods.SetHeaders) > 0 {
 		if mutation.SetHeaders == nil {
@@ -171,7 +175,7 @@ func applyRequestModifications(mutation *extprocv3.HeaderMutation, mods *policie
 
 // applyResponseModifications applies response modifications to header mutation
 // T069: buildResponseMutations helper implementation
-func applyResponseModifications(mutation *extprocv3.HeaderMutation, mods *policies.UpstreamResponseModifications) {
+func applyResponseModifications(mutation *extprocv3.HeaderMutation, mods *policy.UpstreamResponseModifications) {
 	// Set/Replace headers
 	if len(mods.SetHeaders) > 0 {
 		if mutation.SetHeaders == nil {
@@ -238,9 +242,92 @@ func buildHeaderValueOptions(headers map[string]string) *extprocv3.HeaderMutatio
 	return mutation
 }
 
+// buildRequestMutations extracts header and body mutations from request execution result
+func buildRequestMutations(result *executor.RequestExecutionResult) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation) {
+	headerMutation := &extprocv3.HeaderMutation{}
+	var bodyMutation *extprocv3.BodyMutation
+
+	// Accumulate modifications from all executed policies
+	for _, policyResult := range result.Results {
+		if policyResult.Skipped || policyResult.Error != nil {
+			continue
+		}
+
+		if policyResult.Action != nil {
+			if mods, ok := policyResult.Action.(policy.UpstreamRequestModifications); ok {
+				// Build header mutations
+				applyRequestModifications(headerMutation, &mods)
+
+				// Handle body modifications if present
+				// mods.Body is []byte from the action
+				if mods.Body != nil {
+					bodyMutation = &extprocv3.BodyMutation{
+						Mutation: &extprocv3.BodyMutation_Body{
+							Body: mods.Body,
+						},
+					}
+					// Update Content-Length header to match new body size
+					setContentLengthHeader(headerMutation, len(mods.Body))
+				}
+			}
+		}
+	}
+
+	return headerMutation, bodyMutation
+}
+
+// buildResponseMutations extracts header and body mutations from response execution result
+func buildResponseMutations(result *executor.ResponseExecutionResult) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation) {
+	headerMutation := &extprocv3.HeaderMutation{}
+	var bodyMutation *extprocv3.BodyMutation
+
+	// Accumulate modifications from all executed policies
+	for _, policyResult := range result.Results {
+		if policyResult.Skipped || policyResult.Error != nil {
+			continue
+		}
+
+		if policyResult.Action != nil {
+			if mods, ok := policyResult.Action.(policy.UpstreamResponseModifications); ok {
+				// Build header mutations
+				applyResponseModifications(headerMutation, &mods)
+
+				// Handle body modifications if present
+				// mods.Body is []byte from the action
+				if mods.Body != nil {
+					bodyMutation = &extprocv3.BodyMutation{
+						Mutation: &extprocv3.BodyMutation_Body{
+							Body: mods.Body,
+						},
+					}
+					// Update Content-Length header to match new body size
+					setContentLengthHeader(headerMutation, len(mods.Body))
+				}
+			}
+		}
+	}
+
+	return headerMutation, bodyMutation
+}
+
+// setContentLengthHeader sets the Content-Length header to match the body size
+func setContentLengthHeader(mutation *extprocv3.HeaderMutation, bodyLength int) {
+	if mutation.SetHeaders == nil {
+		mutation.SetHeaders = make([]*corev3.HeaderValueOption, 0, 1)
+	}
+
+	mutation.SetHeaders = append(mutation.SetHeaders, &corev3.HeaderValueOption{
+		Header: &corev3.HeaderValue{
+			Key:      "content-length",
+			RawValue: []byte(fmt.Sprintf("%d", bodyLength)),
+		},
+		AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
+	})
+}
+
 // determineModeOverride determines body processing mode based on chain requirements
 // T070: mode override configuration implementation
-func determineModeOverride(chain *core.PolicyChain, isRequest bool) *extprocconfigv3.ProcessingMode {
+func determineModeOverride(chain *registry.PolicyChain, isRequest bool) *extprocconfigv3.ProcessingMode {
 	if isRequest && !chain.RequiresRequestBody {
 		// Chain doesn't need request body - use NONE mode for performance
 		return &extprocconfigv3.ProcessingMode{

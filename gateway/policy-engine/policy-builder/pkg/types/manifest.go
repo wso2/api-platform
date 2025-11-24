@@ -1,6 +1,6 @@
 package types
 
-// PolicyManifest represents the policies.yaml manifest file
+// PolicyManifest represents the policy.yaml manifest file
 type PolicyManifest struct {
 	Version  string          `yaml:"version"`
 	Policies []ManifestEntry `yaml:"policies"`

@@ -17,7 +17,6 @@ type BuildInfo struct {
 type PolicyInfo struct {
 	Name    string
 	Version string
-	Path    string
 }
 
 var (
@@ -30,7 +29,7 @@ var (
 	// CompiledPolicies is the list of policies included in this binary
 	CompiledPolicies = []PolicyInfo{
 		{{- range .Policies }}
-		{Name: "{{ .Name }}", Version: "{{ .Version }}", Path: "{{ .Path }}"},
+		{Name: "{{ .Name }}", Version: "{{ .Version }}"},
 		{{- end }}
 	}
 )

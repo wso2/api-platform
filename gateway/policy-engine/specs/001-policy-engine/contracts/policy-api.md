@@ -41,7 +41,7 @@ The Policy Engine uses a **multi-module architecture** to avoid cyclic dependenc
 - **External policies**: Policies can be developed in separate repositories
 
 **Import Rules**:
-- ✅ Policy implementations: Import `github.com/policy-engine/sdk/policies`
+- ✅ Policy implementations: Import `github.com/policy-engine/sdk/policy`
 - ✅ Policy implementations: Import `github.com/policy-engine/sdk/core` (if needed for registry)
 - ❌ Policy implementations: Never import `github.com/policy-engine/policy-engine`
 

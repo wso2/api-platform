@@ -5,18 +5,18 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/policy-engine/policy-builder/pkg/types"
+	"github.com/policy-engine/sdk/policy"
 	"gopkg.in/yaml.v3"
 )
 
 // ParsePolicyYAML reads and parses a policy.yaml file
-func ParsePolicyYAML(path string) (*types.PolicyDefinition, error) {
+func ParsePolicyYAML(path string) (*policy.PolicyDefinition, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read policy.yaml: %w", err)
 	}
 
-	var def types.PolicyDefinition
+	var def policy.PolicyDefinition
 	if err := yaml.Unmarshal(data, &def); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML: %w", err)
 	}
@@ -64,14 +64,6 @@ func ValidateDirectoryStructure(policyDir string) error {
 		return fmt.Errorf("no .go files found in %s", policyDir)
 	}
 
-	return nil
-}
-
-// ValidateVersionConsistency checks if directory name matches YAML version
-func ValidateVersionConsistency(dirName string, yamlVersion string) error {
-	if dirName != yamlVersion {
-		return fmt.Errorf("directory name %s does not match YAML version %s", dirName, yamlVersion)
-	}
 	return nil
 }
 
