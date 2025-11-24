@@ -108,7 +108,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   const { devportals: allPortals, loading: portalsLoading } = useDevPortals();
   const { apis, loading: apisLoading, importOpenApi, refreshApis, fetchGatewaysForApi } = useApisContext();
   const { selectedProject } = useProjects();
-  const { publishApiToDevPortal } = useApiPublishing();
+  const { publishApiToDevPortal, refreshPublishedApis } = useApiPublishing();
   const navigate = useNavigate();
   const { showNotification } = useNotifications();
   const { organization } = useOrganization();
@@ -135,6 +135,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
     selectedDocumentIds: [],
   });
   const [newTag, setNewTag] = React.useState('');
+  const [allPublishedToActivePortals, setAllPublishedToActivePortals] = React.useState(false);
 
   const handleUrlChange = (type: 'production' | 'sandbox', url: string) => {
     setFormData((prev: any) => ({
@@ -190,8 +191,25 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
           }
         })();
       }
+
+      (async () => {
+        try {
+          const targetApiId = selectionMode === 'existing' ? selectedExistingApi?.id : (apis.find((a: any) => a.name === contractMeta?.name && a.version === contractMeta?.version)?.id);
+          if (!targetApiId) {
+            setAllPublishedToActivePortals(false);
+            return;
+          }
+
+          const pubs = await refreshPublishedApis(targetApiId);
+          const publishedSet = new Set((pubs || []).map((p: any) => p.uuid));
+          const allPublished = portals.length > 0 && portals.every((p: any) => publishedSet.has(p.uuid));
+          setAllPublishedToActivePortals(!!allPublished);
+        } catch (e) {
+          setAllPublishedToActivePortals(false);
+        }
+      })();
     }
-  }, [activeStep, selectionMode, selectedExistingApi, contractMeta, portalEndpoint, portalVisibility, fetchGatewaysForApi, validationResult]);
+  }, [activeStep, selectionMode, selectedExistingApi, contractMeta, portalEndpoint, portalVisibility, fetchGatewaysForApi, validationResult, apis, portals, refreshPublishedApis]);
 
   React.useEffect(() => {
     if (activeStep === 1 && portals.length > 0) {
@@ -441,7 +459,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
         >
           {activeStep === 0 && (
             <>
-              {!validationResult?.isAPIDefinitionValid && !selectedExistingApi && (
+              {!validationResult?.isAPIDefinitionValid && (
                 <>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     Choose whether to create a new API from an OpenAPI specification URL or select an existing API to configure portal settings.
@@ -796,115 +814,128 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
 
           {activeStep === 1 && (
             <Box>
-              {portals.length !== 1 && (
-                <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
-                  Select Developer Portal
-                </Typography>
-              )}
+              {!allPublishedToActivePortals && (
+                <>
+                  {portals.length !== 1 && (
+                    <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
+                      Select Developer Portal
+                    </Typography>
+                  )}
 
-              {portalsLoading ? (
-                <Box
-                  sx={{ display: "flex", justifyContent: "center", p: 4 }}
-                >
-                  <CircularProgress />
-                </Box>
-              ) : portals.length === 0 ? (
-                <Paper
-                  variant="outlined"
-                  sx={{
-                    p: 4,
-                    textAlign: "center",
-                    borderRadius: 2,
-                    bgcolor: "background.default",
-                  }}
-                >
-                  <Typography variant="h6" sx={{ mb: 2 }} color="text.secondary">
-                    No Active Developer Portals
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                    You need to activate a developer portal before you can publish APIs.
-                    Go to the Portals page to activate one.
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    onClick={handleGoToPortals}
-                  >
-                    Go to Portals
-                  </Button>
-                </Paper>
-              ) : (
-                portals.length === 1 ? (
-                  <Paper
-                    variant="outlined"
-                    sx={{ p: 2, borderRadius: 2, display: 'flex', alignItems: 'center', gap: 2 }}
-                  >
-                    <Box sx={{ width: 56, height: 56, flexShrink: 0 }}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={portals[0].logoSrc || BijiraDPLogo}
-                        alt={portals[0].logoAlt || PORTAL_CONSTANTS.DEFAULT_LOGO_ALT}
-                        style={{ width: 56, height: 56, objectFit: 'contain', borderRadius: 6 }}
-                      />
+                  {portalsLoading ? (
+                    <Box sx={{ display: "flex", justifyContent: "center", p: 4 }}>
+                      <CircularProgress />
                     </Box>
-                    <Box>
-                      <Typography variant="subtitle1" fontWeight={600}>
-                        {portals[0].name}
+                  ) : portals.length === 0 ? (
+                    <Paper
+                      variant="outlined"
+                      sx={{
+                        p: 4,
+                        textAlign: "center",
+                        borderRadius: 2,
+                        bgcolor: "background.default",
+                      }}
+                    >
+                      <Typography variant="h6" sx={{ mb: 2 }} color="text.secondary">
+                        No Active Developer Portals
                       </Typography>
-                      {portals[0].description && (
-                        <Typography variant="body2" color="text.secondary">
-                          {portals[0].description}
-                        </Typography>
-                      )}
-                    </Box>
-                  </Paper>
-                ) : (
-                  <Grid container spacing={2}>
-                    {portals.map((portal: Portal) => (
-                      <Grid key={portal.uuid} size={{ xs: 6, sm: 4, md: 3 }}>
-                        <WizardPortalCard
-                          title={portal.name}
-                          description={portal.description}
-                          portalUrl={portal.uiUrl}
-                          selected={selectedPortalId === portal.uuid}
-                          onSelect={() => {
-                            if (selectedPortalId === portal.uuid) {
-                              setSelectedPortalId(null);
-                            } else {
-                              setSelectedPortalId(portal.uuid);
-                            }
-                          }}
-                          logoSrc={portal.logoSrc || BijiraDPLogo}
-                          logoAlt={
-                            portal.logoAlt ||
-                            PORTAL_CONSTANTS.DEFAULT_LOGO_ALT
-                          }
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                        You need to activate a developer portal before you can publish APIs.
+                        Go to the Portals page to activate one.
+                      </Typography>
+                      <Button variant="contained" onClick={handleGoToPortals}>
+                        Go to Portals
+                      </Button>
+                    </Paper>
+                  ) : portals.length === 1 ? (
+                    <Paper
+                      variant="outlined"
+                      sx={{ p: 2, borderRadius: 2, display: 'flex', alignItems: 'center', gap: 2 }}
+                    >
+                      <Box sx={{ width: 56, height: 56, flexShrink: 0 }}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={portals[0].logoSrc || BijiraDPLogo}
+                          alt={portals[0].logoAlt || PORTAL_CONSTANTS.DEFAULT_LOGO_ALT}
+                          style={{ width: 56, height: 56, objectFit: 'contain', borderRadius: 6 }}
                         />
-                      </Grid>
-                    ))}
-                  </Grid>
-                )
+                      </Box>
+                      <Box>
+                        <Typography variant="subtitle1" fontWeight={600}>
+                          {portals[0].name}
+                        </Typography>
+                        {portals[0].description && (
+                          <Typography variant="body2" color="text.secondary">
+                            {portals[0].description}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Paper>
+                  ) : (
+                    <Grid container spacing={2}>
+                      {portals.map((portal: Portal) => (
+                        <Grid key={portal.uuid} size={{ xs: 6, sm: 4, md: 3 }}>
+                          <WizardPortalCard
+                            title={portal.name}
+                            description={portal.description}
+                            portalUrl={portal.uiUrl}
+                            selected={selectedPortalId === portal.uuid}
+                            onSelect={() => {
+                              if (selectedPortalId === portal.uuid) {
+                                setSelectedPortalId(null);
+                              } else {
+                                setSelectedPortalId(portal.uuid);
+                              }
+                            }}
+                            logoSrc={portal.logoSrc || BijiraDPLogo}
+                            logoAlt={portal.logoAlt || PORTAL_CONSTANTS.DEFAULT_LOGO_ALT}
+                          />
+                        </Grid>
+                      ))}
+                    </Grid>
+                  )}
+                </>
               )}
 
-              <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, mb: 2, mt: 3 }}>
-                <ApiPublishForm
-                  formData={formData}
-                  setFormData={setFormData}
-                  showAdvanced={showAdvanced}
-                  setShowAdvanced={setShowAdvanced}
-                  gateways={gateways}
-                  loadingGateways={loadingGateways}
-                  newTag={newTag}
-                  setNewTag={setNewTag}
-                  handleAddTag={handleAddTag}
-                  handleRemoveTag={handleRemoveTag}
-                  handleCheckboxChange={handleCheckboxChange}
-                  handleUrlChange={handleUrlChange}
-                />
-              </Paper>
-              {error && (
-                <Alert severity="error" sx={{ mb: 2 }}>
-                  {error}
-                </Alert>
+              {!allPublishedToActivePortals ? (
+                <>
+                  <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, mb: 2, mt: 3 }}>
+                    <ApiPublishForm
+                      formData={formData}
+                      setFormData={setFormData}
+                      showAdvanced={showAdvanced}
+                      setShowAdvanced={setShowAdvanced}
+                      gateways={gateways}
+                      loadingGateways={loadingGateways}
+                      newTag={newTag}
+                      setNewTag={setNewTag}
+                      handleAddTag={handleAddTag}
+                      handleRemoveTag={handleRemoveTag}
+                      handleCheckboxChange={handleCheckboxChange}
+                      handleUrlChange={handleUrlChange}
+                    />
+                  </Paper>
+
+                  {error && (
+                    <Alert severity="error" sx={{ mb: 2 }}>
+                      {error}
+                    </Alert>
+                  )}
+                </>
+              ) : (
+                <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, mb: 2, mt: 3 }}>
+                  <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>
+                    Already Published
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    This API is already published to all active developer portals.
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    {portals.map((p: any) => (
+                      <Chip key={p.uuid} label={p.name} size="small" />
+                    ))}
+                  </Box>
+                </Paper>
               )}
 
                 <Stack
@@ -917,19 +948,21 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                   Back
                 </Button>
                 
-                <Button
-                  variant="contained"
-                  disabled={
-                    creating || !selectedPortalId || !formData.apiName || !formData.productionURL || (formData.productionURL.trim() !== '' && !/^https?:\/\/.+/.test(formData.productionURL.trim()))
-                  }
-                  onClick={async () => {
-                    if (!selectedPortalId) return;
-                    const payload = buildPublishPayload(formData, selectedPortalId);
-                    await handlePublishFromModal(selectedPortalId, payload);
-                  }}
-                >
-                  {creating ? "Publishing..." : "Publish to Portal"}
-                </Button>
+                {!allPublishedToActivePortals && (
+                  <Button
+                    variant="contained"
+                    disabled={
+                      creating || !selectedPortalId || !formData.apiName || !formData.productionURL || (formData.productionURL.trim() !== '' && !/^https?:\/\/.+/.test(formData.productionURL.trim()))
+                    }
+                    onClick={async () => {
+                      if (!selectedPortalId) return;
+                      const payload = buildPublishPayload(formData, selectedPortalId);
+                      await handlePublishFromModal(selectedPortalId, payload);
+                    }}
+                  >
+                    {creating ? "Publishing..." : "Publish to Portal"}
+                  </Button>
+                )}
               </Stack>
             </Box>
           )}    
