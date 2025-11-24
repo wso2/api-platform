@@ -55,7 +55,6 @@ WORKDIR /workspace
 # Run the policy builder with manifest
 RUN /usr/local/bin/policy-engine-builder \
     --manifest /workspace/policies.yaml \
-    --policies-dir /workspace/policies \
     --output-dir /workspace/output \
     --runtime-dir /workspace/policy-engine
 
@@ -69,9 +68,12 @@ WORKDIR /app
 # Copy compiled binary from policy-compiler stage
 COPY --from=policy-compiler /workspace/output/policy-engine /app/policy-engine
 
+# Copy config files
+COPY configs/ /configs/
+
 # Expose ports
 EXPOSE 9001 9002
 
 # Run the binary
 ENTRYPOINT ["/app/policy-engine"]
-CMD ["-extproc-port=9001", "-config-file=/configs/policy-chains.yaml"]
+CMD ["-config=/configs/config.yaml"]
