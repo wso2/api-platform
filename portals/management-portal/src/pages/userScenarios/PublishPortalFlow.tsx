@@ -901,6 +901,11 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                   handleUrlChange={handleUrlChange}
                 />
               </Paper>
+              {error && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {error}
+                </Alert>
+              )}
 
                 <Stack
                 direction="row"
