@@ -194,10 +194,6 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
       return;
     }
     
-    if (!portalVisibility || !portalEndpoint.trim()) {
-      setError("Please provide visibility and endpoint for developer portal.");
-      return;
-    }
 
     if (!validationResult?.isAPIDefinitionValid) {
       setError("Please validate the OpenAPI definition first.");
@@ -264,15 +260,11 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   };
 
   const isStep0Complete = 
-    selectionMode === "url" 
-      ? validationResult?.isAPIDefinitionValid && 
-        (contractMeta?.name || "").trim() && 
-        (contractMeta?.version || "").trim() &&
-        portalVisibility.trim() &&
-        portalEndpoint.trim()
-      : selectedExistingApi !== null &&
-        portalVisibility.trim() &&
-        portalEndpoint.trim();
+    selectionMode === "url"
+      ? validationResult?.isAPIDefinitionValid &&
+        (contractMeta?.name || "").trim() &&
+        (contractMeta?.version || "").trim()
+      : selectedExistingApi !== null;
 
   const step0ButtonLabel = selectionMode === "url" ? "Create API" : "Continue";
   const step0ButtonAction = selectionMode === "url" ? handleCreateApi : handleContinueWithExistingApi;
@@ -704,49 +696,9 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                           />
 
                           <Divider />
-
-                          <Typography
-                            variant="subtitle1"
-                            fontWeight={600}
-                          >
-                            Developer Portal Settings
+                          <Typography variant="body2" color="text.secondary">
+                            Developer portal settings are configured in the next step after selecting a portal.
                           </Typography>
-
-                          <TextField
-                            select
-                            label="Access Visibility"
-                            value={portalVisibility}
-                            onChange={(e) => setPortalVisibility(e.target.value)}
-                            fullWidth
-                            required
-                            variant="outlined"
-                            helperText="Control who can discover your API"
-                          >
-                            <MenuItem value="PUBLIC">
-                              <Box display="flex" alignItems="center" gap={1}>
-                                <span>🌍</span>
-                                <Typography variant="body2">Public</Typography>
-                              </Box>
-                            </MenuItem>
-                            <MenuItem value="PRIVATE">
-                              <Box display="flex" alignItems="center" gap={1}>
-                                <span>🔒</span>
-                                <Typography variant="body2">Private</Typography>
-                              </Box>
-                            </MenuItem>
-                          </TextField>
-
-                          <TextField
-                            label="Endpoint"
-                            value={portalEndpoint}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPortalEndpoint(e.target.value)}
-                            fullWidth
-                            required
-                            variant="outlined"
-                            placeholder="https://api.example.com"
-                            helperText="Endpoint URL displayed to developers"
-                            error={portalEndpoint.trim() !== '' && !/^https?:\/\/.+/.test(portalEndpoint.trim())}
-                          />
                         </Stack>
                       </Paper>
                     </Grid>
@@ -845,54 +797,9 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                         </Typography>
 
                         <Stack spacing={2.5}>
-                          <TextField
-                            select
-                            label="Access Visibility"
-                            value={portalVisibility}
-                            onChange={(e) => setPortalVisibility(e.target.value)}
-                            fullWidth
-                            required
-                            variant="outlined"
-                            helperText="Control who can discover your API in the portal"
-                          >
-                            <MenuItem value="PUBLIC">
-                              <Box display="flex" alignItems="center" gap={1}>
-                                <span>🌍</span>
-                                <Typography variant="body2">Public</Typography>
-                              </Box>
-                            </MenuItem>
-                            <MenuItem value="PRIVATE">
-                              <Box display="flex" alignItems="center" gap={1}>
-                                <span>🔒</span>
-                                <Typography variant="body2">Private</Typography>
-                              </Box>
-                            </MenuItem>
-                          </TextField>
-
-                          <TextField
-                            label="Endpoint"
-                            value={portalEndpoint}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPortalEndpoint(e.target.value)}
-                            fullWidth
-                            required
-                            variant="outlined"
-                            placeholder="https://api.example.com"
-                            helperText="The endpoint URL that will be displayed to developers"
-                            error={portalEndpoint.trim() !== '' && !/^https?:\/\/.+/.test(portalEndpoint.trim())}
-                          />
-
-                          <Box 
-                            sx={{ 
-                              p: 2, 
-                              borderRadius: 1,
-                              border: '1px solid',
-                              borderColor: '#e0ebd5'
-                            }}
-                          >
-                            <Typography variant="caption" color="text.secondary">
-                              These settings are only for the developer portal and do not affect the API itself
-                            </Typography>
-                          </Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Developer portal settings are configured in the next step after selecting a portal.
+                          </Typography>
                         </Stack>
                       </Paper>
                     </Grid>
@@ -932,6 +839,50 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
               <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
                 Select Developer Portal
               </Typography>
+
+              <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, mb: 2 }}>
+                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
+                  Developer Portal Settings
+                </Typography>
+
+                <Stack spacing={2}>
+                  <TextField
+                    select
+                    label="Access Visibility"
+                    value={portalVisibility}
+                    onChange={(e) => setPortalVisibility(e.target.value)}
+                    fullWidth
+                    required
+                    variant="outlined"
+                    helperText="Control who can discover your API"
+                  >
+                    <MenuItem value="PUBLIC">
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <span>🌍</span>
+                        <Typography variant="body2">Public</Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="PRIVATE">
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <span>🔒</span>
+                        <Typography variant="body2">Private</Typography>
+                      </Box>
+                    </MenuItem>
+                  </TextField>
+
+                  <TextField
+                    label="Endpoint"
+                    value={portalEndpoint}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPortalEndpoint(e.target.value)}
+                    fullWidth
+                    required
+                    variant="outlined"
+                    placeholder="https://api.example.com"
+                    helperText="Endpoint URL displayed to developers"
+                    error={portalEndpoint.trim() !== '' && !/^https?:\/\/.+/.test(portalEndpoint.trim())}
+                  />
+                </Stack>
+              </Paper>
 
               {portalsLoading ? (
                 <Box
@@ -990,7 +941,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                 </Grid>
               )}
 
-              <Stack
+                <Stack
                 direction="row"
                 spacing={1}
                 sx={{ mt: 3 }}
@@ -1001,7 +952,9 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                 </Button>
                 <Button
                   variant="contained"
-                  disabled={creating || !selectedPortalId}
+                  disabled={
+                    creating || !selectedPortalId || !portalVisibility.trim() || portalEndpoint.trim() === '' || !/^https?:\/\/.+/.test(portalEndpoint.trim())
+                  }
                   onClick={handlePublishToPortal}
                 >
                   {creating ? "Publishing..." : "Publish to Portal"}
