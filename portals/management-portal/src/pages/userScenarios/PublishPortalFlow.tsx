@@ -15,9 +15,11 @@ import {
   Divider,
   Chip,
   TextField,
+  InputAdornment,
   
 } from "@mui/material";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
+import SearchIcon from '@mui/icons-material/Search';
 import { TextInput } from "../../components/src/components/TextInput";
 import { Button } from "../../components/src/components/Button";
 import { ApiOperationsList } from "../../components/src/components/Common/ApiOperationsList";
@@ -101,6 +103,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   const [portalEndpoint, setPortalEndpoint] = React.useState<string>("");
   const [selectedExistingApi, setSelectedExistingApi] = React.useState<ApiSummary | null>(null);
   const [selectionMode, setSelectionMode] = React.useState<"url" | "existing">("url");
+  const [existingQuery, setExistingQuery] = React.useState<string>("");
 
   const { contractMeta, setContractMeta, resetContractMeta } =
     useCreateComponentBuildpackContext();
@@ -112,7 +115,18 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   const navigate = useNavigate();
   const { showNotification } = useNotifications();
   const { organization } = useOrganization();
+  const theme = useTheme();
   const typedApis = React.useMemo<ApiSummary[]>(() => apis, [apis]);
+  const filteredTypedApis = React.useMemo(() => {
+    const q = (existingQuery || "").trim().toLowerCase();
+    if (!q) return typedApis;
+    return typedApis.filter((a) => {
+      return (
+        (a.name || "").toLowerCase().includes(q) ||
+        (a.context || "").toLowerCase().includes(q)
+      );
+    });
+  }, [typedApis, existingQuery]);
   
   const portals = React.useMemo(() => allPortals.filter(p => p.isActive), [allPortals]);
 
@@ -134,9 +148,9 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
     tags: [],
     selectedDocumentIds: [],
   });
-  const [newTag, setNewTag] = React.useState('');
   const [allPublishedToActivePortals, setAllPublishedToActivePortals] = React.useState(false);
   const [publishedStatusLoading, setPublishedStatusLoading] = React.useState(false);
+  const [newTag, setNewTag] = React.useState('');
 
   const handleUrlChange = (type: 'production' | 'sandbox', url: string) => {
     setFormData((prev: any) => ({
@@ -642,56 +656,88 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                                 No APIs found. Create one first.
                               </Typography>
                             ) : (
-                              <Paper 
-                                variant="outlined" 
-                                sx={{ 
-                                  maxHeight: 300, 
-                                  overflow: "auto",
-                                  borderRadius: 1
-                                }}
-                              >
-                                <List dense disablePadding>
-                                  {typedApis.map((api, index) => {
-                                    const apiId = api.id;
-                                    const apiName = api.name;
-                                    const apiVersion = api.version;
-                                    const apiContext = api.context;
-                                    const isSelected = currentSelection !== null && (currentSelection as ApiSummary).name === apiName;
-                                    
-                                    return (
-                                    <React.Fragment key={apiId}>
-                                      {index > 0 && <Divider />}
-                                      <ListItemButton
-                                        selected={isSelected}
-                                        onClick={(e: React.MouseEvent) => {
-                                          e.stopPropagation();
-                                          handleSelectExistingApi(api);
-                                        }}
-                                      >
-                                        <ListItemText
-                                          primary={
-                                            <Box display="flex" alignItems="center" gap={1}>
-                                              <Typography variant="body2" fontWeight={500}>
-                                                {apiName}
-                                              </Typography>
-                                              <Chip 
-                                                label={apiVersion} 
-                                                size="small" 
-                                                sx={{ height: 20, fontSize: "0.7rem" }}
-                                              />
-                                            </Box>
-                                          }
-                                          secondary={
-                                            <Typography variant="caption" color="text.secondary" noWrap>
-                                              {apiContext}
-                                            </Typography>
-                                          }
-                                        />
-                                      </ListItemButton>
-                                    </React.Fragment>
-                                  )})}
-                                </List>
-                              </Paper>
+                              <Box sx={{ width: '100%' }}>
+                                <Box sx={{ mb: 1 }}>
+                                  <TextField
+                                    size="small"
+                                    placeholder="Search APIs"
+                                    value={existingQuery}
+                                    onChange={(e) => setExistingQuery(e.target.value)}
+                                    fullWidth
+                                    variant="outlined"
+                                    InputProps={{
+                                      startAdornment: (
+                                        <InputAdornment position="start">
+                                          <SearchIcon fontSize="small" />
+                                        </InputAdornment>
+                                      ),
+                                    }}
+                                    sx={{
+                                      borderRadius: 1,
+                                      backgroundColor: theme.palette.success.light,
+                                    }}
+                                  />
+                                </Box>
+                                <Paper
+                                  variant="outlined"
+                                  sx={{
+                                    maxHeight: 200, 
+                                    overflow: "auto",
+                                    borderRadius: 1,
+                                    width: '100%'
+                                  }}
+                                >
+                                  {filteredTypedApis.length === 0 ? (
+                                    <Box sx={{ p: 2 }}>
+                                      <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center" }}>
+                                        No APIs match "{existingQuery}"
+                                      </Typography>
+                                    </Box>
+                                  ) : (
+                                    <List dense disablePadding>
+                                      {filteredTypedApis.map((api, index) => {
+                                        const apiId = api.id;
+                                        const apiName = api.name;
+                                        const apiVersion = api.version;
+                                        const apiContext = api.context;
+                                        const isSelected = currentSelection !== null && (currentSelection as ApiSummary).name === apiName;
+
+                                        return (
+                                        <React.Fragment key={apiId}>
+                                          {index > 0 && <Divider />}
+                                          <ListItemButton
+                                            selected={isSelected}
+                                            onClick={(e: React.MouseEvent) => {
+                                              e.stopPropagation();
+                                              handleSelectExistingApi(api);
+                                            }}
+                                          >
+                                            <ListItemText
+                                              primary={
+                                                <Box display="flex" alignItems="center" gap={1}>
+                                                  <Typography variant="body2" fontWeight={500}>
+                                                    {apiName}
+                                                  </Typography>
+                                                  <Chip 
+                                                    label={apiVersion} 
+                                                    size="small" 
+                                                    sx={{ height: 20, fontSize: "0.7rem" }}
+                                                  />
+                                                </Box>
+                                              }
+                                              secondary={
+                                                <Typography variant="caption" color="text.secondary" noWrap>
+                                                  {apiContext}
+                                                </Typography>
+                                              }
+                                            />
+                                          </ListItemButton>
+                                        </React.Fragment>
+                                      )})}
+                                    </List>
+                                  )}
+                                </Paper>
+                              </Box>
                             )}
                           </>
                         )})()}
