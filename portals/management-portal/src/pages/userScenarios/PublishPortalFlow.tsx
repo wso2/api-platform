@@ -136,7 +136,8 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   const autoFill = React.useCallback(
     (api: any) => {
       const title = api?.name?.trim() || api?.displayName?.trim() || "";
-      const version = api?.version?.trim() || "1.0.0";
+      const rawVersion = api?.version?.trim() || "1.0.0";
+      const version = /^v/i.test(rawVersion) ? rawVersion : `v${rawVersion}`;
       const description = api?.description || "";
       const targetUrl = firstServerUrl(api);
 
@@ -260,11 +261,11 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
     setActiveStep(1);
   };
 
-  const isStep0Complete = 
+  const isStep0Complete =
     selectionMode === "url"
       ? validationResult?.isAPIDefinitionValid &&
         (contractMeta?.name || "").trim() &&
-        (contractMeta?.version || "").trim()
+        /^v\d+(?:\.\d+)*$/.test((contractMeta?.version || "").trim())
       : selectedExistingApi !== null;
 
   const step0ButtonLabel = selectionMode === "url" ? "Create API" : "Continue";
@@ -655,7 +656,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
 
                         <Stack spacing={2.5}>
                           <Grid container spacing={2}>
-                            <Grid size={{ xs: 12, sm: 6 }}>
+                            <Grid size={{ xs: 12 }}>
                               <TextField
                                 label="Name"
                                 value={contractMeta?.name || ""}
@@ -668,17 +669,23 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                                 placeholder="My API"
                               />
                             </Grid>
-                            <Grid size={{ xs: 12, sm: 6 }}>
+                            <Grid size={{ xs: 12 }}>
                               <TextField
                                 label="Version"
                                 value={contractMeta?.version || ""}
                                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                                   setContractMeta((prev: any) => ({ ...prev, version: e.target.value }))
                                 }
+                                onBlur={() => {
+                                  const v = (contractMeta?.version || "").trim();
+                                  if (v && !/^v/i.test(v)) {
+                                    setContractMeta((prev: any) => ({ ...prev, version: `v${v}` }));
+                                  }
+                                }}
                                 fullWidth
                                 required
                                 variant="outlined"
-                                placeholder="1.0.0"
+                                placeholder="v1.0.0"
                               />
                             </Grid>
                           </Grid>
@@ -691,12 +698,11 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                             }
                             fullWidth
                             multiline
-                            rows={3}
+                            rows={10}
                             variant="outlined"
                             placeholder="Describe your API"
+                            sx={{ width: '100%' }}
                           />
-
-                          <Divider />
                         </Stack>
                       </Paper>
                     </Grid>
