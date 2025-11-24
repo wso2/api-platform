@@ -40,9 +40,6 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
   const [activeScenarioId, setActiveScenarioId] = React.useState(
     SCENARIOS[0].id
   );
-  const [selectedScenarioIds, setSelectedScenarioIds] = React.useState<
-    string[]
-  >([SCENARIOS[0].id]);
 
   const activeScenario = React.useMemo(
     () =>
@@ -50,13 +47,8 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
     [activeScenarioId]
   );
 
-  const toggleScenario = (scenarioId: string) => {
+  const selectScenario = (scenarioId: string) => {
     setActiveScenarioId(scenarioId);
-    setSelectedScenarioIds((prev) =>
-      prev.includes(scenarioId)
-        ? prev.filter((id) => id !== scenarioId)
-        : [...prev, scenarioId]
-    );
   };
 
   return (
@@ -173,18 +165,17 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
             <Stack spacing={2}>
               {SCENARIOS.map((scenario: Scenario) => {
                 const Icon = scenario.icon;
-                const isChecked = selectedScenarioIds.includes(scenario.id);
                 const isActive = activeScenarioId === scenario.id;
 
                 return (
                   <Card
                     key={scenario.id}
-                    onClick={() => !scenario.comingSoon && toggleScenario(scenario.id)}
+                    onClick={() => !scenario.comingSoon && selectScenario(scenario.id)}
                     sx={{
                       cursor: scenario.comingSoon ? "not-allowed" : "pointer",
                       border: "1px solid",
                       borderColor: isActive ? ACCENT : "divider",
-                      bgcolor: isChecked
+                      bgcolor: isActive
                         ? alpha(ACCENT, 0.1)
                         : "background.paper",
                       transition:
