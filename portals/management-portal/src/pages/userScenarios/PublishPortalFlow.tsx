@@ -300,9 +300,10 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
     const name = (contractMeta?.name || "").trim();
     const version = (contractMeta?.version || "").trim();
     const description = (contractMeta?.description || "").trim() || undefined;
+    const context = (contractMeta?.context || "").trim();
 
-    if (!name || !version) {
-      setError("Please provide API name and version.");
+    if (!name || !version || !context) {
+      setError("Please provide API name, version and context.");
       return;
     }
     
@@ -326,7 +327,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
       const apiPayload = {
         name,
         version,
-        context: validatedApi?.context || deriveContext(validatedApi),
+        context: contractMeta?.context || validatedApi?.context || deriveContext(validatedApi),
         projectId: selectedProject.id,
         description,
         operations: validatedApi?.operations || [],
@@ -376,7 +377,8 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
     selectionMode === "url"
       ? validationResult?.isAPIDefinitionValid &&
         (contractMeta?.name || "").trim() &&
-        /^v\d+(?:\.\d+)*$/.test((contractMeta?.version || "").trim())
+        /^v\d+(?:\.\d+)*$/.test((contractMeta?.version || "").trim()) &&
+        (contractMeta?.context || "").trim()
       : selectedExistingApi !== null;
 
   const step0ButtonLabel = selectionMode === "url" ? "Create API" : "Continue";
@@ -765,6 +767,37 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                                 placeholder="v1.0.0"
                               />
                             </Grid>
+                          <Grid size={{ xs: 12 }}>
+                            <TextField
+                              label="Context"
+                              value={contractMeta?.context || ""}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                setContractMeta((prev: any) => ({ ...prev, context: e.target.value }))
+                              }
+                              onBlur={() => {
+                                const ctx = (contractMeta?.context || "").trim();
+                                if (ctx && !ctx.startsWith("/")) {
+                                  setContractMeta((prev: any) => ({ ...prev, context: `/${ctx}` }));
+                                }
+                              }}
+                              fullWidth
+                              required
+                              variant="outlined"
+                              placeholder="/my-api"
+                            />
+                          </Grid>
+                          <Grid size={{ xs: 12 }}>
+                            <TextField
+                              label="Target (Backend URL)"
+                              value={contractMeta?.target || ""}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                setContractMeta((prev: any) => ({ ...prev, target: e.target.value }))
+                              }
+                              fullWidth
+                              variant="outlined"
+                              placeholder="https://api.example.com"
+                            />
+                          </Grid>
                           </Grid>
 
                           <TextField
@@ -775,7 +808,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                             }
                             fullWidth
                             multiline
-                            rows={10}
+                            rows={8}
                             variant="outlined"
                             placeholder="Describe your API"
                             sx={{ width: '100%' }}
