@@ -257,6 +257,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   const handleSelectExistingApi = (api: ApiSummary) => {
     setSelectedExistingApi(api);
     setError(null);
+    setActiveStep(1);
   };
 
   const isStep0Complete = 
@@ -696,9 +697,6 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                           />
 
                           <Divider />
-                          <Typography variant="body2" color="text.secondary">
-                            Developer portal settings are configured in the next step after selecting a portal.
-                          </Typography>
                         </Stack>
                       </Paper>
                     </Grid>
@@ -732,105 +730,6 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                 </Stack>
               )}
 
-              {/* Existing API Mode: After selection - Full width layout */}
-              {selectionMode === "existing" && selectedExistingApi && (
-                <Stack spacing={3}>
-                  <Grid container spacing={3}>
-                    {/* Left: API Info */}
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, height: '100%' }}>
-                        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 3 }}>
-                          Selected API
-                        </Typography>
-                        
-                        <Stack spacing={2.5}>
-                          <Box>
-                            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>
-                              API Name
-                            </Typography>
-                            <Typography variant="h6" fontWeight={500} sx={{ mt: 0.5 }}>
-                              {selectedExistingApi.name}
-                            </Typography>
-                          </Box>
-
-                          <Divider />
-
-                          <Box>
-                            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>
-                              Version
-                            </Typography>
-                            <Typography variant="body1" sx={{ mt: 0.5 }}>
-                              {selectedExistingApi.version}
-                            </Typography>
-                          </Box>
-
-                          <Box>
-                            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>
-                              Context Path
-                            </Typography>
-                            <Typography variant="body1" sx={{ mt: 0.5, fontFamily: 'monospace' }}>
-                              {selectedExistingApi.context}
-                            </Typography>
-                          </Box>
-
-                          {selectedExistingApi.description && (
-                            <>
-                              <Divider />
-                              <Box>
-                                <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>
-                                  Description
-                                </Typography>
-                                <Typography variant="body2" sx={{ mt: 0.5, color: 'text.secondary' }}>
-                                  {selectedExistingApi.description}
-                                </Typography>
-                              </Box>
-                            </>
-                          )}
-                        </Stack>
-                      </Paper>
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, height: '100%' }}>
-                        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 3 }}>
-                          Developer Portal Settings
-                        </Typography>
-
-                        <Stack spacing={2.5}>
-                          <Typography variant="body2" color="text.secondary">
-                            Developer portal settings are configured in the next step after selecting a portal.
-                          </Typography>
-                        </Stack>
-                      </Paper>
-                    </Grid>
-                  </Grid>
-
-                  {error && (
-                    <Alert severity="error">
-                      {error}
-                    </Alert>
-                  )}
-
-                  <Stack direction="row" spacing={2} justifyContent="flex-end">
-                    <Button
-                      variant="outlined"
-                      onClick={() => {
-                        setSelectedExistingApi(null);
-                        setError(null);
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="contained"
-                      disabled={creating || !isStep0Complete}
-                      onClick={step0ButtonAction}
-                    >
-                      {creating ? "Loading..." : step0ButtonLabel}
-                    </Button>
-                  </Stack>
-                </Stack>
-              )}
             </>
           )}
 
