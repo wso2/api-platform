@@ -393,7 +393,11 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
           {activeStep === 0 && (
             <>
               {!validationResult?.isAPIDefinitionValid && !selectedExistingApi && (
-                <Box sx={{ display: 'flex', gap: 2, alignItems: 'stretch' }}>
+                <>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Choose whether to create a new API from an OpenAPI specification URL or select an existing API to configure portal settings.
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 2, mt: 0, alignItems: 'stretch' }}>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Stack spacing={2}>
                       <Paper 
@@ -628,6 +632,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                     </Stack>
                   </Box>
                 </Box>
+                </>
               )}
 
               {selectionMode === "url" && validationResult?.isAPIDefinitionValid && (
