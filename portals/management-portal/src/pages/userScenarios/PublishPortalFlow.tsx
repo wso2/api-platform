@@ -940,11 +940,6 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     This API is already published to all active developer portals.
                   </Typography>
-                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                    {portals.map((p: any) => (
-                      <Chip key={p.uuid} label={p.name} size="small" />
-                    ))}
-                  </Box>
                 </Paper>
               )}
 
