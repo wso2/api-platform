@@ -23,11 +23,12 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -99,7 +100,7 @@ type Client struct {
 	db                storage.Storage
 	snapshotManager   *xds.SnapshotManager
 	parser            *config.Parser
-	validator         *config.Validator
+	validator         config.Validator
 	deploymentService *utils.APIDeploymentService
 	apiUtilsService   *utils.APIUtilsService
 }
@@ -121,7 +122,7 @@ func NewClient(
 		db:                db,
 		snapshotManager:   snapshotManager,
 		parser:            config.NewParser(),
-		validator:         config.NewValidator(),
+		validator:         config.NewAPIValidator(),
 		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager),
 		state: &ConnectionState{
 			Current:        Disconnected,

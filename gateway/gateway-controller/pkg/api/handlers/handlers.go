@@ -44,7 +44,7 @@ type APIServer struct {
 	db                 storage.Storage
 	snapshotManager    *xds.SnapshotManager
 	parser             *config.Parser
-	validator          *config.Validator
+	validator          config.Validator
 	logger             *zap.Logger
 	deploymentService  *utils.APIDeploymentService
 	controlPlaneClient controlplane.ControlPlaneClient
@@ -63,7 +63,7 @@ func NewAPIServer(
 		db:                 db,
 		snapshotManager:    snapshotManager,
 		parser:             config.NewParser(),
-		validator:          config.NewValidator(),
+		validator:          config.NewAPIValidator(),
 		logger:             logger,
 		deploymentService:  utils.NewAPIDeploymentService(store, db, snapshotManager),
 		controlPlaneClient: controlPlaneClient,

@@ -35,7 +35,7 @@ func NewParser() *Parser {
 
 // ParseYAML parses YAML content into an API configuration
 func (p *Parser) ParseYAML(data []byte, config interface{}) error {
-	if err := yaml.Unmarshal(data, &config); err != nil {
+	if err := yaml.Unmarshal(data, config); err != nil {
 		return fmt.Errorf("failed to parse YAML: %w", err)
 	}
 

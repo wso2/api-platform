@@ -53,7 +53,7 @@ type APIDeploymentService struct {
 	db              storage.Storage
 	snapshotManager *xds.SnapshotManager
 	parser          *config.Parser
-	validator       *config.Validator
+	validator       config.Validator
 }
 
 // NewAPIDeploymentService creates a new API deployment service
@@ -67,7 +67,7 @@ func NewAPIDeploymentService(
 		db:              db,
 		snapshotManager: snapshotManager,
 		parser:          config.NewParser(),
-		validator:       config.NewValidator(),
+		validator:       config.NewAPIValidator(),
 	}
 }
 
