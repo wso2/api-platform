@@ -51,7 +51,8 @@ const (
 	DefaultMatchID          = "0"
 
 	// Configuration Validation Constants
-	MaxReasonableTimeoutSeconds = uint32(3600) // 1 hour in seconds
+	MaxReasonableTimeoutSeconds  = uint32(3600)  // 1 hour in seconds
+	MaxReasonablePolicyTimeoutMs = uint32(60000) // 60 seconds in milliseconds
 
 	// Cipher Suite Validation
 	CipherInvalidChars1 = ";"
@@ -62,4 +63,15 @@ const (
 	TLSVersionOrderTLS11 = 1
 	TLSVersionOrderTLS12 = 2
 	TLSVersionOrderTLS13 = 3
+
+	// External Processor (ext_proc) Filter
+	ExtProcFilterName                = "envoy.filters.http.ext_proc"
+	ExtProcConfigType                = "type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor"
+	ExtProcRouteCacheActionDefault   = "DEFAULT"
+	ExtProcRouteCacheActionRetain    = "RETAIN"
+	ExtProcRouteCacheActionClear     = "CLEAR"
+	ExtProcHeaderModeDefault         = "DEFAULT"
+	ExtProcHeaderModeSend            = "SEND"
+	ExtProcHeaderModeSkip            = "SKIP"
+	ExtProcRequestAttributeRouteName = "xds.route_name"
 )

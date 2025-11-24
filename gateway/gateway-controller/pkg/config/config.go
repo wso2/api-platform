@@ -79,9 +79,10 @@ type PostgresConfig struct {
 
 // RouterConfig holds router (Envoy) related configuration
 type RouterConfig struct {
-	AccessLogs   AccessLogsConfig `koanf:"access_logs"`
-	ListenerPort int              `koanf:"listener_port"`
-	Upstream     envoyUpstream    `koanf:"envoy_upstream"`
+	AccessLogs   AccessLogsConfig   `koanf:"access_logs"`
+	ListenerPort int                `koanf:"listener_port"`
+	Upstream     envoyUpstream      `koanf:"envoy_upstream"`
+	PolicyEngine PolicyEngineConfig `koanf:"policy_engine"`
 }
 
 // envoyUpstream holds envoy upstream related configurations
@@ -106,6 +107,18 @@ type upstreamTimeout struct {
 	RouteTimeoutInSeconds     uint32 `koanf:"route_timeout_in_seconds"`
 	MaxRouteTimeoutInSeconds  uint32 `koanf:"max_route_timeout_in_seconds"`
 	RouteIdleTimeoutInSeconds uint32 `koanf:"route_idle_timeout_in_seconds"`
+}
+
+// PolicyEngineConfig holds policy engine ext_proc filter configuration
+type PolicyEngineConfig struct {
+	Enabled           bool   `koanf:"enabled"`
+	ClusterName       string `koanf:"cluster_name"`
+	TimeoutMs         uint32 `koanf:"timeout_ms"`
+	FailureModeAllow  bool   `koanf:"failure_mode_allow"`
+	RouteCacheAction  string `koanf:"route_cache_action"`
+	AllowModeOverride bool   `koanf:"allow_mode_override"`
+	RequestHeaderMode string `koanf:"request_header_mode"`
+	MessageTimeoutMs  uint32 `koanf:"message_timeout_ms"`
 }
 
 // AccessLogsConfig holds access log configuration
@@ -255,6 +268,14 @@ func getDefaults() map[string]interface{} {
 		"router.envoy_upstream.timeouts.route_timeout_in_seconds":      60,
 		"router.envoy_upstream.timeouts.max_route_timeout_in_seconds":  60,
 		"router.envoy_upstream.timeouts.route_idle_timeout_in_seconds": 300,
+		"router.policy_engine.enabled":                                 false,
+		"router.policy_engine.cluster_name":                            "policy-engine-grpc-service",
+		"router.policy_engine.timeout_ms":                              250,
+		"router.policy_engine.failure_mode_allow":                      false,
+		"router.policy_engine.route_cache_action":                      "RETAIN",
+		"router.policy_engine.allow_mode_override":                     true,
+		"router.policy_engine.request_header_mode":                     "SEND",
+		"router.policy_engine.message_timeout_ms":                      250,
 	}
 }
 
@@ -296,7 +317,7 @@ func (c *Config) Validate() error {
 	// Validate access log fields if access logs are enabled
 	if c.Router.AccessLogs.Enabled {
 		if c.Router.AccessLogs.Format == "json" {
-			if c.Router.AccessLogs.JSONFields == nil || len(c.Router.AccessLogs.JSONFields) == 0 {
+			if len(c.Router.AccessLogs.JSONFields) == 0 {
 				return fmt.Errorf("router.access_logs.json_fields must be configured when format is 'json'")
 			}
 		} else if c.Router.AccessLogs.Format == "text" {
@@ -349,6 +370,11 @@ func (c *Config) Validate() error {
 
 	// Validate timeout configuration
 	if err := c.validateTimeoutConfig(); err != nil {
+		return err
+	}
+
+	// Validate policy engine configuration
+	if err := c.validatePolicyEngineConfig(); err != nil {
 		return err
 	}
 
@@ -515,6 +541,71 @@ func (c *Config) validateTimeoutConfig() error {
 	return nil
 }
 
+// validatePolicyEngineConfig validates the policy engine configuration
+func (c *Config) validatePolicyEngineConfig() error {
+	policyEngine := c.Router.PolicyEngine
+
+	// If policy engine is disabled, skip validation
+	if !policyEngine.Enabled {
+		return nil
+	}
+
+	// Validate cluster name
+	if policyEngine.ClusterName == "" {
+		return fmt.Errorf("router.policy_engine.cluster_name is required when policy engine is enabled")
+	}
+
+	// Validate timeout
+	if policyEngine.TimeoutMs <= 0 {
+		return fmt.Errorf("router.policy_engine.timeout_ms must be positive, got: %d", policyEngine.TimeoutMs)
+	}
+
+	if policyEngine.TimeoutMs > constants.MaxReasonablePolicyTimeoutMs {
+		return fmt.Errorf("router.policy_engine.timeout_ms (%d) exceeds maximum reasonable timeout of %d ms",
+			policyEngine.TimeoutMs, constants.MaxReasonablePolicyTimeoutMs)
+	}
+
+	// Validate message timeout
+	if policyEngine.MessageTimeoutMs <= 0 {
+		return fmt.Errorf("router.policy_engine.message_timeout_ms must be positive, got: %d", policyEngine.MessageTimeoutMs)
+	}
+
+	if policyEngine.MessageTimeoutMs > constants.MaxReasonablePolicyTimeoutMs {
+		return fmt.Errorf("router.policy_engine.message_timeout_ms (%d) exceeds maximum reasonable timeout of %d ms",
+			policyEngine.MessageTimeoutMs, constants.MaxReasonablePolicyTimeoutMs)
+	}
+
+	// Validate route cache action
+	validRouteCacheActions := []string{"DEFAULT", "RETAIN", "CLEAR"}
+	isValidAction := false
+	for _, action := range validRouteCacheActions {
+		if policyEngine.RouteCacheAction == action {
+			isValidAction = true
+			break
+		}
+	}
+	if !isValidAction {
+		return fmt.Errorf("router.policy_engine.route_cache_action must be one of: DEFAULT, RETAIN, CLEAR, got: %s",
+			policyEngine.RouteCacheAction)
+	}
+
+	// Validate request header mode
+	validHeaderModes := []string{"DEFAULT", "SEND", "SKIP"}
+	isValidMode := false
+	for _, mode := range validHeaderModes {
+		if policyEngine.RequestHeaderMode == mode {
+			isValidMode = true
+			break
+		}
+	}
+	if !isValidMode {
+		return fmt.Errorf("router.policy_engine.request_header_mode must be one of: DEFAULT, SEND, SKIP, got: %s",
+			policyEngine.RequestHeaderMode)
+	}
+
+	return nil
+}
+
 // IsPersistentMode returns true if storage type is not memory
 func (c *Config) IsPersistentMode() bool {
 	return c.Storage.Type != "memory"
@@ -528,4 +619,9 @@ func (c *Config) IsMemoryOnlyMode() bool {
 // IsAccessLogsEnabled returns true if access logs are enabled
 func (c *Config) IsAccessLogsEnabled() bool {
 	return c.Router.AccessLogs.Enabled
+}
+
+// IsPolicyEngineEnabled returns true if policy engine is enabled
+func (c *Config) IsPolicyEngineEnabled() bool {
+	return c.Router.PolicyEngine.Enabled
 }
