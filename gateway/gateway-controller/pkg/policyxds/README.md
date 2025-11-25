@@ -202,6 +202,55 @@ err = policyManager.RemovePolicy("policy-id-123")
 4. **Composite Indexing**: Fast lookup by ID or api_name:version:context
 5. **gRPC Streaming**: Efficient xDS streaming protocol
 6. **Independent Lifecycle**: Can be enabled/disabled independently
+7. **TLS Support**: Optional TLS encryption for secure communication
+
+## Security
+
+### TLS Configuration
+
+The Policy xDS server supports TLS for secure communication with clients. TLS can be enabled via configuration:
+
+```yaml
+policyserver:
+  enabled: true
+  port: 18001
+  tls:
+    enabled: true
+    cert_file: "/path/to/server.crt"
+    key_file: "/path/to/server.key"
+```
+
+**Usage in Code:**
+
+```go
+// Without TLS (default)
+server := policyxds.NewServer(snapshotManager, port, logger)
+
+// With TLS
+server := policyxds.NewServer(
+    snapshotManager, 
+    port, 
+    logger,
+    policyxds.WithTLS("/path/to/server.crt", "/path/to/server.key"),
+)
+```
+
+**Generating Self-Signed Certificates for Testing:**
+
+```bash
+# Generate private key
+openssl genrsa -out server.key 2048
+
+# Generate self-signed certificate
+openssl req -new -x509 -sha256 -key server.key -out server.crt -days 365 \
+  -subj "/CN=localhost"
+```
+
+**Important Notes:**
+- TLS is optional and disabled by default for backward compatibility
+- When TLS is enabled, clients must connect using TLS credentials
+- For production, use certificates from a trusted CA
+- The server validates certificates at startup and fails fast if invalid
 
 ## Extension Points
 

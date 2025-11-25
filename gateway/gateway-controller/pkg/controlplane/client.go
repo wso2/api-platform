@@ -112,6 +112,7 @@ func NewClient(
 	store *storage.ConfigStore,
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
+	validator config.Validator,
 ) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -122,8 +123,8 @@ func NewClient(
 		db:                db,
 		snapshotManager:   snapshotManager,
 		parser:            config.NewParser(),
-		validator:         config.NewAPIValidator(),
-		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager),
+		validator:         validator,
+		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager, validator),
 		state: &ConnectionState{
 			Current:        Disconnected,
 			Conn:           nil,

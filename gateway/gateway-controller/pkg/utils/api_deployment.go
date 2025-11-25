@@ -61,13 +61,14 @@ func NewAPIDeploymentService(
 	store *storage.ConfigStore,
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
+	validator config.Validator,
 ) *APIDeploymentService {
 	return &APIDeploymentService{
 		store:           store,
 		db:              db,
 		snapshotManager: snapshotManager,
 		parser:          config.NewParser(),
-		validator:       config.NewAPIValidator(),
+		validator:       validator,
 	}
 }
 

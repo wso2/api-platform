@@ -35,6 +35,8 @@ type APIValidator struct {
 	versionRegex *regexp.Regexp
 	// urlFriendlyNameRegex matches URL-safe characters for API names
 	urlFriendlyNameRegex *regexp.Regexp
+	// policyValidator validates policy references and parameters
+	policyValidator *PolicyValidator
 }
 
 // NewAPIValidator creates a new API configuration validator
@@ -44,6 +46,11 @@ func NewAPIValidator() *APIValidator {
 		versionRegex:         regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
 		urlFriendlyNameRegex: regexp.MustCompile(`^[a-zA-Z0-9\-_\. ]+$`),
 	}
+}
+
+// SetPolicyValidator sets the policy validator for validating policy references
+func (v *APIValidator) SetPolicyValidator(policyValidator *PolicyValidator) {
+	v.policyValidator = policyValidator
 }
 
 // Validate performs comprehensive validation on a configuration
@@ -87,6 +94,12 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 
 	// Validate data section
 	errors = append(errors, v.validateData(&config.Data)...)
+
+	// Validate policies if policy validator is set
+	if v.policyValidator != nil {
+		policyErrors := v.policyValidator.ValidatePolicies(config)
+		errors = append(errors, policyErrors...)
+	}
 
 	return errors
 }

@@ -44,21 +44,9 @@ CREATE INDEX IF NOT EXISTS idx_context ON api_configs(context);
 -- Filter by API type (reporting/analytics)
 CREATE INDEX IF NOT EXISTS idx_kind ON api_configs(kind);
 
--- Policy definitions catalog (added in schema version 2)
-CREATE TABLE IF NOT EXISTS policy_definitions (
-    name TEXT NOT NULL,
-    version TEXT NOT NULL,
-    provider TEXT NOT NULL,
-    description TEXT,
-    flows_request_require_header INTEGER NOT NULL DEFAULT 0, -- boolean: 0/1
-    flows_request_require_body INTEGER NOT NULL DEFAULT 0,   -- boolean: 0/1
-    flows_response_require_header INTEGER NOT NULL DEFAULT 0, -- boolean: 0/1
-    flows_response_require_body INTEGER NOT NULL DEFAULT 0,  -- boolean: 0/1
-    parameters_schema TEXT, -- JSON document
-    PRIMARY KEY (name, version)
-);
-
-CREATE INDEX IF NOT EXISTS idx_policy_provider ON policy_definitions(provider);
+-- Note: Policy definitions are no longer stored in the database.
+-- They are loaded from files at controller startup (see policies/ directory).
+-- The policy_definitions table has been removed as of schema version 3.
 
 -- Set schema version
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;

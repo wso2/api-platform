@@ -20,12 +20,10 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -41,7 +39,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 	"go.uber.org/zap"
-	yaml "gopkg.in/yaml.v3"
 )
 
 // APIServer implements the generated ServerInterface
@@ -67,17 +64,19 @@ func NewAPIServer(
 	policyManager *policyxds.PolicyManager,
 	logger *zap.Logger,
 	controlPlaneClient controlplane.ControlPlaneClient,
+	policyDefinitions map[string]api.PolicyDefinition,
+	validator config.Validator,
 ) *APIServer {
 	server := &APIServer{
 		store:              store,
 		db:                 db,
 		snapshotManager:    snapshotManager,
 		policyManager:      policyManager,
-		policyDefinitions:  make(map[string]api.PolicyDefinition),
+		policyDefinitions:  policyDefinitions,
 		parser:             config.NewParser(),
-		validator:          config.NewAPIValidator(),
+		validator:          validator,
 		logger:             logger,
-		deploymentService:  utils.NewAPIDeploymentService(store, db, snapshotManager),
+		deploymentService:  utils.NewAPIDeploymentService(store, db, snapshotManager, validator),
 		controlPlaneClient: controlPlaneClient,
 	}
 
@@ -498,113 +497,24 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 	}
 }
 
-// CreatePolicies implements ServerInterface.CreatePolicies
-// (POST /policies)
-func (s *APIServer) CreatePolicies(c *gin.Context) {
-	log := middleware.GetLogger(c, s.logger)
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		log.Error("Failed to read request body", zap.Error(err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Failed to read request body"})
-		return
-	}
-	contentType := c.GetHeader("Content-Type")
-	var defs []api.PolicyDefinition
-	if strings.Contains(contentType, "yaml") || strings.Contains(contentType, "yml") {
-		if err := yaml.Unmarshal(body, &defs); err != nil {
-			log.Error("Failed to parse YAML policy definitions", zap.Error(err))
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid YAML policy definitions"})
-			return
-		}
-	} else {
-		if err := json.Unmarshal(body, &defs); err != nil {
-			log.Error("Failed to parse JSON policy definitions", zap.Error(err))
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Invalid JSON policy definitions"})
-			return
-		}
-	}
-	if len(defs) == 0 {
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "No policy definitions provided"})
-		return
-	}
-	// Validate uniqueness within incoming set and required fields
-	seen := make(map[string]struct{})
-	for _, d := range defs {
-		if strings.TrimSpace(d.Name) == "" || strings.TrimSpace(d.Version) == "" || strings.TrimSpace(d.Provider) == "" {
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: "Policy name, version, and provider are required"})
-			return
-		}
-		key := d.Name + "|" + d.Version
-		if _, exists := seen[key]; exists {
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("Duplicate policy definition in request: %s", key)})
-			return
-		}
-		seen[key] = struct{}{}
-	}
-
-	// Persist authoritative state first if persistent storage configured
-	if s.db != nil {
-		if err := s.db.ReplacePolicyDefinitions(defs); err != nil {
-			log.Error("Failed to persist policy definitions", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to persist policy definitions"})
-			return
-		}
-	}
-
-	// Replace in-memory snapshot atomically after successful persistence
-	s.policyDefMu.Lock()
-	s.policyDefinitions = make(map[string]api.PolicyDefinition, len(defs))
-	for _, d := range defs {
-		key := d.Name + "|" + d.Version
-		s.policyDefinitions[key] = d
-	}
-	s.policyDefMu.Unlock()
-
-	count := len(defs)
-	resp := api.PolicyCreateResponse{Status: stringPtr("success"), Message: stringPtr("Policy definitions updated successfully"), Count: &count, Created: &defs}
-	log.Info("Policy definitions replaced", zap.Int("count", count))
-	c.JSON(http.StatusCreated, resp)
-}
-
 // ListPolicies implements ServerInterface.ListPolicies
 // (GET /policies)
 func (s *APIServer) ListPolicies(c *gin.Context) {
-	log := middleware.GetLogger(c, s.logger)
-	// If memory empty and persistent storage exists, hydrate from DB
-	s.policyDefMu.RLock()
-	empty := len(s.policyDefinitions) == 0
-	s.policyDefMu.RUnlock()
-	if empty && s.db != nil {
-		defs, err := s.db.GetAllPolicyDefinitions()
-		if err != nil {
-			log.Error("Failed to load policy definitions from storage", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to load policy definitions"})
-			return
-		}
-		// Double-checked locking: re-verify map is still empty after acquiring write lock
-		s.policyDefMu.Lock()
-		if len(s.policyDefinitions) == 0 {
-			for _, d := range defs {
-				key := d.Name + "|" + d.Version
-				s.policyDefinitions[key] = d
-			}
-		}
-		s.policyDefMu.Unlock()
-	}
-
-	// Collect and sort
+	// Collect and sort policies loaded from files at startup
 	s.policyDefMu.RLock()
 	list := make([]api.PolicyDefinition, 0, len(s.policyDefinitions))
 	for _, d := range s.policyDefinitions {
 		list = append(list, d)
 	}
 	s.policyDefMu.RUnlock()
+
 	sort.Slice(list, func(i, j int) bool {
 		if list[i].Name == list[j].Name {
 			return list[i].Version < list[j].Version
 		}
 		return list[i].Name < list[j].Name
 	})
+
 	count := len(list)
 	resp := struct {
 		Status   string                 `json:"status"`

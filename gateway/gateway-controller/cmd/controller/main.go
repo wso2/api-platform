@@ -20,6 +20,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 	"go.uber.org/zap"
 )
@@ -175,8 +176,23 @@ func main() {
 		log.Info("Policy xDS server is disabled")
 	}
 
+	// Load policy definitions from files (must be done before creating validator)
+	policyLoader := utils.NewPolicyLoader(log)
+	policyDir := cfg.GetPolicyDirectory()
+	log.Info("Loading policy definitions from directory", zap.String("directory", policyDir))
+	policyDefinitions, err := policyLoader.LoadPoliciesFromDirectory(policyDir)
+	if err != nil {
+		log.Fatal("Failed to load policy definitions", zap.Error(err))
+	}
+	log.Info("Policy definitions loaded", zap.Int("count", len(policyDefinitions)))
+
+	// Create validator with policy validation support
+	validator := config.NewAPIValidator()
+	policyValidator := config.NewPolicyValidator(policyDefinitions)
+	validator.SetPolicyValidator(policyValidator)
+
 	// Initialize and start control plane client with dependencies for API creation
-	cpClient := controlplane.NewClient(cfg.ControlPlane, log, configStore, db, snapshotManager)
+	cpClient := controlplane.NewClient(cfg.ControlPlane, log, configStore, db, snapshotManager, validator)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", zap.Error(err))
 		// Don't fail startup - gateway can run in degraded mode without control plane
@@ -196,8 +212,8 @@ func main() {
 	router.Use(middleware.LoggingMiddleware(log))
 	router.Use(gin.Recovery())
 
-	// Initialize API server
-	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient)
+	// Initialize API server with the configured validator
+	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient, policyDefinitions, validator)
 
 	// Register API routes
 	api.RegisterHandlers(router, apiServer)
