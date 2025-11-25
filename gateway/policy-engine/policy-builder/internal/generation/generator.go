@@ -1,7 +1,7 @@
 package generation
 
 import (
-	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -13,8 +13,14 @@ const BuilderVersion = "v1.0.0"
 
 // GenerateCode orchestrates all code generation tasks
 func GenerateCode(srcDir string, policies []*types.DiscoveredPolicy) error {
+	slog.Debug("Starting code generation",
+		"srcDir", srcDir,
+		"policyCount", len(policies),
+		"phase", "generation")
+
 	// Generated files go in cmd/policy-engine (main package)
 	mainPkgDir := filepath.Join(srcDir, "cmd", "policy-engine")
+	slog.Debug("Code generation target", "mainPkgDir", mainPkgDir, "phase", "generation")
 
 	// Generate plugin_registry.go
 	registryCode, err := GeneratePluginRegistry(policies, srcDir)
@@ -27,7 +33,10 @@ func GenerateCode(srcDir string, policies []*types.DiscoveredPolicy) error {
 		return errors.NewGenerationError("failed to write plugin_registry.go", err)
 	}
 
-	fmt.Printf("✓ Generated plugin_registry.go with %d policies\n", len(policies))
+	slog.Info("Generated plugin_registry.go",
+		"policies", len(policies),
+		"path", registryPath,
+		"phase", "generation")
 
 	// Generate build_info.go
 	buildInfoCode, err := GenerateBuildInfo(policies, BuilderVersion)
@@ -40,14 +49,18 @@ func GenerateCode(srcDir string, policies []*types.DiscoveredPolicy) error {
 		return errors.NewGenerationError("failed to write build_info.go", err)
 	}
 
-	fmt.Printf("✓ Generated build_info.go\n")
+	slog.Info("Generated build_info.go",
+		"path", buildInfoPath,
+		"phase", "generation")
 
 	// Update go.mod with replace directives
 	if err := GenerateGoModReplaces(srcDir, policies); err != nil {
 		return errors.NewGenerationError("failed to update go.mod", err)
 	}
 
-	fmt.Printf("✓ Updated go.mod with %d replace directives\n", len(policies))
+	slog.Info("Updated go.mod with replace directives",
+		"count", len(policies),
+		"phase", "generation")
 
 	return nil
 }

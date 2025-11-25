@@ -2,12 +2,18 @@ package validation
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/policy-engine/policy-builder/pkg/types"
 )
 
 // ValidateYAMLSchema validates the policy.yaml structure and required fields
 func ValidateYAMLSchema(policy *types.DiscoveredPolicy) []types.ValidationError {
+	slog.Debug("Validating YAML schema",
+		"policy", policy.Name,
+		"version", policy.Version,
+		"phase", "validation")
+
 	var errors []types.ValidationError
 
 	def := policy.Definition

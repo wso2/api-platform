@@ -2,9 +2,9 @@ package validation
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
+	"github.com/policy-engine/policy-builder/pkg/fsutil"
 	"github.com/policy-engine/policy-builder/pkg/types"
 )
 
@@ -13,22 +13,22 @@ func ValidateDirectoryStructure(policy *types.DiscoveredPolicy) []types.Validati
 	var errors []types.ValidationError
 
 	// Check policy.yaml exists
-	if _, err := os.Stat(policy.YAMLPath); os.IsNotExist(err) {
+	if err := fsutil.ValidatePathExists(policy.YAMLPath, "policy.yaml"); err != nil {
 		errors = append(errors, types.ValidationError{
 			PolicyName:    policy.Name,
 			PolicyVersion: policy.Version,
 			FilePath:      policy.YAMLPath,
-			Message:       "policy.yaml file not found",
+			Message:       err.Error(),
 		})
 	}
 
 	// Check go.mod exists
-	if _, err := os.Stat(policy.GoModPath); os.IsNotExist(err) {
+	if err := fsutil.ValidatePathExists(policy.GoModPath, "go.mod"); err != nil {
 		errors = append(errors, types.ValidationError{
 			PolicyName:    policy.Name,
 			PolicyVersion: policy.Version,
 			FilePath:      policy.GoModPath,
-			Message:       "go.mod file not found",
+			Message:       err.Error(),
 		})
 	}
 
@@ -44,12 +44,12 @@ func ValidateDirectoryStructure(policy *types.DiscoveredPolicy) []types.Validati
 
 	// Verify all source files exist
 	for _, sourceFile := range policy.SourceFiles {
-		if _, err := os.Stat(sourceFile); os.IsNotExist(err) {
+		if err := fsutil.ValidatePathExists(sourceFile, "source file"); err != nil {
 			errors = append(errors, types.ValidationError{
 				PolicyName:    policy.Name,
 				PolicyVersion: policy.Version,
 				FilePath:      sourceFile,
-				Message:       fmt.Sprintf("source file not found: %s", filepath.Base(sourceFile)),
+				Message:       fmt.Sprintf("%s: %s", filepath.Base(sourceFile), err.Error()),
 			})
 		}
 	}

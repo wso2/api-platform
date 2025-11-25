@@ -8,7 +8,7 @@ type PolicyManifest struct {
 
 // ManifestEntry represents a single policy entry in the manifest
 type ManifestEntry struct {
-	Name    string `yaml:"name"`
-	Version string `yaml:"version"`
-	URI     string `yaml:"uri"`
+	Name     string `yaml:"name"`
+	Version  string `yaml:"version"`
+	FilePath string `yaml:"filePath"`
 }

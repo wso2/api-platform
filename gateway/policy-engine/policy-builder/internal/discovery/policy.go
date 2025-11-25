@@ -2,15 +2,19 @@ package discovery
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
+	"github.com/policy-engine/policy-builder/pkg/fsutil"
 	"github.com/policy-engine/sdk/policy"
 	"gopkg.in/yaml.v3"
 )
 
 // ParsePolicyYAML reads and parses a policy.yaml file
 func ParsePolicyYAML(path string) (*policy.PolicyDefinition, error) {
+	slog.Debug("Reading policy.yaml", "path", path, "phase", "discovery")
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read policy.yaml: %w", err)
@@ -20,6 +24,11 @@ func ParsePolicyYAML(path string) (*policy.PolicyDefinition, error) {
 	if err := yaml.Unmarshal(data, &def); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML: %w", err)
 	}
+
+	slog.Debug("Parsed policy definition",
+		"name", def.Name,
+		"version", def.Version,
+		"phase", "discovery")
 
 	// Basic validation
 	if def.Name == "" {
@@ -34,16 +43,18 @@ func ParsePolicyYAML(path string) (*policy.PolicyDefinition, error) {
 
 // ValidateDirectoryStructure checks if a policy directory has required files
 func ValidateDirectoryStructure(policyDir string) error {
+	slog.Debug("Validating directory structure", "dir", policyDir, "phase", "discovery")
+
 	// Check for policy.yaml
 	policyYAML := filepath.Join(policyDir, "policy.yaml")
-	if _, err := os.Stat(policyYAML); os.IsNotExist(err) { // TODO: (renuka) check here as well.
-		return fmt.Errorf("missing policy.yaml in %s", policyDir)
+	if err := fsutil.ValidatePathExists(policyYAML, "policy.yaml"); err != nil {
+		return fmt.Errorf("in %s: %w", policyDir, err)
 	}
 
 	// Check for go.mod
 	goMod := filepath.Join(policyDir, "go.mod")
-	if _, err := os.Stat(goMod); os.IsNotExist(err) { // TODO: (renuka) check here as well.
-		return fmt.Errorf("missing go.mod in %s", policyDir)
+	if err := fsutil.ValidatePathExists(goMod, "go.mod"); err != nil {
+		return fmt.Errorf("in %s: %w", policyDir, err)
 	}
 
 	// Check for at least one .go file
@@ -59,6 +70,8 @@ func ValidateDirectoryStructure(policyDir string) error {
 			break
 		}
 	}
+
+	slog.Debug("Go file check", "dir", policyDir, "hasGoFiles", hasGoFiles, "phase", "discovery")
 
 	if !hasGoFiles {
 		return fmt.Errorf("no .go files found in %s", policyDir)
@@ -78,7 +91,12 @@ func CollectSourceFiles(policyDir string) ([]string, error) {
 
 	for _, file := range files {
 		if !file.IsDir() && filepath.Ext(file.Name()) == ".go" {
-			goFiles = append(goFiles, filepath.Join(policyDir, file.Name()))
+			fullPath := filepath.Join(policyDir, file.Name())
+			goFiles = append(goFiles, fullPath)
+			slog.Debug("Discovered Go source file",
+				"file", file.Name(),
+				"path", fullPath,
+				"phase", "discovery")
 		}
 	}
 
