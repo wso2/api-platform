@@ -3,7 +3,7 @@ package types
 import (
 	"time"
 
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 // DiscoveredPolicy represents a policy found during the discovery phase

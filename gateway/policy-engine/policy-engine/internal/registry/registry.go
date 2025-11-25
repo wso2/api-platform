@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 // PolicyRegistry provides centralized policy lookup

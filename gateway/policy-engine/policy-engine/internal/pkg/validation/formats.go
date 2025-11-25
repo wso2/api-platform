@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"regexp"
 
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 // UUID regex pattern (RFC 4122)

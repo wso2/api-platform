@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/policy-engine/policy-engine/internal/registry"
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 // PolicyExecutionContext manages the lifecycle of a single request through the policy chain.

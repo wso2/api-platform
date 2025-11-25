@@ -3,7 +3,7 @@ package validation
 import (
 	"fmt"
 
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 // ValidateParameter validates a parameter value against its schema

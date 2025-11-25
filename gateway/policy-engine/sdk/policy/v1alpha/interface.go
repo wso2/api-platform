@@ -1,4 +1,4 @@
-package policy
+package policyv1alpha
 
 // Policy is the base interface that all policies must implement
 type Policy interface {

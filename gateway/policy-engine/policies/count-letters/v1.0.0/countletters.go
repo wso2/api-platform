@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 // CountLettersPolicy counts occurrences of specified letters in the response body
@@ -19,10 +19,10 @@ func NewPolicy() policy.Policy {
 // Mode returns the processing mode for this policy
 func (p *CountLettersPolicy) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeSkip,   // Don't need request headers
-		RequestBodyMode:    policy.BodyModeSkip,     // Don't need request body
-		ResponseHeaderMode: policy.HeaderModeSkip,   // Don't process response headers
-		ResponseBodyMode:   policy.BodyModeBuffer,   // Need full buffered response body
+		RequestHeaderMode:  policy.HeaderModeSkip, // Don't need request headers
+		RequestBodyMode:    policy.BodyModeSkip,   // Don't need request body
+		ResponseHeaderMode: policy.HeaderModeSkip, // Don't process response headers
+		ResponseBodyMode:   policy.BodyModeBuffer, // Need full buffered response body
 	}
 }
 

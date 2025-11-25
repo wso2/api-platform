@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/policy-engine/policy-builder/pkg/fsutil"
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 	"gopkg.in/yaml.v3"
 )
 
