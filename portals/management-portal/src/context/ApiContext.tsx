@@ -31,7 +31,7 @@ type ApiContextValue = {
   selectApi: (api: ApiSummary | null, options?: { slug?: string }) => void;
   /** Gateways bound to an API id */
   fetchGatewaysForApi: (apiId: string) => Promise<ApiGatewaySummary[]>;
-  importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<void>;
+  importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<ApiSummary>;
 };
 
 const ApiContext = createContext<ApiContextValue | undefined>(undefined);

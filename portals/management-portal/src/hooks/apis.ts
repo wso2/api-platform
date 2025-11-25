@@ -315,7 +315,7 @@ export const useApisApi = () => {
     async (
       payload: ImportOpenApiRequest,
       opts?: { signal?: AbortSignal }
-    ): Promise<void> => {
+    ): Promise<ApiSummary> => {
       const { token, baseUrl } = getApiConfig();
 
       const formData = new FormData();
@@ -336,7 +336,6 @@ export const useApisApi = () => {
         body: formData,
         signal: opts?.signal,
       });
-
       if (!res.ok) {
         let errorMessage = `Failed to import OpenAPI: ${res.status} ${res.statusText}`;
         try {
@@ -351,6 +350,12 @@ export const useApisApi = () => {
           console.warn('Failed to parse error response as JSON:', parseError);
         }
         throw new Error(errorMessage);
+      }
+      try {
+        const data = await res.json();
+        return normalizeApiSummary(data as any);
+      } catch (parseErr) {
+        throw new Error('Imported API created but failed to parse response');
       }
     },
     []

@@ -17,7 +17,7 @@ import { defaultServiceName, firstServerUrl, deriveContext, mapOperations } from
 type Props = {
   open: boolean;
   selectedProjectId: string;
-  importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<void>;
+  importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<ApiSummary>;
   refreshApis: (projectId?: string) => Promise<ApiSummary[]>;
   onClose: () => void;
 };

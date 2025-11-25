@@ -10,7 +10,7 @@ import type { ImportOpenApiRequest, ApiSummary } from "../../../hooks/apis";
 type Props = {
   open: boolean;
   selectedProjectId: string;
-  importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<void>;
+  importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<ApiSummary>;
   refreshApis: (projectId?: string) => Promise<ApiSummary[]>;
   onClose: () => void;
 };
