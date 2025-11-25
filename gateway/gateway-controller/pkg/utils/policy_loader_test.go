@@ -19,8 +19,10 @@
 package utils
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -219,5 +221,92 @@ func TestPolicyLoader_NonExistentDirectory(t *testing.T) {
 	}
 	if len(policies) != 0 {
 		t.Errorf("Expected 0 policies from non-existent directory, got %d", len(policies))
+	}
+}
+
+func TestPolicyLoader_InvalidVersionFormat(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+	loader := NewPolicyLoader(logger)
+
+	// Create temporary directory
+	tmpDir := t.TempDir()
+
+	// Test cases for invalid version formats
+	testCases := []struct {
+		name    string
+		version string
+	}{
+		{"missing v prefix", "1.0.0"},
+		{"missing patch version", "v1.0"},
+		{"missing minor and patch", "v1"},
+		{"extra segments", "v1.0.0.1"},
+		{"non-numeric version", "vX.Y.Z"},
+		{"just v", "v"},
+		{"v with text", "v1.0.0-beta"},
+		{"spaces in version", "v1.0. 0"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a policy file with invalid version
+			policyFile := filepath.Join(tmpDir, "invalid_version.json")
+			policyJSON := fmt.Sprintf(`{
+				"name": "TestPolicy",
+				"version": "%s",
+				"flows": {
+					"request": {
+						"requireHeader": true,
+						"requireBody": false
+					}
+				}
+			}`, tc.version)
+
+			if err := os.WriteFile(policyFile, []byte(policyJSON), 0644); err != nil {
+				t.Fatalf("Failed to write test file: %v", err)
+			}
+
+			// Try to load - should fail with version format error
+			_, err := loader.LoadPoliciesFromDirectory(tmpDir)
+			if err == nil {
+				t.Errorf("Expected error for invalid version format '%s', got nil", tc.version)
+			} else if !strings.Contains(err.Error(), "semantic version") {
+				t.Errorf("Expected semantic version error, got: %v", err)
+			}
+
+			// Clean up for next test case
+			os.Remove(policyFile)
+		})
+	}
+
+	// Test valid versions to ensure they still work
+	validVersions := []string{"v1.0.0", "v2.10.3", "v0.0.1", "v100.200.300"}
+	for _, version := range validVersions {
+		t.Run("valid_"+version, func(t *testing.T) {
+			policyFile := filepath.Join(tmpDir, "valid_version.json")
+			policyJSON := fmt.Sprintf(`{
+				"name": "TestPolicy",
+				"version": "%s",
+				"flows": {
+					"request": {
+						"requireHeader": true,
+						"requireBody": false
+					}
+				}
+			}`, version)
+
+			if err := os.WriteFile(policyFile, []byte(policyJSON), 0644); err != nil {
+				t.Fatalf("Failed to write test file: %v", err)
+			}
+
+			policies, err := loader.LoadPoliciesFromDirectory(tmpDir)
+			if err != nil {
+				t.Errorf("Expected no error for valid version '%s', got: %v", version, err)
+			}
+			if len(policies) != 1 {
+				t.Errorf("Expected 1 policy, got %d", len(policies))
+			}
+
+			os.Remove(policyFile)
+		})
 	}
 }

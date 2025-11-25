@@ -369,6 +369,89 @@ func TestPolicyValidator_TypeMismatch(t *testing.T) {
 	}
 }
 
+func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
+	// Create policy definitions with required parameters
+	policyDefs := map[string]api.PolicyDefinition{
+		"JWTValidation|v1.0.0": {
+			Name:    "JWTValidation",
+			Version: "v1.0.0",
+			ParametersSchema: &map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"issuer": map[string]interface{}{
+						"type": "string",
+					},
+					"audience": map[string]interface{}{
+						"type": "string",
+					},
+				},
+				"required": []interface{}{"issuer"}, // issuer is required
+			},
+		},
+	}
+
+	validator := NewPolicyValidator(policyDefs)
+
+	// Test case 1: Policy with nil params (should fail validation for required field)
+	apiConfig := &api.APIConfiguration{
+		Version: "api-platform.wso2.com/v1",
+		Kind:    "http/rest",
+		Data: api.APIConfigData{
+			Name:    "Test API",
+			Version: "v1.0",
+			Context: "/test",
+			Upstream: []api.Upstream{
+				{Url: "http://backend.example.com"},
+			},
+			Policies: &[]api.Policy{
+				{
+					Name:    "JWTValidation",
+					Version: "v1.0.0",
+					Params:  nil, // No params provided
+				},
+			},
+			Operations: []api.Operation{
+				{
+					Method: "GET",
+					Path:   "/resource",
+				},
+			},
+		},
+	}
+
+	errors := validator.ValidatePolicies(apiConfig)
+	if len(errors) == 0 {
+		t.Error("Expected validation error for missing required parameter 'issuer'")
+	} else {
+		found := false
+		for _, err := range errors {
+			if contains(err.Message, "issuer") && contains(err.Message, "required") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected error about required 'issuer' parameter, got: %v", errors)
+		}
+	}
+
+	// Test case 2: Policy with empty params map (should also fail)
+	(*apiConfig.Data.Policies)[0].Params = &map[string]interface{}{}
+	errors = validator.ValidatePolicies(apiConfig)
+	if len(errors) == 0 {
+		t.Error("Expected validation error for missing required parameter 'issuer'")
+	}
+
+	// Test case 3: Policy with required param provided (should pass)
+	(*apiConfig.Data.Policies)[0].Params = &map[string]interface{}{
+		"issuer": "https://auth.example.com",
+	}
+	errors = validator.ValidatePolicies(apiConfig)
+	if len(errors) > 0 {
+		t.Errorf("Expected no validation errors, got: %v", errors)
+	}
+}
+
 // Helper functions
 func boolPtr(b bool) *bool {
 	return &b

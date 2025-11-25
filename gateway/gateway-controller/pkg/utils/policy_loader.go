@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
@@ -133,11 +134,11 @@ func (pl *PolicyLoader) loadPolicyFile(filePath string) (*api.PolicyDefinition, 
 
 	// For YAML files, use an intermediate struct with proper yaml tags
 	var yamlPolicy struct {
-		Name             string                 `yaml:"name"`
-		Version          string                 `yaml:"version"`
-		Description      *string                `yaml:"description,omitempty"`
-		Flows            struct {
-			Request  *struct {
+		Name        string  `yaml:"name"`
+		Version     string  `yaml:"version"`
+		Description *string `yaml:"description,omitempty"`
+		Flows       struct {
+			Request *struct {
 				RequireHeader *bool `yaml:"requireHeader,omitempty"`
 				RequireBody   *bool `yaml:"requireBody,omitempty"`
 			} `yaml:"request,omitempty"`
@@ -193,8 +194,9 @@ func (pl *PolicyLoader) validatePolicy(policy *api.PolicyDefinition) error {
 	}
 
 	// Validate version format (should match pattern ^v\d+\.\d+\.\d+$)
-	if !strings.HasPrefix(policy.Version, "v") {
-		return fmt.Errorf("policy version must start with 'v'")
+	versionPattern := regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
+	if !versionPattern.MatchString(policy.Version) {
+		return fmt.Errorf("policy version must match semantic version format (e.g., v1.0.0, v2.1.3)")
 	}
 
 	// Check that flows is not empty
