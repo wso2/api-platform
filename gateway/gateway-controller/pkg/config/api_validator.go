@@ -46,8 +46,27 @@ func NewAPIValidator() *APIValidator {
 	}
 }
 
-// Validate performs comprehensive validation on an API configuration
-func (v *APIValidator) Validate(config *api.APIConfiguration) []ValidationError {
+// Validate performs comprehensive validation on a configuration
+// It uses type switching to handle APIConfiguration specifically
+func (v *APIValidator) Validate(config interface{}) []ValidationError {
+	// Type switch to handle different configuration types
+	switch cfg := config.(type) {
+	case *api.APIConfiguration:
+		return v.validateAPIConfiguration(cfg)
+	case api.APIConfiguration:
+		return v.validateAPIConfiguration(&cfg)
+	default:
+		return []ValidationError{
+			{
+				Field:   "config",
+				Message: "Unsupported configuration type for APIValidator (expected APIConfiguration)",
+			},
+		}
+	}
+}
+
+// validateAPIConfiguration performs comprehensive validation on an API configuration
+func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []ValidationError {
 	var errors []ValidationError
 
 	// Validate version

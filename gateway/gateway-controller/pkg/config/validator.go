@@ -18,18 +18,15 @@
 
 package config
 
-import (
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
-)
-
 // ValidationError represents a field-level validation error
 type ValidationError struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
 }
 
-// Validator is an interface for validating API configurations
+// Validator is an interface for validating configurations
 // This allows for different validation strategies (API, LLM, MCP, etc.)
+// Each validator implementation handles different configuration types using type switching
 type Validator interface {
-	Validate(config *api.APIConfiguration) []ValidationError
+	Validate(config interface{}) []ValidationError
 }
