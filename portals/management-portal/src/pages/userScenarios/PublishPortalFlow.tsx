@@ -836,7 +836,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                             onChange={(v: string) => setContractMeta((prev: any) => ({ ...prev, description: v }))}
                             fullWidth
                             multiline
-                            rows={8}
+                            rows={3}
                             testId="publish-config-description"
                             size="medium"
                             placeholder="Describe your API"

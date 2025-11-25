@@ -8,10 +8,9 @@ type Props = {
   onChange?: (version: string) => void;
   disabled?: boolean;
   label?: string;
-  inputHeight?: number | string;
 };
 
-const VersionInput: React.FC<Props> = ({ value, onChange, disabled, label, inputHeight }) => {
+const VersionInput: React.FC<Props> = ({ value, onChange, disabled, label }) => {
   // Normalize incoming value into major/minor display parts
   const normalized = React.useMemo(() => formatVersionToMajorMinor(value || ""), [value]);
   const initialParts = normalized.replace(/^v/, "").split('.');
@@ -57,9 +56,9 @@ const VersionInput: React.FC<Props> = ({ value, onChange, disabled, label, input
           />
         </Box>
 
-        <Typography variant="body2">.</Typography>
+        <Typography variant="body2" sx={{ mt: 4 }}>.</Typography>
 
-        <Box sx={{ width: 96 }}>
+        <Box sx={{ width: 96, mt:3 }}>
           <TextInput
             size="small"
             value={minorState}
