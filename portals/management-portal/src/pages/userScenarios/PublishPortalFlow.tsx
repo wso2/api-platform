@@ -14,7 +14,6 @@ import {
   ListItemText,
   Divider,
   Chip,
-  TextField,
   InputAdornment,
   
 } from "@mui/material";
@@ -521,7 +520,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                               placeholder="https://example.com/openapi.yaml"
                               value={specUrl}
                               onChange={(v: string) => setSpecUrl(v)}
-                              testId=""
+                              testId="publish-spec-url"
                               size="medium"
                             />
 
@@ -659,25 +658,25 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                             ) : (
                               <Box sx={{ width: '100%' }}>
                                 <Box sx={{ mb: 1 }}>
-                                  <TextField
-                                    size="small"
-                                    placeholder="Search APIs"
-                                    value={existingQuery}
-                                    onChange={(e) => setExistingQuery(e.target.value)}
-                                    fullWidth
-                                    variant="outlined"
-                                    InputProps={{
-                                      startAdornment: (
-                                        <InputAdornment position="start">
-                                          <SearchIcon fontSize="small" />
-                                        </InputAdornment>
-                                      ),
-                                    }}
-                                    sx={{
-                                      borderRadius: 1,
-                                      backgroundColor: theme.palette.success.light,
-                                    }}
-                                  />
+                                  <Box>
+                                    <Box sx={{ borderRadius: 1, backgroundColor: theme.palette.success.light }}>
+                                      <TextInput
+                                        size="small"
+                                        placeholder="Search APIs"
+                                        value={existingQuery}
+                                        onChange={(v: string) => setExistingQuery(v)}
+                                        fullWidth
+                                        testId="publish-existing-search"
+                                        InputProps={{
+                                          startAdornment: (
+                                            <InputAdornment position="start">
+                                              <SearchIcon fontSize="small" />
+                                            </InputAdornment>
+                                          ),
+                                        }}
+                                      />
+                                    </Box>
+                                  </Box>
                                 </Box>
                                 <Paper
                                   variant="outlined"
@@ -783,15 +782,13 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                         <Stack spacing={2.5}>
                           <Grid container spacing={2}>
                             <Grid size={{ xs: 12 }}>
-                              <TextField
+                              <TextInput
                                 label="Name"
                                 value={contractMeta?.name || ""}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                  setContractMeta((prev: any) => ({ ...prev, name: e.target.value }))
-                                }
+                                onChange={(v: string) => setContractMeta((prev: any) => ({ ...prev, name: v }))}
                                 fullWidth
-                                required
-                                variant="outlined"
+                                testId="publish-config-name"
+                                size="medium"
                                 placeholder="My API"
                               />
                             </Grid>
@@ -804,12 +801,10 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                               />
                             </Grid>
                           <Grid size={{ xs: 12 }}>
-                            <TextField
+                            <TextInput
                               label="Context"
                               value={contractMeta?.context || ""}
-                              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                setContractMeta((prev: any) => ({ ...prev, context: e.target.value }))
-                              }
+                              onChange={(v: string) => setContractMeta((prev: any) => ({ ...prev, context: v }))}
                               onBlur={() => {
                                 const ctx = (contractMeta?.context || "").trim();
                                 if (ctx && !ctx.startsWith("/")) {
@@ -817,37 +812,35 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                                 }
                               }}
                               fullWidth
-                              required
-                              variant="outlined"
+                              testId="publish-config-context"
+                              size="medium"
                               placeholder="/my-api"
                             />
                           </Grid>
                           <Grid size={{ xs: 12 }}>
-                            <TextField
+                            <TextInput
                               label="Target (Backend URL)"
                               value={contractMeta?.target || ""}
-                              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                setContractMeta((prev: any) => ({ ...prev, target: e.target.value }))
-                              }
+                              onChange={(v: string) => setContractMeta((prev: any) => ({ ...prev, target: v }))}
                               fullWidth
-                              variant="outlined"
+                              testId="publish-config-target"
+                              size="medium"
                               placeholder="https://api.example.com"
                             />
                           </Grid>
                           </Grid>
 
-                          <TextField
+                          <TextInput
                             label="Description"
                             value={contractMeta?.description || ""}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                              setContractMeta((prev: any) => ({ ...prev, description: e.target.value }))
-                            }
+                            onChange={(v: string) => setContractMeta((prev: any) => ({ ...prev, description: v }))}
                             fullWidth
                             multiline
                             rows={8}
-                            variant="outlined"
+                            testId="publish-config-description"
+                            size="medium"
                             placeholder="Describe your API"
-                            sx={{ width: '100%' }}
+                            className="description-input"
                           />
                         </Stack>
                       </Paper>

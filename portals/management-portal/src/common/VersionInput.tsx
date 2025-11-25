@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Box, TextField, Typography } from "@mui/material";
+import { Box, Typography } from "@mui/material";
+import { TextInput } from "../components/src/components/TextInput";
 import { formatVersionToMajorMinor } from "../helpers/openApiHelpers";
 
 type Props = {
@@ -38,38 +39,42 @@ const VersionInput: React.FC<Props> = ({ value, onChange, disabled, label, input
   return (
     <Box>
       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-        <TextField
-          size="small"
-          label={label ?? ""}
-          required={true}
-          InputLabelProps={{ shrink: true }}
-          value={majorState}
-          onChange={(e) => {
-            const digits = e.target.value.replace(/\D/g, "");
-            const next = digits;
-            setMajorState(next);
-            emitIfComplete(next, minorState);
-          }}
-          inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }}
-          disabled={disabled}
-          sx={{ width: 80, height: inputHeight ?? undefined }}
-        />
+        <Box sx={{ width: 96 }}>
+          <TextInput
+            label={label ?? ""}
+            size="small"
+            value={majorState}
+            onChange={(v: string) => {
+              const digits = v.replace(/\D/g, "");
+              const next = digits;
+              setMajorState(next);
+              emitIfComplete(next, minorState);
+            }}
+            disabled={disabled}
+            inputPropsJson={{ inputMode: "numeric", pattern: "[0-9]*" }}
+            fullWidth
+            testId="version-major"
+          />
+        </Box>
 
         <Typography variant="body2">.</Typography>
 
-        <TextField
-          size="small"
-          value={minorState}
-          onChange={(e) => {
-            const digits = e.target.value.replace(/\D/g, "");
-            const next = digits;
-            setMinorState(next);
-            emitIfComplete(majorState, next);
-          }}
-          inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }}
-          disabled={disabled}
-          sx={{ width: 80, height: inputHeight ?? undefined }}
-        />
+        <Box sx={{ width: 96 }}>
+          <TextInput
+            size="small"
+            value={minorState}
+            onChange={(v: string) => {
+              const digits = v.replace(/\D/g, "");
+              const next = digits;
+              setMinorState(next);
+              emitIfComplete(majorState, next);
+            }}
+            disabled={disabled}
+            inputPropsJson={{ inputMode: "numeric", pattern: "[0-9]*" }}
+            fullWidth
+            testId="version-minor"
+          />
+        </Box>
       </Box>
     </Box>
   );

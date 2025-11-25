@@ -15,6 +15,11 @@ import {
 import { QuestionIcon, InfoIcon } from '../../Icons';
 import Question from '../../Icons/generated/Question';
 
+type InputPropsJson = {
+  inputMode?: "numeric" | "text" | "decimal" | "search" | "email" | "url";
+  pattern?: string;
+};
+
 export interface TextInputProps {
   label?: string;
   value: string;
@@ -43,6 +48,8 @@ export interface TextInputProps {
   placeholder?: string;
   endAdornment?: React.ReactNode;
   InputProps?: React.ComponentProps<typeof StyledTextField>['InputProps'];
+  inputPropsJson?: InputPropsJson;
+  onBlur?: React.FocusEventHandler<HTMLInputElement | HTMLTextAreaElement>;
 }
 
 export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
@@ -70,6 +77,7 @@ export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
       fullWidth = false,
       type,
       endAdornment,
+      onBlur,
       ...props
     },
     ref
@@ -117,6 +125,7 @@ export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
             onChange(evt.target.value)
           }
           disabled={disabled}
+          onBlur={onBlur}
           slotProps={{
             input: {
               readOnly: readonly,
@@ -126,6 +135,7 @@ export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
             },
           }}
           InputProps={{
+            ...(props.inputPropsJson || {}),
             ...(props.InputProps || {}),
             endAdornment: endAdornment ?? props.InputProps?.endAdornment,
           }}
