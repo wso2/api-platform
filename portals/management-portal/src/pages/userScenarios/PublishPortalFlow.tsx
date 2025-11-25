@@ -30,6 +30,7 @@ import {
   useCreateComponentBuildpackContext,
   CreateComponentBuildpackProvider,
 } from "../../context/CreateComponentBuildpackContext";
+import { formatVersionToMajorMinor } from "../../helpers/openApiHelpers";
 import {
   useOpenApiValidation,
   type OpenApiValidationResponse,
@@ -259,8 +260,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   const autoFill = React.useCallback(
     (api: any) => {
       const title = api?.name?.trim() || api?.displayName?.trim() || "";
-      const rawVersion = api?.version?.trim() || "1.0.0";
-      const version = /^v/i.test(rawVersion) ? rawVersion : `v${rawVersion}`;
+      const version = formatVersionToMajorMinor(api?.version);
       const description = api?.description || "";
       const targetUrl = firstServerUrl(api);
 
