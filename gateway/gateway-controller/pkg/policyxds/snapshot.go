@@ -24,19 +24,18 @@ import (
 	"fmt"
 	"sync"
 
-	runtimev3 "github.com/envoyproxy/go-control-plane/envoy/service/runtime/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
-	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // SnapshotManager manages xDS snapshots for policy configurations
 type SnapshotManager struct {
-	cache      cache.SnapshotCache
+	cache      *cache.LinearCache // Use LinearCache directly for custom type URLs
 	store      *storage.PolicyStore
 	logger     *zap.Logger
 	nodeID     string
@@ -44,13 +43,17 @@ type SnapshotManager struct {
 	translator *Translator
 }
 
-// NewSnapshotManager creates a new policy snapshot manager
+// NewSnapshotManager creates a new policy snapshot manager with LinearCache for custom type URLs
 func NewSnapshotManager(store *storage.PolicyStore, logger *zap.Logger) *SnapshotManager {
-	// Create a snapshot cache with a simple node ID hasher
-	snapshotCache := cache.NewSnapshotCache(false, cache.IDHash{}, logger.Sugar())
+	// Create a LinearCache for custom PolicyChainConfig type URL
+	// LinearCache is designed for single custom resource types in ADS
+	linearCache := cache.NewLinearCache(
+		PolicyChainTypeURL,
+		cache.WithLogger(logger.Sugar()),
+	)
 
 	return &SnapshotManager{
-		cache:      snapshotCache,
+		cache:      linearCache,
 		store:      store,
 		logger:     logger,
 		nodeID:     "policy-node",
@@ -58,8 +61,8 @@ func NewSnapshotManager(store *storage.PolicyStore, logger *zap.Logger) *Snapsho
 	}
 }
 
-// GetCache returns the underlying snapshot cache
-func (sm *SnapshotManager) GetCache() cache.SnapshotCache {
+// GetCache returns the underlying cache as the generic Cache interface
+func (sm *SnapshotManager) GetCache() cache.Cache {
 	return sm.cache
 }
 
@@ -76,39 +79,37 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context) error {
 		zap.String("node_id", sm.nodeID))
 
 	// Translate policies to xDS resources
-	resources, err := sm.translator.TranslatePolicies(policies)
+	resourcesMap, err := sm.translator.TranslatePolicies(policies)
 	if err != nil {
 		sm.logger.Error("Failed to translate policies", zap.Error(err))
 		return fmt.Errorf("failed to translate policies: %w", err)
 	}
 
+	// Get the policy resources from the map
+	policyResources, ok := resourcesMap[PolicyChainTypeURL]
+	if !ok {
+		sm.logger.Warn("No policy resources found after translation")
+		policyResources = []types.Resource{} // Empty resources
+	}
+
 	// Increment resource version
 	version := sm.store.IncrementResourceVersion()
+	versionStr := fmt.Sprintf("%d", version)
 
-	// Create new snapshot
-	snapshot, err := cache.NewSnapshot(
-		fmt.Sprintf("%d", version),
-		resources,
-	)
-	if err != nil {
-		sm.logger.Error("Failed to create snapshot", zap.Error(err))
-		return fmt.Errorf("failed to create snapshot: %w", err)
+	// For LinearCache, we need to update resources directly
+	// Convert []types.Resource to map[string]types.Resource (keyed by policy ID)
+	resourcesById := make(map[string]types.Resource)
+	for i, res := range policyResources {
+		// Use index-based key since policy resources don't have inherent names
+		resourcesById[fmt.Sprintf("policy-%d", i)] = res
 	}
 
-	// Validate snapshot consistency
-	if err := snapshot.Consistent(); err != nil {
-		sm.logger.Error("Snapshot is inconsistent", zap.Error(err))
-		return fmt.Errorf("snapshot is inconsistent: %w", err)
-	}
-
-	// Set snapshot for the node
-	if err := sm.cache.SetSnapshot(ctx, sm.nodeID, snapshot); err != nil {
-		sm.logger.Error("Failed to set snapshot", zap.Error(err))
-		return fmt.Errorf("failed to set snapshot: %w", err)
-	}
+	// Update the linear cache with new resources
+	// SetResources replaces all resources in the cache
+	sm.cache.SetResources(resourcesById)
 
 	sm.logger.Info("Policy snapshot updated successfully",
-		zap.String("version", fmt.Sprintf("%d", version)),
+		zap.String("version", versionStr),
 		zap.Int("policy_count", len(policies)))
 
 	return nil
@@ -119,6 +120,11 @@ type Translator struct {
 	logger *zap.Logger
 }
 
+const (
+	// PolicyChainTypeURL is the custom type URL for policy chain configurations
+	PolicyChainTypeURL = "api-platform.wso2.org/v1.PolicyChainConfig"
+)
+
 // NewTranslator creates a new policy translator
 func NewTranslator(logger *zap.Logger) *Translator {
 	return &Translator{
@@ -127,26 +133,24 @@ func NewTranslator(logger *zap.Logger) *Translator {
 }
 
 // TranslatePolicies translates policy configurations to xDS resources
-// For now, we'll use runtime resources (RTDS - Runtime Discovery Service)
-// which is perfect for dynamic configuration like policies
-func (t *Translator) TranslatePolicies(policies []*models.StoredPolicyConfig) (map[resource.Type][]types.Resource, error) {
-	resources := make(map[resource.Type][]types.Resource)
+// Uses ADS with custom type URL for policy distribution
+func (t *Translator) TranslatePolicies(policies []*models.StoredPolicyConfig) (map[string][]types.Resource, error) {
+	resources := make(map[string][]types.Resource)
 
-	// For policy data, we use the Runtime resource type
-	// This allows Envoy to receive arbitrary configuration at runtime
-	var runtimeResources []types.Resource
+	// For policy data, we use custom PolicyChainConfig type
+	var policyResources []types.Resource
 
 	for _, policy := range policies {
-		// Convert policy to a runtime resource
-		runtimeResource, err := t.createRuntimeResource(policy)
+		// Convert policy to a custom resource
+		policyResource, err := t.createPolicyResource(policy)
 		if err != nil {
-			t.logger.Error("Failed to create runtime resource for policy",
+			t.logger.Error("Failed to create policy resource",
 				zap.String("id", policy.ID),
 				zap.Error(err))
 			continue
 		}
 
-		runtimeResources = append(runtimeResources, runtimeResource)
+		policyResources = append(policyResources, policyResource)
 
 		t.logger.Debug("Processing policy for xDS",
 			zap.String("id", policy.ID),
@@ -155,18 +159,18 @@ func (t *Translator) TranslatePolicies(policies []*models.StoredPolicyConfig) (m
 			zap.Int("route_count", len(policy.Configuration.Routes)))
 	}
 
-	// Store runtime resources
-	resources[resource.RuntimeType] = runtimeResources
+	// Store policy resources with custom type URL
+	resources[PolicyChainTypeURL] = policyResources
 
 	t.logger.Info("Translated policies to xDS resources",
 		zap.Int("total_policies", len(policies)),
-		zap.Int("runtime_resources", len(runtimeResources)))
+		zap.Int("policy_resources", len(policyResources)))
 
 	return resources, nil
 }
 
-// createRuntimeResource creates an Envoy Runtime resource from a policy configuration
-func (t *Translator) createRuntimeResource(policy *models.StoredPolicyConfig) (types.Resource, error) {
+// createPolicyResource creates a custom PolicyChainConfig resource from a policy configuration
+func (t *Translator) createPolicyResource(policy *models.StoredPolicyConfig) (types.Resource, error) {
 	// Use JSON marshaling to properly handle all field types including pointers
 	policyJSON, err := json.Marshal(policy)
 	if err != nil {
@@ -185,10 +189,14 @@ func (t *Translator) createRuntimeResource(policy *models.StoredPolicyConfig) (t
 		return nil, fmt.Errorf("failed to create policy struct: %w", err)
 	}
 
-	runtime := &runtimev3.Runtime{
-		Name:  policy.ID,
-		Layer: policyStruct,
+	// Wrap in google.protobuf.Any with custom type URL
+	anyMsg, err := anypb.New(policyStruct)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Any message: %w", err)
 	}
 
-	return runtime, nil
+	// Override the type URL to our custom type
+	anyMsg.TypeUrl = PolicyChainTypeURL
+
+	return anyMsg, nil
 }

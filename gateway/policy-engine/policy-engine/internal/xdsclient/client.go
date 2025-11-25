@@ -20,25 +20,25 @@ import (
 	"github.com/policy-engine/policy-engine/internal/registry"
 )
 
-// Client is the xDS client that subscribes to policy chain configurations
+// Client is the xDS client that subscribes to policy chain configurations via ADS
 type Client struct {
 	config           *Config
 	handler          *ResourceHandler
 	reconnectManager *ReconnectManager
 
 	// Connection state
-	mu               sync.RWMutex
-	state            ClientState
-	conn             *grpc.ClientConn
-	stream           discoveryv3.AggregatedDiscoveryService_StreamAggregatedResourcesClient
-	currentVersion   string
-	currentNonce     string
+	mu             sync.RWMutex
+	state          ClientState
+	conn           *grpc.ClientConn
+	stream         discoveryv3.AggregatedDiscoveryService_StreamAggregatedResourcesClient
+	currentVersion string
+	currentNonce   string
 
 	// Lifecycle management
-	ctx        context.Context
-	cancel     context.CancelFunc
-	stopOnce   sync.Once
-	stoppedCh  chan struct{}
+	ctx         context.Context
+	cancel      context.CancelFunc
+	stopOnce    sync.Once
+	stoppedCh   chan struct{}
 	reconnectCh chan struct{}
 }
 

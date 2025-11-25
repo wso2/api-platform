@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -9,11 +10,11 @@ import (
 
 // Config represents the complete policy engine configuration
 type Config struct {
-	Server      ServerConfig      `mapstructure:"server"`
-	ConfigMode  ConfigModeConfig  `mapstructure:"config_mode"`
-	XDS         XDSConfig         `mapstructure:"xds"`
-	FileConfig  FileConfigConfig  `mapstructure:"file_config"`
-	Logging     LoggingConfig     `mapstructure:"logging"`
+	Server     ServerConfig     `mapstructure:"server"`
+	ConfigMode ConfigModeConfig `mapstructure:"config_mode"`
+	XDS        XDSConfig        `mapstructure:"xds"`
+	FileConfig FileConfigConfig `mapstructure:"file_config"`
+	Logging    LoggingConfig    `mapstructure:"logging"`
 }
 
 // ServerConfig holds ext_proc server configuration
@@ -97,6 +98,11 @@ func Load(configPath string) (*Config, error) {
 
 	// Set config file path
 	v.SetConfigFile(configPath)
+
+	// Enable environment variable support
+	v.AutomaticEnv()
+	// Map environment variables to config keys (e.g., XDS_SERVER_ADDRESS -> xds.server_address)
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	// Read config file
 	if err := v.ReadInConfig(); err != nil {

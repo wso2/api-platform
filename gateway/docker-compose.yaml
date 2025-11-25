@@ -26,6 +26,7 @@ services:
     ports:
       - "9090:9090"   # REST API
       - "18000:18000" # xDS gRPC
+      - "18001:18001"
     environment:
       - GATEWAY_STORAGE_TYPE=sqlite
       - GATEWAY_STORAGE_SQLITE_PATH=./data/gateway.db
@@ -52,6 +53,8 @@ services:
       dockerfile: Dockerfile.runtime
     container_name: policy-engine
     image: wso2/api-platform-policy-engine:v1.0.0-m4
+    environment:
+      - XDS_SERVER_ADDRESS=gateway-controller:18001
     networks:
       - gateway-network
 
@@ -62,7 +65,7 @@ services:
     container_name: router
     image: wso2/api-platform-gateway-router:v1.0.0-m4
     ports:
-      - "8080:8080"   # HTTP traffic
+      - "8081:8080"   # HTTP traffic
       - "9901:9901"   # Envoy admin
     environment:
       - XDS_SERVER_HOST=${XDS_SERVER_HOST:-gateway-controller}
@@ -80,11 +83,12 @@ services:
       start_period: 30s
 
   sample-backend:
-    image: renukafernando/request-info:latest
+    image: ealen/echo-server:latest
     container_name: sample-backend
     ports:
       - "5000:5000"
-    command: ["-addr", ":5000", "-pretty"]
+    environment:
+      - PORT=5000
     networks:
       - gateway-network
 

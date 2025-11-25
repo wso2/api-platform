@@ -143,6 +143,12 @@ func (t *Translator) TranslateConfigs(
 		clusters = append(clusters, c)
 	}
 
+	// Add policy engine cluster if enabled
+	if t.routerConfig.PolicyEngine.Enabled {
+		policyEngineCluster := t.createPolicyEngineCluster()
+		clusters = append(clusters, policyEngineCluster)
+	}
+
 	resources[resource.ListenerType] = listeners
 	resources[resource.RouteType] = routes
 	resources[resource.ClusterType] = clusters
@@ -385,6 +391,122 @@ func (t *Translator) createCluster(
 
 	if transportSocketMatch != nil {
 		c.TransportSocketMatches = []*cluster.Cluster_TransportSocketMatch{transportSocketMatch}
+	}
+
+	return c
+}
+
+// createPolicyEngineCluster creates an Envoy cluster for the policy engine ext_proc service
+func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
+	policyEngine := t.routerConfig.PolicyEngine
+
+	// Build the endpoint address
+	address := &core.Address{
+		Address: &core.Address_SocketAddress{
+			SocketAddress: &core.SocketAddress{
+				Protocol: core.SocketAddress_TCP,
+				Address:  policyEngine.Host,
+				PortSpecifier: &core.SocketAddress_PortValue{
+					PortValue: policyEngine.Port,
+				},
+			},
+		},
+	}
+
+	// Create the load balancing endpoint
+	lbEndpoint := &endpoint.LbEndpoint{
+		HostIdentifier: &endpoint.LbEndpoint_Endpoint{
+			Endpoint: &endpoint.Endpoint{
+				Address: address,
+			},
+		},
+	}
+
+	// Create locality lb endpoints
+	localityLbEndpoints := &endpoint.LocalityLbEndpoints{
+		LbEndpoints: []*endpoint.LbEndpoint{lbEndpoint},
+	}
+
+	// Create the cluster with HTTP/2 support for gRPC
+	c := &cluster.Cluster{
+		Name:                 policyEngine.ClusterName,
+		ConnectTimeout:       durationpb.New(5 * time.Second),
+		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
+		LoadAssignment: &endpoint.ClusterLoadAssignment{
+			ClusterName: policyEngine.ClusterName,
+			Endpoints:   []*endpoint.LocalityLbEndpoints{localityLbEndpoints},
+		},
+		// Enable HTTP/2 for gRPC
+		Http2ProtocolOptions: &core.Http2ProtocolOptions{},
+	}
+
+	// Add TLS transport socket if TLS is enabled
+	if policyEngine.TLS.Enabled {
+		tlsContext := &tlsv3.UpstreamTlsContext{
+			CommonTlsContext: &tlsv3.CommonTlsContext{
+				TlsParams: &tlsv3.TlsParameters{
+					TlsMinimumProtocolVersion: tlsv3.TlsParameters_TLSv1_2,
+					TlsMaximumProtocolVersion: tlsv3.TlsParameters_TLSv1_3,
+				},
+			},
+		}
+
+		// Add client certificates for mTLS if provided
+		if policyEngine.TLS.CertPath != "" && policyEngine.TLS.KeyPath != "" {
+			tlsContext.CommonTlsContext.TlsCertificates = []*tlsv3.TlsCertificate{
+				{
+					CertificateChain: &core.DataSource{
+						Specifier: &core.DataSource_Filename{
+							Filename: policyEngine.TLS.CertPath,
+						},
+					},
+					PrivateKey: &core.DataSource{
+						Specifier: &core.DataSource_Filename{
+							Filename: policyEngine.TLS.KeyPath,
+						},
+					},
+				},
+			}
+		}
+
+		// Configure CA certificate for server verification
+		if !policyEngine.TLS.SkipVerify {
+			var trustedCASource *core.DataSource
+			if policyEngine.TLS.CAPath != "" {
+				trustedCASource = &core.DataSource{
+					Specifier: &core.DataSource_Filename{
+						Filename: policyEngine.TLS.CAPath,
+					},
+				}
+			}
+
+			if trustedCASource != nil {
+				tlsContext.CommonTlsContext.ValidationContextType = &tlsv3.CommonTlsContext_ValidationContext{
+					ValidationContext: &tlsv3.CertificateValidationContext{
+						TrustedCa: trustedCASource,
+					},
+				}
+			}
+		}
+
+		// Set SNI if server name is provided
+		if policyEngine.TLS.ServerName != "" {
+			tlsContext.Sni = policyEngine.TLS.ServerName
+		}
+
+		// Create transport socket
+		tlsAny, err := anypb.New(tlsContext)
+		if err != nil {
+			t.logger.Error("Failed to marshal TLS context for policy engine cluster", zap.Error(err))
+		} else {
+			c.TransportSocket = &core.TransportSocket{
+				Name: wellknown.TransportSocketTls,
+				ConfigType: &core.TransportSocket_TypedConfig{
+					TypedConfig: tlsAny,
+				},
+			}
+		}
 	}
 
 	return c

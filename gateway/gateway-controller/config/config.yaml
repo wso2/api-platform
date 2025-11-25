@@ -20,6 +20,17 @@ policyserver:
   # Policy xDS gRPC port for policy distribution
   port: 18001
 
+  # TLS configuration for secure policy xDS communication
+  tls:
+    # Enable or disable TLS
+    enabled: false
+
+    # Path to TLS certificate file (required if TLS is enabled)
+    cert_file: "./certs/server.crt"
+
+    # Path to TLS private key file (required if TLS is enabled)
+    key_file: "./certs/server.key"
+
 # Storage configuration
 storage:
   # Storage type: "sqlite", "postgres" (future), or "memory"
@@ -93,7 +104,13 @@ router:
   # Policy Engine ext_proc filter configuration
   policy_engine:
     # Enable or disable policy engine ext_proc filter
-    enabled: false
+    enabled: true
+
+    # Policy engine host (hostname or IP address)
+    host: policy-engine
+
+    # Policy engine ext_proc port
+    port: 9001
 
     # Cluster name for the policy engine gRPC service
     cluster_name: policy-engine-grpc-service
@@ -117,6 +134,26 @@ router:
 
     # Message timeout for policy engine processing (in milliseconds)
     message_timeout_ms: 250
+
+    # TLS configuration for policy engine connection
+    tls:
+      # Enable TLS for secure communication with policy engine
+      enabled: false
+
+      # Client certificate path (for mutual TLS authentication)
+      cert_path: ""
+
+      # Client private key path (for mutual TLS authentication)
+      key_path: ""
+
+      # CA certificate path (for server certificate validation)
+      ca_path: ""
+
+      # Server name for SNI (optional, defaults to host)
+      server_name: ""
+
+      # Skip server certificate verification (insecure, development only)
+      skip_verify: false
 
 # Logging configuration
 logging:

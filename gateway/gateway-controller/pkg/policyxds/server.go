@@ -26,10 +26,10 @@ import (
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	discoverygrpc "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
-	runtimeservice "github.com/envoyproxy/go-control-plane/envoy/service/runtime/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/server/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 )
 
@@ -39,12 +39,47 @@ type Server struct {
 	xdsServer       server.Server
 	snapshotManager *SnapshotManager
 	port            int
+	tlsConfig       *TLSConfig
 	logger          *zap.Logger
 }
 
+// TLSConfig holds TLS configuration for the server
+type TLSConfig struct {
+	Enabled  bool
+	CertFile string
+	KeyFile  string
+}
+
+// ServerOption is a functional option for configuring the Server
+type ServerOption func(*Server)
+
+// WithTLS enables TLS with the provided certificate and key files
+func WithTLS(certFile, keyFile string) ServerOption {
+	return func(s *Server) {
+		s.tlsConfig = &TLSConfig{
+			Enabled:  true,
+			CertFile: certFile,
+			KeyFile:  keyFile,
+		}
+	}
+}
+
 // NewServer creates a new policy xDS server
-func NewServer(snapshotManager *SnapshotManager, port int, logger *zap.Logger) *Server {
-	grpcServer := grpc.NewServer(
+func NewServer(snapshotManager *SnapshotManager, port int, logger *zap.Logger, opts ...ServerOption) *Server {
+	s := &Server{
+		snapshotManager: snapshotManager,
+		port:            port,
+		logger:          logger,
+		tlsConfig:       &TLSConfig{Enabled: false},
+	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	// Build gRPC server options
+	grpcOpts := []grpc.ServerOption{
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			Time:    30 * time.Second,
 			Timeout: 5 * time.Second,
@@ -53,27 +88,34 @@ func NewServer(snapshotManager *SnapshotManager, port int, logger *zap.Logger) *
 			MinTime:             5 * time.Second,
 			PermitWithoutStream: true,
 		}),
-	)
+	}
+
+	// Add TLS credentials if enabled
+	if s.tlsConfig.Enabled {
+		creds, err := credentials.NewServerTLSFromFile(s.tlsConfig.CertFile, s.tlsConfig.KeyFile)
+		if err != nil {
+			logger.Fatal("Failed to load TLS credentials", zap.Error(err))
+		}
+		grpcOpts = append(grpcOpts, grpc.Creds(creds))
+		logger.Info("TLS enabled for Policy xDS server",
+			zap.String("cert_file", s.tlsConfig.CertFile),
+			zap.String("key_file", s.tlsConfig.KeyFile))
+	}
+
+	grpcServer := grpc.NewServer(grpcOpts...)
 
 	// Create xDS server with the snapshot cache
 	cache := snapshotManager.GetCache()
 	callbacks := &serverCallbacks{logger: logger}
 	xdsServer := server.NewServer(context.Background(), cache, callbacks)
 
-	// Register policy-specific xDS services
-	// Using ADS (Aggregated Discovery Service) for flexible resource delivery
+	// Register ADS (Aggregated Discovery Service) for policy distribution
 	discoverygrpc.RegisterAggregatedDiscoveryServiceServer(grpcServer, xdsServer)
 
-	// Also register runtime service for dynamic configuration
-	runtimeservice.RegisterRuntimeDiscoveryServiceServer(grpcServer, xdsServer)
+	s.grpcServer = grpcServer
+	s.xdsServer = xdsServer
 
-	return &Server{
-		grpcServer:      grpcServer,
-		xdsServer:       xdsServer,
-		snapshotManager: snapshotManager,
-		port:            port,
-		logger:          logger,
-	}
+	return s
 }
 
 // Start starts the policy xDS gRPC server in a blocking manner
@@ -83,7 +125,13 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to listen on port %d: %w", s.port, err)
 	}
 
-	s.logger.Info("Starting Policy xDS server", zap.Int("port", s.port))
+	protocol := "insecure"
+	if s.tlsConfig.Enabled {
+		protocol = "TLS"
+	}
+	s.logger.Info("Starting Policy xDS server",
+		zap.Int("port", s.port),
+		zap.String("protocol", protocol))
 
 	if err := s.grpcServer.Serve(listener); err != nil {
 		return fmt.Errorf("failed to serve: %w", err)

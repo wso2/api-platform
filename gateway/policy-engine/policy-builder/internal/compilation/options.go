@@ -2,6 +2,7 @@ package compilation
 
 import (
 	"fmt"
+	"runtime"
 	"time"
 
 	"github.com/policy-engine/policy-builder/pkg/types"
@@ -13,13 +14,13 @@ func BuildOptions(outputPath string, buildMetadata *types.BuildMetadata) *types.
 	ldflags := generateLDFlags(buildMetadata)
 
 	return &types.CompilationOptions{
-		OutputPath:      outputPath,
-		EnableUPX:       false, // Disabled by default for compatibility
-		LDFlags:         ldflags,
-		BuildTags:       []string{},
-		CGOEnabled:      false, // Static binary
-		TargetOS:        "linux",
-		TargetArch:      "amd64",
+		OutputPath: outputPath,
+		EnableUPX:  false, // Disabled by default for compatibility
+		LDFlags:    ldflags,
+		BuildTags:  []string{},
+		CGOEnabled: false, // Static binary
+		TargetOS:   "linux",
+		TargetArch: runtime.GOARCH, // Use native architecture instead of hardcoded amd64
 	}
 }
 

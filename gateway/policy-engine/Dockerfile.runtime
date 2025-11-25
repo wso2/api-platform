@@ -34,8 +34,8 @@ RUN go mod download
 WORKDIR /workspace/policy-builder
 RUN go mod download
 
-# Build the Policy Builder binary
-RUN go build -o /usr/local/bin/policy-engine-builder ./cmd/builder
+# Build the Policy Builder binary (CGO disabled for static binary)
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /usr/local/bin/policy-engine-builder ./cmd/builder
 
 # Stage 2: Policy Compilation - Run builder to compile policies
 FROM builder-base AS policy-compiler
