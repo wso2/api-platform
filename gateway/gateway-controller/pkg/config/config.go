@@ -51,8 +51,16 @@ type ServerConfig struct {
 
 // PolicyServerConfig holds policy xDS server-related configuration
 type PolicyServerConfig struct {
-	Enabled bool `koanf:"enabled"`
-	Port    int  `koanf:"port"`
+	Enabled bool            `koanf:"enabled"`
+	Port    int             `koanf:"port"`
+	TLS     PolicyServerTLS `koanf:"tls"`
+}
+
+// PolicyServerTLS holds TLS configuration for the policy xDS server
+type PolicyServerTLS struct {
+	Enabled  bool   `koanf:"enabled"`
+	CertFile string `koanf:"cert_file"`
+	KeyFile  string `koanf:"key_file"`
 }
 
 // StorageConfig holds storage-related configuration
@@ -111,14 +119,27 @@ type upstreamTimeout struct {
 
 // PolicyEngineConfig holds policy engine ext_proc filter configuration
 type PolicyEngineConfig struct {
-	Enabled           bool   `koanf:"enabled"`
-	ClusterName       string `koanf:"cluster_name"`
-	TimeoutMs         uint32 `koanf:"timeout_ms"`
-	FailureModeAllow  bool   `koanf:"failure_mode_allow"`
-	RouteCacheAction  string `koanf:"route_cache_action"`
-	AllowModeOverride bool   `koanf:"allow_mode_override"`
-	RequestHeaderMode string `koanf:"request_header_mode"`
-	MessageTimeoutMs  uint32 `koanf:"message_timeout_ms"`
+	Enabled           bool            `koanf:"enabled"`
+	Host              string          `koanf:"host"` // Policy engine hostname/IP
+	Port              uint32          `koanf:"port"` // Policy engine ext_proc port
+	ClusterName       string          `koanf:"cluster_name"`
+	TimeoutMs         uint32          `koanf:"timeout_ms"`
+	FailureModeAllow  bool            `koanf:"failure_mode_allow"`
+	RouteCacheAction  string          `koanf:"route_cache_action"`
+	AllowModeOverride bool            `koanf:"allow_mode_override"`
+	RequestHeaderMode string          `koanf:"request_header_mode"`
+	MessageTimeoutMs  uint32          `koanf:"message_timeout_ms"`
+	TLS               PolicyEngineTLS `koanf:"tls"` // TLS configuration
+}
+
+// PolicyEngineTLS holds policy engine TLS configuration
+type PolicyEngineTLS struct {
+	Enabled    bool   `koanf:"enabled"`     // Enable TLS for policy engine connection
+	CertPath   string `koanf:"cert_path"`   // Path to client certificate (mTLS)
+	KeyPath    string `koanf:"key_path"`    // Path to client private key (mTLS)
+	CAPath     string `koanf:"ca_path"`     // Path to CA certificate for server validation
+	ServerName string `koanf:"server_name"` // SNI server name (optional, defaults to host)
+	SkipVerify bool   `koanf:"skip_verify"` // Skip server certificate verification (insecure, dev only)
 }
 
 // AccessLogsConfig holds access log configuration
@@ -269,6 +290,8 @@ func getDefaults() map[string]interface{} {
 		"router.envoy_upstream.timeouts.max_route_timeout_in_seconds":  60,
 		"router.envoy_upstream.timeouts.route_idle_timeout_in_seconds": 300,
 		"router.policy_engine.enabled":                                 false,
+		"router.policy_engine.host":                                    "localhost",
+		"router.policy_engine.port":                                    9001,
 		"router.policy_engine.cluster_name":                            "policy-engine-grpc-service",
 		"router.policy_engine.timeout_ms":                              250,
 		"router.policy_engine.failure_mode_allow":                      false,
@@ -276,6 +299,12 @@ func getDefaults() map[string]interface{} {
 		"router.policy_engine.allow_mode_override":                     true,
 		"router.policy_engine.request_header_mode":                     "SEND",
 		"router.policy_engine.message_timeout_ms":                      250,
+		"router.policy_engine.tls.enabled":                             false,
+		"router.policy_engine.tls.cert_path":                           "",
+		"router.policy_engine.tls.key_path":                            "",
+		"router.policy_engine.tls.ca_path":                             "",
+		"router.policy_engine.tls.server_name":                         "",
+		"router.policy_engine.tls.skip_verify":                         false,
 	}
 }
 
@@ -550,6 +579,20 @@ func (c *Config) validatePolicyEngineConfig() error {
 		return nil
 	}
 
+	// Validate host
+	if policyEngine.Host == "" {
+		return fmt.Errorf("router.policy_engine.host is required when policy engine is enabled")
+	}
+
+	// Validate port
+	if policyEngine.Port == 0 {
+		return fmt.Errorf("router.policy_engine.port is required when policy engine is enabled")
+	}
+
+	if policyEngine.Port > 65535 {
+		return fmt.Errorf("router.policy_engine.port must be between 1 and 65535, got: %d", policyEngine.Port)
+	}
+
 	// Validate cluster name
 	if policyEngine.ClusterName == "" {
 		return fmt.Errorf("router.policy_engine.cluster_name is required when policy engine is enabled")
@@ -573,6 +616,23 @@ func (c *Config) validatePolicyEngineConfig() error {
 	if policyEngine.MessageTimeoutMs > constants.MaxReasonablePolicyTimeoutMs {
 		return fmt.Errorf("router.policy_engine.message_timeout_ms (%d) exceeds maximum reasonable timeout of %d ms",
 			policyEngine.MessageTimeoutMs, constants.MaxReasonablePolicyTimeoutMs)
+	}
+
+	// Validate TLS configuration if enabled
+	if policyEngine.TLS.Enabled {
+		// For mTLS, both cert and key are required
+		if policyEngine.TLS.CertPath != "" && policyEngine.TLS.KeyPath == "" {
+			return fmt.Errorf("router.policy_engine.tls.key_path is required when cert_path is provided")
+		}
+		if policyEngine.TLS.KeyPath != "" && policyEngine.TLS.CertPath == "" {
+			return fmt.Errorf("router.policy_engine.tls.cert_path is required when key_path is provided")
+		}
+
+		// CA path is optional but recommended for production
+		if policyEngine.TLS.CAPath == "" && !policyEngine.TLS.SkipVerify {
+			// Warning: No CA provided and not skipping verification
+			// This might fail in production with self-signed certs
+		}
 	}
 
 	// Validate route cache action

@@ -17,6 +17,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -113,6 +114,7 @@ func main() {
 
 	// Initialize policy store and start policy xDS server if enabled
 	var policyXDSServer *policyxds.Server
+	var policyManager *policyxds.PolicyManager
 	if cfg.PolicyServer.Enabled {
 		log.Info("Initializing Policy xDS server", zap.Int("port", cfg.PolicyServer.Port))
 
@@ -121,6 +123,31 @@ func main() {
 
 		// Initialize policy snapshot manager
 		policySnapshotManager := policyxds.NewSnapshotManager(policyStore, log)
+		// Initialize policy manager (used to derive policies from API configurations)
+		policyManager = policyxds.NewPolicyManager(policyStore, policySnapshotManager, log)
+
+		// Load policies from existing API configurations on startup
+		if cfg.IsPersistentMode() {
+			log.Info("Deriving policies from loaded API configurations")
+			loadedAPIs := configStore.GetAll()
+			derivedCount := 0
+			for _, apiConfig := range loadedAPIs {
+				// Derive policy configuration from API
+				storedPolicy := derivePolicyFromAPIConfig(apiConfig)
+				if storedPolicy != nil {
+					if err := policyStore.Set(storedPolicy); err != nil {
+						log.Warn("Failed to load policy from API",
+							zap.String("api_id", apiConfig.ID),
+							zap.Error(err))
+					} else {
+						derivedCount++
+					}
+				}
+			}
+			log.Info("Loaded policies from API configurations",
+				zap.Int("total_apis", len(loadedAPIs)),
+				zap.Int("policies_derived", derivedCount))
+		}
 
 		// Generate initial policy snapshot
 		log.Info("Generating initial policy xDS snapshot")
@@ -131,7 +158,14 @@ func main() {
 		cancel()
 
 		// Start policy xDS server in a separate goroutine
-		policyXDSServer = policyxds.NewServer(policySnapshotManager, cfg.PolicyServer.Port, log)
+		var serverOpts []policyxds.ServerOption
+		if cfg.PolicyServer.TLS.Enabled {
+			serverOpts = append(serverOpts, policyxds.WithTLS(
+				cfg.PolicyServer.TLS.CertFile,
+				cfg.PolicyServer.TLS.KeyFile,
+			))
+		}
+		policyXDSServer = policyxds.NewServer(policySnapshotManager, cfg.PolicyServer.Port, log, serverOpts...)
 		go func() {
 			if err := policyXDSServer.Start(); err != nil {
 				log.Fatal("Policy xDS server failed", zap.Error(err))
@@ -163,7 +197,7 @@ func main() {
 	router.Use(gin.Recovery())
 
 	// Initialize API server
-	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, log, cpClient)
+	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient)
 
 	// Register API routes
 	api.RegisterHandlers(router, apiServer)
@@ -210,4 +244,102 @@ func main() {
 	}
 
 	log.Info("Gateway-Controller stopped")
+}
+
+// derivePolicyFromAPIConfig derives a policy configuration from an API configuration
+// This is a simplified version of the buildStoredPolicyFromAPI function from handlers
+func derivePolicyFromAPIConfig(cfg *models.StoredAPIConfig) *models.StoredPolicyConfig {
+	apiCfg := &cfg.Configuration
+	apiData := apiCfg.Data
+
+	// Collect API-level policies
+	apiPolicies := make(map[string]models.Policy)
+	if apiData.Policies != nil {
+		for _, p := range *apiData.Policies {
+			apiPolicies[p.Name] = convertAPIPolicyToModel(p)
+		}
+	}
+
+	// Build routes with merged policies
+	routes := make([]models.RoutePolicy, 0)
+	for _, op := range apiData.Operations {
+		var finalPolicies []models.Policy
+
+		if op.Policies != nil && len(*op.Policies) > 0 {
+			// Operation has policies
+			finalPolicies = make([]models.Policy, 0, len(*op.Policies))
+			addedNames := make(map[string]struct{})
+
+			for _, opPolicy := range *op.Policies {
+				finalPolicies = append(finalPolicies, convertAPIPolicyToModel(opPolicy))
+				addedNames[opPolicy.Name] = struct{}{}
+			}
+
+			// Add remaining API-level policies
+			if apiData.Policies != nil {
+				for _, apiPolicy := range *apiData.Policies {
+					if _, exists := addedNames[apiPolicy.Name]; !exists {
+						finalPolicies = append(finalPolicies, apiPolicies[apiPolicy.Name])
+					}
+				}
+			}
+		} else {
+			// No operation policies: use API-level policies
+			if apiData.Policies != nil {
+				finalPolicies = make([]models.Policy, 0, len(*apiData.Policies))
+				for _, p := range *apiData.Policies {
+					finalPolicies = append(finalPolicies, apiPolicies[p.Name])
+				}
+			}
+		}
+
+		// Construct route key
+		routeKey := fmt.Sprintf("%s|%s|%s%s", op.Method, apiData.Version, apiData.Context, op.Path)
+		routes = append(routes, models.RoutePolicy{
+			RouteKey: routeKey,
+			Policies: finalPolicies,
+		})
+	}
+
+	// If there are no policies at all, return nil
+	policyCount := 0
+	for _, r := range routes {
+		policyCount += len(r.Policies)
+	}
+	if policyCount == 0 {
+		return nil
+	}
+
+	now := time.Now().Unix()
+	return &models.StoredPolicyConfig{
+		ID: cfg.ID + "-policies",
+		Configuration: models.PolicyConfiguration{
+			Routes: routes,
+			Metadata: models.Metadata{
+				CreatedAt:       now,
+				UpdatedAt:       now,
+				ResourceVersion: 0,
+				APIName:         apiData.Name,
+				Version:         apiData.Version,
+				Context:         apiData.Context,
+			},
+		},
+		Version: 0,
+	}
+}
+
+// convertAPIPolicyToModel converts generated api.Policy to models.Policy
+func convertAPIPolicyToModel(p api.Policy) models.Policy {
+	paramsMap := make(map[string]interface{})
+	if p.Params != nil {
+		for k, v := range *p.Params {
+			paramsMap[k] = v
+		}
+	}
+	return models.Policy{
+		Name:               p.Name,
+		Version:            p.Version,
+		ExecutionCondition: p.ExecutionCondition,
+		Params:             paramsMap,
+	}
 }
