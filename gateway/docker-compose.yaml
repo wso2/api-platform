@@ -87,8 +87,7 @@ services:
     container_name: sample-backend
     ports:
       - "5000:5000"
-    environment:
-      - PORT=5000
+    command: ["-addr", ":5000", "-pretty"]
     networks:
       - gateway-network
 
