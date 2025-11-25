@@ -83,7 +83,7 @@ services:
       start_period: 30s
 
   sample-backend:
-    image: ealen/echo-server:latest
+    image: renukafernando/request-info:latest
     container_name: sample-backend
     ports:
       - "5000:5000"
