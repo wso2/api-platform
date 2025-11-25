@@ -25,7 +25,7 @@ import (
 )
 
 func TestValidator_URLFriendlyName(t *testing.T) {
-	validator := NewValidator()
+	validator := NewAPIValidator()
 
 	tests := []struct {
 		name        string
