@@ -20,7 +20,7 @@ func BuildOptions(outputPath string, buildMetadata *types.BuildMetadata) *types.
 		BuildTags:  []string{},
 		CGOEnabled: false, // Static binary
 		TargetOS:   "linux",
-		TargetArch: runtime.GOARCH, // Use native architecture instead of hardcoded amd64
+		TargetArch: runtime.GOARCH, // Use native architecture
 	}
 }
 
