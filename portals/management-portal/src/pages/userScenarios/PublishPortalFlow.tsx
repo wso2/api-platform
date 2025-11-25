@@ -233,11 +233,9 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
     if (activeStep === 1 && portals.length > 0) {
       if (portals.length === 1) {
         setSelectedPortalId(portals[0].uuid);
-      } else if (!selectedPortalId) {
-        setSelectedPortalId(portals[0].uuid);
       }
     }
-  }, [activeStep, portals, selectedPortalId]);
+  }, [activeStep, portals]);
 
   const portalsPath = React.useMemo(() => {
     if (!organization) return "/portals";
