@@ -800,6 +800,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                                 value={contractMeta?.version}
                                 onChange={(v: string) => setContractMeta((prev: any) => ({ ...prev, version: v }))}
                                 disabled={false}
+                                label="Version"
                               />
                             </Grid>
                           <Grid size={{ xs: 12 }}>

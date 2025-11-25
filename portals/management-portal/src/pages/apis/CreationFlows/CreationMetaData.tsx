@@ -108,6 +108,9 @@ const CreationMetaData: React.FC<Props> = ({
         disabled={!!readOnlyFields?.context}
       />
 
+      <Typography variant="body1">
+        Version
+      </Typography>
       <VersionInput
         value={meta.version}
         onChange={(v: string) => change({ version: v })}

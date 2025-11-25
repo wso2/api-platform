@@ -6,9 +6,11 @@ type Props = {
   value?: string;
   onChange?: (version: string) => void;
   disabled?: boolean;
+  label?: string;
+  inputHeight?: number | string;
 };
 
-const VersionInput: React.FC<Props> = ({ value, onChange, disabled }) => {
+const VersionInput: React.FC<Props> = ({ value, onChange, disabled, label, inputHeight }) => {
   // Normalize incoming value into major/minor display parts
   const normalized = React.useMemo(() => formatVersionToMajorMinor(value || ""), [value]);
   const initialParts = normalized.replace(/^v/, "").split('.');
@@ -17,7 +19,6 @@ const VersionInput: React.FC<Props> = ({ value, onChange, disabled }) => {
   const [majorState, setMajorState] = React.useState<string>(initialParts[0] ?? '1');
   const [minorState, setMinorState] = React.useState<string>(initialParts[1] ?? '0');
 
-  // Sync when parent value changes (but avoid clobbering while user types)
   React.useEffect(() => {
     const p = normalized.replace(/^v/, '').split('.');
     const m = p[0] ?? '1';
@@ -27,7 +28,6 @@ const VersionInput: React.FC<Props> = ({ value, onChange, disabled }) => {
   }, [normalized]);
 
   const emitIfComplete = (m: string, n: string) => {
-    // If either field is empty, emit empty string to signal invalid/incomplete
     if (m === "" || n === "") {
       onChange?.("");
       return;
@@ -37,15 +37,14 @@ const VersionInput: React.FC<Props> = ({ value, onChange, disabled }) => {
 
   return (
     <Box>
-      <Typography variant="body2" sx={{ mb: 0.5 }}>
-        Version
-      </Typography>
       <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
         <TextField
           size="small"
+          label={label ?? ""}
+          required={true}
+          InputLabelProps={{ shrink: true }}
           value={majorState}
           onChange={(e) => {
-            // allow empty to permit clearing; strip nondigits
             const digits = e.target.value.replace(/\D/g, "");
             const next = digits;
             setMajorState(next);
@@ -53,7 +52,7 @@ const VersionInput: React.FC<Props> = ({ value, onChange, disabled }) => {
           }}
           inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }}
           disabled={disabled}
-          sx={{ width: 80 }}
+          sx={{ width: 80, height: inputHeight ?? undefined }}
         />
 
         <Typography variant="body2">.</Typography>
@@ -69,7 +68,7 @@ const VersionInput: React.FC<Props> = ({ value, onChange, disabled }) => {
           }}
           inputProps={{ inputMode: "numeric", pattern: "[0-9]*" }}
           disabled={disabled}
-          sx={{ width: 80 }}
+          sx={{ width: 80, height: inputHeight ?? undefined }}
         />
       </Box>
     </Box>
