@@ -30,7 +30,8 @@ import {
   useCreateComponentBuildpackContext,
   CreateComponentBuildpackProvider,
 } from "../../context/CreateComponentBuildpackContext";
-import { formatVersionToMajorMinor } from "../../helpers/openApiHelpers";
+import { formatVersionToMajorMinor, isValidMajorMinorVersion } from "../../helpers/openApiHelpers";
+import VersionInput from "../../common/VersionInput";
 import {
   useOpenApiValidation,
   type OpenApiValidationResponse,
@@ -391,7 +392,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
     selectionMode === "url"
       ? validationResult?.isAPIDefinitionValid &&
         (contractMeta?.name || "").trim() &&
-        /^v\d+(?:\.\d+)*$/.test((contractMeta?.version || "").trim()) &&
+        isValidMajorMinorVersion((contractMeta?.version || "").trim()) &&
         (contractMeta?.context || "").trim()
       : selectedExistingApi !== null;
 
@@ -795,22 +796,10 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                               />
                             </Grid>
                             <Grid size={{ xs: 12 }}>
-                              <TextField
-                                label="Version"
-                                value={contractMeta?.version || ""}
-                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                  setContractMeta((prev: any) => ({ ...prev, version: e.target.value }))
-                                }
-                                onBlur={() => {
-                                  const v = (contractMeta?.version || "").trim();
-                                  if (v && !/^v/i.test(v)) {
-                                    setContractMeta((prev: any) => ({ ...prev, version: `v${v}` }));
-                                  }
-                                }}
-                                fullWidth
-                                required
-                                variant="outlined"
-                                placeholder="v1.0.0"
+                              <VersionInput
+                                value={contractMeta?.version}
+                                onChange={(v: string) => setContractMeta((prev: any) => ({ ...prev, version: v }))}
+                                disabled={false}
                               />
                             </Grid>
                           <Grid size={{ xs: 12 }}>

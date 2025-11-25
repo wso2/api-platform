@@ -11,7 +11,7 @@ import {
 import { useOpenApiValidation, type OpenApiValidationResponse } from "../../../../hooks/validation";
 import { ApiOperationsList } from "../../../../components/src/components/Common/ApiOperationsList";
 import type { ImportOpenApiRequest, ApiSummary } from "../../../../hooks/apis";
-import { defaultServiceName, firstServerUrl, deriveContext, mapOperations, formatVersionToMajorMinor } from "../../../../helpers/openApiHelpers";
+import { defaultServiceName, firstServerUrl, deriveContext, mapOperations, formatVersionToMajorMinor, isValidMajorMinorVersion } from "../../../../helpers/openApiHelpers";
 
 /* ---------- Types ---------- */
 type Props = {
@@ -350,7 +350,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
                       creating ||
                       !(contractMeta?.name || "").trim() ||
                       !(contractMeta?.context || "").trim() ||
-                      !(contractMeta?.version || "").trim()
+                      !isValidMajorMinorVersion((contractMeta?.version || "").trim())
                     }
                     onClick={onCreate}
                     sx={{ textTransform: "none" }}

@@ -19,6 +19,7 @@ import Refresh from "../../../../components/src/Icons/generated/Refresh";
 import { IconButton } from "../../../../components/src/components/IconButton";
 import Edit from "../../../../components/src/Icons/generated/Edit";
 import CreationMetaData from "../CreationMetaData";
+import { isValidMajorMinorVersion } from "../../../../helpers/openApiHelpers";
 
 // Contexts
 import { useGithubAPICreationContext } from "../../../../context/GithubAPICreationContext";
@@ -371,7 +372,7 @@ const GithubCreationFlow: React.FC<Props> = ({
     !!isDirValid &&
     !!(contractMeta?.name || "").trim() &&
     !!(contractMeta?.context || "").trim() &&
-    !!(contractMeta?.version || "").trim();
+    isValidMajorMinorVersion((contractMeta?.version || "").trim());
 
   return (
     <Box>

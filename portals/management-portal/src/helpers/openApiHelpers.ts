@@ -79,3 +79,13 @@ export function formatVersionToMajorMinor(version?: unknown): string {
     return "v1.0";
   }
 }
+
+/**
+ * Validate that a version string is in the canonical `v<major>.<minor>` form
+ * where major and minor are non-negative integers (no leading +/signs).
+ * Examples: `v1.0`, `v0.5`, `v10.2` -> true
+ */
+export function isValidMajorMinorVersion(version?: unknown): boolean {
+  if (typeof version !== "string") return false;
+  return /^v\d+\.\d+$/.test(version.trim());
+}
