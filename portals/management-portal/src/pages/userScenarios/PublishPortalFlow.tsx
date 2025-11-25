@@ -348,7 +348,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
         "backend-services": validatedApi?.["backend-services"] || [],
       };
 
-      await importOpenApi(
+      const createdApi = await importOpenApi(
         {
           api: apiPayload,
           url: specUrl.trim(),
@@ -356,7 +356,9 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
       );
 
       await refreshApis();
-      
+      if (createdApi) {
+        autoFill(createdApi);
+      }
       showNotification(`API "${name}" created successfully!`, 'success');
       
       setActiveStep(1);
