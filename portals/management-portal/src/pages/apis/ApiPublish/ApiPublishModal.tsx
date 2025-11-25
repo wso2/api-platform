@@ -132,7 +132,7 @@ const ApiPublishModal: React.FC<Props> = ({ open, portal, api, onClose, onPublis
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
-      <DialogTitle>Publish to {portal?.name || 'Developer Portal'}</DialogTitle>
+      <DialogTitle>Add to {portal?.name || 'Developer Portal'}</DialogTitle>
       <DialogContent sx={{ pt: 1, pb: 2 }}>
         <ApiPublishForm
           formData={formData}
@@ -165,10 +165,10 @@ const ApiPublishModal: React.FC<Props> = ({ open, portal, api, onClose, onPublis
           {publishing ? (
             <Box display="flex" alignItems="center" gap={1}>
               <CircularProgress size={16} sx={{ color: 'white' }} />
-              <span>Publishing...</span>
+              <span>Adding...</span>
             </Box>
           ) : (
-            'Publish'
+            'Add'
           )}
         </Button>
       </DialogActions>

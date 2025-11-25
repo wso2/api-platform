@@ -23,7 +23,7 @@ const PublishPortalWizard: React.FC<Props> = ({ onBackToChoices, onSkip, onFinis
         >
           <Box>
             <Typography variant="h4" fontWeight={700}>
-              Publish to Developer Portal
+              Add to Developer Portal
             </Typography>
             <Typography color="#AEAEAE">
               Import your API and publish it to a developer portal for discovery and subscription.

@@ -438,7 +438,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
       const errorMessage = e?.response?.data?.message 
         || e?.response?.data?.description
         || e?.message 
-        || "Failed to publish to portal";
+        || "Failed to add to portal";
       setError(errorMessage);
     } finally {
       setCreating(false);
@@ -1023,7 +1023,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                         await handlePublishFromModal(selectedPortalId, payload);
                       }}
                     >
-                      {creating ? "Publishing..." : "Publish to Portal"}
+                      {creating ? "Adding..." : "Add to Developer Portal"}
                     </Button>
                   )}
                 </Stack>
