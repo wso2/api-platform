@@ -26,6 +26,8 @@ import (
 	"regexp"
 	"strings"
 
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
+
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
@@ -115,6 +117,79 @@ func (pl *PolicyLoader) LoadPoliciesFromDirectory(dirPath string) (map[string]ap
 	return policies, nil
 }
 
+// convertParameterSchemasToJSONSchema converts SDK ParameterSchema slice to JSON Schema format
+func convertParameterSchemasToJSONSchema(params []policy.ParameterSchema) *map[string]interface{} {
+	if len(params) == 0 {
+		return nil
+	}
+
+	properties := make(map[string]interface{})
+	required := []string{}
+
+	for _, param := range params {
+		propSchema := map[string]interface{}{
+			"type":        string(param.Type),
+			"description": param.Description,
+		}
+
+		if param.Default != nil {
+			propSchema["default"] = param.Default
+		}
+
+		// Add validation rules if present
+		if param.Validation.Min != nil {
+			propSchema["minimum"] = *param.Validation.Min
+		}
+		if param.Validation.Max != nil {
+			propSchema["maximum"] = *param.Validation.Max
+		}
+		if param.Validation.Pattern != "" {
+			propSchema["pattern"] = param.Validation.Pattern
+		}
+		if param.Validation.Format != "" {
+			propSchema["format"] = param.Validation.Format
+		}
+		if len(param.Validation.Enum) > 0 {
+			propSchema["enum"] = param.Validation.Enum
+		}
+		if param.Validation.MinLength != nil {
+			propSchema["minLength"] = *param.Validation.MinLength
+		}
+		if param.Validation.MaxLength != nil {
+			propSchema["maxLength"] = *param.Validation.MaxLength
+		}
+		if param.Validation.MultipleOf != nil {
+			propSchema["multipleOf"] = *param.Validation.MultipleOf
+		}
+		if param.Validation.MinItems != nil {
+			propSchema["minItems"] = *param.Validation.MinItems
+		}
+		if param.Validation.MaxItems != nil {
+			propSchema["maxItems"] = *param.Validation.MaxItems
+		}
+		if param.Validation.UniqueItems {
+			propSchema["uniqueItems"] = true
+		}
+
+		properties[param.Name] = propSchema
+
+		if param.Required {
+			required = append(required, param.Name)
+		}
+	}
+
+	schema := map[string]interface{}{
+		"type":       "object",
+		"properties": properties,
+	}
+
+	if len(required) > 0 {
+		schema["required"] = required
+	}
+
+	return &schema
+}
+
 // loadPolicyFile loads a single policy definition file
 func (pl *PolicyLoader) loadPolicyFile(filePath string) (*api.PolicyDefinition, error) {
 	data, err := os.ReadFile(filePath)
@@ -132,52 +207,18 @@ func (pl *PolicyLoader) loadPolicyFile(filePath string) (*api.PolicyDefinition, 
 		return &policy, nil
 	}
 
-	// For YAML files, use an intermediate struct with proper yaml tags
-	var yamlPolicy struct {
-		Name        string  `yaml:"name"`
-		Version     string  `yaml:"version"`
-		Description *string `yaml:"description,omitempty"`
-		Flows       struct {
-			Request *struct {
-				RequireHeader *bool `yaml:"requireHeader,omitempty"`
-				RequireBody   *bool `yaml:"requireBody,omitempty"`
-			} `yaml:"request,omitempty"`
-			Response *struct {
-				RequireHeader *bool `yaml:"requireHeader,omitempty"`
-				RequireBody   *bool `yaml:"requireBody,omitempty"`
-			} `yaml:"response,omitempty"`
-		} `yaml:"flows"`
-		ParametersSchema *map[string]interface{} `yaml:"parametersSchema,omitempty"`
-	}
+	var policyDef policy.PolicyDefinition
 
-	if err := yaml.Unmarshal(data, &yamlPolicy); err != nil {
+	if err := yaml.Unmarshal(data, &policyDef); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML: %w", err)
 	}
 
 	// Convert to api.PolicyDefinition
 	policy := api.PolicyDefinition{
-		Name:             yamlPolicy.Name,
-		Version:          yamlPolicy.Version,
-		Description:      yamlPolicy.Description,
-		ParametersSchema: yamlPolicy.ParametersSchema,
-		Flows: api.PolicyDefinition_Flows{
-			Request:  nil,
-			Response: nil,
-		},
-	}
-
-	if yamlPolicy.Flows.Request != nil {
-		policy.Flows.Request = &api.PolicyFlowRequirements{
-			RequireHeader: yamlPolicy.Flows.Request.RequireHeader,
-			RequireBody:   yamlPolicy.Flows.Request.RequireBody,
-		}
-	}
-
-	if yamlPolicy.Flows.Response != nil {
-		policy.Flows.Response = &api.PolicyFlowRequirements{
-			RequireHeader: yamlPolicy.Flows.Response.RequireHeader,
-			RequireBody:   yamlPolicy.Flows.Response.RequireBody,
-		}
+		Name:             policyDef.Name,
+		Version:          policyDef.Version,
+		Description:      &policyDef.Description,
+		ParametersSchema: convertParameterSchemasToJSONSchema(policyDef.ParameterSchemas),
 	}
 
 	return &policy, nil
@@ -197,11 +238,6 @@ func (pl *PolicyLoader) validatePolicy(policy *api.PolicyDefinition) error {
 	versionPattern := regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
 	if !versionPattern.MatchString(policy.Version) {
 		return fmt.Errorf("policy version must match semantic version format (e.g., v1.0.0, v2.1.3)")
-	}
-
-	// Check that flows is not empty
-	if policy.Flows.Request == nil && policy.Flows.Response == nil && len(policy.Flows.AdditionalProperties) == 0 {
-		return fmt.Errorf("policy must have at least one flow configuration")
 	}
 
 	return nil

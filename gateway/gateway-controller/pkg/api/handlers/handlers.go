@@ -54,6 +54,7 @@ type APIServer struct {
 	logger             *zap.Logger
 	deploymentService  *utils.APIDeploymentService
 	controlPlaneClient controlplane.ControlPlaneClient
+	routerConfig       *config.RouterConfig
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -66,6 +67,7 @@ func NewAPIServer(
 	controlPlaneClient controlplane.ControlPlaneClient,
 	policyDefinitions map[string]api.PolicyDefinition,
 	validator config.Validator,
+	routerConfig *config.RouterConfig,
 ) *APIServer {
 	server := &APIServer{
 		store:              store,
@@ -78,6 +80,7 @@ func NewAPIServer(
 		logger:             logger,
 		deploymentService:  utils.NewAPIDeploymentService(store, db, snapshotManager, validator),
 		controlPlaneClient: controlPlaneClient,
+		routerConfig:       routerConfig,
 	}
 
 	// Register status update callback
@@ -196,7 +199,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 
 	// Build and add policy config derived from API configuration if policies are present
 	if s.policyManager != nil {
-		storedPolicy := buildStoredPolicyFromAPI(result.StoredConfig)
+		storedPolicy := s.buildStoredPolicyFromAPI(result.StoredConfig)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
 				log.Error("Failed to add derived policy configuration", zap.Error(err))
@@ -407,7 +410,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 
 	// Rebuild and update derived policy configuration
 	if s.policyManager != nil {
-		storedPolicy := buildStoredPolicyFromAPI(existing)
+		storedPolicy := s.buildStoredPolicyFromAPI(existing)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
 				log.Error("Failed to update derived policy configuration", zap.Error(err))
@@ -528,8 +531,9 @@ func (s *APIServer) ListPolicies(c *gin.Context) {
 // Merging rules: When operation has policies, they define the order (can reorder, override, or extend API policies).
 // Remaining API-level policies not mentioned in operation policies are appended at the end.
 // When operation has no policies, API-level policies are used in their declared order.
-// RouteKey uses the fully qualified route path (context + operation path).
-func buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *models.StoredPolicyConfig {
+// RouteKey uses the fully qualified route path (context + operation path) and must match the route name format
+// used by the xDS translator for consistency.
+func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *models.StoredPolicyConfig {
 	apiCfg := &cfg.Configuration
 	apiData := apiCfg.Data
 
@@ -575,10 +579,12 @@ func buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *models.StoredPolicyC
 			}
 		}
 
-		// Construct route key including HTTP method and API version for uniqueness and correlation.
-		// Format: <METHOD>|<API_VERSION>|<CONTEXT><PATH>
-		// Example: GET|1.0.0|/petstore/v1/pets
-		routeKey := fmt.Sprintf("%s|%s|%s%s", op.Method, apiData.Version, apiData.Context, op.Path)
+		// Construct route key using the same format as the xDS translator for consistency
+		// This ensures the policy engine can match routes correctly
+		// Format: HttpMethod|RoutePath|Vhost
+		// Example: GET|/weather/us/seattle|localhost
+		fullPath := apiData.Context + op.Path
+		routeKey := xds.GenerateRouteName(string(op.Method), fullPath, s.routerConfig.GatewayHost)
 		routes = append(routes, models.RoutePolicy{
 			RouteKey: routeKey,
 			Policies: finalPolicies,

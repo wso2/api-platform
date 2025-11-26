@@ -38,6 +38,7 @@ func dumpPolicyRegistry(reg *registry.PolicyRegistry) PolicyRegistryDump {
 // dumpRoutes creates a dump of all route configurations
 func dumpRoutes(k *kernel.Kernel) RoutesDump {
 	routes := k.DumpRoutes()
+	// TODO: (renuka) Redact sensitive info from parameters if any
 
 	routeConfigs := make([]RouteConfig, 0, len(routes))
 	for routeKey, chain := range routes {

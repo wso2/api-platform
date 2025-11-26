@@ -16,6 +16,7 @@
             "env": {
                 "GATEWAY_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
                 "GATEWAY_CONTROLPLANE_TOKEN": "",
+                "POLICY_DIRECTORY": "${workspaceFolder}/gateway/gateway-controller/policies",
             }
         },
         {

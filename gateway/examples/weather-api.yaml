@@ -27,10 +27,6 @@ data:
   operations:
     - method: GET
       path: /{country_code}/{city}
-    - method: POST
-      path: /{country_code}/{city}
-    - method: PUT
-      path: /{country_code}/{city}
       policies:
         - name: ModifyHeaders
           version: v1.0.0
@@ -51,3 +47,7 @@ data:
                 value: nosniff
               - action: DELETE
                 name: server
+    - method: POST
+      path: /{country_code}/{city}
+    - method: PUT
+      path: /{country_code}/{city}
