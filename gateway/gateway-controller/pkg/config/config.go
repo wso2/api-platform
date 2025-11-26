@@ -107,6 +107,7 @@ type upstreamTLS struct {
 	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
 	Ciphers                string `koanf:"ciphers"`
 	TrustedCertPath        string `koanf:"trusted_cert_path"`
+	CustomCertsPath        string `koanf:"custom_certs_path"` // Directory containing custom trusted certificates
 	VerifyHostName         bool   `koanf:"verify_host_name"`
 	DisableSslVerification bool   `koanf:"disable_ssl_verification"`
 }

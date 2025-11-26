@@ -376,6 +376,162 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /certificates:
+    get:
+      summary: List all custom certificates
+      description: |
+        Retrieve all custom TLS certificates currently loaded in the certificate store.
+        These certificates are used for verifying HTTPS upstream connections.
+      operationId: listCertificates
+      tags:
+        - Certificate Management
+      responses:
+        '200':
+          description: List of certificates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateListResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      summary: Upload a new certificate
+      description: |
+        Upload a new custom TLS certificate to the certificate store. The certificate
+        must be in PEM format. After upload, the certificate store is automatically
+        reloaded and SDS (Secret Discovery Service) is updated to push the new
+        certificate to Envoy proxies.
+
+        **Dynamic Update:** Changes take effect immediately without restarting the gateway.
+      operationId: uploadCertificate
+      tags:
+        - Certificate Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CertificateUploadRequest'
+            example:
+              certificate: |
+                -----BEGIN CERTIFICATE-----
+                MIIDXTCCAkWgAwIBAgIJAKL0UG+mRKtjMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
+                ...
+                -----END CERTIFICATE-----
+              filename: my-custom-ca.pem
+      responses:
+        '201':
+          description: Certificate uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateResponse'
+        '400':
+          description: Invalid certificate format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /certificates/{id}:
+    delete:
+      summary: Delete a certificate
+      description: |
+        Delete a custom certificate by ID. After deletion, the certificate store
+        is automatically reloaded and SDS is updated to remove the certificate from
+        Envoy proxies.
+
+        **Dynamic Update:** Changes take effect immediately without restarting the gateway.
+      operationId: deleteCertificate
+      tags:
+        - Certificate Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the certificate to delete
+          schema:
+            type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: Certificate deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Certificate deleted and SDS updated successfully
+                  id:
+                    type: string
+                    example: 550e8400-e29b-41d4-a716-446655440000
+        '404':
+          description: Certificate not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /certificates/reload:
+    post:
+      summary: Manually reload certificates
+      description: |
+        Manually trigger a reload of all certificates from the filesystem and update
+        SDS. This is useful if you've manually added certificate files to the
+        certificates directory.
+
+        **Note:** This endpoint is typically not needed as uploads and deletions
+        automatically trigger reloads.
+      operationId: reloadCertificates
+      tags:
+        - Certificate Management
+      responses:
+        '200':
+          description: Certificates reloaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Certificates reloaded and SDS updated successfully
+                  total_bytes:
+                    type: integer
+                    description: Total bytes of all loaded certificates
+                    example: 221599
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /policies:
     get:
       summary: List all registered policy definitions
@@ -724,6 +880,84 @@ components:
           description: Human-readable error message
           example: Context must start with / and cannot end with /
 
+    CertificateUploadRequest:
+      type: object
+      required:
+        - certificate
+        - name
+      properties:
+        name:
+          type: string
+          description: Unique name for the certificate. Must be unique across all certificates.
+          pattern: '^[a-zA-Z0-9._-]+$'
+          minLength: 1
+          maxLength: 100
+          example: my-custom-ca
+        certificate:
+          type: string
+          description: PEM-encoded X.509 certificate(s). Can contain multiple certificates.
+          example: |
+            -----BEGIN CERTIFICATE-----
+            MIIDXTCCAkWgAwIBAgIJAKL0UG+mRKtjMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
+            ...
+            -----END CERTIFICATE-----
+
+    CertificateResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier (UUID) for the certificate
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          description: Name of the certificate
+          example: my-custom-ca
+        subject:
+          type: string
+          description: Certificate subject DN (for first cert if bundle)
+          example: CN=My CA,O=My Organization,C=US
+        issuer:
+          type: string
+          description: Certificate issuer DN (for first cert if bundle)
+          example: CN=My CA,O=My Organization,C=US
+        notAfter:
+          type: string
+          description: Certificate expiration date (for first cert if bundle)
+          format: date-time
+          example: "2026-11-26 06:07:26"
+        count:
+          type: integer
+          description: Number of certificates in the file
+          example: 1
+        message:
+          type: string
+          description: Success or informational message
+          example: Certificate uploaded and SDS updated successfully
+        status:
+          type: string
+          enum: [success, error]
+          example: success
+
+    CertificateListResponse:
+      type: object
+      properties:
+        certificates:
+          type: array
+          items:
+            $ref: '#/components/schemas/CertificateResponse'
+        totalCount:
+          type: integer
+          description: Total number of certificate files
+          example: 3
+        totalBytes:
+          type: integer
+          description: Total bytes of all certificate files
+          example: 221599
+        status:
+          type: string
+          example: success
+
 tags:
   - name: System
     description: System health and status endpoints
@@ -731,3 +965,5 @@ tags:
     description: CRUD operations for API configurations
   - name: Policy Management
     description: Registration of reusable policy definitions
+  - name: Certificate Management
+    description: Manage custom TLS certificates for HTTPS upstream verification

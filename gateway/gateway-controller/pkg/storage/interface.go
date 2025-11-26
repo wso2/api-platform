@@ -99,6 +99,32 @@ type Storage interface {
 	// May be expensive for large datasets; consider pagination in future versions.
 	GetAllConfigs() ([]*models.StoredAPIConfig, error)
 
+	// SaveCertificate persists a new certificate.
+	//
+	// Returns an error if a certificate with the same name already exists.
+	// Implementations should ensure this operation is atomic.
+	SaveCertificate(cert *models.StoredCertificate) error
+
+	// GetCertificate retrieves a certificate by ID.
+	//
+	// Returns an error if the certificate is not found.
+	GetCertificate(id string) (*models.StoredCertificate, error)
+
+	// GetCertificateByName retrieves a certificate by name.
+	//
+	// Returns an error if the certificate is not found.
+	GetCertificateByName(name string) (*models.StoredCertificate, error)
+
+	// ListCertificates retrieves all certificates ordered by creation time.
+	//
+	// Returns an empty slice if no certificates exist.
+	ListCertificates() ([]*models.StoredCertificate, error)
+
+	// DeleteCertificate removes a certificate by ID.
+	//
+	// Returns an error if the certificate does not exist.
+	DeleteCertificate(id string) error
+
 	// Close closes the storage connection and releases resources.
 	//
 	// Should be called during graceful shutdown.

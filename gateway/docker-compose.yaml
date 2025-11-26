@@ -36,6 +36,7 @@ services:
     volumes:
       - controller-data:/app/data
       - ./gateway-controller/config/config.yaml:/app/config/config.yaml:ro
+      - ./gateway-controller/certificates:/app/certificates  # Read-write for dynamic certificate management
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -88,6 +89,23 @@ services:
     command: ["-addr", ":5000", "-pretty"]
     networks:
       - gateway-network
+
+  secure-backend:
+    image: nginx:alpine
+    container_name: secure-backend
+    ports:
+      - "5443:5443"
+    volumes:
+      - ./test-backend-certs:/etc/nginx/certs:ro
+      - ./secure-backend-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - gateway-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-check-certificate", "--quiet", "--tries=1", "--spider", "https://localhost:5443/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   controller-data:

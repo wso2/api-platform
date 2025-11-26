@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -41,9 +42,11 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/certstore"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -55,13 +58,34 @@ import (
 type Translator struct {
 	logger       *zap.Logger
 	routerConfig *config.RouterConfig
+	certStore    *certstore.CertStore
 }
 
 // NewTranslator creates a new translator
-func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig) *Translator {
+func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig, db storage.Storage) *Translator {
+	// Initialize certificate store if custom certs path is configured
+	var cs *certstore.CertStore
+	if routerConfig.Upstream.TLS.CustomCertsPath != "" {
+		cs = certstore.NewCertStore(
+			logger,
+			db,
+			routerConfig.Upstream.TLS.CustomCertsPath,
+			routerConfig.Upstream.TLS.TrustedCertPath,
+		)
+
+		// Load certificates at initialization
+		if _, err := cs.LoadCertificates(); err != nil {
+			logger.Warn("Failed to initialize certificate store, will use system certs only",
+				zap.String("custom_certs_path", routerConfig.Upstream.TLS.CustomCertsPath),
+				zap.Error(err))
+			cs = nil // Don't use cert store if initialization failed
+		}
+	}
+
 	return &Translator{
 		logger:       logger,
 		routerConfig: routerConfig,
+		certStore:    cs,
 	}
 }
 
@@ -69,6 +93,10 @@ func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig) *Trans
 // This format is used by both Envoy routes and the policy engine for route matching
 func GenerateRouteName(method, path, vhost string) string {
 	return fmt.Sprintf("%s|%s|%s", method, path, vhost)
+}
+// GetCertStore returns the certificate store instance
+func (t *Translator) GetCertStore() *certstore.CertStore {
+	return t.certStore
 }
 
 // TranslateConfigs translates all API configurations to Envoy resources
@@ -153,6 +181,13 @@ func (t *Translator) TranslateConfigs(
 	if t.routerConfig.PolicyEngine.Enabled {
 		policyEngineCluster := t.createPolicyEngineCluster()
 		clusters = append(clusters, policyEngineCluster)
+	}
+
+	// Add SDS cluster if cert store is enabled
+	// This cluster allows Envoy to fetch certificates from the SDS service
+	if t.certStore != nil {
+		sdsCluster := t.createSDSCluster()
+		clusters = append(clusters, sdsCluster)
 	}
 
 	resources[resource.ListenerType] = listeners
@@ -520,6 +555,57 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 	return c
 }
 
+// createSDSCluster creates an Envoy cluster for the SDS (Secret Discovery Service)
+// This cluster allows Envoy to fetch TLS certificates dynamically via xDS
+func (t *Translator) createSDSCluster() *cluster.Cluster {
+	// SDS uses the same xDS server
+	// In containerized environments, Envoy connects to the gateway-controller container
+	// Use the same host/port configuration as the main xDS connection
+	xdsHost := "gateway-controller" // Default for Docker Compose
+	if envHost := os.Getenv("XDS_SERVER_HOST"); envHost != "" {
+		xdsHost = envHost
+	}
+
+	address := &core.Address{
+		Address: &core.Address_SocketAddress{
+			SocketAddress: &core.SocketAddress{
+				Protocol: core.SocketAddress_TCP,
+				Address:  xdsHost,
+				PortSpecifier: &core.SocketAddress_PortValue{
+					PortValue: 18000, // Same port as main xDS server
+				},
+			},
+		},
+	}
+
+	lbEndpoint := &endpoint.LbEndpoint{
+		HostIdentifier: &endpoint.LbEndpoint_Endpoint{
+			Endpoint: &endpoint.Endpoint{
+				Address: address,
+			},
+		},
+	}
+
+	localityLbEndpoints := &endpoint.LocalityLbEndpoints{
+		LbEndpoints: []*endpoint.LbEndpoint{lbEndpoint},
+	}
+
+	// Create the SDS cluster
+	// Note: SDS must use HTTP/2 for gRPC communication
+	return &cluster.Cluster{
+		Name:                 "sds_cluster",
+		ConnectTimeout:       durationpb.New(5 * time.Second),
+		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
+		LoadAssignment: &endpoint.ClusterLoadAssignment{
+			ClusterName: "sds_cluster",
+			Endpoints:   []*endpoint.LocalityLbEndpoints{localityLbEndpoints},
+		},
+		// Enable HTTP/2 for gRPC
+		Http2ProtocolOptions: &core.Http2ProtocolOptions{},
+	}
+}
+
 // createUpstreamTLSContext creates an upstream TLS context for secure connections
 func (t *Translator) createUpstreamTLSContext(certificate []byte, address string) *tlsv3.UpstreamTlsContext {
 	// Create TLS context with base configuration
@@ -545,26 +631,68 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 
 	// Configure SSL verification unless disabled
 	if !t.routerConfig.Upstream.TLS.DisableSslVerification {
-		var trustedCASource *core.DataSource
-		if len(certificate) > 0 {
-			trustedCASource = &core.DataSource{
-				Specifier: &core.DataSource_InlineBytes{
-					InlineBytes: certificate,
+		// Priority order for trusted CA certificates:
+		// 1. SDS secret reference (if cert store is available) - Uses dynamic secret discovery
+		// 2. Certificate parameter (per-upstream cert, currently unused but kept for future)
+		// 3. Configured trusted cert path (system certs only)
+		// 4. If none provided, Envoy falls back to system default trust store
+
+		if t.certStore != nil {
+			// Use SDS to dynamically fetch certificates
+			// This is more efficient than inlining certificates in every cluster config
+			sdsConfig := &core.ConfigSource{
+				ResourceApiVersion: core.ApiVersion_V3,
+				ConfigSourceSpecifier: &core.ConfigSource_ApiConfigSource{
+					ApiConfigSource: &core.ApiConfigSource{
+						ApiType:             core.ApiConfigSource_GRPC,
+						TransportApiVersion: core.ApiVersion_V3,
+						GrpcServices: []*core.GrpcService{
+							{
+								TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
+									EnvoyGrpc: &core.GrpcService_EnvoyGrpc{
+										ClusterName: "sds_cluster",
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			upstreamTLSContext.CommonTlsContext.ValidationContextType = &tlsv3.CommonTlsContext_CombinedValidationContext{
+				CombinedValidationContext: &tlsv3.CommonTlsContext_CombinedCertificateValidationContext{
+					// Default validation context (for hostname verification, etc.)
+					DefaultValidationContext: &tlsv3.CertificateValidationContext{},
+					// Dynamic validation context from SDS
+					ValidationContextSdsSecretConfig: &tlsv3.SdsSecretConfig{
+						Name:      SecretNameUpstreamCA,
+						SdsConfig: sdsConfig,
+					},
+				},
+			}
+			t.logger.Debug("Using SDS for upstream TLS certificates",
+				zap.String("upstream", address),
+				zap.String("secret_name", SecretNameUpstreamCA))
+		} else if len(certificate) > 0 {
+			// Use per-upstream certificate if provided
+			upstreamTLSContext.CommonTlsContext.ValidationContextType = &tlsv3.CommonTlsContext_ValidationContext{
+				ValidationContext: &tlsv3.CertificateValidationContext{
+					TrustedCa: &core.DataSource{
+						Specifier: &core.DataSource_InlineBytes{
+							InlineBytes: certificate,
+						},
+					},
 				},
 			}
 		} else if t.routerConfig.Upstream.TLS.TrustedCertPath != "" {
-			trustedCASource = &core.DataSource{
-				Specifier: &core.DataSource_Filename{
-					Filename: t.routerConfig.Upstream.TLS.TrustedCertPath,
-				},
-			}
-		}
-
-		// Set trusted CA for validation if provided. Otherwise, Envoy will fall back to the system default trust store.
-		if trustedCASource != nil {
+			// Fall back to system cert path
 			upstreamTLSContext.CommonTlsContext.ValidationContextType = &tlsv3.CommonTlsContext_ValidationContext{
 				ValidationContext: &tlsv3.CertificateValidationContext{
-					TrustedCa: trustedCASource,
+					TrustedCa: &core.DataSource{
+						Specifier: &core.DataSource_Filename{
+							Filename: t.routerConfig.Upstream.TLS.TrustedCertPath,
+						},
+					},
 				},
 			}
 		}
@@ -576,17 +704,26 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 				sanType = tlsv3.SubjectAltNameMatcher_IP_ADDRESS
 			}
 
-			if validationContext := upstreamTLSContext.CommonTlsContext.GetValidationContext(); validationContext != nil {
-				validationContext.MatchTypedSubjectAltNames = []*tlsv3.SubjectAltNameMatcher{
-					{
-						SanType: sanType,
-						Matcher: &matcher.StringMatcher{
-							MatchPattern: &matcher.StringMatcher_Exact{
-								Exact: address,
-							},
+			sanMatcher := []*tlsv3.SubjectAltNameMatcher{
+				{
+					SanType: sanType,
+					Matcher: &matcher.StringMatcher{
+						MatchPattern: &matcher.StringMatcher_Exact{
+							Exact: address,
 						},
 					},
+				},
+			}
+
+			// Apply SAN matching based on the validation context type
+			if combinedContext := upstreamTLSContext.CommonTlsContext.GetCombinedValidationContext(); combinedContext != nil {
+				// SDS case - add to default validation context
+				if combinedContext.DefaultValidationContext != nil {
+					combinedContext.DefaultValidationContext.MatchTypedSubjectAltNames = sanMatcher
 				}
+			} else if validationContext := upstreamTLSContext.CommonTlsContext.GetValidationContext(); validationContext != nil {
+				// Non-SDS case - add to regular validation context
+				validationContext.MatchTypedSubjectAltNames = sanMatcher
 			}
 		}
 	}
