@@ -71,11 +71,11 @@ paths:
             example:
               version: api-platform.wso2.com/v1
               kind: http/rest
-              data:
+              spec:
                 name: PetStore API
                 version: v1.0
                 context: /petstore
-                upstream:
+                upstreams:
                   - url: http://petstore.swagger.io/v2
                 policies:
                   - name: apiKeyValidation
@@ -117,11 +117,11 @@ paths:
             example:
               version: api-platform.wso2.com/v1
               kind: http/rest
-              data:
+              spec:
                 name: PetStore API
                 version: v1.0
                 context: /petstore
-                upstream:
+                upstreams:
                   - url: http://petstore.swagger.io/v2
                 policies:
                   - name: apiKeyValidation
@@ -407,7 +407,7 @@ components:
       required:
         - version
         - kind
-        - data
+        - spec
       properties:
         version:
           type: string
@@ -421,7 +421,7 @@ components:
           example: http/rest
           enum:
             - http/rest
-        data:
+        spec:
           $ref: '#/components/schemas/APIConfigData'
 
     APIConfigData:
@@ -430,7 +430,7 @@ components:
         - name
         - version
         - context
-        - upstream
+        - upstreams
         - operations
       properties:
         name:
@@ -452,7 +452,7 @@ components:
           minLength: 1
           maxLength: 200
           example: /weather
-        upstream:
+        upstreams:
           type: array
           description: List of backend service URLs
           minItems: 1
@@ -718,7 +718,7 @@ components:
         field:
           type: string
           description: Field that failed validation
-          example: data.context
+          example: spec.context
         message:
           type: string
           description: Human-readable error message

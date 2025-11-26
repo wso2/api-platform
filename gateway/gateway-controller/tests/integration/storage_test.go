@@ -63,11 +63,11 @@ func createTestConfig(name, version string) *models.StoredAPIConfig {
 		Configuration: api.APIConfiguration{
 			Version: api.ApiPlatformWso2Comv1,
 			Kind:    api.Httprest,
-			Data: api.APIConfigData{
+			Spec: api.APIConfigData{
 				Name:    name,
 				Version: version,
 				Context: "/" + name,
-				Upstream: []api.Upstream{
+				Upstreams: []api.Upstream{
 					{Url: "http://example.com"},
 				},
 				Operations: []api.Operation{

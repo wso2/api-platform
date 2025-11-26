@@ -93,7 +93,7 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 	}
 
 	// Validate data section
-	errors = append(errors, v.validateData(&config.Data)...)
+	errors = append(errors, v.validateData(&config.Spec)...)
 
 	// Validate policies if policy validator is set
 	if v.policyValidator != nil {
@@ -105,48 +105,48 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 }
 
 // validateData validates the data section of the configuration
-func (v *APIValidator) validateData(data *api.APIConfigData) []ValidationError {
+func (v *APIValidator) validateData(spec *api.APIConfigData) []ValidationError {
 	var errors []ValidationError
 
 	// Validate name
-	if data.Name == "" {
+	if spec.Name == "" {
 		errors = append(errors, ValidationError{
-			Field:   "data.name",
+			Field:   "spec.name",
 			Message: "API name is required",
 		})
-	} else if len(data.Name) > 100 {
+	} else if len(spec.Name) > 100 {
 		errors = append(errors, ValidationError{
-			Field:   "data.name",
+			Field:   "spec.name",
 			Message: "API name must be 1-100 characters",
 		})
-	} else if !v.urlFriendlyNameRegex.MatchString(data.Name) {
+	} else if !v.urlFriendlyNameRegex.MatchString(spec.Name) {
 		errors = append(errors, ValidationError{
-			Field:   "data.name",
+			Field:   "spec.name",
 			Message: "API name must be URL-friendly (only letters, numbers, spaces, hyphens, underscores, and dots allowed)",
 		})
 	}
 
 	// Validate version
-	if data.Version == "" {
+	if spec.Version == "" {
 		errors = append(errors, ValidationError{
-			Field:   "data.version",
+			Field:   "spec.version",
 			Message: "API version is required",
 		})
-	} else if !v.versionRegex.MatchString(data.Version) {
+	} else if !v.versionRegex.MatchString(spec.Version) {
 		errors = append(errors, ValidationError{
-			Field:   "data.version",
+			Field:   "spec.version",
 			Message: "API version must follow semantic versioning pattern (e.g., v1.0, v2.1.3)",
 		})
 	}
 
 	// Validate context
-	errors = append(errors, v.validateContext(data.Context)...)
+	errors = append(errors, v.validateContext(spec.Context)...)
 
 	// Validate upstream
-	errors = append(errors, v.validateUpstream(data.Upstream)...)
+	errors = append(errors, v.validateUpstream(spec.Upstreams)...)
 
 	// Validate operations
-	errors = append(errors, v.validateOperations(data.Operations)...)
+	errors = append(errors, v.validateOperations(spec.Operations)...)
 
 	return errors
 }
@@ -157,7 +157,7 @@ func (v *APIValidator) validateContext(context string) []ValidationError {
 
 	if context == "" {
 		errors = append(errors, ValidationError{
-			Field:   "data.context",
+			Field:   "spec.context",
 			Message: "Context is required",
 		})
 		return errors
@@ -165,21 +165,21 @@ func (v *APIValidator) validateContext(context string) []ValidationError {
 
 	if !strings.HasPrefix(context, "/") {
 		errors = append(errors, ValidationError{
-			Field:   "data.context",
+			Field:   "spec.context",
 			Message: "Context must start with /",
 		})
 	}
 
 	if strings.HasSuffix(context, "/") && context != "/" {
 		errors = append(errors, ValidationError{
-			Field:   "data.context",
+			Field:   "spec.context",
 			Message: "Context cannot end with / (except for root context)",
 		})
 	}
 
 	if len(context) > 200 {
 		errors = append(errors, ValidationError{
-			Field:   "data.context",
+			Field:   "spec.context",
 			Message: "Context must be 1-200 characters",
 		})
 	}
@@ -193,7 +193,7 @@ func (v *APIValidator) validateUpstream(upstream []api.Upstream) []ValidationErr
 
 	if len(upstream) == 0 {
 		errors = append(errors, ValidationError{
-			Field:   "data.upstream",
+			Field:   "spec.upstreams",
 			Message: "At least one upstream URL is required",
 		})
 		return errors
@@ -202,7 +202,7 @@ func (v *APIValidator) validateUpstream(upstream []api.Upstream) []ValidationErr
 	for i, up := range upstream {
 		if up.Url == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.upstream[%d].url", i),
+				Field:   fmt.Sprintf("spec.upstreams[%d].url", i),
 				Message: "Upstream URL is required",
 			})
 			continue
@@ -212,7 +212,7 @@ func (v *APIValidator) validateUpstream(upstream []api.Upstream) []ValidationErr
 		parsedURL, err := url.Parse(up.Url)
 		if err != nil {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.upstream[%d].url", i),
+				Field:   fmt.Sprintf("spec.upstreams[%d].url", i),
 				Message: fmt.Sprintf("Invalid URL format: %v", err),
 			})
 			continue
@@ -221,7 +221,7 @@ func (v *APIValidator) validateUpstream(upstream []api.Upstream) []ValidationErr
 		// Ensure scheme is http or https
 		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.upstream[%d].url", i),
+				Field:   fmt.Sprintf("spec.upstreams[%d].url", i),
 				Message: "Upstream URL must use http or https scheme",
 			})
 		}
@@ -229,7 +229,7 @@ func (v *APIValidator) validateUpstream(upstream []api.Upstream) []ValidationErr
 		// Ensure host is present
 		if parsedURL.Host == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.upstream[%d].url", i),
+				Field:   fmt.Sprintf("spec.upstreams[%d].url", i),
 				Message: "Upstream URL must include a host",
 			})
 		}
@@ -244,7 +244,7 @@ func (v *APIValidator) validateOperations(operations []api.Operation) []Validati
 
 	if len(operations) == 0 {
 		errors = append(errors, ValidationError{
-			Field:   "data.operations",
+			Field:   "spec.operations",
 			Message: "At least one operation is required",
 		})
 		return errors
@@ -259,12 +259,12 @@ func (v *APIValidator) validateOperations(operations []api.Operation) []Validati
 		// Validate method
 		if op.Method == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.operations[%d].method", i),
+				Field:   fmt.Sprintf("spec.operations[%d].method", i),
 				Message: "HTTP method is required",
 			})
 		} else if !validMethods[strings.ToUpper(string(op.Method))] {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.operations[%d].method", i),
+				Field:   fmt.Sprintf("spec.operations[%d].method", i),
 				Message: fmt.Sprintf("Invalid HTTP method '%s' (must be GET, POST, PUT, DELETE, PATCH, HEAD, or OPTIONS)", op.Method),
 			})
 		}
@@ -272,7 +272,7 @@ func (v *APIValidator) validateOperations(operations []api.Operation) []Validati
 		// Validate path
 		if op.Path == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.operations[%d].path", i),
+				Field:   fmt.Sprintf("spec.operations[%d].path", i),
 				Message: "Operation path is required",
 			})
 			continue
@@ -280,7 +280,7 @@ func (v *APIValidator) validateOperations(operations []api.Operation) []Validati
 
 		if !strings.HasPrefix(op.Path, "/") {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.operations[%d].path", i),
+				Field:   fmt.Sprintf("spec.operations[%d].path", i),
 				Message: "Operation path must start with /",
 			})
 		}
@@ -288,7 +288,7 @@ func (v *APIValidator) validateOperations(operations []api.Operation) []Validati
 		// Validate path parameters have balanced braces
 		if !v.validatePathParameters(op.Path) {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.operations[%d].path", i),
+				Field:   fmt.Sprintf("spec.operations[%d].path", i),
 				Message: "Operation path has unbalanced braces in parameters",
 			})
 		}

@@ -101,11 +101,11 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 			config := &api.APIConfiguration{
 				Version: "api-platform.wso2.com/v1",
 				Kind:    "http/rest",
-				Data: api.APIConfigData{
+				Spec: api.APIConfigData{
 					Name:    tt.apiName,
 					Version: "v1.0",
 					Context: "/test",
-					Upstream: []api.Upstream{
+					Upstreams: []api.Upstream{
 						{Url: "http://example.com"},
 					},
 					Operations: []api.Operation{
@@ -119,7 +119,7 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 			// Check if we got errors when we expected them
 			hasNameError := false
 			for _, err := range errors {
-				if err.Field == "data.name" {
+				if err.Field == "spec.name" {
 					hasNameError = true
 					if tt.shouldError && tt.errorMsg != "" {
 						if err.Message[:len(tt.errorMsg)] != tt.errorMsg {

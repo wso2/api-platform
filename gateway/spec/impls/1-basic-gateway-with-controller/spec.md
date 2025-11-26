@@ -103,7 +103,7 @@ An API administrator wants to view all currently deployed API configurations and
 - **FR-007**: Router MUST correctly route HTTP requests to backend services based on the deployed API configurations (matching method, path, headers as defined)
 - **FR-008**: Gateway-Controller MUST support creating, reading, updating, and deleting (CRUD) API configurations
 - **FR-009**: Gateway-Controller MUST persist API configurations so they survive restarts
-- **FR-010**: Gateway-Controller MUST provide clear error messages when API configurations are invalid, returning a JSON structure with field paths (e.g., "data.operations[0].path") and specific error descriptions for each validation failure
+- **FR-010**: Gateway-Controller MUST provide clear error messages when API configurations are invalid, returning a JSON structure with field paths (e.g., "spec.operations[0].path") and specific error descriptions for each validation failure
 - **FR-011**: Router MUST gracefully handle configuration updates without dropping in-flight requests
 - **FR-012**: Gateway-Controller MUST maintain an audit log of all configuration changes (create, update, delete operations) including timestamp and configuration details
 - **FR-016**: Gateway-Controller MUST support configurable log levels (debug, info, warn, error) with debug level including full configuration diffs and xDS payloads for troubleshooting

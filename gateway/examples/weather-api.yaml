@@ -18,11 +18,11 @@
 
 version: api-platform.wso2.com/v1
 kind: http/rest
-data:
+spec:
   name: Weather-API
   version: v1.0
   context: /weather
-  upstream:
+  upstreams:
     - url: http://sample-backend:5000/api/v2
   operations:
     - method: GET

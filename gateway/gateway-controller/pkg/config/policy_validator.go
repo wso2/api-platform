@@ -43,18 +43,18 @@ func (pv *PolicyValidator) ValidatePolicies(apiConfig *api.APIConfiguration) []V
 	var errors []ValidationError
 
 	// Validate API-level policies
-	if apiConfig.Data.Policies != nil {
-		for i, policy := range *apiConfig.Data.Policies {
-			errs := pv.validatePolicy(policy, fmt.Sprintf("data.policies[%d]", i))
+	if apiConfig.Spec.Policies != nil {
+		for i, policy := range *apiConfig.Spec.Policies {
+			errs := pv.validatePolicy(policy, fmt.Sprintf("spec.policies[%d]", i))
 			errors = append(errors, errs...)
 		}
 	}
 
 	// Validate operation-level policies
-	for opIdx, operation := range apiConfig.Data.Operations {
+	for opIdx, operation := range apiConfig.Spec.Operations {
 		if operation.Policies != nil {
 			for pIdx, policy := range *operation.Policies {
-				errs := pv.validatePolicy(policy, fmt.Sprintf("data.operations[%d].policies[%d]", opIdx, pIdx))
+				errs := pv.validatePolicy(policy, fmt.Sprintf("spec.operations[%d].policies[%d]", opIdx, pIdx))
 				errors = append(errors, errs...)
 			}
 		}

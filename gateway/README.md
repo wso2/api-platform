@@ -97,7 +97,7 @@ data:
   name: Weather API
   version: v1.0
   context: /weather
-  upstream:
+  upstreams:
     - url: https://api.weather.com/api/v2
   operations:
     - method: GET

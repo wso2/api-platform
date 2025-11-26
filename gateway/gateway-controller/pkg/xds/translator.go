@@ -164,14 +164,14 @@ func (t *Translator) TranslateConfigs(
 
 // translateAPIConfig translates a single API configuration
 func (t *Translator) translateAPIConfig(cfg *models.StoredAPIConfig) ([]*route.Route, []*cluster.Cluster, error) {
-	apiData := cfg.Configuration.Data
+	apiData := cfg.Configuration.Spec
 
 	// Parse upstream URL
-	if len(apiData.Upstream) == 0 {
+	if len(apiData.Upstreams) == 0 {
 		return nil, nil, fmt.Errorf("no upstream configured")
 	}
 
-	upstreamURL := apiData.Upstream[0].Url
+	upstreamURL := apiData.Upstreams[0].Url
 	parsedURL, err := url.Parse(upstreamURL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid upstream URL: %w", err)
