@@ -61,3 +61,17 @@ func (k *Kernel) UnregisterRoute(metadataKey string) {
 
 	delete(k.Routes, metadataKey)
 }
+
+// DumpRoutes returns a copy of all route mappings for debugging
+// Returns a map of route key -> policy chain
+func (k *Kernel) DumpRoutes() map[string]*registry.PolicyChain {
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+
+	// Create a copy of the map
+	dump := make(map[string]*registry.PolicyChain, len(k.Routes))
+	for key, chain := range k.Routes {
+		dump[key] = chain
+	}
+	return dump
+}

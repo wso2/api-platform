@@ -5,6 +5,20 @@ server:
   # Port for ext_proc gRPC server (receives requests from Envoy)
   extproc_port: 9001
 
+# Admin HTTP server configuration
+admin:
+  # Enable admin HTTP server for debugging endpoints
+  enabled: true
+
+  # Port for admin HTTP server
+  port: 9002
+
+  # IP addresses allowed to access the admin API
+  # Defaults to localhost only for security
+  allowed_ips:
+    - "127.0.0.1"
+    - "::1"
+
 config_mode:
   # Configuration mode: "file" or "xds"
   # - file: Load policy chains from static YAML file

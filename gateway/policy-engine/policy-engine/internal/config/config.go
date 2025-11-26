@@ -11,6 +11,7 @@ import (
 // Config represents the complete policy engine configuration
 type Config struct {
 	Server     ServerConfig     `mapstructure:"server"`
+	Admin      AdminConfig      `mapstructure:"admin"`
 	ConfigMode ConfigModeConfig `mapstructure:"config_mode"`
 	XDS        XDSConfig        `mapstructure:"xds"`
 	FileConfig FileConfigConfig `mapstructure:"file_config"`
@@ -21,6 +22,19 @@ type Config struct {
 type ServerConfig struct {
 	// ExtProcPort is the port for the ext_proc gRPC server
 	ExtProcPort int `mapstructure:"extproc_port"`
+}
+
+// AdminConfig holds admin HTTP server configuration
+type AdminConfig struct {
+	// Enabled indicates whether the admin server should be started
+	Enabled bool `mapstructure:"enabled"`
+
+	// Port is the port for the admin HTTP server
+	Port int `mapstructure:"port"`
+
+	// AllowedIPs is a list of IP addresses allowed to access the admin API
+	// Defaults to localhost only (127.0.0.1 and ::1)
+	AllowedIPs []string `mapstructure:"allowed_ips"`
 }
 
 // ConfigModeConfig specifies how policy chains are configured
@@ -128,6 +142,11 @@ func setDefaults(v *viper.Viper) {
 	// Server defaults
 	v.SetDefault("server.extproc_port", 9001)
 
+	// Admin defaults
+	v.SetDefault("admin.enabled", true)
+	v.SetDefault("admin.port", 9002)
+	v.SetDefault("admin.allowed_ips", []string{"127.0.0.1", "::1"})
+
 	// Config mode defaults
 	v.SetDefault("config_mode.mode", "file")
 
@@ -155,6 +174,19 @@ func (c *Config) Validate() error {
 	// Validate server config
 	if c.Server.ExtProcPort <= 0 || c.Server.ExtProcPort > 65535 {
 		return fmt.Errorf("invalid extproc_port: %d (must be 1-65535)", c.Server.ExtProcPort)
+	}
+
+	// Validate admin config
+	if c.Admin.Enabled {
+		if c.Admin.Port <= 0 || c.Admin.Port > 65535 {
+			return fmt.Errorf("invalid admin.port: %d (must be 1-65535)", c.Admin.Port)
+		}
+		if c.Admin.Port == c.Server.ExtProcPort {
+			return fmt.Errorf("admin.port cannot be same as server.extproc_port")
+		}
+		if len(c.Admin.AllowedIPs) == 0 {
+			return fmt.Errorf("admin.allowed_ips cannot be empty when admin is enabled")
+		}
 	}
 
 	// Validate config mode
