@@ -13,7 +13,7 @@ import (
 
 	"github.com/policy-engine/policy-engine/internal/kernel"
 	"github.com/policy-engine/policy-engine/internal/registry"
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 // StoredPolicyConfig mirrors the structure from gateway-controller

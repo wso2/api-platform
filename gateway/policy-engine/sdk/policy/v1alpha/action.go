@@ -1,4 +1,4 @@
-package policy
+package policyv1alpha
 
 // RequestAction marker interface (oneof pattern)
 type RequestAction interface {

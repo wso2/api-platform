@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 // PolicyRegistry provides centralized policy lookup
@@ -93,4 +93,18 @@ func (r *PolicyRegistry) RegisterImplementation(name, version string, impl polic
 // compositeKey creates a composite key from name and version
 func compositeKey(name, version string) string {
 	return fmt.Sprintf("%s:%s", name, version)
+}
+
+// DumpPolicies returns all registered policy definitions for debugging
+// Returns a copy of the definitions map
+func (r *PolicyRegistry) DumpPolicies() map[string]*policy.PolicyDefinition {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	// Create a copy of the definitions map
+	dump := make(map[string]*policy.PolicyDefinition, len(r.Definitions))
+	for key, def := range r.Definitions {
+		dump[key] = def
+	}
+	return dump
 }

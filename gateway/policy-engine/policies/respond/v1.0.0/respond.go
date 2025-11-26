@@ -3,7 +3,7 @@ package respond
 import (
 	"fmt"
 
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 // RespondPolicy implements immediate response functionality

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 // HeaderAction represents the action to perform on a header

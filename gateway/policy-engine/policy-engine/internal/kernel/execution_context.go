@@ -8,9 +8,10 @@ import (
 	extprocconfigv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"github.com/google/uuid"
 
 	"github.com/policy-engine/policy-engine/internal/registry"
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 // PolicyExecutionContext manages the lifecycle of a single request through the policy chain.
@@ -26,6 +27,9 @@ type PolicyExecutionContext struct {
 	// Policy chain for this request
 	policyChain *registry.PolicyChain
 
+	// Route key (metadata key) for this request
+	routeKey string
+
 	// Request ID for correlation
 	requestID string
 
@@ -37,12 +41,54 @@ type PolicyExecutionContext struct {
 func newPolicyExecutionContext(
 	server *ExternalProcessorServer,
 	requestID string,
+	routeKey string,
 	chain *registry.PolicyChain,
 ) *PolicyExecutionContext {
 	return &PolicyExecutionContext{
 		server:      server,
 		requestID:   requestID,
+		routeKey:    routeKey,
 		policyChain: chain,
+	}
+}
+
+// handlePolicyError creates a generic error response for policy execution failures.
+// It logs the full error details internally while returning only a generic message to the client.
+// This prevents information disclosure of internal policy configuration and implementation details.
+func (ec *PolicyExecutionContext) handlePolicyError(
+	ctx context.Context,
+	err error,
+	phase string,
+) *extprocv3.ProcessingResponse {
+	// Generate unique error ID for correlation between client response and server logs
+	errorID := uuid.New().String()
+
+	// Log full error details with structured logging for troubleshooting
+	slog.ErrorContext(ctx, "Policy execution failed",
+		"error_id", errorID,
+		"request_id", ec.requestID,
+		"phase", phase,
+		"route_key", ec.routeKey,
+		"error", err,
+	)
+
+	// Build generic error response body (JSON format)
+	errorBody := fmt.Sprintf(`{"error":"Internal Server Error","error_id":"%s"}`, errorID)
+
+	// Return generic 500 response with correlation ID
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ImmediateResponse{
+			ImmediateResponse: &extprocv3.ImmediateResponse{
+				Status: &typev3.HttpStatus{
+					Code: typev3.StatusCode_InternalServerError,
+				},
+				Headers: buildHeaderValueOptions(map[string]string{
+					"content-type": "application/json",
+					"x-error-id":   errorID,
+				}),
+				Body: []byte(errorBody),
+			},
+		},
 	}
 }
 
@@ -109,15 +155,7 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 		ec.policyChain.PolicySpecs,
 	)
 	if err != nil {
-		slog.ErrorContext(ctx, "Error executing request policies", "error", err)
-		return &extprocv3.ProcessingResponse{
-			Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-				ImmediateResponse: &extprocv3.ImmediateResponse{
-					Status: &typev3.HttpStatus{Code: typev3.StatusCode_InternalServerError},
-					Body:   []byte(fmt.Sprintf("Policy execution error: %v", err)),
-				},
-			},
-		}, nil
+		return ec.handlePolicyError(ctx, err, "request_headers"), nil
 	}
 
 	// Translate execution result to ext_proc response
@@ -145,15 +183,7 @@ func (ec *PolicyExecutionContext) processRequestBody(
 			ec.policyChain.PolicySpecs,
 		)
 		if err != nil {
-			slog.ErrorContext(ctx, "Error executing request policies", "error", err)
-			return &extprocv3.ProcessingResponse{
-				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-					ImmediateResponse: &extprocv3.ImmediateResponse{
-						Status: &typev3.HttpStatus{Code: typev3.StatusCode_InternalServerError},
-						Body:   []byte(fmt.Sprintf("Policy execution error: %v", err)),
-					},
-				},
-			}, nil
+			return ec.handlePolicyError(ctx, err, "request_body"), nil
 		}
 
 		// Check if policies short-circuited with immediate response
@@ -220,13 +250,7 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 		ec.policyChain.PolicySpecs,
 	)
 	if err != nil {
-		slog.ErrorContext(ctx, "Error executing response policies", "error", err)
-		// Allow response through unmodified on error
-		return &extprocv3.ProcessingResponse{
-			Response: &extprocv3.ProcessingResponse_ResponseHeaders{
-				ResponseHeaders: &extprocv3.HeadersResponse{},
-			},
-		}, nil
+		return ec.handlePolicyError(ctx, err, "response_headers"), nil
 	}
 
 	// Translate execution result to ext_proc response
@@ -254,13 +278,7 @@ func (ec *PolicyExecutionContext) processResponseBody(
 			ec.policyChain.PolicySpecs,
 		)
 		if err != nil {
-			slog.ErrorContext(ctx, "Error executing response policies", "error", err)
-			// Allow response through unmodified on error
-			return &extprocv3.ProcessingResponse{
-				Response: &extprocv3.ProcessingResponse_ResponseBody{
-					ResponseBody: &extprocv3.BodyResponse{},
-				},
-			}, nil
+			return ec.handlePolicyError(ctx, err, "response_body"), nil
 		}
 
 		// Normal case: translate modifications to body response
@@ -293,19 +311,30 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 		Metadata:  ec.policyChain.Metadata, // Share chain metadata
 	}
 
-	ctx := &policy.RequestContext{
-		SharedContext: sharedCtx,
-		Headers:       make(map[string][]string),
-	}
+	// Create headers map for internal manipulation
+	headersMap := make(map[string][]string)
 
 	// Extract headers
 	if headers.Headers != nil {
 		for _, header := range headers.Headers.GetHeaders() {
 			key := header.Key
 			value := string(header.RawValue)
-			ctx.Headers[key] = append(ctx.Headers[key], value)
+			headersMap[key] = append(headersMap[key], value)
+		}
+	}
 
-			// Extract path and method from pseudo-headers
+	// Build context with Headers wrapper
+	ctx := &policy.RequestContext{
+		SharedContext: sharedCtx,
+		Headers:       policy.NewHeaders(headersMap),
+	}
+
+	// Extract path and method from pseudo-headers
+	if headers.Headers != nil {
+		for _, header := range headers.Headers.GetHeaders() {
+			key := header.Key
+			value := string(header.RawValue)
+
 			if key == ":path" {
 				ctx.Path = value
 			} else if key == ":method" {
@@ -319,30 +348,33 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 
 // buildResponseContext converts Envoy response headers and stored request context
 func (ec *PolicyExecutionContext) buildResponseContext(headers *extprocv3.HttpHeaders) *policy.ResponseContext {
-	ctx := &policy.ResponseContext{
-		SharedContext:   ec.requestContext.SharedContext, // Reuse same shared context from request phase
-		RequestHeaders:  ec.requestContext.Headers,
-		RequestBody:     ec.requestContext.Body,
-		RequestPath:     ec.requestContext.Path,
-		RequestMethod:   ec.requestContext.Method,
-		ResponseHeaders: make(map[string][]string),
-	}
+	// Create response headers map for internal manipulation
+	responseHeadersMap := make(map[string][]string)
+	var responseStatus int
 
 	// Extract response headers
 	if headers.Headers != nil {
 		for _, header := range headers.Headers.GetHeaders() {
 			key := header.Key
 			value := string(header.RawValue)
-			ctx.ResponseHeaders[key] = append(ctx.ResponseHeaders[key], value)
+			responseHeadersMap[key] = append(responseHeadersMap[key], value)
 
 			// Extract status from pseudo-header
 			if key == ":status" {
 				// Convert status string to int
-				var status int
-				fmt.Sscanf(value, "%d", &status)
-				ctx.ResponseStatus = status
+				fmt.Sscanf(value, "%d", &responseStatus)
 			}
 		}
+	}
+
+	ctx := &policy.ResponseContext{
+		SharedContext:   ec.requestContext.SharedContext, // Reuse same shared context from request phase
+		RequestHeaders:  ec.requestContext.Headers,
+		RequestBody:     ec.requestContext.Body,
+		RequestPath:     ec.requestContext.Path,
+		RequestMethod:   ec.requestContext.Method,
+		ResponseHeaders: policy.NewHeaders(responseHeadersMap),
+		ResponseStatus:  responseStatus,
 	}
 
 	return ctx

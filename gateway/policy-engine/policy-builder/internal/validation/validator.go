@@ -2,6 +2,7 @@ package validation
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/policy-engine/policy-builder/pkg/errors"
 	"github.com/policy-engine/policy-builder/pkg/types"
@@ -9,6 +10,10 @@ import (
 
 // ValidatePolicies runs all validation checks on discovered policies
 func ValidatePolicies(policies []*types.DiscoveredPolicy) (*types.ValidationResult, error) {
+	slog.Debug("Starting policy validation",
+		"count", len(policies),
+		"phase", "validation")
+
 	result := &types.ValidationResult{
 		Valid:    true,
 		Errors:   []types.ValidationError{},
@@ -19,6 +24,7 @@ func ValidatePolicies(policies []*types.DiscoveredPolicy) (*types.ValidationResu
 	seen := make(map[string]bool)
 	for _, policy := range policies {
 		key := fmt.Sprintf("%s:%s", policy.Name, policy.Version)
+		slog.Debug("Checking for duplicates", "policy", key, "phase", "validation")
 		if seen[key] {
 			result.Errors = append(result.Errors, types.ValidationError{
 				PolicyName:    policy.Name,
@@ -33,6 +39,11 @@ func ValidatePolicies(policies []*types.DiscoveredPolicy) (*types.ValidationResu
 
 	// Validate each policy
 	for _, policy := range policies {
+		slog.Debug("Validating policy",
+			"name", policy.Name,
+			"version", policy.Version,
+			"phase", "validation")
+
 		// Directory structure validation
 		structErrors := ValidateDirectoryStructure(policy)
 		result.Errors = append(result.Errors, structErrors...)

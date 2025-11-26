@@ -3,7 +3,7 @@ package uppercasebody
 import (
 	"strings"
 
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 // UppercaseBodyPolicy transforms request body text to uppercase

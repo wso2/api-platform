@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 const (
@@ -100,8 +100,8 @@ func (p *BasicAuthPolicy) OnRequest(ctx *policy.RequestContext, params map[strin
 	}
 
 	// Extract and validate Authorization header
-	authHeaders, ok := ctx.Headers["authorization"]
-	if !ok || len(authHeaders) == 0 {
+	authHeaders := ctx.Headers.Get("authorization")
+	if len(authHeaders) == 0 {
 		return p.handleAuthFailure(ctx, allowUnauthenticated, realm, "missing authorization header")
 	}
 

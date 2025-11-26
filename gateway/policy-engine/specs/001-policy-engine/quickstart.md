@@ -27,15 +27,15 @@ version: v1
 policies:
   - name: SetHeader
     version: v1.0.0
-    uri: ./policies/set-header/v1.0.0
+    filePath: ./policies/set-header/v1.0.0
 
   - name: JWTValidation
     version: v1.0.0
-    uri: ./policies/jwt-validation/v1.0.0
+    filePath: ./policies/jwt-validation/v1.0.0
 
   - name: ApiKeyValidation
     version: v1.0.0
-    uri: ./policies/api-key-validation/v1.0.0
+    filePath: ./policies/api-key-validation/v1.0.0
 EOF
 ```
 
@@ -168,9 +168,9 @@ The `policies.yaml` manifest is the source of truth for which policies to compil
 ```yaml
 version: v1              # Manifest schema version
 policies:
-  - name: PolicyName     # Must match name in policy.yaml at URI
-    version: v1.0.0      # Must match version in policy.yaml at URI
-    uri: ./path/to/policy # Relative or absolute path to policy directory
+  - name: PolicyName     # Must match name in policy.yaml at filePath
+    version: v1.0.0      # Must match version in policy.yaml at filePath
+    filePath: ./path/to/policy # Relative or absolute path to policy directory
 ```
 
 ## Building Policy Engine with Custom Policies
@@ -226,7 +226,7 @@ cat > custom_auth.go <<'EOF'
 package custom_auth
 
 import (
-    "github.com/policy-engine/sdk/policy"
+    policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 type CustomAuthPolicy struct{}

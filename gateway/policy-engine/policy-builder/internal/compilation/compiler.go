@@ -13,7 +13,14 @@ import (
 
 // CompileBinary compiles the policy engine binary with all discovered policies
 func CompileBinary(srcDir string, options *types.CompilationOptions) error {
-	fmt.Println("Starting compilation phase...")
+	slog.Info("Starting compilation phase", "phase", "compilation")
+	slog.Debug("Compilation options",
+		"outputPath", options.OutputPath,
+		"enableUPX", options.EnableUPX,
+		"cgoEnabled", options.CGOEnabled,
+		"targetOS", options.TargetOS,
+		"targetArch", options.TargetArch,
+		"phase", "compilation")
 
 	// Step 1: go mod download
 	if err := runGoModDownload(srcDir); err != nil {
@@ -34,17 +41,23 @@ func CompileBinary(srcDir string, options *types.CompilationOptions) error {
 	if options.EnableUPX {
 		if err := runUPXCompression(options.OutputPath); err != nil {
 			// UPX failure is non-fatal
-			fmt.Printf("Warning: UPX compression failed: %v\n", err)
+			slog.Warn("UPX compression failed",
+				"error", err,
+				"phase", "compilation")
 		}
 	}
 
-	fmt.Printf("✓ Binary compiled successfully: %s\n", options.OutputPath)
+	slog.Info("Binary compiled successfully",
+		"path", options.OutputPath,
+		"phase", "compilation")
 	return nil
 }
 
 // runGoModDownload downloads module dependencies
 func runGoModDownload(srcDir string) error {
-	fmt.Println("  → go mod download")
+	slog.Info("Running go mod download",
+		"step", "mod-download",
+		"phase", "compilation")
 
 	// Debug: log go.mod path
 	goModPath := filepath.Join(srcDir, "go.mod")
@@ -66,7 +79,9 @@ func runGoModDownload(srcDir string) error {
 
 // runGoModTidy tidies module dependencies
 func runGoModTidy(srcDir string) error {
-	fmt.Println("  → go mod tidy")
+	slog.Info("Running go mod tidy",
+		"step", "mod-tidy",
+		"phase", "compilation")
 
 	cmd := exec.Command("go", "mod", "tidy")
 	cmd.Dir = srcDir
@@ -82,10 +97,14 @@ func runGoModTidy(srcDir string) error {
 
 // runGoBuild compiles the Go binary
 func runGoBuild(srcDir string, options *types.CompilationOptions) error {
-	fmt.Println("  → go build (static binary)")
+	slog.Info("Running go build (static binary)",
+		"step", "build",
+		"phase", "compilation",
+		"output", options.OutputPath)
 
 	// Ensure output directory exists
 	outputDir := filepath.Dir(options.OutputPath)
+	slog.Debug("Creating output directory", "dir", outputDir, "phase", "compilation")
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
@@ -116,6 +135,8 @@ func runGoBuild(srcDir string, options *types.CompilationOptions) error {
 	// Add main package (cmd/policy-engine)
 	args = append(args, "./cmd/policy-engine")
 
+	slog.Debug("Build command", "args", args, "dir", srcDir, "phase", "compilation")
+
 	// Create command
 	cmd := exec.Command("go", args...)
 	cmd.Dir = srcDir
@@ -132,6 +153,12 @@ func runGoBuild(srcDir string, options *types.CompilationOptions) error {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("GOARCH=%s", options.TargetArch))
 	}
 
+	slog.Debug("Build environment",
+		"CGO_ENABLED", !options.CGOEnabled,
+		"GOOS", options.TargetOS,
+		"GOARCH", options.TargetArch,
+		"phase", "compilation")
+
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -144,7 +171,9 @@ func runGoBuild(srcDir string, options *types.CompilationOptions) error {
 
 // runUPXCompression compresses the binary with UPX
 func runUPXCompression(binaryPath string) error {
-	fmt.Println("  → upx compression (optional)")
+	slog.Info("Running UPX compression (optional)",
+		"step", "upx",
+		"phase", "compilation")
 
 	// Check if UPX is available
 	if _, err := exec.LookPath("upx"); err != nil {
@@ -159,24 +188,22 @@ func runUPXCompression(binaryPath string) error {
 		return fmt.Errorf("upx compression failed: %w", err)
 	}
 
-	fmt.Println("  ✓ Binary compressed with UPX")
+	slog.Info("Binary compressed with UPX",
+		"path", binaryPath,
+		"phase", "compilation")
 	return nil
 }
 
 // printGoModForDebug prints the go.mod file contents for debugging
 func printGoModForDebug(goModPath string) {
-	fmt.Println("\n========================================")
-	fmt.Println("DEBUG: go.mod contents")
-	fmt.Println("========================================")
-
 	content, err := os.ReadFile(goModPath)
 	if err != nil {
-		slog.Error("failed to read go.mod for debug", "path", goModPath, "error", err)
+		slog.Error("Failed to read go.mod for debugging", "path", goModPath, "error", err)
 		return
 	}
 
-	fmt.Println(string(content))
-	fmt.Println("========================================\n")
-
-	slog.Debug("go.mod file dumped for debugging", "path", goModPath, "size", len(content))
+	slog.Error("go.mod contents for debugging",
+		"path", goModPath,
+		"size", len(content),
+		"content", string(content))
 }

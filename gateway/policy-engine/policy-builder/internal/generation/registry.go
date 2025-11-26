@@ -3,6 +3,7 @@ package generation
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"strings"
 	"text/template"
 
@@ -20,11 +21,22 @@ type PolicyImport struct {
 
 // GeneratePluginRegistry generates the plugin_registry.go file
 func GeneratePluginRegistry(policies []*types.DiscoveredPolicy, srcDir string) (string, error) {
+	slog.Debug("Generating plugin registry",
+		"policyCount", len(policies),
+		"phase", "generation")
+
 	// Create import list
 	imports := make([]PolicyImport, 0, len(policies))
 	for _, policy := range policies {
 		importPath := generateImportPath(policy)
 		importAlias := generateImportAlias(policy.Name, policy.Version)
+
+		slog.Debug("Creating policy import",
+			"name", policy.Name,
+			"version", policy.Version,
+			"importPath", importPath,
+			"alias", importAlias,
+			"phase", "generation")
 
 		imports = append(imports, PolicyImport{
 			Name:        policy.Name,
@@ -39,6 +51,10 @@ func GeneratePluginRegistry(policies []*types.DiscoveredPolicy, srcDir string) (
 	if err != nil {
 		return "", fmt.Errorf("failed to parse template: %w", err)
 	}
+
+	slog.Debug("Executing plugin registry template",
+		"importCount", len(imports),
+		"phase", "generation")
 
 	// Execute template
 	var buf bytes.Buffer

@@ -89,6 +89,7 @@ type PostgresConfig struct {
 type RouterConfig struct {
 	AccessLogs   AccessLogsConfig   `koanf:"access_logs"`
 	ListenerPort int                `koanf:"listener_port"`
+	GatewayHost  string             `koanf:"gateway_host"`
 	Upstream     envoyUpstream      `koanf:"envoy_upstream"`
 	PolicyEngine PolicyEngineConfig `koanf:"policy_engine"`
 }
@@ -274,6 +275,7 @@ func getDefaults() map[string]interface{} {
 			"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
 			"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
 		"router.listener_port":                                         8080,
+		"router.gateway_host":                                          "*",
 		"logging.level":                                                "info",
 		"logging.format":                                               "json",
 		"controlplane.host":                                            "localhost:8443",

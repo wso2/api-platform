@@ -18,23 +18,23 @@ static_resources:
                 codec_type: AUTO
                 stat_prefix: ingress_http
                 proxy_status_config: {}
-                local_reply_config:
-                  mappers:
-                    - filter:
-                        response_flag_filter:
-                          flags:
-                            - UH
-                            - UF
-                      headers_to_add:
-                        - header:
-                            key: "x-wso2-response-fault-flag"
-                            value: "%RESPONSE_FLAGS%"
-                  body_format:
-                    json_format:
-                      status: "%RESPONSE_CODE%"
-                      message: "%LOCAL_REPLY_BODY%"
-                      response_flag: "%RESPONSE_FLAGS%"
-                      response_flag_details: "%RESPONSE_FLAGS_LONG%"
+                # local_reply_config:
+                #   mappers:
+                #     - filter:
+                #         response_flag_filter:
+                #           flags:
+                #             - UH
+                #             - UF
+                #       headers_to_add:
+                #         - header:
+                #             key: "x-wso2-response-fault-flag"
+                #             value: "%RESPONSE_FLAGS%"
+                #   body_format:
+                #     json_format:
+                #       status: "%RESPONSE_CODE%"
+                #       message: "%LOCAL_REPLY_BODY%"
+                #       response_flag: "%RESPONSE_FLAGS%"
+                #       response_flag_details: "%RESPONSE_FLAGS_LONG%"
                 access_log:
                   - name: file-logger-access-logs-http-connection-manager
                     typed_config:

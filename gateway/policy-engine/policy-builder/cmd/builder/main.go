@@ -30,23 +30,16 @@ func main() {
 	outputDir := flag.String("output-dir", DefaultOutputDir, "Directory for build output (binary and Dockerfile)")
 	runtimeDir := flag.String("runtime-dir", DefaultRuntimeDir, "Path to policy-engine runtime source directory")
 	debug := flag.Bool("debug", false, "Enable debug logging")
+	logFormat := flag.String("log-format", "json", "Log format: text or json")
+	logLevel := flag.String("log-level", "info", "Log level: debug, info, warn, error")
 	flag.Parse()
 
 	// Setup logging
-	logLevel := slog.LevelInfo
-	if *debug {
-		logLevel = slog.LevelDebug
-	}
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: logLevel,
-	}))
-	slog.SetDefault(logger)
+	initLogger(*logFormat, *logLevel, *debug)
 
-	// Print banner
-	printBanner()
-
-	fmt.Printf("Output Directory: %s\n", *outputDir)
-	fmt.Printf("Runtime Directory: %s\n", *runtimeDir)
+	slog.Info("Policy Builder starting",
+		"version", BuilderVersion,
+		"manifest", *manifestPath)
 
 	// Ensure output directory exists
 	if err := os.MkdirAll(*outputDir, 0755); err != nil {
@@ -54,49 +47,42 @@ func main() {
 	}
 
 	// Phase 1: Discovery
-	fmt.Println("========================================")
-	fmt.Println("PHASE 1: DISCOVERY")
-	fmt.Println("========================================")
-	fmt.Printf("Using manifest: %s\n", *manifestPath)
+	slog.Info("Starting Phase 1: Discovery", "phase", "discovery")
 
 	policies, err := discovery.DiscoverPoliciesFromManifest(*manifestPath, "")
 	if err != nil {
 		errors.FatalError(err)
 	}
-	fmt.Printf("✓ Loaded manifest: %d policies declared\n", len(policies))
-	fmt.Println()
+	slog.Info("Loaded manifest",
+		"count", len(policies),
+		"phase", "discovery")
 
 	// Print discovered policies
 	for i, p := range policies {
-		fmt.Printf("  %d. %s v%s\n", i+1, p.Name, p.Version)
-		fmt.Printf("     Path: %s\n", p.Path)
+		slog.Info("Discovered policy",
+			"index", i+1,
+			"name", p.Name,
+			"version", p.Version,
+			"path", p.Path)
 	}
-	fmt.Println()
 
 	// Phase 2: Validation
-	fmt.Println("========================================")
-	fmt.Println("PHASE 2: VALIDATION")
-	fmt.Println("========================================")
+	slog.Info("Starting Phase 2: Validation", "phase", "validation")
 	validationResult, err := validation.ValidatePolicies(policies)
 	if err != nil {
 		fmt.Println(validation.FormatValidationErrors(validationResult))
 		errors.FatalError(err)
 	}
-	fmt.Printf("✓ All policies validated successfully\n\n")
+	slog.Info("All policies validated successfully", "phase", "validation")
 
 	// Phase 3: Code Generation
-	fmt.Println("========================================")
-	fmt.Println("PHASE 3: CODE GENERATION")
-	fmt.Println("========================================")
+	slog.Info("Starting Phase 3: Code Generation", "phase", "generation")
 	if err := generation.GenerateCode(*runtimeDir, policies); err != nil {
 		errors.FatalError(err)
 	}
-	fmt.Println()
 
 	// Phase 4: Compilation
-	fmt.Println("========================================")
-	fmt.Println("PHASE 4: COMPILATION")
-	fmt.Println("========================================")
+	slog.Info("Starting Phase 4: Compilation", "phase", "compilation")
 
 	buildMetadata := &types.BuildMetadata{
 		Timestamp:      time.Now().UTC(),
@@ -117,45 +103,75 @@ func main() {
 	if err := compilation.CompileBinary(*runtimeDir, compileOpts); err != nil {
 		errors.FatalError(err)
 	}
-	fmt.Println()
 
 	// Phase 5: Packaging
-	fmt.Println("========================================")
-	fmt.Println("PHASE 5: PACKAGING")
-	fmt.Println("========================================")
+	slog.Info("Starting Phase 5: Packaging", "phase", "packaging")
 	if err := packaging.GenerateDockerfile(*outputDir, policies, BuilderVersion); err != nil {
 		errors.FatalError(err)
 	}
-	fmt.Println()
 
 	// Success summary
 	printSummary(policies, binaryPath, *outputDir)
 }
 
-// printBanner displays the builder banner
-func printBanner() {
-	banner := `
-═══════════════════════════════════════════════════════════
+// initLogger sets up the slog logger based on format and level
+func initLogger(format, level string, debug bool) {
+	// Determine log level
+	var logLevel slog.Level
+	if debug {
+		logLevel = slog.LevelDebug
+	} else {
+		switch level {
+		case "debug":
+			logLevel = slog.LevelDebug
+		case "info":
+			logLevel = slog.LevelInfo
+		case "warn":
+			logLevel = slog.LevelWarn
+		case "error":
+			logLevel = slog.LevelError
+		default:
+			logLevel = slog.LevelInfo
+		}
+	}
 
-Policy Engine Builder
-Version: ` + BuilderVersion + `
+	// Create handler based on format
+	var handler slog.Handler
+	handlerOpts := &slog.HandlerOptions{
+		Level: logLevel,
+	}
 
-═══════════════════════════════════════════════════════════
-`
-	fmt.Println(banner)
+	if format == "json" {
+		handler = slog.NewJSONHandler(os.Stdout, handlerOpts)
+	} else {
+		// Text handler with custom formatting for cleaner output
+		handlerOpts.ReplaceAttr = func(groups []string, a slog.Attr) slog.Attr {
+			// Remove time for cleaner CLI output (CI/CD can use JSON if needed)
+			if a.Key == slog.TimeKey {
+				return slog.Attr{}
+			}
+			return a
+		}
+		handler = slog.NewTextHandler(os.Stdout, handlerOpts)
+	}
+
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
 }
 
 // printSummary displays the final build summary
 func printSummary(policies []*types.DiscoveredPolicy, binaryPath, outputDir string) {
-	fmt.Println("========================================")
-	fmt.Println("BUILD COMPLETE")
-	fmt.Println("========================================")
-	fmt.Printf("✓ Compiled %d policies into binary\n", len(policies))
-	fmt.Printf("✓ Binary: %s\n", binaryPath)
-	fmt.Printf("✓ Dockerfile: %s/Dockerfile\n", outputDir)
-	fmt.Printf("✓ Build instructions: %s/BUILD.md\n\n", outputDir)
+	// Log actual events
+	slog.Info("Build completed successfully",
+		"phase", "complete",
+		"policies", len(policies),
+		"binary", binaryPath)
+	slog.Info("Generated artifacts",
+		"dockerfile", outputDir+"/Dockerfile",
+		"build_instructions", outputDir+"/BUILD.md")
 
-	fmt.Println("Next Steps:")
+	// Print instructional content (not logged)
+	fmt.Println("\nNext Steps:")
 	fmt.Println("1. Review the generated BUILD.md for Docker build instructions")
 	fmt.Println("2. Build the Docker image:")
 	fmt.Printf("   cd %s && docker build -t policy-engine:custom .\n", outputDir)

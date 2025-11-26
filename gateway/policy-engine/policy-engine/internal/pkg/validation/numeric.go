@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 // validateInt validates integer parameters with constraints

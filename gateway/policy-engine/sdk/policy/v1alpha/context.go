@@ -1,4 +1,4 @@
-package policy
+package policyv1alpha
 
 // Body represents HTTP request or response body data
 type Body struct {
@@ -32,10 +32,10 @@ type RequestContext struct {
 	// Shared data across request/response lifecycle
 	*SharedContext
 
-	// Current request headers (mutable)
-	// Updated in-place as policies execute
-	// Key: header name (lowercase), Value: header values (array)
-	Headers map[string][]string
+	// Current request headers (read-only for policies)
+	// Policies use Get(), Has(), Iterate() methods for read-only access
+	// Kernel updates via UnsafeInternalValues()
+	Headers *Headers
 
 	// Current request body (mutable)
 	// nil if no body or body not required
@@ -57,14 +57,15 @@ type ResponseContext struct {
 	*SharedContext
 
 	// Original request data (immutable, from request phase)
-	RequestHeaders map[string][]string
+	RequestHeaders *Headers
 	RequestBody    *Body
 	RequestPath    string
 	RequestMethod  string
 
-	// Current response headers (mutable)
-	// Updated in-place as policies execute
-	ResponseHeaders map[string][]string
+	// Current response headers (read-only for policies)
+	// Policies use Get(), Has(), Iterate() methods for read-only access
+	// Kernel updates via UnsafeInternalValues()
+	ResponseHeaders *Headers
 
 	// Current response body (mutable)
 	// nil if no body or body not required

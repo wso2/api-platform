@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/policy-engine/policy-engine/internal/registry"
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 // RequestPolicyResult represents the result of executing a single request policy
@@ -197,25 +197,28 @@ func (c *ChainExecutor) ExecuteResponsePolicies(policyList []policy.Policy, ctx 
 // applyRequestModifications applies request modifications to context
 // T045: Implements request context modification
 func applyRequestModifications(ctx *policy.RequestContext, mods *policy.UpstreamRequestModifications) {
+	// Get direct access to headers for mutation (kernel-only API)
+	headers := ctx.Headers.UnsafeInternalValues()
+
 	// Set headers (replace existing)
 	if mods.SetHeaders != nil {
 		for key, value := range mods.SetHeaders {
-			ctx.Headers[key] = []string{value}
+			headers[key] = []string{value}
 		}
 	}
 
 	// Remove headers
 	if mods.RemoveHeaders != nil {
 		for _, key := range mods.RemoveHeaders {
-			delete(ctx.Headers, key)
+			delete(headers, key)
 		}
 	}
 
 	// Append headers
 	if mods.AppendHeaders != nil {
 		for key, values := range mods.AppendHeaders {
-			existing := ctx.Headers[key]
-			ctx.Headers[key] = append(existing, values...)
+			existing := headers[key]
+			headers[key] = append(existing, values...)
 		}
 	}
 
@@ -242,25 +245,28 @@ func applyRequestModifications(ctx *policy.RequestContext, mods *policy.Upstream
 // applyResponseModifications applies response modifications to context
 // T046: Implements response context modification
 func applyResponseModifications(ctx *policy.ResponseContext, mods *policy.UpstreamResponseModifications) {
+	// Get direct access to response headers for mutation (kernel-only API)
+	headers := ctx.ResponseHeaders.UnsafeInternalValues()
+
 	// Set headers (replace existing)
 	if mods.SetHeaders != nil {
 		for key, value := range mods.SetHeaders {
-			ctx.ResponseHeaders[key] = []string{value}
+			headers[key] = []string{value}
 		}
 	}
 
 	// Remove headers
 	if mods.RemoveHeaders != nil {
 		for _, key := range mods.RemoveHeaders {
-			delete(ctx.ResponseHeaders, key)
+			delete(headers, key)
 		}
 	}
 
 	// Append headers
 	if mods.AppendHeaders != nil {
 		for key, values := range mods.AppendHeaders {
-			existing := ctx.ResponseHeaders[key]
-			ctx.ResponseHeaders[key] = append(existing, values...)
+			existing := headers[key]
+			headers[key] = append(existing, values...)
 		}
 	}
 

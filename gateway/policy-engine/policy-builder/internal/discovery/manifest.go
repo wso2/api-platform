@@ -2,10 +2,12 @@ package discovery
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
 	"github.com/policy-engine/policy-builder/pkg/errors"
+	"github.com/policy-engine/policy-builder/pkg/fsutil"
 	"github.com/policy-engine/policy-builder/pkg/types"
 	"gopkg.in/yaml.v3"
 )
@@ -16,6 +18,8 @@ const (
 
 // LoadManifest loads and validates the policy manifest file
 func LoadManifest(manifestPath string) (*types.PolicyManifest, error) {
+	slog.Debug("Reading manifest file", "path", manifestPath, "phase", "discovery")
+
 	// Read manifest file
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
@@ -33,6 +37,11 @@ func LoadManifest(manifestPath string) (*types.PolicyManifest, error) {
 			err,
 		)
 	}
+
+	slog.Debug("Parsed manifest",
+		"version", manifest.Version,
+		"policyCount", len(manifest.Policies),
+		"phase", "discovery")
 
 	// Validate manifest
 	if err := validateManifest(&manifest); err != nil {
@@ -65,6 +74,13 @@ func validateManifest(manifest *types.PolicyManifest) error {
 	// Validate each policy entry
 	seen := make(map[string]bool)
 	for i, entry := range manifest.Policies {
+		slog.Debug("Validating manifest entry",
+			"index", i,
+			"name", entry.Name,
+			"version", entry.Version,
+			"filePath", entry.FilePath,
+			"phase", "discovery")
+
 		// Check required fields
 		if entry.Name == "" {
 			return errors.NewDiscoveryError(
@@ -80,9 +96,9 @@ func validateManifest(manifest *types.PolicyManifest) error {
 			)
 		}
 
-		if entry.URI == "" {
+		if entry.FilePath == "" {
 			return errors.NewDiscoveryError(
-				fmt.Sprintf("policy entry %d (%s): uri is required", i, entry.Name),
+				fmt.Sprintf("policy entry %d (%s): filePath is required", i, entry.Name),
 				nil,
 			)
 		}
@@ -95,6 +111,7 @@ func validateManifest(manifest *types.PolicyManifest) error {
 				nil,
 			)
 		}
+		slog.Debug("Policy entry is unique", "key", key, "phase", "discovery")
 		seen[key] = true
 	}
 
@@ -112,6 +129,11 @@ func DiscoverPoliciesFromManifest(manifestPath string, baseDir string) ([]*types
 		)
 	}
 
+	slog.Debug("Resolved manifest path",
+		"original", manifestPath,
+		"absolute", absManifestPath,
+		"phase", "discovery")
+
 	// Load manifest
 	manifest, err := LoadManifest(absManifestPath)
 	if err != nil {
@@ -121,24 +143,34 @@ func DiscoverPoliciesFromManifest(manifestPath string, baseDir string) ([]*types
 	// Set baseDir to manifest's directory if not provided.
 	if baseDir == "" {
 		baseDir = filepath.Dir(absManifestPath)
+		slog.Debug("Using manifest directory as baseDir",
+			"baseDir", baseDir,
+			"phase", "discovery")
 	}
 
 	var discovered []*types.DiscoveredPolicy
 
 	// Process each manifest entry
 	for _, entry := range manifest.Policies {
-		// Resolve URI (support relative and absolute paths)
-		policyPath := entry.URI // TODO: (renuka) This URI is not the exact path of the policy. It is the path to discover policy.
-		if !filepath.IsAbs(policyPath) {
+		// Resolve file path (support relative and absolute paths)
+		policyPath := entry.FilePath
+		isAbsolute := filepath.IsAbs(policyPath)
+		if !isAbsolute {
 			// Relative to base directory (now guaranteed absolute)
-			policyPath = filepath.Join(baseDir, entry.URI)
+			policyPath = filepath.Join(baseDir, entry.FilePath)
 		}
 
-		// Check path exists
-		if _, err := os.Stat(policyPath); os.IsNotExist(err) { // TODO: (renuka) check other errors as well.
+		slog.Debug("Resolving policy path",
+			"policy", entry.Name,
+			"filePath", entry.FilePath,
+			"isAbsolute", isAbsolute,
+			"resolvedPath", policyPath,
+			"phase", "discovery")
+
+		// Check path exists and is accessible
+		if err := fsutil.ValidatePathExists(policyPath, "policy path"); err != nil {
 			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("policy path does not exist: %s (from manifest entry %s:%s)",
-					policyPath, entry.Name, entry.Version),
+				fmt.Sprintf("from manifest entry %s:%s: %v", entry.Name, entry.Version, err),
 				err,
 			)
 		}
@@ -160,6 +192,12 @@ func DiscoverPoliciesFromManifest(manifestPath string, baseDir string) ([]*types
 				err,
 			)
 		}
+
+		slog.Debug("Parsed policy.yaml",
+			"name", definition.Name,
+			"version", definition.Version,
+			"path", policyYAMLPath,
+			"phase", "discovery")
 
 		// Validate manifest entry matches policy.yaml
 		if entry.Name != definition.Name {
@@ -186,6 +224,12 @@ func DiscoverPoliciesFromManifest(manifestPath string, baseDir string) ([]*types
 				err,
 			)
 		}
+
+		slog.Debug("Collected source files",
+			"policy", entry.Name,
+			"count", len(sourceFiles),
+			"files", sourceFiles,
+			"phase", "discovery")
 
 		// Create discovered policy
 		policy := &types.DiscoveredPolicy{

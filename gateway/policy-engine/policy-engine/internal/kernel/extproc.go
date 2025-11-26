@@ -150,7 +150,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 	requestID := s.generateRequestID()
 
 	// Create execution context for this request-response lifecycle
-	*execCtx = newPolicyExecutionContext(s, requestID, chain)
+	*execCtx = newPolicyExecutionContext(s, requestID, metadataKey, chain)
 
 	// Build request context from Envoy headers
 	(*execCtx).requestContext = (*execCtx).buildRequestContext(req.GetRequestHeaders())

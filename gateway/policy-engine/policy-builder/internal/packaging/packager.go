@@ -3,6 +3,7 @@ package packaging
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"text/template"
@@ -15,9 +16,13 @@ import (
 
 // GenerateDockerfile generates the runtime Dockerfile
 func GenerateDockerfile(outputDir string, policies []*types.DiscoveredPolicy, builderVersion string) error {
-	fmt.Println("Generating runtime Dockerfile...")
+	slog.Info("Generating runtime Dockerfile", "phase", "packaging")
 
 	// Create packaging metadata
+	slog.Debug("Creating packaging metadata",
+		"policyCount", len(policies),
+		"phase", "packaging")
+
 	metadata := &types.PackagingMetadata{
 		BaseImage:      "alpine:3.19",
 		BuildTimestamp: time.Now().UTC(),
@@ -62,7 +67,9 @@ func GenerateDockerfile(outputDir string, policies []*types.DiscoveredPolicy, bu
 		return errors.NewPackagingError("failed to write Dockerfile", err)
 	}
 
-	fmt.Printf("✓ Generated Dockerfile: %s\n", dockerfilePath)
+	slog.Info("Generated Dockerfile",
+		"path", dockerfilePath,
+		"phase", "packaging")
 
 	// Generate build instructions
 	if err := generateBuildInstructions(outputDir, metadata); err != nil {
@@ -140,6 +147,8 @@ docker run policy-engine:custom --build-info
 		return fmt.Errorf("failed to write BUILD.md: %w", err)
 	}
 
-	fmt.Printf("✓ Generated BUILD.md with instructions\n")
+	slog.Info("Generated BUILD.md with instructions",
+		"path", readmePath,
+		"phase", "packaging")
 	return nil
 }

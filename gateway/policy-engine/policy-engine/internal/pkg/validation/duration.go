@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/policy-engine/sdk/policy"
+	policy "github.com/policy-engine/sdk/policy/v1alpha"
 )
 
 // validateDuration validates duration parameters (e.g., "30s", "5m", "1h")

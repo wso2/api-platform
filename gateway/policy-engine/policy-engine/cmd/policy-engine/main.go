@@ -9,10 +9,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"google.golang.org/grpc"
 
+	"github.com/policy-engine/policy-engine/internal/admin"
 	"github.com/policy-engine/policy-engine/internal/config"
 	"github.com/policy-engine/policy-engine/internal/executor"
 	"github.com/policy-engine/policy-engine/internal/kernel"
@@ -108,6 +110,17 @@ func main() {
 
 	slog.InfoContext(ctx, "Policy Engine listening", "port", cfg.Server.ExtProcPort)
 
+	// Start admin HTTP server if enabled
+	var adminServer *admin.Server
+	if cfg.Admin.Enabled {
+		adminServer = admin.NewServer(&cfg.Admin, k, reg)
+		go func() {
+			if err := adminServer.Start(ctx); err != nil {
+				slog.ErrorContext(ctx, "Admin server error", "error", err)
+			}
+		}()
+	}
+
 	// Setup graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -129,6 +142,14 @@ func main() {
 	}
 
 	// Graceful shutdown
+	if adminServer != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := adminServer.Stop(shutdownCtx); err != nil {
+			slog.ErrorContext(ctx, "Error stopping admin server", "error", err)
+		}
+	}
+
 	if xdsClient != nil {
 		slog.InfoContext(ctx, "Stopping xDS client")
 		xdsClient.Stop()
