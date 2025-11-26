@@ -45,6 +45,8 @@ storage:
 
 # Router (Envoy) configuration
 router:
+  # Gateway host for incoming requests
+  gateway_host: "*"
   # Access logs configuration
   access_logs:
     # Enable or disable access logs

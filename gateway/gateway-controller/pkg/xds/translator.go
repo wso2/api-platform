@@ -65,6 +65,12 @@ func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig) *Trans
 	}
 }
 
+// GenerateRouteName creates a unique route name in the format: HttpMethod|RoutePath|Vhost
+// This format is used by both Envoy routes and the policy engine for route matching
+func GenerateRouteName(method, path, vhost string) string {
+	return fmt.Sprintf("%s|%s|%s", method, path, vhost)
+}
+
 // TranslateConfigs translates all API configurations to Envoy resources
 // The correlationID parameter is optional and used for request tracing in logs
 func (t *Translator) TranslateConfigs(
@@ -179,10 +185,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredAPIConfig) ([]*route.R
 	// Create routes for each operation
 	routesList := make([]*route.Route, 0)
 	for _, op := range apiData.Operations {
-		// Build route key with method, version, context, and path to correlate with policies
-		// Format: METHOD|API_VERSION|CONTEXT+PATH (same as handlers/buildStoredPolicyFromAPI)
-		routeKey := fmt.Sprintf("%s|%s|%s%s", op.Method, apiData.Version, apiData.Context, op.Path)
-		r := t.createRoute(apiData.Name, apiData.Version, apiData.Context, string(op.Method), op.Path, clusterName, parsedURL.Path, routeKey)
+		r := t.createRoute(apiData.Name, apiData.Version, apiData.Context, string(op.Method), op.Path, clusterName, parsedURL.Path)
 		routesList = append(routesList, r)
 	}
 
@@ -277,9 +280,13 @@ func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost)
 }
 
 // createRoute creates a route for an operation
-func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clusterName, upstreamPath, routeKey string) *route.Route {
+func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clusterName, upstreamPath string) *route.Route {
 	// Combine context and path for matching
 	fullPath := context + path
+
+	// Generate unique route name using the helper function
+	// Format: HttpMethod|RoutePath|Vhost (e.g., "GET|/weather/us/seattle|localhost")
+	routeName := GenerateRouteName(method, fullPath, t.routerConfig.GatewayHost)
 
 	// Check if path contains parameters (e.g., {country_code})
 	hasParams := strings.Contains(path, "{")
@@ -296,6 +303,7 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 	}
 
 	r := &route.Route{
+		Name: routeName,
 		Match: &route.RouteMatch{
 			Headers: []*route.HeaderMatcher{{
 				Name: ":method",
@@ -330,7 +338,7 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 
 	// Attach dynamic metadata for downstream correlation (policies, logging, tracing)
 	metaMap := map[string]interface{}{
-		"route_key":   routeKey,
+		"route_name":  routeName,
 		"api_name":    apiName,
 		"api_version": apiVersion,
 		"api_context": context,
