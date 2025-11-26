@@ -86,7 +86,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	if len(validationErrors) > 0 {
 		params.Logger.Warn("Configuration validation failed",
 			zap.String("api_id", params.APIID),
-			zap.String("name", apiConfig.Data.Name),
+			zap.String("name", apiConfig.Spec.Name),
 			zap.Int("num_errors", len(validationErrors)))
 
 		for _, e := range validationErrors {
@@ -126,14 +126,14 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	if isUpdate {
 		params.Logger.Info("API configuration updated",
 			zap.String("api_id", apiID),
-			zap.String("name", apiConfig.Data.Name),
-			zap.String("version", apiConfig.Data.Version),
+			zap.String("name", apiConfig.Spec.Name),
+			zap.String("version", apiConfig.Spec.Version),
 			zap.String("correlation_id", params.CorrelationID))
 	} else {
 		params.Logger.Info("API configuration created",
 			zap.String("api_id", apiID),
-			zap.String("name", apiConfig.Data.Name),
-			zap.String("version", apiConfig.Data.Version),
+			zap.String("name", apiConfig.Spec.Name),
+			zap.String("version", apiConfig.Spec.Version),
 			zap.String("correlation_id", params.CorrelationID))
 	}
 
@@ -165,8 +165,8 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredAPICon
 			if storage.IsConflictError(err) {
 				logger.Info("API configuration already exists in database, updating instead",
 					zap.String("api_id", storedCfg.ID),
-					zap.String("name", storedCfg.Configuration.Data.Name),
-					zap.String("version", storedCfg.Configuration.Data.Version))
+					zap.String("name", storedCfg.Configuration.Spec.Name),
+					zap.String("version", storedCfg.Configuration.Spec.Version))
 
 				// Try to update instead
 				return s.updateExistingConfig(storedCfg)
@@ -187,8 +187,8 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredAPICon
 		if storage.IsConflictError(err) {
 			logger.Info("API configuration already exists in memory, updating instead",
 				zap.String("api_id", storedCfg.ID),
-				zap.String("name", storedCfg.Configuration.Data.Name),
-				zap.String("version", storedCfg.Configuration.Data.Version))
+				zap.String("name", storedCfg.Configuration.Spec.Name),
+				zap.String("version", storedCfg.Configuration.Spec.Version))
 
 			// Try to update instead
 			return s.updateExistingConfig(storedCfg)

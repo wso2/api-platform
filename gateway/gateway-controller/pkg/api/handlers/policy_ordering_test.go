@@ -140,11 +140,11 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 				Configuration: api.APIConfiguration{
 					Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
 					Kind:    api.APIConfigurationKind("http/rest"),
-					Data: api.APIConfigData{
+					Spec: api.APIConfigData{
 						Name:    "test-api",
 						Version: "v1.0",
 						Context: "/test",
-						Upstream: []api.Upstream{
+						Upstreams: []api.Upstream{
 							{Url: "http://backend.example.com"},
 						},
 						Operations: []api.Operation{
@@ -159,10 +159,10 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 
 			// Set policies
 			if tt.apiPolicies != nil {
-				cfg.Configuration.Data.Policies = &tt.apiPolicies
+				cfg.Configuration.Spec.Policies = &tt.apiPolicies
 			}
 			if tt.operationPolicies != nil {
-				cfg.Configuration.Data.Operations[0].Policies = &tt.operationPolicies
+				cfg.Configuration.Spec.Operations[0].Policies = &tt.operationPolicies
 			}
 
 			// Call the function
@@ -234,11 +234,11 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 		Configuration: api.APIConfiguration{
 			Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
 			Kind:    api.APIConfigurationKind("http/rest"),
-			Data: api.APIConfigData{
+			Spec: api.APIConfigData{
 				Name:    "test-api",
 				Version: "v1.0",
 				Context: "/test",
-				Upstream: []api.Upstream{
+				Upstreams: []api.Upstream{
 					{Url: "http://backend.example.com"},
 				},
 				Operations: []api.Operation{
@@ -369,11 +369,11 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 		Configuration: api.APIConfiguration{
 			Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
 			Kind:    api.APIConfigurationKind("http/rest"),
-			Data: api.APIConfigData{
+			Spec: api.APIConfigData{
 				Name:    "test-api",
 				Version: "v1.0",
 				Context: "/test",
-				Upstream: []api.Upstream{
+				Upstreams: []api.Upstream{
 					{Url: "http://backend.example.com"},
 				},
 				Operations: []api.Operation{

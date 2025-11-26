@@ -18,11 +18,11 @@
 
 version: api-platform.wso2.com/v1
 kind: http/rest
-data:
+spec:
   name: PetStore API test
   version: v1.0
   context: /petstoretest
-  upstream:
+  upstreams:
     - url: http://petstore.swagger.io/v2
   policies:
     - name: apiKeyValidation

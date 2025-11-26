@@ -56,11 +56,11 @@ func TestPolicyValidator_ValidatePolicies_Success(t *testing.T) {
 	apiConfig := &api.APIConfiguration{
 		Version: "api-platform.wso2.com/v1",
 		Kind:    "http/rest",
-		Data: api.APIConfigData{
+		Spec: api.APIConfigData{
 			Name:    "Test API",
 			Version: "v1.0",
 			Context: "/test",
-			Upstream: []api.Upstream{
+			Upstreams: []api.Upstream{
 				{Url: "http://backend.example.com"},
 			},
 			Policies: &[]api.Policy{
@@ -97,11 +97,11 @@ func TestPolicyValidator_PolicyNotFound(t *testing.T) {
 	apiConfig := &api.APIConfiguration{
 		Version: "api-platform.wso2.com/v1",
 		Kind:    "http/rest",
-		Data: api.APIConfigData{
+		Spec: api.APIConfigData{
 			Name:    "Test API",
 			Version: "v1.0",
 			Context: "/test",
-			Upstream: []api.Upstream{
+			Upstreams: []api.Upstream{
 				{Url: "http://backend.example.com"},
 			},
 			Policies: &[]api.Policy{
@@ -160,11 +160,11 @@ func TestPolicyValidator_InvalidParameters(t *testing.T) {
 	apiConfig := &api.APIConfiguration{
 		Version: "api-platform.wso2.com/v1",
 		Kind:    "http/rest",
-		Data: api.APIConfigData{
+		Spec: api.APIConfigData{
 			Name:    "Test API",
 			Version: "v1.0",
 			Context: "/test",
-			Upstream: []api.Upstream{
+			Upstreams: []api.Upstream{
 				{Url: "http://backend.example.com"},
 			},
 			Policies: &[]api.Policy{
@@ -221,11 +221,11 @@ func TestPolicyValidator_OperationLevelPolicies(t *testing.T) {
 	apiConfig := &api.APIConfiguration{
 		Version: "api-platform.wso2.com/v1",
 		Kind:    "http/rest",
-		Data: api.APIConfigData{
+		Spec: api.APIConfigData{
 			Name:    "Test API",
 			Version: "v1.0",
 			Context: "/test",
-			Upstream: []api.Upstream{
+			Upstreams: []api.Upstream{
 				{Url: "http://backend.example.com"},
 			},
 			Operations: []api.Operation{
@@ -272,11 +272,11 @@ func TestPolicyValidator_MultipleErrors(t *testing.T) {
 	apiConfig := &api.APIConfiguration{
 		Version: "api-platform.wso2.com/v1",
 		Kind:    "http/rest",
-		Data: api.APIConfigData{
+		Spec: api.APIConfigData{
 			Name:    "Test API",
 			Version: "v1.0",
 			Context: "/test",
-			Upstream: []api.Upstream{
+			Upstreams: []api.Upstream{
 				{Url: "http://backend.example.com"},
 			},
 			Policies: &[]api.Policy{
@@ -338,11 +338,11 @@ func TestPolicyValidator_TypeMismatch(t *testing.T) {
 	apiConfig := &api.APIConfiguration{
 		Version: "api-platform.wso2.com/v1",
 		Kind:    "http/rest",
-		Data: api.APIConfigData{
+		Spec: api.APIConfigData{
 			Name:    "Test API",
 			Version: "v1.0",
 			Context: "/test",
-			Upstream: []api.Upstream{
+			Upstreams: []api.Upstream{
 				{Url: "http://backend.example.com"},
 			},
 			Policies: &[]api.Policy{
@@ -396,11 +396,11 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 	apiConfig := &api.APIConfiguration{
 		Version: "api-platform.wso2.com/v1",
 		Kind:    "http/rest",
-		Data: api.APIConfigData{
+		Spec: api.APIConfigData{
 			Name:    "Test API",
 			Version: "v1.0",
 			Context: "/test",
-			Upstream: []api.Upstream{
+			Upstreams: []api.Upstream{
 				{Url: "http://backend.example.com"},
 			},
 			Policies: &[]api.Policy{
@@ -436,14 +436,14 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 	}
 
 	// Test case 2: Policy with empty params map (should also fail)
-	(*apiConfig.Data.Policies)[0].Params = &map[string]interface{}{}
+	(*apiConfig.Spec.Policies)[0].Params = &map[string]interface{}{}
 	errors = validator.ValidatePolicies(apiConfig)
 	if len(errors) == 0 {
 		t.Error("Expected validation error for missing required parameter 'issuer'")
 	}
 
 	// Test case 3: Policy with required param provided (should pass)
-	(*apiConfig.Data.Policies)[0].Params = &map[string]interface{}{
+	(*apiConfig.Spec.Policies)[0].Params = &map[string]interface{}{
 		"issuer": "https://auth.example.com",
 	}
 	errors = validator.ValidatePolicies(apiConfig)

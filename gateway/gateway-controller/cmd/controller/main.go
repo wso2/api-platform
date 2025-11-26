@@ -267,7 +267,7 @@ func main() {
 // This is a simplified version of the buildStoredPolicyFromAPI function from handlers
 func derivePolicyFromAPIConfig(cfg *models.StoredAPIConfig, routerConfig *config.RouterConfig) *models.StoredPolicyConfig {
 	apiCfg := &cfg.Configuration
-	apiData := apiCfg.Data
+	apiData := apiCfg.Spec
 
 	// Collect API-level policies
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance)

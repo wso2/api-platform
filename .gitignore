@@ -88,6 +88,7 @@ yarn-debug.log*
 .classpath
 .settings
 .project
+.vscode
 
 *.DS_Store
 

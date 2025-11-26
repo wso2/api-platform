@@ -134,7 +134,7 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredAPIConfig) error {
 	// Extract fields for indexed columns
 	name := cfg.GetAPIName()
 	version := cfg.GetAPIVersion()
-	context := cfg.Configuration.Data.Context
+	context := cfg.Configuration.Spec.Context
 	kind := string(cfg.Configuration.Kind)
 
 	query := `
@@ -194,7 +194,7 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredAPIConfig) error {
 	// Extract fields for indexed columns
 	name := cfg.GetAPIName()
 	version := cfg.GetAPIVersion()
-	context := cfg.Configuration.Data.Context
+	context := cfg.Configuration.Spec.Context
 	kind := string(cfg.Configuration.Kind)
 
 	query := `

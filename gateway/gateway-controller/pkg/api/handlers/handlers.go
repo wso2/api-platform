@@ -110,7 +110,7 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		cfg.DeployedVersion = version
 		log.Info("API configuration deployed successfully",
 			zap.String("id", configID),
-			zap.String("name", cfg.Configuration.Data.Name),
+			zap.String("name", cfg.Configuration.Spec.Name),
 			zap.Int64("version", version))
 	} else {
 		cfg.Status = models.StatusFailed
@@ -118,7 +118,7 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		cfg.DeployedVersion = 0
 		log.Error("API configuration deployment failed",
 			zap.String("id", configID),
-			zap.String("name", cfg.Configuration.Data.Name))
+			zap.String("name", cfg.Configuration.Spec.Name))
 	}
 
 	cfg.UpdatedAt = now
@@ -224,9 +224,9 @@ func (s *APIServer) ListAPIs(c *gin.Context) {
 		status := string(cfg.Status)
 		items[i] = api.APIListItem{
 			Id:        id,
-			Name:      stringPtr(cfg.Configuration.Data.Name),
-			Version:   stringPtr(cfg.Configuration.Data.Version),
-			Context:   stringPtr(cfg.Configuration.Data.Context),
+			Name:      stringPtr(cfg.Configuration.Spec.Name),
+			Version:   stringPtr(cfg.Configuration.Spec.Version),
+			Context:   stringPtr(cfg.Configuration.Spec.Context),
 			Status:    (*api.APIListItemStatus)(&status),
 			CreatedAt: timePtr(cfg.CreatedAt),
 			UpdatedAt: timePtr(cfg.UpdatedAt),
@@ -312,7 +312,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 	validationErrors := s.validator.Validate(&apiConfig)
 	if len(validationErrors) > 0 {
 		log.Warn("Configuration validation failed",
-			zap.String("name", apiConfig.Data.Name),
+			zap.String("name", apiConfig.Spec.Name),
 			zap.Int("num_errors", len(validationErrors)))
 
 		errors := make([]api.ValidationError, len(validationErrors))
@@ -370,8 +370,8 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 		if storage.IsConflictError(err) {
 			log.Info("API configuration name/version already exists",
 				zap.String("id", existing.ID),
-				zap.String("name", apiConfig.Data.Name),
-				zap.String("version", apiConfig.Data.Version))
+				zap.String("name", apiConfig.Spec.Name),
+				zap.String("version", apiConfig.Spec.Version))
 		} else {
 			log.Error("Failed to update config in memory store", zap.Error(err))
 		}
@@ -397,8 +397,8 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 
 	log.Info("API configuration updated",
 		zap.String("id", existing.ID),
-		zap.String("name", apiConfig.Data.Name),
-		zap.String("version", apiConfig.Data.Version))
+		zap.String("name", apiConfig.Spec.Name),
+		zap.String("version", apiConfig.Spec.Version))
 
 	// Return success response
 	updateId, _ := uuidToOpenAPIUUID(existing.ID)
@@ -480,8 +480,8 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 
 	log.Info("API configuration deleted",
 		zap.String("id", cfg.ID),
-		zap.String("name", cfg.Configuration.Data.Name),
-		zap.String("version", cfg.Configuration.Data.Version))
+		zap.String("name", cfg.Configuration.Spec.Name),
+		zap.String("version", cfg.Configuration.Spec.Version))
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
@@ -536,7 +536,7 @@ func (s *APIServer) ListPolicies(c *gin.Context) {
 // used by the xDS translator for consistency.
 func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *models.StoredPolicyConfig {
 	apiCfg := &cfg.Configuration
-	apiData := apiCfg.Data
+	apiData := apiCfg.Spec
 
 	// Collect API-level policies
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance) // name -> policy
@@ -670,7 +670,7 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 				// API successfully deployed, notify platform API
 				log.Info("API deployed successfully, notifying platform API",
 					zap.String("config_id", configID),
-					zap.String("name", cfg.Configuration.Data.Name))
+					zap.String("name", cfg.Configuration.Spec.Name))
 
 				// Extract API ID from stored config (use config ID as API ID)
 				apiID := configID
@@ -691,7 +691,7 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 			} else if cfg.Status == models.StatusFailed {
 				log.Warn("API deployment failed, skipping platform API notification",
 					zap.String("config_id", configID),
-					zap.String("name", cfg.Configuration.Data.Name))
+					zap.String("name", cfg.Configuration.Spec.Name))
 				return
 			}
 			// Continue waiting if status is still pending
