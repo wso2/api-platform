@@ -109,7 +109,11 @@ func NewHeaders(values map[string][]string) *Headers {
 	if values == nil {
 		values = make(map[string][]string)
 	}
-	return &Headers{values: values}
+	normalized := make(map[string][]string, len(values))
+	for k, v := range values {
+		normalized[strings.ToLower(k)] = v
+	}
+	return &Headers{values: normalized}
 }
 
 // UnsafeInternalValues returns direct mutable access to the underlying
