@@ -362,7 +362,14 @@ func (ec *PolicyExecutionContext) buildResponseContext(headers *extprocv3.HttpHe
 			// Extract status from pseudo-header
 			if key == ":status" {
 				// Convert status string to int
-				fmt.Sscanf(value, "%d", &responseStatus)
+				_, err := fmt.Sscanf(value, "%d", &responseStatus)
+				if err != nil {
+					slog.Warn("Failed to parse response status code",
+						"request_id", ec.requestID,
+						"status_value", value,
+						"error", err,
+					)
+				}
 			}
 		}
 	}

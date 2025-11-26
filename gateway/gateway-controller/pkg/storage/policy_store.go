@@ -47,7 +47,7 @@ func (s *PolicyStore) Set(policy *models.StoredPolicyConfig) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	compositeKey := policy.GetCompositeKey()
+	compositeKey := policy.CompositeKey()
 
 	// Check for duplicate composite key (different ID, same api_name:version:context)
 	if existing, exists := s.byCompositeKey[compositeKey]; exists && existing.ID != policy.ID {
@@ -56,7 +56,7 @@ func (s *PolicyStore) Set(policy *models.StoredPolicyConfig) error {
 
 	// Remove old composite key if ID exists (in case metadata changed)
 	if existing, exists := s.policies[policy.ID]; exists {
-		oldKey := existing.GetCompositeKey()
+		oldKey := existing.CompositeKey()
 		if oldKey != compositeKey {
 			delete(s.byCompositeKey, oldKey)
 		}
@@ -112,7 +112,7 @@ func (s *PolicyStore) Delete(id string) error {
 	}
 
 	// Remove from both maps
-	compositeKey := policy.GetCompositeKey()
+	compositeKey := policy.CompositeKey()
 	delete(s.policies, id)
 	delete(s.byCompositeKey, compositeKey)
 

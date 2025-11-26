@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 
 	"github.com/gin-gonic/gin"
+	"github.com/policy-engine/sdk/policyengine/v1"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -54,6 +55,7 @@ type APIServer struct {
 	logger             *zap.Logger
 	deploymentService  *utils.APIDeploymentService
 	controlPlaneClient controlplane.ControlPlaneClient
+	routerConfig       *config.RouterConfig
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -66,6 +68,7 @@ func NewAPIServer(
 	controlPlaneClient controlplane.ControlPlaneClient,
 	policyDefinitions map[string]api.PolicyDefinition,
 	validator config.Validator,
+	routerConfig *config.RouterConfig,
 ) *APIServer {
 	server := &APIServer{
 		store:              store,
@@ -78,6 +81,7 @@ func NewAPIServer(
 		logger:             logger,
 		deploymentService:  utils.NewAPIDeploymentService(store, db, snapshotManager, validator),
 		controlPlaneClient: controlPlaneClient,
+		routerConfig:       routerConfig,
 	}
 
 	// Register status update callback
@@ -196,7 +200,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 
 	// Build and add policy config derived from API configuration if policies are present
 	if s.policyManager != nil {
-		storedPolicy := buildStoredPolicyFromAPI(result.StoredConfig)
+		storedPolicy := s.buildStoredPolicyFromAPI(result.StoredConfig)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
 				log.Error("Failed to add derived policy configuration", zap.Error(err))
@@ -407,7 +411,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 
 	// Rebuild and update derived policy configuration
 	if s.policyManager != nil {
-		storedPolicy := buildStoredPolicyFromAPI(existing)
+		storedPolicy := s.buildStoredPolicyFromAPI(existing)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
 				log.Error("Failed to update derived policy configuration", zap.Error(err))
@@ -528,13 +532,14 @@ func (s *APIServer) ListPolicies(c *gin.Context) {
 // Merging rules: When operation has policies, they define the order (can reorder, override, or extend API policies).
 // Remaining API-level policies not mentioned in operation policies are appended at the end.
 // When operation has no policies, API-level policies are used in their declared order.
-// RouteKey uses the fully qualified route path (context + operation path).
-func buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *models.StoredPolicyConfig {
+// RouteKey uses the fully qualified route path (context + operation path) and must match the route name format
+// used by the xDS translator for consistency.
+func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *models.StoredPolicyConfig {
 	apiCfg := &cfg.Configuration
 	apiData := apiCfg.Data
 
 	// Collect API-level policies
-	apiPolicies := make(map[string]models.Policy) // name -> policy
+	apiPolicies := make(map[string]policyenginev1.PolicyInstance) // name -> policy
 	if apiData.Policies != nil {
 		for _, p := range *apiData.Policies {
 			apiPolicies[p.Name] = convertAPIPolicy(p)
@@ -542,14 +547,14 @@ func buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *models.StoredPolicyC
 	}
 
 	// Build routes with merged policies
-	routes := make([]models.RoutePolicy, 0)
+	routes := make([]policyenginev1.PolicyChain, 0)
 	for _, op := range apiData.Operations {
-		var finalPolicies []models.Policy
+		var finalPolicies []policyenginev1.PolicyInstance
 
 		if op.Policies != nil && len(*op.Policies) > 0 {
 			// Operation has policies: use operation policy order as authoritative
 			// This allows operations to reorder, override, or extend API-level policies
-			finalPolicies = make([]models.Policy, 0, len(*op.Policies))
+			finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*op.Policies))
 			addedNames := make(map[string]struct{})
 
 			for _, opPolicy := range *op.Policies {
@@ -568,18 +573,20 @@ func buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *models.StoredPolicyC
 		} else {
 			// No operation policies: use API-level policies in their declared order
 			if apiData.Policies != nil {
-				finalPolicies = make([]models.Policy, 0, len(*apiData.Policies))
+				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies))
 				for _, p := range *apiData.Policies {
 					finalPolicies = append(finalPolicies, apiPolicies[p.Name])
 				}
 			}
 		}
 
-		// Construct route key including HTTP method and API version for uniqueness and correlation.
-		// Format: <METHOD>|<API_VERSION>|<CONTEXT><PATH>
-		// Example: GET|1.0.0|/petstore/v1/pets
-		routeKey := fmt.Sprintf("%s|%s|%s%s", op.Method, apiData.Version, apiData.Context, op.Path)
-		routes = append(routes, models.RoutePolicy{
+		// Construct route key using the same format as the xDS translator for consistency
+		// This ensures the policy engine can match routes correctly
+		// Format: HttpMethod|RoutePath|Vhost
+		// Example: GET|/weather/us/seattle|localhost
+		fullPath := apiData.Context + op.Path
+		routeKey := xds.GenerateRouteName(string(op.Method), fullPath, s.routerConfig.GatewayHost)
+		routes = append(routes, policyenginev1.PolicyChain{
 			RouteKey: routeKey,
 			Policies: finalPolicies,
 		})
@@ -597,9 +604,9 @@ func buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *models.StoredPolicyC
 	now := time.Now().Unix()
 	stored := &models.StoredPolicyConfig{
 		ID: cfg.ID + "-policies",
-		Configuration: models.PolicyConfiguration{
+		Configuration: policyenginev1.Configuration{
 			Routes: routes,
-			Metadata: models.Metadata{
+			Metadata: policyenginev1.Metadata{
 				CreatedAt:       now,
 				UpdatedAt:       now,
 				ResourceVersion: 0,
@@ -613,19 +620,20 @@ func buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *models.StoredPolicyC
 	return stored
 }
 
-// convertAPIPolicy converts generated api.Policy to models.Policy
-func convertAPIPolicy(p api.Policy) models.Policy {
+// convertAPIPolicy converts generated api.Policy to policyenginev1.PolicyInstance
+func convertAPIPolicy(p api.Policy) policyenginev1.PolicyInstance {
 	paramsMap := make(map[string]interface{})
 	if p.Params != nil {
 		for k, v := range *p.Params {
 			paramsMap[k] = v
 		}
 	}
-	return models.Policy{
+	return policyenginev1.PolicyInstance{
 		Name:               p.Name,
 		Version:            p.Version,
+		Enabled:            true, // Default to enabled
 		ExecutionCondition: p.ExecutionCondition,
-		Params:             paramsMap,
+		Parameters:         paramsMap,
 	}
 }
 

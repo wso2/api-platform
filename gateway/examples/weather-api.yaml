@@ -27,6 +27,26 @@ data:
   operations:
     - method: GET
       path: /{country_code}/{city}
+      policies:
+        - name: ModifyHeaders
+          version: v1.0.0
+          enabled: true
+          params:
+            requestHeaders:
+              - action: SET
+                name: x-request-id
+                value: req-12345
+              - action: DELETE
+                name: x-internal-token
+            responseHeaders:
+              - action: SET
+                name: x-frame-options
+                value: DENY
+              - action: SET
+                name: x-content-type-options
+                value: nosniff
+              - action: DELETE
+                name: server
     - method: POST
       path: /{country_code}/{city}
     - method: PUT

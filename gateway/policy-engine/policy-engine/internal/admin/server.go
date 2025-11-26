@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"strings"
 
 	"github.com/policy-engine/policy-engine/internal/config"
 	"github.com/policy-engine/policy-engine/internal/kernel"
@@ -77,23 +76,11 @@ func ipWhitelistMiddleware(allowedIPs []string, next http.Handler) http.Handler 
 	})
 }
 
-// extractClientIP extracts the client IP from the request
+// extractClientIP extracts the client IP from the request.
+// For security, prefer RemoteAddr for direct connections.
+// Proxy headers should only be trusted in controlled environments.
 func extractClientIP(r *http.Request) string {
-	// Try X-Forwarded-For header first (for proxied requests)
-	xff := r.Header.Get("X-Forwarded-For")
-	if xff != "" {
-		// X-Forwarded-For can contain multiple IPs, use the first one
-		parts := strings.Split(xff, ",")
-		return strings.TrimSpace(parts[0])
-	}
-
-	// Try X-Real-IP header
-	xri := r.Header.Get("X-Real-IP")
-	if xri != "" {
-		return strings.TrimSpace(xri)
-	}
-
-	// Fall back to RemoteAddr
+	// Use RemoteAddr as the authoritative source for admin endpoints
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr

@@ -74,4 +74,7 @@ const (
 	ExtProcHeaderModeSend            = "SEND"
 	ExtProcHeaderModeSkip            = "SKIP"
 	ExtProcRequestAttributeRouteName = "xds.route_name"
+
+	// Policy Engine
+	PolicyEngineClusterName = "api-platform-policy-engine"
 )

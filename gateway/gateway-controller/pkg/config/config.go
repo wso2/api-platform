@@ -123,7 +123,6 @@ type PolicyEngineConfig struct {
 	Enabled           bool            `koanf:"enabled"`
 	Host              string          `koanf:"host"` // Policy engine hostname/IP
 	Port              uint32          `koanf:"port"` // Policy engine ext_proc port
-	ClusterName       string          `koanf:"cluster_name"`
 	TimeoutMs         uint32          `koanf:"timeout_ms"`
 	FailureModeAllow  bool            `koanf:"failure_mode_allow"`
 	RouteCacheAction  string          `koanf:"route_cache_action"`
@@ -294,7 +293,6 @@ func getDefaults() map[string]interface{} {
 		"router.policy_engine.enabled":                                 false,
 		"router.policy_engine.host":                                    "localhost",
 		"router.policy_engine.port":                                    9001,
-		"router.policy_engine.cluster_name":                            "policy-engine-grpc-service",
 		"router.policy_engine.timeout_ms":                              250,
 		"router.policy_engine.failure_mode_allow":                      false,
 		"router.policy_engine.route_cache_action":                      "RETAIN",
@@ -593,11 +591,6 @@ func (c *Config) validatePolicyEngineConfig() error {
 
 	if policyEngine.Port > 65535 {
 		return fmt.Errorf("router.policy_engine.port must be between 1 and 65535, got: %d", policyEngine.Port)
-	}
-
-	// Validate cluster name
-	if policyEngine.ClusterName == "" {
-		return fmt.Errorf("router.policy_engine.cluster_name is required when policy engine is enabled")
 	}
 
 	// Validate timeout

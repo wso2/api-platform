@@ -19,73 +19,40 @@
 package models
 
 import (
-	"encoding/json"
+	policyenginev1 "github.com/policy-engine/sdk/policyengine/v1"
 )
 
-// PolicyConfiguration represents the complete policy configuration for routes
-type PolicyConfiguration struct {
-	Routes   []RoutePolicy `json:"routes"`
-	Metadata Metadata      `json:"metadata"`
-}
-
-// RoutePolicy represents policy configuration for a specific route
-type RoutePolicy struct {
-	RouteKey string   `json:"route_key"`
-	Policies []Policy `json:"policies"`
-}
-
-// Policy represents a single policy (request or response)
-type Policy struct {
-	Name               string                 `json:"name"`
-	Version            string                 `json:"version"`
-	ExecutionCondition *string                `json:"executionCondition,omitempty"`
-	Params             map[string]interface{} `json:"params"`
-}
-
-// Metadata contains metadata about the policy configuration
-type Metadata struct {
-	CreatedAt       int64  `json:"created_at"`
-	UpdatedAt       int64  `json:"updated_at"`
-	ResourceVersion int64  `json:"resource_version"`
-	APIName         string `json:"api_name"`
-	Version         string `json:"version"`
-	Context         string `json:"context"`
-}
-
-// GetConfigAsJSON returns the policy config as a JSON string
-func (p *Policy) GetConfigAsJSON() (string, error) {
-	data, err := json.Marshal(p.Params)
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
-}
-
-// StoredPolicyConfig represents the stored policy configuration with versioning
+// StoredPolicyConfig represents the stored policy configuration with versioning.
+// This is gateway-controller specific and wraps the SDK Configuration type.
 type StoredPolicyConfig struct {
-	ID            string              `json:"id"`
-	Configuration PolicyConfiguration `json:"configuration"`
-	Version       int64               `json:"version"`
+	// ID is the unique identifier for this policy configuration
+	ID string `json:"id"`
+
+	// Configuration is the actual policy configuration (from SDK)
+	Configuration policyenginev1.Configuration `json:"configuration"`
+
+	// Version is the version number for this stored configuration
+	Version int64 `json:"version"`
 }
 
-// GetCompositeKey returns a composite key for indexing: "api_name:version:context"
-func (s *StoredPolicyConfig) GetCompositeKey() string {
+// CompositeKey returns a composite key for indexing: "api_name:version:context"
+func (s *StoredPolicyConfig) CompositeKey() string {
 	return s.Configuration.Metadata.APIName + ":" +
 		s.Configuration.Metadata.Version + ":" +
 		s.Configuration.Metadata.Context
 }
 
-// GetAPIName returns the API name from metadata
-func (s *StoredPolicyConfig) GetAPIName() string {
+// APIName returns the API name from metadata
+func (s *StoredPolicyConfig) APIName() string {
 	return s.Configuration.Metadata.APIName
 }
 
-// GetAPIVersion returns the API version from metadata
-func (s *StoredPolicyConfig) GetAPIVersion() string {
+// APIVersion returns the API version from metadata
+func (s *StoredPolicyConfig) APIVersion() string {
 	return s.Configuration.Metadata.Version
 }
 
-// GetContext returns the context from metadata
-func (s *StoredPolicyConfig) GetContext() string {
+// Context returns the context from metadata
+func (s *StoredPolicyConfig) Context() string {
 	return s.Configuration.Metadata.Context
 }

@@ -556,17 +556,6 @@ components:
           type: string
           description: Human readable description of the policy's purpose
           maxLength: 2000
-        flows:
-          type: object
-          description: Flow configuration indicating what the policy needs from the engine
-          minProperties: 1
-          properties:
-            request:
-              $ref: '#/components/schemas/PolicyFlowRequirements'
-            response:
-              $ref: '#/components/schemas/PolicyFlowRequirements'
-          additionalProperties:
-            $ref: '#/components/schemas/PolicyFlowRequirements'
         parametersSchema:
           type: object
           description: JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.

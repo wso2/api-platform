@@ -114,9 +114,6 @@ router:
     # Policy engine ext_proc port
     port: 9001
 
-    # Cluster name for the policy engine gRPC service
-    cluster_name: policy-engine-grpc-service
-
     # Timeout for gRPC service connection (in milliseconds)
     timeout_ms: 250
 

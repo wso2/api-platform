@@ -14,44 +14,15 @@ import (
 	"github.com/policy-engine/policy-engine/internal/kernel"
 	"github.com/policy-engine/policy-engine/internal/registry"
 	policy "github.com/policy-engine/sdk/policy/v1alpha"
+	"github.com/policy-engine/sdk/policyengine/v1"
 )
 
-// StoredPolicyConfig mirrors the structure from gateway-controller
-// This avoids import cycles while keeping structures in sync
+// StoredPolicyConfig represents stored policy configuration from gateway-controller
+// Uses SDK types for routes, adds gateway-specific metadata wrapper
 type StoredPolicyConfig struct {
-	ID            string              `json:"id"`
-	Configuration PolicyConfiguration `json:"configuration"`
-	Version       int64               `json:"version"`
-}
-
-// PolicyConfiguration represents the complete policy configuration for routes
-type PolicyConfiguration struct {
-	Routes   []RoutePolicy `json:"routes"`
-	Metadata Metadata      `json:"metadata"`
-}
-
-// RoutePolicy represents policy configuration for a specific route
-type RoutePolicy struct {
-	RouteKey string         `json:"route_key"`
-	Policies []PolicyConfig `json:"policies"`
-}
-
-// PolicyConfig represents a single policy instance
-type PolicyConfig struct {
-	Name               string                 `json:"name"`
-	Version            string                 `json:"version"`
-	ExecutionCondition *string                `json:"executionCondition,omitempty"`
-	Params             map[string]interface{} `json:"params"`
-}
-
-// Metadata contains metadata about the policy configuration
-type Metadata struct {
-	CreatedAt       int64  `json:"created_at"`
-	UpdatedAt       int64  `json:"updated_at"`
-	ResourceVersion int64  `json:"resource_version"`
-	APIName         string `json:"api_name"`
-	Version         string `json:"version"`
-	Context         string `json:"context"`
+	ID            string                     `json:"id"`
+	Configuration policyenginev1.Configuration `json:"configuration"`
+	Version       int64                      `json:"version"`
 }
 
 // ResourceHandler handles xDS resource updates
@@ -78,7 +49,7 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 
 	// Parse all resources first (validation phase)
 	// Each resource is a StoredPolicyConfig containing multiple routes
-	configs := make([]*kernel.PolicyChainConfig, 0)
+	configs := make([]*policyenginev1.PolicyChain, 0)
 
 	for i, resource := range resources {
 		if resource.TypeUrl != PolicyChainTypeURL {
@@ -119,7 +90,7 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 			"api_name", storedConfig.Configuration.Metadata.APIName,
 			"routes", len(storedConfig.Configuration.Routes))
 
-		// Convert StoredPolicyConfig to multiple PolicyChainConfigs (one per route)
+		// Extract PolicyChain configurations (already in SDK format)
 		routeConfigs := h.convertStoredConfigToPolicyChains(&storedConfig)
 
 		// Validate each route configuration
@@ -175,40 +146,20 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 	return nil
 }
 
-// convertStoredConfigToPolicyChains converts a StoredPolicyConfig to multiple PolicyChainConfigs
-// Each route in the StoredPolicyConfig becomes a separate PolicyChainConfig
-func (h *ResourceHandler) convertStoredConfigToPolicyChains(stored *StoredPolicyConfig) []*kernel.PolicyChainConfig {
-	configs := make([]*kernel.PolicyChainConfig, 0, len(stored.Configuration.Routes))
-
-	for _, route := range stored.Configuration.Routes {
-		// Convert policies from StoredPolicyConfig format to PolicyChainConfig format
-		policies := make([]kernel.PolicyInstanceConfig, 0, len(route.Policies))
-
-		for _, p := range route.Policies {
-			policyInstance := kernel.PolicyInstanceConfig{
-				Name:               p.Name,
-				Version:            p.Version,
-				Enabled:            true, // Default to enabled if not specified
-				ExecutionCondition: p.ExecutionCondition,
-				Parameters:         p.Params,
-			}
-			policies = append(policies, policyInstance)
-		}
-
-		// Create PolicyChainConfig for this route
-		config := &kernel.PolicyChainConfig{
-			RouteKey: route.RouteKey,
-			Policies: policies,
-		}
-
-		configs = append(configs, config)
+// convertStoredConfigToPolicyChains extracts PolicyChain configurations from StoredPolicyConfig
+// With SDK types, the routes are already in the correct format
+func (h *ResourceHandler) convertStoredConfigToPolicyChains(stored *StoredPolicyConfig) []*policyenginev1.PolicyChain {
+	// Routes are already in PolicyChain format from the SDK
+	// Just convert from slice values to slice of pointers
+	configs := make([]*policyenginev1.PolicyChain, 0, len(stored.Configuration.Routes))
+	for i := range stored.Configuration.Routes {
+		configs = append(configs, &stored.Configuration.Routes[i])
 	}
-
 	return configs
 }
 
-// validatePolicyChainConfig validates a PolicyChainConfig
-func (h *ResourceHandler) validatePolicyChainConfig(config *kernel.PolicyChainConfig) error {
+// validatePolicyChainConfig validates a PolicyChain configuration
+func (h *ResourceHandler) validatePolicyChainConfig(config *policyenginev1.PolicyChain) error {
 	if config.RouteKey == "" {
 		return fmt.Errorf("route_key is required")
 	}
@@ -249,7 +200,7 @@ func (h *ResourceHandler) getAllRouteKeys() []string {
 
 // buildPolicyChain builds a PolicyChain from configuration
 // This is a copy of kernel.ConfigLoader.buildPolicyChain logic
-func (h *ResourceHandler) buildPolicyChain(config *kernel.PolicyChainConfig) (*registry.PolicyChain, error) {
+func (h *ResourceHandler) buildPolicyChain(config *policyenginev1.PolicyChain) (*registry.PolicyChain, error) {
 	var policyList []policy.Policy
 	var policySpecs []policy.PolicySpec
 

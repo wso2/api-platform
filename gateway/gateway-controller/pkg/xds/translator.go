@@ -437,12 +437,12 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 
 	// Create the cluster with HTTP/2 support for gRPC
 	c := &cluster.Cluster{
-		Name:                 policyEngine.ClusterName,
+		Name:                 constants.PolicyEngineClusterName,
 		ConnectTimeout:       durationpb.New(5 * time.Second),
 		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
 		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
 		LoadAssignment: &endpoint.ClusterLoadAssignment{
-			ClusterName: policyEngine.ClusterName,
+			ClusterName: constants.PolicyEngineClusterName,
 			Endpoints:   []*endpoint.LocalityLbEndpoints{localityLbEndpoints},
 		},
 		// Enable HTTP/2 for gRPC
@@ -849,7 +849,7 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 		GrpcService: &core.GrpcService{
 			TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
 				EnvoyGrpc: &core.GrpcService_EnvoyGrpc{
-					ClusterName: policyEngine.ClusterName,
+					ClusterName: constants.PolicyEngineClusterName,
 				},
 			},
 			Timeout: durationpb.New(time.Duration(policyEngine.TimeoutMs) * time.Millisecond),
