@@ -377,119 +377,12 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 
   /policies:
-    post:
-      summary: Replace all policy definitions
-      description: |
-        Atomically replace all policy definitions in the gateway with the provided set.
-        This is a destructive operation that deletes all existing policy definitions
-        and replaces them with the submitted definitions in a single transaction.
-
-        **Important Behavior:**
-        - All existing policy definitions are deleted
-        - The new set of definitions is persisted atomically
-        - This operation is idempotent - submitting the same set multiple times produces the same result
-        - Duplicate (name + version) entries within the request are rejected with 400 Bad Request
-        - No conflict detection against existing storage (409 is never returned)
-
-        **Use Cases:**
-        - Initial policy catalog setup
-        - Complete policy catalog updates
-        - Synchronizing policy definitions from an external source
-
-        Policy definitions represent executable policy modules (e.g. API key validation,
-        JWT validation) which can be referenced within API configurations under
-        `data.policies` or operation-level `policies`.
-      operationId: createPolicies
-      tags:
-        - Policy Management
-      requestBody:
-        required: true
-        content:
-          application/yaml:
-            schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/PolicyDefinition'
-            example: |
-              - name: APIKeyValidation
-                version: v1.0.0
-                provider: WSO2
-                description: Validates API keys from request headers against a configured key store
-                flows:
-                  request:
-                    requireHeader: true
-                    requireBody: true
-                  response:
-                    requireHeader: false
-                    requireBody: false
-                parametersSchema: {}
-              - name: JWTValidation
-                version: v1.0.0
-                provider: WSO2
-                description: Validates JWT tokens from request headers against a configured key store
-                flows:
-                  request:
-                    requireHeader: true
-                    requireBody: true
-                  response:
-                    requireHeader: false
-                    requireBody: false
-                parametersSchema: {}
-          application/json:
-            schema:
-              type: array
-              items:
-                $ref: '#/components/schemas/PolicyDefinition'
-            example:
-              - name: APIKeyValidation
-                version: v1.0.0
-                provider: WSO2
-                description: Validates API keys from request headers against a configured key store
-                flows:
-                  request:
-                    requireHeader: true
-                    requireBody: true
-                  response:
-                    requireHeader: false
-                    requireBody: false
-                parametersSchema: {}
-              - name: JWTValidation
-                version: v1.0.0
-                provider: WSO2
-                description: Validates JWT tokens from request headers against a configured key store
-                flows:
-                  request:
-                    requireHeader: true
-                    requireBody: true
-                  response:
-                    requireHeader: false
-                    requireBody: false
-                parametersSchema: {}
-      responses:
-        '201':
-          description: Policy definitions replaced successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PolicyCreateResponse'
-        '400':
-          description: Invalid request or duplicate policies within the request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
     get:
       summary: List all registered policy definitions
       description: |
-        Retrieve all currently stored policy definitions (authoritative catalog).
-        This returns the complete set of policy definitions that were last submitted
-        via POST /policies.
+        Retrieve all currently loaded policy definitions from the controller.
+        Policy definitions are loaded from files in the policies directory at
+        controller startup and stored in memory.
       operationId: listPolicies
       tags:
         - Policy Management
@@ -646,36 +539,37 @@ components:
       required:
         - name
         - version
-        - provider
         - flows
       properties:
         name:
           type: string
           description: Unique policy name
+          minLength: 1
+          maxLength: 200
           example: APIKeyValidation
         version:
           type: string
           description: Semantic version of the policy definition
           pattern: '^v\d+\.\d+\.\d+$'
           example: v1.0.0
-        provider:
-          type: string
-          description: Organization or entity providing the policy implementation
-          example: WSO2
         description:
           type: string
           description: Human readable description of the policy's purpose
+          maxLength: 2000
         flows:
           type: object
-          description: Indicates required request/response components for policy execution
+          description: Flow configuration indicating what the policy needs from the engine
+          minProperties: 1
           properties:
             request:
               $ref: '#/components/schemas/PolicyFlowRequirements'
             response:
               $ref: '#/components/schemas/PolicyFlowRequirements'
+          additionalProperties:
+            $ref: '#/components/schemas/PolicyFlowRequirements'
         parametersSchema:
           type: object
-          description: JSON schema (or arbitrary structure) describing parameters accepted when attaching this policy
+          description: JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.
           additionalProperties: true
 
     PolicyFlowRequirements:
@@ -690,24 +584,6 @@ components:
           description: Whether request/response body content is required for execution
           example: false
 
-    PolicyCreateResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        message:
-          type: string
-          example: Policy definitions updated successfully
-        count:
-          type: integer
-          description: Number of policy definitions in the new authoritative set
-          example: 2
-        created:
-          type: array
-          description: The complete set of policy definitions now stored (same as the request body)
-          items:
-            $ref: '#/components/schemas/PolicyDefinition'
     PolicyListResponse:
       type: object
       properties:

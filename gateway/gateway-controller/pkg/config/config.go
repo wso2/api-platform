@@ -685,3 +685,13 @@ func (c *Config) IsAccessLogsEnabled() bool {
 func (c *Config) IsPolicyEngineEnabled() bool {
 	return c.Router.PolicyEngine.Enabled
 }
+
+// GetPolicyDirectory returns the directory path where policy definition files are stored
+// Defaults to "policies" if not configured via environment variable
+func (c *Config) GetPolicyDirectory() string {
+	policyDir := os.Getenv("POLICY_DIRECTORY")
+	if policyDir == "" {
+		policyDir = "policies"
+	}
+	return policyDir
+}
