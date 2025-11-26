@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/policy-engine/sdk/policyengine/v1"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"
@@ -53,9 +54,9 @@ func (pm *PolicyManager) AddPolicy(policy *models.StoredPolicyConfig) error {
 
 	pm.logger.Info("Policy configuration added",
 		zap.String("id", policy.ID),
-		zap.String("api_name", policy.GetAPIName()),
-		zap.String("version", policy.GetAPIVersion()),
-		zap.String("context", policy.GetContext()))
+		zap.String("api_name", policy.APIName()),
+		zap.String("version", policy.APIVersion()),
+		zap.String("context", policy.Context()))
 
 	// Update xDS snapshot
 	if err := pm.snapshotManager.UpdateSnapshot(context.Background()); err != nil {
@@ -102,8 +103,8 @@ func (pm *PolicyManager) ListPolicies() []*models.StoredPolicyConfig {
 }
 
 // ParsePolicyJSON parses a policy configuration from JSON string
-func ParsePolicyJSON(jsonStr string) (*models.PolicyConfiguration, error) {
-	var config models.PolicyConfiguration
+func ParsePolicyJSON(jsonStr string) (*policyenginev1.Configuration, error) {
+	var config policyenginev1.Configuration
 	if err := json.Unmarshal([]byte(jsonStr), &config); err != nil {
 		return nil, fmt.Errorf("failed to parse policy JSON: %w", err)
 	}
@@ -111,7 +112,7 @@ func ParsePolicyJSON(jsonStr string) (*models.PolicyConfiguration, error) {
 }
 
 // CreateStoredPolicy creates a StoredPolicyConfig from a PolicyConfiguration
-func CreateStoredPolicy(id string, config models.PolicyConfiguration) *models.StoredPolicyConfig {
+func CreateStoredPolicy(id string, config policyenginev1.Configuration) *models.StoredPolicyConfig {
 	return &models.StoredPolicyConfig{
 		ID:            id,
 		Configuration: config,

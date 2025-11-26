@@ -10,23 +10,8 @@ import (
 
 	"github.com/policy-engine/policy-engine/internal/registry"
 	policy "github.com/policy-engine/sdk/policy/v1alpha"
+	"github.com/policy-engine/sdk/policyengine/v1"
 )
-
-// PolicyChainConfig represents the configuration for a policy chain on a route
-// T072: PolicyChainConfig structure for xDS or file-based config
-type PolicyChainConfig struct {
-	RouteKey string                 `yaml:"route_key"`
-	Policies []PolicyInstanceConfig `yaml:"policies"`
-}
-
-// PolicyInstanceConfig represents a single policy instance in a chain
-type PolicyInstanceConfig struct {
-	Name               string                 `yaml:"name"`
-	Version            string                 `yaml:"version"`
-	Enabled            bool                   `yaml:"enabled"`
-	ExecutionCondition *string                `yaml:"executionCondition,omitempty"`
-	Parameters         map[string]interface{} `yaml:"parameters"`
-}
 
 // ConfigLoader loads policy chain configurations
 // T077: Implement file-based configuration loader as fallback
@@ -51,7 +36,7 @@ func (cl *ConfigLoader) LoadFromFile(path string) error {
 		return fmt.Errorf("failed to read config file %s: %w", path, err)
 	}
 
-	var configs []PolicyChainConfig
+	var configs []policyenginev1.PolicyChain
 	if err := yaml.Unmarshal(data, &configs); err != nil {
 		return fmt.Errorf("failed to parse config file %s: %w", path, err)
 	}
@@ -91,7 +76,7 @@ func (cl *ConfigLoader) LoadFromFile(path string) error {
 
 // validateConfig validates a policy chain configuration
 // T075: Configuration validation implementation
-func (cl *ConfigLoader) validateConfig(config *PolicyChainConfig) error {
+func (cl *ConfigLoader) validateConfig(config *policyenginev1.PolicyChain) error {
 	if config.RouteKey == "" {
 		return fmt.Errorf("route_key is required")
 	}
@@ -120,7 +105,7 @@ func (cl *ConfigLoader) validateConfig(config *PolicyChainConfig) error {
 }
 
 // buildPolicyChain builds a PolicyChain from configuration
-func (cl *ConfigLoader) buildPolicyChain(config *PolicyChainConfig) (*registry.PolicyChain, error) {
+func (cl *ConfigLoader) buildPolicyChain(config *policyenginev1.PolicyChain) (*registry.PolicyChain, error) {
 	var policyList []policy.Policy
 	var policySpecs []policy.PolicySpec
 

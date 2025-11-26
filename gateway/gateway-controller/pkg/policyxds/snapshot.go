@@ -154,8 +154,8 @@ func (t *Translator) TranslatePolicies(policies []*models.StoredPolicyConfig) (m
 
 		t.logger.Debug("Processing policy for xDS",
 			zap.String("id", policy.ID),
-			zap.String("api_name", policy.GetAPIName()),
-			zap.String("version", policy.GetAPIVersion()),
+			zap.String("api_name", policy.APIName()),
+			zap.String("version", policy.APIVersion()),
 			zap.Int("route_count", len(policy.Configuration.Routes)))
 	}
 
