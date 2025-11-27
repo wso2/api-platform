@@ -48,22 +48,3 @@ ENV RUNTIME_DIR=/workspace/policy-engine
 
 # Set entrypoint to builder binary
 ENTRYPOINT ["/usr/local/bin/policy-engine-builder"]
-
-# Usage:
-# 1. Manifest-based (recommended):
-#    docker run --rm \
-#      -v $(pwd)/policies.yaml:/policies.yaml \
-#      -v $(pwd)/policies:/policies \
-#      -v $(pwd)/output:/output \
-#      policy-engine-builder:v1.0.0 --manifest /policies.yaml
-#
-# 2. Directory-based (legacy):
-#    docker run --rm \
-#      -v $(pwd)/policies:/policies \
-#      -v $(pwd)/output:/output \
-#      policy-engine-builder:v1.0.0
-#
-# Expected mounts:
-# - /policies.yaml (optional: policy manifest file - recommended)
-# - /policies (user's custom policy implementations)
-# - /output (where compiled binary and Dockerfile will be generated)

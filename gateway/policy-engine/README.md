@@ -25,23 +25,41 @@ For detailed setup instructions, see [Quickstart Guide](specs/001-policy-engine/
 
 ### Build Policy Engine with Sample Policies
 
+First build the Gateway Builder image:
 ```bash
-# Build using Policy Engine Builder
-docker run --rm \
-    -v $(pwd)/policies:/policies \
-    -v $(pwd)/output:/output \
-    -e BUILD_VERSION=v1.0.0 \
-    policy-engine-builder:v1.0.0
+make build-builder
+```
 
-# Build runtime image
+Then, use the following commands to build the Policy Engine runtime with sample policies and Dockerfiles of other components:
+```bash
+# Build using Gateway Builder
+```bash
+docker run --rm \
+    -v $(pwd)/sample-policies:/workspace/sample-policies \
+    -v $(pwd)/policies.yaml:/workspace/policies.yaml \
+    -v $(pwd)/output:/workspace/output \
+    wso2/api-platform-gateway-builder:latest
+```
+
+# Build gateway images
+
+```bash
 cd output
-docker build -t policy-engine:v1.0.0 .
-cd ..
+cd policy-engine
+docker build -t myregistry/policy-engine:v1.0.0 .
+cd ../gateway-controller
+docker build -t myregistry/gateway-controller:v1.0.0 .
+cd ../router
+docker build -t myregistry/router:v1.0.0 .
+```
 
 # Start development environment
+
 docker-compose up -d
 
 # Test
+
+```bash
 curl http://localhost:8000/api/v1/public/health
 ```
 

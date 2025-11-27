@@ -15,6 +15,7 @@ const (
 	ExitGenerationError ExitCode = 30
 	ExitCompilationError ExitCode = 40
 	ExitPackagingError ExitCode = 50
+	ExitDockerError ExitCode = 60
 	ExitUnknownError ExitCode = 99
 )
 
@@ -84,6 +85,16 @@ func NewPackagingError(message string, err error) *BuildError {
 		Message:  message,
 		Err:      err,
 		ExitCode: ExitPackagingError,
+	}
+}
+
+// NewDockerError creates a Docker build phase error
+func NewDockerError(message string, err error) *BuildError {
+	return &BuildError{
+		Phase:    "Docker Build",
+		Message:  message,
+		Err:      err,
+		ExitCode: ExitDockerError,
 	}
 }
 

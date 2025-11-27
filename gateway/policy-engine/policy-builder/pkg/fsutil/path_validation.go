@@ -2,6 +2,7 @@ package fsutil
 
 import (
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -31,4 +32,25 @@ func ValidatePathExists(path string, pathType string) error {
 	}
 
 	return fmt.Errorf("failed to access %s: %s: %w", pathType, path, err)
+}
+
+// CopyFile copies a file from src to dst
+func CopyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer destFile.Close()
+
+	if _, err := io.Copy(destFile, sourceFile); err != nil {
+		return fmt.Errorf("failed to copy file contents: %w", err)
+	}
+
+	return nil
 }

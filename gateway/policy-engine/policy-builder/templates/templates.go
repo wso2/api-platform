@@ -16,3 +16,6 @@ var BuildInfoTemplate string
 
 //go:embed Dockerfile.runtime.tmpl
 var DockerfileRuntimeTemplate string
+
+//go:embed Dockerfile.gateway-controller.tmpl
+var DockerfileGatewayControllerTemplate string
