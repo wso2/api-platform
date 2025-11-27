@@ -109,9 +109,17 @@ After DB creation:
 }
 ```
 
-### Step D — Organization Mapping
+### Step D — Start the Developer Portal
 
-Create an organization in Developer Portal:
+```bash
+cd portals/developer-portal
+npm ci --legacy-peer-deps
+npm start
+```
+
+### Step E — Organization Mapping
+
+Create an organization (Same as Devportal name is Management Portal) in Developer Portal:
 
 ```bash
 curl --location 'http://localhost:<port or 3000>/devportal/organizations' \
@@ -122,14 +130,6 @@ curl --location 'http://localhost:<port or 3000>/devportal/organizations' \
     "orgHandle": "<name>",
     "organizationIdentifier": "<id>"
 }'
-```
-
-### Step E — Start the Developer Portal
-
-```bash
-cd portals/developer-portal
-npm ci --legacy-peer-deps
-npm start
 ```
 
 ---
