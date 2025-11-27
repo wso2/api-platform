@@ -1,8 +1,8 @@
 # Makefile for Envoy Policy Engine
 
 # Variables
-BUILDER_IMAGE := policy-engine-builder
-RUNTIME_IMAGE := policy-engine
+BUILDER_IMAGE := wso2/api-platform-gateway-builder
+RUNTIME_IMAGE := wso2/api-platform-policy-engine
 BUILDER_VERSION := latest
 RUNTIME_VERSION := latest
 
@@ -39,7 +39,7 @@ help:
 	@echo "Envoy Policy Engine - Build Targets"
 	@echo ""
 	@echo "Builder Image Targets:"
-	@echo "  make build-builder          - Build the Policy Engine Builder Docker image"
+	@echo "  make build-builder          - Build the Gateway Builder Docker image"
 	@echo "  make run-builder           - Run the Builder to compile policies into runtime binary"
 	@echo ""
 	@echo "Runtime Image Targets:"
@@ -61,15 +61,15 @@ help:
 	@echo "  make lint                 - Run Go linter (if installed)"
 	@echo ""
 
-## build-builder: Build the Policy Engine Builder Docker image
+## build-builder: Build the Gateway Builder Docker image
 build-builder:
-	@echo "Building Policy Engine Builder image: $(BUILDER_TAG)"
+	@echo "Building Gateway Builder image: $(BUILDER_TAG)"
 	docker build -f Dockerfile.builder -t $(BUILDER_TAG) .
 	@echo "✅ Builder image built successfully: $(BUILDER_TAG)"
 
 ## run-builder: Run the Builder to compile policies
 run-builder:
-	@echo "Running Policy Engine Builder to compile policies..."
+	@echo "Running Gateway Builder to compile policies..."
 	@mkdir -p $(OUTPUT_DIR)
 	docker run --rm \
 		-v $(PWD)/$(POLICIES_DIR):/policies:ro \

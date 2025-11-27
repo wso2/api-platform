@@ -1,7 +1,7 @@
 FROM {{ .BaseImage }}
 
 # Copy policy definitions
-COPY gc-policies /app/policies
+COPY policies /app/policies
 
 # Set environment variable for policy directory
 ENV POLICY_DIRECTORY=/app/policies
