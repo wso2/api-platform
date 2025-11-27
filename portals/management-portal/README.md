@@ -12,7 +12,7 @@ The **Management Portal** is the central control plane of the **WSO2 API Platfor
 * **Identity Provider & Authentication Setup**
 * **API Deployment to Gateways**
 * **Developer Portal Publishing Management**
-* **Supports Multi‑tenant SaaS & On‑Prem Deployments**
+* **Supports Multi-tenant SaaS & On-Prem Deployments**
 
 ---
 
@@ -30,9 +30,18 @@ The **Management Portal** is the central control plane of the **WSO2 API Platfor
 
 Follow this guide to fully set up the development environment for the Management Portal.
 
+## Table of Contents
+
+1. [Clone the Repository](#1️⃣-clone-the-repository)
+2. [Start Backend – Platform API](#2️⃣-start-backend--platform-api)
+3. [Run the Developer Portal (Optional)](#3️⃣-run-the-developer-portal-optional)
+4. [Run the Management Portal](#4️⃣-run-the-management-portal)
+5. [Important Prerequisites](#5️⃣-important-prerequisites)
+6. [Development Workflow](#🟢-development-workflow)
+
 ---
 
-# 1️⃣ Clone the API Platform Repository
+# 1️⃣ Clone the Repository
 
 ```bash
 git clone https://github.com/wso2/api-platform
@@ -41,11 +50,11 @@ cd api-platform
 
 ---
 
-# 2️⃣ Start the Backend – Platform API
+# 2️⃣ Start Backend – Platform API
 
 The Management Portal requires the **Platform API** to be running.
 
-### Option 1: Run with Docker
+## Option 1: Run with Docker
 
 ```bash
 cd platform-api
@@ -53,7 +62,7 @@ docker build -t wso2/platform-api:latest .
 docker run -p 8443:8443 wso2/platform-api:latest
 ```
 
-### Option 2: Run Locally
+## Option 2: Run Locally
 
 ```bash
 cd platform-api/src
@@ -62,7 +71,7 @@ go run ./cmd/main.go
 
 ---
 
-# 3️⃣ (Optional) Run the Developer Portal
+# 3️⃣ Run the Developer Portal (Optional)
 
 Running the Developer Portal is optional unless you want to test **API publishing workflows**.
 
@@ -70,31 +79,27 @@ Running the Developer Portal is optional unless you want to test **API publishin
 cd portals/developer-portal
 ```
 
-## Step A — Create `config.json` and `secret.json`
+### Step A — Create `config.json` and `secret.json`
 
-Use the following template files:
+Use the template files (paths relative to repo root):
 
-* `sample_config.json`
-* `sample_secret.json`
+* `portals/developer-portal/sample_config.json`
+* `portals/developer-portal/sample_secret.json`
 
-Copy and modify them based on your environment.
+Copy and modify based on your environment.
 
-## Step B — Set Up PostgreSQL
+### Step B — Set Up PostgreSQL
 
-Create a database using the script:
-
-```bash
+```text
 portals/developer-portal/artifacts/script.sql
 ```
 
 After DB creation:
 
-* Update **dbSecret** in `secret.json` with the DB password
+* Update **dbSecret** in `secret.json`
 * Update DB configs in `config.json`
 
-## Step C — Use the Same API Key Values
-
-Ensure both portals share the same API key configuration:
+### Step C — Use the Same API Key Values
 
 ```json
 "apiKey": {
@@ -104,18 +109,14 @@ Ensure both portals share the same API key configuration:
 }
 ```
 
-This must match the `apiKeySecret` value in `secret.json`.
+### Step D — Organization Mapping
 
-## Step D — Organization Mapping
-
-The organization name in Management Portal must match the Developer Portal organization.
-
-Create an organization via:
+Create an organization in Developer Portal:
 
 ```bash
-curl --location 'http://localhost:<port or 3000>/devportal/organizations' \ 
---header 'api-key: xxx' \ 
---header 'Content-Type: application/json' \ 
+curl --location 'http://localhost:<port or 3000>/devportal/organizations' \
+--header 'api-key: xxx' \
+--header 'Content-Type: application/json' \
 --data '{
     "orgName": "<name>",
     "orgHandle": "<name>",
@@ -123,11 +124,11 @@ curl --location 'http://localhost:<port or 3000>/devportal/organizations' \
 }'
 ```
 
-## Step E — Start the Developer Portal
+### Step E — Start the Developer Portal
 
 ```bash
 cd portals/developer-portal
-npm ci
+npm ci --legacy-peer-deps
 npm start
 ```
 
@@ -138,31 +139,20 @@ npm start
 ```bash
 cd portals/management-portal
 npm ci --legacy-peer-deps
-npm ci react-markdown --legacy-peer-deps   # Only if react-markdown was skipped
 npm run dev
 ```
 
-Once these steps are complete, the Management Portal will be running.
-
 ---
 
-# 5️⃣ Important Pre‑requisites
+# 5️⃣ Important Prerequisites
 
-### ✅ Allow Backend HTTPS Certificate in Browser
+## ✅ Allow Backend HTTPS Certificate in Browser
 
-Visit:
-
-```
+```text
 https://localhost:8443/
 ```
 
-Accept the security warning — otherwise the Management Portal cannot call the backend.
-
----
-
-### ✅ Create a Default Organization in Platform API
-
-Use this curl command:
+## ✅ Create a Default Organization in Platform API
 
 ```bash
 curl --location 'https://localhost:8443/api/v1/organizations' \
@@ -176,20 +166,16 @@ curl --location 'https://localhost:8443/api/v1/organizations' \
 }'
 ```
 
-You may obtain the `<shared-token>` from a team member.
-
-Once this organization is created, the Management Portal will initialize correctly.
-
 ---
 
 # 🟢 Development Workflow
 
-After completing all steps above, you can begin active development on the Management Portal. The platform will be fully functional for end‑to‑end testing involving:
+Once the setup is complete, the platform is ready for end-to-end development:
 
 * API creation
 * API publishing
-* Deployment
+* Deployment to gateways
 * Policy configuration
-* Developer portal visibility
+* Developer portal integration
 
 ---
