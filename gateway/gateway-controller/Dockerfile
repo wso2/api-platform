@@ -6,12 +6,15 @@ WORKDIR /build
 # Install build dependencies for SQLite (CGO requirement)
 RUN apk add --no-cache gcc musl-dev sqlite-dev
 
+# Copy policy-engine SDK (needed for go.mod replace directive)
+COPY policy-engine/sdk /policy-engine/sdk
+
 # Copy go mod files
-COPY go.mod go.sum ./
+COPY gateway-controller/go.mod gateway-controller/go.sum ./
 RUN go mod download
 
 # Copy source code
-COPY . ./
+COPY gateway-controller/ ./
 
 # Build the binary with CGO enabled (required for mattn/go-sqlite3)
 # Static linking to avoid runtime dependencies
@@ -29,10 +32,10 @@ WORKDIR /app
 COPY --from=builder /build/controller .
 
 # Copy default configuration file
-COPY config/config.yaml /app/config/config.yaml
+COPY gateway-controller/config/config.yaml /app/config/config.yaml
 
 # Copy policy definitions
-COPY policies /app/policies
+COPY gateway-controller/policies /app/policies
 
 # Create data directory for SQLite database
 RUN mkdir -p /app/data

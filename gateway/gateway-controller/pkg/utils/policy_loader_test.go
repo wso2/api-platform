@@ -39,13 +39,7 @@ func TestPolicyLoader_LoadPoliciesFromDirectory(t *testing.T) {
 	jsonPolicy := `{
   "name": "TestPolicy1",
   "version": "v1.0.0",
-  "description": "Test policy 1",
-  "flows": {
-    "request": {
-      "requireHeader": true,
-      "requireBody": false
-    }
-  }
+  "description": "Test policy 1"
 }`
 	err := os.WriteFile(filepath.Join(tempDir, "policy1.json"), []byte(jsonPolicy), 0644)
 	if err != nil {
@@ -56,10 +50,6 @@ func TestPolicyLoader_LoadPoliciesFromDirectory(t *testing.T) {
 	yamlPolicy := `name: TestPolicy2
 version: v1.0.1
 description: Test policy 2
-flows:
-  response:
-    requireHeader: false
-    requireBody: true
 `
 	err = os.WriteFile(filepath.Join(tempDir, "policy2.yaml"), []byte(yamlPolicy), 0644)
 	if err != nil {
@@ -119,12 +109,7 @@ func TestPolicyLoader_DuplicatePolicy(t *testing.T) {
 	// Create two policies with the same name and version
 	policy1 := `{
   "name": "DuplicatePolicy",
-  "version": "v1.0.0",
-  "flows": {
-    "request": {
-      "requireHeader": true
-    }
-  }
+  "version": "v1.0.0"
 }`
 
 	err := os.WriteFile(filepath.Join(tempDir, "duplicate1.json"), []byte(policy1), 0644)
@@ -152,9 +137,8 @@ func TestPolicyLoader_InvalidPolicy(t *testing.T) {
 
 	// Test case 1: Missing name
 	invalidPolicy1 := `{
-		"version": "v1.0.0",
+		"version": "v1.0.0"
 	}`
-`
 	err := os.WriteFile(filepath.Join(tempDir, "invalid1.json"), []byte(invalidPolicy1), 0644)
 	if err != nil {
 		t.Fatalf("Failed to write test policy file: %v", err)
@@ -189,21 +173,6 @@ func TestPolicyLoader_InvalidPolicy(t *testing.T) {
 
 	// Clean up
 	os.Remove(filepath.Join(tempDir, "invalid2.json"))
-
-	// Test case 3: Missing flows
-	invalidPolicy3 := `{
-  "name": "TestPolicy",
-  "version": "v1.0.0"
-}`
-	err = os.WriteFile(filepath.Join(tempDir, "invalid3.json"), []byte(invalidPolicy3), 0644)
-	if err != nil {
-		t.Fatalf("Failed to write test policy file: %v", err)
-	}
-
-	_, err = loader.LoadPoliciesFromDirectory(tempDir)
-	if err == nil {
-		t.Error("Expected error for policy without flows, got nil")
-	}
 }
 
 func TestPolicyLoader_NonExistentDirectory(t *testing.T) {
@@ -248,13 +217,7 @@ func TestPolicyLoader_InvalidVersionFormat(t *testing.T) {
 			policyFile := filepath.Join(tmpDir, "invalid_version.json")
 			policyJSON := fmt.Sprintf(`{
 				"name": "TestPolicy",
-				"version": "%s",
-				"flows": {
-					"request": {
-						"requireHeader": true,
-						"requireBody": false
-					}
-				}
+				"version": "%s"
 			}`, tc.version)
 
 			if err := os.WriteFile(policyFile, []byte(policyJSON), 0644); err != nil {
@@ -281,13 +244,7 @@ func TestPolicyLoader_InvalidVersionFormat(t *testing.T) {
 			policyFile := filepath.Join(tmpDir, "valid_version.json")
 			policyJSON := fmt.Sprintf(`{
 				"name": "TestPolicy",
-				"version": "%s",
-				"flows": {
-					"request": {
-						"requireHeader": true,
-						"requireBody": false
-					}
-				}
+				"version": "%s"
 			}`, version)
 
 			if err := os.WriteFile(policyFile, []byte(policyJSON), 0644); err != nil {

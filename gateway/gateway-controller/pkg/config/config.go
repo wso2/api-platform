@@ -87,11 +87,23 @@ type PostgresConfig struct {
 
 // RouterConfig holds router (Envoy) related configuration
 type RouterConfig struct {
-	AccessLogs   AccessLogsConfig   `koanf:"access_logs"`
-	ListenerPort int                `koanf:"listener_port"`
-	GatewayHost  string             `koanf:"gateway_host"`
-	Upstream     envoyUpstream      `koanf:"envoy_upstream"`
-	PolicyEngine PolicyEngineConfig `koanf:"policy_engine"`
+	AccessLogs    AccessLogsConfig   `koanf:"access_logs"`
+	ListenerPort  int                `koanf:"listener_port"`
+	HTTPSEnabled  bool               `koanf:"https_enabled"`
+	HTTPSPort     int                `koanf:"https_port"`
+	GatewayHost   string             `koanf:"gateway_host"`
+	Upstream      envoyUpstream      `koanf:"envoy_upstream"`
+	PolicyEngine  PolicyEngineConfig `koanf:"policy_engine"`
+	DownstreamTLS DownstreamTLS      `koanf:"downstream_tls"`
+}
+
+// DownstreamTLS holds downstream (listener) TLS configuration
+type DownstreamTLS struct {
+	CertPath               string `koanf:"cert_path"`
+	KeyPath                string `koanf:"key_path"`
+	MinimumProtocolVersion string `koanf:"minimum_protocol_version"`
+	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
+	Ciphers                string `koanf:"ciphers"`
 }
 
 // envoyUpstream holds envoy upstream related configurations
@@ -107,6 +119,7 @@ type upstreamTLS struct {
 	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
 	Ciphers                string `koanf:"ciphers"`
 	TrustedCertPath        string `koanf:"trusted_cert_path"`
+	CustomCertsPath        string `koanf:"custom_certs_path"` // Directory containing custom trusted certificates
 	VerifyHostName         bool   `koanf:"verify_host_name"`
 	DisableSslVerification bool   `koanf:"disable_ssl_verification"`
 }
@@ -274,6 +287,13 @@ func getDefaults() map[string]interface{} {
 			"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
 			"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
 		"router.listener_port":                                         8080,
+		"router.https_enabled":                                         false,
+		"router.https_port":                                            8443,
+		"router.downstream_tls.cert_path":                              "./listener-certs/server.crt",
+		"router.downstream_tls.key_path":                               "./listener-certs/server.key",
+		"router.downstream_tls.minimum_protocol_version":               "TLS1_2",
+		"router.downstream_tls.maximum_protocol_version":               "TLS1_3",
+		"router.downstream_tls.ciphers":                                "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
 		"router.gateway_host":                                          "*",
 		"logging.level":                                                "info",
 		"logging.format":                                               "json",
@@ -385,6 +405,13 @@ func (c *Config) Validate() error {
 
 	if c.Router.ListenerPort < 1 || c.Router.ListenerPort > 65535 {
 		return fmt.Errorf("router.listener_port must be between 1 and 65535, got: %d", c.Router.ListenerPort)
+	}
+
+	// Validate HTTPS port if HTTPS is enabled
+	if c.Router.HTTPSEnabled {
+		if c.Router.HTTPSPort < 1 || c.Router.HTTPSPort > 65535 {
+			return fmt.Errorf("router.https_port must be between 1 and 65535, got: %d", c.Router.HTTPSPort)
+		}
 	}
 
 	// Validate control plane configuration
@@ -518,6 +545,98 @@ func (c *Config) validateTLSConfig() error {
 	// Validate trusted cert path if SSL verification is enabled
 	if !c.Router.Upstream.TLS.DisableSslVerification && c.Router.Upstream.TLS.TrustedCertPath == "" {
 		return fmt.Errorf("router.envoy_upstream.tls.trusted_cert_path is required when SSL verification is enabled")
+	}
+
+	// Validate downstream TLS configuration if HTTPS is enabled
+	if c.Router.HTTPSEnabled {
+		if err := c.validateDownstreamTLSConfig(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateDownstreamTLSConfig validates the downstream (listener) TLS configuration
+func (c *Config) validateDownstreamTLSConfig() error {
+	// Validate TLS protocol versions
+	validTLSVersions := []string{
+		constants.TLSVersion10,
+		constants.TLSVersion11,
+		constants.TLSVersion12,
+		constants.TLSVersion13,
+	}
+
+	// Validate certificate and key paths
+	if c.Router.DownstreamTLS.CertPath == "" {
+		return fmt.Errorf("router.downstream_tls.cert_path is required when HTTPS is enabled")
+	}
+
+	if c.Router.DownstreamTLS.KeyPath == "" {
+		return fmt.Errorf("router.downstream_tls.key_path is required when HTTPS is enabled")
+	}
+
+	// Validate minimum TLS version
+	minVersion := c.Router.DownstreamTLS.MinimumProtocolVersion
+	if minVersion == "" {
+		return fmt.Errorf("router.downstream_tls.minimum_protocol_version is required")
+	}
+
+	isValidMinVersion := false
+	for _, version := range validTLSVersions {
+		if minVersion == version {
+			isValidMinVersion = true
+			break
+		}
+	}
+	if !isValidMinVersion {
+		return fmt.Errorf("router.downstream_tls.minimum_protocol_version must be one of: %s, got: %s",
+			strings.Join(validTLSVersions, ", "), minVersion)
+	}
+
+	// Validate maximum TLS version
+	maxVersion := c.Router.DownstreamTLS.MaximumProtocolVersion
+	if maxVersion == "" {
+		return fmt.Errorf("router.downstream_tls.maximum_protocol_version is required")
+	}
+
+	isValidMaxVersion := false
+	for _, version := range validTLSVersions {
+		if maxVersion == version {
+			isValidMaxVersion = true
+			break
+		}
+	}
+	if !isValidMaxVersion {
+		return fmt.Errorf("router.downstream_tls.maximum_protocol_version must be one of: %s, got: %s",
+			strings.Join(validTLSVersions, ", "), maxVersion)
+	}
+
+	// Validate that minimum version is not greater than maximum version
+	tlsVersionOrder := map[string]int{
+		constants.TLSVersion10: constants.TLSVersionOrderTLS10,
+		constants.TLSVersion11: constants.TLSVersionOrderTLS11,
+		constants.TLSVersion12: constants.TLSVersionOrderTLS12,
+		constants.TLSVersion13: constants.TLSVersionOrderTLS13,
+	}
+
+	if tlsVersionOrder[minVersion] > tlsVersionOrder[maxVersion] {
+		return fmt.Errorf("router.downstream_tls.minimum_protocol_version (%s) cannot be greater than maximum_protocol_version (%s)",
+			minVersion, maxVersion)
+	}
+
+	// Validate cipher suites format
+	ciphers := c.Router.DownstreamTLS.Ciphers
+	if ciphers != "" {
+		// Basic validation: ensure ciphers don't contain invalid characters
+		if strings.Contains(ciphers, constants.CipherInvalidChars1) || strings.Contains(ciphers, constants.CipherInvalidChars2) {
+			return fmt.Errorf("router.downstream_tls.ciphers contains invalid characters (use comma-separated values)")
+		}
+
+		// Ensure cipher list is not just whitespace
+		if strings.TrimSpace(ciphers) == "" {
+			return fmt.Errorf("router.downstream_tls.ciphers cannot be empty or whitespace only")
+		}
 	}
 
 	return nil

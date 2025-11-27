@@ -96,7 +96,28 @@ func main() {
 	}
 
 	// Initialize xDS snapshot manager with router config
-	snapshotManager := xds.NewSnapshotManager(configStore, log, &cfg.Router)
+	snapshotManager := xds.NewSnapshotManager(configStore, log, &cfg.Router, db)
+
+	// Initialize SDS secret manager if custom certificates are configured
+	var sdsSecretManager *xds.SDSSecretManager
+	translator := snapshotManager.GetTranslator()
+	if translator != nil && translator.GetCertStore() != nil {
+		// Use the same cache and node ID as the main xDS to ensure Envoy can fetch secrets
+		sdsSecretManager = xds.NewSDSSecretManager(
+			translator.GetCertStore(),
+			snapshotManager.GetCache(),
+			"router-node", // Same node ID as main xDS
+			log,
+		)
+		// Update SDS secrets with current certificates
+		if err := sdsSecretManager.UpdateSecrets(); err != nil {
+			log.Warn("Failed to initialize SDS secrets", zap.Error(err))
+		} else {
+			log.Info("SDS secret manager initialized successfully")
+			// Set the SDS secret manager in snapshot manager so secrets are included in snapshots
+			snapshotManager.SetSDSSecretManager(sdsSecretManager)
+		}
+	}
 
 	// Generate initial xDS snapshot
 	log.Info("Generating initial xDS snapshot")
@@ -106,8 +127,8 @@ func main() {
 	}
 	cancel()
 
-	// Start xDS gRPC server
-	xdsServer := xds.NewServer(snapshotManager, cfg.Server.XDSPort, log)
+	// Start xDS gRPC server with SDS support
+	xdsServer := xds.NewServer(snapshotManager, sdsSecretManager, cfg.Server.XDSPort, log)
 	go func() {
 		if err := xdsServer.Start(); err != nil {
 			log.Fatal("xDS server failed", zap.Error(err))
@@ -216,7 +237,7 @@ func main() {
 	// Initialize API server with the configured validator
 	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient, policyDefinitions, validator, &cfg.Router)
 
-	// Register API routes
+	// Register API routes (includes certificate management endpoints from OpenAPI spec)
 	api.RegisterHandlers(router, apiServer)
 
 	// Start REST API server

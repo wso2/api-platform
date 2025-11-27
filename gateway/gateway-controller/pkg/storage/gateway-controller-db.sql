@@ -48,5 +48,34 @@ CREATE INDEX IF NOT EXISTS idx_kind ON api_configs(kind);
 -- They are loaded from files at controller startup (see policies/ directory).
 -- The policy_definitions table has been removed as of schema version 3.
 
--- Set schema version
+-- Table for custom TLS certificates
+CREATE TABLE IF NOT EXISTS certificates (
+    -- Primary identifier (UUID)
+    id TEXT PRIMARY KEY,
+    
+    -- Human-readable name for the certificate
+    name TEXT NOT NULL UNIQUE,
+    
+    -- PEM-encoded certificate(s) as BLOB
+    certificate BLOB NOT NULL,
+    
+    -- Certificate metadata (extracted from first cert in bundle)
+    subject TEXT NOT NULL,
+    issuer TEXT NOT NULL,
+    not_before TIMESTAMP NOT NULL,
+    not_after TIMESTAMP NOT NULL,
+    cert_count INTEGER NOT NULL DEFAULT 1,
+    
+    -- Timestamps
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for fast name lookups
+CREATE INDEX IF NOT EXISTS idx_cert_name ON certificates(name);
+
+-- Index for expiry tracking
+CREATE INDEX IF NOT EXISTS idx_cert_expiry ON certificates(not_after);
+
+-- Set schema version to 1
 PRAGMA user_version = 3;
