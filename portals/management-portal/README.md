@@ -109,10 +109,6 @@ After DB creation:
 }
 ```
 
-## Step E — Organization Mapping
-
-Create an organization in Developer Portal:
-
 ## Step D — Start the Developer Portal
 
 ```bash
@@ -120,6 +116,10 @@ cd portals/developer-portal
 npm ci --legacy-peer-deps
 npm start
 ```
+
+## Step E — Organization Mapping
+
+Create an organization in Developer Portal:
 
 ```bash
 curl --location 'http://localhost:<port or 3000>/devportal/organizations' --header 'api-key: xxx' --header 'Content-Type: application/json' --data '{
