@@ -40,7 +40,7 @@ test: ## Run unit and integration tests
 
 docker: ## Build Docker image
 	@echo "Building Docker image..."
-	@docker build -t wso2/gateway-controller:latest .
+	@docker build -f Dockerfile -t wso2/api-platform-gateway-controller:latest  ../
 
 clean: ## Clean build artifacts
 	@echo "Cleaning build artifacts..."

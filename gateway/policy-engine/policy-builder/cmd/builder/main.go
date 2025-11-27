@@ -52,6 +52,28 @@ func main() {
 	// Setup logging
 	initLogger(*logFormat, *logLevel)
 
+	// Resolve paths to absolute paths
+	absManifestPath, err := filepath.Abs(*manifestPath)
+	if err != nil {
+		slog.Error("Failed to resolve manifest path", "path", *manifestPath, "error", err)
+		os.Exit(1)
+	}
+	manifestPath = &absManifestPath
+
+	absPolicyEngineSrc, err := filepath.Abs(*policyEngineSrc)
+	if err != nil {
+		slog.Error("Failed to resolve policy-engine-src path", "path", *policyEngineSrc, "error", err)
+		os.Exit(1)
+	}
+	policyEngineSrc = &absPolicyEngineSrc
+
+	absOutputDir, err := filepath.Abs(*outputDir)
+	if err != nil {
+		slog.Error("Failed to resolve output directory path", "path", *outputDir, "error", err)
+		os.Exit(1)
+	}
+	outputDir = &absOutputDir
+
 	slog.Info("Policy Builder starting",
 		"version", BuilderVersion,
 		"manifest", *manifestPath)
