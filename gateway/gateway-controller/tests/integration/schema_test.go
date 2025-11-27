@@ -95,7 +95,7 @@ func TestSchemaInitialization(t *testing.T) {
 		var version int
 		err := rawDB.QueryRow("PRAGMA user_version").Scan(&version)
 		assert.NoError(t, err)
-		assert.Equal(t, 2, version, "Schema version should be 2")
+		assert.Equal(t, 3, version, "Schema version should be 3")
 	})
 
 	// Verify api_configs table exists

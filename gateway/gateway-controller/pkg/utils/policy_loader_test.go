@@ -152,13 +152,9 @@ func TestPolicyLoader_InvalidPolicy(t *testing.T) {
 
 	// Test case 1: Missing name
 	invalidPolicy1 := `{
-  "version": "v1.0.0",
-  "flows": {
-    "request": {
-      "requireHeader": true
-    }
-  }
-}`
+		"version": "v1.0.0",
+	}`
+`
 	err := os.WriteFile(filepath.Join(tempDir, "invalid1.json"), []byte(invalidPolicy1), 0644)
 	if err != nil {
 		t.Fatalf("Failed to write test policy file: %v", err)
