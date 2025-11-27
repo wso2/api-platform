@@ -1108,7 +1108,7 @@ components:
         required:
           - version
           - kind
-          - data
+          - spec
         properties:
           version:
             type: string
@@ -1122,7 +1122,7 @@ components:
             example: mcp
             enum:
               - mcp
-          data:
+          spec:
             $ref: '#/components/schemas/MCPProxyConfigData'
 
     MCPProxyConfigData:
@@ -1131,7 +1131,7 @@ components:
         - name
         - version
         - context
-        - upstream
+        - upstreams
       properties:
         name:
           type: string
@@ -1152,15 +1152,12 @@ components:
           type: string
           description: MCP specification version
           example: 2025-06-18
-        upstream:
+        upstreams:
           type: array
+          description: List of backend service URLs
+          minItems: 1
           items:
-            type: object
-            properties:
-              url:
-                type: string
-                format: uri
-                example: https://mcp-proxy.example.com/api
+            $ref: '#/components/schemas/Upstream'
         tools:
           type: array
           items:

@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS api_configs (
     -- Full API configuration as JSON
     configuration TEXT NOT NULL,         -- JSON-serialized APIConfiguration
 
+    -- Source configuration as JSON
+    source_configuration TEXT,           -- JSON-serialized SourceConfiguration
+
     -- Deployment status
     status TEXT NOT NULL CHECK(status IN ('pending', 'deployed', 'failed')),
 

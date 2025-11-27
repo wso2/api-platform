@@ -5,3 +5,5 @@ generate:
   models: true
   embedded-spec: true
   strict-server: false
+output-options:
+  yaml-tags: true

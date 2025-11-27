@@ -95,32 +95,32 @@ const (
 // APIConfigData defines model for APIConfigData.
 type APIConfigData struct {
 	// Context Base path for all API routes (must start with /, no trailing slash)
-	Context string `json:"context"`
+	Context string `json:"context" yaml:"context"`
 
 	// Name Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
-	Name string `json:"name"`
+	Name string `json:"name" yaml:"name"`
 
 	// Operations List of HTTP operations/routes
-	Operations []Operation `json:"operations"`
+	Operations []Operation `json:"operations" yaml:"operations"`
 
 	// Policies List of API-level policies applied to all operations unless overridden
-	Policies *[]Policy `json:"policies,omitempty"`
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
 	// Upstreams List of backend service URLs
-	Upstreams []Upstream `json:"upstreams"`
+	Upstreams []Upstream `json:"upstreams" yaml:"upstreams"`
 
 	// Version Semantic version of the API
-	Version string `json:"version"`
+	Version string `json:"version" yaml:"version"`
 }
 
 // APIConfiguration defines model for APIConfiguration.
 type APIConfiguration struct {
 	// Kind API type
-	Kind APIConfigurationKind `json:"kind"`
-	Spec APIConfigData        `json:"spec"`
+	Kind APIConfigurationKind `json:"kind" yaml:"kind"`
+	Spec APIConfigData        `json:"spec" yaml:"spec"`
 
 	// Version API specification version
-	Version APIConfigurationVersion `json:"version"`
+	Version APIConfigurationVersion `json:"version" yaml:"version"`
 }
 
 // APIConfigurationKind API type
@@ -131,27 +131,27 @@ type APIConfigurationVersion string
 
 // APICreateResponse defines model for APICreateResponse.
 type APICreateResponse struct {
-	CreatedAt *time.Time `json:"created_at,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 
 	// Id Unique identifier for the created API configuration
-	Id      *openapi_types.UUID `json:"id,omitempty"`
-	Message *string             `json:"message,omitempty"`
-	Status  *string             `json:"status,omitempty"`
+	Id      *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+	Message *string             `json:"message,omitempty" yaml:"message,omitempty"`
+	Status  *string             `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // APIDetailResponse defines model for APIDetailResponse.
 type APIDetailResponse struct {
 	Api *struct {
-		Configuration *APIConfiguration   `json:"configuration,omitempty"`
-		Id            *openapi_types.UUID `json:"id,omitempty"`
+		Configuration *APIConfiguration   `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+		Id            *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata      *struct {
-			CreatedAt  *time.Time                          `json:"created_at,omitempty"`
-			DeployedAt *time.Time                          `json:"deployed_at,omitempty"`
-			Status     *APIDetailResponseApiMetadataStatus `json:"status,omitempty"`
-			UpdatedAt  *time.Time                          `json:"updated_at,omitempty"`
-		} `json:"metadata,omitempty"`
-	} `json:"api,omitempty"`
-	Status *string `json:"status,omitempty"`
+			CreatedAt  *time.Time                          `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+			DeployedAt *time.Time                          `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
+			Status     *APIDetailResponseApiMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
+			UpdatedAt  *time.Time                          `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	} `json:"api,omitempty" yaml:"api,omitempty"`
+	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // APIDetailResponseApiMetadataStatus defines model for APIDetailResponse.Api.Metadata.Status.
@@ -159,13 +159,13 @@ type APIDetailResponseApiMetadataStatus string
 
 // APIListItem defines model for APIListItem.
 type APIListItem struct {
-	Context   *string             `json:"context,omitempty"`
-	CreatedAt *time.Time          `json:"created_at,omitempty"`
-	Id        *openapi_types.UUID `json:"id,omitempty"`
-	Name      *string             `json:"name,omitempty"`
-	Status    *APIListItemStatus  `json:"status,omitempty"`
-	UpdatedAt *time.Time          `json:"updated_at,omitempty"`
-	Version   *string             `json:"version,omitempty"`
+	Context   *string             `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt *time.Time          `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+	Name      *string             `json:"name,omitempty" yaml:"name,omitempty"`
+	Status    *APIListItemStatus  `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time          `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	Version   *string             `json:"version,omitempty" yaml:"version,omitempty"`
 }
 
 // APIListItemStatus defines model for APIListItem.Status.
@@ -173,10 +173,10 @@ type APIListItemStatus string
 
 // APIUpdateResponse defines model for APIUpdateResponse.
 type APIUpdateResponse struct {
-	Id        *openapi_types.UUID `json:"id,omitempty"`
-	Message   *string             `json:"message,omitempty"`
-	Status    *string             `json:"status,omitempty"`
-	UpdatedAt *time.Time          `json:"updated_at,omitempty"`
+	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string             `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string             `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time          `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
 }
 
 // CertificateListResponse defines model for CertificateListResponse.
@@ -274,26 +274,26 @@ type ConfigDumpResponseApisMetadataStatus string
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
 	// Errors Detailed validation errors
-	Errors *[]ValidationError `json:"errors,omitempty"`
+	Errors *[]ValidationError `json:"errors,omitempty" yaml:"errors,omitempty"`
 
 	// Message High-level error description
-	Message string `json:"message"`
-	Status  string `json:"status"`
+	Message string `json:"message" yaml:"message"`
+	Status  string `json:"status" yaml:"status"`
 }
 
 // MCPDetailResponse defines model for MCPDetailResponse.
 type MCPDetailResponse struct {
 	Mcp *struct {
-		Configuration *MCPProxyConfiguration `json:"configuration,omitempty"`
-		Id            *openapi_types.UUID    `json:"id,omitempty"`
+		Configuration *MCPProxyConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+		Id            *openapi_types.UUID    `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata      *struct {
-			CreatedAt  *time.Time                          `json:"created_at,omitempty"`
-			DeployedAt *time.Time                          `json:"deployed_at,omitempty"`
-			Status     *MCPDetailResponseMcpMetadataStatus `json:"status,omitempty"`
-			UpdatedAt  *time.Time                          `json:"updated_at,omitempty"`
-		} `json:"metadata,omitempty"`
-	} `json:"mcp,omitempty"`
-	Status *string `json:"status,omitempty"`
+			CreatedAt  *time.Time                          `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+			DeployedAt *time.Time                          `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
+			Status     *MCPDetailResponseMcpMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
+			UpdatedAt  *time.Time                          `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	} `json:"mcp,omitempty" yaml:"mcp,omitempty"`
+	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // MCPDetailResponseMcpMetadataStatus defines model for MCPDetailResponse.Mcp.Metadata.Status.
@@ -302,48 +302,47 @@ type MCPDetailResponseMcpMetadataStatus string
 // MCPPrompt defines model for MCPPrompt.
 type MCPPrompt struct {
 	// Arguments Optional list of arguments for customization
-	Arguments *[]string `json:"arguments,omitempty"`
+	Arguments *[]string `json:"arguments,omitempty" yaml:"arguments,omitempty"`
 
 	// Description Optional human-readable description
-	Description *string `json:"description,omitempty"`
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// Name Unique identifier for the prompt
-	Name string `json:"name"`
+	Name string `json:"name" yaml:"name"`
 
 	// Title Optional human-readable name of the prompt for display purposes
-	Title *string `json:"title,omitempty"`
+	Title *string `json:"title,omitempty" yaml:"title,omitempty"`
 }
 
 // MCPProxyConfigData defines model for MCPProxyConfigData.
 type MCPProxyConfigData struct {
 	// Context MCP Proxy context path
-	Context string `json:"context"`
+	Context string `json:"context" yaml:"context"`
 
 	// Name Human-readable MCP Proxy name
-	Name      string         `json:"name"`
-	Prompts   *[]MCPPrompt   `json:"prompts,omitempty"`
-	Resources *[]MCPResource `json:"resources,omitempty"`
+	Name      string         `json:"name" yaml:"name"`
+	Prompts   *[]MCPPrompt   `json:"prompts,omitempty" yaml:"prompts,omitempty"`
+	Resources *[]MCPResource `json:"resources,omitempty" yaml:"resources,omitempty"`
 
 	// SpecVersion MCP specification version
-	SpecVersion *string    `json:"specVersion,omitempty"`
-	Tools       *[]MCPTool `json:"tools,omitempty"`
-	Upstream    []struct {
-		Url *string `json:"url,omitempty"`
-	} `json:"upstream"`
+	SpecVersion *string    `json:"specVersion,omitempty" yaml:"specVersion,omitempty"`
+	Tools       *[]MCPTool `json:"tools,omitempty" yaml:"tools,omitempty"`
+
+	// Upstreams List of backend service URLs
+	Upstreams []Upstream `json:"upstreams" yaml:"upstreams"`
 
 	// Version MCP Proxy version
-	Version string `json:"version"`
+	Version string `json:"version" yaml:"version"`
 }
 
 // MCPProxyConfiguration defines model for MCPProxyConfiguration.
 type MCPProxyConfiguration struct {
-	Data MCPProxyConfigData `json:"data"`
-
 	// Kind MCP Proxy type
-	Kind MCPProxyConfigurationKind `json:"kind"`
+	Kind MCPProxyConfigurationKind `json:"kind" yaml:"kind"`
+	Spec MCPProxyConfigData        `json:"spec" yaml:"spec"`
 
 	// Version MCP Proxy specification version
-	Version MCPProxyConfigurationVersion `json:"version"`
+	Version MCPProxyConfigurationVersion `json:"version" yaml:"version"`
 }
 
 // MCPProxyConfigurationKind MCP Proxy type
@@ -354,14 +353,14 @@ type MCPProxyConfigurationVersion string
 
 // MCPProxyListItem defines model for MCPProxyListItem.
 type MCPProxyListItem struct {
-	Context     *string                 `json:"context,omitempty"`
-	CreatedAt   *time.Time              `json:"created_at,omitempty"`
-	Id          *openapi_types.UUID     `json:"id,omitempty"`
-	Name        *string                 `json:"name,omitempty"`
-	SpecVersion *string                 `json:"specVersion,omitempty"`
-	Status      *MCPProxyListItemStatus `json:"status,omitempty"`
-	UpdatedAt   *time.Time              `json:"updated_at,omitempty"`
-	Version     *string                 `json:"version,omitempty"`
+	Context     *string                 `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt   *time.Time              `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	Id          *openapi_types.UUID     `json:"id,omitempty" yaml:"id,omitempty"`
+	Name        *string                 `json:"name,omitempty" yaml:"name,omitempty"`
+	SpecVersion *string                 `json:"specVersion,omitempty" yaml:"specVersion,omitempty"`
+	Status      *MCPProxyListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt   *time.Time              `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	Version     *string                 `json:"version,omitempty" yaml:"version,omitempty"`
 }
 
 // MCPProxyListItemStatus defines model for MCPProxyListItem.Status.
@@ -370,52 +369,52 @@ type MCPProxyListItemStatus string
 // MCPResource defines model for MCPResource.
 type MCPResource struct {
 	// Description Optional description
-	Description *string `json:"description,omitempty"`
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// MimeType Optional MIME type
-	MimeType *string `json:"mimeType,omitempty"`
+	MimeType *string `json:"mimeType,omitempty" yaml:"mimeType,omitempty"`
 
 	// Name The name of the resource
-	Name string `json:"name"`
+	Name string `json:"name" yaml:"name"`
 
 	// Size Optional size in bytes
-	Size *int `json:"size,omitempty"`
+	Size *int `json:"size,omitempty" yaml:"size,omitempty"`
 
 	// Title Optional human-readable name of the resource for display purposes
-	Title *string `json:"title,omitempty"`
+	Title *string `json:"title,omitempty" yaml:"title,omitempty"`
 
 	// Uri Unique identifier for the resource
-	Uri string `json:"uri"`
+	Uri string `json:"uri" yaml:"uri"`
 }
 
 // MCPTool defines model for MCPTool.
 type MCPTool struct {
 	// Description Human-readable description of functionality
-	Description string `json:"description"`
+	Description string `json:"description" yaml:"description"`
 
 	// InputSchema JSON Schema defining expected parameters
-	InputSchema string `json:"inputSchema"`
+	InputSchema string `json:"inputSchema" yaml:"inputSchema"`
 
 	// Name Unique identifier for the tool
-	Name string `json:"name"`
+	Name string `json:"name" yaml:"name"`
 
 	// OutputSchema Optional JSON Schema defining expected output structure
-	OutputSchema *string `json:"outputSchema,omitempty"`
+	OutputSchema *string `json:"outputSchema,omitempty" yaml:"outputSchema,omitempty"`
 
 	// Title Optional human-readable name of the tool for display purposes.
-	Title *string `json:"title,omitempty"`
+	Title *string `json:"title,omitempty" yaml:"title,omitempty"`
 }
 
 // Operation defines model for Operation.
 type Operation struct {
 	// Method HTTP method
-	Method OperationMethod `json:"method"`
+	Method OperationMethod `json:"method" yaml:"method"`
 
 	// Path Route path with optional {param} placeholders
-	Path string `json:"path"`
+	Path string `json:"path" yaml:"path"`
 
 	// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
-	Policies *[]Policy `json:"policies,omitempty"`
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 }
 
 // OperationMethod HTTP method
@@ -424,53 +423,53 @@ type OperationMethod string
 // Policy defines model for Policy.
 type Policy struct {
 	// ExecutionCondition Expression controlling conditional execution of the policy
-	ExecutionCondition *string `json:"executionCondition,omitempty"`
+	ExecutionCondition *string `json:"executionCondition,omitempty" yaml:"executionCondition,omitempty"`
 
 	// Name Name of the policy
-	Name string `json:"name"`
+	Name string `json:"name" yaml:"name"`
 
 	// Params Arbitrary parameters for the policy (free-form key/value structure)
-	Params *map[string]interface{} `json:"params,omitempty"`
+	Params *map[string]interface{} `json:"params,omitempty" yaml:"params,omitempty"`
 
 	// Version Semantic version of the policy
-	Version string `json:"version"`
+	Version string `json:"version" yaml:"version"`
 }
 
 // PolicyDefinition defines model for PolicyDefinition.
 type PolicyDefinition struct {
 	// Description Human readable description of the policy's purpose
-	Description *string `json:"description,omitempty"`
+	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
 	// Name Unique policy name
-	Name string `json:"name"`
+	Name string `json:"name" yaml:"name"`
 
 	// ParametersSchema JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.
-	ParametersSchema *map[string]interface{} `json:"parametersSchema,omitempty"`
+	ParametersSchema *map[string]interface{} `json:"parametersSchema,omitempty" yaml:"parametersSchema,omitempty"`
 
 	// Version Semantic version of the policy definition
-	Version string `json:"version"`
+	Version string `json:"version" yaml:"version"`
 }
 
 // PolicyListResponse defines model for PolicyListResponse.
 type PolicyListResponse struct {
-	Count    *int                `json:"count,omitempty"`
-	Policies *[]PolicyDefinition `json:"policies,omitempty"`
-	Status   *string             `json:"status,omitempty"`
+	Count    *int                `json:"count,omitempty" yaml:"count,omitempty"`
+	Policies *[]PolicyDefinition `json:"policies,omitempty" yaml:"policies,omitempty"`
+	Status   *string             `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // Upstream defines model for Upstream.
 type Upstream struct {
 	// Url Backend service URL (may include path prefix like /api/v2)
-	Url string `json:"url"`
+	Url string `json:"url" yaml:"url"`
 }
 
 // ValidationError defines model for ValidationError.
 type ValidationError struct {
 	// Field Field that failed validation
-	Field *string `json:"field,omitempty"`
+	Field *string `json:"field,omitempty" yaml:"field,omitempty"`
 
 	// Message Human-readable error message
-	Message *string `json:"message,omitempty"`
+	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
 }
 
 // CreateAPIJSONRequestBody defines body for CreateAPI for application/json ContentType.
@@ -523,9 +522,6 @@ type ServerInterface interface {
 	// Health check endpoint
 	// (GET /health)
 	HealthCheck(c *gin.Context)
-	// List all registered policy definitions
-	// (GET /policies)
-	ListPolicies(c *gin.Context)
 	// List all MCP Proxy configurations
 	// (GET /mcp-proxies)
 	ListMCPProxies(c *gin.Context)
@@ -541,6 +537,9 @@ type ServerInterface interface {
 	// Update an existing MCP Proxy configuration
 	// (PUT /mcp-proxies/{name}/{version})
 	UpdateMCPProxy(c *gin.Context, name string, version string)
+	// List all registered policy definitions
+	// (GET /policies)
+	ListPolicies(c *gin.Context)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -766,19 +765,6 @@ func (siw *ServerInterfaceWrapper) HealthCheck(c *gin.Context) {
 	siw.Handler.HealthCheck(c)
 }
 
-// ListPolicies operation middleware
-func (siw *ServerInterfaceWrapper) ListPolicies(c *gin.Context) {
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.ListPolicies(c)
-}
-
 // ListMCPProxies operation middleware
 func (siw *ServerInterfaceWrapper) ListMCPProxies(c *gin.Context) {
 
@@ -904,6 +890,19 @@ func (siw *ServerInterfaceWrapper) UpdateMCPProxy(c *gin.Context) {
 	siw.Handler.UpdateMCPProxy(c, name, version)
 }
 
+// ListPolicies operation middleware
+func (siw *ServerInterfaceWrapper) ListPolicies(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListPolicies(c)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -953,66 +952,76 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"AA==",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

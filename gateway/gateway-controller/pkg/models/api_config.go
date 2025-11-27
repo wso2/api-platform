@@ -36,13 +36,14 @@ const (
 
 // StoredAPIConfig represents the configuration stored in the database and in-memory
 type StoredAPIConfig struct {
-	ID              string               `json:"id"`
-	Configuration   api.APIConfiguration `json:"configuration"`
-	Status          ConfigStatus         `json:"status"`
-	CreatedAt       time.Time            `json:"created_at"`
-	UpdatedAt       time.Time            `json:"updated_at"`
-	DeployedAt      *time.Time           `json:"deployed_at,omitempty"`
-	DeployedVersion int64                `json:"deployed_version"`
+	ID                  string               `json:"id"`
+	Configuration       api.APIConfiguration `json:"configuration"`
+	SourceConfiguration any                  `json:"source_configuration,omitempty"`
+	Status              ConfigStatus         `json:"status"`
+	CreatedAt           time.Time            `json:"created_at"`
+	UpdatedAt           time.Time            `json:"updated_at"`
+	DeployedAt          *time.Time           `json:"deployed_at,omitempty"`
+	DeployedVersion     int64                `json:"deployed_version"`
 }
 
 // GetCompositeKey returns the composite key "name:version" for indexing
