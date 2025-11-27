@@ -33,16 +33,16 @@ make build-builder
 Then, use the following commands to build the Policy Engine runtime with sample policies and Dockerfiles of other components:
 ```bash
 # Build using Gateway Builder
+```bash
 docker run --rm \
-    -v $(pwd)/policies:/workspace/policies \
+    -v $(pwd)/sample-policies:/workspace/sample-policies \
     -v $(pwd)/policies.yaml:/workspace/policies.yaml \
     -v $(pwd)/output:/workspace/output \
-    wso2/api-platform-gateway-builder:latest \
-    -manifest /workspace/policies.yaml \
-    -policy-engine-src /workspace/policy-engine \
-    -out-dir /workspace/output
+    wso2/api-platform-gateway-builder:latest
+```
 
 # Build gateway images
+
 ```bash
 cd output
 cd policy-engine
@@ -54,9 +54,12 @@ docker build -t myregistry/router:v1.0.0 .
 ```
 
 # Start development environment
+
 docker-compose up -d
 
 # Test
+
+```bash
 curl http://localhost:8000/api/v1/public/health
 ```
 

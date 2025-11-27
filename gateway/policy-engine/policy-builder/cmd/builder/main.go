@@ -20,8 +20,8 @@ import (
 
 const (
 	DefaultManifestFile    = "policies.yaml"
-	DefaultPolicyEngineSrc = "/workspace/policy-engine"
 	DefaultOutputDir       = "output"
+	DefaultPolicyEngineSrc = "policy-engine"
 
 	// Gateway Controller (extends base image)
 	DefaultGatewayControllerBaseImage = "wso2/api-platform-gateway-controller:v1.0.0-m4"
