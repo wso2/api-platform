@@ -31,6 +31,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/policy-engine/sdk/policyengine/v1"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -697,4 +698,151 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 			// Continue waiting if status is still pending
 		}
 	}
+}
+
+// GetConfigDump implements the GET /config_dump endpoint
+func (s *APIServer) GetConfigDump(c *gin.Context) {
+	log := middleware.GetLogger(c, s.logger)
+	log.Info("Retrieving configuration dump")
+
+	// Get all APIs
+	allConfigs := s.store.GetAll()
+
+	// Build API list with metadata using the exact generated types
+	apisSlice := make([]struct {
+		Configuration *api.APIConfiguration `json:"configuration,omitempty"`
+		Id            *openapi_types.UUID   `json:"id,omitempty"`
+		Metadata      *struct {
+			CreatedAt  *time.Time                                `json:"created_at,omitempty"`
+			DeployedAt *time.Time                                `json:"deployed_at,omitempty"`
+			Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty"`
+			UpdatedAt  *time.Time                                `json:"updated_at,omitempty"`
+		} `json:"metadata,omitempty"`
+	}, 0, len(allConfigs))
+
+	for _, cfg := range allConfigs {
+		configUUID, err := uuidToOpenAPIUUID(cfg.ID)
+		if err != nil {
+			log.Warn("Failed to parse config ID as UUID", zap.String("id", cfg.ID), zap.Error(err))
+			continue
+		}
+
+		// Convert status to the correct type
+		var status api.ConfigDumpResponseApisMetadataStatus
+		switch cfg.Status {
+		case models.StatusDeployed:
+			status = api.Deployed
+		case models.StatusFailed:
+			status = api.Failed
+		case models.StatusPending:
+			status = api.Pending
+		default:
+			status = api.Pending
+		}
+
+		item := struct {
+			Configuration *api.APIConfiguration `json:"configuration,omitempty"`
+			Id            *openapi_types.UUID   `json:"id,omitempty"`
+			Metadata      *struct {
+				CreatedAt  *time.Time                                `json:"created_at,omitempty"`
+				DeployedAt *time.Time                                `json:"deployed_at,omitempty"`
+				Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty"`
+				UpdatedAt  *time.Time                                `json:"updated_at,omitempty"`
+			} `json:"metadata,omitempty"`
+		}{
+			Configuration: &cfg.Configuration,
+			Id:            configUUID,
+			Metadata: &struct {
+				CreatedAt  *time.Time                                `json:"created_at,omitempty"`
+				DeployedAt *time.Time                                `json:"deployed_at,omitempty"`
+				Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty"`
+				UpdatedAt  *time.Time                                `json:"updated_at,omitempty"`
+			}{
+				CreatedAt:  &cfg.CreatedAt,
+				UpdatedAt:  &cfg.UpdatedAt,
+				DeployedAt: cfg.DeployedAt,
+				Status:     &status,
+			},
+		}
+		apisSlice = append(apisSlice, item)
+	}
+
+	// Get all policies
+	s.policyDefMu.RLock()
+	policies := make([]api.PolicyDefinition, 0, len(s.policyDefinitions))
+	for _, policy := range s.policyDefinitions {
+		policies = append(policies, policy)
+	}
+	s.policyDefMu.RUnlock()
+
+	// Sort policies for consistent output
+	sort.Slice(policies, func(i, j int) bool {
+		if policies[i].Name == policies[j].Name {
+			return policies[i].Version < policies[j].Version
+		}
+		return policies[i].Name < policies[j].Name
+	})
+
+	// Get all certificates
+	certs, err := s.db.ListCertificates()
+	if err != nil {
+		log.Error("Failed to retrieve certificates", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to retrieve certificates",
+		})
+		return
+	}
+
+	var certificates []api.CertificateResponse
+	totalBytes := 0
+
+	for _, cert := range certs {
+		totalBytes += len(cert.Certificate)
+
+		certStatus := api.CertificateResponseStatus("success")
+		certificates = append(certificates, api.CertificateResponse{
+			Id:       &cert.ID,
+			Name:     &cert.Name,
+			Subject:  &cert.Subject,
+			Issuer:   &cert.Issuer,
+			NotAfter: &cert.NotAfter,
+			Count:    &cert.CertCount,
+			Status:   &certStatus,
+		})
+	}
+
+	// Calculate statistics
+	totalApis := len(apisSlice)
+	totalPolicies := len(policies)
+	totalCertificates := len(certificates)
+
+	timestamp := time.Now()
+	status := "success"
+
+	// Build response
+	response := api.ConfigDumpResponse{
+		Status:       &status,
+		Timestamp:    &timestamp,
+		Apis:         &apisSlice,
+		Policies:     &policies,
+		Certificates: &certificates,
+		Statistics: &struct {
+			TotalApis             *int `json:"totalApis,omitempty"`
+			TotalCertificateBytes *int `json:"totalCertificateBytes,omitempty"`
+			TotalCertificates     *int `json:"totalCertificates,omitempty"`
+			TotalPolicies         *int `json:"totalPolicies,omitempty"`
+		}{
+			TotalApis:             &totalApis,
+			TotalPolicies:         &totalPolicies,
+			TotalCertificates:     &totalCertificates,
+			TotalCertificateBytes: &totalBytes,
+		},
+	}
+
+	c.JSON(http.StatusOK, response)
+	log.Info("Configuration dump retrieved successfully",
+		zap.Int("apis", len(apisSlice)),
+		zap.Int("policies", len(policies)),
+		zap.Int("certificates", len(certificates)))
 }

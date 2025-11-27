@@ -556,6 +556,34 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /config_dump:
+    get:
+      summary: Dump current configuration state
+      description: |
+        Retrieve the complete current state of the Gateway Controller including:
+        - All deployed API configurations
+        - All loaded policy definitions
+        - All registered certificates
+        - System status and metadata
+        
+        This endpoint is useful for debugging, monitoring, and backup purposes.
+      operationId: getConfigDump
+      tags:
+        - System
+      responses:
+        '200':
+          description: Complete configuration dump
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigDumpResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   schemas:
     APIConfiguration:
@@ -957,6 +985,82 @@ components:
         status:
           type: string
           example: success
+
+    ConfigDumpResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp when the config dump was generated
+          example: "2025-11-26T10:30:00Z"
+        apis:
+          type: array
+          description: All deployed API configurations
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+                example: 550e8400-e29b-41d4-a716-446655440000
+              configuration:
+                $ref: '#/components/schemas/APIConfiguration'
+              metadata:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - pending
+                      - deployed
+                      - failed
+                    example: deployed
+                  created_at:
+                    type: string
+                    format: date-time
+                    example: 2025-10-11T10:30:00Z
+                  updated_at:
+                    type: string
+                    format: date-time
+                    example: 2025-10-11T10:30:00Z
+                  deployed_at:
+                    type: string
+                    format: date-time
+                    example: 2025-10-11T10:30:05Z
+        policies:
+          type: array
+          description: All loaded policy definitions
+          items:
+            $ref: '#/components/schemas/PolicyDefinition'
+        certificates:
+          type: array
+          description: All registered certificates
+          items:
+            $ref: '#/components/schemas/CertificateResponse'
+        statistics:
+          type: object
+          description: Summary statistics about the current configuration
+          properties:
+            totalApis:
+              type: integer
+              description: Total number of API configurations
+              example: 5
+            totalPolicies:
+              type: integer
+              description: Total number of policy definitions
+              example: 3
+            totalCertificates:
+              type: integer
+              description: Total number of certificates
+              example: 2
+            totalCertificateBytes:
+              type: integer
+              description: Total bytes of all certificates
+              example: 221599
 
 tags:
   - name: System

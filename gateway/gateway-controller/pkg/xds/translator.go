@@ -94,6 +94,7 @@ func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig, db sto
 func GenerateRouteName(method, path, vhost string) string {
 	return fmt.Sprintf("%s|%s|%s", method, path, vhost)
 }
+
 // GetCertStore returns the certificate store instance
 func (t *Translator) GetCertStore() *certstore.CertStore {
 	return t.certStore
@@ -113,7 +114,6 @@ func (t *Translator) TranslateConfigs(
 	resources := make(map[resource.Type][]types.Resource)
 
 	var listeners []types.Resource
-	var routes []types.Resource
 	var clusters []types.Resource
 
 	// We'll use a single listener on port 8080 with a single virtual host
@@ -165,12 +165,28 @@ func (t *Translator) TranslateConfigs(
 		Routes:  allRoutes,
 	}
 
-	// Always create the listener, even with no APIs deployed
-	l, err := t.createListener([]*route.VirtualHost{virtualHost})
+	// Always create the HTTP listener, even with no APIs deployed
+	httpListener, err := t.createListener([]*route.VirtualHost{virtualHost}, false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create listener: %w", err)
+		return nil, fmt.Errorf("failed to create HTTP listener: %w", err)
 	}
-	listeners = append(listeners, l)
+	listeners = append(listeners, httpListener)
+
+	// Create HTTPS listener if enabled
+	if t.routerConfig.HTTPSEnabled {
+		log.Info("HTTPS is enabled, creating HTTPS listener",
+			zap.Int("https_port", t.routerConfig.HTTPSPort))
+		httpsListener, err := t.createListener([]*route.VirtualHost{virtualHost}, true)
+		if err != nil {
+			log.Error("Failed to create HTTPS listener", zap.Error(err))
+			return nil, fmt.Errorf("failed to create HTTPS listener: %w", err)
+		}
+		log.Info("HTTPS listener created successfully",
+			zap.String("listener_name", httpsListener.GetName()))
+		listeners = append(listeners, httpsListener)
+	} else {
+		log.Info("HTTPS is disabled, skipping HTTPS listener creation")
+	}
 
 	// Add all clusters
 	for _, c := range clusterMap {
@@ -191,8 +207,21 @@ func (t *Translator) TranslateConfigs(
 	}
 
 	resources[resource.ListenerType] = listeners
-	resources[resource.RouteType] = routes
+	// Don't add empty routes - we use inline route configs in listeners
+	// resources[resource.RouteType] = routes
 	resources[resource.ClusterType] = clusters
+
+	log.Info("Translated resources ready for snapshot",
+		zap.Int("num_listeners", len(listeners)),
+		zap.Int("num_clusters", len(clusters)))
+	for i, l := range listeners {
+		if listenerProto, ok := l.(*listener.Listener); ok {
+			log.Info("Listener details",
+				zap.Int("index", i),
+				zap.String("name", listenerProto.GetName()),
+				zap.Uint32("port", listenerProto.GetAddress().GetSocketAddress().GetPortValue()))
+		}
+	}
 
 	return resources, nil
 }
@@ -228,7 +257,8 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredAPIConfig) ([]*route.R
 }
 
 // createListener creates an Envoy listener with access logging
-func (t *Translator) createListener(virtualHosts []*route.VirtualHost) (*listener.Listener, error) {
+// If isHTTPS is true, creates an HTTPS listener with TLS configuration
+func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS bool) (*listener.Listener, error) {
 	routeConfig := t.createRouteConfiguration(virtualHosts)
 
 	// Create router filter with typed config
@@ -282,27 +312,61 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost) (*listene
 		return nil, err
 	}
 
+	// Determine listener name and port based on protocol
+	var listenerName string
+	var port uint32
+	if isHTTPS {
+		listenerName = fmt.Sprintf("listener_https_%d", t.routerConfig.HTTPSPort)
+		port = uint32(t.routerConfig.HTTPSPort)
+	} else {
+		listenerName = fmt.Sprintf("listener_http_%d", t.routerConfig.ListenerPort)
+		port = uint32(t.routerConfig.ListenerPort)
+	}
+
+	// Create filter chain
+	filterChain := &listener.FilterChain{
+		Filters: []*listener.Filter{{
+			Name: wellknown.HTTPConnectionManager,
+			ConfigType: &listener.Filter_TypedConfig{
+				TypedConfig: pbst,
+			},
+		}},
+	}
+
+	// Add TLS configuration if HTTPS
+	if isHTTPS {
+		tlsContext, err := t.createDownstreamTLSContext()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create downstream TLS context: %w", err)
+		}
+
+		tlsContextAny, err := anypb.New(tlsContext)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal downstream TLS context: %w", err)
+		}
+
+		filterChain.TransportSocket = &core.TransportSocket{
+			Name: "envoy.transport_sockets.tls",
+			ConfigType: &core.TransportSocket_TypedConfig{
+				TypedConfig: tlsContextAny,
+			},
+		}
+	}
+
 	return &listener.Listener{
-		Name: "listener_http_8080",
+		Name: listenerName,
 		Address: &core.Address{
 			Address: &core.Address_SocketAddress{
 				SocketAddress: &core.SocketAddress{
 					Protocol: core.SocketAddress_TCP,
 					Address:  "0.0.0.0",
 					PortSpecifier: &core.SocketAddress_PortValue{
-						PortValue: 8080,
+						PortValue: port,
 					},
 				},
 			},
 		},
-		FilterChains: []*listener.FilterChain{{
-			Filters: []*listener.Filter{{
-				Name: wellknown.HTTPConnectionManager,
-				ConfigType: &listener.Filter_TypedConfig{
-					TypedConfig: pbst,
-				},
-			}},
-		}},
+		FilterChains: []*listener.FilterChain{filterChain},
 	}, nil
 }
 
@@ -729,6 +793,59 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 	}
 
 	return upstreamTLSContext
+}
+
+// createDownstreamTLSContext creates a downstream TLS context for HTTPS listeners
+func (t *Translator) createDownstreamTLSContext() (*tlsv3.DownstreamTlsContext, error) {
+	// Read certificate and key files
+	certBytes, err := os.ReadFile(t.routerConfig.DownstreamTLS.CertPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read certificate file: %w", err)
+	}
+
+	keyBytes, err := os.ReadFile(t.routerConfig.DownstreamTLS.KeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read key file: %w", err)
+	}
+
+	// Create TLS certificate configuration
+	tlsCert := &tlsv3.TlsCertificate{
+		CertificateChain: &core.DataSource{
+			Specifier: &core.DataSource_InlineBytes{
+				InlineBytes: certBytes,
+			},
+		},
+		PrivateKey: &core.DataSource{
+			Specifier: &core.DataSource_InlineBytes{
+				InlineBytes: keyBytes,
+			},
+		},
+	}
+
+	// Parse cipher suites
+	var cipherSuites []string
+	if t.routerConfig.DownstreamTLS.Ciphers != "" {
+		cipherSuites = t.parseCipherSuites(t.routerConfig.DownstreamTLS.Ciphers)
+	}
+
+	// Create downstream TLS context
+	downstreamTLSContext := &tlsv3.DownstreamTlsContext{
+		CommonTlsContext: &tlsv3.CommonTlsContext{
+			TlsCertificates: []*tlsv3.TlsCertificate{tlsCert},
+			TlsParams: &tlsv3.TlsParameters{
+				TlsMinimumProtocolVersion: t.createTLSProtocolVersion(
+					t.routerConfig.DownstreamTLS.MinimumProtocolVersion,
+				),
+				TlsMaximumProtocolVersion: t.createTLSProtocolVersion(
+					t.routerConfig.DownstreamTLS.MaximumProtocolVersion,
+				),
+				CipherSuites: cipherSuites,
+			},
+			AlpnProtocols: []string{constants.ALPNProtocolHTTP2, constants.ALPNProtocolHTTP11},
+		},
+	}
+
+	return downstreamTLSContext, nil
 }
 
 // createTLSProtocolVersion converts string TLS version to Envoy TLS version enum

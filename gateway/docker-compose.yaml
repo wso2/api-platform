@@ -37,6 +37,7 @@ services:
       - controller-data:/app/data
       - ./gateway-controller/config/config.yaml:/app/config/config.yaml:ro
       - ./gateway-controller/certificates:/app/certificates  # Read-write for dynamic certificate management
+      - ./gateway-controller/listener-certs:/app/listener-certs:ro  # Read-only for HTTPS listener certificates
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -67,6 +68,7 @@ services:
     image: wso2/api-platform-gateway-router:v1.0.0-m4
     ports:
       - "8080:8080"   # HTTP traffic
+      - "8444:8443"   # HTTPS traffic
       - "9901:9901"   # Envoy admin
     environment:
       # - XDS_SERVER_HOST=gateway-controller
