@@ -24,8 +24,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
+
+// newTestAPIServer creates a minimal APIServer instance for testing
+func newTestAPIServer() *APIServer {
+	return &APIServer{
+		routerConfig: &config.RouterConfig{
+			GatewayHost: "localhost",
+		},
+	}
+}
 
 // TestPolicyOrderingDeterministic verifies that policy merging produces deterministic ordering
 // by preserving declaration order of API-level policies with operation-level overrides applied
@@ -166,9 +176,8 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 			}
 
 			// Call the function
-			result := buildStoredPolicyFromAPI(cfg)
-
-			// Verify result is not nil when policies exist
+			server := newTestAPIServer()
+			result := server.buildStoredPolicyFromAPI(cfg) // Verify result is not nil when policies exist
 			if len(tt.expectedOrder) > 0 {
 				require.NotNil(t, result, tt.description)
 				require.Len(t, result.Configuration.Routes, 1, "Should have one route")
@@ -273,29 +282,30 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 		},
 	}
 
-	result := buildStoredPolicyFromAPI(cfg)
+	server := newTestAPIServer()
+	result := server.buildStoredPolicyFromAPI(cfg)
 	require.NotNil(t, result)
 	require.Len(t, result.Configuration.Routes, 5, "Should have 5 routes")
 
 	// Expected orders for each operation
 	expectedOrders := map[string][]string{
-		"GET|v1.0|/test/resource1": {
+		"GET|/test/resource1|localhost": {
 			// op1: [logging(v2), auth(v2)] + remaining API [rateLimit]
 			"logging", "auth", "rateLimit",
 		},
-		"POST|v1.0|/test/resource2": {
+		"POST|/test/resource2|localhost": {
 			// op2: [validation] + all API [auth, rateLimit, logging]
 			"validation", "auth", "rateLimit", "logging",
 		},
-		"PUT|v1.0|/test/resource3": {
+		"PUT|/test/resource3|localhost": {
 			// op3: [rateLimit(v3), cors] + remaining API [auth, logging]
 			"rateLimit", "cors", "auth", "logging",
 		},
-		"DELETE|v1.0|/test/resource4": {
+		"DELETE|/test/resource4|localhost": {
 			// No op policies: use API order
 			"auth", "rateLimit", "logging",
 		},
-		"PATCH|v1.0|/test/resource5": {
+		"PATCH|/test/resource5|localhost": {
 			// op5: [rateLimit(v5), logging(v5), auth(v5)] - all API policies covered
 			"rateLimit", "logging", "auth",
 		},
@@ -316,7 +326,7 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 
 		// Verify version overrides for specific routes
 		switch route.RouteKey {
-		case "GET|v1.0|/test/resource1":
+		case "GET|/test/resource1|localhost":
 			// Should have v2.0.0 for logging and auth
 			for _, p := range route.Policies {
 				if p.Name == "logging" || p.Name == "auth" {
@@ -324,7 +334,7 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 						"Route GET should use operation version for %s", p.Name)
 				}
 			}
-		case "PUT|v1.0|/test/resource3":
+		case "PUT|/test/resource3|localhost":
 			// Should have v3.0.0 for rateLimit
 			for _, p := range route.Policies {
 				if p.Name == "rateLimit" {
@@ -332,13 +342,13 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 						"Route PUT should use operation version for rateLimit")
 				}
 			}
-		case "DELETE|v1.0|/test/resource4":
+		case "DELETE|/test/resource4|localhost":
 			// Should use API versions (v1.0.0) for all
 			for _, p := range route.Policies {
 				assert.Equal(t, "v1.0.0", p.Version,
 					"Route DELETE should use API version for %s", p.Name)
 			}
-		case "PATCH|v1.0|/test/resource5":
+		case "PATCH|/test/resource5|localhost":
 			// Should have v5.0.0 for all three
 			for _, p := range route.Policies {
 				assert.Equal(t, "v5.0.0", p.Version,
@@ -390,8 +400,9 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 
 	// Run 100 times to catch any non-deterministic behavior
 	var firstOrder []string
+	server := newTestAPIServer()
 	for i := 0; i < 100; i++ {
-		result := buildStoredPolicyFromAPI(cfg)
+		result := server.buildStoredPolicyFromAPI(cfg)
 		require.NotNil(t, result)
 		require.Len(t, result.Configuration.Routes, 1)
 

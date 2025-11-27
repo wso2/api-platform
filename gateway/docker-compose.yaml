@@ -19,8 +19,8 @@
 services:
   gateway-controller:
     build:
-      context: ./gateway-controller
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: gateway-controller/Dockerfile
     container_name: gateway-controller
     image: wso2/api-platform-gateway-controller:v1.0.0-m4
     ports:

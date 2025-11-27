@@ -26,8 +26,6 @@ import (
 	"regexp"
 	"strings"
 
-	policy "github.com/policy-engine/sdk/policy/v1alpha"
-
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
@@ -117,79 +115,6 @@ func (pl *PolicyLoader) LoadPoliciesFromDirectory(dirPath string) (map[string]ap
 	return policies, nil
 }
 
-// convertParameterSchemasToJSONSchema converts SDK ParameterSchema slice to JSON Schema format
-func convertParameterSchemasToJSONSchema(params []policy.ParameterSchema) *map[string]interface{} {
-	if len(params) == 0 {
-		return nil
-	}
-
-	properties := make(map[string]interface{})
-	required := []string{}
-
-	for _, param := range params {
-		propSchema := map[string]interface{}{
-			"type":        string(param.Type),
-			"description": param.Description,
-		}
-
-		if param.Default != nil {
-			propSchema["default"] = param.Default
-		}
-
-		// Add validation rules if present
-		if param.Validation.Min != nil {
-			propSchema["minimum"] = *param.Validation.Min
-		}
-		if param.Validation.Max != nil {
-			propSchema["maximum"] = *param.Validation.Max
-		}
-		if param.Validation.Pattern != "" {
-			propSchema["pattern"] = param.Validation.Pattern
-		}
-		if param.Validation.Format != "" {
-			propSchema["format"] = param.Validation.Format
-		}
-		if len(param.Validation.Enum) > 0 {
-			propSchema["enum"] = param.Validation.Enum
-		}
-		if param.Validation.MinLength != nil {
-			propSchema["minLength"] = *param.Validation.MinLength
-		}
-		if param.Validation.MaxLength != nil {
-			propSchema["maxLength"] = *param.Validation.MaxLength
-		}
-		if param.Validation.MultipleOf != nil {
-			propSchema["multipleOf"] = *param.Validation.MultipleOf
-		}
-		if param.Validation.MinItems != nil {
-			propSchema["minItems"] = *param.Validation.MinItems
-		}
-		if param.Validation.MaxItems != nil {
-			propSchema["maxItems"] = *param.Validation.MaxItems
-		}
-		if param.Validation.UniqueItems {
-			propSchema["uniqueItems"] = true
-		}
-
-		properties[param.Name] = propSchema
-
-		if param.Required {
-			required = append(required, param.Name)
-		}
-	}
-
-	schema := map[string]interface{}{
-		"type":       "object",
-		"properties": properties,
-	}
-
-	if len(required) > 0 {
-		schema["required"] = required
-	}
-
-	return &schema
-}
-
 // loadPolicyFile loads a single policy definition file
 func (pl *PolicyLoader) loadPolicyFile(filePath string) (*api.PolicyDefinition, error) {
 	data, err := os.ReadFile(filePath)
@@ -199,29 +124,44 @@ func (pl *PolicyLoader) loadPolicyFile(filePath string) (*api.PolicyDefinition, 
 
 	ext := strings.ToLower(filepath.Ext(filePath))
 
+	var policyDef api.PolicyDefinition
+
 	if ext == ".json" {
-		var policy api.PolicyDefinition
-		if err := json.Unmarshal(data, &policy); err != nil {
+		if err := json.Unmarshal(data, &policyDef); err != nil {
 			return nil, fmt.Errorf("failed to parse JSON: %w", err)
 		}
-		return &policy, nil
+	} else {
+		// For YAML, unmarshal to a generic map first, then convert to JSON and unmarshal again
+		// This works around the issue where yaml.v3 doesn't use json tags as fallback
+		var yamlData map[string]interface{}
+		if err := yaml.Unmarshal(data, &yamlData); err != nil {
+			return nil, fmt.Errorf("failed to parse YAML: %w", err)
+		}
+
+		// Convert to JSON and unmarshal to get proper field mapping via json tags
+		jsonData, err := json.Marshal(yamlData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert YAML to JSON: %w", err)
+		}
+
+		if err := json.Unmarshal(jsonData, &policyDef); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal converted JSON: %w", err)
+		}
+
+		pl.logger.Debug("Parsed policy from YAML",
+			zap.String("file", filePath),
+			zap.String("name", policyDef.Name),
+			zap.String("version", policyDef.Version),
+			zap.Any("parametersSchema", policyDef.ParametersSchema))
 	}
 
-	var policyDef policy.PolicyDefinition
+	// Log serialized JSON to see what will be stored
+	jsonBytes, _ := json.Marshal(policyDef)
+	pl.logger.Debug("Serialized policy to JSON",
+		zap.String("file", filePath),
+		zap.String("json", string(jsonBytes)))
 
-	if err := yaml.Unmarshal(data, &policyDef); err != nil {
-		return nil, fmt.Errorf("failed to parse YAML: %w", err)
-	}
-
-	// Convert to api.PolicyDefinition
-	policy := api.PolicyDefinition{
-		Name:             policyDef.Name,
-		Version:          policyDef.Version,
-		Description:      &policyDef.Description,
-		ParametersSchema: convertParameterSchemasToJSONSchema(policyDef.ParameterSchemas),
-	}
-
-	return &policy, nil
+	return &policyDef, nil
 }
 
 // validatePolicy validates a policy definition
