@@ -599,6 +599,313 @@ func (s *SQLiteStorage) DeleteCertificate(id string) error {
 	return nil
 }
 
+// SaveMCPConfig persists a new MCP configuration
+func (s *SQLiteStorage) SaveMCPConfig(cfg *models.StoredAPIConfig) error {
+	configJSON, err := json.Marshal(cfg.Configuration)
+	if err != nil {
+		return fmt.Errorf("failed to marshal MCP configuration: %w", err)
+	}
+	sourceConfigJSON, err := json.Marshal(cfg.SourceConfiguration)
+	if err != nil {
+		return fmt.Errorf("failed to marshal MCP configuration: %w", err)
+	}
+
+	name := cfg.GetAPIName()
+	version := cfg.GetAPIVersion()
+	context := cfg.GetContext()
+	kind := string(cfg.Configuration.Kind)
+
+	query := `
+		INSERT INTO api_configs (
+			id, name, version, context, kind, configuration, source_configuration,
+			status, created_at, updated_at, deployed_version
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	stmt, err := s.db.Prepare(query)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	now := time.Now()
+	_, err = stmt.Exec(
+		cfg.ID,
+		name,
+		version,
+		context,
+		kind,
+		string(configJSON),
+		string(sourceConfigJSON),
+		cfg.Status,
+		now,
+		now,
+		cfg.DeployedVersion,
+	)
+
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			return fmt.Errorf("%w: MCP configuration with name '%s' and version '%s' already exists", ErrConflict, name, version)
+		}
+		return fmt.Errorf("failed to insert MCP configuration: %w", err)
+	}
+
+	s.logger.Info("MCP configuration saved",
+		zap.String("id", cfg.ID),
+		zap.String("name", name),
+		zap.String("version", version))
+
+	return nil
+}
+
+// UpdateMCPConfig updates an existing MCP configuration
+func (s *SQLiteStorage) UpdateMCPConfig(cfg *models.StoredAPIConfig) error {
+	_, err := s.GetMCPConfig(cfg.ID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("cannot update non-existent MCP configuration: %w", err)
+		}
+		return err
+	}
+
+	configJSON, err := json.Marshal(cfg.Configuration)
+	if err != nil {
+		return fmt.Errorf("failed to marshal MCP configuration: %w", err)
+	}
+	sourceConfigJSON, err := json.Marshal(cfg.SourceConfiguration)
+	if err != nil {
+		return fmt.Errorf("failed to marshal MCP configuration: %w", err)
+	}
+
+	name := cfg.GetAPIName()
+	version := cfg.GetAPIVersion()
+	context := cfg.GetContext()
+	kind := string(cfg.Configuration.Kind)
+
+	query := `
+		UPDATE api_configs
+		SET name = ?, version = ?, context = ?, kind = ?,
+			configuration = ?, source_configuration = ?, 
+			status = ?, updated_at = ?,
+			deployed_version = ?
+		WHERE id = ?
+	`
+
+	stmt, err := s.db.Prepare(query)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Exec(
+		name,
+		version,
+		context,
+		kind,
+		string(configJSON),
+		string(sourceConfigJSON),
+		cfg.Status,
+		time.Now(),
+		cfg.DeployedVersion,
+		cfg.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update MCP configuration: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		return fmt.Errorf("%w: id=%s", ErrNotFound, cfg.ID)
+	}
+
+	s.logger.Info("MCP configuration updated",
+		zap.String("id", cfg.ID),
+		zap.String("name", name),
+		zap.String("version", version))
+
+	return nil
+}
+
+// DeleteMCPConfig removes an MCP configuration by ID
+func (s *SQLiteStorage) DeleteMCPConfig(id string) error {
+	query := `DELETE FROM api_configs WHERE id = ?`
+	stmt, err := s.db.Prepare(query)
+	if err != nil {
+		return fmt.Errorf("failed to prepare delete statement: %w", err)
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Exec(id)
+	if err != nil {
+		return fmt.Errorf("failed to delete MCP configuration: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		return fmt.Errorf("%w: id=%s", ErrNotFound, id)
+	}
+
+	s.logger.Info("MCP configuration deleted", zap.String("id", id))
+
+	return nil
+}
+
+// GetMCPConfig retrieves an MCP configuration by ID
+func (s *SQLiteStorage) GetMCPConfig(id string) (*models.StoredAPIConfig, error) {
+	query := `
+		SELECT id, configuration, source_configuration, status, created_at, updated_at,
+			   deployed_at, deployed_version
+		FROM api_configs
+		WHERE id = ?
+	`
+
+	stmt, err := s.db.Prepare(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare query statement: %w", err)
+	}
+	defer stmt.Close()
+
+	var cfg models.StoredAPIConfig
+	var configJSON string
+	var sourceConfigJSON string
+	var deployedAt sql.NullTime
+
+	err = stmt.QueryRow(id).Scan(
+		&cfg.ID,
+		&configJSON,
+		&sourceConfigJSON,
+		&cfg.Status,
+		&cfg.CreatedAt,
+		&cfg.UpdatedAt,
+		&deployedAt,
+		&cfg.DeployedVersion,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: id=%s", ErrNotFound, id)
+		}
+		return nil, fmt.Errorf("failed to query MCP configuration: %w", err)
+	}
+
+	if deployedAt.Valid {
+		cfg.DeployedAt = &deployedAt.Time
+	}
+
+	if err := json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal MCP configuration: %w", err)
+	}
+	if err := json.Unmarshal([]byte(sourceConfigJSON), &cfg.SourceConfiguration); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal MCP source configuration: %w", err)
+	}
+
+	return &cfg, nil
+}
+
+// GetMCPConfigByNameVersion retrieves an MCP configuration by name and version
+func (s *SQLiteStorage) GetMCPConfigByNameVersion(name, version string) (*models.StoredAPIConfig, error) {
+	query := `
+		SELECT id, configuration, status, created_at, updated_at,
+			   deployed_at, deployed_version
+		FROM mcp_configs
+		WHERE name = ? AND version = ?
+	`
+
+	var cfg models.StoredAPIConfig
+	var configJSON string
+	var deployedAt sql.NullTime
+
+	err := s.db.QueryRow(query, name, version).Scan(
+		&cfg.ID,
+		&configJSON,
+		&cfg.Status,
+		&cfg.CreatedAt,
+		&cfg.UpdatedAt,
+		&deployedAt,
+		&cfg.DeployedVersion,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: name=%s, version=%s", ErrNotFound, name, version)
+		}
+		return nil, fmt.Errorf("failed to query MCP configuration: %w", err)
+	}
+
+	if deployedAt.Valid {
+		cfg.DeployedAt = &deployedAt.Time
+	}
+
+	if err := json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal MCP configuration: %w", err)
+	}
+
+	return &cfg, nil
+}
+
+// GetAllMCPConfigs retrieves all MCP configurations
+func (s *SQLiteStorage) GetAllMCPConfigs() ([]*models.StoredAPIConfig, error) {
+	query := `
+		SELECT id, configuration, status, created_at, updated_at,
+			   deployed_at, deployed_version
+		FROM mcp_configs
+		ORDER BY created_at DESC
+	`
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query MCP configurations: %w", err)
+	}
+	defer rows.Close()
+
+	var configs []*models.StoredAPIConfig
+
+	for rows.Next() {
+		var cfg models.StoredAPIConfig
+		var configJSON string
+		var deployedAt sql.NullTime
+
+		err := rows.Scan(
+			&cfg.ID,
+			&configJSON,
+			&cfg.Status,
+			&cfg.CreatedAt,
+			&cfg.UpdatedAt,
+			&deployedAt,
+			&cfg.DeployedVersion,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		if deployedAt.Valid {
+			cfg.DeployedAt = &deployedAt.Time
+		}
+
+		if err := json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal MCP configuration: %w", err)
+		}
+
+		configs = append(configs, &cfg)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return configs, nil
+}
+
 // Close closes the database connection
 func (s *SQLiteStorage) Close() error {
 	s.logger.Info("Closing SQLite storage")

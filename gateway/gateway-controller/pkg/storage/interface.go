@@ -130,4 +130,37 @@ type Storage interface {
 	// Should be called during graceful shutdown.
 	// Implementations should ensure all pending writes are flushed.
 	Close() error
+
+	// MCP-specific methods for persisting MCP configurations.
+
+	// SaveMCPConfig persists a new MCP configuration.
+	// Returns an error if a configuration with the same name and version already exists.
+	// Implementations should ensure this operation is atomic (all-or-nothing).
+	SaveMCPConfig(cfg *models.StoredAPIConfig) error
+
+	// UpdateMCPConfig updates an existing MCP configuration.
+	// Returns an error if the configuration does not exist.
+	// Implementations should ensure this operation is atomic and thread-safe.
+	UpdateMCPConfig(cfg *models.StoredAPIConfig) error
+
+	// DeleteMCPConfig removes an MCP configuration by ID.
+	// Returns an error if the configuration does not exist.
+	// Implementations should ensure related data (if any) is cleaned up.
+	DeleteMCPConfig(id string) error
+
+	// GetMCPConfig retrieves an MCP configuration by ID.
+	// Returns an error if the configuration is not found.
+	// This is the fastest lookup method (O(1) for most databases).
+	GetMCPConfig(id string) (*models.StoredAPIConfig, error)
+
+	// GetMCPConfigByNameVersion retrieves an MCP configuration by name and version.
+	// Returns an error if the configuration is not found.
+	// This is the most common lookup method for MCP operations.
+	// Implementations should index (name, version) for fast lookups.
+	GetMCPConfigByNameVersion(name, version string) (*models.StoredAPIConfig, error)
+
+	// GetAllMCPConfigs retrieves all MCP configurations.
+	// Returns an empty slice if no configurations exist.
+	// May be expensive for large datasets; consider pagination in future versions.
+	GetAllMCPConfigs() ([]*models.StoredAPIConfig, error)
 }

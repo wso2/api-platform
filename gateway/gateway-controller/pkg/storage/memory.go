@@ -22,15 +22,16 @@ import (
 	"fmt"
 	"sync"
 
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
 // ConfigStore holds all API configurations in memory for fast access
 type ConfigStore struct {
-	mu          sync.RWMutex                        // Protects concurrent access
-	configs     map[string]*models.StoredAPIConfig  // Key: config ID
-	nameVersion map[string]string                   // Key: "name:version" → Value: config ID
-	snapVersion int64                               // Current xDS snapshot version
+	mu          sync.RWMutex                       // Protects concurrent access
+	configs     map[string]*models.StoredAPIConfig // Key: config ID
+	nameVersion map[string]string                  // Key: "name:version" → Value: config ID
+	snapVersion int64                              // Current xDS snapshot version
 }
 
 // NewConfigStore creates a new in-memory config store
@@ -140,6 +141,29 @@ func (cs *ConfigStore) GetAll() []*models.StoredAPIConfig {
 	result := make([]*models.StoredAPIConfig, 0, len(cs.configs))
 	for _, cfg := range cs.configs {
 		result = append(result, cfg)
+	}
+	return result
+}
+
+// GetAll returns all configurations
+func (cs *ConfigStore) GetAllByKind(kind string) []*models.StoredAPIConfig {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	result := make([]*models.StoredAPIConfig, 0)
+	for _, cfg := range cs.configs {
+		switch c := cfg.SourceConfiguration.(type) {
+		case api.MCPProxyConfiguration:
+			if string(c.Kind) == kind {
+				result = append(result, cfg)
+			}
+		case api.APIConfiguration:
+			if string(c.Kind) == kind {
+				result = append(result, cfg)
+			}
+		default:
+			continue
+		}
 	}
 	return result
 }
