@@ -3,90 +3,76 @@ package docker
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"text/template"
 	"time"
 
+	"github.com/policy-engine/policy-builder/pkg/fsutil"
 	"github.com/policy-engine/policy-builder/pkg/types"
 	"github.com/policy-engine/policy-builder/templates"
 )
 
-// GatewayControllerBuilder builds the gateway controller Docker image
-type GatewayControllerBuilder struct {
-	tempDir        string
+// GatewayControllerGenerator generates the gateway controller Dockerfile and artifacts
+type GatewayControllerGenerator struct {
+	outputDir      string
 	baseImage      string
-	outputImage    string
-	imageTag       string
-	buildArch      string
 	policies       []*types.DiscoveredPolicy
 	builderVersion string
 }
 
-// NewGatewayControllerBuilder creates a new gateway controller builder
-func NewGatewayControllerBuilder(tempDir, baseImage, outputImage, imageTag, buildArch string, policies []*types.DiscoveredPolicy, builderVersion string) *GatewayControllerBuilder {
-	return &GatewayControllerBuilder{
-		tempDir:        tempDir,
+// NewGatewayControllerGenerator creates a new gateway controller generator
+func NewGatewayControllerGenerator(outputDir, baseImage string, policies []*types.DiscoveredPolicy, builderVersion string) *GatewayControllerGenerator {
+	return &GatewayControllerGenerator{
+		outputDir:      outputDir,
 		baseImage:      baseImage,
-		outputImage:    outputImage,
-		imageTag:       imageTag,
-		buildArch:      buildArch,
 		policies:       policies,
 		builderVersion: builderVersion,
 	}
 }
 
-// Build builds the gateway controller Docker image
-func (b *GatewayControllerBuilder) Build() error {
-	slog.Info("Building gateway controller image",
-		"baseImage", b.baseImage,
-		"outputImage", b.outputImage,
-		"tag", b.imageTag)
+// Generate generates the gateway controller Dockerfile and copies policy files
+func (g *GatewayControllerGenerator) Generate() (string, error) {
+	slog.Info("Generating gateway controller Dockerfile",
+		"outputDir", g.outputDir)
 
-	// Create policies directory
-	policiesDir := filepath.Join(b.tempDir, "gc-policies")
+	// Create output directory
+	gcDir := filepath.Join(g.outputDir, "gateway-controller")
+	if err := os.MkdirAll(gcDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create gateway-controller directory: %w", err)
+	}
+
+	// Create policies directory within gateway-controller
+	policiesDir := filepath.Join(gcDir, "policies")
 	if err := os.MkdirAll(policiesDir, 0755); err != nil {
-		return fmt.Errorf("failed to create policies directory: %w", err)
+		return "", fmt.Errorf("failed to create policies directory: %w", err)
 	}
 
 	// Copy and rename policy.yaml files
-	if err := b.copyPolicyFiles(policiesDir); err != nil {
-		return fmt.Errorf("failed to copy policy files: %w", err)
+	if err := g.copyPolicyFiles(policiesDir); err != nil {
+		return "", fmt.Errorf("failed to copy policy files: %w", err)
 	}
 
 	// Generate Dockerfile
-	dockerfilePath := filepath.Join(b.tempDir, "Dockerfile.gateway-controller")
-	if err := b.generateDockerfile(dockerfilePath); err != nil {
-		return fmt.Errorf("failed to generate Dockerfile: %w", err)
+	dockerfilePath := filepath.Join(gcDir, "Dockerfile")
+	if err := g.generateDockerfile(dockerfilePath); err != nil {
+		return "", fmt.Errorf("failed to generate Dockerfile: %w", err)
 	}
 
-	// Build image
-	fullImageName := fmt.Sprintf("%s:%s", b.outputImage, b.imageTag)
-	platform := fmt.Sprintf("linux/%s", b.buildArch)
-	if err := ExecuteDockerCommand("build",
-		"-f", dockerfilePath,
-		"-t", fullImageName,
-		"--platform", platform,
-		b.tempDir,
-	); err != nil {
-		return fmt.Errorf("failed to build gateway controller image: %w", err)
-	}
+	slog.Info("Successfully generated gateway controller Dockerfile",
+		"path", dockerfilePath)
 
-	slog.Info("Successfully built gateway controller image",
-		"image", fullImageName)
-
-	return nil
+	return dockerfilePath, nil
 }
 
 // copyPolicyFiles copies policy.yaml files and renames them to {name}-{version}.yaml
-func (b *GatewayControllerBuilder) copyPolicyFiles(destDir string) error {
+func (g *GatewayControllerGenerator) copyPolicyFiles(destDir string) error {
 	slog.Info("Copying policy definition files",
-		"count", len(b.policies),
+		"count", len(g.policies),
 		"destDir", destDir)
 
-	for _, policy := range b.policies {
+	for _, policy := range g.policies {
 		// Source: policy.yaml in policy directory
 		srcPath := policy.YAMLPath
 
@@ -101,19 +87,19 @@ func (b *GatewayControllerBuilder) copyPolicyFiles(destDir string) error {
 			"dest", destPath)
 
 		// Copy file
-		if err := copyFile(srcPath, destPath); err != nil {
+		if err := fsutil.CopyFile(srcPath, destPath); err != nil {
 			return fmt.Errorf("failed to copy policy file %s: %w", policy.Name, err)
 		}
 	}
 
 	slog.Info("Successfully copied all policy definition files",
-		"count", len(b.policies))
+		"count", len(g.policies))
 
 	return nil
 }
 
 // generateDockerfile generates the Dockerfile for the gateway controller
-func (b *GatewayControllerBuilder) generateDockerfile(path string) error {
+func (g *GatewayControllerGenerator) generateDockerfile(path string) error {
 	slog.Debug("Generating gateway controller Dockerfile", "path", path)
 
 	// Parse template
@@ -122,20 +108,20 @@ func (b *GatewayControllerBuilder) generateDockerfile(path string) error {
 		return fmt.Errorf("failed to parse Dockerfile template: %w", err)
 	}
 
-	// Prepare template data
+	// Prepare template data (note: BaseImage will be set in the template as ARG)
 	data := struct {
 		BaseImage      string
 		BuildTimestamp string
 		BuilderVersion string
 		Labels         map[string]string
 	}{
-		BaseImage:      b.baseImage,
+		BaseImage:      g.baseImage,
 		BuildTimestamp: time.Now().UTC().Format(time.RFC3339),
-		BuilderVersion: b.builderVersion,
+		BuilderVersion: g.builderVersion,
 		Labels: map[string]string{
-			"build.timestamp":      time.Now().UTC().Format(time.RFC3339),
-			"build.builder-version": b.builderVersion,
-			"build.policy-count":   fmt.Sprintf("%d", len(b.policies)),
+			"build.timestamp":       time.Now().UTC().Format(time.RFC3339),
+			"build.builder-version": g.builderVersion,
+			"build.policy-count":    fmt.Sprintf("%d", len(g.policies)),
 		},
 	}
 
@@ -151,26 +137,5 @@ func (b *GatewayControllerBuilder) generateDockerfile(path string) error {
 	}
 
 	slog.Debug("Generated gateway controller Dockerfile", "path", path)
-	return nil
-}
-
-// copyFile copies a file from src to dst
-func copyFile(src, dst string) error {
-	sourceFile, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("failed to open source file: %w", err)
-	}
-	defer sourceFile.Close()
-
-	destFile, err := os.Create(dst)
-	if err != nil {
-		return fmt.Errorf("failed to create destination file: %w", err)
-	}
-	defer destFile.Close()
-
-	if _, err := io.Copy(destFile, sourceFile); err != nil {
-		return fmt.Errorf("failed to copy file contents: %w", err)
-	}
-
 	return nil
 }

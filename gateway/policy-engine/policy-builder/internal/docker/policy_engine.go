@@ -9,63 +9,62 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/policy-engine/policy-builder/pkg/fsutil"
 	"github.com/policy-engine/policy-builder/templates"
 )
 
-// PolicyEngineBuilder builds the policy engine Docker image
-type PolicyEngineBuilder struct {
-	tempDir        string
-	imageName      string
-	imageTag       string
-	buildArch      string
-	binaryPath     string
-	builderVersion string
+// PolicyEngineGenerator generates the policy engine Dockerfile and artifacts
+type PolicyEngineGenerator struct {
+	outputDir       string
+	policyEngineBin string
+	builderVersion  string
 }
 
-// NewPolicyEngineBuilder creates a new policy engine builder
-func NewPolicyEngineBuilder(tempDir, outputImageName, imageTag, buildArch, binaryPath, builderVersion string) *PolicyEngineBuilder {
-	return &PolicyEngineBuilder{
-		tempDir:        tempDir,
-		imageName:      outputImageName,
-		imageTag:       imageTag,
-		buildArch:      buildArch,
-		binaryPath:     binaryPath,
-		builderVersion: builderVersion,
+// NewPolicyEngineGenerator creates a new policy engine generator
+func NewPolicyEngineGenerator(outputDir, policyEngineBin, builderVersion string) *PolicyEngineGenerator {
+	return &PolicyEngineGenerator{
+		outputDir:       outputDir,
+		policyEngineBin: policyEngineBin,
+		builderVersion:  builderVersion,
 	}
 }
 
-// Build builds the policy engine Docker image
-func (b *PolicyEngineBuilder) Build() error {
-	slog.Info("Building policy engine image",
-		"image", b.imageName,
-		"tag", b.imageTag)
+// Generate generates the policy engine Dockerfile and copies the binary
+func (g *PolicyEngineGenerator) Generate() (string, error) {
+	slog.Info("Generating policy engine Dockerfile",
+		"outputDir", g.outputDir)
+
+	// Create output directory
+	peDir := filepath.Join(g.outputDir, "policy-engine")
+	if err := os.MkdirAll(peDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create policy-engine directory: %w", err)
+	}
+
+	// Copy binary to output directory
+	binaryDest := filepath.Join(peDir, "policy-engine")
+	if err := fsutil.CopyFile(g.policyEngineBin, binaryDest); err != nil {
+		return "", fmt.Errorf("failed to copy binary: %w", err)
+	}
+
+	// Make binary executable
+	if err := os.Chmod(binaryDest, 0755); err != nil {
+		return "", fmt.Errorf("failed to make binary executable: %w", err)
+	}
 
 	// Generate Dockerfile
-	dockerfilePath := filepath.Join(b.tempDir, "Dockerfile.policy-engine")
-	if err := b.generateDockerfile(dockerfilePath); err != nil {
-		return fmt.Errorf("failed to generate Dockerfile: %w", err)
+	dockerfilePath := filepath.Join(peDir, "Dockerfile")
+	if err := g.generateDockerfile(dockerfilePath); err != nil {
+		return "", fmt.Errorf("failed to generate Dockerfile: %w", err)
 	}
 
-	// Build image
-	fullImageName := fmt.Sprintf("%s:%s", b.imageName, b.imageTag)
-	platform := fmt.Sprintf("linux/%s", b.buildArch)
-	if err := ExecuteDockerCommand("build",
-		"-f", dockerfilePath,
-		"-t", fullImageName,
-		"--platform", platform,
-		b.tempDir,
-	); err != nil {
-		return fmt.Errorf("failed to build policy engine image: %w", err)
-	}
+	slog.Info("Successfully generated policy engine Dockerfile",
+		"path", dockerfilePath)
 
-	slog.Info("Successfully built policy engine image",
-		"image", fullImageName)
-
-	return nil
+	return dockerfilePath, nil
 }
 
 // generateDockerfile generates the Dockerfile for the policy engine
-func (b *PolicyEngineBuilder) generateDockerfile(path string) error {
+func (g *PolicyEngineGenerator) generateDockerfile(path string) error {
 	slog.Debug("Generating policy engine Dockerfile", "path", path)
 
 	// Parse template
@@ -81,10 +80,10 @@ func (b *PolicyEngineBuilder) generateDockerfile(path string) error {
 		Labels         map[string]string
 	}{
 		BuildTimestamp: time.Now().UTC().Format(time.RFC3339),
-		BuilderVersion: b.builderVersion,
+		BuilderVersion: g.builderVersion,
 		Labels: map[string]string{
-			"build.timestamp":      time.Now().UTC().Format(time.RFC3339),
-			"build.builder-version": b.builderVersion,
+			"build.timestamp":       time.Now().UTC().Format(time.RFC3339),
+			"build.builder-version": g.builderVersion,
 		},
 	}
 

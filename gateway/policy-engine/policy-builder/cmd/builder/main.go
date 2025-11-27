@@ -11,33 +11,23 @@ import (
 	"github.com/policy-engine/policy-builder/internal/compilation"
 	"github.com/policy-engine/policy-builder/internal/discovery"
 	"github.com/policy-engine/policy-builder/internal/docker"
-	"github.com/policy-engine/policy-builder/internal/generation"
 	"github.com/policy-engine/policy-builder/internal/manifest"
+	"github.com/policy-engine/policy-builder/internal/policyengine"
 	"github.com/policy-engine/policy-builder/internal/validation"
 	"github.com/policy-engine/policy-builder/pkg/errors"
 	"github.com/policy-engine/policy-builder/pkg/types"
 )
 
 const (
-	DefaultManifestFile    = "policy.yaml"
+	DefaultManifestFile    = "policies.yaml"
 	DefaultPolicyEngineSrc = "/workspace/policy-engine"
-
-	// Policy Engine (builds from scratch - no base image)
-	DefaultPolicyEngineOutputImage = "wso2/api-platform-policy-engine"
+	DefaultOutputDir       = "output"
 
 	// Gateway Controller (extends base image)
-	DefaultGatewayControllerBaseImage   = "wso2/api-platform-gateway-controller:v1.0.0-m4"
-	DefaultGatewayControllerOutputImage = "wso2/api-platform-gateway-controller"
+	DefaultGatewayControllerBaseImage = "wso2/api-platform-gateway-controller:v1.0.0-m4"
 
-	// Router (tags existing image)
-	DefaultRouterBaseImage   = "wso2/api-platform-gateway-router:v1.0.0-m4"
-	DefaultRouterOutputImage = "wso2/api-platform-gateway-router"
-
-	// Image tag applied to all output images
-	DefaultImageTag = "latest"
-
-	// Build architecture (only arm64 and amd64 supported)
-	DefaultBuildArch = "amd64"
+	// Router (uses base image)
+	DefaultRouterBaseImage = "wso2/api-platform-gateway-router:v1.0.0-m4"
 
 	BuilderVersion = "v1.0.0"
 )
@@ -46,32 +36,13 @@ func main() {
 	// Parse command-line flags
 	manifestPath := flag.String("manifest", DefaultManifestFile, "Path to policy manifest file")
 	policyEngineSrc := flag.String("policy-engine-src", DefaultPolicyEngineSrc, "Path to policy-engine runtime source directory")
+	outputDir := flag.String("out-dir", DefaultOutputDir, "Output directory for generated Dockerfiles and artifacts")
 
-	// Image naming flags
-	// Policy Engine (builds from scratch)
-	policyEngineOutputImage := flag.String("policy-engine-output-image", DefaultPolicyEngineOutputImage,
-		"Output image name for policy engine (repository path without tag)")
-
-	// Gateway Controller (extends base image)
+	// Base image configuration
 	gatewayControllerBaseImage := flag.String("gateway-controller-base-image", DefaultGatewayControllerBaseImage,
-		"Base image for gateway controller to extend (must include tag)")
-	gatewayControllerOutputImage := flag.String("gateway-controller-output-image", DefaultGatewayControllerOutputImage,
-		"Output image name for gateway controller (repository path without tag)")
-
-	// Router (tags existing image)
+		"Base image for gateway controller to extend (used in generated Dockerfile)")
 	routerBaseImage := flag.String("router-base-image", DefaultRouterBaseImage,
-		"Base router image to tag (must include tag)")
-	routerOutputImage := flag.String("router-output-image", DefaultRouterOutputImage,
-		"Output image name for router (repository path without tag)")
-
-	// Image tag applied to all output images
-	imageTag := flag.String("image-tag", DefaultImageTag, "Tag for all output images")
-
-	// Build architecture (only arm64 and amd64 supported)
-	buildArch := flag.String("build-arch", DefaultBuildArch, "Target architecture for Docker builds (arm64 or amd64)")
-
-	// Build control flags
-	skipDockerBuild := flag.Bool("skip-docker-build", false, "Skip Docker image building (useful for testing)")
+		"Base router image (used in generated Dockerfile)")
 
 	// Logging flags
 	logFormat := flag.String("log-format", "json", "Log format: text or json")
@@ -81,26 +52,11 @@ func main() {
 	// Setup logging
 	initLogger(*logFormat, *logLevel)
 
-	// Validate build architecture
-	if *buildArch != "arm64" && *buildArch != "amd64" {
-		errors.FatalError(errors.NewValidationError(
-			fmt.Sprintf("invalid build architecture '%s': only 'arm64' and 'amd64' are supported", *buildArch),
-			nil))
-	}
-
 	slog.Info("Policy Builder starting",
 		"version", BuilderVersion,
-		"manifest", *manifestPath,
-		"buildArch", *buildArch)
+		"manifest", *manifestPath)
 
-	// Create temp directory for build artifacts
-	tempDir, err := os.MkdirTemp("", "gateway-builder-")
-	if err != nil {
-		errors.FatalError(errors.NewGenerationError("failed to create temp directory", err))
-	}
-	defer cleanupTempDir(tempDir)
-
-	slog.Debug("Created temp directory", "path", tempDir)
+	var outManifestPath string
 
 	// Phase 1: Discovery
 	slog.Info("Starting Phase 1: Discovery", "phase", "discovery")
@@ -133,7 +89,7 @@ func main() {
 
 	// Phase 3: Code Generation
 	slog.Info("Starting Phase 3: Code Generation", "phase", "generation")
-	if err := generation.GenerateCode(*policyEngineSrc, policies); err != nil {
+	if err := policyengine.GenerateCode(*policyEngineSrc, policies); err != nil {
 		errors.FatalError(err)
 	}
 
@@ -153,69 +109,49 @@ func main() {
 		})
 	}
 
-	binaryPath := filepath.Join(tempDir, "policy-engine")
-	compileOpts := compilation.BuildOptions(binaryPath, buildMetadata)
+	policyEngineBin := filepath.Join(*outputDir, "policy-engine", "policy-engine")
+	compileOpts := compilation.BuildOptions(policyEngineBin, buildMetadata)
 
 	if err := compilation.CompileBinary(*policyEngineSrc, compileOpts); err != nil {
 		errors.FatalError(err)
 	}
 
-	// Phase 5: Docker Build (NEW)
-	if !*skipDockerBuild {
-		// Pre-flight check: Docker availability
-		if err := docker.CheckDockerAvailable(); err != nil {
-			errors.FatalError(errors.NewDockerError("Docker is not available", err))
-		}
+	// Phase 5: Dockerfile Generation
+	slog.Info("Starting Phase 5: Dockerfile Generation", "phase", "dockerfile-generation")
 
-		slog.Info("Starting Phase 5: Docker Build", "phase", "docker-build")
-
-		stackBuilder := &docker.StackBuilder{
-			TempDir:    tempDir,
-			BinaryPath: binaryPath,
-			Policies:   policies,
-
-			// Policy Engine
-			PolicyEngineOutputImage: *policyEngineOutputImage,
-
-			// Gateway Controller
-			GatewayControllerBaseImage:   *gatewayControllerBaseImage,
-			GatewayControllerOutputImage: *gatewayControllerOutputImage,
-
-			// Router
-			RouterBaseImage:   *routerBaseImage,
-			RouterOutputImage: *routerOutputImage,
-
-			// Common
-			ImageTag:       *imageTag,
-			BuildArch:      *buildArch,
-			BuilderVersion: BuilderVersion,
-		}
-
-		buildResult, err := stackBuilder.BuildAll()
-		if err != nil || !buildResult.Success {
-			for _, e := range buildResult.Errors {
-				slog.Error("Docker build error", "error", e)
-			}
-			errors.FatalError(errors.NewDockerError("Docker build failed", err))
-		}
-
-		// Phase 6: Manifest Generation (NEW)
-		slog.Info("Starting Phase 6: Manifest Generation", "phase", "manifest")
-
-		imageManifest := manifest.ImageManifest{
-			PolicyEngine:      buildResult.PolicyEngineImage,
-			GatewayController: buildResult.GatewayControllerImage,
-			Router:            buildResult.RouterImage,
-		}
-
-		buildManifest := manifest.CreateManifest(BuilderVersion, policies, imageManifest)
-
-		// Print success summary with manifest
-		printDockerBuildSummary(buildResult, buildManifest)
-	} else {
-		slog.Info("Skipping Docker build (--skip-docker-build=true)")
-		fmt.Println("\nDocker build skipped. Binary available at:", binaryPath)
+	dockerfileGenerator := &docker.DockerfileGenerator{
+		PolicyEngineBin:            policyEngineBin,
+		Policies:                   policies,
+		OutputDir:                  *outputDir,
+		GatewayControllerBaseImage: *gatewayControllerBaseImage,
+		RouterBaseImage:            *routerBaseImage,
+		BuilderVersion:             BuilderVersion,
 	}
+
+	generateResult, err := dockerfileGenerator.GenerateAll()
+	if err != nil || !generateResult.Success {
+		for _, e := range generateResult.Errors {
+			slog.Error("Dockerfile generation error", "error", e)
+		}
+		errors.FatalError(errors.NewDockerError("Dockerfile generation failed", err))
+	}
+
+	// Phase 6: Manifest Generation
+	slog.Info("Starting Phase 6: Manifest Generation", "phase", "manifest")
+
+	buildManifest := manifest.CreateManifest(BuilderVersion, policies, *outputDir)
+
+	// Write manifest to file
+	outManifestPath = filepath.Join(*outputDir, "build-manifest.json")
+	if err := buildManifest.WriteToFile(outManifestPath); err != nil {
+		slog.Error("Failed to write manifest file", "error", err)
+		errors.FatalError(errors.NewGenerationError("failed to write manifest", err))
+	}
+
+	slog.Info("Build manifest written", "path", outManifestPath)
+
+	// Print success summary with manifest
+	printDockerfileGenerationSummary(generateResult, buildManifest, outManifestPath)
 }
 
 // initLogger sets up the slog logger based on format and level
@@ -259,25 +195,19 @@ func initLogger(format, level string) {
 	slog.SetDefault(logger)
 }
 
-// cleanupTempDir removes the temporary directory
-func cleanupTempDir(tempDir string) {
-	slog.Debug("Cleaning up temp directory", "path", tempDir)
-	if err := os.RemoveAll(tempDir); err != nil {
-		slog.Warn("Failed to cleanup temp directory", "error", err)
-	}
-}
-
-// printDockerBuildSummary displays the Docker build summary
-func printDockerBuildSummary(result *docker.BuildResult, buildManifest *manifest.Manifest) {
-	slog.Info("Build completed successfully", "phase", "complete")
+// printDockerfileGenerationSummary displays the Dockerfile generation summary
+func printDockerfileGenerationSummary(result *docker.GenerateResult, buildManifest *manifest.Manifest, manifestPath string) {
+	slog.Info("Dockerfile generation completed successfully", "phase", "complete")
 
 	fmt.Println("\n========================================")
-	fmt.Println("Gateway Stack Build Complete")
+	fmt.Println("Gateway Dockerfiles Generated")
 	fmt.Println("========================================")
-	fmt.Println("\nBuilt Images:")
-	fmt.Printf("  1. Policy Engine:      %s\n", result.PolicyEngineImage)
-	fmt.Printf("  2. Gateway Controller: %s\n", result.GatewayControllerImage)
-	fmt.Printf("  3. Router:             %s\n", result.RouterImage)
+	fmt.Println("\nGenerated Dockerfiles:")
+	fmt.Printf("  1. Policy Engine:      %s\n", result.PolicyEngineDockerfile)
+	fmt.Printf("  2. Gateway Controller: %s\n", result.GatewayControllerDockerfile)
+	fmt.Printf("  3. Router:             %s\n", result.RouterDockerfile)
+
+	fmt.Printf("Manifest: %s\n", manifestPath)
 
 	// Print manifest as JSON
 	fmt.Println("\nBuild Manifest:")
@@ -289,9 +219,11 @@ func printDockerBuildSummary(result *docker.BuildResult, buildManifest *manifest
 	}
 
 	fmt.Println("\nNext Steps:")
-	fmt.Println("  1. Deploy the gateway stack:")
+	fmt.Println("  1. Build the images:")
+	fmt.Printf("     cd %s/policy-engine && docker build -t <image-name> .\n", result.OutputDir)
+	fmt.Printf("     cd %s/gateway-controller && docker build -t <image-name> .\n", result.OutputDir)
+	fmt.Printf("     cd %s/router && docker build -t <image-name> .\n", result.OutputDir)
+	fmt.Println("  2. Deploy the gateway stack:")
 	fmt.Println("     docker-compose up -d")
-	fmt.Println("  2. Verify images:")
-	fmt.Println("     docker images | grep wso2/api-platform")
 	fmt.Println()
 }

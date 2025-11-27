@@ -3,7 +3,7 @@ package types
 // DockerBuildOptions contains options for building Docker images
 type DockerBuildOptions struct {
 	TempDir                string
-	BinaryPath             string
+	PolicyEngineBin        string
 	Policies               []*DiscoveredPolicy
 	PolicyEngineImage      string
 	GatewayControllerImage string

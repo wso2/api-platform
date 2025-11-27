@@ -1,4 +1,4 @@
-package generation
+package policyengine
 
 import (
 	"bytes"
