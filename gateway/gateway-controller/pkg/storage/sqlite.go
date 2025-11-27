@@ -457,6 +457,10 @@ func (s *SQLiteStorage) SaveCertificate(cert *models.StoredCertificate) error {
 	)
 
 	if err != nil {
+		// Check for unique constraint violation
+		if isCertificateUniqueConstraintError(err) {
+			return fmt.Errorf("%w: certificate with name '%s' already exists", ErrConflict, cert.Name)
+		}
 		return fmt.Errorf("failed to save certificate: %w", err)
 	}
 
@@ -486,10 +490,10 @@ func (s *SQLiteStorage) GetCertificate(id string) (*models.StoredCertificate, er
 		&cert.UpdatedAt,
 	)
 
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("certificate not found: %s", id)
-	}
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: id=%s", ErrNotFound, id)
+		}
 		return nil, fmt.Errorf("failed to get certificate: %w", err)
 	}
 
@@ -586,8 +590,11 @@ func (s *SQLiteStorage) DeleteCertificate(id string) error {
 	}
 
 	if rows == 0 {
-		return fmt.Errorf("certificate not found: %s", id)
+		s.logger.Debug("Certificate not found for deletion", zap.String("id", id))
+		return ErrNotFound
 	}
+
+	s.logger.Info("Certificate deleted", zap.String("id", id))
 
 	return nil
 }
@@ -625,4 +632,12 @@ func isUniqueConstraintError(err error) bool {
 	// Error message contains "UNIQUE constraint failed"
 	return err != nil && (err.Error() == "UNIQUE constraint failed: api_configs.name, api_configs.version" ||
 		err.Error() == "UNIQUE constraint failed: api_configs.id")
+}
+
+// isCertificateUniqueConstraintError checks if the error is a UNIQUE constraint violation for certificates
+func isCertificateUniqueConstraintError(err error) bool {
+	// SQLite error code 19 is CONSTRAINT error
+	// Error message contains "UNIQUE constraint failed"
+	return err != nil && (err.Error() == "UNIQUE constraint failed: certificates.name" ||
+		err.Error() == "UNIQUE constraint failed: certificates.id")
 }

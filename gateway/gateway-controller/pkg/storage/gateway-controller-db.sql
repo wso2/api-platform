@@ -77,5 +77,5 @@ CREATE INDEX IF NOT EXISTS idx_cert_name ON certificates(name);
 -- Index for expiry tracking
 CREATE INDEX IF NOT EXISTS idx_cert_expiry ON certificates(not_after);
 
--- Set schema version to 1
+-- Set schema version to 3
 PRAGMA user_version = 3;
