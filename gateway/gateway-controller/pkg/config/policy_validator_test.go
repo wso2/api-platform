@@ -30,11 +30,6 @@ func TestPolicyValidator_ValidatePolicies_Success(t *testing.T) {
 		"APIKeyValidation|v1.0.0": {
 			Name:    "APIKeyValidation",
 			Version: "v1.0.0",
-			Flows: api.PolicyDefinition_Flows{
-				Request: &api.PolicyFlowRequirements{
-					RequireHeader: boolPtr(true),
-				},
-			},
 			ParametersSchema: &map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -134,11 +129,6 @@ func TestPolicyValidator_InvalidParameters(t *testing.T) {
 		"APIKeyValidation|v1.0.0": {
 			Name:    "APIKeyValidation",
 			Version: "v1.0.0",
-			Flows: api.PolicyDefinition_Flows{
-				Request: &api.PolicyFlowRequirements{
-					RequireHeader: boolPtr(true),
-				},
-			},
 			ParametersSchema: &map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -198,11 +188,6 @@ func TestPolicyValidator_OperationLevelPolicies(t *testing.T) {
 		"RateLimiting|v1.0.0": {
 			Name:    "RateLimiting",
 			Version: "v1.0.0",
-			Flows: api.PolicyDefinition_Flows{
-				Request: &api.PolicyFlowRequirements{
-					RequireHeader: boolPtr(true),
-				},
-			},
 			ParametersSchema: &map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -258,11 +243,6 @@ func TestPolicyValidator_MultipleErrors(t *testing.T) {
 		"ValidPolicy|v1.0.0": {
 			Name:    "ValidPolicy",
 			Version: "v1.0.0",
-			Flows: api.PolicyDefinition_Flows{
-				Request: &api.PolicyFlowRequirements{
-					RequireHeader: boolPtr(true),
-				},
-			},
 		},
 	}
 
@@ -316,11 +296,6 @@ func TestPolicyValidator_TypeMismatch(t *testing.T) {
 		"TestPolicy|v1.0.0": {
 			Name:    "TestPolicy",
 			Version: "v1.0.0",
-			Flows: api.PolicyDefinition_Flows{
-				Request: &api.PolicyFlowRequirements{
-					RequireHeader: boolPtr(true),
-				},
-			},
 			ParametersSchema: &map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
