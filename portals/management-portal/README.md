@@ -37,7 +37,7 @@ Follow this guide to fully set up the development environment for the Management
 3. [Run the Developer Portal (Optional)](#3️⃣-run-the-developer-portal-optional)
 4. [Run the Management Portal](#4️⃣-run-the-management-portal)
 5. [Important Prerequisites](#5️⃣-important-prerequisites)
-6. [Development Workflow](#🟢-development-workflow)
+6. [Development Workflow](#development-workflow)
 
 ---
 
@@ -79,7 +79,7 @@ Running the Developer Portal is optional unless you want to test **API publishin
 cd portals/developer-portal
 ```
 
-### Step A — Create `config.json` and `secret.json`
+## Step A — Create `config.json` and `secret.json`
 
 Use the template files (paths relative to repo root):
 
@@ -88,7 +88,7 @@ Use the template files (paths relative to repo root):
 
 Copy and modify based on your environment.
 
-### Step B — Set Up PostgreSQL
+## Step B — Set Up PostgreSQL
 
 ```text
 portals/developer-portal/artifacts/script.sql
@@ -99,7 +99,7 @@ After DB creation:
 * Update **dbSecret** in `secret.json`
 * Update DB configs in `config.json`
 
-### Step C — Use the Same API Key Values
+## Step C — Use the Same API Key Values
 
 ```json
 "apiKey": {
@@ -109,7 +109,11 @@ After DB creation:
 }
 ```
 
-### Step D — Start the Developer Portal
+## Step E — Organization Mapping
+
+Create an organization in Developer Portal:
+
+## Step D — Start the Developer Portal
 
 ```bash
 cd portals/developer-portal
@@ -117,15 +121,8 @@ npm ci --legacy-peer-deps
 npm start
 ```
 
-### Step E — Organization Mapping
-
-Create an organization (Same as Devportal name is Management Portal) in Developer Portal:
-
 ```bash
-curl --location 'http://localhost:<port or 3000>/devportal/organizations' \
---header 'api-key: xxx' \
---header 'Content-Type: application/json' \
---data '{
+curl --location 'http://localhost:<port or 3000>/devportal/organizations' --header 'api-key: xxx' --header 'Content-Type: application/json' --data '{
     "orgName": "<name>",
     "orgHandle": "<name>",
     "organizationIdentifier": "<id>"
@@ -155,10 +152,7 @@ https://localhost:8443/
 ## ✅ Create a Default Organization in Platform API
 
 ```bash
-curl --location 'https://localhost:8443/api/v1/organizations' \
---header 'Content-Type: application/json' \
---header 'Authorization: Bearer <shared-token>' \
---data '{
+curl --location 'https://localhost:8443/api/v1/organizations' --header 'Content-Type: application/json' --header 'Authorization: Bearer <shared-token>' --data '{
     "id": "15b2ac94-6217-4f51-90d4-b2b3814b20b4",
     "handle": "acme",
     "name": "ACME Corporation",
@@ -168,7 +162,7 @@ curl --location 'https://localhost:8443/api/v1/organizations' \
 
 ---
 
-# 🟢 Development Workflow
+# Development Workflow
 
 Once the setup is complete, the platform is ready for end-to-end development:
 
@@ -177,5 +171,3 @@ Once the setup is complete, the platform is ready for end-to-end development:
 * Deployment to gateways
 * Policy configuration
 * Developer portal integration
-
----
