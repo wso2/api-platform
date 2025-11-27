@@ -131,7 +131,14 @@ func main() {
 		})
 	}
 
-	policyEngineBin := filepath.Join(*outputDir, "policy-engine", "policy-engine")
+	// Create temp directory for compilation
+	tempDir, err := os.MkdirTemp("", "policy-engine-build-*")
+	if err != nil {
+		errors.FatalError(errors.NewCompilationError("failed to create temp directory", err))
+	}
+	defer os.RemoveAll(tempDir)
+
+	policyEngineBin := filepath.Join(tempDir, "policy-engine")
 	compileOpts := compilation.BuildOptions(policyEngineBin, buildMetadata)
 
 	if err := compilation.CompileBinary(*policyEngineSrc, compileOpts); err != nil {
@@ -142,7 +149,7 @@ func main() {
 	slog.Info("Starting Phase 5: Dockerfile Generation", "phase", "dockerfile-generation")
 
 	dockerfileGenerator := &docker.DockerfileGenerator{
-		PolicyEngineBin:            policyEngineBin,
+		PolicyEngineBin:            compileOpts.OutputPath,
 		Policies:                   policies,
 		OutputDir:                  *outputDir,
 		GatewayControllerBaseImage: *gatewayControllerBaseImage,

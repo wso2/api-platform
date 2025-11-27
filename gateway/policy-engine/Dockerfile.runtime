@@ -63,7 +63,7 @@ RUN apk --no-cache add ca-certificates
 WORKDIR /app
 
 # Copy compiled binary from policy-compiler stage
-COPY --from=policy-compiler /workspace/output/policy-engine /app/policy-engine
+COPY --from=policy-compiler /workspace/output/policy-engine/policy-engine /app/policy-engine
 
 # Copy config files
 COPY configs/ /configs/
