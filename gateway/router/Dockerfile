@@ -36,7 +36,7 @@ COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Expose HTTP port and admin port
-EXPOSE 8080 9901 8081 8082
+EXPOSE 8080 9901 8081 8082 8083
 
 # Set environment variables with default values
 ENV XDS_SERVER_HOST=gateway-controller

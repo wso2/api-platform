@@ -19,6 +19,11 @@
 package integration
 
 import (
+	"context"
+	"fmt"
+	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -32,6 +37,86 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 	"go.uber.org/zap"
 )
+
+var (
+	gatewayStarted bool
+)
+
+// init starts the gateway controller and router services before running tests
+func init() {
+	// Check if services are already running
+	if isServiceHealthy("http://localhost:9090/health") && isServiceHealthy("http://localhost:9901/ready") {
+		fmt.Println("Gateway services are already running")
+		gatewayStarted = true
+		return
+	}
+
+	fmt.Println("Starting gateway services...")
+
+	// Get the gateway directory path (parent of gateway-controller)
+	gatewayDir := filepath.Join("..", "..", "..")
+
+	// Start docker compose
+	cmd := exec.Command("docker", "compose", "up", "-d")
+	cmd.Dir = gatewayDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("Failed to start gateway services: %v\n", err)
+		fmt.Println("Please start the services manually using: cd ../../.. && docker compose up -d")
+		return
+	}
+
+	// Wait for services to be healthy
+	fmt.Println("Waiting for gateway controller to be ready...")
+	if !waitForService("http://localhost:9090/health", 60*time.Second) {
+		fmt.Println("Gateway controller failed to start. Check logs with: docker logs gateway-controller")
+		return
+	}
+
+	fmt.Println("Waiting for router to be ready...")
+	if !waitForService("http://localhost:9901/ready", 60*time.Second) {
+		fmt.Println("Router failed to start. Check logs with: docker logs router")
+		return
+	}
+
+	fmt.Println("Gateway services started successfully")
+	gatewayStarted = true
+}
+
+// isServiceHealthy checks if a service is healthy
+func isServiceHealthy(url string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return false
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode == http.StatusOK
+}
+
+// waitForService waits for a service to become healthy
+func waitForService(url string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		if isServiceHealthy(url) {
+			return true
+		}
+		time.Sleep(2 * time.Second)
+	}
+
+	return false
+}
 
 // TestDeployRESTAPIConfiguration tests deploying REST API configurations
 func TestDeployRESTAPIConfiguration(t *testing.T) {

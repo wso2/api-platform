@@ -20,6 +20,7 @@ package storage
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
@@ -68,7 +69,11 @@ func (cs *ConfigStore) Add(cfg *models.StoredAPIConfig) error {
 		// Running these inside Add or Delete configs might add extra latency to the API Deployment process
 		// TODO: Optimize topic management if needed by maintaining a separate topic manager struct
 		for _, topic := range asyncData.Channels {
-			modifiedTopic := fmt.Sprintf("%s/%s%s", asyncData.Context, asyncData.Version, topic.Path)
+			name := strings.TrimPrefix(asyncData.Name, "/")
+			context := strings.TrimPrefix(asyncData.Context, "/")
+			version := strings.TrimPrefix(asyncData.Version, "/")
+			path := strings.TrimPrefix(topic.Path, "/")
+			modifiedTopic := fmt.Sprintf("%s_%s_%s_%s", name, context, version, path)
 			if _, exist := cs.TopicManager.topics[modifiedTopic]; !exist {
 				cs.TopicManager.Add(cfg.ID, modifiedTopic)
 				// cs.topics[modifiedTopic] = cfg.Configuration.Data.Name
@@ -77,7 +82,7 @@ func (cs *ConfigStore) Add(cfg *models.StoredAPIConfig) error {
 
 		apiTopicsPerRevision := make(map[string]bool)
 		for _, topic := range asyncData.Channels {
-			modifiedTopic := fmt.Sprintf("%s/%s%s", asyncData.Context, asyncData.Version, topic.Path)
+			modifiedTopic := fmt.Sprintf("%s_%s_%s_%s", asyncData.Name, asyncData.Context, asyncData.Version, topic.Path)
 			apiTopicsPerRevision[modifiedTopic] = true
 		}
 
@@ -149,7 +154,11 @@ func (cs *ConfigStore) Delete(id string) error {
 
 		apiTopicsPerRevision := make(map[string]bool)
 		for _, topic := range asyncData.Channels {
-			modifiedTopic := fmt.Sprintf("%s/%s/%s", asyncData.Context, asyncData.Version, topic.Path)
+			name := strings.TrimPrefix(asyncData.Name, "/")
+			context := strings.TrimPrefix(asyncData.Context, "/")
+			version := strings.TrimPrefix(asyncData.Version, "/")
+			path := strings.TrimPrefix(topic.Path, "/")
+			modifiedTopic := fmt.Sprintf("%s_%s_%s_%s", name, context, version, path)
 			apiTopicsPerRevision[modifiedTopic] = true
 		}
 

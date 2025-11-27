@@ -20,7 +20,6 @@ package utils
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -129,13 +128,6 @@ func (s *APIDeploymentService) handleRestAPIUndeploy(apiConfig *models.StoredAPI
 		if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
 			params.Logger.Error("Failed to update xDS snapshot", zap.Error(err))
 		}
-		// Grace period to let Envoy apply new resources
-		select {
-		case <-time.After(6 * time.Second):
-		case <-ctx.Done():
-			params.Logger.Warn("Context cancelled before topic lifecycle", zap.String("api_id", apiConfig.ID))
-			return
-		}
 	}()
 
 	return &APIDeploymentResult{
@@ -170,6 +162,7 @@ func (s *APIDeploymentService) handleAsyncAPIUndeploy(apiConfig *models.StoredAP
 		wg.Add(1)
 		go func(list []string) {
 			defer wg.Done()
+			params.Logger.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", apiConfig.ID))
 			for _, topic := range list {
 				// Topic register and deregister should be proxy calls to avoid blocking
 				// If these requests are handled with the reverse proxy then we need to remove all before XDS removes the routes
@@ -211,13 +204,6 @@ func (s *APIDeploymentService) handleAsyncAPIUndeploy(apiConfig *models.StoredAP
 
 		if err := s.snapshotManager.UpdateSnapshotofAsyncAPI(ctx, params.CorrelationID); err != nil {
 			params.Logger.Error("Failed to update xDS snapshot", zap.Error(err))
-		}
-		// Grace period to let Envoy apply new resources
-		select {
-		case <-time.After(6 * time.Second):
-		case <-ctx.Done():
-			params.Logger.Warn("Context cancelled before topic lifecycle", zap.String("api_id", apiConfig.ID))
-			return
 		}
 	}()
 
@@ -316,49 +302,57 @@ func (s *APIDeploymentService) handleRestAPIUpdate(name, version string, apiConf
 	var regErrs int32
 	var deregErrs int32
 
-	wg2.Add(1)
-	go func(list []string) {
-		defer wg2.Done()
-		if len(list) == 0 {
-			return
-		}
-		fmt.Println("Topics Registering Started")
-		for _, topic := range list {
-			if err := s.RegisterTopicWithHub(topic, "localhost", params.Logger); err != nil {
-				params.Logger.Error("Failed to register topic with WebSubHub",
-					zap.Error(err),
-					zap.String("topic", topic),
-					zap.String("api_id", apiID))
-				atomic.AddInt32(&regErrs, 1)
-			} else {
-				params.Logger.Info("Successfully registered topic with WebSubHub",
-					zap.String("topic", topic),
-					zap.String("api_id", apiID))
-			}
-		}
-	}(topicsToRegister)
+	var waitCount int
+	if len(topicsToRegister) > 0 {
+		waitCount++
+	}
+	if len(topicsToUnregister) > 0 {
+		waitCount++
+	}
 
-	wg2.Add(1)
-	go func(list []string) {
-		defer wg2.Done()
-		if len(list) == 0 {
-			return
-		}
-		fmt.Println("Topics Deregistering Started")
-		for _, topic := range list {
-			if err := s.UnregisterTopicWithHub(topic, "localhost", params.Logger); err != nil {
-				params.Logger.Error("Failed to deregister topic from WebSubHub",
-					zap.Error(err),
-					zap.String("topic", topic),
-					zap.String("api_id", apiID))
-				atomic.AddInt32(&deregErrs, 1)
-			} else {
-				params.Logger.Info("Successfully deregistered topic from WebSubHub",
-					zap.String("topic", topic),
-					zap.String("api_id", apiID))
+	wg2.Add(waitCount)
+
+	if len(topicsToRegister) > 0 {
+		go func(list []string) {
+			defer wg2.Done()
+			params.Logger.Info("Starting topic registration", zap.Int("total_topics", len(list)), zap.String("api_id", apiID))
+			//fmt.Println("Topics Registering Started")
+			for _, topic := range list {
+				if err := s.RegisterTopicWithHub(topic, "localhost", params.Logger); err != nil {
+					params.Logger.Error("Failed to register topic with WebSubHub",
+						zap.Error(err),
+						zap.String("topic", topic),
+						zap.String("api_id", apiID))
+					atomic.AddInt32(&regErrs, 1)
+				} else {
+					params.Logger.Info("Successfully registered topic with WebSubHub",
+						zap.String("topic", topic),
+						zap.String("api_id", apiID))
+				}
 			}
-		}
-	}(topicsToUnregister)
+
+		}(topicsToRegister)
+	}
+
+	if len(topicsToUnregister) > 0 {
+		go func(list []string) {
+			defer wg2.Done()
+			params.Logger.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", apiID))
+			for _, topic := range list {
+				if err := s.UnregisterTopicWithHub(topic, "localhost", params.Logger); err != nil {
+					params.Logger.Error("Failed to deregister topic from WebSubHub",
+						zap.Error(err),
+						zap.String("topic", topic),
+						zap.String("api_id", apiID))
+					atomic.AddInt32(&deregErrs, 1)
+				} else {
+					params.Logger.Info("Successfully deregistered topic from WebSubHub",
+						zap.String("topic", topic),
+						zap.String("api_id", apiID))
+				}
+			}
+		}(topicsToUnregister)
+	}
 
 	wg2.Wait()
 	params.Logger.Info("Topic lifecycle operations completed",
@@ -370,9 +364,13 @@ func (s *APIDeploymentService) handleRestAPIUpdate(name, version string, apiConf
 
 	// Check if topic operations failed and return error
 	if regErrs > 0 || deregErrs > 0 {
-		params.Logger.Error("Topic lifecycle operations failed",
+		params.Logger.Error("Topic lifecycle operations failed, rolling back configuration",
 			zap.Int("register_errors", int(regErrs)),
 			zap.Int("deregister_errors", int(deregErrs)))
+
+		// Rollback the configuration from store and database
+		s.rollbackConfig(apiID, params.Logger)
+
 		return nil, fmt.Errorf("failed to complete topic operations: %d registration error(s), %d deregistration error(s)", regErrs, deregErrs)
 	}
 
@@ -506,21 +504,14 @@ func (s *APIDeploymentService) GetAllTopicsToRegisterAndUnregister(apiConfig mod
 		return topicsToRegister, topicsToUnregister
 	}
 
-	// // Convert map to typed struct
-	// var asyncData struct {
-	// 	Context  string `json:"context"`
-	// 	Version  string `json:"version"`
-	// 	Channels []struct {
-	// 		Path string `json:"path"`
-	// 	} `json:"channels"`
-	// }
-	// if err := mapToStruct(apiConfig.Configuration.Data, &asyncData); err != nil {
-	// 	// Return empty lists if parsing fails
-	// 	return topicsToRegister, topicsToUnregister
-	// }
-
 	for _, topic := range asyncData.Channels {
-		modifiedTopic := fmt.Sprintf("%s/%s%s", asyncData.Context, asyncData.Version, topic.Path)
+		// Remove leading '/' from name, context, version and topic path if present
+		name := strings.TrimPrefix(asyncData.Name, "/")
+		context := strings.TrimPrefix(asyncData.Context, "/")
+		version := strings.TrimPrefix(asyncData.Version, "/")
+		path := strings.TrimPrefix(topic.Path, "/")
+
+		modifiedTopic := fmt.Sprintf("%s_%s_%s_%s", name, context, version, path)
 		apiTopicsPerRevision[modifiedTopic] = true
 	}
 
@@ -538,6 +529,33 @@ func (s *APIDeploymentService) GetAllTopicsToRegisterAndUnregister(apiConfig mod
 	}
 
 	return topicsToRegister, topicsToUnregister
+}
+
+// rollbackConfig removes a configuration from both store and database
+func (s *APIDeploymentService) rollbackConfig(apiID string, logger *zap.Logger) {
+	logger.Warn("Rolling back configuration due to topic operation failure", zap.String("api_id", apiID))
+
+	// Remove from in-memory store
+	if err := s.store.Delete(apiID); err != nil {
+		logger.Error("Failed to rollback config from memory store during rollback",
+			zap.Error(err),
+			zap.String("api_id", apiID))
+	} else {
+		logger.Info("Successfully removed config from memory store during rollback",
+			zap.String("api_id", apiID))
+	}
+
+	// Remove from database (only if persistent mode)
+	if s.db != nil {
+		if err := s.db.DeleteConfig(apiID); err != nil {
+			logger.Error("Failed to rollback config from database during rollback",
+				zap.Error(err),
+				zap.String("api_id", apiID))
+		} else {
+			logger.Info("Successfully removed config from database during rollback",
+				zap.String("api_id", apiID))
+		}
+	}
 }
 
 // saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
@@ -646,7 +664,9 @@ func (s *APIDeploymentService) sendTopicRequestToHub(topic string, mode string, 
 	targetURL := fmt.Sprintf("http://%s:8083/websubhub/operations", gwHost)
 
 	// HTTP client with timeout (no proxy)
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
 
 	// Retry on 404 Not Found (hub might not be ready immediately)
 	const maxRetries = 5
@@ -702,20 +722,4 @@ func (s *APIDeploymentService) sendTopicRequestToHub(topic string, mode string, 
 // generateUUID generates a new UUID string
 func generateUUID() string {
 	return uuid.New().String()
-}
-
-// mapToStruct converts a map[string]interface{} to a typed struct
-func mapToStruct(data map[string]interface{}, out interface{}) error {
-	// Convert map -> JSON bytes
-	jsonBytes, err := json.Marshal(data)
-	if err != nil {
-		return fmt.Errorf("failed to marshal map to JSON: %w", err)
-	}
-
-	// Unmarshal JSON bytes -> target struct
-	if err := json.Unmarshal(jsonBytes, out); err != nil {
-		return fmt.Errorf("failed to unmarshal JSON to struct: %w", err)
-	}
-
-	return nil
 }
