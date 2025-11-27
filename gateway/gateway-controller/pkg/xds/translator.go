@@ -132,59 +132,59 @@ func (t *Translator) TranslateConfigs(
 		log = t.logger.With(zap.String("correlation_id", correlationID))
 	}
 
-// 	resources := make(map[resource.Type][]types.Resource)
+	resources := make(map[resource.Type][]types.Resource)
 
 	var listeners []types.Resource
 	var clusters []types.Resource
 
-// 	// We'll use a single listener on port 8080 with a single virtual host
-// 	// All API routes are consolidated into one virtual host to avoid wildcard domain conflicts
-// 	allRoutes := make([]*route.Route, 0)
-// 	clusterMap := make(map[string]*cluster.Cluster)
+	// We'll use a single listener on port 8080 with a single virtual host
+	// All API routes are consolidated into one virtual host to avoid wildcard domain conflicts
+	allRoutes := make([]*route.Route, 0)
+	clusterMap := make(map[string]*cluster.Cluster)
 
-// 	for _, cfg := range configs {
-// 		// Include ALL configs (both deployed and pending) in the snapshot
-// 		// This ensures existing APIs are not overridden when deploying new APIs
+	for _, cfg := range configs {
+		// Include ALL configs (both deployed and pending) in the snapshot
+		// This ensures existing APIs are not overridden when deploying new APIs
 
-// 		// Create routes and clusters for this API
-// 		routesList, clusterList, err := t.translateAPIConfig(cfg)
-// 		if err != nil {
-// 			log.Error("Failed to translate config",
-// 				zap.String("id", cfg.ID),
-// 				zap.String("name", cfg.GetAPIName()),
-// 				zap.Error(err))
-// 			continue
-// 		}
+		// Create routes and clusters for this API
+		routesList, clusterList, err := t.translateAPIConfig(cfg)
+		if err != nil {
+			log.Error("Failed to translate config",
+				zap.String("id", cfg.ID),
+				zap.String("name", cfg.GetAPIName()),
+				zap.Error(err))
+			continue
+		}
 
-// 		allRoutes = append(allRoutes, routesList...)
+		allRoutes = append(allRoutes, routesList...)
 
-// 		// Add clusters (avoiding duplicates)
-// 		for _, c := range clusterList {
-// 			clusterMap[c.Name] = c
-// 		}
-// 	}
+		// Add clusters (avoiding duplicates)
+		for _, c := range clusterList {
+			clusterMap[c.Name] = c
+		}
+	}
 
-// 	// Add a catch-all route that returns 404 for unmatched requests
-// 	// This should be the last route (lowest priority)
-// 	allRoutes = append(allRoutes, &route.Route{
-// 		Match: &route.RouteMatch{
-// 			PathSpecifier: &route.RouteMatch_Prefix{
-// 				Prefix: "/",
-// 			},
-// 		},
-// 		Action: &route.Route_DirectResponse{
-// 			DirectResponse: &route.DirectResponseAction{
-// 				Status: 404,
-// 			},
-// 		},
-// 	})
+	// Add a catch-all route that returns 404 for unmatched requests
+	// This should be the last route (lowest priority)
+	allRoutes = append(allRoutes, &route.Route{
+		Match: &route.RouteMatch{
+			PathSpecifier: &route.RouteMatch_Prefix{
+				Prefix: "/",
+			},
+		},
+		Action: &route.Route_DirectResponse{
+			DirectResponse: &route.DirectResponseAction{
+				Status: 404,
+			},
+		},
+	})
 
-// 	// Create a single virtual host with all routes
-// 	virtualHost := &route.VirtualHost{
-// 		Name:    "all_apis",
-// 		Domains: []string{"*"},
-// 		Routes:  allRoutes,
-// 	}
+	// Create a single virtual host with all routes
+	virtualHost := &route.VirtualHost{
+		Name:    "all_apis",
+		Domains: []string{"*"},
+		Routes:  allRoutes,
+	}
 
 	// Always create the HTTP listener, even with no APIs deployed
 	httpListener, err := t.createListener([]*route.VirtualHost{virtualHost}, false)
@@ -209,10 +209,10 @@ func (t *Translator) TranslateConfigs(
 		log.Info("HTTPS is disabled, skipping HTTPS listener creation")
 	}
 
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to create listener: %w", err)
-// 	}
-// 	listeners = append(listeners, l)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create listener: %w", err)
+	}
+	listeners = append(listeners, l)
 
 	// Add policy engine cluster if enabled
 	if t.routerConfig.PolicyEngine.Enabled {
@@ -417,8 +417,8 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredAPIConfig) ([]*route.R
 		routesList = append(routesList, r)
 	}
 
-// 	return routesList, []*cluster.Cluster{c}, nil
-// }
+	return routesList, []*cluster.Cluster{c}, nil
+}
 
 // createListener creates an Envoy listener with access logging
 // If isHTTPS is true, creates an HTTPS listener with TLS configuration
