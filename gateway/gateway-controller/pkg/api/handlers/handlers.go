@@ -1049,14 +1049,14 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 
 	// Build API list with metadata using the exact generated types
 	apisSlice := make([]struct {
-		Configuration *api.APIConfiguration `json:"configuration,omitempty"`
-		Id            *openapi_types.UUID   `json:"id,omitempty"`
+		Configuration *api.APIConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+		Id            *openapi_types.UUID   `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata      *struct {
-			CreatedAt  *time.Time                                `json:"created_at,omitempty"`
-			DeployedAt *time.Time                                `json:"deployed_at,omitempty"`
-			Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty"`
-			UpdatedAt  *time.Time                                `json:"updated_at,omitempty"`
-		} `json:"metadata,omitempty"`
+			CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+			DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
+			Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
+			UpdatedAt  *time.Time                                `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 	}, 0, len(allConfigs))
 
 	for _, cfg := range allConfigs {
@@ -1070,32 +1070,32 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 		var status api.ConfigDumpResponseApisMetadataStatus
 		switch cfg.Status {
 		case models.StatusDeployed:
-			status = api.Deployed
+			status = api.ConfigDumpResponseApisMetadataStatusDeployed
 		case models.StatusFailed:
-			status = api.Failed
+			status = api.ConfigDumpResponseApisMetadataStatusFailed
 		case models.StatusPending:
-			status = api.Pending
+			status = api.ConfigDumpResponseApisMetadataStatusPending
 		default:
-			status = api.Pending
+			status = api.ConfigDumpResponseApisMetadataStatusPending
 		}
 
 		item := struct {
-			Configuration *api.APIConfiguration `json:"configuration,omitempty"`
-			Id            *openapi_types.UUID   `json:"id,omitempty"`
+			Configuration *api.APIConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+			Id            *openapi_types.UUID   `json:"id,omitempty" yaml:"id,omitempty"`
 			Metadata      *struct {
-				CreatedAt  *time.Time                                `json:"created_at,omitempty"`
-				DeployedAt *time.Time                                `json:"deployed_at,omitempty"`
-				Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty"`
-				UpdatedAt  *time.Time                                `json:"updated_at,omitempty"`
-			} `json:"metadata,omitempty"`
+				CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+				DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
+				Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
+				UpdatedAt  *time.Time                                `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+			} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 		}{
 			Configuration: &cfg.Configuration,
 			Id:            configUUID,
 			Metadata: &struct {
-				CreatedAt  *time.Time                                `json:"created_at,omitempty"`
-				DeployedAt *time.Time                                `json:"deployed_at,omitempty"`
-				Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty"`
-				UpdatedAt  *time.Time                                `json:"updated_at,omitempty"`
+				CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+				DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
+				Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
+				UpdatedAt  *time.Time                                `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
 			}{
 				CreatedAt:  &cfg.CreatedAt,
 				UpdatedAt:  &cfg.UpdatedAt,
@@ -1172,10 +1172,10 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 		Policies:     &policies,
 		Certificates: &certificates,
 		Statistics: &struct {
-			TotalApis             *int `json:"totalApis,omitempty"`
-			TotalCertificateBytes *int `json:"totalCertificateBytes,omitempty"`
-			TotalCertificates     *int `json:"totalCertificates,omitempty"`
-			TotalPolicies         *int `json:"totalPolicies,omitempty"`
+			TotalApis             *int `json:"totalApis,omitempty" yaml:"totalApis,omitempty"`
+			TotalCertificateBytes *int `json:"totalCertificateBytes,omitempty" yaml:"totalCertificateBytes,omitempty"`
+			TotalCertificates     *int `json:"totalCertificates,omitempty" yaml:"totalCertificates,omitempty"`
+			TotalPolicies         *int `json:"totalPolicies,omitempty" yaml:"totalPolicies,omitempty"`
 		}{
 			TotalApis:             &totalApis,
 			TotalPolicies:         &totalPolicies,
