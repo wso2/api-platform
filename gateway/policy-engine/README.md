@@ -33,7 +33,6 @@ make build-builder
 Then, use the following commands to build the Policy Engine runtime with sample policies and Dockerfiles of other components:
 ```bash
 # Build using Gateway Builder
-```bash
 docker run --rm \
     -v $(pwd)/sample-policies:/workspace/sample-policies \
     -v $(pwd)/policies.yaml:/workspace/policies.yaml \

@@ -741,7 +741,7 @@ func (u *APIUtil) GetAPISubType(apiType string) string {
 	}
 }
 
-// GenerateAPIDeploymentYAML creates the deployment YAML from API data
+// GenerateAPIDeploymentYAML creates the deployment YAML from API
 func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 	operationList := make([]dto.OperationRequest, 0)
 	for _, op := range api.Operations {
@@ -770,7 +770,7 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 	apiDeployment := dto.APIDeploymentYAML{
 		Kind:    "http/rest",
 		Version: "api-platform.wso2.com/v1",
-		Data:    apiYAMLData,
+		Spec:    apiYAMLData,
 	}
 
 	// Convert to YAML
@@ -853,7 +853,7 @@ func (u *APIUtil) ConvertAPIYAMLDataToDTO(artifact *dto.APIDeploymentYAML) (*dto
 		return nil, fmt.Errorf("invalid artifact data")
 	}
 
-	return u.APIYAMLData2ToDTO(&artifact.Data), nil
+	return u.APIYAMLData2ToDTO(&artifact.Spec), nil
 }
 
 // APIYAMLData2ToDTO converts APIYAMLData2 to API DTO
@@ -1085,15 +1085,15 @@ func (u *APIUtil) ValidateWSO2Artifact(artifact *dto.APIDeploymentYAML) error {
 		return fmt.Errorf("invalid artifact: missing version")
 	}
 
-	if artifact.Data.Name == "" {
+	if artifact.Spec.Name == "" {
 		return fmt.Errorf("missing API name")
 	}
 
-	if artifact.Data.Context == "" {
+	if artifact.Spec.Context == "" {
 		return fmt.Errorf("missing API context")
 	}
 
-	if artifact.Data.Version == "" {
+	if artifact.Spec.Version == "" {
 		return fmt.Errorf("missing API version")
 	}
 
@@ -1115,9 +1115,9 @@ func (u *APIUtil) ValidateAPIDefinitionConsistency(openAPIContent []byte, wso2Ar
 
 	// Check version consistency
 	if version, exists := info["version"].(string); exists {
-		if version != wso2Artifact.Data.Version {
+		if version != wso2Artifact.Spec.Version {
 			return fmt.Errorf("version mismatch between OpenAPI (%s) and WSO2 artifact (%s)",
-				version, wso2Artifact.Data.Version)
+				version, wso2Artifact.Spec.Version)
 		}
 	}
 
