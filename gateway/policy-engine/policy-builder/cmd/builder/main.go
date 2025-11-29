@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	DefaultManifestFile    = "policies.yaml"
+	DefaultManifestFile    = "policy-manifest.yaml"
 	DefaultOutputDir       = "output"
 	DefaultPolicyEngineSrc = "policy-engine"
 

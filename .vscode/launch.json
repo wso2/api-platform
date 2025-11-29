@@ -25,7 +25,7 @@
             "env": {
                 "GATEWAY_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
                 "GATEWAY_CONTROLPLANE_TOKEN": "",
-                "POLICY_DIRECTORY": "${workspaceFolder}/gateway/gateway-controller/policies",
+                "POLICY_DIRECTORY": "${workspaceFolder}/gateway/gateway-controller/sample-policies",
             }
         },
         {
@@ -35,7 +35,7 @@
             "mode": "auto",
             "program": "${workspaceFolder}/gateway/policy-engine/policy-builder/cmd/builder",
             "args": [
-                "-manifest", "${workspaceFolder}/gateway/policy-engine/policies.yaml",
+                "-manifest", "${workspaceFolder}/gateway/policy-engine/policy-manifest.yaml",
                 "-policy-engine-src", "${workspaceFolder}/gateway/policy-engine/policy-engine",
                 "-out-dir", "${workspaceFolder}/gateway/policy-engine/policy-builder/bin/output",
                 "-log-level", "debug",

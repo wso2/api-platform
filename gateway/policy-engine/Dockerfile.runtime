@@ -44,7 +44,7 @@ FROM builder-base AS policy-compiler
 COPY sample-policies/ /workspace/sample-policies/
 
 # Copy policy manifest
-COPY policies.yaml /workspace/policies.yaml
+COPY policy-manifest.yaml /workspace/policy-manifest.yaml
 
 # Create output directory
 RUN mkdir -p /workspace/output

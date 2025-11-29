@@ -36,7 +36,7 @@ Then, use the following commands to build the Policy Engine runtime with sample 
 ```bash
 docker run --rm \
     -v $(pwd)/sample-policies:/workspace/sample-policies \
-    -v $(pwd)/policies.yaml:/workspace/policies.yaml \
+    -v $(pwd)/policy-manifest.yaml:/workspace/policy-manifest.yaml \
     -v $(pwd)/output:/workspace/output \
     wso2/api-platform-gateway-builder:latest
 ```
