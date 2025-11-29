@@ -19,11 +19,11 @@ package repository
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -55,42 +55,121 @@ func (r *devPortalRepository) Create(devPortal *model.DevPortal) error {
 		return err
 	}
 
-	// Attempt to insert - let database constraints handle uniqueness
+	// Start transaction to ensure atomicity of check and insert
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction for devportal creation: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Check for conflicts within the transaction
+	if err := r.checkForConflictsTx(tx, devPortal); err != nil {
+		return err
+	}
+
+	// Attempt to insert within the same transaction
 	query := `INSERT INTO devportals (
 		uuid, organization_uuid, name, identifier, api_url, 
 		hostname, is_active, is_enabled, api_key, header_key_name, is_default, visibility, description, created_at, updated_at
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
-	_, err := r.db.Exec(query,
+	_, err = tx.Exec(query,
 		devPortal.UUID, devPortal.OrganizationUUID, devPortal.Name, devPortal.Identifier,
 		devPortal.APIUrl, devPortal.Hostname,
 		devPortal.IsActive, devPortal.IsEnabled, devPortal.APIKey, devPortal.HeaderKeyName,
 		devPortal.IsDefault, devPortal.Visibility, devPortal.Description, devPortal.CreatedAt, devPortal.UpdatedAt)
 
 	if err != nil {
-		// Handle unique constraint violations
-		errStr := err.Error()
-		if strings.Contains(errStr, "UNIQUE constraint failed") || strings.Contains(errStr, "constraint failed") {
-			if strings.Contains(errStr, "organization_uuid, api_url") {
-				return constants.ErrDevPortalAPIUrlExists
-			}
-			if strings.Contains(errStr, "identifier, api_url") {
-				return constants.ErrDevPortalAPIUrlExists // identifier + api_url constraint
-			}
-			if strings.Contains(errStr, "organization_uuid, hostname") {
-				return constants.ErrDevPortalHostnameExists
-			}
-			if strings.Contains(errStr, "idx_devportals_default_per_org") {
-				return constants.ErrDevPortalDefaultAlreadyExists
-			}
-			return constants.ErrDevPortalAlreadyExists
-		}
 		log.Printf("[DevPortalRepository] Failed to create DevPortal %s: %v", devPortal.Name, err)
-		return err
+		return fmt.Errorf("failed to create devportal %s in organization %s: %w", devPortal.Name, devPortal.OrganizationUUID, err)
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit devportal creation transaction: %w", err)
 	}
 
 	log.Printf("[DevPortalRepository] Created DevPortal %s (UUID: %s) for organization %s",
 		devPortal.Name, devPortal.UUID, devPortal.OrganizationUUID)
+	return nil
+}
+
+// checkForConflictsTx checks for conflicts within a transaction
+func (r *devPortalRepository) checkForConflictsTx(tx *sql.Tx, devPortal *model.DevPortal) error {
+	// Check for existing DevPortal with same API URL in the same organization
+	var count int
+	err := tx.QueryRow(`
+		SELECT COUNT(*) FROM devportals
+		WHERE organization_uuid = ? AND api_url = ?`,
+		devPortal.OrganizationUUID, devPortal.APIUrl).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("failed to check for existing API URL: %w", err)
+	}
+	if count > 0 {
+		return fmt.Errorf("devportal with API URL %s already exists in organization %s: %w",
+			devPortal.APIUrl, devPortal.OrganizationUUID, constants.ErrDevPortalAPIUrlExists)
+	}
+
+	// Check for existing DevPortal with same hostname in the same organization
+	err = tx.QueryRow(`
+		SELECT COUNT(*) FROM devportals
+		WHERE organization_uuid = ? AND hostname = ?`,
+		devPortal.OrganizationUUID, devPortal.Hostname).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("failed to check for existing hostname: %w", err)
+	}
+	if count > 0 {
+		return fmt.Errorf("devportal with hostname %s already exists in organization %s: %w",
+			devPortal.Hostname, devPortal.OrganizationUUID, constants.ErrDevPortalHostnameExists)
+	}
+
+	// Check for existing default DevPortal if this one is set as default
+	if devPortal.IsDefault {
+		err = tx.QueryRow(`
+			SELECT COUNT(*) FROM devportals
+			WHERE organization_uuid = ? AND is_default = 1`,
+			devPortal.OrganizationUUID).Scan(&count)
+		if err != nil {
+			return fmt.Errorf("failed to check for existing default devportal: %w", err)
+		}
+		if count > 0 {
+			return fmt.Errorf("default devportal already exists for organization %s: %w",
+				devPortal.OrganizationUUID, constants.ErrDevPortalDefaultAlreadyExists)
+		}
+	}
+
+	return nil
+}
+
+// checkForUpdateConflictsTx checks for update conflicts within a transaction
+func (r *devPortalRepository) checkForUpdateConflictsTx(tx *sql.Tx, devPortal *model.DevPortal, orgUUID string) error {
+	// Check for existing DevPortal with same API URL in the same organization (excluding this one)
+	var count int
+	err := tx.QueryRow(`
+		SELECT COUNT(*) FROM devportals
+		WHERE organization_uuid = ? AND api_url = ? AND uuid != ?`,
+		orgUUID, devPortal.APIUrl, devPortal.UUID).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("failed to check for existing API URL during update: %w", err)
+	}
+	if count > 0 {
+		return fmt.Errorf("devportal with API URL %s already exists in organization %s: %w",
+			devPortal.APIUrl, orgUUID, constants.ErrDevPortalAPIUrlExists)
+	}
+
+	// Check for existing DevPortal with same hostname in the same organization (excluding this one)
+	err = tx.QueryRow(`
+		SELECT COUNT(*) FROM devportals
+		WHERE organization_uuid = ? AND hostname = ? AND uuid != ?`,
+		orgUUID, devPortal.Hostname, devPortal.UUID).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("failed to check for existing hostname during update: %w", err)
+	}
+	if count > 0 {
+		return fmt.Errorf("devportal with hostname %s already exists in organization %s: %w",
+			devPortal.Hostname, orgUUID, constants.ErrDevPortalHostnameExists)
+	}
+
 	return nil
 }
 
@@ -108,10 +187,10 @@ func (r *devPortalRepository) GetByUUID(uuid, orgUUID string) (*model.DevPortal,
 		&devPortal.IsDefault, &devPortal.Visibility, &devPortal.Description, &devPortal.CreatedAt, &devPortal.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, constants.ErrDevPortalNotFound
+			return nil, fmt.Errorf("devportal with UUID %s not found in organization %s: %w", uuid, orgUUID, constants.ErrDevPortalNotFound)
 		}
 		log.Printf("[DevPortalRepository] Failed to get DevPortal by UUID %s for org %s: %v", uuid, orgUUID, err)
-		return nil, err
+		return nil, fmt.Errorf("failed to get devportal with UUID %s for organization %s: %w", uuid, orgUUID, err)
 	}
 
 	return &devPortal, nil
@@ -142,7 +221,7 @@ func (r *devPortalRepository) GetByOrganizationUUID(orgUUID string, isDefault, i
 	rows, err := r.db.Query(query, args...)
 	if err != nil {
 		log.Printf("[DevPortalRepository] Failed to get filtered DevPortals for organization %s: %v", orgUUID, err)
-		return nil, err
+		return nil, fmt.Errorf("failed to query devportals for organization %s: %w", orgUUID, err)
 	}
 	defer rows.Close()
 
@@ -155,12 +234,16 @@ func (r *devPortalRepository) GetByOrganizationUUID(orgUUID string, isDefault, i
 			&devPortal.IsActive, &devPortal.IsEnabled, &devPortal.APIKey, &devPortal.HeaderKeyName,
 			&devPortal.IsDefault, &devPortal.Visibility, &devPortal.Description, &devPortal.CreatedAt, &devPortal.UpdatedAt)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan devportal row for organization %s: %w", orgUUID, err)
 		}
 		devPortals = append(devPortals, devPortal)
 	}
 
-	return devPortals, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating devportal rows for organization %s: %w", orgUUID, err)
+	}
+
+	return devPortals, nil
 }
 
 // Update updates an existing DevPortal
@@ -173,6 +256,18 @@ func (r *devPortalRepository) Update(devPortal *model.DevPortal, orgUUID string)
 		return err
 	}
 
+	// Start transaction for atomic check and update
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction for devportal update: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Check for conflicts within the transaction
+	if err := r.checkForUpdateConflictsTx(tx, devPortal, orgUUID); err != nil {
+		return err
+	}
+
 	query := `
 		UPDATE devportals SET 
 			name = ?, api_url = ?, hostname = ?,
@@ -180,21 +275,26 @@ func (r *devPortalRepository) Update(devPortal *model.DevPortal, orgUUID string)
 			visibility = ?, description = ?, updated_at = ?
 		WHERE uuid = ? AND organization_uuid = ?`
 
-	result, err := r.db.Exec(query,
+	result, err := tx.Exec(query,
 		devPortal.Name, devPortal.APIUrl, devPortal.Hostname,
 		devPortal.APIKey, devPortal.HeaderKeyName,
 		devPortal.IsActive, devPortal.IsEnabled, devPortal.Visibility, devPortal.Description, devPortal.UpdatedAt, devPortal.UUID, orgUUID)
 	if err != nil {
 		log.Printf("[DevPortalRepository] Failed to update DevPortal %s: %v", devPortal.UUID, err)
-		return err
+		return fmt.Errorf("failed to update devportal %s in organization %s: %w", devPortal.UUID, orgUUID, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get rows affected for devportal update %s: %w", devPortal.UUID, err)
 	}
 	if rowsAffected == 0 {
-		return constants.ErrDevPortalNotFound
+		return fmt.Errorf("devportal with UUID %s not found in organization %s: %w", devPortal.UUID, orgUUID, constants.ErrDevPortalNotFound)
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit devportal update transaction: %w", err)
 	}
 
 	log.Printf("[DevPortalRepository] Updated DevPortal %s (UUID: %s)", devPortal.Name, devPortal.UUID)
@@ -208,15 +308,15 @@ func (r *devPortalRepository) Delete(uuid, orgUUID string) error {
 	result, err := r.db.Exec(query, uuid, orgUUID)
 	if err != nil {
 		log.Printf("[DevPortalRepository] Failed to delete DevPortal %s for org %s: %v", uuid, orgUUID, err)
-		return err
+		return fmt.Errorf("failed to delete devportal %s from organization %s: %w", uuid, orgUUID, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get rows affected for devportal delete %s: %w", uuid, err)
 	}
 	if rowsAffected == 0 {
-		return constants.ErrDevPortalNotFound
+		return fmt.Errorf("devportal with UUID %s not found in organization %s: %w", uuid, orgUUID, constants.ErrDevPortalNotFound)
 	}
 
 	log.Printf("[DevPortalRepository] Deleted DevPortal %s", uuid)
@@ -237,10 +337,10 @@ func (r *devPortalRepository) GetDefaultByOrganizationUUID(orgUUID string) (*mod
 		&devPortal.IsDefault, &devPortal.Visibility, &devPortal.Description, &devPortal.CreatedAt, &devPortal.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, constants.ErrDevPortalNotFound
+			return nil, fmt.Errorf("no default devportal found for organization %s: %w", orgUUID, constants.ErrDevPortalNotFound)
 		}
 		log.Printf("[DevPortalRepository] Failed to get default DevPortal for organization %s: %v", orgUUID, err)
-		return nil, err
+		return nil, fmt.Errorf("failed to get default devportal for organization %s: %w", orgUUID, err)
 	}
 
 	return &devPortal, nil
@@ -265,7 +365,7 @@ func (r *devPortalRepository) CountByOrganizationUUID(orgUUID string, isDefault,
 	err := r.db.QueryRow(query, args...).Scan(&count)
 	if err != nil {
 		log.Printf("[DevPortalRepository] Failed to count filtered DevPortals for organization %s: %v", orgUUID, err)
-		return 0, err
+		return 0, fmt.Errorf("failed to count devportals for organization %s: %w", orgUUID, err)
 	}
 
 	return count, nil
@@ -278,15 +378,15 @@ func (r *devPortalRepository) UpdateEnabledStatus(uuid, orgUUID string, isEnable
 	result, err := r.db.Exec(query, isEnabled, time.Now(), uuid, orgUUID)
 	if err != nil {
 		log.Printf("[DevPortalRepository] Failed to update enabled status for DevPortal %s (org %s): %v", uuid, orgUUID, err)
-		return err
+		return fmt.Errorf("failed to update enabled status for devportal %s in organization %s: %w", uuid, orgUUID, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get rows affected for devportal enabled status update %s: %w", uuid, err)
 	}
 	if rowsAffected == 0 {
-		return constants.ErrDevPortalNotFound
+		return fmt.Errorf("devportal with UUID %s not found in organization %s: %w", uuid, orgUUID, constants.ErrDevPortalNotFound)
 	}
 
 	log.Printf("[DevPortalRepository] Updated enabled status for DevPortal %s to %v", uuid, isEnabled)
@@ -304,34 +404,34 @@ func (r *devPortalRepository) SetAsDefault(uuid, orgUUID string) error {
 	// Start transaction
 	tx, err := r.db.Begin()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to start transaction for setting devportal %s as default: %w", uuid, err)
 	}
 	defer tx.Rollback()
 
 	_, err = tx.Exec(`UPDATE devportals SET is_default = 0 WHERE organization_uuid = ? AND is_default = 1`,
 		devPortal.OrganizationUUID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to unset previous default devportal for organization %s: %w", devPortal.OrganizationUUID, err)
 	}
 
 	// Set the new default
 	result, err := tx.Exec(`UPDATE devportals SET is_default = 1, updated_at = ? WHERE uuid = ? AND organization_uuid = ?`,
 		time.Now(), uuid, orgUUID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to set devportal %s as default for organization %s: %w", uuid, orgUUID, err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get rows affected for setting devportal %s as default: %w", uuid, err)
 	}
 	if rowsAffected == 0 {
-		return constants.ErrDevPortalNotFound
+		return fmt.Errorf("devportal with UUID %s not found in organization %s: %w", uuid, orgUUID, constants.ErrDevPortalNotFound)
 	}
 
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
-		return err
+		return fmt.Errorf("failed to commit transaction for setting devportal %s as default: %w", uuid, err)
 	}
 
 	log.Printf("[DevPortalRepository] Set DevPortal %s as default for organization %s", uuid, devPortal.OrganizationUUID)

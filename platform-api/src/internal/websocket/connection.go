@@ -73,14 +73,14 @@ type Connection struct {
 func NewConnection(gatewayID, connectionID string, transport Transport, authToken string) *Connection {
 	now := time.Now()
 	return &Connection{
-		GatewayID:      gatewayID,
-		ConnectionID:   connectionID,
-		ConnectedAt:    now,
-		LastHeartbeat:  now,
-		Transport:      transport,
-		AuthToken:      authToken,
-		DeliveryStats:  &DeliveryStats{},
-		closed:         false,
+		GatewayID:     gatewayID,
+		ConnectionID:  connectionID,
+		ConnectedAt:   now,
+		LastHeartbeat: now,
+		Transport:     transport,
+		AuthToken:     authToken,
+		DeliveryStats: &DeliveryStats{},
+		closed:        false,
 	}
 }
 

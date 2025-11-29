@@ -18,6 +18,7 @@
 package devportal_client
 
 import (
+	"net/http"
 	dto "platform-api/src/internal/client/devportal_client/dto"
 )
 
@@ -35,7 +36,9 @@ type subscriptionPoliciesService struct {
 
 func (s *subscriptionPoliciesService) Create(orgID string, policies []dto.SubscriptionPolicy) ([]dto.SubscriptionPolicy, error) {
 	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, subscriptionPoliciesPath)
-	req, err := s.DevPortalClient.newJSONRequest("POST", url, policies)
+	req, err := s.DevPortalClient.NewRequest(http.MethodPost, url).
+		WithJSONBody(policies).
+		Build()
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +51,9 @@ func (s *subscriptionPoliciesService) Create(orgID string, policies []dto.Subscr
 
 func (s *subscriptionPoliciesService) Update(orgID string, policies []dto.SubscriptionPolicy) error {
 	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, subscriptionPoliciesPath)
-	req, err := s.DevPortalClient.newJSONRequest("PUT", url, policies)
+	req, err := s.DevPortalClient.NewRequest(http.MethodPut, url).
+		WithJSONBody(policies).
+		Build()
 	if err != nil {
 		return err
 	}
@@ -60,7 +65,7 @@ func (s *subscriptionPoliciesService) Update(orgID string, policies []dto.Subscr
 
 func (s *subscriptionPoliciesService) Get(orgID, policyID string) (*dto.SubscriptionPolicy, error) {
 	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, subscriptionPoliciesPath, policyID)
-	req, err := s.DevPortalClient.newJSONRequest("GET", url, nil)
+	req, err := s.DevPortalClient.NewRequest(http.MethodGet, url).Build()
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +81,8 @@ func (s *subscriptionPoliciesService) Get(orgID, policyID string) (*dto.Subscrip
 
 func (s *subscriptionPoliciesService) Delete(orgID, policyName string) error {
 	url := s.DevPortalClient.buildURL(devportalOrganizationsPath, orgID, subscriptionPoliciesPath, policyName)
-	req, err := s.DevPortalClient.newJSONRequest("DELETE", url, nil)
+	req, err := s.DevPortalClient.NewRequest(http.MethodDelete, url).
+		Build()
 	if err != nil {
 		return err
 	}
