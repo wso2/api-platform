@@ -183,35 +183,35 @@ func DiscoverPoliciesFromManifest(manifestPath string, baseDir string) ([]*types
 			)
 		}
 
-		// Parse policy.yaml
-		policyYAMLPath := filepath.Join(policyPath, "policy.yaml")
+		// Parse policy definition
+		policyYAMLPath := filepath.Join(policyPath, types.PolicyDefinitionFile)
 		definition, err := ParsePolicyYAML(policyYAMLPath)
 		if err != nil {
 			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("failed to parse policy.yaml for %s:%s at %s", entry.Name, entry.Version, policyPath),
+				fmt.Sprintf("failed to parse %s for %s:%s at %s", types.PolicyDefinitionFile, entry.Name, entry.Version, policyPath),
 				err,
 			)
 		}
 
-		slog.Debug("Parsed policy.yaml",
+		slog.Debug("Parsed policy definition",
 			"name", definition.Name,
 			"version", definition.Version,
 			"path", policyYAMLPath,
 			"phase", "discovery")
 
-		// Validate manifest entry matches policy.yaml
+		// Validate manifest entry matches policy definition
 		if entry.Name != definition.Name {
 			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("policy name mismatch: manifest declares '%s' but policy.yaml has '%s' at %s",
-					entry.Name, definition.Name, policyPath),
+				fmt.Sprintf("policy name mismatch: manifest declares '%s' but %s has '%s' at %s",
+					entry.Name, types.PolicyDefinitionFile, definition.Name, policyPath),
 				nil,
 			)
 		}
 
 		if entry.Version != definition.Version {
 			return nil, errors.NewDiscoveryError(
-				fmt.Sprintf("policy version mismatch: manifest declares '%s' but policy.yaml has '%s' for %s at %s",
-					entry.Version, definition.Version, entry.Name, policyPath),
+				fmt.Sprintf("policy version mismatch: manifest declares '%s' but %s has '%s' for %s at %s",
+					entry.Version, types.PolicyDefinitionFile, definition.Version, entry.Name, policyPath),
 				nil,
 			)
 		}

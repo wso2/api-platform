@@ -7,17 +7,18 @@ import (
 	"path/filepath"
 
 	"github.com/policy-engine/policy-builder/pkg/fsutil"
+	"github.com/policy-engine/policy-builder/pkg/types"
 	policy "github.com/policy-engine/sdk/policy/v1alpha"
 	"gopkg.in/yaml.v3"
 )
 
-// ParsePolicyYAML reads and parses a policy.yaml file
+// ParsePolicyYAML reads and parses a policy definition file
 func ParsePolicyYAML(path string) (*policy.PolicyDefinition, error) {
-	slog.Debug("Reading policy.yaml", "path", path, "phase", "discovery")
+	slog.Debug("Reading policy definition", "path", path, "phase", "discovery")
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read policy.yaml: %w", err)
+		return nil, fmt.Errorf("failed to read %s: %w", types.PolicyDefinitionFile, err)
 	}
 
 	var def policy.PolicyDefinition
@@ -45,9 +46,9 @@ func ParsePolicyYAML(path string) (*policy.PolicyDefinition, error) {
 func ValidateDirectoryStructure(policyDir string) error {
 	slog.Debug("Validating directory structure", "dir", policyDir, "phase", "discovery")
 
-	// Check for policy.yaml
-	policyYAML := filepath.Join(policyDir, "policy.yaml")
-	if err := fsutil.ValidatePathExists(policyYAML, "policy.yaml"); err != nil {
+	// Check for policy definition file
+	policyYAML := filepath.Join(policyDir, types.PolicyDefinitionFile)
+	if err := fsutil.ValidatePathExists(policyYAML, types.PolicyDefinitionFile); err != nil {
 		return fmt.Errorf("in %s: %w", policyDir, err)
 	}
 
