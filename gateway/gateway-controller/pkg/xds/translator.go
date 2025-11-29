@@ -59,10 +59,11 @@ type Translator struct {
 	logger       *zap.Logger
 	routerConfig *config.RouterConfig
 	certStore    *certstore.CertStore
+	config 	  *config.Config
 }
 
 // NewTranslator creates a new translator
-func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig, db storage.Storage) *Translator {
+func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig, db storage.Storage, config *config.Config) *Translator {
 	// Initialize certificate store if custom certs path is configured
 	var cs *certstore.CertStore
 	if routerConfig.Upstream.TLS.CustomCertsPath != "" {
@@ -86,6 +87,7 @@ func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig, db sto
 		logger:       logger,
 		routerConfig: routerConfig,
 		certStore:    cs,
+		config: 	  config,
 	}
 }
 
@@ -630,13 +632,18 @@ func (t *Translator) createSDSCluster() *cluster.Cluster {
 		xdsHost = envHost
 	}
 
+	xdsPort := t.config.Server.XDSPort
+	if xdsPort == 0 {
+		xdsPort = 18000 // Default xDS port
+	}
+
 	address := &core.Address{
 		Address: &core.Address_SocketAddress{
 			SocketAddress: &core.SocketAddress{
 				Protocol: core.SocketAddress_TCP,
 				Address:  xdsHost,
 				PortSpecifier: &core.SocketAddress_PortValue{
-					PortValue: 18000, // Same port as main xDS server
+					PortValue: uint32(xdsPort), 
 				},
 			},
 		},

@@ -57,6 +57,8 @@ services:
     image: wso2/api-platform-policy-engine:v1.0.0-m4
     environment:
       - XDS_SERVER_ADDRESS=gateway-controller:18001
+    volumes:
+      - ./policy-engine/configs/config.yaml:/configs/config.yaml:ro
     networks:
       - gateway-network
 

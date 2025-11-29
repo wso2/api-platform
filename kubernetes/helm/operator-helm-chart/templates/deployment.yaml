@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  replicas: {{ .Values.replicaCount }}
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+      labels:
+        control-plane: controller-manager
+    spec:
+      securityContext:
+{{ include "open-choreo-operator.podSecurityContext" . | indent 8 }}
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: manager
+          image: {{ include "open-choreo-operator.image" . | quote }}
+          imagePullPolicy: "{{ .Values.image.pullPolicy }}"
+          {{ if .Values.debug.enabled }}
+          # run under delve in headless mode for remote debugging
+          command:
+            - ./dlv
+          args:
+            - exec
+            - ./manager
+            - "--headless"
+            - "--listen=:2345"
+            - "--api-version=2"
+            - "--accept-multiclient"
+            - "--log"
+            - --
+            - --leader-elect
+            - --health-probe-bind-address=:8081
+            - --metrics-bind-address=0
+          {{ else }}
+          command:
+            - /manager
+          args:
+            - --leader-elect
+            - --health-probe-bind-address=:8081
+            - --metrics-bind-address=0
+          {{ end }}
+          {{ if .Values.debug.enabled }}
+          securityContext:
+            capabilities:
+              add:
+                - SYS_PTRACE
+            allowPrivilegeEscalation: true
+          {{ end }}
+          {{ if not .Values.debug.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{ end }}
+          resources:
+{{ toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/operator/config.yaml
+              subPath: config.yaml
+      volumes:
+        - name: config
+          configMap:
+            name: operator-config

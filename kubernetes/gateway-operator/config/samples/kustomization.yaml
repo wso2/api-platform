@@ -1,0 +1,5 @@
+## Append samples of your project ##
+resources:
+- api_v1_gatewayconfiguration.yaml
+- api_v1_apiconfiguration.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples

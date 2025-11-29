@@ -96,7 +96,7 @@ func main() {
 	}
 
 	// Initialize xDS snapshot manager with router config
-	snapshotManager := xds.NewSnapshotManager(configStore, log, &cfg.Router, db)
+	snapshotManager := xds.NewSnapshotManager(configStore, log, &cfg.Router, db, cfg)
 
 	// Initialize SDS secret manager if custom certificates are configured
 	var sdsSecretManager *xds.SDSSecretManager

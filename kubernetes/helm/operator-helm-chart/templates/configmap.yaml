@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: operator-config
+  namespace: {{ .Release.Namespace }}
+data:
+  config.yaml: |
+    gateway:
+      namespace: {{ .Values.gateway.namespace | quote }}
+      controlPlaneHost: {{ .Values.gateway.controlPlaneHost | quote }}
+      helm:
+        chartName: {{ .Values.gateway.helm.chartName | quote }}
+        chartVersion: {{ .Values.gateway.helm.chartVersion | quote }}
+        valuesFilePath: {{ .Values.gateway.helm.valuesFilePath | quote }}
+        releaseNamePrefix: {{ .Values.gateway.helm.releaseNamePrefix | quote }}
+    reconciliation:
+      enabled: {{ .Values.reconciliation.enabled | default true }}
+      interval: {{ .Values.reconciliation.interval | default 300 }}
+    logging:
+      level: {{ .Values.logging.level | quote }}
+      format: {{ .Values.logging.format | quote }}

@@ -1,0 +1,31 @@
+{{- $controller := .Values.gateway.controller -}}
+{{- $service := $controller.service -}}
+{{- if $controller.deployment.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-controller
+  labels:
+    {{- include "gateway-operator.componentLabels" (list . "controller" $service.labels) | nindent 4 }}
+  {{- if $service.annotations }}
+  annotations:
+    {{- toYaml $service.annotations | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $service.type }}
+  selector:
+    {{- include "gateway-operator.componentSelectorLabels" (list . "controller") | nindent 4 }}
+  ports:
+    - name: rest
+      port: {{ $service.ports.rest }}
+      targetPort: rest
+      protocol: TCP
+    - name: xds
+      port: {{ $service.ports.xds }}
+      targetPort: xds
+      protocol: TCP
+    - name: policy
+      port: {{ $service.ports.policy }}
+      targetPort: policy
+      protocol: TCP
+{{- end }}

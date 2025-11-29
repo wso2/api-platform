@@ -45,13 +45,13 @@ type SnapshotManager struct {
 }
 
 // NewSnapshotManager creates a new snapshot manager
-func NewSnapshotManager(store *storage.ConfigStore, logger *zap.Logger, routerConfig *config.RouterConfig, db storage.Storage) *SnapshotManager {
+func NewSnapshotManager(store *storage.ConfigStore, logger *zap.Logger, routerConfig *config.RouterConfig, db storage.Storage, cfg *config.Config) *SnapshotManager {
 	// Create a snapshot cache with a simple node ID hasher
 	snapshotCache := cache.NewSnapshotCache(false, cache.IDHash{}, logger.Sugar())
 
 	return &SnapshotManager{
 		cache:            snapshotCache,
-		translator:       NewTranslator(logger, routerConfig, db),
+		translator:       NewTranslator(logger, routerConfig, db, cfg),
 		store:            store,
 		logger:           logger,
 		nodeID:           "router-node",

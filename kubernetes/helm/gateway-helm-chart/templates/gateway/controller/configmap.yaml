@@ -1,0 +1,100 @@
+{{- $ := . -}}
+{{- $controller := .Values.gateway.controller -}}
+{{- if $controller.deployment.enabled }}
+{{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $controller.configMap.annotations) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-controller-config
+  labels:
+    {{- include "gateway-operator.componentLabels" (list . "controller" $controller.configMap.labels) | nindent 4 }}
+  {{- if $annotations }}
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+  {{- end }}
+data:
+  config.yaml: |-
+    server:
+      api_port: {{ default 9090 $controller.config.server.api_port }}
+      xds_port: {{ default 18000 $controller.config.server.xds_port }}
+      shutdown_timeout: {{ default "15s" $controller.config.server.shutdown_timeout | quote }}
+    policyserver:
+      enabled: {{ default true $controller.config.policyserver.enabled }}
+      port: {{ default 18001 $controller.config.policyserver.port }}
+      tls:
+        enabled: {{ default false $controller.config.policyserver.tls.enabled }}
+        cert_file: {{ default "./certs/server.crt" $controller.config.policyserver.tls.cert_file | quote }}
+        key_file: {{ default "./certs/server.key" $controller.config.policyserver.tls.key_file | quote }}
+    storage:
+      type: {{ default "sqlite" $controller.config.storage.type | quote }}
+      sqlite:
+        path: {{ default "./data/gateway.db" $controller.config.storage.sqlite.path | quote }}
+    router:
+      gateway_host: {{ default "*" $controller.config.router.gateway_host | quote }}
+      access_logs:
+        enabled: true
+        format: json
+        json_fields:
+          start_time: "%START_TIME%"
+          method: "%REQ(:METHOD)%"
+          path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+          protocol: "%PROTOCOL%"
+          response_code: "%RESPONSE_CODE%"
+          response_flags: "%RESPONSE_FLAGS%"
+          response_flags_long: "%RESPONSE_FLAGS_LONG%"
+          bytes_received: "%BYTES_RECEIVED%"
+          bytes_sent: "%BYTES_SENT%"
+          duration: "%DURATION%"
+          upstream_service_time: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
+          x_forwarded_for: "%REQ(X-FORWARDED-FOR)%"
+          user_agent: "%REQ(USER-AGENT)%"
+          request_id: "%REQ(X-REQUEST-ID)%"
+          authority: "%REQ(:AUTHORITY)%"
+          upstream_host: "%UPSTREAM_HOST%"
+          upstream_cluster: "%UPSTREAM_CLUSTER%"
+        text_format: |
+          [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
+      listener_port: {{ default 8080 $controller.config.router.listener_port }}
+      https_enabled: {{ default true $controller.config.router.https_enabled }}
+      https_port: {{ default 8443 $controller.config.router.https_port }}
+      downstream_tls:
+        cert_path: {{ default "./listener-certs/server.crt" $controller.config.router.downstream_tls.cert_path | quote }}
+        key_path: {{ default "./listener-certs/server.key" $controller.config.router.downstream_tls.key_path | quote }}
+        minimum_protocol_version: {{ default "TLS1_2" $controller.config.router.downstream_tls.minimum_protocol_version | quote }}
+        maximum_protocol_version: {{ default "TLS1_3" $controller.config.router.downstream_tls.maximum_protocol_version | quote }}
+        ciphers: {{ default "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA" $controller.config.router.downstream_tls.ciphers | quote }}
+      envoy_upstream:
+        tls:
+          minimum_protocol_version: {{ default "TLS1_2" $controller.config.router.envoy_upstream.tls.minimum_protocol_version | quote }}
+          maximum_protocol_version: {{ default "TLS1_3" $controller.config.router.envoy_upstream.tls.maximum_protocol_version | quote }}
+          ciphers: {{ default "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA" $controller.config.router.envoy_upstream.tls.ciphers | quote }}
+          trusted_cert_path: {{ default "/etc/ssl/certs/ca-certificates.crt" $controller.config.router.envoy_upstream.tls.trusted_cert_path | quote }}
+          custom_certs_path: {{ default "./certificates" $controller.config.router.envoy_upstream.tls.custom_certs_path | quote }}
+          verify_host_name: {{ default true $controller.config.router.envoy_upstream.tls.verify_host_name }}
+          disable_ssl_verification: {{ default false $controller.config.router.envoy_upstream.tls.disable_ssl_verification }}
+        timeouts:
+          route_timeout_in_seconds: {{ default 60 $controller.config.router.envoy_upstream.timeouts.route_timeout_in_seconds }}
+          max_route_timeout_in_seconds: {{ default 60 $controller.config.router.envoy_upstream.timeouts.max_route_timeout_in_seconds }}
+          route_idle_timeout_in_seconds: {{ default 300 $controller.config.router.envoy_upstream.timeouts.route_idle_timeout_in_seconds }}
+      policy_engine:
+        enabled: {{ default true $controller.config.router.policy_engine.enabled }}
+        host: {{ default (printf "%s-policy-engine" (include "gateway-operator.fullname" $)) $controller.config.router.policy_engine.host | quote }}
+        port: {{ default 9001 $controller.config.router.policy_engine.port }}
+        timeout_ms: {{ default 250 $controller.config.router.policy_engine.timeout_ms }}
+        failure_mode_allow: {{ default false $controller.config.router.policy_engine.failure_mode_allow }}
+        route_cache_action: {{ default "RETAIN" $controller.config.router.policy_engine.route_cache_action | quote }}
+        allow_mode_override: {{ default true $controller.config.router.policy_engine.allow_mode_override }}
+        request_header_mode: {{ default "SEND" $controller.config.router.policy_engine.request_header_mode | quote }}
+        message_timeout_ms: {{ default 250 $controller.config.router.policy_engine.message_timeout_ms }}
+        tls:
+          enabled: {{ default false $controller.config.router.policy_engine.tls.enabled }}
+          cert_path: {{ default "" $controller.config.router.policy_engine.tls.cert_path | quote }}
+          key_path: {{ default "" $controller.config.router.policy_engine.tls.key_path | quote }}
+          ca_path: {{ default "" $controller.config.router.policy_engine.tls.ca_path | quote }}
+          server_name: {{ default "" $controller.config.router.policy_engine.tls.server_name | quote }}
+          skip_verify: {{ default false $controller.config.router.policy_engine.tls.skip_verify }}
+
+    logging:
+      level: {{ default "info" $controller.config.logging.level | quote }}
+      format: {{ default "json" $controller.config.logging.format | quote }}
+{{- end }}

@@ -1,0 +1,50 @@
+# Default values for open-choreo-operator.
+replicaCount: 1
+
+image:
+  repository: oc-apipg-controller
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+serviceAccount:
+  create: true
+  name: controller-manager
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Debug settings: if enabled, the container will run under dlv (delve) for remote debugging.
+debug:
+  enabled: false
+  # port to listen on when debug enabled
+  port: 2345
+  # use the same image by default; if your build image doesn't include dlv, set a debugImage
+  debugImage: ""
+
+# Pod-level security context defaults. Many images run as root by default; set
+# runAsNonRoot: true only if your image runs as a non-root user. The chart will
+# still force runAsUser: 0 when debug.enabled=true (Delve needs root privileges).
+securityContext:
+  runAsNonRoot: false
+  # If you want the pod to run as a specific uid, set this (e.g. 1000). Leave
+  # null to not set runAsUser and let the image default decide.
+  runAsUser: null
+
+# Operator config.yaml contents (YAML block, indented)
+gateway:
+  namespace: "gateway-system"
+  controlPlaneHost: "http://platform-api:3001"
+  helm:
+    chartName: "oci://ghcr.io/your-org/gateway-helm-chart"
+    chartVersion: "0.1.0"
+    valuesFilePath: "/etc/operator/config/values.yaml"
+    releaseNamePrefix: "gateway"
+reconciliation:
+  enabled: true
+  interval: 300
+logging:
+  level: "info"
+  format: "json"

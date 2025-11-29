@@ -1,0 +1,53 @@
+{{- $ := . -}}
+{{- $policy := .Values.gateway.policyEngine -}}
+{{- if and $policy.deployment.enabled $policy.config.enabled }}
+{{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $policy.configMap.annotations) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-policy-engine-config
+  labels:
+    {{- include "gateway-operator.componentLabels" (list . "policy-engine" $policy.configMap.labels) | nindent 4 }}
+  {{- if $annotations }}
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+  {{- end }}
+data:
+  config.yaml: |-
+    server:
+      extproc_port: {{ default 9001 $policy.config.server.extproc_port }}
+    admin:
+      enabled: {{ default true $policy.config.admin.enabled }}
+      port: {{ default 9002 $policy.config.admin.port }}
+      allowed_ips:
+{{- range $ip := $policy.config.admin.allowed_ips }}
+        - {{ $ip | quote }}
+{{- end }}
+    config_mode:
+      mode: {{ default "xds" $policy.config.config_mode.mode | quote }}
+    xds:
+      enabled: {{ default true $policy.config.xds.enabled }}
+      server_address: {{ default (printf "%s-controller:%d" (include "gateway-operator.fullname" $) (int (default 18001 $.Values.gateway.controller.service.ports.policy))) $policy.config.xds.server_address | quote }}
+      node_id: {{ default "policy-engine-1" $policy.config.xds.node_id | quote }}
+      cluster: {{ default "policy-engine-cluster" $policy.config.xds.cluster | quote }}
+      connect_timeout: {{ default "10s" $policy.config.xds.connect_timeout | quote }}
+      request_timeout: {{ default "5s" $policy.config.xds.request_timeout | quote }}
+      initial_reconnect_delay: {{ default "1s" $policy.config.xds.initial_reconnect_delay | quote }}
+      max_reconnect_delay: {{ default "60s" $policy.config.xds.max_reconnect_delay | quote }}
+      tls:
+        enabled: {{ default false $policy.config.xds.tls.enabled }}
+        {{- if $policy.config.xds.tls.cert_path }}
+        cert_path: {{ $policy.config.xds.tls.cert_path | quote }}
+        {{- end }}
+        {{- if $policy.config.xds.tls.key_path }}
+        key_path: {{ $policy.config.xds.tls.key_path | quote }}
+        {{- end }}
+        {{- if $policy.config.xds.tls.ca_path }}
+        ca_path: {{ $policy.config.xds.tls.ca_path | quote }}
+        {{- end }}
+    file_config:
+      path: {{ default "" $policy.config.file_config.path | quote }}
+    logging:
+      level: {{ default "info" $policy.config.logging.level | quote }}
+      format: {{ default "json" $policy.config.logging.format | quote }}
+{{- end }}

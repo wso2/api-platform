@@ -1,0 +1,100 @@
+---
+# Example 1: Cluster-scoped Gateway
+# This gateway accepts APIs from ANY namespace
+apiVersion: api.api-platform.wso2.com/v1
+kind: GatewayConfiguration
+metadata:
+  labels:
+    app.kubernetes.io/name: gateway-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: cluster-gateway
+spec:
+  gatewayClassName: "production"
+  
+  apiSelector:
+    scope: Cluster
+  
+  infrastructure:
+    replicas: 1
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "2"
+        memory: "4Gi"
+  
+  controlPlane:
+    host: "gateway-control-plane.gateway-operator-system.svc.cluster.local:8443"
+    tls:
+      enabled: true
+  
+  storage:
+    type: sqlite
+
+---
+# Example 2: Namespace-scoped Gateway
+# This gateway only accepts APIs from specific namespaces
+# apiVersion: api.api-platform.wso2.com/v1
+# kind: GatewayConfiguration
+# metadata:
+#   labels:
+#     app.kubernetes.io/name: gateway-operator
+#     app.kubernetes.io/managed-by: kustomize
+#   name: namespaced-gateway
+# spec:
+#   gatewayClassName: "development"
+  
+#   apiSelector:
+#     scope: Namespaced
+#     namespaces:
+#       - "dev-apis"
+#       - "staging-apis"
+#       - "test-apis"
+  
+#   infrastructure:
+#     replicas: 1
+#     image: "wso2/gateway-controller:latest"
+#     routerImage: "envoyproxy/envoy:v1.28-latest"
+  
+#   storage:
+#     type: sqlite
+
+# ---
+# # Example 3: Label-based Gateway
+# # This gateway accepts APIs matching specific labels
+# apiVersion: api.api-platform.wso2.com/v1
+# kind: GatewayConfiguration
+# metadata:
+#   labels:
+#     app.kubernetes.io/name: gateway-operator
+#     app.kubernetes.io/managed-by: kustomize
+#   name: label-selector-gateway
+# spec:
+#   gatewayClassName: "team-platform"
+  
+#   apiSelector:
+#     scope: LabelSelector
+#     matchLabels:
+#       gateway: "platform-gateway"
+#       environment: "production"
+#     matchExpressions:
+#       - key: team
+#         operator: In
+#         values: ["platform", "infrastructure"]
+#       - key: tier
+#         operator: NotIn
+#         values: ["experimental"]
+  
+#   infrastructure:
+#     replicas: 1
+#     resources:
+#       requests:
+#         cpu: "1"
+#         memory: "2Gi"
+#       limits:
+#         cpu: "4"
+#         memory: "8Gi"
+  
+#   storage:
+#     type: sqlite

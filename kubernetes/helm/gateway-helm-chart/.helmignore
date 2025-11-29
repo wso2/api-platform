@@ -1,0 +1,13 @@
+# Common Helm ignores
+.DS_Store
+.git/
+.gitignore
+.idea/
+.vscode/
+Thumbs.db
+*.swp
+*.tmp
+*.bak
+
+# Examples and documentation
+examples/
