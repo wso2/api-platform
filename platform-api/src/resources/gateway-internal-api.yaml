@@ -368,7 +368,7 @@ components:
       required:
         - version
         - kind
-        - data
+        - spec
       properties:
         version:
           type: string
@@ -382,7 +382,7 @@ components:
           example: http/rest
           enum:
             - http/rest
-        data:
+        spec:
           $ref: '#/components/schemas/APIConfigData'
 
     APIConfigData:
@@ -391,7 +391,7 @@ components:
         - name
         - version
         - context
-        - upstream
+        - upstreams
         - operations
       properties:
         name:
@@ -420,7 +420,7 @@ components:
           maxLength: 100
           pattern: '^[a-zA-Z0-9\-_]+$'
           example: weather-project
-        upstream:
+        upstreams:
           type: array
           description: List of backend service URLs
           minItems: 1

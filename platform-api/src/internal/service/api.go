@@ -44,6 +44,7 @@ type APIService struct {
 	gatewayRepo          repository.GatewayRepository
 	devPortalRepo        repository.DevPortalRepository
 	publicationRepo      repository.APIPublicationRepository
+	backendServiceRepo   repository.BackendServiceRepository
 	upstreamService      *UpstreamService
 	gatewayEventsService *GatewayEventsService
 	devPortalService     *DevPortalService
@@ -53,14 +54,16 @@ type APIService struct {
 // NewAPIService creates a new API service
 func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.ProjectRepository,
 	gatewayRepo repository.GatewayRepository, devPortalRepo repository.DevPortalRepository,
-	publicationRepo repository.APIPublicationRepository, upstreamSvc *UpstreamService,
-	gatewayEventsService *GatewayEventsService, devPortalService *DevPortalService, apiUtil *utils.APIUtil) *APIService {
+	publicationRepo repository.APIPublicationRepository, backendServiceRepo repository.BackendServiceRepository,
+	upstreamSvc *UpstreamService, gatewayEventsService *GatewayEventsService, devPortalService *DevPortalService,
+	apiUtil *utils.APIUtil) *APIService {
 	return &APIService{
 		apiRepo:              apiRepo,
 		projectRepo:          projectRepo,
 		gatewayRepo:          gatewayRepo,
 		devPortalRepo:        devPortalRepo,
 		publicationRepo:      publicationRepo,
+		backendServiceRepo:   backendServiceRepo,
 		upstreamService:      upstreamSvc,
 		gatewayEventsService: gatewayEventsService,
 		devPortalService:     devPortalService,
@@ -461,7 +464,7 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 	currentTime := time.Now().Format(time.RFC3339)
 
 	for _, deploymentReq := range deploymentRequests {
-		// Validate deployment request (gateway existence and organization)
+		// Validate deployment request
 		if err := s.validateDeploymentRequest(&deploymentReq, apiId, orgId); err != nil {
 			return nil, constants.ErrInvalidAPIDeployment
 		}
@@ -689,6 +692,15 @@ func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, a
 	}
 	if gateway.OrganizationID != orgId {
 		return fmt.Errorf("failed to get gateway: %w", err)
+	}
+
+	// Validate that the API has at least one backend service attached
+	backendServices, err := s.backendServiceRepo.GetBackendServicesByAPIID(apiId)
+	if err != nil {
+		return fmt.Errorf("failed to get backend services for API: %w", err)
+	}
+	if len(backendServices) == 0 {
+		return errors.New("API must have at least one backend service attached before deployment")
 	}
 
 	return nil
@@ -983,7 +995,7 @@ func (s *APIService) ImportAPIProject(req *dto.ImportAPIProjectRequest, orgId st
 	}
 
 	// 6. Create API with details from WSO2 artifact, overwritten by request details
-	apiData := s.mergeAPIData(&artifactData.Data, &req.API)
+	apiData := s.mergeAPIData(&artifactData.Spec, &req.API)
 
 	// 7. Create API using the existing CreateAPI flow
 	createReq := &CreateAPIRequest{

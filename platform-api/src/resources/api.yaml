@@ -1,6 +1,6 @@
 version: api-platform.wso2.com/v1
 kind: http/rest
-data:
+spec:
   uuid: 3f3b1e2e-6dcb-4f7c-8f3a-1c4e5e6b7a8c
   name: petstore_api
   displayName: Pet Store
