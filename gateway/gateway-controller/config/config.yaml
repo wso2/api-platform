@@ -94,10 +94,10 @@ router:
   # Downstream TLS configuration (for HTTPS listener)
   downstream_tls:
     # Path to server certificate (PEM format)
-    cert_path: "./listener-certs/server.crt"
+    cert_path: "./listener-certs/default-listener.crt"
     
     # Path to server private key (PEM format)
-    key_path: "./listener-certs/server.key"
+    key_path: "./listener-certs/default-listener.key"
     
     # Minimum TLS protocol version (TLS1_0, TLS1_1, TLS1_2, TLS1_3)
     minimum_protocol_version: TLS1_2
