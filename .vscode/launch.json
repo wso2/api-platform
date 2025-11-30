@@ -25,6 +25,9 @@
             "env": {
                 "GATEWAY_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
                 "GATEWAY_CONTROLPLANE_TOKEN": "",
+                "GATEWAY_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",
+                "GATEWAY_ROUTER_DOWNSTREAM__TLS_KEY__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.key",
+                "GATEWAY_ROUTER_POLICY__ENGINE_HOST": "host.docker.internal",
                 "POLICY_DIRECTORY": "${workspaceFolder}/gateway/gateway-controller/sample-policies",
             }
         },
