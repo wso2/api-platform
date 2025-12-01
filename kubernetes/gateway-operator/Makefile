@@ -1,5 +1,5 @@
 # Image URL to use all building/pushing image targets
-IMG ?= oc-apipg-controller:latest
+IMG ?= api-platform-gateway-controller:latest
 ## Default debug image name (can be overridden by setting DEBUG_IMG)
 DEBUG_IMG ?= $(IMG)-debug
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
@@ -93,7 +93,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	cd ../../ && $(CONTAINER_TOOL) build -t ${IMG} -f kubernetes/gateway-operator/Dockerfile .
 
 ##@ Debug image
 .PHONY: docker-build-debug

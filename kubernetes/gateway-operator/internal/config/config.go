@@ -19,7 +19,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -33,13 +32,13 @@ import (
 // OperatorConfig holds the runtime configuration for the operator
 type OperatorConfig struct {
 	// Gateway configuration
-	Gateway GatewayConfig
+	Gateway GatewayConfig `koanf:"gateway"`
 
 	// Reconciliation configuration
-	Reconciliation ReconciliationConfig
+	Reconciliation ReconciliationConfig `koanf:"reconciliation"`
 
 	// Logging configuration
-	Logging LoggingConfig
+	Logging LoggingConfig `koanf:"logging"`
 }
 
 // GatewayConfig holds configuration for gateway deployments
@@ -58,27 +57,6 @@ type GatewayConfig struct {
 	// HelmValuesFilePath is the path to a custom values.yaml file (optional)
 	// If not set, the chart's default values.yaml will be used
 	HelmValuesFilePath string `koanf:"helm_values_file_path"`
-
-	// ControlPlaneHost is the gateway control plane host
-	ControlPlaneHost string `koanf:"controlplane_host"`
-
-	// ControlPlaneToken is the authentication token for control plane
-	ControlPlaneToken string `koanf:"controlplane_token"`
-
-	// StorageType defines the storage backend (sqlite, postgres, etc.)
-	StorageType string `koanf:"storage_type"`
-
-	// StorageSQLitePath is the path for SQLite database
-	StorageSQLitePath string `koanf:"storage_sqlite_path"`
-
-	// DefaultImage is the default gateway controller image
-	DefaultImage string `koanf:"default_image"`
-
-	// DefaultRouterImage is the default router image
-	DefaultRouterImage string `koanf:"default_router_image"`
-
-	// DefaultReplicas is the default number of replicas
-	DefaultReplicas int32 `koanf:"default_replicas"`
 }
 
 // ReconciliationConfig holds reconciliation loop configuration
@@ -99,51 +77,13 @@ type LoggingConfig struct {
 	Development bool `koanf:"development"`
 }
 
-// NewDefaultConfig returns a new OperatorConfig with default values
-func NewDefaultConfig() *OperatorConfig {
-	return &OperatorConfig{
-		Gateway: GatewayConfig{
-			HelmChartPath:      "../helm/gateway-helm-chart",
-			HelmChartName:      "api-platform-gateway",
-			HelmChartVersion:   "0.1.0",
-			HelmValuesFilePath: "", // Empty means use chart's default values.yaml
-			ControlPlaneHost:   "host.docker.internal:8443",
-			ControlPlaneToken:  "",
-			StorageType:        "sqlite",
-			StorageSQLitePath:  "./data/gateway.db",
-			DefaultImage:       "wso2/gateway-controller:latest",
-			DefaultRouterImage: "wso2/gateway-router:latest",
-			DefaultReplicas:    1,
-		},
-		Reconciliation: ReconciliationConfig{
-			SyncPeriod:              10 * time.Minute,
-			MaxConcurrentReconciles: 1,
-		},
-		Logging: LoggingConfig{
-			Level:       "info",
-			Development: true,
-		},
-	}
-}
-
 // getDefaults returns default configuration as a map
 func getDefaults() map[string]interface{} {
 	return map[string]interface{}{
 		"gateway": map[string]interface{}{
-			"manifest_path":          "internal/controller/resources/api-platform-gateway-k8s-manifests.yaml",
-			"manifest_template_path": "internal/controller/resources/api-platform-gateway-k8s-manifests.yaml.tmpl",
-			"use_helm":               true,
-			"helm_chart_path":        "../helm/gateway-helm-chart",
 			"helm_chart_name":        "api-platform-gateway",
 			"helm_chart_version":     "0.1.0",
 			"helm_values_file_path":  "",
-			"controlplane_host":      "host.docker.internal:8443",
-			"controlplane_token":     "",
-			"storage_type":           "sqlite",
-			"storage_sqlite_path":    "./data/gateway.db",
-			"default_image":          "wso2/gateway-controller:latest",
-			"default_router_image":   "wso2/gateway-router:latest",
-			"default_replicas":       1,
 		},
 		"reconciliation": map[string]interface{}{
 			"sync_period":               "10m",
@@ -190,34 +130,12 @@ func LoadConfig(configPath string) (*OperatorConfig, error) {
 
 		// Map specific environment variables to config keys
 		switch s {
-		case "manifest_path":
-			return "gateway.manifest_path"
-		case "manifest_template_path":
-			return "gateway.manifest_template_path"
-		case "use_helm":
-			return "gateway.use_helm"
-		case "helm_chart_path":
-			return "gateway.helm_chart_path"
 		case "helm_chart_name":
 			return "gateway.helm_chart_name"
 		case "helm_chart_version":
 			return "gateway.helm_chart_version"
 		case "helm_values_file_path":
 			return "gateway.helm_values_file_path"
-		case "controlplane_host":
-			return "gateway.controlplane_host"
-		case "controlplane_token":
-			return "gateway.controlplane_token"
-		case "storage_type":
-			return "gateway.storage_type"
-		case "storage_sqlite_path":
-			return "gateway.storage_sqlite_path"
-		case "default_image":
-			return "gateway.default_image"
-		case "router_image":
-			return "gateway.default_router_image"
-		case "log_level":
-			return "logging.level"
 		default:
 			// For other vars, use standard mapping (underscore to dot)
 			s = strings.ReplaceAll(s, "_", ".")
@@ -243,21 +161,6 @@ func LoadConfig(configPath string) (*OperatorConfig, error) {
 
 // Validate validates the configuration
 func (c *OperatorConfig) Validate() error {
-	// Validate manifest path exists
-	if c.Gateway.ManifestPath != "" {
-		absPath, err := filepath.Abs(c.Gateway.ManifestPath)
-		if err != nil {
-			return fmt.Errorf("invalid manifest path: %w", err)
-		}
-
-		if _, err := os.Stat(absPath); err != nil {
-			return fmt.Errorf("manifest file not found at %s: %w", absPath, err)
-		}
-
-		// Update to absolute path
-		c.Gateway.ManifestPath = absPath
-	}
-
 	// Validate log level
 	validLogLevels := map[string]bool{
 		"debug": true,

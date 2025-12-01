@@ -5,16 +5,22 @@ ARG TARGETARCH
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
-COPY go.mod go.mod
-COPY go.sum go.sum
+COPY kubernetes/gateway-operator/go.mod go.mod
+COPY kubernetes/gateway-operator/go.sum go.sum
+
+# Copy the gateway-controller module (needed for the go.mod replace directive)
+COPY gateway/gateway-controller /gateway/gateway-controller
+
 # cache deps before building and copying source so that we don't need to re-download as much
 # and so that source changes don't invalidate our downloaded layer
 RUN go mod download
 
 # Copy the go source
-COPY cmd/main.go cmd/main.go
-COPY api/ api/
-COPY internal/ internal/
+COPY kubernetes/gateway-operator/cmd/main.go cmd/main.go
+COPY kubernetes/gateway-operator/api/ api/
+COPY kubernetes/gateway-operator/internal/ internal/
+COPY kubernetes/gateway-operator/config/config.yaml config/config.yaml
+COPY kubernetes/gateway-operator/config/gateway_values.yaml config/gateway_values.yaml
 
 # Build
 # the GOARCH has not a default value to allow the binary be built according to the host where the command
@@ -28,7 +34,8 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o ma
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
 COPY --from=builder /workspace/manager .
-COPY --from=builder /workspace/internal/controller/resources/ /internal/controller/resources/
+COPY --from=builder /workspace/config/config.yaml ./config/config.yaml
+COPY --from=builder /workspace/config/gateway_values.yaml ./config/gateway_values.yaml
 USER 65532:65532
 
 ENTRYPOINT ["/manager"]

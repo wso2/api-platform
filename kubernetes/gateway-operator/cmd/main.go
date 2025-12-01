@@ -58,12 +58,10 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
-	var manifestPath string
 	var configPath string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.StringVar(&manifestPath, "gateway-manifest-path", "", "Path to the gateway Kubernetes manifest file.")
 	flag.StringVar(&configPath, "config", "config/config.yaml", "Path to configuration file.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
@@ -86,22 +84,6 @@ func main() {
 		setupLog.Error(err, "unable to load configuration")
 		os.Exit(1)
 	}
-
-	// Override manifest path if provided via flag
-	if manifestPath != "" {
-		cfg.Gateway.ManifestPath = manifestPath
-		// Re-validate after override
-		if err := cfg.Validate(); err != nil {
-			setupLog.Error(err, "invalid manifest path provided")
-			os.Exit(1)
-		}
-	}
-
-	setupLog.Info("Loaded operator configuration",
-		"manifestPath", cfg.Gateway.ManifestPath,
-		"controlPlaneHost", cfg.Gateway.ControlPlaneHost,
-		"storageType", cfg.Gateway.StorageType,
-	)
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will

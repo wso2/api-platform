@@ -100,8 +100,8 @@ services:
     ports:
       - "5443:5443"
     volumes:
-      - ./test-backend-certs:/etc/nginx/certs:ro
-      - ./secure-backend-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./resources/secure-backend/test-backend-certs:/etc/nginx/certs:ro
+      - ./resources/secure-backend/secure-backend-nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - gateway-network
     healthcheck:

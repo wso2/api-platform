@@ -59,7 +59,7 @@ type Translator struct {
 	logger       *zap.Logger
 	routerConfig *config.RouterConfig
 	certStore    *certstore.CertStore
-	config 	  *config.Config
+	config       *config.Config
 }
 
 // NewTranslator creates a new translator
@@ -87,7 +87,7 @@ func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig, db sto
 		logger:       logger,
 		routerConfig: routerConfig,
 		certStore:    cs,
-		config: 	  config,
+		config:       config,
 	}
 }
 
@@ -244,7 +244,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredAPIConfig) ([]*route.R
 	}
 
 	// Create cluster for this upstream
-	clusterName := t.sanitizeClusterName(parsedURL.Host)
+	clusterName := t.sanitizeClusterName(parsedURL.Host, parsedURL.Scheme)
 	// @TODO: Handle upstream certificates and pass them to createCluster
 	c := t.createCluster(clusterName, parsedURL, nil)
 
@@ -643,7 +643,7 @@ func (t *Translator) createSDSCluster() *cluster.Cluster {
 				Protocol: core.SocketAddress_TCP,
 				Address:  xdsHost,
 				PortSpecifier: &core.SocketAddress_PortValue{
-					PortValue: uint32(xdsPort), 
+					PortValue: uint32(xdsPort),
 				},
 			},
 		},
@@ -995,11 +995,12 @@ func (t *Translator) pathToRegex(path string) string {
 	return "^" + regex + "$"
 }
 
-// sanitizeClusterName creates a valid cluster name from a hostname
-func (t *Translator) sanitizeClusterName(hostname string) string {
+// sanitizeClusterName creates a valid cluster name from a hostname and scheme
+func (t *Translator) sanitizeClusterName(hostname, scheme string) string {
 	name := strings.ReplaceAll(hostname, ".", "_")
 	name = strings.ReplaceAll(name, ":", "_")
-	return "cluster_" + name
+	// Include scheme to differentiate HTTP and HTTPS clusters for the same host
+	return "cluster_" + scheme + "_" + name
 }
 
 // sanitizeName creates a valid name from an API name

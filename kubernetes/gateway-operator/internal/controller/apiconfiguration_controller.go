@@ -112,27 +112,25 @@ func (r *APIConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	var deploymentErrors []string
 	requeueAfter := false
 
-	if apiConfig.Spec.APIConfiguration == nil {
-		deploymentErrors = append(deploymentErrors, "API configuration spec is empty")
-	} else {
-		for _, key := range targetKeys {
-			gateway := availableGateways[key]
-			if err := r.deployAPIToGateway(ctx, apiConfig, gateway); err != nil {
-				log.Error(err, "Failed to deploy API to gateway",
-					"gateway", gateway.Name,
-					"namespace", gateway.Namespace)
-				deploymentErrors = append(deploymentErrors, fmt.Sprintf("%s: %v", key, err))
-				requeueAfter = true
-				continue
-			}
-
-			deployed = append(deployed, key)
-			log.Info("Successfully deployed API to gateway",
-				"api", apiConfig.Name,
+	
+	for _, key := range targetKeys {
+		gateway := availableGateways[key]
+		if err := r.deployAPIToGateway(ctx, apiConfig, gateway); err != nil {
+			log.Error(err, "Failed to deploy API to gateway",
 				"gateway", gateway.Name,
 				"namespace", gateway.Namespace)
+			deploymentErrors = append(deploymentErrors, fmt.Sprintf("%s: %v", key, err))
+			requeueAfter = true
+			continue
 		}
+
+		deployed = append(deployed, key)
+		log.Info("Successfully deployed API to gateway",
+			"api", apiConfig.Name,
+			"gateway", gateway.Name,
+			"namespace", gateway.Namespace)
 	}
+	
 
 	if len(missingGateways) > 0 {
 		requeueAfter = true
@@ -209,11 +207,8 @@ func (r *APIConfigurationReconciler) deployAPIToGateway(ctx context.Context, api
 	// Marshal the API spec to YAML
 	var apiYAML []byte
 	var err error
-	if apiConfig.Spec.APIConfiguration != nil {
-		apiYAML, err = yaml.Marshal(apiConfig.Spec.APIConfiguration.APIConfiguration)
-	} else {
-		err = fmt.Errorf("API configuration is nil")
-	}
+	apiYAML, err = yaml.Marshal(apiConfig.Spec.APIConfiguration)
+	
 	if err != nil {
 		return fmt.Errorf("failed to marshal API spec to YAML: %w", err)
 	}
@@ -531,11 +526,7 @@ func (r *APIConfigurationReconciler) deleteAPIFromGateway(ctx context.Context, a
 }
 
 func extractAPIMetadata(apiConfig *apiv1.APIConfiguration) (string, string) {
-	if apiConfig.Spec.APIConfiguration == nil {
-		return "", ""
-	}
-
-	data := apiConfig.Spec.APIConfiguration.APIConfiguration.Data
+	data := apiConfig.Spec.APIConfiguration.Spec
 	name := strings.TrimSpace(data.Name)
 	version := strings.TrimSpace(data.Version)
 	return name, version

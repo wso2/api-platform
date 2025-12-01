@@ -9,38 +9,17 @@
 
 # Gateway deployment configuration
 gateway:
-  # Namespace where gateway resources will be deployed
-  # Can be overridden with GATEWAY_NAMESPACE environment variable
-  namespace: "gateway-system"
+  # Helm chart reference (repository/chart-name)
+  helm_chart_name: "oci://ghcr.io/your-org/gateway-helm-chart"
   
-  # Control plane host for gateway management API
-  # Can be overridden with GATEWAY_CONTROL_PLANE_HOST environment variable
-  controlPlaneHost: "http://platform-api:3001"
+  # Chart version to deploy
+  helm_chart_version: "0.1.0"
   
-  # Path to Kubernetes manifest file for gateway deployment (legacy mode)
-  # Leave empty when using Helm deployment
-  # Can be overridden with GATEWAY_MANIFEST_PATH environment variable
-  manifestPath: ""
-  
-  # Helm deployment configuration
-  helm:
-    # Enable Helm-based deployment (recommended)
-    enabled: true
+  # Path to values.yaml file for Helm chart
+  # This file will be used as-is without templating
+  # Can be overridden with GATEWAY_HELM_VALUES_FILE_PATH environment variable
+  helm_values_file_path: "/config/gateway_values.yaml"
     
-    # Helm chart reference (repository/chart-name)
-    chartName: "oci://ghcr.io/your-org/gateway-helm-chart"
-    
-    # Chart version to deploy
-    chartVersion: "0.1.0"
-    
-    # Path to values.yaml file for Helm chart
-    # This file will be used as-is without templating
-    # Can be overridden with GATEWAY_HELM_VALUES_FILE_PATH environment variable
-    valuesFilePath: "/etc/gateway-operator/values/values.yaml"
-    
-    # Helm release name prefix
-    # Actual release name will be: <prefix>-<gateway-name>
-    releaseNamePrefix: "gateway"
 
 # Reconciliation behavior configuration
 reconciliation:

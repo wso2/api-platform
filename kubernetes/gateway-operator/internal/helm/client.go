@@ -20,12 +20,13 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
+	"time"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
+	"helm.sh/helm/v3/pkg/registry"
 	"helm.sh/helm/v3/pkg/storage/driver"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -33,14 +34,29 @@ import (
 
 // Client provides methods to install, upgrade, and uninstall Helm charts
 type Client struct {
-	settings *cli.EnvSettings
+	settings       *cli.EnvSettings
+	registryClient *registry.Client
 }
 
 // NewClient creates a new Helm client
-func NewClient() *Client {
-	return &Client{
-		settings: cli.New(),
+func NewClient() (*Client, error) {
+	settings := cli.New()
+	
+	// Create registry client for OCI support
+	registryClient, err := registry.NewClient(
+		registry.ClientOptDebug(settings.Debug),
+		registry.ClientOptEnableCache(true),
+		registry.ClientOptWriter(os.Stderr),
+		registry.ClientOptCredentialsFile(settings.RegistryConfig),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create registry client: %w", err)
 	}
+
+	return &Client{
+		settings:       settings,
+		registryClient: registryClient,
+	}, nil
 }
 
 // InstallOrUpgradeOptions contains options for installing or upgrading a Helm chart
@@ -51,8 +67,14 @@ type InstallOrUpgradeOptions struct {
 	// Namespace is the Kubernetes namespace to install the chart into
 	Namespace string
 
-	// ChartPath is the path to the Helm chart (can be local path or chart name)
-	ChartPath string
+	// ChartName is the name of the remote chart (e.g., "bitnami/nginx" or "oci://registry/chart")
+	ChartName string
+
+	// RepoURL is the Helm repository URL (optional if repo is already added)
+	RepoURL string
+
+	// Version is the chart version (optional, uses latest if not specified)
+	Version string
 
 	// ValuesYAML is the values.yaml content as a string
 	ValuesYAML string
@@ -60,17 +82,23 @@ type InstallOrUpgradeOptions struct {
 	// ValuesFilePath is the path to a values.yaml file
 	ValuesFilePath string
 
-	// Version is the chart version (optional, for remote charts)
-	Version string
-
 	// CreateNamespace creates the namespace if it doesn't exist
 	CreateNamespace bool
 
 	// Wait waits for all resources to be ready
 	Wait bool
 
-	// Timeout for the operation
+	// Timeout for the operation in seconds
 	Timeout int64
+
+	// Username for registry authentication (optional)
+	Username string
+
+	// Password for registry authentication (optional)
+	Password string
+
+	// Insecure allows insecure registry connections (optional)
+	Insecure bool
 }
 
 // UninstallOptions contains options for uninstalling a Helm release
@@ -84,7 +112,7 @@ type UninstallOptions struct {
 	// Wait waits for all resources to be deleted
 	Wait bool
 
-	// Timeout for the operation
+	// Timeout for the operation in seconds
 	Timeout int64
 }
 
@@ -95,13 +123,16 @@ func (c *Client) InstallOrUpgrade(ctx context.Context, opts InstallOrUpgradeOpti
 	log.Info("Installing or upgrading Helm chart",
 		"release", opts.ReleaseName,
 		"namespace", opts.Namespace,
-		"chart", opts.ChartPath)
+		"chart", opts.ChartName)
 
 	// Create action configuration
 	actionConfig, err := c.newActionConfig(opts.Namespace)
 	if err != nil {
 		return fmt.Errorf("failed to create action configuration: %w", err)
 	}
+
+	// Set registry client in action configuration
+	actionConfig.RegistryClient = c.registryClient
 
 	// Check if release exists
 	histClient := action.NewHistory(actionConfig)
@@ -127,15 +158,32 @@ func (c *Client) install(ctx context.Context, actionConfig *action.Configuration
 	client.Namespace = opts.Namespace
 	client.CreateNamespace = opts.CreateNamespace
 	client.Wait = opts.Wait
+	client.Version = opts.Version
 
 	if opts.Timeout > 0 {
-		client.Timeout = 0 // Will use default
+		client.Timeout = time.Duration(opts.Timeout) * time.Second
 	}
 
-	// Load chart
-	chartPath, err := client.ChartPathOptions.LocateChart(opts.ChartPath, c.settings)
+	// Handle registry authentication if provided
+	if opts.Username != "" && opts.Password != "" {
+		registryHost, err := extractRegistryHost(opts.ChartName)
+		if err != nil {
+			return fmt.Errorf("failed to extract registry host: %w", err)
+		}
+		
+		if err := c.registryClient.Login(
+			registryHost,
+			registry.LoginOptBasicAuth(opts.Username, opts.Password),
+			registry.LoginOptInsecure(opts.Insecure),
+		); err != nil {
+			return fmt.Errorf("failed to login to registry: %w", err)
+		}
+	}
+
+	// Locate and load chart from remote repository or OCI registry
+	chartPath, err := client.ChartPathOptions.LocateChart(opts.ChartName, c.settings)
 	if err != nil {
-		return fmt.Errorf("failed to locate chart: %w", err)
+		return fmt.Errorf("failed to locate chart %s: %w", opts.ChartName, err)
 	}
 
 	chart, err := loader.Load(chartPath)
@@ -170,15 +218,32 @@ func (c *Client) upgrade(ctx context.Context, actionConfig *action.Configuration
 	client := action.NewUpgrade(actionConfig)
 	client.Namespace = opts.Namespace
 	client.Wait = opts.Wait
+	client.Version = opts.Version
 
 	if opts.Timeout > 0 {
-		client.Timeout = 0 // Will use default
+		client.Timeout = time.Duration(opts.Timeout) * time.Second
 	}
 
-	// Load chart
-	chartPath, err := client.ChartPathOptions.LocateChart(opts.ChartPath, c.settings)
+	// Handle registry authentication if provided
+	if opts.Username != "" && opts.Password != "" {
+		registryHost, err := extractRegistryHost(opts.ChartName)
+		if err != nil {
+			return fmt.Errorf("failed to extract registry host: %w", err)
+		}
+		
+		if err := c.registryClient.Login(
+			registryHost,
+			registry.LoginOptBasicAuth(opts.Username, opts.Password),
+			registry.LoginOptInsecure(opts.Insecure),
+		); err != nil {
+			return fmt.Errorf("failed to login to registry: %w", err)
+		}
+	}
+
+	// Locate and load chart from remote repository or OCI registry
+	chartPath, err := client.ChartPathOptions.LocateChart(opts.ChartName, c.settings)
 	if err != nil {
-		return fmt.Errorf("failed to locate chart: %w", err)
+		return fmt.Errorf("failed to locate chart %s: %w", opts.ChartName, err)
 	}
 
 	chart, err := loader.Load(chartPath)
@@ -237,7 +302,7 @@ func (c *Client) Uninstall(ctx context.Context, opts UninstallOptions) error {
 	client.Wait = opts.Wait
 
 	if opts.Timeout > 0 {
-		client.Timeout = 0 // Will use default
+		client.Timeout = time.Duration(opts.Timeout) * time.Second
 	}
 
 	response, err := client.Run(opts.ReleaseName)
@@ -250,38 +315,6 @@ func (c *Client) Uninstall(ctx context.Context, opts UninstallOptions) error {
 		"info", response.Info)
 
 	return nil
-}
-
-// parseValues parses values from YAML string or file
-func (c *Client) parseValues(opts InstallOrUpgradeOptions) (map[string]interface{}, error) {
-	values := make(map[string]interface{})
-
-	// Load from file if specified
-	if opts.ValuesFilePath != "" {
-		data, err := os.ReadFile(opts.ValuesFilePath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read values file: %w", err)
-		}
-
-		if err := yaml.Unmarshal(data, &values); err != nil {
-			return nil, fmt.Errorf("failed to parse values file: %w", err)
-		}
-	}
-
-	// Override with inline YAML if specified
-	if opts.ValuesYAML != "" {
-		inlineValues := make(map[string]interface{})
-		if err := yaml.Unmarshal([]byte(opts.ValuesYAML), &inlineValues); err != nil {
-			return nil, fmt.Errorf("failed to parse values YAML: %w", err)
-		}
-
-		// Merge inline values (they take precedence)
-		for k, v := range inlineValues {
-			values[k] = v
-		}
-	}
-
-	return values, nil
 }
 
 // newActionConfig creates a new Helm action configuration
@@ -310,19 +343,126 @@ func GetReleaseName(gatewayName string) string {
 	return fmt.Sprintf("%s-gateway", gatewayName)
 }
 
-// WriteValuesFile writes values to a temporary file
-func WriteValuesFile(values string, gatewayName string) (string, error) {
-	// Create a temporary directory for values files
-	tmpDir := filepath.Join(os.TempDir(), "gateway-operator-helm")
-	if err := os.MkdirAll(tmpDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create temp directory: %w", err)
+// parseValues parses values from YAML string or file
+func (c *Client) parseValues(opts InstallOrUpgradeOptions) (map[string]interface{}, error) {
+	values := make(map[string]interface{})
+
+	// Load from file if specified
+	if opts.ValuesFilePath != "" {
+		data, err := os.ReadFile(opts.ValuesFilePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read values file: %w", err)
+		}
+
+		var rawValues interface{}
+		if err := yaml.Unmarshal(data, &rawValues); err != nil {
+			return nil, fmt.Errorf("failed to parse values file: %w", err)
+		}
+
+		// Convert to map[string]interface{} for JSON compatibility
+		converted, err := convertToStringMap(rawValues)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert values from file: %w", err)
+		}
+		
+		if convertedMap, ok := converted.(map[string]interface{}); ok {
+			values = convertedMap
+		}
 	}
 
-	// Write values to file
-	valuesFile := filepath.Join(tmpDir, fmt.Sprintf("%s-values.yaml", gatewayName))
-	if err := os.WriteFile(valuesFile, []byte(values), 0644); err != nil {
-		return "", fmt.Errorf("failed to write values file: %w", err)
+	// Override with inline YAML if specified
+	if opts.ValuesYAML != "" {
+		var rawValues interface{}
+		if err := yaml.Unmarshal([]byte(opts.ValuesYAML), &rawValues); err != nil {
+			return nil, fmt.Errorf("failed to parse values YAML: %w", err)
+		}
+
+		// Convert to map[string]interface{} for JSON compatibility
+		converted, err := convertToStringMap(rawValues)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert inline values: %w", err)
+		}
+
+		// Merge inline values (they take precedence)
+		if inlineValues, ok := converted.(map[string]interface{}); ok {
+			for k, v := range inlineValues {
+				values[k] = v
+			}
+		}
 	}
 
-	return valuesFile, nil
+	return values, nil
+}
+
+// convertToStringMap recursively converts map[interface{}]interface{} to map[string]interface{}
+// This is necessary because yaml.v2 creates map[interface{}]interface{} which is not JSON-serializable
+func convertToStringMap(input interface{}) (interface{}, error) {
+	switch value := input.(type) {
+	case map[interface{}]interface{}:
+		// Convert map[interface{}]interface{} to map[string]interface{}
+		result := make(map[string]interface{})
+		for k, v := range value {
+			keyStr, ok := k.(string)
+			if !ok {
+				return nil, fmt.Errorf("non-string key found: %v", k)
+			}
+			converted, err := convertToStringMap(v)
+			if err != nil {
+				return nil, err
+			}
+			result[keyStr] = converted
+		}
+		return result, nil
+	
+	case map[string]interface{}:
+		// Already the correct type, but recurse into values
+		result := make(map[string]interface{})
+		for k, v := range value {
+			converted, err := convertToStringMap(v)
+			if err != nil {
+				return nil, err
+			}
+			result[k] = converted
+		}
+		return result, nil
+	
+	case []interface{}:
+		// Handle slices recursively
+		result := make([]interface{}, len(value))
+		for i, v := range value {
+			converted, err := convertToStringMap(v)
+			if err != nil {
+				return nil, err
+			}
+			result[i] = converted
+		}
+		return result, nil
+	
+	default:
+		// Primitive types (string, int, bool, etc.) are returned as-is
+		return value, nil
+	}
+}
+
+// extractRegistryHost extracts the registry hostname from an OCI chart reference
+// Example: "oci://registry-1.docker.io/tharsanan/api-platform-gateway" -> "registry-1.docker.io"
+func extractRegistryHost(chartRef string) (string, error) {
+	// Remove "oci://" prefix if present
+	if len(chartRef) > 6 && chartRef[:6] == "oci://" {
+		chartRef = chartRef[6:]
+	}
+	
+	// Find the first slash to get the hostname
+	for i, c := range chartRef {
+		if c == '/' {
+			return chartRef[:i], nil
+		}
+	}
+	
+	// If no slash found, the entire string is the host
+	if chartRef != "" {
+		return chartRef, nil
+	}
+	
+	return "", fmt.Errorf("invalid chart reference: %s", chartRef)
 }

@@ -72,9 +72,15 @@ spec:
 {{ toYaml .Values.resources | nindent 12 }}
           volumeMounts:
             - name: config
-              mountPath: /etc/operator/config.yaml
+              mountPath: /config/config.yaml
               subPath: config.yaml
+            - name: gateway-values
+              mountPath: /config/gateway_values.yaml
+              subPath: gateway_values.yaml
       volumes:
         - name: config
           configMap:
             name: operator-config
+        - name: gateway-values
+          configMap:
+            name: gateway-values

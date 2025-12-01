@@ -17,9 +17,6 @@ limitations under the License.
 package v1
 
 import (
-	"encoding/json"
-
-	apipgc "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -38,34 +35,6 @@ const (
 	// APIPhaseFailed indicates the controller failed to deploy the API
 	APIPhaseFailed APIPhase = "Failed"
 )
-
-// APIConfigurationWrapper wraps the external APIConfiguration type to add deep copy support
-// +kubebuilder:object:generate=true
-type APIConfigurationWrapper struct {
-	apipgc.APIConfiguration `json:",inline"`
-}
-
-// DeepCopyInto copies the receiver into out. in must be non-nil.
-func (in *APIConfigurationWrapper) DeepCopyInto(out *APIConfigurationWrapper) {
-	// Marshal and unmarshal to perform deep copy
-	data, err := json.Marshal(&in.APIConfiguration)
-	if err != nil {
-		panic(err)
-	}
-	if err := json.Unmarshal(data, &out.APIConfiguration); err != nil {
-		panic(err)
-	}
-}
-
-// DeepCopy creates a deep copy of the APIConfigurationWrapper.
-func (in *APIConfigurationWrapper) DeepCopy() *APIConfigurationWrapper {
-	if in == nil {
-		return nil
-	}
-	out := new(APIConfigurationWrapper)
-	in.DeepCopyInto(out)
-	return out
-}
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
@@ -90,8 +59,9 @@ type APIConfigurationSpec struct {
 	// +optional
 	GatewayRefs []GatewayReference `json:"gatewayRefs,omitempty"`
 
-	// APIConfiguration contains the API configuration from the gateway controller
-	APIConfiguration *APIConfigurationWrapper `json:"apiConfiguration,omitempty"`
+	// API contains the API configuration from the gateway controller
+	// +kubebuilder:validation:Required
+	APIConfiguration APIConfig `json:"apiConfiguration"`
 }
 
 // APIConfigurationStatus defines the observed state of APIConfiguration

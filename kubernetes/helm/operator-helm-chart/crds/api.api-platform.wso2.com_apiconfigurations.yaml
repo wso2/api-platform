@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.5
   name: apiconfigurations.api.api-platform.wso2.com
 spec:
   group: api.api-platform.wso2.com
@@ -40,20 +40,26 @@ spec:
             description: APIConfigurationSpec defines the desired state of APIConfiguration
             properties:
               apiConfiguration:
-                description: APIConfiguration contains the API configuration from
-                  the gateway controller
+                description: API contains the API configuration from the gateway controller
                 properties:
-                  data:
-                    description: APIConfigData defines model for APIConfigData.
+                  kind:
+                    description: Kind API type
+                    enum:
+                    - http/rest
+                    type: string
+                  spec:
+                    description: Spec contains the API configuration data
                     properties:
                       context:
                         description: Context Base path for all API routes (must start
                           with /, no trailing slash)
+                        pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/]*[^/]$
                         type: string
                       name:
                         description: Name Human-readable API name (must be URL-friendly
                           - only letters, numbers, spaces, hyphens, underscores, and
                           dots allowed)
+                        pattern: ^[a-zA-Z0-9\s\-_.]+$
                         type: string
                       operations:
                         description: Operations List of HTTP operations/routes
@@ -62,47 +68,110 @@ spec:
                           properties:
                             method:
                               description: Method HTTP method
+                              enum:
+                              - GET
+                              - POST
+                              - PUT
+                              - PATCH
+                              - DELETE
+                              - HEAD
+                              - OPTIONS
                               type: string
                             path:
                               description: Path Route path with optional {param} placeholders
+                              pattern: ^/[a-zA-Z0-9\-._~!$&'()*+,;=:@%/{}\[\]]*$
                               type: string
+                            policies:
+                              description: Policies List of policies applied only
+                                to this operation (overrides or adds to API-level
+                                policies)
+                              items:
+                                description: Policy defines model for Policy.
+                                properties:
+                                  executionCondition:
+                                    description: ExecutionCondition Expression controlling
+                                      conditional execution of the policy
+                                    type: string
+                                  name:
+                                    description: Name Name of the policy
+                                    type: string
+                                  params:
+                                    description: Params Arbitrary parameters for the
+                                      policy (free-form key/value structure)
+                                    x-kubernetes-preserve-unknown-fields: true
+                                  version:
+                                    description: Version Semantic version of the policy
+                                    type: string
+                                required:
+                                - name
+                                - version
+                                type: object
+                              type: array
                           required:
                           - method
                           - path
                           type: object
+                        minItems: 1
                         type: array
-                      upstream:
-                        description: Upstream List of backend service URLs
+                      policies:
+                        description: Policies List of API-level policies applied to
+                          all operations unless overridden
+                        items:
+                          description: Policy defines model for Policy.
+                          properties:
+                            executionCondition:
+                              description: ExecutionCondition Expression controlling
+                                conditional execution of the policy
+                              type: string
+                            name:
+                              description: Name Name of the policy
+                              type: string
+                            params:
+                              description: Params Arbitrary parameters for the policy
+                                (free-form key/value structure)
+                              x-kubernetes-preserve-unknown-fields: true
+                            version:
+                              description: Version Semantic version of the policy
+                              type: string
+                          required:
+                          - name
+                          - version
+                          type: object
+                        type: array
+                      upstreams:
+                        description: Upstreams List of backend service URLs
                         items:
                           description: Upstream defines model for Upstream.
                           properties:
                             url:
                               description: Url Backend service URL (may include path
                                 prefix like /api/v2)
+                              pattern: ^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$
                               type: string
                           required:
                           - url
                           type: object
+                        minItems: 1
                         type: array
                       version:
                         description: Version Semantic version of the API
+                        pattern: ^v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$
                         type: string
                     required:
                     - context
                     - name
                     - operations
-                    - upstream
+                    - upstreams
                     - version
                     type: object
-                  kind:
-                    description: Kind API type
-                    type: string
                   version:
                     description: Version API specification version
+                    enum:
+                    - api-platform.wso2.com/v1
                     type: string
                 required:
-                - data
                 - kind
+                - spec
                 - version
                 type: object
               gatewayRefs:
@@ -125,6 +194,8 @@ spec:
                   - name
                   type: object
                 type: array
+            required:
+            - apiConfiguration
             type: object
           status:
             description: APIConfigurationStatus defines the observed state of APIConfiguration
@@ -133,16 +204,8 @@ spec:
                 description: Conditions represent the latest available observations
                   of the API's state
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -183,12 +246,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string

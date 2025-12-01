@@ -7,8 +7,11 @@ rules:
   - ""
   resources:
   - configmaps
+  - namespaces
   - persistentvolumeclaims
+  - serviceaccounts
   - services
+  - secrets
   verbs:
   - create
   - delete
@@ -73,6 +76,20 @@ rules:
   - apps
   resources:
   - deployments
+  - replicasets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - certificates
+  - issuers
   verbs:
   - create
   - delete
