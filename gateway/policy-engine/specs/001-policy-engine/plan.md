@@ -199,7 +199,7 @@ build/
 templates/
 ├── plugin_registry.go.tmpl      # Import generation template
 ├── build_info.go.tmpl           # Build metadata template
-└── Dockerfile.runtime.tmpl      # Runtime image template
+└── Dockerfile.policy-engine.tmpl      # Runtime image template
 
 # Docker Images
 Dockerfile.builder               # Builder image with:

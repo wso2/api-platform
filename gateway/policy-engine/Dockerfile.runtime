@@ -56,7 +56,7 @@ WORKDIR /workspace
 RUN /usr/local/bin/policy-engine-builder
 
 # Stage 3: Runtime - Minimal image with compiled binary
-FROM alpine:3.19
+FROM alpine:3.22.2
 
 RUN apk --no-cache add ca-certificates
 

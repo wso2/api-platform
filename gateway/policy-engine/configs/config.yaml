@@ -16,8 +16,8 @@ admin:
   # IP addresses allowed to access the admin API
   # Defaults to localhost only for security
   allowed_ips:
+    - "*"
     - "127.0.0.1"
-    - "::1"
 
 config_mode:
   # Configuration mode: "file" or "xds"
