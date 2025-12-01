@@ -58,9 +58,9 @@ services:
     ports:
       - "9002:9002"   # Admin API
     environment:
-      - XDS_SERVER_ADDRESS=${POLICY_ENGINE_XDS__SERVER_ADDRESS:-gateway-controller:8443}
+      - XDS_SERVER_ADDRESS=${POLICY_ENGINE_XDS__SERVER_ADDRESS:-gateway-controller:18001}
     volumes:
-      - ./policy-engine/configs/config.yaml:/etc/policy-engine/config.yaml:ro
+      - ./policy-engine/configs/config.yaml:/app/configs/config.yaml:ro
     networks:
       - gateway-network
 
