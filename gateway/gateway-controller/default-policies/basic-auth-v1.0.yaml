@@ -1,0 +1,62 @@
+name: BasicAuth
+version: v1.0.0
+description: |
+  Implements HTTP Basic Authentication to protect APIs with username and password credentials.
+  Validates the Authorization header against configured credentials and sets authentication
+  metadata in the request context for downstream policies to use.
+
+parameters:
+  - name: username
+    type: string
+    required: true
+    description: |
+      Expected username for authentication.
+      Compared against the username in the Basic auth header.
+    validation:
+      minLength: 1
+      maxLength: 256
+
+  - name: password
+    type: string
+    required: true
+    description: |
+      Expected password for authentication.
+      Compared against the password in the Basic auth header.
+    validation:
+      minLength: 1
+      maxLength: 256
+
+  - name: allowUnauthenticated
+    type: boolean
+    required: false
+    default: false
+    description: |
+      If true, allows unauthenticated requests to proceed to upstream.
+      Authentication status is still recorded in metadata (auth.success = false).
+      If false (default), returns 401 Unauthorized for failed authentication.
+
+  - name: realm
+    type: string
+    required: false
+    default: "Restricted"
+    description: |
+      Authentication realm shown in the WWW-Authenticate header.
+      Displayed to users in browser authentication prompts.
+    validation:
+      minLength: 1
+      maxLength: 256
+
+metadata:
+  sets:
+    - key: auth.success
+      type: boolean
+      description: True if authentication succeeded, false otherwise
+
+    - key: auth.username
+      type: string
+      description: Authenticated username (only set on successful auth)
+
+    - key: auth.method
+      type: string
+      description: Authentication method used (always "basic")
+

@@ -43,6 +43,11 @@ storage:
   sqlite:
     path: ./data/gateway.db
 
+# Policy configuration
+policies:
+  # Directory containing policy definitions
+  definitions_path: ./default-policies
+
 # Router (Envoy) configuration
 router:
   # Gateway host for incoming requests

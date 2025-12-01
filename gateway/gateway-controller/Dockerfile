@@ -35,7 +35,7 @@ COPY --from=builder /build/controller .
 COPY gateway-controller/config/config.yaml /app/config/config.yaml
 
 # Copy policy definitions
-COPY gateway-controller/policies /app/policies
+COPY gateway-controller/default-policies /app/default-policies
 
 # Create data directory for SQLite database
 RUN mkdir -p /app/data
