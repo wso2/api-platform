@@ -200,7 +200,7 @@ func main() {
 
 	// Load policy definitions from files (must be done before creating validator)
 	policyLoader := utils.NewPolicyLoader(log)
-	policyDir := cfg.GetPolicyDirectory()
+	policyDir := cfg.Policies.DefinitionsPath
 	log.Info("Loading policy definitions from directory", zap.String("directory", policyDir))
 	policyDefinitions, err := policyLoader.LoadPoliciesFromDirectory(policyDir)
 	if err != nil {

@@ -20,7 +20,6 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -39,6 +38,7 @@ type Config struct {
 	Logging      LoggingConfig      `koanf:"logging"`
 	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
 	PolicyServer PolicyServerConfig `koanf:"policyserver"`
+	Policies     PoliciesConfig     `koanf:"policies"`
 }
 
 // ServerConfig holds server-related configuration
@@ -60,6 +60,11 @@ type PolicyServerTLS struct {
 	Enabled  bool   `koanf:"enabled"`
 	CertFile string `koanf:"cert_file"`
 	KeyFile  string `koanf:"key_file"`
+}
+
+// PoliciesConfig holds policy-related configuration
+type PoliciesConfig struct {
+	DefinitionsPath string `koanf:"definitions_path"` // Directory containing policy definitions
 }
 
 // StorageConfig holds storage-related configuration
@@ -249,6 +254,9 @@ func defaultConfig() *Config {
 		PolicyServer: PolicyServerConfig{
 			Enabled: true,
 			Port:    18001,
+		},
+		Policies: PoliciesConfig{
+			DefinitionsPath: "./default-policies",
 		},
 		Storage: StorageConfig{
 			Type: "memory",
@@ -813,14 +821,4 @@ func (c *Config) IsAccessLogsEnabled() bool {
 // IsPolicyEngineEnabled returns true if policy engine is enabled
 func (c *Config) IsPolicyEngineEnabled() bool {
 	return c.Router.PolicyEngine.Enabled
-}
-
-// GetPolicyDirectory returns the directory path where policy definition files are stored
-// Defaults to "policies" if not configured via environment variable
-func (c *Config) GetPolicyDirectory() string {
-	policyDir := os.Getenv("POLICY_DIRECTORY")
-	if policyDir == "" {
-		policyDir = "policies"
-	}
-	return policyDir
 }

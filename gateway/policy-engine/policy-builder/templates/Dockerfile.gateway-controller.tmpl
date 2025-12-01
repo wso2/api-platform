@@ -5,7 +5,7 @@ RUN rm -rf /app/policies
 COPY policies /app/policies
 
 # Set environment variable for policy directory
-ENV POLICY_DIRECTORY=/app/policies
+ENV GATEWAY_POLICIES_DEFINITIONS__PATH=/app/policies
 
 # Metadata labels
 LABEL org.opencontainers.image.title="Gateway Controller with Custom Policies"
