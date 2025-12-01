@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/knadh/koanf/parsers/yaml"
-	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
@@ -182,29 +181,13 @@ type ControlPlaneConfig struct {
 // LoadConfig loads configuration from file, environment variables, and defaults
 // Priority: Environment variables > Config file > Defaults
 func LoadConfig(configPath string) (*Config, error) {
+	cfg := defaultConfig()
+
 	k := koanf.New(".")
 
-	// Load defaults
-	defaults := getDefaults()
-	if err := k.Load(confmap.Provider(defaults, "."), nil); err != nil {
-		return nil, fmt.Errorf("failed to load defaults: %w", err)
-	}
-
 	// Load config file if path is provided
-	if configPath != "" {
-		if _, err := os.Stat(configPath); err != nil {
-			return nil, fmt.Errorf("config file not found: %s", configPath)
-		}
-		// Use WithMergeFunc to prevent merging of maps - config file should fully override defaults
-		if err := k.Load(file.Provider(configPath), yaml.Parser(), koanf.WithMergeFunc(func(src, dest map[string]interface{}) error {
-			// For nested maps, replace instead of merge
-			for k, v := range src {
-				dest[k] = v
-			}
-			return nil
-		})); err != nil {
-			return nil, fmt.Errorf("failed to load config file: %w", err)
-		}
+	if err := k.Load(file.Provider(configPath), yaml.Parser()); err != nil {
+		return nil, fmt.Errorf("failed to load config file: %w", err)
 	}
 
 	// Load environment variables with prefix "GATEWAY_"
@@ -230,7 +213,12 @@ func LoadConfig(configPath string) (*Config, error) {
 			return "controlplane.insecure_skip_verify"
 		default:
 			// For other GATEWAY_ prefixed vars, use standard mapping (underscore to dot)
+			// Step 1: Convert double underscore "__" into a temporary placeholder
+			s = strings.ReplaceAll(s, "__", "%UNDERSCORE%")
+			// Step 2: Convert single "_" into "."
 			s = strings.ReplaceAll(s, "_", ".")
+			// Step 3: Convert placeholder back into literal "_"
+			s = strings.ReplaceAll(s, "%UNDERSCORE%", "_")
 			return s
 		}
 	}), nil); err != nil {
@@ -238,8 +226,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	// Unmarshal into Config struct
-	var cfg Config
-	if err := k.Unmarshal("", &cfg); err != nil {
+	if err := k.Unmarshal("", cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
@@ -248,83 +235,111 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	return &cfg, nil
+	return cfg, nil
 }
 
-// getDefaults returns a map with default configuration values
-func getDefaults() map[string]interface{} {
-	return map[string]interface{}{
-		"server.api_port":            9090,
-		"server.xds_port":            18000,
-		"server.shutdown_timeout":    "15s",
-		"policyserver.enabled":       true,
-		"policyserver.port":          18001,
-		"storage.type":               "memory",
-		"storage.sqlite.path":        "./data/gateway.db",
-		"router.access_logs.enabled": true,
-		"router.access_logs.format":  "json",
-		"router.access_logs.json_fields": map[string]interface{}{
-			"start_time":            "%START_TIME%",
-			"method":                "%REQ(:METHOD)%",
-			"path":                  "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
-			"protocol":              "%PROTOCOL%",
-			"response_code":         "%RESPONSE_CODE%",
-			"response_flags":        "%RESPONSE_FLAGS%",
-			"response_flags_long":   "%RESPONSE_FLAGS_LONG%",
-			"bytes_received":        "%BYTES_RECEIVED%",
-			"bytes_sent":            "%BYTES_SENT%",
-			"duration":              "%DURATION%",
-			"upstream_service_time": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
-			"x_forwarded_for":       "%REQ(X-FORWARDED-FOR)%",
-			"user_agent":            "%REQ(USER-AGENT)%",
-			"request_id":            "%REQ(X-REQUEST-ID)%",
-			"authority":             "%REQ(:AUTHORITY)%",
-			"upstream_host":         "%UPSTREAM_HOST%",
-			"upstream_cluster":      "%UPSTREAM_CLUSTER%",
+// defaultConfig returns a Config struct with default configuration values
+func defaultConfig() *Config {
+	return &Config{
+		Server: ServerConfig{
+			APIPort:         9090,
+			XDSPort:         18000,
+			ShutdownTimeout: 15 * time.Second,
 		},
-		"router.access_logs.text_format": "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" " +
-			"%RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
-			"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
-			"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
-		"router.listener_port":                                         8080,
-		"router.https_enabled":                                         false,
-		"router.https_port":                                            8443,
-		"router.downstream_tls.cert_path":                              "./listener-certs/server.crt",
-		"router.downstream_tls.key_path":                               "./listener-certs/server.key",
-		"router.downstream_tls.minimum_protocol_version":               "TLS1_2",
-		"router.downstream_tls.maximum_protocol_version":               "TLS1_3",
-		"router.downstream_tls.ciphers":                                "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
-		"router.gateway_host":                                          "*",
-		"logging.level":                                                "info",
-		"logging.format":                                               "json",
-		"controlplane.host":                                            "localhost:8443",
-		"controlplane.token":                                           "",
-		"controlplane.reconnect_initial":                               "1s",
-		"controlplane.reconnect_max":                                   "5m",
-		"controlplane.polling_interval":                                "15m",
-		"controlplane.insecure_skip_verify":                            true, // Default true for dev environments with self-signed certs
-		"router.envoy_upstream.tls.minimum_protocol_version":           "TLS1_2",
-		"router.envoy_upstream.tls.maximum_protocol_version":           "TLS1_3",
-		"router.envoy_upstream.tls.verify_host_name":                   true,
-		"router.envoy_upstream.tls.disable_ssl_verification":           false,
-		"router.envoy_upstream.timeouts.route_timeout_in_seconds":      60,
-		"router.envoy_upstream.timeouts.max_route_timeout_in_seconds":  60,
-		"router.envoy_upstream.timeouts.route_idle_timeout_in_seconds": 300,
-		"router.policy_engine.enabled":                                 false,
-		"router.policy_engine.host":                                    "localhost",
-		"router.policy_engine.port":                                    9001,
-		"router.policy_engine.timeout_ms":                              250,
-		"router.policy_engine.failure_mode_allow":                      false,
-		"router.policy_engine.route_cache_action":                      "RETAIN",
-		"router.policy_engine.allow_mode_override":                     true,
-		"router.policy_engine.request_header_mode":                     "SEND",
-		"router.policy_engine.message_timeout_ms":                      250,
-		"router.policy_engine.tls.enabled":                             false,
-		"router.policy_engine.tls.cert_path":                           "",
-		"router.policy_engine.tls.key_path":                            "",
-		"router.policy_engine.tls.ca_path":                             "",
-		"router.policy_engine.tls.server_name":                         "",
-		"router.policy_engine.tls.skip_verify":                         false,
+		PolicyServer: PolicyServerConfig{
+			Enabled: true,
+			Port:    18001,
+		},
+		Storage: StorageConfig{
+			Type: "memory",
+			SQLite: SQLiteConfig{
+				Path: "./data/gateway.db",
+			},
+		},
+		Router: RouterConfig{
+			AccessLogs: AccessLogsConfig{
+				Enabled: true,
+				Format:  "json",
+				JSONFields: map[string]string{
+					"start_time":            "%START_TIME%",
+					"method":                "%REQ(:METHOD)%",
+					"path":                  "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
+					"protocol":              "%PROTOCOL%",
+					"response_code":         "%RESPONSE_CODE%",
+					"response_flags":        "%RESPONSE_FLAGS%",
+					"response_flags_long":   "%RESPONSE_FLAGS_LONG%",
+					"bytes_received":        "%BYTES_RECEIVED%",
+					"bytes_sent":            "%BYTES_SENT%",
+					"duration":              "%DURATION%",
+					"upstream_service_time": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
+					"x_forwarded_for":       "%REQ(X-FORWARDED-FOR)%",
+					"user_agent":            "%REQ(USER-AGENT)%",
+					"request_id":            "%REQ(X-REQUEST-ID)%",
+					"authority":             "%REQ(:AUTHORITY)%",
+					"upstream_host":         "%UPSTREAM_HOST%",
+					"upstream_cluster":      "%UPSTREAM_CLUSTER%",
+				},
+				TextFormat: "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" " +
+					"%RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
+					"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
+					"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
+			},
+			ListenerPort: 8080,
+			HTTPSEnabled: false,
+			HTTPSPort:    8443,
+			DownstreamTLS: DownstreamTLS{
+				CertPath:               "./listener-certs/server.crt",
+				KeyPath:                "./listener-certs/server.key",
+				MinimumProtocolVersion: "TLS1_2",
+				MaximumProtocolVersion: "TLS1_3",
+				Ciphers:                "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
+			},
+			GatewayHost: "*",
+			Upstream: envoyUpstream{
+				TLS: upstreamTLS{
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					VerifyHostName:         true,
+					DisableSslVerification: false,
+				},
+				Timeouts: upstreamTimeout{
+					RouteTimeoutInSeconds:     60,
+					MaxRouteTimeoutInSeconds:  60,
+					RouteIdleTimeoutInSeconds: 300,
+				},
+			},
+			PolicyEngine: PolicyEngineConfig{
+				Enabled:           false,
+				Host:              "localhost",
+				Port:              9001,
+				TimeoutMs:         250,
+				FailureModeAllow:  false,
+				RouteCacheAction:  "RETAIN",
+				AllowModeOverride: true,
+				RequestHeaderMode: "SEND",
+				MessageTimeoutMs:  250,
+				TLS: PolicyEngineTLS{
+					Enabled:    false,
+					CertPath:   "",
+					KeyPath:    "",
+					CAPath:     "",
+					ServerName: "",
+					SkipVerify: false,
+				},
+			},
+		},
+		Logging: LoggingConfig{
+			Level:  "info",
+			Format: "json",
+		},
+		ControlPlane: ControlPlaneConfig{
+			Host:               "localhost:8443",
+			Token:              "",
+			ReconnectInitial:   1 * time.Second,
+			ReconnectMax:       5 * time.Minute,
+			PollingInterval:    15 * time.Minute,
+			InsecureSkipVerify: true,
+		},
 	}
 }
 

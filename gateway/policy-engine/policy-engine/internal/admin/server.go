@@ -91,6 +91,10 @@ func extractClientIP(r *http.Request) string {
 // isIPAllowed checks if the given IP is in the allowed list
 func isIPAllowed(clientIP string, allowedIPs []string) bool {
 	for _, allowedIP := range allowedIPs {
+		// Support wildcard to allow any IP
+		if allowedIP == "*" || allowedIP == "0.0.0.0/0" {
+			return true
+		}
 		if clientIP == allowedIP {
 			return true
 		}

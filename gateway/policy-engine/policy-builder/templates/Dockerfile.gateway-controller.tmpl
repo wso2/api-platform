@@ -1,6 +1,7 @@
 FROM {{ .BaseImage }}
 
 # Copy policy definitions
+RUN rm -rf /app/policies
 COPY policies /app/policies
 
 # Set environment variable for policy directory

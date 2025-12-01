@@ -143,7 +143,9 @@ func runGoBuild(srcDir string, options *types.CompilationOptions) error {
 
 	// Set environment for static binary
 	cmd.Env = os.Environ()
-	if !options.CGOEnabled {
+	if options.CGOEnabled {
+		cmd.Env = append(cmd.Env, "CGO_ENABLED=1")
+	} else {
 		cmd.Env = append(cmd.Env, "CGO_ENABLED=0")
 	}
 	if options.TargetOS != "" {
@@ -154,7 +156,7 @@ func runGoBuild(srcDir string, options *types.CompilationOptions) error {
 	}
 
 	slog.Debug("Build environment",
-		"CGO_ENABLED", !options.CGOEnabled,
+		"CGO_ENABLED", options.CGOEnabled,
 		"GOOS", options.TargetOS,
 		"GOARCH", options.TargetArch,
 		"phase", "compilation")

@@ -137,9 +137,13 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 func (ec *PolicyExecutionContext) processRequestHeaders(
 	ctx context.Context,
 ) (*extprocv3.ProcessingResponse, error) {
-	// If policy chain requires request body, skip processing headers separately
+	// Check if this is end of stream (no body coming)
+	endOfStream := ec.requestContext.Body != nil && ec.requestContext.Body.EndOfStream
+
+	// If policy chain requires request body AND body is coming, skip processing headers separately
 	// Headers and body will be processed together in processRequestBody phase
-	if ec.policyChain.RequiresRequestBody {
+	// However, if EndOfStream is true, there's no body coming, so process immediately
+	if ec.policyChain.RequiresRequestBody && !endOfStream {
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_RequestHeaders{
 				RequestHeaders: &extprocv3.HeadersResponse{},
@@ -233,9 +237,10 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	// Build ResponseContext from stored request context and response headers
 	ec.responseContext = ec.buildResponseContext(headers)
 
-	// If policy chain requires response body, skip processing headers separately
+	// If policy chain requires response body AND body is coming, skip processing headers separately
 	// Headers and body will be processed together in processResponseBody phase
-	if ec.policyChain.RequiresResponseBody {
+	// However, if EndOfStream is true, there's no body coming, so process immediately
+	if ec.policyChain.RequiresResponseBody && !headers.EndOfStream {
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 				ResponseHeaders: &extprocv3.HeadersResponse{},
@@ -343,6 +348,16 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 		}
 	}
 
+	// Initialize Body with EndOfStream from headers (for requests without body)
+	// This will be overwritten if processRequestBody is called
+	if headers.EndOfStream {
+		ctx.Body = &policy.Body{
+			Content:     nil,
+			EndOfStream: true,
+			Present:     false,
+		}
+	}
+
 	return ctx
 }
 
@@ -382,6 +397,16 @@ func (ec *PolicyExecutionContext) buildResponseContext(headers *extprocv3.HttpHe
 		RequestMethod:   ec.requestContext.Method,
 		ResponseHeaders: policy.NewHeaders(responseHeadersMap),
 		ResponseStatus:  responseStatus,
+	}
+
+	// Initialize ResponseBody with EndOfStream from headers (for responses without body)
+	// This will be overwritten if processResponseBody is called
+	if headers.EndOfStream {
+		ctx.ResponseBody = &policy.Body{
+			Content:     nil,
+			EndOfStream: true,
+			Present:     false,
+		}
 	}
 
 	return ctx

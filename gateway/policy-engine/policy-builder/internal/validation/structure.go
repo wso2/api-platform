@@ -12,8 +12,8 @@ import (
 func ValidateDirectoryStructure(policy *types.DiscoveredPolicy) []types.ValidationError {
 	var errors []types.ValidationError
 
-	// Check policy.yaml exists
-	if err := fsutil.ValidatePathExists(policy.YAMLPath, "policy.yaml"); err != nil {
+	// Check policy definition file exists
+	if err := fsutil.ValidatePathExists(policy.YAMLPath, types.PolicyDefinitionFile); err != nil {
 		errors = append(errors, types.ValidationError{
 			PolicyName:    policy.Name,
 			PolicyVersion: policy.Version,
