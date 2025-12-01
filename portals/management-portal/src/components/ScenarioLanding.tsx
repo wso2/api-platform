@@ -68,9 +68,13 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
         }}
       >
         <Typography variant="h3" fontWeight={600} mt={0.5}>
-          <Box component="span" fontWeight={800}>
-            Hi {displayName},
-          </Box>{" "}
+          {displayName !== "default" ? (
+            <>
+              <Box component="span" fontWeight={800}>
+                Hi {displayName},
+              </Box>{' '}
+            </>
+          ) : null}
           Welcome to the API Platform
         </Typography>
 
