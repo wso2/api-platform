@@ -1,0 +1,38 @@
+# --------------------------------------------------------------------
+# Stage 1: Build the manager binary
+# --------------------------------------------------------------------
+FROM golang:1.25.1 AS builder
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /workspace
+COPY go.mod go.mod
+COPY go.sum go.sum
+RUN go mod download
+
+COPY cmd/main.go cmd/main.go
+COPY api/ api/
+COPY internal/ internal/
+
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -gcflags "all=-N -l" -a -o manager cmd/main.go
+
+RUN CGO_ENABLED=0 GOOS=linux go install github.com/go-delve/delve/cmd/dlv@latest
+
+
+# --------------------------------------------------------------------
+# Stage 2: Final image (distroless for normal run)
+# --------------------------------------------------------------------
+FROM gcr.io/distroless/base:nonroot AS runtime
+WORKDIR /workspace
+COPY --from=builder /workspace/manager ./manager
+COPY --from=builder /go/bin/dlv ./dlv
+COPY --from=builder /workspace/cmd /workspace/cmd
+COPY --from=builder /workspace/internal /workspace/internal
+COPY --from=builder /workspace/api /workspace/api
+COPY --from=builder /workspace/internal/controller/resources/ /workspace/internal/controller/resources/
+COPY --from=builder /usr/local/go /usr/local/go
+ENV GOROOT=/usr/local/go
+ENV PATH=$GOROOT/bin:$PATH
+USER 65532:65532
+ENTRYPOINT ["./manager"]

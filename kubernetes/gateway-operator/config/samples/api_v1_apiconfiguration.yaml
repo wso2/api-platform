@@ -1,0 +1,152 @@
+---
+# Example 1: API with explicit gateway references (multiple gateways)
+apiVersion: api.api-platform.wso2.com/v1
+kind: APIConfiguration
+metadata:
+  labels:
+    app.kubernetes.io/name: gateway-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: api-with-gateway-refs2
+spec:
+  # Explicit references to multiple specific gateways
+  gatewayRefs:
+    - name: cluster-gateway
+      namespace: default
+    # - name: backup-gateway
+    #   namespace: default
+  
+  apiConfiguration:
+    version: api-platform.wso2.com/v1
+    kind: http/rest
+    spec:
+      name: test-api2
+      version: v1.0
+      context: /test2
+      upstreams:
+        # - url: https://secure-backend:5443/api/v2
+        - url: https://httpbin.org/anything
+      operations:
+        - method: GET
+          path: /info
+
+
+---
+# Example 1: API with explicit gateway references (multiple gateways)
+apiVersion: api.api-platform.wso2.com/v1
+kind: APIConfiguration
+metadata:
+  labels:
+    app.kubernetes.io/name: gateway-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: api-with-gateway-refs
+  namespace: test
+spec:
+  apiConfiguration:
+    version: api-platform.wso2.com/v1
+    kind: http/rest
+    spec:
+      name: test-api
+      version: v1.0
+      context: /test
+      upstreams:
+        # - url: https://secure-backend:5443/api/v2
+        - url: http://httpbin.org/anything
+      operations:
+        - method: GET
+          path: /info
+---
+# Example 1: API with explicit gateway references (multiple gateways)
+apiVersion: api.api-platform.wso2.com/v1
+kind: APIConfiguration
+metadata:
+  labels:
+    app.kubernetes.io/name: gateway-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: self-signed-backend
+spec:
+  apiConfiguration:
+    version: api-platform.wso2.com/v1
+    kind: http/rest
+    spec:
+      name: self-signed-api
+      version: v1.0
+      context: /ssa
+      upstreams:
+        - url: https://secure-backend:5443/api/v2
+        # - url: http://httpbin.org/anything
+      operations:
+        - method: GET
+          path: /info
+# ---
+# # Example 2: API with single gateway reference
+# apiVersion: api.api-platform.wso2.com/v1
+# kind: APIConfiguration
+# metadata:
+#   labels:
+#     app.kubernetes.io/name: gateway-operator
+#     app.kubernetes.io/managed-by: kustomize
+#   name: api-with-single-gateway
+#   namespace: prod-apis
+# spec:
+#   # Reference to a single gateway (still uses list syntax)
+#   gatewayRefs:
+#     - name: cluster-gateway
+  
+#   apiConfiguration:
+#     # Your API configuration
+
+# ---
+# # Example 3: API using label-based selection
+# apiVersion: api.api-platform.wso2.com/v1
+# kind: APIConfiguration
+# metadata:
+#   labels:
+#     app.kubernetes.io/name: gateway-operator
+#     app.kubernetes.io/managed-by: kustomize
+#     # Labels for gateway selection
+#     gateway: "platform-gateway"
+#     environment: "production"
+#     team: "platform"
+#     tier: "stable"
+#   name: api-with-labels
+#   namespace: platform-team
+# spec:
+#   # No gatewayRefs - will be selected by label-selector-gateway
+#   # based on the labels above
+  
+#   apiConfiguration:
+#     # Your API configuration
+
+# ---
+# # Example 4: API in specific namespace (for namespaced gateway)
+# apiVersion: api.api-platform.wso2.com/v1
+# kind: APIConfiguration
+# metadata:
+#   labels:
+#     app.kubernetes.io/name: gateway-operator
+#     app.kubernetes.io/managed-by: kustomize
+#   name: api-in-dev-namespace
+#   namespace: dev-apis
+# spec:
+#   # No gatewayRefs - will be selected by namespaced-gateway
+#   # because this is in the "dev-apis" namespace
+  
+#   apiConfiguration:
+#     # Your API configuration
+
+# ---
+# # Example 5: API that will be picked by cluster-scoped gateway
+# apiVersion: api.api-platform.wso2.com/v1
+# kind: APIConfiguration
+# metadata:
+#   labels:
+#     app.kubernetes.io/name: gateway-operator
+#     app.kubernetes.io/managed-by: kustomize
+#   name: api-any-namespace
+#   namespace: any-namespace
+# spec:
+#   # No gatewayRefs - will be selected by cluster-gateway
+#   # because cluster-gateway accepts APIs from any namespace
+  
+#   apiConfiguration:
+#     # Your API configuration

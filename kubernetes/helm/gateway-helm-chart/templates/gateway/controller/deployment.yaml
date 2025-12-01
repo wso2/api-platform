@@ -1,0 +1,177 @@
+{{- $controller := .Values.gateway.controller -}}
+{{- $deployment := $controller.deployment -}}
+{{- if $deployment.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-controller
+  labels:
+    {{- include "gateway-operator.componentLabels" (list . "controller" $deployment.labels) | nindent 4 }}
+  {{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $deployment.annotations) }}
+  {{- if $annotations }}
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ $deployment.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "gateway-operator.componentSelectorLabels" (list . "controller") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gateway-operator.componentSelectorLabels" (list . "controller") | nindent 8 }}
+        {{- with $deployment.podLabels }}
+{{ toYaml . | indent 8 }}
+        {{- end }}
+      {{- if $deployment.podAnnotations }}
+      annotations:
+        {{- toYaml $deployment.podAnnotations | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "gateway-operator.serviceAccountName" . }}
+      {{- $globalPullSecrets := default (list) .Values.imagePullSecrets }}
+      {{- $componentPullSecrets := default (list) $controller.imagePullSecrets }}
+      {{- $pullSecrets := concat $globalPullSecrets $componentPullSecrets }}
+      {{- if $pullSecrets }}
+      imagePullSecrets:
+        {{- range $pullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- with $deployment.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      {{- with $deployment.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: gateway-controller
+          image: "{{ $controller.image.repository }}:{{ $controller.image.tag }}"
+          imagePullPolicy: {{ $controller.image.pullPolicy }}
+          {{- with $deployment.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: GATEWAY_CONTROLPLANE_HOST
+              value: {{ $controller.controlPlane.host | quote }}
+            - name: GATEWAY_CONTROLPLANE_PORT
+              value: {{ printf "%d" (int $controller.controlPlane.port) | quote }}
+            - name: GATEWAY_CONTROLPLANE_TOKEN
+              {{- if $controller.controlPlane.token.secretName }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $controller.controlPlane.token.secretName }}
+                  key: {{ $controller.controlPlane.token.key | default "token" }}
+              {{- else }}
+              value: {{ $controller.controlPlane.token.value | quote }}
+              {{- end }}
+            - name: GATEWAY_LOGGING_LEVEL
+              value: {{ $controller.logging.level | quote }}
+            - name: GATEWAY_STORAGE_TYPE
+              value: {{ $controller.storage.type | quote }}
+            - name: GATEWAY_STORAGE_SQLITE_PATH
+              value: {{ $controller.storage.sqlitePath | quote }}
+            - name: XDS_SERVER_HOST
+              value: {{ default (printf "%s-controller" (include "gateway-operator.fullname" .)) $deployment.env.xdsServerHost | quote }}
+            {{- range $deployment.extraEnv }}
+            - {{- toYaml . | nindent 14 }}
+            {{- end }}
+          ports:
+            - name: rest
+              containerPort: {{ $controller.service.ports.rest }}
+              protocol: TCP
+            - name: xds
+              containerPort: {{ $controller.service.ports.xds }}
+              protocol: TCP
+            - name: policy
+              containerPort: {{ $controller.service.ports.policy }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml $deployment.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml $deployment.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml ($deployment.resources | default dict) | nindent 12 }}
+          volumeMounts:
+            - name: controller-data
+              mountPath: {{ $deployment.volumeMountPath }}
+            - name: controller-config
+              mountPath: /app/config/config.yaml
+              subPath: config.yaml
+            {{- if $controller.tls.enabled }}
+            - name: listener-certs
+              mountPath: /app/listener-certs
+              readOnly: true
+            {{- end }}
+            {{- if $controller.upstreamCerts.enabled }}
+            {{- if $controller.upstreamCerts.secretName }}
+            - name: upstream-certs
+              mountPath: /app/certificates
+              readOnly: true
+            {{- else if $controller.upstreamCerts.configMapName }}
+            - name: upstream-certs
+              mountPath: /app/certificates
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $deployment.extraVolumeMounts }}
+            - {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: controller-data
+          {{- if $controller.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ if $controller.persistence.existingClaim }}{{ $controller.persistence.existingClaim }}{{ else }}{{ include "gateway-operator.fullname" . }}-controller-data{{ end }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: controller-config
+          configMap:
+            name: {{ include "gateway-operator.fullname" . }}-controller-config
+            items:
+              - key: config.yaml
+                path: config.yaml
+        {{- if $controller.tls.enabled }}
+        - name: listener-certs
+          secret:
+            {{- if eq $controller.tls.certificateProvider "cert-manager" }}
+            secretName: {{ include "gateway-operator.fullname" . }}-controller-tls
+            {{- else if eq $controller.tls.certificateProvider "secret" }}
+            secretName: {{ $controller.tls.secret.name }}
+            {{- end }}
+            items:
+              - key: {{ if eq $controller.tls.certificateProvider "cert-manager" }}tls.crt{{ else }}{{ $controller.tls.secret.certKey }}{{ end }}
+                path: server.crt
+              - key: {{ if eq $controller.tls.certificateProvider "cert-manager" }}tls.key{{ else }}{{ $controller.tls.secret.keyKey }}{{ end }}
+                path: server.key
+        {{- end }}
+        {{- if $controller.upstreamCerts.enabled }}
+        {{- if $controller.upstreamCerts.secretName }}
+        - name: upstream-certs
+          secret:
+            secretName: {{ $controller.upstreamCerts.secretName }}
+        {{- else if $controller.upstreamCerts.configMapName }}
+        - name: upstream-certs
+          configMap:
+            name: {{ $controller.upstreamCerts.configMapName }}
+        {{- end }}
+        {{- end }}
+        {{- range $deployment.extraVolumes }}
+        - {{- toYaml . | nindent 10 }}
+        {{- end }}
+{{- end }}

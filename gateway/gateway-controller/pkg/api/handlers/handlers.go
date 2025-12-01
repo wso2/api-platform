@@ -30,8 +30,8 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 
 	"github.com/gin-gonic/gin"
-	"github.com/policy-engine/sdk/policyengine/v1"
 	openapi_types "github.com/oapi-codegen/runtime/types"
+	policyenginev1 "github.com/policy-engine/sdk/policyengine/v1"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -784,32 +784,37 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 	})
 
 	// Get all certificates
-	certs, err := s.db.ListCertificates()
-	if err != nil {
-		log.Error("Failed to retrieve certificates", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to retrieve certificates",
-		})
-		return
-	}
-
 	var certificates []api.CertificateResponse
 	totalBytes := 0
 
-	for _, cert := range certs {
-		totalBytes += len(cert.Certificate)
+	if s.db == nil {
+		// Memory-only mode: return empty certificate list
+		log.Debug("Storage is memory-only, returning empty certificate list")
+	} else {
+		certs, err := s.db.ListCertificates()
+		if err != nil {
+			log.Error("Failed to retrieve certificates", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to retrieve certificates",
+			})
+			return
+		}
 
-		certStatus := api.CertificateResponseStatus("success")
-		certificates = append(certificates, api.CertificateResponse{
-			Id:       &cert.ID,
-			Name:     &cert.Name,
-			Subject:  &cert.Subject,
-			Issuer:   &cert.Issuer,
-			NotAfter: &cert.NotAfter,
-			Count:    &cert.CertCount,
-			Status:   &certStatus,
-		})
+		for _, cert := range certs {
+			totalBytes += len(cert.Certificate)
+
+			certStatus := api.CertificateResponseStatus("success")
+			certificates = append(certificates, api.CertificateResponse{
+				Id:       &cert.ID,
+				Name:     &cert.Name,
+				Subject:  &cert.Subject,
+				Issuer:   &cert.Issuer,
+				NotAfter: &cert.NotAfter,
+				Count:    &cert.CertCount,
+				Status:   &certStatus,
+			})
+		}
 	}
 
 	// Calculate statistics

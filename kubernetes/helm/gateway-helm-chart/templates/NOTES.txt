@@ -1,0 +1,81 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+To learn more about the release, try:
+
+  $ helm status {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+  $ helm get all {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+
+{{- if .Values.gateway.controller.deployment.enabled }}
+
+Gateway Controller has been deployed:
+  - Service: {{ include "gateway-operator.fullname" . }}-controller
+  - REST API Port: {{ .Values.gateway.controller.service.ports.rest }}
+  - xDS Port: {{ .Values.gateway.controller.service.ports.xds }}
+  - Policy xDS Port: {{ .Values.gateway.controller.service.ports.policy }}
+{{- if .Values.gateway.controller.tls.enabled }}
+  - HTTPS Enabled: Yes
+  {{- if eq .Values.gateway.controller.tls.certificateProvider "cert-manager" }}
+  - Certificate Provider: cert-manager
+  - Certificate: {{ include "gateway-operator.fullname" . }}-controller-tls
+  {{- else if eq .Values.gateway.controller.tls.certificateProvider "secret" }}
+  - Certificate Provider: Kubernetes Secret
+  - Certificate Secret: {{ .Values.gateway.controller.tls.secret.name }}
+  {{- end }}
+{{- end }}
+
+To access the Controller REST API:
+  $ kubectl port-forward svc/{{ include "gateway-operator.fullname" . }}-controller {{ .Values.gateway.controller.service.ports.rest }}:{{ .Values.gateway.controller.service.ports.rest }} -n {{ .Release.Namespace }}
+
+Then visit: http://localhost:{{ .Values.gateway.controller.service.ports.rest }}
+{{- end }}
+
+{{- if .Values.gateway.router.deployment.enabled }}
+
+Gateway Router (Envoy) has been deployed:
+  - Service: {{ include "gateway-operator.fullname" . }}-router
+  - HTTP Port: {{ .Values.gateway.router.service.ports.http }}
+  - Admin Port: {{ .Values.gateway.router.service.ports.admin }}
+
+To access the Router:
+  {{- if eq .Values.gateway.router.service.type "LoadBalancer" }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+  You can watch the status by running:
+    $ kubectl get svc {{ include "gateway-operator.fullname" . }}-router -n {{ .Release.Namespace }} -w
+
+  Once available, get the external IP:
+    $ export SERVICE_IP=$(kubectl get svc {{ include "gateway-operator.fullname" . }}-router -n {{ .Release.Namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+    $ echo http://$SERVICE_IP:{{ .Values.gateway.router.service.ports.http }}
+  {{- else if eq .Values.gateway.router.service.type "NodePort" }}
+    $ export NODE_PORT=$(kubectl get svc {{ include "gateway-operator.fullname" . }}-router -n {{ .Release.Namespace }} -o jsonpath='{.spec.ports[0].nodePort}')
+    $ export NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}')
+    $ echo http://$NODE_IP:$NODE_PORT
+  {{- else }}
+    $ kubectl port-forward svc/{{ include "gateway-operator.fullname" . }}-router {{ .Values.gateway.router.service.ports.http }}:{{ .Values.gateway.router.service.ports.http }} -n {{ .Release.Namespace }}
+
+  Then visit: http://localhost:{{ .Values.gateway.router.service.ports.http }}
+  {{- end }}
+{{- end }}
+
+{{- if .Values.gateway.policyEngine.deployment.enabled }}
+
+Policy Engine has been deployed:
+  - Service: {{ include "gateway-operator.fullname" . }}-policy-engine
+  - Ext Proc Port: {{ .Values.gateway.policyEngine.service.ports.ext }}
+  {{- if .Values.gateway.policyEngine.config.admin.enabled }}
+  - Admin Port: {{ default 9002 .Values.gateway.policyEngine.config.admin.port }}
+  {{- end }}
+{{- end }}
+
+{{- if .Values.gateway.controller.persistence.enabled }}
+
+Persistent storage is enabled for the controller.
+{{- if .Values.gateway.controller.persistence.existingClaim }}
+Using existing PVC: {{ .Values.gateway.controller.persistence.existingClaim }}
+{{- else }}
+PVC created: {{ include "gateway-operator.fullname" . }}-controller-data
+{{- end }}
+{{- end }}
+
+Documentation: {{ .Chart.Home }}

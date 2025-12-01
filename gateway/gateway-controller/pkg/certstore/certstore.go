@@ -20,16 +20,16 @@ package certstore
 
 import (
 	"bytes"
-	"crypto/rand"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"
@@ -37,9 +37,7 @@ import (
 
 // generateCertificateID creates a unique ID for a certificate
 func generateCertificateID() string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	return hex.EncodeToString(b)
+	return uuid.New().String()
 }
 
 // CertStore manages custom certificates for upstream TLS verification
@@ -49,6 +47,7 @@ type CertStore struct {
 	systemCertPath string
 	combinedCerts  []byte
 	db             storage.Storage
+	mu             sync.RWMutex // Protects combinedCerts from concurrent access
 }
 
 // NewCertStore creates a new certificate store
@@ -116,12 +115,15 @@ func (cs *CertStore) LoadCertificates() ([]byte, error) {
 		return nil, fmt.Errorf("no certificates loaded from custom or system sources")
 	}
 
+	cs.mu.Lock()
 	cs.combinedCerts = certBuffer.Bytes()
+	cs.mu.Unlock()
+
 	cs.logger.Info("Certificate trust store initialized",
 		zap.Int("custom_certs", loadedCount),
-		zap.Int("total_bytes", len(cs.combinedCerts)))
+		zap.Int("total_bytes", len(certBuffer.Bytes())))
 
-	return cs.combinedCerts, nil
+	return certBuffer.Bytes(), nil
 }
 
 // loadDatabaseCertificates loads all certificates from the database
@@ -315,7 +317,15 @@ func (cs *CertStore) validateCertificateData(name string, data []byte) (int, err
 // GetCombinedCertificates returns the combined certificate bundle
 // Returns nil if LoadCertificates hasn't been called yet
 func (cs *CertStore) GetCombinedCertificates() []byte {
-	return cs.combinedCerts
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+	if cs.combinedCerts == nil {
+		return nil
+	}
+	// Return a copy to prevent external modifications
+	result := make([]byte, len(cs.combinedCerts))
+	copy(result, cs.combinedCerts)
+	return result
 }
 
 // GetCertsDir returns the custom certificates directory path
@@ -455,18 +465,11 @@ func (cs *CertStore) bootstrapCertificatesFromFilesystem() error {
 
 // certificateExistsByName checks if a certificate with the given name exists in database
 func (cs *CertStore) certificateExistsByName(name string) (bool, error) {
-	certs, err := cs.db.ListCertificates()
+	cert, err := cs.db.GetCertificateByName(name)
 	if err != nil {
 		return false, err
 	}
-
-	for _, cert := range certs {
-		if cert.Name == name {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return cert != nil, nil
 }
 
 // Reload reloads certificates from disk (useful for hot-reloading)

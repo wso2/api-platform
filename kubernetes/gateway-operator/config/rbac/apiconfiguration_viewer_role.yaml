@@ -1,0 +1,23 @@
+# permissions for end users to view apiconfigurations.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: gateway-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: apiconfiguration-viewer-role
+rules:
+- apiGroups:
+  - api.api-platform.wso2.com
+  resources:
+  - apiconfigurations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - api.api-platform.wso2.com
+  resources:
+  - apiconfigurations/status
+  verbs:
+  - get

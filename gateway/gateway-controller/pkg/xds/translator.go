@@ -59,10 +59,11 @@ type Translator struct {
 	logger       *zap.Logger
 	routerConfig *config.RouterConfig
 	certStore    *certstore.CertStore
+	config       *config.Config
 }
 
 // NewTranslator creates a new translator
-func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig, db storage.Storage) *Translator {
+func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig, db storage.Storage, config *config.Config) *Translator {
 	// Initialize certificate store if custom certs path is configured
 	var cs *certstore.CertStore
 	if routerConfig.Upstream.TLS.CustomCertsPath != "" {
@@ -86,6 +87,7 @@ func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig, db sto
 		logger:       logger,
 		routerConfig: routerConfig,
 		certStore:    cs,
+		config:       config,
 	}
 }
 
@@ -242,7 +244,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredAPIConfig) ([]*route.R
 	}
 
 	// Create cluster for this upstream
-	clusterName := t.sanitizeClusterName(parsedURL.Host)
+	clusterName := t.sanitizeClusterName(parsedURL.Host, parsedURL.Scheme)
 	// @TODO: Handle upstream certificates and pass them to createCluster
 	c := t.createCluster(clusterName, parsedURL, nil)
 
@@ -630,13 +632,18 @@ func (t *Translator) createSDSCluster() *cluster.Cluster {
 		xdsHost = envHost
 	}
 
+	xdsPort := t.config.Server.XDSPort
+	if xdsPort == 0 {
+		xdsPort = 18000 // Default xDS port
+	}
+
 	address := &core.Address{
 		Address: &core.Address_SocketAddress{
 			SocketAddress: &core.SocketAddress{
 				Protocol: core.SocketAddress_TCP,
 				Address:  xdsHost,
 				PortSpecifier: &core.SocketAddress_PortValue{
-					PortValue: 18000, // Same port as main xDS server
+					PortValue: uint32(xdsPort),
 				},
 			},
 		},
@@ -988,11 +995,12 @@ func (t *Translator) pathToRegex(path string) string {
 	return "^" + regex + "$"
 }
 
-// sanitizeClusterName creates a valid cluster name from a hostname
-func (t *Translator) sanitizeClusterName(hostname string) string {
+// sanitizeClusterName creates a valid cluster name from a hostname and scheme
+func (t *Translator) sanitizeClusterName(hostname, scheme string) string {
 	name := strings.ReplaceAll(hostname, ".", "_")
 	name = strings.ReplaceAll(name, ":", "_")
-	return "cluster_" + name
+	// Include scheme to differentiate HTTP and HTTPS clusters for the same host
+	return "cluster_" + scheme + "_" + name
 }
 
 // sanitizeName creates a valid name from an API name

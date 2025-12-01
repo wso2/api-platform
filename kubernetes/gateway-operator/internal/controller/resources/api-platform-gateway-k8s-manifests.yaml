@@ -1,0 +1,355 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yaml -o all-in-one.yaml
+    kompose.version: 1.37.0 (HEAD)
+  labels:
+    io.kompose.service: gateway-controller
+  name: gateway-controller
+spec:
+  ports:
+    - name: "9090"
+      port: 9090
+      targetPort: 9090
+    - name: "18000"
+      port: 18000
+      targetPort: 18000
+  selector:
+    io.kompose.service: gateway-controller
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yaml -o all-in-one.yaml
+    kompose.version: 1.37.0 (HEAD)
+  labels:
+    io.kompose.service: router
+  name: router
+spec:
+  ports:
+    - name: "8080"
+      port: 8080
+      targetPort: 8080
+    - name: "9901"
+      port: 9901
+      targetPort: 9901
+  selector:
+    io.kompose.service: router
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yaml -o all-in-one.yaml
+    kompose.version: 1.37.0 (HEAD)
+  labels:
+    io.kompose.service: sample-backend
+  name: sample-backend
+spec:
+  ports:
+    - name: "5000"
+      port: 5000
+      targetPort: 5000
+  selector:
+    io.kompose.service: sample-backend
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yaml -o all-in-one.yaml
+    kompose.version: 1.37.0 (HEAD)
+  labels:
+    io.kompose.service: gateway-controller
+  name: gateway-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: gateway-controller
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yaml -o all-in-one.yaml
+        kompose.version: 1.37.0 (HEAD)
+      labels:
+        io.kompose.service: gateway-controller
+    spec:
+      containers:
+        - env:
+            - name: GATEWAY_CONTROLPLANE_HOST
+              value: host.docker.internal:8443
+            - name: GATEWAY_CONTROLPLANE_TOKEN
+            - name: GATEWAY_LOGGING_LEVEL
+              value: info
+            - name: GATEWAY_STORAGE_SQLITE_PATH
+              value: ./data/gateway.db
+            - name: GATEWAY_STORAGE_TYPE
+              value: sqlite
+          image: wso2/gateway-controller:latest
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9090
+            failureThreshold: 3
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          name: gateway-controller
+          ports:
+            - containerPort: 9090
+              protocol: TCP
+            - containerPort: 18000
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /app/data
+              name: controller-data
+            - mountPath: /app/config/config.yaml
+              name: gateway-controller-cm1
+              readOnly: true
+              subPath: config.yaml
+      restartPolicy: Always
+      volumes:
+        - name: controller-data
+          persistentVolumeClaim:
+            claimName: controller-data
+        - configMap:
+            items:
+              - key: config.yaml
+                path: config.yaml
+            name: gateway-controller-cm1
+          name: gateway-controller-cm1
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    io.kompose.service: controller-data
+  name: controller-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+
+---
+apiVersion: v1
+data:
+  config.yaml: |
+    # Gateway-Controller Configuration
+    # This file contains configuration for the WSO2 API Platform Gateway Controller
+
+    # Server configuration
+    server:
+      # REST API port for gateway management
+      api_port: 9090
+
+      # xDS gRPC port for Envoy communication
+      xds_port: 18000
+
+      # Graceful shutdown timeout
+      shutdown_timeout: 15s
+
+    # Storage configuration
+    storage:
+      # Storage type: "sqlite", "postgres" (future), or "memory"
+      # - sqlite: Use SQLite embedded database for persistence
+      # - postgres: Use PostgreSQL database for persistence (future support)
+      # - memory: No persistent storage, all configs lost on restart (useful for testing)
+      type: sqlite
+
+      # SQLite configuration (used when type=sqlite)
+      sqlite:
+        path: ./data/gateway.db
+
+    # Router (Envoy) configuration
+    router:
+      # Access logs configuration
+      access_logs:
+        # Enable or disable access logs
+        enabled: true
+
+        # Log format: "json" or "text"
+        # - json: Structured JSON format (recommended for log aggregation)
+        # - text: Human-readable text format
+        format: json
+
+        # JSON format fields - key-value pairs for structured logging
+        # Uses Envoy command operators: https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage
+        json_fields:
+          start_time: "%START_TIME%"
+          method: "%REQ(:METHOD)%"
+          path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+          protocol: "%PROTOCOL%"
+          response_code: "%RESPONSE_CODE%"
+          response_flags: "%RESPONSE_FLAGS%"
+          response_flags_long: "%RESPONSE_FLAGS_LONG%"
+          bytes_received: "%BYTES_RECEIVED%"
+          bytes_sent: "%BYTES_SENT%"
+          duration: "%DURATION%"
+          upstream_service_time: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%"
+          x_forwarded_for: "%REQ(X-FORWARDED-FOR)%"
+          user_agent: "%REQ(USER-AGENT)%"
+          request_id: "%REQ(X-REQUEST-ID)%"
+          authority: "%REQ(:AUTHORITY)%"
+          upstream_host: "%UPSTREAM_HOST%"
+          upstream_cluster: "%UPSTREAM_CLUSTER%"
+
+        # Text format template - used when format is "text"
+        # Uses Envoy command operators: https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage
+        text_format: |
+          [%START_TIME%] "%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%" %RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% "%REQ(X-FORWARDED-FOR)%" "%REQ(USER-AGENT)%" "%REQ(X-REQUEST-ID)%" "%REQ(:AUTHORITY)%" "%UPSTREAM_HOST%"
+
+      # Listener port for incoming traffic (Envoy proxy port)
+      listener_port: 8080
+
+    # Logging configuration
+    logging:
+      # Log level: "debug", "info", "warn", or "error"
+      level: info
+
+      # Log format: "json" or "console"
+      # - json: Structured JSON format (recommended for production)
+      # - console: Human-readable console format (recommended for development)
+      format: json
+
+    # Environment Variables Override
+    # You can override any configuration using environment variables with the prefix GATEWAY_
+    # Examples:
+    #   GATEWAY_SERVER_API_PORT=9091
+    #   GATEWAY_STORAGE_TYPE=memory
+    #   GATEWAY_STORAGE_SQLITE_PATH=/custom/path/gateway.db
+    #   GATEWAY_ROUTER_ACCESS_LOGS_ENABLED=false
+    #   GATEWAY_LOGGING_LEVEL=debug
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  labels:
+    io.kompose.service: gateway-controller
+  name: gateway-controller-cm1
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yaml -o all-in-one.yaml
+    kompose.version: 1.37.0 (HEAD)
+  labels:
+    io.kompose.service: router
+  name: router
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: router
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yaml -o all-in-one.yaml
+        kompose.version: 1.37.0 (HEAD)
+      labels:
+        io.kompose.service: router
+    spec:
+      containers:
+        - env:
+            - name: XDS_SERVER_HOST
+              value: gateway-controller
+            - name: XDS_SERVER_PORT
+              value: "18000"
+          image: wso2/gateway-router:latest
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 9901
+            failureThreshold: 3
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9901
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+          name: router
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+            - containerPort: 9901
+              protocol: TCP
+      restartPolicy: Always
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yaml -o all-in-one.yaml
+    kompose.version: 1.37.0 (HEAD)
+  labels:
+    io.kompose.service: sample-backend
+  name: sample-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: sample-backend
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yaml -o all-in-one.yaml
+        kompose.version: 1.37.0 (HEAD)
+      labels:
+        io.kompose.service: sample-backend
+    spec:
+      containers:
+        - args:
+            - "-text=Hello from sample backend! Request received successfully."
+            - "-listen=:5000"
+          image: hashicorp/http-echo:latest
+          name: sample-backend
+          ports:
+            - containerPort: 5000
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 5000
+            failureThreshold: 3
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5000
+            failureThreshold: 3
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+      restartPolicy: Always
+
