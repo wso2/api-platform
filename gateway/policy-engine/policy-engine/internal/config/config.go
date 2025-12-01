@@ -113,9 +113,10 @@ func Load(configPath string) (*Config, error) {
 	// Set config file path
 	v.SetConfigFile(configPath)
 
-	// Enable environment variable support
+	// Enable environment variable support with PE prefix
+	v.SetEnvPrefix("PE")
 	v.AutomaticEnv()
-	// Map environment variables to config keys (e.g., XDS_SERVER_ADDRESS -> xds.server_address)
+	// Map environment variables to config keys (e.g., PE_XDS_SERVER_ADDRESS -> xds.server_address)
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	// Read config file

@@ -31,9 +31,7 @@ xds:
   enabled: true
 
   # xDS server address (typically the gateway-controller xDS server)
-  # Default is localhost:18001 for local development
-  # Override via XDS_SERVER_ADDRESS environment variable in Docker Compose
-  server_address: localhost:18001
+  server_address: gateway-controller:18001
 
   # Node identifier for this policy engine instance
   # Used by xDS server to identify this client

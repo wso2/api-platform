@@ -49,10 +49,9 @@ services:
       dockerfile: Dockerfile.runtime
     container_name: policy-engine
     image: wso2/api-platform-policy-engine:v1.0.0-m4
+    command: ["-xds-server", "gateway-controller:18001"]
     ports:
       - "9002:9002"   # Admin API
-    environment:
-      - XDS_SERVER_ADDRESS=${POLICY_ENGINE_XDS__SERVER_ADDRESS:-gateway-controller:18001}
     volumes:
       - ./policy-engine/configs/config.yaml:/app/configs/config.yaml:ro
     networks:
