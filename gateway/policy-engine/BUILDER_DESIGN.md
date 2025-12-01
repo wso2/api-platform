@@ -52,7 +52,7 @@ This document describes the architecture for building custom Policy Engine binar
 │   └── utils.sh                      # Common utilities
 ├── templates/
 │   ├── plugin_registry.go.tmpl       # Template for generated imports
-│   ├── Dockerfile.runtime.tmpl       # Template for final image
+│   ├── Dockerfile.policy-engine.tmpl       # Template for final image
 │   └── build_info.go.tmpl            # Template for build metadata
 └── tools/
     ├── policy-validator                # Binary to validate policy.yaml
@@ -150,7 +150,7 @@ sequenceDiagram
     Compile-->>Builder: policy-engine binary
 
     Builder->>Package: Generate runtime Dockerfile
-    Package->>Package: Use Dockerfile.runtime.tmpl
+    Package->>Package: Use Dockerfile.policy-engine.tmpl
     Package->>Package: Embed build info and policies list
     Package-->>Builder: Dockerfile.runtime
 
@@ -549,7 +549,7 @@ echo "✅ Compilation complete"
 
 **Purpose:** Generate runtime Dockerfile for the final image
 
-**Template:** `templates/Dockerfile.runtime.tmpl`
+**Template:** `templates/Dockerfile.policy-engine.tmpl`
 
 ```dockerfile
 # Multi-stage build for final runtime image

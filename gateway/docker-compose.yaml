@@ -58,7 +58,7 @@ services:
     ports:
       - "9002:9002"   # Admin API
     environment:
-      - XDS_SERVER_ADDRESS=${GATEWAY_CONTROLPLANE_HOST:-gateway-controller:8443}
+      - XDS_SERVER_ADDRESS=${POLICY_ENGINE_XDS__SERVER_ADDRESS:-gateway-controller:8443}
     volumes:
       - ./policy-engine/configs/config.yaml:/etc/policy-engine/config.yaml:ro
     networks:
@@ -75,8 +75,7 @@ services:
       - "8443:8443"   # HTTPS traffic
       - "9901:9901"   # Envoy admin
     environment:
-      # - XDS_SERVER_HOST=gateway-controller
-      - XDS_SERVER_HOST=host.docker.internal
+      - XDS_SERVER_HOST=${ROUTER_XDS_SERVER_HOST:-gateway-controller}
       - XDS_SERVER_PORT=18000
     networks:
       - gateway-network

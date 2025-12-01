@@ -40,7 +40,7 @@ func GenerateDockerfile(outputDir string, policies []*types.DiscoveredPolicy, bu
 	labels := GenerateDockerLabels(metadata)
 
 	// Parse embedded template
-	tmpl, err := template.New("dockerfile").Parse(templates.DockerfileRuntimeTemplate)
+	tmpl, err := template.New("dockerfile").Parse(templates.DockerfilePolicyEngineTmpl)
 	if err != nil {
 		return errors.NewPackagingError("failed to parse Dockerfile template", err)
 	}

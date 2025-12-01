@@ -378,7 +378,7 @@ This project uses a multi-component structure:
 ### US5: Builder - Packaging Phase (Go Implementation)
 
 - [x] T171 [P] [US5] Create build/internal/packaging/packager.go with Docker image generation
-- [x] T172 [P] [US5] Create templates/Dockerfile.runtime.tmpl template for runtime image
+- [x] T172 [P] [US5] Create templates/Dockerfile.policy-engine.tmpl template for runtime image
 - [x] T173 [US5] Implement Dockerfile.runtime generation using text/template in build/internal/packaging/packager.go
 - [x] T174 [US5] Implement policy list formatting for Docker LABEL in build/internal/packaging/metadata.go
 - [x] T175 [US5] Implement build metadata (timestamp, version, builder version) for Docker LABELs in build/internal/packaging/metadata.go
@@ -731,7 +731,7 @@ Task: "Create build/utils.sh with helper functions"
 # Launch template files in parallel:
 Task: "Create templates/plugin_registry.go.tmpl"
 Task: "Create templates/build_info.go.tmpl"
-Task: "Create templates/Dockerfile.runtime.tmpl"
+Task: "Create templates/Dockerfile.policy-engine.tmpl"
 
 # Launch custom policy files in parallel:
 Task: "Create policies/api-key-validation/v1.0.0/ directory"

@@ -68,7 +68,7 @@ func (g *PolicyEngineGenerator) generateDockerfile(path string) error {
 	slog.Debug("Generating policy engine Dockerfile", "path", path)
 
 	// Parse template
-	tmpl, err := template.New("dockerfile").Parse(templates.DockerfileRuntimeTemplate)
+	tmpl, err := template.New("dockerfile").Parse(templates.DockerfilePolicyEngineTmpl)
 	if err != nil {
 		return fmt.Errorf("failed to parse Dockerfile template: %w", err)
 	}
