@@ -229,7 +229,7 @@ An operator attempts to configure a policy with invalid parameters (e.g., malfor
 
 **Policy Builder:**
 
-- **FR-034**: Builder MUST accept a policy manifest file (policies.yaml) that explicitly declares policies to compile
+- **FR-034**: Builder MUST accept a policy manifest file (policy-manifest.yaml) that explicitly declares policies to compile
 - **FR-035**: Builder MUST validate manifest schema includes required fields (name, version, uri for each policy)
 - **FR-036**: Builder MUST load policies from URIs specified in manifest (supporting relative and absolute paths)
 - **FR-037**: Builder MUST validate policy name and version in manifest matches policy.yaml at the URI
@@ -244,7 +244,7 @@ An operator attempts to configure a policy with invalid parameters (e.g., malfor
 - **FR-046**: Builder MUST support --manifest flag to specify path to policy manifest file
 
 **Builder Architecture Note**: The Policy Engine Builder is distributed as a Docker image that CONTAINS the complete Policy Engine framework source code (`src/`) and a Go-based builder application (`build/`). The builder is implemented in Go (not shell scripts) for better error handling, testability, and maintainability. Users run the Builder image and provide:
-1. A policy manifest file (policies.yaml) via `--manifest` flag that explicitly declares which policies to compile with their names, versions, and URIs
+1. A policy manifest file (policy-manifest.yaml) via `--manifest` flag that explicitly declares which policies to compile with their names, versions, and URIs
 2. Policy implementation directories mounted or accessible from the declared URIs
 
 The Builder loads policies from the URIs in the manifest, validates them, and compiles the embedded framework source together with the declared policies to produce the final binary. This manifest-based approach provides explicit control over which policies are included and removes directory structure constraints.

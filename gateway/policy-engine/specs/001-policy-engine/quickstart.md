@@ -22,7 +22,7 @@ git clone <repository-url>
 cd policy-engine
 
 # Create policy manifest file that declares which policies to compile
-cat > policies.yaml <<EOF
+cat > policy-manifest.yaml <<EOF
 version: v1
 policies:
   - name: SetHeader
@@ -46,12 +46,12 @@ EOF
 # The Builder image CONTAINS the policy engine framework source code
 # You provide the manifest file and mount the policy directories
 docker run --rm \
-    -v $(pwd)/policies.yaml:/policies.yaml \
+    -v $(pwd)/policy-manifest.yaml:/policy-manifest.yaml \
     -v $(pwd)/policies:/policies \
     -v $(pwd)/output:/output \
     -e BUILD_VERSION=v1.0.0 \
     policy-engine-builder:v1.0.0 \
-    --manifest /policies.yaml
+    --manifest /policy-manifest.yaml
 
 # Expected output:
 # ✅ Loaded manifest: 3 policies declared
@@ -157,7 +157,7 @@ docker-compose down
 
 ## Understanding the Policy Manifest
 
-The `policies.yaml` manifest is the source of truth for which policies to compile. Key benefits:
+The `policy-manifest.yaml` manifest is the source of truth for which policies to compile. Key benefits:
 
 - **Explicit declaration**: No directory scanning - you explicitly list what to include
 - **Flexible directory structure**: URIs can point anywhere - no naming conventions required

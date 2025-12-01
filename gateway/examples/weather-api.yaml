@@ -24,6 +24,22 @@ spec:
   context: /weather
   upstreams:
     - url: http://sample-backend:5000/api/v2
+  policies:
+    - name: ModifyHeaders
+      version: v1.0.0
+      enabled: true
+      params:
+        requestHeaders:
+          - action: SET
+            name: api-level-req-header
+            value: hello
+        responseHeaders:
+          - action: SET
+            name: api-level-res-header
+            value: world
+          - action: SET
+            name: x-content-type-options
+            value: nosniff
   operations:
     - method: GET
       path: /{country_code}/{city}
@@ -34,19 +50,12 @@ spec:
           params:
             requestHeaders:
               - action: SET
-                name: x-request-id
-                value: req-12345
-              - action: DELETE
-                name: x-internal-token
+                name: operation-level-req-header
+                value: hello
             responseHeaders:
               - action: SET
-                name: x-frame-options
-                value: DENY
-              - action: SET
-                name: x-content-type-options
-                value: nosniff
-              - action: DELETE
-                name: server
+                name: operation-level-res-header
+                value: world
     - method: POST
       path: /{country_code}/{city}
     - method: PUT

@@ -55,10 +55,12 @@ services:
       dockerfile: Dockerfile.runtime
     container_name: policy-engine
     image: wso2/api-platform-policy-engine:v1.0.0-m4
+    ports:
+      - "9002:9002"   # Admin API
     environment:
-      - XDS_SERVER_ADDRESS=gateway-controller:18001
+      - XDS_SERVER_ADDRESS=${GATEWAY_CONTROLPLANE_HOST:-gateway-controller:8443}
     volumes:
-      - ./policy-engine/configs/config.yaml:/configs/config.yaml:ro
+      - ./policy-engine/configs/config.yaml:/etc/policy-engine/config.yaml:ro
     networks:
       - gateway-network
 
@@ -70,7 +72,7 @@ services:
     image: wso2/api-platform-gateway-router:v1.0.0-m4
     ports:
       - "8080:8080"   # HTTP traffic
-      - "8444:8443"   # HTTPS traffic
+      - "8443:8443"   # HTTPS traffic
       - "9901:9901"   # Envoy admin
     environment:
       # - XDS_SERVER_HOST=gateway-controller
@@ -91,6 +93,9 @@ services:
     ports:
       - "5000:5000"
     command: ["-addr", ":5000", "-pretty"]
+    # command: ["-addr", ":5000", "-pretty", "-https", "-cert", "/app/certs/server.pem", "-key", "/app/certs/server.key"]
+    volumes:
+      - ./resources/sample-backend-certs:/app/certs:ro
     networks:
       - gateway-network
 
