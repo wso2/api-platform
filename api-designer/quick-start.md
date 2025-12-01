@@ -42,9 +42,9 @@ After installation, verify the extension is installed:
 
 ## Getting Started
 
-#### Option A: Using the Activity Bar
+### Option A: Using the Activity Bar
 
-![Option A: Directly from the openapi file](resources/images/option-01.png)
+![Option A: Using the Activity Bar](resources/images/option-01.png)
 
 1. In the activity bar, there is an icon for API Designer.
 2. Click the **"API Designer"** icon that appears in the bar (left sidebar).
@@ -59,9 +59,9 @@ After installation, verify the extension is installed:
    - **Manage**: Project configuration and deployment
 
 
-#### Option B: Directly from the openapi file
+### Option B: Directly from the openapi file
 
-![Option B: Using the Activity Bar](resources/images/option-02.png)
+![Option B: Directly from the openapi file](resources/images/option-02.png)
 
 1. Open an OpenAPI file
 2. Look for the preview icon in the editor toolbar (top right of the editor)
