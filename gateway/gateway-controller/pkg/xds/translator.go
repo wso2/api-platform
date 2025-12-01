@@ -23,6 +23,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -382,11 +383,12 @@ func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost)
 
 // createRoute creates a route for an operation
 func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clusterName, upstreamPath string) *route.Route {
-	// Combine context and path for matching
-	fullPath := context + path
+	// Combine context, version, and path for matching
+	// Example: context=/weather, version=v1.0, path=/us/seattle -> fullPath=/weather/v1.0/us/seattle
+	fullPath := context + "/" + apiVersion + path
 
 	// Generate unique route name using the helper function
-	// Format: HttpMethod|RoutePath|Vhost (e.g., "GET|/weather/us/seattle|localhost")
+	// Format: HttpMethod|RoutePath|Vhost (e.g., "GET|/weather/v1.0/us/seattle|localhost")
 	routeName := GenerateRouteName(method, fullPath, t.routerConfig.GatewayHost)
 
 	// Check if path contains parameters (e.g., {country_code})
@@ -463,15 +465,18 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 	}
 
 	// Add path rewriting if upstream has a path prefix
-	// Strip the API context and prepend the upstream path
-	// For example: request /weather/US/Seattle with context /weather and upstream /api/v2
-	// should result in /api/v2/US/Seattle (context stripped, upstream prepended)
+	// Strip the API context + version and prepend the upstream path
+	// For example: request /weather/v1.0/us/seattle with context /weather, version v1.0, and upstream /api/v2
+	// should result in /api/v2/us/seattle (context + version stripped, upstream prepended)
 	if upstreamPath != "" && upstreamPath != "/" {
-		// Use RegexRewrite to strip the context and prepend the upstream path
-		// Pattern captures everything after the context
+		// Use RegexRewrite to strip the context + version and prepend the upstream path
+		// Pattern captures everything after the context and version
+		// Escape special regex characters in context and version (e.g., dots in version like v1.0)
+		escapedContext := regexp.QuoteMeta(context)
+		escapedVersion := regexp.QuoteMeta(apiVersion)
 		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
 			Pattern: &matcher.RegexMatcher{
-				Regex: "^" + context + "(.*)$",
+				Regex: "^" + escapedContext + "/" + escapedVersion + "(.*)$",
 			},
 			Substitution: upstreamPath + "\\1",
 		}
@@ -973,19 +978,20 @@ func (t *Translator) processEndpoint(
 }
 
 // pathToRegex converts a path with parameters to a regex pattern
-// Converts paths like /{country_code}/{city} to ^/[^/]+/[^/]+$
+// Converts paths like /weather/v1.0/{country_code}/{city} to ^/weather/v1\.0/[^/]+/[^/]+$
+// Special characters (like dots in version) are escaped, but {params} become [^/]+ patterns
 func (t *Translator) pathToRegex(path string) string {
-	// Escape special regex characters in the path, except for {}
-	regex := path
+	// First, escape all special regex characters to handle literals like dots in versions
+	regex := regexp.QuoteMeta(path)
 
-	// Replace {param} with a pattern that matches any non-slash characters
-	// This handles parameters like {country_code}, {city}, etc.
-	for strings.Contains(regex, "{") {
-		start := strings.Index(regex, "{")
-		end := strings.Index(regex, "}")
+	// Now replace escaped parameter placeholders \{paramName\} with [^/]+ pattern
+	// After QuoteMeta, {param} becomes \{param\}, so we need to replace those
+	for strings.Contains(regex, "\\{") {
+		start := strings.Index(regex, "\\{")
+		end := strings.Index(regex, "\\}")
 		if end > start {
-			// Replace {paramName} with [^/]+ (matches one or more non-slash chars)
-			regex = regex[:start] + "[^/]+" + regex[end+1:]
+			// Replace \{paramName\} with [^/]+ (matches one or more non-slash chars)
+			regex = regex[:start] + "[^/]+" + regex[end+2:]
 		} else {
 			break
 		}
