@@ -4,7 +4,7 @@ This guide will help you install and use the API Designer extension using a VSIX
 
 ## Prerequisites
 
-- Download the VSIX file for the API Designer extension [api-designer-0.9.2.vsix](https://github.com/wso2/api-platform/tree/main/api-designer/resources/api-designer-0.9.2.vsix)
+- Download the VSIX file for the API Designer extension [api-designer-0.9.2.vsix](resources/api-designer-0.9.2.vsix)
 
 ## Installation
 
