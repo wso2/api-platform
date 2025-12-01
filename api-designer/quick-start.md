@@ -4,7 +4,7 @@ This guide will help you install and use the API Designer extension using a VSIX
 
 ## Prerequisites
 
-- Download the VSIX file for the API Designer extension [api-designer-0.9.2.vsix](resources/api-designer-0.9.2.vsix)
+- Download the VSIX file for the API Designer extension from [here](resources/).
 
 ## Installation
 
@@ -15,7 +15,7 @@ This guide will help you install and use the API Designer extension using a VSIX
    - **macOS**: Press `Cmd + Shift + P`
    - **Windows/Linux**: Press `Ctrl + Shift + P`
 3. Type `Extensions: Install from VSIX...` and select it
-4. Navigate to the location of your VSIX file (e.g., `api-designer-0.9.2.vsix`)
+4. Navigate to the location of your VSIX file
 5. Select the VSIX file and click **Open**
 6. Wait for the installation to complete
 7. You may be prompted to reload VS Code - click **Reload** if prompted
@@ -25,10 +25,10 @@ This guide will help you install and use the API Designer extension using a VSIX
 You can also install the VSIX file using the command line:
 
 ```bash
-code --install-extension api-designer-0.9.2.vsix
+code --install-extension <path-to-vsix-file>
 ```
 
-Replace `api-designer-0.9.2.vsix` with the actual path to your VSIX file.
+Replace `<path-to-vsix-file>` with the actual path to your VSIX file.
 
 ## Verification
 
