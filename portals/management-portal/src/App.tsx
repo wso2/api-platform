@@ -1,7 +1,6 @@
 // src/App.tsx
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Box } from "@mui/material";
 import MainLayout from "./layout/MainLayout";
 
 import { useOrganization } from "./context/OrganizationContext";
@@ -48,9 +47,8 @@ const App: React.FC = () => {
     }
   }, [experienceStage]);
 
-  // Always treat "/" and "/userSenario" as the ScenarioLanding view
-  const isScenarioPath =
-    location.pathname === "/userSenario" || location.pathname === "/";
+  const isRootScenarioPath = location.pathname === "/";
+  const isUserScenarioPath = location.pathname === "/userSenario";
 
   const handleScenarioSkip = React.useCallback(() => {
     setExperienceStage("platform");
@@ -90,9 +88,6 @@ const App: React.FC = () => {
     navigate("/userSenario", { replace: true });
   }, [navigate]);
 
-  // Show ScenarioLanding if we're at "/" or "/userSenario", or if stage is landing
-  const showScenarioLanding = isScenarioPath || experienceStage === "landing";
-
   let layoutContent: React.ReactNode = null;
   if (experienceStage === "wizard") {
     if (activeWizardType === "publish-portal") {
@@ -116,32 +111,19 @@ const App: React.FC = () => {
     layoutContent = <AppRoutes />;
   }
 
+    if (isRootScenarioPath || isUserScenarioPath) {
+    return (
+      <MainLayout>
+        <ScenarioLanding
+          onContinue={handleScenarioContinue}
+          onSkip={handleScenarioSkip}
+        />
+      </MainLayout>
+    );
+  }
+
   return (
-    <>
-      {showScenarioLanding ? (
-        <Box
-          minHeight="100vh"
-          display="flex"
-          alignItems="flex-start"
-          justifyContent="center"
-          px={{ xs: 2, md: 4 }}
-          py={{ xs: 3, md: 6 }}
-          sx={{
-            backgroundImage:
-              "linear-gradient(190deg, #f4fffbff 0%, #F2F4F7 100%)",
-          }}
-        >
-          <Box width="100%" maxWidth={1280}>
-            <ScenarioLanding
-              onContinue={handleScenarioContinue}
-              onSkip={handleScenarioSkip}
-            />
-          </Box>
-        </Box>
-      ) : (
-        <MainLayout>{layoutContent}</MainLayout>
-      )}
-    </>
+    <MainLayout>{layoutContent}</MainLayout>
   );
 };
 

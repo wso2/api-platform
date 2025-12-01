@@ -4,14 +4,12 @@ import {
   Box,
   Card,
   Chip,
-  Paper,
   Radio,
   Stack,
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
-import AutoAwesomeOutlinedIcon from "@mui/icons-material/AutoAwesomeOutlined";
 import { useOrganization } from "../context/OrganizationContext";
 import { SCENARIOS, type Scenario } from "../data/scenarios";
 import { Button } from "./src/components/Button";
@@ -53,74 +51,6 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
 
   return (
     <Box>
-      {/* ===== FIXED, FULL-WIDTH HEADER (no outer top spacing) ===== */}
-      <Paper
-        elevation={0}
-        sx={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          width: "100%",
-          borderRadius: 0,
-          borderBottom: "1px solid",
-          borderColor: "divider",
-          px: { xs: 2, md: 3 },
-          py: 1.25,
-          boxShadow:
-            "0 2px 6px rgba(15,23,42,0.05), 0 1px 2px rgba(15,23,42,0.04)",
-          bgcolor: "background.paper",
-          zIndex: (t) => t.zIndex.appBar,
-        }}
-      >
-        <Stack
-          direction="row"
-          alignItems="center"
-          justifyContent="space-between"
-          spacing={2}
-        >
-          {/* Left: brand */}
-          <Stack direction="row" alignItems="center" spacing={1.5}>
-            <Avatar
-              variant="rounded"
-              sx={{
-                width: 36,
-                height: 36,
-                fontSize: 14,
-                fontWeight: 700,
-                color: "#fff",
-                boxShadow: "0 6px 18px rgba(4,150,105,0.30)",
-                background:
-                  "linear-gradient(180deg, rgba(4,150,105,0.95) 0%, #049669 100%)",
-              }}
-            >
-              AP
-            </Avatar>
-            <Typography fontWeight={600}>APIM Platform</Typography>
-          </Stack>
-
-          {/* Right: input-like assistant chip */}
-          <Box
-            sx={{
-              borderRadius: 2,
-              border: "1px solid",
-              borderColor: "divider",
-              px: 1.75,
-              py: 0.75,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 1,
-              boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-              bgcolor: "background.paper",
-            }}
-          >
-            <AutoAwesomeOutlinedIcon sx={{ fontSize: 18, color: ACCENT }} />
-            <Typography variant="body2" sx={{ color: TEXT_SECONDARY }}>
-              Ask the AI Assistant anything...
-            </Typography>
-          </Box>
-        </Stack>
-      </Paper>
 
       {/* ===== MAIN CARD CONTENT ===== */}
       <Card
@@ -128,7 +58,7 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
         sx={{
           p: { xs: 3, md: 4 },
           mb: 4,
-          mt: 12,
+          mt: 2,
           borderRadius: 4,
           border: "1px solid",
           borderColor: "divider",
