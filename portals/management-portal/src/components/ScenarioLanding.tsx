@@ -13,8 +13,7 @@ import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import { useOrganization } from "../context/OrganizationContext";
 import { SCENARIOS, type Scenario } from "../data/scenarios";
 import { Button } from "./src/components/Button";
-import vscodeSvg from "../../src/components/src/Images/svgs/Various/vs-code.svg";
-import { Link as MuiLink } from "@mui/material";
+import SetupStepsCard from "./SetupStepsCard";
 
 const ACCENT = "#049669";
 const TEXT_SECONDARY = "#AEAEAE";
@@ -202,39 +201,10 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
                 variant="contained"
                 size="large"
                 disabled={activeScenario.comingSoon}
-                component={
-                  activeScenario.id === "design-api"
-                    ? (MuiLink as any)
-                    : undefined
-                }
-                href={
-                  activeScenario.id === "design-api" ? "vscode://" : undefined
-                }
-                onClick={
-                  activeScenario.id === "design-api"
-                    ? undefined
-                    : () => onContinue(activeScenarioId)
-                }
-                startIcon={
-                  activeScenario.id === "design-api" ? (
-                    <Box
-                      component="img"
-                      src={vscodeSvg}
-                      alt=""
-                      sx={{
-                        width: 16,
-                        height: 16,
-                        display: "block",
-                        filter: "brightness(0) invert(1)",
-                      }}
-                    />
-                  ) : undefined
-                }
+                onClick={() => onContinue(activeScenarioId)}
                 sx={{ bgcolor: ACCENT, "&:hover": { bgcolor: ACCENT } }}
               >
-                {activeScenario.id === "design-api"
-                  ? "Open VS Code"
-                  : "Continue"}
+                Continue
               </Button>
 
               <Button variant="text" onClick={onSkip}>
@@ -245,84 +215,11 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
 
           {/* Right column - recommendations */}
           <Box flex={{ xs: "auto", lg: 0.8 }}>
-            <Card
-              sx={{
-                borderRadius: 3,
-                overflow: "hidden",
-                border: "1px solid",
-                borderColor: "divider",
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <Box px={3} pt={3}>
-                <Typography variant="subtitle2" sx={{ color: TEXT_SECONDARY }}>
-                  We Recommend
-                </Typography>
-              </Box>
-              <Box
-                mx={3}
-                mt={2}
-                borderRadius={3}
-                sx={{
-                  position: "relative",
-                  overflow: "hidden",
-                  height: { xs: 180, sm: 200, md: 220 },
-                }}
-              >
-                <Box
-                  component="img"
-                  src={activeScenario.imageSrc}
-                  alt={activeScenario.title}
-                  sx={{
-                    width: "100%",
-                    height: "100%",
-                    display: "block",
-                    objectFit: "cover",
-                  }}
-                />
-              </Box>
-
-              <Box px={3} py={3} flexGrow={1}>
-                <Typography fontWeight={600}>
-                  Setup Steps for {activeScenario.title}
-                </Typography>
-                <Stack spacing={2} mt={2}>
-                  {activeScenario.steps.map((step, index) => (
-                    <Stack
-                      key={step.title}
-                      direction="row"
-                      spacing={2}
-                      alignItems="flex-start"
-                    >
-                      <Box
-                        width={32}
-                        height={32}
-                        borderRadius="50%"
-                        bgcolor={alpha(ACCENT, 0.15)}
-                        color={ACCENT}
-                        display="flex"
-                        alignItems="center"
-                        justifyContent="center"
-                        fontWeight={700}
-                      >
-                        {index + 1}
-                      </Box>
-                      <Box>
-                        <Typography fontWeight={600}>{step.title}</Typography>
-                        <Typography
-                          variant="body2"
-                          sx={{ color: TEXT_SECONDARY }}
-                        >
-                          {step.subtitle}
-                        </Typography>
-                      </Box>
-                    </Stack>
-                  ))}
-                </Stack>
-              </Box>
-            </Card>
+            <SetupStepsCard
+              title={activeScenario.title}
+              steps={activeScenario.steps}
+              imageSrc={activeScenario.imageSrc}
+            />
           </Box>
         </Stack>
       </Card>

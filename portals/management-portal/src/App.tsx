@@ -11,9 +11,10 @@ import ScenarioLanding from "./components/ScenarioLanding";
 import AppRoutes from "./routes";
 import ExposeServiceWizard from "./pages/userScenarios/ExposeServiceWizard";
 import PublishPortalWizard from "./pages/userScenarios/PublishPortalWizard";
+import DesignApiWizard from "./pages/userScenarios/DesignApiWizard";
 
 type ExperienceStage = "landing" | "wizard" | "platform";
-type WizardType = "expose-service" | "publish-portal" | null;
+type WizardType = "expose-service" | "publish-portal" | "design-api" | null;
 const EXPERIENCE_STAGE_KEY = "apim-platform-experience-stage";
 
 const App: React.FC = () => {
@@ -60,9 +61,13 @@ const App: React.FC = () => {
 
   const handleScenarioContinue = React.useCallback(
     (scenarioId: string) => {
-      if (scenarioId === "expose-service" || scenarioId === "publish-portal") {
+      if (
+        scenarioId === "expose-service" ||
+        scenarioId === "publish-portal" ||
+        scenarioId === "design-api"
+      ) {
         setExperienceStage("wizard");
-        setActiveWizardType(scenarioId);
+        setActiveWizardType(scenarioId as WizardType);
       } else {
         setExperienceStage("platform");
         setActiveWizardType(null);
@@ -93,6 +98,14 @@ const App: React.FC = () => {
     if (activeWizardType === "publish-portal") {
       layoutContent = (
         <PublishPortalWizard
+          onBackToChoices={handleBackToChoices}
+          onSkip={handleScenarioSkip}
+          onFinish={handleWizardFinish}
+        />
+      );
+    } else if (activeWizardType === "design-api") {
+      layoutContent = (
+        <DesignApiWizard
           onBackToChoices={handleBackToChoices}
           onSkip={handleScenarioSkip}
           onFinish={handleWizardFinish}
