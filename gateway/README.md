@@ -43,8 +43,8 @@ curl -X POST http://localhost:9090/apis \
   --data-binary @examples/weather-api.yaml
 
 # Test routing through the gateway
-curl http://localhost:8080/weather/us/seattle
-curl https://localhost:8443/weather/us/seattle -k
+curl http://localhost:8080/weather/v1.0/us/seattle
+curl https://localhost:8443/weather/v1.0/us/seattle -k
 ```
 
 ### Stopping the Gateway

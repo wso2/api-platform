@@ -21,7 +21,7 @@ kind: http/rest
 spec:
   name: Weather-API
   version: v1.0
-  context: /weather
+  context: /weather/$version
   upstreams:
     - url: http://sample-backend:5000/api/v2
   policies:
@@ -56,7 +56,5 @@ spec:
               - action: SET
                 name: operation-level-res-header
                 value: world
-    - method: POST
-      path: /{country_code}/{city}
-    - method: PUT
-      path: /{country_code}/{city}
+    - method: GET
+      path: /alerts/active
