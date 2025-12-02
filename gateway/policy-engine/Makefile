@@ -138,12 +138,6 @@ stop-runtime:
 	docker-compose down
 	@echo "Services stopped"
 
-## build: Build the binary locally (for development)
-build:
-	@echo "Building $(BINARY_NAME) locally..."
-	CGO_ENABLED=0 $(GOBUILD) -ldflags "$(LDFLAGS)" -o ./$(BINARY_NAME) -v ./$(CMD_DIR)
-	@echo "Binary built: ./$(BINARY_NAME)"
-
 ## test: Run tests
 test:
 	@echo "Running tests..."
@@ -213,17 +207,6 @@ restart: stop-runtime run-runtime
 rebuild: build-runtime restart
 
 # Development helpers
-
-## dev-build: Quick development build (local binary only)
-dev-build:
-	@echo "Quick development build..."
-	$(GOBUILD) -ldflags "$(LDFLAGS)" -o ./$(BINARY_NAME) ./$(CMD_DIR)
-	@echo "Built: ./$(BINARY_NAME)"
-
-## dev-run: Run the binary locally (without Docker)
-dev-run: dev-build
-	@echo "Running Policy Engine locally..."
-	./$(BINARY_NAME) -extproc-port=9001 -config-file=configs/policy-chains.yaml
 
 ## check-deps: Check if required tools are installed
 check-deps:
