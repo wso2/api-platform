@@ -16,15 +16,18 @@ const VersionInput: React.FC<Props> = ({ value, onChange, disabled, label }) => 
   const initialParts = normalized.replace(/^v/, "").split('.');
 
   // Internal states allow empty strings so the user can clear fields while editing
-  const [majorState, setMajorState] = React.useState<string>(initialParts[0] ?? '1');
-  const [minorState, setMinorState] = React.useState<string>(initialParts[1] ?? '0');
+  const [majorState, setMajorState] = React.useState<string>(initialParts[0]);
+  const [minorState, setMinorState] = React.useState<string>(initialParts[1]);
+  const touchedRef = React.useRef<boolean>(false);
 
   React.useEffect(() => {
     const p = normalized.replace(/^v/, '').split('.');
-    const m = p[0] ?? '1';
-    const n = p[1] ?? '0';
-    setMajorState(m);
-    setMinorState(n);
+    const m = p[0] ?? '';
+    const n = p[1] ?? '';
+    if (!touchedRef.current) {
+      setMajorState(m);
+      setMinorState(n);
+    }
   }, [normalized]);
 
   const emitIfComplete = (m: string, n: string) => {
@@ -44,6 +47,7 @@ const VersionInput: React.FC<Props> = ({ value, onChange, disabled, label }) => 
             size="small"
             value={majorState}
             onChange={(v: string) => {
+              touchedRef.current = true;
               const digits = v.replace(/\D/g, "");
               const next = digits;
               setMajorState(next);
@@ -63,6 +67,7 @@ const VersionInput: React.FC<Props> = ({ value, onChange, disabled, label }) => 
             size="small"
             value={minorState}
             onChange={(v: string) => {
+              touchedRef.current = true;
               const digits = v.replace(/\D/g, "");
               const next = digits;
               setMinorState(next);
