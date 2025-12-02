@@ -480,18 +480,20 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 	//            should result in /api/v2/us/seattle
 	// Example 2: request /weather/us/seattle with context /weather and upstream /api/v2
 	//            should result in /api/v2/us/seattle
-	if upstreamPath != "" && upstreamPath != "/" {
-		// Use RegexRewrite to strip the context (with version substituted if present) and prepend upstream path
-		// Pattern captures everything after the context
-		// Escape special regex characters (e.g., dots in version like v1.0)
-		contextWithVersion := ConstructFullPath(context, apiVersion, "")
-		escapedContext := regexp.QuoteMeta(contextWithVersion)
-		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
-			Pattern: &matcher.RegexMatcher{
-				Regex: "^" + escapedContext + "(.*)$",
-			},
-			Substitution: upstreamPath + "\\1",
-		}
+
+	// Use RegexRewrite to strip the context (with version substituted if present) and prepend upstream path
+	// Pattern captures everything after the context
+	// Escape special regex characters (e.g., dots in version like v1.0)
+	if upstreamPath == "/" {
+		upstreamPath = ""
+	}
+	contextWithVersion := ConstructFullPath(context, apiVersion, "")
+	escapedContext := regexp.QuoteMeta(contextWithVersion)
+	r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
+		Pattern: &matcher.RegexMatcher{
+			Regex: "^" + escapedContext + "(.*)$",
+		},
+		Substitution: upstreamPath + "\\1",
 	}
 
 	return r
