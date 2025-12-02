@@ -49,7 +49,11 @@ COPY src/internal/database/schema.sql ./schema.sql
 # Create volume for persistent data storage
 VOLUME ["/api-platform/data"]
 
-USER wso2
+ARG USERNAME=wso2
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+USER $USERNAME
 
 EXPOSE 8443
 
