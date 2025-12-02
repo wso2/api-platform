@@ -35,6 +35,9 @@ import (
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	fileaccesslog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
+	dfpcluster "github.com/envoyproxy/go-control-plane/envoy/extensions/clusters/dynamic_forward_proxy/v3"
+	common_dfp "github.com/envoyproxy/go-control-plane/envoy/extensions/common/dynamic_forward_proxy/v3"
+	dfpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/dynamic_forward_proxy/v3"
 	extproc "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
@@ -147,20 +150,38 @@ func (t *Translator) TranslateConfigs(
 		// This ensures existing APIs are not overridden when deploying new APIs
 
 		// Create routes and clusters for this API
-		routesList, clusterList, err := t.translateAPIConfig(cfg)
-		if err != nil {
-			log.Error("Failed to translate config",
-				zap.String("id", cfg.ID),
-				zap.String("name", cfg.GetAPIName()),
-				zap.Error(err))
-			continue
-		}
+		if cfg.Configuration.Kind == "http/rest" {
+			routesList, clusterList, err := t.translateAPIConfig(cfg)
+			if err != nil {
+				log.Error("Failed to translate config",
+					zap.String("id", cfg.ID),
+					zap.String("name", cfg.GetAPIName()),
+					zap.Error(err))
+				continue
+			}
 
-		allRoutes = append(allRoutes, routesList...)
+			allRoutes = append(allRoutes, routesList...)
 
-		// Add clusters (avoiding duplicates)
-		for _, c := range clusterList {
-			clusterMap[c.Name] = c
+			// Add clusters (avoiding duplicates)
+			for _, c := range clusterList {
+				clusterMap[c.Name] = c
+			}
+		} else if cfg.Configuration.Kind == "async/websub" {
+			routesList, clusterList, err := t.translateAsyncAPIConfig(cfg)
+			if err != nil {
+				log.Error("Failed to translate config",
+					zap.String("id", cfg.ID),
+					zap.String("name", cfg.GetAPIName()),
+					zap.Error(err))
+				continue
+			}
+
+			allRoutes = append(allRoutes, routesList...)
+
+			// Add clusters (avoiding duplicates)
+			for _, c := range clusterList {
+				clusterMap[c.Name] = c
+			}
 		}
 	}
 
@@ -213,6 +234,22 @@ func (t *Translator) TranslateConfigs(
 		return nil, fmt.Errorf("failed to create listener: %w", err)
 	}
 	listeners = append(listeners, l)
+
+	if t.routerConfig.EventGateway.Enabled {
+		// Add dynamic forward proxy cluster for WebSubHub
+		dynamicForwardProxyCluster := t.createDynamicForwardProxyCluster()
+		clusters = append(clusters, dynamicForwardProxyCluster)
+
+		// Add websubhub cluster
+		upstreamURL := "http://host.docker.internal:9098"
+		parsedURL, err := url.Parse(upstreamURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid upstream URL: %w", err)
+		}
+
+		websubhubCluster := t.createCluster(WebSubHubInternalClusterName, parsedURL, nil)
+		clusters = append(clusters, websubhubCluster)
+	}
 
 	// Add policy engine cluster if enabled
 	if t.routerConfig.PolicyEngine.Enabled {
@@ -356,7 +393,7 @@ func (t *Translator) TranslateAsyncConfigs(configs []*models.StoredAPIConfig, co
 
 // translateAsyncAPIConfig translates a single API configuration
 func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredAPIConfig) ([]*route.Route, []*cluster.Cluster, error) {
-	apiData, err := cfg.Configuration.Data.AsWebhookAPIData()
+	apiData, err := cfg.Configuration.Spec.AsWebhookAPIData()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse webhook API data: %w", err)
 	}
@@ -374,7 +411,7 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredAPIConfig) ([]*ro
 
 	// Create cluster for this upstream
 	//clusterName := t.sanitizeClusterName(parsedURL.Host)
-	c := t.createCluster(WebSubHubInternalClusterName, parsedURL)
+	c := t.createCluster(WebSubHubInternalClusterName, parsedURL, nil)
 	fmt.Println("Creating ROute per TOpic")
 
 	// Create routes for each operation
@@ -392,7 +429,10 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredAPIConfig) ([]*ro
 
 // translateAPIConfig translates a single API configuration
 func (t *Translator) translateAPIConfig(cfg *models.StoredAPIConfig) ([]*route.Route, []*cluster.Cluster, error) {
-	apiData := cfg.Configuration.Spec
+	apiData, err := cfg.Configuration.Spec.AsAPIConfigData()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse API config data: %w", err)
+	}
 
 	// Parse upstream URL
 	if len(apiData.Upstreams) == 0 {
@@ -554,19 +594,19 @@ func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
 	}
 
 	// External processor filter (reuse config from other listener)
-	extProcConfig := &extprocv3.ExternalProcessor{
+	extProcConfig := &extproc.ExternalProcessor{
 		GrpcService: &core.GrpcService{
 			TargetSpecifier: &core.GrpcService_EnvoyGrpc_{EnvoyGrpc: &core.GrpcService_EnvoyGrpc{ClusterName: ExternalProcessorGRPCServiceClusterName}},
 			Timeout:         durationpb.New(250 * time.Millisecond),
 		},
 		FailureModeAllow: false,
-		ProcessingMode: &extprocv3.ProcessingMode{
-			RequestHeaderMode:   extprocv3.ProcessingMode_SEND,
-			ResponseHeaderMode:  extprocv3.ProcessingMode_SEND,
-			RequestTrailerMode:  extprocv3.ProcessingMode_SEND,
-			ResponseTrailerMode: extprocv3.ProcessingMode_SEND,
-			RequestBodyMode:     extprocv3.ProcessingMode_BUFFERED,
-			ResponseBodyMode:    extprocv3.ProcessingMode_BUFFERED,
+		ProcessingMode: &extproc.ProcessingMode{
+			RequestHeaderMode:   extproc.ProcessingMode_SEND,
+			ResponseHeaderMode:  extproc.ProcessingMode_SEND,
+			RequestTrailerMode:  extproc.ProcessingMode_SEND,
+			ResponseTrailerMode: extproc.ProcessingMode_SEND,
+			RequestBodyMode:     extproc.ProcessingMode_BUFFERED,
+			ResponseBodyMode:    extproc.ProcessingMode_BUFFERED,
 		},
 		MessageTimeout: &durationpb.Duration{Seconds: 20, Nanos: 250000000},
 	}
@@ -600,7 +640,7 @@ func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
 	}
 
 	// Attach access logs if enabled
-	if t.accessLogConfig.Enabled {
+	if t.routerConfig.AccessLogs.Enabled {
 		accessLogs, err := t.createAccessLogConfig()
 		if err != nil {
 			return nil, fmt.Errorf("failed to create access log config: %w", err)
@@ -726,7 +766,7 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener,
 	}
 
 	httpConnManager := &hcm.HttpConnectionManager{
-		StatPrefix:     "websubhub_http_8082",
+		StatPrefix:     "WEBSUBHUB_INBOUND_8082",
 		CodecType:      hcm.HttpConnectionManager_AUTO,
 		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{RouteConfig: dynamicForwardProxyRouteConfig},
 		HttpFilters: []*hcm.HttpFilter{
@@ -931,21 +971,6 @@ func (t *Translator) createRoutePerTopic(method, path, clusterName, upstreamPath
 	}
 
 	r.GetRoute().PrefixRewrite = "/hub"
-
-	// // WebSubHub path rewriting:
-	// // For cluster_host_docker_internal_9098: rewrite only the path to /hub and preserve original query params.
-	// // For other clusters: rewrite to /hub with injected hub.mode=publish & hub.topic=<last segment>.
-	// if clusterName == "cluster_host_docker_internal_9098" {
-	// 	// Use PrefixRewrite so Envoy keeps existing query parameters untouched.
-	// 	r.GetRoute().PrefixRewrite = "/hub"
-	// } else {
-	// 	r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
-	// 		Pattern: &matcher.RegexMatcher{
-	// 			Regex: "^.*/([^/]+)$", // Capture last path segment
-	// 		},
-	// 		Substitution: "/hub?hub.mode=publish&hub.topic=\\1",
-	// 	}
-	// }
 
 	return r
 }
@@ -1450,35 +1475,6 @@ func (t *Translator) createDynamicForwardProxyCluster() *cluster.Cluster {
 		// optional: control connection pooling / subclusters here
 	}
 	clusterTypeAny, _ := anypb.New(clusterConfig)
-	// clusterTypeAny := &anypb.Any{
-	// 	//TypeUrl: "type.googleapis.com/envoy.extensions.clusters.dynamic_forward_proxy.v3.ClusterConfig",
-	// }
-
-	// dfpClusterConfig := &dfpCluster.ClusterConfig{
-	// 	DnsCacheConfig: &dfp.DnsCacheConfig{
-	// 		Name:              "dynamic_forward_proxy_cache_config",
-	// 		DnsLookupFamily:   dfp.DnsLookupFamily_V4_ONLY,
-	// 		MaxHosts:          1024,
-	// 		DnsRefreshRate:    durationpb.New(60 * time.Second),
-	// 		DnsMinRefreshRate: durationpb.New(5 * time.Second),
-	// 	},
-	// }
-
-	// dfpClusterAny, _ := anypb.New(dfpClusterConfig)
-	// dynamicForwardProxyCluster := &cluster.Cluster{
-	// 	Name:           "dynamic_forward_proxy_cluster",
-	// 	LbPolicy:       cluster.Cluster_CLUSTER_PROVIDED,
-	// 	ConnectTimeout: durationpb.New(5 * time.Second),
-	// 	ClusterType: &cluster.ClusterType{
-	// 		Name:        "envoy.clusters.dynamic_forward_proxy",
-	// 		TypedConfig: dfpClusterAny,
-	// 	},
-	// 	UpstreamConnectionOptions: &cluster.UpstreamConnectionOptions{
-	// 		TcpKeepalive: &core.TcpKeepalive{
-	// 			KeepaliveTime: &core.UInt32Value{Value: 300},
-	// 		},
-	// 	},
-	// }
 
 	return &cluster.Cluster{
 		Name:           DynamicForwardProxyClusterName,
@@ -1494,85 +1490,6 @@ func (t *Translator) createDynamicForwardProxyCluster() *cluster.Cluster {
 			TcpKeepalive: &core.TcpKeepalive{
 				KeepaliveTime: &wrapperspb.UInt32Value{Value: 300},
 			},
-		},
-	}
-}
-
-// createExternalProcessorCluster creates the external processor gRPC cluster
-func (t *Translator) createExternalProcessorCluster() *cluster.Cluster {
-	// Create HTTP/2 protocol options for gRPC
-	httpProtocolOptions := &upstreamhttp.HttpProtocolOptions{
-		UpstreamProtocolOptions: &upstreamhttp.HttpProtocolOptions_ExplicitHttpConfig_{
-			ExplicitHttpConfig: &upstreamhttp.HttpProtocolOptions_ExplicitHttpConfig{
-				ProtocolConfig: &upstreamhttp.HttpProtocolOptions_ExplicitHttpConfig_Http2ProtocolOptions{
-					Http2ProtocolOptions: &core.Http2ProtocolOptions{},
-				},
-			},
-		},
-	}
-
-	http2OptionsAny, err := anypb.New(httpProtocolOptions)
-	if err != nil {
-		// Log error but return cluster anyway (graceful degradation)
-		return &cluster.Cluster{
-			Name:                 ExternalProcessorGRPCServiceClusterName,
-			ConnectTimeout:       durationpb.New(5 * time.Second),
-			ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
-			LbPolicy:             cluster.Cluster_ROUND_ROBIN,
-			LoadAssignment: &endpoint.ClusterLoadAssignment{
-				ClusterName: ExternalProcessorGRPCServiceClusterName,
-				Endpoints: []*endpoint.LocalityLbEndpoints{{
-					LbEndpoints: []*endpoint.LbEndpoint{{
-						HostIdentifier: &endpoint.LbEndpoint_Endpoint{
-							Endpoint: &endpoint.Endpoint{
-								Address: &core.Address{
-									Address: &core.Address_SocketAddress{
-										SocketAddress: &core.SocketAddress{
-											Protocol: core.SocketAddress_TCP,
-											Address:  "host.docker.internal",
-											PortSpecifier: &core.SocketAddress_PortValue{
-												PortValue: 9001,
-											},
-										},
-									},
-								},
-							},
-						},
-					}},
-				}},
-			},
-		}
-	}
-
-	return &cluster.Cluster{
-		Name:                 ExternalProcessorGRPCServiceClusterName,
-		ConnectTimeout:       durationpb.New(5 * time.Second),
-		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
-		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
-		TypedExtensionProtocolOptions: map[string]*anypb.Any{
-			"envoy.extensions.upstreams.http.v3.HttpProtocolOptions": http2OptionsAny,
-		},
-		LoadAssignment: &endpoint.ClusterLoadAssignment{
-			ClusterName: ExternalProcessorGRPCServiceClusterName,
-			Endpoints: []*endpoint.LocalityLbEndpoints{{
-				LbEndpoints: []*endpoint.LbEndpoint{{
-					HostIdentifier: &endpoint.LbEndpoint_Endpoint{
-						Endpoint: &endpoint.Endpoint{
-							Address: &core.Address{
-								Address: &core.Address_SocketAddress{
-									SocketAddress: &core.SocketAddress{
-										Protocol: core.SocketAddress_TCP,
-										Address:  "host.docker.internal",
-										PortSpecifier: &core.SocketAddress_PortValue{
-											PortValue: 9001,
-										},
-									},
-								},
-							},
-						},
-					},
-				}},
-			}},
 		},
 	}
 }

@@ -61,7 +61,7 @@ func (cs *ConfigStore) Add(cfg *models.StoredAPIConfig) error {
 	cs.nameVersion[key] = cfg.ID
 
 	if cfg.Configuration.Kind == "async/websub" {
-		asyncData, err := cfg.Configuration.Data.AsWebhookAPIData()
+		asyncData, err := cfg.Configuration.Spec.AsWebhookAPIData()
 		if err != nil {
 			return fmt.Errorf("failed to parse async API data: %w", err)
 		}
@@ -137,7 +137,7 @@ func (cs *ConfigStore) Delete(id string) error {
 	key := cfg.GetCompositeKey()
 
 	if cfg.Configuration.Kind == "async/websub" {
-		asyncData, err := cfg.Configuration.Data.AsWebhookAPIData()
+		asyncData, err := cfg.Configuration.Spec.AsWebhookAPIData()
 		if err != nil {
 			return fmt.Errorf("failed to parse async API data: %w", err)
 		}

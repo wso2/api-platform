@@ -61,13 +61,13 @@ func NewAPIDataFactory() *APIDataFactory { return &APIDataFactory{} }
 func (f *APIDataFactory) FromConfiguration(cfg *api.APIConfiguration) (APIData, error) {
 	switch cfg.Kind {
 	case api.APIConfigurationKindHttprest:
-		rest, err := cfg.Data.AsAPIConfigData()
+		rest, err := cfg.Spec.AsAPIConfigData()
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse REST data: %w", err)
 		}
 		return RestData{APIConfigData: rest}, nil
 	case api.APIConfigurationKindAsyncwebsub, api.APIConfigurationKindAsyncwebsocket, api.APIConfigurationKindAsyncsse:
-		ws, err := cfg.Data.AsWebhookAPIData()
+		ws, err := cfg.Spec.AsWebhookAPIData()
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse async data: %w", err)
 		}

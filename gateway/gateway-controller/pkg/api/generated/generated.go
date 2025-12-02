@@ -23,10 +23,7 @@ import (
 
 // Defines values for APIConfigDataApiType.
 const (
-	APIConfigDataApiTypeAsyncsse       APIConfigDataApiType = "async/sse"
-	APIConfigDataApiTypeAsyncwebsocket APIConfigDataApiType = "async/websocket"
-	APIConfigDataApiTypeAsyncwebsub    APIConfigDataApiType = "async/websub"
-	APIConfigDataApiTypeHttprest       APIConfigDataApiType = "http/rest"
+	APIConfigDataApiTypeHttprest APIConfigDataApiType = "http/rest"
 )
 
 // Defines values for APIConfigurationKind.
@@ -91,10 +88,7 @@ const (
 
 // Defines values for WebhookAPIDataApiType.
 const (
-	Asyncsse       WebhookAPIDataApiType = "async/sse"
-	Asyncwebsocket WebhookAPIDataApiType = "async/websocket"
-	Asyncwebsub    WebhookAPIDataApiType = "async/websub"
-	Httprest       WebhookAPIDataApiType = "http/rest"
+	Asyncwebsub WebhookAPIDataApiType = "async/websub"
 )
 
 // APIConfigData defines model for APIConfigData.
@@ -128,19 +122,21 @@ type APIConfigDataApiType string
 type APIConfiguration struct {
 	// Kind API type
 	Kind APIConfigurationKind `json:"kind"`
-	Spec APIConfigData        `json:"spec"`
+
+	// Spec API configuration payload (REST or Async API variants)
+	Spec APIConfiguration_Spec `json:"spec"`
 
 	// Version API specification version
 	Version APIConfigurationVersion `json:"version"`
 }
 
-// APIConfiguration_Data API configuration payload (REST or Async API variants)
-type APIConfiguration_Data struct {
-	union json.RawMessage
-}
-
 // APIConfigurationKind API type
 type APIConfigurationKind string
+
+// APIConfiguration_Spec API configuration payload (REST or Async API variants)
+type APIConfiguration_Spec struct {
+	union json.RawMessage
+}
 
 // APIConfigurationVersion API specification version
 type APIConfigurationVersion string
@@ -348,6 +344,42 @@ type PolicyListResponse struct {
 	Policies *[]PolicyDefinition `json:"policies,omitempty"`
 	Status   *string             `json:"status,omitempty"`
 }
+
+// Server Server definition for async or WebSub APIs.
+type Server struct {
+	// Bindings Protocol-specific server bindings (arbitrary key/value structure).
+	Bindings *map[string]interface{} `json:"bindings,omitempty"`
+
+	// Description Human-readable description of this server.
+	Description *string `json:"description,omitempty"`
+
+	// Protocol Transport protocol used by the server.
+	Protocol ServerProtocol `json:"protocol"`
+
+	// ProtocolVersion Version of the selected protocol (if applicable).
+	ProtocolVersion *string `json:"protocolVersion,omitempty"`
+
+	// Security Security requirements for this server (each item maps scheme name to optional scopes array).
+	Security *[]map[string][]string `json:"security,omitempty"`
+
+	// Url Base URL or connection string for the server (variables may be denoted by {name}).
+	Url string `json:"url"`
+
+	// Variables Templated variables contained in the server URL.
+	Variables *map[string]struct {
+		// Default Default value for the variable.
+		Default string `json:"default"`
+
+		// Description Description of the variable.
+		Description *string `json:"description,omitempty"`
+
+		// Enum Allowed values.
+		Enum *[]string `json:"enum,omitempty"`
+	} `json:"variables,omitempty"`
+}
+
+// ServerProtocol Transport protocol used by the server.
+type ServerProtocol string
 
 // Upstream defines model for Upstream.
 type Upstream struct {

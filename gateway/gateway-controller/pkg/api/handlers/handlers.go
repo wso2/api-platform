@@ -119,7 +119,7 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		cfg.DeployedVersion = version
 		log.Info("API configuration deployed successfully",
 			zap.String("id", configID),
-			zap.String("name", cfg.Configuration.Spec.Name),
+			zap.String("name", cfg.GetAPIName()),
 			zap.Int64("version", version))
 	} else {
 		cfg.Status = models.StatusFailed
@@ -127,7 +127,7 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		cfg.DeployedVersion = 0
 		log.Error("API configuration deployment failed",
 			zap.String("id", configID),
-			zap.String("name", cfg.Configuration.Spec.Name))
+			zap.String("name", cfg.GetAPIName()))
 	}
 
 	cfg.UpdatedAt = now
@@ -240,9 +240,9 @@ func (s *APIServer) ListAPIs(c *gin.Context) {
 		status := string(cfg.Status)
 		items = append(items, api.APIListItem{
 			Id:        id,
-			Name:      stringPtr(cfg.Configuration.Spec.Name),
-			Version:   stringPtr(cfg.Configuration.Spec.Version),
-			Context:   stringPtr(cfg.Configuration.Spec.Context),
+			Name:      stringPtr(cfg.GetAPIName()),
+			Version:   stringPtr(cfg.GetAPIVersion()),
+			Context:   stringPtr(cfg.GetContext()),
 			Status:    (*api.APIListItemStatus)(&status),
 			CreatedAt: timePtr(cfg.CreatedAt),
 			UpdatedAt: timePtr(cfg.UpdatedAt),
@@ -328,7 +328,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 	validationErrors := s.validator.Validate(&apiConfig)
 	if len(validationErrors) > 0 {
 		log.Warn("Configuration validation failed",
-			zap.String("name", apiConfig.Spec.Name),
+			zap.String("name", name),
 			zap.Int("num_errors", len(validationErrors)))
 
 		errors := make([]api.ValidationError, len(validationErrors))
@@ -386,8 +386,8 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 		if storage.IsConflictError(err) {
 			log.Info("API configuration name/version already exists",
 				zap.String("id", existing.ID),
-				zap.String("name", apiConfig.Spec.Name),
-				zap.String("version", apiConfig.Spec.Version))
+				zap.String("name", name),
+				zap.String("version", version))
 		} else {
 			log.Error("Failed to update config in memory store", zap.Error(err))
 		}
@@ -401,26 +401,28 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 	// Get correlation ID from context
 	correlationID := middleware.GetCorrelationID(c)
 
-	result, err := s.deploymentService.UpdateAPIConfiguration(name, version, utils.APIDeploymentParams{
-		Data:          body,
-		ContentType:   c.GetHeader("Content-Type"),
-		APIID:         "",
-		CorrelationID: correlationID,
-		Logger:        log,
-	})
+	// Update xDS snapshot asynchronously
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
+			log.Error("Failed to update xDS snapshot", zap.Error(err))
+		}
+	}()
 
 	log.Info("API configuration updated",
 		zap.String("id", existing.ID),
-		zap.String("name", apiConfig.Spec.Name),
-		zap.String("version", apiConfig.Spec.Version))
+		zap.String("name", name),
+		zap.String("version", version))
 
 	// Return success response
-	updateId, _ := uuidToOpenAPIUUID(result.StoredConfig.ID)
+	updateId, _ := uuidToOpenAPIUUID(existing.ID)
 	c.JSON(http.StatusOK, api.APIUpdateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("API configuration updated successfully"),
 		Id:        updateId,
-		UpdatedAt: timePtr(result.StoredConfig.UpdatedAt),
+		UpdatedAt: timePtr(existing.UpdatedAt),
 	})
 
 	// Rebuild and update derived policy configuration
@@ -443,15 +445,44 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
+
+	// Check if config exists
+	cfg, err := s.store.GetByNameVersion(name, version)
+	if err != nil {
+		log.Warn("API configuration not found",
+			zap.String("name", name),
+			zap.String("version", version))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("API configuration with name '%s' and version '%s' not found", name, version),
+		})
+		return
+	}
+
+	// Delete from database first (only if persistent mode)
+	if s.db != nil {
+		if err := s.db.DeleteConfig(cfg.ID); err != nil {
+			log.Error("Failed to delete config from database", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to delete configuration",
+			})
+			return
+		}
+	}
+
+	// Delete from in-memory store
+	if err := s.store.Delete(cfg.ID); err != nil {
+		log.Error("Failed to delete config from memory store", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to delete configuration",
+		})
+		return
+	}
+
 	// Get correlation ID from context
 	correlationID := middleware.GetCorrelationID(c)
-	_, err := s.deploymentService.UndeployAPIConfiguration(name, version, utils.APIDeploymentParams{
-		Data:          nil,
-		ContentType:   c.GetHeader("Content-Type"),
-		APIID:         "",
-		CorrelationID: correlationID,
-		Logger:        log,
-	})
 
 	// Update xDS snapshot asynchronously
 	go func() {
@@ -465,8 +496,8 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 
 	log.Info("API configuration deleted",
 		zap.String("id", cfg.ID),
-		zap.String("name", cfg.Configuration.Spec.Name),
-		zap.String("version", cfg.Configuration.Spec.Version))
+		zap.String("name", name),
+		zap.String("version", version))
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
@@ -522,48 +553,75 @@ func (s *APIServer) ListPolicies(c *gin.Context) {
 func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *models.StoredPolicyConfig {
 	// TODO: (renuka) duplicate buildStoredPolicyFromAPI funcs. Refactor this.
 	apiCfg := &cfg.Configuration
-	apiData := apiCfg.Spec
+
+	policies := cfg.GetPolicies()
 
 	// Collect API-level policies
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance) // name -> policy
-	if apiData.Policies != nil {
-		for _, p := range *apiData.Policies {
+	if policies != nil {
+		for _, p := range *policies {
 			apiPolicies[p.Name] = convertAPIPolicy(p)
 		}
 	}
 
-	// Build routes with merged policies
-	routes := make([]policyenginev1.PolicyChain, 0)
-	for _, op := range apiData.Operations {
-		var finalPolicies []policyenginev1.PolicyInstance
+	if cfg.Configuration.Kind == "http/rest" {
+		// Build routes with merged policies
+		apiData, err := apiCfg.Spec.AsAPIConfigData()
+		if err != nil {
+			// Handle error appropriately (e.g., log or return)
+			return nil
+		}
+		routes := make([]policyenginev1.PolicyChain, 0)
+		for _, op := range apiData.Operations {
+			var finalPolicies []policyenginev1.PolicyInstance
 
-		if op.Policies != nil && len(*op.Policies) > 0 {
-			// Operation has policies: use operation policy order as authoritative
-			// This allows operations to reorder, override, or extend API-level policies
-			finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*op.Policies))
-			addedNames := make(map[string]struct{})
+			if op.Policies != nil && len(*op.Policies) > 0 {
+				// Operation has policies: use operation policy order as authoritative
+				// This allows operations to reorder, override, or extend API-level policies
+				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*op.Policies))
+				addedNames := make(map[string]struct{})
 
-			for _, opPolicy := range *op.Policies {
-				finalPolicies = append(finalPolicies, convertAPIPolicy(opPolicy))
-				addedNames[opPolicy.Name] = struct{}{}
-			}
+				for _, opPolicy := range *op.Policies {
+					finalPolicies = append(finalPolicies, convertAPIPolicy(opPolicy))
+					addedNames[opPolicy.Name] = struct{}{}
+				}
 
-			// Add any API-level policies not mentioned in operation policies (append at end)
-			if apiData.Policies != nil {
-				for _, apiPolicy := range *apiData.Policies {
-					if _, exists := addedNames[apiPolicy.Name]; !exists {
-						finalPolicies = append(finalPolicies, apiPolicies[apiPolicy.Name])
+				// Add any API-level policies not mentioned in operation policies (append at end)
+				if policies != nil {
+					for _, apiPolicy := range *policies {
+						if _, exists := addedNames[apiPolicy.Name]; !exists {
+							finalPolicies = append(finalPolicies, apiPolicies[apiPolicy.Name])
+						}
+					}
+				}
+			} else {
+				// No operation policies: use API-level policies in their declared order
+				if policies != nil {
+					finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*policies))
+					for _, p := range *policies {
+						finalPolicies = append(finalPolicies, apiPolicies[p.Name])
 					}
 				}
 			}
-		} else {
-			// No operation policies: use API-level policies in their declared order
-			if apiData.Policies != nil {
-				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies))
-				for _, p := range *apiData.Policies {
-					finalPolicies = append(finalPolicies, apiPolicies[p.Name])
-				}
-			}
+
+			// Construct route key using the same format as the xDS translator for consistency
+			// This ensures the policy engine can match routes correctly
+			// Format: HttpMethod|RoutePath|Vhost
+			// Example: GET|/weather/us/seattle|localhost
+			fullPath := apiData.Context + op.Path
+			routeKey := xds.GenerateRouteName(string(op.Method), fullPath, s.routerConfig.GatewayHost)
+			routes = append(routes, policyenginev1.PolicyChain{
+				RouteKey: routeKey,
+				Policies: finalPolicies,
+			})
+		}
+		// If there are no policies at all, return nil (skip creation)
+		policyCount := 0
+		for _, r := range routes {
+			policyCount += len(r.Policies)
+		}
+		if policyCount == 0 {
+			return nil
 		}
 
 		routeKey := xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, s.routerConfig.GatewayHost)
@@ -595,10 +653,11 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *model
 				Version:         apiData.Version,
 				Context:         apiData.Context,
 			},
-		},
-		Version: 0,
+			Version: 0,
+		}
+		return stored
 	}
-	return stored
+	return nil
 }
 
 // convertAPIPolicy converts generated api.Policy to policyenginev1.PolicyInstance
@@ -648,7 +707,6 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 			}
 
 			if cfg.Status == models.StatusDeployed {
-				apiData, err := s.apiDataFactory.FromConfiguration(&cfg.Configuration)
 				if err != nil {
 					log.Error("Failed to extract API data in waitForDeploymentAndNotify",
 						zap.String("config_id", configID),
@@ -659,7 +717,7 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 				// // API successfully deployed, notify platform API
 				log.Info("API deployed successfully, notifying platform API",
 					zap.String("config_id", configID),
-					zap.String("name", cfg.Configuration.Spec.Name))
+					zap.String("name", cfg.GetAPIName()))
 
 				// Extract API ID from stored config (use config ID as API ID)
 				apiID := configID
@@ -678,7 +736,6 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 				return
 
 			} else if cfg.Status == models.StatusFailed {
-				apiData, err := s.apiDataFactory.FromConfiguration(&cfg.Configuration)
 				if err != nil {
 					log.Error("Failed to extract API data in waitForDeploymentAndNotify",
 						zap.String("config_id", configID),
@@ -688,7 +745,7 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 
 				log.Warn("API deployment failed, skipping platform API notification",
 					zap.String("config_id", configID),
-					zap.String("name", cfg.Configuration.Spec.Name))
+					zap.String("name", cfg.GetAPIName()))
 				return
 			}
 			// Continue waiting if status is still pending

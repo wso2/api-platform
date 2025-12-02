@@ -132,15 +132,8 @@ func main() {
 	// Generate initial xDS snapshot
 	log.Info("Generating initial xDS snapshot")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	if cfg.WebSubHub.Enabled {
-		log.Info("WebSubHub integration is enabled")
-		if err := snapshotManager.UpdateSnapshotofAsyncAPI(ctx, ""); err != nil {
-			log.Warn("Failed to generate initial xDS snapshot", zap.Error(err))
-		}
-	} else {
-		if err := snapshotManager.UpdateSnapshot(ctx, ""); err != nil {
-			log.Warn("Failed to generate initial xDS snapshot", zap.Error(err))
-		}
+	if err := snapshotManager.UpdateSnapshot(ctx, ""); err != nil {
+		log.Warn("Failed to generate initial xDS snapshot", zap.Error(err))
 	}
 	cancel()
 
@@ -173,14 +166,16 @@ func main() {
 			derivedCount := 0
 			for _, apiConfig := range loadedAPIs {
 				// Derive policy configuration from API
-				storedPolicy := derivePolicyFromAPIConfig(apiConfig, &cfg.Router)
-				if storedPolicy != nil {
-					if err := policyStore.Set(storedPolicy); err != nil {
-						log.Warn("Failed to load policy from API",
-							zap.String("api_id", apiConfig.ID),
-							zap.Error(err))
-					} else {
-						derivedCount++
+				if apiConfig.Configuration.Kind == "http/rest" {
+					storedPolicy := derivePolicyFromAPIConfig(apiConfig, &cfg.Router)
+					if storedPolicy != nil {
+						if err := policyStore.Set(storedPolicy); err != nil {
+							log.Warn("Failed to load policy from API",
+								zap.String("api_id", apiConfig.ID),
+								zap.Error(err))
+						} else {
+							derivedCount++
+						}
 					}
 				}
 			}
@@ -303,9 +298,13 @@ func main() {
 
 // derivePolicyFromAPIConfig derives a policy configuration from an API configuration
 // This is a simplified version of the buildStoredPolicyFromAPI function from handlers
+// Applicable only for REST APIs
 func derivePolicyFromAPIConfig(cfg *models.StoredAPIConfig, routerConfig *config.RouterConfig) *models.StoredPolicyConfig {
 	apiCfg := &cfg.Configuration
-	apiData := apiCfg.Spec
+	apiData, err := apiCfg.Spec.AsAPIConfigData()
+	if err != nil {
+		return nil
+	}
 
 	// Collect API-level policies
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance)

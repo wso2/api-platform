@@ -293,6 +293,7 @@ paths:
           application/yaml:
             schema:
               $ref: '#/components/schemas/APIConfiguration'
+
           application/json:
             schema:
               $ref: '#/components/schemas/APIConfiguration'
@@ -605,18 +606,31 @@ components:
           example: http/rest
           enum:
             - http/rest
+            - async/websub
+            - async/websocket
+            - async/sse
         spec:
-          $ref: '#/components/schemas/APIConfigData'
+          description: API configuration payload (REST or Async API variants)
+          oneOf:
+            - $ref: '#/components/schemas/APIConfigData'
+            - $ref: '#/components/schemas/WebhookAPIData'
+          discriminator:
+            propertyName: apiType
+            mapping:
+              http/rest: '#/components/schemas/APIConfigData'
+              async/websub: '#/components/schemas/WebhookAPIData'
+              async/websocket: '#/components/schemas/WebhookAPIData'
+              async/sse: '#/components/schemas/WebhookAPIData'
 
     APIConfigData:
       type: object
       required:
-        - apiType
         - name
         - version
         - context
         - upstreams
         - operations
+        - apiType
       properties:
         name:
           type: string
@@ -631,9 +645,6 @@ components:
           example: http/rest
           enum:
             - http/rest
-            - async/websub
-            - async/websocket
-            - async/sse
         version:
           type: string
           description: Semantic version of the API
@@ -787,10 +798,9 @@ components:
           description: API type
           example: async/websub
           enum:
-            - http/rest
             - async/websub
-            - async/websocket
-            - async/sse
+            # - async/websocket
+            # - async/sse
         name:
           type: string
           description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
