@@ -1,10 +1,12 @@
 # Makefile for Envoy Policy Engine
 
 # Variables
-BUILDER_IMAGE := wso2/api-platform-gateway-builder
-RUNTIME_IMAGE := wso2/api-platform-policy-engine
-BUILDER_VERSION := latest
-RUNTIME_VERSION := latest
+VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
+DOCKER_REGISTRY ?= ghcr.io/renuka-fernando
+BUILDER_IMAGE := $(DOCKER_REGISTRY)/api-platform-gateway-builder
+RUNTIME_IMAGE := $(DOCKER_REGISTRY)/api-platform-policy-engine
+BUILDER_VERSION := $(VERSION)
+RUNTIME_VERSION := $(VERSION)
 
 # Docker image tags
 BUILDER_TAG := $(BUILDER_IMAGE):$(BUILDER_VERSION)
@@ -29,21 +31,27 @@ GOMOD := $(GOCMD) mod
 # Binary name
 BINARY_NAME := policy-engine
 
-.PHONY: all build-builder build-runtime build test clean docker-clean run-builder run help
+.PHONY: all build build-builder build-runtime test clean docker-clean run-builder run help push push-builder push-runtime
 
 # Default target
 all: help
 
 ## help: Display this help message
 help:
-	@echo "Envoy Policy Engine - Build Targets"
+	@echo "Envoy Policy Engine - Build Targets (Version: $(VERSION))"
 	@echo ""
-	@echo "Builder Image Targets:"
+	@echo "Build Targets:"
+	@echo "  make build                - Build all Docker images (builder + runtime)"
 	@echo "  make build-builder          - Build the Gateway Builder Docker image"
+	@echo "  make build-runtime         - Build the Policy Engine Runtime Docker image"
 	@echo "  make run-builder           - Run the Builder to compile policies into runtime binary"
 	@echo ""
-	@echo "Runtime Image Targets:"
-	@echo "  make build-runtime         - Build the Policy Engine Runtime Docker image"
+	@echo "Push Targets:"
+	@echo "  make push                 - Push all images to registry"
+	@echo "  make push-builder         - Push builder image"
+	@echo "  make push-runtime         - Push runtime image"
+	@echo ""
+	@echo "Runtime Targets:"
 	@echo "  make run-runtime          - Run the Policy Engine with docker-compose"
 	@echo "  make stop-runtime         - Stop the running Policy Engine services"
 	@echo ""
@@ -61,10 +69,17 @@ help:
 	@echo "  make lint                 - Run Go linter (if installed)"
 	@echo ""
 
+## build: Build all Docker images (builder + runtime)
+build: build-builder build-runtime
+
 ## build-builder: Build the Gateway Builder Docker image
 build-builder:
 	@echo "Building Gateway Builder image: $(BUILDER_TAG)"
-	docker build -f Dockerfile.builder -t $(BUILDER_TAG) .
+	docker build -f Dockerfile.builder \
+		--build-arg VERSION=$(VERSION) \
+		-t $(BUILDER_TAG) \
+		-t $(BUILDER_IMAGE):latest \
+		.
 	@echo "✅ Builder image built successfully: $(BUILDER_TAG)"
 
 ## run-builder: Run the Builder to compile policies
@@ -80,8 +95,27 @@ run-builder:
 ## build-runtime: Build the Policy Engine Runtime Docker image
 build-runtime:
 	@echo "Building Policy Engine Runtime image: $(RUNTIME_TAG)"
-	docker build -f Dockerfile.runtime -t $(RUNTIME_TAG) .
+	docker build -f Dockerfile.runtime \
+		--build-arg VERSION=$(VERSION) \
+		-t $(RUNTIME_TAG) \
+		-t $(RUNTIME_IMAGE):latest \
+		.
 	@echo "✅ Runtime image built successfully: $(RUNTIME_TAG)"
+
+## push: Push all images to registry
+push: push-builder push-runtime
+
+## push-builder: Push builder image to registry
+push-builder:
+	@echo "Pushing $(BUILDER_TAG)..."
+	docker push $(BUILDER_TAG)
+	docker push $(BUILDER_IMAGE):latest
+
+## push-runtime: Push runtime image to registry
+push-runtime:
+	@echo "Pushing $(RUNTIME_TAG)..."
+	docker push $(RUNTIME_TAG)
+	docker push $(RUNTIME_IMAGE):latest
 
 ## run-runtime: Start the Policy Engine with docker-compose
 run-runtime:

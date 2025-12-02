@@ -18,18 +18,36 @@
 
 # Makefile for Router (Envoy Proxy)
 
-.PHONY: help docker clean
+# Version management
+VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
+
+# Docker image configuration
+DOCKER_REGISTRY ?= ghcr.io/renuka-fernando
+IMAGE_NAME := $(DOCKER_REGISTRY)/api-platform-gateway-router
+
+.PHONY: help build push clean
 
 help: ## Show this help message
-	@echo 'Usage: make [target]'
+	@echo 'Gateway Router Build (Version: $(VERSION))'
 	@echo ''
 	@echo 'Available targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-docker: ## Build Router Docker image
-	@echo "Building Router Docker image..."
-	@docker build -t wso2/gateway-router:latest .
+build: ## Build Router Docker image
+	@echo "Building Router Docker image ($(VERSION))..."
+	@docker build \
+		--build-arg VERSION=$(VERSION) \
+		-t $(IMAGE_NAME):$(VERSION) \
+		-t $(IMAGE_NAME):latest \
+		.
+	@echo "✅ Docker image built successfully: $(IMAGE_NAME):$(VERSION)"
+
+push: ## Push Docker image to registry
+	@echo "Pushing Docker images..."
+	docker push $(IMAGE_NAME):$(VERSION)
+	docker push $(IMAGE_NAME):latest
 
 clean: ## Clean Docker images
 	@echo "Cleaning Docker images..."
-	@docker rmi wso2/gateway-router:latest || true
+	@docker rmi $(IMAGE_NAME):$(VERSION) || true
+	@docker rmi $(IMAGE_NAME):latest || true

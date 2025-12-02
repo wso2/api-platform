@@ -418,12 +418,12 @@ paths:
             schema:
               $ref: '#/components/schemas/CertificateUploadRequest'
             example:
+              name: my-custom-ca
               certificate: |
                 -----BEGIN CERTIFICATE-----
                 MIIDXTCCAkWgAwIBAgIJAKL0UG+mRKtjMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
                 ...
                 -----END CERTIFICATE-----
-              filename: my-custom-ca.pem
       responses:
         '201':
           description: Certificate uploaded successfully
@@ -744,18 +744,6 @@ components:
           type: object
           description: JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.
           additionalProperties: true
-
-    PolicyFlowRequirements:
-      type: object
-      properties:
-        requireHeader:
-          type: boolean
-          description: Whether request/response headers are required for execution
-          example: true
-        requireBody:
-          type: boolean
-          description: Whether request/response body content is required for execution
-          example: false
 
     PolicyListResponse:
       type: object

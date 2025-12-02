@@ -18,7 +18,17 @@
 
 # Makefile for Gateway-Controller
 
-.PHONY: help generate build test generate-listener-certs
+# Version management
+VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+LDFLAGS := -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.BuildDate=$(BUILD_DATE)
+
+# Docker image configuration
+DOCKER_REGISTRY ?= ghcr.io/renuka-fernando
+IMAGE_NAME := $(DOCKER_REGISTRY)/api-platform-gateway-controller
+
+.PHONY: help generate build test generate-listener-certs push
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -35,8 +45,18 @@ test: ## Run unit and integration tests
 	@go test -v ./... -cover
 
 build: generate ## Build Docker image
-	@echo "Building Docker image..."
-	@docker build -f Dockerfile -t wso2/api-platform-gateway-controller:latest  ../
+	@echo "Building Docker image ($(VERSION))..."
+	@docker build -f Dockerfile \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		-t $(IMAGE_NAME):$(VERSION) \
+		-t $(IMAGE_NAME):latest \
+		../
+
+push: ## Push Docker image to registry
+	@echo "Pushing Docker images..."
+	docker push $(IMAGE_NAME):$(VERSION)
+	docker push $(IMAGE_NAME):latest
 
 generate-listener-certs: ## Generate listener certificates
 	@echo "Generating listener certificates..."

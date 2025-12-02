@@ -26,6 +26,13 @@ import (
 	"go.uber.org/zap"
 )
 
+// Version information (set via ldflags during build)
+var (
+	Version   = "dev"
+	GitCommit = "unknown"
+	BuildDate = "unknown"
+)
+
 func main() {
 	// Parse command-line flags
 	configPath := flag.String("config", "config/config.yaml", "Path to configuration file")
@@ -50,6 +57,9 @@ func main() {
 	defer log.Sync()
 
 	log.Info("Starting Gateway-Controller",
+		zap.String("version", Version),
+		zap.String("git_commit", GitCommit),
+		zap.String("build_date", BuildDate),
 		zap.String("config_file", *configPath),
 		zap.String("storage_type", cfg.Storage.Type),
 		zap.Bool("access_logs_enabled", cfg.Router.AccessLogs.Enabled),
