@@ -33,77 +33,49 @@ The API Platform covers the complete API lifecycle:
   - Based on Envoy Proxy
   - Apart from basic proxy features (routing, TLS, etc), everything else is a policy
 
-## Architecuture
+## Architecture
 
 TODO: add image
 
 ## Quick Start
 
-### Hybrid Gateway (Recommended)
+Get up and running in minutes with Docker Compose.
 
-Install a local gateway connected to the cloud control plane:
+### 1. Clone the Repository
 
-#### Step 1: Sign-up/Login to Bijira
-Visit [Bijira](https://bijira.dev) and create an account or login.
-
-#### Step 2: Add a Self-Managed Gateway
-1. Navigate to Gateway management in Bijira
-2. Click "Add Self-Managed Gateway"
-3. Provide gateway details (name, hostname)
-4. Copy the installation command provided by the UI
-
-#### Step 3: Run the Installation Command
 ```bash
-# Run the UI-provided command (includes your gateway key)
-curl -Ls https://bijira.dev/quick-start | bash -s -- \
-  -k $GATEWAY_KEY --name dev-gateway
+git clone https://github.com/wso2/api-platform
+cd api-platform
 ```
 
-This will:
-- Install a locally self-managed gateway connected to Bijira
-- Install the API Platform CLI tool
+### 2. Start the Platform
 
-#### Step 4: Verify Installation
 ```bash
-api-platform gateway list
+cd distribution/all-in-one
+docker compose up
 ```
 
-#### Step 5: Deploy an API
-Create an `api.yaml` file:
-```yaml
-version: api-platform.wso2.com/v1
-kind: http/rest
-data:
-  name: Weather API
-  version: v1.0
-  context: /weather
-  upstream:
-    - url: https://api.weather.com/v2
-  operations:
-    - method: GET
-      path: /{country_code}/{city}
-      requestPolicies:
-        - name: apiKey
-          params:
-            header: api-key
-```
+### 3. Create a Default Organization
 
-Deploy to gateway:
 ```bash
-api-platform gateway push --file api.yaml
+curl -k --location 'https://localhost:8443/api/v1/organizations' \
+  --header 'Content-Type: application/json' \
+  --header 'Authorization: Bearer <shared-token>' \
+  --data '{
+    "id": "15b2ac94-6217-4f51-90d4-b2b3814b20b4",
+    "handle": "acme",
+    "name": "ACME Corporation",
+    "region": "US"
+}'
 ```
 
-#### Step 6: Generate API Key
-```bash
-api-platform gateway api-key generate \
-  --api-name 'Weather API' \
-  --key-name 'my-key'
-```
+### 4. Accept the Self-Signed Certificate
 
-#### Step 7: Test the API
-```bash
-curl http://localhost:8081/weather/us/boston -H 'api-key: $API_KEY'
-```
+Open https://localhost:8443 in your browser and accept the self-signed certificate.
+
+### 5. Open the Management Portal
+
+Navigate to http://localhost:5173 to access the Management Portal.
 
 ## Platform Components
 
