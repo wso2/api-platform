@@ -1,12 +1,24 @@
 # WSO2 API Platform
 
-> AI-ready, GitOps-driven API platform for full lifecycle management across cloud, hybrid, and on-premises deployments.
+AI-ready, GitOps-driven API platform for full lifecycle management across cloud, hybrid, and on-premises deployments.
 
 ## Overview
 
 The WSO2 API Platform is a complete platform that helps organizations build AI-ready APIs with comprehensive lifecycle management capabilities. The platform supports deployment on the cloud, fully on-premises, or in hybrid mode.
 
-## Key Principles
+### Platform Scope
+
+The API Platform covers the complete API lifecycle:
+
+- ✅ API ideation and planning
+- ✅ API design and documentation
+- ✅ API testing and mocking
+- ✅ Runtime management (ingress and egress)
+- ✅ API governance and compliance
+- ✅ Asset discovery and consumption
+- ✅ API analytics and monetization
+
+### Key Principles
 
 - **Developer experience is king**: Optimized workflows and UX for all users
 - **Size matters, keep it as small as you can**: Minimal footprint for all components
@@ -21,175 +33,9 @@ The WSO2 API Platform is a complete platform that helps organizations build AI-r
   - Based on Envoy Proxy
   - Apart from basic proxy features (routing, TLS, etc), everything else is a policy
 
-## Platform Scope
+## Architecuture
 
-The API Platform covers the complete API lifecycle:
-
-- ✅ API ideation and planning
-- ✅ API design and documentation
-- ✅ API testing and mocking
-- ✅ Runtime management (ingress and egress)
-- ✅ API governance and compliance
-- ✅ Asset discovery and consumption
-- ✅ API analytics and monetization
-
----
-
-## Platform Components
-
-### 🎨 [API Designer](api-designer/spec/spec.md)
-Standalone design tool for REST, GraphQL, and AsyncAPI specifications.
-
-**Key Features:**
-- Code + visual split view with real-time updates
-- AI-assisted specification and documentation generation
-- Built-in mocking and governance checks
-- AI-readiness score for APIs
-- MCP code generation from specifications
-
-📖 **Documentation:**
-- [Architecture](api-designer/spec/architecture/architecture.md)
-- [Design](api-designer/spec/design/design.md)
-- [Use Cases](api-designer/spec/use-cases/use_cases.md)
-
----
-
-### ⚙️ [Management Portal](management-portal/spec/spec.md)
-Central control plane for managing gateways, APIs, policies, and governance.
-
-**Key Capabilities:**
-- Gateway management and orchestration
-- API lifecycle management
-- Policy and governance rule management
-- Identity provider configuration
-- API deployment to gateways
-- Publishing to developer portals
-
-**Deployment:** Multi-tenant SaaS or on-premises
-
-📖 **Documentation:**
-- [Architecture](management-portal/spec/architecture/architecture.md)
-- [Design](management-portal/spec/design/design.md)
-- [Use Cases](management-portal/spec/use-cases/use_cases.md)
-
----
-
-### 🚀 [API Gateway](gateway/spec/spec.md)
-Envoy-based API gateway for securing and routing API traffic.
-
-**Gateway Types:**
-- **Basic**: Lightweight for development, freemium users (14-day trial)
-- **Standard**: Production-ready with Redis, persistence, distributed rate limiting
-
-**Key Features:**
-- Built on Envoy Proxy
-- Policy-first architecture (auth, rate limiting, analytics)
-- Runs on VMs, containers, Kubernetes
-- Single-tenant mode
-- Optimized for AI/agentic flows
-
-📖 **Documentation:**
-- [Architecture](gateway/spec/architecture/architecture.md)
-- [Design](gateway/spec/design/design.md)
-- [Use Cases](gateway/spec/use-cases/use_cases.md)
-
----
-
-### 🔍 [Enterprise Portal](enterprise-portal/spec/spec.md)
-Internal discovery hub for API developers to find and reuse organizational assets.
-
-**Asset Types:**
-- Internal and external APIs
-- LLM integrations
-- Data sources
-- Caches and message queues
-
-**Purpose:** Promote reuse and discovery across internal teams
-
-📖 **Documentation:**
-- [Architecture](enterprise-portal/spec/architecture/architecture.md)
-- [Design](enterprise-portal/spec/design/design.md)
-- [Use Cases](enterprise-portal/spec/use-cases/use_cases.md)
-
----
-
-### 📚 [API Portal](api-portal/spec/spec.md)
-Developer portal for API discovery, subscription, and consumption.
-
-**Key Features:**
-- API catalog and semantic search
-- Try-it console for API testing
-- API subscription management
-- Application and API key management
-- AI-powered discovery
-
-**Primary Users:** Application developers and AI agents
-
-📖 **Documentation:**
-- [Architecture](api-portal/spec/architecture/architecture.md)
-- [Design](api-portal/spec/design/design.md)
-- [Use Cases](api-portal/spec/use-cases/use_cases.md)
-
----
-
-### 💻 [CLI](cli/spec/spec.md)
-Command-line interface for developers and CI/CD automation.
-
-**Key Commands:**
-```bash
-# Gateway operations
-api-platform gateway list
-api-platform gateway push --file api.yaml
-
-# API key management
-api-platform gateway api-key generate --api-name 'MyAPI'
-```
-
-📖 **Documentation:**
-- [Architecture](cli/spec/architecture/architecture.md)
-- [Design](cli/spec/design/design.md)
-- [Use Cases](cli/spec/use-cases/use_cases.md)
-
----
-
-## Platform Architecture
-
-```
-+-----------------------------------------------------------------+
-|        Control Plane (Multi-tenant SaaS or On-prem)             |
-|                                                                 |
-|  +----------+  +----------+  +----------+  +----------+         |
-|  |   API    |  |Enterprise|  |Management|  |Developer |         |
-|  | Designer |  |  Portal  |  |  Portal  |  |  Portal  |         |
-|  +----------+  +----------+  +----------+  +----------+         |
-|  +-----------------------------------------------------+        |
-|  |                  Platform API                       |        |
-|  +-----------------------------------------------------+        |
-|                                                                 |
-|  +------------------------+                                     |
-|  |  Postgres / SQLite     |                                     |
-|  +------------------------+                                     |
-+-----------------------------------------------------------------+
-                              |
-                              v
-+-----------------------------------------------------------------+
-|      Data Plane (Single-tenant SaaS, On-prem, Hybrid)           |
-|                                                                 |
-|  +------------------------------------------+                   |
-|  |          API Gateway                     |                   |
-|  |  +--------+  +--------+  +--------+      |                   |
-|  |  | Router |  | Policy |  |  Rate  |      |                   |
-|  |  |(Envoy) |  | Engine |  |Limiter |      |                   |
-|  |  +--------+  +--------+  +--------+      |                   |
-|  +------------------------------------------+                   |
-|                                                                 |
-|  +--------+  +--------+          +--------+                     |
-|  | Redis  |  | SQLite |          |  STS   |                     |
-|  +--------+  +--------+          +--------+                     |
-+-----------------------------------------------------------------+
-```
-
----
+TODO: add image
 
 ## Quick Start
 
@@ -259,103 +105,48 @@ api-platform gateway api-key generate \
 curl http://localhost:8081/weather/us/boston -H 'api-key: $API_KEY'
 ```
 
-### Other Deployment Options
+## Platform Components
 
-- **Fully On-Premise**: All components run locally
-- **Agentic Flow**: AI-powered setup via Claude Code, Cursor, Copilot
-- **Full Cloud**: Everything runs in Bijira cloud
+### API Designer
+Standalone design tool for REST, GraphQL, and AsyncAPI specifications.
 
----
+**Key Features:**
+- Code + visual split view with real-time updates
+- AI-assisted specification and documentation generation
+- Built-in mocking and governance checks
+- AI-readiness score for APIs
+- MCP code generation from specifications
 
-## AI-Readiness Features
+### Management Portal
+Central control plane for managing gateways, APIs, policies, and governance.
 
-### Design & Build
-- ✅ AI-assisted specification generation
-- ✅ Governance linting for AI consumption
-- ✅ Auto-generated, agent-friendly documentation
-- ✅ "Chat with your API" playground
+**Key Capabilities:**
+- Gateway management and orchestration
+- API lifecycle management
+- Policy and governance rule management
+- Identity provider configuration
+- API deployment to gateways
+- Publishing to developer portals
 
-### Publish & Discover
-- ✅ Semantic API search (intent-based)
-- ✅ LLM-optimized documentation formats
-- ✅ Interactive try-it playground for AI
-- ✅ AI-aware changelogs (changelog.json)
+### API Gateway
+Envoy-based API gateway for securing and routing API traffic.
 
-### Monitor & Optimize
-- ✅ AI interaction insights
-- ✅ Pattern analysis for machine consumers
-- ✅ Feedback loop for continuous improvement
+**Key Features:**
+- Built on Envoy Proxy
+- Policy-first architecture (auth, rate limiting, analytics)
+- Runs on VMs, containers, Kubernetes
+- Single-tenant mode
+- Optimized for AI/agentic flows
 
----
+### API Developer Portal
+Developer portal for API discovery, subscription, and consumption.
 
-## Gateway Types Comparison
+**Key Features:**
+- API catalog and semantic search
+- Try-it console for API testing
+- API subscription management
+- Application and API key management
+- AI-powered discovery
 
-| Feature | Basic | Standard |
-|---------|-------|----------|
-| **Components** | Router + Policy Engine + Gateway Controller | All components + Rate Limiter |
-| **Persistence** | None (in-memory only) | SQLite (switchable to external DB) |
-| **Rate Limiting** | Local only | Distributed (Redis) |
-| **Availability** | Freemium (14-day trial) | Paid tier / Self-hosted |
-| **Best For** | Development, testing | Production, enterprise |
-
----
-
-## Use Cases
-
-### Development
-- Local API testing with Basic gateway
-- Fast iteration cycles
-- No external dependencies
-
-### Enterprise Production
-- Standard gateway with Redis cluster
-- Multi-environment deployments
-- High availability and SLA compliance
-
-### Multi-Tenant SaaS
-- Gateway per customer isolation
-- Free tier: Basic gateway (14-day trial)
-- Paid tier: Standard gateway with persistence
-
-### CI/CD Integration
-- Automated API deployment
-- GitOps workflows
-- Version control integration
-
-### Hybrid Cloud
-- On-premise gateway execution
-- Cloud-based management and visibility
-- Data sovereignty compliance
-
----
-
-## Project Structure
-
-```
-api-platform/
-├── concepts/              # Core concepts and specifications
-│   └── api-yaml-specification.md
-├── api-designer/          # Standalone API design tool
-│   └── spec/
-├── management-portal/     # Central control plane
-│   └── spec/
-├── gateway/               # Envoy-based API gateway
-│   └── spec/
-├── enterprise-portal/     # Internal asset discovery
-│   └── spec/
-├── api-portal/            # Developer portal
-│   └── spec/
-├── cli/                   # Command-line interface
-│   └── spec/
-└── README.md              # This file
-```
-
----
-
-## Core Concepts
-
-- **[API.yaml Specification](concepts/api-yaml-specification.md)** - Declarative API definition format
-
----
 
 (c) Copyright 2012 - 2025 WSO2 Inc.
