@@ -42,7 +42,7 @@ echo "========================================"
 
 # Step 1: Validate version format
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-    echo "❌ Error: Invalid version format: $VERSION"
+    echo "Error: Invalid version format: $VERSION"
     echo "Expected: X.Y.Z or X.Y.Z-prerelease"
     exit 1
 fi
@@ -50,12 +50,12 @@ fi
 # Step 2: Update VERSION file
 if [ "$COMPONENT" = "gateway" ]; then
     echo "$VERSION" > gateway/VERSION
-    echo "✅ Updated gateway/VERSION"
+    echo "Updated gateway/VERSION"
 elif [ "$COMPONENT" = "platform-api" ]; then
     echo "$VERSION" > platform-api/VERSION
-    echo "✅ Updated platform-api/VERSION"
+    echo "Updated platform-api/VERSION"
 else
-    echo "❌ Error: Unknown component: $COMPONENT"
+    echo "Error: Unknown component: $COMPONENT"
     exit 1
 fi
 
@@ -79,12 +79,12 @@ fi
 echo "Running tests..."
 if [ "$COMPONENT" = "gateway" ]; then
     make test-gateway || {
-        echo "❌ Tests failed! Please fix the tests before releasing."
+        echo "Tests failed! Please fix the tests before releasing."
         exit 1
     }
 elif [ "$COMPONENT" = "platform-api" ]; then
     make test-platform-api || {
-        echo "❌ Tests failed! Please fix the tests before releasing."
+        echo "Tests failed! Please fix the tests before releasing."
         exit 1
     }
 fi
@@ -108,7 +108,7 @@ git tag -a "$TAG_NAME" -m "Release $COMPONENT version $VERSION"
 
 echo ""
 echo "========================================"
-echo "✅ Release $COMPONENT $VERSION completed"
+echo "Release $COMPONENT $VERSION completed"
 echo "========================================"
 echo ""
 echo "Next steps:"

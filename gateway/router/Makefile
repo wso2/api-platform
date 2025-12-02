@@ -40,7 +40,7 @@ build: ## Build Router Docker image
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
 		.
-	@echo "✅ Docker image built successfully: $(IMAGE_NAME):$(VERSION)"
+	@echo "Docker image built successfully: $(IMAGE_NAME):$(VERSION)"
 
 push: ## Push Docker image to registry
 	@echo "Pushing Docker images..."

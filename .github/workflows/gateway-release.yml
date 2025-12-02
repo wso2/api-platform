@@ -1,0 +1,62 @@
+name: Gateway Release
+
+on:
+  push:
+    tags:
+      - 'gateway/v*'
+
+env:
+  DOCKER_REGISTRY: ghcr.io/renuka-fernando
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/gateway/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Releasing version: $VERSION"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Run tests
+        run: make test-gateway
+
+      - name: Build Docker images
+        run: make build-gateway
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Docker images
+        run: make push-gateway
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Gateway ${{ steps.version.outputs.version }}
+          body: |
+            ## Gateway Release ${{ steps.version.outputs.version }}
+
+            ### Docker Images
+            - `ghcr.io/renuka-fernando/api-platform-gateway-controller:${{ steps.version.outputs.version }}`
+            - `ghcr.io/renuka-fernando/api-platform-policy-engine:${{ steps.version.outputs.version }}`
+            - `ghcr.io/renuka-fernando/api-platform-gateway-builder:${{ steps.version.outputs.version }}`
+            - `ghcr.io/renuka-fernando/api-platform-gateway-router:${{ steps.version.outputs.version }}`
+          draft: true
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}

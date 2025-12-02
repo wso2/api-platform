@@ -84,7 +84,7 @@ build-builder:
 		-t $(BUILDER_TAG) \
 		-t $(BUILDER_IMAGE):latest \
 		.
-	@echo "✅ Builder image built successfully: $(BUILDER_TAG)"
+	@echo "Builder image built successfully: $(BUILDER_TAG)"
 
 ## run-builder: Run the Builder to compile policies
 run-builder:
@@ -94,7 +94,7 @@ run-builder:
 		-v $(PWD)/$(POLICIES_DIR):/policies:ro \
 		-v $(PWD)/$(OUTPUT_DIR):/output \
 		$(BUILDER_TAG)
-	@echo "✅ Policies compiled successfully. Output in $(OUTPUT_DIR)/"
+	@echo "Policies compiled successfully. Output in $(OUTPUT_DIR)/"
 
 ## build-runtime: Build the Policy Engine Runtime Docker image
 build-runtime:
@@ -105,7 +105,7 @@ build-runtime:
 		-t $(RUNTIME_TAG) \
 		-t $(RUNTIME_IMAGE):latest \
 		.
-	@echo "✅ Runtime image built successfully: $(RUNTIME_TAG)"
+	@echo "Runtime image built successfully: $(RUNTIME_TAG)"
 
 ## push: Push all images to registry
 push: push-builder push-runtime
@@ -126,7 +126,7 @@ push-runtime:
 run-runtime:
 	@echo "Starting Policy Engine services..."
 	docker-compose up -d
-	@echo "✅ Services started. Access Envoy at http://localhost:10000"
+	@echo "Services started. Access Envoy at http://localhost:10000"
 	@echo "   - Envoy Admin: http://localhost:9901"
 	@echo "   - Policy Engine ext_proc: localhost:9001"
 	@echo ""
@@ -136,19 +136,19 @@ run-runtime:
 stop-runtime:
 	@echo "Stopping Policy Engine services..."
 	docker-compose down
-	@echo "✅ Services stopped"
+	@echo "Services stopped"
 
 ## build: Build the binary locally (for development)
 build:
 	@echo "Building $(BINARY_NAME) locally..."
 	CGO_ENABLED=0 $(GOBUILD) -ldflags "$(LDFLAGS)" -o ./$(BINARY_NAME) -v ./$(CMD_DIR)
-	@echo "✅ Binary built: ./$(BINARY_NAME)"
+	@echo "Binary built: ./$(BINARY_NAME)"
 
 ## test: Run tests
 test:
 	@echo "Running tests..."
 	cd $(RUNTIME_DIR) && $(GOTEST) -v ./...
-	@echo "✅ Tests completed"
+	@echo "Tests completed"
 
 ## clean: Clean build artifacts
 clean:
@@ -156,7 +156,7 @@ clean:
 	cd $(RUNTIME_DIR) && $(GOCLEAN)
 	rm -f $(BINARY_NAME)
 	rm -rf $(OUTPUT_DIR)
-	@echo "✅ Clean completed"
+	@echo "Clean completed"
 
 ## docker-clean: Remove all Docker images and containers
 docker-clean:
@@ -165,11 +165,11 @@ docker-clean:
 	@echo "Removing Docker images..."
 	-docker rmi $(BUILDER_TAG) 2>/dev/null || true
 	-docker rmi $(RUNTIME_TAG) 2>/dev/null || true
-	@echo "✅ Docker cleanup completed"
+	@echo "Docker cleanup completed"
 
 ## full-build: Complete workflow - build builder, compile policies, build runtime
 full-build: build-builder run-builder build-runtime
-	@echo "✅ Full build completed!"
+	@echo "Full build completed!"
 	@echo "   - Builder image: $(BUILDER_TAG)"
 	@echo "   - Runtime image: $(RUNTIME_TAG)"
 	@echo "   - Compiled output: $(OUTPUT_DIR)/"
@@ -183,14 +183,14 @@ tidy:
 	cd $(RUNTIME_DIR) && $(GOMOD) tidy
 	cd sdk && $(GOMOD) tidy
 	cd $(BUILDER_DIR) && $(GOMOD) tidy
-	@echo "✅ go mod tidy completed for all modules"
+	@echo "go mod tidy completed for all modules"
 
 ## lint: Run Go linter (requires golangci-lint)
 lint:
 	@echo "Running linter..."
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 		cd $(RUNTIME_DIR) && golangci-lint run ./...; \
-		echo "✅ Linting completed"; \
+		echo "Linting completed"; \
 	else \
 		echo "⚠️  golangci-lint not installed. Install with:"; \
 		echo "   go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
@@ -218,7 +218,7 @@ rebuild: build-runtime restart
 dev-build:
 	@echo "Quick development build..."
 	$(GOBUILD) -ldflags "$(LDFLAGS)" -o ./$(BINARY_NAME) ./$(CMD_DIR)
-	@echo "✅ Built: ./$(BINARY_NAME)"
+	@echo "Built: ./$(BINARY_NAME)"
 
 ## dev-run: Run the binary locally (without Docker)
 dev-run: dev-build
@@ -231,7 +231,7 @@ check-deps:
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker is required but not installed"; exit 1; }
 	@command -v docker-compose >/dev/null 2>&1 || { echo "❌ docker-compose is required but not installed"; exit 1; }
 	@command -v go >/dev/null 2>&1 || { echo "❌ go is required but not installed"; exit 1; }
-	@echo "✅ All required dependencies are installed"
+	@echo "All required dependencies are installed"
 
 # Sample policy builds
 
@@ -239,7 +239,7 @@ check-deps:
 build-sample-setheader:
 	@echo "Building SetHeader sample policy..."
 	cd policies/set-header/v1.0.0 && $(GOMOD) tidy
-	@echo "✅ SetHeader policy ready"
+	@echo "SetHeader policy ready"
 
 # Testing targets
 
@@ -251,7 +251,7 @@ test-integration: run-runtime
 	@curl -s -o /dev/null -w "Status: %{http_code}\n" http://localhost:10000/ || true
 	@echo "Testing Envoy admin..."
 	@curl -s -o /dev/null -w "Status: %{http_code}\n" http://localhost:9901/ || true
-	@echo "✅ Integration tests completed"
+	@echo "Integration tests completed"
 
 ## test-envoy: Test Envoy configuration
 test-envoy:
@@ -259,13 +259,13 @@ test-envoy:
 	docker run --rm -v $(PWD)/configs/envoy.yaml:/etc/envoy/envoy.yaml \
 		envoyproxy/envoy:v1.36.2 \
 		--mode validate -c /etc/envoy/envoy.yaml
-	@echo "✅ Envoy configuration is valid"
+	@echo "Envoy configuration is valid"
 
 # Cleanup targets
 
 ## clean-all: Clean everything (build artifacts + Docker)
 clean-all: clean docker-clean
-	@echo "✅ Complete cleanup finished"
+	@echo "Complete cleanup finished"
 
 # Version and info
 

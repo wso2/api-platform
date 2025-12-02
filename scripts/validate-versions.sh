@@ -51,17 +51,17 @@ if [ -f "gateway/docker-compose.yaml" ]; then
     echo "  Router:     $COMPOSE_ROUTER"
 
     if [ "$COMPOSE_CONTROLLER" != "v$GATEWAY_VERSION" ]; then
-        echo "  ❌ Controller version mismatch!"
+        echo "Controller version mismatch!"
         ERRORS=$((ERRORS + 1))
     fi
 
     if [ "$COMPOSE_POLICY" != "v$GATEWAY_VERSION" ]; then
-        echo "  ❌ Policy Engine version mismatch!"
+        echo "Policy Engine version mismatch!"
         ERRORS=$((ERRORS + 1))
     fi
 
     if [ "$COMPOSE_ROUTER" != "v$GATEWAY_VERSION" ]; then
-        echo "  ❌ Router version mismatch!"
+        echo "Router version mismatch!"
         ERRORS=$((ERRORS + 1))
     fi
 
@@ -75,7 +75,7 @@ if [ -f "kubernetes/helm/gateway-helm-chart/Chart.yaml" ]; then
     echo "  appVersion: $HELM_APP_VERSION"
 
     if [ "$HELM_APP_VERSION" != "$GATEWAY_VERSION" ]; then
-        echo "  ❌ Helm appVersion mismatch!"
+        echo "Helm appVersion mismatch!"
         ERRORS=$((ERRORS + 1))
     fi
 
@@ -83,9 +83,9 @@ if [ -f "kubernetes/helm/gateway-helm-chart/Chart.yaml" ]; then
 fi
 
 if [ $ERRORS -eq 0 ]; then
-    echo "✅ All versions are consistent"
+    echo "All versions are consistent"
     exit 0
 else
-    echo "❌ Found $ERRORS version inconsistencies"
+    echo "Found $ERRORS version inconsistencies"
     exit 1
 fi
