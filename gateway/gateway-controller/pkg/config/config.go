@@ -20,12 +20,10 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/knadh/koanf/parsers/yaml"
-	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
@@ -39,6 +37,8 @@ type Config struct {
 	Router       RouterConfig       `koanf:"router"`
 	Logging      LoggingConfig      `koanf:"logging"`
 	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
+	PolicyServer PolicyServerConfig `koanf:"policyserver"`
+	Policies     PoliciesConfig     `koanf:"policies"`
 }
 
 // ServerConfig holds server-related configuration
@@ -46,6 +46,25 @@ type ServerConfig struct {
 	APIPort         int           `koanf:"api_port"`
 	XDSPort         int           `koanf:"xds_port"`
 	ShutdownTimeout time.Duration `koanf:"shutdown_timeout"`
+}
+
+// PolicyServerConfig holds policy xDS server-related configuration
+type PolicyServerConfig struct {
+	Enabled bool            `koanf:"enabled"`
+	Port    int             `koanf:"port"`
+	TLS     PolicyServerTLS `koanf:"tls"`
+}
+
+// PolicyServerTLS holds TLS configuration for the policy xDS server
+type PolicyServerTLS struct {
+	Enabled  bool   `koanf:"enabled"`
+	CertFile string `koanf:"cert_file"`
+	KeyFile  string `koanf:"key_file"`
+}
+
+// PoliciesConfig holds policy-related configuration
+type PoliciesConfig struct {
+	DefinitionsPath string `koanf:"definitions_path"` // Directory containing policy definitions
 }
 
 // StorageConfig holds storage-related configuration
@@ -72,9 +91,23 @@ type PostgresConfig struct {
 
 // RouterConfig holds router (Envoy) related configuration
 type RouterConfig struct {
-	AccessLogs   AccessLogsConfig `koanf:"access_logs"`
-	ListenerPort int              `koanf:"listener_port"`
-	Upstream     envoyUpstream    `koanf:"envoy_upstream"`
+	AccessLogs    AccessLogsConfig   `koanf:"access_logs"`
+	ListenerPort  int                `koanf:"listener_port"`
+	HTTPSEnabled  bool               `koanf:"https_enabled"`
+	HTTPSPort     int                `koanf:"https_port"`
+	GatewayHost   string             `koanf:"gateway_host"`
+	Upstream      envoyUpstream      `koanf:"envoy_upstream"`
+	PolicyEngine  PolicyEngineConfig `koanf:"policy_engine"`
+	DownstreamTLS DownstreamTLS      `koanf:"downstream_tls"`
+}
+
+// DownstreamTLS holds downstream (listener) TLS configuration
+type DownstreamTLS struct {
+	CertPath               string `koanf:"cert_path"`
+	KeyPath                string `koanf:"key_path"`
+	MinimumProtocolVersion string `koanf:"minimum_protocol_version"`
+	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
+	Ciphers                string `koanf:"ciphers"`
 }
 
 // envoyUpstream holds envoy upstream related configurations
@@ -90,6 +123,7 @@ type upstreamTLS struct {
 	MaximumProtocolVersion string `koanf:"maximum_protocol_version"`
 	Ciphers                string `koanf:"ciphers"`
 	TrustedCertPath        string `koanf:"trusted_cert_path"`
+	CustomCertsPath        string `koanf:"custom_certs_path"` // Directory containing custom trusted certificates
 	VerifyHostName         bool   `koanf:"verify_host_name"`
 	DisableSslVerification bool   `koanf:"disable_ssl_verification"`
 }
@@ -99,6 +133,30 @@ type upstreamTimeout struct {
 	RouteTimeoutInSeconds     uint32 `koanf:"route_timeout_in_seconds"`
 	MaxRouteTimeoutInSeconds  uint32 `koanf:"max_route_timeout_in_seconds"`
 	RouteIdleTimeoutInSeconds uint32 `koanf:"route_idle_timeout_in_seconds"`
+}
+
+// PolicyEngineConfig holds policy engine ext_proc filter configuration
+type PolicyEngineConfig struct {
+	Enabled           bool            `koanf:"enabled"`
+	Host              string          `koanf:"host"` // Policy engine hostname/IP
+	Port              uint32          `koanf:"port"` // Policy engine ext_proc port
+	TimeoutMs         uint32          `koanf:"timeout_ms"`
+	FailureModeAllow  bool            `koanf:"failure_mode_allow"`
+	RouteCacheAction  string          `koanf:"route_cache_action"`
+	AllowModeOverride bool            `koanf:"allow_mode_override"`
+	RequestHeaderMode string          `koanf:"request_header_mode"`
+	MessageTimeoutMs  uint32          `koanf:"message_timeout_ms"`
+	TLS               PolicyEngineTLS `koanf:"tls"` // TLS configuration
+}
+
+// PolicyEngineTLS holds policy engine TLS configuration
+type PolicyEngineTLS struct {
+	Enabled    bool   `koanf:"enabled"`     // Enable TLS for policy engine connection
+	CertPath   string `koanf:"cert_path"`   // Path to client certificate (mTLS)
+	KeyPath    string `koanf:"key_path"`    // Path to client private key (mTLS)
+	CAPath     string `koanf:"ca_path"`     // Path to CA certificate for server validation
+	ServerName string `koanf:"server_name"` // SNI server name (optional, defaults to host)
+	SkipVerify bool   `koanf:"skip_verify"` // Skip server certificate verification (insecure, dev only)
 }
 
 // AccessLogsConfig holds access log configuration
@@ -128,29 +186,13 @@ type ControlPlaneConfig struct {
 // LoadConfig loads configuration from file, environment variables, and defaults
 // Priority: Environment variables > Config file > Defaults
 func LoadConfig(configPath string) (*Config, error) {
+	cfg := defaultConfig()
+
 	k := koanf.New(".")
 
-	// Load defaults
-	defaults := getDefaults()
-	if err := k.Load(confmap.Provider(defaults, "."), nil); err != nil {
-		return nil, fmt.Errorf("failed to load defaults: %w", err)
-	}
-
 	// Load config file if path is provided
-	if configPath != "" {
-		if _, err := os.Stat(configPath); err != nil {
-			return nil, fmt.Errorf("config file not found: %s", configPath)
-		}
-		// Use WithMergeFunc to prevent merging of maps - config file should fully override defaults
-		if err := k.Load(file.Provider(configPath), yaml.Parser(), koanf.WithMergeFunc(func(src, dest map[string]interface{}) error {
-			// For nested maps, replace instead of merge
-			for k, v := range src {
-				dest[k] = v
-			}
-			return nil
-		})); err != nil {
-			return nil, fmt.Errorf("failed to load config file: %w", err)
-		}
+	if err := k.Load(file.Provider(configPath), yaml.Parser()); err != nil {
+		return nil, fmt.Errorf("failed to load config file: %w", err)
 	}
 
 	// Load environment variables with prefix "GATEWAY_"
@@ -176,7 +218,12 @@ func LoadConfig(configPath string) (*Config, error) {
 			return "controlplane.insecure_skip_verify"
 		default:
 			// For other GATEWAY_ prefixed vars, use standard mapping (underscore to dot)
+			// Step 1: Convert double underscore "__" into a temporary placeholder
+			s = strings.ReplaceAll(s, "__", "%UNDERSCORE%")
+			// Step 2: Convert single "_" into "."
 			s = strings.ReplaceAll(s, "_", ".")
+			// Step 3: Convert placeholder back into literal "_"
+			s = strings.ReplaceAll(s, "%UNDERSCORE%", "_")
 			return s
 		}
 	}), nil); err != nil {
@@ -184,8 +231,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	// Unmarshal into Config struct
-	var cfg Config
-	if err := k.Unmarshal("", &cfg); err != nil {
+	if err := k.Unmarshal("", cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
@@ -194,58 +240,114 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	return &cfg, nil
+	return cfg, nil
 }
 
-// getDefaults returns a map with default configuration values
-func getDefaults() map[string]interface{} {
-	return map[string]interface{}{
-		"server.api_port":            9090,
-		"server.xds_port":            18000,
-		"server.shutdown_timeout":    "15s",
-		"storage.type":               "memory",
-		"storage.sqlite.path":        "./data/gateway.db",
-		"router.access_logs.enabled": true,
-		"router.access_logs.format":  "json",
-		"router.access_logs.json_fields": map[string]interface{}{
-			"start_time":            "%START_TIME%",
-			"method":                "%REQ(:METHOD)%",
-			"path":                  "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
-			"protocol":              "%PROTOCOL%",
-			"response_code":         "%RESPONSE_CODE%",
-			"response_flags":        "%RESPONSE_FLAGS%",
-			"response_flags_long":   "%RESPONSE_FLAGS_LONG%",
-			"bytes_received":        "%BYTES_RECEIVED%",
-			"bytes_sent":            "%BYTES_SENT%",
-			"duration":              "%DURATION%",
-			"upstream_service_time": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
-			"x_forwarded_for":       "%REQ(X-FORWARDED-FOR)%",
-			"user_agent":            "%REQ(USER-AGENT)%",
-			"request_id":            "%REQ(X-REQUEST-ID)%",
-			"authority":             "%REQ(:AUTHORITY)%",
-			"upstream_host":         "%UPSTREAM_HOST%",
-			"upstream_cluster":      "%UPSTREAM_CLUSTER%",
+// defaultConfig returns a Config struct with default configuration values
+func defaultConfig() *Config {
+	return &Config{
+		Server: ServerConfig{
+			APIPort:         9090,
+			XDSPort:         18000,
+			ShutdownTimeout: 15 * time.Second,
 		},
-		"router.access_logs.text_format": "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" " +
-			"%RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
-			"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
-			"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
-		"router.listener_port":                                         8080,
-		"logging.level":                                                "info",
-		"logging.format":                                               "json",
-		"controlplane.host":                                            "localhost:8443",
-		"controlplane.token":                                           "",
-		"controlplane.reconnect_initial":                               "1s",
-		"controlplane.reconnect_max":                                   "5m",
-		"controlplane.polling_interval":                                "15m",
-		"controlplane.insecure_skip_verify":                            true, // Default true for dev environments with self-signed certs
-		"router.envoy_upstream.tls.minimum_protocol_version":           "TLS1_2",
-		"router.envoy_upstream.tls.maximum_protocol_version":           "TLS1_3",
-		"router.envoy_upstream.tls.verify_host_name":                   true,
-		"router.envoy_upstream.tls.disable_ssl_verification":           false,
-		"router.envoy_upstream.timeouts.route_timeout_in_seconds":      60,
-		"router.envoy_upstream.timeouts.max_route_timeout_in_seconds":  60,
-		"router.envoy_upstream.timeouts.route_idle_timeout_in_seconds": 300,
+		PolicyServer: PolicyServerConfig{
+			Enabled: true,
+			Port:    18001,
+		},
+		Policies: PoliciesConfig{
+			DefinitionsPath: "./default-policies",
+		},
+		Storage: StorageConfig{
+			Type: "memory",
+			SQLite: SQLiteConfig{
+				Path: "./data/gateway.db",
+			},
+		},
+		Router: RouterConfig{
+			AccessLogs: AccessLogsConfig{
+				Enabled: true,
+				Format:  "json",
+				JSONFields: map[string]string{
+					"start_time":            "%START_TIME%",
+					"method":                "%REQ(:METHOD)%",
+					"path":                  "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
+					"protocol":              "%PROTOCOL%",
+					"response_code":         "%RESPONSE_CODE%",
+					"response_flags":        "%RESPONSE_FLAGS%",
+					"response_flags_long":   "%RESPONSE_FLAGS_LONG%",
+					"bytes_received":        "%BYTES_RECEIVED%",
+					"bytes_sent":            "%BYTES_SENT%",
+					"duration":              "%DURATION%",
+					"upstream_service_time": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
+					"x_forwarded_for":       "%REQ(X-FORWARDED-FOR)%",
+					"user_agent":            "%REQ(USER-AGENT)%",
+					"request_id":            "%REQ(X-REQUEST-ID)%",
+					"authority":             "%REQ(:AUTHORITY)%",
+					"upstream_host":         "%UPSTREAM_HOST%",
+					"upstream_cluster":      "%UPSTREAM_CLUSTER%",
+				},
+				TextFormat: "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" " +
+					"%RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
+					"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
+					"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
+			},
+			ListenerPort: 8080,
+			HTTPSEnabled: false,
+			HTTPSPort:    8443,
+			DownstreamTLS: DownstreamTLS{
+				CertPath:               "./listener-certs/server.crt",
+				KeyPath:                "./listener-certs/server.key",
+				MinimumProtocolVersion: "TLS1_2",
+				MaximumProtocolVersion: "TLS1_3",
+				Ciphers:                "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
+			},
+			GatewayHost: "*",
+			Upstream: envoyUpstream{
+				TLS: upstreamTLS{
+					MinimumProtocolVersion: "TLS1_2",
+					MaximumProtocolVersion: "TLS1_3",
+					VerifyHostName:         true,
+					DisableSslVerification: false,
+				},
+				Timeouts: upstreamTimeout{
+					RouteTimeoutInSeconds:     60,
+					MaxRouteTimeoutInSeconds:  60,
+					RouteIdleTimeoutInSeconds: 300,
+				},
+			},
+			PolicyEngine: PolicyEngineConfig{
+				Enabled:           false,
+				Host:              "localhost",
+				Port:              9001,
+				TimeoutMs:         250,
+				FailureModeAllow:  false,
+				RouteCacheAction:  "RETAIN",
+				AllowModeOverride: true,
+				RequestHeaderMode: "SEND",
+				MessageTimeoutMs:  250,
+				TLS: PolicyEngineTLS{
+					Enabled:    false,
+					CertPath:   "",
+					KeyPath:    "",
+					CAPath:     "",
+					ServerName: "",
+					SkipVerify: false,
+				},
+			},
+		},
+		Logging: LoggingConfig{
+			Level:  "info",
+			Format: "json",
+		},
+		ControlPlane: ControlPlaneConfig{
+			Host:               "localhost:8443",
+			Token:              "",
+			ReconnectInitial:   1 * time.Second,
+			ReconnectMax:       5 * time.Minute,
+			PollingInterval:    15 * time.Minute,
+			InsecureSkipVerify: true,
+		},
 	}
 }
 
@@ -287,7 +389,7 @@ func (c *Config) Validate() error {
 	// Validate access log fields if access logs are enabled
 	if c.Router.AccessLogs.Enabled {
 		if c.Router.AccessLogs.Format == "json" {
-			if c.Router.AccessLogs.JSONFields == nil || len(c.Router.AccessLogs.JSONFields) == 0 {
+			if len(c.Router.AccessLogs.JSONFields) == 0 {
 				return fmt.Errorf("router.access_logs.json_fields must be configured when format is 'json'")
 			}
 		} else if c.Router.AccessLogs.Format == "text" {
@@ -328,6 +430,13 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("router.listener_port must be between 1 and 65535, got: %d", c.Router.ListenerPort)
 	}
 
+	// Validate HTTPS port if HTTPS is enabled
+	if c.Router.HTTPSEnabled {
+		if c.Router.HTTPSPort < 1 || c.Router.HTTPSPort > 65535 {
+			return fmt.Errorf("router.https_port must be between 1 and 65535, got: %d", c.Router.HTTPSPort)
+		}
+	}
+
 	// Validate control plane configuration
 	if err := c.validateControlPlaneConfig(); err != nil {
 		return err
@@ -340,6 +449,11 @@ func (c *Config) Validate() error {
 
 	// Validate timeout configuration
 	if err := c.validateTimeoutConfig(); err != nil {
+		return err
+	}
+
+	// Validate policy engine configuration
+	if err := c.validatePolicyEngineConfig(); err != nil {
 		return err
 	}
 
@@ -456,6 +570,98 @@ func (c *Config) validateTLSConfig() error {
 		return fmt.Errorf("router.envoy_upstream.tls.trusted_cert_path is required when SSL verification is enabled")
 	}
 
+	// Validate downstream TLS configuration if HTTPS is enabled
+	if c.Router.HTTPSEnabled {
+		if err := c.validateDownstreamTLSConfig(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateDownstreamTLSConfig validates the downstream (listener) TLS configuration
+func (c *Config) validateDownstreamTLSConfig() error {
+	// Validate TLS protocol versions
+	validTLSVersions := []string{
+		constants.TLSVersion10,
+		constants.TLSVersion11,
+		constants.TLSVersion12,
+		constants.TLSVersion13,
+	}
+
+	// Validate certificate and key paths
+	if c.Router.DownstreamTLS.CertPath == "" {
+		return fmt.Errorf("router.downstream_tls.cert_path is required when HTTPS is enabled")
+	}
+
+	if c.Router.DownstreamTLS.KeyPath == "" {
+		return fmt.Errorf("router.downstream_tls.key_path is required when HTTPS is enabled")
+	}
+
+	// Validate minimum TLS version
+	minVersion := c.Router.DownstreamTLS.MinimumProtocolVersion
+	if minVersion == "" {
+		return fmt.Errorf("router.downstream_tls.minimum_protocol_version is required")
+	}
+
+	isValidMinVersion := false
+	for _, version := range validTLSVersions {
+		if minVersion == version {
+			isValidMinVersion = true
+			break
+		}
+	}
+	if !isValidMinVersion {
+		return fmt.Errorf("router.downstream_tls.minimum_protocol_version must be one of: %s, got: %s",
+			strings.Join(validTLSVersions, ", "), minVersion)
+	}
+
+	// Validate maximum TLS version
+	maxVersion := c.Router.DownstreamTLS.MaximumProtocolVersion
+	if maxVersion == "" {
+		return fmt.Errorf("router.downstream_tls.maximum_protocol_version is required")
+	}
+
+	isValidMaxVersion := false
+	for _, version := range validTLSVersions {
+		if maxVersion == version {
+			isValidMaxVersion = true
+			break
+		}
+	}
+	if !isValidMaxVersion {
+		return fmt.Errorf("router.downstream_tls.maximum_protocol_version must be one of: %s, got: %s",
+			strings.Join(validTLSVersions, ", "), maxVersion)
+	}
+
+	// Validate that minimum version is not greater than maximum version
+	tlsVersionOrder := map[string]int{
+		constants.TLSVersion10: constants.TLSVersionOrderTLS10,
+		constants.TLSVersion11: constants.TLSVersionOrderTLS11,
+		constants.TLSVersion12: constants.TLSVersionOrderTLS12,
+		constants.TLSVersion13: constants.TLSVersionOrderTLS13,
+	}
+
+	if tlsVersionOrder[minVersion] > tlsVersionOrder[maxVersion] {
+		return fmt.Errorf("router.downstream_tls.minimum_protocol_version (%s) cannot be greater than maximum_protocol_version (%s)",
+			minVersion, maxVersion)
+	}
+
+	// Validate cipher suites format
+	ciphers := c.Router.DownstreamTLS.Ciphers
+	if ciphers != "" {
+		// Basic validation: ensure ciphers don't contain invalid characters
+		if strings.Contains(ciphers, constants.CipherInvalidChars1) || strings.Contains(ciphers, constants.CipherInvalidChars2) {
+			return fmt.Errorf("router.downstream_tls.ciphers contains invalid characters (use comma-separated values)")
+		}
+
+		// Ensure cipher list is not just whitespace
+		if strings.TrimSpace(ciphers) == "" {
+			return fmt.Errorf("router.downstream_tls.ciphers cannot be empty or whitespace only")
+		}
+	}
+
 	return nil
 }
 
@@ -506,6 +712,97 @@ func (c *Config) validateTimeoutConfig() error {
 	return nil
 }
 
+// validatePolicyEngineConfig validates the policy engine configuration
+func (c *Config) validatePolicyEngineConfig() error {
+	policyEngine := c.Router.PolicyEngine
+
+	// If policy engine is disabled, skip validation
+	if !policyEngine.Enabled {
+		return nil
+	}
+
+	// Validate host
+	if policyEngine.Host == "" {
+		return fmt.Errorf("router.policy_engine.host is required when policy engine is enabled")
+	}
+
+	// Validate port
+	if policyEngine.Port == 0 {
+		return fmt.Errorf("router.policy_engine.port is required when policy engine is enabled")
+	}
+
+	if policyEngine.Port > 65535 {
+		return fmt.Errorf("router.policy_engine.port must be between 1 and 65535, got: %d", policyEngine.Port)
+	}
+
+	// Validate timeout
+	if policyEngine.TimeoutMs <= 0 {
+		return fmt.Errorf("router.policy_engine.timeout_ms must be positive, got: %d", policyEngine.TimeoutMs)
+	}
+
+	if policyEngine.TimeoutMs > constants.MaxReasonablePolicyTimeoutMs {
+		return fmt.Errorf("router.policy_engine.timeout_ms (%d) exceeds maximum reasonable timeout of %d ms",
+			policyEngine.TimeoutMs, constants.MaxReasonablePolicyTimeoutMs)
+	}
+
+	// Validate message timeout
+	if policyEngine.MessageTimeoutMs <= 0 {
+		return fmt.Errorf("router.policy_engine.message_timeout_ms must be positive, got: %d", policyEngine.MessageTimeoutMs)
+	}
+
+	if policyEngine.MessageTimeoutMs > constants.MaxReasonablePolicyTimeoutMs {
+		return fmt.Errorf("router.policy_engine.message_timeout_ms (%d) exceeds maximum reasonable timeout of %d ms",
+			policyEngine.MessageTimeoutMs, constants.MaxReasonablePolicyTimeoutMs)
+	}
+
+	// Validate TLS configuration if enabled
+	if policyEngine.TLS.Enabled {
+		// For mTLS, both cert and key are required
+		if policyEngine.TLS.CertPath != "" && policyEngine.TLS.KeyPath == "" {
+			return fmt.Errorf("router.policy_engine.tls.key_path is required when cert_path is provided")
+		}
+		if policyEngine.TLS.KeyPath != "" && policyEngine.TLS.CertPath == "" {
+			return fmt.Errorf("router.policy_engine.tls.cert_path is required when key_path is provided")
+		}
+
+		// CA path is optional but recommended for production
+		if policyEngine.TLS.CAPath == "" && !policyEngine.TLS.SkipVerify {
+			// Warning: No CA provided and not skipping verification
+			// This might fail in production with self-signed certs
+		}
+	}
+
+	// Validate route cache action
+	validRouteCacheActions := []string{"DEFAULT", "RETAIN", "CLEAR"}
+	isValidAction := false
+	for _, action := range validRouteCacheActions {
+		if policyEngine.RouteCacheAction == action {
+			isValidAction = true
+			break
+		}
+	}
+	if !isValidAction {
+		return fmt.Errorf("router.policy_engine.route_cache_action must be one of: DEFAULT, RETAIN, CLEAR, got: %s",
+			policyEngine.RouteCacheAction)
+	}
+
+	// Validate request header mode
+	validHeaderModes := []string{"DEFAULT", "SEND", "SKIP"}
+	isValidMode := false
+	for _, mode := range validHeaderModes {
+		if policyEngine.RequestHeaderMode == mode {
+			isValidMode = true
+			break
+		}
+	}
+	if !isValidMode {
+		return fmt.Errorf("router.policy_engine.request_header_mode must be one of: DEFAULT, SEND, SKIP, got: %s",
+			policyEngine.RequestHeaderMode)
+	}
+
+	return nil
+}
+
 // IsPersistentMode returns true if storage type is not memory
 func (c *Config) IsPersistentMode() bool {
 	return c.Storage.Type != "memory"
@@ -519,4 +816,9 @@ func (c *Config) IsMemoryOnlyMode() bool {
 // IsAccessLogsEnabled returns true if access logs are enabled
 func (c *Config) IsAccessLogsEnabled() bool {
 	return c.Router.AccessLogs.Enabled
+}
+
+// IsPolicyEngineEnabled returns true if policy engine is enabled
+func (c *Config) IsPolicyEngineEnabled() bool {
+	return c.Router.PolicyEngine.Enabled
 }

@@ -743,7 +743,7 @@ func (u *APIUtil) GetAPISubType(apiType string) string {
 	}
 }
 
-// GenerateAPIDeploymentYAML creates the deployment YAML from API data
+// GenerateAPIDeploymentYAML creates the deployment YAML from API
 func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 	operationList := make([]dto.OperationRequest, 0)
 	for _, op := range api.Operations {
@@ -772,7 +772,7 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 	apiDeployment := dto.APIDeploymentYAML{
 		Kind:    "http/rest",
 		Version: "api-platform.wso2.com/v1",
-		Data:    apiYAMLData,
+		Spec:    apiYAMLData,
 	}
 
 	// Convert to YAML
@@ -1200,7 +1200,7 @@ func (u *APIUtil) ConvertAPIYAMLDataToDTO(artifact *dto.APIDeploymentYAML) (*dto
 		return nil, fmt.Errorf("invalid artifact data")
 	}
 
-	return u.APIYAMLData2ToDTO(&artifact.Data), nil
+	return u.APIYAMLData2ToDTO(&artifact.Spec), nil
 }
 
 // APIYAMLData2ToDTO converts APIYAMLData2 to API DTO
@@ -1432,15 +1432,15 @@ func (u *APIUtil) ValidateWSO2Artifact(artifact *dto.APIDeploymentYAML) error {
 		return fmt.Errorf("invalid artifact: missing version")
 	}
 
-	if artifact.Data.Name == "" {
+	if artifact.Spec.Name == "" {
 		return fmt.Errorf("missing API name")
 	}
 
-	if artifact.Data.Context == "" {
+	if artifact.Spec.Context == "" {
 		return fmt.Errorf("missing API context")
 	}
 
-	if artifact.Data.Version == "" {
+	if artifact.Spec.Version == "" {
 		return fmt.Errorf("missing API version")
 	}
 
@@ -1462,9 +1462,9 @@ func (u *APIUtil) ValidateAPIDefinitionConsistency(openAPIContent []byte, wso2Ar
 
 	// Check version consistency
 	if version, exists := info["version"].(string); exists {
-		if version != wso2Artifact.Data.Version {
+		if version != wso2Artifact.Spec.Version {
 			return fmt.Errorf("version mismatch between OpenAPI (%s) and WSO2 artifact (%s)",
-				version, wso2Artifact.Data.Version)
+				version, wso2Artifact.Spec.Version)
 		}
 	}
 
@@ -1778,4 +1778,105 @@ func (u *APIUtil) convertSwagger2ToBackendServices(host, basePath string, scheme
 	}
 
 	return backendServices
+}
+
+// ValidateAndParseOpenAPI validates and parses OpenAPI definition content
+func (u *APIUtil) ValidateAndParseOpenAPI(content []byte) (*dto.API, error) {
+	// Validate the OpenAPI definition
+	if err := u.ValidateOpenAPIDefinition(content); err != nil {
+		return nil, fmt.Errorf("invalid OpenAPI definition: %w", err)
+	}
+
+	// Parse and extract API details
+	api, err := u.ParseAPIDefinition(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse OpenAPI definition: %w", err)
+	}
+
+	return api, nil
+}
+
+// MergeAPIDetails merges user-provided API details with extracted OpenAPI details
+// User-provided details take precedence over extracted details
+func (u *APIUtil) MergeAPIDetails(userAPI *dto.API, extractedAPI *dto.API) *dto.API {
+	if userAPI == nil || extractedAPI == nil {
+		return nil
+	}
+
+	merged := &dto.API{}
+
+	// Required fields from user input (these must be provided)
+	merged.Name = userAPI.Name
+	merged.Context = userAPI.Context
+	merged.Version = userAPI.Version
+	merged.ProjectID = userAPI.ProjectID
+
+	// Optional fields - use user input if provided, otherwise use extracted values
+	if userAPI.DisplayName != "" {
+		merged.DisplayName = userAPI.DisplayName
+	} else {
+		merged.DisplayName = extractedAPI.DisplayName
+	}
+
+	if userAPI.Description != "" {
+		merged.Description = userAPI.Description
+	} else {
+		merged.Description = extractedAPI.Description
+	}
+
+	if userAPI.Provider != "" {
+		merged.Provider = userAPI.Provider
+	} else {
+		merged.Provider = extractedAPI.Provider
+	}
+
+	if userAPI.Type != "" {
+		merged.Type = userAPI.Type
+	} else {
+		merged.Type = extractedAPI.Type
+	}
+
+	if len(userAPI.Transport) > 0 {
+		merged.Transport = userAPI.Transport
+	} else {
+		merged.Transport = extractedAPI.Transport
+	}
+
+	if userAPI.LifeCycleStatus != "" {
+		merged.LifeCycleStatus = userAPI.LifeCycleStatus
+	} else {
+		merged.LifeCycleStatus = extractedAPI.LifeCycleStatus
+	}
+
+	if len(userAPI.BackendServices) > 0 {
+		merged.BackendServices = userAPI.BackendServices
+	} else {
+		merged.BackendServices = extractedAPI.BackendServices
+	}
+
+	// Use extracted operations from OpenAPI
+	merged.Operations = extractedAPI.Operations
+
+	// Use user-provided configuration if available
+	if userAPI.MTLS != nil {
+		merged.MTLS = userAPI.MTLS
+	}
+	if userAPI.Security != nil {
+		merged.Security = userAPI.Security
+	}
+	if userAPI.CORS != nil {
+		merged.CORS = userAPI.CORS
+	}
+	if userAPI.APIRateLimiting != nil {
+		merged.APIRateLimiting = userAPI.APIRateLimiting
+	}
+
+	// Copy boolean fields from user input
+	merged.HasThumbnail = userAPI.HasThumbnail
+	merged.IsDefaultVersion = userAPI.IsDefaultVersion
+	merged.IsRevision = userAPI.IsRevision
+	merged.RevisionedAPIID = userAPI.RevisionedAPIID
+	merged.RevisionID = userAPI.RevisionID
+
+	return merged
 }

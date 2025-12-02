@@ -18,7 +18,7 @@
 
 # Makefile for Gateway-Controller
 
-.PHONY: help generate build test docker clean run
+.PHONY: help generate build test generate-listener-certs
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -28,26 +28,27 @@ help: ## Show this help message
 
 generate: ## Generate API server code from OpenAPI spec
 	@echo "Generating API server code from OpenAPI spec..."
-	@go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1
-	@oapi-codegen --config=oapi-codegen.yaml api/openapi.yaml
-
-build: ## Build the Gateway-Controller binary
-	@echo "Building Gateway-Controller..."
-	@go build -o bin/controller cmd/controller/main.go
+	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen.yaml api/openapi.yaml
 
 test: ## Run unit and integration tests
 	@echo "Running tests..."
 	@go test -v ./... -cover
 
-docker: ## Build Docker image
+build: generate ## Build Docker image
 	@echo "Building Docker image..."
-	@docker build -t wso2/gateway-controller:latest .
+	@docker build -f Dockerfile -t wso2/api-platform-gateway-controller:latest  ../
 
-clean: ## Clean build artifacts
-	@echo "Cleaning build artifacts..."
-	@rm -rf bin/
-	@go clean
-
-run: ## Run the Gateway-Controller locally
-	@echo "Running Gateway-Controller..."
-	@go run cmd/controller/main.go
+generate-listener-certs: ## Generate listener certificates
+	@echo "Generating listener certificates..."
+	@mkdir -p listener-certs
+	@openssl req -x509 \
+		-newkey rsa:4096 \
+		-keyout listener-certs/default-listener.key \
+		-out listener-certs/default-listener.crt \
+		-days 36500 \
+		-nodes \
+		-subj "/C=US/ST=California/L=San Francisco/O=WSO2/OU=API Gateway/CN=localhost" \
+		-addext "subjectAltName=DNS:localhost,DNS:*.localhost,IP:127.0.0.1"
+	@echo "Certificate and key generated successfully in listener-certs/"
+	@echo "  Certificate: listener-certs/default-listener.crt"
+	@echo "  Private Key: listener-certs/default-listener.key"

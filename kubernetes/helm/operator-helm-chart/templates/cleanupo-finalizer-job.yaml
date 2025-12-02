@@ -1,0 +1,37 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{ .Release.Name }}-cleanup-finalizers"
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    metadata:
+      name: "{{ .Release.Name }}-cleanup-finalizers"
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      restartPolicy: Never
+      containers:
+        - name: cleanup
+          image: bitnami/kubectl:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "🧹 Cleaning up finalizers for GatewayConfigurations and APIConfigurations..."
+
+              for kind in gatewayconfigurations.api.api-platform.wso2.com apiconfigurations.api.api-platform.wso2.com; do
+                echo "Processing $kind..."
+                for ns in $(kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
+                  for cr in $(kubectl get $kind -n $ns --ignore-not-found -o name); do
+                    echo "  Removing finalizers from $cr in $ns"
+                    kubectl patch $cr -n $ns --type=merge -p '{"metadata":{"finalizers":[]}}' || true
+                  done
+                done
+              done
+
+              echo "✅ Finalizer cleanup complete."
+      # Optional: add permissions if the operator’s service account doesn't already have them
+      # If RBAC is strict, you may need this Role + RoleBinding defined for cleanup

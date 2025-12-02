@@ -1,0 +1,102 @@
+{{- $policy := .Values.gateway.policyEngine -}}
+{{- $deployment := $policy.deployment -}}
+{{- if $deployment.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-policy-engine
+  labels:
+    {{- include "gateway-operator.componentLabels" (list . "policy-engine" $deployment.labels) | nindent 4 }}
+  {{- $annotations := merge (deepCopy (default (dict) .Values.commonAnnotations)) (default (dict) $deployment.annotations) }}
+  {{- if $annotations }}
+  annotations:
+    {{- toYaml $annotations | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ $deployment.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "gateway-operator.componentSelectorLabels" (list . "policy-engine") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gateway-operator.componentSelectorLabels" (list . "policy-engine") | nindent 8 }}
+        {{- with $deployment.podLabels }}
+{{ toYaml . | indent 8 }}
+        {{- end }}
+      {{- if $deployment.podAnnotations }}
+      annotations:
+        {{- toYaml $deployment.podAnnotations | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "gateway-operator.serviceAccountName" . }}
+      {{- $globalPullSecrets := default (list) .Values.imagePullSecrets }}
+      {{- $componentPullSecrets := default (list) $policy.imagePullSecrets }}
+      {{- $pullSecrets := concat $globalPullSecrets $componentPullSecrets }}
+      {{- if $pullSecrets }}
+      imagePullSecrets:
+        {{- range $pullSecrets }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      {{- with $deployment.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
+      {{- with $deployment.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $deployment.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: gateway-policy-engine
+          image: "{{ $policy.image.repository }}:{{ $policy.image.tag }}"
+          imagePullPolicy: {{ $policy.image.pullPolicy }}
+          {{- with $deployment.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: XDS_SERVER_ADDRESS
+              value: {{ default (printf "%s-controller:18001" (include "gateway-operator.fullname" .)) $deployment.env.xdsServerAddress | quote }}
+            {{- range $deployment.extraEnv }}
+            - {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: ext
+              containerPort: {{ $policy.service.ports.ext }}
+              protocol: TCP
+            {{- if $policy.config.admin.enabled }}
+            - name: admin
+              containerPort: {{ default 9002 $policy.config.admin.port }}
+              protocol: TCP
+            {{- end }}
+          livenessProbe:
+            {{- toYaml $deployment.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml $deployment.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml ($deployment.resources | default dict) | nindent 12 }}
+          {{- if $policy.config.enabled }}
+          volumeMounts:
+            - name: policy-engine-config
+              mountPath: /configs/config.yaml
+              subPath: config.yaml
+          {{- end }}
+      {{- if $policy.config.enabled }}
+      volumes:
+        - name: policy-engine-config
+          configMap:
+            name: {{ include "gateway-operator.fullname" . }}-policy-engine-config
+      {{- end }}
+{{- end }}

@@ -67,6 +67,14 @@ const fetchAuthJsonContent = async (req, orgName) => {
 
 const login = async (req, res, next) => {
 
+    // If identity provider is disabled, redirect to base URL (anonymous access)
+    if (config.identityProvider && config.identityProvider.enabled === false) {
+        const orgName = req.params.orgName;
+        const baseUrl = '/' + orgName + constants.ROUTE.VIEWS_PATH + req.params.viewName;
+        logger.info("Identity provider disabled - redirecting to portal without authentication");
+        return res.redirect(baseUrl);
+    }
+
     let claimNames = {
         [constants.ROLES.ROLE_CLAIM]: config.roleClaim,
         [constants.ROLES.GROUP_CLAIM]: config.groupsClaim,
@@ -185,6 +193,13 @@ const handleSignUp = async (req, res) => {
 };
 
 const handleLogOut = async (req, res) => {
+    // If identity provider is disabled, just redirect back
+    if (config.identityProvider && config.identityProvider.enabled === false) {
+        const currentPathURI = req.originalUrl.replace('/logout', '');
+        logger.info("Identity provider disabled - simple redirect on logout");
+        return res.redirect(currentPathURI);
+    }
+
     const rules = util.validateRequestParameters();
     for (let validation of rules) {
         await validation.run(req);
@@ -235,6 +250,10 @@ const handleLogOutLanding = async (req, res) => {
 }
 
 const handleSilentSSO = async (req, res, next) => {
+    // If identity provider is disabled, skip silent SSO
+    if (config.identityProvider && config.identityProvider.enabled === false) {
+        return next();
+    }
 
     await req.session.save((err) => {
         req.session.returnTo = req.originalUrl;

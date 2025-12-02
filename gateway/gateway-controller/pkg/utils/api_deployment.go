@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -52,7 +53,7 @@ type APIDeploymentService struct {
 	db              storage.Storage
 	snapshotManager *xds.SnapshotManager
 	parser          *config.Parser
-	validator       *config.Validator
+	validator       config.Validator
 }
 
 // NewAPIDeploymentService creates a new API deployment service
@@ -60,30 +61,32 @@ func NewAPIDeploymentService(
 	store *storage.ConfigStore,
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
+	validator config.Validator,
 ) *APIDeploymentService {
 	return &APIDeploymentService{
 		store:           store,
 		db:              db,
 		snapshotManager: snapshotManager,
 		parser:          config.NewParser(),
-		validator:       config.NewValidator(),
+		validator:       validator,
 	}
 }
 
 // DeployAPIConfiguration handles the complete API configuration deployment process
 func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams) (*APIDeploymentResult, error) {
+	var apiConfig api.APIConfiguration
 	// Parse configuration
-	apiConfig, err := s.parser.Parse(params.Data, params.ContentType)
+	err := s.parser.Parse(params.Data, params.ContentType, &apiConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse configuration: %w", err)
 	}
 
 	// Validate configuration
-	validationErrors := s.validator.Validate(apiConfig)
+	validationErrors := s.validator.Validate(&apiConfig)
 	if len(validationErrors) > 0 {
 		params.Logger.Warn("Configuration validation failed",
 			zap.String("api_id", params.APIID),
-			zap.String("name", apiConfig.Data.Name),
+			zap.String("name", apiConfig.Spec.Name),
 			zap.Int("num_errors", len(validationErrors)))
 
 		for _, e := range validationErrors {
@@ -105,7 +108,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	now := time.Now()
 	storedCfg := &models.StoredAPIConfig{
 		ID:              apiID,
-		Configuration:   *apiConfig,
+		Configuration:   apiConfig,
 		Status:          models.StatusPending,
 		CreatedAt:       now,
 		UpdatedAt:       now,
@@ -123,14 +126,14 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	if isUpdate {
 		params.Logger.Info("API configuration updated",
 			zap.String("api_id", apiID),
-			zap.String("name", apiConfig.Data.Name),
-			zap.String("version", apiConfig.Data.Version),
+			zap.String("name", apiConfig.Spec.Name),
+			zap.String("version", apiConfig.Spec.Version),
 			zap.String("correlation_id", params.CorrelationID))
 	} else {
 		params.Logger.Info("API configuration created",
 			zap.String("api_id", apiID),
-			zap.String("name", apiConfig.Data.Name),
-			zap.String("version", apiConfig.Data.Version),
+			zap.String("name", apiConfig.Spec.Name),
+			zap.String("version", apiConfig.Spec.Version),
 			zap.String("correlation_id", params.CorrelationID))
 	}
 
@@ -162,8 +165,8 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredAPICon
 			if storage.IsConflictError(err) {
 				logger.Info("API configuration already exists in database, updating instead",
 					zap.String("api_id", storedCfg.ID),
-					zap.String("name", storedCfg.Configuration.Data.Name),
-					zap.String("version", storedCfg.Configuration.Data.Version))
+					zap.String("name", storedCfg.Configuration.Spec.Name),
+					zap.String("version", storedCfg.Configuration.Spec.Version))
 
 				// Try to update instead
 				return s.updateExistingConfig(storedCfg)
@@ -184,8 +187,8 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredAPICon
 		if storage.IsConflictError(err) {
 			logger.Info("API configuration already exists in memory, updating instead",
 				zap.String("api_id", storedCfg.ID),
-				zap.String("name", storedCfg.Configuration.Data.Name),
-				zap.String("version", storedCfg.Configuration.Data.Version))
+				zap.String("name", storedCfg.Configuration.Spec.Name),
+				zap.String("version", storedCfg.Configuration.Spec.Version))
 
 			// Try to update instead
 			return s.updateExistingConfig(storedCfg)

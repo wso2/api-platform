@@ -31,11 +31,11 @@ type APIDeploymentNotification struct {
 	ProjectIdentifier string           `json:"projectIdentifier" binding:"required"`
 }
 
-// APIConfiguration represents the API configuration data
+// APIConfiguration represents the API configuration
 type APIConfiguration struct {
 	Version string        `json:"version" binding:"required"`
 	Kind    string        `json:"kind" binding:"required"`
-	Data    APIConfigData `json:"data" binding:"required"`
+	Spec    APIConfigData `json:"spec" binding:"required"`
 }
 
 // APIConfigData represents the detailed API configuration
@@ -44,7 +44,7 @@ type APIConfigData struct {
 	Version     string           `json:"version" binding:"required"`
 	Context     string           `json:"context" binding:"required"`
 	ProjectName string           `json:"projectName,omitempty"`
-	Upstream    []Upstream       `json:"upstream" binding:"required"`
+	Upstreams   []Upstream       `json:"upstreams" binding:"required"`
 	Operations  []BasicOperation `json:"operations" binding:"required"`
 }
 

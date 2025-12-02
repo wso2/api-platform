@@ -1,0 +1,53 @@
+name: Respond
+version: v1.0.0
+description: |
+  Returns an immediate response to the client without forwarding the request to the upstream backend.
+  This policy terminates the request processing chain and is useful for mocking APIs, returning
+  error responses, or implementing custom short-circuit logic.
+
+parameters:
+  - name: statusCode
+    type: integer
+    required: false
+    description: |
+      HTTP status code for the response.
+      Defaults to 200 if not specified.
+    validation:
+      minimum: 100
+      maximum: 599
+    default: 200
+
+  - name: body
+    type: string
+    required: false
+    description: |
+      Response body content as a string.
+      Can be plain text, JSON, XML, or any other format.
+      Set appropriate content-type header to indicate the body format.
+    validation:
+      maxLength: 1048576  # 1MB max
+
+  - name: headers
+    type: array
+    required: false
+    description: |
+      Array of response headers to include in the response.
+      Each header must have 'name' and 'value' fields.
+    items:
+      type: object
+      properties:
+        - name: name
+          type: string
+          required: true
+          description: Header name
+          validation:
+            minLength: 1
+            maxLength: 256
+            pattern: '^[a-zA-Z0-9-_]+$'
+        - name: value
+          type: string
+          required: true
+          description: Header value
+          validation:
+            maxLength: 8192
+

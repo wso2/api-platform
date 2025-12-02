@@ -183,10 +183,10 @@ type APIRevisionDeployment struct {
 type APIDeploymentYAML struct {
 	Kind    string       `yaml:"kind" binding:"required"`
 	Version string       `yaml:"version" binding:"required"`
-	Data    APIYAMLData2 `yaml:"data" binding:"required"`
+	Spec    APIYAMLData2 `yaml:"spec" binding:"required"`
 }
 
-// APIYAMLData2 represents a basic data section of the API deployment YAML
+// APIYAMLData2 represents a basic spec section of the API deployment YAML
 type APIYAMLData2 struct {
 	Id          string             `yaml:"id"`
 	Name        string             `yaml:"name"`
@@ -195,11 +195,11 @@ type APIYAMLData2 struct {
 	Description string             `yaml:"description,omitempty"`
 	Context     string             `yaml:"context"`
 	Provider    string             `yaml:"provider,omitempty"`
-	Upstreams   []BackendEndpoint  `yaml:"upstream,omitempty"`
+	Upstreams   []BackendEndpoint  `yaml:"upstreams,omitempty"`
 	Operations  []OperationRequest `yaml:"operations,omitempty"`
 }
 
-// APIYAMLData represents the data section of the API deployment YAML
+// APIYAMLData represents the spec section of the API deployment YAML
 type APIYAMLData struct {
 	Id              string              `yaml:"id"`
 	Name            string              `yaml:"name"`

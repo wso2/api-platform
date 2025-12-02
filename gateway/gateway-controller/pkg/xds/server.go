@@ -30,6 +30,7 @@ import (
 	endpointservice "github.com/envoyproxy/go-control-plane/envoy/service/endpoint/v3"
 	listenerservice "github.com/envoyproxy/go-control-plane/envoy/service/listener/v3"
 	routeservice "github.com/envoyproxy/go-control-plane/envoy/service/route/v3"
+	secretservice "github.com/envoyproxy/go-control-plane/envoy/service/secret/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/server/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -46,7 +47,7 @@ type Server struct {
 }
 
 // NewServer creates a new xDS server
-func NewServer(snapshotManager *SnapshotManager, port int, logger *zap.Logger) *Server {
+func NewServer(snapshotManager *SnapshotManager, sdsSecretManager *SDSSecretManager, port int, logger *zap.Logger) *Server {
 	grpcServer := grpc.NewServer(
 		grpc.KeepaliveParams(keepalive.ServerParameters{
 			Time:    30 * time.Second,
@@ -58,7 +59,7 @@ func NewServer(snapshotManager *SnapshotManager, port int, logger *zap.Logger) *
 		}),
 	)
 
-	// Create xDS server with the snapshot cache
+	// Create xDS server with the snapshot cache (shared with SDS)
 	cache := snapshotManager.GetCache()
 	callbacks := &serverCallbacks{logger: logger}
 	xdsServer := server.NewServer(context.Background(), cache, callbacks)
@@ -69,6 +70,12 @@ func NewServer(snapshotManager *SnapshotManager, port int, logger *zap.Logger) *
 	clusterservice.RegisterClusterDiscoveryServiceServer(grpcServer, xdsServer)
 	routeservice.RegisterRouteDiscoveryServiceServer(grpcServer, xdsServer)
 	listenerservice.RegisterListenerDiscoveryServiceServer(grpcServer, xdsServer)
+
+	// Register SDS service (shares the same cache and server as main xDS)
+	if sdsSecretManager != nil {
+		secretservice.RegisterSecretDiscoveryServiceServer(grpcServer, xdsServer)
+		logger.Info("SDS service registered on main xDS server")
+	}
 
 	return &Server{
 		grpcServer:      grpcServer,

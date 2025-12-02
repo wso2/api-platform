@@ -72,6 +72,7 @@ const AppRoutes: React.FC = () => {
         <Route path="apis/develop" element={<ApiDevelop />} />
         <Route path="apis/test" element={<ApiTest />} />
         <Route path="apis/deploy" element={<ApiDeploy />} />
+        <Route path="apis/policies" element={<ApiPolicies />} />
         <Route path="apis/:apiId/overview" element={<ApiOverview />} />
         <Route path="apis/:apiId/publish" element={<ApiPublish />} />
         <Route path=":apiSlug/apioverview" element={<ApiOverview />} />
@@ -102,6 +103,7 @@ const AppRoutes: React.FC = () => {
           <Route path="apis/develop" element={<ApiDevelop />} />
           <Route path="apis/test" element={<ApiTest />} />
           <Route path="apis/deploy" element={<ApiDeploy />} />
+          <Route path="apis/policies" element={<ApiPolicies />} />
           <Route path="apis/:apiId/overview" element={<ApiOverview />} />
           <Route path="apis/:apiId/publish" element={<ApiPublish />} />
           <Route path=":apiSlug/apioverview" element={<ApiOverview />} />

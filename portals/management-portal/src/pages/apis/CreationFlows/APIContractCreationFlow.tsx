@@ -5,33 +5,13 @@ import GithubCreationFlow from "./ContractCreationFlows/GithubCreationFlow";
 import UploadCreationFlow from "./ContractCreationFlows/UploadCreationFlow";
 import URLCreationFlow from "./ContractCreationFlows/URLCreationFlow";
 import { Button } from "../../../components/src/components/Button";
+import type { ImportOpenApiRequest, ApiSummary } from "../../../hooks/apis";
 
 type Props = {
   open: boolean;
   selectedProjectId: string;
-  createApi: (payload: {
-    name: string;
-    context: string;
-    version: string;
-    description?: string;
-    projectId: string;
-    contract?: string;
-    backendServices?: Array<{
-      name: string;
-      isDefault?: boolean;
-      endpoints: Array<{ url: string; description?: string }>;
-      retries?: number;
-    }>;
-    operations?: Array<{
-      name: string;
-      description?: string;
-      request: {
-        method: string;
-        path: string;
-        ["backend-services"]?: Array<{ name: string }>;
-      };
-    }>;
-  }) => Promise<any>;
+  importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<void>;
+  refreshApis: (projectId?: string) => Promise<ApiSummary[]>;
   onClose: () => void;
 };
 
@@ -40,7 +20,8 @@ type TabKey = "upload" | "github" | "url";
 const APIContractCreationFlow: React.FC<Props> = ({
   open,
   selectedProjectId,
-  createApi,
+  importOpenApi,
+  refreshApis,
   onClose,
 }) => {
   const [tab, setTab] = React.useState<TabKey>("upload");
@@ -101,7 +82,8 @@ const APIContractCreationFlow: React.FC<Props> = ({
         <UploadCreationFlow
           open={open}
           selectedProjectId={selectedProjectId}
-          createApi={createApi}
+          importOpenApi={importOpenApi}
+          refreshApis={refreshApis}
           onClose={onClose}
         />
       )}
@@ -117,7 +99,8 @@ const APIContractCreationFlow: React.FC<Props> = ({
         <URLCreationFlow
           open={open}
           selectedProjectId={selectedProjectId}
-          createApi={createApi}
+          importOpenApi={importOpenApi}
+          refreshApis={refreshApis}
           onClose={onClose}
         />
       )}

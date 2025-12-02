@@ -18,15 +18,44 @@
 
 version: api-platform.wso2.com/v1
 kind: http/rest
-data:
+spec:
   name: Weather-API
   version: v1.0
   context: /weather
-  upstream:
+  upstreams:
     - url: http://sample-backend:5000/api/v2
+  policies:
+    - name: ModifyHeaders
+      version: v1.0.0
+      enabled: true
+      params:
+        requestHeaders:
+          - action: SET
+            name: api-level-req-header
+            value: hello
+        responseHeaders:
+          - action: SET
+            name: api-level-res-header
+            value: world
+          - action: SET
+            name: x-content-type-options
+            value: nosniff
   operations:
     - method: GET
       path: /{country_code}/{city}
+      policies:
+        - name: ModifyHeaders
+          version: v1.0.0
+          enabled: true
+          params:
+            requestHeaders:
+              - action: SET
+                name: operation-level-req-header
+                value: hello
+            responseHeaders:
+              - action: SET
+                name: operation-level-res-header
+                value: world
     - method: POST
       path: /{country_code}/{city}
     - method: PUT

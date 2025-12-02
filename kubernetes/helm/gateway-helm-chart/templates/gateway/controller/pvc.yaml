@@ -1,0 +1,21 @@
+{{- $controller := .Values.gateway.controller -}}
+{{- $persistence := $controller.persistence -}}
+{{- if and $controller.deployment.enabled $persistence.enabled (not $persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "gateway-operator.fullname" . }}-controller-data
+  labels:
+    {{- include "gateway-operator.componentLabels" (list . "controller" dict) | nindent 4 }}
+spec:
+  accessModes:
+    {{- range $persistence.accessModes }}
+    - {{ . }}
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ $persistence.size }}
+  {{- if $persistence.storageClass }}
+  storageClassName: {{ $persistence.storageClass | quote }}
+  {{- end }}
+{{- end }}

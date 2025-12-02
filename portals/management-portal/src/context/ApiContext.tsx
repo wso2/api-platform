@@ -13,6 +13,7 @@ import {
   type ApiSummary,
   type CreateApiPayload,
   type ApiGatewaySummary,
+  type ImportOpenApiRequest,
 } from "../hooks/apis";
 import { useProjects } from "./ProjectContext";
 import { slugify } from "../utils/slug";
@@ -30,6 +31,7 @@ type ApiContextValue = {
   selectApi: (api: ApiSummary | null, options?: { slug?: string }) => void;
   /** Gateways bound to an API id */
   fetchGatewaysForApi: (apiId: string) => Promise<ApiGatewaySummary[]>;
+  importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<void>;
 };
 
 const ApiContext = createContext<ApiContextValue | undefined>(undefined);
@@ -45,6 +47,7 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
     createApi: createApiRequest,
     deleteApi: deleteApiRequest,
     fetchApiGateways,
+    importOpenApi,
   } = useApisApi();
   const { selectedProject } = useProjects();
 
@@ -287,6 +290,7 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
       deleteApi,
       selectApi,
       fetchGatewaysForApi,
+      importOpenApi,
     }),
     [
       apis,
@@ -300,6 +304,7 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
       deleteApi,
       selectApi,
       fetchGatewaysForApi,
+      importOpenApi,
     ]
   );
 

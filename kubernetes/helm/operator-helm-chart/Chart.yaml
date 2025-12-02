@@ -1,0 +1,6 @@
+apiVersion: v2
+name: open-choreo-operator
+description: Helm chart to install the Open Choreo Operator (controller + CRDs + RBAC)
+type: application
+version: 0.1.1
+appVersion: "latest"

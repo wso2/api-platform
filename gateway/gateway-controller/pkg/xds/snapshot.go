@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -34,27 +35,34 @@ type StatusUpdateCallback func(configID string, success bool, version int64, cor
 
 // SnapshotManager manages xDS snapshots for Envoy
 type SnapshotManager struct {
-	cache          cache.SnapshotCache
-	translator     *Translator
-	store          *storage.ConfigStore
-	logger         *zap.Logger
-	nodeID         string // Node ID for Envoy (default: "router-node")
-	statusCallback StatusUpdateCallback
+	cache            cache.SnapshotCache
+	translator       *Translator
+	store            *storage.ConfigStore
+	logger           *zap.Logger
+	nodeID           string // Node ID for Envoy (default: "router-node")
+	statusCallback   StatusUpdateCallback
+	sdsSecretManager *SDSSecretManager
 }
 
 // NewSnapshotManager creates a new snapshot manager
-func NewSnapshotManager(store *storage.ConfigStore, logger *zap.Logger, routerConfig *config.RouterConfig) *SnapshotManager {
+func NewSnapshotManager(store *storage.ConfigStore, logger *zap.Logger, routerConfig *config.RouterConfig, db storage.Storage, cfg *config.Config) *SnapshotManager {
 	// Create a snapshot cache with a simple node ID hasher
 	snapshotCache := cache.NewSnapshotCache(false, cache.IDHash{}, logger.Sugar())
 
 	return &SnapshotManager{
-		cache:          snapshotCache,
-		translator:     NewTranslator(logger, routerConfig),
-		store:          store,
-		logger:         logger,
-		nodeID:         "router-node",
-		statusCallback: nil,
+		cache:            snapshotCache,
+		translator:       NewTranslator(logger, routerConfig, db, cfg),
+		store:            store,
+		logger:           logger,
+		nodeID:           "router-node",
+		statusCallback:   nil,
+		sdsSecretManager: nil,
 	}
+}
+
+// SetSDSSecretManager sets the SDS secret manager
+func (sm *SnapshotManager) SetSDSSecretManager(sdsSecretManager *SDSSecretManager) {
+	sm.sdsSecretManager = sdsSecretManager
 }
 
 // SetStatusCallback sets the callback for status updates
@@ -84,6 +92,17 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 			}
 		}
 		return fmt.Errorf("failed to translate configurations: %w", err)
+	}
+
+	// Add SDS secrets if SDS secret manager is configured
+	if sm.sdsSecretManager != nil {
+		secret, err := sm.sdsSecretManager.GetSecret()
+		if err != nil {
+			log.Warn("Failed to get SDS secret, continuing without it", zap.Error(err))
+		} else {
+			resources[resource.SecretType] = []types.Resource{secret}
+			log.Debug("Added SDS secret to snapshot", zap.String("secret_name", SecretNameUpstreamCA))
+		}
 	}
 
 	// Increment snapshot version
@@ -150,4 +169,9 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 // GetCache returns the snapshot cache for use by xDS server
 func (sm *SnapshotManager) GetCache() cache.SnapshotCache {
 	return sm.cache
+}
+
+// GetTranslator returns the translator instance
+func (sm *SnapshotManager) GetTranslator() *Translator {
+	return sm.translator
 }

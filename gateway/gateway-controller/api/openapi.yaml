@@ -71,34 +71,92 @@ paths:
             example:
               version: api-platform.wso2.com/v1
               kind: http/rest
-              data:
-                name: weather-api
+              spec:
+                name: PetStore API
                 version: v1.0
-                context: /weather
-                upstream:
-                  - url: https://api.weather.com/api/v2
+                context: /petstore
+                upstreams:
+                  - url: http://petstore.swagger.io/v2
+                policies:
+                  - name: apiKeyValidation
+                    version: v1.0.0
+                    executionCondition: "request.metadata[authenticated] != true"
+                    params:
+                      header: X-API-Key
+                      mandatory: true
+                  - name: setHeaders
+                    version: v1.0.0
+                    params:
+                      requestHeaders:
+                        - X-Request-Source: WSO2 API Manager
+                      responseHeaders:
+                        - X-Response-Source: WSO2 API Manager
                 operations:
                   - method: GET
-                    path: /{country_code}/{city}
+                    path: /pet/{petId}
+                    policies:
+                      - name: apiKeyValidation
+                        version: v1.0.0
+                        executionCondition: "request.metadata[authenticated] != true"
+                        params:
+                          header: X-API-Key
+                          mandatory: true
                   - method: POST
-                    path: /{country_code}/{city}
+                    path: /pet
+                  - method: PUT
+                    path: /pet
+                  - method: DELETE
+                    path: /pet/{petId}
+                  - method: GET
+                    path: /store/inventory
+                  - method: POST
+                    path: /store/order
           application/json:
             schema:
               $ref: '#/components/schemas/APIConfiguration'
             example:
               version: api-platform.wso2.com/v1
               kind: http/rest
-              data:
-                name: weather-api
+              spec:
+                name: PetStore API
                 version: v1.0
-                context: /weather
-                upstream:
-                  - url: https://api.weather.com/api/v2
+                context: /petstore
+                upstreams:
+                  - url: http://petstore.swagger.io/v2
+                policies:
+                  - name: apiKeyValidation
+                    version: v1.0.0
+                    executionCondition: "request.metadata[authenticated] != true"
+                    params:
+                      header: X-API-Key
+                      mandatory: true
+                  - name: setHeaders
+                    version: v1.0.0
+                    params:
+                      requestHeaders:
+                        - X-Request-Source: WSO2 API Manager
+                      responseHeaders:
+                        - X-Response-Source: WSO2 API Manager
                 operations:
                   - method: GET
-                    path: /{country_code}/{city}
+                    path: /pet/{petId}
+                    policies:
+                      - name: apiKeyValidation
+                        version: v1.0.0
+                        executionCondition: "request.metadata[authenticated] != true"
+                        params:
+                          header: X-API-Key
+                          mandatory: true
                   - method: POST
-                    path: /{country_code}/{city}
+                    path: /pet
+                  - method: PUT
+                    path: /pet
+                  - method: DELETE
+                    path: /pet/{petId}
+                  - method: GET
+                    path: /store/inventory
+                  - method: POST
+                    path: /store/order
       responses:
         '201':
           description: API configuration created successfully
@@ -318,6 +376,214 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /certificates:
+    get:
+      summary: List all custom certificates
+      description: |
+        Retrieve all custom TLS certificates currently loaded in the certificate store.
+        These certificates are used for verifying HTTPS upstream connections.
+      operationId: listCertificates
+      tags:
+        - Certificate Management
+      responses:
+        '200':
+          description: List of certificates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateListResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      summary: Upload a new certificate
+      description: |
+        Upload a new custom TLS certificate to the certificate store. The certificate
+        must be in PEM format. After upload, the certificate store is automatically
+        reloaded and SDS (Secret Discovery Service) is updated to push the new
+        certificate to Envoy proxies.
+
+        **Dynamic Update:** Changes take effect immediately without restarting the gateway.
+      operationId: uploadCertificate
+      tags:
+        - Certificate Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CertificateUploadRequest'
+            example:
+              certificate: |
+                -----BEGIN CERTIFICATE-----
+                MIIDXTCCAkWgAwIBAgIJAKL0UG+mRKtjMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
+                ...
+                -----END CERTIFICATE-----
+              filename: my-custom-ca.pem
+      responses:
+        '201':
+          description: Certificate uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateResponse'
+        '400':
+          description: Invalid certificate format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /certificates/{id}:
+    delete:
+      summary: Delete a certificate
+      description: |
+        Delete a custom certificate by ID. After deletion, the certificate store
+        is automatically reloaded and SDS is updated to remove the certificate from
+        Envoy proxies.
+
+        **Dynamic Update:** Changes take effect immediately without restarting the gateway.
+      operationId: deleteCertificate
+      tags:
+        - Certificate Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID of the certificate to delete
+          schema:
+            type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: Certificate deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Certificate deleted and SDS updated successfully
+                  id:
+                    type: string
+                    example: 550e8400-e29b-41d4-a716-446655440000
+        '404':
+          description: Certificate not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /certificates/reload:
+    post:
+      summary: Manually reload certificates
+      description: |
+        Manually trigger a reload of all certificates from the filesystem and update
+        SDS. This is useful if you've manually added certificate files to the
+        certificates directory.
+
+        **Note:** This endpoint is typically not needed as uploads and deletions
+        automatically trigger reloads.
+      operationId: reloadCertificates
+      tags:
+        - Certificate Management
+      responses:
+        '200':
+          description: Certificates reloaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Certificates reloaded and SDS updated successfully
+                  total_bytes:
+                    type: integer
+                    description: Total bytes of all loaded certificates
+                    example: 221599
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /policies:
+    get:
+      summary: List all registered policy definitions
+      description: |
+        Retrieve all currently loaded policy definitions from the controller.
+        Policy definitions are loaded from files in the policies directory at
+        controller startup and stored in memory.
+      operationId: listPolicies
+      tags:
+        - Policy Management
+      responses:
+        '200':
+          description: List of policy definitions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyListResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /config_dump:
+    get:
+      summary: Dump current configuration state
+      description: |
+        Retrieve the complete current state of the Gateway Controller including:
+        - All deployed API configurations
+        - All loaded policy definitions
+        - All registered certificates
+        - System status and metadata
+        
+        This endpoint is useful for debugging, monitoring, and backup purposes.
+      operationId: getConfigDump
+      tags:
+        - System
+      responses:
+        '200':
+          description: Complete configuration dump
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigDumpResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   schemas:
     APIConfiguration:
@@ -325,7 +591,7 @@ components:
       required:
         - version
         - kind
-        - data
+        - spec
       properties:
         version:
           type: string
@@ -339,7 +605,7 @@ components:
           example: http/rest
           enum:
             - http/rest
-        data:
+        spec:
           $ref: '#/components/schemas/APIConfigData'
 
     APIConfigData:
@@ -348,7 +614,7 @@ components:
         - name
         - version
         - context
-        - upstream
+        - upstreams
         - operations
       properties:
         name:
@@ -370,12 +636,17 @@ components:
           minLength: 1
           maxLength: 200
           example: /weather
-        upstream:
+        upstreams:
           type: array
           description: List of backend service URLs
           minItems: 1
           items:
             $ref: '#/components/schemas/Upstream'
+        policies:
+          type: array
+          description: List of API-level policies applied to all operations unless overridden
+          items:
+            $ref: '#/components/schemas/Policy'
         operations:
           type: array
           description: List of HTTP operations/routes
@@ -417,6 +688,88 @@ components:
           description: Route path with optional {param} placeholders
           pattern: '^\/.*$'
           example: /{country_code}/{city}
+        policies:
+          type: array
+          description: List of policies applied only to this operation (overrides or adds to API-level policies)
+          items:
+            $ref: '#/components/schemas/Policy'
+
+    Policy:
+      type: object
+      required:
+        - name
+        - version
+      properties:
+        name:
+          type: string
+          description: Name of the policy
+          example: apiKeyValidation
+        version:
+          type: string
+          description: Semantic version of the policy
+          pattern: '^v\d+\.\d+\.\d+$'
+          example: v1.0.0
+        executionCondition:
+          type: string
+          description: Expression controlling conditional execution of the policy
+          example: "request.metadata[authenticated] != true"
+        params:
+          type: object
+          description: Arbitrary parameters for the policy (free-form key/value structure)
+          additionalProperties: true
+    # Reusable policy definition (catalog entry)
+    PolicyDefinition:
+      type: object
+      required:
+        - name
+        - version
+        - flows
+      properties:
+        name:
+          type: string
+          description: Unique policy name
+          minLength: 1
+          maxLength: 200
+          example: APIKeyValidation
+        version:
+          type: string
+          description: Semantic version of the policy definition
+          pattern: '^v\d+\.\d+\.\d+$'
+          example: v1.0.0
+        description:
+          type: string
+          description: Human readable description of the policy's purpose
+          maxLength: 2000
+        parametersSchema:
+          type: object
+          description: JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.
+          additionalProperties: true
+
+    PolicyFlowRequirements:
+      type: object
+      properties:
+        requireHeader:
+          type: boolean
+          description: Whether request/response headers are required for execution
+          example: true
+        requireBody:
+          type: boolean
+          description: Whether request/response body content is required for execution
+          example: false
+
+    PolicyListResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        count:
+          type: integer
+          example: 2
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyDefinition'
 
     APICreateResponse:
       type: object
@@ -436,7 +789,6 @@ components:
           type: string
           format: date-time
           example: 2025-10-11T10:30:00Z
-
     APIUpdateResponse:
       type: object
       properties:
@@ -550,14 +902,172 @@ components:
         field:
           type: string
           description: Field that failed validation
-          example: data.context
+          example: spec.context
         message:
           type: string
           description: Human-readable error message
           example: Context must start with / and cannot end with /
+
+    CertificateUploadRequest:
+      type: object
+      required:
+        - certificate
+        - name
+      properties:
+        name:
+          type: string
+          description: Unique name for the certificate. Must be unique across all certificates.
+          pattern: '^[a-zA-Z0-9._-]+$'
+          minLength: 1
+          maxLength: 100
+          example: my-custom-ca
+        certificate:
+          type: string
+          description: PEM-encoded X.509 certificate(s). Can contain multiple certificates.
+          example: |
+            -----BEGIN CERTIFICATE-----
+            MIIDXTCCAkWgAwIBAgIJAKL0UG+mRKtjMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
+            ...
+            -----END CERTIFICATE-----
+
+    CertificateResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier (UUID) for the certificate
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          description: Name of the certificate
+          example: my-custom-ca
+        subject:
+          type: string
+          description: Certificate subject DN (for first cert if bundle)
+          example: CN=My CA,O=My Organization,C=US
+        issuer:
+          type: string
+          description: Certificate issuer DN (for first cert if bundle)
+          example: CN=My CA,O=My Organization,C=US
+        notAfter:
+          type: string
+          description: Certificate expiration date (for first cert if bundle)
+          format: date-time
+          example: "2026-11-26 06:07:26"
+        count:
+          type: integer
+          description: Number of certificates in the file
+          example: 1
+        message:
+          type: string
+          description: Success or informational message
+          example: Certificate uploaded and SDS updated successfully
+        status:
+          type: string
+          enum: [success, error]
+          example: success
+
+    CertificateListResponse:
+      type: object
+      properties:
+        certificates:
+          type: array
+          items:
+            $ref: '#/components/schemas/CertificateResponse'
+        totalCount:
+          type: integer
+          description: Total number of certificate files
+          example: 3
+        totalBytes:
+          type: integer
+          description: Total bytes of all certificate files
+          example: 221599
+        status:
+          type: string
+          example: success
+
+    ConfigDumpResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp when the config dump was generated
+          example: "2025-11-26T10:30:00Z"
+        apis:
+          type: array
+          description: All deployed API configurations
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+                example: 550e8400-e29b-41d4-a716-446655440000
+              configuration:
+                $ref: '#/components/schemas/APIConfiguration'
+              metadata:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - pending
+                      - deployed
+                      - failed
+                    example: deployed
+                  created_at:
+                    type: string
+                    format: date-time
+                    example: 2025-10-11T10:30:00Z
+                  updated_at:
+                    type: string
+                    format: date-time
+                    example: 2025-10-11T10:30:00Z
+                  deployed_at:
+                    type: string
+                    format: date-time
+                    example: 2025-10-11T10:30:05Z
+        policies:
+          type: array
+          description: All loaded policy definitions
+          items:
+            $ref: '#/components/schemas/PolicyDefinition'
+        certificates:
+          type: array
+          description: All registered certificates
+          items:
+            $ref: '#/components/schemas/CertificateResponse'
+        statistics:
+          type: object
+          description: Summary statistics about the current configuration
+          properties:
+            totalApis:
+              type: integer
+              description: Total number of API configurations
+              example: 5
+            totalPolicies:
+              type: integer
+              description: Total number of policy definitions
+              example: 3
+            totalCertificates:
+              type: integer
+              description: Total number of certificates
+              example: 2
+            totalCertificateBytes:
+              type: integer
+              description: Total bytes of all certificates
+              example: 221599
 
 tags:
   - name: System
     description: System health and status endpoints
   - name: API Management
     description: CRUD operations for API configurations
+  - name: Policy Management
+    description: Registration of reusable policy definitions
+  - name: Certificate Management
+    description: Manage custom TLS certificates for HTTPS upstream verification

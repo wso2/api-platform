@@ -18,6 +18,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -26,6 +27,7 @@ import (
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -810,6 +812,153 @@ func (h *APIHandler) ValidateOpenAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// ImportOpenAPI handles POST /import/open-api and imports an API from OpenAPI definition
+func (h *APIHandler) ImportOpenAPI(c *gin.Context) {
+	orgId, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in token"))
+		return
+	}
+
+	// Parse multipart form
+	err := c.Request.ParseMultipartForm(10 << 20) // 10 MB max
+	if err != nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Failed to parse multipart form"))
+		return
+	}
+
+	var req dto.ImportOpenAPIRequest
+
+	// Get URL from form if provided
+	if url := c.PostForm("url"); url != "" {
+		req.URL = url
+	}
+
+	// Get definition file from form if provided
+	if file, header, err := c.Request.FormFile("definition"); err == nil {
+		req.Definition = header
+		defer file.Close()
+	}
+
+	// Validate that at least one input is provided
+	if req.URL == "" && req.Definition == nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Either URL or definition file must be provided"))
+		return
+	}
+
+	// Get API details from form data (JSON string in 'api' field)
+	apiJSON := c.PostForm("api")
+	if apiJSON == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API details are required"))
+		return
+	}
+
+	// Parse API details from JSON string
+	if err := json.Unmarshal([]byte(apiJSON), &req.API); err != nil {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Invalid API details: "+err.Error()))
+		return
+	}
+
+	if req.API.Name == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API name is required"))
+		return
+	}
+	if req.API.Context == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API context is required"))
+		return
+	}
+	if req.API.Version == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"API version is required"))
+		return
+	}
+	if req.API.ProjectID == "" {
+		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+			"Project ID is required"))
+		return
+	}
+
+	// Import API from OpenAPI definition
+	api, err := h.apiService.ImportFromOpenAPI(&req, orgId)
+	if err != nil {
+		if errors.Is(err, constants.ErrAPIAlreadyExists) {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"API already exists in the project"))
+			return
+		}
+		if errors.Is(err, constants.ErrProjectNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Project not found"))
+			return
+		}
+		if errors.Is(err, constants.ErrInvalidAPIName) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid API name format"))
+			return
+		}
+		if errors.Is(err, constants.ErrInvalidAPIContext) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid API context format"))
+			return
+		}
+		if errors.Is(err, constants.ErrInvalidAPIVersion) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid API version format"))
+			return
+		}
+		if errors.Is(err, constants.ErrInvalidLifecycleState) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid lifecycle status"))
+			return
+		}
+		if errors.Is(err, constants.ErrInvalidAPIType) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid API type"))
+			return
+		}
+		if errors.Is(err, constants.ErrInvalidTransport) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid transport protocol"))
+			return
+		}
+		// Handle OpenAPI-specific errors
+		if strings.Contains(err.Error(), "failed to fetch OpenAPI from URL") {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Failed to fetch OpenAPI definition from URL"))
+			return
+		}
+		if strings.Contains(err.Error(), "failed to open OpenAPI definition file") ||
+			strings.Contains(err.Error(), "failed to read OpenAPI definition file") {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Failed to fetch OpenAPI definition from file"))
+			return
+		}
+		if strings.Contains(err.Error(), "failed to validate and parse OpenAPI definition") {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid OpenAPI definition"))
+			return
+		}
+		if strings.Contains(err.Error(), "failed to merge API details") {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Failed to create API from OpenAPI definition: incompatible details"))
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to import API from OpenAPI definition"))
+		return
+	}
+
+	c.JSON(http.StatusCreated, api)
+}
+
 // RegisterRoutes registers all API routes
 func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	// API routes
@@ -830,6 +979,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 	importGroup := r.Group("/api/v1/import")
 	{
 		importGroup.POST("/api-project", h.ImportAPIProject)
+		importGroup.POST("/open-api", h.ImportOpenAPI)
 	}
 	validateGroup := r.Group("/api/v1/validate")
 	{

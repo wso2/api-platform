@@ -102,14 +102,14 @@ type Operation struct {
 |-------|-----------|-------------------|
 | `version` | Must equal "api-platform.wso2.com/v1" | "Unsupported API version" |
 | `kind` | Must equal "http/rest" | "Unsupported API kind (only http/rest supported)" |
-| `data.name` | Non-empty string, 1-100 characters | "API name is required and must be 1-100 characters" |
-| `data.version` | Non-empty string, matches semantic version pattern (e.g., v1.0) | "API version is required and must follow format vX.Y" |
-| `data.context` | Must start with `/`, no trailing slash, 1-200 characters | "Context must start with / and cannot end with /" |
-| `data.upstream` | At least one upstream URL | "At least one upstream URL is required" |
-| `data.upstream[].url` | Valid HTTP/HTTPS URL | "Invalid upstream URL format" |
-| `data.operations` | At least one operation | "At least one operation is required" |
-| `data.operations[].method` | One of: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS | "Invalid HTTP method" |
-| `data.operations[].path` | Must start with `/`, valid path with optional `{param}` placeholders | "Invalid operation path format" |
+| `spec.name` | Non-empty string, 1-100 characters | "API name is required and must be 1-100 characters" |
+| `spec.version` | Non-empty string, matches semantic version pattern (e.g., v1.0) | "API version is required and must follow format vX.Y" |
+| `spec.context` | Must start with `/`, no trailing slash, 1-200 characters | "Context must start with / and cannot end with /" |
+| `spec.upstreams` | At least one upstream URL | "At least one upstream URL is required" |
+| `spec.upstreams[].url` | Valid HTTP/HTTPS URL | "Invalid upstream URL format" |
+| `spec.operations` | At least one operation | "At least one operation is required" |
+| `spec.operations[].method` | One of: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS | "Invalid HTTP method" |
+| `spec.operations[].path` | Must start with `/`, valid path with optional `{param}` placeholders | "Invalid operation path format" |
 
 ### Additional Constraints
 
@@ -784,11 +784,11 @@ type ErrorResponse struct {
   "message": "Configuration validation failed",
   "errors": [
     {
-      "field": "data.context",
+      "field": "spec.context",
       "message": "Context must start with / and cannot end with /"
     },
     {
-      "field": "data.operations[0].method",
+      "field": "spec.operations[0].method",
       "message": "Invalid HTTP method: INVALID"
     }
   ]

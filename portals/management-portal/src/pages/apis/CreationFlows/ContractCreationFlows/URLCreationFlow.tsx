@@ -1,134 +1,192 @@
 import * as React from "react";
 import { Box, Paper, Stack, Typography, Alert, Grid } from "@mui/material";
 import { Button } from "../../../../components/src/components/Button";
-import { Chip } from "../../../../components/src/components/Chip";
 import { TextInput } from "../../../../components/src/components/TextInput";
 import CreationMetaData from "../CreationMetaData";
+import {
+  useCreateComponentBuildpackContext,
+} from "../../../../context/CreateComponentBuildpackContext";
+import { useOpenApiValidation, type OpenApiValidationResponse } from "../../../../hooks/validation";
+import { ApiOperationsList } from "../../../../components/src/components/Common/ApiOperationsList";
+import type { ImportOpenApiRequest, ApiSummary } from "../../../../hooks/apis";
+import { defaultServiceName, firstServerUrl, deriveContext, mapOperations } from "../../../../helpers/openApiHelpers";
 
-/* ---------- Types (UI-only) ---------- */
+/* ---------- Types ---------- */
 type Props = {
   open: boolean;
+  selectedProjectId: string;
+  importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<void>;
+  refreshApis: (projectId?: string) => Promise<ApiSummary[]>;
   onClose: () => void;
-  // kept for compatibility with parent, unused in UI-only version
-  selectedProjectId?: string;
-  createApi?: (..._args: any[]) => Promise<any>;
 };
 
 type Step = "url" | "details";
 
-type OpenAPI = {
-  paths?: Record<
-    string,
-    Record<
-      string,
-      { summary?: string; description?: string; operationId?: string }
-    >
-  >;
-};
+/* ---------- component ---------- */
 
-/* ---------- helpers for the preview list (UI-only) ---------- */
-
-const METHOD_COLORS: Record<
-  string,
-  "primary" | "success" | "warning" | "error" | "info" | "secondary"
-> = {
-  get: "info",
-  post: "success",
-  put: "warning",
-  delete: "error",
-  patch: "secondary",
-  head: "primary",
-  options: "primary",
-};
-
-const methodOrder = ["get", "post", "put", "delete", "patch", "head", "options"];
-
-const SwaggerPathList: React.FC<{ doc?: OpenAPI }> = ({ doc }) => {
-  if (!doc?.paths) return null;
-  const ordered = Object.entries(doc.paths).sort(([a], [b]) => a.localeCompare(b));
-  if (!ordered.length) return null;
-
-  return (
-    <Box
-      sx={{
-        border: "1px solid",
-        borderColor: "divider",
-        borderRadius: 2,
-        overflow: "hidden",
-        bgcolor: "background.paper",
-      }}
-    >
-      <Box
-        sx={{
-          px: 2,
-          py: 1.25,
-          borderBottom: "1px solid",
-          borderColor: "divider",
-          fontWeight: 700,
-        }}
-      >
-        Fetched OAS Definition
-      </Box>
-      <Box sx={{ maxHeight: 500, overflow: "auto" }}>
-        {ordered.flatMap(([path, ops], i) => {
-          const opsOrdered = methodOrder
-            .filter((m) => (ops as any)[m])
-            .map((m) => [m, (ops as any)[m]!] as const);
-
-          return opsOrdered.map(([method, op], j) => (
-            <Box
-              key={`${path}-${method}`}
-              sx={{
-                px: 2,
-                py: 1.5,
-                display: "grid",
-                gridTemplateColumns: "120px 1fr",
-                alignItems: "center",
-                borderBottom:
-                  i === ordered.length - 1 && j === opsOrdered.length - 1
-                    ? "none"
-                    : "1px solid",
-                borderColor: "divider",
-              }}
-            >
-              <Chip
-                size="large"
-                color={METHOD_COLORS[method] ?? "primary"}
-                label={method.toUpperCase()}
-                sx={{ fontWeight: 700, width: 72, justifySelf: "start" }}
-              />
-              <Stack direction="row" spacing={1.5} alignItems="center">
-                <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
-                  {path}
-                </Typography>
-                <Typography variant="body2" color="#7c7c7cff" noWrap>
-                  {op?.summary || op?.description || ""}
-                </Typography>
-              </Stack>
-            </Box>
-          ));
-        })}
-      </Box>
-    </Box>
-  );
-};
-
-/* ---------- component (UI-only) ---------- */
-
-const URLCreationFlow: React.FC<Props> = ({ open, onClose }) => {
+const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenApi, refreshApis, onClose }) => {
   const [step, setStep] = React.useState<Step>("url");
   const [specUrl, setSpecUrl] = React.useState<string>("");
+  const [validationResult, setValidationResult] = React.useState<OpenApiValidationResponse | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [validating, setValidating] = React.useState(false);
+  const [creating, setCreating] = React.useState(false);
 
-  // purely for preview demo; in UI-only we can show nothing or a stub
-  const [doc] = React.useState<OpenAPI | undefined>(undefined);
-  const [error] = React.useState<string | null>(null);
+  const { contractMeta, setContractMeta, resetContractMeta } = useCreateComponentBuildpackContext();
+  const { validateOpenApiUrl } = useOpenApiValidation();
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   React.useEffect(() => {
     if (open) {
+      resetContractMeta();
       setStep("url");
       setSpecUrl("");
+      setValidationResult(null);
+      setError(null);
+      setValidating(false);
     }
-  }, [open]);
+  }, [open, resetContractMeta]);
+
+  const autoFill = React.useCallback((api: any) => {
+    const title = api?.name?.trim() || api?.displayName?.trim() || "";
+    const version = api?.version?.trim() || "1.0.0";
+    const description = api?.description || "";
+    const targetUrl = firstServerUrl(api);
+
+    setContractMeta((prev: any) => ({
+      ...prev,
+      name: title || prev?.name || "Sample API",
+      version,
+      description,
+      context: deriveContext(api),
+      target: prev?.target || targetUrl || "",
+    }));
+  }, [setContractMeta]);
+
+  const handleFetchAndPreview = React.useCallback(async () => {
+    if (!specUrl.trim()) return;
+
+    abortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    try {
+      setError(null);
+      setValidating(true);
+      setValidationResult(null);
+
+      const result = await validateOpenApiUrl(specUrl.trim(), { signal: abortController.signal });
+      setValidationResult(result);
+
+      if (result.isAPIDefinitionValid) {
+        autoFill(result.api);
+        setStep("details");
+      } else {
+        const errorMsg = result.errors?.join(", ") || "Invalid OpenAPI definition";
+        setError(errorMsg);
+      }
+    } catch (e: any) {
+      if (e.name === 'AbortError') return;
+      setError(e?.message || "Failed to validate OpenAPI from URL");
+      setValidationResult(null);
+    } finally {
+      setValidating(false);
+    }
+  }, [specUrl, autoFill, validateOpenApiUrl]);
+
+  const finishAndClose = React.useCallback(() => {
+    abortControllerRef.current?.abort();
+    resetContractMeta();
+    setStep("url");
+    setSpecUrl("");
+    setValidationResult(null);
+    setError(null);
+    setValidating(false);
+    onClose();
+  }, [onClose, resetContractMeta]);
+
+  const previewOps = React.useMemo(() => {
+    if (!validationResult?.isAPIDefinitionValid) return [];
+    const api = validationResult.api as any;
+    return mapOperations(api?.operations || [], { withFallbackName: true });
+  }, [validationResult]);
+
+  const onCreate = async () => {
+    const name = (contractMeta?.name || "").trim();
+    const context = (contractMeta?.context || "").trim();
+    const version = (contractMeta?.version || "").trim();
+    const description = (contractMeta?.description || "").trim() || undefined;
+    const target = (contractMeta?.target || "").trim();
+
+    if (!name || !context || !version) {
+      setError("Please complete all required fields.");
+      return;
+    }
+    if (target) {
+      try {
+        if (/^https?:\/\//i.test(target)) new URL(target);
+      } catch {
+        setError("Target must be a valid URL (or leave it empty).");
+        return;
+      }
+    }
+
+    if (!validationResult?.isAPIDefinitionValid) {
+      setError("Please fetch and validate the OpenAPI definition first.");
+      return;
+    }
+
+    setCreating(true);
+    setError(null);
+
+    const serviceName = defaultServiceName(name);
+    const backendServices =
+      target
+        ? [
+            {
+              name: serviceName,
+              isDefault: true,
+              retries: 2,
+              endpoints: [{ url: target, description: "Primary backend" }],
+            },
+          ]
+        : [];
+
+    try {
+      await importOpenApi({
+        api: {
+          name,
+          context,
+          version,
+          projectId: selectedProjectId,
+          target,
+          description,
+          backendServices,
+        },
+        url: specUrl.trim(),
+      });
+    } catch (e: any) {
+      setError(e?.message || "Failed to create API");
+      setCreating(false);
+      return;
+    }
+
+    try {
+      await refreshApis(selectedProjectId);
+    } catch (refreshError) {
+      console.warn("Failed to refresh API list after creation:", refreshError);
+    } finally {
+      setCreating(false);
+    }
+
+    finishAndClose();
+  };
 
   if (!open) return null;
 
@@ -155,19 +213,20 @@ const URLCreationFlow: React.FC<Props> = ({ open, onClose }) => {
                   variant="text"
                   onClick={() =>
                     setSpecUrl(
-                      "https://raw.githubusercontent.com/OAI/OpenAPI-Specification/main/examples/v3.0/petstore.yaml"
+                      "https://petstore.swagger.io/v2/swagger.json"
                     )
                   }
+                  disabled={validating}
                 >
                   Try with Sample URL
                 </Button>
                 <Box flex={1} />
                 <Button
                   variant="outlined"
-                  onClick={() => setStep("details")} // UI-only: just go to next step
-                  disabled={!specUrl.trim()}
+                  onClick={handleFetchAndPreview}
+                  disabled={!specUrl.trim() || validating}
                 >
-                  Fetch &amp; Preview
+                  {validating ? "Validating..." : "Fetch & Preview"}
                 </Button>
               </Stack>
 
@@ -177,18 +236,35 @@ const URLCreationFlow: React.FC<Props> = ({ open, onClose }) => {
                 </Alert>
               )}
             </Paper>
+
+            <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+              <Button variant="outlined" onClick={finishAndClose} sx={{ textTransform: "none" }}>
+                Cancel
+              </Button>
+            </Stack>
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }}>
-            <Paper
-              variant="outlined"
-              sx={{ p: 3, borderRadius: 2, color: "text.secondary" }}
-            >
-              <Typography variant="body2">
-                Enter a direct URL to an OpenAPI/Swagger document (YAML or JSON).
-                We’ll fetch and preview it here.
-              </Typography>
-            </Paper>
+            {validating ? (
+              <Paper
+                variant="outlined"
+                sx={{ p: 3, borderRadius: 2, color: "text.secondary" }}
+              >
+                <Typography variant="body2">
+                  Validating OpenAPI definition...
+                </Typography>
+              </Paper>
+            ) : (
+              <Paper
+                variant="outlined"
+                sx={{ p: 3, borderRadius: 2, color: "text.secondary" }}
+              >
+                <Typography variant="body2">
+                  Enter a direct URL to an OpenAPI/Swagger document (YAML or JSON).
+                  We'll fetch and preview it here.
+                </Typography>
+              </Paper>
+            )}
           </Grid>
         </Grid>
       )}
@@ -205,22 +281,34 @@ const URLCreationFlow: React.FC<Props> = ({ open, onClose }) => {
                 justifyContent="flex-end"
                 sx={{ mt: 3 }}
               >
-                <Button variant="outlined" onClick={() => setStep("url")}>
+                <Button variant="outlined" onClick={() => setStep("url")} sx={{ textTransform: "none" }}>
                   Back
                 </Button>
                 <Button
                   variant="contained"
-                  onClick={onClose} // UI-only: close or do nothing
+                  disabled={
+                    creating ||
+                    !(contractMeta?.name || "").trim() ||
+                    !(contractMeta?.context || "").trim() ||
+                    !(contractMeta?.version || "").trim()
+                  }
+                  onClick={onCreate}
+                  sx={{ textTransform: "none" }}
                 >
-                  Create
+                  {creating ? "Creating..." : "Create"}
                 </Button>
               </Stack>
+
+              {error && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {error}
+                </Alert>
+              )}
             </Paper>
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }}>
-            {/* In UI-only mode we have no parsed doc; leave empty or pass a stub */}
-            <SwaggerPathList doc={doc} />
+            <ApiOperationsList title="Fetched OAS Definition" operations={previewOps} />
           </Grid>
         </Grid>
       )}

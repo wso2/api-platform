@@ -22,16 +22,19 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
 	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
+	mutationrules "github.com/envoyproxy/go-control-plane/envoy/config/common/mutation_rules/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	fileaccesslog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
+	extproc "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
@@ -39,9 +42,11 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/certstore"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -53,14 +58,48 @@ import (
 type Translator struct {
 	logger       *zap.Logger
 	routerConfig *config.RouterConfig
+	certStore    *certstore.CertStore
+	config       *config.Config
 }
 
 // NewTranslator creates a new translator
-func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig) *Translator {
+func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig, db storage.Storage, config *config.Config) *Translator {
+	// Initialize certificate store if custom certs path is configured
+	var cs *certstore.CertStore
+	if routerConfig.Upstream.TLS.CustomCertsPath != "" {
+		cs = certstore.NewCertStore(
+			logger,
+			db,
+			routerConfig.Upstream.TLS.CustomCertsPath,
+			routerConfig.Upstream.TLS.TrustedCertPath,
+		)
+
+		// Load certificates at initialization
+		if _, err := cs.LoadCertificates(); err != nil {
+			logger.Warn("Failed to initialize certificate store, will use system certs only",
+				zap.String("custom_certs_path", routerConfig.Upstream.TLS.CustomCertsPath),
+				zap.Error(err))
+			cs = nil // Don't use cert store if initialization failed
+		}
+	}
+
 	return &Translator{
 		logger:       logger,
 		routerConfig: routerConfig,
+		certStore:    cs,
+		config:       config,
 	}
+}
+
+// GenerateRouteName creates a unique route name in the format: HttpMethod|RoutePath|Vhost
+// This format is used by both Envoy routes and the policy engine for route matching
+func GenerateRouteName(method, path, vhost string) string {
+	return fmt.Sprintf("%s|%s|%s", method, path, vhost)
+}
+
+// GetCertStore returns the certificate store instance
+func (t *Translator) GetCertStore() *certstore.CertStore {
+	return t.certStore
 }
 
 // TranslateConfigs translates all API configurations to Envoy resources
@@ -77,7 +116,6 @@ func (t *Translator) TranslateConfigs(
 	resources := make(map[resource.Type][]types.Resource)
 
 	var listeners []types.Resource
-	var routes []types.Resource
 	var clusters []types.Resource
 
 	// We'll use a single listener on port 8080 with a single virtual host
@@ -129,49 +167,91 @@ func (t *Translator) TranslateConfigs(
 		Routes:  allRoutes,
 	}
 
-	// Always create the listener, even with no APIs deployed
-	l, err := t.createListener([]*route.VirtualHost{virtualHost})
+	// Always create the HTTP listener, even with no APIs deployed
+	httpListener, err := t.createListener([]*route.VirtualHost{virtualHost}, false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create listener: %w", err)
+		return nil, fmt.Errorf("failed to create HTTP listener: %w", err)
 	}
-	listeners = append(listeners, l)
+	listeners = append(listeners, httpListener)
+
+	// Create HTTPS listener if enabled
+	if t.routerConfig.HTTPSEnabled {
+		log.Info("HTTPS is enabled, creating HTTPS listener",
+			zap.Int("https_port", t.routerConfig.HTTPSPort))
+		httpsListener, err := t.createListener([]*route.VirtualHost{virtualHost}, true)
+		if err != nil {
+			log.Error("Failed to create HTTPS listener", zap.Error(err))
+			return nil, fmt.Errorf("failed to create HTTPS listener: %w", err)
+		}
+		log.Info("HTTPS listener created successfully",
+			zap.String("listener_name", httpsListener.GetName()))
+		listeners = append(listeners, httpsListener)
+	} else {
+		log.Info("HTTPS is disabled, skipping HTTPS listener creation")
+	}
 
 	// Add all clusters
 	for _, c := range clusterMap {
 		clusters = append(clusters, c)
 	}
 
+	// Add policy engine cluster if enabled
+	if t.routerConfig.PolicyEngine.Enabled {
+		policyEngineCluster := t.createPolicyEngineCluster()
+		clusters = append(clusters, policyEngineCluster)
+	}
+
+	// Add SDS cluster if cert store is enabled
+	// This cluster allows Envoy to fetch certificates from the SDS service
+	if t.certStore != nil {
+		sdsCluster := t.createSDSCluster()
+		clusters = append(clusters, sdsCluster)
+	}
+
 	resources[resource.ListenerType] = listeners
-	resources[resource.RouteType] = routes
+	// Don't add empty routes - we use inline route configs in listeners
+	// resources[resource.RouteType] = routes
 	resources[resource.ClusterType] = clusters
+
+	log.Info("Translated resources ready for snapshot",
+		zap.Int("num_listeners", len(listeners)),
+		zap.Int("num_clusters", len(clusters)))
+	for i, l := range listeners {
+		if listenerProto, ok := l.(*listener.Listener); ok {
+			log.Info("Listener details",
+				zap.Int("index", i),
+				zap.String("name", listenerProto.GetName()),
+				zap.Uint32("port", listenerProto.GetAddress().GetSocketAddress().GetPortValue()))
+		}
+	}
 
 	return resources, nil
 }
 
 // translateAPIConfig translates a single API configuration
 func (t *Translator) translateAPIConfig(cfg *models.StoredAPIConfig) ([]*route.Route, []*cluster.Cluster, error) {
-	apiData := cfg.Configuration.Data
+	apiData := cfg.Configuration.Spec
 
 	// Parse upstream URL
-	if len(apiData.Upstream) == 0 {
+	if len(apiData.Upstreams) == 0 {
 		return nil, nil, fmt.Errorf("no upstream configured")
 	}
 
-	upstreamURL := apiData.Upstream[0].Url
+	upstreamURL := apiData.Upstreams[0].Url
 	parsedURL, err := url.Parse(upstreamURL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid upstream URL: %w", err)
 	}
 
 	// Create cluster for this upstream
-	clusterName := t.sanitizeClusterName(parsedURL.Host)
+	clusterName := t.sanitizeClusterName(parsedURL.Host, parsedURL.Scheme)
 	// @TODO: Handle upstream certificates and pass them to createCluster
 	c := t.createCluster(clusterName, parsedURL, nil)
 
 	// Create routes for each operation
 	routesList := make([]*route.Route, 0)
 	for _, op := range apiData.Operations {
-		r := t.createRoute(apiData.Context, string(op.Method), op.Path, clusterName, parsedURL.Path)
+		r := t.createRoute(apiData.Name, apiData.Version, apiData.Context, string(op.Method), op.Path, clusterName, parsedURL.Path)
 		routesList = append(routesList, r)
 	}
 
@@ -179,7 +259,8 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredAPIConfig) ([]*route.R
 }
 
 // createListener creates an Envoy listener with access logging
-func (t *Translator) createListener(virtualHosts []*route.VirtualHost) (*listener.Listener, error) {
+// If isHTTPS is true, creates an HTTPS listener with TLS configuration
+func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS bool) (*listener.Listener, error) {
 	routeConfig := t.createRouteConfiguration(virtualHosts)
 
 	// Create router filter with typed config
@@ -189,6 +270,26 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost) (*listene
 		return nil, fmt.Errorf("failed to create router config: %w", err)
 	}
 
+	// Build HTTP filters chain
+	httpFilters := make([]*hcm.HttpFilter, 0)
+
+	// Add ext_proc filter if policy engine is enabled
+	if t.routerConfig.PolicyEngine.Enabled {
+		extProcFilter, err := t.createExtProcFilter()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create ext_proc filter: %w", err)
+		}
+		httpFilters = append(httpFilters, extProcFilter)
+	}
+
+	// Add router filter (must be last)
+	httpFilters = append(httpFilters, &hcm.HttpFilter{
+		Name: wellknown.Router,
+		ConfigType: &hcm.HttpFilter_TypedConfig{
+			TypedConfig: routerAny,
+		},
+	})
+
 	// Create HTTP connection manager
 	manager := &hcm.HttpConnectionManager{
 		CodecType:  hcm.HttpConnectionManager_AUTO,
@@ -196,12 +297,7 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost) (*listene
 		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{
 			RouteConfig: routeConfig,
 		},
-		HttpFilters: []*hcm.HttpFilter{{
-			Name: wellknown.Router,
-			ConfigType: &hcm.HttpFilter_TypedConfig{
-				TypedConfig: routerAny,
-			},
-		}},
+		HttpFilters: httpFilters,
 	}
 
 	// Add access logs if enabled
@@ -218,27 +314,61 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost) (*listene
 		return nil, err
 	}
 
+	// Determine listener name and port based on protocol
+	var listenerName string
+	var port uint32
+	if isHTTPS {
+		listenerName = fmt.Sprintf("listener_https_%d", t.routerConfig.HTTPSPort)
+		port = uint32(t.routerConfig.HTTPSPort)
+	} else {
+		listenerName = fmt.Sprintf("listener_http_%d", t.routerConfig.ListenerPort)
+		port = uint32(t.routerConfig.ListenerPort)
+	}
+
+	// Create filter chain
+	filterChain := &listener.FilterChain{
+		Filters: []*listener.Filter{{
+			Name: wellknown.HTTPConnectionManager,
+			ConfigType: &listener.Filter_TypedConfig{
+				TypedConfig: pbst,
+			},
+		}},
+	}
+
+	// Add TLS configuration if HTTPS
+	if isHTTPS {
+		tlsContext, err := t.createDownstreamTLSContext()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create downstream TLS context: %w", err)
+		}
+
+		tlsContextAny, err := anypb.New(tlsContext)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal downstream TLS context: %w", err)
+		}
+
+		filterChain.TransportSocket = &core.TransportSocket{
+			Name: "envoy.transport_sockets.tls",
+			ConfigType: &core.TransportSocket_TypedConfig{
+				TypedConfig: tlsContextAny,
+			},
+		}
+	}
+
 	return &listener.Listener{
-		Name: "listener_http_8080",
+		Name: listenerName,
 		Address: &core.Address{
 			Address: &core.Address_SocketAddress{
 				SocketAddress: &core.SocketAddress{
 					Protocol: core.SocketAddress_TCP,
 					Address:  "0.0.0.0",
 					PortSpecifier: &core.SocketAddress_PortValue{
-						PortValue: 8080,
+						PortValue: port,
 					},
 				},
 			},
 		},
-		FilterChains: []*listener.FilterChain{{
-			Filters: []*listener.Filter{{
-				Name: wellknown.HTTPConnectionManager,
-				ConfigType: &listener.Filter_TypedConfig{
-					TypedConfig: pbst,
-				},
-			}},
-		}},
+		FilterChains: []*listener.FilterChain{filterChain},
 	}, nil
 }
 
@@ -251,9 +381,13 @@ func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost)
 }
 
 // createRoute creates a route for an operation
-func (t *Translator) createRoute(context, method, path, clusterName, upstreamPath string) *route.Route {
+func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clusterName, upstreamPath string) *route.Route {
 	// Combine context and path for matching
 	fullPath := context + path
+
+	// Generate unique route name using the helper function
+	// Format: HttpMethod|RoutePath|Vhost (e.g., "GET|/weather/us/seattle|localhost")
+	routeName := GenerateRouteName(method, fullPath, t.routerConfig.GatewayHost)
 
 	// Check if path contains parameters (e.g., {country_code})
 	hasParams := strings.Contains(path, "{")
@@ -270,6 +404,7 @@ func (t *Translator) createRoute(context, method, path, clusterName, upstreamPat
 	}
 
 	r := &route.Route{
+		Name: routeName,
 		Match: &route.RouteMatch{
 			Headers: []*route.HeaderMatcher{{
 				Name: ":method",
@@ -300,6 +435,21 @@ func (t *Translator) createRoute(context, method, path, clusterName, upstreamPat
 				},
 			},
 		},
+	}
+
+	// Attach dynamic metadata for downstream correlation (policies, logging, tracing)
+	metaMap := map[string]interface{}{
+		"route_name":  routeName,
+		"api_name":    apiName,
+		"api_version": apiVersion,
+		"api_context": context,
+		"path":        path,
+		"method":      method,
+	}
+	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
+		r.Metadata = &core.Metadata{FilterMetadata: map[string]*structpb.Struct{
+			"wso2.route": metaStruct,
+		}}
 	}
 
 	// Set path specifier based on whether we have parameters
@@ -355,6 +505,178 @@ func (t *Translator) createCluster(
 	return c
 }
 
+// createPolicyEngineCluster creates an Envoy cluster for the policy engine ext_proc service
+func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
+	policyEngine := t.routerConfig.PolicyEngine
+
+	// Build the endpoint address
+	address := &core.Address{
+		Address: &core.Address_SocketAddress{
+			SocketAddress: &core.SocketAddress{
+				Protocol: core.SocketAddress_TCP,
+				Address:  policyEngine.Host,
+				PortSpecifier: &core.SocketAddress_PortValue{
+					PortValue: policyEngine.Port,
+				},
+			},
+		},
+	}
+
+	// Create the load balancing endpoint
+	lbEndpoint := &endpoint.LbEndpoint{
+		HostIdentifier: &endpoint.LbEndpoint_Endpoint{
+			Endpoint: &endpoint.Endpoint{
+				Address: address,
+			},
+		},
+	}
+
+	// Create locality lb endpoints
+	localityLbEndpoints := &endpoint.LocalityLbEndpoints{
+		LbEndpoints: []*endpoint.LbEndpoint{lbEndpoint},
+	}
+
+	// Create the cluster with HTTP/2 support for gRPC
+	c := &cluster.Cluster{
+		Name:                 constants.PolicyEngineClusterName,
+		ConnectTimeout:       durationpb.New(5 * time.Second),
+		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
+		LoadAssignment: &endpoint.ClusterLoadAssignment{
+			ClusterName: constants.PolicyEngineClusterName,
+			Endpoints:   []*endpoint.LocalityLbEndpoints{localityLbEndpoints},
+		},
+		// Enable HTTP/2 for gRPC
+		Http2ProtocolOptions: &core.Http2ProtocolOptions{},
+	}
+
+	// Add TLS transport socket if TLS is enabled
+	if policyEngine.TLS.Enabled {
+		tlsContext := &tlsv3.UpstreamTlsContext{
+			CommonTlsContext: &tlsv3.CommonTlsContext{
+				TlsParams: &tlsv3.TlsParameters{
+					TlsMinimumProtocolVersion: tlsv3.TlsParameters_TLSv1_2,
+					TlsMaximumProtocolVersion: tlsv3.TlsParameters_TLSv1_3,
+				},
+			},
+		}
+
+		// Add client certificates for mTLS if provided
+		if policyEngine.TLS.CertPath != "" && policyEngine.TLS.KeyPath != "" {
+			tlsContext.CommonTlsContext.TlsCertificates = []*tlsv3.TlsCertificate{
+				{
+					CertificateChain: &core.DataSource{
+						Specifier: &core.DataSource_Filename{
+							Filename: policyEngine.TLS.CertPath,
+						},
+					},
+					PrivateKey: &core.DataSource{
+						Specifier: &core.DataSource_Filename{
+							Filename: policyEngine.TLS.KeyPath,
+						},
+					},
+				},
+			}
+		}
+
+		// Configure CA certificate for server verification
+		if !policyEngine.TLS.SkipVerify {
+			var trustedCASource *core.DataSource
+			if policyEngine.TLS.CAPath != "" {
+				trustedCASource = &core.DataSource{
+					Specifier: &core.DataSource_Filename{
+						Filename: policyEngine.TLS.CAPath,
+					},
+				}
+			}
+
+			if trustedCASource != nil {
+				tlsContext.CommonTlsContext.ValidationContextType = &tlsv3.CommonTlsContext_ValidationContext{
+					ValidationContext: &tlsv3.CertificateValidationContext{
+						TrustedCa: trustedCASource,
+					},
+				}
+			}
+		}
+
+		// Set SNI if server name is provided
+		if policyEngine.TLS.ServerName != "" {
+			tlsContext.Sni = policyEngine.TLS.ServerName
+		}
+
+		// Create transport socket
+		tlsAny, err := anypb.New(tlsContext)
+		if err != nil {
+			t.logger.Error("Failed to marshal TLS context for policy engine cluster", zap.Error(err))
+		} else {
+			c.TransportSocket = &core.TransportSocket{
+				Name: wellknown.TransportSocketTls,
+				ConfigType: &core.TransportSocket_TypedConfig{
+					TypedConfig: tlsAny,
+				},
+			}
+		}
+	}
+
+	return c
+}
+
+// createSDSCluster creates an Envoy cluster for the SDS (Secret Discovery Service)
+// This cluster allows Envoy to fetch TLS certificates dynamically via xDS
+func (t *Translator) createSDSCluster() *cluster.Cluster {
+	// SDS uses the same xDS server
+	// In containerized environments, Envoy connects to the gateway-controller container
+	// Use the same host/port configuration as the main xDS connection
+	xdsHost := "gateway-controller" // Default for Docker Compose
+	if envHost := os.Getenv("XDS_SERVER_HOST"); envHost != "" {
+		xdsHost = envHost
+	}
+
+	xdsPort := t.config.Server.XDSPort
+	if xdsPort == 0 {
+		xdsPort = 18000 // Default xDS port
+	}
+
+	address := &core.Address{
+		Address: &core.Address_SocketAddress{
+			SocketAddress: &core.SocketAddress{
+				Protocol: core.SocketAddress_TCP,
+				Address:  xdsHost,
+				PortSpecifier: &core.SocketAddress_PortValue{
+					PortValue: uint32(xdsPort),
+				},
+			},
+		},
+	}
+
+	lbEndpoint := &endpoint.LbEndpoint{
+		HostIdentifier: &endpoint.LbEndpoint_Endpoint{
+			Endpoint: &endpoint.Endpoint{
+				Address: address,
+			},
+		},
+	}
+
+	localityLbEndpoints := &endpoint.LocalityLbEndpoints{
+		LbEndpoints: []*endpoint.LbEndpoint{lbEndpoint},
+	}
+
+	// Create the SDS cluster
+	// Note: SDS must use HTTP/2 for gRPC communication
+	return &cluster.Cluster{
+		Name:                 "sds_cluster",
+		ConnectTimeout:       durationpb.New(5 * time.Second),
+		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
+		LoadAssignment: &endpoint.ClusterLoadAssignment{
+			ClusterName: "sds_cluster",
+			Endpoints:   []*endpoint.LocalityLbEndpoints{localityLbEndpoints},
+		},
+		// Enable HTTP/2 for gRPC
+		Http2ProtocolOptions: &core.Http2ProtocolOptions{},
+	}
+}
+
 // createUpstreamTLSContext creates an upstream TLS context for secure connections
 func (t *Translator) createUpstreamTLSContext(certificate []byte, address string) *tlsv3.UpstreamTlsContext {
 	// Create TLS context with base configuration
@@ -380,26 +702,68 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 
 	// Configure SSL verification unless disabled
 	if !t.routerConfig.Upstream.TLS.DisableSslVerification {
-		var trustedCASource *core.DataSource
-		if len(certificate) > 0 {
-			trustedCASource = &core.DataSource{
-				Specifier: &core.DataSource_InlineBytes{
-					InlineBytes: certificate,
+		// Priority order for trusted CA certificates:
+		// 1. SDS secret reference (if cert store is available) - Uses dynamic secret discovery
+		// 2. Certificate parameter (per-upstream cert, currently unused but kept for future)
+		// 3. Configured trusted cert path (system certs only)
+		// 4. If none provided, Envoy falls back to system default trust store
+
+		if t.certStore != nil {
+			// Use SDS to dynamically fetch certificates
+			// This is more efficient than inlining certificates in every cluster config
+			sdsConfig := &core.ConfigSource{
+				ResourceApiVersion: core.ApiVersion_V3,
+				ConfigSourceSpecifier: &core.ConfigSource_ApiConfigSource{
+					ApiConfigSource: &core.ApiConfigSource{
+						ApiType:             core.ApiConfigSource_GRPC,
+						TransportApiVersion: core.ApiVersion_V3,
+						GrpcServices: []*core.GrpcService{
+							{
+								TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
+									EnvoyGrpc: &core.GrpcService_EnvoyGrpc{
+										ClusterName: "sds_cluster",
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			upstreamTLSContext.CommonTlsContext.ValidationContextType = &tlsv3.CommonTlsContext_CombinedValidationContext{
+				CombinedValidationContext: &tlsv3.CommonTlsContext_CombinedCertificateValidationContext{
+					// Default validation context (for hostname verification, etc.)
+					DefaultValidationContext: &tlsv3.CertificateValidationContext{},
+					// Dynamic validation context from SDS
+					ValidationContextSdsSecretConfig: &tlsv3.SdsSecretConfig{
+						Name:      SecretNameUpstreamCA,
+						SdsConfig: sdsConfig,
+					},
+				},
+			}
+			t.logger.Debug("Using SDS for upstream TLS certificates",
+				zap.String("upstream", address),
+				zap.String("secret_name", SecretNameUpstreamCA))
+		} else if len(certificate) > 0 {
+			// Use per-upstream certificate if provided
+			upstreamTLSContext.CommonTlsContext.ValidationContextType = &tlsv3.CommonTlsContext_ValidationContext{
+				ValidationContext: &tlsv3.CertificateValidationContext{
+					TrustedCa: &core.DataSource{
+						Specifier: &core.DataSource_InlineBytes{
+							InlineBytes: certificate,
+						},
+					},
 				},
 			}
 		} else if t.routerConfig.Upstream.TLS.TrustedCertPath != "" {
-			trustedCASource = &core.DataSource{
-				Specifier: &core.DataSource_Filename{
-					Filename: t.routerConfig.Upstream.TLS.TrustedCertPath,
-				},
-			}
-		}
-
-		// Set trusted CA for validation if provided. Otherwise, Envoy will fall back to the system default trust store.
-		if trustedCASource != nil {
+			// Fall back to system cert path
 			upstreamTLSContext.CommonTlsContext.ValidationContextType = &tlsv3.CommonTlsContext_ValidationContext{
 				ValidationContext: &tlsv3.CertificateValidationContext{
-					TrustedCa: trustedCASource,
+					TrustedCa: &core.DataSource{
+						Specifier: &core.DataSource_Filename{
+							Filename: t.routerConfig.Upstream.TLS.TrustedCertPath,
+						},
+					},
 				},
 			}
 		}
@@ -411,22 +775,84 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 				sanType = tlsv3.SubjectAltNameMatcher_IP_ADDRESS
 			}
 
-			if validationContext := upstreamTLSContext.CommonTlsContext.GetValidationContext(); validationContext != nil {
-				validationContext.MatchTypedSubjectAltNames = []*tlsv3.SubjectAltNameMatcher{
-					{
-						SanType: sanType,
-						Matcher: &matcher.StringMatcher{
-							MatchPattern: &matcher.StringMatcher_Exact{
-								Exact: address,
-							},
+			sanMatcher := []*tlsv3.SubjectAltNameMatcher{
+				{
+					SanType: sanType,
+					Matcher: &matcher.StringMatcher{
+						MatchPattern: &matcher.StringMatcher_Exact{
+							Exact: address,
 						},
 					},
+				},
+			}
+
+			// Apply SAN matching based on the validation context type
+			if combinedContext := upstreamTLSContext.CommonTlsContext.GetCombinedValidationContext(); combinedContext != nil {
+				// SDS case - add to default validation context
+				if combinedContext.DefaultValidationContext != nil {
+					combinedContext.DefaultValidationContext.MatchTypedSubjectAltNames = sanMatcher
 				}
+			} else if validationContext := upstreamTLSContext.CommonTlsContext.GetValidationContext(); validationContext != nil {
+				// Non-SDS case - add to regular validation context
+				validationContext.MatchTypedSubjectAltNames = sanMatcher
 			}
 		}
 	}
 
 	return upstreamTLSContext
+}
+
+// createDownstreamTLSContext creates a downstream TLS context for HTTPS listeners
+func (t *Translator) createDownstreamTLSContext() (*tlsv3.DownstreamTlsContext, error) {
+	// Read certificate and key files
+	certBytes, err := os.ReadFile(t.routerConfig.DownstreamTLS.CertPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read certificate file: %w", err)
+	}
+
+	keyBytes, err := os.ReadFile(t.routerConfig.DownstreamTLS.KeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read key file: %w", err)
+	}
+
+	// Create TLS certificate configuration
+	tlsCert := &tlsv3.TlsCertificate{
+		CertificateChain: &core.DataSource{
+			Specifier: &core.DataSource_InlineBytes{
+				InlineBytes: certBytes,
+			},
+		},
+		PrivateKey: &core.DataSource{
+			Specifier: &core.DataSource_InlineBytes{
+				InlineBytes: keyBytes,
+			},
+		},
+	}
+
+	// Parse cipher suites
+	var cipherSuites []string
+	if t.routerConfig.DownstreamTLS.Ciphers != "" {
+		cipherSuites = t.parseCipherSuites(t.routerConfig.DownstreamTLS.Ciphers)
+	}
+
+	// Create downstream TLS context
+	downstreamTLSContext := &tlsv3.DownstreamTlsContext{
+		CommonTlsContext: &tlsv3.CommonTlsContext{
+			TlsCertificates: []*tlsv3.TlsCertificate{tlsCert},
+			TlsParams: &tlsv3.TlsParameters{
+				TlsMinimumProtocolVersion: t.createTLSProtocolVersion(
+					t.routerConfig.DownstreamTLS.MinimumProtocolVersion,
+				),
+				TlsMaximumProtocolVersion: t.createTLSProtocolVersion(
+					t.routerConfig.DownstreamTLS.MaximumProtocolVersion,
+				),
+				CipherSuites: cipherSuites,
+			},
+			AlpnProtocols: []string{constants.ALPNProtocolHTTP2, constants.ALPNProtocolHTTP11},
+		},
+	}
+
+	return downstreamTLSContext, nil
 }
 
 // createTLSProtocolVersion converts string TLS version to Envoy TLS version enum
@@ -569,11 +995,12 @@ func (t *Translator) pathToRegex(path string) string {
 	return "^" + regex + "$"
 }
 
-// sanitizeClusterName creates a valid cluster name from a hostname
-func (t *Translator) sanitizeClusterName(hostname string) string {
+// sanitizeClusterName creates a valid cluster name from a hostname and scheme
+func (t *Translator) sanitizeClusterName(hostname, scheme string) string {
 	name := strings.ReplaceAll(hostname, ".", "_")
 	name = strings.ReplaceAll(name, ":", "_")
-	return "cluster_" + name
+	// Include scheme to differentiate HTTP and HTTPS clusters for the same host
+	return "cluster_" + scheme + "_" + name
 }
 
 // sanitizeName creates a valid name from an API name
@@ -591,7 +1018,7 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	if t.routerConfig.AccessLogs.Format == "json" {
 		// Use JSON log format fields from config
 		jsonFormat := t.routerConfig.AccessLogs.JSONFields
-		if jsonFormat == nil || len(jsonFormat) == 0 {
+		if len(jsonFormat) == 0 {
 			return nil, fmt.Errorf("json_fields not configured in access log config")
 		}
 
@@ -655,4 +1082,63 @@ func convertToInterface(m map[string]string) map[string]interface{} {
 		result[k] = v
 	}
 	return result
+}
+
+// createExtProcFilter creates an Envoy ext_proc filter for policy engine integration
+func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
+	policyEngine := t.routerConfig.PolicyEngine
+
+	// Convert route cache action string to enum
+	routeCacheAction := extproc.ExternalProcessor_DEFAULT
+	switch policyEngine.RouteCacheAction {
+	case constants.ExtProcRouteCacheActionRetain:
+		routeCacheAction = extproc.ExternalProcessor_RETAIN
+	case constants.ExtProcRouteCacheActionClear:
+		routeCacheAction = extproc.ExternalProcessor_CLEAR
+	}
+
+	// Convert request header mode string to enum
+	requestHeaderMode := extproc.ProcessingMode_DEFAULT
+	switch policyEngine.RequestHeaderMode {
+	case constants.ExtProcHeaderModeSend:
+		requestHeaderMode = extproc.ProcessingMode_SEND
+	case constants.ExtProcHeaderModeSkip:
+		requestHeaderMode = extproc.ProcessingMode_SKIP
+	}
+
+	// Create ext_proc configuration
+	extProcConfig := &extproc.ExternalProcessor{
+		GrpcService: &core.GrpcService{
+			TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
+				EnvoyGrpc: &core.GrpcService_EnvoyGrpc{
+					ClusterName: constants.PolicyEngineClusterName,
+				},
+			},
+			Timeout: durationpb.New(time.Duration(policyEngine.TimeoutMs) * time.Millisecond),
+		},
+		FailureModeAllow:  policyEngine.FailureModeAllow,
+		RouteCacheAction:  routeCacheAction,
+		AllowModeOverride: policyEngine.AllowModeOverride,
+		RequestAttributes: []string{constants.ExtProcRequestAttributeRouteName},
+		ProcessingMode: &extproc.ProcessingMode{
+			RequestHeaderMode: requestHeaderMode,
+		},
+		MessageTimeout: durationpb.New(time.Duration(policyEngine.MessageTimeoutMs) * time.Millisecond),
+		MutationRules: &mutationrules.HeaderMutationRules{
+			AllowAllRouting: wrapperspb.Bool(true),
+		},
+	}
+
+	// Marshal to Any
+	extProcAny, err := anypb.New(extProcConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal ext_proc config: %w", err)
+	}
+
+	return &hcm.HttpFilter{
+		Name: constants.ExtProcFilterName,
+		ConfigType: &hcm.HttpFilter_TypedConfig{
+			TypedConfig: extProcAny,
+		},
+	}, nil
 }

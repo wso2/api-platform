@@ -33,7 +33,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build \
     ./cmd/main.go
 
 # Runtime stage
-FROM alpine:latest
+FROM alpine:3.22.2
 
 RUN apk add --no-cache ca-certificates sqlite
 RUN addgroup -g 1001 -S appgroup && \

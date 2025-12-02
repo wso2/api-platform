@@ -368,7 +368,7 @@ dynamic_resources:
 **Decision**: **Structured JSON error response with field-level details**
 
 **Rationale**:
-- **Developer Experience**: Precise field paths (e.g., `data.operations[0].path`) allow developers to quickly locate and fix errors
+- **Developer Experience**: Precise field paths (e.g., `spec.operations[0].path`) allow developers to quickly locate and fix errors
 - **Automation-Friendly**: Structured format enables automated error handling in CI/CD pipelines
 - **Multiple Errors**: Single validation pass can return all errors, not just the first failure
 - **Consistency**: Matches modern API best practices (RFC 7807 Problem Details, JSON:API error format)
@@ -381,15 +381,15 @@ dynamic_resources:
   "message": "Configuration validation failed",
   "errors": [
     {
-      "field": "data.context",
+      "field": "spec.context",
       "message": "Context must start with / and cannot end with /"
     },
     {
-      "field": "data.operations[0].method",
+      "field": "spec.operations[0].method",
       "message": "Invalid HTTP method: INVALID (must be GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS)"
     },
     {
-      "field": "data.upstream[0].url",
+      "field": "spec.upstreams[0].url",
       "message": "Invalid URL format: missing protocol scheme"
     }
   ]

@@ -92,7 +92,63 @@ func (s *SQLiteStorage) initSchema() error {
 
 		s.logger.Info("Database schema initialized successfully")
 	} else {
-		s.logger.Info("Database schema already exists", zap.Int("version", version))
+		// Migrations
+		if version == 1 {
+			// Add policy_definitions table (idempotent due to IF NOT EXISTS in embedded schema)
+			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS policy_definitions (
+				name TEXT NOT NULL,
+				version TEXT NOT NULL,
+				provider TEXT NOT NULL,
+				description TEXT,
+				flows_request_require_header INTEGER,
+				flows_request_require_body INTEGER,
+				flows_response_require_header INTEGER,
+				flows_response_require_body INTEGER,
+				parameters_schema TEXT,
+				PRIMARY KEY (name, version)
+			);`); err != nil {
+				return fmt.Errorf("failed to migrate schema to version 2: %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_policy_provider ON policy_definitions(provider);`); err != nil {
+				return fmt.Errorf("failed to create policy_definitions index: %w", err)
+			}
+			if _, err := s.db.Exec("PRAGMA user_version = 2"); err != nil {
+				return fmt.Errorf("failed to set schema version to 2: %w", err)
+			}
+			s.logger.Info("Schema migrated to version 2 (policy_definitions)")
+			version = 2
+		}
+
+		if version == 2 {
+			// Add certificates table
+			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS certificates (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL UNIQUE,
+				certificate BLOB NOT NULL,
+				subject TEXT NOT NULL,
+				issuer TEXT NOT NULL,
+				not_before TIMESTAMP NOT NULL,
+				not_after TIMESTAMP NOT NULL,
+				cert_count INTEGER NOT NULL DEFAULT 1,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);`); err != nil {
+				return fmt.Errorf("failed to migrate schema to version 3 (certificates): %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_cert_name ON certificates(name);`); err != nil {
+				return fmt.Errorf("failed to create certificates name index: %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_cert_expiry ON certificates(not_after);`); err != nil {
+				return fmt.Errorf("failed to create certificates expiry index: %w", err)
+			}
+			if _, err := s.db.Exec("PRAGMA user_version = 3"); err != nil {
+				return fmt.Errorf("failed to set schema version to 3: %w", err)
+			}
+			s.logger.Info("Schema migrated to version 3 (certificates table)")
+			version = 3
+		}
+
+		s.logger.Info("Database schema up to date", zap.Int("version", version))
 	}
 
 	return nil
@@ -109,7 +165,7 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredAPIConfig) error {
 	// Extract fields for indexed columns
 	name := cfg.GetAPIName()
 	version := cfg.GetAPIVersion()
-	context := cfg.Configuration.Data.Context
+	context := cfg.Configuration.Spec.Context
 	kind := string(cfg.Configuration.Kind)
 
 	query := `
@@ -169,7 +225,7 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredAPIConfig) error {
 	// Extract fields for indexed columns
 	name := cfg.GetAPIName()
 	version := cfg.GetAPIVersion()
-	context := cfg.Configuration.Data.Context
+	context := cfg.Configuration.Spec.Context
 	kind := string(cfg.Configuration.Kind)
 
 	query := `
@@ -378,6 +434,171 @@ func (s *SQLiteStorage) GetAllConfigs() ([]*models.StoredAPIConfig, error) {
 	return configs, nil
 }
 
+// SaveCertificate persists a certificate to the database
+func (s *SQLiteStorage) SaveCertificate(cert *models.StoredCertificate) error {
+	query := `
+		INSERT INTO certificates (
+			id, name, certificate, subject, issuer,
+			not_before, not_after, cert_count, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	_, err := s.db.Exec(query,
+		cert.ID,
+		cert.Name,
+		cert.Certificate,
+		cert.Subject,
+		cert.Issuer,
+		cert.NotBefore,
+		cert.NotAfter,
+		cert.CertCount,
+		cert.CreatedAt,
+		cert.UpdatedAt,
+	)
+
+	if err != nil {
+		// Check for unique constraint violation
+		if isCertificateUniqueConstraintError(err) {
+			return fmt.Errorf("%w: certificate with name '%s' already exists", ErrConflict, cert.Name)
+		}
+		return fmt.Errorf("failed to save certificate: %w", err)
+	}
+
+	return nil
+}
+
+// GetCertificate retrieves a certificate by ID
+func (s *SQLiteStorage) GetCertificate(id string) (*models.StoredCertificate, error) {
+	query := `
+		SELECT id, name, certificate, subject, issuer,
+		       not_before, not_after, cert_count, created_at, updated_at
+		FROM certificates
+		WHERE id = ?
+	`
+
+	var cert models.StoredCertificate
+	err := s.db.QueryRow(query, id).Scan(
+		&cert.ID,
+		&cert.Name,
+		&cert.Certificate,
+		&cert.Subject,
+		&cert.Issuer,
+		&cert.NotBefore,
+		&cert.NotAfter,
+		&cert.CertCount,
+		&cert.CreatedAt,
+		&cert.UpdatedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: id=%s", ErrNotFound, id)
+		}
+		return nil, fmt.Errorf("failed to get certificate: %w", err)
+	}
+
+	return &cert, nil
+}
+
+// GetCertificateByName retrieves a certificate by name
+func (s *SQLiteStorage) GetCertificateByName(name string) (*models.StoredCertificate, error) {
+	query := `
+		SELECT id, name, certificate, subject, issuer,
+		       not_before, not_after, cert_count, created_at, updated_at
+		FROM certificates
+		WHERE name = ?
+	`
+
+	var cert models.StoredCertificate
+	err := s.db.QueryRow(query, name).Scan(
+		&cert.ID,
+		&cert.Name,
+		&cert.Certificate,
+		&cert.Subject,
+		&cert.Issuer,
+		&cert.NotBefore,
+		&cert.NotAfter,
+		&cert.CertCount,
+		&cert.CreatedAt,
+		&cert.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil // Not found
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get certificate by name: %w", err)
+	}
+
+	return &cert, nil
+}
+
+// ListCertificates retrieves all certificates
+func (s *SQLiteStorage) ListCertificates() ([]*models.StoredCertificate, error) {
+	query := `
+		SELECT id, name, certificate, subject, issuer,
+		       not_before, not_after, cert_count, created_at, updated_at
+		FROM certificates
+		ORDER BY created_at DESC
+	`
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list certificates: %w", err)
+	}
+	defer rows.Close()
+
+	var certs []*models.StoredCertificate
+	for rows.Next() {
+		var cert models.StoredCertificate
+		if err := rows.Scan(
+			&cert.ID,
+			&cert.Name,
+			&cert.Certificate,
+			&cert.Subject,
+			&cert.Issuer,
+			&cert.NotBefore,
+			&cert.NotAfter,
+			&cert.CertCount,
+			&cert.CreatedAt,
+			&cert.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan certificate: %w", err)
+		}
+		certs = append(certs, &cert)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating certificate rows: %w", err)
+	}
+
+	return certs, nil
+}
+
+// DeleteCertificate deletes a certificate by ID
+func (s *SQLiteStorage) DeleteCertificate(id string) error {
+	query := `DELETE FROM certificates WHERE id = ?`
+
+	result, err := s.db.Exec(query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete certificate: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		s.logger.Debug("Certificate not found for deletion", zap.String("id", id))
+		return ErrNotFound
+	}
+
+	s.logger.Info("Certificate deleted", zap.String("id", id))
+
+	return nil
+}
+
 // Close closes the database connection
 func (s *SQLiteStorage) Close() error {
 	s.logger.Info("Closing SQLite storage")
@@ -411,4 +632,12 @@ func isUniqueConstraintError(err error) bool {
 	// Error message contains "UNIQUE constraint failed"
 	return err != nil && (err.Error() == "UNIQUE constraint failed: api_configs.name, api_configs.version" ||
 		err.Error() == "UNIQUE constraint failed: api_configs.id")
+}
+
+// isCertificateUniqueConstraintError checks if the error is a UNIQUE constraint violation for certificates
+func isCertificateUniqueConstraintError(err error) bool {
+	// SQLite error code 19 is CONSTRAINT error
+	// Error message contains "UNIQUE constraint failed"
+	return err != nil && (err.Error() == "UNIQUE constraint failed: certificates.name" ||
+		err.Error() == "UNIQUE constraint failed: certificates.id")
 }

@@ -1,0 +1,18 @@
+FROM {{ .BaseImage }}
+
+# Copy policy definitions
+RUN rm -rf /app/policies
+COPY policies /app/policies
+
+# Set environment variable for policy directory
+ENV GATEWAY_POLICIES_DEFINITIONS__PATH=/app/policies
+
+# Metadata labels
+LABEL org.opencontainers.image.title="Gateway Controller with Custom Policies"
+LABEL org.opencontainers.image.description="Gateway Controller extended with custom policy definitions"
+LABEL build.timestamp="{{ .BuildTimestamp }}"
+LABEL build.builder-version="{{ .BuilderVersion }}"
+LABEL build.base-image="{{ .BaseImage }}"
+{{- range $key, $value := .Labels }}
+LABEL {{ $key }}="{{ $value }}"
+{{- end }}

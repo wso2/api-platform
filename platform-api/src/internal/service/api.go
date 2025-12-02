@@ -44,6 +44,7 @@ type APIService struct {
 	gatewayRepo          repository.GatewayRepository
 	devPortalRepo        repository.DevPortalRepository
 	publicationRepo      repository.APIPublicationRepository
+	backendServiceRepo   repository.BackendServiceRepository
 	upstreamService      *UpstreamService
 	gatewayEventsService *GatewayEventsService
 	devPortalService     *DevPortalService
@@ -53,14 +54,16 @@ type APIService struct {
 // NewAPIService creates a new API service
 func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.ProjectRepository,
 	gatewayRepo repository.GatewayRepository, devPortalRepo repository.DevPortalRepository,
-	publicationRepo repository.APIPublicationRepository, upstreamSvc *UpstreamService,
-	gatewayEventsService *GatewayEventsService, devPortalService *DevPortalService, apiUtil *utils.APIUtil) *APIService {
+	publicationRepo repository.APIPublicationRepository, backendServiceRepo repository.BackendServiceRepository,
+	upstreamSvc *UpstreamService, gatewayEventsService *GatewayEventsService, devPortalService *DevPortalService,
+	apiUtil *utils.APIUtil) *APIService {
 	return &APIService{
 		apiRepo:              apiRepo,
 		projectRepo:          projectRepo,
 		gatewayRepo:          gatewayRepo,
 		devPortalRepo:        devPortalRepo,
 		publicationRepo:      publicationRepo,
+		backendServiceRepo:   backendServiceRepo,
 		upstreamService:      upstreamSvc,
 		gatewayEventsService: gatewayEventsService,
 		devPortalService:     devPortalService,
@@ -461,7 +464,7 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 	currentTime := time.Now().Format(time.RFC3339)
 
 	for _, deploymentReq := range deploymentRequests {
-		// Validate deployment request (gateway existence and organization)
+		// Validate deployment request
 		if err := s.validateDeploymentRequest(&deploymentReq, apiId, orgId); err != nil {
 			return nil, constants.ErrInvalidAPIDeployment
 		}
@@ -689,6 +692,15 @@ func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, a
 	}
 	if gateway.OrganizationID != orgId {
 		return fmt.Errorf("failed to get gateway: %w", err)
+	}
+
+	// Validate that the API has at least one backend service attached
+	backendServices, err := s.backendServiceRepo.GetBackendServicesByAPIID(apiId)
+	if err != nil {
+		return fmt.Errorf("failed to get backend services for API: %w", err)
+	}
+	if len(backendServices) == 0 {
+		return errors.New("API must have at least one backend service attached before deployment")
 	}
 
 	return nil
@@ -983,7 +995,7 @@ func (s *APIService) ImportAPIProject(req *dto.ImportAPIProjectRequest, orgId st
 	}
 
 	// 6. Create API with details from WSO2 artifact, overwritten by request details
-	apiData := s.mergeAPIData(&artifactData.Data, &req.API)
+	apiData := s.mergeAPIData(&artifactData.Spec, &req.API)
 
 	// 7. Create API using the existing CreateAPI flow
 	createReq := &CreateAPIRequest{
@@ -1374,4 +1386,77 @@ func (s *APIService) ValidateOpenAPIDefinition(req *dto.ValidateOpenAPIRequest) 
 	response.API = api
 
 	return response, nil
+}
+
+// ImportFromOpenAPI imports an API from an OpenAPI definition
+func (s *APIService) ImportFromOpenAPI(req *dto.ImportOpenAPIRequest, orgId string) (*dto.API, error) {
+	var content []byte
+	var err error
+	var errorList []string
+
+	// If URL is provided, fetch content from URL
+	if req.URL != "" {
+		content, err = s.apiUtil.FetchOpenAPIFromURL(req.URL)
+		if err != nil {
+			content = make([]byte, 0)
+			errorList = append(errorList, fmt.Sprintf("failed to fetch OpenAPI from URL: %s", err.Error()))
+		}
+	}
+
+	// If definition file is provided, read from file
+	if req.Definition != nil {
+		file, err := req.Definition.Open()
+		if err != nil {
+			errorList = append(errorList, fmt.Sprintf("failed to open OpenAPI definition file: %s", err.Error()))
+			return nil, fmt.Errorf(strings.Join(errorList, "; "))
+		}
+		defer file.Close()
+
+		content, err = io.ReadAll(file)
+		if err != nil {
+			errorList = append(errorList, fmt.Sprintf("failed to read OpenAPI definition file: %s", err.Error()))
+			return nil, fmt.Errorf(strings.Join(errorList, "; "))
+		}
+	}
+
+	// If neither URL nor file is provided
+	if len(content) == 0 {
+		errorList = append(errorList, "either URL or definition file must be provided")
+		return nil, fmt.Errorf(strings.Join(errorList, "; "))
+	}
+
+	// Validate and parse the OpenAPI definition
+	apiDetails, err := s.apiUtil.ValidateAndParseOpenAPI(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate and parse OpenAPI definition: %w", err)
+	}
+
+	// Merge provided API details with extracted details from OpenAPI
+	mergedAPI := s.apiUtil.MergeAPIDetails(&req.API, apiDetails)
+	if mergedAPI == nil {
+		return nil, errors.New("failed to merge API details")
+	}
+
+	// Create API using existing CreateAPI logic
+	createReq := &CreateAPIRequest{
+		Name:            mergedAPI.Name,
+		DisplayName:     mergedAPI.DisplayName,
+		Description:     mergedAPI.Description,
+		Context:         mergedAPI.Context,
+		Version:         mergedAPI.Version,
+		Provider:        mergedAPI.Provider,
+		ProjectID:       mergedAPI.ProjectID,
+		LifeCycleStatus: mergedAPI.LifeCycleStatus,
+		Type:            mergedAPI.Type,
+		Transport:       mergedAPI.Transport,
+		MTLS:            mergedAPI.MTLS,
+		Security:        mergedAPI.Security,
+		CORS:            mergedAPI.CORS,
+		BackendServices: mergedAPI.BackendServices,
+		APIRateLimiting: mergedAPI.APIRateLimiting,
+		Operations:      mergedAPI.Operations,
+	}
+
+	// Create the API
+	return s.CreateAPI(createReq, orgId)
 }

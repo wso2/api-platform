@@ -1,0 +1,83 @@
+# Policy chain configuration
+# This file defines which policies execute for each route
+
+- route_key: my_upstream_service_route
+  policies:
+    - name: ModifyHeaders
+      version: v1.0.0
+      enabled: true
+      parameters:
+        requestHeaders:
+          - action: SET
+            name: x-request-id
+            value: req-12345
+          - action: DELETE
+            name: x-internal-token
+        responseHeaders:
+          - action: SET
+            name: x-frame-options
+            value: DENY
+          - action: SET
+            name: x-content-type-options
+            value: nosniff
+          - action: DELETE
+            name: server
+    # - name: Respond
+    #   version: v1.0.0
+    #   enabled: true
+    #   parameters:
+    #     statusCode: 200
+    #     body: '{"message": "This is a mock response", "status": "success"}'
+    #     headers:
+    #       - name: content-type
+    #         value: application/json
+    #       - name: x-mock-response
+    #         value: "true"
+    - name: UppercaseBody
+      version: v1.0.0
+      enabled: true
+    - name: BasicAuth
+      version: v1.0.0
+      enabled: true
+      parameters:
+        username: admin
+        password: secret123
+        allowUnauthenticated: true
+        realm: "Admin API"
+    - name: ModifyHeaders
+      version: v1.0.0
+      enabled: true
+      parameters:
+        requestHeaders:
+          - action: DELETE
+            name: authorization  # Remove auth header after validation
+    - name: ModifyHeaders
+      version: v1.0.0
+      enabled: true
+      executionCondition: request.Metadata['auth.success'] == false
+      parameters:
+        requestHeaders:
+          - action: SET
+            name: auth-failed
+            value: "true"
+    - name: ModifyHeaders
+      version: v1.0.0
+      enabled: true
+      executionCondition: request.Metadata['auth.success'] == true
+      parameters:
+        requestHeaders:
+          - action: SET
+            name: auth-failed
+            value: "false"
+        responseHeaders:
+          - action: SET
+            name: auth-success
+            value: "true"
+    - name: CountLetters
+      version: v1.0.0
+      enabled: true
+      executionCondition: '"count" in request.Headers'
+      parameters:
+        letters: ["error", "success", "warning", "info", "name", "path", "host"]
+        caseSensitive: false
+        outputFormat: json

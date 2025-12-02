@@ -16,7 +16,7 @@ The Gateway-Controller accepts, validates, and persists API configurations in YA
 - Syntax validation (well-formed YAML/JSON)
 - Schema validation (required fields present)
 - Semantic validation (valid URLs, HTTP methods, paths)
-- Return structured errors with field paths (e.g., `data.operations[0].path`)
+- Return structured errors with field paths (e.g., `spec.operations[0].path`)
 
 ### Identity Management
 - Composite key format: `{name}/{version}` (e.g., "PetStore/v1")
@@ -72,11 +72,11 @@ curl -X POST http://localhost:9090/apis \
   "message": "Configuration validation failed",
   "errors": [
     {
-      "field": "data.context",
+      "field": "spec.context",
       "message": "Context must start with / and cannot end with /"
     },
     {
-      "field": "data.operations[0].method",
+      "field": "spec.operations[0].method",
       "message": "Invalid HTTP method: INVALID"
     }
   ]

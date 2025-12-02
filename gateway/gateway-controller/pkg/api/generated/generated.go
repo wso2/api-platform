@@ -44,6 +44,19 @@ const (
 	APIListItemStatusPending  APIListItemStatus = "pending"
 )
 
+// Defines values for CertificateResponseStatus.
+const (
+	Error   CertificateResponseStatus = "error"
+	Success CertificateResponseStatus = "success"
+)
+
+// Defines values for ConfigDumpResponseApisMetadataStatus.
+const (
+	Deployed ConfigDumpResponseApisMetadataStatus = "deployed"
+	Failed   ConfigDumpResponseApisMetadataStatus = "failed"
+	Pending  ConfigDumpResponseApisMetadataStatus = "pending"
+)
+
 // Defines values for OperationMethod.
 const (
 	DELETE  OperationMethod = "DELETE"
@@ -66,8 +79,11 @@ type APIConfigData struct {
 	// Operations List of HTTP operations/routes
 	Operations []Operation `json:"operations"`
 
-	// Upstream List of backend service URLs
-	Upstream []Upstream `json:"upstream"`
+	// Policies List of API-level policies applied to all operations unless overridden
+	Policies *[]Policy `json:"policies,omitempty"`
+
+	// Upstreams List of backend service URLs
+	Upstreams []Upstream `json:"upstreams"`
 
 	// Version Semantic version of the API
 	Version string `json:"version"`
@@ -75,10 +91,9 @@ type APIConfigData struct {
 
 // APIConfiguration defines model for APIConfiguration.
 type APIConfiguration struct {
-	Data APIConfigData `json:"data"`
-
 	// Kind API type
 	Kind APIConfigurationKind `json:"kind"`
+	Spec APIConfigData        `json:"spec"`
 
 	// Version API specification version
 	Version APIConfigurationVersion `json:"version"`
@@ -140,6 +155,98 @@ type APIUpdateResponse struct {
 	UpdatedAt *time.Time          `json:"updated_at,omitempty"`
 }
 
+// CertificateListResponse defines model for CertificateListResponse.
+type CertificateListResponse struct {
+	Certificates *[]CertificateResponse `json:"certificates,omitempty"`
+	Status       *string                `json:"status,omitempty"`
+
+	// TotalBytes Total bytes of all certificate files
+	TotalBytes *int `json:"totalBytes,omitempty"`
+
+	// TotalCount Total number of certificate files
+	TotalCount *int `json:"totalCount,omitempty"`
+}
+
+// CertificateResponse defines model for CertificateResponse.
+type CertificateResponse struct {
+	// Count Number of certificates in the file
+	Count *int `json:"count,omitempty"`
+
+	// Id Unique identifier (UUID) for the certificate
+	Id *string `json:"id,omitempty"`
+
+	// Issuer Certificate issuer DN (for first cert if bundle)
+	Issuer *string `json:"issuer,omitempty"`
+
+	// Message Success or informational message
+	Message *string `json:"message,omitempty"`
+
+	// Name Name of the certificate
+	Name *string `json:"name,omitempty"`
+
+	// NotAfter Certificate expiration date (for first cert if bundle)
+	NotAfter *time.Time                 `json:"notAfter,omitempty"`
+	Status   *CertificateResponseStatus `json:"status,omitempty"`
+
+	// Subject Certificate subject DN (for first cert if bundle)
+	Subject *string `json:"subject,omitempty"`
+}
+
+// CertificateResponseStatus defines model for CertificateResponse.Status.
+type CertificateResponseStatus string
+
+// CertificateUploadRequest defines model for CertificateUploadRequest.
+type CertificateUploadRequest struct {
+	// Certificate PEM-encoded X.509 certificate(s). Can contain multiple certificates.
+	Certificate string `json:"certificate"`
+
+	// Name Unique name for the certificate. Must be unique across all certificates.
+	Name string `json:"name"`
+}
+
+// ConfigDumpResponse defines model for ConfigDumpResponse.
+type ConfigDumpResponse struct {
+	// Apis All deployed API configurations
+	Apis *[]struct {
+		Configuration *APIConfiguration   `json:"configuration,omitempty"`
+		Id            *openapi_types.UUID `json:"id,omitempty"`
+		Metadata      *struct {
+			CreatedAt  *time.Time                            `json:"created_at,omitempty"`
+			DeployedAt *time.Time                            `json:"deployed_at,omitempty"`
+			Status     *ConfigDumpResponseApisMetadataStatus `json:"status,omitempty"`
+			UpdatedAt  *time.Time                            `json:"updated_at,omitempty"`
+		} `json:"metadata,omitempty"`
+	} `json:"apis,omitempty"`
+
+	// Certificates All registered certificates
+	Certificates *[]CertificateResponse `json:"certificates,omitempty"`
+
+	// Policies All loaded policy definitions
+	Policies *[]PolicyDefinition `json:"policies,omitempty"`
+
+	// Statistics Summary statistics about the current configuration
+	Statistics *struct {
+		// TotalApis Total number of API configurations
+		TotalApis *int `json:"totalApis,omitempty"`
+
+		// TotalCertificateBytes Total bytes of all certificates
+		TotalCertificateBytes *int `json:"totalCertificateBytes,omitempty"`
+
+		// TotalCertificates Total number of certificates
+		TotalCertificates *int `json:"totalCertificates,omitempty"`
+
+		// TotalPolicies Total number of policy definitions
+		TotalPolicies *int `json:"totalPolicies,omitempty"`
+	} `json:"statistics,omitempty"`
+	Status *string `json:"status,omitempty"`
+
+	// Timestamp Timestamp when the config dump was generated
+	Timestamp *time.Time `json:"timestamp,omitempty"`
+}
+
+// ConfigDumpResponseApisMetadataStatus defines model for ConfigDumpResponse.Apis.Metadata.Status.
+type ConfigDumpResponseApisMetadataStatus string
+
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
 	// Errors Detailed validation errors
@@ -157,10 +264,50 @@ type Operation struct {
 
 	// Path Route path with optional {param} placeholders
 	Path string `json:"path"`
+
+	// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
+	Policies *[]Policy `json:"policies,omitempty"`
 }
 
 // OperationMethod HTTP method
 type OperationMethod string
+
+// Policy defines model for Policy.
+type Policy struct {
+	// ExecutionCondition Expression controlling conditional execution of the policy
+	ExecutionCondition *string `json:"executionCondition,omitempty"`
+
+	// Name Name of the policy
+	Name string `json:"name"`
+
+	// Params Arbitrary parameters for the policy (free-form key/value structure)
+	Params *map[string]interface{} `json:"params,omitempty"`
+
+	// Version Semantic version of the policy
+	Version string `json:"version"`
+}
+
+// PolicyDefinition defines model for PolicyDefinition.
+type PolicyDefinition struct {
+	// Description Human readable description of the policy's purpose
+	Description *string `json:"description,omitempty"`
+
+	// Name Unique policy name
+	Name string `json:"name"`
+
+	// ParametersSchema JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.
+	ParametersSchema *map[string]interface{} `json:"parametersSchema,omitempty"`
+
+	// Version Semantic version of the policy definition
+	Version string `json:"version"`
+}
+
+// PolicyListResponse defines model for PolicyListResponse.
+type PolicyListResponse struct {
+	Count    *int                `json:"count,omitempty"`
+	Policies *[]PolicyDefinition `json:"policies,omitempty"`
+	Status   *string             `json:"status,omitempty"`
+}
 
 // Upstream defines model for Upstream.
 type Upstream struct {
@@ -183,6 +330,9 @@ type CreateAPIJSONRequestBody = APIConfiguration
 // UpdateAPIJSONRequestBody defines body for UpdateAPI for application/json ContentType.
 type UpdateAPIJSONRequestBody = APIConfiguration
 
+// UploadCertificateJSONRequestBody defines body for UploadCertificate for application/json ContentType.
+type UploadCertificateJSONRequestBody = CertificateUploadRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// List all API configurations
@@ -200,9 +350,27 @@ type ServerInterface interface {
 	// Update an existing API configuration
 	// (PUT /apis/{name}/{version})
 	UpdateAPI(c *gin.Context, name string, version string)
+	// List all custom certificates
+	// (GET /certificates)
+	ListCertificates(c *gin.Context)
+	// Upload a new certificate
+	// (POST /certificates)
+	UploadCertificate(c *gin.Context)
+	// Manually reload certificates
+	// (POST /certificates/reload)
+	ReloadCertificates(c *gin.Context)
+	// Delete a certificate
+	// (DELETE /certificates/{id})
+	DeleteCertificate(c *gin.Context, id string)
+	// Dump current configuration state
+	// (GET /config_dump)
+	GetConfigDump(c *gin.Context)
 	// Health check endpoint
 	// (GET /health)
 	HealthCheck(c *gin.Context)
+	// List all registered policy definitions
+	// (GET /policies)
+	ListPolicies(c *gin.Context)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -339,6 +507,82 @@ func (siw *ServerInterfaceWrapper) UpdateAPI(c *gin.Context) {
 	siw.Handler.UpdateAPI(c, name, version)
 }
 
+// ListCertificates operation middleware
+func (siw *ServerInterfaceWrapper) ListCertificates(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListCertificates(c)
+}
+
+// UploadCertificate operation middleware
+func (siw *ServerInterfaceWrapper) UploadCertificate(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UploadCertificate(c)
+}
+
+// ReloadCertificates operation middleware
+func (siw *ServerInterfaceWrapper) ReloadCertificates(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ReloadCertificates(c)
+}
+
+// DeleteCertificate operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCertificate(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteCertificate(c, id)
+}
+
+// GetConfigDump operation middleware
+func (siw *ServerInterfaceWrapper) GetConfigDump(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetConfigDump(c)
+}
+
 // HealthCheck operation middleware
 func (siw *ServerInterfaceWrapper) HealthCheck(c *gin.Context) {
 
@@ -350,6 +594,19 @@ func (siw *ServerInterfaceWrapper) HealthCheck(c *gin.Context) {
 	}
 
 	siw.Handler.HealthCheck(c)
+}
+
+// ListPolicies operation middleware
+func (siw *ServerInterfaceWrapper) ListPolicies(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListPolicies(c)
 }
 
 // GinServerOptions provides options for the Gin server.
@@ -384,58 +641,98 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/apis/:name/:version", wrapper.DeleteAPI)
 	router.GET(options.BaseURL+"/apis/:name/:version", wrapper.GetAPIByNameVersion)
 	router.PUT(options.BaseURL+"/apis/:name/:version", wrapper.UpdateAPI)
+	router.GET(options.BaseURL+"/certificates", wrapper.ListCertificates)
+	router.POST(options.BaseURL+"/certificates", wrapper.UploadCertificate)
+	router.POST(options.BaseURL+"/certificates/reload", wrapper.ReloadCertificates)
+	router.DELETE(options.BaseURL+"/certificates/:id", wrapper.DeleteCertificate)
+	router.GET(options.BaseURL+"/config_dump", wrapper.GetConfigDump)
 	router.GET(options.BaseURL+"/health", wrapper.HealthCheck)
+	router.GET(options.BaseURL+"/policies", wrapper.ListPolicies)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"tu9K/Ney7UJr3r28Wv47AAD//8s9dDzgMAAA",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

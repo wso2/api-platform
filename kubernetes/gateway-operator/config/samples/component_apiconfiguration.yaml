@@ -1,0 +1,92 @@
+---
+apiVersion: api.api-platform.wso2.com/v1alpha1
+kind: ComponentType
+metadata:
+  name: apiproxy
+  namespace: default
+spec:
+  workloadType: deployment
+  schema:
+    parameters:
+      replicas: "integer | default=1"
+      imagePullPolicy: "string | default=IfNotPresent"
+      port: "integer | default=80"
+      apiName: "string | default=Sample API"
+      apiVersion: "string | default=v1.0"
+      apiContext: "string | default=/sample"
+      gatewayRefName: "string | default=cluster-gateway"
+      gatewayRefNamespace: "string | default=default"
+      upstreamURL: "string | default=http://sample-backend:8080"
+    envOverrides:
+      upstreamURL: "string | default=http://sample-backend:8080"
+  resources:
+    - id: deployment
+      template:
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: ${metadata.name}
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          replicas: ${parameters.replicas}
+          selector:
+            matchLabels: ${metadata.podSelectors}
+          template:
+            metadata:
+              labels: ${metadata.podSelectors}
+            spec:
+              containers:
+                - name: app
+                  image: nginx:latest 
+    - id: api-configuration
+      template:
+        apiVersion: api.api-platform.wso2.com/v1
+        kind: APIConfiguration
+        metadata:
+          name: ${metadata.name}
+          namespace: ${metadata.namespace}
+          labels: ${metadata.labels}
+        spec:
+          apiConfiguration:
+            version: api-platform.wso2.com/v1
+            kind: http/rest
+            data:
+              name: ${parameters.apiName}
+              version: ${parameters.apiVersion}
+              context: ${parameters.apiContext}
+              upstream:
+                - url: ${parameters.upstreamURL}
+              operations:
+                - method: GET
+                  path: /{country_code}/{city}
+                - method: POST
+                  path: /{country_code}/{city}
+---
+apiVersion: gateway-operator.dev/v1alpha1
+kind: Component
+metadata:
+  name: weather-api
+  namespace: default
+spec:
+  owner:
+    projectName: default
+  componentType: deployment/apiproxy
+  parameters:
+    apiName: Weather API
+    apiVersion: v1.0
+    apiContext: /weather
+    upstreamURL: http://weather-api-backend:9090/api/v2
+---
+apiVersion: gateway-operator.dev/v1alpha1
+kind: ComponentDeployment
+metadata:
+  name: weather-api-development
+  namespace: default
+spec:
+  owner:
+    projectName: default
+    componentName: weather-api
+  environment: development
+  overrides:
+    upstreamURL: http://weather-api-backend:9090/api/v2

@@ -1,6 +1,6 @@
 # API Gateway System
 
-A two-component API gateway system consisting of Gateway-Controller (xDS control plane) and Router (Envoy Proxy data plane).
+A complete API gateway system consisting of Gateway-Controller (xDS control plane), Router (Envoy Proxy data plane), Policy Engine (request/response processing), and Policy Builder (policy compilation tooling).
 
 ## Components
 
@@ -16,6 +16,16 @@ A two-component API gateway system consisting of Gateway-Controller (xDS control
 - **Port**: 8080 (HTTP traffic)
 - **Admin Port**: 9901 (Envoy admin interface)
 
+### Policy Engine
+- **Purpose**: External processor service that integrates with Envoy via ext_proc filter for flexible HTTP request/response processing through configurable policies
+- **Technology**: Go, gRPC, ext_proc, xDS, CEL (Common Expression Language)
+- **Port**: 9002 (Admin API)
+
+### Policy Builder
+- **Purpose**: Build-time tooling that discovers, validates, and compiles custom policy implementations into the Policy Engine binary
+- **Technology**: Go, Docker
+- **Distribution**: Docker image containing Policy Engine source code and build tooling
+
 ## Quick Start
 
 ### Using Docker Compose (Recommended)
@@ -24,7 +34,7 @@ A two-component API gateway system consisting of Gateway-Controller (xDS control
 # Start the complete stack
 docker compose up -d
 
-# Verify services are running
+# Verify gateway controller is running
 curl http://localhost:9090/health
 
 # Deploy an API configuration
@@ -33,7 +43,8 @@ curl -X POST http://localhost:9090/apis \
   --data-binary @examples/weather-api.yaml
 
 # Test routing through the gateway
-curl http://localhost:8080/weather/US/Seattle
+curl http://localhost:8080/weather/us/seattle
+curl https://localhost:8443/weather/us/seattle -k
 ```
 
 ### Stopping the Gateway
@@ -97,7 +108,7 @@ data:
   name: Weather API
   version: v1.0
   context: /weather
-  upstream:
+  upstreams:
     - url: https://api.weather.com/api/v2
   operations:
     - method: GET

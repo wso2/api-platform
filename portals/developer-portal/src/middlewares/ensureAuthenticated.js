@@ -34,6 +34,12 @@ const qs = require('qs');
 function enforceSecuirty(scope) {
     return async function (req, res, next) {
         try {
+            // Check if identity provider is disabled - allow anonymous access
+            if (config.identityProvider && config.identityProvider.enabled === false) {
+                logger.debug("Identity provider disabled - allowing anonymous access for API calls");
+                return next();
+            }
+
             const rules = util.validateRequestParameters();
             for (let validation of rules) {
                 await validation.run(req);
@@ -112,6 +118,12 @@ const ensurePermission = (currentPage, role, req) => {
 }
 
 const ensureAuthenticated = async (req, res, next) => {
+    // Check if identity provider is disabled - allow anonymous access
+    if (config.identityProvider && config.identityProvider.enabled === false) {
+        logger.debug("Identity provider disabled - allowing anonymous access");
+        return next();
+    }
+
     let adminRole = config.adminRole;
     let superAdminRole = config.superAdminRole;
     let subscriberRole = config.subscriberRole;

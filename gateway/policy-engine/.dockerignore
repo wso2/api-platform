@@ -1,0 +1,61 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation and specs
+specs/
+*.md
+!README.md
+
+# IDE and editor files
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment and secrets
+.env
+.env.*
+*.secret
+*.key
+*.crt
+secrets/
+
+# Logs
+*.log
+logs/
+
+# Test files and outputs
+tests/
+test-results/
+coverage.out
+coverage.html
+
+# Build outputs
+output/
+*.exe
+*.test
+*.out
+
+# Docker files (don't copy into images)
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# Temporary files
+*.tmp
+tmp/
+
+# Go vendor (we'll use go mod download)
+vendor/
+
+# Generated files (will be regenerated during build)
+src/plugin_registry.go
+src/build_info.go

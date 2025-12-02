@@ -140,7 +140,7 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 	if existingAPI == nil {
 		// Create backend services from upstream configurations
 		var backendServiceUUIDs []string
-		for _, upstream := range notification.Configuration.Data.Upstream {
+		for _, upstream := range notification.Configuration.Spec.Upstreams {
 			backendServiceUUID, err := s.upstreamService.CreateBackendServiceFromUpstream(upstream, orgID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create backend service from upstream: %w", err)
@@ -149,8 +149,8 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 		}
 
 		// Convert operations from notification to API operations
-		operations := make([]model.Operation, 0, len(notification.Configuration.Data.Operations))
-		for _, op := range notification.Configuration.Data.Operations {
+		operations := make([]model.Operation, 0, len(notification.Configuration.Spec.Operations))
+		for _, op := range notification.Configuration.Spec.Operations {
 			operation := model.Operation{
 				Name:        fmt.Sprintf("%s %s", op.Method, op.Path),
 				Description: fmt.Sprintf("Operation for %s %s", op.Method, op.Path),
@@ -166,10 +166,10 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiID, orgID, gat
 
 		newAPI := &model.API{
 			ID:               apiID,
-			Name:             notification.Configuration.Data.Name,
-			DisplayName:      notification.Configuration.Data.Name,
-			Context:          notification.Configuration.Data.Context,
-			Version:          notification.Configuration.Data.Version,
+			Name:             notification.Configuration.Spec.Name,
+			DisplayName:      notification.Configuration.Spec.Name,
+			Context:          notification.Configuration.Spec.Context,
+			Version:          notification.Configuration.Spec.Version,
 			ProjectID:        projectID,
 			OrganizationID:   orgID,
 			Provider:         "admin", // Default provider

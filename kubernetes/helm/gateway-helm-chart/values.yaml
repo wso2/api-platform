@@ -1,0 +1,365 @@
+# Default values for the Open Choreo Gateway chart.
+# This file is intended to be exhaustive and well documented; adjust per environment.
+
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+commonLabels: {}
+commonAnnotations: {}
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+## moved to each component's deployment block below
+
+# Component-level configuration
+
+gateway:
+  controller:
+    image:
+      repository: wso2/api-platform-gateway-controller
+      tag: v1.0.0-m4
+      pullPolicy: IfNotPresent
+    imagePullSecrets: []
+    service:
+      type: ClusterIP
+      annotations: {}
+      labels: {}
+      ports:
+        rest: 9090
+        xds: 18000
+        policy: 18001
+    controlPlane:
+      host: host.docker.internal
+      port: 8443
+      token:
+        value: ""
+        secretName: ""
+        key: token
+    # TLS certificate configuration for downstream (listener) HTTPS
+    tls:
+      # Enable TLS certificate management
+      enabled: true
+      # Certificate provisioning method: "cert-manager", "secret", or "none"
+      # - cert-manager: Use cert-manager to automatically provision certificates
+      # - secret: Use an existing Kubernetes secret containing tls.crt and tls.key
+      # - none: No TLS configuration (certificates must be provided manually)
+      certificateProvider: cert-manager
+      # cert-manager configuration (used when certificateProvider=cert-manager)
+      certManager:
+        # Create a Certificate resource
+        create: true
+        # Create a self-signed Issuer (only if issuerRef.name is selfsigned-issuer)
+        # Set to false if you want to create your own Issuer manually
+        createIssuer: true
+        # Issuer reference for cert-manager
+        issuerRef:
+          name: selfsigned-issuer
+          # Use "Issuer" for namespace-scoped issuer (recommended)
+          # Use "ClusterIssuer" for cluster-wide issuer
+          kind: Issuer
+          # group: cert-manager.io  # Optional, defaults to cert-manager.io
+        # Certificate common name
+        commonName: localhost
+        # DNS names for the certificate
+        dnsNames:
+          - localhost
+          - "*.localhost"
+        # Certificate duration (default: 2160h = 90 days)
+        duration: 2160h
+        # Certificate renewal time (default: 720h = 30 days before expiry)
+        renewBefore: 720h
+      # Secret configuration (used when certificateProvider=secret)
+      secret:
+        # Name of existing secret containing tls.crt and tls.key
+        name: gateway-tls
+        # Key names in the secret
+        certKey: tls.crt
+        keyKey: tls.key
+    # Upstream certificate configuration for backend TLS verification
+    upstreamCerts:
+      # Enable custom upstream certificates
+      enabled: false
+      # Existing secret containing custom CA certificates
+      # Secret should contain one or more keys with PEM-encoded certificates
+      secretName: ""
+      # Existing ConfigMap containing custom CA certificates
+      # ConfigMap should contain one or more keys with PEM-encoded certificates
+      configMapName: ""
+    logging:
+      level: info
+    storage:
+      type: sqlite
+      sqlitePath: ./data/gateway.db
+    persistence:
+      enabled: true
+      existingClaim: ""
+      accessModes:
+        - ReadWriteOnce
+      size: 100Mi
+      storageClass: ""
+    config:
+      server:
+        api_port: 9090
+        xds_port: 18000
+        shutdown_timeout: 15s
+      policyserver:
+        enabled: true
+        port: 18001
+        tls:
+          enabled: false
+          cert_file: ./certs/server.crt
+          key_file: ./certs/server.key
+      storage:
+        type: sqlite
+        sqlite:
+          path: ./data/gateway.db
+      router:
+        gateway_host: "*"
+        listener_port: 8080
+        https_enabled: true
+        https_port: 8443
+        downstream_tls:
+          cert_path: ./listener-certs/server.crt
+          key_path: ./listener-certs/server.key
+          minimum_protocol_version: TLS1_2
+          maximum_protocol_version: TLS1_3
+          ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
+        # policy engine settings used by the controller when it generates router configuration
+        policy_engine:
+          enabled: true
+          # host defaults to the chart-generated policy-engine service name if empty
+          host: ""
+          port: 9001
+          timeout_ms: 250
+          failure_mode_allow: false
+          route_cache_action: RETAIN
+          allow_mode_override: true
+          request_header_mode: SEND
+          message_timeout_ms: 250
+          tls:
+            enabled: false
+            cert_path: ""
+            key_path: ""
+            ca_path: ""
+            server_name: ""
+            skip_verify: false
+        envoy_upstream:
+          # TLS settings for upstreams (Envoy) used by router when connecting to upstreams
+          tls:
+            minimum_protocol_version: TLS1_2
+            maximum_protocol_version: TLS1_3
+            # Arc of cipher suites accepted for upstream TLS connections
+            ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA"
+            # trusted_cert_path and custom_certs_path match defaults from controller example
+            trusted_cert_path: /etc/ssl/certs/ca-certificates.crt
+            custom_certs_path: ./certificates
+            # verify_host_name and disable_ssl_verification follow the controller's validation rules
+            verify_host_name: true
+            disable_ssl_verification: false
+          timeouts:
+            route_timeout_in_seconds: 60
+            max_route_timeout_in_seconds: 60
+            route_idle_timeout_in_seconds: 300
+      logging:
+        level: info
+        format: json
+    # metadata for the generated ConfigMap (annotations / labels)
+    configMap:
+      annotations: {}
+      labels: {}
+    deployment:
+      enabled: true
+      replicaCount: 1
+      volumeMountPath: /app/data
+      extraEnv: []
+      env:
+        xdsServerAddress: ""
+      extraVolumeMounts: []
+      extraVolumes: []
+      labels: {}
+      annotations: {}
+      podAnnotations: {}
+      podLabels: {}
+      priorityClassName: ""
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: rest
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: rest
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 3
+      # Resource limits and requests
+      # Uncomment and adjust based on your workload
+      resources: {}
+        # limits:
+        #   cpu: 500m
+        #   memory: 512Mi
+        # requests:
+        #   cpu: 250m
+        #   memory: 256Mi
+      podSecurityContext: {}
+      securityContext: {}
+      nodeSelector: {}
+      tolerations: []
+      affinity: {}
+
+  router:
+    image:
+      repository: wso2/api-platform-gateway-router
+      tag: v1.0.0-m4
+      pullPolicy: IfNotPresent
+    imagePullSecrets: []
+    service:
+      type: ClusterIP
+      annotations: {}
+      labels: {}
+      ports:
+        http: 8080
+        https: 8443
+        admin: 9901
+    deployment:
+      enabled: true
+      replicaCount: 1
+      env:
+        xdsServerHost: ""
+        xdsServerPort: ""
+      extraEnv: []
+      labels: {}
+      annotations: {}
+      podAnnotations: {}
+      podLabels: {}
+      priorityClassName: ""
+      livenessProbe:
+        httpGet:
+          path: /server_info
+          port: admin
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+      readinessProbe:
+        httpGet:
+          path: /server_info
+          port: admin
+        initialDelaySeconds: 10
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 6
+      # Resource limits and requests
+      # Uncomment and adjust based on your workload
+      resources: {}
+        # limits:
+        #   cpu: 1000m
+        #   memory: 1Gi
+        # requests:
+        #   cpu: 500m
+        #   memory: 512Mi
+      podSecurityContext: {}
+      securityContext: {}
+      nodeSelector: {}
+      tolerations: []
+      affinity: {}
+
+  policyEngine:
+    image:
+      repository: wso2/api-platform-policy-engine
+      tag: v1.0.0-m4
+      pullPolicy: IfNotPresent
+    imagePullSecrets: []
+    service:
+      type: ClusterIP
+      annotations: {}
+      labels: {}
+      ports:
+        ext: 9001
+    # Policy-engine structured config (mounts to /configs/config.yaml if enabled)
+    config:
+      enabled: true
+      server:
+        extproc_port: 9001
+      admin:
+        enabled: true
+        port: 9002
+        allowed_ips:
+          - "127.0.0.1"
+          - "::1"
+      config_mode:
+        mode: xds
+      xds:
+        enabled: true
+        # defaults to controller service:port when empty
+        server_address: ""
+        node_id: policy-engine-1
+        cluster: policy-engine-cluster
+        connect_timeout: 10s
+        request_timeout: 5s
+        initial_reconnect_delay: 1s
+        max_reconnect_delay: 60s
+        tls:
+          enabled: false
+          cert_path: ""
+          key_path: ""
+          ca_path: ""
+      file_config:
+        path: ""
+      logging:
+        level: info
+        format: json
+    # metadata for the generated policy-engine ConfigMap
+    configMap:
+      annotations: {}
+      labels: {}
+    deployment:
+      enabled: true
+      replicaCount: 1
+      env:
+        xdsServerAddress: ""
+      extraEnv: []
+      labels: {}
+      annotations: {}
+      podAnnotations: {}
+      podLabels: {}
+      priorityClassName: ""
+      # Basic health checks — adjust if policy-engine exposes HTTP health endpoints
+      livenessProbe:
+        tcpSocket:
+          port: ext
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+      readinessProbe:
+        tcpSocket:
+          port: ext
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 3
+      # Resource limits and requests
+      # Uncomment and adjust based on your workload
+      resources: {}
+        # limits:
+        #   cpu: 500m
+        #   memory: 512Mi
+        # requests:
+        #   cpu: 250m
+        #   memory: 256Mi
+      podSecurityContext: {}
+      securityContext: {}
+      nodeSelector: {}
+      tolerations: []
+      affinity: {}
