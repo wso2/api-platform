@@ -80,15 +80,15 @@ var (
 	ErrDevPortalForbidden               = errors.New("devportal access forbidden")
 	ErrDevPortalConnectivityFailed      = errors.New("devportal connectivity check failed")
 	ErrDevPortalInvalidVisibility       = errors.New("devportal visibility must be 'public' or 'private'")
-	ErrDevPortalOrganizationConflict    = errors.New("organization conflict in DevPortal: an organization with the same organization ID exists but differs from the one being synced")
+	ErrDevPortalOrganizationConflict    = errors.New("organization conflict in devportal: an organization with the same organization ID exists but differs from the one being synced")
 
 	// API Publication errors
 	ErrAPIPublicationNotFound = errors.New("api publication not found")
 	ErrAPIAlreadyPublished    = errors.New("api is already published to devportal")
 
 	// API Publication Compensation errors
-	ErrAPIPublicationSaveFailed       = errors.New("api publication database save failed after devportal success")
-	ErrAPIPublicationSplitBrain       = errors.New("critical split-brain: api published to devportal but local operations failed and compensation failed")
+	ErrAPIPublicationSaveFailed = errors.New("api publication database save failed after devportal success")
+	ErrAPIPublicationSplitBrain = errors.New("critical split-brain: api published to devportal but local operations failed and compensation failed")
 
 	// API Project Import errors
 	ErrAPIProjectNotFound   = errors.New("api project not found")

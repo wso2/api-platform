@@ -32,6 +32,18 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+const (
+	// Form field names for multipart requests
+	FormFieldAPIMetadata      = "apiMetadata"
+	FormFieldAPIDefinition    = "apiDefinition"
+	FormFieldSchemaDefinition = "schemaDefinition"
+	FormFieldAPIContent       = "apiContent"
+
+	// MaxFilenameLength is the maximum allowed filename length
+	// This prevents potential filesystem issues and path traversal attacks
+	MaxFilenameLength = 255
+)
+
 // APIsService defines operations for API metadata and template management.
 type APIsService interface {
 	Publish(orgID string, meta dto.APIMetadataRequest, apiDefinition io.Reader, apiDefFilename string, schemaDefinition io.Reader, schemaFilename string) (*dto.APIResponse, error)
@@ -199,7 +211,7 @@ func (s *apisService) List(orgID string) ([]dto.APIResponse, error) {
 
 // Template operations
 func (s *apisService) UploadTemplate(orgID, apiID string, r io.Reader, filename string) error {
-	if filename == "" || strings.ContainsAny(filename, "\x00") || len(filename) > 255 {
+	if filename == "" || strings.ContainsAny(filename, "\x00") || len(filename) > MaxFilenameLength {
 		return fmt.Errorf("invalid filename")
 	}
 	if r == nil {
@@ -235,7 +247,7 @@ func (s *apisService) UploadTemplate(orgID, apiID string, r io.Reader, filename 
 }
 
 func (s *apisService) UpdateTemplate(orgID, apiID string, r io.Reader, filename string) error {
-	if filename == "" || strings.ContainsAny(filename, "\x00") || len(filename) > 255 {
+	if filename == "" || strings.ContainsAny(filename, "\x00") || len(filename) > MaxFilenameLength {
 		return fmt.Errorf("invalid filename")
 	}
 	if r == nil {
@@ -334,7 +346,7 @@ func createAPIMultipart(meta dto.APIMetadataRequest, apiDef io.Reader, apiDefNam
 	}
 
 	// Create apiMetadata field with application/json content type
-	metadataField, err := mw.CreateFormField("apiMetadata")
+	metadataField, err := mw.CreateFormField(FormFieldAPIMetadata)
 	if err != nil {
 		return nil, "", ErrFormFieldCreationFailed
 	}
@@ -345,10 +357,10 @@ func createAPIMultipart(meta dto.APIMetadataRequest, apiDef io.Reader, apiDefNam
 	// Add apiDefinition file field
 	if apiDef != nil {
 		fname := filepath.Base(apiDefName)
-		if fname == "" || strings.ContainsAny(fname, "\x00") || len(fname) > 255 {
+		if fname == "" || strings.ContainsAny(fname, "\x00") || len(fname) > MaxFilenameLength {
 			return nil, "", fmt.Errorf("invalid api definition filename")
 		}
-		fileField, err := mw.CreateFormFile("apiDefinition", fname)
+		fileField, err := mw.CreateFormFile(FormFieldAPIDefinition, fname)
 		if err != nil {
 			return nil, "", ErrFormFieldCreationFailed
 		}
@@ -360,10 +372,10 @@ func createAPIMultipart(meta dto.APIMetadataRequest, apiDef io.Reader, apiDefNam
 	// optional schemaDefinition file
 	if schema != nil {
 		fname := filepath.Base(schemaName)
-		if fname == "" || strings.ContainsAny(fname, "\x00") || len(fname) > 255 {
+		if fname == "" || strings.ContainsAny(fname, "\x00") || len(fname) > MaxFilenameLength {
 			return nil, "", fmt.Errorf("invalid schema filename")
 		}
-		fw, err := mw.CreateFormFile("schemaDefinition", fname)
+		fw, err := mw.CreateFormFile(FormFieldSchemaDefinition, fname)
 		if err != nil {
 			return nil, "", ErrFormFieldCreationFailed
 		}
@@ -382,7 +394,7 @@ func createAPIMultipart(meta dto.APIMetadataRequest, apiDef io.Reader, apiDefNam
 func createTemplateMultipart(r io.Reader, filename string) (*bytes.Buffer, string, error) {
 	buf := &bytes.Buffer{}
 	mw := multipart.NewWriter(buf)
-	fw, err := mw.CreateFormFile("apiContent", filepath.Base(filename))
+	fw, err := mw.CreateFormFile(FormFieldAPIContent, filepath.Base(filename))
 	if err != nil {
 		return nil, "", ErrFormFieldCreationFailed
 	}
