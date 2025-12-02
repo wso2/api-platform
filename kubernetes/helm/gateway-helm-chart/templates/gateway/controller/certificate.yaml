@@ -17,7 +17,11 @@ spec:
   duration: {{ $tls.certManager.duration | quote }}
   renewBefore: {{ $tls.certManager.renewBefore | quote }}
   issuerRef:
+    {{- if $tls.certManager.createIssuer }}
+    name: {{ include "gateway-operator.fullname" . }}-selfsigned-issuer
+    {{- else }}
     name: {{ $tls.certManager.issuerRef.name }}
+    {{- end }}
     kind: {{ $tls.certManager.issuerRef.kind }}
     {{- if $tls.certManager.issuerRef.group }}
     group: {{ $tls.certManager.issuerRef.group }}

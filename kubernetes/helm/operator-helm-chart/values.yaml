@@ -1,5 +1,10 @@
 replicaCount: 1
 
+# Override the chart name used for resource naming
+nameOverride: ""
+# Override the full name used for resource naming
+fullnameOverride: ""
+
 image:
   repository: tharsanan/api-platform-gateway-controller
   tag: "latest"
@@ -37,7 +42,7 @@ gateway:
   controlPlaneHost: "http://platform-api:3001"
   helm:
     chartName: "oci://registry-1.docker.io/tharsanan/api-platform-gateway"
-    chartVersion: "0.1.1"
+    chartVersion: "0.0.1"
     valuesFilePath: "/config/gateway_values.yaml"
   # Gateway chart values that will be used when deploying gateways
   # Users can override these values during helm install/upgrade

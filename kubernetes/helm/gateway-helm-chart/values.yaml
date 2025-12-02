@@ -53,12 +53,15 @@ gateway:
       certManager:
         # Create a Certificate resource
         create: true
-        # Create a self-signed Issuer (only if issuerRef.name is selfsigned-issuer)
-        # Set to false if you want to create your own Issuer manually
+        # Create a self-signed Issuer automatically
+        # If true, a self-signed Issuer will be created with the release name
+        # If false, you must provide an existing Issuer/ClusterIssuer via issuerRef
         createIssuer: true
         # Issuer reference for cert-manager
+        # Note: If createIssuer=true, the 'name' field is ignored and the chart generates a unique name
+        # Only set this if createIssuer=false to reference an existing Issuer/ClusterIssuer
         issuerRef:
-          name: selfsigned-issuer
+          name: selfsigned-issuer  # Ignored when createIssuer=true
           # Use "Issuer" for namespace-scoped issuer (recommended)
           # Use "ClusterIssuer" for cluster-wide issuer
           kind: Issuer
