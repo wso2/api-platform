@@ -150,8 +150,9 @@ const PortalList: React.FC<PortalListProps> = ({
                   color="text.secondary"
                   sx={{ maxWidth: 520 }}
                 >
-                  Lorem Ipsum is simply dummy text of the printing and
-                  typesetting industry.
+                  Add a developer portal to host your APIs — provide developer
+                  documentation, enable API discovery, and manage subscriptions
+                  for your consumers.
                 </Typography>
 
                 <Button
