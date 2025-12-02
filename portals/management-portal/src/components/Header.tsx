@@ -385,7 +385,7 @@ const Header: React.FC = () => {
             marginRight: 7,
             '&:hover .mp-title': { color: 'primary.main' },
           }}
-          onClick={() => navigate('/userSenario')}
+          onClick={() => navigate('/userScenario')}
         >
           <Avatar
             variant="rounded"

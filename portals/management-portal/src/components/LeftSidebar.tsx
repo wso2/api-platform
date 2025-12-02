@@ -400,7 +400,7 @@ const LeftSidebar: React.FC = () => {
       <List sx={{ px: 0.25, mt: 0.5 }}>
         {/* Top-level items */}
         <NavItem
-          to="/userSenario"
+          to="/userScenario"
           icon={<OfflineBoltIcon fontSize="small" />}
           label="Quick Actions"
         />

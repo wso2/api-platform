@@ -15,10 +15,10 @@ import {
 import { QuestionIcon, InfoIcon } from '../../Icons';
 import Question from '../../Icons/generated/Question';
 
-type InputPropsJson = {
-  inputMode?: "numeric" | "text" | "decimal" | "search" | "email" | "url";
-  pattern?: string;
-};
+type InputPropsJson = Pick<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  'inputMode' | 'pattern'
+>;
 
 export interface TextInputProps {
   label?: string;
@@ -78,6 +78,8 @@ export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
       type,
       endAdornment,
       onBlur,
+      inputPropsJson,
+      InputProps,
       ...props
     },
     ref
@@ -127,6 +129,7 @@ export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
           disabled={disabled}
           onBlur={onBlur}
           slotProps={{
+            htmlInput: inputPropsJson,
             input: {
               readOnly: readonly,
             },
@@ -135,9 +138,8 @@ export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
             },
           }}
           InputProps={{
-            ...(props.inputPropsJson || {}),
-            ...(props.InputProps || {}),
-            endAdornment: endAdornment ?? props.InputProps?.endAdornment,
+            ...InputProps,
+            endAdornment: endAdornment ?? InputProps?.endAdornment,
           }}
           error={computedError}
           helperText={

@@ -49,7 +49,7 @@ const App: React.FC = () => {
   }, [experienceStage]);
 
   const isRootScenarioPath = location.pathname === "/";
-  const isUserScenarioPath = location.pathname === "/userSenario";
+  const isUserScenarioPath = location.pathname === "/userScenario";
 
   const handleScenarioSkip = React.useCallback(() => {
     setExperienceStage("platform");
@@ -90,7 +90,7 @@ const App: React.FC = () => {
   const handleBackToChoices = React.useCallback(() => {
     setExperienceStage("landing");
     setActiveWizardType(null);
-    navigate("/userSenario", { replace: true });
+    navigate("/userScenario", { replace: true });
   }, [navigate]);
 
   let layoutContent: React.ReactNode = null;
@@ -124,7 +124,7 @@ const App: React.FC = () => {
     layoutContent = <AppRoutes />;
   }
 
-    if (isRootScenarioPath || isUserScenarioPath) {
+  if (isRootScenarioPath || isUserScenarioPath) {
     return (
       <MainLayout>
         <ScenarioLanding

@@ -13,6 +13,7 @@ import { useNotifications } from '../../../context/NotificationContext';
 import type { ApiSummary } from '../../../hooks/apis';
 import { buildPublishPayload } from './mapper';
 import ApiPublishForm from './ApiPublishForm';
+import { firstServerUrl } from '../../../helpers/openApiHelpers';
 
 interface PortalRef {
   uuid: string;
@@ -26,12 +27,6 @@ interface Props {
   onClose: () => void;
   onPublish: (portalId: string, payload: any) => Promise<void>;
   publishing?: boolean;
-}
-
-function firstServerUrl(api: any) {
-  const services = api?.['backend-services'] || [];
-  const endpoint = services[0]?.endpoints?.[0]?.url;
-  return endpoint?.trim() || '';
 }
 
 const ApiPublishModal: React.FC<Props> = ({ open, portal, api, onClose, onPublish, publishing = false }) => {
@@ -62,6 +57,8 @@ const ApiPublishModal: React.FC<Props> = ({ open, portal, api, onClose, onPublis
 
   useEffect(() => {
     if (!open) return;
+    let isMounted = true;
+    
     setFormData((prev: any) => ({
       ...prev,
       apiName: api?.name || prev.apiName || '',
@@ -75,13 +72,15 @@ const ApiPublishModal: React.FC<Props> = ({ open, portal, api, onClose, onPublis
       setLoadingGateways(true);
       try {
         const apiGateways = await fetchGatewaysForApi(api.id);
-        setGateways(apiGateways || []);
+        if (isMounted) setGateways(apiGateways || []);
       } catch (err) {
-        setGateways([]);
+        if (isMounted) setGateways([]);
       } finally {
-        setLoadingGateways(false);
+        if (isMounted) setLoadingGateways(false);
       }
     })();
+
+    return () => { isMounted = false; };
   }, [open, api, fetchGatewaysForApi]);
 
   const handleUrlChange = (type: 'production' | 'sandbox', url: string) => {

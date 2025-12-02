@@ -128,6 +128,7 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
                       <Radio
                         checked={activeScenarioId === scenario.id}
                         tabIndex={-1}
+                        disabled={scenario.comingSoon}
                         onClick={(event) => {
                           event.stopPropagation();
                           setActiveScenarioId(scenario.id);

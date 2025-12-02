@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Box, Card, Typography, Stack } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
 
 type Step = { title: string; subtitle: string };
 
@@ -10,9 +10,10 @@ type Props = {
   imageSrc?: string;
 };
 
-const ACCENT = "#049669";
-
 const SetupStepsCard: React.FC<Props> = ({ title, steps, imageSrc }) => {
+  const theme = useTheme();
+  const ACCENT = theme.palette.primary.main;
+
   return (
     <Card
       sx={{
@@ -59,7 +60,7 @@ const SetupStepsCard: React.FC<Props> = ({ title, steps, imageSrc }) => {
         <Typography fontWeight={600}>Setup Steps for {title}</Typography>
         <Stack spacing={2} mt={2}>
           {steps.map((step, index) => (
-            <Stack key={step.title} direction="row" spacing={2} alignItems="flex-start">
+            <Stack key={`${index}-${step.title}`} direction="row" spacing={2} alignItems="flex-start">
               <Box
                 width={32}
                 height={32}

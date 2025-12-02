@@ -353,7 +353,7 @@ export const useApisApi = () => {
       }
       try {
         const data = await res.json();
-        return normalizeApiSummary(data as any);
+        return normalizeApiSummary(data);
       } catch (parseErr) {
         throw new Error('Imported API created but failed to parse response');
       }

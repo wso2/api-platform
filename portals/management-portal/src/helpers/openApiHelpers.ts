@@ -71,8 +71,8 @@ export function formatVersionToMajorMinor(version?: unknown): string {
     const majorNum = parseInt(parts[0], 10);
     const minorNum = parts[1] ? parseInt(parts[1], 10) : 0;
 
-    const major = Number.isFinite(majorNum) && !Number.isNaN(majorNum) ? String(majorNum) : "1";
-    const minor = Number.isFinite(minorNum) && !Number.isNaN(minorNum) ? String(minorNum) : "0";
+    const major = Number.isFinite(majorNum) ? String(majorNum) : "1";
+    const minor = Number.isFinite(minorNum) ? String(minorNum) : "0";
 
     return `v${major}.${minor}`;
   } catch (e) {

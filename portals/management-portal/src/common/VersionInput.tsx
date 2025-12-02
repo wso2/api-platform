@@ -49,9 +49,8 @@ const VersionInput: React.FC<Props> = ({ value, onChange, disabled, label }) => 
             onChange={(v: string) => {
               touchedRef.current = true;
               const digits = v.replace(/\D/g, "");
-              const next = digits;
-              setMajorState(next);
-              emitIfComplete(next, minorState);
+              setMajorState(digits);
+              emitIfComplete(digits, minorState);
             }}
             disabled={disabled}
             inputPropsJson={{ inputMode: "numeric", pattern: "[0-9]*" }}
@@ -69,9 +68,8 @@ const VersionInput: React.FC<Props> = ({ value, onChange, disabled, label }) => 
             onChange={(v: string) => {
               touchedRef.current = true;
               const digits = v.replace(/\D/g, "");
-              const next = digits;
-              setMinorState(next);
-              emitIfComplete(majorState, next);
+              setMinorState(digits);
+              emitIfComplete(majorState, digits);
             }}
             disabled={disabled}
             inputPropsJson={{ inputMode: "numeric", pattern: "[0-9]*" }}

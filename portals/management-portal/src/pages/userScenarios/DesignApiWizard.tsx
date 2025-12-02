@@ -7,7 +7,6 @@ import { SCENARIOS } from "../../data/scenarios";
 type Props = {
   onBackToChoices: () => void;
   onSkip: () => void;
-  onFinish: () => void;
 };
 
 const DesignApiWizard: React.FC<Props> = ({ onBackToChoices, onSkip }) => {

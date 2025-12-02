@@ -29,7 +29,7 @@ import {
   useCreateComponentBuildpackContext,
   CreateComponentBuildpackProvider,
 } from "../../context/CreateComponentBuildpackContext";
-import { formatVersionToMajorMinor, isValidMajorMinorVersion } from "../../helpers/openApiHelpers";
+import { formatVersionToMajorMinor, isValidMajorMinorVersion, firstServerUrl, deriveContext, mapOperations } from "../../helpers/openApiHelpers";
 import VersionInput from "../../common/VersionInput";
 import {
   useOpenApiValidation,
@@ -58,35 +58,13 @@ const STEPS: Step[] = [
   { title: "Select Portal", subtitle: "Choose developer portal to publish" },
 ];
 
-function firstServerUrl(api: any) {
-  const services = api?.["backend-services"] || [];
-  const endpoint = services[0]?.endpoints?.[0]?.url;
-  return endpoint?.trim() || "";
-}
-
-function deriveContext(api: any) {
-  return api?.context || "/api";
-}
-
-function mapOperations(
-  operations: any[],
-  options?: { serviceName?: string; withFallbackName?: boolean },
-) {
-  if (!Array.isArray(operations)) return [];
-
-  return operations.map((op: any) => ({
-    name: options?.withFallbackName
-      ? op.name || op.request?.path || "Unknown"
-      : op.name,
-    description: op.description,
-    request: {
-      method: op.request?.method || "GET",
-      path: op.request?.path || "/",
-      ...(options?.serviceName && {
-        ["backend-services"]: [{ name: options.serviceName }],
-      }),
-    },
-  }));
+function isValidHttpUrl(urlString: string): boolean {
+  try {
+    const url = new URL(urlString.trim());
+    return ['http:', 'https:'].includes(url.protocol);
+  } catch {
+    return false;
+  }
 }
 
 function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
@@ -181,6 +159,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
 
   React.useEffect(() => {
     if (activeStep === 1) {
+      let isMounted = true;
       const endpointFromSelected = selectionMode === 'existing' ? firstServerUrl(selectedExistingApi) : '';
       const endpointFromValidation = (validationResult && validationResult.isAPIDefinitionValid) ? firstServerUrl((validationResult as any).api) : '';
 
@@ -199,11 +178,11 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
           setLoadingGateways(true);
           try {
             const apiGateways = await fetchGatewaysForApi(apiId);
-            setGateways(apiGateways || []);
+            if (isMounted) setGateways(apiGateways || []);
           } catch (err) {
-            setGateways([]);
+            if (isMounted) setGateways([]);
           } finally {
-            setLoadingGateways(false);
+            if (isMounted) setLoadingGateways(false);
           }
         })();
       }
@@ -213,20 +192,22 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
         try {
           const targetApiId = selectionMode === 'existing' ? selectedExistingApi?.id : (apis.find((a: any) => a.name === contractMeta?.name && a.version === contractMeta?.version)?.id);
           if (!targetApiId) {
-            setAllPublishedToActivePortals(false);
+            if (isMounted) setAllPublishedToActivePortals(false);
             return;
           }
 
           const pubs = await refreshPublishedApis(targetApiId);
           const publishedSet = new Set((pubs || []).map((p: any) => p.uuid));
           const allPublished = portals.length > 0 && portals.every((p: any) => publishedSet.has(p.uuid));
-          setAllPublishedToActivePortals(!!allPublished);
+          if (isMounted) setAllPublishedToActivePortals(!!allPublished);
         } catch (e) {
-          setAllPublishedToActivePortals(false);
+          if (isMounted) setAllPublishedToActivePortals(false);
         } finally {
-          setPublishedStatusLoading(false);
+          if (isMounted) setPublishedStatusLoading(false);
         }
       })();
+
+      return () => { isMounted = false; };
     }
   }, [activeStep, selectionMode, selectedExistingApi, contractMeta, portalEndpoint, portalVisibility, fetchGatewaysForApi, validationResult, apis, portals, refreshPublishedApis]);
 
@@ -249,12 +230,8 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
   const handleGoToPortals = React.useCallback(() => {
     if (onFinish) {
       onFinish();
-      setTimeout(() => {
-        navigate(portalsPath);
-      }, 100);
-    } else {
-      navigate(portalsPath);
     }
+    navigate(portalsPath);
   }, [onFinish, navigate, portalsPath]);
 
   const autoFill = React.useCallback(
@@ -1015,7 +992,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
                     <Button
                       variant="contained"
                       disabled={
-                        creating || !selectedPortalId || !formData.apiName || !formData.productionURL || (formData.productionURL.trim() !== '' && !/^https?:\/\/.+/.test(formData.productionURL.trim()))
+                        creating || !selectedPortalId || !formData.apiName || !formData.productionURL || (formData.productionURL.trim() !== '' && !isValidHttpUrl(formData.productionURL))
                       }
                       onClick={async () => {
                         if (!selectedPortalId) return;
@@ -1068,7 +1045,6 @@ function StepperBar({
           zIndex={steps.length - i}
           title={s.title}
           subtitle={s.subtitle}
-          totalSteps={steps.length}
         />
       ))}
     </Box>
@@ -1095,14 +1071,13 @@ function StepSegment({
   zIndex: number;
   title: string;
   subtitle: string;
-  totalSteps: number;
 }) {
   const theme = useTheme();
 
   const fill = active
-    ? "#eaf7dbff"
+    ? theme.palette.success.light
     : completed
-      ? "#059669"
+      ? theme.palette.success.main
       : theme.palette.grey[100];
 
   const textColor = completed ? "#fff" : theme.palette.text.primary;
@@ -1116,9 +1091,9 @@ function StepSegment({
   const contentPadLeft = index === 0 ? basePadX : basePadX + overlap;
 
   const borderColor = active
-    ? "#adb1b1ff"
+    ? theme.palette.grey[300]
     : completed
-      ? "#e2e8e2ff"
+      ? theme.palette.grey[200]
       : theme.palette.grey[300];
 
   return (

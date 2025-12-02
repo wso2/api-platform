@@ -89,22 +89,26 @@ const WizardPortalCard: React.FC<WizardPortalCardProps> = ({
           </Box>
 
           <Box
-            component="a"
-            href={portalUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+            component={portalUrl ? "a" : "div"}
+            {...(portalUrl && {
+              href: portalUrl,
+              target: "_blank",
+              rel: "noopener noreferrer",
+            })}
             onClick={(e) => {
-              e.stopPropagation();
+              if (portalUrl) e.stopPropagation();
             }}
             sx={{
               textDecoration: 'none',
               color: 'inherit',
-              '&:hover': {
-                '& .portal-title': {
-                  color: themeGreen,
-                  textDecoration: 'underline',
+              ...(portalUrl && {
+                '&:hover': {
+                  '& .portal-title': {
+                    color: themeGreen,
+                    textDecoration: 'underline',
+                  },
                 },
-              },
+              }),
             }}
           >
             <Typography

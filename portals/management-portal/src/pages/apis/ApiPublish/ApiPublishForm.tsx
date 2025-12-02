@@ -26,12 +26,34 @@ export const DUMMY_DOCUMENTS = [
   { id: 'getting-started', name: 'Getting Started Guide.pdf', size: '1.1 MB' },
 ];
 
+interface Gateway {
+  name: string;
+  displayName?: string;
+  vhost?: string;
+}
+
+interface FormData {
+  apiName: string;
+  productionURL: string;
+  sandboxURL: string;
+  apiDescription: string;
+  visibility: 'PUBLIC' | 'PRIVATE';
+  technicalOwner: string;
+  technicalOwnerEmail: string;
+  businessOwner: string;
+  businessOwnerEmail: string;
+  labels: string[];
+  subscriptionPolicies: string[];
+  tags: string[];
+  selectedDocumentIds: string[];
+}
+
 interface Props {
-  formData: any;
-  setFormData: (v: any) => void;
+  formData: FormData;
+  setFormData: (v: FormData | ((prev: FormData) => FormData)) => void;
   showAdvanced: boolean;
   setShowAdvanced: (v: boolean) => void;
-  gateways: any[];
+  gateways: Gateway[];
   loadingGateways: boolean;
   newTag: string;
   setNewTag: (v: string) => void;
@@ -41,7 +63,7 @@ interface Props {
   handleUrlChange: (type: 'production' | 'sandbox', url: string) => void;
 }
 
-const getGatewayUrl = (gateway: any): string => {
+const getGatewayUrl = (gateway: Gateway): string => {
   const vhost = gateway.vhost || `${gateway.name?.toLowerCase()}.api.example.com`;
   return vhost.startsWith('http') ? vhost : `https://${vhost}`;
 };
@@ -303,7 +325,7 @@ const ApiPublishForm: React.FC<Props> = ({
                     label="Add Tag"
                     value={newTag}
                     onChange={(e) => setNewTag(e.target.value)}
-                    onKeyPress={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); } }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); } }}
                     size="small"
                     placeholder="e.g., mobile, finance, v2"
                     sx={{ minWidth: 200 }}
