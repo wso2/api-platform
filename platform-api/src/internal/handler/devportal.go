@@ -21,6 +21,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/middleware"
@@ -257,7 +258,7 @@ func (h *DevPortalHandler) ActivateDevPortal(c *gin.Context) {
 	log.Printf("[DevPortalHandler] Attempting to activate DevPortal %s for organization %s", devPortalID, orgID)
 
 	// Activate DevPortal
-	response, err := h.devPortalService.EnableDevPortal(devPortalID, orgID)
+	err := h.devPortalService.EnableDevPortal(devPortalID, orgID)
 	if err != nil {
 		log.Printf("[DevPortalHandler] Failed to activate DevPortal %s for organization %s: %v", devPortalID, orgID, err)
 		// Use centralized error handling
@@ -267,7 +268,11 @@ func (h *DevPortalHandler) ActivateDevPortal(c *gin.Context) {
 	}
 
 	log.Printf("[DevPortalHandler] Activated DevPortal %s", devPortalID)
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, dto.CommonResponse{
+		Success:   true,
+		Message:   "DevPortal activated successfully",
+		Timestamp: time.Now(),
+	})
 }
 
 // DeactivateDevPortal handles POST /api/v1/devportals/:devportalId/deactivate
@@ -291,7 +296,7 @@ func (h *DevPortalHandler) DeactivateDevPortal(c *gin.Context) {
 	log.Printf("[DevPortalHandler] Attempting to deactivate DevPortal %s for organization %s", devPortalID, orgID)
 
 	// Deactivate DevPortal
-	response, err := h.devPortalService.DisableDevPortal(devPortalID, orgID)
+	err := h.devPortalService.DisableDevPortal(devPortalID, orgID)
 	if err != nil {
 		log.Printf("[DevPortalHandler] Failed to deactivate DevPortal %s for organization %s: %v", devPortalID, orgID, err)
 		// Use centralized error handling
@@ -301,7 +306,11 @@ func (h *DevPortalHandler) DeactivateDevPortal(c *gin.Context) {
 	}
 
 	log.Printf("[DevPortalHandler] Deactivated DevPortal %s", devPortalID)
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, dto.CommonResponse{
+		Success:   true,
+		Message:   "DevPortal deactivated successfully",
+		Timestamp: time.Now(),
+	})
 }
 
 // SetAsDefault handles POST /api/v1/devportals/:devportalId/set-default

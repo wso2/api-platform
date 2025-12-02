@@ -28,6 +28,7 @@ import (
 	"platform-api/src/internal/service"
 	"platform-api/src/internal/utils"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -451,48 +452,16 @@ func (h *APIHandler) PublishToDevPortal(c *gin.Context) {
 	// Parse request body
 	var req dto.PublishToDevPortalRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Invalid request body: "+err.Error()))
+		status, errorResp := utils.GetErrorResponse(err)
+		c.JSON(status, errorResp)
 		return
 	}
 
 	// Publish API to DevPortal through service layer
-	response, err := h.apiService.PublishAPIToDevPortal(apiID, &req, orgID)
+	err := h.apiService.PublishAPIToDevPortal(apiID, &req, orgID)
 	if err != nil {
-		// Handle specific errors
-		if errors.Is(err, constants.ErrAPINotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
-			return
-		}
-		if errors.Is(err, constants.ErrDevPortalNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"DevPortal not found"))
-			return
-		}
-		if errors.Is(err, constants.ErrAPIPublicationInProgress) {
-			// Publication already in progress
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"API publication is already in progress. Please wait for the current operation to complete or try again in a few minutes."))
-			return
-		}
-		if errors.Is(err, constants.ErrAPIAlreadyPublished) {
-			// API already published
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"API is already published to this DevPortal"))
-			return
-		}
-		if errors.Is(err, constants.ErrApiPortalSync) {
-			// Devportal unavailable or sync failed
-			c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable",
-				"Failed to publish API to DevPortal. DevPortal may be unavailable."))
-			return
-		}
-
-		// Internal server error
-		log.Printf("[APIHandler] Failed to publish API %s to DevPortal %s: %v", apiID, req.DevPortalUUID, err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to publish API to DevPortal"))
+		status, errorResp := utils.GetErrorResponse(err)
+		c.JSON(status, errorResp)
 		return
 	}
 
@@ -500,7 +469,11 @@ func (h *APIHandler) PublishToDevPortal(c *gin.Context) {
 	log.Printf("[APIHandler] API %s published successfully to DevPortal %s", apiID, req.DevPortalUUID)
 
 	// Return success response
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, dto.CommonResponse{
+		Success:   true,
+		Message:   "API published successfully to DevPortal",
+		Timestamp: time.Now(),
+	})
 }
 
 // UnpublishFromDevPortal handles POST /api/v1/apis/:apiId/devportals/unpublish
@@ -527,41 +500,16 @@ func (h *APIHandler) UnpublishFromDevPortal(c *gin.Context) {
 	// Parse request body
 	var req dto.UnpublishFromDevPortalRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Invalid request body: "+err.Error()))
+		status, errorResp := utils.GetErrorResponse(err)
+		c.JSON(status, errorResp)
 		return
 	}
 
 	// Unpublish API from DevPortal through service layer
-	response, err := h.apiService.UnpublishAPIFromDevPortal(apiID, req.DevPortalUUID, orgID)
+	err := h.apiService.UnpublishAPIFromDevPortal(apiID, req.DevPortalUUID, orgID)
 	if err != nil {
-		// Handle specific errors
-		if errors.Is(err, constants.ErrAPIPublicationNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API publication not found"))
-			return
-		}
-		if errors.Is(err, constants.ErrAPINotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"API not found"))
-			return
-		}
-		if errors.Is(err, constants.ErrDevPortalNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"DevPortal not found"))
-			return
-		}
-		if errors.Is(err, constants.ErrApiPortalSync) {
-			// Devportal unavailable or sync failed
-			c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable",
-				"Failed to unpublish API from DevPortal. DevPortal may be unavailable."))
-			return
-		}
-
-		// Internal server error
-		log.Printf("[APIHandler] Failed to unpublish API %s from DevPortal %s: %v", apiID, req.DevPortalUUID, err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to unpublish API from DevPortal"))
+		status, errorResp := utils.GetErrorResponse(err)
+		c.JSON(status, errorResp)
 		return
 	}
 
@@ -569,7 +517,11 @@ func (h *APIHandler) UnpublishFromDevPortal(c *gin.Context) {
 	log.Printf("[APIHandler] API %s unpublished successfully from DevPortal %s", apiID, req.DevPortalUUID)
 
 	// Return success response
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, dto.CommonResponse{
+		Success:   true,
+		Message:   "API unpublished successfully from DevPortal",
+		Timestamp: time.Now(),
+	})
 }
 
 // GetAPIPublications handles GET /api/v1/apis/:apiId/publications

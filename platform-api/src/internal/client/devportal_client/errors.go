@@ -61,7 +61,6 @@ func (e *DevPortalError) IsRetryable() bool {
 // Organization-related errors
 var (
 	ErrOrganizationAlreadyExists  = errors.New("organization already exists")
-	ErrOrganizationAlreadySynced  = errors.New("organization already synced")
 	ErrOrganizationNotFound       = errors.New("organization not found")
 	ErrOrganizationCreationFailed = errors.New("organization creation failed")
 	ErrOrganizationUpdateFailed   = errors.New("organization update failed")

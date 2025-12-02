@@ -133,44 +133,9 @@ type PublishToDevPortalRequest struct {
 	SubscriptionPolicies []string        `json:"subscriptionPolicies,omitempty"`
 }
 
-// PublishToDevPortalResponse represents the response after publishing an API to a DevPortal
-type PublishToDevPortalResponse struct {
-	Message        string    `json:"message"`
-	APIID          string    `json:"apiId"`
-	DevPortalUUID  string    `json:"devPortalUuid"`
-	DevPortalName  string    `json:"devPortalName"`
-	ApiPortalRefID string    `json:"apiPortalRefId"`
-	PublishedAt    time.Time `json:"publishedAt"`
-}
-
 // UnpublishFromDevPortalRequest represents the request to unpublish an API from a DevPortal
 type UnpublishFromDevPortalRequest struct {
 	DevPortalUUID string `json:"devPortalUuid" binding:"required"`
-}
-
-// UnpublishFromDevPortalResponse represents the response after unpublishing an API from a DevPortal
-type UnpublishFromDevPortalResponse struct {
-	Message       string    `json:"message"`
-	APIID         string    `json:"apiId"`
-	DevPortalUUID string    `json:"devPortalUuid"`
-	DevPortalName string    `json:"devPortalName"`
-	UnpublishedAt time.Time `json:"unpublishedAt"`
-}
-
-// ActivateDevPortalResponse represents the response after activating a DevPortal
-type ActivateDevPortalResponse struct {
-	Message       string    `json:"message"`
-	DevPortalUUID string    `json:"devPortalUuid"`
-	DevPortalName string    `json:"devPortalName"`
-	ActivatedAt   time.Time `json:"activatedAt"`
-}
-
-// DeactivateDevPortalResponse represents the response after deactivating a DevPortal
-type DeactivateDevPortalResponse struct {
-	Message       string    `json:"message"`
-	DevPortalUUID string    `json:"devPortalUuid"`
-	DevPortalName string    `json:"devPortalName"`
-	DeactivatedAt time.Time `json:"deactivatedAt"`
 }
 
 // APIPublicationDetails represents publication-specific information

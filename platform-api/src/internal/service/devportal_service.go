@@ -41,8 +41,7 @@ var sharedValidator = validator.New()
 
 // Constants for DevPortal operations
 const (
-	DevPortalServiceTimeout   = 10
-	PublicationStuckThreshold = 2 * time.Minute
+	DevPortalServiceTimeout = 10
 )
 
 // sanitizeAPIHandle removes forward slashes and backslashes from API handle
@@ -165,22 +164,17 @@ func (s *DevPortalService) CreateDevPortal(orgUUID string, req *dto.CreateDevPor
 }
 
 // EnableDevPortal enables a DevPortal for use (activates/syncs it first if needed)
-func (s *DevPortalService) EnableDevPortal(uuid, orgUUID string) (*dto.ActivateDevPortalResponse, error) {
+func (s *DevPortalService) EnableDevPortal(uuid, orgUUID string) error {
 	// Get DevPortal (cache for reuse)
 	devPortal, err := s.getDevPortalByUUID(uuid, orgUUID)
 	if err != nil {
 		log.Printf("[DevPortalService] Failed to get DevPortal %s for organization %s during enable: %v", uuid, orgUUID, err)
-		return nil, err
+		return err
 	}
 
 	if devPortal.IsEnabled {
 		log.Printf("[DevPortalService] DevPortal %s for organization %s is already enabled", uuid, orgUUID)
-		return &dto.ActivateDevPortalResponse{
-			Message:       "DevPortal is already enabled",
-			DevPortalUUID: uuid,
-			DevPortalName: devPortal.Name,
-			ActivatedAt:   time.Now(),
-		}, nil
+		return nil
 	}
 
 	log.Printf("[DevPortalService] Attempting to enable DevPortal %s for organization %s", uuid, orgUUID)
@@ -189,28 +183,19 @@ func (s *DevPortalService) EnableDevPortal(uuid, orgUUID string) (*dto.ActivateD
 	org, err := s.orgRepo.GetOrganizationByUUID(orgUUID)
 	if err != nil {
 		log.Printf("[DevPortalService] Failed to get organization %s for DevPortal %s enable: %v", orgUUID, uuid, err)
-		return nil, fmt.Errorf("failed to get organization %s: %w", orgUUID, err)
+		return fmt.Errorf("failed to get organization %s: %w", orgUUID, err)
 	}
 	if org == nil {
 		log.Printf("[DevPortalService] Organization %s not found for DevPortal %s enable", orgUUID, uuid)
-		return nil, constants.ErrOrganizationNotFound
+		return constants.ErrOrganizationNotFound
 	}
 
 	// If DevPortal is not activated (synced), activate it first
 	if !devPortal.IsActive {
 		log.Printf("[DevPortalService] DevPortal %s not active, attempting to sync and initialize", uuid)
 		if err := s.syncAndInitializeDevPortalInternal(devPortal, org); err != nil {
-			if errors.Is(err, constants.ErrDevPortalAlreadyExist) {
-				// Organization already exists remotely - this is OK!
-				// It means the organization was previously synced to the remote DevPortal
-				// We should keep the DB record and mark it as active
-				log.Printf("[DevPortalService] Organization %s already exists in DevPortal %s - marking as active", org.ID, devPortal.Name)
-				devPortal.IsActive = true
-				devPortal.IsEnabled = true
-			} else {
-				log.Printf("[DevPortalService] Failed to sync and initialize DevPortal %s for organization %s: %v", uuid, orgUUID, err)
-				return nil, fmt.Errorf("failed to sync and initialize DevPortal during enable: %w", err)
-			}
+			log.Printf("[DevPortalService] Failed to sync and initialize DevPortal %s for organization %s: %v", uuid, orgUUID, err)
+			return fmt.Errorf("failed to sync and initialize DevPortal during enable: %w", err)
 		}
 		// Mark as active in memory
 		devPortal.IsActive = true
@@ -222,16 +207,11 @@ func (s *DevPortalService) EnableDevPortal(uuid, orgUUID string) (*dto.ActivateD
 
 	if err := s.devPortalRepo.Update(devPortal, orgUUID); err != nil {
 		log.Printf("[DevPortalService] Failed to update DevPortal %s in repository during enable: %v", uuid, err)
-		return nil, fmt.Errorf("failed to enable DevPortal: %w", err)
+		return fmt.Errorf("failed to enable DevPortal: %w", err)
 	}
 
 	log.Printf("[DevPortalService] Successfully enabled DevPortal %s for organization %s", uuid, orgUUID)
-	return &dto.ActivateDevPortalResponse{
-		Message:       "DevPortal enabled successfully",
-		DevPortalUUID: uuid,
-		DevPortalName: devPortal.Name,
-		ActivatedAt:   time.Now(),
-	}, nil
+	return nil
 }
 
 // createDevPortalWithSync creates a DevPortal and attempts to sync it gracefully
@@ -243,28 +223,18 @@ func (s *DevPortalService) createDevPortalWithSync(devPortal *model.DevPortal, o
 
 	// Attempt to sync and initialize (handle gracefully based on allowSyncFailure flag)
 	if err := s.syncAndInitializeDevPortalInternal(devPortal, organization); err != nil {
-		// Check if organization already exists in DevPortal (remote side)
-		if errors.Is(err, constants.ErrDevPortalAlreadyExist) {
-			// Organization already exists remotely - this is OK!
-			// It means the organization was previously synced to the remote DevPortal
-			// We should keep the DB record and mark it as active
-			log.Printf("[DevPortalService] Organization %s already exists in DevPortal %s - marking as active", organization.ID, devPortal.Name)
-			devPortal.IsActive = true
-			devPortal.IsEnabled = true
-		} else {
-			// Other sync errors - apply rollback logic based on allowSyncFailure flag
-			if !allowSyncFailure {
-				// If sync failure is not allowed, rollback and return error
-				if deleteErr := s.devPortalRepo.Delete(devPortal.UUID, devPortal.OrganizationUUID); deleteErr != nil {
-					log.Printf("[DevPortalService] Failed to rollback DevPortal creation: %v", deleteErr)
-					return fmt.Errorf("sync failed and rollback failed: %w (rollback error: %v)", err, deleteErr)
-				}
-				return err
+		// Other sync errors - apply rollback logic based on allowSyncFailure flag
+		if !allowSyncFailure {
+			// If sync failure is not allowed, rollback and return error
+			if deleteErr := s.devPortalRepo.Delete(devPortal.UUID, devPortal.OrganizationUUID); deleteErr != nil {
+				log.Printf("[DevPortalService] Failed to rollback DevPortal creation: %v", deleteErr)
+				return fmt.Errorf("sync failed and rollback failed: %w (rollback error: %v)", err, deleteErr)
 			}
-			// Sync failed but allowed - DevPortal remains inactive
-			devPortal.IsActive = false
-			devPortal.IsEnabled = false
+			return err
 		}
+		// Sync failed but allowed - DevPortal remains inactive
+		devPortal.IsActive = false
+		devPortal.IsEnabled = false
 	} else {
 		// Sync successful - organization created in remote DevPortal
 		devPortal.IsActive = true
@@ -313,7 +283,7 @@ func (s *DevPortalService) updateDevPortalStateInternal(devPortal *model.DevPort
 
 // GetDevPortal retrieves a DevPortal by UUID
 func (s *DevPortalService) GetDevPortal(uuid, orgUUID string) (*dto.DevPortalResponse, error) {
-	devPortal, err := s.devPortalRepo.GetByUUID(uuid, orgUUID)
+	devPortal, err := s.getDevPortalByUUID(uuid, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -408,20 +378,15 @@ func (s *DevPortalService) DeleteDevPortal(uuid, orgUUID string) error {
 }
 
 // DisableDevPortal disables a DevPortal for use
-func (s *DevPortalService) DisableDevPortal(uuid, orgUUID string) (*dto.DeactivateDevPortalResponse, error) {
+func (s *DevPortalService) DisableDevPortal(uuid, orgUUID string) error {
 	log.Printf("[DevPortalService] Attempting to disable DevPortal %s for organization %s", uuid, orgUUID)
 	// Attempt to disable DevPortal in a single repository call (no prior fetch)
 	if err := s.devPortalRepo.UpdateEnabledStatus(uuid, orgUUID, false); err != nil {
 		log.Printf("[DevPortalService] Failed to disable DevPortal %s for organization %s: %v", uuid, orgUUID, err)
-		return nil, fmt.Errorf("failed to disable DevPortal: %w", err)
+		return fmt.Errorf("failed to disable DevPortal: %w", err)
 	}
 	log.Printf("[DevPortalService] Successfully disabled DevPortal %s for organization %s", uuid, orgUUID)
-	return &dto.DeactivateDevPortalResponse{
-		Message:       "DevPortal disabled successfully",
-		DevPortalUUID: uuid,
-		DevPortalName: "",
-		DeactivatedAt: time.Now(),
-	}, nil
+	return nil
 }
 
 // SetAsDefault sets a DevPortal as the default for its organization
@@ -453,35 +418,39 @@ func (s *DevPortalService) GetDefaultDevPortal(orgUUID string) (*dto.DevPortalRe
 	return dto.ToDevPortalResponse(devPortal), nil
 }
 
-func (s *DevPortalService) PublishAPIToDevPortal(api *dto.API, req *dto.PublishToDevPortalRequest, orgUUID string) (*dto.PublishToDevPortalResponse, error) {
+// PublishAPIToDevPortal publishes an API to a DevPortal
+func (s *DevPortalService) PublishAPIToDevPortal(api *dto.API, req *dto.PublishToDevPortalRequest, orgUUID string) error {
 	// --- Phase 1: Validate Inputs ---
 	devPortal, org, err := s.validatePublishInputs(req, orgUUID)
 	if err != nil {
-		return nil, err
+		log.Printf("[DevPortalService] Input validation failed for API %s: %v", api.ID, err)
+		return err
 	}
 
-	// --- Phase 2: Prepare or Resume Publication ---
-	publication, isRetry, err := s.preparePublication(api, req, devPortal, orgUUID)
+	// --- Phase 2: Prepare Publication ---
+	err = s.prepareAPIPublication(api, req, devPortal, orgUUID)
 	if err != nil {
-		return nil, err
+		log.Printf("[DevPortalService] Publication preparation failed for API %s: %v", api.ID, err)
+		return err
 	}
 
 	// --- Phase 3: Build API Metadata ---
 	apiMetadata, err := s.prepareAPIMetadata(api, req)
 	if err != nil {
-		return nil, err
+		log.Printf("[DevPortalService] Metadata preparation failed for API %s: %v", api.ID, err)
+		return err
 	}
 
-	fmt.Printf("[DevPortalService] Publishing API %s to DevPortal %s (isRetry=%v)\n", api.ID, devPortal.Name, isRetry)
+	fmt.Printf("[DevPortalService] Publishing API %s to DevPortal %s\n", api.ID, devPortal.Name)
 
 	// --- Phase 4: Publish API to DevPortal ---
-	response, err := s.publishToDevPortal(api, org, devPortal, publication, apiMetadata, isRetry)
+	err = s.publishToDevPortal(api, org, devPortal, apiMetadata, req)
 	if err != nil {
 		fmt.Printf("[DevPortalService] Failed to publish API %s to DevPortal %s: %v\n", api.ID, devPortal.Name, err)
-		return nil, err
+		return err
 	}
 
-	return response, nil
+	return nil
 }
 
 // validatePublishInputs validates DevPortal and Organization for publishing
@@ -508,95 +477,18 @@ func (s *DevPortalService) validatePublishInputs(req *dto.PublishToDevPortalRequ
 	return devPortal, org, nil
 }
 
-// preparePublication handles publication record creation/update based on current state
-func (s *DevPortalService) preparePublication(api *dto.API, req *dto.PublishToDevPortalRequest, devPortal *model.DevPortal, orgUUID string) (*model.APIPublication, bool, error) {
+// prepareAPIPublication handles duplicate checks and API-DevPortal association creation
+func (s *DevPortalService) prepareAPIPublication(api *dto.API, req *dto.PublishToDevPortalRequest, devPortal *model.DevPortal, orgUUID string) error {
+	// Check if already published (prevent duplicates)
 	existing, err := s.publicationRepo.GetByAPIAndDevPortal(api.ID, req.DevPortalUUID, orgUUID)
 	if err != nil && !errors.Is(err, constants.ErrAPIPublicationNotFound) {
-		return nil, false, fmt.Errorf("failed to check existing publication: %w", err)
+		return fmt.Errorf("failed to check existing publication: %w", err)
+	}
+	if existing != nil {
+		return fmt.Errorf("API already published to this DevPortal")
 	}
 
-	var pub *model.APIPublication
-	isRetry := false
-
-	switch {
-	case existing == nil:
-		// New publication - create both association and publication
-
-		// Step 1: Create API-DevPortal association if it doesn't exist
-		association := &model.APIAssociation{
-			ApiID:           api.ID,
-			OrganizationID:  orgUUID,
-			ResourceID:      devPortal.UUID,
-			AssociationType: "dev_portal",
-			CreatedAt:       time.Now(),
-			UpdatedAt:       time.Now(),
-		}
-		if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
-			// Check if this is a duplicate key error (association already exists)
-			if strings.Contains(err.Error(), "UNIQUE constraint failed") ||
-				strings.Contains(err.Error(), "duplicate key") {
-			} else {
-				return nil, false, fmt.Errorf("failed to create API association: %w", err)
-			}
-		}
-
-		// Step 2: Create publication record
-		pub = &model.APIPublication{
-			APIUUID:               api.ID,
-			DevPortalUUID:         devPortal.UUID,
-			OrganizationUUID:      orgUUID,
-			Status:                model.PublishingStatus,
-			APIVersion:            &api.Version,
-			SandboxEndpointURL:    req.EndPoints.SandboxURL,
-			ProductionEndpointURL: req.EndPoints.ProductionURL,
-			CreatedAt:             time.Now(),
-			UpdatedAt:             time.Now(),
-		}
-		if err := s.publicationRepo.Create(pub); err != nil {
-			return nil, false, fmt.Errorf("failed to create publication: %w", err)
-		}
-
-	case existing.Status == model.PublishedStatus:
-		// Already published – return error to enforce lifecycle
-		return nil, false, constants.ErrAPIAlreadyPublished
-
-	case existing.Status == model.FailedStatus:
-		// Retry failed publication - update all fields including endpoints
-		isRetry = true
-		pub = existing
-		pub.Status = model.PublishingStatus
-		pub.APIVersion = &api.Version
-		pub.SandboxEndpointURL = req.EndPoints.SandboxURL
-		pub.ProductionEndpointURL = req.EndPoints.ProductionURL
-		pub.UpdatedAt = time.Now()
-		if err := s.publicationRepo.Update(pub); err != nil {
-			return nil, false, fmt.Errorf("failed to update failed publication record: %w", err)
-		}
-
-	case existing.Status == model.PublishingStatus:
-		// Check if publication is stuck (older than threshold duration)
-		stuckThreshold := time.Now().Add(-PublicationStuckThreshold)
-		if existing.UpdatedAt.Before(stuckThreshold) {
-			// Treat as failed and retry
-			isRetry = true
-			pub = existing
-			pub.Status = model.PublishingStatus
-			pub.APIVersion = &api.Version
-			pub.SandboxEndpointURL = req.EndPoints.SandboxURL
-			pub.ProductionEndpointURL = req.EndPoints.ProductionURL
-			pub.UpdatedAt = time.Now()
-			if err := s.publicationRepo.Update(pub); err != nil {
-				return nil, false, fmt.Errorf("failed to update stuck publication record: %w", err)
-			}
-		} else {
-			return nil, false, constants.ErrAPIPublicationInProgress
-		}
-
-	default:
-		return nil, false, fmt.Errorf("unknown publication status: %s", existing.Status)
-	}
-
-	return pub, isRetry, nil
+	return nil
 }
 
 // prepareAPIMetadata builds API metadata request with defaults and user overrides
@@ -666,6 +558,7 @@ func (s *DevPortalService) prepareAPIMetadata(api *dto.API, req *dto.PublishToDe
 
 	// Validate the entire API metadata request
 	if err := s.validator.Struct(apiMetadata); err != nil {
+		log.Printf("[DevPortalService] Validation failed for API metadata: %v", err)
 		return devportal_client.APIMetadataRequest{}, err
 	}
 
@@ -677,93 +570,175 @@ func (s *DevPortalService) publishToDevPortal(
 	api *dto.API,
 	org *model.Organization,
 	devPortal *model.DevPortal,
-	pub *model.APIPublication,
 	apiMetadata devportal_client.APIMetadataRequest,
-	isRetry bool,
-) (*dto.PublishToDevPortalResponse, error) {
-
-	// If publication is already published (from update case), return success immediately
-	if pub.Status == model.PublishedStatus {
-		refID := ""
-		if pub.DevPortalRefID != nil {
-			refID = *pub.DevPortalRefID
-		}
-		return &dto.PublishToDevPortalResponse{
-			Message:        fmt.Sprintf("API already published to DevPortal '%s'", devPortal.Name),
-			APIID:          api.ID,
-			DevPortalUUID:  devPortal.UUID,
-			DevPortalName:  devPortal.Name,
-			ApiPortalRefID: refID,
-			PublishedAt:    time.Now(),
-		}, nil
-	}
+	req *dto.PublishToDevPortalRequest,
+) error {
 
 	client := s.devPortalClientSvc.CreateDevPortalClient(devPortal)
 
-	// Check if API exists (skip for retry)
-	if !isRetry {
-		exists, err := s.devPortalClientSvc.CheckAPIExists(client, org.ID, api.ID)
-		if err != nil {
-			s.markFailed(pub)
-			return nil, fmt.Errorf("failed to check if API exists: %w", err)
-		}
-		if exists {
-			s.markFailed(pub)
-			return nil, fmt.Errorf("API %s already exists in DevPortal %s", api.ID, devPortal.Name)
-		}
+	// Check if API exists in DevPortal
+	exists, err := s.devPortalClientSvc.CheckAPIExists(client, org.ID, api.ID)
+	if err != nil {
+		log.Printf("API publication failed for API %s to DevPortal %s: %v", api.ID, devPortal.Name, err)
+		return fmt.Errorf("failed to check if API exists in DevPortal: %w", err)
 	}
+	if exists {
+		log.Printf("API publication failed for API %s to DevPortal %s: API already exists", api.ID, devPortal.Name)
+		return fmt.Errorf("API %s already exists in DevPortal %s", api.ID, devPortal.Name)
+	}
+
 	// Generate OpenAPI definition
-	apiDef, err := s.apiUtil.GenerateOpenAPIDefinition(api)
+	apiDef, err := s.apiUtil.GenerateOpenAPIDefinition(api, &apiMetadata)
 	if err != nil {
-		s.markFailed(pub)
-		return nil, fmt.Errorf("failed to generate OpenAPI definition for API %s: %w", api.ID, err)
+		log.Printf("API publication failed for API %s to DevPortal %s: %v", api.ID, devPortal.Name, err)
+		return fmt.Errorf("failed to generate OpenAPI definition for API %s: %w", api.ID, err)
 	}
 
-	resp, err := s.devPortalClientSvc.PublishAPIToDevPortal(client, org.ID, apiMetadata, apiDef)
+	// CRITICAL SECTION: DevPortal publication with transactional compensation
+	var devPortalRefID *string
+
+	// Step 1: Publish to DevPortal
+	devPortalResponse, err := s.devPortalClientSvc.PublishAPIToDevPortal(client, org.ID, apiMetadata, apiDef)
 	if err != nil {
-		s.markFailed(pub)
-		return nil, fmt.Errorf("failed to publish API to DevPortal: %w", err)
+		log.Printf("API publication failed for API %s to DevPortal %s: %v", api.ID, devPortal.Name, err)
+		return err
 	}
 
-	// Update publication record
-	pub.Status = model.PublishedStatus
-	pub.DevPortalRefID = &resp.ID
-	pub.UpdatedAt = time.Now()
-	if err := s.publicationRepo.Update(pub); err != nil {
-		return nil, fmt.Errorf("failed to update publication record: %w", err)
+	devPortalRefID = &devPortalResponse.ID
+	log.Printf("Successfully published API %s to DevPortal %s with reference ID: %s",
+		api.ID, devPortal.Name, *devPortalRefID)
+
+	// Step 2: Create publication record with compensation on failure
+	publication := &model.APIPublication{
+		APIUUID:               api.ID,
+		DevPortalUUID:         devPortal.UUID,
+		OrganizationUUID:      org.ID,
+		Status:                model.PublishedStatus,
+		APIVersion:            &api.Version,
+		DevPortalRefID:        devPortalRefID,
+		SandboxEndpointURL:    req.EndPoints.SandboxURL,
+		ProductionEndpointURL: req.EndPoints.ProductionURL,
+		CreatedAt:             time.Now(),
+		UpdatedAt:             time.Now(),
 	}
 
-	msg := fmt.Sprintf("API published successfully to DevPortal '%s'", devPortal.Name)
-	if isRetry {
-		msg += " (retry)"
+	// Step 3: Save with compensation handling
+	err = s.savePublicationWithCompensation(publication, client, org.ID, api.ID, *devPortalRefID, devPortal.Name, devPortal)
+	if err != nil {
+		return err
 	}
 
-	return &dto.PublishToDevPortalResponse{
-		Message:        msg,
-		APIID:          api.ID,
-		DevPortalUUID:  devPortal.UUID,
-		DevPortalName:  devPortal.Name,
-		ApiPortalRefID: resp.ID,
-		PublishedAt:    time.Now(),
-	}, nil
+	log.Printf("[DevPortalService] API %s successfully published to DevPortal %s", api.ID, devPortal.Name)
+
+	return nil
 }
 
-// markFailed marks a publication as failed
-func (s *DevPortalService) markFailed(pub *model.APIPublication) {
-	pub.Status = model.FailedStatus
-	pub.UpdatedAt = time.Now()
-	_ = s.publicationRepo.Update(pub)
+// savePublicationWithCompensation handles DB persistence with auto rollback if DevPortal publish succeeded
+func (s *DevPortalService) savePublicationWithCompensation(
+	publication *model.APIPublication,
+	client *devportal_client.DevPortalClient,
+	orgID, apiID, devPortalRefID, devPortalName string,
+	devPortal *model.DevPortal,
+) error {
+
+	// 1.  Validate Before Persisting
+	if err := publication.Validate(); err != nil {
+		log.Printf("Validation failed for API %s — triggering compensation rollback", apiID)
+
+		if compensationErr := s.compensatePublication(client, orgID, apiID, devPortalRefID, devPortalName, err, "validation failed"); compensationErr != nil {
+			return compensationErr
+		}
+
+		return err
+	}
+
+	// 2. Try saving to database
+	if err := s.publicationRepo.Create(publication); err != nil {
+		log.Printf("Database save failed for API %s — initiating compensation rollback", apiID)
+
+		if compensationErr := s.compensatePublication(client, orgID, apiID, devPortalRefID, devPortalName, err, "database save failed"); compensationErr != nil {
+			return compensationErr
+		}
+
+		return fmt.Errorf("%w: %w", constants.ErrAPIPublicationSaveFailed, err)
+	}
+
+	// Create API-DevPortal association after successful publication
+	association := &model.APIAssociation{
+		ApiID:           apiID,
+		OrganizationID:  orgID,
+		ResourceID:      devPortal.UUID,
+		AssociationType: constants.AssociationTypeDevPortal,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+	}
+	if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
+		// Check if this is a duplicate key error (association already exists)
+		if !strings.Contains(err.Error(), "UNIQUE constraint failed") &&
+			!strings.Contains(err.Error(), "duplicate key") {
+			log.Printf("Failed to create API association after successful publication for API %s: %v", apiID, err)
+			// Don't fail the publication, just log
+		}
+	}
+
+	return nil
+}
+
+// compensatePublication handles rollback and returns appropriate error for split-brain scenarios
+func (s *DevPortalService) compensatePublication(
+	client *devportal_client.DevPortalClient,
+	orgID, apiID, devPortalRefID, devPortalName string,
+	originalErr error,
+	failureReason string,
+) error {
+	utils.LogError("Starting rollback - removing API from DevPortal due to publication failure", nil)
+
+	// Retry rollback up to 3 times with exponential backoff
+	maxRetries := 3
+	var rollbackErr error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		rollbackErr = s.devPortalClientSvc.UnpublishAPIFromDevPortal(client, orgID, apiID)
+		if rollbackErr == nil {
+			// Success - rollback completed
+			utils.LogError(fmt.Sprintf("Compensation completed: removed API %s from DevPortal %s due to %s", apiID, devPortalName, failureReason), nil)
+			return nil
+		}
+
+		// Check if this is a "not found" error (404) - API already removed
+		wrappedErr := utils.WrapDevPortalClientError(rollbackErr)
+		if errors.Is(wrappedErr, constants.ErrAPINotFound) {
+			utils.LogError(fmt.Sprintf("Compensation completed: API %s already removed from DevPortal %s (404)", apiID, devPortalName), nil)
+			return nil
+		}
+
+		// If not the last attempt, wait before retrying
+		if attempt < maxRetries {
+			waitTime := time.Duration(attempt) * time.Second // 1s, 2s, 3s
+			utils.LogError(fmt.Sprintf("Rollback attempt %d failed, retrying in %v: %v", attempt, waitTime, rollbackErr), nil)
+			time.Sleep(waitTime)
+		}
+	}
+
+	// All retries failed
+	utils.LogError("Rollback failed after all retries - unable to remove API from DevPortal", rollbackErr)
+
+	// Critical—Unable to maintain consistency (Split-brain situation)
+	utils.LogError("Critical error - API published but database update failed and cleanup unsuccessful. Manual intervention required", nil)
+
+	return fmt.Errorf("%w: API %s, DevPortalRef %s, OriginalErr: %w, RollbackErr: %v",
+		constants.ErrAPIPublicationSplitBrain, apiID, devPortalRefID, originalErr, rollbackErr)
 }
 
 // UnpublishAPIFromDevPortal unpublishes an API from a DevPortal
 // Note: This removes the publication record but keeps the API-DevPortal association intact
 // The DevPortal will still be listed as "associated" but not "published" in GetAPIPublications
-func (s *DevPortalService) UnpublishAPIFromDevPortal(devPortalUUID, orgID, apiID string) (*dto.UnpublishFromDevPortalResponse, error) {
+func (s *DevPortalService) UnpublishAPIFromDevPortal(devPortalUUID, orgID, apiID string) error {
 
 	// Get DevPortal
 	devPortal, err := s.getDevPortalByUUID(devPortalUUID, orgID)
 	if err != nil {
-		return nil, err
+		log.Printf("[DevPortalService] Failed to get DevPortal %s for unpublish: %v", devPortalUUID, err)
+		return err
 	}
 
 	// Create DevPortal client for unpublishing
@@ -772,12 +747,20 @@ func (s *DevPortalService) UnpublishAPIFromDevPortal(devPortalUUID, orgID, apiID
 	// Unpublish API using client service
 	err = s.devPortalClientSvc.UnpublishAPIFromDevPortal(client, orgID, apiID)
 	if err != nil {
-		// If API not found in DevPortal (404), treat as success (idempotent unpublish)
-		var devPortalErr *devportal_client.DevPortalError
-		if !(errors.As(err, &devPortalErr) && devPortalErr.Code == 404) {
-			return nil, fmt.Errorf("failed to unpublish API from DevPortal: %w", err)
+		log.Printf("[DevPortalService] DevPortal client unpublish failed for API %s from DevPortal %s: %v", apiID, devPortal.Name, err)
+
+		// Check if this is a "not found" error (404) by wrapping and checking for ErrAPINotFound
+		wrappedErr := utils.WrapDevPortalClientError(err)
+		if errors.Is(wrappedErr, constants.ErrAPINotFound) {
+			log.Printf("[DevPortalService] API %s not found in DevPortal %s (404), treating as already unpublished", apiID, devPortal.Name)
+			// API already gone from DevPortal - proceed to delete local record
+		} else {
+			// Use standard error wrapper for other devportal_client errors
+			if wrappedErr != err {
+				return wrappedErr
+			}
+			return fmt.Errorf("failed to unpublish API from DevPortal: %w", err)
 		}
-		// API already gone from DevPortal - proceed to delete local record
 	}
 
 	// Delete publication record after successful unpublish
@@ -785,15 +768,12 @@ func (s *DevPortalService) UnpublishAPIFromDevPortal(devPortalUUID, orgID, apiID
 	if err := s.publicationRepo.Delete(apiID, devPortalUUID, orgID); err != nil {
 		// Log error but don't fail the unpublish operation if record doesn't exist
 		if !errors.Is(err, constants.ErrAPIPublicationNotFound) {
-			return nil, fmt.Errorf("failed to delete publication record: %w", err)
+			log.Printf("[DevPortalService] Failed to delete publication record for API %s from DevPortal %s: %v", apiID, devPortal.Name, err)
+			return fmt.Errorf("failed to delete publication record: %w", err)
 		}
+		log.Printf("[DevPortalService] Publication record not found for API %s from DevPortal %s, skipping delete", apiID, devPortal.Name)
 	}
 
-	return &dto.UnpublishFromDevPortalResponse{
-		Message:       fmt.Sprintf("API unpublished successfully from DevPortal '%s'", devPortal.Name),
-		APIID:         apiID,
-		DevPortalUUID: devPortal.UUID,
-		DevPortalName: devPortal.Name,
-		UnpublishedAt: time.Now(),
-	}, nil
+	log.Printf("[DevPortalService] Successfully unpublished API %s from DevPortal %s", apiID, devPortalUUID)
+	return nil
 }

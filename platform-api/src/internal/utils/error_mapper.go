@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"strings"
 
+	"platform-api/src/internal/client/devportal_client"
 	"platform-api/src/internal/constants"
 
 	"github.com/go-playground/validator/v10"
@@ -31,6 +32,30 @@ import (
 // makeError creates a standardized error response tuple
 func makeError(status int, message string) (int, interface{}) {
 	return status, NewErrorResponse(status, http.StatusText(status), message)
+}
+
+// WrapDevPortalClientError wraps devportal_client errors into domain constants errors with added context
+func WrapDevPortalClientError(err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, devportal_client.ErrDevPortalBackendUnreachable):
+		return fmt.Errorf("DevPortal backend unreachable: %w", constants.ErrDevPortalBackendUnreachable)
+	case errors.Is(err, devportal_client.ErrDevPortalAuthenticationFailed):
+		return fmt.Errorf("DevPortal authentication failed: %w", constants.ErrDevPortalAuthenticationFailed)
+	case errors.Is(err, devportal_client.ErrDevPortalForbidden):
+		return fmt.Errorf("DevPortal access forbidden: %w", constants.ErrDevPortalForbidden)
+	case errors.Is(err, devportal_client.ErrAPINotFound):
+		return fmt.Errorf("API not found in DevPortal: %w", constants.ErrAPINotFound)
+	case errors.Is(err, devportal_client.ErrDevPortalEndpointInvalid):
+		return fmt.Errorf("DevPortal endpoint invalid: %w", constants.ErrDevPortalConnectivityFailed)
+	case errors.Is(err, devportal_client.ErrOrganizationAlreadyExists):
+		return fmt.Errorf("organization already exists in DevPortal: %w", constants.ErrDevPortalOrganizationConflict)
+	default:
+		// For unknown devportal_client errors, wrap with context
+		return fmt.Errorf("DevPortal client error: %w", err)
+	}
 }
 
 // FormatValidationError converts validator errors to user-friendly messages (public API)
@@ -73,6 +98,7 @@ func getUserFriendlyFieldName(fieldName string) string {
 		"APIType":        "API type",
 		"APIStatus":      "API status",
 		"ProductionURL":  "production URL",
+		"DevPortalUUID":  "DevPortal UUID",
 	}
 
 	if friendly, exists := fieldMap[fieldName]; exists {
@@ -149,8 +175,6 @@ func GetErrorResponse(err error) (int, interface{}) {
 		return makeError(http.StatusBadRequest, "DevPortal API key is required")
 	case errors.Is(err, constants.ErrDevPortalHeaderKeyNameRequired):
 		return makeError(http.StatusBadRequest, "DevPortal header key name is required")
-	case errors.Is(err, constants.ErrDevPortalAlreadyExists):
-		return makeError(http.StatusConflict, "DevPortal with these attributes already exists for this organization")
 	case errors.Is(err, constants.ErrDevPortalOrganizationConflict):
 		return makeError(http.StatusConflict, "Organization conflict in DevPortal: an organization with the same organization ID exists in devportal, but differs from the one being synced")
 
@@ -202,11 +226,19 @@ func GetErrorResponse(err error) (int, interface{}) {
 
 	// DevPortal sync errors
 	case errors.Is(err, constants.ErrApiPortalSync):
-		return makeError(http.StatusBadGateway, "Failed to synchronize with Dev portal")
+		return makeError(http.StatusServiceUnavailable, "Failed to sync with DevPortal. DevPortal may be unavailable.")
 
 	// API Publication errors
 	case errors.Is(err, constants.ErrAPIPublicationNotFound):
 		return makeError(http.StatusNotFound, "API publication not found")
+	case errors.Is(err, constants.ErrAPIAlreadyPublished):
+		return makeError(http.StatusConflict, "API is already published to this DevPortal")
+
+	// API Publication Compensation errors
+	case errors.Is(err, constants.ErrAPIPublicationSaveFailed):
+		return makeError(http.StatusInternalServerError, "API publication failed: database save error occurred after successful DevPortal publication. The API may be published in DevPortal but not recorded locally.")
+	case errors.Is(err, constants.ErrAPIPublicationSplitBrain):
+		return makeError(http.StatusInternalServerError, "Critical system error: API was published to DevPortal but both local recording and automatic cleanup failed. Manual intervention required to maintain consistency.")
 
 	// Default case for unknown errors
 	default:

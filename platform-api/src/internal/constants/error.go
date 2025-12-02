@@ -71,7 +71,6 @@ var (
 	ErrDevPortalIdentifierExists        = errors.New("devportal identifier already exists in organization")
 	ErrDevPortalHostnameExists          = errors.New("devportal hostname already exists in organization")
 	ErrDevPortalAPIUrlExists            = errors.New("devportal API URL already exists in organization")
-	ErrDevPortalAlreadyExists           = errors.New("devportal with these attributes already exists")
 	ErrDevPortalDefaultAlreadyExists    = errors.New("default devportal already exists for organization")
 	ErrDevPortalCannotDeleteDefault     = errors.New("cannot delete default devportal")
 	ErrDevPortalCannotDeactivateDefault = errors.New("cannot deactivate default devportal")
@@ -84,9 +83,12 @@ var (
 	ErrDevPortalOrganizationConflict    = errors.New("organization conflict in DevPortal: an organization with the same organization ID exists but differs from the one being synced")
 
 	// API Publication errors
-	ErrAPIPublicationNotFound   = errors.New("api publication not found")
-	ErrAPIPublicationInProgress = errors.New("api publication is currently in progress")
-	ErrAPIAlreadyPublished      = errors.New("api is already published to devportal")
+	ErrAPIPublicationNotFound = errors.New("api publication not found")
+	ErrAPIAlreadyPublished    = errors.New("api is already published to devportal")
+
+	// API Publication Compensation errors
+	ErrAPIPublicationSaveFailed       = errors.New("api publication database save failed after devportal success")
+	ErrAPIPublicationSplitBrain       = errors.New("critical split-brain: api published to devportal but local operations failed and compensation failed")
 
 	// API Project Import errors
 	ErrAPIProjectNotFound   = errors.New("api project not found")

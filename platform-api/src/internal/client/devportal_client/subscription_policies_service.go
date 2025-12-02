@@ -44,6 +44,11 @@ func (s *subscriptionPoliciesService) Create(orgID string, policies []dto.Subscr
 	}
 	var out []dto.SubscriptionPolicy
 	if err := s.DevPortalClient.doAndDecode(req, []int{200, 201}, &out); err != nil {
+		if de, ok := err.(*DevPortalError); ok {
+			if de.Code == 409 {
+				return nil, ErrSubscriptionPolicyAlreadyExists
+			}
+		}
 		return nil, err
 	}
 	return out, nil

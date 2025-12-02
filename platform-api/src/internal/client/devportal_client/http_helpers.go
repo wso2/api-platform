@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -103,18 +102,14 @@ func (c *DevPortalClient) doAndDecode(req *http.Request, expectedCodes []int, ou
 	resp, err := c.do(req)
 	if err != nil {
 		// do returned an error; log and return
-		log.Printf("doAndDecode: request failed: %v", err)
 		return err
 	}
 	defer resp.Body.Close()
 
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("doAndDecode: reading response body failed: %v", err)
 		return err
 	}
-
-	log.Printf("doAndDecode: status=%d", resp.StatusCode)
 
 	ok := false
 	for _, code := range expectedCodes {
@@ -124,7 +119,6 @@ func (c *DevPortalClient) doAndDecode(req *http.Request, expectedCodes []int, ou
 		}
 	}
 	if !ok {
-		log.Printf("doAndDecode: unexpected status=%d body=%s", resp.StatusCode, string(b))
 		return NewDevPortalError(resp.StatusCode,
 			fmt.Sprintf("unexpected status %d: %s", resp.StatusCode, string(b)),
 			resp.StatusCode >= 500,
@@ -137,7 +131,6 @@ func (c *DevPortalClient) doAndDecode(req *http.Request, expectedCodes []int, ou
 	}
 
 	if err := json.NewDecoder(bytes.NewReader(b)).Decode(out); err != nil {
-		log.Printf("doAndDecode: decode failed: %v; body=%s", err, string(b))
 		return err
 	}
 	return nil
@@ -158,8 +151,9 @@ func (c *DevPortalClient) doNoContent(req *http.Request, expectedCodes []int) er
 		}
 	}
 	b, _ := io.ReadAll(resp.Body)
-	return NewDevPortalError(resp.StatusCode,
+	devPortalErr := NewDevPortalError(resp.StatusCode,
 		fmt.Sprintf("unexpected status %d: %s", resp.StatusCode, string(b)),
 		resp.StatusCode >= 500,
 		nil)
+	return devPortalErr
 }

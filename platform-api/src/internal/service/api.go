@@ -724,7 +724,7 @@ func (s *APIService) createDefaultDevPortalAssociation(apiId, orgId string) erro
 		ApiID:           apiId,
 		OrganizationID:  orgId,
 		ResourceID:      defaultDevPortal.UUID,
-		AssociationType: "dev_portal",
+		AssociationType: constants.AssociationTypeDevPortal,
 		CreatedAt:       time.Now(),
 		UpdatedAt:       time.Now(),
 	}
@@ -1160,11 +1160,11 @@ func (s *APIService) ValidateAndRetrieveAPIProject(req *dto.ValidateAPIProjectRe
 }
 
 // PublishAPIToDevPortal publishes an API to a specific DevPortal
-func (s *APIService) PublishAPIToDevPortal(apiID string, req *dto.PublishToDevPortalRequest, orgID string) (*dto.PublishToDevPortalResponse, error) {
+func (s *APIService) PublishAPIToDevPortal(apiID string, req *dto.PublishToDevPortalRequest, orgID string) error {
 	// Get the API
 	api, err := s.GetAPIByUUID(apiID, orgID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Publish API to DevPortal
@@ -1172,7 +1172,7 @@ func (s *APIService) PublishAPIToDevPortal(apiID string, req *dto.PublishToDevPo
 }
 
 // UnpublishAPIFromDevPortal unpublishes an API from a specific DevPortal
-func (s *APIService) UnpublishAPIFromDevPortal(apiID, devPortalUUID, orgID string) (*dto.UnpublishFromDevPortalResponse, error) {
+func (s *APIService) UnpublishAPIFromDevPortal(apiID, devPortalUUID, orgID string) error {
 	// Unpublish API from DevPortal
 	return s.devPortalService.UnpublishAPIFromDevPortal(devPortalUUID, orgID, apiID)
 }

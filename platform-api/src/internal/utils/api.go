@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"platform-api/src/internal/client/devportal_client"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
@@ -784,30 +785,31 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 	return string(yamlBytes), nil
 }
 
+// TODO: Enhance GenerateOpenAPIDefinition to include request/response schemas, examples,
+// detailed parameters, and complete security configurations from original OpenAPI sources
+// to make the spec more useful for API consumers. Currently generates minimal spec
+// with only available DTO data to avoid inventing information.
 // GenerateOpenAPIDefinition generates an OpenAPI 3.0 definition from the API struct
-func (u *APIUtil) GenerateOpenAPIDefinition(api *dto.API) ([]byte, error) {
+func (u *APIUtil) GenerateOpenAPIDefinition(api *dto.API, req *devportal_client.APIMetadataRequest) ([]byte, error) {
 	// Build the OpenAPI specification
-	openAPISpec := map[string]interface{}{
-		"openapi": "3.0.3",
-		"info":    u.buildInfoSection(api),
-		"servers": u.buildServersSection(api),
-		"paths":   u.buildPathsSection(api),
+	openAPISpec := dto.OpenAPI{
+		OpenAPI: "3.0.3",
+		Info:    u.buildInfoSection(api),
+		Servers: u.buildServersSection(api, &req.EndPoints),
+		Paths:   u.buildPathsSection(api),
 	}
 
 	// Add security schemes if configured
 	if securitySchemes := u.buildSecuritySchemes(api); len(securitySchemes) > 0 {
-		openAPISpec["components"] = map[string]interface{}{
-			"securitySchemes": securitySchemes,
+		openAPISpec.Components = &dto.Components{
+			SecuritySchemes: securitySchemes,
 		}
 	}
 
 	// Add global security if configured
 	if globalSecurity := u.buildGlobalSecurity(api); len(globalSecurity) > 0 {
-		openAPISpec["security"] = globalSecurity
+		openAPISpec.Security = globalSecurity
 	}
-
-	// Add tags
-	openAPISpec["tags"] = u.buildTags(api)
 
 	// Marshal to JSON
 	apiDefinition, err := json.Marshal(openAPISpec)
@@ -819,71 +821,54 @@ func (u *APIUtil) GenerateOpenAPIDefinition(api *dto.API) ([]byte, error) {
 }
 
 // buildInfoSection creates the info section of the OpenAPI spec
-func (u *APIUtil) buildInfoSection(api *dto.API) map[string]interface{} {
-	info := map[string]interface{}{
-		"title":       api.Name,
-		"version":     api.Version,
-		"description": api.Description,
+func (u *APIUtil) buildInfoSection(api *dto.API) dto.Info {
+	info := dto.Info{}
+
+	if api.Name != "" {
+		info.Title = api.Name
+	}
+	if api.Version != "" {
+		info.Version = api.Version
+	}
+	if api.Description != "" {
+		info.Description = api.Description
 	}
 
-	// Add contact info if available
+	// Add contact info only if available
 	if api.Provider != "" {
-		info["contact"] = map[string]interface{}{
-			"name": api.Provider,
+		info.Contact = &dto.Contact{
+			Name: api.Provider,
 		}
-	}
-
-	// Add license info
-	info["license"] = map[string]interface{}{
-		"name": "Apache 2.0",
-		"url":  "https://www.apache.org/licenses/LICENSE-2.0",
 	}
 
 	return info
 }
 
 // buildServersSection creates the servers section
-func (u *APIUtil) buildServersSection(api *dto.API) []map[string]interface{} {
-	var servers []map[string]interface{}
+func (u *APIUtil) buildServersSection(api *dto.API, endpoints *devportal_client.EndPoints) []dto.Server {
+	var servers []dto.Server
 
 	// Add production server if available
-	if len(api.BackendServices) > 0 && len(api.BackendServices[0].Endpoints) > 0 {
-		prodURL := api.BackendServices[0].Endpoints[0].URL
-		if prodURL != "" {
-			servers = append(servers, map[string]interface{}{
-				"url":         prodURL + api.Context,
-				"description": "Production server",
-			})
+	if endpoints.ProductionURL != "" {
+		prodURL := endpoints.ProductionURL
+		if !strings.HasSuffix(prodURL, api.Context) {
+			prodURL += api.Context
 		}
+		servers = append(servers, dto.Server{
+			URL:         prodURL,
+			Description: "Production server",
+		})
 	}
 
-	// Add sandbox server if multiple endpoints exist
-	if len(api.BackendServices) > 0 && len(api.BackendServices[0].Endpoints) > 1 {
-		sandboxURL := api.BackendServices[0].Endpoints[1].URL
-		if sandboxURL != "" {
-			servers = append(servers, map[string]interface{}{
-				"url":         sandboxURL + api.Context,
-				"description": "Sandbox server",
-			})
+	// Add sandbox server if available
+	if endpoints.SandboxURL != "" {
+		sandboxURL := endpoints.SandboxURL
+		if !strings.HasSuffix(sandboxURL, api.Context) {
+			sandboxURL += api.Context
 		}
-	}
-
-	// Default server if no endpoints configured
-	if len(servers) == 0 {
-		servers = append(servers, map[string]interface{}{
-			"url":         "{scheme}://{host}" + api.Context,
-			"description": "API Gateway",
-			"variables": map[string]interface{}{
-				"scheme": map[string]interface{}{
-					"default":     "https",
-					"description": "The protocol scheme",
-					"enum":        []string{"http", "https"},
-				},
-				"host": map[string]interface{}{
-					"default":     "api.example.com",
-					"description": "The API gateway host",
-				},
-			},
+		servers = append(servers, dto.Server{
+			URL:         sandboxURL,
+			Description: "Sandbox server",
 		})
 	}
 
@@ -891,8 +876,8 @@ func (u *APIUtil) buildServersSection(api *dto.API) []map[string]interface{} {
 }
 
 // buildPathsSection creates the paths section with detailed operations
-func (u *APIUtil) buildPathsSection(api *dto.API) map[string]interface{} {
-	paths := make(map[string]interface{})
+func (u *APIUtil) buildPathsSection(api *dto.API) map[string]dto.PathItem {
+	paths := make(map[string]dto.PathItem)
 
 	for _, operation := range api.Operations {
 		if operation.Request == nil {
@@ -902,48 +887,57 @@ func (u *APIUtil) buildPathsSection(api *dto.API) map[string]interface{} {
 		path := operation.Request.Path
 		method := strings.ToLower(operation.Request.Method)
 
-		// Initialize path if it doesn't exist
-		if paths[path] == nil {
-			paths[path] = make(map[string]interface{})
+		// Get or create PathItem
+		pathItem, exists := paths[path]
+		if !exists {
+			pathItem = dto.PathItem{}
 		}
 
-		// Build operation details
-		operationSpec := map[string]interface{}{
-			"summary":     operation.Name,
-			"description": operation.Description,
-			"operationId": fmt.Sprintf("%s_%s", method, strings.ReplaceAll(path, "/", "_")),
-			"tags":        []string{api.Name},
-			"responses":   u.buildResponses(operation),
+		// Build operation details - only include available data
+		operationSpec := &dto.OpenAPIOperation{
+			Summary:     operation.Name,
+			Description: operation.Description,
 		}
 
-		// Add parameters
+		// Add parameters inferred from the path or authentication when present
 		if parameters := u.buildParameters(path, operation, api); len(parameters) > 0 {
-			operationSpec["parameters"] = parameters
+			operationSpec.Parameters = parameters
 		}
 
-		// Add request body for applicable methods
-		if u.hasRequestBody(method) {
-			if requestBody := u.buildRequestBody(operation); requestBody != nil {
-				operationSpec["requestBody"] = requestBody
-			}
-		}
-
-		// Add security requirements
+		// Add security requirements only if operation has authentication configured
 		if operationSecurity := u.buildOperationSecurity(operation, api); len(operationSecurity) > 0 {
-			operationSpec["security"] = operationSecurity
+			operationSpec.Security = operationSecurity
 		}
 
-		// Add to path
-		pathMap := paths[path].(map[string]interface{})
-		pathMap[method] = operationSpec
+		// Set the operation on the pathItem
+		switch method {
+		case "get":
+			pathItem.Get = operationSpec
+		case "post":
+			pathItem.Post = operationSpec
+		case "put":
+			pathItem.Put = operationSpec
+		case "delete":
+			pathItem.Delete = operationSpec
+		case "patch":
+			pathItem.Patch = operationSpec
+		case "options":
+			pathItem.Options = operationSpec
+		case "head":
+			pathItem.Head = operationSpec
+		case "trace":
+			pathItem.Trace = operationSpec
+		}
+
+		paths[path] = pathItem
 	}
 
 	return paths
 }
 
 // buildParameters extracts path, query, and header parameters from the path
-func (u *APIUtil) buildParameters(path string, operation dto.Operation, api *dto.API) []map[string]interface{} {
-	var parameters []map[string]interface{}
+func (u *APIUtil) buildParameters(path string, operation dto.Operation, api *dto.API) []dto.Parameter {
+	var parameters []dto.Parameter
 
 	// Extract path parameters (e.g., {id} -> id)
 	pathParamRegex := regexp.MustCompile(`\{([^}]+)\}`)
@@ -952,12 +946,12 @@ func (u *APIUtil) buildParameters(path string, operation dto.Operation, api *dto
 	for _, match := range matches {
 		if len(match) > 1 {
 			paramName := match[1]
-			parameters = append(parameters, map[string]interface{}{
-				"name":        paramName,
-				"in":          "path",
-				"required":    true,
-				"schema":      map[string]interface{}{"type": "string"},
-				"description": fmt.Sprintf("The %s parameter", paramName),
+			parameters = append(parameters, dto.Parameter{
+				Name:        paramName,
+				In:          "path",
+				Required:    true,
+				Schema:      dto.Schema{Type: "string"},
+				Description: fmt.Sprintf("The %s parameter", paramName),
 			})
 		}
 	}
@@ -968,23 +962,23 @@ func (u *APIUtil) buildParameters(path string, operation dto.Operation, api *dto
 		if operation.Request.Authentication != nil && operation.Request.Authentication.Required {
 			if api.Security != nil && api.Security.OAuth2 != nil && len(api.Security.OAuth2.Scopes) > 0 {
 				// For OAuth2, add Authorization header
-				parameters = append(parameters, map[string]interface{}{
-					"name":        "Authorization",
-					"in":          "header",
-					"required":    true,
-					"schema":      map[string]interface{}{"type": "string"},
-					"description": "Bearer token for authentication",
+				parameters = append(parameters, dto.Parameter{
+					Name:        "Authorization",
+					In:          "header",
+					Required:    true,
+					Schema:      dto.Schema{Type: "string"},
+					Description: "Bearer token for authentication",
 				})
 			} else if api.Security != nil && api.Security.APIKey != nil && api.Security.APIKey.Enabled {
 				// For API Key, add the key parameter
 				paramName := u.getAPIKeyName(api.Security.APIKey)
 				in := u.getAPIKeyLocation(api.Security.APIKey)
-				parameters = append(parameters, map[string]interface{}{
-					"name":        paramName,
-					"in":          in,
-					"required":    true,
-					"schema":      map[string]interface{}{"type": "string"},
-					"description": "API key for authentication",
+				parameters = append(parameters, dto.Parameter{
+					Name:        paramName,
+					In:          in,
+					Required:    true,
+					Schema:      dto.Schema{Type: "string"},
+					Description: "API key for authentication",
 				})
 			}
 		}
@@ -993,109 +987,17 @@ func (u *APIUtil) buildParameters(path string, operation dto.Operation, api *dto
 	return parameters
 }
 
-// buildResponses creates response definitions
-func (u *APIUtil) buildResponses(operation dto.Operation) map[string]interface{} {
-	responses := map[string]interface{}{
-		"200": map[string]interface{}{
-			"description": "Successful response",
-			"content": map[string]interface{}{
-				"application/json": map[string]interface{}{
-					"schema": map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"message": map[string]interface{}{
-								"type":        "string",
-								"description": "Response message",
-							},
-							"data": map[string]interface{}{
-								"type":        "object",
-								"description": "Response data",
-							},
-						},
-					},
-				},
-			},
-		},
-		"400": map[string]interface{}{
-			"description": "Bad Request",
-			"content": map[string]interface{}{
-				"application/json": map[string]interface{}{
-					"schema": map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"error": map[string]interface{}{
-								"type":        "string",
-								"description": "Error message",
-							},
-						},
-					},
-				},
-			},
-		},
-		"401": map[string]interface{}{
-			"description": "Unauthorized",
-		},
-		"403": map[string]interface{}{
-			"description": "Forbidden",
-		},
-		"500": map[string]interface{}{
-			"description": "Internal Server Error",
-		},
-	}
-
-	return responses
-}
-
-// hasRequestBody determines if an HTTP method typically has a request body
-func (u *APIUtil) hasRequestBody(method string) bool {
-	return method == "post" || method == "put" || method == "patch"
-}
-
-// buildRequestBody creates request body definition
-func (u *APIUtil) buildRequestBody(operation dto.Operation) map[string]interface{} {
-	return map[string]interface{}{
-		"required": true,
-		"content": map[string]interface{}{
-			"application/json": map[string]interface{}{
-				"schema": map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"data": map[string]interface{}{
-							"type":        "object",
-							"description": "Request payload",
-						},
-					},
-				},
-			},
-		},
-	}
-}
-
 // buildSecuritySchemes creates security scheme definitions
-func (u *APIUtil) buildSecuritySchemes(api *dto.API) map[string]interface{} {
-	schemes := make(map[string]interface{})
+func (u *APIUtil) buildSecuritySchemes(api *dto.API) map[string]dto.SecurityScheme {
+	schemes := make(map[string]dto.SecurityScheme)
 
 	if api.Security != nil {
 		// API Key security
 		if api.Security.APIKey != nil && api.Security.APIKey.Enabled {
-			schemes["ApiKeyAuth"] = map[string]interface{}{
-				"type": "apiKey",
-				"in":   u.getAPIKeyLocation(api.Security.APIKey),
-				"name": u.getAPIKeyName(api.Security.APIKey),
-			}
-		}
-
-		// OAuth2 security
-		if api.Security.OAuth2 != nil && len(api.Security.OAuth2.Scopes) > 0 {
-			schemes["OAuth2"] = map[string]interface{}{
-				"type": "oauth2",
-				"flows": map[string]interface{}{
-					"authorizationCode": map[string]interface{}{
-						"authorizationUrl": "", // TODO: source from configuration
-						"tokenUrl":         "", // TODO: source from configuration
-						"scopes":           u.buildOAuthScopes(api.Security.OAuth2.Scopes),
-					},
-				},
+			schemes["ApiKeyAuth"] = dto.SecurityScheme{
+				Type: "apiKey",
+				In:   u.getAPIKeyLocation(api.Security.APIKey),
+				Name: u.getAPIKeyName(api.Security.APIKey),
 			}
 		}
 	}
@@ -1131,29 +1033,14 @@ func (u *APIUtil) getAPIKeyName(apiKey *dto.APIKeySecurity) string {
 	return "X-API-Key" // default
 }
 
-// buildOAuthScopes creates OAuth2 scopes
-func (u *APIUtil) buildOAuthScopes(scopes []string) map[string]interface{} {
-	scopeMap := make(map[string]interface{})
-	for _, scope := range scopes {
-		scopeMap[scope] = fmt.Sprintf("Access to %s resources", scope)
-	}
-	return scopeMap
-}
-
 // buildGlobalSecurity creates global security requirements
-func (u *APIUtil) buildGlobalSecurity(api *dto.API) []map[string]interface{} {
-	var security []map[string]interface{}
+func (u *APIUtil) buildGlobalSecurity(api *dto.API) []dto.SecurityRequirement {
+	var security []dto.SecurityRequirement
 
 	if api.Security != nil {
 		if api.Security.APIKey != nil && api.Security.APIKey.Enabled {
-			security = append(security, map[string]interface{}{
+			security = append(security, dto.SecurityRequirement{
 				"ApiKeyAuth": []string{},
-			})
-		}
-
-		if api.Security.OAuth2 != nil && len(api.Security.OAuth2.Scopes) > 0 {
-			security = append(security, map[string]interface{}{
-				"OAuth2": api.Security.OAuth2.Scopes,
 			})
 		}
 	}
@@ -1162,36 +1049,21 @@ func (u *APIUtil) buildGlobalSecurity(api *dto.API) []map[string]interface{} {
 }
 
 // buildOperationSecurity creates operation-specific security
-func (u *APIUtil) buildOperationSecurity(operation dto.Operation, api *dto.API) []map[string]interface{} {
-	var security []map[string]interface{}
+func (u *APIUtil) buildOperationSecurity(operation dto.Operation, api *dto.API) []dto.SecurityRequirement {
+	var security []dto.SecurityRequirement
 
 	if operation.Request != nil && operation.Request.Authentication != nil && operation.Request.Authentication.Required {
 		if api.Security != nil {
 			if api.Security.APIKey != nil && api.Security.APIKey.Enabled {
-				security = append(security, map[string]interface{}{
+				security = append(security, dto.SecurityRequirement{
 					"ApiKeyAuth": []string{},
 				})
 			}
 
-			if api.Security.OAuth2 != nil && len(operation.Request.Authentication.Scopes) > 0 {
-				security = append(security, map[string]interface{}{
-					"OAuth2": operation.Request.Authentication.Scopes,
-				})
-			}
 		}
 	}
 
 	return security
-}
-
-// buildTags creates tag definitions
-func (u *APIUtil) buildTags(api *dto.API) []map[string]interface{} {
-	return []map[string]interface{}{
-		{
-			"name":        api.Name,
-			"description": fmt.Sprintf("Operations for %s API", api.Name),
-		},
-	}
 }
 
 // ConvertAPIYAMLDataToDTO converts APIDeploymentYAML to API DTO

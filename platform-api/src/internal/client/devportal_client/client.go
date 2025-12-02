@@ -18,6 +18,7 @@
 package devportal_client
 
 import (
+	"log"
 	"net/http"
 
 	"platform-api/src/internal/client"
@@ -67,7 +68,9 @@ func (c *DevPortalClient) do(req *http.Request) (*http.Response, error) {
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		log.Printf("[DevPortalClient] Request failed with network error: %v", err)
+		// Map all network errors to backend unreachable (503 Service Unavailable)
+		return nil, NewDevPortalError(503, "backend unreachable", true, err)
 	}
 
 	// Check for universal HTTP errors first (before reading body)
