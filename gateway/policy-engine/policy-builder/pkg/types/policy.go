@@ -56,6 +56,8 @@ type ValidationWarning struct {
 type BuildMetadata struct {
 	Timestamp      time.Time
 	BuilderVersion string
+	Version        string // Policy Engine version
+	GitCommit      string // Git commit hash
 	Policies       []PolicyInfo
 }
 

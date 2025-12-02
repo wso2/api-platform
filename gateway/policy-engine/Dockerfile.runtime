@@ -4,6 +4,10 @@
 # Stage 1: Builder Base - Contains framework source and builder tooling
 FROM golang:1.24-alpine AS builder-base
 
+# Build arguments for version information
+ARG VERSION=0.0.1-SNAPSHOT
+ARG GIT_COMMIT=unknown
+
 # Install build dependencies
 RUN apk add --no-cache \
     git \
@@ -40,6 +44,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /usr/local/bin/po
 # Stage 2: Policy Compilation - Run builder to compile policies
 FROM builder-base AS policy-compiler
 
+# Pass build arguments as environment variables
+ARG VERSION
+ARG GIT_COMMIT
+ENV VERSION=${VERSION}
+ENV GIT_COMMIT=${GIT_COMMIT}
+
 # Copy sample policy implementations
 COPY sample-policies/ /workspace/sample-policies/
 
@@ -52,7 +62,7 @@ RUN mkdir -p /workspace/output
 # Set working directory
 WORKDIR /workspace
 
-# Run the policy builder with manifest
+# Run the policy builder with manifest (VERSION and GIT_COMMIT are available as env vars)
 RUN /usr/local/bin/policy-engine-builder
 
 # Stage 3: Runtime - Minimal image with compiled binary

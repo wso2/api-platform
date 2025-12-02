@@ -2,6 +2,9 @@
 
 # Variables
 VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+LDFLAGS := -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.BuildDate=$(BUILD_DATE)
 DOCKER_REGISTRY ?= ghcr.io/renuka-fernando
 BUILDER_IMAGE := $(DOCKER_REGISTRY)/api-platform-gateway-builder
 RUNTIME_IMAGE := $(DOCKER_REGISTRY)/api-platform-policy-engine
@@ -77,6 +80,7 @@ build-builder:
 	@echo "Building Gateway Builder image: $(BUILDER_TAG)"
 	docker build -f Dockerfile.builder \
 		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(BUILDER_TAG) \
 		-t $(BUILDER_IMAGE):latest \
 		.
@@ -97,6 +101,7 @@ build-runtime:
 	@echo "Building Policy Engine Runtime image: $(RUNTIME_TAG)"
 	docker build -f Dockerfile.runtime \
 		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(RUNTIME_TAG) \
 		-t $(RUNTIME_IMAGE):latest \
 		.
@@ -136,7 +141,7 @@ stop-runtime:
 ## build: Build the binary locally (for development)
 build:
 	@echo "Building $(BINARY_NAME) locally..."
-	CGO_ENABLED=0 $(GOBUILD) -o ./$(BINARY_NAME) -v ./$(CMD_DIR)
+	CGO_ENABLED=0 $(GOBUILD) -ldflags "$(LDFLAGS)" -o ./$(BINARY_NAME) -v ./$(CMD_DIR)
 	@echo "✅ Binary built: ./$(BINARY_NAME)"
 
 ## test: Run tests
@@ -212,7 +217,7 @@ rebuild: build-runtime restart
 ## dev-build: Quick development build (local binary only)
 dev-build:
 	@echo "Quick development build..."
-	$(GOBUILD) -o ./$(BINARY_NAME) ./$(CMD_DIR)
+	$(GOBUILD) -ldflags "$(LDFLAGS)" -o ./$(BINARY_NAME) ./$(CMD_DIR)
 	@echo "✅ Built: ./$(BINARY_NAME)"
 
 ## dev-run: Run the binary locally (without Docker)

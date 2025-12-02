@@ -23,6 +23,13 @@ import (
 	"github.com/policy-engine/policy-engine/internal/xdsclient"
 )
 
+// Version information (set via ldflags during build)
+var (
+	Version   = "dev"
+	GitCommit = "unknown"
+	BuildDate = "unknown"
+)
+
 var (
 	configFile       = flag.String("config", "configs/config.yaml", "Path to configuration file")
 	policyChainsFile = flag.String("policy-chains-file", "", "Path to policy chains file (enables file mode)")
@@ -49,6 +56,9 @@ func main() {
 	ctx := context.Background()
 
 	slog.InfoContext(ctx, "Policy Engine starting",
+		"version", Version,
+		"git_commit", GitCommit,
+		"build_date", BuildDate,
 		"config_file", *configFile,
 		"config_mode", cfg.ConfigMode.Mode,
 		"extproc_port", cfg.Server.ExtProcPort)
