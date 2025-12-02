@@ -5,7 +5,6 @@ import {
   CardContent,
   Chip,
   CircularProgress,
-  Grid,
   Rating,
   Stack,
   Tooltip,
@@ -356,41 +355,6 @@ const ApiListContent: React.FC = () => {
 
   return (
     <Box>
-      {/* Toolbar (top of page, hidden during first-time empty or flows/templates) */}
-      {showToolbar && (
-        <Box
-          sx={{
-            mb: 2,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 2,
-          }}
-        >
-          <Typography variant="h3">APIs</Typography>
-
-          <Stack direction="row" spacing={1} alignItems="center">
-            <SearchBar
-              testId="api-search"
-              placeholder="Search APIs"
-              inputValue={query}
-              onChange={setQuery}
-              iconPlacement="left"
-              bordered
-              size="medium"
-              color="secondary"
-            />
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              sx={{ textTransform: "none" }}
-              onClick={() => setTemplatesOpen(true)}
-            >
-              Create
-            </Button>
-          </Stack>
-        </Box>
-      )}
 
       {/* Endpoint Creation Flow */}
       {wizardOpen && (
@@ -447,27 +411,65 @@ const ApiListContent: React.FC = () => {
               </Typography>
             </Box>
           ) : isFirstTimeEmpty ? (
-            // First-time empty state (no search) — toolbar hidden above
             <ApiEmptyState onAction={handleEmptyStateAction} />
           ) : (
-            // List of APIs
-            <Grid container spacing={2} alignItems="stretch">
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 350px))',
+                gap: 2,
+                justifyContent: 'center',
+                alignItems: 'stretch',
+              }}
+            >
+              {showToolbar && (
+                <Box
+                  sx={{
+                    gridColumn: '1 / -1',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 2,
+                    mb: 0,
+                  }}
+                >
+                  <Typography variant="h3">APIs</Typography>
+
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <SearchBar
+                      testId="api-search"
+                      placeholder="Search APIs"
+                      inputValue={query}
+                      onChange={setQuery}
+                      iconPlacement="left"
+                      bordered
+                      size="medium"
+                      color="secondary"
+                    />
+                    <Button
+                      variant="contained"
+                      startIcon={<AddIcon />}
+                      sx={{ textTransform: 'none' }}
+                      onClick={() => setTemplatesOpen(true)}
+                    >
+                      Create
+                    </Button>
+                  </Stack>
+                </Box>
+              )}
               {filteredApis.map((apiSummary) => {
                 const card = toCardData(apiSummary);
                 return (
-                  <Grid
-                    size={{ xs: 12, sm: 6, md: 4, lg: 3, xl: 3 }}
-                    key={apiSummary.id}
-                  >
+                  <Box key={apiSummary.id} sx={{ display: 'flex', justifyContent: 'center' }}>
                     <ApiCard
                       api={card}
                       onClick={() => handleNavigate(apiSummary)}
                       onDelete={(e) => handleDelete(apiSummary.id, apiSummary.name, e)}
                     />
-                  </Grid>
+                  </Box>
                 );
               })}
-            </Grid>
+            </Box>
           )}
         </>
       )}
