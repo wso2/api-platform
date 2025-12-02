@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/policy-engine/sdk/policyengine/v1"
+	policyenginev1 "github.com/policy-engine/sdk/policyengine/v1"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
@@ -331,12 +331,7 @@ func derivePolicyFromAPIConfig(cfg *models.StoredAPIConfig, routerConfig *config
 			}
 		}
 
-		// Construct route key using the same format as the xDS translator for consistency
-		// This ensures the policy engine can match routes correctly
-		// Format: HttpMethod|RoutePath|Vhost
-		// Example: GET|/weather/us/seattle|localhost
-		fullPath := apiData.Context + op.Path
-		routeKey := xds.GenerateRouteName(string(op.Method), fullPath, routerConfig.GatewayHost)
+		routeKey := xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, routerConfig.GatewayHost)
 		routes = append(routes, policyenginev1.PolicyChain{
 			RouteKey: routeKey,
 			Policies: finalPolicies,

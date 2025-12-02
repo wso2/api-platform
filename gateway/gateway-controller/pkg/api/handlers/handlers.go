@@ -536,6 +536,7 @@ func (s *APIServer) ListPolicies(c *gin.Context) {
 // RouteKey uses the fully qualified route path (context + operation path) and must match the route name format
 // used by the xDS translator for consistency.
 func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *models.StoredPolicyConfig {
+	// TODO: (renuka) duplicate buildStoredPolicyFromAPI funcs. Refactor this.
 	apiCfg := &cfg.Configuration
 	apiData := apiCfg.Spec
 
@@ -581,12 +582,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *model
 			}
 		}
 
-		// Construct route key using the same format as the xDS translator for consistency
-		// This ensures the policy engine can match routes correctly
-		// Format: HttpMethod|RoutePath|Vhost
-		// Example: GET|/weather/us/seattle|localhost
-		fullPath := apiData.Context + op.Path
-		routeKey := xds.GenerateRouteName(string(op.Method), fullPath, s.routerConfig.GatewayHost)
+		routeKey := xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, s.routerConfig.GatewayHost)
 		routes = append(routes, policyenginev1.PolicyChain{
 			RouteKey: routeKey,
 			Policies: finalPolicies,

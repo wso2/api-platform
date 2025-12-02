@@ -94,8 +94,19 @@ func NewTranslator(logger *zap.Logger, routerConfig *config.RouterConfig, db sto
 
 // GenerateRouteName creates a unique route name in the format: HttpMethod|RoutePath|Vhost
 // This format is used by both Envoy routes and the policy engine for route matching
-func GenerateRouteName(method, path, vhost string) string {
-	return fmt.Sprintf("%s|%s|%s", method, path, vhost)
+// It builds the full path by combining context, version, and path using ConstructFullPath
+func GenerateRouteName(method, context, apiVersion, path, vhost string) string {
+	fullPath := ConstructFullPath(context, apiVersion, path)
+	return fmt.Sprintf("%s|%s|%s", method, fullPath, vhost)
+}
+
+// ConstructFullPath builds the full path by replacing $version placeholder in context and appending path
+// If context contains $version, it will be replaced with the actual apiVersion value
+// Example 1: context=/weather/$version, version=v1.0, path=/us/seattle -> /weather/v1.0/us/seattle
+// Example 2: context=/weather, version=v1.0, path=/us/seattle -> /weather/us/seattle
+func ConstructFullPath(context, apiVersion, path string) string {
+	contextWithVersion := strings.ReplaceAll(context, "$version", apiVersion)
+	return contextWithVersion + path
 }
 
 // GetCertStore returns the certificate store instance
@@ -383,13 +394,12 @@ func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost)
 
 // createRoute creates a route for an operation
 func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clusterName, upstreamPath string) *route.Route {
-	// Combine context, version, and path for matching
-	// Example: context=/weather, version=v1.0, path=/us/seattle -> fullPath=/weather/v1.0/us/seattle
-	fullPath := context + "/" + apiVersion + path
+	// Build the full path using the utility function
+	fullPath := ConstructFullPath(context, apiVersion, path)
 
 	// Generate unique route name using the helper function
 	// Format: HttpMethod|RoutePath|Vhost (e.g., "GET|/weather/v1.0/us/seattle|localhost")
-	routeName := GenerateRouteName(method, fullPath, t.routerConfig.GatewayHost)
+	routeName := GenerateRouteName(method, context, apiVersion, path, t.routerConfig.GatewayHost)
 
 	// Check if path contains parameters (e.g., {country_code})
 	hasParams := strings.Contains(path, "{")
@@ -465,18 +475,20 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 	}
 
 	// Add path rewriting if upstream has a path prefix
-	// Strip the API context + version and prepend the upstream path
-	// For example: request /weather/v1.0/us/seattle with context /weather, version v1.0, and upstream /api/v2
-	// should result in /api/v2/us/seattle (context + version stripped, upstream prepended)
+	// Strip the API context (with version if included) and prepend the upstream path
+	// Example 1: request /weather/v1.0/us/seattle with context /weather/$version and upstream /api/v2
+	//            should result in /api/v2/us/seattle
+	// Example 2: request /weather/us/seattle with context /weather and upstream /api/v2
+	//            should result in /api/v2/us/seattle
 	if upstreamPath != "" && upstreamPath != "/" {
-		// Use RegexRewrite to strip the context + version and prepend the upstream path
-		// Pattern captures everything after the context and version
-		// Escape special regex characters in context and version (e.g., dots in version like v1.0)
-		escapedContext := regexp.QuoteMeta(context)
-		escapedVersion := regexp.QuoteMeta(apiVersion)
+		// Use RegexRewrite to strip the context (with version substituted if present) and prepend upstream path
+		// Pattern captures everything after the context
+		// Escape special regex characters (e.g., dots in version like v1.0)
+		contextWithVersion := ConstructFullPath(context, apiVersion, "")
+		escapedContext := regexp.QuoteMeta(contextWithVersion)
 		r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
 			Pattern: &matcher.RegexMatcher{
-				Regex: "^" + escapedContext + "/" + escapedVersion + "(.*)$",
+				Regex: "^" + escapedContext + "(.*)$",
 			},
 			Substitution: upstreamPath + "\\1",
 		}
