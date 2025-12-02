@@ -1,5 +1,6 @@
 # Image URL to use all building/pushing image targets
-IMG ?= api-platform-gateway-controller:latest
+VERSION ?= v1.0.0-m4
+IMG ?= api-platform-gateway-operator:$(VERSION)
 ## Default debug image name (can be overridden by setting DEBUG_IMG)
 DEBUG_IMG ?= $(IMG)-debug
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.

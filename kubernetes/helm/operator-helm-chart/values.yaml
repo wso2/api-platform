@@ -6,8 +6,8 @@ nameOverride: ""
 fullnameOverride: ""
 
 image:
-  repository: tharsanan/api-platform-gateway-controller
-  tag: "latest"
+  repository: ghcr.io/tharsanan1/api-platform-gateway-operator
+  tag: "v1.0.0-m4"
   pullPolicy: Always
 
 serviceAccount:
@@ -41,7 +41,7 @@ securityContext:
 gateway:
   controlPlaneHost: "http://platform-api:3001"
   helm:
-    chartName: "oci://registry-1.docker.io/tharsanan/api-platform-gateway"
+    chartName: "oci://ghcr.io/tharsanan1/api-platform/api-platform-gateway"
     chartVersion: "0.0.1"
     valuesFilePath: "/config/gateway_values.yaml"
   # Gateway chart values that will be used when deploying gateways
@@ -67,7 +67,7 @@ gateway:
     gateway:
       controller:
         image:
-          repository: tharsanan/api-platform-gateway-controller
+          repository: ghcr.io/tharsanan1/api-platform-gateway-controller
           tag: v1.0.0-m4
           pullPolicy: Always
         imagePullSecrets: []
@@ -265,7 +265,7 @@ gateway:
 
       router:
         image:
-          repository: tharsanan/api-platform-gateway-router
+          repository: ghcr.io/tharsanan1/api-platform-gateway-router
           tag: v1.0.0-m4
           pullPolicy: Always
         imagePullSecrets: []
@@ -322,7 +322,7 @@ gateway:
 
       policyEngine:
         image:
-          repository: tharsanan/api-platform-policy-engine
+          repository: ghcr.io/tharsanan1/api-platform-policy-engine
           tag: v1.0.0-m4
           pullPolicy: Always
         imagePullSecrets: []
