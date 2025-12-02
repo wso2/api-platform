@@ -376,16 +376,16 @@ const Header: React.FC = () => {
       }}
     >
       <Toolbar variant="dense" sx={{ minHeight: 52 }}>
-        <Box
+        <ButtonBase
           sx={{
             display: 'flex',
             alignItems: 'center',
             gap: 1.25,
-            cursor: 'pointer',
             marginRight: 7,
             '&:hover .mp-title': { color: 'primary.main' },
           }}
           onClick={() => navigate('/userScenario')}
+          aria-label="Navigate to user scenarios"
         >
           <Avatar
             variant="rounded"
@@ -408,7 +408,7 @@ const Header: React.FC = () => {
           >
             Management Portal
           </Typography>
-        </Box>
+        </ButtonBase>
 
         <Box ml={1.5} display="flex" alignItems="center" gap={0.75}>
           {showOrg && (
