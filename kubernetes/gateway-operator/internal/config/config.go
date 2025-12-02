@@ -57,6 +57,24 @@ type GatewayConfig struct {
 	// HelmValuesFilePath is the path to a custom values.yaml file (optional)
 	// If not set, the chart's default values.yaml will be used
 	HelmValuesFilePath string `koanf:"helm_values_file_path"`
+
+	// RegistryCredentialsSecret holds the reference to the registry credentials secret
+	RegistryCredentialsSecret *SecretReference `koanf:"registry_credentials_secret"`
+}
+
+// SecretReference holds a reference to a Kubernetes Secret
+type SecretReference struct {
+	// Name is the name of the secret
+	Name string `koanf:"name"`
+
+	// Namespace is the namespace of the secret
+	Namespace string `koanf:"namespace"`
+
+	// UsernameKey is the key in the secret containing the username (default: "username")
+	UsernameKey string `koanf:"username_key"`
+
+	// PasswordKey is the key in the secret containing the password (default: "password")
+	PasswordKey string `koanf:"password_key"`
 }
 
 // ReconciliationConfig holds reconciliation loop configuration
@@ -106,6 +124,10 @@ func LoadConfig(configPath string) (*OperatorConfig, error) {
 	if err := k.Load(confmap.Provider(defaults, "."), nil); err != nil {
 		return nil, fmt.Errorf("failed to load defaults: %w", err)
 	}
+
+	// Apply secret reference defaults after defaults are loaded
+	k.Set("gateway.registry_credentials_secret.username_key", "username")
+	k.Set("gateway.registry_credentials_secret.password_key", "password")
 
 	// Load config file if path is provided and exists
 	if configPath != "" {

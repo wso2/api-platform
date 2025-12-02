@@ -1,14 +1,14 @@
 {{- $controller := .Values.gateway.controller -}}
 {{- $tls := $controller.tls -}}
 {{- if and $controller.deployment.enabled $tls.enabled (eq $tls.certificateProvider "cert-manager") }}
-{{- if and (eq $tls.certManager.issuerRef.kind "Issuer") (eq $tls.certManager.issuerRef.name "selfsigned-issuer") $tls.certManager.createIssuer }}
+{{- if and (eq $tls.certManager.issuerRef.kind "Issuer") $tls.certManager.createIssuer }}
 ---
 # This is a sample self-signed Issuer for development/testing purposes
 # In production, replace this with a proper CA issuer (Let's Encrypt, corporate CA, etc.)
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
-  name: selfsigned-issuer
+  name: {{ include "gateway-operator.fullname" . }}-selfsigned-issuer
   labels:
     {{- include "gateway-operator.componentLabels" (list . "controller" dict) | nindent 4 }}
 spec:

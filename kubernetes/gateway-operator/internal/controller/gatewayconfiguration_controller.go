@@ -664,8 +664,28 @@ func (r *GatewayConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) erro
 // getDockerHubCredentials retrieves Docker Hub credentials from a Kubernetes Secret
 func (r *GatewayConfigurationReconciler) getDockerHubCredentials(ctx context.Context) (string, string, error) {
 	secret := &corev1.Secret{}
-	secretName := "docker-hub-creds"
-	secretNamespace := "default" // Use your operator's namespace
+
+	// Use configured secret reference or skip if not configured
+	if r.Config.Gateway.RegistryCredentialsSecret == nil {
+		return "", "", nil
+	}
+
+	secretRef := r.Config.Gateway.RegistryCredentialsSecret
+	secretName := secretRef.Name
+	secretNamespace := secretRef.Namespace
+
+	if secretName == "" || secretNamespace == "" {
+		return "", "", nil
+	}
+
+	usernameKey := secretRef.UsernameKey
+	if usernameKey == "" {
+		usernameKey = "username"
+	}
+	passwordKey := secretRef.PasswordKey
+	if passwordKey == "" {
+		passwordKey = "password"
+	}
 
 	err := r.Get(ctx, client.ObjectKey{
 		Name:      secretName,
@@ -675,8 +695,8 @@ func (r *GatewayConfigurationReconciler) getDockerHubCredentials(ctx context.Con
 		return "", "", fmt.Errorf("failed to get secret %s/%s: %w", secretNamespace, secretName, err)
 	}
 
-	username := string(secret.Data["username"])
-	password := string(secret.Data["password"])
+	username := string(secret.Data[usernameKey])
+	password := string(secret.Data[passwordKey])
 
 	if username == "" || password == "" {
 		return "", "", fmt.Errorf("username or password is empty in secret %s/%s", secretNamespace, secretName)

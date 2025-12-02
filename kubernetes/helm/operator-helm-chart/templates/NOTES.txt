@@ -1,0 +1,92 @@
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named {{ .Release.Name }}.
+
+To learn more about the release, try:
+
+  $ helm status {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+  $ helm get all {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+
+The Gateway Operator has been deployed successfully!
+
+Operator Details:
+  - Deployment: controller-manager
+  - Service Account: {{ .Values.serviceAccount.name }}
+  - Replicas: {{ .Values.replicaCount }}
+
+{{- if .Values.debug.enabled }}
+
+🐛 DEBUG MODE ENABLED
+  - Debug Port: {{ .Values.debug.port }}
+  - The operator is running under Delve debugger
+  - Connect your debugger to port {{ .Values.debug.port }}
+{{- end }}
+
+Custom Resource Definitions (CRDs) installed:
+  - APIConfiguration (api.api-platform.wso2.com/v1alpha1)
+  - GatewayConfiguration (api.api-platform.wso2.com/v1alpha1)
+
+Gateway Configuration:
+  - Control Plane: {{ .Values.gateway.controlPlaneHost }}
+  - Gateway Chart: {{ .Values.gateway.helm.chartName }}
+  - Chart Version: {{ .Values.gateway.helm.chartVersion }}
+{{- if .Values.reconciliation.enabled }}
+  - Reconciliation Enabled: Yes (Interval: {{ .Values.reconciliation.interval }}s)
+{{- else }}
+  - Reconciliation Enabled: No
+{{- end }}
+
+Next Steps:
+
+1. Verify the operator is running:
+   $ kubectl get deployment {{ include "gateway-operator.fullname" . }} -n {{ .Release.Namespace }}
+   $ kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+2. Check operator logs:
+   $ kubectl logs -f deployment/{{ include "gateway-operator.fullname" . }} -n {{ .Release.Namespace }}
+
+3. Create a GatewayConfiguration to deploy a gateway instance:
+   $ kubectl apply -f - <<EOF
+   apiVersion: api.api-platform.wso2.com/v1alpha1
+   kind: GatewayConfiguration
+   metadata:
+     name: my-gateway
+     namespace: default
+   spec:
+     # Your gateway configuration here
+   EOF
+
+4. Create an APIConfiguration to deploy APIs:
+   $ kubectl apply -f - <<EOF
+   apiVersion: api.api-platform.wso2.com/v1alpha1
+   kind: APIConfiguration
+   metadata:
+     name: my-api
+     namespace: default
+   spec:
+     # Your API configuration here
+   EOF
+
+5. Monitor the resources:
+   $ kubectl get gatewayconfiguration -A
+   $ kubectl get apiconfiguration -A
+
+For more information:
+  - Chart Documentation: See README.md in the chart repository
+  - Operator Documentation: /kubernetes/gateway-operator/
+
+Logging Configuration:
+  - Level: {{ .Values.logging.level }}
+  - Format: {{ .Values.logging.format }}
+
+{{- if .Values.gateway.values.gateway.controller.tls.enabled }}
+
+TLS Configuration:
+  - TLS Enabled: Yes
+  - Certificate Provider: {{ .Values.gateway.values.gateway.controller.tls.certificateProvider }}
+  {{- if eq .Values.gateway.values.gateway.controller.tls.certificateProvider "cert-manager" }}
+  - cert-manager Issuer: {{ .Values.gateway.values.gateway.controller.tls.certManager.issuerRef.name }}
+  {{- end }}
+{{- end }}
+
+Enjoy using the API Platform Gateway Operator! 🚀

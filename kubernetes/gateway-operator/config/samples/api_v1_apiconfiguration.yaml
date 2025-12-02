@@ -11,7 +11,7 @@ spec:
   # Explicit references to multiple specific gateways
   gatewayRefs:
     - name: cluster-gateway
-      namespace: default
+      namespace: test
     # - name: backup-gateway
     #   namespace: default
   
