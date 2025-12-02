@@ -260,7 +260,7 @@ const DevPortalDeployCard: React.FC<Props> = ({
             disabled={!apiId || isPublishingThis}
             onClick={() => onPublish(portal)}
           >
-            {isPublishingThis ? "Publishing…" : "Publish"}
+            {isPublishingThis ? "Adding…" : "Add API"}
           </Button>
         )}
       </Card>

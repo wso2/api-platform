@@ -376,12 +376,39 @@ const Header: React.FC = () => {
       }}
     >
       <Toolbar variant="dense" sx={{ minHeight: 52 }}>
-        <Typography
-          variant="subtitle2"
-          sx={{ fontWeight: 800, letterSpacing: 0.2, marginRight: 7 }}
+        <ButtonBase
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.25,
+            marginRight: 7,
+            '&:hover .mp-title': { color: 'primary.main' },
+          }}
+          onClick={() => navigate('/userScenario')}
+          aria-label="Navigate to user scenarios"
         >
-          Management Portal
-        </Typography>
+          <Avatar
+            variant="rounded"
+            sx={{
+              width: 36,
+              height: 36,
+              fontSize: 14,
+              fontWeight: 700,
+              color: '#fff',
+              boxShadow: '0 6px 18px rgba(4,150,105,0.30)',
+              background: 'linear-gradient(180deg, rgba(4,150,105,0.95) 0%, #049669 100%)',
+            }}
+          >
+            MP
+          </Avatar>
+          <Typography
+            className="mp-title"
+            variant="subtitle2"
+            sx={{ fontWeight: 800, letterSpacing: 0.2 }}
+          >
+            Management Portal
+          </Typography>
+        </ButtonBase>
 
         <Box ml={1.5} display="flex" alignItems="center" gap={0.75}>
           {showOrg && (

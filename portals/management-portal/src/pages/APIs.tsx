@@ -477,12 +477,30 @@ const ApiListContent: React.FC = () => {
         onClose={() => setDeleteDialog({ open: false, apiId: "", apiName: "" })}
         onConfirm={confirmDelete}
         title="Delete API"
-        message={`Are you sure you want to delete "${deleteDialog.apiName}"? This action cannot be undone.`}
+        message={
+          <Box>
+            <Typography variant="body1" sx={{ display: 'inline', mr: 0.5, color: 'text.primary' }}>
+              Are you sure you want to remove the API
+            </Typography>
+            <Typography
+              component="span"
+              sx={{ fontWeight: 700, fontSize: '1.05rem', ml: 0.5 }}
+            >
+              "{deleteDialog.apiName}"
+            </Typography>
+            <Typography component="span" sx={{ ml: 0.5, display: 'inline', color: 'text.primary' }}>
+              ?
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              This action will be irreversible and all related details will be lost. Please type in the component name below to confirm.
+            </Typography>
+          </Box>
+        }
         confirmText="Delete"
         cancelText="Cancel"
         severity="error"
         confirmationText={deleteDialog.apiName}
-        confirmationLabel={`Type the API name to confirm deletion`}
+        confirmationPlaceholder={"Enter API name to confirm"}
       />
     </Box>
   );

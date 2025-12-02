@@ -15,12 +15,12 @@ type ConfirmationDialogProps = {
   onClose: () => void;
   onConfirm: () => void;
   title: string;
-  message: string;
+  message: string | React.ReactNode;
   confirmText?: string;
   cancelText?: string;
   severity?: 'info' | 'warning' | 'error';
   confirmationText?: string;
-  confirmationLabel?: string;
+  confirmationPlaceholder?: string;
 };
 
 const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
@@ -33,7 +33,7 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   cancelText = "Cancel",
   severity = "warning",
   confirmationText,
-  confirmationLabel = "Type to confirm",
+  confirmationPlaceholder,
 }) => {
   const [inputValue, setInputValue] = React.useState("");
   const requiresConfirmation = confirmationText && confirmationText.trim();
@@ -93,32 +93,26 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       </DialogTitle>
 
       <DialogContent sx={{ pt: 0, pb: 3, px: 3 }}>
-        <Typography 
-          variant="body2" 
-          color="text.primary"
-          sx={{ 
-            fontSize: '0.9375rem',
-            lineHeight: 1.6,
-            opacity: 0.7,
-            mb: requiresConfirmation ? 2 : 0,
-          }}
-        >
-          {message}
-        </Typography>
+        <Box sx={{ mb: requiresConfirmation ? 2 : 0 }}>
+          {typeof message === 'string' ? (
+            <Typography
+              variant="body2"
+              color="text.primary"
+              sx={{ fontSize: '0.9375rem', lineHeight: 1.6, opacity: 0.7 }}
+            >
+              {message}
+            </Typography>
+          ) : (
+            message
+          )}
+        </Box>
 
         {requiresConfirmation && (
           <Box sx={{ mt: 2 }}>
-            <Typography 
-              variant="caption" 
-              color="text.secondary"
-              sx={{ mb: 1, display: 'block' }}
-            >
-              {confirmationLabel}
-            </Typography>
             <TextField
               fullWidth
               size="small"
-              placeholder={`Type "${confirmationText}" to confirm`}
+              placeholder={confirmationPlaceholder || (confirmationText ? `Type "${confirmationText}" to confirm` : '')}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               autoFocus

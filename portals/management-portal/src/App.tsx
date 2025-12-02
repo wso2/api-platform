@@ -1,7 +1,6 @@
 // src/App.tsx
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Box } from "@mui/material";
 import MainLayout from "./layout/MainLayout";
 
 import { useOrganization } from "./context/OrganizationContext";
@@ -11,8 +10,11 @@ import { projectSlugFromName } from "./utils/projectSlug";
 import ScenarioLanding from "./components/ScenarioLanding";
 import AppRoutes from "./routes";
 import ExposeServiceWizard from "./pages/userScenarios/ExposeServiceWizard";
+import PublishPortalWizard from "./pages/userScenarios/PublishPortalWizard";
+import DesignApiWizard from "./pages/userScenarios/DesignApiWizard";
 
 type ExperienceStage = "landing" | "wizard" | "platform";
+type WizardType = "expose-service" | "publish-portal" | "design-api" | null;
 const EXPERIENCE_STAGE_KEY = "apim-platform-experience-stage";
 
 const App: React.FC = () => {
@@ -26,6 +28,8 @@ const App: React.FC = () => {
       return stored === "platform" ? "platform" : "landing";
     }
   );
+
+  const [activeWizardType, setActiveWizardType] = React.useState<WizardType>(null);
 
   const { organization } = useOrganization();
   const { selectedProject } = useProjects();
@@ -44,9 +48,8 @@ const App: React.FC = () => {
     }
   }, [experienceStage]);
 
-  // Always treat "/" and "/userSenario" as the ScenarioLanding view
-  const isScenarioPath =
-    location.pathname === "/userSenario" || location.pathname === "/";
+  const isRootScenarioPath = location.pathname === "/";
+  const isUserScenarioPath = location.pathname === "/userScenario";
 
   const handleScenarioSkip = React.useCallback(() => {
     setExperienceStage("platform");
@@ -58,9 +61,17 @@ const App: React.FC = () => {
 
   const handleScenarioContinue = React.useCallback(
     (scenarioId: string) => {
-      setExperienceStage(
-        scenarioId === "expose-service" ? "wizard" : "platform"
-      );
+      if (
+        scenarioId === "expose-service" ||
+        scenarioId === "publish-portal" ||
+        scenarioId === "design-api"
+      ) {
+        setExperienceStage("wizard");
+        setActiveWizardType(scenarioId as WizardType);
+      } else {
+        setExperienceStage("platform");
+        setActiveWizardType(null);
+      }
       if (defaultOrgPath !== "/") {
         navigate(defaultOrgPath, { replace: true });
       }
@@ -70,6 +81,7 @@ const App: React.FC = () => {
 
   const handleWizardFinish = React.useCallback(() => {
     setExperienceStage("platform");
+    setActiveWizardType(null);
     if (defaultOrgPath !== "/") {
       navigate(defaultOrgPath, { replace: true });
     }
@@ -77,51 +89,54 @@ const App: React.FC = () => {
 
   const handleBackToChoices = React.useCallback(() => {
     setExperienceStage("landing");
-    navigate("/userSenario", { replace: true });
+    setActiveWizardType(null);
+    navigate("/userScenario", { replace: true });
   }, [navigate]);
-
-  // Show ScenarioLanding if we're at "/" or "/userSenario", or if stage is landing
-  const showScenarioLanding = isScenarioPath || experienceStage === "landing";
 
   let layoutContent: React.ReactNode = null;
   if (experienceStage === "wizard") {
-    layoutContent = (
-      <ExposeServiceWizard
-        onBackToChoices={handleBackToChoices}
-        onSkip={handleScenarioSkip}
-        onFinish={handleWizardFinish}
-      />
-    );
+    if (activeWizardType === "publish-portal") {
+      layoutContent = (
+        <PublishPortalWizard
+          onBackToChoices={handleBackToChoices}
+          onSkip={handleScenarioSkip}
+          onFinish={handleWizardFinish}
+        />
+      );
+    } else if (activeWizardType === "design-api") {
+      layoutContent = (
+        <DesignApiWizard
+          onBackToChoices={handleBackToChoices}
+          onSkip={handleScenarioSkip}
+          onFinish={handleWizardFinish}
+        />
+      );
+    } else {
+      layoutContent = (
+        <ExposeServiceWizard
+          onBackToChoices={handleBackToChoices}
+          onSkip={handleScenarioSkip}
+          onFinish={handleWizardFinish}
+        />
+      );
+    }
   } else {
     layoutContent = <AppRoutes />;
   }
 
+  if (isRootScenarioPath || isUserScenarioPath) {
+    return (
+      <MainLayout>
+        <ScenarioLanding
+          onContinue={handleScenarioContinue}
+          onSkip={handleScenarioSkip}
+        />
+      </MainLayout>
+    );
+  }
+
   return (
-    <>
-      {showScenarioLanding ? (
-        <Box
-          minHeight="100vh"
-          display="flex"
-          alignItems="flex-start"
-          justifyContent="center"
-          px={{ xs: 2, md: 4 }}
-          py={{ xs: 3, md: 6 }}
-          sx={{
-            backgroundImage:
-              "linear-gradient(190deg, #f4fffbff 0%, #F2F4F7 100%)",
-          }}
-        >
-          <Box width="100%" maxWidth={1280}>
-            <ScenarioLanding
-              onContinue={handleScenarioContinue}
-              onSkip={handleScenarioSkip}
-            />
-          </Box>
-        </Box>
-      ) : (
-        <MainLayout>{layoutContent}</MainLayout>
-      )}
-    </>
+    <MainLayout>{layoutContent}</MainLayout>
   );
 };
 

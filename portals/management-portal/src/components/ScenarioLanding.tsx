@@ -4,19 +4,16 @@ import {
   Box,
   Card,
   Chip,
-  Paper,
   Radio,
   Stack,
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
-import AutoAwesomeOutlinedIcon from "@mui/icons-material/AutoAwesomeOutlined";
 import { useOrganization } from "../context/OrganizationContext";
 import { SCENARIOS, type Scenario } from "../data/scenarios";
 import { Button } from "./src/components/Button";
-import vscodeSvg from "../../src/components/src/Images/svgs/Various/vs-code.svg";
-import { Link as MuiLink } from "@mui/material";
+import SetupStepsCard from "./SetupStepsCard";
 
 const ACCENT = "#049669";
 const TEXT_SECONDARY = "#AEAEAE";
@@ -40,9 +37,6 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
   const [activeScenarioId, setActiveScenarioId] = React.useState(
     SCENARIOS[0].id
   );
-  const [selectedScenarioIds, setSelectedScenarioIds] = React.useState<
-    string[]
-  >([SCENARIOS[0].id]);
 
   const activeScenario = React.useMemo(
     () =>
@@ -50,85 +44,12 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
     [activeScenarioId]
   );
 
-  const toggleScenario = (scenarioId: string) => {
+  const selectScenario = (scenarioId: string) => {
     setActiveScenarioId(scenarioId);
-    setSelectedScenarioIds((prev) =>
-      prev.includes(scenarioId)
-        ? prev.filter((id) => id !== scenarioId)
-        : [...prev, scenarioId]
-    );
   };
 
   return (
     <Box>
-      {/* ===== FIXED, FULL-WIDTH HEADER (no outer top spacing) ===== */}
-      <Paper
-        elevation={0}
-        sx={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          width: "100%",
-          borderRadius: 0,
-          borderBottom: "1px solid",
-          borderColor: "divider",
-          px: { xs: 2, md: 3 },
-          py: 1.25,
-          boxShadow:
-            "0 2px 6px rgba(15,23,42,0.05), 0 1px 2px rgba(15,23,42,0.04)",
-          bgcolor: "background.paper",
-          zIndex: (t) => t.zIndex.appBar,
-        }}
-      >
-        <Stack
-          direction="row"
-          alignItems="center"
-          justifyContent="space-between"
-          spacing={2}
-        >
-          {/* Left: brand */}
-          <Stack direction="row" alignItems="center" spacing={1.5}>
-            <Avatar
-              variant="rounded"
-              sx={{
-                width: 36,
-                height: 36,
-                fontSize: 14,
-                fontWeight: 700,
-                color: "#fff",
-                boxShadow: "0 6px 18px rgba(4,150,105,0.30)",
-                background:
-                  "linear-gradient(180deg, rgba(4,150,105,0.95) 0%, #049669 100%)",
-              }}
-            >
-              AP
-            </Avatar>
-            <Typography fontWeight={600}>APIM Platform</Typography>
-          </Stack>
-
-          {/* Right: input-like assistant chip */}
-          <Box
-            sx={{
-              borderRadius: 2,
-              border: "1px solid",
-              borderColor: "divider",
-              px: 1.75,
-              py: 0.75,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 1,
-              boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-              bgcolor: "background.paper",
-            }}
-          >
-            <AutoAwesomeOutlinedIcon sx={{ fontSize: 18, color: ACCENT }} />
-            <Typography variant="body2" sx={{ color: TEXT_SECONDARY }}>
-              Ask the AI Assistant anything...
-            </Typography>
-          </Box>
-        </Stack>
-      </Paper>
 
       {/* ===== MAIN CARD CONTENT ===== */}
       <Card
@@ -136,7 +57,7 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
         sx={{
           p: { xs: 3, md: 4 },
           mb: 4,
-          mt: 12,
+          mt: 2,
           borderRadius: 4,
           border: "1px solid",
           borderColor: "divider",
@@ -146,9 +67,13 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
         }}
       >
         <Typography variant="h3" fontWeight={600} mt={0.5}>
-          <Box component="span" fontWeight={800}>
-            Hi {displayName},
-          </Box>{" "}
+          {displayName !== "default" ? (
+            <>
+              <Box component="span" fontWeight={800}>
+                Hi {displayName},
+              </Box>{' '}
+            </>
+          ) : null}
           Welcome to the API Platform
         </Typography>
 
@@ -173,23 +98,24 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
             <Stack spacing={2}>
               {SCENARIOS.map((scenario: Scenario) => {
                 const Icon = scenario.icon;
-                const isChecked = selectedScenarioIds.includes(scenario.id);
                 const isActive = activeScenarioId === scenario.id;
 
                 return (
                   <Card
                     key={scenario.id}
-                    onClick={() => toggleScenario(scenario.id)}
+                    onClick={() => !scenario.comingSoon && selectScenario(scenario.id)}
                     sx={{
-                      cursor: "pointer",
+                      cursor: scenario.comingSoon ? "not-allowed" : "pointer",
                       border: "1px solid",
                       borderColor: isActive ? ACCENT : "divider",
-                      bgcolor: isChecked
+                      bgcolor: isActive
                         ? alpha(ACCENT, 0.1)
                         : "background.paper",
                       transition:
                         "border-color 150ms ease, box-shadow 150ms ease",
                       boxShadow: isActive ? CARD_SHADOW : "none",
+                      opacity: scenario.comingSoon ? 0.6 : 1,
+                      pointerEvents: scenario.comingSoon ? "none" : "auto",
                     }}
                   >
                     <Stack
@@ -202,6 +128,7 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
                       <Radio
                         checked={activeScenarioId === scenario.id}
                         tabIndex={-1}
+                        disabled={scenario.comingSoon}
                         onClick={(event) => {
                           event.stopPropagation();
                           setActiveScenarioId(scenario.id);
@@ -274,39 +201,11 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
               <Button
                 variant="contained"
                 size="large"
-                component={
-                  activeScenario.id === "design-api"
-                    ? (MuiLink as any)
-                    : undefined
-                }
-                href={
-                  activeScenario.id === "design-api" ? "vscode://" : undefined
-                }
-                onClick={
-                  activeScenario.id === "design-api"
-                    ? undefined
-                    : () => onContinue(activeScenarioId)
-                }
-                startIcon={
-                  activeScenario.id === "design-api" ? (
-                    <Box
-                      component="img"
-                      src={vscodeSvg}
-                      alt=""
-                      sx={{
-                        width: 16,
-                        height: 16,
-                        display: "block",
-                        filter: "brightness(0) invert(1)",
-                      }}
-                    />
-                  ) : undefined
-                }
+                disabled={activeScenario.comingSoon}
+                onClick={() => onContinue(activeScenarioId)}
                 sx={{ bgcolor: ACCENT, "&:hover": { bgcolor: ACCENT } }}
               >
-                {activeScenario.id === "design-api"
-                  ? "Open VS Code"
-                  : "Continue"}
+                Continue
               </Button>
 
               <Button variant="text" onClick={onSkip}>
@@ -317,84 +216,11 @@ const ScenarioLanding: React.FC<ScenarioLandingProps> = ({
 
           {/* Right column - recommendations */}
           <Box flex={{ xs: "auto", lg: 0.8 }}>
-            <Card
-              sx={{
-                borderRadius: 3,
-                overflow: "hidden",
-                border: "1px solid",
-                borderColor: "divider",
-                height: "100%",
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <Box px={3} pt={3}>
-                <Typography variant="subtitle2" sx={{ color: TEXT_SECONDARY }}>
-                  We Recommend
-                </Typography>
-              </Box>
-              <Box
-                mx={3}
-                mt={2}
-                borderRadius={3}
-                sx={{
-                  position: "relative",
-                  overflow: "hidden",
-                  height: { xs: 180, sm: 200, md: 220 },
-                }}
-              >
-                <Box
-                  component="img"
-                  src={activeScenario.imageSrc}
-                  alt={activeScenario.title}
-                  sx={{
-                    width: "100%",
-                    height: "100%",
-                    display: "block",
-                    objectFit: "cover",
-                  }}
-                />
-              </Box>
-
-              <Box px={3} py={3} flexGrow={1}>
-                <Typography fontWeight={600}>
-                  Setup Steps for {activeScenario.title}
-                </Typography>
-                <Stack spacing={2} mt={2}>
-                  {activeScenario.steps.map((step, index) => (
-                    <Stack
-                      key={step.title}
-                      direction="row"
-                      spacing={2}
-                      alignItems="flex-start"
-                    >
-                      <Box
-                        width={32}
-                        height={32}
-                        borderRadius="50%"
-                        bgcolor={alpha(ACCENT, 0.15)}
-                        color={ACCENT}
-                        display="flex"
-                        alignItems="center"
-                        justifyContent="center"
-                        fontWeight={700}
-                      >
-                        {index + 1}
-                      </Box>
-                      <Box>
-                        <Typography fontWeight={600}>{step.title}</Typography>
-                        <Typography
-                          variant="body2"
-                          sx={{ color: TEXT_SECONDARY }}
-                        >
-                          {step.subtitle}
-                        </Typography>
-                      </Box>
-                    </Stack>
-                  ))}
-                </Stack>
-              </Box>
-            </Card>
+            <SetupStepsCard
+              title={activeScenario.title}
+              steps={activeScenario.steps}
+              imageSrc={activeScenario.imageSrc}
+            />
           </Box>
         </Stack>
       </Card>

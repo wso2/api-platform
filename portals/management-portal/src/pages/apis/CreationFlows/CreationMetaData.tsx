@@ -6,6 +6,7 @@ import {
   type ProxyMetadata,
 } from "../../../context/CreateComponentBuildpackContext";
 import { TextInput } from "../../../components/src/components/TextInput";
+import VersionInput from "../../../common/VersionInput";
 
 const slugify = (val: string) =>
   val.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -107,14 +108,11 @@ const CreationMetaData: React.FC<Props> = ({
         disabled={!!readOnlyFields?.context}
       />
 
-      <TextInput
-        label="Version"
-        placeholder="1.0.0"
-        value={meta.version || ""}
+      <VersionInput
+        value={meta.version}
         onChange={(v: string) => change({ version: v })}
-        testId=""
-        size="medium"
         disabled={!!readOnlyFields?.version}
+        label="Version"
       />
 
       <TextInput

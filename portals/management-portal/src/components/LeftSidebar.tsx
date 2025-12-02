@@ -22,6 +22,7 @@ import {
 import HubOutlinedIcon from "@mui/icons-material/HubOutlined";
 import DnsOutlinedIcon from "@mui/icons-material/DnsOutlined";
 import SettingsIcon from "@mui/icons-material/Settings";
+import OfflineBoltIcon from '@mui/icons-material/OfflineBolt';
 import ExpandLess from "@mui/icons-material/ExpandLess";
 import ExpandMore from "@mui/icons-material/ExpandMore";
 
@@ -398,6 +399,11 @@ const LeftSidebar: React.FC = () => {
       <Toolbar />
       <List sx={{ px: 0.25, mt: 0.5 }}>
         {/* Top-level items */}
+        <NavItem
+          to="/userScenario"
+          icon={<OfflineBoltIcon fontSize="small" />}
+          label="Quick Actions"
+        />
         <NavItem
           to={overviewPath}
           icon={<MenuOverview fontSize="small" />}

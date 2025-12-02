@@ -11,13 +11,13 @@ import {
 import { useOpenApiValidation, type OpenApiValidationResponse } from "../../../../hooks/validation";
 import { ApiOperationsList } from "../../../../components/src/components/Common/ApiOperationsList";
 import type { ImportOpenApiRequest, ApiSummary } from "../../../../hooks/apis";
-import { defaultServiceName, firstServerUrl, deriveContext, mapOperations } from "../../../../helpers/openApiHelpers";
+import { defaultServiceName, firstServerUrl, deriveContext, mapOperations, formatVersionToMajorMinor, isValidMajorMinorVersion } from "../../../../helpers/openApiHelpers";
 
 /* ---------- Types ---------- */
 type Props = {
   open: boolean;
   selectedProjectId: string;
-  importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<void>;
+  importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<ApiSummary>;
   refreshApis: (projectId?: string) => Promise<ApiSummary[]>;
   onClose: () => void;
 };
@@ -65,7 +65,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
 
   const autoFill = React.useCallback((api: any) => {
     const title = api?.name?.trim() || api?.displayName?.trim() || "";
-    const version = api?.version?.trim() || "1.0.0";
+    const version = formatVersionToMajorMinor(api?.version);
     const description = api?.description || "";
     const targetUrl = firstServerUrl(api);
 
@@ -350,7 +350,7 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
                       creating ||
                       !(contractMeta?.name || "").trim() ||
                       !(contractMeta?.context || "").trim() ||
-                      !(contractMeta?.version || "").trim()
+                      !isValidMajorMinorVersion((contractMeta?.version || "").trim())
                     }
                     onClick={onCreate}
                     sx={{ textTransform: "none" }}

@@ -15,6 +15,11 @@ import {
 import { QuestionIcon, InfoIcon } from '../../Icons';
 import Question from '../../Icons/generated/Question';
 
+type InputPropsJson = Pick<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  'inputMode' | 'pattern'
+>;
+
 export interface TextInputProps {
   label?: string;
   value: string;
@@ -43,6 +48,8 @@ export interface TextInputProps {
   placeholder?: string;
   endAdornment?: React.ReactNode;
   InputProps?: React.ComponentProps<typeof StyledTextField>['InputProps'];
+  inputPropsJson?: InputPropsJson;
+  onBlur?: React.FocusEventHandler<HTMLInputElement | HTMLTextAreaElement>;
 }
 
 export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
@@ -70,6 +77,9 @@ export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
       fullWidth = false,
       type,
       endAdornment,
+      onBlur,
+      inputPropsJson,
+      InputProps,
       ...props
     },
     ref
@@ -117,7 +127,9 @@ export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
             onChange(evt.target.value)
           }
           disabled={disabled}
+          onBlur={onBlur}
           slotProps={{
+            htmlInput: inputPropsJson,
             input: {
               readOnly: readonly,
             },
@@ -126,8 +138,8 @@ export const TextInput = React.forwardRef<HTMLDivElement, TextInputProps>(
             },
           }}
           InputProps={{
-            ...(props.InputProps || {}),
-            endAdornment: endAdornment ?? props.InputProps?.endAdornment,
+            ...InputProps,
+            endAdornment: endAdornment ?? InputProps?.endAdornment,
           }}
           error={computedError}
           helperText={
