@@ -1,4 +1,3 @@
-# Default values for open-choreo-operator.
 replicaCount: 1
 
 image:

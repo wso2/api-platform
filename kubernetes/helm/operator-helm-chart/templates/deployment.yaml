@@ -16,12 +16,12 @@ spec:
         control-plane: controller-manager
     spec:
       securityContext:
-{{ include "open-choreo-operator.podSecurityContext" . | indent 8 }}
+{{ include "gateway-operator.podSecurityContext" . | indent 8 }}
       serviceAccountName: {{ .Values.serviceAccount.name }}
       terminationGracePeriodSeconds: 10
       containers:
         - name: manager
-          image: {{ include "open-choreo-operator.image" . | quote }}
+          image: {{ include "gateway-operator.image" . | quote }}
           imagePullPolicy: "{{ .Values.image.pullPolicy }}"
           {{ if .Values.debug.enabled }}
           # run under delve in headless mode for remote debugging

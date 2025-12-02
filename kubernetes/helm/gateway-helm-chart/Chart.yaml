@@ -1,9 +1,9 @@
 apiVersion: v2
 name: api-platform-gateway
 kubeVersion: ">=1.24.0-0"
-description: Helm chart for deploying the Gateway Operator (previously Open Choreo Gateway) components
-version: 0.1.1
-appVersion: "0.1.1"
+description: Helm chart for deploying the Gateway Operator components
+version: 0.0.1
+appVersion: "0.0.1"
 type: application
 home: https://github.com/Tharsanan1/apip-operator
 sources:
