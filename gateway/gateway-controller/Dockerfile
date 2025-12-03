@@ -1,5 +1,7 @@
 # Stage 1: Build the Go application
-FROM --platform=$BUILDPLATFORM golang:1.25.1-alpine AS builder
+# Using Debian-based image for better cross-compilation support
+FROM --platform=$BUILDPLATFORM golang:1.25.5-bookworm AS builder
+ARG TARGETARCH
 
 # Build arguments for version information
 ARG VERSION=0.0.1-SNAPSHOT
@@ -8,7 +10,17 @@ ARG GIT_COMMIT=unknown
 WORKDIR /build
 
 # Install build dependencies for SQLite (CGO requirement)
-RUN apk add --no-cache gcc musl-dev sqlite-dev
+# Install cross-compilation toolchains based on target architecture
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libc6-dev \
+    libsqlite3-dev \
+    && if [ "$TARGETARCH" = "amd64" ]; then \
+        apt-get install -y --no-install-recommends gcc-x86-64-linux-gnu libc6-dev-amd64-cross; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+        apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross; \
+    fi \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy policy-engine SDK (needed for go.mod replace directive)
 COPY policy-engine/sdk /policy-engine/sdk
@@ -21,20 +33,32 @@ RUN go mod download
 COPY gateway-controller/ ./
 
 # Build the binary with CGO enabled (required for mattn/go-sqlite3)
-# Static linking to avoid runtime dependencies
-# Inject version information via ldflags
-RUN CGO_ENABLED=1 GOOS=linux go build -a \
-    -ldflags "-linkmode external -extldflags '-static' \
-              -X main.Version=${VERSION} \
+# Set CC for cross-compilation based on target architecture
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+        export CC=x86_64-linux-gnu-gcc; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+        export CC=aarch64-linux-gnu-gcc; \
+    else \
+        export CC=gcc; \
+    fi && \
+    CGO_ENABLED=1 \
+    GOOS=linux \
+    GOARCH=${TARGETARCH} \
+    go build -a \
+    -ldflags "-X main.Version=${VERSION} \
               -X main.GitCommit=${GIT_COMMIT} \
               -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     -o controller cmd/controller/main.go
 
 # Stage 2: Create minimal runtime image
-FROM --platform=$BUILDPLATFORM alpine:3.22.2
+# Using Debian slim for glibc compatibility with builder stage
+FROM debian:bookworm-slim
 
 # Install runtime dependencies
-RUN apk --no-cache add ca-certificates wget
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

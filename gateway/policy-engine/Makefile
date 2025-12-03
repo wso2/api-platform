@@ -5,7 +5,7 @@ VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS := -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.BuildDate=$(BUILD_DATE)
-DOCKER_REGISTRY ?= ghcr.io/renuka-fernando
+DOCKER_REGISTRY ?= ghcr.io/renuka-fernando/api-platform
 BUILDER_IMAGE := $(DOCKER_REGISTRY)/gateway-builder
 RUNTIME_IMAGE := $(DOCKER_REGISTRY)/policy-engine
 BUILDER_VERSION := $(VERSION)

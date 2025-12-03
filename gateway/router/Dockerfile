@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-FROM --platform=$BUILDPLATFORM envoyproxy/envoy:v1.35.3
+FROM envoyproxy/envoy:v1.35.3
 
 # Install envsubst (from gettext package)
 USER root

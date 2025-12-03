@@ -1,5 +1,6 @@
 # Gateway Builder Image
-FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder-base
+FROM --platform=$BUILDPLATFORM golang:1.25.5-alpine AS builder-base
+ARG TARGETARCH
 
 # Build arguments for version information
 ARG VERSION=0.0.1-SNAPSHOT
@@ -40,6 +41,7 @@ RUN go mod download || true
 # Use explicit cross-compilation to avoid QEMU emulation issues
 RUN CGO_ENABLED=0 \
     GOOS=linux \
+    GOARCH=${TARGETARCH} \
     go build \
     -ldflags "-s -w -X main.Version=${VERSION} \
               -X main.GitCommit=${GIT_COMMIT} \
@@ -48,7 +50,24 @@ RUN CGO_ENABLED=0 \
     -o /usr/local/bin/policy-engine-builder \
     ./cmd/builder
 
-# Set working directory back to workspace
+FROM golang:1.24-alpine
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    git \
+    make \
+    upx \
+    ca-certificates
+
+# Copy the compiled binary from builder stage
+COPY --from=builder-base /usr/local/bin/policy-engine-builder /usr/local/bin/policy-engine-builder
+
+# Copy framework source code needed at runtime
+COPY --from=builder-base /workspace/policy-engine /workspace/policy-engine
+COPY --from=builder-base /workspace/sdk /workspace/sdk
+COPY --from=builder-base /workspace/policy-builder /workspace/policy-builder
+
+# Set working directory
 WORKDIR /workspace
 
 # Set environment variables for default paths

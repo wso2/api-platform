@@ -24,7 +24,7 @@ GATEWAY_VERSION := $(shell cat gateway/VERSION 2>/dev/null || echo "0.0.1-SNAPSH
 PLATFORM_API_VERSION := $(shell cat platform-api/VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 
 # Docker registry configuration
-DOCKER_REGISTRY ?= ghcr.io/renuka-fernando
+DOCKER_REGISTRY ?= ghcr.io/renuka-fernando/api-platform
 
 # Component names
 COMPONENT ?=

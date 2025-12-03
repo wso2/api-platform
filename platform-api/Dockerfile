@@ -16,7 +16,8 @@
 # -----------------------------------------------------------------------
 
 # Build stage
-FROM golang:1.24-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25.5-alpine AS builder
+ARG TARGETARCH
 
 RUN apk add --no-cache gcc musl-dev sqlite-dev
 
@@ -27,7 +28,10 @@ RUN go mod download
 
 COPY src/ ./
 
-RUN CGO_ENABLED=1 GOOS=linux go build \
+RUN CGO_ENABLED=1 \
+    GOOS=linux \
+    GOARCH=${TARGETARCH} \
+    go build \
     -ldflags "-s -w" \
     -o platform-api \
     ./cmd/main.go
