@@ -1,4 +1,4 @@
-# API Gateway System
+# API Platform Gateway
 
 A complete API gateway system consisting of Gateway-Controller (xDS control plane), Router (Envoy Proxy data plane), Policy Engine (request/response processing), and Policy Builder (policy compilation tooling).
 
