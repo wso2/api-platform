@@ -1,13 +1,7 @@
 name: Gateway Snapshot Build
 
 on:
-  push:
-    branches:
-      - main
-      - develop
-    paths:
-      - 'gateway/**'
-      - '.github/workflows/gateway-snapshot.yml'
+  workflow_dispatch:
 
 env:
   DOCKER_REGISTRY: ghcr.io/renuka-fernando

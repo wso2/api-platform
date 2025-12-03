@@ -1,9 +1,12 @@
 name: Gateway Release
 
 on:
-  push:
-    tags:
-      - 'gateway/v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.1.0)'
+        required: true
+        type: string
 
 env:
   DOCKER_REGISTRY: ghcr.io/renuka-fernando
@@ -15,10 +18,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Extract version from tag
+      - name: Set version
         id: version
         run: |
-          VERSION=${GITHUB_REF#refs/tags/gateway/v}
+          VERSION=${{ inputs.version }}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Releasing version: $VERSION"
 
@@ -48,7 +51,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
+          tag_name: gateway/v${{ steps.version.outputs.version }}
           release_name: Gateway ${{ steps.version.outputs.version }}
           body: |
             ## Gateway Release ${{ steps.version.outputs.version }}
