@@ -49,12 +49,7 @@ unset DOCKER_HUB_PASSWORD
 ## 3. Install Gateway Operator
 
 ```sh
-git clone https://github.com/Tharsanan1/api-platform.git
-cd api-platform/kubernetes/helm/operator-helm-chart
-kubectl create ns test
-
-helm upgrade --install gateway-operator . \
-  --debug --wait
+helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.0.1
 ```
 
 ---
@@ -110,6 +105,15 @@ kubectl port-forward $(kubectl get pods -l app.kubernetes.io/component=router -o
 ## 7. Test APIs
 
 ### HTTPS Test API
+
+Create sample secure backend
+
+```sh
+git clone https://github.com/wso2/api-platform.git
+cd api-platform/kubernetes/helm/resources/secure-backend-k8s/k8s
+kubectl apply -f .
+kubectl wait --for=condition=ready pod -l app=secure-backend --timeout=120s
+```
 
 ```sh
 curl https://localhost:8444/test/info -vk
