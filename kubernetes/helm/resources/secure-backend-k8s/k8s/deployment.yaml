@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secure-backend
+  labels:
+    app: secure-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: secure-backend
+  template:
+    metadata:
+      labels:
+        app: secure-backend
+    spec:
+      containers:
+        - name: secure-backend
+          image: nginx:alpine
+          ports:
+            - containerPort: 5443
+          volumeMounts:
+            - name: certs
+              mountPath: /etc/nginx/certs
+              readOnly: true
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: secure-backend-nginx.conf
+              readOnly: true
+          readinessProbe:
+            exec:
+              command:
+                - curl
+                - --insecure
+                - --silent
+                - --fail
+                - https://localhost:5443/health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: certs
+          secret:
+            secretName: secure-backend-certs
+        - name: nginx-config
+          configMap:
+            name: secure-backend-config

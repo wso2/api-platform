@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: secure-backend-config
+data:
+  secure-backend-nginx.conf: |
+    server {
+      listen 5443 ssl;
+      server_name secure-backend localhost;
+
+      ssl_certificate /etc/nginx/certs/cert.pem;
+      ssl_certificate_key /etc/nginx/certs/key.pem;
+      
+      ssl_protocols TLSv1.2 TLSv1.3;
+      ssl_ciphers HIGH:!aNULL:!MD5;
+      ssl_prefer_server_ciphers on;
+
+      location / {
+          default_type application/json;
+          return 200 '{"message": "Hello from secure HTTPS backend", "server": "$server_name", "uri": "$request_uri", "method": "$request_method", "timestamp": "$time_iso8601", "headers": {"host": "$http_host", "user-agent": "$http_user_agent", "x-forwarded-for": "$http_x_forwarded_for"}}';
+          add_header Content-Type application/json;
+      }
+
+      location /health {
+          access_log off;
+          default_type application/json;
+          return 200 '{"status": "healthy", "service": "secure-backend"}';
+          add_header Content-Type application/json;
+      }
+
+      location /info {
+          default_type application/json;
+          return 200 '{"service": "secure-backend", "protocol": "https", "ssl_protocol": "$ssl_protocol", "ssl_cipher": "$ssl_cipher", "request_uri": "$request_uri", "remote_addr": "$remote_addr"}';
+          add_header Content-Type application/json;
+      }
+    }

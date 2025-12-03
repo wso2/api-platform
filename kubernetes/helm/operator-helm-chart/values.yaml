@@ -6,8 +6,8 @@ nameOverride: ""
 fullnameOverride: ""
 
 image:
-  repository: ghcr.io/tharsanan1/api-platform/gateway-operator
-  tag: "10.0.0"
+  repository: ghcr.io/wso2/api-platform/gateway-operator
+  tag: "0.0.1"
   pullPolicy: Always
 
 serviceAccount:
@@ -41,8 +41,8 @@ securityContext:
 gateway:
   controlPlaneHost: "http://platform-api:3001"
   helm:
-    chartName: "oci://ghcr.io/tharsanan1/api-platform/helm-charts/gateway"
-    chartVersion: "10.0.0"
+    chartName: "oci://ghcr.io/wso2/api-platform/helm-charts/gateway"
+    chartVersion: "0.0.1"
     valuesFilePath: "/config/gateway_values.yaml"
   # Gateway chart values that will be used when deploying gateways
   # Users can override these values during helm install/upgrade
@@ -67,8 +67,8 @@ gateway:
     gateway:
       controller:
         image:
-          repository: ghcr.io/tharsanan1/api-platform/gateway-controller
-          tag: "10.0.0"
+          repository: ghcr.io/wso2/api-platform/gateway-controller
+          tag: "0.0.1"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -265,8 +265,8 @@ gateway:
 
       router:
         image:
-          repository: ghcr.io/tharsanan1/api-platform/gateway-router
-          tag: "10.0.0"
+          repository: ghcr.io/wso2/api-platform/gateway-router
+          tag: "0.0.1"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -322,8 +322,8 @@ gateway:
 
       policyEngine:
         image:
-          repository: ghcr.io/tharsanan1/api-platform/policy-engine
-          tag: "10.0.0"
+          repository: ghcr.io/wso2/api-platform/policy-engine
+          tag: "0.0.1"
           pullPolicy: Always
         imagePullSecrets: []
         service:

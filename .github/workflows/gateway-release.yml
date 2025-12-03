@@ -9,7 +9,7 @@ on:
         type: string
 
 env:
-  DOCKER_REGISTRY: ghcr.io/tharsanan1/api-platform
+  DOCKER_REGISTRY: ghcr.io/wso2/api-platform
 
 jobs:
   release:
@@ -43,7 +43,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_TOKEN }}
+          password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
 
       - name: Push Docker images
         run: make push-gateway
@@ -51,7 +51,7 @@ jobs:
       - name: Create GitHub Release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
         with:
           tag_name: gateway-v${{ steps.version.outputs.version }}
           release_name: Gateway ${{ steps.version.outputs.version }}
