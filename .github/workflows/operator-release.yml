@@ -70,7 +70,7 @@ jobs:
             ### Supported Platforms
             - `linux/amd64`
             - `linux/arm64`
-          draft: false
+          draft: true
           prerelease: ${{ contains(inputs.version, '-') }}
           token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
 
