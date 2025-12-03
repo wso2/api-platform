@@ -12,7 +12,7 @@ env:
   IMAGE_NAME: gateway-operator
   REGISTRY: ghcr.io
   REGISTRY_USERNAME: wso2
-  BOT_USER: api-platform-bot@wso2.com
+  BOT_USER: api-platform-bot
   REPO_NAME: api-platform
 
 jobs:
@@ -41,7 +41,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ env.BOT_USER }}
-          password: ${{ secrets.GHCR_TOKEN }}
+          password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
 
       - name: Build and push multi-arch Docker image
         working-directory: kubernetes/gateway-operator
