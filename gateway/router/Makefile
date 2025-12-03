@@ -25,7 +25,7 @@ VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/renuka-fernando
 IMAGE_NAME := $(DOCKER_REGISTRY)/api-platform-gateway-router
 
-.PHONY: help build push clean
+.PHONY: help build push clean build-and-push-multiarch
 
 help: ## Show this help message
 	@echo 'Gateway Router Build (Version: $(VERSION))'
@@ -46,6 +46,17 @@ push: ## Push Docker image to registry
 	@echo "Pushing Docker images..."
 	docker push $(IMAGE_NAME):$(VERSION)
 	docker push $(IMAGE_NAME):latest
+
+build-and-push-multiarch: ## Build and push Router Docker image for multiple architectures (amd64, arm64)
+	@echo "Building and pushing multi-arch Router Docker image ($(VERSION))..."
+	@docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		--build-arg VERSION=$(VERSION) \
+		-t $(IMAGE_NAME):$(VERSION) \
+		-t $(IMAGE_NAME):latest \
+		--push \
+		.
+	@echo "Multi-arch Docker image built and pushed: $(IMAGE_NAME):$(VERSION)"
 
 clean: ## Clean Docker images
 	@echo "Cleaning Docker images..."

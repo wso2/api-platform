@@ -45,6 +45,7 @@ help: ## Show this help message
 	@echo ''
 	@echo 'Build Targets:'
 	@echo '  make build-gateway                    - Build all gateway Docker images'
+	@echo '  make build-and-push-gateway-multiarch - Build and push all gateway images for multiple architectures'
 	@echo '  make test-gateway                     - Run gateway tests'
 	@echo ''
 	@echo 'Push Targets:'
@@ -120,6 +121,12 @@ build-gateway: ## Build all gateway Docker images
 	@echo "Building gateway components ($(GATEWAY_VERSION))..."
 	$(MAKE) -C gateway build
 	@echo "Successfully built all gateway components"
+
+.PHONY: build-and-push-gateway-multiarch
+build-and-push-gateway-multiarch: ## Build and push all gateway Docker images for multiple architectures (amd64, arm64)
+	@echo "Building and pushing multi-arch gateway components ($(GATEWAY_VERSION))..."
+	$(MAKE) -C gateway build-and-push-multiarch
+	@echo "Successfully built and pushed all multi-arch gateway components"
 
 # Test Targets
 .PHONY: test-gateway
