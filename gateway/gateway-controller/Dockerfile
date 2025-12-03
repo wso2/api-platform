@@ -1,6 +1,10 @@
 # Stage 1: Build the Go application
 FROM golang:1.25.1-alpine AS builder
 
+# Build arguments for version information
+ARG VERSION=0.0.1-SNAPSHOT
+ARG GIT_COMMIT=unknown
+
 WORKDIR /build
 
 # Install build dependencies for SQLite (CGO requirement)
@@ -18,7 +22,13 @@ COPY gateway-controller/ ./
 
 # Build the binary with CGO enabled (required for mattn/go-sqlite3)
 # Static linking to avoid runtime dependencies
-RUN CGO_ENABLED=1 GOOS=linux go build -a -ldflags '-linkmode external -extldflags "-static"' -o controller cmd/controller/main.go
+# Inject version information via ldflags
+RUN CGO_ENABLED=1 GOOS=linux go build -a \
+    -ldflags "-linkmode external -extldflags '-static' \
+              -X main.Version=${VERSION} \
+              -X main.GitCommit=${GIT_COMMIT} \
+              -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -o controller cmd/controller/main.go
 
 # Stage 2: Create minimal runtime image
 FROM alpine:3.22.2

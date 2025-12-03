@@ -32,6 +32,13 @@ const (
 	BuilderVersion = "v1.0.0"
 )
 
+// Version information (set via ldflags during build)
+var (
+	Version   = "dev"
+	GitCommit = "unknown"
+	BuildDate = "unknown"
+)
+
 func main() {
 	// Parse command-line flags
 	manifestPath := flag.String("manifest", DefaultManifestFile, "Path to policy manifest file")
@@ -75,7 +82,10 @@ func main() {
 	outputDir = &absOutputDir
 
 	slog.Info("Policy Builder starting",
-		"version", BuilderVersion,
+		"version", Version,
+		"git_commit", GitCommit,
+		"build_date", BuildDate,
+		"builder_version", BuilderVersion,
 		"manifest", *manifestPath)
 
 	var outManifestPath string
@@ -118,9 +128,21 @@ func main() {
 	// Phase 4: Compilation
 	slog.Info("Starting Phase 4: Compilation", "phase", "compilation")
 
+	// Read version information from environment variables (set by Docker build)
+	version := os.Getenv("VERSION")
+	if version == "" {
+		version = "dev"
+	}
+	gitCommit := os.Getenv("GIT_COMMIT")
+	if gitCommit == "" {
+		gitCommit = "unknown"
+	}
+
 	buildMetadata := &types.BuildMetadata{
 		Timestamp:      time.Now().UTC(),
 		BuilderVersion: BuilderVersion,
+		Version:        version,
+		GitCommit:      gitCommit,
 		Policies:       make([]types.PolicyInfo, 0, len(policies)),
 	}
 

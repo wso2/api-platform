@@ -4,6 +4,10 @@
 
 FROM golang:1.24-alpine AS builder-base
 
+# Build arguments for version information
+ARG VERSION=0.0.1-SNAPSHOT
+ARG GIT_COMMIT=unknown
+
 # Install build dependencies
 RUN apk add --no-cache \
     git \
@@ -35,8 +39,13 @@ RUN go mod download
 WORKDIR /workspace/policy-builder
 RUN go mod download || true
 
-# Build the Policy Builder binary
-RUN go build -o /usr/local/bin/policy-engine-builder ./cmd/builder
+# Build the Policy Builder binary with version information
+RUN go build \
+    -ldflags "-X main.Version=${VERSION} \
+              -X main.GitCommit=${GIT_COMMIT} \
+              -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -o /usr/local/bin/policy-engine-builder \
+    ./cmd/builder
 
 # Set working directory back to workspace
 WORKDIR /workspace

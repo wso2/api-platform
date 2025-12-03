@@ -26,18 +26,15 @@ func BuildOptions(outputPath string, buildMetadata *types.BuildMetadata) *types.
 
 // generateLDFlags creates ldflags string for embedding build metadata
 func generateLDFlags(metadata *types.BuildMetadata) string {
-	// Format: -s -w -X 'main.buildTimestamp=...' -X 'main.builderVersion=...'
 	ldflags := "-s -w" // Strip debug info and symbol table
 
-	// Add build timestamp
+	// Add version information (matching policy-engine main.go variables)
+	ldflags += fmt.Sprintf(" -X main.Version=%s", metadata.Version)
+	ldflags += fmt.Sprintf(" -X main.GitCommit=%s", metadata.GitCommit)
+
+	// Add build timestamp as BuildDate
 	timestamp := metadata.Timestamp.Format(time.RFC3339)
-	ldflags += fmt.Sprintf(" -X 'main.buildTimestamp=%s'", timestamp)
-
-	// Add builder version
-	ldflags += fmt.Sprintf(" -X 'main.builderVersion=%s'", metadata.BuilderVersion)
-
-	// Add policy count
-	ldflags += fmt.Sprintf(" -X 'main.policyCount=%d'", len(metadata.Policies))
+	ldflags += fmt.Sprintf(" -X main.BuildDate=%s", timestamp)
 
 	return ldflags
 }

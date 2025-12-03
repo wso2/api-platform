@@ -1,0 +1,65 @@
+name: Gateway Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.1.0)'
+        required: true
+        type: string
+
+env:
+  DOCKER_REGISTRY: ghcr.io/renuka-fernando
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set version
+        id: version
+        run: |
+          VERSION=${{ inputs.version }}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Releasing version: ${VERSION}"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Run tests
+        run: make test-gateway
+
+      - name: Build Docker images
+        run: make build-gateway
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Docker images
+        run: make push-gateway
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: gateway/v${{ steps.version.outputs.version }}
+          release_name: Gateway ${{ steps.version.outputs.version }}
+          body: |
+            ## Gateway Release ${{ steps.version.outputs.version }}
+
+            ### Docker Images
+            - `${{ env.DOCKER_REGISTRY }}/api-platform-gateway-controller:${{ steps.version.outputs.version }}`
+            - `${{ env.DOCKER_REGISTRY }}/api-platform-policy-engine:${{ steps.version.outputs.version }}`
+            - `${{ env.DOCKER_REGISTRY }}/api-platform-gateway-builder:${{ steps.version.outputs.version }}`
+            - `${{ env.DOCKER_REGISTRY }}/api-platform-gateway-router:${{ steps.version.outputs.version }}`
+          draft: true
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
