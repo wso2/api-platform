@@ -11,8 +11,8 @@ on:
 env:
   IMAGE_NAME: gateway-operator
   REGISTRY: ghcr.io
-  REGISTRY_USERNAME: tharsanan1
-  BOT_USER: tharsanan1
+  REGISTRY_USERNAME: wso2
+  BOT_USER: api-platform-bot@wso2.com
   REPO_NAME: api-platform
 
 jobs:
