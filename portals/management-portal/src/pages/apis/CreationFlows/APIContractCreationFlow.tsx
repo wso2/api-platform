@@ -92,6 +92,7 @@ const APIContractCreationFlow: React.FC<Props> = ({
           open={open}
           selectedProjectId={selectedProjectId}
           // createApi={createApi}
+          refreshApis={refreshApis}
           onClose={onClose}
         />
       )}

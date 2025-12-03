@@ -19,7 +19,8 @@ import Refresh from "../../../../components/src/Icons/generated/Refresh";
 import { IconButton } from "../../../../components/src/components/IconButton";
 import Edit from "../../../../components/src/Icons/generated/Edit";
 import CreationMetaData from "../CreationMetaData";
-import { isValidMajorMinorVersion } from "../../../../helpers/openApiHelpers";
+import { isValidMajorMinorVersion, formatVersionToMajorMinor } from "../../../../helpers/openApiHelpers";
+import type { ApiSummary } from "../../../../hooks/apis";
 
 // Contexts
 import { useGithubAPICreationContext } from "../../../../context/GithubAPICreationContext";
@@ -28,12 +29,14 @@ import { useGithubProjectValidationContext } from "../../../../context/validatio
 import Branch from "../../../../components/src/Icons/generated/Branch";
 import { ApiOperationsList } from "../../../../components/src/components/Common/ApiOperationsList";
 import { useGithubAPICreation } from "../../../../hooks/GithubAPICreation";
+import { useNotifications } from "../../../../context/NotificationContext";
 
 /* ---------- Types ---------- */
 type Props = {
   open: boolean;
   onClose: () => void;
   selectedProjectId?: string; // must be provided to enable Create
+  refreshApis: (projectId?: string) => Promise<ApiSummary[]>;
 };
 
 type BranchOption = { label: string; value: string };
@@ -52,6 +55,7 @@ const GithubCreationFlow: React.FC<Props> = ({
   open,
   onClose,
   selectedProjectId,
+  refreshApis,
 }) => {
   const {
     repoUrl,
@@ -80,6 +84,7 @@ const GithubCreationFlow: React.FC<Props> = ({
 
   // 👇 POST /api/v1/import/api-project
   const { importApiProject } = useGithubAPICreation();
+  const { showNotification } = useNotifications();
 
   const [apiDir, setApiDir] = React.useState("/");
   const [dirModalOpen, setDirModalOpen] = React.useState(false);
@@ -99,9 +104,6 @@ const GithubCreationFlow: React.FC<Props> = ({
   // Create flow state
   const [creating, setCreating] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
-  const [createSuccessMsg, setCreateSuccessMsg] = React.useState<string | null>(
-    null
-  );
 
   // Reset when closed
   React.useEffect(() => {
@@ -115,7 +117,6 @@ const GithubCreationFlow: React.FC<Props> = ({
       resetValidation?.();
       setCreating(false);
       setCreateError(null);
-      setCreateSuccessMsg(null);
     }
   }, [open, resetValidation]);
 
@@ -292,7 +293,7 @@ const GithubCreationFlow: React.FC<Props> = ({
           ...prev,
           name: api.name || prev?.name || "",
           context: api.context || prev?.context || "",
-          version: api.version || prev?.version || "1.0.0",
+          version: formatVersionToMajorMinor(api.version ?? prev?.version ?? "1.0.0"),
           description: api.description || prev?.description || "",
           target: target || prev?.target || "",
         }));
@@ -311,7 +312,6 @@ const GithubCreationFlow: React.FC<Props> = ({
   // ----- Create: POST /api/v1/import/api-project -----
   const onCreate = async () => {
     setCreateError(null);
-    setCreateSuccessMsg(null);
 
     // Guard required fields
     const name = (contractMeta?.name || "").trim();
@@ -367,7 +367,16 @@ const GithubCreationFlow: React.FC<Props> = ({
     try {
       setCreating(true);
       await importApiProject(payload);
-      setCreateSuccessMsg("API project imported successfully.");
+      try {
+        await refreshApis(selectedProjectId);
+      } catch (rErr) {
+        console.warn("Failed to refresh API list after import:", rErr);
+      }
+      try {
+        showNotification(`API "${name}" created successfully!`, "success");
+      } catch (nErr) {
+        console.warn("Failed to show notification:", nErr);
+      }
       onClose();
     } catch (e: any) {
       setCreateError(e?.message || "Failed to import API project.");
@@ -621,11 +630,7 @@ const GithubCreationFlow: React.FC<Props> = ({
                     {createError}
                   </Alert>
                 )}
-                {!!createSuccessMsg && (
-                  <Alert severity="success" sx={{ mt: 2 }}>
-                    {createSuccessMsg}
-                  </Alert>
-                )}
+                
 
                 <Stack
                   direction="row"
