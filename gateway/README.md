@@ -31,6 +31,9 @@ A complete API gateway system consisting of Gateway-Controller (xDS control plan
 ### Using Docker Compose (Recommended)
 
 ```bash
+# Download distribution.
+wget https://github.com/wso2/api-platform/releases/download/gateway-v0.0.1/gateway-v0.0.1.zip
+
 # Unzip the downloaded distribution.
 unzip gateway-v0.0.1.zip
 
