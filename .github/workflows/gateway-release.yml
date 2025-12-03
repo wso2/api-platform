@@ -9,7 +9,7 @@ on:
         type: string
 
 env:
-  DOCKER_REGISTRY: ghcr.io/wso2/api-platform
+  DOCKER_REGISTRY: ghcr.io/renuka-fernando/api-platform
 
 jobs:
   release:
