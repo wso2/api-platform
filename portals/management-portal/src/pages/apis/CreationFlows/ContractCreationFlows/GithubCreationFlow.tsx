@@ -231,12 +231,27 @@ const GithubCreationFlow: React.FC<Props> = ({
   }, []);
 
   React.useEffect(() => {
-    if (!content?.items?.length || !apiDir || apiDir === "/") {
+    if (!content?.items?.length || !apiDir) {
       setDirError(null);
       setIsDirValid(false);
       return;
     }
-    const target = normalizePath(apiDir);
+
+    const target = apiDir === "/" ? "" : normalizePath(apiDir);
+
+    if (target === "") {
+      let found = false;
+      for (const n of content.items) {
+        if (nodeHasConfigYaml(n)) {
+          found = true;
+          break;
+        }
+      }
+      setIsDirValid(found);
+      setDirError(found ? null : 'Selected directory must contain a "config.yaml".');
+      return;
+    }
+
     const node = findNodeByPath(content.items, target);
     if (!node) {
       setDirError("Selected directory not found in branch content.");
@@ -254,14 +269,13 @@ const GithubCreationFlow: React.FC<Props> = ({
       !repoUrl.trim() ||
       !selectedBranch ||
       !apiDir ||
-      apiDir === "/" ||
       !isDirValid
     ) {
       return;
     }
 
     try {
-      const path = normalizePath(apiDir);
+      const path = apiDir === "/" ? "/" : normalizePath(apiDir);
       const res = await validate({
         repoUrl,
         provider: "github",
@@ -314,7 +328,7 @@ const GithubCreationFlow: React.FC<Props> = ({
       setCreateError("Repository URL and Branch are required.");
       return;
     }
-    if (!apiDir || apiDir === "/") {
+    if (!isDirValid) {
       setCreateError(
         "Please select the API project directory (contains config.yaml)."
       );
@@ -330,7 +344,7 @@ const GithubCreationFlow: React.FC<Props> = ({
       repoUrl: repoUrl.trim(),
       provider: "github" as const,
       branch: selectedBranch,
-      path: normalizePath(apiDir), // e.g., "apis/test-api"
+      path: apiDir === "/" ? "/" : normalizePath(apiDir), // e.g., "/" or "apis/test-api"
       api: {
         name,
         displayName: name, // or customize if you prefer a separate display name
@@ -556,7 +570,6 @@ const GithubCreationFlow: React.FC<Props> = ({
                   !repoUrl.trim() ||
                   !selectedBranch ||
                   !apiDir ||
-                  apiDir === "/" ||
                   !isDirValid ||
                   validating
                 }
