@@ -37,7 +37,7 @@ docker run --rm \
     -v $(pwd)/sample-policies:/workspace/sample-policies \
     -v $(pwd)/policy-manifest.yaml:/workspace/policy-manifest.yaml \
     -v $(pwd)/output:/workspace/output \
-    wso2/api-platform-gateway-builder:latest
+    wso2/api-platform/gateway-builder:latest
 ```
 
 # Build gateway images

@@ -1,5 +1,5 @@
 # Stage 1: Build the Go application
-FROM golang:1.25.1-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25.1-alpine AS builder
 
 # Build arguments for version information
 ARG VERSION=0.0.1-SNAPSHOT
@@ -31,7 +31,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build -a \
     -o controller cmd/controller/main.go
 
 # Stage 2: Create minimal runtime image
-FROM alpine:3.22.2
+FROM --platform=$BUILDPLATFORM alpine:3.22.2
 
 # Install runtime dependencies
 RUN apk --no-cache add ca-certificates wget

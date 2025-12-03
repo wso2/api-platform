@@ -76,5 +76,5 @@ const (
 	ExtProcRequestAttributeRouteName = "xds.route_name"
 
 	// Policy Engine
-	PolicyEngineClusterName = "api-platform-policy-engine"
+	PolicyEngineClusterName = "api-platform/policy-engine"
 )

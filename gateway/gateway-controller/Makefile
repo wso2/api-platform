@@ -58,6 +58,17 @@ push: ## Push Docker image to registry
 	docker push $(IMAGE_NAME):$(VERSION)
 	docker push $(IMAGE_NAME):latest
 
+build-and-push-multiarch: ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64)
+	@echo "Building and pushing multi-arch Docker image: $(IMAGE_NAME):$(VERSION)"
+	docker buildx build -f Dockerfile \
+		--platform linux/amd64,linux/arm64 \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		-t $(IMAGE_NAME):$(VERSION) \
+		-t $(IMAGE_NAME):latest \
+		--push \
+		../
+
 generate-listener-certs: ## Generate listener certificates
 	@echo "Generating listener certificates..."
 	@mkdir -p listener-certs
