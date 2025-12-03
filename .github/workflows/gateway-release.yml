@@ -47,12 +47,10 @@ jobs:
         run: make push-gateway
 
       - name: Create GitHub Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: gateway/v${{ steps.version.outputs.version }}
-          release_name: Gateway ${{ steps.version.outputs.version }}
+          name: Gateway ${{ steps.version.outputs.version }}
           body: |
             ## Gateway Release ${{ steps.version.outputs.version }}
 
@@ -63,3 +61,4 @@ jobs:
             - `${{ env.DOCKER_REGISTRY }}/api-platform-gateway-router:${{ steps.version.outputs.version }}`
           draft: true
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          token: ${{ secrets.GHCR_TOKEN }}
