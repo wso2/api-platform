@@ -57,9 +57,9 @@ jobs:
             ## Gateway Release ${{ steps.version.outputs.version }}
 
             ### Docker Images
-            - `${{ env.DOCKER_REGISTRY }}/api-platform-gateway-controller:${{ steps.version.outputs.version }}`
-            - `${{ env.DOCKER_REGISTRY }}/api-platform-policy-engine:${{ steps.version.outputs.version }}`
-            - `${{ env.DOCKER_REGISTRY }}/api-platform-gateway-builder:${{ steps.version.outputs.version }}`
-            - `${{ env.DOCKER_REGISTRY }}/api-platform-gateway-router:${{ steps.version.outputs.version }}`
+            - `${{ env.DOCKER_REGISTRY }}/gateway-controller:${{ steps.version.outputs.version }}`
+            - `${{ env.DOCKER_REGISTRY }}/policy-engine:${{ steps.version.outputs.version }}`
+            - `${{ env.DOCKER_REGISTRY }}/gateway-builder:${{ steps.version.outputs.version }}`
+            - `${{ env.DOCKER_REGISTRY }}/gateway-router:${{ steps.version.outputs.version }}`
           draft: true
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}

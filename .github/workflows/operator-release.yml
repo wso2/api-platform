@@ -12,6 +12,7 @@ env:
   IMAGE_NAME: gateway-operator
   REGISTRY: ghcr.io
   REGISTRY_USERNAME: tharsanan1
+  BOT_USER: tharsanan1
   REPO_NAME: api-platform
 
 jobs:
@@ -39,7 +40,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ env.REGISTRY_USERNAME }}
+          username: ${{ env.BOT_USER }}
           password: ${{ secrets.GHCR_TOKEN }}
 
       - name: Build and push multi-arch Docker image
