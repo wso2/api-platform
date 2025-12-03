@@ -24,6 +24,8 @@ jobs:
           VERSION=${{ inputs.version }}
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Releasing version: ${VERSION}"
+          echo "${VERSION}" > gateway/VERSION
+          echo "Updated gateway/VERSION to ${VERSION}"
 
       - name: Set up Go
         uses: actions/setup-go@v5
