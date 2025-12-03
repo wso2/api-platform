@@ -31,7 +31,12 @@ A complete API gateway system consisting of Gateway-Controller (xDS control plan
 ### Using Docker Compose (Recommended)
 
 ```bash
+# Unzip the downloaded distribution.
+unzip gateway-v0.0.1.zip
+
+
 # Start the complete stack
+cd gateway/
 docker compose up -d
 
 # Verify gateway controller is running
@@ -40,7 +45,8 @@ curl http://localhost:9090/health
 # Deploy an API configuration
 curl -X POST http://localhost:9090/apis \
   -H "Content-Type: application/yaml" \
-  --data-binary @examples/weather-api.yaml
+  --data-binary "$(curl -s https://raw.githubusercontent.com/wso2/api-platform/refs/tags/gateway-v0.0.1/gateway/examples/weather-api.yaml)"
+
 
 # Test routing through the gateway
 curl http://localhost:8080/weather/v1.0/us/seattle
