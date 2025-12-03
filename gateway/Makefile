@@ -27,10 +27,10 @@ VERSION := $(shell cat VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/renuka-fernando
 
 # Image names
-CONTROLLER_IMAGE := $(DOCKER_REGISTRY)/api-platform-gateway-controller
-POLICY_ENGINE_IMAGE := $(DOCKER_REGISTRY)/api-platform-policy-engine
-POLICY_BUILDER_IMAGE := $(DOCKER_REGISTRY)/api-platform-gateway-builder
-ROUTER_IMAGE := $(DOCKER_REGISTRY)/api-platform-gateway-router
+CONTROLLER_IMAGE := $(DOCKER_REGISTRY)/gateway-controller
+POLICY_ENGINE_IMAGE := $(DOCKER_REGISTRY)/policy-engine
+POLICY_BUILDER_IMAGE := $(DOCKER_REGISTRY)/gateway-builder
+ROUTER_IMAGE := $(DOCKER_REGISTRY)/gateway-router
 
 .DEFAULT_GOAL := help
 
