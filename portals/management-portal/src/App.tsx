@@ -51,6 +51,13 @@ const App: React.FC = () => {
   const isRootScenarioPath = location.pathname === "/";
   const isUserScenarioPath = location.pathname === "/userScenario";
 
+  React.useEffect(() => {
+    if (experienceStage === "wizard" && !isUserScenarioPath) {
+      setExperienceStage("platform");
+      setActiveWizardType(null);
+    }
+  }, [location.pathname, experienceStage, isUserScenarioPath]);
+
   const handleScenarioSkip = React.useCallback(() => {
     setExperienceStage("platform");
     // Avoid navigating to "/" before org/project is ready
@@ -68,12 +75,13 @@ const App: React.FC = () => {
       ) {
         setExperienceStage("wizard");
         setActiveWizardType(scenarioId as WizardType);
+        navigate("/userScenario", { replace: true });
       } else {
         setExperienceStage("platform");
         setActiveWizardType(null);
-      }
-      if (defaultOrgPath !== "/") {
-        navigate(defaultOrgPath, { replace: true });
+        if (defaultOrgPath !== "/") {
+          navigate(defaultOrgPath, { replace: true });
+        }
       }
     },
     [defaultOrgPath, navigate]
@@ -108,7 +116,6 @@ const App: React.FC = () => {
         <DesignApiWizard
           onBackToChoices={handleBackToChoices}
           onSkip={handleScenarioSkip}
-          onFinish={handleWizardFinish}
         />
       );
     } else {
@@ -124,7 +131,7 @@ const App: React.FC = () => {
     layoutContent = <AppRoutes />;
   }
 
-  if (isRootScenarioPath || isUserScenarioPath) {
+  if ((isRootScenarioPath || isUserScenarioPath) && experienceStage !== "wizard") {
     return (
       <MainLayout>
         <ScenarioLanding
