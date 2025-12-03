@@ -9,7 +9,7 @@ on:
         type: string
 
 env:
-  IMAGE_NAME: api-platform-gateway-operator
+  IMAGE_NAME: gateway-operator
   REGISTRY: ghcr.io
   REGISTRY_USERNAME: tharsanan1
   REPO_NAME: api-platform
