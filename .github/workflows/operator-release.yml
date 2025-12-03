@@ -1,0 +1,73 @@
+name: Release Gateway Operator
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0-m4)'
+        required: true
+        type: string
+
+env:
+  IMAGE_NAME: api-platform-gateway-operator
+  REGISTRY: ghcr.io
+  REGISTRY_USERNAME: tharsanan1
+  REPO_NAME: api-platform
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update Makefile VERSION
+        working-directory: kubernetes/gateway-operator
+        run: |
+          sed -i "s/^VERSION ?= .*/VERSION ?= ${{ inputs.version }}/" Makefile
+          echo "Updated Makefile VERSION:"
+          grep "^VERSION" Makefile
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.REGISTRY_USERNAME }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: kubernetes/gateway-operator/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.REGISTRY_USERNAME }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}
+
+      - name: Commit version changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add kubernetes/gateway-operator/Makefile
+          git commit -m "chore: bump gateway-operator version to ${{ inputs.version }}"
+
+      - name: Create and push Git tag
+        run: |
+          git tag -a "gateway-operator-${{ inputs.version }}" -m "Release Gateway Operator ${{ inputs.version }}"
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git "gateway-operator-${{ inputs.version }}"
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
+
+      - name: Image Summary
+        run: |
+          echo "### Gateway Operator Image Released :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Git Tag:** \`gateway-operator-${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ env.REGISTRY }}/${{ env.REGISTRY_USERNAME }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
