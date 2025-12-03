@@ -29,24 +29,10 @@ helm upgrade --install \
   --debug --wait --timeout 10m
 ```
 
----
-
-## 2. Create Docker Hub Secret (with macOS password dialog)
-
-```sh
-DOCKER_HUB_USERNAME=your user name
-DOCKER_HUB_PASSWORD=$(osascript -e 'Tell application "System Events" to display dialog "Enter Docker Hub Password:" default answer "" with hidden answer' -e 'text returned of result')
-
-kubectl create secret generic docker-hub-creds \
-  --from-literal=username="$DOCKER_HUB_USERNAME" \
-  --from-literal=password="$DOCKER_HUB_PASSWORD"
-
-unset DOCKER_HUB_PASSWORD
-```
 
 ---
 
-## 3. Install Gateway Operator
+## 2. Install Gateway Operator
 
 ```sh
 helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.0.1
@@ -54,7 +40,7 @@ helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gat
 
 ---
 
-## 4. Apply GatewayConfiguration (Bootstrap Gateway Components)
+## 3. Apply GatewayConfiguration (Bootstrap Gateway Components)
 
 ```sh
 curl -X GET "https://raw.githubusercontent.com/wso2/api-platform/refs/heads/main/kubernetes/gateway-operator/config/samples/api_v1_gatewayconfiguration.yaml" \
@@ -68,14 +54,14 @@ kubectl get gatewayconfiguration -n default -o json | jq '.items[0].status'
 
 ---
 
-## 5. Apply ApiConfiguration (Configure APIs)
+## 4. Apply ApiConfiguration (Configure APIs)
 
 ```sh
 curl -X GET "https://raw.githubusercontent.com/wso2/api-platform/refs/heads/main/kubernetes/gateway-operator/config/samples/api_v1_apiconfiguration.yaml" \
   -o /tmp/api_v1_apiconfiguration.yaml
 
 apiconfig_path="/tmp/api_v1_apiconfiguration.yaml"
-
+kubectl create ns test
 kubectl apply -f $apiconfig_path
 
 kubectl get apiconfiguration -n default -o json | jq '.items[0].status'
@@ -84,7 +70,7 @@ kubectl get apiconfiguration -n test -o json | jq '.items[0].status'
 
 ---
 
-## 6. Port-Forward Gateway Components
+## 5. Port-Forward Gateway Components
 
 Kill existing port-forward sessions:
 
@@ -102,7 +88,7 @@ kubectl port-forward $(kubectl get pods -l app.kubernetes.io/component=router -o
 
 ---
 
-## 7. Test APIs
+## 6. Test APIs
 
 ### HTTPS Test API
 
@@ -133,7 +119,7 @@ curl https://localhost:8444/ssa/info -vk
 
 ---
 
-## 8. Add Certificate for Secure Backend API
+## 7. Add Certificate for Secure Backend API
 
 Download certificate:
 
@@ -153,7 +139,7 @@ curl -X POST http://localhost:9090/certificates \
 
 ---
 
-## 9. Test Secure Backend API Again
+## 8. Test Secure Backend API Again
 
 ```sh
 curl https://localhost:8444/ssa/info -vk
