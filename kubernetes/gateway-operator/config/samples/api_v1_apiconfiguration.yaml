@@ -12,7 +12,7 @@ spec:
   gatewayRefs:
     # - name: cluster-gateway
     #   namespace: test
-    - name: backup-gateway
+    - name: cluster-gateway
       namespace: default
   
   apiConfiguration:
