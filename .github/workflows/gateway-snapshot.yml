@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  DOCKER_REGISTRY: ghcr.io/renuka-fernando
+  DOCKER_REGISTRY: ghcr.io/tharsanan1
 
 jobs:
   snapshot:
