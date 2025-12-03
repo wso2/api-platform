@@ -83,7 +83,7 @@ jobs:
 
             ### OCI Registry
             `oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }}:${{ inputs.version }}`
-          draft: false
+          draft: true
           prerelease: ${{ contains(inputs.version, '-') }}
           token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
 
