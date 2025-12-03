@@ -1,8 +1,8 @@
-# gateway-operator
+# Gateway Operator
 The WSO2 API Platform is designed to run natively on Kubernetes, providing a fully GitOps- and operator-friendly deployment model.
 
 
-# API Platform – Operator Quick Start Guide
+# API Platform – Gateway Operator Quick Start Guide
 
 This document explains how to install Cert-Manager, configure Docker Hub credentials, deploy the Gateway Operator, apply Gateway/API configurations, and test APIs locally.
 
