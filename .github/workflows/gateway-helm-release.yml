@@ -16,7 +16,8 @@ env:
   CHART_NAME: gateway
   CHART_PATH: kubernetes/helm/gateway-helm-chart
   REGISTRY: ghcr.io
-  REGISTRY_USERNAME: tharsanan1
+  REGISTRY_USERNAME: api-platform-bot
+  ORGANIZATION: wso2
   REGISTRY_PATH: api-platform/helm-charts
 
 jobs:
@@ -57,7 +58,7 @@ jobs:
       - name: Push Helm chart
         working-directory: ${{ env.CHART_PATH }}
         run: |
-          helm push ${{ env.CHART_NAME }}-${{ inputs.version }}.tgz oci://${{ env.REGISTRY }}/${{ env.REGISTRY_USERNAME }}/${{ env.REGISTRY_PATH }}
+          helm push ${{ env.CHART_NAME }}-${{ inputs.version }}.tgz oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}
 
       - name: Commit version changes
         run: |
@@ -78,11 +79,11 @@ jobs:
 
             ### Installation
             ```bash
-            helm install my-gateway oci://${{ env.REGISTRY }}/${{ env.REGISTRY_USERNAME }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }} --version ${{ inputs.version }}
+            helm install my-gateway oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }} --version ${{ inputs.version }}
             ```
 
             ### OCI Registry
-            `oci://${{ env.REGISTRY }}/${{ env.REGISTRY_USERNAME }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }}:${{ inputs.version }}`
+            `oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }}:${{ inputs.version }}`
           draft: false
           prerelease: ${{ contains(inputs.version, '-') }}
           token: ${{ secrets.GHCR_TOKEN }}
@@ -96,9 +97,9 @@ jobs:
           echo "**Chart Version:** \`${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**App Version:** \`${{ inputs.appVersion }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Git Tag:** \`helm-gateway-${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Registry:** \`oci://${{ env.REGISTRY }}/${{ env.REGISTRY_USERNAME }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** \`oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "#### Install Command" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "helm install my-gateway oci://${{ env.REGISTRY }}/${{ env.REGISTRY_USERNAME }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }} --version ${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "helm install my-gateway oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }} --version ${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
