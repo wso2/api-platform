@@ -119,6 +119,7 @@ version-bump-major: ## Bump major version
 build-gateway: ## Build all gateway Docker images
 	@echo "Building gateway components ($(GATEWAY_VERSION))..."
 	$(MAKE) -C gateway build
+	@echo "Successfully built all gateway components"
 
 # Test Targets
 .PHONY: test-gateway

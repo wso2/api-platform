@@ -17,8 +17,8 @@ jobs:
         id: version
         run: |
           VERSION=$(cat gateway/VERSION)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Building snapshot: $VERSION"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Building snapshot: ${VERSION}"
 
       - name: Set up Go
         uses: actions/setup-go@v5

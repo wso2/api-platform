@@ -22,6 +22,8 @@
 
 set -e
 
+DOCKER_REGISTRY=${DOCKER_REGISTRY:-ghcr.io/renuka-fernando}
+
 COMPONENT=$1
 VERSION=$2
 
@@ -35,21 +37,22 @@ VALUES_FILE="kubernetes/helm/gateway-helm-chart/values.yaml"
 
 if [ ! -f "$CHART_FILE" ] || [ ! -f "$VALUES_FILE" ]; then
     echo "Warning: Helm chart files not found"
-    return 0
+    exit 0
 fi
 
 if [ "$COMPONENT" = "gateway" ]; then
     # Update Chart.yaml - appVersion
-    sed -i '' "s/^appVersion:.*/appVersion: \"$VERSION\"/" "$CHART_FILE"
+    sed -i.bak "s/^appVersion:.*/appVersion: \"$VERSION\"/" "$CHART_FILE"
 
     # Update values.yaml - repository AND tags for gateway components
     # Use macOS-compatible sed syntax
-    sed -i '' \
-        -e "s|repository: .*/api-platform-gateway-controller|repository: ghcr.io/renuka-fernando/api-platform-gateway-controller|" \
-        -e "s|repository: .*/api-platform-policy-engine|repository: ghcr.io/renuka-fernando/api-platform-policy-engine|" \
-        -e "s|repository: .*/api-platform-gateway-router|repository: ghcr.io/renuka-fernando/api-platform-gateway-router|" \
+    sed -i.bak \
+        -e "s|repository: .*/api-platform-gateway-controller|repository: ${DOCKER_REGISTRY}/api-platform-gateway-controller|" \
+        -e "s|repository: .*/api-platform-policy-engine|repository: ${DOCKER_REGISTRY}/api-platform-policy-engine|" \
+        -e "s|repository: .*/api-platform-gateway-router|repository: ${DOCKER_REGISTRY}/api-platform-gateway-router|" \
         -e "s|tag: v[0-9].*$|tag: v$VERSION|g" \
         "$VALUES_FILE"
+    rm -f "$VALUES_FILE.bak"
 
-    echo "✅ Updated Helm charts with gateway version $VERSION (GHCR)"
+    echo "Updated Helm charts with gateway version $VERSION"
 fi

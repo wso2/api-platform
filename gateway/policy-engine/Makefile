@@ -34,7 +34,9 @@ GOMOD := $(GOCMD) mod
 # Binary name
 BINARY_NAME := policy-engine
 
-.PHONY: all build build-builder build-runtime test clean docker-clean run-builder run help push push-builder push-runtime
+.PHONY: all build build-builder build-runtime test clean docker-clean run-builder help push push-builder push-runtime \
+	run-runtime stop-runtime tidy lint logs ps restart rebuild dev-build dev-run check-deps \
+	build-sample-setheader test-integration test-envoy clean-all version
 
 # Default target
 all: help

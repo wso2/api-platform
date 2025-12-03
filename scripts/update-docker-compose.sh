@@ -22,6 +22,8 @@
 
 set -e
 
+DOCKER_REGISTRY=${DOCKER_REGISTRY:-ghcr.io/renuka-fernando}
+
 COMPONENT=$1
 VERSION=$2
 
@@ -34,22 +36,23 @@ COMPOSE_FILE="gateway/docker-compose.yaml"
 
 if [ ! -f "$COMPOSE_FILE" ]; then
     echo "Warning: docker-compose.yaml not found at $COMPOSE_FILE"
-    return 0
+    exit 0
 fi
 
 if [ "$COMPONENT" = "gateway" ]; then
     # Update all gateway component images
     # Use macOS-compatible sed syntax with pattern matching for any registry
-    sed -i '' \
-        -e "s|image: .*/api-platform-gateway-controller:.*|image: ghcr.io/renuka-fernando/api-platform-gateway-controller:v$VERSION|" \
-        -e "s|image: .*/api-platform-policy-engine:.*|image: ghcr.io/renuka-fernando/api-platform-policy-engine:v$VERSION|" \
-        -e "s|image: .*/api-platform-gateway-router:.*|image: ghcr.io/renuka-fernando/api-platform-gateway-router:v$VERSION|" \
+    sed -i -i.bak \
+        -e "s|image: .*/api-platform-gateway-controller:.*|image: ${DOCKER_REGISTRY}/api-platform-gateway-controller:v$VERSION|" \
+        -e "s|image: .*/api-platform-policy-engine:.*|image: ${DOCKER_REGISTRY}/api-platform-policy-engine:v$VERSION|" \
+        -e "s|image: .*/api-platform-gateway-router:.*|image: ${DOCKER_REGISTRY}/api-platform-gateway-router:v$VERSION|" \
         "$COMPOSE_FILE"
-    echo "✅ Updated docker-compose.yaml with gateway version v$VERSION (GHCR)"
+    echo "Updated docker-compose.yaml with gateway version v$VERSION"
 elif [ "$COMPONENT" = "platform-api" ]; then
     # Update platform-api image (if present in compose)
-    sed -i '' \
-        -e "s|image: .*/api-platform-platform-api:.*|image: ghcr.io/renuka-fernando/api-platform-platform-api:v$VERSION|" \
+    sed -i -i.bak \
+        -e "s|image: .*/api-platform-platform-api:.*|image: ${DOCKER_REGISTRY}/api-platform-platform-api:v$VERSION|" \
         "$COMPOSE_FILE"
-    echo "✅ Updated docker-compose.yaml with platform-api version v$VERSION (GHCR)"
+    rm -f "$COMPOSE_FILE.bak"
+    echo "Updated docker-compose.yaml with platform-api version v$VERSION"
 fi
