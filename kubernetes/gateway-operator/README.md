@@ -50,6 +50,10 @@ gatewayconfig_path="/tmp/api_v1_gatewayconfiguration.yaml"
 
 kubectl apply -f $gatewayconfig_path
 kubectl get gatewayconfiguration -n default -o json | jq '.items[0].status'
+
+kubectl wait pod -n default --for=condition=Ready -l app.kubernetes.io/component=policy-engine --timeout=900s
+kubectl wait pod -n default --for=condition=Ready -l app.kubernetes.io/component=controller --timeout=900s
+kubectl wait pod -n default --for=condition=Ready -l app.kubernetes.io/component=router --timeout=900s
 ```
 
 ---
