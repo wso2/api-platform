@@ -2,7 +2,7 @@
 
 # Stage 1: Builder Base - Contains framework source and builder tooling
 FROM --platform=$BUILDPLATFORM golang:1.25.5-alpine AS builder-base
-ARG TARGETARCH
+ARG BUILDARCH
 
 # Build arguments for version information
 ARG VERSION=0.0.1-SNAPSHOT
@@ -41,7 +41,7 @@ RUN go mod download
 # Build the Policy Builder binary (CGO disabled for static binary)
 RUN CGO_ENABLED=0 \
     GOOS=linux \
-    GOARCH=${TARGETARCH} \
+    GOARCH=${BUILDARCH} \
     go build \
     -a -installsuffix cgo \
     -o /usr/local/bin/policy-engine-builder \
