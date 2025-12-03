@@ -24,7 +24,7 @@ SHELL := /bin/bash
 VERSION := $(shell cat VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 
 # Docker registry configuration
-DOCKER_REGISTRY ?= ghcr.io/renuka-fernando
+DOCKER_REGISTRY ?= ghcr.io/renuka-fernando/api-platform
 
 # Image names
 CONTROLLER_IMAGE := $(DOCKER_REGISTRY)/gateway-controller

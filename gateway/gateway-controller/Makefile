@@ -25,7 +25,7 @@ BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS := -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.BuildDate=$(BUILD_DATE)
 
 # Docker image configuration
-DOCKER_REGISTRY ?= ghcr.io/renuka-fernando
+DOCKER_REGISTRY ?= ghcr.io/renuka-fernando/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-controller
 
 .PHONY: help generate build test generate-listener-certs push
