@@ -379,6 +379,7 @@ const LeftSidebar: React.FC = () => {
   const portalsSelected = portalsChildActive;
   const policiesSelected = policiesChildActive;
   const adminSelected = adminChildActive;
+  const quickActionsSelected = location.pathname === "/" || location.pathname === "/userScenario";
 
   return (
     <Drawer
@@ -403,6 +404,7 @@ const LeftSidebar: React.FC = () => {
           to="/userScenario"
           icon={<OfflineBoltIcon fontSize="small" />}
           label="Quick Actions"
+          selectedOverride={quickActionsSelected}
         />
         <NavItem
           to={overviewPath}
