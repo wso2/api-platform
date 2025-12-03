@@ -47,10 +47,10 @@ if [ "$COMPONENT" = "gateway" ]; then
     # Update values.yaml - repository AND tags for gateway components
     # Use macOS-compatible sed syntax
     sed -i.bak \
-        -e "s|repository: .*/api-platform/gateway-controller|repository: ${DOCKER_REGISTRY}/api-platform/gateway-controller|" \
-        -e "s|repository: .*/api-platform/policy-engine|repository: ${DOCKER_REGISTRY}/api-platform/policy-engine|" \
-        -e "s|repository: .*/api-platform/gateway-router|repository: ${DOCKER_REGISTRY}/api-platform/gateway-router|" \
-        -e "s|tag: v[0-9].*$|tag: v$VERSION|g" \
+        -e "s|repository: .*/gateway-controller|repository: ${DOCKER_REGISTRY}/gateway-controller|" \
+        -e "s|repository: .*/policy-engine|repository: ${DOCKER_REGISTRY}/policy-engine|" \
+        -e "s|repository: .*/gateway-router|repository: ${DOCKER_REGISTRY}/gateway-router|" \
+        -e "s|tag: [0-9].*$|tag: $VERSION|g" \
         "$VALUES_FILE"
     rm -f "$VALUES_FILE.bak"
 
