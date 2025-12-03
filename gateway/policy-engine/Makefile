@@ -36,7 +36,8 @@ BINARY_NAME := policy-engine
 
 .PHONY: all build build-builder build-runtime test clean docker-clean run-builder help push push-builder push-runtime \
 	run-runtime stop-runtime tidy lint logs ps restart rebuild dev-build dev-run check-deps \
-	build-sample-setheader test-integration test-envoy clean-all version
+	build-sample-setheader test-integration test-envoy clean-all version build-and-push-multiarch \
+	build-and-push-multiarch-builder build-and-push-multiarch-runtime
 
 # Default target
 all: help
@@ -50,6 +51,11 @@ help:
 	@echo "  make build-builder          - Build the Gateway Builder Docker image"
 	@echo "  make build-runtime         - Build the Policy Engine Runtime Docker image"
 	@echo "  make run-builder           - Run the Builder to compile policies into runtime binary"
+	@echo ""
+	@echo "Multi-arch Build and Push Targets:"
+	@echo "  make build-and-push-multiarch         - Build and push all images for multiple architectures (amd64, arm64)"
+	@echo "  make build-and-push-multiarch-builder - Build and push builder image for multiple architectures"
+	@echo "  make build-and-push-multiarch-runtime - Build and push runtime image for multiple architectures"
 	@echo ""
 	@echo "Push Targets:"
 	@echo "  make push                 - Push all images to registry"
@@ -123,6 +129,35 @@ push-runtime:
 	@echo "Pushing $(RUNTIME_TAG)..."
 	docker push $(RUNTIME_TAG)
 	docker push $(RUNTIME_IMAGE):latest
+
+## build-and-push-multiarch: Build and push all Docker images for multiple architectures (amd64, arm64)
+build-and-push-multiarch: build-and-push-multiarch-builder build-and-push-multiarch-runtime
+
+## build-and-push-multiarch-builder: Build and push the Gateway Builder Docker image for multiple architectures
+build-and-push-multiarch-builder:
+	@echo "Building and pushing multi-arch Gateway Builder image: $(BUILDER_TAG)"
+	docker buildx build -f Dockerfile.builder \
+		--platform linux/amd64,linux/arm64 \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		-t $(BUILDER_TAG) \
+		-t $(BUILDER_IMAGE):latest \
+		--push \
+		.
+	@echo "Multi-arch builder image built and pushed: $(BUILDER_TAG)"
+
+## build-and-push-multiarch-runtime: Build and push the Policy Engine Runtime Docker image for multiple architectures
+build-and-push-multiarch-runtime:
+	@echo "Building and pushing multi-arch Policy Engine Runtime image: $(RUNTIME_TAG)"
+	docker buildx build -f Dockerfile.runtime \
+		--platform linux/amd64,linux/arm64 \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		-t $(RUNTIME_TAG) \
+		-t $(RUNTIME_IMAGE):latest \
+		--push \
+		.
+	@echo "Multi-arch runtime image built and pushed: $(RUNTIME_TAG)"
 
 ## run-runtime: Start the Policy Engine with docker-compose
 run-runtime:

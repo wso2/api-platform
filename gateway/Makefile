@@ -44,6 +44,12 @@ help: ## Show this help message
 	@echo '  make build-policy       - Build policy-engine Docker images'
 	@echo '  make build-router       - Build router Docker image'
 	@echo ''
+	@echo 'Multi-arch Build and Push Targets:'
+	@echo '  make build-and-push-multiarch            - Build and push all gateway components for multiple architectures'
+	@echo '  make build-and-push-multiarch-controller - Build and push controller for multiple architectures'
+	@echo '  make build-and-push-multiarch-policy     - Build and push policy-engine for multiple architectures'
+	@echo '  make build-and-push-multiarch-router     - Build and push router for multiple architectures'
+	@echo ''
 	@echo 'Push Targets:'
 	@echo '  make push               - Push all images to registry'
 	@echo '  make push-controller    - Push controller image'
@@ -81,6 +87,32 @@ build-policy: ## Build policy-engine Docker images
 build-router: ## Build router Docker image
 	@echo "Building router Docker image ($(VERSION))..."
 	$(MAKE) -C router build VERSION=$(VERSION)
+
+# Multi-arch Build and Push Targets
+.PHONY: build-and-push-multiarch
+build-and-push-multiarch: build-and-push-multiarch-controller build-and-push-multiarch-policy build-and-push-multiarch-router ## Build and push all gateway components for multiple architectures
+
+.PHONY: build-and-push-multiarch-controller
+build-and-push-multiarch-controller: ## Build and push gateway-controller Docker image for multiple architectures
+	@echo "Building and pushing multi-arch controller Docker image: $(CONTROLLER_IMAGE):$(VERSION)"
+	docker buildx build -f gateway-controller/Dockerfile \
+		--platform linux/amd64,linux/arm64 \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
+		-t $(CONTROLLER_IMAGE):$(VERSION) \
+		-t $(CONTROLLER_IMAGE):latest \
+		--push \
+		.
+
+.PHONY: build-and-push-multiarch-policy
+build-and-push-multiarch-policy: ## Build and push policy-engine Docker images for multiple architectures
+	@echo "Building and pushing multi-arch policy-engine images ($(VERSION))..."
+	$(MAKE) -C policy-engine build-and-push-multiarch VERSION=$(VERSION)
+
+.PHONY: build-and-push-multiarch-router
+build-and-push-multiarch-router: ## Build and push router Docker image for multiple architectures
+	@echo "Building and pushing multi-arch router Docker image ($(VERSION))..."
+	$(MAKE) -C router build-and-push-multiarch VERSION=$(VERSION)
 
 # Push Targets
 .PHONY: push
