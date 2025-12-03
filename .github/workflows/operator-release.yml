@@ -72,7 +72,7 @@ jobs:
             - `linux/arm64`
           draft: false
           prerelease: ${{ contains(inputs.version, '-') }}
-          token: ${{ secrets.GHCR_TOKEN }}
+          token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
 
       - name: Image Summary
         run: |
