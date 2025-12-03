@@ -58,11 +58,25 @@ jobs:
           git add kubernetes/gateway-operator/Makefile
           git commit -m "chore: bump gateway-operator version to ${{ inputs.version }}"
 
-      - name: Create and push Git tag
-        run: |
-          git tag -a "gateway-operator-${{ inputs.version }}" -m "Release Gateway Operator ${{ inputs.version }}"
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git "gateway-operator-${{ inputs.version }}"
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: gateway-operator-${{ inputs.version }}
+          name: Gateway Operator ${{ inputs.version }}
+          body: |
+            ## Gateway Operator Release ${{ inputs.version }}
+
+            ### Docker Image
+            ```bash
+            docker pull ${{ env.REGISTRY }}/${{ env.REGISTRY_USERNAME }}/${{ env.REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ inputs.version }}
+            ```
+
+            ### Supported Platforms
+            - `linux/amd64`
+            - `linux/arm64`
+          draft: false
+          prerelease: ${{ contains(inputs.version, '-') }}
+          token: ${{ secrets.GHCR_TOKEN }}
 
       - name: Image Summary
         run: |
