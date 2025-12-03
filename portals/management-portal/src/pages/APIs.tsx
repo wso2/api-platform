@@ -62,8 +62,7 @@ const ApiCard: React.FC<{
     style={{
       padding: 16,
       position: "relative",
-      maxWidth: 350,
-      minWidth: 300,
+      width: 350,
       minHeight: 260,
     }}
     testId={api.id}
@@ -91,8 +90,16 @@ ${theme.palette.augmentColor({ color: { main: "#059669" } }).dark} 100%)`,
           >
             {initials(api.name)}
           </Box>
-          <Box>
-            <Typography variant="h4" sx={{ lineHeight: 1.2 }}>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography 
+              variant="h4" 
+              sx={{ 
+                lineHeight: 1.2,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
               {api.name}
             </Typography>
             <Stack direction="row" spacing={2} useFlexGap>
@@ -416,7 +423,7 @@ const ApiListContent: React.FC = () => {
             <Box
               sx={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 350px))',
+                gridTemplateColumns: 'repeat(auto-fit, 350px)',
                 gap: 2,
                 justifyContent: 'center',
                 alignItems: 'stretch',
