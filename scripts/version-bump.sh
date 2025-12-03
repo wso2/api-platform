@@ -66,17 +66,26 @@ case "$BUMP_TYPE" in
     patch)
         PATCH=$((PATCH + 1))
         ;;
+    next-dev)
+        # Bump minor version and always add SNAPSHOT
+        MINOR=$((MINOR + 1))
+        PATCH=0
+        ;;
     *)
         echo "Error: Invalid bump type: $BUMP_TYPE"
-        echo "Valid types: major, minor, patch"
+        echo "Valid types: major, minor, patch, next-dev"
         exit 1
         ;;
 esac
 
 NEW_VERSION="$MAJOR.$MINOR.$PATCH"
 
-# Check if current version had SNAPSHOT suffix
-if [[ "$CURRENT_VERSION" == *"-SNAPSHOT" ]]; then
+# Handle SNAPSHOT suffix
+if [ "$BUMP_TYPE" = "next-dev" ]; then
+    # Always add SNAPSHOT for next-dev
+    NEW_VERSION="$NEW_VERSION-SNAPSHOT"
+elif [[ "$CURRENT_VERSION" == *"-SNAPSHOT" ]]; then
+    # Preserve SNAPSHOT for other bump types if it existed
     NEW_VERSION="$NEW_VERSION-SNAPSHOT"
 fi
 
