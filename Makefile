@@ -42,6 +42,7 @@ help: ## Show this help message
 	@echo '  make version-bump-patch COMPONENT=X   - Bump patch version'
 	@echo '  make version-bump-minor COMPONENT=X   - Bump minor version'
 	@echo '  make version-bump-major COMPONENT=X   - Bump major version'
+	@echo '  make version-bump-next-dev COMPONENT=X - Bump to next minor dev version with SNAPSHOT'
 	@echo ''
 	@echo 'Build Targets:'
 	@echo '  make build-gateway                    - Build all gateway Docker images'
@@ -114,6 +115,15 @@ version-bump-major: ## Bump major version
 		exit 1; \
 	fi
 	@bash scripts/version-bump.sh major $(COMPONENT)
+
+.PHONY: version-bump-next-dev
+version-bump-next-dev: ## Bump to next minor dev version with SNAPSHOT suffix
+	@if [ -z "$(COMPONENT)" ]; then \
+		echo "Error: COMPONENT required"; \
+		echo "Usage: make version-bump-next-dev COMPONENT=gateway"; \
+		exit 1; \
+	fi
+	@bash scripts/version-bump.sh next-dev $(COMPONENT)
 
 # Build Targets
 .PHONY: build-gateway
