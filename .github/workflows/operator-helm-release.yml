@@ -69,7 +69,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: helm-operator-${{ inputs.version }}
+          tag_name: helm-gateway-operator-${{ inputs.version }}
           name: Operator Helm Chart ${{ inputs.version }}
           body: |
             ## Operator Helm Chart Release ${{ inputs.version }}
