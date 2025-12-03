@@ -9,7 +9,7 @@ on:
         type: string
 
 env:
-  DOCKER_REGISTRY: ghcr.io/renuka-fernando
+  DOCKER_REGISTRY: ghcr.io/tharsanan1/api-platform
 
 jobs:
   release:
@@ -24,6 +24,8 @@ jobs:
           VERSION=${{ inputs.version }}
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Releasing version: ${VERSION}"
+          echo "${VERSION}" > gateway/VERSION
+          echo "Updated gateway/VERSION to ${VERSION}"
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -41,7 +43,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.GHCR_TOKEN }}
 
       - name: Push Docker images
         run: make push-gateway
@@ -49,17 +51,17 @@ jobs:
       - name: Create GitHub Release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GHCR_TOKEN }}
         with:
-          tag_name: gateway/v${{ steps.version.outputs.version }}
+          tag_name: gateway-v${{ steps.version.outputs.version }}
           release_name: Gateway ${{ steps.version.outputs.version }}
           body: |
             ## Gateway Release ${{ steps.version.outputs.version }}
 
             ### Docker Images
-            - `${{ env.DOCKER_REGISTRY }}/api-platform-gateway-controller:${{ steps.version.outputs.version }}`
-            - `${{ env.DOCKER_REGISTRY }}/api-platform-policy-engine:${{ steps.version.outputs.version }}`
-            - `${{ env.DOCKER_REGISTRY }}/api-platform-gateway-builder:${{ steps.version.outputs.version }}`
-            - `${{ env.DOCKER_REGISTRY }}/api-platform-gateway-router:${{ steps.version.outputs.version }}`
+            - `${{ env.DOCKER_REGISTRY }}/gateway-controller:${{ steps.version.outputs.version }}`
+            - `${{ env.DOCKER_REGISTRY }}/policy-engine:${{ steps.version.outputs.version }}`
+            - `${{ env.DOCKER_REGISTRY }}/gateway-builder:${{ steps.version.outputs.version }}`
+            - `${{ env.DOCKER_REGISTRY }}/gateway-router:${{ steps.version.outputs.version }}`
           draft: true
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}

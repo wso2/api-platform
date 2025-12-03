@@ -26,7 +26,7 @@ LDFLAGS := -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.Bu
 
 # Docker image configuration
 DOCKER_REGISTRY ?= ghcr.io/renuka-fernando
-IMAGE_NAME := $(DOCKER_REGISTRY)/api-platform-gateway-controller
+IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-controller
 
 .PHONY: help generate build test generate-listener-certs push
 
