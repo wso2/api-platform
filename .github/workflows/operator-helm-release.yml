@@ -16,7 +16,8 @@ env:
   CHART_NAME: gateway-operator
   CHART_PATH: kubernetes/helm/operator-helm-chart
   REGISTRY: ghcr.io
-  REGISTRY_USERNAME: wso2
+  REGISTRY_USERNAME: api-platform-bot
+  ORGANIZATION: wso2
   REGISTRY_PATH: api-platform/helm-charts
 jobs:
   release-helm-chart:
@@ -56,7 +57,7 @@ jobs:
       - name: Push Helm chart
         working-directory: ${{ env.CHART_PATH }}
         run: |
-          helm push ${{ env.CHART_NAME }}-${{ inputs.version }}.tgz oci://${{ env.REGISTRY }}/${{ env.REGISTRY_USERNAME }}/${{ env.REGISTRY_PATH }}
+          helm push ${{ env.CHART_NAME }}-${{ inputs.version }}.tgz oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}
 
       - name: Commit version changes
         run: |
@@ -77,11 +78,11 @@ jobs:
 
             ### Installation
             ```bash
-            helm install my-operator oci://${{ env.REGISTRY }}/${{ env.REGISTRY_USERNAME }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }} --version ${{ inputs.version }}
+            helm install my-operator oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }} --version ${{ inputs.version }}
             ```
 
             ### OCI Registry
-            `oci://${{ env.REGISTRY }}/${{ env.REGISTRY_USERNAME }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }}:${{ inputs.version }}`
+            `oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }}:${{ inputs.version }}`
           draft: false
           prerelease: ${{ contains(inputs.version, '-') }}
           token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
@@ -94,9 +95,9 @@ jobs:
           echo "**Chart Version:** \`${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**App Version:** \`${{ inputs.appVersion }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Git Tag:** \`helm-operator-${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Registry:** \`oci://${{ env.REGISTRY }}/${{ env.REGISTRY_USERNAME }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** \`oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "#### Install Command" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "helm install my-operator oci://${{ env.REGISTRY }}/${{ env.REGISTRY_USERNAME }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }} --version ${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "helm install my-operator oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }} --version ${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
