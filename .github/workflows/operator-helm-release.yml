@@ -16,7 +16,7 @@ env:
   CHART_NAME: gateway-operator
   CHART_PATH: kubernetes/helm/operator-helm-chart
   REGISTRY: ghcr.io
-  REGISTRY_USERNAME: tharsanan1
+  REGISTRY_USERNAME: wso2
   REGISTRY_PATH: api-platform/helm-charts
 jobs:
   release-helm-chart:
@@ -51,7 +51,7 @@ jobs:
 
       - name: Login to GitHub Container Registry
         run: |
-          echo "${{ secrets.GHCR_TOKEN }}" | helm registry login ${{ env.REGISTRY }} --username ${{ env.REGISTRY_USERNAME }} --password-stdin
+          echo "${{ secrets.API_PLATFORM_BOT_TOKEN }}" | helm registry login ${{ env.REGISTRY }} --username ${{ env.REGISTRY_USERNAME }} --password-stdin
 
       - name: Push Helm chart
         working-directory: ${{ env.CHART_PATH }}
@@ -84,7 +84,7 @@ jobs:
             `oci://${{ env.REGISTRY }}/${{ env.REGISTRY_USERNAME }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }}:${{ inputs.version }}`
           draft: false
           prerelease: ${{ contains(inputs.version, '-') }}
-          token: ${{ secrets.GHCR_TOKEN }}
+          token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
 
       - name: Chart Summary
         run: |
