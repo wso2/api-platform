@@ -17,8 +17,7 @@ env:
   CHART_PATH: kubernetes/helm/operator-helm-chart
   REGISTRY: ghcr.io
   REGISTRY_USERNAME: tharsanan1
-  REGISTRY_PATH: api-platform
-
+  REGISTRY_PATH: api-platform/helm-charts
 jobs:
   release-helm-chart:
     runs-on: ubuntu-latest

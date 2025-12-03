@@ -13,11 +13,11 @@ on:
         type: string
 
 env:
-  CHART_NAME: api-platform-gateway
+  CHART_NAME: gateway
   CHART_PATH: kubernetes/helm/gateway-helm-chart
   REGISTRY: ghcr.io
   REGISTRY_USERNAME: tharsanan1
-  REGISTRY_PATH: api-platform
+  REGISTRY_PATH: api-platform/helm-charts
 
 jobs:
   release-helm-chart:
