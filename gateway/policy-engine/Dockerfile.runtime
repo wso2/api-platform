@@ -2,7 +2,7 @@
 # This Dockerfile builds the complete policy engine by running the policy-builder
 
 # Stage 1: Builder Base - Contains framework source and builder tooling
-FROM golang:1.24-alpine AS builder-base
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder-base
 
 # Build arguments for version information
 ARG VERSION=0.0.1-SNAPSHOT
@@ -66,7 +66,7 @@ WORKDIR /workspace
 RUN /usr/local/bin/policy-engine-builder
 
 # Stage 3: Runtime - Minimal image with compiled binary
-FROM alpine:3.22.2
+FROM --platform=$BUILDPLATFORM alpine:3.22.2
 
 RUN apk --no-cache add ca-certificates
 

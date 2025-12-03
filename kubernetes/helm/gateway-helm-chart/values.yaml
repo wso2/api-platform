@@ -21,8 +21,8 @@ serviceAccount:
 gateway:
   controller:
     image:
-      repository: ghcr.io/renuka-fernando/api-platform-gateway-controller
-      tag: v0.0.1-SNAPSHOT
+      repository: ghcr.io/renuka-fernando/api-platform/gateway-controller
+      tag: 0.0.1-SNAPSHOT
       pullPolicy: IfNotPresent
     imagePullSecrets: []
     service:
@@ -222,8 +222,8 @@ gateway:
 
   router:
     image:
-      repository: ghcr.io/renuka-fernando/api-platform-gateway-router
-      tag: v0.0.1-SNAPSHOT
+      repository: ghcr.io/renuka-fernando/api-platform/gateway-router
+      tag: 0.0.1-SNAPSHOT
       pullPolicy: IfNotPresent
     imagePullSecrets: []
     service:
@@ -279,8 +279,8 @@ gateway:
 
   policyEngine:
     image:
-      repository: ghcr.io/renuka-fernando/api-platform-policy-engine
-      tag: v0.0.1-SNAPSHOT
+      repository: ghcr.io/renuka-fernando/api-platform/policy-engine
+      tag: 0.0.1-SNAPSHOT
       pullPolicy: IfNotPresent
     imagePullSecrets: []
     service:

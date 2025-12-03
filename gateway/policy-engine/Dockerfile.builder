@@ -1,8 +1,5 @@
-# Policy Engine Builder Image
-# This image CONTAINS the Policy Engine framework source code and Builder Go application
-# Users ONLY mount their custom policy implementations - NOT the framework source
-
-FROM golang:1.24-alpine AS builder-base
+# Gateway Builder Image
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder-base
 
 # Build arguments for version information
 ARG VERSION=0.0.1-SNAPSHOT
@@ -40,10 +37,14 @@ WORKDIR /workspace/policy-builder
 RUN go mod download || true
 
 # Build the Policy Builder binary with version information
-RUN go build \
-    -ldflags "-X main.Version=${VERSION} \
+# Use explicit cross-compilation to avoid QEMU emulation issues
+RUN CGO_ENABLED=0 \
+    GOOS=linux \
+    go build \
+    -ldflags "-s -w -X main.Version=${VERSION} \
               -X main.GitCommit=${GIT_COMMIT} \
               -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -trimpath \
     -o /usr/local/bin/policy-engine-builder \
     ./cmd/builder
 

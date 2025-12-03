@@ -42,9 +42,9 @@ echo ""
 if [ -f "gateway/docker-compose.yaml" ]; then
     echo "Checking docker-compose.yaml..."
     # Extract version tag after the image name (handles both wso2/* and ghcr.io/*)
-    COMPOSE_CONTROLLER=$(grep "image:.*gateway-controller" gateway/docker-compose.yaml | sed 's/.*api-platform-gateway-controller://' | tr -d ' ')
-    COMPOSE_POLICY=$(grep "image:.*policy-engine" gateway/docker-compose.yaml | sed 's/.*api-platform-policy-engine://' | tr -d ' ')
-    COMPOSE_ROUTER=$(grep "image:.*gateway-router" gateway/docker-compose.yaml | sed 's/.*api-platform-gateway-router://' | tr -d ' ')
+    COMPOSE_CONTROLLER=$(grep "image:.*gateway-controller" gateway/docker-compose.yaml | sed 's/.*api-platform/gateway-controller://' | tr -d ' ')
+    COMPOSE_POLICY=$(grep "image:.*policy-engine" gateway/docker-compose.yaml | sed 's/.*api-platform/policy-engine://' | tr -d ' ')
+    COMPOSE_ROUTER=$(grep "image:.*gateway-router" gateway/docker-compose.yaml | sed 's/.*api-platform/gateway-router://' | tr -d ' ')
 
     echo "  Controller: $COMPOSE_CONTROLLER"
     echo "  Policy:     $COMPOSE_POLICY"

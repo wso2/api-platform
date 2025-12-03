@@ -43,9 +43,9 @@ if [ "$COMPONENT" = "gateway" ]; then
     # Update all gateway component images
     # Use macOS-compatible sed syntax with pattern matching for any registry
     sed -i -i.bak \
-        -e "s|image: .*/api-platform-gateway-controller:.*|image: ${DOCKER_REGISTRY}/api-platform-gateway-controller:v$VERSION|" \
-        -e "s|image: .*/api-platform-policy-engine:.*|image: ${DOCKER_REGISTRY}/api-platform-policy-engine:v$VERSION|" \
-        -e "s|image: .*/api-platform-gateway-router:.*|image: ${DOCKER_REGISTRY}/api-platform-gateway-router:v$VERSION|" \
+        -e "s|image: .*/api-platform/gateway-controller:.*|image: ${DOCKER_REGISTRY}/api-platform/gateway-controller:v$VERSION|" \
+        -e "s|image: .*/api-platform/policy-engine:.*|image: ${DOCKER_REGISTRY}/api-platform/policy-engine:v$VERSION|" \
+        -e "s|image: .*/api-platform/gateway-router:.*|image: ${DOCKER_REGISTRY}/api-platform/gateway-router:v$VERSION|" \
         "$COMPOSE_FILE"
     echo "Updated docker-compose.yaml with gateway version v$VERSION"
 elif [ "$COMPONENT" = "platform-api" ]; then

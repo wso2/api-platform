@@ -99,8 +99,8 @@ spec:
       gateway: my-gateway
   infrastructure:
     replicas: 2
-    image: wso2/api-platform-gateway-controller:v1.0.0-m4
-    routerImage: wso2/api-platform-gateway-router:v1.0.0-m4
+    image: wso2/api-platform/gateway-controller:v1.0.0-m4
+    routerImage: wso2/api-platform/gateway-router:v1.0.0-m4
     resources:
       requests:
         cpu: 250m
@@ -210,7 +210,7 @@ When using custom values files, you can override any value from the chart's defa
 gateway:
   controller:
     image:
-      repository: wso2/api-platform-gateway-controller
+      repository: wso2/api-platform/gateway-controller
       tag: v1.0.0-m5
     replicaCount: 3
     resources:
@@ -223,7 +223,7 @@ gateway:
   
   router:
     image:
-      repository: wso2/api-platform-gateway-router
+      repository: wso2/api-platform/gateway-router
       tag: v1.0.0-m5
     replicaCount: 3
     service:
