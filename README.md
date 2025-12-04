@@ -55,6 +55,8 @@ cd distribution/all-in-one
 docker compose up
 ```
 
+> **Note:** Use `docker compose up --build` to rebuild images when code changes need to be applied. Without `--build`, cached images are used.
+
 ### 3. Create a Default Organization
 
 ```bash
@@ -76,6 +78,17 @@ Open https://localhost:8443 in your browser and accept the self-signed certifica
 ### 5. Open the Management Portal
 
 Navigate to http://localhost:5173 to access the Management Portal.
+
+### 6. Open the API Developer Portal
+
+Navigate to http://localhost:3001 to access the Developer Portal.
+
+### 7. Shutdown
+
+```bash
+docker compose down    # shutdown the servers only, data doesn't get removed
+docker compose down -v # clear the data too
+```
 
 ## Platform Components
 

@@ -1,0 +1,150 @@
+{
+  "baseUrl": "http://localhost:3001",
+  "defaultPort": 3001,
+  "readOnlyMode": false,
+  "logging": {
+    "consoleOnly": false
+  },
+  "advanced": {
+    "http": true,
+    "dbSslDialectOption": false,
+    "resourceLoadFromBaseUrl": false,
+    "apiKey": {
+      "enabled": true,
+      "keyType": "x-wso2-api-key",
+      "keyValue": "x-wso2-api-key"
+    },
+    "disabledRoleValidation": true,
+    "disableOrgCallback": true,
+    "disableScopeValidation": true
+  },
+  "pathToContent": "./resources/default-layout/",
+  "pathToDBCert": "./resources/security/ca.pem",
+  "mode": "production",
+  "controlPlane": {
+    "enabled": false,
+    "url": "https://sts.preview-dv.choreo.dev/api/am/devportal/v2",
+    "graphqlURL": "https://app.preview-dv.choreo.dev/graphql",
+    "disableCertValidation": true,
+    "pathToCertificate": "./resources/security/client-truststore.pem"
+  },
+  "aiSDKService": {
+    "url": "http://localhost:5001",
+    "endpoints": {
+      "mergeSpecs": "/merge-openapi-specs",
+      "generateApp": "/generate-application-code"
+    }
+  },
+  "serverCerts": {
+    "pathToCert": "./resources/security/client-truststore.pem",
+    "pathToPK": "./resources/security/private-key.pem",
+    "pathToCA": "./resources/security/client-truststore.pem"
+  },
+  "db": {
+    "username": "postgres",
+    "password": "postgres",
+    "database": "devportal",
+    "host": "postgres",
+    "port": 5432,
+    "dialect": "postgres"
+  },
+  "providerURL": {
+    "AWS": "https://aws.amazon.com"
+  },
+  "defaultAuth": {
+    "users": [
+      {
+        "username": "admin",
+        "password": "admin",
+        "roles": [
+          "admin"
+        ],
+        "orgClaimName": "ACME",
+        "organizationIdentifier": "ACME"
+      }
+    ]
+  },
+  "identityProvider": {
+    "enabled": false,
+    "name": "IS",
+    "issuer": "https://localhost:9443/oauth2/token",
+    "authorizationURL": "https://localhost:9443/oauth2/authorize",
+    "tokenURL": "https://localhost:9443/oauth2/token",
+    "userInfoURL": "https://localhost:9443/oauth2/userinfo",
+    "clientId": "XX",
+    "callbackURL": "https://localhost:3000/ACME/callback",
+    "scope": "openid profile",
+    "signUpURL": "",
+    "logoutURL": "https://localhost:9443/oidc/logout",
+    "logoutRedirectURI": "https://localhost:3000/ACME",
+    "certificate": "",
+    "jwksURL": "https://localhost:9443/oauth2/jwks"
+  },
+  "tokenExchange": true,
+  "disableTLS": true,
+  "roleClaim": "roles",
+  "orgIDClaim": "organization.uuid",
+  "groupsClaim": "groups",
+  "adminRole": "admin",
+  "subscriberRole": "Internal/subscriber",
+  "superAdminRole": "superAdmin",
+  "authenticatedPages": [
+    "/portal/*/edit",
+    "/portal",
+    "/*/configure",
+    "**/applications",
+    "**/applications/**",
+
+    "**/myapis",
+    "**/myapis/**",
+    "**/myapis?**"
+  ],
+  "authorizedPages": [
+    "**/applications",
+    "**/applications/**",
+    "/*/configure",
+    "/portal/*/edit",
+    "/portal",
+    "**/myapis",
+    "**/myapis/**",
+    "**/myapis?**"
+  ],
+  "features": {
+    "sdkGeneration": {
+      "enabled": true
+    }
+  },
+  "portalConfigs": {
+    "showMaintenanceBanner": true,
+    "maintenanceBannerText": "This portal is under maintenance today from 10 PM to 12 AM."
+  },
+  "telemetry": true,
+  "generateDefaultSubPolicies": false,
+  "fidp": {
+    "google": "google",
+    "github": "github",
+    "microsoft": "microsoft",
+    "enterprise": "EnterpriseIDP",
+    "email": "LOCAL"
+  },
+  "redis": {
+    "host": "redis.f.bijira.com",
+    "port": 6379,
+    "db": 0,
+    "enabled": false,
+    "tls": {
+      "enabled": true,
+      "rejectUnauthorized": false
+    },
+    "configs": {
+      "ttl": 600,
+      "maxFileSize": 52428800,
+      "maxReconnectAttempts": 3,
+      "sseConnectionTimeout": 120000, 
+      "commandTimeout": 20000, 
+      "connectionTimeout": 8000,
+      "pipelineTimeout": 30000,
+      "retryDelayOnFailover": 1000
+    }
+  }
+}
