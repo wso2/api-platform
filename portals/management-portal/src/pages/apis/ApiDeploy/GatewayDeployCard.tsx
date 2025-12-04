@@ -178,7 +178,7 @@ const GatewayDeployCard: React.FC<Props> = ({
           >
             <Typography fontWeight={500}>Deployment Status</Typography>
             <Chip
-              label={isDeployed ? status || "ACTIVE" : "Not Deployed"}
+              label={isDeployed ? status || "ACTIVE" : "NOT DEPLOYED"}
               color={!isDeployed ? "default" : success ? "success" : "error"}
               variant={
                 !isDeployed ? "outlined" : success ? "filled" : "outlined"
