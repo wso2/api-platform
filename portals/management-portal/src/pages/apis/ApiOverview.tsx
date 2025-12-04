@@ -340,6 +340,12 @@ const ApiOverviewContent: React.FC = () => {
   const [detailsLoading, setDetailsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  const sortedGateways = React.useMemo(() => {
+    return [...associatedGateways].sort((a, b) =>
+      +(b.isDeployed === true) - +(a.isDeployed === true)
+    );
+  }, [associatedGateways]);
+
   const searchString = searchParams.toString();
 
   // --- visuals for the spec rows (colors from your reference)
@@ -764,7 +770,7 @@ const ApiOverviewContent: React.FC = () => {
           </Box>
         ) : (
           <Box>
-            {associatedGateways.map((gw) => (
+            {sortedGateways.map((gw) => (
               <GatewayListItem key={gw.id} gateway={gw} api={api} />
             ))}
           </Box>
