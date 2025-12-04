@@ -5,8 +5,10 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
   type ReactNode,
 } from "react";
+
 import {
   useApiPublishApi,
   type UnpublishResponse,
@@ -14,53 +16,73 @@ import {
   type ApiPublishPayload,
   type PublishResponse,
 } from "../hooks/apiPublish";
+
 import { useOrganization } from "./OrganizationContext";
 
-type ApiPublishContextValue = {
-  publishedApis: Record<string, ApiPublicationWithPortal[]>; // keyed by apiId
+/* -------------------------------------------------------------------------- */
+/*                                Type Definitions                            */
+/* -------------------------------------------------------------------------- */
+
+export type ApiPublishContextValue = {
+  publishedApis: ApiPublicationWithPortal[];
   loading: boolean;
-  error: string | null;
+
   refreshPublishedApis: (apiId: string) => Promise<ApiPublicationWithPortal[]>;
-  publishApiToDevPortal: (apiId: string, payload: ApiPublishPayload) => Promise<PublishResult | void>;
+  publishApiToDevPortal: (
+    apiId: string,
+    payload: ApiPublishPayload
+  ) => Promise<PublishResponse | void>;
   unpublishApiFromDevPortal: (
     apiId: string,
     devPortalId: string
   ) => Promise<UnpublishResponse>;
-  getPublishStatus: (apiId: string, devPortalId: string) => ApiPublicationWithPortal | undefined;
+  getPublication: (
+    devPortalId: string
+  ) => ApiPublicationWithPortal | undefined;
+  clearPublishedApis: () => void;
 };
 
-// The publish hook returns a PublishResponse type; expose that as the context result
-type PublishResult = PublishResponse;
+type ApiPublishProviderProps = { children: ReactNode };
 
-const ApiPublishContext = createContext<ApiPublishContextValue | undefined>(undefined);
+/* -------------------------------------------------------------------------- */
+/*                                   Context                                  */
+/* -------------------------------------------------------------------------- */
 
-type ApiPublishProviderProps = {
-  children: ReactNode;
-};
+const ApiPublishContext = createContext<ApiPublishContextValue | undefined>(
+  undefined
+);
+
+/* -------------------------------------------------------------------------- */
+/*                                   Provider                                 */
+/* -------------------------------------------------------------------------- */
 
 export const ApiPublishProvider = ({ children }: ApiPublishProviderProps) => {
-  const { organization, loading: organizationLoading } = useOrganization();
+  const { organization, loading: orgLoading } = useOrganization();
+  const {
+    fetchPublications,
+    publishApiToDevPortal: publishRequest,
+    unpublishApiFromDevPortal: unpublishRequest,
+  } = useApiPublishApi();
 
-  const { fetchPublications, publishApiToDevPortal: publishRequest, unpublishApiFromDevPortal: unpublishRequest } =
-    useApiPublishApi();
-
-  const [publishedApis, setPublishedApis] = useState<Record<string, ApiPublicationWithPortal[]>>({});
+  const [publishedApis, setPublishedApis] = useState<
+    ApiPublicationWithPortal[]
+  >([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
+  // Ref to track previous organization to avoid unnecessary clears
+  const prevOrgRef = useRef<string | undefined>(undefined);
+
+  /* ------------------------------- API Actions ------------------------------ */
+
+  /** Refresh publications for a specific API */
   const refreshPublishedApis = useCallback(
     async (apiId: string) => {
       setLoading(true);
-      setError(null);
 
       try {
-        const publishedList = await fetchPublications(apiId);
-        setPublishedApis((prev) => ({ ...prev, [apiId]: publishedList }));
-        return publishedList;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to fetch published APIs";
-        setError(message);
-        throw err;
+        const list = await fetchPublications(apiId);
+        setPublishedApis(list);
+        return list;
       } finally {
         setLoading(false);
       }
@@ -68,26 +90,22 @@ export const ApiPublishProvider = ({ children }: ApiPublishProviderProps) => {
     [fetchPublications]
   );
 
+  /** Publish API to devportal */
   const publishApiToDevPortal = useCallback(
-    async (apiId: string, payload: ApiPublishPayload): Promise<PublishResult | void> => {
-      setError(null);
+    async (apiId: string, payload: ApiPublishPayload) => {
       setLoading(true);
 
       try {
-        const res = await publishRequest(apiId, payload);
+        const response = await publishRequest(apiId, payload);
 
-        // If backend returned a publication or reference, attempt to refresh/merge
+        // Refresh state after a successful publish
         try {
           await refreshPublishedApis(apiId);
         } catch {
-          // swallow — refresh failure will be exposed via error state already
+          /* ignore refresh error */
         }
 
-        return res;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to publish API to devportal";
-        setError(message);
-        throw err;
+        return response;
       } finally {
         setLoading(false);
       }
@@ -95,35 +113,18 @@ export const ApiPublishProvider = ({ children }: ApiPublishProviderProps) => {
     [publishRequest, refreshPublishedApis]
   );
 
-
-  const getPublishStatus = useCallback(
-    (apiId: string, devPortalId: string) => {
-      const apiPublished = publishedApis[apiId] || [];
-      return apiPublished.find(p => p.uuid === devPortalId);
-    },
-    [publishedApis]
-  );
-
+  /** Unpublish API from devportal */
   const unpublishApiFromDevPortal = useCallback(
     async (apiId: string, devPortalId: string) => {
-      setError(null);
       setLoading(true);
 
       try {
         const result = await unpublishRequest(apiId, devPortalId);
 
-        // Update local state: remove the devPortal entry from publishedApis[apiId]
-        setPublishedApis((prev) => {
-          const list = prev[apiId] ?? [];
-          const nextList = list.filter((p) => p.uuid !== devPortalId);
-          return { ...prev, [apiId]: nextList };
-        });
+        // Update local state
+        setPublishedApis((prev) => prev.filter((p) => p.uuid !== devPortalId));
 
         return result;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to unpublish API from devportal";
-        setError(message);
-        throw err;
       } finally {
         setLoading(false);
       }
@@ -131,33 +132,55 @@ export const ApiPublishProvider = ({ children }: ApiPublishProviderProps) => {
     [unpublishRequest]
   );
 
-  // Clear published APIs when organization changes (including when switching between orgs)
+  /** Get publish status for specific (apiId, devPortalId) */
+  const getPublication = useCallback(
+    (devPortalId: string) => {
+      return publishedApis.find((p) => p.uuid === devPortalId);
+    },
+    [publishedApis]
+  );
+
+  /** Clear published APIs */
+  const clearPublishedApis = useCallback(() => {
+    setPublishedApis([]);
+  }, []);
+
+  /* ----------------------------- Organization Switch ----------------------------- */
+
   useEffect(() => {
-    if (organizationLoading) return;
-    // Always clear when org changes, not just when it becomes null
-    // This prevents data leakage when switching between organizations
-    setPublishedApis({});
-    setLoading(false);
-  }, [organization, organizationLoading]);
+    if (orgLoading) return;
+
+    const currentOrgId = organization?.id;
+    const prevOrgId = prevOrgRef.current;
+
+    // Only clear data if organization actually changed
+    if (currentOrgId !== prevOrgId) {
+      setPublishedApis([]);
+      setLoading(false);
+      prevOrgRef.current = currentOrgId;
+    }
+  }, [organization, orgLoading]);
+
+  /* -------------------------------- Context Value ------------------------------- */
 
   const value = useMemo<ApiPublishContextValue>(
     () => ({
       publishedApis,
       loading,
-      error,
       refreshPublishedApis,
       publishApiToDevPortal,
       unpublishApiFromDevPortal,
-      getPublishStatus,
+      getPublication,
+      clearPublishedApis,
     }),
     [
       publishedApis,
       loading,
-      error,
       refreshPublishedApis,
       publishApiToDevPortal,
       unpublishApiFromDevPortal,
-      getPublishStatus,
+      getPublication,
+      clearPublishedApis,
     ]
   );
 
@@ -168,12 +191,14 @@ export const ApiPublishProvider = ({ children }: ApiPublishProviderProps) => {
   );
 };
 
-export const useApiPublishing = () => {
-  const context = useContext(ApiPublishContext);
+/* -------------------------------------------------------------------------- */
+/*                                 Consumer Hook                               */
+/* -------------------------------------------------------------------------- */
 
-  if (!context) {
+export const useApiPublishing = () => {
+  const ctx = useContext(ApiPublishContext);
+  if (!ctx) {
     throw new Error("useApiPublishing must be used within an ApiPublishProvider");
   }
-
-  return context;
+  return ctx;
 };

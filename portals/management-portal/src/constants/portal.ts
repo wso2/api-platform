@@ -37,7 +37,8 @@ export const PORTAL_CONSTANTS = {
     ACTIVATION_FAILED: 'Failed to activate Developer Portal.',
     CREATION_FAILED: 'Failed to create Developer Portal.',
     LOADING_ERROR: 'An error occurred while loading developer portals.',
-    URL_NOT_AVAILABLE: 'Portal URL is not available until the portal is activated',
+    URL_NOT_AVAILABLE:
+      'Portal URL is not available until the portal is activated',
     OPEN_PORTAL_URL: 'Open portal URL',
   } as const,
 
@@ -52,5 +53,7 @@ export const PORTAL_CONSTANTS = {
 } as const;
 
 // Type helpers
-export type PortalType = typeof PORTAL_CONSTANTS.PORTAL_TYPES[keyof typeof PORTAL_CONSTANTS.PORTAL_TYPES];
-export type PortalMode = typeof PORTAL_CONSTANTS.MODES[keyof typeof PORTAL_CONSTANTS.MODES];
+export type PortalType =
+  (typeof PORTAL_CONSTANTS.PORTAL_TYPES)[keyof typeof PORTAL_CONSTANTS.PORTAL_TYPES];
+export type PortalMode =
+  (typeof PORTAL_CONSTANTS.MODES)[keyof typeof PORTAL_CONSTANTS.MODES];

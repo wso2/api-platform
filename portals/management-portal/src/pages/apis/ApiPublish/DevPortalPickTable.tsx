@@ -1,19 +1,19 @@
-import React from "react";
-import { Box, Typography } from "@mui/material";
-import LaunchIcon from "@mui/icons-material/Launch";
-import type { Portal } from "../../../hooks/devportals";
-import { Tooltip } from "../../../components/src/components/Tooltip";
-import { Checkbox } from "../../../components/src/components/Checkbox";
-import { Chip } from "../../../components/src/components/Chip";
-import { TableRowNoData } from "../../../components/src/components/TableDefault/TableRowNoData";
-import { Button } from "../../../components/src/components/Button";
-import { TableBody } from "../../../components/src/components/TableDefault/TableBody/TableBody";
-import { TableDefault } from "../../../components/src/components/TableDefault";
-import { TableHead } from "../../../components/src/components/TableDefault/TableHead/TableHead";
-import { TableRow } from "../../../components/src/components/TableDefault/TableRow/TableRow";
-import { TableCell } from "../../../components/src/components/TableDefault/TableCell/TableCell";
-import { TableContainer } from "../../../components/src/components/TableDefault/TableContainer/TableContainer";
-import ArrowLeftLong from "../../../components/src/Icons/generated/ArrowLeftLong";
+import React from 'react';
+import { Box, Typography } from '@mui/material';
+import LaunchIcon from '@mui/icons-material/Launch';
+import type { Portal } from '../../../hooks/devportals';
+import { Tooltip } from '../../../components/src/components/Tooltip';
+import { Checkbox } from '../../../components/src/components/Checkbox';
+import { Chip } from '../../../components/src/components/Chip';
+import { TableRowNoData } from '../../../components/src/components/TableDefault/TableRowNoData';
+import { Button } from '../../../components/src/components/Button';
+import { TableBody } from '../../../components/src/components/TableDefault/TableBody/TableBody';
+import { TableDefault } from '../../../components/src/components/TableDefault';
+import { TableHead } from '../../../components/src/components/TableDefault/TableHead/TableHead';
+import { TableRow } from '../../../components/src/components/TableDefault/TableRow/TableRow';
+import { TableCell } from '../../../components/src/components/TableDefault/TableCell/TableCell';
+import { TableContainer } from '../../../components/src/components/TableDefault/TableContainer/TableContainer';
+import ArrowLeftLong from '../../../components/src/Icons/generated/ArrowLeftLong';
 
 type Props = {
   portals: Portal[];
@@ -35,7 +35,7 @@ const headerOverline = { opacity: 0.7 } as const;
 // Keep header widths in sync with the body grid
 const GRID = {
   checkboxColPx: 56,
-  nameColWidth: "20%", // reduced to give more space to URL
+  nameColWidth: '20%', // reduced to give more space to URL
   nameColMinPx: 180,
   descriptionColPx: 400, // fixed width for description
   uiUrlColPx: 250, // increased for better URL display
@@ -58,9 +58,9 @@ const DevPortalPickTable: React.FC<Props> = ({
     return Array.isArray(publishedIds) ? new Set(publishedIds) : publishedIds;
   }, [publishedIds]);
 
-  // Only show NOT published portals
+  // Only show NOT published AND active portals
   const visiblePortals = React.useMemo(
-    () => portals.filter((p) => !publishedSet.has(p.uuid)),
+    () => portals.filter((p) => !publishedSet.has(p.uuid) && p.isEnabled),
     [portals, publishedSet]
   );
 
@@ -123,13 +123,13 @@ const DevPortalPickTable: React.FC<Props> = ({
                 colSpan={6}
                 sx={{
                   p: 0,
-                  borderBottom: "none",
-                  backgroundColor: "transparent",
+                  borderBottom: 'none',
+                  backgroundColor: 'transparent',
                 }}
               >
                 <Box
                   sx={{
-                    display: "grid",
+                    display: 'grid',
                     gridTemplateColumns: `
             ${GRID.checkboxColPx}px
             minmax(${GRID.nameColMinPx}px, ${GRID.nameColWidth})
@@ -137,7 +137,7 @@ const DevPortalPickTable: React.FC<Props> = ({
             ${GRID.uiUrlColPx}px
             ${GRID.visibilityColPx}px
           `,
-                    alignItems: "center",
+                    alignItems: 'center',
                     columnGap: 2,
                     px: 2, // <-- matches body pill padding
                     py: 1, // subtle vertical breathing room
@@ -155,7 +155,7 @@ const DevPortalPickTable: React.FC<Props> = ({
                         }}
                         onClick={(e: any) => e.stopPropagation()}
                         disableRipple
-                        inputProps={{ "aria-label": "select all dev portals" }}
+                        inputProps={{ 'aria-label': 'select all dev portals' }}
                         testId="table-head"
                       />
                     </Tooltip>
@@ -191,26 +191,26 @@ const DevPortalPickTable: React.FC<Props> = ({
               <TableRowNoData
                 testId="no-data-row"
                 colSpan={6}
-                message="No unpublished dev portals to show"
+                message="No enabled, unpublished dev portals to show"
               />
             ) : (
               visiblePortals.map((portal, idx) => {
                 const isChecked = selectedIds.has(portal.uuid);
-                const title = portal.name || "Dev Portal";
-                const initial = (title || "?").trim().charAt(0).toUpperCase();
+                const title = portal.name || 'Dev Portal';
+                const initial = (title || '?').trim().charAt(0).toUpperCase();
 
                 return (
                   <React.Fragment key={portal.uuid}>
                     <TableRow>
                       <TableCell
                         colSpan={6}
-                        sx={{ p: 0, border: 0, background: "transparent" }}
+                        sx={{ p: 0, border: 0, background: 'transparent' }}
                       >
                         <Box
                           onClick={() => onToggleRow(portal.uuid)}
                           role="button"
                           sx={{
-                            display: "grid",
+                            display: 'grid',
                             gridTemplateColumns: `
                               ${GRID.checkboxColPx}px
                               minmax(${GRID.nameColMinPx}px, ${GRID.nameColWidth})
@@ -218,29 +218,29 @@ const DevPortalPickTable: React.FC<Props> = ({
                               ${GRID.uiUrlColPx}px
                               ${GRID.visibilityColPx}px
                             `,
-                            alignItems: "center",
+                            alignItems: 'center',
                             columnGap: 2,
                             px: 2,
                             py: 1.25,
                             borderRadius: 2,
-                            backgroundColor: "grey.50",
+                            backgroundColor: 'grey.50',
                             boxShadow:
-                              "0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.06)",
-                            border: "1px solid",
+                              '0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.06)',
+                            border: '1px solid',
                             borderColor: isChecked
-                              ? "primary.light"
-                              : "divider",
-                            cursor: "pointer",
+                              ? 'primary.light'
+                              : 'divider',
+                            cursor: 'pointer',
                             transition:
-                              "background-color 120ms ease, border-color 120ms ease",
-                            "&:hover": { backgroundColor: "grey.100" },
+                              'background-color 120ms ease, border-color 120ms ease',
+                            '&:hover': { backgroundColor: 'grey.100' },
                           }}
                         >
                           {/* 1) Checkbox */}
                           <Box
                             sx={{
-                              display: "flex",
-                              alignItems: "center",
+                              display: 'flex',
+                              alignItems: 'center',
                               pl: 0.25,
                             }}
                           >
@@ -260,8 +260,8 @@ const DevPortalPickTable: React.FC<Props> = ({
                           {/* 2) Name (with avatar initial) */}
                           <Box
                             sx={{
-                              display: "flex",
-                              alignItems: "center",
+                              display: 'flex',
+                              alignItems: 'center',
                               gap: 1.25,
                               minWidth: 0,
                             }}
@@ -270,14 +270,14 @@ const DevPortalPickTable: React.FC<Props> = ({
                               sx={{
                                 width: 35,
                                 height: 35,
-                                borderRadius: "50%",
-                                display: "grid",
-                                placeItems: "center",
-                                backgroundColor: "grey.100",
-                                color: "text.primary",
+                                borderRadius: '50%',
+                                display: 'grid',
+                                placeItems: 'center',
+                                backgroundColor: 'grey.100',
+                                color: 'text.primary',
                                 fontSize: 12,
                                 fontWeight: 700,
-                                flex: "0 0 auto",
+                                flex: '0 0 auto',
                               }}
                               aria-hidden
                             >
@@ -295,14 +295,20 @@ const DevPortalPickTable: React.FC<Props> = ({
                           </Box>
 
                           {/* 3) Description */}
-                          <Box sx={{ minWidth: 0, maxWidth: GRID.descriptionColPx, marginRight: 3 }}>
+                          <Box
+                            sx={{
+                              minWidth: 0,
+                              maxWidth: GRID.descriptionColPx,
+                              marginRight: 3,
+                            }}
+                          >
                             <Typography
                               variant="body2"
                               color="text.primary"
                               noWrap
-                              title={portal.description || ""}
+                              title={portal.description || ''}
                             >
-                              {portal.description || ""}
+                              {portal.description || ''}
                             </Typography>
                           </Box>
 
@@ -311,19 +317,23 @@ const DevPortalPickTable: React.FC<Props> = ({
                             {portal.uiUrl ? (
                               <Box
                                 sx={{
-                                  display: "flex",
-                                  alignItems: "center",
+                                  display: 'flex',
+                                  alignItems: 'center',
                                   gap: 0.5,
-                                  cursor: "pointer",
-                                  color: "primary.main",
-                                  "&:hover": { 
-                                    textDecoration: "underline",
-                                    color: "primary.dark"
+                                  cursor: 'pointer',
+                                  color: 'primary.main',
+                                  '&:hover': {
+                                    textDecoration: 'underline',
+                                    color: 'primary.dark',
                                   },
                                 }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  window.open(portal.uiUrl, "_blank", "noopener,noreferrer");
+                                  window.open(
+                                    portal.uiUrl,
+                                    '_blank',
+                                    'noopener,noreferrer'
+                                  );
                                 }}
                                 title={portal.uiUrl}
                               >
@@ -332,16 +342,19 @@ const DevPortalPickTable: React.FC<Props> = ({
                                   variant="body2"
                                   color="inherit"
                                   noWrap
-                                  sx={{ 
-                                    textDecoration: "underline",
-                                    maxWidth: "180px"
+                                  sx={{
+                                    textDecoration: 'underline',
+                                    maxWidth: '180px',
                                   }}
                                 >
                                   {portal.uiUrl}
                                 </Typography>
                               </Box>
                             ) : (
-                              <Typography variant="body2" color="text.secondary">
+                              <Typography
+                                variant="body2"
+                                color="text.secondary"
+                              >
                                 —
                               </Typography>
                             )}
@@ -350,9 +363,19 @@ const DevPortalPickTable: React.FC<Props> = ({
                           {/* 5) Visibility */}
                           <Box>
                             <Chip
-                              label={portal.visibility === "public" ? "Public" : portal.visibility === "private" ? "Private" : "Unknown"}
+                              label={
+                                portal.visibility === 'public'
+                                  ? 'Public'
+                                  : portal.visibility === 'private'
+                                    ? 'Private'
+                                    : 'Unknown'
+                              }
                               size="small"
-                              color={portal.visibility === "public" ? "success" : "default"}
+                              color={
+                                portal.visibility === 'public'
+                                  ? 'success'
+                                  : 'default'
+                              }
                               variant="outlined"
                             />
                           </Box>
@@ -368,7 +391,7 @@ const DevPortalPickTable: React.FC<Props> = ({
                           sx={{
                             py: 0.75,
                             border: 0,
-                            background: "transparent",
+                            background: 'transparent',
                           }}
                         />
                       </TableRow>

@@ -1,5 +1,5 @@
-import React from "react";
-import { Box, Button, Typography } from "@mui/material";
+import React from 'react';
+import { Box, Button, Typography } from '@mui/material';
 
 type Props = {
   children: React.ReactNode;
@@ -34,21 +34,28 @@ class ErrorBoundary extends React.Component<Props, State> {
   };
 
   renderFallback() {
-    const { fallbackTitle = "Something went wrong", fallbackMessage = "An unexpected error occurred. You can retry or navigate away." } = this.props;
+    const {
+      fallbackTitle = 'Something went wrong',
+      fallbackMessage = 'An unexpected error occurred. You can retry or navigate away.',
+    } = this.props;
 
     return (
-      <Box sx={{ p: 4, textAlign: "center" }} role="alert">
+      <Box sx={{ p: 4, textAlign: 'center' }} role="alert">
         <Typography variant="h5" gutterBottom>
           {fallbackTitle}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {fallbackMessage}
         </Typography>
-        <Box sx={{ display: "flex", justifyContent: "center", gap: 2 }}>
-          <Button variant="contained" onClick={this.handleRetry} sx={{ textTransform: "none" }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2 }}>
+          <Button
+            variant="contained"
+            onClick={this.handleRetry}
+            sx={{ textTransform: 'none' }}
+          >
             Retry
           </Button>
-          <Button variant="outlined" href="/" sx={{ textTransform: "none" }}>
+          <Button variant="outlined" href="/" sx={{ textTransform: 'none' }}>
             Home
           </Button>
         </Box>

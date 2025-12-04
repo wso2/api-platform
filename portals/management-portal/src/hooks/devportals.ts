@@ -1,29 +1,50 @@
-import { useCallback } from "react";
-import { getApiConfig } from "./apiConfig";
+// 📁 useDevPortalsApi.ts
+import { useCallback } from 'react';
+import { getApiConfig } from './apiConfig';
+import { parseApiError } from '../utils/apiErrorUtils';
 
-export type Portal = {
-  logoSrc: string;
-  logoAlt: string;
+/* -------------------------------------------------------------------------- */
+/*                               Type Definitions                             */
+/* -------------------------------------------------------------------------- */
+
+export interface Portal {
   uuid: string;
   organizationUuid: string;
   name: string;
   identifier: string;
-  uiUrl: string;
   apiUrl: string;
   hostname: string;
-  isActive: boolean;
-  visibility: "public" | "private";
-  description: string;
+  uiUrl: string;
+  logoSrc: string;
+  logoAlt: string;
   headerKeyName: string;
+  description: string;
   isDefault: boolean;
+  isEnabled: boolean;
+  visibility: 'public' | 'private';
   createdAt: string;
   updatedAt: string;
-};
+}
 
-export type DevPortalAPIModel = Portal;
+export interface PortalUIModel {
+  uuid: string;
+  name: string;
+  identifier: string;
+  description: string;
+  apiUrl: string;
+  hostname: string;
+  portalUrl: string;
+  logoSrc?: string;
+  logoAlt?: string;
+  userAuthLabel: string;
+  authStrategyLabel: string;
+  visibilityLabel: string;
+  isEnabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
-
-export type CreatePortalPayload = {
+export interface CreatePortalPayload {
   name: string;
   identifier: string;
   description: string;
@@ -31,15 +52,20 @@ export type CreatePortalPayload = {
   hostname: string;
   apiKey: string;
   headerKeyName: string;
+  visibility: 'public' | 'private';
+}
+
+export type CreatePortalRequest = CreatePortalPayload;
+export type UpdatePortalPayload = Partial<CreatePortalPayload>;
+export type PortalApiResponse = PortalUIModel;
+
+export type DevPortalResponse = {
+  success: boolean;
+  message: string;
+  timestamp: string;
 };
 
-export type CreatePortalData = CreatePortalPayload;
-
-export type UpdatePortalPayload = Partial<CreatePortalPayload>;
-
-export type UpdatePortalData = CreatePortalPayload;
-
-type PortalListResponse = {
+export interface PortalListResponse {
   count: number;
   list: Portal[];
   pagination: {
@@ -47,74 +73,66 @@ type PortalListResponse = {
     offset: number;
     limit: number;
   };
-};
+}
+
+/* -------------------------------------------------------------------------- */
+/*                               API Hook - Service                           */
+/* -------------------------------------------------------------------------- */
 
 export const useDevPortalsApi = () => {
-  // Fetch all dev portals
+  /** Fetch all dev portals */
   const fetchDevPortals = useCallback(async (): Promise<Portal[]> => {
     const { token, baseUrl } = getApiConfig();
 
     const response = await fetch(`${baseUrl}/api/v1/devportals`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
     });
 
     if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(
-        `Failed to fetch devportals: ${response.status} ${response.statusText} ${errorBody}`
-      );
+      const errorMessage = await parseApiError(response, 'fetch devportals');
+      throw new Error(errorMessage);
     }
 
     const data: PortalListResponse = await response.json();
     return data.list ?? [];
   }, []);
 
-  // Fetch single portal by ID
-  const fetchDevPortal = useCallback(
-    async (uuid: string): Promise<Portal> => {
-      const { token, baseUrl } = getApiConfig();
+  /** Fetch single portal */
+  const fetchDevPortal = useCallback(async (uuid: string): Promise<Portal> => {
+    const { token, baseUrl } = getApiConfig();
 
-      const response = await fetch(`${baseUrl}/api/v1/devportals/${uuid}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+    const response = await fetch(`${baseUrl}/api/v1/devportals/${uuid}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(
-          `Failed to fetch devportal ${uuid}: ${response.status} ${response.statusText} ${errorBody}`
-        );
-      }
+    if (!response.ok) {
+      const errorMessage = await parseApiError(
+        response,
+        `fetch devportal (${uuid})`
+      );
+      throw new Error(errorMessage);
+    }
 
-      return await response.json();
-    },
-    []
-  );
+    return await response.json();
+  }, []);
 
-  // Create portal
+  /** Create portal */
   const createDevPortal = useCallback(
     async (payload: CreatePortalPayload): Promise<Portal> => {
       const { token, baseUrl } = getApiConfig();
 
       const response = await fetch(`${baseUrl}/api/v1/devportals`, {
-        method: "POST",
+        method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(
-          `Failed to create devportal: ${response.status} ${response.statusText} ${errorBody}`
-        );
+        const errorMessage = await parseApiError(response, 'create devportal');
+        throw new Error(errorMessage);
       }
 
       return await response.json();
@@ -122,28 +140,26 @@ export const useDevPortalsApi = () => {
     []
   );
 
-  // Update portal 
+  /** Update portal */
   const updateDevPortal = useCallback(
-    async (
-      uuid: string,
-      portalData: UpdatePortalData
-    ): Promise<DevPortalAPIModel> => {
+    async (uuid: string, updates: UpdatePortalPayload): Promise<Portal> => {
       const { token, baseUrl } = getApiConfig();
 
       const response = await fetch(`${baseUrl}/api/v1/devportals/${uuid}`, {
-        method: "PUT",
+        method: 'PUT',
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(portalData),
+        body: JSON.stringify(updates),
       });
 
       if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(
-          `Failed to update devportal ${uuid}: ${response.status} ${response.statusText} ${errorBody}`
+        const errorMessage = await parseApiError(
+          response,
+          `update devportal (${uuid})`
         );
+        throw new Error(errorMessage);
       }
 
       return await response.json();
@@ -151,54 +167,45 @@ export const useDevPortalsApi = () => {
     []
   );
 
-  // Delete portal
-  const deleteDevPortal = useCallback(
-    async (uuid: string): Promise<void> => {
-      const { token, baseUrl } = getApiConfig();
-
-      const response = await fetch(`${baseUrl}/api/v1/devportals/${uuid}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(
-          `Failed to delete devportal ${uuid}: ${response.status} ${response.statusText} ${errorBody}`
-        );
-      }
-    },
-    []
-  );
-
-  // ACTION: Activate portal
-
-  const activateDevPortal = useCallback(async (uuid: string): Promise<void> => {
+  /** Delete portal */
+  const deleteDevPortal = useCallback(async (uuid: string): Promise<void> => {
     const { token, baseUrl } = getApiConfig();
 
-    const response = await fetch(`${baseUrl}/api/v1/devportals/${uuid}/activate`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+    const response = await fetch(`${baseUrl}/api/v1/devportals/${uuid}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
     });
 
     if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(
-        `Failed to activate devportal ${uuid}: ${response.status} ${response.statusText} ${errorBody}`
-      );
+      const errorMessage = await parseApiError(response, 'delete devportal');
+      throw new Error(errorMessage);
     }
   }, []);
 
-  // Export all API operations
+  /** Activate portal */
+  const activateDevPortal = useCallback(async (uuid: string): Promise<void> => {
+    const { token, baseUrl } = getApiConfig();
+
+    const response = await fetch(
+      `${baseUrl}/api/v1/devportals/${uuid}/activate`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+
+    if (!response.ok) {
+      const errorMessage = await parseApiError(response, 'activate devportal');
+      throw new Error(errorMessage);
+    }
+
+    // Activation successful, no response body expected
+  }, []);
 
   return {
-    createDevPortal,
     fetchDevPortals,
     fetchDevPortal,
+    createDevPortal,
     updateDevPortal,
     deleteDevPortal,
     activateDevPortal,
