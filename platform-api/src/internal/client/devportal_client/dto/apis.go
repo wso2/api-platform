@@ -49,11 +49,16 @@ type EndPoints struct {
 	SandboxURL    string `json:"sandboxURL,omitempty"`
 }
 
+// SubscriptionPolicyRequest represents a subscription policy for API metadata
+type SubscriptionPolicyRequest struct {
+	PolicyName string `json:"policyName" validate:"required"`
+}
+
 // APIMetadataRequest is the JSON payload placed in multipart field `apiMetadata`
 type APIMetadataRequest struct {
-	APIInfo              APIInfo   `json:"apiInfo" validate:"required"`
-	EndPoints            EndPoints `json:"endPoints" validate:"required"`
-	SubscriptionPolicies []string  `json:"subscriptionPolicies,omitempty"`
+	APIInfo              APIInfo                     `json:"apiInfo" validate:"required"`
+	EndPoints            EndPoints                   `json:"endPoints" validate:"required"`
+	SubscriptionPolicies []SubscriptionPolicyRequest `json:"subscriptionPolicies,omitempty"`
 }
 
 // APIResponse represents an API returned by the DevPortal

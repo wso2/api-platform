@@ -547,13 +547,21 @@ func (s *DevPortalService) prepareAPIMetadata(api *dto.API, req *dto.PublishToDe
 		return devportal_client.APIMetadataRequest{}, err
 	}
 
+	// Convert subscription policies from strings to objects
+	subscriptionPolicies := make([]devportal_client.SubscriptionPolicyRequest, len(req.SubscriptionPolicies))
+	for i, policyName := range req.SubscriptionPolicies {
+		subscriptionPolicies[i] = devportal_client.SubscriptionPolicyRequest{
+			PolicyName: policyName,
+		}
+	}
+
 	apiMetadata := devportal_client.APIMetadataRequest{
 		APIInfo: apiInfo,
 		EndPoints: devportal_client.EndPoints{
 			ProductionURL: req.EndPoints.ProductionURL,
 			SandboxURL:    req.EndPoints.SandboxURL,
 		},
-		SubscriptionPolicies: req.SubscriptionPolicies,
+		SubscriptionPolicies: subscriptionPolicies,
 	}
 
 	// Validate the entire API metadata request

@@ -40,11 +40,12 @@ type (
 	SubscriptionPolicy = dto.SubscriptionPolicy
 
 	// APIs
-	Owners             = dto.Owners
-	APIInfo            = dto.APIInfo
-	EndPoints          = dto.EndPoints
-	APIMetadataRequest = dto.APIMetadataRequest
-	APIResponse        = dto.APIResponse
+	Owners                    = dto.Owners
+	APIInfo                   = dto.APIInfo
+	EndPoints                 = dto.EndPoints
+	SubscriptionPolicyRequest = dto.SubscriptionPolicyRequest
+	APIMetadataRequest        = dto.APIMetadataRequest
+	APIResponse               = dto.APIResponse
 
 	// Re-export enum types from dto so callers only import devportal_client.
 	SubscriptionType = dto.SubscriptionType
