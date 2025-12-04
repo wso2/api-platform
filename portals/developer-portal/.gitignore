@@ -94,8 +94,6 @@ eslint.config.mjs
 
 .prettierrc
 
-config*.json
-secret*.json
 resources/default-layout
 resources/mock
 

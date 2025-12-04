@@ -31,10 +31,13 @@ RUN npx @openapitools/openapi-generator-cli version
 COPY . .
 
 # Expose the application port
-EXPOSE 8080
+EXPOSE 3001
 
 # Create a non-root user with UID 10001 to satisfy Checkov CKV_CHOREO_1
 RUN groupadd -g 10001 appgroup && useradd -m -u 10001 -g appgroup -s /bin/bash appuser
+
+# Create tmp and logs directories and set ownership
+RUN mkdir -p /.tmp /tmp /app/logs && chown -R 10001:10001 /.tmp /tmp /app/logs
 
 # Explicitly switch to UID 10001 instead of using "appuser"
 USER 10001
