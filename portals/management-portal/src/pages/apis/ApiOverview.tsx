@@ -11,18 +11,19 @@ import {
   Stack,
   Typography,
   Tooltip,
-  TextField,
+  Collapse,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import LaunchIcon from "@mui/icons-material/Launch";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import RocketLaunchIcon from "@mui/icons-material/RocketLaunch";
 
 import { useApisContext } from "../../context/ApiContext";
-import type { ApiSummary } from "../../hooks/apis";
+import type { ApiSummary, ApiGatewaySummary } from "../../hooks/apis";
 import { slugEquals, slugify } from "../../utils/slug";
 import theme from "../../theme";
 import { Button } from "../../components/src/components/Button";
@@ -38,15 +39,261 @@ const RESERVED_SLUGS = new Set([
   "admin",
 ]);
 
-// --- simple method style map for spec rows (colors mimic screenshot mood)
-const METHOD_STYLE: Record<
-  string,
-  { bg: string; chipColor: "success" | "primary" | "warning" | "error" }
-> = {
-  POST: { bg: "rgba(16,185,129,0.15)", chipColor: "success" },
-  GET: { bg: "rgba(59,130,246,0.12)", chipColor: "primary" },
-  PUT: { bg: "rgba(245,158,11,0.15)", chipColor: "warning" },
-  DELETE: { bg: "rgba(239,68,68,0.12)", chipColor: "error" },
+type GatewayListItemProps = {
+  gateway: ApiGatewaySummary;
+  api: ApiSummary;
+};
+
+const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
+  const [expanded, setExpanded] = React.useState(false);
+  const [copiedUrl, setCopiedUrl] = React.useState<string | null>(null);
+
+  const isDeployed = gateway.isDeployed === true;
+  const vhost = gateway.vhost || "";
+  
+  // Construct URLs
+  const httpUrl = vhost && api ? `http://${vhost}:8080${api.context}/${api.version}` : null;
+  const httpsUrl = vhost && api ? `https://${vhost}:5443${api.context}/${api.version}` : null;
+  
+  // Get upstream URL (first default backend endpoint)
+  const upstreamUrl =
+    api?.backendServices?.find((s) => s.isDefault)?.endpoints?.[0]?.url ??
+    api?.backendServices?.[0]?.endpoints?.[0]?.url ??
+    "";
+
+  const handleCopyUrl = (url: string) => {
+    navigator.clipboard?.writeText(url).then(() => {
+      setCopiedUrl(url);
+      setTimeout(() => setCopiedUrl(null), 2000);
+    }).catch(() => {});
+  };
+
+  return (
+    <Box
+      sx={{
+        border: (t) => `1px solid ${t.palette.divider}`,
+        borderRadius: 2,
+        mb: 1.5,
+        overflow: "hidden",
+        bgcolor: "background.paper",
+      }}
+    >
+      <Box
+        sx={{
+          p: 2,
+          display: "flex",
+          alignItems: "center",
+          gap: 2,
+          cursor: "pointer",
+          "&:hover": {
+            bgcolor: (t) => t.palette.mode === "dark" ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+          },
+        }}
+        onClick={() => setExpanded(!expanded)}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 3 }}>
+          <Chip
+            label={isDeployed ? "Active" : "Inactive"}
+            size="small"
+            color={isDeployed ? "success" : "default"}
+            variant={isDeployed ? "filled" : "outlined"}
+            sx={{ minWidth: 85 }}
+          />
+          
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 250 }}>
+            <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary" }}>
+              Gateway:
+            </Typography>
+            
+            <Typography variant="body1" sx={{ fontWeight: 600 }}>
+              {gateway.name}
+            </Typography>
+          </Box>
+        </Box>
+
+        {!expanded && httpsUrl && (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, flex: 1 }}>
+            <Typography
+              variant="caption"
+              sx={{
+                fontWeight: 600,
+                color: "text.secondary",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Gateway HTTPS URL:
+            </Typography>
+            <Tooltip title={httpsUrl} placement="top">
+              <Typography
+                variant="body2"
+                sx={{
+                  flex: 1,
+                  fontFamily: "monospace",
+                  fontSize: "0.75rem",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  color: "text.secondary",
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {httpsUrl}
+              </Typography>
+            </Tooltip>
+            <Tooltip title={copiedUrl === httpsUrl ? "Copied!" : "Copy HTTPS URL"}>
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCopyUrl(httpsUrl);
+                }}
+              >
+                <ContentCopyIcon sx={{ fontSize: 16 }} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        )}
+
+        {expanded && <Box sx={{ flex: 1 }} />}
+
+        <IconButton
+          size="small"
+          sx={{
+            transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 0.2s",
+          }}
+        >
+          <ExpandMoreIcon />
+        </IconButton>
+      </Box>
+
+      <Collapse in={expanded}>
+        <Box sx={{ px: 2, pb: 2, pt: 1, bgcolor: (t) => t.palette.mode === "dark" ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)" }}>
+          <Stack spacing={1.5}>
+            {httpUrl && (
+              <Box>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", mb: 0.5, display: "block" }}>
+                  HTTP Gateway URL
+                </Typography>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    p: 1.5,
+                    bgcolor: (t) => t.palette.mode === "dark" ? "rgba(255,255,255,0.05)" : "#F9FAFB",
+                    borderRadius: 1,
+                    border: (t) => `1px solid ${t.palette.divider}`,
+                  }}
+                >
+                  <Tooltip title={httpUrl} placement="top">
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        flex: 1,
+                        fontSize: "0.75rem",
+                        fontFamily: "monospace",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {httpUrl}
+                    </Typography>
+                  </Tooltip>
+                  <Tooltip title={copiedUrl === httpUrl ? "Copied!" : "Copy HTTP URL"}>
+                    <IconButton size="small" onClick={() => handleCopyUrl(httpUrl)}>
+                      <ContentCopyIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+            )}
+
+            {httpsUrl && (
+              <Box>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", mb: 0.5, display: "block" }}>
+                  HTTPS Gateway URL
+                </Typography>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    p: 1.5,
+                    bgcolor: (t) => t.palette.mode === "dark" ? "rgba(255,255,255,0.05)" : "#F9FAFB",
+                    borderRadius: 1,
+                    border: (t) => `1px solid ${t.palette.divider}`,
+                  }}
+                >
+                  <Tooltip title={httpsUrl} placement="top">
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        flex: 1,
+                        fontSize: "0.75rem",
+                        fontFamily: "monospace",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {httpsUrl}
+                    </Typography>
+                  </Tooltip>
+                  <Tooltip title={copiedUrl === httpsUrl ? "Copied!" : "Copy HTTPS URL"}>
+                    <IconButton size="small" onClick={() => handleCopyUrl(httpsUrl)}>
+                      <ContentCopyIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+            )}
+
+            {upstreamUrl && (
+              <Box>
+                <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", mb: 0.5, display: "block" }}>
+                  Upstream URL
+                </Typography>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    p: 1.5,
+                    bgcolor: (t) => t.palette.mode === "dark" ? "rgba(255,255,255,0.05)" : "#F9FAFB",
+                    borderRadius: 1,
+                    border: (t) => `1px solid ${t.palette.divider}`,
+                  }}
+                >
+                  <Tooltip title={upstreamUrl} placement="top">
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        flex: 1,
+                        fontSize: "0.75rem",
+                        fontFamily: "monospace",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {upstreamUrl}
+                    </Typography>
+                  </Tooltip>
+                  <Tooltip title={copiedUrl === upstreamUrl ? "Copied!" : "Copy Upstream URL"}>
+                    <IconButton size="small" onClick={() => handleCopyUrl(upstreamUrl)}>
+                      <ContentCopyIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+            )}
+          </Stack>
+        </Box>
+      </Collapse>
+    </Box>
+  );
 };
 
 const ApiOverviewContent: React.FC = () => {
@@ -63,12 +310,14 @@ const ApiOverviewContent: React.FC = () => {
   }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { apis, fetchApiById, loading, selectApi } = useApisContext();
+  const { apis, fetchApiById, fetchGatewaysForApi, loading, selectApi } = useApisContext();
 
   const [apiId, setApiId] = React.useState<string | null>(
     searchParams.get("apiId") ?? legacyApiId ?? null
   );
   const [api, setApi] = React.useState<ApiSummary | null>(null);
+  const [associatedGateways, setAssociatedGateways] = React.useState<ApiGatewaySummary[]>([]);
+  const [gatewaysLoading, setGatewaysLoading] = React.useState(false);
   const [detailsLoading, setDetailsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -166,6 +415,20 @@ const ApiOverviewContent: React.FC = () => {
       .finally(() => setDetailsLoading(false));
   }, [apiId, apiSlug, fetchApiById, selectApi]);
 
+  React.useEffect(() => {
+    if (!apiId) return;
+    setGatewaysLoading(true);
+    fetchGatewaysForApi(apiId)
+      .then((gateways) => {
+        setAssociatedGateways(gateways);
+      })
+      .catch((err) => {
+        console.error("Failed to load gateways:", err);
+        setAssociatedGateways([]);
+      })
+      .finally(() => setGatewaysLoading(false));
+  }, [apiId, fetchGatewaysForApi]);
+
   const relativeTime = (value?: string | Date | null) => {
     if (!value) return "-";
     const date = value instanceof Date ? value : new Date(value);
@@ -214,18 +477,6 @@ const ApiOverviewContent: React.FC = () => {
     }
   }, [navigate, orgHandle, projectHandle]);
 
-  // pick a handy URL to show in “Deployment” panel (first default endpoint if any)
-  const firstEndpointUrl =
-    api?.backendServices?.find((s) => s.isDefault)?.endpoints?.[0]?.url ??
-    api?.backendServices?.[0]?.endpoints?.[0]?.url ??
-    "";
-
-  const lifeCycle = (api?.lifeCycleStatus ?? "Published").toString();
-
-  const copyUrl = () => {
-    if (!firstEndpointUrl) return;
-    navigator.clipboard?.writeText(firstEndpointUrl).catch(() => {});
-  };
 
   if (loading || detailsLoading) {
     return (
@@ -422,7 +673,6 @@ const ApiOverviewContent: React.FC = () => {
         </Stack>
       </Stack>
 
-      {/* ===== ENV WRAPPER (tabs + Configure + Test/Stop) ===== */}
       <Box
         sx={{
           mt: 3,
@@ -433,62 +683,14 @@ const ApiOverviewContent: React.FC = () => {
           p: 2.25,
         }}
       >
-        {/* top row: labels + time + Configure */}
-        <Stack direction="row" alignItems="center" spacing={2}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between">
           <Typography
             variant="subtitle1"
             sx={{ fontWeight: 600, color: "text.primary" }}
           >
-            Development
+            Deployments
           </Typography>
 
-          {/* <Typography variant="subtitle1" sx={{ color: "text.secondary" }}>
-            Deployed
-          </Typography> */}
-
-          {/* subtle clock + time */}
-          {/* <Stack direction="row" spacing={1} alignItems="center" sx={{ ml: 1 }}>
-            <Box
-              sx={{
-                width: 24,
-                height: 24,
-                borderRadius: "50%",
-                display: "grid",
-                placeItems: "center",
-                bgcolor: (t) =>
-                  t.palette.mode === "dark"
-                    ? "rgba(255,255,255,0.08)"
-                    : "rgba(2,6,23,0.06)",
-                color: "text.secondary",
-              }}
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                aria-hidden
-              >
-                <path
-                  d="M12 7v5l3 2"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="9"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                />
-              </svg>
-            </Box>
-
-            <Typography variant="body2" color="text.secondary">
-              {relativeTime(api.createdAt)}
-            </Typography>
-          </Stack> */}
           <Button
             variant="outlined"
             startIcon={<RocketLaunchIcon />}
@@ -508,14 +710,13 @@ const ApiOverviewContent: React.FC = () => {
 
               const params = new URLSearchParams();
               params.set("apiId", api.id);
-              params.set("apiSlug", slugify(api.name)); // optional if you want it
+              params.set("apiSlug", slugify(api.name));
 
               navigate(`${base}?${params.toString()}`);
             }}
             sx={{
               textTransform: "none",
               borderColor: "#069668",
-
               color: "#069668",
               "&:hover": {
                 borderColor: "#069668",
@@ -527,60 +728,28 @@ const ApiOverviewContent: React.FC = () => {
           </Button>
         </Stack>
 
-        {/* thin divider (full width) */}
-        <Box sx={{ mt: 2, height: 1, bgcolor: "divider" }} />
+        <Box sx={{ mt: 2, mb: 2, height: 1, bgcolor: "divider" }} />
 
-        {/* Deployment + URL rows */}
-        {/* <Stack direction="row" alignItems="center" spacing={2} sx={{ mt: 3 }}>
-          <Typography fontSize={14} sx={{ color: "text.secondary" }}>
-            Deployment:
-          </Typography>
-          <Chip label="Active" sx={{ bgcolor: "#dcfce7", color: "#166534" }} />
-        </Stack> */}
-
-        <Box sx={{ mt: 2 }} display={"flex"} flexDirection="row" gap={1}>
-          <Typography
-            variant="subtitle1"
-            sx={{ color: "text.secondary", mb: 0.75 }}
-          >
-            URL:
-          </Typography>
-          <TextField
-            fullWidth
-            size="small"
-            value={firstEndpointUrl}
-            InputProps={{
-              readOnly: true,
-              endAdornment: (
-                <Tooltip title="Copy URL">
-                  <span>
-                    <IconButton
-                      size="small"
-                      onClick={() =>
-                        firstEndpointUrl &&
-                        navigator.clipboard.writeText(firstEndpointUrl)
-                      }
-                      disabled={!firstEndpointUrl}
-                    >
-                      <ContentCopyIcon fontSize="small" />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-              ),
-            }}
-            sx={{
-              "& .MuiInputBase-input": { fontSize: 14, minHeight: 30 },
-              "& .MuiOutlinedInput-root": {
-                bgcolor: (t) =>
-                  t.palette.mode === "dark"
-                    ? "rgba(255,255,255,0.04)"
-                    : "rgba(2,6,23,0.03)",
-                borderRadius: 2,
-              },
-              maxWidth: 1200,
-            }}
-          />
-        </Box>
+        {gatewaysLoading ? (
+          <Box display="flex" alignItems="center" justifyContent="center" py={4}>
+            <CircularProgress size={24} />
+          </Box>
+        ) : associatedGateways.length === 0 ? (
+          <Box py={3} textAlign="center">
+            <Typography variant="body2" color="text.secondary">
+              No gateways associated with this API yet.
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Use the Deploy button to add gateways.
+            </Typography>
+          </Box>
+        ) : (
+          <Box>
+            {associatedGateways.map((gw) => (
+              <GatewayListItem key={gw.id} gateway={gw} api={api} />
+            ))}
+          </Box>
+        )}
       </Box>
 
       {/* API Specifications */}
