@@ -55,6 +55,8 @@ cd distribution/all-in-one
 docker compose up
 ```
 
+> **Note:** Use `docker compose up --build` to rebuild images when code changes need to be applied. Without `--build`, cached images are used.
+
 ### 3. Create a Default Organization
 
 ```bash
