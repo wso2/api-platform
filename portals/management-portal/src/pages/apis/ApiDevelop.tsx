@@ -25,6 +25,7 @@ import { Card, CardActionArea } from "../../components/src/components/Card";
 import { Button } from "../../components/src/components/Button";
 import { SearchBar } from "../../components/src/components/SearchBar";
 import { Tooltip } from "../../components/src/components/Tooltip";
+import CardsPageLayout from "../../common/CardsPageLayout";
 
 /* ---------------- helpers ---------------- */
 
@@ -378,43 +379,21 @@ const renderEmptyTile = () => (
         </Typography>
       </Card>
     ) : (
-      <>
-        {/* Title at start; SearchBar + Button at end */}
-        <Stack
-          direction="row"
-          justifyContent="space-between"
-          alignItems="center"
-          mb={3}
-          gap={2}
-        >
-          <Typography variant="h4" fontWeight={600}>
-            Selected Gateways
-          </Typography>
-
-          <Stack
-            direction="row"
-            alignItems="center"
-            gap={1.5}
-            flexShrink={0}
-            sx={{
-              minWidth: 500,
-              maxWidth: 700,
-              flex: 1,
-              justifyContent: "flex-end",
-            }}
-          >
-            <Box sx={{ flex: 1, maxWidth: 420 }}>
-              <SearchBar
-                testId="selected-gateways-search"
-                placeholder="Search selected gateways"
-                inputValue={query}
-                onChange={setQuery}
-                iconPlacement="left"
-                bordered
-                size="medium"
-                color="secondary"
-              />
-            </Box>
+      <CardsPageLayout
+        cardWidth={380}
+        topLeft={<Typography variant="h3">Selected Gateways</Typography>}
+        topRight={
+          <Stack direction="row" spacing={1} alignItems="center">
+            <SearchBar
+              testId="selected-gateways-search"
+              placeholder="Search selected gateways"
+              inputValue={query}
+              onChange={setQuery}
+              iconPlacement="left"
+              bordered
+              size="medium"
+              color="secondary"
+            />
             <Tooltip
               title={
                 noMoreGateways
@@ -437,25 +416,23 @@ const renderEmptyTile = () => (
               </span>
             </Tooltip>
           </Stack>
-        </Stack>
-
-        <Grid container spacing={3}>
-          {filteredGateways.map((gw) => (
-            <GatewayDeployCard
-              key={gw.id}
-              gw={gw}
-              apiId={effectiveApiId}
-              api={api}
-              deployedMap={deployedMap}
-              deployByGateway={deployByGateway}
-              deploying={deploying}
-              deployingIds={deployingIds}
-              relativeTime={relativeTime}
-              onDeploy={handleDeploySingle}
-            />
-          ))}
-        </Grid>
-      </>
+        }
+      >
+        {filteredGateways.map((gw) => (
+          <GatewayDeployCard
+            key={gw.id}
+            gw={gw}
+            apiId={effectiveApiId}
+            api={api}
+            deployedMap={deployedMap}
+            deployByGateway={deployByGateway}
+            deploying={deploying}
+            deployingIds={deployingIds}
+            relativeTime={relativeTime}
+            onDeploy={handleDeploySingle}
+          />
+        ))}
+      </CardsPageLayout>
     );
   };
 
