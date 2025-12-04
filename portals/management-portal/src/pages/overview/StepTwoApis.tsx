@@ -96,7 +96,7 @@ spec:
   name: PetStore API
   version: v1.0
   context: /petstore
-  upstream:
+  upstreams:
     - url: https://petstore.swagger.io/v2
   operations:
     - method: GET
@@ -115,7 +115,7 @@ spec:
   name: PetStore API
   version: v1.0
   context: /petstore
-  upstream:
+  upstreams:
     - url: https://petstore.swagger.io/v2
   operations:
     - method: GET
