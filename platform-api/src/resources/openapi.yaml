@@ -779,6 +779,45 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /apis/check-name-existence:
+    post:
+      summary: Validate API name uniqueness within a project
+      description: |
+        Checks whether an API with the specified name already exists within the given project.
+        This endpoint helps prevent duplicate API names within the same project scope.
+        Organization ID is automatically extracted from the JWT token.
+      operationId: CheckAPINameExistence
+      tags:
+        - APIs
+      requestBody:
+        description: API name and project name to check
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidateAPINameExistenceRequest'
+        required: true
+      responses:
+        '200':
+          description: API name is available within the specified project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateAPINameExistenceResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: API name already exists in the specified project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidateAPINameExistenceResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /gateways:
     post:
       summary: Register a new gateway
@@ -3496,6 +3535,47 @@ components:
                   - context
                   - version
                   - projectId
+
+    ValidateAPINameExistenceRequest:
+      type: object
+      required:
+        - name
+        - projectId
+      properties:
+        name:
+          type: string
+          description: Name of the API to check for existence
+          example: "inventory-api"
+        projectId:
+          type: string
+          format: uuid
+          description: ID of the project to check within
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    ValidateAPINameExistenceResponse:
+      type: object
+      required:
+        - exists
+        - name
+        - projectId
+      properties:
+        exists:
+          type: boolean
+          description: Whether an API with the given name exists in the specified project
+          example: true
+        name:
+          type: string
+          description: Name of the API to check for existence
+          example: "inventory-api"
+        projectId:
+          type: string
+          format: uuid
+          description: ID of the project to check within
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        message:
+          type: string
+          description: Human-readable message about the check result
+          example: "API 'inventory-api' already exists in project 'default'"
 
   responses:
     Unauthorized:

@@ -227,3 +227,17 @@ type APIListResponse struct {
 	List       []*API     `json:"list" yaml:"list"`             // Array of API objects
 	Pagination Pagination `json:"pagination" yaml:"pagination"` // Pagination metadata
 }
+
+// ValidateAPINameExistenceRequest represents the request payload for checking API name existence
+type ValidateAPINameExistenceRequest struct {
+	Name      string `json:"name" binding:"required"`
+	ProjectID string `json:"projectId" binding:"required"`
+}
+
+// ValidateAPINameExistenceResponse represents the response for checking API name existence
+type ValidateAPINameExistenceResponse struct {
+	Exists    bool   `json:"exists"`
+	Name      string `json:"name"`
+	ProjectID string `json:"projectId"`
+	Message   string `json:"message,omitempty"`
+}

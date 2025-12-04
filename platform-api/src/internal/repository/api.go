@@ -1077,3 +1077,19 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiId, organizationId string) ([]*mo
 
 	return gateways, rows.Err()
 }
+
+// CheckAPINameExistsInProject checks if an API with the given name exists within a specific project and organization
+func (r *APIRepo) CheckAPINameExistsInProject(name, projectId, orgId string) (bool, error) {
+	query := `
+		SELECT COUNT(*) FROM apis 
+		WHERE name = ? AND project_uuid = ? AND organization_uuid = ?
+	`
+
+	var count int
+	err := r.db.QueryRow(query, name, projectId, orgId).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
