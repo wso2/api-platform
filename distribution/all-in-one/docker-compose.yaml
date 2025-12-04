@@ -17,6 +17,37 @@
 # --------------------------------------------------------------------
 
 services:
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: devportal
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ../../portals/developer-portal/artifacts/script.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d devportal"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  devportal:
+    build:
+      context: ../../portals/developer-portal
+      dockerfile: Dockerfile
+    container_name: devportal
+    ports:
+      - "3001:3001"
+    volumes:
+      - ../../portals/developer-portal/config.json:/app/config.json:ro
+      - ../../portals/developer-portal/secret.json:/app/secret.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   platform-api:
     build:
       context: ../../platform-api
@@ -24,7 +55,9 @@ services:
     ports:
       - "8443:8443"
     volumes:
-      - api-platform-data:/api-platform/data
+      - platform-api-data:/api-platform/data
+    environment:
+      - DEFAULT_DEVPORTAL_API_URL=http://devportal:3001
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "--no-check-certificate", "https://localhost:8443/health"]
       interval: 30s
@@ -43,5 +76,6 @@ services:
         condition: service_healthy
 
 volumes:
-  api-platform-data:
+  platform-api-data:
     driver: local
+  postgres_data:
