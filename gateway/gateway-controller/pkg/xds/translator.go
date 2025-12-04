@@ -596,6 +596,10 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener,
 	// Dynamic forward proxy filter config placeholder (typed config fields omitted for compatibility with current go-control-plane version)
 	dynamicFwdAny, err := anypb.New(dfpFilterConfig)
 
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal dynamic forward proxy config: %w", err)
+	}
+
 	// Router filter
 	routerConfig := &router.Router{}
 	routerAny, err := anypb.New(routerConfig)
