@@ -288,7 +288,10 @@ const DevelopContent: React.FC = () => {
 
   const addSelection = () => {
     if (selectedIds.size === 0) return;
-    setStagedIds(Array.from(selectedIds));
+    setStagedIds((prev) => {
+      const combined = new Set([...prev, ...Array.from(selectedIds)]);
+      return Array.from(combined);
+    });
     setMode("cards");
   };
 
