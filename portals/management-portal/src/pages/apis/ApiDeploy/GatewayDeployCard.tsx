@@ -76,7 +76,6 @@ const GatewayDeployCard: React.FC<Props> = ({
     null;
 
   const vhost = gw.vhost || (item && item.vhost) || "";
-  const description = gw.description || "";
 
   const status = (item?.status || "").toString().toUpperCase() as
     | "ACTIVE"
@@ -127,43 +126,16 @@ const GatewayDeployCard: React.FC<Props> = ({
           <Divider sx={{ my: 2 }} />
 
           {/* Deployed row */}
-          <Stack direction="row" spacing={1} alignItems="center" mb={1}>
-            <Typography>Deployed</Typography>
+          <Stack direction="row" spacing={1} alignItems="center" mb={1}>     
             <AccessTimeIcon fontSize="small" sx={{ opacity: 0.7 }} />
             <Typography color="text.info">
               {isDeployed
                 ? deployedTime
-                  ? relativeTime(deployedTime)
+                  ? <>Deployed {relativeTime(deployedTime)}</>              
                   : "—"
                 : "Not Deployed"}
             </Typography>
           </Stack>
-
-          {!!vhost && (
-            <Typography color="text.info" sx={{ mb: 0.5 }}>
-              vhost: {vhost}
-            </Typography>
-          )}
-          <Box height={12}>
-            {!!description && (
-              <Tooltip title={description} placement="bottom-start">
-                <Typography
-                  variant="body2"
-                  color="#afa9a9ff"
-                  sx={{
-                    mb: 1,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    maxWidth: 340,
-                    display: "block",
-                  }}
-                >
-                  {description}
-                </Typography>
-              </Tooltip>
-            )}
-          </Box>
 
           <Box
             mt={2}
