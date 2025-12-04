@@ -368,11 +368,41 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 
 // DeleteAPI removes an API and all its configurations
 func (r *APIRepo) DeleteAPI(apiId string) error {
-	// Due to foreign key constraints with CASCADE, deleting the main API record
-	// will automatically delete all related configurations
-	query := `DELETE FROM apis WHERE uuid = ?`
-	_, err := r.db.Exec(query, apiId)
-	return err
+	// Start transaction for atomicity
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Delete in order of dependencies (children first, parent last)
+	deleteQueries := []string{
+		// Delete API associations first
+		`DELETE FROM api_associations WHERE api_uuid = ?`,
+		// Delete API deployments
+		`DELETE FROM api_deployments WHERE api_uuid = ?`,
+		// Delete other related tables that reference the API
+		`DELETE FROM policies WHERE operation_id IN (SELECT id FROM api_operations WHERE api_uuid = ?)`,
+		`DELETE FROM operation_backend_services WHERE operation_id IN (SELECT id FROM api_operations WHERE api_uuid = ?)`,
+		`DELETE FROM api_operations WHERE api_uuid = ?`,
+		`DELETE FROM api_backend_services WHERE api_uuid = ?`,
+		`DELETE FROM api_rate_limiting WHERE api_uuid = ?`,
+		`DELETE FROM api_cors_config WHERE api_uuid = ?`,
+		`DELETE FROM oauth2_security WHERE api_uuid = ?`,
+		`DELETE FROM api_key_security WHERE api_uuid = ?`,
+		`DELETE FROM api_mtls_config WHERE api_uuid = ?`,
+		// Finally delete the main API record
+		`DELETE FROM apis WHERE uuid = ?`,
+	}
+
+	// Execute all delete statements
+	for _, query := range deleteQueries {
+		if _, err := tx.Exec(query, apiId); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 // Helper methods for loading configurations

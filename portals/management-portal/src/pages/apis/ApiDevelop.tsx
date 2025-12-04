@@ -25,6 +25,7 @@ import { Card, CardActionArea } from "../../components/src/components/Card";
 import { Button } from "../../components/src/components/Button";
 import { SearchBar } from "../../components/src/components/SearchBar";
 import { Tooltip } from "../../components/src/components/Tooltip";
+import CardsPageLayout from "../../common/CardsPageLayout";
 
 /* ---------------- helpers ---------------- */
 
@@ -49,7 +50,7 @@ type Mode = "empty" | "pick" | "cards";
 /* ---------------- page content ---------------- */
 
 const DevelopContent: React.FC = () => {
-  const { fetchApiById, fetchGatewaysForApi, selectApi, currentApi } =
+  const { fetchApiById, fetchGatewaysForApi, addGatewaysToApi, selectApi, currentApi } =
     useApisContext();
   const { gateways, loading: gatewaysLoading } = useGateways();
   const { deployApiRevision, loading: deploying } = useDeployment();
@@ -114,7 +115,7 @@ const DevelopContent: React.FC = () => {
         }
 
         setLoading(true);
-        const [apiData, apiDeployedGws] = await Promise.all([
+        const [apiData, apiAssociatedGws] = await Promise.all([
           fetchApiById(effectiveApiId),
           fetchGatewaysForApi(effectiveApiId),
         ]);
@@ -123,12 +124,13 @@ const DevelopContent: React.FC = () => {
 
         setApi(apiData);
         selectApi(apiData);
-        setDeployedForApi(apiDeployedGws);
+        const onlyDeployed = apiAssociatedGws.filter((gw) => gw.isDeployed === true);
+        setDeployedForApi(onlyDeployed);
 
         // Seed deployed gateways so they initially show the status section
         const nowIso = new Date().toISOString();
         const seeded: Record<string, DeployRevisionResponseItem> = {};
-        apiDeployedGws.forEach((gw) => {
+        onlyDeployed.forEach((gw) => {
           seeded[gw.id] = {
             gatewayId: gw.id,
             revisionId: String(revisionIdFromQuery),
@@ -140,13 +142,13 @@ const DevelopContent: React.FC = () => {
         });
         setDeployByGateway(seeded);
 
-        // Initial mode based on whether API already has deployments
-        if (apiDeployedGws.length > 0) {
-          // Show Cards view upfront with those deployed gateways
-          setStagedIds(apiDeployedGws.map((g) => g.id));
+        // Initial mode based on whether API has any associated gateways
+        if (apiAssociatedGws.length > 0) {
+          // Show Cards view with all associated gateways (both deployed and not)
+          setStagedIds(apiAssociatedGws.map((g) => g.id));
           setMode("cards");
         } else {
-          // No deployments yet → show the Add Gateways tile
+          // No associations yet → show the Add Gateways tile
           setMode("empty");
         }
       } finally {
@@ -170,15 +172,14 @@ const DevelopContent: React.FC = () => {
     return m;
   }, [deployedForApi]);
 
-  const deployedIds = React.useMemo(
-    () => new Set(deployedForApi.map((g) => g.id)),
-    [deployedForApi]
+  const associatedIds = React.useMemo(
+    () => new Set(stagedIds),
+    [stagedIds]
   );
 
-  // Only show NOT deployed gateways in the pick table
   const visibleGateways = React.useMemo(
-    () => gateways.filter((g) => !deployedIds.has(g.id)),
-    [gateways, deployedIds]
+    () => gateways.filter((g) => !associatedIds.has(g.id)),
+    [gateways, associatedIds]
   );
 
   const gatewaysById = React.useMemo(() => {
@@ -286,9 +287,30 @@ const DevelopContent: React.FC = () => {
 
   const clearSelection = () => setSelectedIds(new Set());
 
-  const addSelection = () => {
+  const addSelection = async () => {
     if (selectedIds.size === 0) return;
-    setStagedIds(Array.from(selectedIds));
+    
+    if (effectiveApiId) {
+      try {
+        const gatewayIdsToAdd = Array.from(selectedIds);
+        const updatedGateways = await addGatewaysToApi(effectiveApiId, gatewayIdsToAdd);
+        
+        const onlyDeployed = updatedGateways.filter((gw) => gw.isDeployed === true);
+        setDeployedForApi(onlyDeployed);
+        
+        setStagedIds((prev) => {
+          const allGatewayIds = updatedGateways.map((gw) => gw.id);
+          const combined = new Set([...prev, ...allGatewayIds]);
+          return Array.from(combined);
+        });
+        
+        setSelectedIds(new Set());
+      } catch (error) {
+        console.error("Failed to add gateways to API:", error);
+        return;
+      }
+    }
+    
     setMode("cards");
   };
 
@@ -357,47 +379,25 @@ const renderEmptyTile = () => (
         </Typography>
       </Card>
     ) : (
-      <>
-        {/* Title at start; SearchBar + Button at end */}
-        <Stack
-          direction="row"
-          justifyContent="space-between"
-          alignItems="center"
-          mb={3}
-          gap={2}
-        >
-          <Typography variant="h4" fontWeight={600}>
-            Selected Gateways
-          </Typography>
-
-          <Stack
-            direction="row"
-            alignItems="center"
-            gap={1.5}
-            flexShrink={0}
-            sx={{
-              minWidth: 500,
-              maxWidth: 700,
-              flex: 1,
-              justifyContent: "flex-end",
-            }}
-          >
-            <Box sx={{ flex: 1, maxWidth: 420 }}>
-              <SearchBar
-                testId="selected-gateways-search"
-                placeholder="Search selected gateways"
-                inputValue={query}
-                onChange={setQuery}
-                iconPlacement="left"
-                bordered
-                size="medium"
-                color="secondary"
-              />
-            </Box>
+      <CardsPageLayout
+        cardWidth={380}
+        topLeft={<Typography variant="h3">Selected Gateways</Typography>}
+        topRight={
+          <Stack direction="row" spacing={1} alignItems="center">
+            <SearchBar
+              testId="selected-gateways-search"
+              placeholder="Search selected gateways"
+              inputValue={query}
+              onChange={setQuery}
+              iconPlacement="left"
+              bordered
+              size="medium"
+              color="secondary"
+            />
             <Tooltip
               title={
                 noMoreGateways
-                  ? "All available gateways are already deployed"
+                  ? "All available gateways are already added"
                   : ""
               }
               placement="bottom"
@@ -416,24 +416,23 @@ const renderEmptyTile = () => (
               </span>
             </Tooltip>
           </Stack>
-        </Stack>
-
-        <Grid container spacing={3}>
-          {filteredGateways.map((gw) => (
-            <GatewayDeployCard
-              key={gw.id}
-              gw={gw}
-              apiId={effectiveApiId}
-              deployedMap={deployedMap}
-              deployByGateway={deployByGateway}
-              deploying={deploying}
-              deployingIds={deployingIds}
-              relativeTime={relativeTime}
-              onDeploy={handleDeploySingle}
-            />
-          ))}
-        </Grid>
-      </>
+        }
+      >
+        {filteredGateways.map((gw) => (
+          <GatewayDeployCard
+            key={gw.id}
+            gw={gw}
+            apiId={effectiveApiId}
+            api={api}
+            deployedMap={deployedMap}
+            deployByGateway={deployByGateway}
+            deploying={deploying}
+            deployingIds={deployingIds}
+            relativeTime={relativeTime}
+            onDeploy={handleDeploySingle}
+          />
+        ))}
+      </CardsPageLayout>
     );
   };
 

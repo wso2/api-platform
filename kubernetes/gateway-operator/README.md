@@ -1,114 +1,148 @@
-# gateway-operator
-// TODO(user): Add simple overview of use/purpose
+# Gateway Operator
+The WSO2 API Platform is designed to run natively on Kubernetes, providing a fully GitOps- and operator-friendly deployment model.
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
 
-## Getting Started
+# API Platform – Gateway Operator Quick Start Guide
 
-### Prerequisites
-- go version v1.21.0+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+This document explains how to install Cert-Manager, configure Docker Hub credentials, deploy the Gateway Operator, apply Gateway/API configurations, and test APIs locally.
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+---
 
-```sh
-make docker-build docker-push IMG=<some-registry>/gateway-operator:tag
-```
+## Prerequisites
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+* Kubernetes cluster (Docker Desktop, Kind, Minikube, OpenShift, etc.)
+* `kubectl` installed
+* `helm` installed (v3+)
+* `jq` installed (for JSON output)
 
-**Install the CRDs into the cluster:**
+---
+
+## 1. Install Cert-Manager (with CRDs)
 
 ```sh
-make install
+helm upgrade --install \
+  cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --version v1.19.1 \
+  --namespace cert-manager \
+  --create-namespace \
+  --set crds.enabled=true \
+  --debug --wait --timeout 10m
 ```
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+
+---
+
+## 2. Install Gateway Operator
 
 ```sh
-make deploy IMG=<some-registry>/gateway-operator:tag
+helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.0.1
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
+---
 
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
+## 3. Apply GatewayConfiguration (Bootstrap Gateway Components)
 
 ```sh
-kubectl apply -k config/samples/
+curl -X GET "https://raw.githubusercontent.com/wso2/api-platform/refs/heads/main/kubernetes/gateway-operator/config/samples/api_v1_gatewayconfiguration.yaml" \
+  -o /tmp/api_v1_gatewayconfiguration.yaml
+
+gatewayconfig_path="/tmp/api_v1_gatewayconfiguration.yaml"
+
+kubectl apply -f $gatewayconfig_path
+kubectl get gatewayconfiguration -n default -o json | jq '.items[0].status'
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
+---
 
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+## 4. Apply ApiConfiguration (Configure APIs)
 
 ```sh
-kubectl delete -k config/samples/
+curl -X GET "https://raw.githubusercontent.com/wso2/api-platform/refs/heads/main/kubernetes/gateway-operator/config/samples/api_v1_apiconfiguration.yaml" \
+  -o /tmp/api_v1_apiconfiguration.yaml
+
+apiconfig_path="/tmp/api_v1_apiconfiguration.yaml"
+kubectl create ns test
+kubectl apply -f $apiconfig_path
+
+kubectl get apiconfiguration -n default -o json | jq '.items[0].status'
+kubectl get apiconfiguration -n test -o json | jq '.items[0].status'
 ```
 
-**Delete the APIs(CRDs) from the cluster:**
+---
+
+## 5. Port-Forward Gateway Components
+
+Kill existing port-forward sessions:
 
 ```sh
-make uninstall
+pkill -f "kubectl.*port-forward"
 ```
 
-**UnDeploy the controller from the cluster:**
+Start port-forwarding:
 
 ```sh
-make undeploy
+kubectl port-forward $(kubectl get pods -l app.kubernetes.io/component=controller -o jsonpath='{.items[0].metadata.name}') 9090:9090 &
+kubectl port-forward $(kubectl get pods -l app.kubernetes.io/component=router -o jsonpath='{.items[0].metadata.name}') \
+  8081:8080 8444:8443 9901:9901 &
 ```
 
-## Project Distribution
+---
 
-Following are the steps to build the installer and distribute this project to users.
+## 6. Test APIs
 
-1. Build the installer for the image built and published in the registry:
+### HTTPS Test API
+
+Create sample secure backend
 
 ```sh
-make build-installer IMG=<some-registry>/gateway-operator:tag
+git clone https://github.com/wso2/api-platform.git
+cd api-platform/kubernetes/helm/resources/secure-backend-k8s/k8s
+kubectl apply -f .
+kubectl wait --for=condition=ready pod -l app=secure-backend --timeout=120s
 ```
-
-NOTE: The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without
-its dependencies.
-
-2. Using the installer
-
-Users can just run kubectl apply -f <URL for YAML BUNDLE> to install the project, i.e.:
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/gateway-operator/<tag or branch>/dist/install.yaml
+curl https://localhost:8444/test/info -vk
 ```
 
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
+### HTTP Test API (proxied as HTTPS)
 
-**NOTE:** Run `make help` for more information on all potential `make` targets
+```sh
+curl https://localhost:8444/test2/info -vk
+```
 
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+### Secure Backend API (expected to fail before adding certificate)
 
-## License
+```sh
+curl https://localhost:8444/ssa/info -vk
+```
 
-Copyright 2025.
+---
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+## 7. Add Certificate for Secure Backend API
 
-    http://www.apache.org/licenses/LICENSE-2.0
+Download certificate:
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+```sh
+curl -X GET "https://raw.githubusercontent.com/wso2/api-platform/refs/heads/main/gateway/resources/secure-backend/test-backend-certs/test-backend.crt" \
+  -o /tmp/test-backend.crt
+```
+
+Add certificate to Gateway:
+
+```sh
+cert_path="/tmp/test-backend.crt"
+curl -X POST http://localhost:9090/certificates \
+  -H "Content-Type: application/json" \
+  -d "{\"certificate\":$(jq -Rs . < $cert_path),\"filename\":\"my-cert.pem\", \"name\":\"test\"}"
+```
+
+---
+
+## 8. Test Secure Backend API Again
+
+```sh
+curl https://localhost:8444/ssa/info -vk
+```
+
 

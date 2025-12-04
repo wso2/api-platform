@@ -93,7 +93,7 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 			log.Printf("[OrganizationService] Failed to create default DevPortal for organization %s: %v", name, devPortalErr)
 			// Don't fail organization creation, but log the error
 		} else if defaultDevPortal != nil {
-			log.Printf("[OrganizationService] Created default DevPortal %s for organization %s (inactive state)",
+			log.Printf("[OrganizationService] Created default DevPortal %s for organization %s",
 				defaultDevPortal.Name, name)
 		}
 		// No organization sync during creation - sync happens during DevPortal activation

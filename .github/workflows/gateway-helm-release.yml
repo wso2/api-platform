@@ -1,0 +1,105 @@
+name: Release Gateway Helm Chart
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Chart version (e.g., 0.0.1)'
+        required: true
+        type: string
+      appVersion:
+        description: 'App version (e.g., v1.0.0-m4)'
+        required: true
+        type: string
+
+env:
+  CHART_NAME: gateway
+  CHART_PATH: kubernetes/helm/gateway-helm-chart
+  REGISTRY: ghcr.io
+  REGISTRY_USERNAME: api-platform-bot
+  ORGANIZATION: wso2
+  REGISTRY_PATH: api-platform/helm-charts
+
+jobs:
+  release-helm-chart:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'latest'
+
+      - name: Update Chart version
+        working-directory: ${{ env.CHART_PATH }}
+        run: |
+          sed -i "s/^version:.*/version: ${{ inputs.version }}/" Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${{ inputs.appVersion }}\"/" Chart.yaml
+          echo "Updated Chart.yaml:"
+          cat Chart.yaml
+
+      - name: Package Helm chart
+        working-directory: ${{ env.CHART_PATH }}
+        run: |
+          helm package .
+          echo "Packaged chart:"
+          ls -la *.tgz
+
+      - name: Login to GitHub Container Registry
+        run: |
+          echo "${{ secrets.API_PLATFORM_BOT_TOKEN }}" | helm registry login ${{ env.REGISTRY }} --username ${{ env.REGISTRY_USERNAME }} --password-stdin
+
+      - name: Push Helm chart
+        working-directory: ${{ env.CHART_PATH }}
+        run: |
+          helm push ${{ env.CHART_NAME }}-${{ inputs.version }}.tgz oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}
+
+      - name: Commit version changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ${{ env.CHART_PATH }}/Chart.yaml
+          git commit -m "chore: bump helm-gateway chart version to ${{ inputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: helm-gateway-${{ inputs.version }}
+          name: Gateway Helm Chart ${{ inputs.version }}
+          body: |
+            ## Gateway Helm Chart Release ${{ inputs.version }}
+
+            **App Version:** `${{ inputs.appVersion }}`
+
+            ### Installation
+            ```bash
+            helm install my-gateway oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }} --version ${{ inputs.version }}
+            ```
+
+            ### OCI Registry
+            `oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }}:${{ inputs.version }}`
+          draft: true
+          prerelease: ${{ contains(inputs.version, '-') }}
+          token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+
+
+      - name: Chart Summary
+        run: |
+          echo "### Gateway Helm Chart Released :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Chart Name:** \`${{ env.CHART_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Chart Version:** \`${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**App Version:** \`${{ inputs.appVersion }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Git Tag:** \`helm-gateway-${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** \`oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Install Command" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "helm install my-gateway oci://${{ env.REGISTRY }}/${{ env.ORGANIZATION }}/${{ env.REGISTRY_PATH }}/${{ env.CHART_NAME }} --version ${{ inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

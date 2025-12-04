@@ -10,10 +10,10 @@ metadata:
 spec:
   # Explicit references to multiple specific gateways
   gatewayRefs:
+    # - name: cluster-gateway
+    #   namespace: test
     - name: cluster-gateway
-      namespace: test
-    # - name: backup-gateway
-    #   namespace: default
+      namespace: default
   
   apiConfiguration:
     version: api-platform.wso2.com/v1

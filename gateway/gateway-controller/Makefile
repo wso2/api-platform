@@ -25,8 +25,8 @@ BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS := -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.BuildDate=$(BUILD_DATE)
 
 # Docker image configuration
-DOCKER_REGISTRY ?= ghcr.io/renuka-fernando
-IMAGE_NAME := $(DOCKER_REGISTRY)/api-platform-gateway-controller
+DOCKER_REGISTRY ?= ghcr.io/renuka-fernando/api-platform
+IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-controller
 
 .PHONY: help generate build test generate-listener-certs push
 
@@ -57,6 +57,17 @@ push: ## Push Docker image to registry
 	@echo "Pushing Docker images..."
 	docker push $(IMAGE_NAME):$(VERSION)
 	docker push $(IMAGE_NAME):latest
+
+build-and-push-multiarch: ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64)
+	@echo "Building and pushing multi-arch Docker image: $(IMAGE_NAME):$(VERSION)"
+	docker buildx build -f Dockerfile \
+		--platform linux/amd64,linux/arm64 \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		-t $(IMAGE_NAME):$(VERSION) \
+		-t $(IMAGE_NAME):latest \
+		--push \
+		../
 
 generate-listener-certs: ## Generate listener certificates
 	@echo "Generating listener certificates..."

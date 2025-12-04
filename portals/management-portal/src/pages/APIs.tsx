@@ -32,6 +32,7 @@ import { SearchBar } from "../components/src/components/SearchBar";
 import EndPointCreationFlow from "./apis/CreationFlows/EndPointCreationFlow";
 import APIContractCreationFlow from "./apis/CreationFlows/APIContractCreationFlow";
 import ConfirmationDialog from "../common/ConfirmationDialog";
+import CardsPageLayout from "../common/CardsPageLayout";
 
 /* ---------------- helpers ---------------- */
 
@@ -62,8 +63,7 @@ const ApiCard: React.FC<{
     style={{
       padding: 16,
       position: "relative",
-      maxWidth: 350,
-      minWidth: 300,
+      width: 350,
       minHeight: 260,
     }}
     testId={api.id}
@@ -91,8 +91,16 @@ ${theme.palette.augmentColor({ color: { main: "#059669" } }).dark} 100%)`,
           >
             {initials(api.name)}
           </Box>
-          <Box>
-            <Typography variant="h4" sx={{ lineHeight: 1.2 }}>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography 
+              variant="h4" 
+              sx={{ 
+                lineHeight: 1.2,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
               {api.name}
             </Typography>
             <Stack direction="row" spacing={2} useFlexGap>
@@ -413,50 +421,32 @@ const ApiListContent: React.FC = () => {
           ) : isFirstTimeEmpty ? (
             <ApiEmptyState onAction={handleEmptyStateAction} />
           ) : (
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 350px))',
-                gap: 2,
-                justifyContent: 'center',
-                alignItems: 'stretch',
-              }}
+            <CardsPageLayout
+              showToolbar={showToolbar}
+              topLeft={<Typography variant="h3">APIs</Typography>}
+              topRight={
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <SearchBar
+                    testId="api-search"
+                    placeholder="Search APIs"
+                    inputValue={query}
+                    onChange={setQuery}
+                    iconPlacement="left"
+                    bordered
+                    size="medium"
+                    color="secondary"
+                  />
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    sx={{ textTransform: 'none' }}
+                    onClick={() => setTemplatesOpen(true)}
+                  >
+                    Create
+                  </Button>
+                </Stack>
+              }
             >
-              {showToolbar && (
-                <Box
-                  sx={{
-                    gridColumn: '1 / -1',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 2,
-                    mb: 0,
-                  }}
-                >
-                  <Typography variant="h3">APIs</Typography>
-
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <SearchBar
-                      testId="api-search"
-                      placeholder="Search APIs"
-                      inputValue={query}
-                      onChange={setQuery}
-                      iconPlacement="left"
-                      bordered
-                      size="medium"
-                      color="secondary"
-                    />
-                    <Button
-                      variant="contained"
-                      startIcon={<AddIcon />}
-                      sx={{ textTransform: 'none' }}
-                      onClick={() => setTemplatesOpen(true)}
-                    >
-                      Create
-                    </Button>
-                  </Stack>
-                </Box>
-              )}
               {filteredApis.map((apiSummary) => {
                 const card = toCardData(apiSummary);
                 return (
@@ -469,7 +459,7 @@ const ApiListContent: React.FC = () => {
                   </Box>
                 );
               })}
-            </Box>
+            </CardsPageLayout>
           )}
         </>
       )}

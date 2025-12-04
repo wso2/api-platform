@@ -80,7 +80,7 @@ type DefaultDevPortal struct {
 	Enabled       bool   `envconfig:"ENABLED" default:"true"`
 	Name          string `envconfig:"NAME" default:"Default DevPortal"`
 	Identifier    string `envconfig:"IDENTIFIER" default:"default"`
-	APIUrl        string `envconfig:"API_URL" default:"http://localhost:3001/devportal"`
+	APIUrl        string `envconfig:"API_URL" default:"http://localhost:3001"`
 	Hostname      string `envconfig:"HOSTNAME" default:"devportal.local"`
 	APIKey        string `envconfig:"API_KEY" default:"default-api-key"`
 	HeaderKeyName string `envconfig:"HEADER_KEY_NAME" default:"x-wso2-api-key"`

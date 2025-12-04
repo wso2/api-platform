@@ -1,4 +1,4 @@
-# API Gateway System
+# API Platform Gateway
 
 A complete API gateway system consisting of Gateway-Controller (xDS control plane), Router (Envoy Proxy data plane), Policy Engine (request/response processing), and Policy Builder (policy compilation tooling).
 
@@ -31,7 +31,31 @@ A complete API gateway system consisting of Gateway-Controller (xDS control plan
 ### Using Docker Compose (Recommended)
 
 ```bash
+## Prerequisites
+
+A Docker-compatible container runtime such as:
+
+- Docker Desktop (Windows / macOS)
+- Rancher Desktop (Windows / macOS)
+- Colima (macOS)
+- Docker Engine + Compose plugin (Linux)
+
+Ensure `docker` and `docker compose` commands are available.
+
+    docker --version
+    docker compose version
+```
+
+```bash
+# Download distribution.
+wget https://github.com/wso2/api-platform/releases/download/gateway-v0.0.1/gateway-v0.0.1.zip
+
+# Unzip the downloaded distribution.
+unzip gateway-v0.0.1.zip
+
+
 # Start the complete stack
+cd gateway/
 docker compose up -d
 
 # Verify gateway controller is running
@@ -40,11 +64,12 @@ curl http://localhost:9090/health
 # Deploy an API configuration
 curl -X POST http://localhost:9090/apis \
   -H "Content-Type: application/yaml" \
-  --data-binary @examples/weather-api.yaml
+  --data-binary "$(curl -s https://raw.githubusercontent.com/wso2/api-platform/refs/tags/gateway-v0.0.1/gateway/examples/weather-api.yaml)"
+
 
 # Test routing through the gateway
 curl http://localhost:8080/weather/v1.0/us/seattle
-curl https://localhost:8443/weather/v1.0/us/seattle -k
+curl https://localhost:5443/weather/v1.0/us/seattle -k
 ```
 
 ### Stopping the Gateway

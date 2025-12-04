@@ -1,8 +1,8 @@
 # Runtime Dockerfile for Policy Engine
-# This Dockerfile builds the complete policy engine by running the policy-builder
 
 # Stage 1: Builder Base - Contains framework source and builder tooling
-FROM golang:1.24-alpine AS builder-base
+FROM --platform=$BUILDPLATFORM golang:1.25.5-alpine AS builder-base
+ARG BUILDARCH
 
 # Build arguments for version information
 ARG VERSION=0.0.1-SNAPSHOT
@@ -39,7 +39,13 @@ WORKDIR /workspace/policy-builder
 RUN go mod download
 
 # Build the Policy Builder binary (CGO disabled for static binary)
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /usr/local/bin/policy-engine-builder ./cmd/builder
+RUN CGO_ENABLED=0 \
+    GOOS=linux \
+    GOARCH=${BUILDARCH} \
+    go build \
+    -a -installsuffix cgo \
+    -o /usr/local/bin/policy-engine-builder \
+    ./cmd/builder
 
 # Stage 2: Policy Compilation - Run builder to compile policies
 FROM builder-base AS policy-compiler

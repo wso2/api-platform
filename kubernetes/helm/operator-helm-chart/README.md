@@ -47,7 +47,7 @@ helm install apip-operator oci://registry-1.docker.io/yourorg/api-platform-opera
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `replicaCount` | Number of operator replicas | `1` |
-| `image.repository` | Operator image repository | `tharsanan/api-platform-gateway-controller` |
+| `image.repository` | Operator image repository | `tharsanan/api-platform/gateway-controller` |
 | `image.tag` | Operator image tag | `latest` |
 | `image.pullPolicy` | Image pull policy | `Always` |
 | `serviceAccount.create` | Create service account | `true` |
@@ -69,19 +69,19 @@ helm install apip-operator oci://registry-1.docker.io/yourorg/api-platform-opera
 The operator can deploy gateway instances with default values. These are defined under `gateway.values` and include:
 
 #### Controller Configuration
-- Image: `tharsanan/api-platform-gateway-controller:v1.0.0-m4`
+- Image: `tharsanan/api-platform/gateway-controller:v1.0.0-m4`
 - Service ports: REST (9090), xDS (18000), Policy (18001)
 - TLS support with cert-manager integration
 - Persistence with PVC support (100Mi default)
 
 #### Router Configuration
-- Image: `tharsanan/api-platform-gateway-router:v1.0.0-m4`
+- Image: `tharsanan/api-platform/gateway-router:v1.0.0-m4`
 - Service ports: HTTP (8080), HTTPS (8443), Admin (9901)
 - Envoy-based routing
 - Health probes on admin port
 
 #### Policy Engine Configuration
-- Image: `tharsanan/api-platform-policy-engine:v1.0.0-m4`
+- Image: `tharsanan/api-platform/policy-engine:v1.0.0-m4`
 - Service port: External processor (9001)
 - xDS-based configuration
 - Admin interface support
@@ -219,7 +219,7 @@ Debug mode runs the operator under Delve debugger for remote debugging:
 debug:
   enabled: true
   port: 2345
-  debugImage: "tharsanan/api-platform-gateway-controller:debug"
+  debugImage: "tharsanan/api-platform/gateway-controller:debug"
 ```
 
 Connect your debugger to the debug port:

@@ -92,7 +92,7 @@ curl -X POST http://localhost:9090/apis \\
   --data-binary @- <<'EOF'
 version: api-platform.wso2.com/v1
 kind: http/rest
-data:
+spec:
   name: PetStore API
   version: v1.0
   context: /petstore
@@ -111,7 +111,7 @@ EOF
   --data-binary @- <<'EOF'
 version: api-platform.wso2.com/v1
 kind: http/rest
-data:
+spec:
   name: PetStore API
   version: v1.0
   context: /petstore

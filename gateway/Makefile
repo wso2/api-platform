@@ -24,13 +24,13 @@ SHELL := /bin/bash
 VERSION := $(shell cat VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 
 # Docker registry configuration
-DOCKER_REGISTRY ?= ghcr.io/renuka-fernando
+DOCKER_REGISTRY ?= ghcr.io/renuka-fernando/api-platform
 
 # Image names
-CONTROLLER_IMAGE := $(DOCKER_REGISTRY)/api-platform-gateway-controller
-POLICY_ENGINE_IMAGE := $(DOCKER_REGISTRY)/api-platform-policy-engine
-POLICY_BUILDER_IMAGE := $(DOCKER_REGISTRY)/api-platform-gateway-builder
-ROUTER_IMAGE := $(DOCKER_REGISTRY)/api-platform-gateway-router
+CONTROLLER_IMAGE := $(DOCKER_REGISTRY)/gateway-controller
+POLICY_ENGINE_IMAGE := $(DOCKER_REGISTRY)/policy-engine
+POLICY_BUILDER_IMAGE := $(DOCKER_REGISTRY)/gateway-builder
+ROUTER_IMAGE := $(DOCKER_REGISTRY)/gateway-router
 
 .DEFAULT_GOAL := help
 
@@ -94,15 +94,8 @@ build-and-push-multiarch: build-and-push-multiarch-controller build-and-push-mul
 
 .PHONY: build-and-push-multiarch-controller
 build-and-push-multiarch-controller: ## Build and push gateway-controller Docker image for multiple architectures
-	@echo "Building and pushing multi-arch controller Docker image: $(CONTROLLER_IMAGE):$(VERSION)"
-	docker buildx build -f gateway-controller/Dockerfile \
-		--platform linux/amd64,linux/arm64 \
-		--build-arg VERSION=$(VERSION) \
-		--build-arg GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
-		-t $(CONTROLLER_IMAGE):$(VERSION) \
-		-t $(CONTROLLER_IMAGE):latest \
-		--push \
-		.
+	@echo "Building and pushing multi-arch controller Docker image ($(VERSION))..."
+	$(MAKE) -C gateway-controller build-and-push-multiarch VERSION=$(VERSION)
 
 .PHONY: build-and-push-multiarch-policy
 build-and-push-multiarch-policy: ## Build and push policy-engine Docker images for multiple architectures
