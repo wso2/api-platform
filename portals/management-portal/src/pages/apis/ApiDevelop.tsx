@@ -445,6 +445,7 @@ const renderEmptyTile = () => (
               key={gw.id}
               gw={gw}
               apiId={effectiveApiId}
+              api={api}
               deployedMap={deployedMap}
               deployByGateway={deployByGateway}
               deploying={deploying}

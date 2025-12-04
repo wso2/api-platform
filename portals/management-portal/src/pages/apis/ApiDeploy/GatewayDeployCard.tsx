@@ -8,12 +8,14 @@ import {
   Typography,
   Chip,
   Tooltip,
+  IconButton,
 } from "@mui/material";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import { Button } from "../../../components/src/components/Button";
 
 import type { Gateway } from "../../../hooks/gateways";
-import type { ApiGatewaySummary } from "../../../hooks/apis";
+import type { ApiSummary, ApiGatewaySummary } from "../../../hooks/apis";
 import type { DeployRevisionResponseItem } from "../../../hooks/deployments";
 
 const Card: React.FC<React.PropsWithChildren<{ sx?: any }>> = ({
@@ -28,7 +30,7 @@ const Card: React.FC<React.PropsWithChildren<{ sx?: any }>> = ({
       borderRadius: 3,
       border: (t) => `1px solid ${t.palette.divider}`,
       width: 380,
-      height: 300, // fixed height for consistency
+      minHeight: 380, // increased height for Gateway URL section
       display: "flex",
       flexDirection: "column",
       justifyContent: "space-between",
@@ -42,6 +44,7 @@ const Card: React.FC<React.PropsWithChildren<{ sx?: any }>> = ({
 type Props = {
   gw: Gateway;
   apiId: string;
+  api: ApiSummary | null;
   deployedMap: Map<string, ApiGatewaySummary>;
   deployByGateway: Record<string, DeployRevisionResponseItem>;
   deploying: boolean;
@@ -53,6 +56,7 @@ type Props = {
 const GatewayDeployCard: React.FC<Props> = ({
   gw,
   apiId,
+  api,
   deployedMap,
   deployByGateway,
   deploying,
@@ -88,6 +92,23 @@ const GatewayDeployCard: React.FC<Props> = ({
 
   const title = gw.displayName || gw.name || "Gateway";
   const isDeployingThis = deploying || deployingIds.has(gw.id);
+
+  // Construct Gateway URLs
+  const httpUrl = api && vhost 
+    ? `http://${vhost}:8080${api.context}/${api.version}`
+    : null;
+  const httpsUrl = api && vhost 
+    ? `https://${vhost}:5443${api.context}/${api.version}`
+    : null;
+
+  const [copiedUrl, setCopiedUrl] = React.useState<string | null>(null);
+
+  const handleCopyUrl = (url: string, protocol: string) => {
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedUrl(protocol);
+      setTimeout(() => setCopiedUrl(null), 2000);
+    });
+  };
 
   return (
     <Grid key={gw.id}>
@@ -186,6 +207,111 @@ const GatewayDeployCard: React.FC<Props> = ({
               size="small"
             />
           </Box>
+
+          {/* Gateway URLs section */}
+          {httpUrl && httpsUrl && (
+            <Box mt={2} mb={3}>
+              <Typography fontWeight={500} sx={{ mb: 1 }}>
+                Gateway URL
+              </Typography>
+              <Stack spacing={1}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    backgroundColor: (t) =>
+                      t.palette.mode === "dark" ? "rgba(255,255,255,0.05)" : "#F9FAFB",
+                    borderRadius: 1,
+                    px: 1.5,
+                    py: 1,
+                    border: (t) => `1px solid ${t.palette.divider}`,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 600,
+                      color: "text.secondary",
+                      minWidth: "45px",
+                    }}
+                  >
+                    HTTP
+                  </Typography>
+                  <Tooltip title={httpUrl} placement="top">
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        flex: 1,
+                        fontSize: "0.75rem",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        fontFamily: "monospace",
+                      }}
+                    >
+                      {httpUrl}
+                    </Typography>
+                  </Tooltip>
+                  <Tooltip title={copiedUrl === "http" ? "Copied!" : "Copy HTTP URL"}>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleCopyUrl(httpUrl, "http")}
+                    >
+                      <ContentCopyIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    backgroundColor: (t) =>
+                      t.palette.mode === "dark" ? "rgba(255,255,255,0.05)" : "#F9FAFB",
+                    borderRadius: 1,
+                    px: 1.5,
+                    py: 1,
+                    border: (t) => `1px solid ${t.palette.divider}`,
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 600,
+                      color: "text.secondary",
+                      minWidth: "45px",
+                    }}
+                  >
+                    HTTPS
+                  </Typography>
+                  <Tooltip title={httpsUrl} placement="top">
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        flex: 1,
+                        fontSize: "0.75rem",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        fontFamily: "monospace",
+                      }}
+                    >
+                      {httpsUrl}
+                    </Typography>
+                  </Tooltip>
+                  <Tooltip title={copiedUrl === "https" ? "Copied!" : "Copy HTTPS URL"}>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleCopyUrl(httpsUrl, "https")}
+                    >
+                      <ContentCopyIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Stack>
+            </Box>
+          )}
         </Box>
 
         {/* Deploy / Re-deploy action (pinned to bottom) */}
