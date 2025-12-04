@@ -12,6 +12,7 @@ import {
   Typography,
   Tooltip,
   Collapse,
+  Divider,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import LaunchIcon from "@mui/icons-material/Launch";
@@ -121,7 +122,7 @@ const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
                 whiteSpace: "nowrap",
               }}
             >
-              Gateway HTTPS URL:
+              URL:
             </Typography>
             <Tooltip title={httpsUrl} placement="top">
               <Typography
@@ -170,124 +171,142 @@ const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
       <Collapse in={expanded}>
         <Box sx={{ px: 2, pb: 2, pt: 1, bgcolor: (t) => t.palette.mode === "dark" ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)" }}>
           <Stack spacing={1.5}>
-            {httpUrl && (
+            {/* Main URLs header + HTTP/HTTPS rows (prefix label + url + copy) */}
+            {(httpUrl || httpsUrl) && (
               <Box>
                 <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", mb: 0.5, display: "block" }}>
-                  HTTP Gateway URL
+                  Main URLs
                 </Typography>
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1,
-                    p: 1.5,
-                    bgcolor: (t) => t.palette.mode === "dark" ? "rgba(255,255,255,0.05)" : "#F9FAFB",
-                    borderRadius: 1,
-                    border: (t) => `1px solid ${t.palette.divider}`,
-                  }}
-                >
-                  <Tooltip title={httpUrl} placement="top">
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        flex: 1,
-                        fontSize: "0.75rem",
-                        fontFamily: "monospace",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {httpUrl}
-                    </Typography>
-                  </Tooltip>
-                  <Tooltip title={copiedUrl === httpUrl ? "Copied!" : "Copy HTTP URL"}>
-                    <IconButton size="small" onClick={() => handleCopyUrl(httpUrl)}>
-                      <ContentCopyIcon sx={{ fontSize: 16 }} />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              </Box>
-            )}
 
-            {httpsUrl && (
-              <Box>
-                <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", mb: 0.5, display: "block" }}>
-                  HTTPS Gateway URL
-                </Typography>
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1,
-                    p: 1.5,
-                    bgcolor: (t) => t.palette.mode === "dark" ? "rgba(255,255,255,0.05)" : "#F9FAFB",
-                    borderRadius: 1,
-                    border: (t) => `1px solid ${t.palette.divider}`,
-                  }}
-                >
-                  <Tooltip title={httpsUrl} placement="top">
-                    <Typography
-                      variant="body2"
+                {httpUrl && (
+                  <Box sx={{ mb: 1 }}>
+                    <Box
                       sx={{
-                        flex: 1,
-                        fontSize: "0.75rem",
-                        fontFamily: "monospace",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        p: 1.25,
+                        bgcolor: (t) => (t.palette.mode === "dark" ? "rgba(255,255,255,0.03)" : "#F9FAFB"),
+                        borderRadius: 1,
+                        border: (t) => `1px solid ${t.palette.divider}`,
                       }}
                     >
-                      {httpsUrl}
-                    </Typography>
-                  </Tooltip>
-                  <Tooltip title={copiedUrl === httpsUrl ? "Copied!" : "Copy HTTPS URL"}>
-                    <IconButton size="small" onClick={() => handleCopyUrl(httpsUrl)}>
-                      <ContentCopyIcon sx={{ fontSize: 16 }} />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", minWidth: 90 }}>
+                        HTTP URL
+                      </Typography>
+
+                      <Tooltip title={httpUrl} placement="top">
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            flex: 1,
+                            fontSize: "0.75rem",
+                            fontFamily: "monospace",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {httpUrl}
+                        </Typography>
+                      </Tooltip>
+
+                      <Tooltip title={copiedUrl === httpUrl ? "Copied!" : "Copy HTTP URL"}>
+                        <IconButton size="small" onClick={() => handleCopyUrl(httpUrl)}>
+                          <ContentCopyIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </Box>
+                )}
+
+                {httpsUrl && (
+                  <Box sx={{ mb: 1 }}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        p: 1.25,
+                        bgcolor: (t) => (t.palette.mode === "dark" ? "rgba(255,255,255,0.03)" : "#F9FAFB"),
+                        borderRadius: 1,
+                        border: (t) => `1px solid ${t.palette.divider}`,
+                      }}
+                    >
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", minWidth: 90 }}>
+                        HTTPS URL
+                      </Typography>
+
+                      <Tooltip title={httpsUrl} placement="top">
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            flex: 1,
+                            fontSize: "0.75rem",
+                            fontFamily: "monospace",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {httpsUrl}
+                        </Typography>
+                      </Tooltip>
+
+                      <Tooltip title={copiedUrl === httpsUrl ? "Copied!" : "Copy HTTPS URL"}>
+                        <IconButton size="small" onClick={() => handleCopyUrl(httpsUrl)}>
+                          <ContentCopyIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </Box>
+                )}
               </Box>
             )}
 
             {upstreamUrl && (
-              <Box>
-                <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", mb: 0.5, display: "block" }}>
-                  Upstream URL
-                </Typography>
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 1,
-                    p: 1.5,
-                    bgcolor: (t) => t.palette.mode === "dark" ? "rgba(255,255,255,0.05)" : "#F9FAFB",
-                    borderRadius: 1,
-                    border: (t) => `1px solid ${t.palette.divider}`,
-                  }}
-                >
-                  <Tooltip title={upstreamUrl} placement="top">
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        flex: 1,
-                        fontSize: "0.75rem",
-                        fontFamily: "monospace",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {upstreamUrl}
-                    </Typography>
-                  </Tooltip>
-                  <Tooltip title={copiedUrl === upstreamUrl ? "Copied!" : "Copy Upstream URL"}>
-                    <IconButton size="small" onClick={() => handleCopyUrl(upstreamUrl)}>
-                      <ContentCopyIcon sx={{ fontSize: 16 }} />
-                    </IconButton>
-                  </Tooltip>
+              <>
+                <Box sx={{ px: 2 }}>
+                  <Divider sx={{ my: 1, borderColor: (t) => t.palette.divider }} />
                 </Box>
-              </Box>
+                <Box>
+                  <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", mb: 0.5, display: "block" }}>
+                    Upstream URL
+                  </Typography>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1,
+                      p: 1.5,
+                      bgcolor: (t) => t.palette.mode === "dark" ? "rgba(255,255,255,0.05)" : "#F9FAFB",
+                      borderRadius: 1,
+                      border: (t) => `1px solid ${t.palette.divider}`,
+                    }}
+                  >
+                    <Tooltip title={upstreamUrl} placement="top">
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          flex: 1,
+                          fontSize: "0.75rem",
+                          fontFamily: "monospace",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {upstreamUrl}
+                      </Typography>
+                    </Tooltip>
+                    <Tooltip title={copiedUrl === upstreamUrl ? "Copied!" : "Copy Upstream URL"}>
+                      <IconButton size="small" onClick={() => handleCopyUrl(upstreamUrl)}>
+                        <ContentCopyIcon sx={{ fontSize: 16 }} />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                </Box>
+              </>
             )}
           </Stack>
         </Box>
