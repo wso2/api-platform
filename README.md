@@ -77,6 +77,17 @@ Open https://localhost:8443 in your browser and accept the self-signed certifica
 
 Navigate to http://localhost:5173 to access the Management Portal.
 
+### 6. Open the API Developer Portal
+
+Navigate to http://localhost:3001 to access the Developer Portal.
+
+### 7. Shutdown
+
+```bash
+docker compose down    # shutdown the servers only, data doesn't get removed
+docker compose down -v # clear the data too
+```
+
 ## Platform Components
 
 ### API Designer
