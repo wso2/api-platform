@@ -1379,7 +1379,7 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	if t.routerConfig.AccessLogs.Format == "json" {
 		// Use JSON log format fields from config
 		jsonFormat := t.routerConfig.AccessLogs.JSONFields
-		if len(jsonFormat) == 0 {
+		if jsonFormat == nil || len(jsonFormat) == 0 {
 			return nil, fmt.Errorf("json_fields not configured in access log config")
 		}
 

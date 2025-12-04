@@ -86,7 +86,7 @@ func (cs *ConfigStore) Add(cfg *models.StoredAPIConfig) error {
 			apiTopicsPerRevision[modifiedTopic] = true
 		}
 
-		for topic := range cs.TopicManager.topics {
+		for topic := range cs.TopicManager.GetAll() {
 			if _, exists := apiTopicsPerRevision[topic]; !exists {
 				cs.TopicManager.Remove(cfg.ID, topic)
 				//delete(cs.topics, topic)

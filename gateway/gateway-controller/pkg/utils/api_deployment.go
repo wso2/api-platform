@@ -284,7 +284,6 @@ func (s *APIDeploymentService) GetAllTopicsToRegisterAndUnregister(apiConfig mod
 	for topic := range topics {
 		if _, exists := apiTopicsPerRevision[topic]; !exists {
 			topicsToUnregister = append(topicsToUnregister, topic)
-			fmt.Println("Topic to unregister:", topic)
 		}
 	}
 
@@ -436,8 +435,8 @@ func (s *APIDeploymentService) sendTopicRequestToHub(topic string, mode string, 
 			return nil
 		}
 
-		// Retry only on 404
-		if lastStatus == http.StatusNotFound || lastStatus == http.StatusServiceUnavailable && attempt < maxRetries {
+		// Retry only on 404 or 503, up to maxRetries
+		if (lastStatus == http.StatusNotFound || lastStatus == http.StatusServiceUnavailable) && attempt < maxRetries {
 			time.Sleep(backoff)
 			backoff *= 2
 			lastStatus = 0
