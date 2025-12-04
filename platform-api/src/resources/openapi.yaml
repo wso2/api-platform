@@ -790,7 +790,7 @@ paths:
       tags:
         - APIs
       requestBody:
-        description: API name and project name to check
+        description: API name and project details for existence check
         content:
           application/json:
             schema:
