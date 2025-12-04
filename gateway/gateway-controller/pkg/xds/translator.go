@@ -134,7 +134,6 @@ func (t *Translator) TranslateConfigs(
 	if correlationID != "" {
 		log = t.logger.With(zap.String("correlation_id", correlationID))
 	}
-
 	resources := make(map[resource.Type][]types.Resource)
 
 	var listeners []types.Resource
@@ -150,38 +149,20 @@ func (t *Translator) TranslateConfigs(
 		// This ensures existing APIs are not overridden when deploying new APIs
 
 		// Create routes and clusters for this API
-		if cfg.Configuration.Kind == "http/rest" {
-			routesList, clusterList, err := t.translateAPIConfig(cfg)
-			if err != nil {
-				log.Error("Failed to translate config",
-					zap.String("id", cfg.ID),
-					zap.String("name", cfg.GetAPIName()),
-					zap.Error(err))
-				continue
-			}
+		routesList, clusterList, err := t.translateAPIConfig(cfg)
+		if err != nil {
+			log.Error("Failed to translate config",
+				zap.String("id", cfg.ID),
+				zap.String("name", cfg.GetAPIName()),
+				zap.Error(err))
+			continue
+		}
 
-			allRoutes = append(allRoutes, routesList...)
+		allRoutes = append(allRoutes, routesList...)
 
-			// Add clusters (avoiding duplicates)
-			for _, c := range clusterList {
-				clusterMap[c.Name] = c
-			}
-		} else if cfg.Configuration.Kind == "async/websub" {
-			routesList, clusterList, err := t.translateAsyncAPIConfig(cfg)
-			if err != nil {
-				log.Error("Failed to translate config",
-					zap.String("id", cfg.ID),
-					zap.String("name", cfg.GetAPIName()),
-					zap.Error(err))
-				continue
-			}
-
-			allRoutes = append(allRoutes, routesList...)
-
-			// Add clusters (avoiding duplicates)
-			for _, c := range clusterList {
-				clusterMap[c.Name] = c
-			}
+		// Add clusters (avoiding duplicates)
+		for _, c := range clusterList {
+			clusterMap[c.Name] = c
 		}
 	}
 
@@ -230,10 +211,16 @@ func (t *Translator) TranslateConfigs(
 		log.Info("HTTPS is disabled, skipping HTTPS listener creation")
 	}
 
-	if err != nil {
-		return nil, fmt.Errorf("failed to create listener: %w", err)
+	// Add all clusters
+	for _, c := range clusterMap {
+		clusters = append(clusters, c)
 	}
-	listeners = append(listeners, l)
+
+	// Add policy engine cluster if enabled
+	if t.routerConfig.PolicyEngine.Enabled {
+		policyEngineCluster := t.createPolicyEngineCluster()
+		clusters = append(clusters, policyEngineCluster)
+	}
 
 	if t.routerConfig.EventGateway.Enabled {
 		// Add dynamic forward proxy cluster for WebSubHub
@@ -249,12 +236,6 @@ func (t *Translator) TranslateConfigs(
 
 		websubhubCluster := t.createCluster(WebSubHubInternalClusterName, parsedURL, nil)
 		clusters = append(clusters, websubhubCluster)
-	}
-
-	// Add policy engine cluster if enabled
-	if t.routerConfig.PolicyEngine.Enabled {
-		policyEngineCluster := t.createPolicyEngineCluster()
-		clusters = append(clusters, policyEngineCluster)
 	}
 
 	// Add SDS cluster if cert store is enabled
@@ -282,149 +263,6 @@ func (t *Translator) TranslateConfigs(
 	}
 
 	return resources, nil
-}
-
-// TranslateConfigs translates all Async API configurations to Envoy resources
-// The correlationID parameter is optional and used for request tracing in logs
-func (t *Translator) TranslateAsyncConfigs(configs []*models.StoredAPIConfig, correlationID string) (map[resource.Type][]types.Resource, error) {
-	// Create a logger with correlation ID if provided
-	log := t.logger
-	if correlationID != "" {
-		log = t.logger.With(zap.String("correlation_id", correlationID))
-	}
-
-	resources := make(map[resource.Type][]types.Resource)
-
-	var listeners []types.Resource
-	var routes []types.Resource
-	var clusters []types.Resource
-
-	// We'll use a single listener on port 8080 with a single virtual host
-	// All API routes are consolidated into one virtual host to avoid wildcard domain conflicts
-	allRoutes := make([]*route.Route, 0)
-	clusterMap := make(map[string]*cluster.Cluster)
-
-	for _, cfg := range configs {
-		// Include ALL configs (both deployed and pending) in the snapshot
-		// This ensures existing APIs are not overridden when deploying new APIs
-
-		// Create routes and clusters for this Async API
-		routesList, clusterList, err := t.translateAsyncAPIConfig(cfg)
-		if err != nil {
-			log.Error("Failed to translate config",
-				zap.String("id", cfg.ID),
-				zap.String("name", cfg.GetAPIName()),
-				zap.Error(err))
-			continue
-		}
-
-		allRoutes = append(allRoutes, routesList...)
-
-		// Add clusters (avoiding duplicates)
-		for _, c := range clusterList {
-			clusterMap[c.Name] = c
-		}
-	}
-
-	// Add a catch-all route that returns 404 for unmatched requests
-	// This should be the last route (lowest priority)
-	allRoutes = append(allRoutes, &route.Route{
-		Match: &route.RouteMatch{
-			PathSpecifier: &route.RouteMatch_Prefix{
-				Prefix: "/",
-			},
-		},
-		Action: &route.Route_DirectResponse{
-			DirectResponse: &route.DirectResponseAction{
-				Status: 404,
-			},
-		},
-	})
-
-	// Create a single virtual host with all routes
-	virtualHost := &route.VirtualHost{
-		Name:    "all_apis",
-		Domains: []string{"*"},
-		Routes:  allRoutes,
-	}
-
-	// Always create the listener, even with no APIs deployed
-	l, err := t.createListener([]*route.VirtualHost{virtualHost})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create listener: %w", err)
-	}
-	websubDynamicFwdlistener, err := t.createDynamicFwdListenerForWebSubHub()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create listener for websubhub communication: %w", err)
-	}
-	websubhubInternalListener, err := t.createListenerForWebSubHub()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create internal websubhub listener: %w", err)
-	}
-	listeners = append(listeners, l, websubDynamicFwdlistener, websubhubInternalListener)
-	// Add all clusters
-	for _, c := range clusterMap {
-		clusters = append(clusters, c)
-	}
-	// Add dynamic forward proxy cluster for WebSubHub
-	dynamicForwardProxyCluster := t.createDynamicForwardProxyCluster()
-	clusters = append(clusters, dynamicForwardProxyCluster)
-
-	// Add external processor gRPC cluster
-	extProcessorCluster := t.createExternalProcessorCluster()
-	clusters = append(clusters, extProcessorCluster)
-
-	// Add websubhub cluster
-	upstreamURL := "http://host.docker.internal:9098"
-	parsedURL, err := url.Parse(upstreamURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid upstream URL: %w", err)
-	}
-
-	websubhubCluster := t.createCluster(WebSubHubInternalClusterName, parsedURL)
-	clusters = append(clusters, websubhubCluster)
-
-	resources[resource.ListenerType] = listeners
-	resources[resource.RouteType] = routes
-	resources[resource.ClusterType] = clusters
-
-	return resources, nil
-}
-
-// translateAsyncAPIConfig translates a single API configuration
-func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredAPIConfig) ([]*route.Route, []*cluster.Cluster, error) {
-	apiData, err := cfg.Configuration.Spec.AsWebhookAPIData()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse webhook API data: %w", err)
-	}
-
-	// Parse upstream URL
-	if len(apiData.Servers) == 0 {
-		return nil, nil, fmt.Errorf("no upstream configured")
-	}
-
-	upstreamURL := apiData.Servers[0].Url
-	parsedURL, err := url.Parse(upstreamURL)
-	if err != nil {
-		return nil, nil, fmt.Errorf("invalid upstream URL: %w", err)
-	}
-
-	// Create cluster for this upstream
-	//clusterName := t.sanitizeClusterName(parsedURL.Host)
-	c := t.createCluster(WebSubHubInternalClusterName, parsedURL, nil)
-	fmt.Println("Creating ROute per TOpic")
-
-	// Create routes for each operation
-	routesList := make([]*route.Route, 0)
-	for _, op := range apiData.Channels {
-		updatedPath := apiData.Context + "/" + apiData.Version + op.Path
-		fmt.Printf("Updated Path: %s\n", updatedPath)
-		// Always route accepts a POST request for WebSubHub calls
-		r := t.createRoutePerTopic("POST", updatedPath, WebSubHubInternalClusterName, parsedURL.Path)
-		routesList = append(routesList, r)
-	}
-
-	return routesList, []*cluster.Cluster{c}, nil
 }
 
 // translateAPIConfig translates a single API configuration

@@ -30,6 +30,7 @@ type APIData interface {
 	GetName() string
 	GetContext() string
 	GetVersion() string
+	GetPolicies() *[]api.Policy
 }
 
 // RestData wraps api.APIConfigData and implements APIData.

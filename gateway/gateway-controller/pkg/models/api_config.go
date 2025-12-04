@@ -77,6 +77,22 @@ func (c *StoredAPIConfig) GetAPIName() string {
 	return configData.Name
 }
 
+// GetAPIName returns the API name
+func (c *StoredAPIConfig) GetAPIContext() string {
+	if c.Configuration.Kind == "async/websub" {
+		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
+		if err != nil {
+			return ""
+		}
+		return asyncData.Context
+	}
+	configData, err := c.Configuration.Spec.AsAPIConfigData()
+	if err != nil {
+		return ""
+	}
+	return configData.Context
+}
+
 // GetAPIVersion returns the API version
 func (c *StoredAPIConfig) GetAPIVersion() string {
 	if c.Configuration.Kind == "async/websub" {
@@ -91,22 +107,6 @@ func (c *StoredAPIConfig) GetAPIVersion() string {
 		return ""
 	}
 	return configData.Version
-}
-
-// GetContext returns the API context path
-func (c *StoredAPIConfig) GetContext() string {
-	if c.Configuration.Kind == "async/websub" {
-		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
-		if err != nil {
-			return ""
-		}
-		return asyncData.Context
-	}
-	configData, err := c.Configuration.Spec.AsAPIConfigData()
-	if err != nil {
-		return ""
-	}
-	return configData.Context
 }
 
 func (c *StoredAPIConfig) GetPolicies() *[]api.Policy {

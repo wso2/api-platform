@@ -99,6 +99,12 @@ type RouterConfig struct {
 	Upstream      envoyUpstream      `koanf:"envoy_upstream"`
 	PolicyEngine  PolicyEngineConfig `koanf:"policy_engine"`
 	DownstreamTLS DownstreamTLS      `koanf:"downstream_tls"`
+	EventGateway  EventGatewayConfig `koanf:"event_gateway"`
+}
+
+// EventGatewayConfig holds event gateway specific configurations
+type EventGatewayConfig struct {
+	Enabled bool `koanf:"enabled"`
 }
 
 // DownstreamTLS holds downstream (listener) TLS configuration

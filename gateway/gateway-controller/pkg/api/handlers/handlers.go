@@ -242,7 +242,7 @@ func (s *APIServer) ListAPIs(c *gin.Context) {
 			Id:        id,
 			Name:      stringPtr(cfg.GetAPIName()),
 			Version:   stringPtr(cfg.GetAPIVersion()),
-			Context:   stringPtr(cfg.GetContext()),
+			Context:   stringPtr(cfg.GetAPIContext()),
 			Status:    (*api.APIListItemStatus)(&status),
 			CreatedAt: timePtr(cfg.CreatedAt),
 			UpdatedAt: timePtr(cfg.UpdatedAt),
@@ -554,24 +554,67 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *model
 	// TODO: (renuka) duplicate buildStoredPolicyFromAPI funcs. Refactor this.
 	apiCfg := &cfg.Configuration
 
-	policies := cfg.GetPolicies()
-
 	// Collect API-level policies
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance) // name -> policy
-	if policies != nil {
-		for _, p := range *policies {
+	if cfg.GetPolicies() != nil {
+		for _, p := range *cfg.GetPolicies() {
 			apiPolicies[p.Name] = convertAPIPolicy(p)
 		}
 	}
 
-	if cfg.Configuration.Kind == "http/rest" {
+	routes := make([]policyenginev1.PolicyChain, 0)
+	if apiCfg.Kind == api.APIConfigurationKindAsyncwebsub {
+		// Build routes with merged policies
+		apiData, err := apiCfg.Spec.AsWebhookAPIData()
+		if err != nil {
+			// Handle error appropriately (e.g., log or return)
+			return nil
+		}
+		for _, ch := range apiData.Channels {
+			var finalPolicies []policyenginev1.PolicyInstance
+
+			if ch.Policies != nil && len(*ch.Policies) > 0 {
+				// Operation has policies: use operation policy order as authoritative
+				// This allows operations to reorder, override, or extend API-level policies
+				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*ch.Policies))
+				addedNames := make(map[string]struct{})
+
+				for _, opPolicy := range *ch.Policies {
+					finalPolicies = append(finalPolicies, convertAPIPolicy(opPolicy))
+					addedNames[opPolicy.Name] = struct{}{}
+				}
+
+				// Add any API-level policies not mentioned in operation policies (append at end)
+				if apiData.Policies != nil {
+					for _, apiPolicy := range *apiData.Policies {
+						if _, exists := addedNames[apiPolicy.Name]; !exists {
+							finalPolicies = append(finalPolicies, apiPolicies[apiPolicy.Name])
+						}
+					}
+				}
+			} else {
+				// No operation policies: use API-level policies in their declared order
+				if apiData.Policies != nil {
+					finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies))
+					for _, p := range *apiData.Policies {
+						finalPolicies = append(finalPolicies, apiPolicies[p.Name])
+					}
+				}
+			}
+
+			routeKey := xds.GenerateRouteName(string(ch.Path), apiData.Context, apiData.Version, ch.Path, s.routerConfig.GatewayHost)
+			routes = append(routes, policyenginev1.PolicyChain{
+				RouteKey: routeKey,
+				Policies: finalPolicies,
+			})
+		}
+	} else if apiCfg.Kind == api.APIConfigurationKindHttprest {
 		// Build routes with merged policies
 		apiData, err := apiCfg.Spec.AsAPIConfigData()
 		if err != nil {
 			// Handle error appropriately (e.g., log or return)
 			return nil
 		}
-		routes := make([]policyenginev1.PolicyChain, 0)
 		for _, op := range apiData.Operations {
 			var finalPolicies []policyenginev1.PolicyInstance
 
@@ -587,8 +630,8 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *model
 				}
 
 				// Add any API-level policies not mentioned in operation policies (append at end)
-				if policies != nil {
-					for _, apiPolicy := range *policies {
+				if apiData.Policies != nil {
+					for _, apiPolicy := range *apiData.Policies {
 						if _, exists := addedNames[apiPolicy.Name]; !exists {
 							finalPolicies = append(finalPolicies, apiPolicies[apiPolicy.Name])
 						}
@@ -596,39 +639,20 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *model
 				}
 			} else {
 				// No operation policies: use API-level policies in their declared order
-				if policies != nil {
-					finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*policies))
-					for _, p := range *policies {
+				if apiData.Policies != nil {
+					finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies))
+					for _, p := range *apiData.Policies {
 						finalPolicies = append(finalPolicies, apiPolicies[p.Name])
 					}
 				}
 			}
 
-			// Construct route key using the same format as the xDS translator for consistency
-			// This ensures the policy engine can match routes correctly
-			// Format: HttpMethod|RoutePath|Vhost
-			// Example: GET|/weather/us/seattle|localhost
-			fullPath := apiData.Context + op.Path
-			routeKey := xds.GenerateRouteName(string(op.Method), fullPath, s.routerConfig.GatewayHost)
+			routeKey := xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, s.routerConfig.GatewayHost)
 			routes = append(routes, policyenginev1.PolicyChain{
 				RouteKey: routeKey,
 				Policies: finalPolicies,
 			})
 		}
-		// If there are no policies at all, return nil (skip creation)
-		policyCount := 0
-		for _, r := range routes {
-			policyCount += len(r.Policies)
-		}
-		if policyCount == 0 {
-			return nil
-		}
-
-		routeKey := xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, s.routerConfig.GatewayHost)
-		routes = append(routes, policyenginev1.PolicyChain{
-			RouteKey: routeKey,
-			Policies: finalPolicies,
-		})
 	}
 
 	// If there are no policies at all, return nil (skip creation)
@@ -649,15 +673,14 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *model
 				CreatedAt:       now,
 				UpdatedAt:       now,
 				ResourceVersion: 0,
-				APIName:         apiData.Name,
-				Version:         apiData.Version,
-				Context:         apiData.Context,
+				APIName:         cfg.GetAPIName(),
+				Version:         cfg.GetAPIVersion(),
+				Context:         cfg.GetAPIContext(),
 			},
-			Version: 0,
-		}
-		return stored
+		},
+		Version: 0,
 	}
-	return nil
+	return stored
 }
 
 // convertAPIPolicy converts generated api.Policy to policyenginev1.PolicyInstance

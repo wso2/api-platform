@@ -8,6 +8,7 @@ import (
 	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -240,6 +241,58 @@ type CertificateUploadRequest struct {
 	Name string `json:"name"`
 }
 
+// Channel Channel (topic/event stream) definition for async APIs.
+type Channel struct {
+	// Bindings Protocol-specific channel bindings (arbitrary key/value structure).
+	Bindings *map[string]interface{} `json:"bindings,omitempty"`
+
+	// Description Human-readable description of the channel.
+	Description *string `json:"description,omitempty"`
+
+	// Parameters Path/channel parameters (keyed by parameter name).
+	Parameters *map[string]struct {
+		Description *string `json:"description,omitempty"`
+
+		// Schema JSON Schema fragment for the parameter value.
+		Schema *map[string]interface{} `json:"schema,omitempty"`
+	} `json:"parameters,omitempty"`
+
+	// Path Channel path or topic identifier relative to API context.
+	Path string `json:"path"`
+
+	// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
+	Policies *[]Policy `json:"policies,omitempty"`
+
+	// Publish Producer (send) operation definition.
+	Publish *struct {
+		// Message Event/message definition transported over a channel.
+		Message *ChannelMessage `json:"message,omitempty"`
+		Summary *string         `json:"summary,omitempty"`
+	} `json:"publish,omitempty"`
+
+	// Subscribe Consumer (receive) operation definition.
+	Subscribe *struct {
+		// Message Event/message definition transported over a channel.
+		Message *ChannelMessage `json:"message,omitempty"`
+		Summary *string         `json:"summary,omitempty"`
+	} `json:"subscribe,omitempty"`
+}
+
+// ChannelMessage Event/message definition transported over a channel.
+type ChannelMessage struct {
+	// ContentType Content type of the payload.
+	ContentType *string `json:"content_type,omitempty"`
+
+	// Name Logical message name.
+	Name string `json:"name"`
+
+	// Payload JSON Schema representation of the message body.
+	Payload map[string]interface{} `json:"payload"`
+
+	// Summary Short description of the message.
+	Summary *string `json:"summary,omitempty"`
+}
+
 // ConfigDumpResponse defines model for ConfigDumpResponse.
 type ConfigDumpResponse struct {
 	// Apis All deployed API configurations
@@ -410,6 +463,9 @@ type WebhookAPIData struct {
 	// Name Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
 	Name string `json:"name"`
 
+	// Policies List of API-level policies applied to all operations unless overridden
+	Policies *[]Policy `json:"policies,omitempty"`
+
 	// Servers List of backend service URLs (for REST APIs) or event hub URLs (for async APIs)
 	Servers []Server `json:"servers"`
 
@@ -428,6 +484,95 @@ type UpdateAPIJSONRequestBody = APIConfiguration
 
 // UploadCertificateJSONRequestBody defines body for UploadCertificate for application/json ContentType.
 type UploadCertificateJSONRequestBody = CertificateUploadRequest
+
+// AsAPIConfigData returns the union data inside the APIConfiguration_Spec as a APIConfigData
+func (t APIConfiguration_Spec) AsAPIConfigData() (APIConfigData, error) {
+	var body APIConfigData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAPIConfigData overwrites any union data inside the APIConfiguration_Spec as the provided APIConfigData
+func (t *APIConfiguration_Spec) FromAPIConfigData(v APIConfigData) error {
+	v.ApiType = "http/rest"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAPIConfigData performs a merge with any union data inside the APIConfiguration_Spec, using the provided APIConfigData
+func (t *APIConfiguration_Spec) MergeAPIConfigData(v APIConfigData) error {
+	v.ApiType = "http/rest"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsWebhookAPIData returns the union data inside the APIConfiguration_Spec as a WebhookAPIData
+func (t APIConfiguration_Spec) AsWebhookAPIData() (WebhookAPIData, error) {
+	var body WebhookAPIData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromWebhookAPIData overwrites any union data inside the APIConfiguration_Spec as the provided WebhookAPIData
+func (t *APIConfiguration_Spec) FromWebhookAPIData(v WebhookAPIData) error {
+	v.ApiType = "async/sse"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeWebhookAPIData performs a merge with any union data inside the APIConfiguration_Spec, using the provided WebhookAPIData
+func (t *APIConfiguration_Spec) MergeWebhookAPIData(v WebhookAPIData) error {
+	v.ApiType = "async/sse"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t APIConfiguration_Spec) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"apiType"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t APIConfiguration_Spec) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "async/sse":
+		return t.AsWebhookAPIData()
+	case "http/rest":
+		return t.AsAPIConfigData()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t APIConfiguration_Spec) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *APIConfiguration_Spec) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
