@@ -62,6 +62,9 @@ type APIRepository interface {
 	CreateAPIAssociation(association *model.APIAssociation) error
 	GetAPIAssociations(apiId, associationType, orgId string) ([]*model.APIAssociation, error)
 	UpdateAPIAssociation(apiId, resourceId, associationType, orgId string) error
+
+	// API name validation methods
+	CheckAPINameExistsInProject(name, projectId, orgId string) (bool, error)
 }
 
 // BackendServiceRepository defines the interface for backend service data operations

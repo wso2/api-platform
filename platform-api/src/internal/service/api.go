@@ -1460,3 +1460,49 @@ func (s *APIService) ImportFromOpenAPI(req *dto.ImportOpenAPIRequest, orgId stri
 	// Create the API
 	return s.CreateAPI(createReq, orgId)
 }
+
+// CheckAPINameExistence checks if an API with the given name exists within a specific project
+func (s *APIService) CheckAPINameExistence(req *dto.ValidateAPINameExistenceRequest, orgId string) (*dto.ValidateAPINameExistenceResponse, error) {
+	// Validate request
+	if req.Name == "" {
+		return nil, errors.New("API name is required")
+	}
+	if req.ProjectID == "" {
+		return nil, errors.New("project ID is required")
+	}
+
+	// Check if project exists and belongs to the organization
+	project, err := s.projectRepo.GetProjectByUUID(req.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	if project == nil {
+		return nil, constants.ErrProjectNotFound
+	}
+	if project.OrganizationID != orgId {
+		return nil, constants.ErrProjectNotFound
+	}
+
+	// Check if API name exists within the project
+	exists, err := s.apiRepo.CheckAPINameExistsInProject(req.Name, req.ProjectID, orgId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check API name existence: %w", err)
+	}
+
+	// Create response with appropriate message
+	var message string
+	if exists {
+		message = fmt.Sprintf("API '%s' already exists in project '%s'", req.Name, project.Name)
+	} else {
+		message = fmt.Sprintf("API name '%s' is available in project '%s'", req.Name, project.Name)
+	}
+
+	response := &dto.ValidateAPINameExistenceResponse{
+		Exists:    exists,
+		Name:      req.Name,
+		ProjectID: req.ProjectID,
+		Message:   message,
+	}
+
+	return response, nil
+}
