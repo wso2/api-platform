@@ -22,9 +22,9 @@ spec:
   name: Everything
   version: v1.0
   context: /everything
-  specVersion: "2025-06-13"
+  specVersion: "2025-06-18"
   upstreams:
-    - url: https://mcp-server-backend:5000
+    - url: http://everything:3001
   policies:
     - name: backendSecurity # Needed when the upstream has security
       params:
