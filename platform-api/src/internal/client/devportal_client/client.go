@@ -18,9 +18,12 @@
 package devportal_client
 
 import (
+	"log"
 	"net/http"
 
 	"platform-api/src/internal/client"
+
+	"github.com/go-playground/validator/v10"
 )
 
 // Client is a lightweight per-DevPortal client. It is stateless and holds the
@@ -30,6 +33,7 @@ type DevPortalClient struct {
 	httpClient *client.RetryableHTTPClient // retry-enabled HTTP client
 	headerName string
 	apiKey     string
+	validator  *validator.Validate // shared validator instance
 }
 
 // NewClient creates a new DevPortal client for the provided DevPortalConfig.
@@ -51,6 +55,7 @@ func NewDevPortalClient(cfg DevPortalConfig) *DevPortalClient {
 		httpClient: hc,
 		headerName: header,
 		apiKey:     cfg.APIKey,
+		validator:  validator.New(),
 	}
 }
 
@@ -61,5 +66,37 @@ func (c *DevPortalClient) do(req *http.Request) (*http.Response, error) {
 	if c.headerName != "" && c.apiKey != "" {
 		req.Header.Set(c.headerName, c.apiKey)
 	}
-	return c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		log.Printf("[DevPortalClient] Request failed with network error: %v", err)
+		// Map all network errors to backend unreachable (503 Service Unavailable)
+		return nil, NewDevPortalError(503, "backend unreachable", true, err)
+	}
+
+	// Check for universal HTTP errors first (before reading body)
+	switch resp.StatusCode {
+	case 401:
+		resp.Body.Close()
+		return nil, ErrDevPortalAuthenticationFailed
+	case 403:
+		resp.Body.Close()
+		return nil, ErrDevPortalForbidden
+	case 407:
+		resp.Body.Close()
+		return nil, ErrDevPortalProxyAuthRequired
+	case 429:
+		resp.Body.Close()
+		return nil, ErrDevPortalTooManyRequests
+	case 413:
+		resp.Body.Close()
+		return nil, ErrDevPortalPayloadTooLarge
+	case 415:
+		resp.Body.Close()
+		return nil, ErrDevPortalUnsupportedMediaType
+	case 422:
+		resp.Body.Close()
+		return nil, ErrDevPortalUnprocessableEntity
+	}
+
+	return resp, nil
 }

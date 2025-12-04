@@ -27,16 +27,16 @@ type Owners struct {
 
 // APIInfo contains basic API metadata
 type APIInfo struct {
-	APIID          string        `json:"apiId,omitempty"`
+	APIID          string        `json:"apiId" validate:"required"`
 	ReferenceID    string        `json:"referenceID,omitempty"`
-	APIStatus      string        `json:"apiStatus,omitempty"`
-	Provider       string        `json:"provider,omitempty"`
-	APIName        string        `json:"apiName"`
-	APIHandle      string        `json:"apiHandle"`
-	APIDescription string        `json:"apiDescription,omitempty"`
-	APIVersion     string        `json:"apiVersion,omitempty"`
-	APIType        APIType       `json:"apiType,omitempty"`
-	Visibility     APIVisibility `json:"visibility,omitempty"`
+	APIStatus      string        `json:"apiStatus" validate:"required"`
+	Provider       string        `json:"provider" validate:"required"`
+	APIName        string        `json:"apiName" validate:"required"`
+	APIHandle      string        `json:"apiHandle" validate:"required"`
+	APIDescription string        `json:"apiDescription" validate:"required"`
+	APIVersion     string        `json:"apiVersion" validate:"required"`
+	APIType        APIType       `json:"apiType" validate:"required"`
+	Visibility     APIVisibility `json:"visibility" validate:"required"`
 	VisibleGroups  []string      `json:"visibleGroups,omitempty"`
 	Tags           []string      `json:"tags,omitempty"`
 	Owners         Owners        `json:"owners,omitempty"`
@@ -45,15 +45,20 @@ type APIInfo struct {
 
 // EndPoints describes production/sandbox endpoints
 type EndPoints struct {
-	ProductionURL string `json:"productionURL,omitempty"`
+	ProductionURL string `json:"productionURL" validate:"required"`
 	SandboxURL    string `json:"sandboxURL,omitempty"`
+}
+
+// SubscriptionPolicyRequest represents a subscription policy for API metadata
+type SubscriptionPolicyRequest struct {
+	PolicyName string `json:"policyName" validate:"required"`
 }
 
 // APIMetadataRequest is the JSON payload placed in multipart field `apiMetadata`
 type APIMetadataRequest struct {
-	APIInfo              APIInfo              `json:"apiInfo"`
-	EndPoints            EndPoints            `json:"endPoints,omitempty"`
-	SubscriptionPolicies []string 				`json:"subscriptionPolicies,omitempty"`
+	APIInfo              APIInfo                     `json:"apiInfo" validate:"required"`
+	EndPoints            EndPoints                   `json:"endPoints" validate:"required"`
+	SubscriptionPolicies []SubscriptionPolicyRequest `json:"subscriptionPolicies,omitempty"`
 }
 
 // APIResponse represents an API returned by the DevPortal

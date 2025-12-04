@@ -19,10 +19,10 @@ package dto
 
 // OrganizationCreateRequest is the payload used to create an organization in DevPortal.
 type OrganizationCreateRequest struct {
-	OrgID                  string                 `json:"orgId,omitempty"`
-	OrgName                string                 `json:"orgName"`
-	OrgHandle              string                 `json:"orgHandle"`
-	OrganizationIdentifier string                 `json:"organizationIdentifier"`
+	OrgID                  string                 `json:"orgId" validate:"required"`
+	OrgName                string                 `json:"orgName" validate:"required"`
+	OrgHandle              string                 `json:"orgHandle" validate:"required"`
+	OrganizationIdentifier string                 `json:"organizationIdentifier" validate:"required"`
 	BusinessOwner          string                 `json:"businessOwner,omitempty"`
 	BusinessOwnerContact   string                 `json:"businessOwnerContact,omitempty"`
 	BusinessOwnerEmail     string                 `json:"businessOwnerEmail,omitempty"`
@@ -51,6 +51,11 @@ type OrganizationResponse struct {
 	SubscriberRole         string                 `json:"subscriberRole,omitempty"`
 	SuperAdminRole         string                 `json:"superAdminRole,omitempty"`
 	OrgConfiguration       map[string]interface{} `json:"orgConfiguration,omitempty"`
+}
+
+// IsSameAs compares key fields with an OrganizationCreateRequest to check if they represent the same organization.
+func (o *OrganizationResponse) IsSameAs(req OrganizationCreateRequest) bool {
+	return o.OrgID == req.OrgID && o.OrgName == req.OrgName && o.OrgHandle == req.OrgHandle && o.OrganizationIdentifier == req.OrganizationIdentifier
 }
 
 // OrganizationUpdateRequest contains fields allowed for updates.

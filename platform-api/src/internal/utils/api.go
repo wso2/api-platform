@@ -22,16 +22,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
+
+	"platform-api/src/internal/client/devportal_client"
+	"platform-api/src/internal/constants"
+	"platform-api/src/internal/dto"
+	"platform-api/src/internal/model"
 
 	"github.com/pb33f/libopenapi"
 	v2high "github.com/pb33f/libopenapi/datamodel/high/v2"
 	v3high "github.com/pb33f/libopenapi/datamodel/high/v3"
 	"gopkg.in/yaml.v3"
-	"platform-api/src/internal/constants"
-	"platform-api/src/internal/dto"
-	"platform-api/src/internal/model"
 )
 
 type APIUtil struct{}
@@ -782,60 +785,30 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 	return string(yamlBytes), nil
 }
 
+// TODO: Enhance GenerateOpenAPIDefinition to include request/response schemas, examples,
+// detailed parameters, and complete security configurations from original OpenAPI sources
+// to make the spec more useful for API consumers. Currently generates minimal spec
+// with only available DTO data to avoid inventing information.
 // GenerateOpenAPIDefinition generates an OpenAPI 3.0 definition from the API struct
-//
-// This method creates a valid OpenAPI specification using the API's operations.
-// For each operation, it creates a path with the HTTP method and includes:
-//   - Description from Operation.Description
-//   - Method from Operation.Request.Method
-//   - Path from Operation.Request.Path
-//   - Empty request body
-//   - 200 OK response with empty body
-//
-// Parameters:
-//   - api: The API DTO containing operations
-//
-// Returns:
-//   - []byte: JSON-encoded OpenAPI definition
-//   - error: Error if JSON marshaling fails
-func (u *APIUtil) GenerateOpenAPIDefinition(api *dto.API) ([]byte, error) {
-	// Build paths object from operations
-	paths := make(map[string]interface{})
+func (u *APIUtil) GenerateOpenAPIDefinition(api *dto.API, req *devportal_client.APIMetadataRequest) ([]byte, error) {
+	// Build the OpenAPI specification
+	openAPISpec := dto.OpenAPI{
+		OpenAPI: "3.0.3",
+		Info:    u.buildInfoSection(api),
+		Servers: u.buildServersSection(api, &req.EndPoints),
+		Paths:   u.buildPathsSection(api),
+	}
 
-	for _, operation := range api.Operations {
-		if operation.Request == nil {
-			continue
-		}
-
-		path := operation.Request.Path
-		method := strings.ToLower(operation.Request.Method)
-
-		// Initialize path if it doesn't exist
-		if paths[path] == nil {
-			paths[path] = make(map[string]interface{})
-		}
-
-		// Add operation to path
-		pathMap := paths[path].(map[string]interface{})
-		pathMap[method] = map[string]interface{}{
-			"description": operation.Description,
-			"responses": map[string]interface{}{
-				"200": map[string]interface{}{
-					"description": "Successful response",
-				},
-			},
+	// Add security schemes if configured
+	if securitySchemes := u.buildSecuritySchemes(api); len(securitySchemes) > 0 {
+		openAPISpec.Components = &dto.Components{
+			SecuritySchemes: securitySchemes,
 		}
 	}
 
-	// Build complete OpenAPI spec
-	openAPISpec := map[string]interface{}{
-		"openapi": "3.0.0",
-		"info": map[string]interface{}{
-			"title":       api.Name,
-			"version":     api.Version,
-			"description": api.Description,
-		},
-		"paths": paths,
+	// Add global security if configured
+	if globalSecurity := u.buildGlobalSecurity(api); len(globalSecurity) > 0 {
+		openAPISpec.Security = globalSecurity
 	}
 
 	// Marshal to JSON
@@ -845,6 +818,252 @@ func (u *APIUtil) GenerateOpenAPIDefinition(api *dto.API) ([]byte, error) {
 	}
 
 	return apiDefinition, nil
+}
+
+// buildInfoSection creates the info section of the OpenAPI spec
+func (u *APIUtil) buildInfoSection(api *dto.API) dto.Info {
+	info := dto.Info{}
+
+	if api.Name != "" {
+		info.Title = api.Name
+	}
+	if api.Version != "" {
+		info.Version = api.Version
+	}
+	if api.Description != "" {
+		info.Description = api.Description
+	}
+
+	// Add contact info only if available
+	if api.Provider != "" {
+		info.Contact = &dto.Contact{
+			Name: api.Provider,
+		}
+	}
+
+	return info
+}
+
+// buildServersSection creates the servers section
+func (u *APIUtil) buildServersSection(api *dto.API, endpoints *devportal_client.EndPoints) []dto.Server {
+	var servers []dto.Server
+
+	// Add production server if available
+	if endpoints.ProductionURL != "" {
+		prodURL := endpoints.ProductionURL
+		if !strings.HasSuffix(prodURL, api.Context) {
+			prodURL += api.Context
+		}
+		servers = append(servers, dto.Server{
+			URL:         prodURL,
+			Description: "Production server",
+		})
+	}
+
+	// Add sandbox server if available
+	if endpoints.SandboxURL != "" {
+		sandboxURL := endpoints.SandboxURL
+		if !strings.HasSuffix(sandboxURL, api.Context) {
+			sandboxURL += api.Context
+		}
+		servers = append(servers, dto.Server{
+			URL:         sandboxURL,
+			Description: "Sandbox server",
+		})
+	}
+
+	return servers
+}
+
+// buildPathsSection creates the paths section with detailed operations
+func (u *APIUtil) buildPathsSection(api *dto.API) map[string]dto.PathItem {
+	paths := make(map[string]dto.PathItem)
+
+	for _, operation := range api.Operations {
+		if operation.Request == nil {
+			continue
+		}
+
+		path := operation.Request.Path
+		method := strings.ToLower(operation.Request.Method)
+
+		// Get or create PathItem
+		pathItem, exists := paths[path]
+		if !exists {
+			pathItem = dto.PathItem{}
+		}
+
+		// Build operation details - only include available data
+		operationSpec := &dto.OpenAPIOperation{
+			Summary:     operation.Name,
+			Description: operation.Description,
+		}
+
+		// Add parameters inferred from the path or authentication when present
+		if parameters := u.buildParameters(path, operation, api); len(parameters) > 0 {
+			operationSpec.Parameters = parameters
+		}
+
+		// Add security requirements only if operation has authentication configured
+		if operationSecurity := u.buildOperationSecurity(operation, api); len(operationSecurity) > 0 {
+			operationSpec.Security = operationSecurity
+		}
+
+		// Set the operation on the pathItem
+		switch method {
+		case "get":
+			pathItem.Get = operationSpec
+		case "post":
+			pathItem.Post = operationSpec
+		case "put":
+			pathItem.Put = operationSpec
+		case "delete":
+			pathItem.Delete = operationSpec
+		case "patch":
+			pathItem.Patch = operationSpec
+		case "options":
+			pathItem.Options = operationSpec
+		case "head":
+			pathItem.Head = operationSpec
+		case "trace":
+			pathItem.Trace = operationSpec
+		}
+
+		paths[path] = pathItem
+	}
+
+	return paths
+}
+
+// buildParameters extracts path, query, and header parameters from the path
+func (u *APIUtil) buildParameters(path string, operation dto.Operation, api *dto.API) []dto.Parameter {
+	var parameters []dto.Parameter
+
+	// Extract path parameters (e.g., {id} -> id)
+	pathParamRegex := regexp.MustCompile(`\{([^}]+)\}`)
+	matches := pathParamRegex.FindAllStringSubmatch(path, -1)
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			paramName := match[1]
+			parameters = append(parameters, dto.Parameter{
+				Name:        paramName,
+				In:          "path",
+				Required:    true,
+				Schema:      dto.Schema{Type: "string"},
+				Description: fmt.Sprintf("The %s parameter", paramName),
+			})
+		}
+	}
+
+	// Add common query parameters if applicable
+	if operation.Request != nil {
+		// Add authentication-related parameters
+		if operation.Request.Authentication != nil && operation.Request.Authentication.Required {
+			if api.Security != nil && api.Security.OAuth2 != nil && len(api.Security.OAuth2.Scopes) > 0 {
+				// For OAuth2, add Authorization header
+				parameters = append(parameters, dto.Parameter{
+					Name:        "Authorization",
+					In:          "header",
+					Required:    true,
+					Schema:      dto.Schema{Type: "string"},
+					Description: "Bearer token for authentication",
+				})
+			} else if api.Security != nil && api.Security.APIKey != nil && api.Security.APIKey.Enabled {
+				// For API Key, add the key parameter
+				paramName := u.getAPIKeyName(api.Security.APIKey)
+				in := u.getAPIKeyLocation(api.Security.APIKey)
+				parameters = append(parameters, dto.Parameter{
+					Name:        paramName,
+					In:          in,
+					Required:    true,
+					Schema:      dto.Schema{Type: "string"},
+					Description: "API key for authentication",
+				})
+			}
+		}
+	}
+
+	return parameters
+}
+
+// buildSecuritySchemes creates security scheme definitions
+func (u *APIUtil) buildSecuritySchemes(api *dto.API) map[string]dto.SecurityScheme {
+	schemes := make(map[string]dto.SecurityScheme)
+
+	if api.Security != nil {
+		// API Key security
+		if api.Security.APIKey != nil && api.Security.APIKey.Enabled {
+			schemes["ApiKeyAuth"] = dto.SecurityScheme{
+				Type: "apiKey",
+				In:   u.getAPIKeyLocation(api.Security.APIKey),
+				Name: u.getAPIKeyName(api.Security.APIKey),
+			}
+		}
+	}
+
+	return schemes
+}
+
+// getAPIKeyLocation determines where the API key is expected
+func (u *APIUtil) getAPIKeyLocation(apiKey *dto.APIKeySecurity) string {
+	if apiKey.Header != "" {
+		return "header"
+	}
+	if apiKey.Query != "" {
+		return "query"
+	}
+	if apiKey.Cookie != "" {
+		return "cookie"
+	}
+	return "header" // default
+}
+
+// getAPIKeyName gets the API key parameter name
+func (u *APIUtil) getAPIKeyName(apiKey *dto.APIKeySecurity) string {
+	if apiKey.Header != "" {
+		return apiKey.Header
+	}
+	if apiKey.Query != "" {
+		return apiKey.Query
+	}
+	if apiKey.Cookie != "" {
+		return apiKey.Cookie
+	}
+	return "X-API-Key" // default
+}
+
+// buildGlobalSecurity creates global security requirements
+func (u *APIUtil) buildGlobalSecurity(api *dto.API) []dto.SecurityRequirement {
+	var security []dto.SecurityRequirement
+
+	if api.Security != nil {
+		if api.Security.APIKey != nil && api.Security.APIKey.Enabled {
+			security = append(security, dto.SecurityRequirement{
+				"ApiKeyAuth": []string{},
+			})
+		}
+	}
+
+	return security
+}
+
+// buildOperationSecurity creates operation-specific security
+func (u *APIUtil) buildOperationSecurity(operation dto.Operation, api *dto.API) []dto.SecurityRequirement {
+	var security []dto.SecurityRequirement
+
+	if operation.Request != nil && operation.Request.Authentication != nil && operation.Request.Authentication.Required {
+		if api.Security != nil {
+			if api.Security.APIKey != nil && api.Security.APIKey.Enabled {
+				security = append(security, dto.SecurityRequirement{
+					"ApiKeyAuth": []string{},
+				})
+			}
+
+		}
+	}
+
+	return security
 }
 
 // ConvertAPIYAMLDataToDTO converts APIDeploymentYAML to API DTO

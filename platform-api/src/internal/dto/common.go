@@ -17,9 +17,25 @@
 
 package dto
 
+import "time"
+
 // Pagination contains pagination metadata for list responses
 type Pagination struct {
 	Total  int `json:"total" yaml:"total"`   // Total number of items available across all pages
 	Offset int `json:"offset" yaml:"offset"` // Zero-based index of first item in current response
 	Limit  int `json:"limit" yaml:"limit"`   // Maximum number of items returned per page
+}
+
+// BaseResponse provides common fields for API responses
+type BaseResponse struct {
+	Message   string    `json:"message"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// CommonResponse provides a standardized response structure for API operations
+type CommonResponse struct {
+	Success   bool        `json:"success"`
+	Message   string      `json:"message"`
+	Data      interface{} `json:"data,omitempty"`
+	Timestamp time.Time   `json:"timestamp"`
 }

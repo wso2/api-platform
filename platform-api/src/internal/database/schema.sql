@@ -298,7 +298,6 @@ CREATE TABLE IF NOT EXISTS devportals (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(organization_uuid, api_url),
-    UNIQUE(identifier, api_url),
     UNIQUE(organization_uuid, hostname)
 );
 

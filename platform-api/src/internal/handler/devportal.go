@@ -18,12 +18,11 @@
 package handler
 
 import (
-	"errors"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
-	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/service"
@@ -57,57 +56,21 @@ func (h *DevPortalHandler) CreateDevPortal(c *gin.Context) {
 	// Parse request body
 	var req dto.CreateDevPortalRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("[DevPortalHandler] Failed to parse request body for creating DevPortal in organization %s: %v", orgID, err)
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Invalid request body: "+err.Error()))
 		return
 	}
 
+	log.Printf("[DevPortalHandler] Attempting to create DevPortal %s for organization %s", req.Name, orgID)
+
 	// Create DevPortal
 	response, err := h.devPortalService.CreateDevPortal(orgID, &req)
 	if err != nil {
-		// Handle duplicate DevPortal errors
-		if errors.Is(err, constants.ErrDevPortalAlreadyExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"DevPortal with these attributes already exists"))
-			return
-		}
-		if errors.Is(err, constants.ErrDevPortalAPIUrlExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"DevPortal with this API URL already exists in the organization"))
-			return
-		}
-		if errors.Is(err, constants.ErrDevPortalIdentifierExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"DevPortal with this identifier already exists in the organization"))
-			return
-		}
-		if errors.Is(err, constants.ErrDevPortalHostnameExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"DevPortal with this hostname already exists in the organization"))
-			return
-		}
-		if errors.Is(err, constants.ErrDevPortalDefaultAlreadyExists) {
-			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
-				"Default DevPortal already exists for this organization"))
-			return
-		}
-
-		// Handle validation errors
-		if errors.Is(err, constants.ErrDevPortalNameRequired) ||
-			errors.Is(err, constants.ErrDevPortalIdentifierRequired) ||
-			errors.Is(err, constants.ErrDevPortalAPIUrlRequired) ||
-			errors.Is(err, constants.ErrDevPortalHostnameRequired) ||
-			errors.Is(err, constants.ErrDevPortalAPIKeyRequired) ||
-			errors.Is(err, constants.ErrDevPortalHeaderKeyNameRequired) ||
-			errors.Is(err, constants.ErrDevPortalInvalidVisibility) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-			return
-		}
-
-		// Internal server error
-		log.Printf("[DevPortalHandler] Failed to create DevPortal: %v", err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to create DevPortal"))
+		log.Printf("[DevPortalHandler] Failed to create DevPortal %s for organization %s: %v", req.Name, orgID, err)
+		// Use centralized error handling
+		status, errorResp := utils.GetErrorResponse(err)
+		c.JSON(status, errorResp)
 		return
 	}
 
@@ -136,15 +99,9 @@ func (h *DevPortalHandler) GetDevPortal(c *gin.Context) {
 	// Get DevPortal
 	response, err := h.devPortalService.GetDevPortal(devPortalID, orgID)
 	if err != nil {
-		if errors.Is(err, constants.ErrDevPortalNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"DevPortal not found"))
-			return
-		}
-
-		log.Printf("[DevPortalHandler] Failed to get DevPortal %s: %v", devPortalID, err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to get DevPortal"))
+		// Use centralized error handling
+		status, errorResp := utils.GetErrorResponse(err)
+		c.JSON(status, errorResp)
 		return
 	}
 
@@ -195,9 +152,9 @@ func (h *DevPortalHandler) ListDevPortals(c *gin.Context) {
 	// List DevPortals
 	response, err := h.devPortalService.ListDevPortals(orgID, isDefault, isEnabled, limit, offset)
 	if err != nil {
-		log.Printf("[DevPortalHandler] Failed to list DevPortals for organization %s: %v", orgID, err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to list DevPortals"))
+		// Use centralized error handling
+		status, errorResp := utils.GetErrorResponse(err)
+		c.JSON(status, errorResp)
 		return
 	}
 
@@ -225,34 +182,21 @@ func (h *DevPortalHandler) UpdateDevPortal(c *gin.Context) {
 	// Parse request body
 	var req dto.UpdateDevPortalRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("[DevPortalHandler] Failed to parse request body for updating DevPortal %s in organization %s: %v", devPortalID, orgID, err)
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 			"Invalid request body: "+err.Error()))
 		return
 	}
 
+	log.Printf("[DevPortalHandler] Attempting to update DevPortal %s for organization %s", devPortalID, orgID)
+
 	// Update DevPortal
 	response, err := h.devPortalService.UpdateDevPortal(devPortalID, orgID, &req)
 	if err != nil {
-		if errors.Is(err, constants.ErrDevPortalNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"DevPortal not found"))
-			return
-		}
-
-		// Handle validation errors
-		if errors.Is(err, constants.ErrDevPortalNameRequired) ||
-			errors.Is(err, constants.ErrDevPortalAPIUrlRequired) ||
-			errors.Is(err, constants.ErrDevPortalHostnameRequired) ||
-			errors.Is(err, constants.ErrDevPortalAPIKeyRequired) ||
-			errors.Is(err, constants.ErrDevPortalHeaderKeyNameRequired) ||
-			errors.Is(err, constants.ErrDevPortalInvalidVisibility) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
-			return
-		}
-
-		log.Printf("[DevPortalHandler] Failed to update DevPortal %s: %v", devPortalID, err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to update DevPortal"))
+		log.Printf("[DevPortalHandler] Failed to update DevPortal %s for organization %s: %v", devPortalID, orgID, err)
+		// Use centralized error handling
+		status, errorResp := utils.GetErrorResponse(err)
+		c.JSON(status, errorResp)
 		return
 	}
 
@@ -278,22 +222,14 @@ func (h *DevPortalHandler) DeleteDevPortal(c *gin.Context) {
 		return
 	}
 
+	log.Printf("[DevPortalHandler] Attempting to delete DevPortal %s for organization %s", devPortalID, orgID)
+
 	// Delete DevPortal
 	if err := h.devPortalService.DeleteDevPortal(devPortalID, orgID); err != nil {
-		if errors.Is(err, constants.ErrDevPortalNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"DevPortal not found"))
-			return
-		}
-		if errors.Is(err, constants.ErrDevPortalCannotDeleteDefault) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Cannot delete default DevPortal"))
-			return
-		}
-
-		log.Printf("[DevPortalHandler] Failed to delete DevPortal %s: %v", devPortalID, err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to delete DevPortal"))
+		log.Printf("[DevPortalHandler] Failed to delete DevPortal %s for organization %s: %v", devPortalID, orgID, err)
+		// Use centralized error handling
+		status, errorResp := utils.GetErrorResponse(err)
+		c.JSON(status, errorResp)
 		return
 	}
 
@@ -319,35 +255,24 @@ func (h *DevPortalHandler) ActivateDevPortal(c *gin.Context) {
 		return
 	}
 
+	log.Printf("[DevPortalHandler] Attempting to activate DevPortal %s for organization %s", devPortalID, orgID)
+
 	// Activate DevPortal
-	response, err := h.devPortalService.EnableDevPortal(devPortalID, orgID)
+	err := h.devPortalService.EnableDevPortal(devPortalID, orgID)
 	if err != nil {
-		if errors.Is(err, constants.ErrDevPortalNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"DevPortal not found"))
-			return
-		}
-
-		if errors.Is(err, constants.ErrDevPortalBackendUnreachable) {
-			c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable",
-				"DevPortal backend is currently unreachable. Please try again later or contact administrator."))
-			return
-		}
-
-		if errors.Is(err, constants.ErrDevPortalSyncFailed) {
-			c.JSON(http.StatusServiceUnavailable, utils.NewErrorResponse(503, "Service Unavailable",
-				"Failed to sync organization to DevPortal. Please check DevPortal configuration."))
-			return
-		}
-
-		log.Printf("[DevPortalHandler] Failed to activate DevPortal %s: %v", devPortalID, err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to activate DevPortal"))
+		log.Printf("[DevPortalHandler] Failed to activate DevPortal %s for organization %s: %v", devPortalID, orgID, err)
+		// Use centralized error handling
+		status, errorResp := utils.GetErrorResponse(err)
+		c.JSON(status, errorResp)
 		return
 	}
 
 	log.Printf("[DevPortalHandler] Activated DevPortal %s", devPortalID)
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, dto.CommonResponse{
+		Success:   true,
+		Message:   "DevPortal activated successfully",
+		Timestamp: time.Now(),
+	})
 }
 
 // DeactivateDevPortal handles POST /api/v1/devportals/:devportalId/deactivate
@@ -368,28 +293,24 @@ func (h *DevPortalHandler) DeactivateDevPortal(c *gin.Context) {
 		return
 	}
 
-	// Deactivate DevPortal
-	response, err := h.devPortalService.DisableDevPortal(devPortalID, orgID)
-	if err != nil {
-		if errors.Is(err, constants.ErrDevPortalNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"DevPortal not found"))
-			return
-		}
-		if errors.Is(err, constants.ErrDevPortalCannotDeactivateDefault) {
-			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-				"Cannot deactivate default DevPortal"))
-			return
-		}
+	log.Printf("[DevPortalHandler] Attempting to deactivate DevPortal %s for organization %s", devPortalID, orgID)
 
-		log.Printf("[DevPortalHandler] Failed to deactivate DevPortal %s: %v", devPortalID, err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to deactivate DevPortal"))
+	// Deactivate DevPortal
+	err := h.devPortalService.DisableDevPortal(devPortalID, orgID)
+	if err != nil {
+		log.Printf("[DevPortalHandler] Failed to deactivate DevPortal %s for organization %s: %v", devPortalID, orgID, err)
+		// Use centralized error handling
+		status, errorResp := utils.GetErrorResponse(err)
+		c.JSON(status, errorResp)
 		return
 	}
 
 	log.Printf("[DevPortalHandler] Deactivated DevPortal %s", devPortalID)
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, dto.CommonResponse{
+		Success:   true,
+		Message:   "DevPortal deactivated successfully",
+		Timestamp: time.Now(),
+	})
 }
 
 // SetAsDefault handles POST /api/v1/devportals/:devportalId/set-default
@@ -410,17 +331,14 @@ func (h *DevPortalHandler) SetAsDefault(c *gin.Context) {
 		return
 	}
 
+	log.Printf("[DevPortalHandler] Attempting to set DevPortal %s as default for organization %s", devPortalID, orgID)
+
 	// Set as default
 	if err := h.devPortalService.SetAsDefault(devPortalID, orgID); err != nil {
-		if errors.Is(err, constants.ErrDevPortalNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"DevPortal not found"))
-			return
-		}
-
-		log.Printf("[DevPortalHandler] Failed to set DevPortal %s as default: %v", devPortalID, err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to set DevPortal as default"))
+		log.Printf("[DevPortalHandler] Failed to set DevPortal %s as default for organization %s: %v", devPortalID, orgID, err)
+		// Use centralized error handling
+		status, errorResp := utils.GetErrorResponse(err)
+		c.JSON(status, errorResp)
 		return
 	}
 
@@ -444,15 +362,9 @@ func (h *DevPortalHandler) GetDefaultDevPortal(c *gin.Context) {
 	// Get default DevPortal
 	response, err := h.devPortalService.GetDefaultDevPortal(orgID)
 	if err != nil {
-		if errors.Is(err, constants.ErrDevPortalNotFound) {
-			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"No default DevPortal found for organization"))
-			return
-		}
-
-		log.Printf("[DevPortalHandler] Failed to get default DevPortal for organization %s: %v", orgID, err)
-		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to get default DevPortal"))
+		// Use centralized error handling
+		status, errorResp := utils.GetErrorResponse(err)
+		c.JSON(status, errorResp)
 		return
 	}
 
