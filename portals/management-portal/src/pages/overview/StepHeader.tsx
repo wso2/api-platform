@@ -95,15 +95,15 @@ function CreatedGatewaySummary({
   // What we SHOW (placeholder kept as <Token>)
   const cmdTextDisplayMd =
     "```bash\n" +
-    "curl -sLO https://github.com/wso2/api-platform/releases/download/v0.1.0-m3/gateway.zip && \\\n" +
-    "unzip gateway.zip && \\\n" +
+    "curl -sLO https://github.com/wso2/api-platform/releases/download/gateway-v0.0.1/gateway-v0.0.1.zip && \\\n" +
+    "unzip gateway-v0.0.1.zip && \\\n" +
     "GATEWAY_CONTROLPLANE_TOKEN=<Token> docker compose --project-directory gateway up\n" +
     "```";
 
   // What we COPY (append real token right after <Token>)
   const cmdTextCopy =
-    `curl -sLO https://github.com/wso2/api-platform/releases/download/v0.1.0-m3/gateway.zip && \\\n` +
-    `unzip gateway.zip && \\\n` +
+    `curl -sLO https://github.com/wso2/api-platform/releases/download/gateway-v0.0.1/gateway-v0.0.1.zip && \\\n` +
+    `unzip gateway-v0.0.1.zip && \\\n` +
     `GATEWAY_CONTROLPLANE_TOKEN=${
       token ?? ""
     } docker compose --project-directory gateway up`;

@@ -173,8 +173,8 @@ const GatewayList: React.FC<Props> = ({
 
           const isActive = status?.isActive === true;
           const cmdTextCopy =
-            `curl -sLO https://github.com/wso2/api-platform/releases/download/v0.1.0-m3/gateway.zip && \\\n` +
-            `unzip gateway.zip && \\\n` +
+            `curl -sLO https://github.com/wso2/api-platform/releases/download/gateway-v0.0.1/gateway-v0.0.1.zip && \\\n` +
+            `unzip gateway-v0.0.1.zip && \\\n` +
             `GATEWAY_CONTROLPLANE_TOKEN=${latestToken ?? ""} ` +
             `docker compose --project-directory gateway up`;
           const cmd = hasToken

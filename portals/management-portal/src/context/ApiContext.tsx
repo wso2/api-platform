@@ -31,6 +31,8 @@ type ApiContextValue = {
   selectApi: (api: ApiSummary | null, options?: { slug?: string }) => void;
   /** Gateways bound to an API id */
   fetchGatewaysForApi: (apiId: string) => Promise<ApiGatewaySummary[]>;
+  /** Associate gateways with an API */
+  addGatewaysToApi: (apiId: string, gatewayIds: string[]) => Promise<ApiGatewaySummary[]>;
   importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<ApiSummary>;
 };
 
@@ -48,6 +50,7 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
     deleteApi: deleteApiRequest,
     fetchApiGateways,
     importOpenApi,
+    addGatewaysToApi: addGatewaysToApiRequest,
   } = useApisApi();
   const { selectedProject } = useProjects();
 
@@ -268,6 +271,27 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
     [fetchApiGateways]
   );
 
+  /** Associate gateways with an API and update cache */
+  const addGatewaysToApi = useCallback(
+    async (apiId: string, gatewayIds: string[]) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const list = await addGatewaysToApiRequest(apiId, gatewayIds);
+        setGatewaysByApi((prev) => ({ ...prev, [apiId]: list }));
+        return list;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to add gateways to API";
+        setError(message);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [addGatewaysToApiRequest]
+  );
+
   useEffect(() => {
     if (!currentProjectId) return;
     if (lastFetchedProjectRef.current === currentProjectId) return;
@@ -290,6 +314,7 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
       deleteApi,
       selectApi,
       fetchGatewaysForApi,
+      addGatewaysToApi,
       importOpenApi,
     }),
     [
@@ -304,6 +329,7 @@ export const ApiProvider = ({ children }: ApiProviderProps) => {
       deleteApi,
       selectApi,
       fetchGatewaysForApi,
+      addGatewaysToApi,
       importOpenApi,
     ]
   );

@@ -32,6 +32,7 @@ import { SearchBar } from "../components/src/components/SearchBar";
 import EndPointCreationFlow from "./apis/CreationFlows/EndPointCreationFlow";
 import APIContractCreationFlow from "./apis/CreationFlows/APIContractCreationFlow";
 import ConfirmationDialog from "../common/ConfirmationDialog";
+import CardsPageLayout from "../common/CardsPageLayout";
 
 /* ---------------- helpers ---------------- */
 
@@ -420,50 +421,32 @@ const ApiListContent: React.FC = () => {
           ) : isFirstTimeEmpty ? (
             <ApiEmptyState onAction={handleEmptyStateAction} />
           ) : (
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, 350px)',
-                gap: 2,
-                justifyContent: 'center',
-                alignItems: 'stretch',
-              }}
+            <CardsPageLayout
+              showToolbar={showToolbar}
+              topLeft={<Typography variant="h3">APIs</Typography>}
+              topRight={
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <SearchBar
+                    testId="api-search"
+                    placeholder="Search APIs"
+                    inputValue={query}
+                    onChange={setQuery}
+                    iconPlacement="left"
+                    bordered
+                    size="medium"
+                    color="secondary"
+                  />
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    sx={{ textTransform: 'none' }}
+                    onClick={() => setTemplatesOpen(true)}
+                  >
+                    Create
+                  </Button>
+                </Stack>
+              }
             >
-              {showToolbar && (
-                <Box
-                  sx={{
-                    gridColumn: '1 / -1',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 2,
-                    mb: 0,
-                  }}
-                >
-                  <Typography variant="h3">APIs</Typography>
-
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <SearchBar
-                      testId="api-search"
-                      placeholder="Search APIs"
-                      inputValue={query}
-                      onChange={setQuery}
-                      iconPlacement="left"
-                      bordered
-                      size="medium"
-                      color="secondary"
-                    />
-                    <Button
-                      variant="contained"
-                      startIcon={<AddIcon />}
-                      sx={{ textTransform: 'none' }}
-                      onClick={() => setTemplatesOpen(true)}
-                    >
-                      Create
-                    </Button>
-                  </Stack>
-                </Box>
-              )}
               {filteredApis.map((apiSummary) => {
                 const card = toCardData(apiSummary);
                 return (
@@ -476,7 +459,7 @@ const ApiListContent: React.FC = () => {
                   </Box>
                 );
               })}
-            </Box>
+            </CardsPageLayout>
           )}
         </>
       )}

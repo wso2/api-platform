@@ -93,6 +93,13 @@ export type ApiGatewaySummary = {
   isActive?: boolean;
   createdAt?: string;
   updatedAt?: string;
+  associatedAt?: string;
+  isDeployed?: boolean;
+  deployment?: {
+    revisionId: string;
+    status: string;
+    deployedAt: string;
+  };
 };
 
 type ApiGatewayListResponse = {
@@ -361,6 +368,43 @@ export const useApisApi = () => {
     []
   );
 
+  /** Associate gateways with an API */
+  const addGatewaysToApi = useCallback(
+    async (apiId: string, gatewayIds: string[]): Promise<ApiGatewaySummary[]> => {
+      const { token, baseUrl } = getApiConfig();
+
+      const payload = gatewayIds.map((gatewayId) => ({ gatewayId }));
+
+      const response = await fetch(
+        `${baseUrl}/api/v1/apis/${encodeURIComponent(apiId)}/gateways`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(
+          `Failed to add gateways to API: ${response.status} ${response.statusText} ${errorBody}`
+        );
+      }
+
+      const data =
+        (await response.json()) as ApiGatewayListResponse | ApiGatewaySummary[];
+
+      if (Array.isArray(data)) return data;
+      if (data?.list && Array.isArray(data.list)) return data.list;
+
+      return [];
+    },
+    []
+  );
+
   return {
     createApi,
     fetchProjectApis,
@@ -368,5 +412,6 @@ export const useApisApi = () => {
     deleteApi,
     fetchApiGateways,
     importOpenApi,
+    addGatewaysToApi,
   };
 };
