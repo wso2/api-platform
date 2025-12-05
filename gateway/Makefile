@@ -29,7 +29,7 @@ DOCKER_REGISTRY ?= ghcr.io/renuka-fernando/api-platform
 # Image names
 CONTROLLER_IMAGE := $(DOCKER_REGISTRY)/gateway-controller
 POLICY_ENGINE_IMAGE := $(DOCKER_REGISTRY)/policy-engine
-POLICY_BUILDER_IMAGE := $(DOCKER_REGISTRY)/gateway-builder
+GATEWAY_BUILDER_IMAGE := $(DOCKER_REGISTRY)/gateway-builder
 ROUTER_IMAGE := $(DOCKER_REGISTRY)/gateway-router
 
 .DEFAULT_GOAL := help
@@ -41,12 +41,14 @@ help: ## Show this help message
 	@echo 'Build Targets:'
 	@echo '  make build                                      - Build all gateway component Docker images'
 	@echo '  make build-controller                           - Build gateway-controller Docker image'
+	@echo '  make build-gateway-builder                      - Build gateway-builder Docker image'
 	@echo '  make build-policy-engine                        - Build policy-engine Docker images'
 	@echo '  make build-router                               - Build router Docker image'
 	@echo ''
 	@echo 'Multi-arch Build and Push Targets:'
 	@echo '  make build-and-push-multiarch                   - Build and push all gateway components for multiple architectures'
 	@echo '  make build-and-push-multiarch-controller        - Build and push controller for multiple architectures'
+	@echo '  make build-and-push-multiarch-gateway-builder   - Build and push gateway-builder for multiple architectures'
 	@echo '  make build-and-push-multiarch-policy-engine     - Build and push policy-engine for multiple architectures'
 	@echo '  make build-and-push-multiarch-router            - Build and push router for multiple architectures'
 	@echo ''
@@ -60,12 +62,17 @@ help: ## Show this help message
 
 # Build Targets
 .PHONY: build
-build: build-controller build-policy-engine build-router ## Build all gateway components
+build: build-controller build-gateway-builder build-policy-engine build-router ## Build all gateway components
 
 .PHONY: build-controller
 build-controller: ## Build gateway-controller Docker image
 	@echo "Building controller Docker image ($(VERSION))..."
 	$(MAKE) -C gateway-controller build VERSION=$(VERSION)
+
+.PHONY: build-gateway-builder
+build-gateway-builder: ## Build gateway-builder Docker image
+	@echo "Building gateway-builder Docker image ($(VERSION))..."
+	$(MAKE) -C gateway-builder build VERSION=$(VERSION)
 
 .PHONY: build-policy-engine
 build-policy-engine: ## Build policy-engine Docker images
@@ -79,12 +86,17 @@ build-router: ## Build router Docker image
 
 # Multi-arch Build and Push Targets
 .PHONY: build-and-push-multiarch
-build-and-push-multiarch: build-and-push-multiarch-controller build-and-push-multiarch-policy-engine build-and-push-multiarch-router ## Build and push all gateway components for multiple architectures
+build-and-push-multiarch: build-and-push-multiarch-controller build-and-push-multiarch-gateway-builder build-and-push-multiarch-policy-engine build-and-push-multiarch-router ## Build and push all gateway components for multiple architectures
 
 .PHONY: build-and-push-multiarch-controller
 build-and-push-multiarch-controller: ## Build and push gateway-controller Docker image for multiple architectures
 	@echo "Building and pushing multi-arch controller Docker image ($(VERSION))..."
 	$(MAKE) -C gateway-controller build-and-push-multiarch VERSION=$(VERSION)
+
+.PHONY: build-and-push-multiarch-gateway-builder
+build-and-push-multiarch-gateway-builder: ## Build and push gateway-builder Docker image for multiple architectures
+	@echo "Building and pushing multi-arch gateway-builder Docker image ($(VERSION))..."
+	$(MAKE) -C gateway-builder build-and-push-multiarch VERSION=$(VERSION)
 
 .PHONY: build-and-push-multiarch-policy-engine
 build-and-push-multiarch-policy-engine: ## Build and push policy-engine Docker images for multiple architectures
@@ -112,5 +124,6 @@ test-policy-engine: ## Test policy-engine
 .PHONY: clean
 clean: ## Clean all build artifacts
 	$(MAKE) -C gateway-controller clean
+	$(MAKE) -C gateway-builder clean
 	$(MAKE) -C policy-engine clean
 	$(MAKE) -C router clean

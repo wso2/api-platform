@@ -23,8 +23,8 @@ COPY policy-engine/ /workspace/policy-engine/
 # Copy SDK components
 COPY sdk/ /workspace/sdk/
 
-# Copy Policy Builder application
-COPY policy-builder/ /workspace/policy-builder/
+# Copy Gateway Builder application
+COPY gateway-builder/ /workspace/gateway-builder/
 
 # Pre-download Go dependencies for runtime
 WORKDIR /workspace/policy-engine
@@ -34,17 +34,17 @@ RUN go mod download
 WORKDIR /workspace/sdk
 RUN go mod download
 
-# Pre-download Go dependencies for policy-builder
-WORKDIR /workspace/policy-builder
+# Pre-download Go dependencies for gateway-builder
+WORKDIR /workspace/gateway-builder
 RUN go mod download
 
-# Build the Policy Builder binary (CGO disabled for static binary)
+# Build the Gateway Builder binary (CGO disabled for static binary)
 RUN CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=${BUILDARCH} \
     go build \
     -a -installsuffix cgo \
-    -o /usr/local/bin/policy-engine-builder \
+    -o /usr/local/bin/gateway-builder \
     ./cmd/builder
 
 # Stage 2: Policy Compilation - Run builder to compile policies
@@ -68,8 +68,8 @@ RUN mkdir -p /workspace/output
 # Set working directory
 WORKDIR /workspace
 
-# Run the policy builder with manifest (VERSION and GIT_COMMIT are available as env vars)
-RUN /usr/local/bin/policy-engine-builder
+# Run the gateway builder with manifest (VERSION and GIT_COMMIT are available as env vars)
+RUN /usr/local/bin/gateway-builder
 
 # Stage 3: Runtime - Minimal image with compiled binary
 FROM alpine:3.22.2

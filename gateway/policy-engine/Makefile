@@ -19,7 +19,7 @@ RUNTIME_TAG := $(RUNTIME_IMAGE):$(RUNTIME_VERSION)
 RUNTIME_DIR := policy-engine
 CMD_DIR := $(RUNTIME_DIR)/cmd/policy-engine
 INTERNAL_DIR := $(RUNTIME_DIR)/internal
-BUILDER_DIR := policy-builder
+BUILDER_DIR := ../gateway-builder
 POLICIES_DIR := policies
 CONFIGS_DIR := configs
 OUTPUT_DIR := output
@@ -86,12 +86,12 @@ build: build-builder build-runtime
 ## build-builder: Build the Gateway Builder Docker image
 build-builder:
 	@echo "Building Gateway Builder image: $(BUILDER_TAG)"
-	docker build -f Dockerfile.builder \
+	docker build -f $(BUILDER_DIR)/Dockerfile \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(BUILDER_TAG) \
 		-t $(BUILDER_IMAGE):latest \
-		.
+		..
 	@echo "Builder image built successfully: $(BUILDER_TAG)"
 
 ## run-builder: Run the Builder to compile policies
@@ -136,14 +136,14 @@ build-and-push-multiarch: build-and-push-multiarch-builder build-and-push-multia
 ## build-and-push-multiarch-builder: Build and push the Gateway Builder Docker image for multiple architectures
 build-and-push-multiarch-builder:
 	@echo "Building and pushing multi-arch Gateway Builder image: $(BUILDER_TAG)"
-	docker buildx build -f Dockerfile.builder \
+	docker buildx build -f $(BUILDER_DIR)/Dockerfile \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(BUILDER_TAG) \
 		-t $(BUILDER_IMAGE):latest \
 		--push \
-		.
+		..
 	@echo "Multi-arch builder image built and pushed: $(BUILDER_TAG)"
 
 ## build-and-push-multiarch-runtime: Build and push the Policy Engine Runtime Docker image for multiple architectures

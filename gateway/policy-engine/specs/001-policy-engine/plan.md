@@ -202,7 +202,7 @@ templates/
 └── Dockerfile.policy-engine.tmpl      # Runtime image template
 
 # Docker Images
-Dockerfile.builder               # Builder image with:
+gateway-builder/Dockerfile               # Builder image with:
                                  #   - Go 1.23+ toolchain
                                  #   - Policy Engine framework source (src/)
                                  #   - Builder Go application (build/)
@@ -245,7 +245,7 @@ docker-compose.yml              # Local development setup
 
 **Critical Separation**: The runtime and sample policies are architecturally separate. The runtime is a policy-agnostic framework. Sample policies demonstrate the framework but are not required. Users can build a binary with zero policies, only sample policies, only their custom policies, or any combination via the Builder.
 
-**Builder Image Architecture**: The `Dockerfile.builder` creates a complete build environment containing:
+**Builder Image Architecture**: The `gateway-builder/Dockerfile` creates a complete build environment containing:
 - Go 1.23+ toolchain
 - **Policy Engine framework source code** (`src/` directory)
 - **Builder Go application** (`build/` - discovery, validation, generation, compilation, packaging modules)
