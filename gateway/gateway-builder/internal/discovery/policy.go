@@ -8,7 +8,7 @@ import (
 
 	"github.com/policy-engine/gateway-builder/pkg/fsutil"
 	"github.com/policy-engine/gateway-builder/pkg/types"
-	policy "github.com/wso2/api-platform/sdk/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	"gopkg.in/yaml.v3"
 )
 

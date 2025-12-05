@@ -5,7 +5,7 @@ import (
 
 	"github.com/policy-engine/policy-engine/internal/kernel"
 	"github.com/policy-engine/policy-engine/internal/registry"
-	policy "github.com/wso2/api-platform/sdk/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
 // DumpConfig dumps the current policy engine configuration

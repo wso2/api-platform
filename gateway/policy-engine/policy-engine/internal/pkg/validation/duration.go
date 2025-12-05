@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	policy "github.com/wso2/api-platform/sdk/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
 // validateDuration validates duration parameters (e.g., "30s", "5m", "1h")

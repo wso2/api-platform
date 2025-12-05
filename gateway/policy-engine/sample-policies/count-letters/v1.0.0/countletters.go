@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	policy "github.com/wso2/api-platform/sdk/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
 // CountLettersPolicy counts occurrences of specified letters in the response body
