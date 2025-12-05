@@ -17,13 +17,13 @@ RUN apk add --no-cache \
 WORKDIR /workspace
 
 # Copy Policy Engine framework source code (policy-engine/)
-COPY --from=policy-engine . /workspace/policy-engine/
+COPY --from=policy-engine . /workspace/
 
 # Copy Gateway Builder application (includes templates)
 COPY . /workspace/gateway-builder/
 
 # Pre-download Go dependencies for runtime
-WORKDIR /workspace/policy-engine/policy-engine
+WORKDIR /workspace
 RUN go mod download
 
 # Copy SDK (needed for go.mod replace directive)
@@ -63,7 +63,7 @@ RUN apk add --no-cache \
 COPY --from=builder-base /usr/local/bin/gateway-builder /usr/local/bin/gateway-builder
 
 # Copy framework source code needed at runtime
-COPY --from=builder-base /workspace/policy-engine/policy-engine /workspace/policy-engine
+COPY --from=builder-base /workspace /workspace
 COPY --from=builder-base /workspace/sdk /workspace/sdk
 COPY --from=builder-base /workspace/gateway-builder /workspace/gateway-builder
 
@@ -73,7 +73,7 @@ WORKDIR /workspace
 # Set environment variables for default paths
 ENV POLICIES_DIR=/policies
 ENV OUTPUT_DIR=/output
-ENV RUNTIME_DIR=/workspace/policy-engine
+ENV RUNTIME_DIR=/workspace
 
 # Set entrypoint to builder binary
 ENTRYPOINT ["/usr/local/bin/gateway-builder"]

@@ -16,11 +16,11 @@ BUILDER_TAG := $(BUILDER_IMAGE):$(BUILDER_VERSION)
 RUNTIME_TAG := $(RUNTIME_IMAGE):$(RUNTIME_VERSION)
 
 # Directories
-RUNTIME_DIR := policy-engine
-CMD_DIR := $(RUNTIME_DIR)/cmd/policy-engine
-INTERNAL_DIR := $(RUNTIME_DIR)/internal
+RUNTIME_DIR := .
+CMD_DIR := cmd/policy-engine
+INTERNAL_DIR := internal
 BUILDER_DIR := ../gateway-builder
-POLICIES_DIR := policies
+POLICIES_DIR := sample-policies
 CONFIGS_DIR := configs
 OUTPUT_DIR := output
 
@@ -88,7 +88,7 @@ build-builder:
 	@echo "Building Gateway Builder image: $(BUILDER_TAG)"
 	docker buildx build -f $(BUILDER_DIR)/Dockerfile \
 		--build-context sdk=../../sdk \
-		--build-context policy-engine=../policy-engine \
+		--build-context policy-engine=. \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(BUILDER_TAG) \
@@ -145,7 +145,7 @@ build-and-push-multiarch-builder:
 	@echo "Building and pushing multi-arch Gateway Builder image: $(BUILDER_TAG)"
 	docker buildx build -f $(BUILDER_DIR)/Dockerfile \
 		--build-context sdk=../../sdk \
-		--build-context policy-engine=../policy-engine \
+		--build-context policy-engine=. \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
@@ -190,13 +190,13 @@ stop-runtime:
 ## test: Run tests
 test:
 	@echo "Running tests..."
-	cd $(RUNTIME_DIR) && $(GOTEST) -v ./...
+	$(GOTEST) -v ./...
 	@echo "Tests completed"
 
 ## clean: Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
-	cd $(RUNTIME_DIR) && $(GOCLEAN)
+	$(GOCLEAN)
 	rm -f $(BINARY_NAME)
 	rm -rf $(OUTPUT_DIR)
 	@echo "Clean completed"
@@ -223,8 +223,8 @@ full-build: build-builder run-builder build-runtime
 ## tidy: Run go mod tidy
 tidy:
 	@echo "Running go mod tidy..."
-	cd $(RUNTIME_DIR) && $(GOMOD) tidy
-	cd sdk && $(GOMOD) tidy
+	$(GOMOD) tidy
+	cd ../../sdk && $(GOMOD) tidy
 	cd $(BUILDER_DIR) && $(GOMOD) tidy
 	@echo "go mod tidy completed for all modules"
 
@@ -232,7 +232,7 @@ tidy:
 lint:
 	@echo "Running linter..."
 	@if command -v golangci-lint >/dev/null 2>&1; then \
-		cd $(RUNTIME_DIR) && golangci-lint run ./...; \
+		golangci-lint run ./...; \
 		echo "Linting completed"; \
 	else \
 		echo "⚠️  golangci-lint not installed. Install with:"; \
@@ -270,7 +270,7 @@ check-deps:
 ## build-sample-setheader: Build SetHeader sample policy
 build-sample-setheader:
 	@echo "Building SetHeader sample policy..."
-	cd policies/set-header/v1.0.0 && $(GOMOD) tidy
+	cd sample-policies/set-header/v1.0.0 && $(GOMOD) tidy
 	@echo "SetHeader policy ready"
 
 # Testing targets
