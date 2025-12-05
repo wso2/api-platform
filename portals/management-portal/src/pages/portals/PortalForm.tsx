@@ -48,6 +48,8 @@ const PortalForm: React.FC<PortalFormProps> = ({
     ...initialData,
   }));
 
+  const [identifierTouched, setIdentifierTouched] = useState(false);
+
   const [submitStatus, setSubmitStatus] = useState<
     'idle' | 'pending' | 'success' | 'error'
   >('idle');
@@ -65,15 +67,20 @@ const PortalForm: React.FC<PortalFormProps> = ({
       setFormData((prev) => ({
         ...prev,
         [field]: value,
-        // Auto-generate identifier from name only in add mode
-        ...(field === 'name' && typeof value === 'string' && !isEdit
+        // Auto-generate identifier from name only in add mode and if identifier hasn't been manually touched
+        ...(field === 'name' && typeof value === 'string' && !isEdit && !identifierTouched
           ? {
               identifier: slugify(value),
             }
           : {}),
       }));
+
+      // Track if identifier has been manually edited
+      if (field === 'identifier') {
+        setIdentifierTouched(true);
+      }
     },
-    [isEdit]
+    [isEdit, identifierTouched]
   );
 
   const resetForm = useCallback(() => {
@@ -91,7 +98,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
       }
     };
     const trimmedUrl = formData.apiUrl.trim();
-    const apiUrlValid = trimmedUrl && isValidUrl(trimmedUrl) && !trimmedUrl.endsWith('/');
+    const apiUrlValid = !!(trimmedUrl && isValidUrl(trimmedUrl) && !trimmedUrl.endsWith('/'));
     return !!(
       formData.name.trim() &&
       apiUrlValid &&
@@ -111,11 +118,15 @@ const PortalForm: React.FC<PortalFormProps> = ({
     }
 
     try {
-      let payload: UpdatePortalPayload = { ...formData };
-      if (isEdit && payload.apiKey === PORTAL_CONSTANTS.API_KEY_MASK) {
-        delete payload.apiKey;
+      if (isEdit) {
+        const payload: UpdatePortalPayload = { ...formData };
+        if (payload.apiKey === PORTAL_CONSTANTS.API_KEY_MASK) {
+          delete payload.apiKey;
+        }
+        await onSubmit(payload);
+      } else {
+        await onSubmit(formData);
       }
-      await onSubmit(payload);
 
       if (!isSubmitting) {
         setSubmitStatus('success');
@@ -134,6 +145,8 @@ const PortalForm: React.FC<PortalFormProps> = ({
       const errorMessage =
         error instanceof Error
           ? error.message
+          : isEdit
+          ? 'Failed to update Developer Portal.'
           : 'Failed to create Developer Portal.';
       showNotification(errorMessage, 'error');
     }
@@ -271,7 +284,9 @@ const PortalForm: React.FC<PortalFormProps> = ({
               </Typography>
               <SimpleSelect
                 value={formData.visibility}
-                onChange={(event) => updateField('visibility', event.target.value as 'public' | 'private')}
+                onChange={(event) =>
+                  updateField('visibility', event.target.value as CreatePortalPayload['visibility'])
+                }
                 disabled={effectiveSubmitting}
                 testId="visibility-select"
                 size="medium"

@@ -178,9 +178,12 @@ const DevPortalDeployCard: React.FC<Props> = ({
                     sx={{ ml: 0.5 }}
                     onClick={(e: React.MouseEvent) => {
                       e.stopPropagation();
-                      window.open(portalUrl, '_blank', 'noopener,noreferrer');
+                      if (portalUrl) {
+                        window.open(portalUrl, '_blank', 'noopener,noreferrer');
+                      }
                     }}
                     aria-label={PORTAL_CONSTANTS.ARIA_LABELS.OPEN_PORTAL_URL}
+                    disabled={!portalUrl}
                   >
                     <LaunchOutlinedIcon fontSize="inherit" />
                   </IconButton>
@@ -207,16 +210,22 @@ const DevPortalDeployCard: React.FC<Props> = ({
                     ? t.palette.mode === 'dark'
                       ? 'rgba(16,185,129,0.12)'
                       : '#E8F7EC'
-                    : t.palette.mode === 'dark'
-                      ? 'rgba(239,68,68,0.12)'
-                      : '#FDECEC',
+                    : status === 'PENDING'
+                      ? t.palette.mode === 'dark'
+                        ? 'rgba(59,130,246,0.12)'
+                        : '#EFF6FF'
+                      : t.palette.mode === 'dark'
+                        ? 'rgba(251,191,36,0.12)'
+                        : '#FFFBEB',
               border: (t) =>
                 `1px solid ${
                   status === 'FAILED'
                     ? t.palette.error.light
                     : success
                       ? '#D8EEDC'
-                      : t.palette.error.light
+                      : status === 'PENDING'
+                        ? t.palette.info.light
+                        : t.palette.warning.light
                 }`,
               borderRadius: 2,
               px: 2,
@@ -235,7 +244,9 @@ const DevPortalDeployCard: React.FC<Props> = ({
                   ? 'error'
                   : success
                     ? 'success'
-                    : 'error'
+                    : status === 'PENDING'
+                      ? 'info'
+                      : 'warning'
               }
               variant={success ? 'filled' : 'outlined'}
               size="small"
