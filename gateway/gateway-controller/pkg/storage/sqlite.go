@@ -27,6 +27,7 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"go.uber.org/zap"
 )
@@ -607,7 +608,7 @@ func (s *SQLiteStorage) SaveMCPConfig(cfg *models.StoredAPIConfig) error {
 	}
 	sourceConfigJSON, err := json.Marshal(cfg.SourceConfiguration)
 	if err != nil {
-		return fmt.Errorf("failed to marshal MCP configuration: %w", err)
+		return fmt.Errorf("failed to marshal MCP source configuration: %w", err)
 	}
 
 	name := cfg.GetAPIName()
@@ -674,7 +675,7 @@ func (s *SQLiteStorage) UpdateMCPConfig(cfg *models.StoredAPIConfig) error {
 	}
 	sourceConfigJSON, err := json.Marshal(cfg.SourceConfiguration)
 	if err != nil {
-		return fmt.Errorf("failed to marshal MCP configuration: %w", err)
+		return fmt.Errorf("failed to marshal MCP source configuration: %w", err)
 	}
 
 	name := cfg.GetAPIName()
@@ -804,9 +805,11 @@ func (s *SQLiteStorage) GetMCPConfig(id string) (*models.StoredAPIConfig, error)
 	if err := json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal MCP configuration: %w", err)
 	}
-	if err := json.Unmarshal([]byte(sourceConfigJSON), &cfg.SourceConfiguration); err != nil {
+	var srcConfig api.MCPProxyConfiguration
+	if err := json.Unmarshal([]byte(sourceConfigJSON), &srcConfig); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal MCP source configuration: %w", err)
 	}
+	cfg.SourceConfiguration = srcConfig
 
 	return &cfg, nil
 }
@@ -851,9 +854,11 @@ func (s *SQLiteStorage) GetMCPConfigByNameVersion(name, version string) (*models
 		return nil, fmt.Errorf("failed to unmarshal MCP configuration: %w", err)
 	}
 
-	if err = json.Unmarshal([]byte(sourceConfigJSON), &cfg.SourceConfiguration); err != nil {
+	var srcConfig api.MCPProxyConfiguration
+	if err = json.Unmarshal([]byte(sourceConfigJSON), &srcConfig); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal MCP source configuration: %w", err)
 	}
+	cfg.SourceConfiguration = srcConfig
 
 	return &cfg, nil
 }
@@ -905,9 +910,11 @@ func (s *SQLiteStorage) GetAllMCPConfigs() ([]*models.StoredAPIConfig, error) {
 			return nil, fmt.Errorf("failed to unmarshal MCP configuration: %w", err)
 		}
 
-		if err := json.Unmarshal([]byte(sourceConfigJSON), &cfg.SourceConfiguration); err != nil {
+		var srcConfig api.MCPProxyConfiguration
+		if err := json.Unmarshal([]byte(sourceConfigJSON), &srcConfig); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal MCP source configuration: %w", err)
 		}
+		cfg.SourceConfiguration = srcConfig
 
 		configs = append(configs, &cfg)
 	}
