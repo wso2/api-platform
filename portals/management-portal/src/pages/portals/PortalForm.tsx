@@ -81,7 +81,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
   }, [initialData]);
 
   const isValid = useMemo(() => {
-    const apiKeyValid = isEdit && formData.apiKey === PORTAL_CONSTANTS.API_KEY_MASK ? true : formData.apiKey.trim();
+    const apiKeyValid = isEdit && formData.apiKey === PORTAL_CONSTANTS.API_KEY_MASK ? true : !!formData.apiKey.trim();
     const isValidUrl = (url: string) => {
       try {
         const parsed = new URL(url);
@@ -185,7 +185,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
                 value={formData.name}
                 onChange={(value) => updateField('name', value)}
                 disabled={effectiveSubmitting}
-                testId=""
+                testId="portal-name-input"
               />
             </FormControl>
           </Grid>
@@ -199,7 +199,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
                 value={formData.identifier}
                 onChange={(value) => updateField('identifier', value)}
                 disabled={isEdit || effectiveSubmitting}
-                testId=""
+                testId="portal-identifier-input"
               />
             </FormControl>
           </Grid>
@@ -214,7 +214,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
                 value={formData.apiUrl}
                 onChange={(value) => updateField('apiUrl', value)}
                 disabled={effectiveSubmitting}
-                testId=""
+                testId="portal-api-url-input"
               />
             </FormControl>
           </Grid>
@@ -228,7 +228,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
                 value={formData.hostname}
                 onChange={(value) => updateField('hostname', value)}
                 disabled={effectiveSubmitting}
-                testId=""
+                testId="portal-hostname-input"
               />
             </FormControl>
           </Grid>
@@ -244,7 +244,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
                 onChange={(value) => updateField('apiKey', value)}
                 disabled={effectiveSubmitting}
                 type="password"
-                testId=""
+                testId="portal-api-key-input"
               />
             </FormControl>
           </Grid>
@@ -258,7 +258,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
                 value={formData.headerKeyName}
                 onChange={(value) => updateField('headerKeyName', value)}
                 disabled={effectiveSubmitting}
-                testId=""
+                testId="portal-header-key-input"
               />
             </FormControl>
           </Grid>
@@ -292,7 +292,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
                 onChange={(value) => updateField('description', value)}
                 multiline
                 disabled={effectiveSubmitting}
-                testId=""
+                testId="portal-description-input"
               />
             </FormControl>
           </Grid>

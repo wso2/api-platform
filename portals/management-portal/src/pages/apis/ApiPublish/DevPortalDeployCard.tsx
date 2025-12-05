@@ -59,9 +59,12 @@ const DevPortalDeployCard: React.FC<Props> = ({
     } else if (publication?.status === 'failed') {
       status = 'FAILED';
       success = false;
+    } else if (publication?.status) {
+      status = 'UNKNOWN';
+      success = false;
     } else {
-      status = 'PUBLISHED'; // default to published if status is unknown
-      success = true;
+      status = 'PENDING';
+      success = false;
     }
   }
 
