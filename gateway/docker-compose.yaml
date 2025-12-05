@@ -46,7 +46,7 @@ services:
   policy-engine:
     build:
       context: ./policy-engine
-      dockerfile: Dockerfile.runtime
+      dockerfile: Dockerfile
     container_name: policy-engine
     image: ghcr.io/renuka-fernando/api-platform/policy-engine:0.0.1-SNAPSHOT
     command: ["-xds-server", "gateway-controller:18001"]
