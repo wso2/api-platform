@@ -700,7 +700,17 @@ func (s *APIServer) ListMCPProxies(c *gin.Context) {
 		id, _ := uuidToOpenAPIUUID(cfg.ID)
 		status := string(cfg.Status)
 		// Cast SourceConfiguration to MCPProxyConfiguration
-		mcp := cfg.SourceConfiguration.(api.MCPProxyConfiguration)
+		mcp, ok := cfg.SourceConfiguration.(api.MCPProxyConfiguration)
+		if !ok {
+			s.logger.Error("Failed to cast stored MCP configuration",
+				zap.String("id", cfg.ID),
+				zap.String("name", cfg.Configuration.Spec.Name))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to cast stored MCP configuration",
+			})
+			return
+		}
 		items[i] = api.MCPProxyListItem{
 			Id:        id,
 			Name:      stringPtr(mcp.Spec.Name),
@@ -713,9 +723,9 @@ func (s *APIServer) ListMCPProxies(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":     "success",
-		"count":      len(items),
-		"mcpProxies": items,
+		"status":      "success",
+		"count":       len(items),
+		"mcp_proxies": items,
 	})
 }
 
@@ -813,12 +823,12 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, name string, version string) 
 	// Check if config exists
 	existing, err := s.store.GetByNameVersion(name, version)
 	if err != nil {
-		log.Warn("API configuration not found",
+		log.Warn("MCP configuration not found",
 			zap.String("name", name),
 			zap.String("version", version))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("API configuration with name '%s' and version '%s' not found", name, version),
+			Message: fmt.Sprintf("MCP configuration with name '%s' and version '%s' not found", name, version),
 		})
 		return
 	}
@@ -925,6 +935,17 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, name string, version string) 
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("MCP proxy configuration with name '%s' and version '%s' not found", name, version),
+		})
+		return
+	}
+
+	if _, ok := cfg.SourceConfiguration.(api.MCPProxyConfiguration); !ok {
+		log.Warn("Configuration is not an MCP proxy",
+			zap.String("name", name),
+			zap.String("version", version))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Configuration with name '%s' and version '%s' is not an MCP proxy", name, version),
 		})
 		return
 	}

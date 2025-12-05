@@ -44,12 +44,6 @@ type MCPDeploymentParams struct {
 	Logger        *zap.Logger // Logger instance
 }
 
-// MCPDeploymentResult contains the result of MCP deployment
-type MCPDeploymentResult struct {
-	StoredConfig *models.StoredAPIConfig
-	IsUpdate     bool
-}
-
 // MCPDeploymentService provides utilities for MCP proxy configuration deployment
 type MCPDeploymentService struct {
 	store           *storage.ConfigStore
@@ -239,7 +233,7 @@ func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredAPIC
 
 	// Update database first (only if persistent mode)
 	if s.db != nil {
-		if err := s.db.UpdateConfig(existing); err != nil {
+		if err := s.db.UpdateMCPConfig(existing); err != nil {
 			return false, fmt.Errorf("failed to update config in database: %w", err)
 		}
 	}
