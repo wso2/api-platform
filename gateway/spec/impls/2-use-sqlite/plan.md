@@ -95,7 +95,7 @@ gateway/gateway-controller/
 │   │   ├── config.go            # Configuration loader (update storage config)
 │   │   └── validator.go         # Configuration validation (remove BBolt settings)
 │   ├── models/
-│   │   └── api_config.go        # Data structures (unchanged)
+│   │   └── stored_config.go        # Data structures (unchanged)
 │   ├── storage/
 │   │   ├── interface.go         # Storage abstraction (remove AuditLogger interface)
 │   │   ├── memory.go            # In-memory cache (unchanged)

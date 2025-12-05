@@ -1007,6 +1007,16 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, name string, version string) 
 		}
 	}()
 
+	// Remove derived policy configuration
+	if s.policyManager != nil {
+		policyID := cfg.ID + "-policies"
+		if err := s.policyManager.RemovePolicy(policyID); err != nil {
+			log.Warn("Failed to remove derived policy configuration", zap.Error(err), zap.String("policy_id", policyID))
+		} else {
+			log.Info("Derived policy configuration removed", zap.String("policy_id", policyID))
+		}
+	}
+
 	log.Info("MCP proxy configuration deleted",
 		zap.String("id", cfg.ID),
 		zap.String("name", cfg.Configuration.Spec.Name),
