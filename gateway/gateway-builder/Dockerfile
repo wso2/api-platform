@@ -1,5 +1,5 @@
 # Gateway Builder Image
-FROM --platform=$BUILDPLATFORM golang:1.25.5-alpine AS builder-base
+FROM --platform=$BUILDPLATFORM golang:1.25.5-alpine AS builder
 ARG TARGETARCH
 
 # Build arguments for version information
@@ -16,26 +16,24 @@ RUN apk add --no-cache \
 # Set working directory
 WORKDIR /workspace
 
-# Copy Policy Engine framework source code (policy-engine/)
-COPY --from=policy-engine . /workspace/
-
-# Copy Gateway Builder application (includes templates)
-COPY . /workspace/gateway-builder/
-
-# Pre-download Go dependencies for runtime
-WORKDIR /workspace
-RUN go mod download
-
 # Copy SDK (needed for go.mod replace directive)
-COPY --from=sdk . /workspace/sdk/
+COPY --from=sdk . /workspace/sdk
 
 # Pre-download Go dependencies for SDK
 WORKDIR /workspace/sdk
 RUN go mod download
 
+# Copy Gateway Builder application (includes templates)
+COPY . /workspace/gateway/gateway-builder
+
+# Pre-download Go dependencies for runtime
+WORKDIR /workspace/gateway/gateway-builder
+RUN go mod download
+
+
 # Pre-download Go dependencies for gateway-builder
-WORKDIR /workspace/gateway-builder
-RUN go mod download || true
+WORKDIR /workspace/gateway/gateway-builder
+RUN go mod download
 
 # Build the Gateway Builder binary with version information
 # Use explicit cross-compilation to avoid QEMU emulation issues
@@ -60,20 +58,13 @@ RUN apk add --no-cache \
     ca-certificates
 
 # Copy the compiled binary from builder stage
-COPY --from=builder-base /usr/local/bin/gateway-builder /usr/local/bin/gateway-builder
+COPY --from=builder /usr/local/bin/gateway-builder /usr/local/bin/gateway-builder
 
-# Copy framework source code needed at runtime
-COPY --from=builder-base /workspace /workspace
-COPY --from=builder-base /workspace/sdk /workspace/sdk
-COPY --from=builder-base /workspace/gateway-builder /workspace/gateway-builder
-
+# Copy Policy Engine framework source code
+COPY --from=policy-engine . /workspace/gateway/policy-engine
+COPY --from=sdk . /workspace/sdk
 # Set working directory
 WORKDIR /workspace
-
-# Set environment variables for default paths
-ENV POLICIES_DIR=/policies
-ENV OUTPUT_DIR=/output
-ENV RUNTIME_DIR=/workspace
 
 # Set entrypoint to builder binary
 ENTRYPOINT ["/usr/local/bin/gateway-builder"]

@@ -67,6 +67,7 @@ build:
 		--build-context sdk=../../sdk \
 		--build-context gateway-builder=../gateway-builder \
 		--build-context policy-engine=. \
+		--build-context policies=../sample-policies \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(RUNTIME_TAG) \

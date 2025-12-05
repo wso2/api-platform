@@ -18,9 +18,6 @@
 
 services:
   gateway-controller:
-    build:
-      context: .
-      dockerfile: gateway-controller/Dockerfile
     container_name: gateway-controller
     image: ghcr.io/renuka-fernando/api-platform/gateway-controller:0.0.1-SNAPSHOT
     ports:
@@ -44,9 +41,6 @@ services:
       - gateway-network
 
   policy-engine:
-    build:
-      context: ./policy-engine
-      dockerfile: Dockerfile
     container_name: policy-engine
     image: ghcr.io/renuka-fernando/api-platform/policy-engine:0.0.1-SNAPSHOT
     command: ["-xds-server", "gateway-controller:18001"]
@@ -58,9 +52,6 @@ services:
       - gateway-network
 
   router:
-    build:
-      context: ./router
-      dockerfile: Dockerfile
     container_name: router
     image: ghcr.io/renuka-fernando/api-platform/gateway-router:0.0.1-SNAPSHOT
     ports:
