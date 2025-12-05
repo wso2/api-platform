@@ -113,11 +113,11 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			zap.Int("num_errors", len(validationErrors)))
 
 		for _, e := range validationErrors {
+			fmt.Println(e.Message)
 			params.Logger.Warn("Validation error",
 				zap.String("field", e.Field),
 				zap.String("message", e.Message))
 		}
-
 		return nil, fmt.Errorf("configuration validation failed with %d errors", len(validationErrors))
 	}
 
@@ -211,7 +211,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 
 		// Check if topic operations failed and return error
 		if regErrs > 0 || deregErrs > 0 {
-			params.Logger.Error("Topic lifecycle operations failed, rolling back configuration",
+			params.Logger.Error("Topic lifecycle operations failed",
 				zap.Int("register_errors", int(regErrs)),
 				zap.Int("deregister_errors", int(deregErrs)))
 			return nil, fmt.Errorf("failed to complete topic operations: %d registration error(s), %d deregistration error(s)", regErrs, deregErrs)
@@ -259,7 +259,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 }
 
 func (s *APIDeploymentService) GetAllTopicsToRegisterAndUnregister(apiConfig models.StoredAPIConfig) ([]string, []string) {
-	topics := s.store.TopicManager.GetAll()
+	topics := s.store.TopicManager.GetAllByConfig(apiConfig.ID)
 	topicsToRegister := []string{}
 	topicsToUnregister := []string{}
 	apiTopicsPerRevision := make(map[string]bool)
@@ -281,16 +281,17 @@ func (s *APIDeploymentService) GetAllTopicsToRegisterAndUnregister(apiConfig mod
 		apiTopicsPerRevision[modifiedTopic] = true
 	}
 
-	for topic := range topics {
+	for _, topic := range topics {
 		if _, exists := apiTopicsPerRevision[topic]; !exists {
 			topicsToUnregister = append(topicsToUnregister, topic)
 		}
 	}
 
-	for topic := range apiTopicsPerRevision {
-		if _, exists := topics[topic]; !exists {
-			topicsToRegister = append(topicsToRegister, topic)
+	for topic, _ := range apiTopicsPerRevision {
+		if s.store.TopicManager.IsTopicExist(apiConfig.ID, topic) {
+			continue
 		}
+		topicsToRegister = append(topicsToRegister, topic)
 	}
 
 	return topicsToRegister, topicsToUnregister

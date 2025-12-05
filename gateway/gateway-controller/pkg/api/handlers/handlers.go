@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
@@ -367,6 +368,96 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 	existing.UpdatedAt = now
 	existing.DeployedAt = nil
 	existing.DeployedVersion = 0
+
+	if apiConfig.Kind == api.APIConfigurationKindAsyncwebsub {
+		if err != nil {
+			log.Error("Failed to convert to WebhookAPIData", zap.Error(err))
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to convert to WebhookAPIData",
+			})
+			return
+		}
+		topicsToRegister, topicsToUnregister := s.deploymentService.GetAllTopicsToRegisterAndUnregister(*existing)
+		// TODO: Pre configure the dynamic forward proxy rules for event gw
+		// This was communication bridge will be created on the gw startup
+		// Can perform internal communication with websub hub without relying on the dynamic rules
+		// Execute topic operations with wait group and errors tracking
+		var wg2 sync.WaitGroup
+		var regErrs int32
+		var deregErrs int32
+
+		var waitCount int
+		if len(topicsToRegister) > 0 {
+			waitCount++
+		}
+		if len(topicsToUnregister) > 0 {
+			waitCount++
+		}
+
+		wg2.Add(waitCount)
+
+		if len(topicsToRegister) > 0 {
+			go func(list []string) {
+				defer wg2.Done()
+				log.Info("Starting topic registration", zap.Int("total_topics", len(list)), zap.String("api_id", existing.ID))
+				//fmt.Println("Topics Registering Started")
+				for _, topic := range list {
+					if err := s.deploymentService.RegisterTopicWithHub(topic, "localhost", log); err != nil {
+						log.Error("Failed to register topic with WebSubHub",
+							zap.Error(err),
+							zap.String("topic", topic),
+							zap.String("api_id", existing.ID))
+						atomic.AddInt32(&regErrs, 1)
+					} else {
+						log.Info("Successfully registered topic with WebSubHub",
+							zap.String("topic", topic),
+							zap.String("api_id", existing.ID))
+					}
+				}
+
+			}(topicsToRegister)
+		}
+
+		if len(topicsToUnregister) > 0 {
+			go func(list []string) {
+				defer wg2.Done()
+				log.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", existing.ID))
+				for _, topic := range list {
+					if err := s.deploymentService.UnregisterTopicWithHub(topic, "localhost", log); err != nil {
+						log.Error("Failed to deregister topic from WebSubHub",
+							zap.Error(err),
+							zap.String("topic", topic),
+							zap.String("api_id", existing.ID))
+						atomic.AddInt32(&deregErrs, 1)
+					} else {
+						log.Info("Successfully deregistered topic from WebSubHub",
+							zap.String("topic", topic),
+							zap.String("api_id", existing.ID))
+					}
+				}
+			}(topicsToUnregister)
+		}
+
+		wg2.Wait()
+
+		log.Info("Topic lifecycle operations completed",
+			zap.String("api_id", existing.ID),
+			zap.Int("registered", len(topicsToRegister)),
+			zap.Int("deregistered", len(topicsToUnregister)),
+			zap.Int("register_errors", int(regErrs)),
+			zap.Int("deregister_errors", int(deregErrs)))
+
+		// Check if topic operations failed and return error
+		if regErrs > 0 || deregErrs > 0 {
+			log.Error("Failed to register & deregister topics", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Topic lifecycle operations failed",
+			})
+			return
+		}
+	}
 
 	// Atomic dual-write: database + in-memory
 	// Update database first (only if persistent mode)

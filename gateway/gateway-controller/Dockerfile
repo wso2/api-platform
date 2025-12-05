@@ -1,7 +1,7 @@
 # Stage 1: Build the Go application
 # Using Debian-based image for better cross-compilation support
 FROM --platform=$BUILDPLATFORM golang:1.25.5-bookworm AS builder
-ARG TARGETARCH
+ARG TARGETARCH=arm64
 
 # Build arguments for version information
 ARG VERSION=0.0.1-SNAPSHOT

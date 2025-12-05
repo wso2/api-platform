@@ -18,7 +18,7 @@
 
 version: api-platform.wso2.com/v1
 kind: async/websub
-data:
+spec:
   name: WebSub-API-New-API
   apiType: async/websub
   version: v1.0
@@ -27,5 +27,5 @@ data:
     - url: http://host.docker.internal:9098
       protocol: websub
   channels:
-    - path: /webhooks_events_receiver_resource/issues
-    - path: /webhooks_events_receiver_resource/pull_requests
+    - path: /pull-requests
+    - path: /issues

@@ -97,8 +97,8 @@ func (tm *TopicManager) Contains(configID, topic string) bool {
 	return tm.topics[configID][topic]
 }
 
-// GetAllForConfig returns all topics for a specific config ID
-func (tm *TopicManager) GetAllForConfig(configID string) []string {
+// GetAllByConfig returns all topics for a specific config ID
+func (tm *TopicManager) GetAllByConfig(configID string) []string {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 
@@ -111,6 +111,18 @@ func (tm *TopicManager) GetAllForConfig(configID string) []string {
 		topics = append(topics, topic)
 	}
 	return topics
+}
+
+func (tm *TopicManager) IsTopicExist(configID string, topic string) bool {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+
+	if _, exists := tm.topics[configID]; !exists {
+		return false
+	}
+
+	_, topicExists := tm.topics[configID][topic]
+	return topicExists
 }
 
 // GetAll returns all topics across all configs as a map[topic]bool
@@ -127,8 +139,8 @@ func (tm *TopicManager) GetAll() map[string]bool {
 	return allTopics
 }
 
-// GetAllByConfig returns the full nested map structure (for debugging/inspection)
-func (tm *TopicManager) GetAllByConfig() map[string]map[string]bool {
+// GetAllForConfig returns the full nested map structure (for debugging/inspection)
+func (tm *TopicManager) GetAllForConfig() map[string]map[string]bool {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 

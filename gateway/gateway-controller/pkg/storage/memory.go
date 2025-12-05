@@ -61,36 +61,9 @@ func (cs *ConfigStore) Add(cfg *models.StoredAPIConfig) error {
 	cs.nameVersion[key] = cfg.ID
 
 	if cfg.Configuration.Kind == "async/websub" {
-		asyncData, err := cfg.Configuration.Spec.AsWebhookAPIData()
+		err := cs.updateTopics(cfg)
 		if err != nil {
-			return fmt.Errorf("failed to parse async API data: %w", err)
-		}
-		// Maintaining a topic map to process topics
-		// Running these inside Add or Delete configs might add extra latency to the API Deployment process
-		// TODO: Optimize topic management if needed by maintaining a separate topic manager struct
-		for _, topic := range asyncData.Channels {
-			name := strings.TrimPrefix(asyncData.Name, "/")
-			context := strings.TrimPrefix(asyncData.Context, "/")
-			version := strings.TrimPrefix(asyncData.Version, "/")
-			path := strings.TrimPrefix(topic.Path, "/")
-			modifiedTopic := fmt.Sprintf("%s_%s_%s_%s", name, context, version, path)
-			if _, exist := cs.TopicManager.topics[modifiedTopic]; !exist {
-				cs.TopicManager.Add(cfg.ID, modifiedTopic)
-				// cs.topics[modifiedTopic] = cfg.Configuration.Data.Name
-			}
-		}
-
-		apiTopicsPerRevision := make(map[string]bool)
-		for _, topic := range asyncData.Channels {
-			modifiedTopic := fmt.Sprintf("%s_%s_%s_%s", asyncData.Name, asyncData.Context, asyncData.Version, topic.Path)
-			apiTopicsPerRevision[modifiedTopic] = true
-		}
-
-		for topic := range cs.TopicManager.GetAll() {
-			if _, exists := apiTopicsPerRevision[topic]; !exists {
-				cs.TopicManager.Remove(cfg.ID, topic)
-				//delete(cs.topics, topic)
-			}
+			return err
 		}
 	}
 	return nil
@@ -120,7 +93,42 @@ func (cs *ConfigStore) Update(cfg *models.StoredAPIConfig) error {
 		cs.nameVersion[newKey] = cfg.ID
 	}
 
+	if cfg.Configuration.Kind == "async/websub" {
+		err := cs.updateTopics(cfg)
+		if err != nil {
+			return err
+		}
+	}
+
 	cs.configs[cfg.ID] = cfg
+	return nil
+}
+
+func (cs *ConfigStore) updateTopics(cfg *models.StoredAPIConfig) error {
+	asyncData, err := cfg.Configuration.Spec.AsWebhookAPIData()
+	if err != nil {
+		return fmt.Errorf("failed to parse async API data: %w", err)
+	}
+	// Maintaining a topic map to process topics
+	// Running these inside Add or Delete configs might add extra latency to the API Deployment process
+	// TODO: Optimize topic management if needed by maintaining a separate topic manager struct
+
+	apiTopicsPerRevision := make(map[string]bool)
+	for _, topic := range asyncData.Channels {
+		name := strings.TrimPrefix(asyncData.Name, "/")
+		context := strings.TrimPrefix(asyncData.Context, "/")
+		version := strings.TrimPrefix(asyncData.Version, "/")
+		path := strings.TrimPrefix(topic.Path, "/")
+		modifiedTopic := fmt.Sprintf("%s_%s_%s_%s", name, context, version, path)
+		cs.TopicManager.Add(cfg.ID, modifiedTopic)
+		apiTopicsPerRevision[modifiedTopic] = true
+	}
+
+	for _, topic := range cs.TopicManager.GetAllByConfig(cfg.ID) {
+		if _, exists := apiTopicsPerRevision[topic]; !exists {
+			cs.TopicManager.Remove(cfg.ID, topic)
+		}
+	}
 	return nil
 }
 
@@ -137,37 +145,7 @@ func (cs *ConfigStore) Delete(id string) error {
 	key := cfg.GetCompositeKey()
 
 	if cfg.Configuration.Kind == "async/websub" {
-		asyncData, err := cfg.Configuration.Spec.AsWebhookAPIData()
-		if err != nil {
-			return fmt.Errorf("failed to parse async API data: %w", err)
-		}
-		// Maintaining a topic map to process topics
-		// Running these inside Add or Delete configs might add extra latency to the API Deployment process
-		// TODO: Optimize topic management if needed by maintaining a separate topic manager struct
-		for _, topic := range asyncData.Channels {
-			modifiedTopic := fmt.Sprintf("%s/%s/%s", asyncData.Context, asyncData.Version, topic.Path)
-			if _, exist := cs.TopicManager.topics[modifiedTopic]; !exist {
-				cs.TopicManager.Add(cfg.ID, modifiedTopic)
-				//cs.TopicManager.topics[modifiedTopic] = cfg.Configuration.Data.Name
-			}
-		}
-
-		apiTopicsPerRevision := make(map[string]bool)
-		for _, topic := range asyncData.Channels {
-			name := strings.TrimPrefix(asyncData.Name, "/")
-			context := strings.TrimPrefix(asyncData.Context, "/")
-			version := strings.TrimPrefix(asyncData.Version, "/")
-			path := strings.TrimPrefix(topic.Path, "/")
-			modifiedTopic := fmt.Sprintf("%s_%s_%s_%s", name, context, version, path)
-			apiTopicsPerRevision[modifiedTopic] = true
-		}
-
-		for _, topic := range cs.TopicManager.GetAllForConfig(cfg.ID) {
-			if _, exists := apiTopicsPerRevision[topic]; !exists {
-				cs.TopicManager.Remove(cfg.ID, topic)
-				//delete(cs.TopicManager.topics, topic)
-			}
-		}
+		cs.TopicManager.RemoveAllForConfig(cfg.ID)
 	}
 	delete(cs.nameVersion, key)
 	delete(cs.configs, id)

@@ -149,17 +149,29 @@ func (t *Translator) TranslateConfigs(
 		// This ensures existing APIs are not overridden when deploying new APIs
 
 		// Create routes and clusters for this API
-		routesList, clusterList, err := t.translateAPIConfig(cfg)
-		if err != nil {
-			log.Error("Failed to translate config",
-				zap.String("id", cfg.ID),
-				zap.String("name", cfg.GetAPIName()),
-				zap.Error(err))
-			continue
+		var routesList []*route.Route
+		var clusterList []*cluster.Cluster
+		var err error
+		if cfg.Configuration.Kind == "async/websub" {
+			routesList, clusterList, err = t.translateAsyncAPIConfig(cfg)
+			if err != nil {
+				log.Error("Failed to translate config",
+					zap.String("id", cfg.ID),
+					zap.String("name", cfg.GetAPIName()),
+					zap.Error(err))
+				continue
+			}
+		} else if cfg.Configuration.Kind == "http/rest" {
+			routesList, clusterList, err = t.translateAPIConfig(cfg)
+			if err != nil {
+				log.Error("Failed to translate config",
+					zap.String("id", cfg.ID),
+					zap.String("name", cfg.GetAPIName()),
+					zap.Error(err))
+				continue
+			}
 		}
-
 		allRoutes = append(allRoutes, routesList...)
-
 		// Add clusters (avoiding duplicates)
 		for _, c := range clusterList {
 			clusterMap[c.Name] = c
@@ -226,7 +238,11 @@ func (t *Translator) TranslateConfigs(
 		// Add dynamic forward proxy cluster for WebSubHub
 		dynamicForwardProxyCluster := t.createDynamicForwardProxyCluster()
 		clusters = append(clusters, dynamicForwardProxyCluster)
-
+		dynamicProxyListener, err := t.createDynamicFwdListenerForWebSubHub()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create WebSub listener: %w", err)
+		}
+		listeners = append(listeners, dynamicProxyListener)
 		// Add websubhub cluster
 		upstreamURL := "http://host.docker.internal:9098"
 		parsedURL, err := url.Parse(upstreamURL)
@@ -236,6 +252,11 @@ func (t *Translator) TranslateConfigs(
 
 		websubhubCluster := t.createCluster(WebSubHubInternalClusterName, parsedURL, nil)
 		clusters = append(clusters, websubhubCluster)
+		websubInternalListener, err := t.createListenerForWebSubHub()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create WebSub internal listener: %w", err)
+		}
+		listeners = append(listeners, websubInternalListener)
 	}
 
 	// Add SDS cluster if cert store is enabled
@@ -263,6 +284,47 @@ func (t *Translator) TranslateConfigs(
 	}
 
 	return resources, nil
+}
+
+// translateAsyncAPIConfig translates a single API configuration
+func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredAPIConfig) ([]*route.Route, []*cluster.Cluster, error) {
+	apiData, err := cfg.Configuration.Spec.AsWebhookAPIData()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse webhook API data: %w", err)
+	}
+
+	// Parse upstream URL
+	if len(apiData.Servers) == 0 {
+		return nil, nil, fmt.Errorf("no upstream configured")
+	}
+
+	upstreamURL := apiData.Servers[0].Url
+	parsedURL, err := url.Parse(upstreamURL)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid upstream URL: %w", err)
+	}
+
+	// Create cluster for this upstream
+	c := t.createCluster(WebSubHubInternalClusterName, parsedURL, nil)
+	fmt.Println("Creating Route per Topic")
+
+	// Create routes for each operation
+	routesList := make([]*route.Route, 0)
+	for _, ch := range apiData.Channels {
+		// Ensure channel path starts with '/'
+		chPath := ch.Path
+		if !strings.HasPrefix(chPath, "/") {
+			chPath = "/" + chPath
+		}
+
+		updatedPath := apiData.Context + "/" + apiData.Version + chPath
+		fmt.Printf("Updated Path: %s\n", updatedPath)
+		// Always route accepts a POST request for WebSubHub calls
+		r := t.createRoutePerTopic("POST", updatedPath, WebSubHubInternalClusterName, parsedURL.Path)
+		routesList = append(routesList, r)
+	}
+
+	return routesList, []*cluster.Cluster{c}, nil
 }
 
 // translateAPIConfig translates a single API configuration
@@ -431,27 +493,27 @@ func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
 		}},
 	}
 
-	// External processor filter (reuse config from other listener)
-	extProcConfig := &extproc.ExternalProcessor{
-		GrpcService: &core.GrpcService{
-			TargetSpecifier: &core.GrpcService_EnvoyGrpc_{EnvoyGrpc: &core.GrpcService_EnvoyGrpc{ClusterName: ExternalProcessorGRPCServiceClusterName}},
-			Timeout:         durationpb.New(250 * time.Millisecond),
-		},
-		FailureModeAllow: false,
-		ProcessingMode: &extproc.ProcessingMode{
-			RequestHeaderMode:   extproc.ProcessingMode_SEND,
-			ResponseHeaderMode:  extproc.ProcessingMode_SEND,
-			RequestTrailerMode:  extproc.ProcessingMode_SEND,
-			ResponseTrailerMode: extproc.ProcessingMode_SEND,
-			RequestBodyMode:     extproc.ProcessingMode_BUFFERED,
-			ResponseBodyMode:    extproc.ProcessingMode_BUFFERED,
-		},
-		MessageTimeout: &durationpb.Duration{Seconds: 20, Nanos: 250000000},
-	}
-	extProcAny, err := anypb.New(extProcConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal ext_proc config: %w", err)
-	}
+	// // External processor filter (reuse config from other listener)
+	// extProcConfig := &extproc.ExternalProcessor{
+	// 	GrpcService: &core.GrpcService{
+	// 		TargetSpecifier: &core.GrpcService_EnvoyGrpc_{EnvoyGrpc: &core.GrpcService_EnvoyGrpc{ClusterName: ExternalProcessorGRPCServiceClusterName}},
+	// 		Timeout:         durationpb.New(250 * time.Millisecond),
+	// 	},
+	// 	FailureModeAllow: false,
+	// 	ProcessingMode: &extproc.ProcessingMode{
+	// 		RequestHeaderMode:   extproc.ProcessingMode_SEND,
+	// 		ResponseHeaderMode:  extproc.ProcessingMode_SEND,
+	// 		RequestTrailerMode:  extproc.ProcessingMode_SEND,
+	// 		ResponseTrailerMode: extproc.ProcessingMode_SEND,
+	// 		RequestBodyMode:     extproc.ProcessingMode_BUFFERED,
+	// 		ResponseBodyMode:    extproc.ProcessingMode_BUFFERED,
+	// 	},
+	// 	MessageTimeout: &durationpb.Duration{Seconds: 20, Nanos: 250000000},
+	// }
+	// extProcAny, err := anypb.New(extProcConfig)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to marshal ext_proc config: %w", err)
+	// }
 
 	// Router filter
 	routerCfg := &router.Router{}
@@ -466,10 +528,10 @@ func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
 		CodecType:      hcm.HttpConnectionManager_AUTO,
 		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{RouteConfig: routeConfig},
 		HttpFilters: []*hcm.HttpFilter{
-			{ // ext_proc
-				Name:       "envoy.filters.http.ext_proc",
-				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: extProcAny},
-			},
+			// { // ext_proc
+			// 	Name:       "envoy.filters.http.ext_proc",
+			// 	ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: extProcAny},
+			// },
 			{ // router last
 				Name:       wellknown.Router,
 				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: routerAny},
@@ -530,27 +592,27 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener,
 		}},
 	}
 
-	// External Processor filter config
-	extProcConfig := &extproc.ExternalProcessor{
-		GrpcService: &core.GrpcService{
-			TargetSpecifier: &core.GrpcService_EnvoyGrpc_{EnvoyGrpc: &core.GrpcService_EnvoyGrpc{ClusterName: ExternalProcessorGRPCServiceClusterName}},
-			Timeout:         durationpb.New(250 * time.Millisecond), // 0.250s
-		},
-		FailureModeAllow: false,
-		ProcessingMode: &extproc.ProcessingMode{
-			RequestHeaderMode:   extproc.ProcessingMode_SEND,
-			ResponseHeaderMode:  extproc.ProcessingMode_SEND,
-			RequestTrailerMode:  extproc.ProcessingMode_SEND,
-			ResponseTrailerMode: extproc.ProcessingMode_SEND,
-			RequestBodyMode:     extproc.ProcessingMode_BUFFERED,
-			ResponseBodyMode:    extproc.ProcessingMode_BUFFERED,
-		},
-		MessageTimeout: &durationpb.Duration{Seconds: 20, Nanos: 250000000}, // 20.25s
-	}
-	extProcAny, err := anypb.New(extProcConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal ext_proc config: %w", err)
-	}
+	// // External Processor filter config
+	// extProcConfig := &extproc.ExternalProcessor{
+	// 	GrpcService: &core.GrpcService{
+	// 		TargetSpecifier: &core.GrpcService_EnvoyGrpc_{EnvoyGrpc: &core.GrpcService_EnvoyGrpc{ClusterName: ExternalProcessorGRPCServiceClusterName}},
+	// 		Timeout:         durationpb.New(250 * time.Millisecond), // 0.250s
+	// 	},
+	// 	FailureModeAllow: false,
+	// 	ProcessingMode: &extproc.ProcessingMode{
+	// 		RequestHeaderMode:   extproc.ProcessingMode_SEND,
+	// 		ResponseHeaderMode:  extproc.ProcessingMode_SEND,
+	// 		RequestTrailerMode:  extproc.ProcessingMode_SEND,
+	// 		ResponseTrailerMode: extproc.ProcessingMode_SEND,
+	// 		RequestBodyMode:     extproc.ProcessingMode_BUFFERED,
+	// 		ResponseBodyMode:    extproc.ProcessingMode_BUFFERED,
+	// 	},
+	// 	MessageTimeout: &durationpb.Duration{Seconds: 20, Nanos: 250000000}, // 20.25s
+	// }
+	// extProcAny, err := anypb.New(extProcConfig)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to marshal ext_proc config: %w", err)
+	// }
 	dnsCacheConfig := &common_dfp.DnsCacheConfig{
 		// Required: unique name for the shared DNS cache
 		Name: "dynamic_forward_proxy_cache",
@@ -612,10 +674,10 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener,
 		CodecType:      hcm.HttpConnectionManager_AUTO,
 		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{RouteConfig: dynamicForwardProxyRouteConfig},
 		HttpFilters: []*hcm.HttpFilter{
-			{ // ext_proc filter
-				Name:       "envoy.filters.http.ext_proc",
-				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: extProcAny},
-			},
+			// { // ext_proc filter
+			// 	Name:       "envoy.filters.http.ext_proc",
+			// 	ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: extProcAny},
+			// },
 			{ // dynamic forward proxy filter
 				Name:       "envoy.filters.http.dynamic_forward_proxy",
 				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: dynamicFwdAny},
@@ -1235,6 +1297,9 @@ func (t *Translator) processEndpoint(
 			port = parsedPort
 		}
 	}
+
+	fmt.Println("Upstream URL: ", upstreamURL.String())
+	fmt.Println("Port: ", port)
 
 	localityLbEndpoints := &endpoint.LocalityLbEndpoints{
 		LbEndpoints: []*endpoint.LbEndpoint{{

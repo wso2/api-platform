@@ -522,7 +522,7 @@ func (t APIConfiguration_Spec) AsWebhookAPIData() (WebhookAPIData, error) {
 
 // FromWebhookAPIData overwrites any union data inside the APIConfiguration_Spec as the provided WebhookAPIData
 func (t *APIConfiguration_Spec) FromWebhookAPIData(v WebhookAPIData) error {
-	v.ApiType = "async/sse"
+	v.ApiType = "async/websocket"
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
@@ -530,7 +530,7 @@ func (t *APIConfiguration_Spec) FromWebhookAPIData(v WebhookAPIData) error {
 
 // MergeWebhookAPIData performs a merge with any union data inside the APIConfiguration_Spec, using the provided WebhookAPIData
 func (t *APIConfiguration_Spec) MergeWebhookAPIData(v WebhookAPIData) error {
-	v.ApiType = "async/sse"
+	v.ApiType = "async/websocket"
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -555,7 +555,7 @@ func (t APIConfiguration_Spec) ValueByDiscriminator() (interface{}, error) {
 		return nil, err
 	}
 	switch discriminator {
-	case "async/sse":
+	case "async/websocket":
 		return t.AsWebhookAPIData()
 	case "http/rest":
 		return t.AsAPIConfigData()

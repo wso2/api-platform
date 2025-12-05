@@ -271,6 +271,9 @@ func defaultConfig() *Config {
 			},
 		},
 		Router: RouterConfig{
+			EventGateway: EventGatewayConfig{
+				Enabled: true,
+			},
 			AccessLogs: AccessLogsConfig{
 				Enabled: true,
 				Format:  "json",
