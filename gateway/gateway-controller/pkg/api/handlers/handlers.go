@@ -698,7 +698,7 @@ func (s *APIServer) ListMCPProxies(c *gin.Context) {
 	items := make([]api.MCPProxyListItem, len(configs))
 	for i, cfg := range configs {
 		id, _ := uuidToOpenAPIUUID(cfg.ID)
-		status := string(cfg.Status)
+		status := api.MCPProxyListItemStatus(cfg.Status)
 		// Cast SourceConfiguration to MCPProxyConfiguration
 		mcp, ok := cfg.SourceConfiguration.(api.MCPProxyConfiguration)
 		if !ok {
@@ -716,7 +716,7 @@ func (s *APIServer) ListMCPProxies(c *gin.Context) {
 			Name:      stringPtr(mcp.Spec.Name),
 			Version:   stringPtr(mcp.Spec.Version),
 			Context:   stringPtr(mcp.Spec.Context),
-			Status:    (*api.MCPProxyListItemStatus)(&status),
+			Status:    &status,
 			CreatedAt: timePtr(cfg.CreatedAt),
 			UpdatedAt: timePtr(cfg.UpdatedAt),
 		}
@@ -859,6 +859,18 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, name string, version string) 
 			})
 			return
 		}
+	}
+
+	// Verify this is actually an MCP proxy configuration
+	if _, ok := existing.SourceConfiguration.(api.MCPProxyConfiguration); !ok {
+		log.Warn("Configuration is not an MCP proxy",
+			zap.String("name", name),
+			zap.String("version", version))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Configuration with name '%s' and version '%s' is not an MCP proxy", name, version),
+		})
+		return
 	}
 
 	if err := s.store.Update(existing); err != nil {
