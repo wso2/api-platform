@@ -39,47 +39,36 @@ help: ## Show this help message
 	@echo 'Gateway Build System (Version: $(VERSION))'
 	@echo ''
 	@echo 'Build Targets:'
-	@echo '  make build              - Build all gateway component Docker images'
-	@echo '  make build-controller   - Build gateway-controller Docker image'
-	@echo '  make build-policy       - Build policy-engine Docker images'
-	@echo '  make build-router       - Build router Docker image'
+	@echo '  make build                                      - Build all gateway component Docker images'
+	@echo '  make build-controller                           - Build gateway-controller Docker image'
+	@echo '  make build-policy-engine                        - Build policy-engine Docker images'
+	@echo '  make build-router                               - Build router Docker image'
 	@echo ''
 	@echo 'Multi-arch Build and Push Targets:'
-	@echo '  make build-and-push-multiarch            - Build and push all gateway components for multiple architectures'
-	@echo '  make build-and-push-multiarch-controller - Build and push controller for multiple architectures'
-	@echo '  make build-and-push-multiarch-policy     - Build and push policy-engine for multiple architectures'
-	@echo '  make build-and-push-multiarch-router     - Build and push router for multiple architectures'
-	@echo ''
-	@echo 'Push Targets:'
-	@echo '  make push               - Push all images to registry'
-	@echo '  make push-controller    - Push controller image'
-	@echo '  make push-policy        - Push policy-engine images'
-	@echo '  make push-router        - Push router image'
+	@echo '  make build-and-push-multiarch                   - Build and push all gateway components for multiple architectures'
+	@echo '  make build-and-push-multiarch-controller        - Build and push controller for multiple architectures'
+	@echo '  make build-and-push-multiarch-policy-engine     - Build and push policy-engine for multiple architectures'
+	@echo '  make build-and-push-multiarch-router            - Build and push router for multiple architectures'
 	@echo ''
 	@echo 'Test Targets:'
-	@echo '  make test               - Run all tests'
-	@echo '  make test-controller    - Test gateway-controller'
-	@echo '  make test-policy        - Test policy-engine'
+	@echo '  make test                      - Run all tests'
+	@echo '  make test-controller           - Test gateway-controller'
+	@echo '  make test-policy-engine        - Test policy-engine'
 	@echo ''
 	@echo 'Clean Targets:'
-	@echo '  make clean              - Clean all build artifacts'
+	@echo '  make clean                     - Clean all build artifacts'
 
 # Build Targets
 .PHONY: build
-build: build-controller build-policy build-router ## Build all gateway components
+build: build-controller build-policy-engine build-router ## Build all gateway components
 
 .PHONY: build-controller
 build-controller: ## Build gateway-controller Docker image
-	@echo "Building controller Docker image: $(CONTROLLER_IMAGE):$(VERSION)"
-	docker build -f gateway-controller/Dockerfile \
-		--build-arg VERSION=$(VERSION) \
-		--build-arg GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
-		-t $(CONTROLLER_IMAGE):$(VERSION) \
-		-t $(CONTROLLER_IMAGE):latest \
-		.
+	@echo "Building controller Docker image ($(VERSION))..."
+	$(MAKE) -C gateway-controller build VERSION=$(VERSION)
 
-.PHONY: build-policy
-build-policy: ## Build policy-engine Docker images
+.PHONY: build-policy-engine
+build-policy-engine: ## Build policy-engine Docker images
 	@echo "Building policy-engine images ($(VERSION))..."
 	$(MAKE) -C policy-engine build VERSION=$(VERSION)
 
@@ -90,15 +79,15 @@ build-router: ## Build router Docker image
 
 # Multi-arch Build and Push Targets
 .PHONY: build-and-push-multiarch
-build-and-push-multiarch: build-and-push-multiarch-controller build-and-push-multiarch-policy build-and-push-multiarch-router ## Build and push all gateway components for multiple architectures
+build-and-push-multiarch: build-and-push-multiarch-controller build-and-push-multiarch-policy-engine build-and-push-multiarch-router ## Build and push all gateway components for multiple architectures
 
 .PHONY: build-and-push-multiarch-controller
 build-and-push-multiarch-controller: ## Build and push gateway-controller Docker image for multiple architectures
 	@echo "Building and pushing multi-arch controller Docker image ($(VERSION))..."
 	$(MAKE) -C gateway-controller build-and-push-multiarch VERSION=$(VERSION)
 
-.PHONY: build-and-push-multiarch-policy
-build-and-push-multiarch-policy: ## Build and push policy-engine Docker images for multiple architectures
+.PHONY: build-and-push-multiarch-policy-engine
+build-and-push-multiarch-policy-engine: ## Build and push policy-engine Docker images for multiple architectures
 	@echo "Building and pushing multi-arch policy-engine images ($(VERSION))..."
 	$(MAKE) -C policy-engine build-and-push-multiarch VERSION=$(VERSION)
 
@@ -107,34 +96,16 @@ build-and-push-multiarch-router: ## Build and push router Docker image for multi
 	@echo "Building and pushing multi-arch router Docker image ($(VERSION))..."
 	$(MAKE) -C router build-and-push-multiarch VERSION=$(VERSION)
 
-# Push Targets
-.PHONY: push
-push: push-controller push-policy push-router ## Push all images to registry
-
-.PHONY: push-controller
-push-controller: ## Push controller image
-	@echo "Pushing $(CONTROLLER_IMAGE):$(VERSION)..."
-	docker push $(CONTROLLER_IMAGE):$(VERSION)
-	docker push $(CONTROLLER_IMAGE):latest
-
-.PHONY: push-policy
-push-policy: ## Push policy-engine images
-	$(MAKE) -C policy-engine push VERSION=$(VERSION)
-
-.PHONY: push-router
-push-router: ## Push router image
-	$(MAKE) -C router push VERSION=$(VERSION)
-
 # Test Targets
 .PHONY: test
-test: test-controller test-policy ## Run all tests
+test: test-controller test-policy-engine ## Run all tests
 
 .PHONY: test-controller
 test-controller: ## Test gateway-controller
 	$(MAKE) -C gateway-controller test
 
-.PHONY: test-policy
-test-policy: ## Test policy-engine
+.PHONY: test-policy-engine
+test-policy-engine: ## Test policy-engine
 	$(MAKE) -C policy-engine test
 
 # Clean Targets
