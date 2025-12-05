@@ -100,8 +100,9 @@ const ApiPublishModal: React.FC<Props> = ({ open, portal, api, onClose, onPublis
   };
 
   const handleAddTag = () => {
-    if (newTag.trim() && !formData.tags?.includes(newTag.trim())) {
-      setFormData((prev: any) => ({ ...prev, tags: [...(prev.tags || []), newTag.trim()] }));
+    const trimmedTag = newTag.trim();
+    if (trimmedTag && !formData.tags?.includes(trimmedTag)) {
+      setFormData((prev: any) => ({ ...prev, tags: [...(prev.tags || []), trimmedTag] }));
       setNewTag('');
     }
   };

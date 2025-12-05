@@ -90,7 +90,8 @@ const PortalForm: React.FC<PortalFormProps> = ({
         return false;
       }
     };
-    const apiUrlValid = formData.apiUrl.trim() && !formData.apiUrl.trim().endsWith('/') && isValidUrl(formData.apiUrl.trim());
+    const trimmedUrl = formData.apiUrl.trim();
+    const apiUrlValid = trimmedUrl && isValidUrl(trimmedUrl) && !trimmedUrl.endsWith('/');
     return !!(
       formData.name.trim() &&
       apiUrlValid &&

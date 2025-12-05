@@ -35,7 +35,6 @@ type Props = {
   portal: ApiPublicationWithPortal;
   apiId: string;
   publishingIds: Set<string>;
-  relativeTime: (d?: Date) => string;
   onPublish: (portal: ApiPublicationWithPortal) => void;
 };
 
