@@ -22,36 +22,35 @@ import (
 	"fmt"
 	"sync"
 
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
 // ConfigStore holds all API configurations in memory for fast access
 type ConfigStore struct {
-	mu          sync.RWMutex                       // Protects concurrent access
-	configs     map[string]*models.StoredAPIConfig // Key: config ID
-	nameVersion map[string]string                  // Key: "name:version" → Value: config ID
-	snapVersion int64                              // Current xDS snapshot version
+	mu          sync.RWMutex                    // Protects concurrent access
+	configs     map[string]*models.StoredConfig // Key: config ID
+	nameVersion map[string]string               // Key: "name:version" → Value: config ID
+	snapVersion int64                           // Current xDS snapshot version
 }
 
 // NewConfigStore creates a new in-memory config store
 func NewConfigStore() *ConfigStore {
 	return &ConfigStore{
-		configs:     make(map[string]*models.StoredAPIConfig),
+		configs:     make(map[string]*models.StoredConfig),
 		nameVersion: make(map[string]string),
 		snapVersion: 0,
 	}
 }
 
 // Add stores a new configuration in memory
-func (cs *ConfigStore) Add(cfg *models.StoredAPIConfig) error {
+func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
 	key := cfg.GetCompositeKey()
 	if existingID, exists := cs.nameVersion[key]; exists {
 		return fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists (ID: %s)",
-			ErrConflict, cfg.GetAPIName(), cfg.GetAPIVersion(), existingID)
+			ErrConflict, cfg.GetName(), cfg.GetVersion(), existingID)
 	}
 
 	cs.configs[cfg.ID] = cfg
@@ -60,7 +59,7 @@ func (cs *ConfigStore) Add(cfg *models.StoredAPIConfig) error {
 }
 
 // Update modifies an existing configuration in memory
-func (cs *ConfigStore) Update(cfg *models.StoredAPIConfig) error {
+func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
@@ -77,7 +76,7 @@ func (cs *ConfigStore) Update(cfg *models.StoredAPIConfig) error {
 		// Check if new name:version combination already exists
 		if existingID, exists := cs.nameVersion[newKey]; exists && existingID != cfg.ID {
 			return fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists (ID: %s)",
-				ErrConflict, cfg.GetAPIName(), cfg.GetAPIVersion(), existingID)
+				ErrConflict, cfg.GetName(), cfg.GetVersion(), existingID)
 		}
 		delete(cs.nameVersion, oldKey)
 		cs.nameVersion[newKey] = cfg.ID
@@ -104,7 +103,7 @@ func (cs *ConfigStore) Delete(id string) error {
 }
 
 // Get retrieves a configuration by ID
-func (cs *ConfigStore) Get(id string) (*models.StoredAPIConfig, error) {
+func (cs *ConfigStore) Get(id string) (*models.StoredConfig, error) {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
@@ -116,7 +115,7 @@ func (cs *ConfigStore) Get(id string) (*models.StoredAPIConfig, error) {
 }
 
 // GetByNameVersion retrieves a configuration by name and version
-func (cs *ConfigStore) GetByNameVersion(name, version string) (*models.StoredAPIConfig, error) {
+func (cs *ConfigStore) GetByNameVersion(name, version string) (*models.StoredConfig, error) {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
@@ -134,35 +133,26 @@ func (cs *ConfigStore) GetByNameVersion(name, version string) (*models.StoredAPI
 }
 
 // GetAll returns all configurations
-func (cs *ConfigStore) GetAll() []*models.StoredAPIConfig {
+func (cs *ConfigStore) GetAll() []*models.StoredConfig {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
-	result := make([]*models.StoredAPIConfig, 0, len(cs.configs))
+	result := make([]*models.StoredConfig, 0, len(cs.configs))
 	for _, cfg := range cs.configs {
 		result = append(result, cfg)
 	}
 	return result
 }
 
-// GetAll returns all configurations
-func (cs *ConfigStore) GetAllByKind(kind string) []*models.StoredAPIConfig {
+// GetAllByKind returns all configurations of a specific kind
+func (cs *ConfigStore) GetAllByKind(kind string) []*models.StoredConfig {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
-	result := make([]*models.StoredAPIConfig, 0)
+	result := make([]*models.StoredConfig, 0)
 	for _, cfg := range cs.configs {
-		switch c := cfg.SourceConfiguration.(type) {
-		case api.MCPProxyConfiguration:
-			if string(c.Kind) == kind {
-				result = append(result, cfg)
-			}
-		case api.APIConfiguration:
-			if string(c.Kind) == kind {
-				result = append(result, cfg)
-			}
-		default:
-			continue
+		if cfg.Kind == kind {
+			result = append(result, cfg)
 		}
 	}
 	return result

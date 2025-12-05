@@ -96,10 +96,10 @@ As a platform architect, I need the gateway-controller's storage layer to be dat
 
 ### Key Entities *(include if feature involves data)*
 
-- **API Configuration**: Represents a complete API definition including metadata (ID, name, version, timestamps), upstream endpoints, operations, and policies. Stored as JSON TEXT in SQLite's `api_configs` table with columns for ID (primary key), name, version, and configuration_json (TEXT).
+- **API Configuration**: Represents a complete API definition including metadata (ID, name, version, timestamps), upstream endpoints, operations, and policies. Stored as JSON TEXT in SQLite's `deployments` table with columns for ID (primary key), name, version, and configuration_json (TEXT).
 
 - **Database Schema**: SQLite database with initial schema version including:
-  - `api_configs` table: Stores API configurations with ID, name, version, created_at, updated_at, and configuration_json fields
+  - `deployments` table: Stores API configurations with ID, name, version, created_at, updated_at, and configuration_json fields
   - Indexes on common query patterns: composite index on (name, version) for name/version lookups
   - **Driver**: Implementation uses mattn/go-sqlite3 (CGO-based, requires gcc at build time)
   - **File Location**: Default path is `./data/gateway.db`, configurable via `storage.sqlite.path` config option

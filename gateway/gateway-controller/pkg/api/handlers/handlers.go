@@ -20,6 +20,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -111,17 +112,19 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		cfg.Status = models.StatusDeployed
 		cfg.DeployedAt = &now
 		cfg.DeployedVersion = version
-		log.Info("API configuration deployed successfully",
+		log.Info("Configuration deployed successfully",
 			zap.String("id", configID),
 			zap.String("name", cfg.Configuration.Spec.Name),
-			zap.Int64("version", version))
+			zap.Int64("version", version),
+			zap.String("kind", cfg.Kind))
 	} else {
 		cfg.Status = models.StatusFailed
 		cfg.DeployedAt = nil
 		cfg.DeployedVersion = 0
-		log.Error("API configuration deployment failed",
+		log.Error("Configuration deployment failed",
 			zap.String("id", configID),
-			zap.String("name", cfg.Configuration.Spec.Name))
+			zap.String("name", cfg.Configuration.Spec.Name),
+			zap.String("kind", cfg.Kind))
 	}
 
 	cfg.UpdatedAt = now
@@ -219,7 +222,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 // ListAPIs implements ServerInterface.ListAPIs
 // (GET /apis)
 func (s *APIServer) ListAPIs(c *gin.Context) {
-	configs := s.store.GetAll()
+	configs := s.store.GetAllByKind(string(api.Httprest))
 
 	items := make([]api.APIListItem, len(configs))
 	for i, cfg := range configs {
@@ -537,7 +540,7 @@ func (s *APIServer) ListPolicies(c *gin.Context) {
 // When operation has no policies, API-level policies are used in their declared order.
 // RouteKey uses the fully qualified route path (context + operation path) and must match the route name format
 // used by the xDS translator for consistency.
-func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *models.StoredPolicyConfig {
+func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.StoredPolicyConfig {
 	// TODO: (renuka) duplicate buildStoredPolicyFromAPI funcs. Refactor this.
 	apiCfg := &cfg.Configuration
 	apiData := apiCfg.Spec
@@ -699,15 +702,17 @@ func (s *APIServer) ListMCPProxies(c *gin.Context) {
 	for i, cfg := range configs {
 		id, _ := uuidToOpenAPIUUID(cfg.ID)
 		status := api.MCPProxyListItemStatus(cfg.Status)
-		// Cast SourceConfiguration to MCPProxyConfiguration
-		mcp, ok := cfg.SourceConfiguration.(api.MCPProxyConfiguration)
-		if !ok {
-			s.logger.Error("Failed to cast stored MCP configuration",
+		// Convert SourceConfiguration to MCPProxyConfiguration
+		var mcp api.MCPProxyConfiguration
+		j, _ := json.Marshal(cfg.SourceConfiguration)
+		err := json.Unmarshal(j, &mcp)
+		if err != nil {
+			s.logger.Error("Failed to unmarshal stored MCP configuration",
 				zap.String("id", cfg.ID),
 				zap.String("name", cfg.Configuration.Spec.Name))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
-				Message: "Failed to cast stored MCP configuration",
+				Message: "Failed to get stored MCP configuration",
 			})
 			return
 		}
@@ -833,6 +838,20 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, name string, version string) 
 		return
 	}
 
+	// Ensure existing config is of kind MCP
+	if existing.Kind != string(api.Mcp) {
+		log.Warn("Configuration kind mismatch",
+			zap.String("expected", string(api.Mcp)),
+			zap.String("actual", existing.Kind),
+			zap.String("name", name),
+			zap.String("version", version))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Configuration with name '%s' and version '%s' is not of kind MCP", name, version),
+		})
+		return
+	}
+
 	// Transform to API configuration using MCPTransformer
 	var apiConfig api.APIConfiguration
 	transformer := &utils.MCPTransformer{}
@@ -851,7 +870,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, name string, version string) 
 	// Atomic dual-write: database + in-memory
 	// Update database first (only if persistent mode)
 	if s.db != nil {
-		if err := s.db.UpdateMCPConfig(existing); err != nil {
+		if err := s.db.UpdateConfig(existing); err != nil {
 			log.Error("Failed to update config in database", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
@@ -859,18 +878,6 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, name string, version string) 
 			})
 			return
 		}
-	}
-
-	// Verify this is actually an MCP proxy configuration
-	if _, ok := existing.SourceConfiguration.(api.MCPProxyConfiguration); !ok {
-		log.Warn("Configuration is not an MCP proxy",
-			zap.String("name", name),
-			zap.String("version", version))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Configuration with name '%s' and version '%s' is not an MCP proxy", name, version),
-		})
-		return
 	}
 
 	if err := s.store.Update(existing); err != nil {
@@ -951,20 +958,23 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, name string, version string) 
 		return
 	}
 
-	if _, ok := cfg.SourceConfiguration.(api.MCPProxyConfiguration); !ok {
-		log.Warn("Configuration is not an MCP proxy",
+	// Ensure existing config is of kind MCP
+	if cfg.Kind != string(api.Mcp) {
+		log.Warn("Configuration kind mismatch",
+			zap.String("expected", string(api.Mcp)),
+			zap.String("actual", cfg.Kind),
 			zap.String("name", name),
 			zap.String("version", version))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("Configuration with name '%s' and version '%s' is not an MCP proxy", name, version),
+			Message: fmt.Sprintf("Configuration with name '%s' and version '%s' is not of kind MCP", name, version),
 		})
 		return
 	}
 
 	// Delete from database first (only if persistent mode)
 	if s.db != nil {
-		if err := s.db.DeleteMCPConfig(cfg.ID); err != nil {
+		if err := s.db.DeleteConfig(cfg.ID); err != nil {
 			log.Error("Failed to delete config from database", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",

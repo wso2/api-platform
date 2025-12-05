@@ -43,7 +43,7 @@ type APIDeploymentParams struct {
 
 // APIDeploymentResult contains the result of API deployment
 type APIDeploymentResult struct {
-	StoredConfig *models.StoredAPIConfig
+	StoredConfig *models.StoredConfig
 	IsUpdate     bool
 }
 
@@ -106,14 +106,16 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 
 	// Create stored configuration
 	now := time.Now()
-	storedCfg := &models.StoredAPIConfig{
-		ID:              apiID,
-		Configuration:   apiConfig,
-		Status:          models.StatusPending,
-		CreatedAt:       now,
-		UpdatedAt:       now,
-		DeployedAt:      nil,
-		DeployedVersion: 0,
+	storedCfg := &models.StoredConfig{
+		ID:                  apiID,
+		Kind:                string(api.Httprest),
+		Configuration:       apiConfig,
+		SourceConfiguration: apiConfig,
+		Status:              models.StatusPending,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+		DeployedAt:          nil,
+		DeployedVersion:     0,
 	}
 
 	// Try to save/update the configuration
@@ -157,7 +159,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 }
 
 // saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
-func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredAPIConfig, logger *zap.Logger) (bool, error) {
+func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *zap.Logger) (bool, error) {
 	// Try to save to database first (only if persistent mode)
 	if s.db != nil {
 		if err := s.db.SaveConfig(storedCfg); err != nil {
@@ -201,9 +203,9 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredAPICon
 }
 
 // updateExistingConfig updates an existing API configuration
-func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredAPIConfig) (bool, error) {
+func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConfig) (bool, error) {
 	// Get existing config
-	existing, err := s.store.GetByNameVersion(newConfig.GetAPIName(), newConfig.GetAPIVersion())
+	existing, err := s.store.GetByNameVersion(newConfig.GetName(), newConfig.GetVersion())
 	if err != nil {
 		return false, fmt.Errorf("failed to get existing config: %w", err)
 	}
