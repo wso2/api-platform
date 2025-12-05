@@ -65,14 +65,14 @@ file:./data/gateway.db?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&
 
 ## Schema Version 1
 
-### Table: `api_configs`
+### Table: `deployments`
 
 Stores API configuration definitions with full lifecycle metadata.
 
 #### DDL
 
 ```sql
-CREATE TABLE api_configs (
+CREATE TABLE deployments (
     -- Primary identifier (UUID)
     id TEXT PRIMARY KEY,
 
@@ -105,16 +105,16 @@ CREATE TABLE api_configs (
 
 ```sql
 -- Composite index for name+version lookups (most common query)
-CREATE INDEX idx_name_version ON api_configs(name, version);
+CREATE INDEX idx_name_version ON deployments(name, version);
 
 -- Filter by deployment status (translator queries pending configs)
-CREATE INDEX idx_status ON api_configs(status);
+CREATE INDEX idx_status ON deployments(status);
 
 -- Filter by context path (conflict detection)
-CREATE INDEX idx_context ON api_configs(context);
+CREATE INDEX idx_context ON deployments(context);
 
 -- Filter by API type (reporting/analytics)
-CREATE INDEX idx_kind ON api_configs(kind);
+CREATE INDEX idx_kind ON deployments(kind);
 ```
 
 #### Field Definitions
@@ -143,7 +143,7 @@ CREATE INDEX idx_kind ON api_configs(kind);
 #### Sample Data
 
 ```sql
-INSERT INTO api_configs (
+INSERT INTO deployments (
     id, name, version, context, kind, configuration,
     status, created_at, updated_at, deployed_version
 ) VALUES (
@@ -250,7 +250,7 @@ type StoredAPIConfig struct {
 #### 1. Get Config by ID (Primary Lookup)
 ```sql
 SELECT id, configuration, status, created_at, updated_at, deployed_at, deployed_version
-FROM api_configs
+FROM deployments
 WHERE id = ?;
 ```
 **Performance**: O(1) via primary key index (~1-5ms)
@@ -258,7 +258,7 @@ WHERE id = ?;
 #### 2. Get Config by Name and Version (Most Common)
 ```sql
 SELECT id, configuration, status, created_at, updated_at, deployed_at, deployed_version
-FROM api_configs
+FROM deployments
 WHERE name = ? AND version = ?;
 ```
 **Performance**: O(log n) via `idx_name_version` index (~5-10ms)
@@ -266,7 +266,7 @@ WHERE name = ? AND version = ?;
 #### 3. Get All Configs
 ```sql
 SELECT id, configuration, status, created_at, updated_at, deployed_at, deployed_version
-FROM api_configs
+FROM deployments
 ORDER BY created_at DESC;
 ```
 **Performance**: O(n) full table scan (~50-200ms for 100 configs)
@@ -274,7 +274,7 @@ ORDER BY created_at DESC;
 #### 4. Get Pending Configs (xDS Translator)
 ```sql
 SELECT id, configuration, status, created_at, updated_at, deployed_at, deployed_version
-FROM api_configs
+FROM deployments
 WHERE status = 'pending'
 ORDER BY created_at ASC;
 ```
@@ -283,7 +283,7 @@ ORDER BY created_at ASC;
 #### 5. Check for Duplicate Name/Version
 ```sql
 SELECT EXISTS(
-    SELECT 1 FROM api_configs WHERE name = ? AND version = ?
+    SELECT 1 FROM deployments WHERE name = ? AND version = ?
 );
 ```
 **Performance**: O(log n) via `idx_name_version` index (~1-5ms)
@@ -331,17 +331,17 @@ func ValidateConfig(cfg *models.StoredAPIConfig) error {
 
 | BBolt Bucket | BBolt Key | SQLite Table | SQLite Column |
 |--------------|-----------|--------------|---------------|
-| `apis` | UUID | `api_configs` | `id` (primary key) |
-| (embedded) | N/A | `api_configs` | `name` (extracted) |
-| (embedded) | N/A | `api_configs` | `version` (extracted) |
-| (embedded) | N/A | `api_configs` | `context` (extracted) |
-| (embedded) | N/A | `api_configs` | `kind` (extracted) |
-| (embedded) | JSON value | `api_configs` | `configuration` |
-| (embedded) | N/A | `api_configs` | `status` |
-| (embedded) | N/A | `api_configs` | `created_at` |
-| (embedded) | N/A | `api_configs` | `updated_at` |
-| (embedded) | N/A | `api_configs` | `deployed_at` |
-| (embedded) | N/A | `api_configs` | `deployed_version` |
+| `apis` | UUID | `deployments` | `id` (primary key) |
+| (embedded) | N/A | `deployments` | `name` (extracted) |
+| (embedded) | N/A | `deployments` | `version` (extracted) |
+| (embedded) | N/A | `deployments` | `context` (extracted) |
+| (embedded) | N/A | `deployments` | `kind` (extracted) |
+| (embedded) | JSON value | `deployments` | `configuration` |
+| (embedded) | N/A | `deployments` | `status` |
+| (embedded) | N/A | `deployments` | `created_at` |
+| (embedded) | N/A | `deployments` | `updated_at` |
+| (embedded) | N/A | `deployments` | `deployed_at` |
+| (embedded) | N/A | `deployments` | `deployed_version` |
 | `audit` | (deleted) | (removed) | (removed) |
 | `metadata` | (deleted) | (removed) | (removed) |
 
@@ -355,13 +355,13 @@ func ValidateConfig(cfg *models.StoredAPIConfig) error {
 
 ```sql
 -- Add tags column
-ALTER TABLE api_configs ADD COLUMN tags TEXT;  -- JSON array
+ALTER TABLE deployments ADD COLUMN tags TEXT;  -- JSON array
 
 -- Update existing rows
-UPDATE api_configs SET tags = '[]' WHERE tags IS NULL;
+UPDATE deployments SET tags = '[]' WHERE tags IS NULL;
 
 -- Add index
-CREATE INDEX idx_tags ON api_configs(tags);
+CREATE INDEX idx_tags ON deployments(tags);
 
 -- Update user_version
 PRAGMA user_version = 2;
@@ -377,7 +377,7 @@ PRAGMA user_version = 2;
 
 ```sql
 -- PostgreSQL schema (future)
-CREATE TABLE api_configs (
+CREATE TABLE deployments (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     version TEXT NOT NULL,
@@ -392,8 +392,8 @@ CREATE TABLE api_configs (
     UNIQUE(name, version)
 );
 
-CREATE INDEX idx_name_version ON api_configs(name, version);
-CREATE INDEX idx_config_gin ON api_configs USING gin(configuration);
+CREATE INDEX idx_name_version ON deployments(name, version);
+CREATE INDEX idx_config_gin ON deployments USING gin(configuration);
 ```
 
 ---
@@ -446,19 +446,19 @@ sqlite3 ./backups/gateway-*.db "PRAGMA integrity_check;"
 sqlite3 ./data/gateway.db
 
 # List all APIs
-SELECT name, version, status FROM api_configs;
+SELECT name, version, status FROM deployments;
 
 # View specific API (pretty-print JSON)
-SELECT json(configuration) FROM api_configs WHERE name = 'Weather API';
+SELECT json(configuration) FROM deployments WHERE name = 'Weather API';
 
 # Check database size
 .dbinfo
 
 # Verify schema
-.schema api_configs
+.schema deployments
 
 # Count configurations by status
-SELECT status, COUNT(*) FROM api_configs GROUP BY status;
+SELECT status, COUNT(*) FROM deployments GROUP BY status;
 ```
 
 ### Troubleshooting Locked Database

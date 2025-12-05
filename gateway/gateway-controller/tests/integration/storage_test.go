@@ -57,8 +57,8 @@ func setupTestDB(t *testing.T) (storage.Storage, string, func()) {
 }
 
 // createTestConfig creates a sample API configuration for testing
-func createTestConfig(name, version string) *models.StoredAPIConfig {
-	return &models.StoredAPIConfig{
+func createTestConfig(name, version string) *models.StoredConfig {
+	return &models.StoredConfig{
 		ID: uuid.New().String(),
 		Configuration: api.APIConfiguration{
 			Version: api.ApiPlatformWso2Comv1,
@@ -103,8 +103,8 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 		retrieved, err := db.GetConfig(cfg.ID)
 		assert.NoError(t, err, "GetConfig should succeed")
 		assert.Equal(t, cfg.ID, retrieved.ID)
-		assert.Equal(t, cfg.GetAPIName(), retrieved.GetAPIName())
-		assert.Equal(t, cfg.GetAPIVersion(), retrieved.GetAPIVersion())
+		assert.Equal(t, cfg.GetName(), retrieved.GetName())
+		assert.Equal(t, cfg.GetVersion(), retrieved.GetVersion())
 	})
 
 	// Test GetConfigByNameVersion
@@ -116,8 +116,8 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 		retrieved, err := db.GetConfigByNameVersion("TestAPI3", "v1.0")
 		assert.NoError(t, err, "GetConfigByNameVersion should succeed")
 		assert.Equal(t, cfg.ID, retrieved.ID)
-		assert.Equal(t, "TestAPI3", retrieved.GetAPIName())
-		assert.Equal(t, "v1.0", retrieved.GetAPIVersion())
+		assert.Equal(t, "TestAPI3", retrieved.GetName())
+		assert.Equal(t, "v1.0", retrieved.GetVersion())
 	})
 
 	// Test UpdateConfig

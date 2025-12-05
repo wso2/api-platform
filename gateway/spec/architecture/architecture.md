@@ -31,7 +31,7 @@ Envoy-based gateway system with Go xDS control plane for dynamic API configurati
 
 ### Database
 - SQLite database file (`./data/gateway.db`).
-- Schema with `api_configs` table storing configurations as JSON TEXT.
+- Schema with `deployments` table storing configurations as JSON TEXT.
 - Composite unique constraint on `(name, version)`.
 - Indexes on frequently queried fields: `name+version`, `status`, `context`, `kind`.
 - Migration path to PostgreSQL/MySQL for cloud deployments.

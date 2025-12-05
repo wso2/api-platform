@@ -66,13 +66,13 @@ type Storage interface {
 	//
 	// Returns an error if a configuration with the same name and version already exists.
 	// Implementations should ensure this operation is atomic (all-or-nothing).
-	SaveConfig(cfg *models.StoredAPIConfig) error
+	SaveConfig(cfg *models.StoredConfig) error
 
 	// UpdateConfig updates an existing API configuration.
 	//
 	// Returns an error if the configuration does not exist.
 	// Implementations should ensure this operation is atomic and thread-safe.
-	UpdateConfig(cfg *models.StoredAPIConfig) error
+	UpdateConfig(cfg *models.StoredConfig) error
 
 	// DeleteConfig removes an API configuration by ID.
 	//
@@ -84,20 +84,26 @@ type Storage interface {
 	//
 	// Returns an error if the configuration is not found.
 	// This is the fastest lookup method (O(1) for most databases).
-	GetConfig(id string) (*models.StoredAPIConfig, error)
+	GetConfig(id string) (*models.StoredConfig, error)
 
 	// GetConfigByNameVersion retrieves an API configuration by name and version.
 	//
 	// Returns an error if the configuration is not found.
 	// This is the most common lookup method for API operations.
 	// Implementations should index (name, version) for fast lookups.
-	GetConfigByNameVersion(name, version string) (*models.StoredAPIConfig, error)
+	GetConfigByNameVersion(name, version string) (*models.StoredConfig, error)
 
 	// GetAllConfigs retrieves all API configurations.
 	//
 	// Returns an empty slice if no configurations exist.
 	// May be expensive for large datasets; consider pagination in future versions.
-	GetAllConfigs() ([]*models.StoredAPIConfig, error)
+	GetAllConfigs() ([]*models.StoredConfig, error)
+
+	// GetAllConfigsByKind retrieves all API configurations of a specific kind.
+	//
+	// Returns an empty slice if no configurations of the specified kind exist.
+	// May be expensive for large datasets; consider pagination in future versions.
+	GetAllConfigsByKind(kind string) ([]*models.StoredConfig, error)
 
 	// SaveCertificate persists a new certificate.
 	//
@@ -130,37 +136,4 @@ type Storage interface {
 	// Should be called during graceful shutdown.
 	// Implementations should ensure all pending writes are flushed.
 	Close() error
-
-	// MCP-specific methods for persisting MCP configurations.
-
-	// SaveMCPConfig persists a new MCP configuration.
-	// Returns an error if a configuration with the same name and version already exists.
-	// Implementations should ensure this operation is atomic (all-or-nothing).
-	SaveMCPConfig(cfg *models.StoredAPIConfig) error
-
-	// UpdateMCPConfig updates an existing MCP configuration.
-	// Returns an error if the configuration does not exist.
-	// Implementations should ensure this operation is atomic and thread-safe.
-	UpdateMCPConfig(cfg *models.StoredAPIConfig) error
-
-	// DeleteMCPConfig removes an MCP configuration by ID.
-	// Returns an error if the configuration does not exist.
-	// Implementations should ensure related data (if any) is cleaned up.
-	DeleteMCPConfig(id string) error
-
-	// GetMCPConfig retrieves an MCP configuration by ID.
-	// Returns an error if the configuration is not found.
-	// This is the fastest lookup method (O(1) for most databases).
-	GetMCPConfig(id string) (*models.StoredAPIConfig, error)
-
-	// GetMCPConfigByNameVersion retrieves an MCP configuration by name and version.
-	// Returns an error if the configuration is not found.
-	// This is the most common lookup method for MCP operations.
-	// Implementations should index (name, version) for fast lookups.
-	GetMCPConfigByNameVersion(name, version string) (*models.StoredAPIConfig, error)
-
-	// GetAllMCPConfigs retrieves all MCP configurations.
-	// Returns an empty slice if no configurations exist.
-	// May be expensive for large datasets; consider pagination in future versions.
-	GetAllMCPConfigs() ([]*models.StoredAPIConfig, error)
 }

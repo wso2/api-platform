@@ -103,8 +103,6 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		combinedMsg := strings.Join(errors, "; ")
 
 		return nil, fmt.Errorf("configuration validation failed with %d error(s): %s", len(validationErrors), combinedMsg)
-
-		// return nil, fmt.Errorf("configuration validation failed with %d errors", len(validationErrors))
 	}
 
 	// Generate API ID if not provided
@@ -119,8 +117,9 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 
 	// Create stored configuration
 	now := time.Now()
-	storedCfg := &models.StoredAPIConfig{
+	storedCfg := &models.StoredConfig{
 		ID:                  apiID,
+		Kind:                string(api.Mcp),
 		Status:              models.StatusPending,
 		CreatedAt:           now,
 		UpdatedAt:           now,
@@ -171,11 +170,11 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 }
 
 // saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
-func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredAPIConfig, logger *zap.Logger) (bool, error) {
+func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *zap.Logger) (bool, error) {
 	// Try to save to database first (only if persistent mode)
 	if s.db != nil {
-		if err := s.db.SaveMCPConfig(storedCfg); err != nil {
-			// Check if it's a conflict (API already exists)
+		if err := s.db.SaveConfig(storedCfg); err != nil {
+			// Check if it's a conflict (Configuration already exists)
 			if storage.IsConflictError(err) {
 				logger.Info("MCP configuration already exists in database, updating instead",
 					zap.String("id", storedCfg.ID),
@@ -194,7 +193,7 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredAPICon
 	if err := s.store.Add(storedCfg); err != nil {
 		// Rollback database write (only if persistent mode)
 		if s.db != nil {
-			_ = s.db.DeleteMCPConfig(storedCfg.ID)
+			_ = s.db.DeleteConfig(storedCfg.ID)
 		}
 
 		// Check if it's a conflict (API already exists)
@@ -215,9 +214,9 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredAPICon
 }
 
 // updateExistingConfig updates an existing API configuration
-func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredAPIConfig) (bool, error) {
+func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConfig) (bool, error) {
 	// Get existing config
-	existing, err := s.store.GetByNameVersion(newConfig.GetAPIName(), newConfig.GetAPIVersion())
+	existing, err := s.store.GetByNameVersion(newConfig.GetName(), newConfig.GetVersion())
 	if err != nil {
 		return false, fmt.Errorf("failed to get existing config: %w", err)
 	}
@@ -233,7 +232,7 @@ func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredAPIC
 
 	// Update database first (only if persistent mode)
 	if s.db != nil {
-		if err := s.db.UpdateMCPConfig(existing); err != nil {
+		if err := s.db.UpdateConfig(existing); err != nil {
 			return false, fmt.Errorf("failed to update config in database: %w", err)
 		}
 	}
