@@ -477,7 +477,7 @@ gateway-controller/
 │   │   ├── parser.go         # YAML/JSON parsing
 │   │   └── validator.go      # Configuration validation
 │   ├── models/
-│   │   └── api_config.go     # Data structures
+│   │   └── stored_config.go     # Data structures
 │   ├── storage/
 │   │   ├── interface.go      # Storage abstraction
 │   │   ├── memory.go         # In-memory cache

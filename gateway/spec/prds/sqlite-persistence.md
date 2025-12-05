@@ -13,7 +13,8 @@ Persistent storage of API configurations using embedded SQLite database with WAL
 - NORMAL synchronous mode balancing durability and performance
 
 ### Schema Design
-- `deployments` table with columns: id (TEXT PRIMARY KEY), name, version, context, kind, configuration (TEXT/JSON), status, created_at, updated_at, deployed_at, deployed_version
+- `deployments` table with columns: id (TEXT PRIMARY KEY), name, version, context, kind, status, created_at, updated_at, deployed_at, deployed_version
+- `deployment_configs` table with columns: id (FOREIGN KEY), configuration (TEXT/JSON), source_configuration (TEXT/JSON)
 - Composite unique constraint on `(name, version)` preventing duplicate API versions
 - Indexes on frequently queried fields: `(name, version)`, `status`, `context`, `kind`
 

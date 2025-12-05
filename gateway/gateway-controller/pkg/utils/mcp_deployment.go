@@ -54,10 +54,6 @@ type MCPDeploymentService struct {
 	transformer     Transformer
 }
 
-type MCPOperation struct {
-	api.Operation
-}
-
 // NewMCPDeploymentService creates a new MCP deployment service
 func NewMCPDeploymentService(
 	store *storage.ConfigStore,

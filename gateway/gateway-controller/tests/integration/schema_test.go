@@ -146,7 +146,7 @@ func TestSchemaInitialization(t *testing.T) {
 		}
 	})
 
-	t.Run("TableExists", func(t *testing.T) {
+	t.Run("DeploymentConfigsTableExists", func(t *testing.T) {
 		var tableName string
 		err := rawDB.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='deployment_configs'").Scan(&tableName)
 		assert.NoError(t, err)
@@ -154,7 +154,7 @@ func TestSchemaInitialization(t *testing.T) {
 	})
 
 	// Verify table schema
-	t.Run("TableSchema", func(t *testing.T) {
+	t.Run("DeploymentConfigsTableSchema", func(t *testing.T) {
 		rows, err := rawDB.Query("PRAGMA table_info(deployment_configs)")
 		require.NoError(t, err)
 		defer rows.Close()
