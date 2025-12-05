@@ -1,4 +1,3 @@
-// 📁 useDevPortalsApi.ts
 import { useCallback } from 'react';
 import { getApiConfig } from './apiConfig';
 import { parseApiError } from '../utils/apiErrorUtils';

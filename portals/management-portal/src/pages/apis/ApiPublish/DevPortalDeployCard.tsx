@@ -106,14 +106,12 @@ const DevPortalDeployCard: React.FC<Props> = ({
                 justifyContent: 'center',
               }}
             >
-              {/* {logoSrc ? ( */}
               <Box
                 component="img"
                 src={BijiraDPLogo}
                 alt="Bijira Dev Portal Logo"
                 sx={{ width: 90, height: 90, objectFit: 'contain' }}
               />
-              {/* ) : null} */}
             </Box>
           </Box>
 
@@ -199,30 +197,24 @@ const DevPortalDeployCard: React.FC<Props> = ({
           <Box
             sx={{
               backgroundColor: (t) =>
-                !isPublished
+                status === 'FAILED'
                   ? t.palette.mode === 'dark'
-                    ? 'rgba(107,114,128,0.12)' // neutral gray for not published
-                    : '#F4F4F5'
-                  : status === 'FAILED'
+                    ? 'rgba(239,68,68,0.12)'
+                    : '#FDECEC'
+                  : success
                     ? t.palette.mode === 'dark'
+                      ? 'rgba(16,185,129,0.12)'
+                      : '#E8F7EC'
+                    : t.palette.mode === 'dark'
                       ? 'rgba(239,68,68,0.12)'
-                      : '#FDECEC'
-                    : success
-                      ? t.palette.mode === 'dark'
-                        ? 'rgba(16,185,129,0.12)'
-                        : '#E8F7EC'
-                      : t.palette.mode === 'dark'
-                        ? 'rgba(239,68,68,0.12)'
-                        : '#FDECEC',
+                      : '#FDECEC',
               border: (t) =>
                 `1px solid ${
-                  !isPublished
-                    ? t.palette.divider
-                    : status === 'FAILED'
-                      ? t.palette.error.light
-                      : success
-                        ? '#D8EEDC'
-                        : t.palette.error.light
+                  status === 'FAILED'
+                    ? t.palette.error.light
+                    : success
+                      ? '#D8EEDC'
+                      : t.palette.error.light
                 }`,
               borderRadius: 2,
               px: 2,
@@ -239,15 +231,11 @@ const DevPortalDeployCard: React.FC<Props> = ({
               color={
                 status === 'FAILED'
                   ? 'error'
-                  : !isPublished
-                    ? 'default'
-                    : success
-                      ? 'success'
-                      : 'error'
+                  : success
+                    ? 'success'
+                    : 'error'
               }
-              variant={
-                !isPublished ? 'outlined' : success ? 'filled' : 'outlined'
-              }
+              variant={success ? 'filled' : 'outlined'}
               size="small"
             />
           </Box>
@@ -261,7 +249,7 @@ const DevPortalDeployCard: React.FC<Props> = ({
             disabled={!apiId || isPublishingThis}
             onClick={() => onPublish(portal)}
           >
-            {isPublishingThis ? "Adding…" : "Add API"}
+            {isPublishingThis ? 'Adding…' : 'Add API'}
           </Button>
         )}
       </Card>

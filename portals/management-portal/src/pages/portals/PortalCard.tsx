@@ -66,8 +66,8 @@ const PortalCard: React.FC<PortalCardProps> = ({
   activating,
 }) => {
   return (
-    <Card testId={''} style={{ maxWidth: 450 }}>
-      <CardActionArea onClick={onClick} testId={''}>
+    <Card testId="portal-card" style={{ maxWidth: 450 }}>
+      <CardActionArea onClick={onClick} testId="portal-card-action">
         <CardContent>
           <Box
             sx={{

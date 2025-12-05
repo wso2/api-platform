@@ -7,7 +7,7 @@ import {
   useState,
   useRef,
   type ReactNode,
-} from "react";
+} from 'react';
 
 import {
   useApiPublishApi,
@@ -17,7 +17,7 @@ import {
   type PublishResponse,
 } from "../hooks/apiPublish";
 
-import { useOrganization } from "./OrganizationContext";
+import { useOrganization } from './OrganizationContext';
 
 /* -------------------------------------------------------------------------- */
 /*                                Type Definitions                            */
@@ -102,7 +102,8 @@ export const ApiPublishProvider = ({ children }: ApiPublishProviderProps) => {
         try {
           await refreshPublishedApis(apiId);
         } catch {
-          /* ignore refresh error */
+          // Publish succeeded but refresh failed - user may need to manually refresh
+          console.warn('Failed to refresh publications after publish');
         }
 
         return response;
@@ -198,7 +199,7 @@ export const ApiPublishProvider = ({ children }: ApiPublishProviderProps) => {
 export const useApiPublishing = () => {
   const ctx = useContext(ApiPublishContext);
   if (!ctx) {
-    throw new Error("useApiPublishing must be used within an ApiPublishProvider");
+    throw new Error('useApiPublishing must be used within an ApiPublishProvider');
   }
   return ctx;
 };

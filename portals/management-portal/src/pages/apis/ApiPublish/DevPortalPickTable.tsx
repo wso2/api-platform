@@ -58,7 +58,7 @@ const DevPortalPickTable: React.FC<Props> = ({
     return Array.isArray(publishedIds) ? new Set(publishedIds) : publishedIds;
   }, [publishedIds]);
 
-  // Only show NOT published AND active portals
+  // Only show NOT published AND enabled portals
   const visiblePortals = React.useMemo(
     () => portals.filter((p) => !publishedSet.has(p.uuid) && p.isEnabled),
     [portals, publishedSet]

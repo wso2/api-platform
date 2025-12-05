@@ -67,7 +67,7 @@ export interface ApiPublishPayload {
 
 export type PublicationsListResponse = {
   count: number;
-  list: any[];
+  list: ApiPublicationWithPortal[];
   pagination?: {
     total: number;
     offset: number;

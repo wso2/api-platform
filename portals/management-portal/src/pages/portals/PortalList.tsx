@@ -20,7 +20,6 @@ import NewDP from '../undraw_windows_kqsk.svg';
 interface PortalListProps {
   portals: Portal[];
   loading: boolean;
-  error?: string | null;
   onPortalClick: (portalId: string) => void;
   onPortalActivate: (portalId: string) => void;
   onPortalEdit: (portalId: string) => void;
@@ -192,10 +191,7 @@ const PortalList: React.FC<PortalListProps> = ({
       <ConfirmationDialog
         open={confirmationDialog.open}
         onClose={closeConfirmationDialog}
-        onConfirm={() => {
-          confirmationDialog.onConfirm();
-          closeConfirmationDialog();
-        }}
+        onConfirm={confirmationDialog.onConfirm}
         title={confirmationDialog.title}
         message={confirmationDialog.message}
         confirmText={confirmationDialog.confirmText}

@@ -142,7 +142,7 @@ const PortalManagementContent: React.FC<PortalManagementProps> = () => {
         const errorMessage =
           error instanceof Error
             ? error.message
-            : PORTAL_CONSTANTS.MESSAGES.CREATION_FAILED;
+            : PORTAL_CONSTANTS.MESSAGES.UPDATE_FAILED;
         showNotification(errorMessage, 'error');
       }
     },
@@ -185,7 +185,7 @@ const PortalManagementContent: React.FC<PortalManagementProps> = () => {
                     description: selectedPortal.description,
                     apiUrl: selectedPortal.apiUrl,
                     hostname: selectedPortal.hostname,
-                    apiKey: '**********', // Masked for security
+                    apiKey: PORTAL_CONSTANTS.API_KEY_MASK, // Masked for security
                     headerKeyName: selectedPortal.headerKeyName,
                     visibility: selectedPortal.visibility,
                   }

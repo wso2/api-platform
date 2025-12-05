@@ -17,6 +17,7 @@ import {
 } from '../hooks/devportals';
 import { useOrganization } from './OrganizationContext';
 import { useNotifications } from './NotificationContext';
+import { PORTAL_CONSTANTS } from '../constants/portal';
 
 /* -------------------------------------------------------------------------- */
 /*                              Type Definitions                              */
@@ -82,7 +83,7 @@ export const DevPortalProvider = ({ children }: { children: ReactNode }) => {
       setDevportals(result);
       return result;
     } catch (err) {
-      handleError(err, 'Failed to fetch devportals');
+      handleError(err, PORTAL_CONSTANTS.MESSAGES.FETCH_DEVPORTALS_FAILED);
       return []; // Return empty array on error
     } finally {
       setLoading(false);
@@ -96,7 +97,7 @@ export const DevPortalProvider = ({ children }: { children: ReactNode }) => {
         setDevportals((prev) => [portal, ...prev]);
         return portal;
       } catch (err) {
-        handleError(err, 'Failed to create devportal');
+        handleError(err, PORTAL_CONSTANTS.MESSAGES.CREATE_DEVPORTAL_FAILED);
         throw err;
       }
     },
@@ -112,7 +113,7 @@ export const DevPortalProvider = ({ children }: { children: ReactNode }) => {
         );
         return portal;
       } catch (err) {
-        handleError(err, 'Failed to update devportal');
+        handleError(err, PORTAL_CONSTANTS.MESSAGES.UPDATE_DEVPORTAL_FAILED);
         throw err;
       }
     },
@@ -125,7 +126,7 @@ export const DevPortalProvider = ({ children }: { children: ReactNode }) => {
         await deleteRequest(uuid);
         setDevportals((prev) => prev.filter((portal) => portal.uuid !== uuid));
       } catch (err) {
-        handleError(err, 'Failed to delete devportal');
+        handleError(err, PORTAL_CONSTANTS.MESSAGES.DELETE_DEVPORTAL_FAILED);
         throw err;
       }
     },
@@ -144,7 +145,7 @@ export const DevPortalProvider = ({ children }: { children: ReactNode }) => {
         });
         return portal;
       } catch (err) {
-        handleError(err, 'Failed to fetch portal details');
+        handleError(err, PORTAL_CONSTANTS.MESSAGES.FETCH_PORTAL_DETAILS_FAILED);
         throw err;
       }
     },
@@ -161,7 +162,7 @@ export const DevPortalProvider = ({ children }: { children: ReactNode }) => {
           )
         );
       } catch (err) {
-        handleError(err, 'Failed to activate devportal');
+        handleError(err, PORTAL_CONSTANTS.MESSAGES.ACTIVATE_DEVPORTAL_FAILED);
         throw err;
       }
     },
@@ -182,8 +183,11 @@ export const DevPortalProvider = ({ children }: { children: ReactNode }) => {
 
     if (lastFetchedOrgRef.current === organization.id) return; // Already fetched
 
-    lastFetchedOrgRef.current = organization.id;
-    refreshDevPortals();
+    refreshDevPortals().then(() => {
+      lastFetchedOrgRef.current = organization.id;
+    }).catch(() => {
+      /* errors captured in state */
+    });
   }, [organization, orgLoading, refreshDevPortals]);
 
   /* ---------------------------- Context Value ---------------------------- */

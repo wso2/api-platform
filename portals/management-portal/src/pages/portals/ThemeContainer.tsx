@@ -29,7 +29,7 @@ const ThemeContainer: React.FC<ThemeContainerProps> = ({
       showNotification('Theme published successfully', 'success');
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Failed to publish theme';
+        err instanceof Error ? err.message : PORTAL_CONSTANTS.MESSAGES.PUBLISH_THEME_FAILED;
       showNotification(message, 'error');
     }
   }, [onPublish, showNotification]);
@@ -41,7 +41,7 @@ const ThemeContainer: React.FC<ThemeContainerProps> = ({
       showNotification('Promo action completed', 'success');
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Promo action failed';
+        err instanceof Error ? err.message : PORTAL_CONSTANTS.MESSAGES.PROMO_ACTION_FAILED;
       showNotification(message, 'error');
     }
   }, [onPublish, showNotification]);

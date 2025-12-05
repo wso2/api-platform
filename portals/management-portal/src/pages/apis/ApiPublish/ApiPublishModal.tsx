@@ -10,6 +10,7 @@ import {
 import { Button } from '../../../components/src/components/Button';
 import { useApisContext } from '../../../context/ApiContext';
 import { useNotifications } from '../../../context/NotificationContext';
+import { PORTAL_CONSTANTS } from '../../../constants/portal';
 import type { ApiSummary } from '../../../hooks/apis';
 import { buildPublishPayload } from './mapper';
 import ApiPublishForm from './ApiPublishForm';
@@ -111,11 +112,11 @@ const ApiPublishModal: React.FC<Props> = ({ open, portal, api, onClose, onPublis
 
   const handleSubmit = async () => {
     if (!portal?.uuid) {
-      showNotification('No portal selected', 'error');
+      showNotification(PORTAL_CONSTANTS.MESSAGES.NO_PORTAL_SELECTED, 'error');
       return;
     }
     if (!formData.apiName || !formData.productionURL) {
-      showNotification('Please provide API Name and Production URL', 'error');
+      showNotification(PORTAL_CONSTANTS.MESSAGES.PROVIDE_API_NAME_AND_URL, 'error');
       return;
     }
 
@@ -125,7 +126,7 @@ const ApiPublishModal: React.FC<Props> = ({ open, portal, api, onClose, onPublis
       showNotification(`Published to ${portal.name || 'portal'}`, 'success');
       onClose();
     } catch (err: any) {
-      showNotification(err?.message || 'Failed to publish', 'error');
+      showNotification(err?.message || PORTAL_CONSTANTS.MESSAGES.PUBLISH_FAILED, 'error');
     }
   };
 

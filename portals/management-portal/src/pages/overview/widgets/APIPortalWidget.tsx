@@ -65,7 +65,7 @@ export default function APIPortalWidget({
                 sx={{ width: 48, height: 48, opacity: 0.6, mb: 1 }}
               />
               <Typography variant="body2" color="text.secondary">
-                No Active Developer Portals available
+                No Developer Portals available
               </Typography>
             </Box>
           ) : (

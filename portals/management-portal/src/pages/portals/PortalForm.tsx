@@ -81,7 +81,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
   }, [initialData]);
 
   const isValid = useMemo(() => {
-    const apiKeyValid = isEdit && formData.apiKey === '*****' ? true : formData.apiKey.trim();
+    const apiKeyValid = isEdit && formData.apiKey === PORTAL_CONSTANTS.API_KEY_MASK ? true : formData.apiKey.trim();
     const isValidUrl = (url: string) => {
       try {
         const parsed = new URL(url);
@@ -111,7 +111,7 @@ const PortalForm: React.FC<PortalFormProps> = ({
 
     try {
       let payload: UpdatePortalPayload = { ...formData };
-      if (isEdit && payload.apiKey === '*****') {
+      if (isEdit && payload.apiKey === PORTAL_CONSTANTS.API_KEY_MASK) {
         delete payload.apiKey;
       }
       await onSubmit(payload);

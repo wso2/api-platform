@@ -8,8 +8,9 @@ export const parseApiError = async (
 ): Promise<string> => {
   let errorMessage = `Failed to ${operation} (${response.status})`;
 
+  const text = await response.text();
   try {
-    const errorData = await response.json();
+    const errorData = JSON.parse(text);
     if (errorData.description) {
       errorMessage = errorData.description;
     } else if (errorData.message) {
@@ -18,15 +19,14 @@ export const parseApiError = async (
       errorMessage = errorData.error;
     } else if (errorData.detail) {
       errorMessage = errorData.detail;
+    } else if (text.trim()) {
+      // Fallback to raw text if JSON parsed but no useful fields
+      errorMessage = text.trim();
     }
   } catch {
-    try {
-      const errorText = await response.text();
-      if (errorText) {
-        errorMessage = errorText;
-      }
-    } catch {
-      // Keep default message
+    // JSON parsing failed - use raw text if available
+    if (text.trim()) {
+      errorMessage = text.trim();
     }
   }
 
