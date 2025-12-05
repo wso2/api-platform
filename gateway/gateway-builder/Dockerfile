@@ -17,17 +17,17 @@ RUN apk add --no-cache \
 WORKDIR /workspace
 
 # Copy Policy Engine framework source code (policy-engine/)
-COPY gateway/policy-engine/ /workspace/policy-engine/
+COPY --from=policy-engine . /workspace/policy-engine/
 
 # Copy Gateway Builder application (includes templates)
-COPY gateway/gateway-builder/ /workspace/gateway-builder/
+COPY . /workspace/gateway-builder/
 
 # Pre-download Go dependencies for runtime
 WORKDIR /workspace/policy-engine/policy-engine
 RUN go mod download
 
 # Copy SDK (needed for go.mod replace directive)
-COPY sdk/ /workspace/sdk/
+COPY --from=sdk . /workspace/sdk/
 
 # Pre-download Go dependencies for SDK
 WORKDIR /workspace/sdk

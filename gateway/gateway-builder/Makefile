@@ -56,12 +56,15 @@ help: ## Show this help message
 .PHONY: build
 build: ## Build Docker image
 	@echo "Building Docker image ($(VERSION))..."
-	@docker build -f Dockerfile \
+	@docker buildx build -f Dockerfile \
+		--build-context sdk=../../sdk \
+		--build-context policy-engine=../policy-engine \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
-		../../
+		--load \
+		.
 
 .PHONY: push
 push: ## Push Docker image to registry
@@ -73,13 +76,15 @@ push: ## Push Docker image to registry
 build-and-push-multiarch: ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64)
 	@echo "Building and pushing multi-arch Docker image: $(IMAGE_NAME):$(VERSION)"
 	docker buildx build -f Dockerfile \
+		--build-context sdk=../../sdk \
+		--build-context policy-engine=../policy-engine \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
 		--push \
-		../../
+		.
 
 # Development Targets
 .PHONY: test

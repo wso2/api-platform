@@ -23,14 +23,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy SDK (needed for go.mod replace directive)
-COPY sdk /sdk
+COPY --from=sdk . /sdk
 
 # Copy go mod files
-COPY gateway/gateway-controller/go.mod gateway/gateway-controller/go.sum ./
+COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy source code
-COPY gateway/gateway-controller/ ./
+COPY . ./
 
 # Build the binary with CGO enabled (required for mattn/go-sqlite3)
 # Set CC for cross-compilation based on target architecture
@@ -66,10 +66,10 @@ WORKDIR /app
 COPY --from=builder /build/controller .
 
 # Copy default configuration file
-COPY gateway/gateway-controller/config/config.yaml /app/config/config.yaml
+COPY config/config.yaml /app/config/config.yaml
 
 # Copy policy definitions
-COPY gateway/gateway-controller/default-policies /app/default-policies
+COPY default-policies /app/default-policies
 
 # Create data directory for SQLite database
 RUN mkdir -p /app/data
