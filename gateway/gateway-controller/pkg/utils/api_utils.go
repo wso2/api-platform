@@ -24,13 +24,14 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
+
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 
 	"go.uber.org/zap"
 )
@@ -209,7 +210,7 @@ type APIDeploymentNotification struct {
 }
 
 // NotifyAPIDeployment sends a REST API call to platform-api when an API is deployed successfully
-func (s *APIUtilsService) NotifyAPIDeployment(apiID string, apiConfig *models.StoredAPIConfig, revisionID string) error {
+func (s *APIUtilsService) NotifyAPIDeployment(apiID string, apiConfig *models.StoredConfig, revisionID string) error {
 	// Construct the deployment URL
 	deployURL := s.config.BaseURL + "/apis/" + apiID + "/gateway-deployments"
 	if revisionID != "" {

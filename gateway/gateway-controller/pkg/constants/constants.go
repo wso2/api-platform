@@ -77,4 +77,10 @@ const (
 
 	// Policy Engine
 	PolicyEngineClusterName = "api-platform/policy-engine"
+
+	// MCP related constants
+	MCP_RESOURCE_PATH          = "/mcp"
+	MCP_PRM_RESOURCE_PATH      = "/.well-known/oauth-protected-resource"
+	SPEC_VERSION_2025_JUNE     = "2025-06-18"
+	SPEC_VERSION_2025_NOVEMBER = "2025-11-25"
 )

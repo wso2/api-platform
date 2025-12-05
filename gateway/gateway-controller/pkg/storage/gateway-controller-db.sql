@@ -2,8 +2,8 @@
 -- Version: 1.0
 -- Description: Persistent storage for API configurations with lifecycle metadata
 
--- Main table for API configurations
-CREATE TABLE IF NOT EXISTS api_configs (
+-- Main table for deployments
+CREATE TABLE IF NOT EXISTS deployments (
     -- Primary identifier (UUID)
     id TEXT PRIMARY KEY,
 
@@ -11,10 +11,7 @@ CREATE TABLE IF NOT EXISTS api_configs (
     name TEXT NOT NULL,
     version TEXT NOT NULL,
     context TEXT NOT NULL,              -- Base path (e.g., "/weather")
-    kind TEXT NOT NULL,                  -- API type: "http/rest", "graphql", "grpc", "asyncapi"
-
-    -- Full API configuration as JSON
-    configuration TEXT NOT NULL,         -- JSON-serialized APIConfiguration
+    kind TEXT NOT NULL,                 -- Deployment type: "http/rest", "graphql", "grpc", "asyncapi"
 
     -- Deployment status
     status TEXT NOT NULL CHECK(status IN ('pending', 'deployed', 'failed')),
@@ -33,16 +30,16 @@ CREATE TABLE IF NOT EXISTS api_configs (
 
 -- Indexes for fast lookups
 -- Composite index for name+version lookups (most common query)
-CREATE INDEX IF NOT EXISTS idx_name_version ON api_configs(name, version);
+CREATE INDEX IF NOT EXISTS idx_name_version ON deployments(name, version);
 
 -- Filter by deployment status (translator queries pending configs)
-CREATE INDEX IF NOT EXISTS idx_status ON api_configs(status);
+CREATE INDEX IF NOT EXISTS idx_status ON deployments(status);
 
 -- Filter by context path (conflict detection)
-CREATE INDEX IF NOT EXISTS idx_context ON api_configs(context);
+CREATE INDEX IF NOT EXISTS idx_context ON deployments(context);
 
 -- Filter by API type (reporting/analytics)
-CREATE INDEX IF NOT EXISTS idx_kind ON api_configs(kind);
+CREATE INDEX IF NOT EXISTS idx_kind ON deployments(kind);
 
 -- Note: Policy definitions are no longer stored in the database.
 -- They are loaded from files at controller startup (see policies/ directory).
@@ -76,6 +73,15 @@ CREATE INDEX IF NOT EXISTS idx_cert_name ON certificates(name);
 
 -- Index for expiry tracking
 CREATE INDEX IF NOT EXISTS idx_cert_expiry ON certificates(not_after);
+
+
+-- Table for deployment-specific configurations
+CREATE TABLE IF NOT EXISTS deployment_configs (
+    id TEXT PRIMARY KEY,
+    configuration TEXT NOT NULL,        -- JSON-serialized APIConfiguration
+    source_configuration TEXT,          -- JSON-serialized SourceConfiguration
+    FOREIGN KEY(id) REFERENCES deployments(id) ON DELETE CASCADE
+);
 
 -- Set schema version to 3
 PRAGMA user_version = 3;

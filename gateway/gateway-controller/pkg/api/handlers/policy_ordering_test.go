@@ -146,7 +146,7 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Build a minimal StoredAPIConfig
-			cfg := &models.StoredAPIConfig{
+			cfg := &models.StoredConfig{
 				Configuration: api.APIConfiguration{
 					Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
 					Kind:    api.APIConfigurationKind("http/rest"),
@@ -239,7 +239,7 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 		{Name: "auth", Version: "v5.0.0"},
 	}
 
-	cfg := &models.StoredAPIConfig{
+	cfg := &models.StoredConfig{
 		Configuration: api.APIConfiguration{
 			Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
 			Kind:    api.APIConfigurationKind("http/rest"),
@@ -375,7 +375,7 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 		{Name: "validation", Version: "v1.0.0"},
 	}
 
-	cfg := &models.StoredAPIConfig{
+	cfg := &models.StoredConfig{
 		Configuration: api.APIConfiguration{
 			Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
 			Kind:    api.APIConfigurationKind("http/rest"),

@@ -138,7 +138,7 @@ gateway/
 │   │   │   ├── parser.go            # YAML/JSON parsing & validation
 │   │   │   └── validator.go         # API configuration validation
 │   │   ├── models/
-│   │   │   └── api_config.go        # API configuration data structures (complement generated types)
+│   │   │   └── stored_config.go        # API configuration data structures (complement generated types)
 │   │   ├── storage/
 │   │   │   ├── interface.go         # Storage abstraction
 │   │   │   ├── memory.go            # In-memory maps for runtime access

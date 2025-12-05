@@ -433,15 +433,17 @@ Internal representation of API Configuration as stored in bbolt database. Includ
 ### Go Data Structure
 
 ```go
-// StoredAPIConfig represents the configuration stored in the database and in-memory
-type StoredAPIConfig struct {
-    ID             string               `json:"id"`              // Unique identifier (generated)
-    Configuration  APIConfiguration     `json:"configuration"`   // User-provided config
-    Status         ConfigStatus         `json:"status"`          // Current state
-    CreatedAt      time.Time            `json:"created_at"`
-    UpdatedAt      time.Time            `json:"updated_at"`
-    DeployedAt     *time.Time           `json:"deployed_at"`     // Nil if not yet deployed
-    DeployedVersion int64               `json:"deployed_version"` // xDS snapshot version
+// StoredConfig represents the configuration stored in the database and in-memory
+type StoredConfig struct {
+	ID                  string               `json:"id"`
+	Kind                string               `json:"kind"`
+	Configuration       api.APIConfiguration `json:"configuration"`
+	SourceConfiguration any                  `json:"source_configuration,omitempty"`
+	Status              ConfigStatus         `json:"status"`
+	CreatedAt           time.Time            `json:"created_at"`
+	UpdatedAt           time.Time            `json:"updated_at"`
+	DeployedAt          *time.Time           `json:"deployed_at,omitempty"`
+	DeployedVersion     int64                `json:"deployed_version"`
 }
 
 // ConfigStatus represents the lifecycle state
@@ -459,7 +461,7 @@ const (
 ```
 gateway-controller.db
 ├── apis/                        # Bucket: API configurations
-│   └── {id} → StoredAPIConfig   # Key: config ID, Value: JSON-encoded config
+│   └── {id} → StoredConfig      # Key: config ID, Value: JSON-encoded config
 │
 ├── audit/                       # Bucket: Audit logs
 │   └── {timestamp}_{id} → AuditEvent  # Key: timestamp+ID, Value: event details

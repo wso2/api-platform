@@ -61,7 +61,7 @@ gateway/gateway-controller/
 │   │   ├── parser.go            # YAML/JSON parsing
 │   │   └── validator.go         # API configuration validation
 │   ├── models/
-│   │   └── api_config.go        # Data structures
+│   │   └── stored_config.go        # Data structures
 │   ├── storage/
 │   │   ├── interface.go         # Storage abstraction
 │   │   ├── memory.go            # In-memory maps
@@ -185,7 +185,7 @@ git commit -m "Update API contract: <description>"
 
 ```bash
 # 1. Update data model
-vim pkg/models/api_config.go
+vim pkg/models/stored_config.go
 
 # 2. Update validation logic
 vim pkg/config/validator.go

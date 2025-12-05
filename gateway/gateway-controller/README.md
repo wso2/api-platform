@@ -326,7 +326,7 @@ The Gateway-Controller uses SQLite (embedded relational database) for persistent
 
 The SQLite database contains the following table:
 
-- **`api_configs`** - Stores API configurations with full lifecycle metadata
+- **`deployments`** - Stores API configurations with full lifecycle metadata
 
 #### Table Structure
 
@@ -373,17 +373,17 @@ You can inspect the SQLite database using the `sqlite3` command-line tool:
 sqlite3 ./data/gateway.db
 
 # List all API configurations
-SELECT name, version, status FROM api_configs;
+SELECT name, version, status FROM deployments;
 
 # View specific API configuration (pretty-print JSON)
-SELECT json(configuration) FROM api_configs WHERE name = 'Weather API';
+SELECT json(configuration) FROM deployments WHERE name = 'Weather API';
 
 # Count configurations by status
-SELECT status, COUNT(*) FROM api_configs GROUP BY status;
+SELECT status, COUNT(*) FROM deployments GROUP BY status;
 
 # Check database size and schema
 .dbinfo
-.schema api_configs
+.schema deployments
 
 # Exit
 .quit
@@ -438,7 +438,7 @@ SQLite is optimized for up to 100+ API configurations. If you experience perform
 1. **Check index usage**:
    ```bash
    sqlite3 ./data/gateway.db
-   EXPLAIN QUERY PLAN SELECT * FROM api_configs WHERE name = 'MyAPI' AND version = 'v1';
+   EXPLAIN QUERY PLAN SELECT * FROM deployments WHERE name = 'MyAPI' AND version = 'v1';
    ```
 
 2. **Verify WAL mode is enabled**:
@@ -477,7 +477,7 @@ gateway-controller/
 │   │   ├── parser.go         # YAML/JSON parsing
 │   │   └── validator.go      # Configuration validation
 │   ├── models/
-│   │   └── api_config.go     # Data structures
+│   │   └── stored_config.go     # Data structures
 │   ├── storage/
 │   │   ├── interface.go      # Storage abstraction
 │   │   ├── memory.go         # In-memory cache

@@ -154,35 +154,33 @@ func (s *SQLiteStorage) initSchema() error {
 	return nil
 }
 
-// SaveConfig persists a new API configuration
-func (s *SQLiteStorage) SaveConfig(cfg *models.StoredAPIConfig) error {
-	// Serialize configuration to JSON
-	configJSON, err := json.Marshal(cfg.Configuration)
-	if err != nil {
-		return fmt.Errorf("failed to marshal configuration: %w", err)
-	}
-
+// SaveConfig persists a new deployment configuration
+func (s *SQLiteStorage) SaveConfig(cfg *models.StoredConfig) error {
 	// Extract fields for indexed columns
-	name := cfg.GetAPIName()
-	version := cfg.GetAPIVersion()
+	name := cfg.GetName()
+	version := cfg.GetVersion()
 	context := cfg.Configuration.Spec.Context
-	kind := string(cfg.Configuration.Kind)
 
 	query := `
-		INSERT INTO api_configs (
-			id, name, version, context, kind, configuration,
+		INSERT INTO deployments (
+			id, name, version, context, kind,
 			status, created_at, updated_at, deployed_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
+	stmt, err := s.db.Prepare(query)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
 	now := time.Now()
-	_, err = s.db.Exec(query,
+	_, err = stmt.Exec(
 		cfg.ID,
 		name,
 		version,
 		context,
-		kind,
-		string(configJSON),
+		cfg.Kind,
 		cfg.Status,
 		now,
 		now,
@@ -197,6 +195,11 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredAPIConfig) error {
 		return fmt.Errorf("failed to insert configuration: %w", err)
 	}
 
+	_, err = s.addDeploymentConfigs(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to add deployment configurations: %w", err)
+	}
+
 	s.logger.Info("Configuration saved",
 		zap.String("id", cfg.ID),
 		zap.String("name", name),
@@ -205,8 +208,8 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredAPIConfig) error {
 	return nil
 }
 
-// UpdateConfig updates an existing API configuration
-func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredAPIConfig) error {
+// UpdateConfig updates an existing deployment configuration
+func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
 	// Check if configuration exists
 	_, err := s.GetConfig(cfg.ID)
 	if err != nil {
@@ -216,32 +219,30 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredAPIConfig) error {
 		return err
 	}
 
-	// Serialize configuration to JSON
-	configJSON, err := json.Marshal(cfg.Configuration)
-	if err != nil {
-		return fmt.Errorf("failed to marshal configuration: %w", err)
-	}
-
 	// Extract fields for indexed columns
-	name := cfg.GetAPIName()
-	version := cfg.GetAPIVersion()
+	name := cfg.GetName()
+	version := cfg.GetVersion()
 	context := cfg.Configuration.Spec.Context
-	kind := string(cfg.Configuration.Kind)
 
 	query := `
-		UPDATE api_configs
+		UPDATE deployments
 		SET name = ?, version = ?, context = ?, kind = ?,
-		    configuration = ?, status = ?, updated_at = ?,
-		    deployed_version = ?
+			status = ?, updated_at = ?,
+			deployed_version = ?
 		WHERE id = ?
 	`
 
-	result, err := s.db.Exec(query,
+	stmt, err := s.db.Prepare(query)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Exec(
 		name,
 		version,
 		context,
-		kind,
-		string(configJSON),
+		cfg.Kind,
 		cfg.Status,
 		time.Now(),
 		cfg.DeployedVersion,
@@ -261,6 +262,11 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredAPIConfig) error {
 		return fmt.Errorf("%w: id=%s", ErrNotFound, cfg.ID)
 	}
 
+	_, err = s.updateDeploymentConfigs(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to update deployment configurations: %w", err)
+	}
+
 	s.logger.Info("Configuration updated",
 		zap.String("id", cfg.ID),
 		zap.String("name", name),
@@ -269,9 +275,9 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredAPIConfig) error {
 	return nil
 }
 
-// DeleteConfig removes an API configuration by ID
+// DeleteConfig removes an deployment configuration by ID
 func (s *SQLiteStorage) DeleteConfig(id string) error {
-	query := `DELETE FROM api_configs WHERE id = ?`
+	query := `DELETE FROM deployments WHERE id = ?`
 
 	result, err := s.db.Exec(query, id)
 	if err != nil {
@@ -292,22 +298,26 @@ func (s *SQLiteStorage) DeleteConfig(id string) error {
 	return nil
 }
 
-// GetConfig retrieves an API configuration by ID
-func (s *SQLiteStorage) GetConfig(id string) (*models.StoredAPIConfig, error) {
+// GetConfig retrieves an deployment configuration by ID
+func (s *SQLiteStorage) GetConfig(id string) (*models.StoredConfig, error) {
 	query := `
-		SELECT id, configuration, status, created_at, updated_at,
-		       deployed_at, deployed_version
-		FROM api_configs
-		WHERE id = ?
+		SELECT d.id, d.kind, dc.configuration, dc.source_configuration, d.status, d.created_at, 
+		d.updated_at, d.deployed_at, d.deployed_version
+		FROM deployments d
+		LEFT JOIN deployment_configs dc ON d.id = dc.id
+		WHERE d.id = ?
 	`
 
-	var cfg models.StoredAPIConfig
+	var cfg models.StoredConfig
 	var configJSON string
+	var sourceConfigJSON string
 	var deployedAt sql.NullTime
 
 	err := s.db.QueryRow(query, id).Scan(
 		&cfg.ID,
+		&cfg.Kind,
 		&configJSON,
+		&sourceConfigJSON,
 		&cfg.Status,
 		&cfg.CreatedAt,
 		&cfg.UpdatedAt,
@@ -328,29 +338,40 @@ func (s *SQLiteStorage) GetConfig(id string) (*models.StoredAPIConfig, error) {
 	}
 
 	// Deserialize JSON configuration
-	if err := json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal configuration: %w", err)
+	if configJSON != "" {
+		if err := json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal configuration: %w", err)
+		}
+	}
+	if sourceConfigJSON != "" {
+		if err := json.Unmarshal([]byte(sourceConfigJSON), &cfg.SourceConfiguration); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal source configuration: %w", err)
+		}
 	}
 
 	return &cfg, nil
 }
 
-// GetConfigByNameVersion retrieves an API configuration by name and version
-func (s *SQLiteStorage) GetConfigByNameVersion(name, version string) (*models.StoredAPIConfig, error) {
+// GetConfigByNameVersion retrieves an deployment configuration by name and version
+func (s *SQLiteStorage) GetConfigByNameVersion(name, version string) (*models.StoredConfig, error) {
 	query := `
-		SELECT id, configuration, status, created_at, updated_at,
-		       deployed_at, deployed_version
-		FROM api_configs
-		WHERE name = ? AND version = ?
+		SELECT d.id, d.kind, dc.configuration, dc.source_configuration, d.status, d.created_at, d.updated_at,
+			   d.deployed_at, d.deployed_version
+		FROM deployments d
+		LEFT JOIN deployment_configs dc ON d.id = dc.id
+		WHERE d.name = ? AND d.version = ?
 	`
 
-	var cfg models.StoredAPIConfig
+	var cfg models.StoredConfig
 	var configJSON string
+	var sourceConfigJSON string
 	var deployedAt sql.NullTime
 
 	err := s.db.QueryRow(query, name, version).Scan(
 		&cfg.ID,
+		&cfg.Kind,
 		&configJSON,
+		&sourceConfigJSON,
 		&cfg.Status,
 		&cfg.CreatedAt,
 		&cfg.UpdatedAt,
@@ -371,21 +392,29 @@ func (s *SQLiteStorage) GetConfigByNameVersion(name, version string) (*models.St
 	}
 
 	// Deserialize JSON configuration
-	if err := json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal configuration: %w", err)
+	if configJSON != "" {
+		if err := json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal configuration: %w", err)
+		}
+	}
+	if sourceConfigJSON != "" {
+		if err := json.Unmarshal([]byte(sourceConfigJSON), &cfg.SourceConfiguration); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal source configuration: %w", err)
+		}
 	}
 
 	return &cfg, nil
 }
 
-// GetAllConfigs retrieves all API configurations
-func (s *SQLiteStorage) GetAllConfigs() ([]*models.StoredAPIConfig, error) {
+// GetAllConfigs retrieves all deployment configurations
+func (s *SQLiteStorage) GetAllConfigs() ([]*models.StoredConfig, error) {
 	query := `
-		SELECT id, configuration, status, created_at, updated_at,
-		       deployed_at, deployed_version
-		FROM api_configs
-		ORDER BY created_at DESC
-	`
+			SELECT d.id, d.kind, dc.configuration, dc.source_configuration, d.status, 
+			d.created_at, d.updated_at, d.deployed_at, d.deployed_version
+			FROM deployments d
+			LEFT JOIN deployment_configs dc ON d.id = dc.id
+			ORDER BY d.created_at DESC
+		`
 
 	rows, err := s.db.Query(query)
 	if err != nil {
@@ -393,16 +422,19 @@ func (s *SQLiteStorage) GetAllConfigs() ([]*models.StoredAPIConfig, error) {
 	}
 	defer rows.Close()
 
-	var configs []*models.StoredAPIConfig
+	var configs []*models.StoredConfig
 
 	for rows.Next() {
-		var cfg models.StoredAPIConfig
+		var cfg models.StoredConfig
 		var configJSON string
+		var sourceConfigJSON string
 		var deployedAt sql.NullTime
 
 		err := rows.Scan(
 			&cfg.ID,
+			&cfg.Kind,
 			&configJSON,
+			&sourceConfigJSON,
 			&cfg.Status,
 			&cfg.CreatedAt,
 			&cfg.UpdatedAt,
@@ -420,8 +452,83 @@ func (s *SQLiteStorage) GetAllConfigs() ([]*models.StoredAPIConfig, error) {
 		}
 
 		// Deserialize JSON configuration
-		if err := json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal configuration: %w", err)
+		if configJSON != "" {
+			if err := json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal configuration: %w", err)
+			}
+		}
+		if sourceConfigJSON != "" {
+			if err := json.Unmarshal([]byte(sourceConfigJSON), &cfg.SourceConfiguration); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal source configuration: %w", err)
+			}
+		}
+
+		configs = append(configs, &cfg)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return configs, nil
+}
+
+// GetAllConfigsByKind retrieves all deployment configurations of a specific kind
+func (s *SQLiteStorage) GetAllConfigsByKind(kind string) ([]*models.StoredConfig, error) {
+	query := `
+			SELECT d.id, d.kind, dc.configuration, dc.source_configuration, d.status, 
+			d.created_at, d.updated_at, d.deployed_at, d.deployed_version
+			FROM deployments d
+			LEFT JOIN deployment_configs dc ON d.id = dc.id 
+			WHERE d.kind = ?
+			ORDER BY d.created_at DESC
+		`
+
+	rows, err := s.db.Query(query, kind)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query configurations: %w", err)
+	}
+	defer rows.Close()
+
+	var configs []*models.StoredConfig
+
+	for rows.Next() {
+		var cfg models.StoredConfig
+		var configJSON string
+		var sourceConfigJSON string
+		var deployedAt sql.NullTime
+
+		err := rows.Scan(
+			&cfg.ID,
+			&cfg.Kind,
+			&configJSON,
+			&sourceConfigJSON,
+			&cfg.Status,
+			&cfg.CreatedAt,
+			&cfg.UpdatedAt,
+			&deployedAt,
+			&cfg.DeployedVersion,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		// Parse deployed_at (nullable field)
+		if deployedAt.Valid {
+			cfg.DeployedAt = &deployedAt.Time
+		}
+
+		// Deserialize JSON configuration
+		if configJSON != "" {
+			if err := json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal configuration: %w", err)
+			}
+		}
+		if sourceConfigJSON != "" {
+			if err := json.Unmarshal([]byte(sourceConfigJSON), &cfg.SourceConfiguration); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal source configuration: %w", err)
+			}
 		}
 
 		configs = append(configs, &cfg)
@@ -626,12 +733,83 @@ func LoadFromDatabase(storage Storage, cache *ConfigStore) error {
 	return nil
 }
 
+// addDeploymentConfigs adds deployment configuration details to the database
+func (s *SQLiteStorage) addDeploymentConfigs(cfg *models.StoredConfig) (bool, error) {
+	query := `INSERT INTO deployment_configs (id, configuration, source_configuration) VALUES (?, ?, ?)`
+
+	stmt, err := s.db.Prepare(query)
+	if err != nil {
+		return false, fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	configJSON, err := json.Marshal(cfg.Configuration)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal configuration: %w", err)
+	}
+	sourceConfigJSON, err := json.Marshal(cfg.SourceConfiguration)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal source configuration: %w", err)
+	}
+
+	_, err = stmt.Exec(
+		cfg.ID,
+		string(configJSON),
+		string(sourceConfigJSON),
+	)
+
+	if err != nil {
+		return false, fmt.Errorf("failed to insert deployment configuration: %w", err)
+	}
+
+	return true, nil
+}
+
+// updateDeploymentConfigs updates deployment configuration details in the database
+func (s *SQLiteStorage) updateDeploymentConfigs(cfg *models.StoredConfig) (bool, error) {
+	query := `UPDATE deployment_configs SET configuration = ?, source_configuration = ? WHERE id = ?`
+
+	stmt, err := s.db.Prepare(query)
+	if err != nil {
+		return false, fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+
+	configJSON, err := json.Marshal(cfg.Configuration)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal configuration: %w", err)
+	}
+	sourceConfigJSON, err := json.Marshal(cfg.SourceConfiguration)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal source configuration: %w", err)
+	}
+
+	result, err := stmt.Exec(
+		string(configJSON),
+		string(sourceConfigJSON),
+		cfg.ID,
+	)
+	if err != nil {
+		return false, fmt.Errorf("failed to update deployment configuration: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rows == 0 {
+		return false, fmt.Errorf("no deployment config found for id=%s", cfg.ID)
+	}
+
+	return true, nil
+}
+
 // isUniqueConstraintError checks if the error is a UNIQUE constraint violation
 func isUniqueConstraintError(err error) bool {
 	// SQLite error code 19 is CONSTRAINT error
 	// Error message contains "UNIQUE constraint failed"
-	return err != nil && (err.Error() == "UNIQUE constraint failed: api_configs.name, api_configs.version" ||
-		err.Error() == "UNIQUE constraint failed: api_configs.id")
+	return err != nil && (err.Error() == "UNIQUE constraint failed: deployments.name, deployments.version" ||
+		err.Error() == "UNIQUE constraint failed: deployments.id")
 }
 
 // isCertificateUniqueConstraintError checks if the error is a UNIQUE constraint violation for certificates

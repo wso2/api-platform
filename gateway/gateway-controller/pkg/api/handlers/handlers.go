@@ -20,6 +20,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -45,18 +46,19 @@ import (
 
 // APIServer implements the generated ServerInterface
 type APIServer struct {
-	store              *storage.ConfigStore
-	db                 storage.Storage
-	snapshotManager    *xds.SnapshotManager
-	policyManager      *policyxds.PolicyManager
-	policyDefinitions  map[string]api.PolicyDefinition // key name|version
-	policyDefMu        sync.RWMutex
-	parser             *config.Parser
-	validator          config.Validator
-	logger             *zap.Logger
-	deploymentService  *utils.APIDeploymentService
-	controlPlaneClient controlplane.ControlPlaneClient
-	routerConfig       *config.RouterConfig
+	store                *storage.ConfigStore
+	db                   storage.Storage
+	snapshotManager      *xds.SnapshotManager
+	policyManager        *policyxds.PolicyManager
+	policyDefinitions    map[string]api.PolicyDefinition // key name|version
+	policyDefMu          sync.RWMutex
+	parser               *config.Parser
+	validator            config.Validator
+	logger               *zap.Logger
+	deploymentService    *utils.APIDeploymentService
+	mcpDeploymentService *utils.MCPDeploymentService
+	controlPlaneClient   controlplane.ControlPlaneClient
+	routerConfig         *config.RouterConfig
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -72,17 +74,18 @@ func NewAPIServer(
 	routerConfig *config.RouterConfig,
 ) *APIServer {
 	server := &APIServer{
-		store:              store,
-		db:                 db,
-		snapshotManager:    snapshotManager,
-		policyManager:      policyManager,
-		policyDefinitions:  policyDefinitions,
-		parser:             config.NewParser(),
-		validator:          validator,
-		logger:             logger,
-		deploymentService:  utils.NewAPIDeploymentService(store, db, snapshotManager, validator),
-		controlPlaneClient: controlPlaneClient,
-		routerConfig:       routerConfig,
+		store:                store,
+		db:                   db,
+		snapshotManager:      snapshotManager,
+		policyManager:        policyManager,
+		policyDefinitions:    policyDefinitions,
+		parser:               config.NewParser(),
+		validator:            validator,
+		logger:               logger,
+		deploymentService:    utils.NewAPIDeploymentService(store, db, snapshotManager, validator),
+		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
+		controlPlaneClient:   controlPlaneClient,
+		routerConfig:         routerConfig,
 	}
 
 	// Register status update callback
@@ -109,17 +112,19 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		cfg.Status = models.StatusDeployed
 		cfg.DeployedAt = &now
 		cfg.DeployedVersion = version
-		log.Info("API configuration deployed successfully",
+		log.Info("Configuration deployed successfully",
 			zap.String("id", configID),
 			zap.String("name", cfg.Configuration.Spec.Name),
-			zap.Int64("version", version))
+			zap.Int64("version", version),
+			zap.String("kind", cfg.Kind))
 	} else {
 		cfg.Status = models.StatusFailed
 		cfg.DeployedAt = nil
 		cfg.DeployedVersion = 0
-		log.Error("API configuration deployment failed",
+		log.Error("Configuration deployment failed",
 			zap.String("id", configID),
-			zap.String("name", cfg.Configuration.Spec.Name))
+			zap.String("name", cfg.Configuration.Spec.Name),
+			zap.String("kind", cfg.Kind))
 	}
 
 	cfg.UpdatedAt = now
@@ -217,7 +222,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 // ListAPIs implements ServerInterface.ListAPIs
 // (GET /apis)
 func (s *APIServer) ListAPIs(c *gin.Context) {
-	configs := s.store.GetAll()
+	configs := s.store.GetAllByKind(string(api.Httprest))
 
 	items := make([]api.APIListItem, len(configs))
 	for i, cfg := range configs {
@@ -535,7 +540,7 @@ func (s *APIServer) ListPolicies(c *gin.Context) {
 // When operation has no policies, API-level policies are used in their declared order.
 // RouteKey uses the fully qualified route path (context + operation path) and must match the route name format
 // used by the xDS translator for consistency.
-func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *models.StoredPolicyConfig {
+func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.StoredPolicyConfig {
 	// TODO: (renuka) duplicate buildStoredPolicyFromAPI funcs. Refactor this.
 	apiCfg := &cfg.Configuration
 	apiData := apiCfg.Spec
@@ -634,6 +639,397 @@ func convertAPIPolicy(p api.Policy) policyenginev1.PolicyInstance {
 	}
 }
 
+// CreateMCPProxy implements ServerInterface.CreateMCPProxy
+// (POST /mcp-proxies)
+func (s *APIServer) CreateMCPProxy(c *gin.Context) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+
+	// Read request body
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Error("Failed to read request body", zap.Error(err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Deploy MCP configuration using the utility service
+	result, err := s.mcpDeploymentService.DeployMCPConfiguration(utils.MCPDeploymentParams{
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		ID:            "", // Empty to generate new UUID
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
+
+	if err != nil {
+		log.Error("Failed to deploy MCP proxy configuration", zap.Error(err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	// Set up a callback to notify platform API after successful deployment
+	// This is specific to direct API creation via gateway endpoint
+	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() {
+		go s.waitForDeploymentAndNotify(result.StoredConfig.ID, correlationID, log)
+	}
+
+	// Return success response
+	id, _ := uuidToOpenAPIUUID(result.StoredConfig.ID)
+	c.JSON(http.StatusCreated, api.APICreateResponse{
+		Status:    stringPtr("success"),
+		Message:   stringPtr("MCP configuration created successfully"),
+		Id:        id,
+		CreatedAt: timePtr(result.StoredConfig.CreatedAt),
+	})
+}
+
+// ListMCPProxies implements ServerInterface.ListMCPProxies
+// (GET /mcp-proxies)
+func (s *APIServer) ListMCPProxies(c *gin.Context) {
+	configs := s.store.GetAllByKind(string(api.Mcp))
+
+	items := make([]api.MCPProxyListItem, len(configs))
+	for i, cfg := range configs {
+		id, _ := uuidToOpenAPIUUID(cfg.ID)
+		status := api.MCPProxyListItemStatus(cfg.Status)
+		// Convert SourceConfiguration to MCPProxyConfiguration
+		var mcp api.MCPProxyConfiguration
+		j, _ := json.Marshal(cfg.SourceConfiguration)
+		err := json.Unmarshal(j, &mcp)
+		if err != nil {
+			s.logger.Error("Failed to unmarshal stored MCP configuration",
+				zap.String("id", cfg.ID),
+				zap.String("name", cfg.Configuration.Spec.Name))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to get stored MCP configuration",
+			})
+			return
+		}
+		items[i] = api.MCPProxyListItem{
+			Id:        id,
+			Name:      stringPtr(mcp.Spec.Name),
+			Version:   stringPtr(mcp.Spec.Version),
+			Context:   stringPtr(mcp.Spec.Context),
+			Status:    &status,
+			CreatedAt: timePtr(cfg.CreatedAt),
+			UpdatedAt: timePtr(cfg.UpdatedAt),
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":      "success",
+		"count":       len(items),
+		"mcp_proxies": items,
+	})
+}
+
+// GetMCPProxyByNameVersion implements ServerInterface.GetMCPProxyByNameVersion
+// (GET /mcp-proxies/{name}/{version})
+func (s *APIServer) GetMCPProxyByNameVersion(c *gin.Context, name string, version string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+
+	cfg, err := s.store.GetByNameVersion(name, version)
+	if err != nil {
+		log.Warn("MCP proxy configuration not found",
+			zap.String("name", name),
+			zap.String("version", version))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("MCP proxy configuration with name '%s' and version '%s' not found", name, version),
+		})
+		return
+	}
+
+	mcpDetail := gin.H{
+		"status": "success",
+		"mcp": gin.H{
+			"id":            cfg.ID,
+			"configuration": cfg.SourceConfiguration,
+			"metadata": gin.H{
+				"status":     string(cfg.Status),
+				"created_at": cfg.CreatedAt.Format(time.RFC3339),
+				"updated_at": cfg.UpdatedAt.Format(time.RFC3339),
+			},
+		},
+	}
+	if cfg.DeployedAt != nil {
+		mcpDetail["mcp"].(gin.H)["metadata"].(gin.H)["deployed_at"] = cfg.DeployedAt.Format(time.RFC3339)
+	}
+
+	c.JSON(http.StatusOK, mcpDetail)
+}
+
+// UpdateMCPProxy implements ServerInterface.UpdateMCPProxy
+// (PUT /mcp-proxies/{name}/{version})
+func (s *APIServer) UpdateMCPProxy(c *gin.Context, name string, version string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+
+	// Read request body
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Error("Failed to read request body", zap.Error(err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	// Parse configuration
+	contentType := c.GetHeader("Content-Type")
+	var mcpConfig api.MCPProxyConfiguration
+	err = s.parser.Parse(body, contentType, &mcpConfig)
+	if err != nil {
+		log.Error("Failed to parse configuration", zap.Error(err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to parse configuration",
+		})
+		return
+	}
+
+	mcpValidator := config.NewMCPValidator()
+	// Validate configuration
+	validationErrors := mcpValidator.Validate(&mcpConfig)
+	if len(validationErrors) > 0 {
+		log.Warn("Configuration validation failed",
+			zap.String("name", mcpConfig.Spec.Name),
+			zap.Int("num_errors", len(validationErrors)))
+
+		errors := make([]api.ValidationError, len(validationErrors))
+		for i, e := range validationErrors {
+			errors[i] = api.ValidationError{
+				Field:   stringPtr(e.Field),
+				Message: stringPtr(e.Message),
+			}
+		}
+
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Configuration validation failed",
+			Errors:  &errors,
+		})
+		return
+	}
+
+	// Check if config exists
+	existing, err := s.store.GetByNameVersion(name, version)
+	if err != nil {
+		log.Warn("MCP configuration not found",
+			zap.String("name", name),
+			zap.String("version", version))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("MCP configuration with name '%s' and version '%s' not found", name, version),
+		})
+		return
+	}
+
+	// Ensure existing config is of kind MCP
+	if existing.Kind != string(api.Mcp) {
+		log.Warn("Configuration kind mismatch",
+			zap.String("expected", string(api.Mcp)),
+			zap.String("actual", existing.Kind),
+			zap.String("name", name),
+			zap.String("version", version))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Configuration with name '%s' and version '%s' is not of kind MCP", name, version),
+		})
+		return
+	}
+
+	// Transform to API configuration using MCPTransformer
+	var apiConfig api.APIConfiguration
+	transformer := &utils.MCPTransformer{}
+	transformedAPIConfig := transformer.Transform(&mcpConfig, &apiConfig)
+	apiConfig = *transformedAPIConfig
+
+	// Update stored configuration
+	now := time.Now()
+	existing.Configuration = apiConfig
+	existing.SourceConfiguration = mcpConfig
+	existing.Status = models.StatusPending
+	existing.UpdatedAt = now
+	existing.DeployedAt = nil
+	existing.DeployedVersion = 0
+
+	// Atomic dual-write: database + in-memory
+	// Update database first (only if persistent mode)
+	if s.db != nil {
+		if err := s.db.UpdateConfig(existing); err != nil {
+			log.Error("Failed to update config in database", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to persist configuration update",
+			})
+			return
+		}
+	}
+
+	if err := s.store.Update(existing); err != nil {
+		// Log conflict errors at info level, other errors at error level
+		if storage.IsConflictError(err) {
+			log.Info("MCP configuration name/version already exists",
+				zap.String("id", existing.ID),
+				zap.String("name", apiConfig.Spec.Name),
+				zap.String("version", apiConfig.Spec.Version))
+		} else {
+			log.Error("Failed to update config in memory store", zap.Error(err))
+		}
+		c.JSON(http.StatusConflict, api.ErrorResponse{
+			Status:  "error",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Update xDS snapshot asynchronously
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
+			log.Error("Failed to update xDS snapshot", zap.Error(err))
+		}
+	}()
+
+	log.Info("MCP configuration updated",
+		zap.String("id", existing.ID),
+		zap.String("name", apiConfig.Spec.Name),
+		zap.String("version", apiConfig.Spec.Version))
+
+	// Return success response
+	updateId, _ := uuidToOpenAPIUUID(existing.ID)
+	c.JSON(http.StatusOK, api.APIUpdateResponse{
+		Status:    stringPtr("success"),
+		Message:   stringPtr("MCP configuration updated successfully"),
+		Id:        updateId,
+		UpdatedAt: timePtr(existing.UpdatedAt),
+	})
+
+	// Rebuild and update derived policy configuration
+	if s.policyManager != nil {
+		storedPolicy := s.buildStoredPolicyFromAPI(existing)
+		if storedPolicy != nil {
+			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
+				log.Error("Failed to update derived policy configuration", zap.Error(err))
+			} else {
+				log.Info("Derived policy configuration updated",
+					zap.String("policy_id", storedPolicy.ID),
+					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
+			}
+		}
+	}
+}
+
+// DeleteMCPProxy implements ServerInterface.DeleteMCPProxy
+// (DELETE /mcp-proxies/{name}/{version})
+func (s *APIServer) DeleteMCPProxy(c *gin.Context, name string, version string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+
+	// Check if config exists
+	cfg, err := s.store.GetByNameVersion(name, version)
+	if err != nil {
+		log.Warn("MCP proxy configuration not found",
+			zap.String("name", name),
+			zap.String("version", version))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("MCP proxy configuration with name '%s' and version '%s' not found", name, version),
+		})
+		return
+	}
+
+	// Ensure existing config is of kind MCP
+	if cfg.Kind != string(api.Mcp) {
+		log.Warn("Configuration kind mismatch",
+			zap.String("expected", string(api.Mcp)),
+			zap.String("actual", cfg.Kind),
+			zap.String("name", name),
+			zap.String("version", version))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Configuration with name '%s' and version '%s' is not of kind MCP", name, version),
+		})
+		return
+	}
+
+	// Delete from database first (only if persistent mode)
+	if s.db != nil {
+		if err := s.db.DeleteConfig(cfg.ID); err != nil {
+			log.Error("Failed to delete config from database", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to delete configuration",
+			})
+			return
+		}
+	}
+
+	// Delete from in-memory store
+	if err := s.store.Delete(cfg.ID); err != nil {
+		log.Error("Failed to delete config from memory store", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to delete configuration",
+		})
+		return
+	}
+
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Update xDS snapshot asynchronously
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
+			log.Error("Failed to update xDS snapshot", zap.Error(err))
+		}
+	}()
+
+	// Remove derived policy configuration
+	if s.policyManager != nil {
+		policyID := cfg.ID + "-policies"
+		if err := s.policyManager.RemovePolicy(policyID); err != nil {
+			log.Warn("Failed to remove derived policy configuration", zap.Error(err), zap.String("policy_id", policyID))
+		} else {
+			log.Info("Derived policy configuration removed", zap.String("policy_id", policyID))
+		}
+	}
+
+	log.Info("MCP proxy configuration deleted",
+		zap.String("id", cfg.ID),
+		zap.String("name", cfg.Configuration.Spec.Name),
+		zap.String("version", cfg.Configuration.Spec.Version))
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "MCP proxy configuration deleted successfully",
+		"name":    name,
+		"version": version,
+	})
+}
+
 // waitForDeploymentAndNotify waits for API deployment to complete and notifies platform API
 // This is only called for APIs created directly via gateway endpoint (not from platform API)
 func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID string, log *zap.Logger) {
@@ -706,14 +1102,14 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 
 	// Build API list with metadata using the exact generated types
 	apisSlice := make([]struct {
-		Configuration *api.APIConfiguration `json:"configuration,omitempty"`
-		Id            *openapi_types.UUID   `json:"id,omitempty"`
+		Configuration *api.APIConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+		Id            *openapi_types.UUID   `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata      *struct {
-			CreatedAt  *time.Time                                `json:"created_at,omitempty"`
-			DeployedAt *time.Time                                `json:"deployed_at,omitempty"`
-			Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty"`
-			UpdatedAt  *time.Time                                `json:"updated_at,omitempty"`
-		} `json:"metadata,omitempty"`
+			CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+			DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
+			Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
+			UpdatedAt  *time.Time                                `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 	}, 0, len(allConfigs))
 
 	for _, cfg := range allConfigs {
@@ -727,32 +1123,32 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 		var status api.ConfigDumpResponseApisMetadataStatus
 		switch cfg.Status {
 		case models.StatusDeployed:
-			status = api.Deployed
+			status = api.ConfigDumpResponseApisMetadataStatusDeployed
 		case models.StatusFailed:
-			status = api.Failed
+			status = api.ConfigDumpResponseApisMetadataStatusFailed
 		case models.StatusPending:
-			status = api.Pending
+			status = api.ConfigDumpResponseApisMetadataStatusPending
 		default:
-			status = api.Pending
+			status = api.ConfigDumpResponseApisMetadataStatusPending
 		}
 
 		item := struct {
-			Configuration *api.APIConfiguration `json:"configuration,omitempty"`
-			Id            *openapi_types.UUID   `json:"id,omitempty"`
+			Configuration *api.APIConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+			Id            *openapi_types.UUID   `json:"id,omitempty" yaml:"id,omitempty"`
 			Metadata      *struct {
-				CreatedAt  *time.Time                                `json:"created_at,omitempty"`
-				DeployedAt *time.Time                                `json:"deployed_at,omitempty"`
-				Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty"`
-				UpdatedAt  *time.Time                                `json:"updated_at,omitempty"`
-			} `json:"metadata,omitempty"`
+				CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+				DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
+				Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
+				UpdatedAt  *time.Time                                `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+			} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 		}{
 			Configuration: &cfg.Configuration,
 			Id:            configUUID,
 			Metadata: &struct {
-				CreatedAt  *time.Time                                `json:"created_at,omitempty"`
-				DeployedAt *time.Time                                `json:"deployed_at,omitempty"`
-				Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty"`
-				UpdatedAt  *time.Time                                `json:"updated_at,omitempty"`
+				CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+				DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
+				Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
+				UpdatedAt  *time.Time                                `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
 			}{
 				CreatedAt:  &cfg.CreatedAt,
 				UpdatedAt:  &cfg.UpdatedAt,
@@ -829,10 +1225,10 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 		Policies:     &policies,
 		Certificates: &certificates,
 		Statistics: &struct {
-			TotalApis             *int `json:"totalApis,omitempty"`
-			TotalCertificateBytes *int `json:"totalCertificateBytes,omitempty"`
-			TotalCertificates     *int `json:"totalCertificates,omitempty"`
-			TotalPolicies         *int `json:"totalPolicies,omitempty"`
+			TotalApis             *int `json:"totalApis,omitempty" yaml:"totalApis,omitempty"`
+			TotalCertificateBytes *int `json:"totalCertificateBytes,omitempty" yaml:"totalCertificateBytes,omitempty"`
+			TotalCertificates     *int `json:"totalCertificates,omitempty" yaml:"totalCertificates,omitempty"`
+			TotalPolicies         *int `json:"totalPolicies,omitempty" yaml:"totalPolicies,omitempty"`
 		}{
 			TotalApis:             &totalApis,
 			TotalPolicies:         &totalPolicies,
