@@ -10,7 +10,7 @@ import (
 
 	"github.com/policy-engine/policy-engine/internal/executor"
 	"github.com/policy-engine/policy-engine/internal/registry"
-	policy "github.com/policy-engine/sdk/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/policy/v1alpha"
 )
 
 // TranslateRequestActions converts policy execution result to ext_proc response

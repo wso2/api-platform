@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/policy-engine/policy-engine/internal/registry"
-	policy "github.com/policy-engine/sdk/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/policy/v1alpha"
 )
 
 // RequestPolicyResult represents the result of executing a single request policy

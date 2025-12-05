@@ -3,7 +3,7 @@ package validation
 import (
 	"fmt"
 
-	policy "github.com/policy-engine/sdk/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/policy/v1alpha"
 )
 
 // ValidateParameter validates a parameter value against its schema

@@ -18,13 +18,13 @@ RUN apk add --no-cache \
 WORKDIR /workspace
 
 # Copy Policy Engine framework source code
-COPY policy-engine/ /workspace/policy-engine/
+COPY gateway/policy-engine/ /workspace/policy-engine/
 
 # Copy SDK components
 COPY sdk/ /workspace/sdk/
 
 # Copy Gateway Builder application
-COPY gateway-builder/ /workspace/gateway-builder/
+COPY gateway/gateway-builder/ /workspace/gateway-builder/
 
 # Pre-download Go dependencies for runtime
 WORKDIR /workspace/policy-engine
@@ -57,10 +57,10 @@ ENV VERSION=${VERSION}
 ENV GIT_COMMIT=${GIT_COMMIT}
 
 # Copy sample policy implementations
-COPY sample-policies/ /workspace/sample-policies/
+COPY gateway/policy-engine/sample-policies/ /workspace/sample-policies/
 
 # Copy policy manifest
-COPY policy-manifest.yaml /workspace/policy-manifest.yaml
+COPY gateway/policy-engine/policy-manifest.yaml /workspace/policy-manifest.yaml
 
 # Create output directory
 RUN mkdir -p /workspace/output
@@ -82,7 +82,7 @@ WORKDIR /app
 COPY --from=policy-compiler /workspace/output/policy-engine/policy-engine /app/policy-engine
 
 # Copy config files
-COPY configs/ /configs/
+COPY gateway/policy-engine/configs/ /configs/
 
 # Expose ports
 EXPOSE 9001 9002

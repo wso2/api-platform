@@ -51,7 +51,7 @@ build: generate ## Build Docker image
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
-		../
+		../../
 
 push: ## Push Docker image to registry
 	@echo "Pushing Docker images..."
@@ -67,7 +67,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
 		--push \
-		../
+		../../
 
 generate-listener-certs: ## Generate listener certificates
 	@echo "Generating listener certificates..."

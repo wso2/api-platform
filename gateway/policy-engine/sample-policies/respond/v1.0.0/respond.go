@@ -3,7 +3,7 @@ package respond
 import (
 	"fmt"
 
-	policy "github.com/policy-engine/sdk/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/policy/v1alpha"
 )
 
 // RespondPolicy implements immediate response functionality

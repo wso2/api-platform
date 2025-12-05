@@ -91,7 +91,7 @@ build-builder:
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(BUILDER_TAG) \
 		-t $(BUILDER_IMAGE):latest \
-		..
+		../..
 	@echo "Builder image built successfully: $(BUILDER_TAG)"
 
 ## run-builder: Run the Builder to compile policies
@@ -107,12 +107,12 @@ run-builder:
 ## build-runtime: Build the Policy Engine Runtime Docker image
 build-runtime:
 	@echo "Building Policy Engine Runtime image: $(RUNTIME_TAG)"
-	docker build -f Dockerfile.runtime \
+	docker build -f policy-engine/Dockerfile.runtime \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(RUNTIME_TAG) \
 		-t $(RUNTIME_IMAGE):latest \
-		.
+		../..
 	@echo "Runtime image built successfully: $(RUNTIME_TAG)"
 
 ## push: Push all images to registry
@@ -143,20 +143,20 @@ build-and-push-multiarch-builder:
 		-t $(BUILDER_TAG) \
 		-t $(BUILDER_IMAGE):latest \
 		--push \
-		..
+		../..
 	@echo "Multi-arch builder image built and pushed: $(BUILDER_TAG)"
 
 ## build-and-push-multiarch-runtime: Build and push the Policy Engine Runtime Docker image for multiple architectures
 build-and-push-multiarch-runtime:
 	@echo "Building and pushing multi-arch Policy Engine Runtime image: $(RUNTIME_TAG)"
-	docker buildx build -f Dockerfile.runtime \
+	docker buildx build -f policy-engine/Dockerfile.runtime \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(RUNTIME_TAG) \
 		-t $(RUNTIME_IMAGE):latest \
 		--push \
-		.
+		../..
 	@echo "Multi-arch runtime image built and pushed: $(RUNTIME_TAG)"
 
 ## run-runtime: Start the Policy Engine with docker-compose

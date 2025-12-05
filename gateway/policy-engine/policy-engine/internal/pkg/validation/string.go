@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"regexp"
 
-	policy "github.com/policy-engine/sdk/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/policy/v1alpha"
 )
 
 // validateString validates string parameters with constraints

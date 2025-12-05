@@ -1,7 +1,7 @@
 package registry
 
 import (
-	policy "github.com/policy-engine/sdk/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/policy/v1alpha"
 )
 
 // PolicyChain is a container for a complete policy processing pipeline for a route

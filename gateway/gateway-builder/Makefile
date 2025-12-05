@@ -61,7 +61,7 @@ build: ## Build Docker image
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
-		../
+		../../
 
 .PHONY: push
 push: ## Push Docker image to registry
@@ -79,7 +79,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
 		--push \
-		../
+		../../
 
 # Development Targets
 .PHONY: test

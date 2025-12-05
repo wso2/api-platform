@@ -9,8 +9,8 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/policy-engine/policy-engine/internal/registry"
-	policy "github.com/policy-engine/sdk/policy/v1alpha"
-	"github.com/policy-engine/sdk/policyengine/v1"
+	policy "github.com/wso2/api-platform/sdk/policy/v1alpha"
+	"github.com/wso2/api-platform/sdk/policyengine/v1"
 )
 
 // ConfigLoader loads policy chain configurations

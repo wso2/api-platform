@@ -3,7 +3,7 @@ package types
 import (
 	"time"
 
-	policy "github.com/policy-engine/sdk/policy/v1alpha"
+	policy "github.com/wso2/api-platform/sdk/policy/v1alpha"
 )
 
 // DiscoveredPolicy represents a policy found during the discovery phase

@@ -10,14 +10,13 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/knadh/koanf/parsers/yaml v1.1.0
-	github.com/knadh/koanf/providers/confmap v1.0.0
 	github.com/knadh/koanf/providers/env v1.1.0
 	github.com/knadh/koanf/providers/file v1.2.0
 	github.com/knadh/koanf/v2 v2.3.0
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/oapi-codegen/runtime v1.1.2
-	github.com/policy-engine/sdk v1.0.0
 	github.com/stretchr/testify v1.11.1
+	github.com/wso2/api-platform/sdk v1.0.0
 	github.com/xeipuuv/gojsonschema v1.2.0
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.67.1
@@ -85,4 +84,4 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240814211410-ddb44dafa142 // indirect
 )
 
-replace github.com/policy-engine/sdk => ../policy-engine/sdk
+replace github.com/wso2/api-platform/sdk => ../../sdk

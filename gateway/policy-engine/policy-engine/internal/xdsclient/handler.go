@@ -13,8 +13,8 @@ import (
 
 	"github.com/policy-engine/policy-engine/internal/kernel"
 	"github.com/policy-engine/policy-engine/internal/registry"
-	policy "github.com/policy-engine/sdk/policy/v1alpha"
-	"github.com/policy-engine/sdk/policyengine/v1"
+	policy "github.com/wso2/api-platform/sdk/policy/v1alpha"
+	"github.com/wso2/api-platform/sdk/policyengine/v1"
 )
 
 // StoredPolicyConfig represents stored policy configuration from gateway-controller

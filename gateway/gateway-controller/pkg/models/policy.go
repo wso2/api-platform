@@ -19,7 +19,7 @@
 package models
 
 import (
-	policyenginev1 "github.com/policy-engine/sdk/policyengine/v1"
+	policyenginev1 "github.com/wso2/api-platform/sdk/policyengine/v1"
 )
 
 // StoredPolicyConfig represents the stored policy configuration with versioning.

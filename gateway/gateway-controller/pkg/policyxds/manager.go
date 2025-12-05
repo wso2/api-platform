@@ -23,7 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/policy-engine/sdk/policyengine/v1"
+	"github.com/wso2/api-platform/sdk/policyengine/v1"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"

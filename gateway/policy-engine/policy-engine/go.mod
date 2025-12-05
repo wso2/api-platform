@@ -6,7 +6,7 @@ require (
 	github.com/envoyproxy/go-control-plane/envoy v1.36.0
 	github.com/google/cel-go v0.18.2
 	github.com/google/uuid v1.6.0
-	github.com/policy-engine/sdk v1.0.0
+	github.com/wso2/api-platform/sdk v1.0.0
 	github.com/spf13/viper v1.21.0
 	google.golang.org/grpc v1.77.0
 	google.golang.org/protobuf v1.36.10
@@ -39,4 +39,4 @@ require (
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
 
-replace github.com/policy-engine/sdk => ../sdk
+replace github.com/wso2/api-platform/sdk => ../../../sdk
