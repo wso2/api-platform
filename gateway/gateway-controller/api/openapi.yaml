@@ -720,7 +720,7 @@ paths:
             content:
               application/json:
                 schema:
-                  $ref: '#/components/schemas/APICreateResponse'
+                  $ref: '#/components/schemas/APIUpdateResponse'
           '400':
             description: Invalid configuration (validation failed)
             content:
@@ -1237,7 +1237,22 @@ components:
           type: array
           description: Optional list of arguments for customization
           items:
-            type: string
+            type: object
+            required:
+              - name
+            properties:
+              name:
+                type: string
+                description: Name of the argument
+              description:
+                type: string
+                description: Description of the argument
+              required:
+                type: boolean
+                description: Whether the argument is required
+              title:
+                type: string
+                description: Optional human-readable title of the argument
 
     MCPProxyListItem:
       type: object

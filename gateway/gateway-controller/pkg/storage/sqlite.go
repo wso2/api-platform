@@ -814,19 +814,21 @@ func (s *SQLiteStorage) GetMCPConfig(id string) (*models.StoredAPIConfig, error)
 // GetMCPConfigByNameVersion retrieves an MCP configuration by name and version
 func (s *SQLiteStorage) GetMCPConfigByNameVersion(name, version string) (*models.StoredAPIConfig, error) {
 	query := `
-		SELECT id, configuration, status, created_at, updated_at,
+		SELECT id, configuration, source_configuration, status, created_at, updated_at,
 			   deployed_at, deployed_version
-		FROM mcp_configs
+		FROM api_configs
 		WHERE name = ? AND version = ?
 	`
 
 	var cfg models.StoredAPIConfig
 	var configJSON string
+	var sourceConfigJSON string
 	var deployedAt sql.NullTime
 
 	err := s.db.QueryRow(query, name, version).Scan(
 		&cfg.ID,
 		&configJSON,
+		&sourceConfigJSON,
 		&cfg.Status,
 		&cfg.CreatedAt,
 		&cfg.UpdatedAt,
@@ -845,8 +847,12 @@ func (s *SQLiteStorage) GetMCPConfigByNameVersion(name, version string) (*models
 		cfg.DeployedAt = &deployedAt.Time
 	}
 
-	if err := json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
+	if err = json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal MCP configuration: %w", err)
+	}
+
+	if err = json.Unmarshal([]byte(sourceConfigJSON), &cfg.SourceConfiguration); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal MCP source configuration: %w", err)
 	}
 
 	return &cfg, nil
@@ -855,9 +861,10 @@ func (s *SQLiteStorage) GetMCPConfigByNameVersion(name, version string) (*models
 // GetAllMCPConfigs retrieves all MCP configurations
 func (s *SQLiteStorage) GetAllMCPConfigs() ([]*models.StoredAPIConfig, error) {
 	query := `
-		SELECT id, configuration, status, created_at, updated_at,
+		SELECT id, configuration, source_configuration, status, created_at, updated_at,
 			   deployed_at, deployed_version
-		FROM mcp_configs
+		FROM api_configs
+		WHERE kind = 'mcp'
 		ORDER BY created_at DESC
 	`
 
@@ -872,11 +879,13 @@ func (s *SQLiteStorage) GetAllMCPConfigs() ([]*models.StoredAPIConfig, error) {
 	for rows.Next() {
 		var cfg models.StoredAPIConfig
 		var configJSON string
+		var sourceConfigJSON string
 		var deployedAt sql.NullTime
 
 		err := rows.Scan(
 			&cfg.ID,
 			&configJSON,
+			&sourceConfigJSON,
 			&cfg.Status,
 			&cfg.CreatedAt,
 			&cfg.UpdatedAt,
@@ -894,6 +903,10 @@ func (s *SQLiteStorage) GetAllMCPConfigs() ([]*models.StoredAPIConfig, error) {
 
 		if err := json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal MCP configuration: %w", err)
+		}
+
+		if err := json.Unmarshal([]byte(sourceConfigJSON), &cfg.SourceConfiguration); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal MCP source configuration: %w", err)
 		}
 
 		configs = append(configs, &cfg)
