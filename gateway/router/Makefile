@@ -34,8 +34,8 @@ help: ## Show this help message
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 build: ## Build Router Docker image
-	@echo "Building Router Docker image ($(VERSION))..."
-	@docker build \
+	@echo "Building Router Docker image ($(IMAGE_NAME):$(VERSION))..."
+	docker build \
 		--build-arg VERSION=$(VERSION) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
@@ -49,7 +49,7 @@ push: ## Push Docker image to registry
 
 build-and-push-multiarch: ## Build and push Router Docker image for multiple architectures (amd64, arm64)
 	@echo "Building and pushing multi-arch Router Docker image ($(VERSION))..."
-	@docker buildx build \
+	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		-t $(IMAGE_NAME):$(VERSION) \

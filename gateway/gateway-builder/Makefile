@@ -55,7 +55,7 @@ help: ## Show this help message
 # Build Targets
 .PHONY: build
 build: ## Build Docker image
-	@echo "Building Docker image ($(VERSION))..."
+	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
 	@docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-context policy-engine=../policy-engine \

@@ -1,0 +1,17 @@
+version: v1
+
+policies:
+  # Respond Policy
+  - name: Respond
+    version: v1.0.0
+    filePath: ./respond/v1.0.0
+
+  # ModifyHeaders Policy
+  - name: ModifyHeaders
+    version: v1.0.0
+    filePath: ./modify-headers/v1.0.0
+
+  # BasicAuth Policy
+  - name: BasicAuth
+    version: v1.0.0
+    filePath: ./basic-auth/v1.0.0

@@ -30,11 +30,6 @@ COPY . /workspace/gateway/gateway-builder
 WORKDIR /workspace/gateway/gateway-builder
 RUN go mod download
 
-
-# Pre-download Go dependencies for gateway-builder
-WORKDIR /workspace/gateway/gateway-builder
-RUN go mod download
-
 # Build the Gateway Builder binary with version information
 # Use explicit cross-compilation to avoid QEMU emulation issues
 RUN CGO_ENABLED=0 \

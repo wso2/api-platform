@@ -57,8 +57,8 @@ COPY --from=sdk . /workspace/sdk
 WORKDIR /workspace/gateway/policy-engine
 RUN go mod download
 
-# Copy sample policy implementations
-COPY --from=policies . /workspace/sample-policies/
+# Copy policy implementations
+COPY --from=policies . /workspace/policies/
 
 # Create output directory
 RUN mkdir -p /workspace/output
@@ -68,7 +68,7 @@ WORKDIR /workspace
 
 # Run the gateway builder with manifest (VERSION and GIT_COMMIT are available as env vars)
 RUN /usr/local/bin/gateway-builder \
-    -manifest /workspace/sample-policies/policy-manifest.yaml \
+    -manifest /workspace/policies/policy-manifest.yaml \
     -policy-engine-src /workspace/gateway/policy-engine \
     -out-dir /workspace/output
 

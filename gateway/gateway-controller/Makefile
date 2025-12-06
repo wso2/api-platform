@@ -45,8 +45,8 @@ test: ## Run unit and integration tests
 	@go test -v ./... -cover
 
 build: generate ## Build Docker image
-	@echo "Building Docker image ($(VERSION))..."
-	@docker buildx build -f Dockerfile \
+	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
+	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
