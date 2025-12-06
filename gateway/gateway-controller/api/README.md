@@ -49,57 +49,18 @@ data:
 ### WebSub Async API Configuration
 ```yaml
 version: api-platform.wso2.com/v1
-kind: http/websub
-data:
-  name: github-webhooks
+kind: async/websub
+spec:
+  name: WebSub-API-New-API
+  apiType: async/websub
   version: v1.0
-  context: /github-events
-  upstream:
-    - url: http://localhost:9098
-  operations:
-    - method: SUBSCRIBE
-      path: /issues
-      operation_type: receive
-      description: Subscribe to GitHub issue events
-    - method: SUBSCRIBE
-      path: /pull-requests
-      operation_type: receive
-      description: Subscribe to GitHub PR events
-  asyncapi:
-    protocol: websub
-    channels:
-      /issues:
-        description: GitHub issue events
-        subscribe:
-          summary: Receive issue events
-          message:
-            name: IssueEvent
-            content_type: application/json
-            payload:
-              type: object
-              properties:
-                action:
-                  type: string
-                issue:
-                  type: object
-      /pull-requests:
-        description: GitHub pull request events
-        subscribe:
-          summary: Receive PR events
-          message:
-            name: PullRequestEvent
-            content_type: application/json
-            payload:
-              type: object
-              properties:
-                action:
-                  type: string
-                pull_request:
-                  type: object
-    subscriptions:
-      callback_url: https://myapp.example.com/webhooks
-      lease_seconds: 86400
-      secret: my-webhook-secret
+  context: /websubnewapi
+  servers:
+    - url: http://host.docker.internal:9098
+      protocol: websub
+  channels:
+    - path: /pull-requests
+    - path: /issues
 ```
 
 ## Supported API Kinds
@@ -107,7 +68,7 @@ data:
 | Kind | Description | Protocol |
 |------|-------------|----------|
 | `http/rest` | Traditional REST APIs | HTTP/HTTPS |
-| `http/websub` | WebSub (PubSubHubbub) event APIs | HTTP + WebSub |
+| `async/websub` | WebSub (PubSubHubbub) event APIs | HTTP + WebSub |
 | `async/websocket` | WebSocket streaming APIs | WebSocket |
 | `async/sse` | Server-Sent Events APIs | HTTP + SSE |
 

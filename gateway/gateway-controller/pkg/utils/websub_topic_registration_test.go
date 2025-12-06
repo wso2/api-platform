@@ -18,7 +18,7 @@ func TestDeployAPIConfigurationWebSubKindTopicRegistration(t *testing.T) {
 	db := &storage.SQLiteStorage{}
 	snapshotManager := &xds.SnapshotManager{}
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(configStore, db, snapshotManager, validator)
+	service := NewAPIDeploymentService(configStore, db, snapshotManager, validator, nil)
 
 	// Inline YAML config similar to websubhub.yaml
 	yamlConfig := `kind: async/websub
@@ -63,10 +63,8 @@ spec:
 
 func TestDeployAPIConfigurationWebSubKindRevisionDeployment(t *testing.T) {
 	configStore := storage.NewConfigStore()
-	db := &storage.SQLiteStorage{}
-	snapshotManager := &xds.SnapshotManager{}
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(configStore, db, snapshotManager, validator)
+	service := NewAPIDeploymentService(configStore, nil, nil, validator, nil)
 
 	// Inline YAML config similar to websubhub.yaml
 	yamlConfig := `kind: async/websub
@@ -149,10 +147,8 @@ spec:
 
 func TestTopicRegistrationForConcurrentAPIConfigs(t *testing.T) {
 	configStore := storage.NewConfigStore()
-	db := &storage.SQLiteStorage{}
-	snapshotManager := &xds.SnapshotManager{}
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(configStore, db, snapshotManager, validator)
+	service := NewAPIDeploymentService(configStore, nil, nil, validator, nil)
 
 	// Two different API YAMLs
 	yamlA := `kind: async/websub
@@ -217,21 +213,30 @@ spec:
 	var wg sync.WaitGroup
 	wg.Add(2)
 
+	var errA, errB error
+
 	go func() {
 		defer wg.Done()
 		if err := service.store.Add(cfgA); err != nil {
-			t.Fatalf("failed to add cfgA: %v", err)
+			errA = err
 		}
 	}()
 
 	go func() {
 		defer wg.Done()
 		if err := service.store.Add(cfgB); err != nil {
-			t.Fatalf("failed to add cfgB: %v", err)
+			errB = err
 		}
 	}()
 
 	wg.Wait()
+
+	if errA != nil {
+		t.Fatalf("failed to add cfgA: %v", errA)
+	}
+	if errB != nil {
+		t.Fatalf("failed to add cfgB: %v", errB)
+	}
 
 	// Verify topics for cfgA
 	assert.True(t, configStore.TopicManager.IsTopicExist(cfgA.ID, "apiA_a_v1_t1"))
@@ -244,10 +249,8 @@ spec:
 
 func TestTopicDeregistrationOnConfigDeletion(t *testing.T) {
 	configStore := storage.NewConfigStore()
-	db := &storage.SQLiteStorage{}
-	snapshotManager := &xds.SnapshotManager{}
 	validator := config.NewAPIValidator()
-	service := NewAPIDeploymentService(configStore, db, snapshotManager, validator)
+	service := NewAPIDeploymentService(configStore, nil, nil, validator, nil)
 
 	// Inline YAML config similar to websubhub.yaml
 	yamlConfig := `kind: async/websub

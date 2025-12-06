@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -58,6 +59,8 @@ type APIDeploymentService struct {
 	snapshotManager *xds.SnapshotManager
 	parser          *config.Parser
 	validator       config.Validator
+	routerConfig    *config.RouterConfig
+	httpClient      *http.Client
 }
 
 // NewAPIDeploymentService creates a new API deployment service
@@ -66,6 +69,7 @@ func NewAPIDeploymentService(
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
 	validator config.Validator,
+	routerConfig *config.RouterConfig,
 ) *APIDeploymentService {
 	return &APIDeploymentService{
 		store:           store,
@@ -73,6 +77,8 @@ func NewAPIDeploymentService(
 		snapshotManager: snapshotManager,
 		parser:          config.NewParser(),
 		validator:       validator,
+		routerConfig:    routerConfig,
+		httpClient:      &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -164,7 +170,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 				defer wg2.Done()
 				params.Logger.Info("Starting topic registration", zap.Int("total_topics", len(list)), zap.String("api_id", apiID))
 				for _, topic := range list {
-					if err := s.RegisterTopicWithHub(topic, "localhost", params.Logger); err != nil {
+					if err := s.RegisterTopicWithHub(s.httpClient, topic, s.routerConfig.GatewayHost, params.Logger); err != nil {
 						params.Logger.Error("Failed to register topic with WebSubHub",
 							zap.Error(err),
 							zap.String("topic", topic),
@@ -185,7 +191,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 				defer wg2.Done()
 				params.Logger.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", apiID))
 				for _, topic := range list {
-					if err := s.UnregisterTopicWithHub(topic, "localhost", params.Logger); err != nil {
+					if err := s.UnregisterTopicWithHub(s.httpClient, topic, s.routerConfig.GatewayHost, params.Logger); err != nil {
 						params.Logger.Error("Failed to deregister topic from WebSubHub",
 							zap.Error(err),
 							zap.String("topic", topic),
@@ -375,27 +381,25 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredAPIC
 }
 
 // registerTopicWithHub registers a topic with the WebSubHub
-func (s *APIDeploymentService) RegisterTopicWithHub(topic, gwHost string, logger *zap.Logger) error {
-	return s.sendTopicRequestToHub(topic, "register", gwHost, logger)
+func (s *APIDeploymentService) RegisterTopicWithHub(httpClient *http.Client, topic, gwHost string, logger *zap.Logger) error {
+	return s.sendTopicRequestToHub(httpClient, topic, "register", gwHost, logger)
 }
 
 // unregisterTopicWithHub unregisters a topic from the WebSubHub
-func (s *APIDeploymentService) UnregisterTopicWithHub(topic, gwHost string, logger *zap.Logger) error {
-	return s.sendTopicRequestToHub(topic, "deregister", gwHost, logger)
+func (s *APIDeploymentService) UnregisterTopicWithHub(httpClient *http.Client, topic, gwHost string, logger *zap.Logger) error {
+	return s.sendTopicRequestToHub(httpClient, topic, "deregister", gwHost, logger)
 }
 
 // sendTopicRequestToHub sends a topic registration/unregistration request to the WebSubHub
-func (s *APIDeploymentService) sendTopicRequestToHub(topic string, mode string, gwHost string, logger *zap.Logger) error {
+func (s *APIDeploymentService) sendTopicRequestToHub(httpClient *http.Client, topic string, mode string, gwHost string, logger *zap.Logger) error {
 	// Prepare form data
-	formData := fmt.Sprintf("hub.mode=%s&hub.topic=%s", mode, topic)
+	formData := url.Values{}
+	formData.Set("hub.mode", mode)
+	formData.Set("hub.topic", topic)
+	//formData := fmt.Sprintf("hub.mode=%s&hub.topic=%s", mode, topic)
 
 	// Build target URL to gwHost reverse proxy endpoint (no proxy)
 	targetURL := fmt.Sprintf("http://%s:8083/websubhub/operations", gwHost)
-
-	// HTTP client with timeout (no proxy)
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
 
 	// Retry on 404 Not Found (hub might not be ready immediately)
 	const maxRetries = 5
@@ -403,13 +407,14 @@ func (s *APIDeploymentService) sendTopicRequestToHub(topic string, mode string, 
 	var lastStatus int
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		req, err := http.NewRequest("POST", targetURL, strings.NewReader(formData))
+		// Encode form values so special characters in hub.topic are properly percent-encoded
+		req, err := http.NewRequest("POST", targetURL, strings.NewReader(formData.Encode()))
 		if err != nil {
 			return fmt.Errorf("failed to create HTTP request: %w", err)
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-		resp, err := client.Do(req)
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			return fmt.Errorf("failed to send HTTP request: %w", err)
 		}

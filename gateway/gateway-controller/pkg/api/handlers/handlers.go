@@ -58,6 +58,7 @@ type APIServer struct {
 	deploymentService  *utils.APIDeploymentService
 	controlPlaneClient controlplane.ControlPlaneClient
 	routerConfig       *config.RouterConfig
+	httpClient         *http.Client
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -81,9 +82,10 @@ func NewAPIServer(
 		parser:             config.NewParser(),
 		validator:          validator,
 		logger:             logger,
-		deploymentService:  utils.NewAPIDeploymentService(store, db, snapshotManager, validator),
+		deploymentService:  utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig),
 		controlPlaneClient: controlPlaneClient,
 		routerConfig:       routerConfig,
+		httpClient:         &http.Client{Timeout: 10 * time.Second},
 	}
 
 	// Register status update callback
@@ -356,14 +358,6 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 	existing.DeployedVersion = 0
 
 	if apiConfig.Kind == api.APIConfigurationKindAsyncwebsub {
-		if err != nil {
-			log.Error("Failed to convert to WebhookAPIData", zap.Error(err))
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
-				Status:  "error",
-				Message: "Failed to convert to WebhookAPIData",
-			})
-			return
-		}
 		topicsToRegister, topicsToUnregister := s.deploymentService.GetAllTopicsToRegisterAndUnregister(*existing)
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
 		// This was communication bridge will be created on the gw startup
@@ -389,7 +383,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 				log.Info("Starting topic registration", zap.Int("total_topics", len(list)), zap.String("api_id", existing.ID))
 				//fmt.Println("Topics Registering Started")
 				for _, topic := range list {
-					if err := s.deploymentService.RegisterTopicWithHub(topic, "localhost", log); err != nil {
+					if err := s.deploymentService.RegisterTopicWithHub(s.httpClient, topic, "localhost", log); err != nil {
 						log.Error("Failed to register topic with WebSubHub",
 							zap.Error(err),
 							zap.String("topic", topic),
@@ -410,7 +404,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 				defer wg2.Done()
 				log.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", existing.ID))
 				for _, topic := range list {
-					if err := s.deploymentService.UnregisterTopicWithHub(topic, "localhost", log); err != nil {
+					if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", log); err != nil {
 						log.Error("Failed to deregister topic from WebSubHub",
 							zap.Error(err),
 							zap.String("topic", topic),
@@ -549,14 +543,6 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 	}
 
 	if cfg.Configuration.Kind == api.APIConfigurationKindAsyncwebsub {
-		if err != nil {
-			log.Error("Failed to convert to WebhookAPIData", zap.Error(err))
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
-				Status:  "error",
-				Message: "Failed to convert to WebhookAPIData",
-			})
-			return
-		}
 		_, topicsToUnregister := s.deploymentService.GetAllTopicsToRegisterAndUnregister(*cfg)
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
 		// This was communication bridge will be created on the gw startup
@@ -565,14 +551,13 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 		var wg2 sync.WaitGroup
 		var deregErrs int32
 
-		wg2.Add(1)
-
 		if len(topicsToUnregister) > 0 {
+			wg2.Add(1)
 			go func(list []string) {
 				defer wg2.Done()
 				log.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", cfg.ID))
 				for _, topic := range list {
-					if err := s.deploymentService.UnregisterTopicWithHub(topic, "localhost", log); err != nil {
+					if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", log); err != nil {
 						log.Error("Failed to deregister topic from WebSubHub",
 							zap.Error(err),
 							zap.String("topic", topic),
@@ -585,9 +570,8 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 					}
 				}
 			}(topicsToUnregister)
+			wg2.Wait()
 		}
-
-		wg2.Wait()
 
 		log.Info("Topic lifecycle operations completed",
 			zap.String("api_id", cfg.ID),
@@ -736,7 +720,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredAPIConfig) *model
 				}
 			}
 
-			routeKey := xds.GenerateRouteName(string(ch.Path), apiData.Context, apiData.Version, ch.Path, s.routerConfig.GatewayHost)
+			routeKey := xds.GenerateRouteName("SUBSCRIBE", apiData.Context, apiData.Version, ch.Path, s.routerConfig.GatewayHost)
 			routes = append(routes, policyenginev1.PolicyChain{
 				RouteKey: routeKey,
 				Policies: finalPolicies,

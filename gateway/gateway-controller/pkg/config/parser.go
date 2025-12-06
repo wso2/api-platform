@@ -51,21 +51,11 @@ func (p *Parser) ParseYAML(data []byte, configParsed interface{}) error {
 	// Assign parsed config to the value pointed by configParsed (interface{})
 	if ptr, ok := configParsed.(*api.APIConfiguration); ok {
 		*ptr = config
+	} else {
+		return fmt.Errorf("configParsed is not of type *api.APIConfiguration")
 	}
-	// if err := yaml.Unmarshal(data, &config); err != nil {
-	// 	return nil, fmt.Errorf("failed to parse YAML: %w", err)
-	// }
 	return nil
 }
-
-// // ParseYAML parses YAML content into an API configuration
-// func (p *Parser) ParseYAML(data []byte, config interface{}) error {
-// 	if err := yaml.Unmarshal(data, config); err != nil {
-// 		return fmt.Errorf("failed to parse YAML: %w", err)
-// 	}
-
-// 	return nil
-// }
 
 // ParseJSON parses JSON content into an API configuration
 func (p *Parser) ParseJSON(data []byte, config interface{}) error {

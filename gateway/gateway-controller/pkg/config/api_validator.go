@@ -277,7 +277,7 @@ func (v *APIValidator) validateChannels(channels []api.Channel) []ValidationErro
 
 	if len(channels) == 0 {
 		errors = append(errors, ValidationError{
-			Field:   "data.channels",
+			Field:   "spec.channels",
 			Message: "At least one channel is required",
 		})
 		return errors
@@ -288,7 +288,7 @@ func (v *APIValidator) validateChannels(channels []api.Channel) []ValidationErro
 		// Validate path
 		if op.Path == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.channels[%d].path", i),
+				Field:   fmt.Sprintf("spec.channels[%d].path", i),
 				Message: "Channel path is required",
 			})
 			continue
@@ -297,14 +297,14 @@ func (v *APIValidator) validateChannels(channels []api.Channel) []ValidationErro
 		// Validate path parameters have balanced braces
 		if !v.validatePathParametersForAsyncAPIs(op.Path) {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.channels[%d].path", i),
+				Field:   fmt.Sprintf("spec.channels[%d].path", i),
 				Message: "Operation path has braces which is not allowed",
 			})
 		}
 
 		if !v.validatePathParametersForAsyncAPIs(op.Path) {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.channels[%d].path", i),
+				Field:   fmt.Sprintf("spec.channels[%d].path", i),
 				Message: "Channel path has unbalanced braces in parameters",
 			})
 		}
@@ -349,7 +349,8 @@ func (v *APIValidator) validateContext(context string) []ValidationError {
 	return errors
 }
 
-// validatePathParametersForAsyncAPIs checks if path parameters have balanced braces
+// validatePathParametersForAsyncAPIs returns true when the path does not contain '{' or '}'.
+// Async/WebSub channel paths do not currently support templated path parameters.
 func (v *APIValidator) validatePathParametersForAsyncAPIs(path string) bool {
 
 	openCount := strings.Count(path, "{")

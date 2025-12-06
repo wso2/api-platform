@@ -164,16 +164,6 @@ func (cs *ConfigStore) Get(id string) (*models.StoredAPIConfig, error) {
 	return cfg, nil
 }
 
-// func (cs *ConfigStore) GetAllTopics() map[string]string {
-// 	cs.mu.RLock()
-// 	defer cs.mu.RUnlock()
-// 	result := make(map[string]string)
-// 	for topic, apiId := range cs.topics {
-// 		result[topic] = apiId
-// 	}
-// 	return result
-// }
-
 // GetByNameVersion retrieves a configuration by name and version
 func (cs *ConfigStore) GetByNameVersion(name, version string) (*models.StoredAPIConfig, error) {
 	cs.mu.RLock()

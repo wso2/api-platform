@@ -306,7 +306,13 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredAPIConfig) ([]*ro
 
 	// Create cluster for this upstream
 	c := t.createCluster(WebSubHubInternalClusterName, parsedURL, nil)
-	fmt.Println("Creating Route per Topic")
+	t.logger.Info("Created cluster for WebSubHub",
+		zap.String("cluster_name", c.Name),
+		zap.String("upstream_host", parsedURL.Host),
+		zap.String("upstream_scheme", parsedURL.Scheme),
+	)
+
+	t.logger.Info("Started translating routes for WebSub API")
 
 	// Create routes for each operation
 	routesList := make([]*route.Route, 0)
@@ -318,9 +324,11 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredAPIConfig) ([]*ro
 		}
 
 		updatedPath := apiData.Context + "/" + apiData.Version + chPath
-		fmt.Printf("Updated Path: %s\n", updatedPath)
+		t.logger.Info("Updated Path for WebSub channel",
+			zap.String("path", updatedPath),
+		)
 		// Always route accepts a POST request for WebSubHub calls
-		r := t.createRoutePerTopic("POST", updatedPath, WebSubHubInternalClusterName, parsedURL.Path)
+		r := t.createRoutePerTopic("POST", apiData.Context, apiData.Version, WebSubHubInternalClusterName, updatedPath, parsedURL.Path)
 		routesList = append(routesList, r)
 	}
 
@@ -790,8 +798,9 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 }
 
 // createRoutePerTopic creates a route for an operation
-func (t *Translator) createRoutePerTopic(method, path, clusterName, upstreamPath string) *route.Route {
+func (t *Translator) createRoutePerTopic(method, context, apiVersion, clusterName, path, upstreamPath string) *route.Route {
 	r := &route.Route{
+		Name: GenerateRouteName(method, context, apiVersion, path, t.routerConfig.GatewayHost),
 		Match: &route.RouteMatch{
 			Headers: []*route.HeaderMatcher{{
 				Name: ":method",
@@ -803,18 +812,6 @@ func (t *Translator) createRoutePerTopic(method, path, clusterName, upstreamPath
 					},
 				},
 			}},
-			// QueryParameters: []*route.QueryParameterMatcher{{
-			// 	Name: "topic",
-			// 	QueryParameterMatchSpecifier: &route.QueryParameterMatcher_StringMatch{
-			// 		StringMatch: &matcher.StringMatcher{
-			// 			MatchPattern: &matcher.StringMatcher_SafeRegex{
-			// 				SafeRegex: &matcher.RegexMatcher{
-			// 					Regex: ".+",
-			// 				},
-			// 			},
-			// 		},
-			// 	},
-			// }},
 		},
 		Action: &route.Route_Route{
 			Route: &route.RouteAction{
