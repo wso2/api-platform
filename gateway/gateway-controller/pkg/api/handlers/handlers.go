@@ -562,6 +562,63 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 		}
 	}
 
+	if cfg.Configuration.Kind == api.APIConfigurationKindAsyncwebsub {
+		if err != nil {
+			log.Error("Failed to convert to WebhookAPIData", zap.Error(err))
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to convert to WebhookAPIData",
+			})
+			return
+		}
+		_, topicsToUnregister := s.deploymentService.GetAllTopicsToRegisterAndUnregister(*cfg)
+		// TODO: Pre configure the dynamic forward proxy rules for event gw
+		// This was communication bridge will be created on the gw startup
+		// Can perform internal communication with websub hub without relying on the dynamic rules
+		// Execute topic operations with wait group and errors tracking
+		var wg2 sync.WaitGroup
+		var deregErrs int32
+
+		wg2.Add(1)
+
+		if len(topicsToUnregister) > 0 {
+			go func(list []string) {
+				defer wg2.Done()
+				log.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", cfg.ID))
+				for _, topic := range list {
+					if err := s.deploymentService.UnregisterTopicWithHub(topic, "localhost", log); err != nil {
+						log.Error("Failed to deregister topic from WebSubHub",
+							zap.Error(err),
+							zap.String("topic", topic),
+							zap.String("api_id", cfg.ID))
+						atomic.AddInt32(&deregErrs, 1)
+					} else {
+						log.Info("Successfully deregistered topic from WebSubHub",
+							zap.String("topic", topic),
+							zap.String("api_id", cfg.ID))
+					}
+				}
+			}(topicsToUnregister)
+		}
+
+		wg2.Wait()
+
+		log.Info("Topic lifecycle operations completed",
+			zap.String("api_id", cfg.ID),
+			zap.Int("deregistered", len(topicsToUnregister)),
+			zap.Int("deregister_errors", int(deregErrs)))
+
+		// Check if topic operations failed and return error
+		if deregErrs > 0 {
+			log.Error("Failed to register & deregister topics", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Topic lifecycle operations failed",
+			})
+			return
+		}
+	}
+
 	// Delete from in-memory store
 	if err := s.store.Delete(cfg.ID); err != nil {
 		log.Error("Failed to delete config from memory store", zap.Error(err))
