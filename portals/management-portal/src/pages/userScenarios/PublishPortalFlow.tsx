@@ -107,7 +107,7 @@ function PublishPortalFlowContent({ onFinish }: { onFinish?: () => void }) {
     });
   }, [typedApis, existingQuery]);
   
-  const portals = React.useMemo(() => allPortals.filter(p => p.isActive), [allPortals]);
+  const portals = React.useMemo(() => allPortals.filter(p => p.isEnabled), [allPortals]);
 
   const [showAdvanced, setShowAdvanced] = React.useState(false);
   const [gateways, setGateways] = React.useState<any[]>([]);

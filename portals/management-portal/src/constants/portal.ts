@@ -7,6 +7,7 @@ export const PORTAL_CONSTANTS = {
   DEFAULT_VISIBILITY_LABEL: 'Private',
   DEFAULT_HEADER_KEY_NAME: 'x-wso2-api-key',
   DEFAULT_LOGO_ALT: 'Portal logo',
+  API_KEY_MASK: '**********',
 
   // Portal types
   PORTAL_TYPES: {
@@ -36,8 +37,23 @@ export const PORTAL_CONSTANTS = {
     PORTAL_ACTIVATED: 'Developer Portal activated successfully.',
     ACTIVATION_FAILED: 'Failed to activate Developer Portal.',
     CREATION_FAILED: 'Failed to create Developer Portal.',
+    UPDATE_FAILED: 'Failed to update Developer Portal.',
+    FETCH_DEVPORTALS_FAILED: 'Failed to fetch devportals',
+    CREATE_DEVPORTAL_FAILED: 'Failed to create devportal',
+    UPDATE_DEVPORTAL_FAILED: 'Failed to update devportal',
+    DELETE_DEVPORTAL_FAILED: 'Failed to delete devportal',
+    FETCH_PORTAL_DETAILS_FAILED: 'Failed to fetch portal details',
+    ACTIVATE_DEVPORTAL_FAILED: 'Failed to activate devportal',
+    PUBLISH_FAILED: 'Failed to publish',
+    NO_PORTAL_SELECTED: 'No portal selected',
+    PROVIDE_API_NAME_AND_URL: 'Please provide API Name and Production URL',
+    PUBLISH_THEME_FAILED: 'Failed to publish theme',
+    PROMO_ACTION_FAILED: 'Promo action failed',
+    REFRESH_PUBLICATIONS_FAILED: 'Failed to refresh publications after publish',
+    API_PUBLISH_CONTEXT_ERROR: 'useApiPublishing must be used within an ApiPublishProvider',
     LOADING_ERROR: 'An error occurred while loading developer portals.',
-    URL_NOT_AVAILABLE: 'Portal URL is not available until the portal is activated',
+    URL_NOT_AVAILABLE:
+      'Portal URL is not available until the portal is activated',
     OPEN_PORTAL_URL: 'Open portal URL',
   } as const,
 
@@ -52,5 +68,7 @@ export const PORTAL_CONSTANTS = {
 } as const;
 
 // Type helpers
-export type PortalType = typeof PORTAL_CONSTANTS.PORTAL_TYPES[keyof typeof PORTAL_CONSTANTS.PORTAL_TYPES];
-export type PortalMode = typeof PORTAL_CONSTANTS.MODES[keyof typeof PORTAL_CONSTANTS.MODES];
+export type PortalType =
+  (typeof PORTAL_CONSTANTS.PORTAL_TYPES)[keyof typeof PORTAL_CONSTANTS.PORTAL_TYPES];
+export type PortalMode =
+  (typeof PORTAL_CONSTANTS.MODES)[keyof typeof PORTAL_CONSTANTS.MODES];
