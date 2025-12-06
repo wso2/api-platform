@@ -64,7 +64,33 @@ curl http://localhost:9090/health
 # Deploy an API configuration
 curl -X POST http://localhost:9090/apis \
   -H "Content-Type: application/yaml" \
-  --data-binary "$(curl -s https://raw.githubusercontent.com/wso2/api-platform/refs/tags/gateway-v0.0.1/gateway/examples/weather-api.yaml)"
+  --data-binary @- <<'EOF'
+version: api-platform.wso2.com/v1
+kind: http/rest
+spec:
+  name: Weather-API
+  version: v1.0
+  context: /weather/$version
+  upstreams:
+    - url: http://sample-backend:5000/api/v2
+  operations:
+    - method: GET
+      path: /{country_code}/{city}
+      policies:
+        - name: ModifyHeaders
+          version: v1.0.0
+          params:
+            requestHeaders:
+              - action: SET
+                name: operation-level-req-header
+                value: hello
+            responseHeaders:
+              - action: SET
+                name: operation-level-res-header
+                value: world
+    - method: GET
+      path: /alerts/active
+EOF
 
 
 # Test routing through the gateway
@@ -93,17 +119,7 @@ This stops containers and removes the `controller-data` volume. Next startup wil
 #### Gateway-Controller
 
 ```bash
-cd gateway-controller/
-make generate  # Generate API server code from OpenAPI spec
-make build     # Build binary
-make run       # Run locally
-```
-
-#### Router
-
-```bash
-cd router/
-make docker    # Build Docker image
+make build
 ```
 
 ## Architecture
