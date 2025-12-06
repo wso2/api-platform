@@ -173,7 +173,7 @@ func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationErr
 	return errors
 }
 
-// validateRestData validates the data section of the configuration for http/rest kind
+// validateAsyncData validates the data section of the configuration for http/rest kind
 func (v *APIValidator) validateAsyncData(spec *api.WebhookAPIData) []ValidationError {
 	var errors []ValidationError
 

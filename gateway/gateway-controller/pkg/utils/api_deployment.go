@@ -163,7 +163,6 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			go func(list []string) {
 				defer wg2.Done()
 				params.Logger.Info("Starting topic registration", zap.Int("total_topics", len(list)), zap.String("api_id", apiID))
-				//fmt.Println("Topics Registering Started")
 				for _, topic := range list {
 					if err := s.RegisterTopicWithHub(topic, "localhost", params.Logger); err != nil {
 						params.Logger.Error("Failed to register topic with WebSubHub",

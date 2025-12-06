@@ -106,13 +106,6 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		return
 	}
 
-	// // Use factory to parse config
-	// configParsed, err := s.configParserFactory.Parse(cfg)
-	// if err != nil {
-	// 	log.Error("Failed to parse config for status update", zap.Error(err), zap.String("id", configID))
-	// 	return
-	// }
-
 	now := time.Now()
 	if success {
 		cfg.Status = models.StatusDeployed
@@ -230,13 +223,6 @@ func (s *APIServer) ListAPIs(c *gin.Context) {
 
 	items := make([]api.APIListItem, 0, len(configs))
 	for _, cfg := range configs {
-		// Use factory to parse config
-		// configParsed, err := s.configParserFactory.Parse(cfg)
-		// if err != nil {
-		// 	s.logger.Warn("Failed to parse config in list", zap.String("id", cfg.ID), zap.Error(err))
-		// 	continue
-		// }
-
 		id, _ := uuidToOpenAPIUUID(cfg.ID)
 		status := string(cfg.Status)
 		items = append(items, api.APIListItem{
@@ -878,13 +864,6 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 			}
 
 			if cfg.Status == models.StatusDeployed {
-				if err != nil {
-					log.Error("Failed to extract API data in waitForDeploymentAndNotify",
-						zap.String("config_id", configID),
-						zap.Error(err))
-					return
-				}
-
 				// // API successfully deployed, notify platform API
 				log.Info("API deployed successfully, notifying platform API",
 					zap.String("config_id", configID),
@@ -907,13 +886,6 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 				return
 
 			} else if cfg.Status == models.StatusFailed {
-				if err != nil {
-					log.Error("Failed to extract API data in waitForDeploymentAndNotify",
-						zap.String("config_id", configID),
-						zap.Error(err))
-					return
-				}
-
 				log.Warn("API deployment failed, skipping platform API notification",
 					zap.String("config_id", configID),
 					zap.String("name", cfg.GetAPIName()))

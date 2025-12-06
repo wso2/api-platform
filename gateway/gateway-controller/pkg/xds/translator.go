@@ -244,7 +244,7 @@ func (t *Translator) TranslateConfigs(
 		}
 		listeners = append(listeners, dynamicProxyListener)
 		// Add websubhub cluster
-		upstreamURL := "http://host.docker.internal:9098"
+		upstreamURL := t.routerConfig.EventGateway.WebSubHubURL + ":" + fmt.Sprintf("%d", t.routerConfig.EventGateway.WebSubHubPort)
 		parsedURL, err := url.Parse(upstreamURL)
 		if err != nil {
 			return nil, fmt.Errorf("invalid upstream URL: %w", err)
@@ -592,27 +592,6 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener,
 		}},
 	}
 
-	// // External Processor filter config
-	// extProcConfig := &extproc.ExternalProcessor{
-	// 	GrpcService: &core.GrpcService{
-	// 		TargetSpecifier: &core.GrpcService_EnvoyGrpc_{EnvoyGrpc: &core.GrpcService_EnvoyGrpc{ClusterName: ExternalProcessorGRPCServiceClusterName}},
-	// 		Timeout:         durationpb.New(250 * time.Millisecond), // 0.250s
-	// 	},
-	// 	FailureModeAllow: false,
-	// 	ProcessingMode: &extproc.ProcessingMode{
-	// 		RequestHeaderMode:   extproc.ProcessingMode_SEND,
-	// 		ResponseHeaderMode:  extproc.ProcessingMode_SEND,
-	// 		RequestTrailerMode:  extproc.ProcessingMode_SEND,
-	// 		ResponseTrailerMode: extproc.ProcessingMode_SEND,
-	// 		RequestBodyMode:     extproc.ProcessingMode_BUFFERED,
-	// 		ResponseBodyMode:    extproc.ProcessingMode_BUFFERED,
-	// 	},
-	// 	MessageTimeout: &durationpb.Duration{Seconds: 20, Nanos: 250000000}, // 20.25s
-	// }
-	// extProcAny, err := anypb.New(extProcConfig)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to marshal ext_proc config: %w", err)
-	// }
 	dnsCacheConfig := &common_dfp.DnsCacheConfig{
 		// Required: unique name for the shared DNS cache
 		Name: "dynamic_forward_proxy_cache",
@@ -626,26 +605,6 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener,
 		// Optional: which DNS families to use (AUTO, V4_ONLY, V6_ONLY)
 		DnsLookupFamily: cluster.Cluster_V4_ONLY,
 
-		// Optional: configure Envoy’s DNS resolution behavior
-		// DnsResolutionConfig: &corev3.DnsResolutionConfig{
-		// 	Resolvers: []*corev3.Address{
-		// 		{
-		// 			Address: &corev3.Address_SocketAddress{
-		// 				SocketAddress: &corev3.SocketAddress{
-		// 					Address: "8.8.8.8",
-		// 					PortSpecifier: &corev3.SocketAddress_PortValue{
-		// 						PortValue: 53,
-		// 					},
-		// 				},
-		// 			},
-		// 		},
-		// 	},
-		// 	DnsResolverOptions: &corev3.DnsResolverOptions{
-		// 		UseTcpForDnsLookups: true, // Use TCP for reliability
-		// 	},
-		// },
-
-		// Optional: maximum number of cached hosts
 		MaxHosts: &wrapperspb.UInt32Value{Value: 1024},
 	}
 
@@ -674,10 +633,6 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener,
 		CodecType:      hcm.HttpConnectionManager_AUTO,
 		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{RouteConfig: dynamicForwardProxyRouteConfig},
 		HttpFilters: []*hcm.HttpFilter{
-			// { // ext_proc filter
-			// 	Name:       "envoy.filters.http.ext_proc",
-			// 	ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: extProcAny},
-			// },
 			{ // dynamic forward proxy filter
 				Name:       "envoy.filters.http.dynamic_forward_proxy",
 				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: dynamicFwdAny},
