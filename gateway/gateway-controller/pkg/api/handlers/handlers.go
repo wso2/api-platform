@@ -32,7 +32,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	openapi_types "github.com/oapi-codegen/runtime/types"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -41,6 +40,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
+	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 	"go.uber.org/zap"
 )
 
@@ -358,7 +358,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 	existing.DeployedVersion = 0
 
 	if apiConfig.Kind == api.APIConfigurationKindAsyncwebsub {
-		topicsToRegister, topicsToUnregister := s.deploymentService.GetAllTopicsToRegisterAndUnregister(*existing)
+		topicsToRegister, topicsToUnregister := s.deploymentService.GetTopicsForUpdate(*existing)
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
 		// This was communication bridge will be created on the gw startup
 		// Can perform internal communication with websub hub without relying on the dynamic rules
@@ -383,7 +383,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 				log.Info("Starting topic registration", zap.Int("total_topics", len(list)), zap.String("api_id", existing.ID))
 				//fmt.Println("Topics Registering Started")
 				for _, topic := range list {
-					if err := s.deploymentService.RegisterTopicWithHub(s.httpClient, topic, "localhost", log); err != nil {
+					if err := s.deploymentService.RegisterTopicWithHub(s.httpClient, topic, s.routerConfig.GatewayHost, log); err != nil {
 						log.Error("Failed to register topic with WebSubHub",
 							zap.Error(err),
 							zap.String("topic", topic),
@@ -404,7 +404,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 				defer wg2.Done()
 				log.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", existing.ID))
 				for _, topic := range list {
-					if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", log); err != nil {
+					if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, s.routerConfig.GatewayHost, log); err != nil {
 						log.Error("Failed to deregister topic from WebSubHub",
 							zap.Error(err),
 							zap.String("topic", topic),
@@ -543,7 +543,8 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 	}
 
 	if cfg.Configuration.Kind == api.APIConfigurationKindAsyncwebsub {
-		_, topicsToUnregister := s.deploymentService.GetAllTopicsToRegisterAndUnregister(*cfg)
+		topicsToUnregister := s.deploymentService.GetTopicsForDelete(*cfg)
+
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
 		// This was communication bridge will be created on the gw startup
 		// Can perform internal communication with websub hub without relying on the dynamic rules
@@ -557,7 +558,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 				defer wg2.Done()
 				log.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", cfg.ID))
 				for _, topic := range list {
-					if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", log); err != nil {
+					if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, s.routerConfig.GatewayHost, log); err != nil {
 						log.Error("Failed to deregister topic from WebSubHub",
 							zap.Error(err),
 							zap.String("topic", topic),

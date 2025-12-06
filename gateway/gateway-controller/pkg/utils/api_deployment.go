@@ -146,7 +146,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	}
 
 	if apiConfig.Kind == "async/websub" {
-		topicsToRegister, topicsToUnregister := s.GetAllTopicsToRegisterAndUnregister(*storedCfg)
+		topicsToRegister, topicsToUnregister := s.GetTopicsForUpdate(*storedCfg)
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
 		// This was communication bridge will be created on the gw startup
 		// Can perform internal communication with websub hub without relying on the dynamic rules
@@ -263,7 +263,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	}, nil
 }
 
-func (s *APIDeploymentService) GetAllTopicsToRegisterAndUnregister(apiConfig models.StoredAPIConfig) ([]string, []string) {
+func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredAPIConfig) ([]string, []string) {
 	topics := s.store.TopicManager.GetAllByConfig(apiConfig.ID)
 	topicsToRegister := []string{}
 	topicsToUnregister := []string{}
@@ -300,6 +300,10 @@ func (s *APIDeploymentService) GetAllTopicsToRegisterAndUnregister(apiConfig mod
 	}
 
 	return topicsToRegister, topicsToUnregister
+}
+
+func (s *APIDeploymentService) GetTopicsForDelete(apiConfig models.StoredAPIConfig) []string {
+	return s.store.TopicManager.GetAllByConfig(apiConfig.ID)
 }
 
 // saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
@@ -380,12 +384,12 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredAPIC
 	return true, nil // Successfully updated existing config
 }
 
-// registerTopicWithHub registers a topic with the WebSubHub
+// RegisterTopicWithHub registers a topic with the WebSubHub
 func (s *APIDeploymentService) RegisterTopicWithHub(httpClient *http.Client, topic, gwHost string, logger *zap.Logger) error {
 	return s.sendTopicRequestToHub(httpClient, topic, "register", gwHost, logger)
 }
 
-// unregisterTopicWithHub unregisters a topic from the WebSubHub
+// UnregisterTopicWithHub unregisters a topic from the WebSubHub
 func (s *APIDeploymentService) UnregisterTopicWithHub(httpClient *http.Client, topic, gwHost string, logger *zap.Logger) error {
 	return s.sendTopicRequestToHub(httpClient, topic, "deregister", gwHost, logger)
 }
@@ -396,7 +400,6 @@ func (s *APIDeploymentService) sendTopicRequestToHub(httpClient *http.Client, to
 	formData := url.Values{}
 	formData.Set("hub.mode", mode)
 	formData.Set("hub.topic", topic)
-	//formData := fmt.Sprintf("hub.mode=%s&hub.topic=%s", mode, topic)
 
 	// Build target URL to gwHost reverse proxy endpoint (no proxy)
 	targetURL := fmt.Sprintf("http://%s:8083/websubhub/operations", gwHost)

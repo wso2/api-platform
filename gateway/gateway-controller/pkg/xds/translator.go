@@ -153,7 +153,7 @@ func (t *Translator) TranslateConfigs(
 		var clusterList []*cluster.Cluster
 		var err error
 		if cfg.Configuration.Kind == "async/websub" {
-			routesList, clusterList, err = t.translateAsyncAPIConfig(cfg)
+			routesList, _, err = t.translateAsyncAPIConfig(cfg)
 			if err != nil {
 				log.Error("Failed to translate config",
 					zap.String("id", cfg.ID),
@@ -243,11 +243,13 @@ func (t *Translator) TranslateConfigs(
 			return nil, fmt.Errorf("failed to create WebSub listener: %w", err)
 		}
 		listeners = append(listeners, dynamicProxyListener)
-		// Add websubhub cluster
-		upstreamURL := t.routerConfig.EventGateway.WebSubHubURL + ":" + fmt.Sprintf("%d", t.routerConfig.EventGateway.WebSubHubPort)
-		parsedURL, err := url.Parse(upstreamURL)
+
+		parsedURL, err := url.Parse(t.routerConfig.EventGateway.WebSubHubURL)
 		if err != nil {
 			return nil, fmt.Errorf("invalid upstream URL: %w", err)
+		}
+		if parsedURL.Scheme == "" {
+			parsedURL.Host = fmt.Sprintf("%s:%d", parsedURL.Hostname(), t.routerConfig.EventGateway.WebSubHubPort)
 		}
 
 		websubhubCluster := t.createCluster(WebSubHubInternalClusterName, parsedURL, nil)
@@ -304,14 +306,6 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredAPIConfig) ([]*ro
 		return nil, nil, fmt.Errorf("invalid upstream URL: %w", err)
 	}
 
-	// Create cluster for this upstream
-	c := t.createCluster(WebSubHubInternalClusterName, parsedURL, nil)
-	t.logger.Info("Created cluster for WebSubHub",
-		zap.String("cluster_name", c.Name),
-		zap.String("upstream_host", parsedURL.Host),
-		zap.String("upstream_scheme", parsedURL.Scheme),
-	)
-
 	t.logger.Info("Started translating routes for WebSub API")
 
 	// Create routes for each operation
@@ -333,7 +327,7 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredAPIConfig) ([]*ro
 		routesList = append(routesList, r)
 	}
 
-	return routesList, []*cluster.Cluster{c}, nil
+	return routesList, nil, nil
 }
 
 // translateAPIConfig translates a single API configuration
@@ -1251,9 +1245,6 @@ func (t *Translator) processEndpoint(
 		}
 	}
 
-	fmt.Println("Upstream URL: ", upstreamURL.String())
-	fmt.Println("Port: ", port)
-
 	localityLbEndpoints := &endpoint.LocalityLbEndpoints{
 		LbEndpoints: []*endpoint.LbEndpoint{{
 			HostIdentifier: &endpoint.LbEndpoint_Endpoint{
@@ -1334,7 +1325,10 @@ func (t *Translator) createDynamicForwardProxyCluster() *cluster.Cluster {
 	clusterConfig := &dfpcluster.ClusterConfig{
 		// optional: control connection pooling / subclusters here
 	}
-	clusterTypeAny, _ := anypb.New(clusterConfig)
+	clusterTypeAny, err := anypb.New(clusterConfig)
+	if err != nil {
+		t.logger.Error("Failed to marshal dynamic forward proxy cluster config", zap.Error(err))
+	}
 
 	return &cluster.Cluster{
 		Name:           DynamicForwardProxyClusterName,
