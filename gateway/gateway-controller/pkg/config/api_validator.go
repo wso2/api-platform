@@ -85,15 +85,37 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 	}
 
 	// Validate kind
-	if config.Kind != "http/rest" {
+	if config.Kind != "http/rest" && config.Kind != "async/websub" {
 		errors = append(errors, ValidationError{
 			Field:   "kind",
-			Message: "Unsupported API kind (only 'http/rest' is supported)",
+			Message: "Unsupported API kind (only 'http/rest' and 'async/websub' are supported)",
 		})
 	}
 
-	// Validate data section
-	errors = append(errors, v.validateData(&config.Spec)...)
+	switch config.Kind {
+	case "http/rest":
+		spec, err := config.Spec.AsAPIConfigData()
+		if err != nil {
+			errors = append(errors, ValidationError{
+				Field:   "spec",
+				Message: fmt.Sprintf("Invalid spec format for http/rest: %v", err),
+			})
+		} else {
+			// Validate data section
+			errors = append(errors, v.validateRestData(&spec)...)
+		}
+	case "async/websub":
+		spec, err := config.Spec.AsWebhookAPIData()
+		if err != nil {
+			errors = append(errors, ValidationError{
+				Field:   "spec",
+				Message: fmt.Sprintf("Invalid spec format for async/websub: %v", err),
+			})
+		} else {
+			// Validate data section
+			errors = append(errors, v.validateAsyncData(&spec)...)
+		}
+	}
 
 	// Validate policies if policy validator is set
 	if v.policyValidator != nil {
@@ -104,8 +126,8 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 	return errors
 }
 
-// validateData validates the data section of the configuration
-func (v *APIValidator) validateData(spec *api.APIConfigData) []ValidationError {
+// validateRestData validates the data section of the configuration for http/rest kind
+func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationError {
 	var errors []ValidationError
 
 	// Validate name
@@ -151,6 +173,146 @@ func (v *APIValidator) validateData(spec *api.APIConfigData) []ValidationError {
 	return errors
 }
 
+// validateAsyncData validates the data section of the configuration for http/rest kind
+func (v *APIValidator) validateAsyncData(spec *api.WebhookAPIData) []ValidationError {
+	var errors []ValidationError
+
+	// Validate name
+	if spec.Name == "" {
+		errors = append(errors, ValidationError{
+			Field:   "spec.name",
+			Message: "API name is required",
+		})
+	} else if len(spec.Name) > 100 {
+		errors = append(errors, ValidationError{
+			Field:   "spec.name",
+			Message: "API name must be 1-100 characters",
+		})
+	} else if !v.urlFriendlyNameRegex.MatchString(spec.Name) {
+		errors = append(errors, ValidationError{
+			Field:   "spec.name",
+			Message: "API name must be URL-friendly (only letters, numbers, spaces, hyphens, underscores, and dots allowed)",
+		})
+	}
+
+	// Validate version
+	if spec.Version == "" {
+		errors = append(errors, ValidationError{
+			Field:   "spec.version",
+			Message: "API version is required",
+		})
+	} else if !v.versionRegex.MatchString(spec.Version) {
+		errors = append(errors, ValidationError{
+			Field:   "spec.version",
+			Message: "API version must follow semantic versioning pattern (e.g., v1.0, v2.1.3)",
+		})
+	}
+
+	// Validate context
+	errors = append(errors, v.validateContext(spec.Context)...)
+
+	// Validate upstream
+	errors = append(errors, v.validateServer(spec.Servers)...)
+
+	// Validate operations
+	errors = append(errors, v.validateChannels(spec.Channels)...)
+
+	return errors
+}
+
+// validateServer validates the server configuration
+func (v *APIValidator) validateServer(server []api.Server) []ValidationError {
+	var errors []ValidationError
+
+	if len(server) == 0 {
+		errors = append(errors, ValidationError{
+			Field:   "data.upstream",
+			Message: "At least one upstream URL is required",
+		})
+		return errors
+	}
+
+	for i, up := range server {
+		if up.Url == "" {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("data.upstream[%d].url", i),
+				Message: "Upstream URL is required",
+			})
+			continue
+		}
+
+		// Validate URL format
+		parsedURL, err := url.Parse(up.Url)
+		if err != nil {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("data.upstream[%d].url", i),
+				Message: fmt.Sprintf("Invalid URL format: %v", err),
+			})
+			continue
+		}
+
+		// Ensure scheme is http or https
+		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("data.upstream[%d].url", i),
+				Message: "Upstream URL must use http or https scheme",
+			})
+		}
+
+		// Ensure host is present
+		if parsedURL.Host == "" {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("data.upstream[%d].url", i),
+				Message: "Upstream URL must include a host",
+			})
+		}
+	}
+
+	return errors
+}
+
+// validateChannels validates the channels configuration
+func (v *APIValidator) validateChannels(channels []api.Channel) []ValidationError {
+	var errors []ValidationError
+
+	if len(channels) == 0 {
+		errors = append(errors, ValidationError{
+			Field:   "spec.channels",
+			Message: "At least one channel is required",
+		})
+		return errors
+	}
+
+	for i, op := range channels {
+
+		// Validate path
+		if op.Path == "" {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("spec.channels[%d].path", i),
+				Message: "Channel path is required",
+			})
+			continue
+		}
+
+		// Validate path parameters have balanced braces
+		if !v.validatePathParametersForAsyncAPIs(op.Path) {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("spec.channels[%d].path", i),
+				Message: "Operation path has braces which is not allowed",
+			})
+		}
+
+		if !v.validatePathParametersForAsyncAPIs(op.Path) {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("spec.channels[%d].path", i),
+				Message: "Channel path has unbalanced braces in parameters",
+			})
+		}
+	}
+
+	return errors
+}
+
 // validateContext validates the context path
 func (v *APIValidator) validateContext(context string) []ValidationError {
 	var errors []ValidationError
@@ -185,6 +347,15 @@ func (v *APIValidator) validateContext(context string) []ValidationError {
 	}
 
 	return errors
+}
+
+// validatePathParametersForAsyncAPIs returns true when the path does not contain '{' or '}'.
+// Async/WebSub channel paths do not currently support templated path parameters.
+func (v *APIValidator) validatePathParametersForAsyncAPIs(path string) bool {
+
+	openCount := strings.Count(path, "{")
+	closeCount := strings.Count(path, "}")
+	return openCount == 0 && closeCount == 0
 }
 
 // validateUpstream validates the upstream configuration

@@ -47,34 +47,36 @@ func TestPolicyValidator_ValidatePolicies_Success(t *testing.T) {
 
 	validator := NewPolicyValidator(policyDefs)
 
+	specUnion := api.APIConfiguration_Spec{}
+	specUnion.FromAPIConfigData(api.APIConfigData{
+		Name:    "Test API",
+		Version: "v1.0",
+		Context: "/test",
+		Upstreams: []api.Upstream{
+			{Url: "http://backend.example.com"},
+		},
+		Policies: &[]api.Policy{
+			{
+				Name:    "APIKeyValidation",
+				Version: "v1.0.0",
+				Params: &map[string]interface{}{
+					"header":    "X-API-Key",
+					"mandatory": true,
+				},
+			},
+		},
+		Operations: []api.Operation{
+			{
+				Method: "GET",
+				Path:   "/resource",
+			},
+		},
+	})
 	// Create API config with valid policy
 	apiConfig := &api.APIConfiguration{
 		Version: "api-platform.wso2.com/v1",
 		Kind:    "http/rest",
-		Spec: api.APIConfigData{
-			Name:    "Test API",
-			Version: "v1.0",
-			Context: "/test",
-			Upstreams: []api.Upstream{
-				{Url: "http://backend.example.com"},
-			},
-			Policies: &[]api.Policy{
-				{
-					Name:    "APIKeyValidation",
-					Version: "v1.0.0",
-					Params: &map[string]interface{}{
-						"header":    "X-API-Key",
-						"mandatory": true,
-					},
-				},
-			},
-			Operations: []api.Operation{
-				{
-					Method: "GET",
-					Path:   "/resource",
-				},
-			},
-		},
+		Spec:    specUnion,
 	}
 
 	errors := validator.ValidatePolicies(apiConfig)
@@ -88,30 +90,33 @@ func TestPolicyValidator_PolicyNotFound(t *testing.T) {
 	policyDefs := map[string]api.PolicyDefinition{}
 	validator := NewPolicyValidator(policyDefs)
 
+	specUnion := api.APIConfiguration_Spec{}
+	specUnion.FromAPIConfigData(api.APIConfigData{
+		Name:    "Test API",
+		Version: "v1.0",
+		Context: "/test",
+		Upstreams: []api.Upstream{
+			{Url: "http://backend.example.com"},
+		},
+		Policies: &[]api.Policy{
+			{
+				Name:    "NonExistentPolicy",
+				Version: "v1.0.0",
+			},
+		},
+		Operations: []api.Operation{
+			{
+				Method: "GET",
+				Path:   "/resource",
+			},
+		},
+	})
+
 	// Create API config with non-existent policy
 	apiConfig := &api.APIConfiguration{
 		Version: "api-platform.wso2.com/v1",
 		Kind:    "http/rest",
-		Spec: api.APIConfigData{
-			Name:    "Test API",
-			Version: "v1.0",
-			Context: "/test",
-			Upstreams: []api.Upstream{
-				{Url: "http://backend.example.com"},
-			},
-			Policies: &[]api.Policy{
-				{
-					Name:    "NonExistentPolicy",
-					Version: "v1.0.0",
-				},
-			},
-			Operations: []api.Operation{
-				{
-					Method: "GET",
-					Path:   "/resource",
-				},
-			},
-		},
+		Spec:    specUnion,
 	}
 
 	errors := validator.ValidatePolicies(apiConfig)
@@ -147,33 +152,35 @@ func TestPolicyValidator_InvalidParameters(t *testing.T) {
 	validator := NewPolicyValidator(policyDefs)
 
 	// Create API config with invalid params (missing required field)
-	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
-		Spec: api.APIConfigData{
-			Name:    "Test API",
-			Version: "v1.0",
-			Context: "/test",
-			Upstreams: []api.Upstream{
-				{Url: "http://backend.example.com"},
-			},
-			Policies: &[]api.Policy{
-				{
-					Name:    "APIKeyValidation",
-					Version: "v1.0.0",
-					Params: &map[string]interface{}{
-						"mandatory": true,
-						// Missing required "header" field
-					},
-				},
-			},
-			Operations: []api.Operation{
-				{
-					Method: "GET",
-					Path:   "/resource",
+	specUnion := api.APIConfiguration_Spec{}
+	specUnion.FromAPIConfigData(api.APIConfigData{
+		Name:    "Test API",
+		Version: "v1.0",
+		Context: "/test",
+		Upstreams: []api.Upstream{
+			{Url: "http://backend.example.com"},
+		},
+		Policies: &[]api.Policy{
+			{
+				Name:    "APIKeyValidation",
+				Version: "v1.0.0",
+				Params: &map[string]interface{}{
+					"mandatory": true,
+					// Missing required "header" field
 				},
 			},
 		},
+		Operations: []api.Operation{
+			{
+				Method: "GET",
+				Path:   "/resource",
+			},
+		},
+	})
+	apiConfig := &api.APIConfiguration{
+		Version: "api-platform.wso2.com/v1",
+		Kind:    "http/rest",
+		Spec:    specUnion,
 	}
 
 	errors := validator.ValidatePolicies(apiConfig)
@@ -203,32 +210,34 @@ func TestPolicyValidator_OperationLevelPolicies(t *testing.T) {
 	validator := NewPolicyValidator(policyDefs)
 
 	// Create API config with operation-level policy
-	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
-		Spec: api.APIConfigData{
-			Name:    "Test API",
-			Version: "v1.0",
-			Context: "/test",
-			Upstreams: []api.Upstream{
-				{Url: "http://backend.example.com"},
-			},
-			Operations: []api.Operation{
-				{
-					Method: "GET",
-					Path:   "/resource",
-					Policies: &[]api.Policy{
-						{
-							Name:    "RateLimiting",
-							Version: "v1.0.0",
-							Params: &map[string]interface{}{
-								"rate": 100,
-							},
+	specUnion := api.APIConfiguration_Spec{}
+	specUnion.FromAPIConfigData(api.APIConfigData{
+		Name:    "Test API",
+		Version: "v1.0",
+		Context: "/test",
+		Upstreams: []api.Upstream{
+			{Url: "http://backend.example.com"},
+		},
+		Operations: []api.Operation{
+			{
+				Method: "GET",
+				Path:   "/resource",
+				Policies: &[]api.Policy{
+					{
+						Name:    "RateLimiting",
+						Version: "v1.0.0",
+						Params: &map[string]interface{}{
+							"rate": 100,
 						},
 					},
 				},
 			},
 		},
+	})
+	apiConfig := &api.APIConfiguration{
+		Version: "api-platform.wso2.com/v1",
+		Kind:    "http/rest",
+		Spec:    specUnion,
 	}
 
 	errors := validator.ValidatePolicies(apiConfig)
@@ -249,39 +258,41 @@ func TestPolicyValidator_MultipleErrors(t *testing.T) {
 	validator := NewPolicyValidator(policyDefs)
 
 	// Create API config with multiple invalid policies
-	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
-		Spec: api.APIConfigData{
-			Name:    "Test API",
-			Version: "v1.0",
-			Context: "/test",
-			Upstreams: []api.Upstream{
-				{Url: "http://backend.example.com"},
+	specUnion := api.APIConfiguration_Spec{}
+	specUnion.FromAPIConfigData(api.APIConfigData{
+		Name:    "Test API",
+		Version: "v1.0",
+		Context: "/test",
+		Upstreams: []api.Upstream{
+			{Url: "http://backend.example.com"},
+		},
+		Policies: &[]api.Policy{
+			{
+				Name:    "NonExistent1",
+				Version: "v1.0.0",
 			},
-			Policies: &[]api.Policy{
-				{
-					Name:    "NonExistent1",
-					Version: "v1.0.0",
-				},
-				{
-					Name:    "NonExistent2",
-					Version: "v1.0.0",
-				},
+			{
+				Name:    "NonExistent2",
+				Version: "v1.0.0",
 			},
-			Operations: []api.Operation{
-				{
-					Method: "GET",
-					Path:   "/resource",
-					Policies: &[]api.Policy{
-						{
-							Name:    "NonExistent3",
-							Version: "v1.0.0",
-						},
+		},
+		Operations: []api.Operation{
+			{
+				Method: "GET",
+				Path:   "/resource",
+				Policies: &[]api.Policy{
+					{
+						Name:    "NonExistent3",
+						Version: "v1.0.0",
 					},
 				},
 			},
 		},
+	})
+	apiConfig := &api.APIConfiguration{
+		Version: "api-platform.wso2.com/v1",
+		Kind:    "http/rest",
+		Spec:    specUnion,
 	}
 
 	errors := validator.ValidatePolicies(apiConfig)
@@ -310,32 +321,34 @@ func TestPolicyValidator_TypeMismatch(t *testing.T) {
 	validator := NewPolicyValidator(policyDefs)
 
 	// Create API config with wrong type (string instead of integer)
-	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
-		Spec: api.APIConfigData{
-			Name:    "Test API",
-			Version: "v1.0",
-			Context: "/test",
-			Upstreams: []api.Upstream{
-				{Url: "http://backend.example.com"},
-			},
-			Policies: &[]api.Policy{
-				{
-					Name:    "TestPolicy",
-					Version: "v1.0.0",
-					Params: &map[string]interface{}{
-						"count": "not-a-number",
-					},
-				},
-			},
-			Operations: []api.Operation{
-				{
-					Method: "GET",
-					Path:   "/resource",
+	specUnion := api.APIConfiguration_Spec{}
+	specUnion.FromAPIConfigData(api.APIConfigData{
+		Name:    "Test API",
+		Version: "v1.0",
+		Context: "/test",
+		Upstreams: []api.Upstream{
+			{Url: "http://backend.example.com"},
+		},
+		Policies: &[]api.Policy{
+			{
+				Name:    "TestPolicy",
+				Version: "v1.0.0",
+				Params: &map[string]interface{}{
+					"count": "not-a-number",
 				},
 			},
 		},
+		Operations: []api.Operation{
+			{
+				Method: "GET",
+				Path:   "/resource",
+			},
+		},
+	})
+	apiConfig := &api.APIConfiguration{
+		Version: "api-platform.wso2.com/v1",
+		Kind:    "http/rest",
+		Spec:    specUnion,
 	}
 
 	errors := validator.ValidatePolicies(apiConfig)
@@ -368,30 +381,32 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 	validator := NewPolicyValidator(policyDefs)
 
 	// Test case 1: Policy with nil params (should fail validation for required field)
+	specUnion := api.APIConfiguration_Spec{}
+	specUnion.FromAPIConfigData(api.APIConfigData{
+		Name:    "Test API",
+		Version: "v1.0",
+		Context: "/test",
+		Upstreams: []api.Upstream{
+			{Url: "http://backend.example.com"},
+		},
+		Policies: &[]api.Policy{
+			{
+				Name:    "JWTValidation",
+				Version: "v1.0.0",
+				Params:  nil, // No params provided
+			},
+		},
+		Operations: []api.Operation{
+			{
+				Method: "GET",
+				Path:   "/resource",
+			},
+		},
+	})
 	apiConfig := &api.APIConfiguration{
 		Version: "api-platform.wso2.com/v1",
 		Kind:    "http/rest",
-		Spec: api.APIConfigData{
-			Name:    "Test API",
-			Version: "v1.0",
-			Context: "/test",
-			Upstreams: []api.Upstream{
-				{Url: "http://backend.example.com"},
-			},
-			Policies: &[]api.Policy{
-				{
-					Name:    "JWTValidation",
-					Version: "v1.0.0",
-					Params:  nil, // No params provided
-				},
-			},
-			Operations: []api.Operation{
-				{
-					Method: "GET",
-					Path:   "/resource",
-				},
-			},
-		},
+		Spec:    specUnion,
 	}
 
 	errors := validator.ValidatePolicies(apiConfig)
@@ -410,17 +425,24 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 		}
 	}
 
+	apiData, err := apiConfig.Spec.AsAPIConfigData()
+	if err != nil {
+		t.Fatalf("Failed to parse API data: %v", err)
+	}
+
 	// Test case 2: Policy with empty params map (should also fail)
-	(*apiConfig.Spec.Policies)[0].Params = &map[string]interface{}{}
+	(*apiData.Policies)[0].Params = &map[string]interface{}{}
+	apiConfig.Spec.FromAPIConfigData(apiData)
 	errors = validator.ValidatePolicies(apiConfig)
 	if len(errors) == 0 {
 		t.Error("Expected validation error for missing required parameter 'issuer'")
 	}
 
 	// Test case 3: Policy with required param provided (should pass)
-	(*apiConfig.Spec.Policies)[0].Params = &map[string]interface{}{
+	(*apiData.Policies)[0].Params = &map[string]interface{}{
 		"issuer": "https://auth.example.com",
 	}
+	apiConfig.Spec.FromAPIConfigData(apiData)
 	errors = validator.ValidatePolicies(apiConfig)
 	if len(errors) > 0 {
 		t.Errorf("Expected no validation errors, got: %v", errors)

@@ -47,20 +47,82 @@ type StoredAPIConfig struct {
 
 // GetCompositeKey returns the composite key "name:version" for indexing
 func (c *StoredAPIConfig) GetCompositeKey() string {
-	return fmt.Sprintf("%s:%s", c.Configuration.Spec.Name, c.Configuration.Spec.Version)
+	if c.Configuration.Kind == "async/websub" {
+		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
+		if err != nil {
+			return ""
+		}
+		return fmt.Sprintf("%s:%s", asyncData.Name, asyncData.Version)
+	}
+	configData, err := c.Configuration.Spec.AsAPIConfigData()
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%s:%s", configData.Name, configData.Version)
 }
 
 // GetAPIName returns the API name
 func (c *StoredAPIConfig) GetAPIName() string {
-	return c.Configuration.Spec.Name
+	if c.Configuration.Kind == "async/websub" {
+		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
+		if err != nil {
+			return ""
+		}
+		return asyncData.Name
+	}
+	configData, err := c.Configuration.Spec.AsAPIConfigData()
+	if err != nil {
+		return ""
+	}
+	return configData.Name
+}
+
+// GetAPIName returns the API name
+func (c *StoredAPIConfig) GetAPIContext() string {
+	if c.Configuration.Kind == "async/websub" {
+		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
+		if err != nil {
+			return ""
+		}
+		return asyncData.Context
+	}
+	configData, err := c.Configuration.Spec.AsAPIConfigData()
+	if err != nil {
+		return ""
+	}
+	return configData.Context
 }
 
 // GetAPIVersion returns the API version
 func (c *StoredAPIConfig) GetAPIVersion() string {
-	return c.Configuration.Spec.Version
+	if c.Configuration.Kind == "async/websub" {
+		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
+		if err != nil {
+			return ""
+		}
+		return asyncData.Version
+	}
+	configData, err := c.Configuration.Spec.AsAPIConfigData()
+	if err != nil {
+		return ""
+	}
+	return configData.Version
 }
 
-// GetContext returns the API context path
-func (c *StoredAPIConfig) GetContext() string {
-	return c.Configuration.Spec.Context
+func (c *StoredAPIConfig) GetPolicies() *[]api.Policy {
+	if c.Configuration.Kind == "http/rest" {
+		httpData, err := c.Configuration.Spec.AsAPIConfigData()
+		if err != nil {
+			return nil
+		}
+		return httpData.Policies
+	} else {
+		// TODO: enable when policies are supported for WebSubHub
+		// asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
+		// if err != nil {
+		// 	return nil
+		// }
+		// return asyncData.Policies
+	}
+	return nil
 }
