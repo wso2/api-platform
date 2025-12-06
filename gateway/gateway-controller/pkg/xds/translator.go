@@ -323,7 +323,8 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredAPIConfig) ([]*ro
 			chPath = "/" + chPath
 		}
 
-		updatedPath := apiData.Context + "/" + apiData.Version + chPath
+		updatedPath := ConstructFullPath(apiData.Context, apiData.Version, chPath)
+
 		t.logger.Info("Updated Path for WebSub channel",
 			zap.String("path", updatedPath),
 		)
