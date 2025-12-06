@@ -630,7 +630,7 @@ cat "$OUTPUT_DIR/Dockerfile"
 
 ## 4. Builder Dockerfile
 
-**File:** `Dockerfile.builder`
+**File:** `gateway-builder/Dockerfile`
 
 ```dockerfile
 # Policy Engine Builder Image
@@ -837,7 +837,7 @@ git clone https://github.com/yourorg/policy-engine.git
 cd policy-engine
 
 # Build the builder image
-docker build -f Dockerfile.builder -t policy-engine-builder:v1.0.0 .
+docker build -f gateway-builder/Dockerfile -t policy-engine-builder:v1.0.0 .
 ```
 
 ### 6.2 Prepare User Policies

@@ -19,7 +19,7 @@ services:
     image: policy-engine:custom
     # build:
     #   context: .
-    #   dockerfile: Dockerfile.runtime
+    #   dockerfile: Dockerfile
     # container_name: policy-engine
     volumes:
       - ./configs:/configs

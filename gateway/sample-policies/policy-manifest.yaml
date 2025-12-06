@@ -1,0 +1,12 @@
+version: v1
+
+policies:
+  # UppercaseBody Policy
+  - name: UppercaseBody
+    version: v1.0.0
+    filePath: ./uppercase-body/v1.0.0
+
+  # CountLetters Policy
+  - name: CountLetters
+    version: v1.0.0
+    filePath: ./count-letters/v1.0.0

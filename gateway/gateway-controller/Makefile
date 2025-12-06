@@ -45,13 +45,15 @@ test: ## Run unit and integration tests
 	@go test -v ./... -cover
 
 build: generate ## Build Docker image
-	@echo "Building Docker image ($(VERSION))..."
-	@docker build -f Dockerfile \
+	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
+	docker buildx build -f Dockerfile \
+		--build-context sdk=../../sdk \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
-		../
+		--load \
+		.
 
 push: ## Push Docker image to registry
 	@echo "Pushing Docker images..."
@@ -61,13 +63,14 @@ push: ## Push Docker image to registry
 build-and-push-multiarch: ## Build and push multi-architecture Docker image (linux/amd64, linux/arm64)
 	@echo "Building and pushing multi-arch Docker image: $(IMAGE_NAME):$(VERSION)"
 	docker buildx build -f Dockerfile \
+		--build-context sdk=../../sdk \
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
 		--push \
-		../
+		.
 
 generate-listener-certs: ## Generate listener certificates
 	@echo "Generating listener certificates..."

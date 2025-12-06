@@ -39,7 +39,7 @@ This project uses a multi-component structure:
 
 - [x] T001 Create project directory structure per plan.md (src/, policies/, build/, tests/, configs/, templates/, tools/)
 - [x] T002 Initialize Go module for policy engine runtime in src/go.mod
-- [x] T003 [P] Create Dockerfile.builder for builder image
+- [x] T003 [P] Create gateway-builder/Dockerfile for builder image
 - [x] T004 [P] Create docker-compose.yml for local development (Envoy + Policy Engine + test backend)
 - [x] T005 [P] Create .gitignore for Go project artifacts
 - [x] T006 [P] Create basic README.md with project overview and quickstart reference
@@ -398,12 +398,12 @@ This project uses a multi-component structure:
 
 **CRITICAL**: The Builder image CONTAINS the Policy Engine framework source code (`src/`) and Builder Go application (`build/`). Users ONLY mount their policies - NOT the framework source.
 
-- [x] T184 [US5] Create Dockerfile.builder with golang:1.23-alpine base
-- [x] T185 [US5] Install build dependencies (upx for optional compression) in Dockerfile.builder
-- [x] T186 [US5] Copy policy engine framework source code (src/) to /src in builder image in Dockerfile.builder
-- [x] T187 [US5] Copy Builder Go application (build/) and templates (templates/) to builder image in Dockerfile.builder
-- [x] T188 [US5] Build Builder Go binary and set as ENTRYPOINT in Dockerfile.builder
-- [x] T189 [US5] Pre-download Go dependencies for framework and builder in Dockerfile.builder
+- [x] T184 [US5] Create gateway-builder/Dockerfile with golang:1.23-alpine base
+- [x] T185 [US5] Install build dependencies (upx for optional compression) in gateway-builder/Dockerfile
+- [x] T186 [US5] Copy policy engine framework source code (src/) to /src in builder image in gateway-builder/Dockerfile
+- [x] T187 [US5] Copy Builder Go application (build/) and templates (templates/) to builder image in gateway-builder/Dockerfile
+- [x] T188 [US5] Build Builder Go binary and set as ENTRYPOINT in gateway-builder/Dockerfile
+- [x] T189 [US5] Pre-download Go dependencies for framework and builder in gateway-builder/Dockerfile
 
 ### US5: Builder - Module Setup (Go Implementation)
 

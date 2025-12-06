@@ -32,15 +32,15 @@
             }
         },
         {
-            "name": "Policy Builder",
+            "name": "Gateway Builder",
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "${workspaceFolder}/gateway/policy-engine/policy-builder/cmd/builder",
+            "program": "${workspaceFolder}/gateway/gateway-builder/cmd/builder",
             "args": [
                 "-manifest", "${workspaceFolder}/gateway/policy-engine/policy-manifest.yaml",
                 "-policy-engine-src", "${workspaceFolder}/gateway/policy-engine/policy-engine",
-                "-out-dir", "${workspaceFolder}/gateway/policy-engine/policy-builder/bin/output",
+                "-out-dir", "${workspaceFolder}/gateway/gateway-builder/bin/output",
                 "-log-level", "debug",
             ],
         },
