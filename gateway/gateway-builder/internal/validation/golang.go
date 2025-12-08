@@ -56,7 +56,6 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 	}
 
 	// Check for required methods
-	hasValidate := false
 	hasMode := false
 	hasOnRequest := false
 	hasOnResponse := false
@@ -83,9 +82,6 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 				// Check for interface methods
 				if hasReceiver {
 					switch methodName {
-					case "Validate":
-						hasValidate = true
-						slog.Debug("Found Validate method", "phase", "validation")
 					case "Mode":
 						hasMode = true
 						slog.Debug("Found Mode method", "phase", "validation")
@@ -104,7 +100,6 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 	// Log validation summary
 	slog.Debug("Interface validation summary",
 		"policy", policy.Name,
-		"hasValidate", hasValidate,
 		"hasMode", hasMode,
 		"hasOnRequest", hasOnRequest,
 		"hasOnResponse", hasOnResponse,
@@ -112,15 +107,6 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 		"phase", "validation")
 
 	// Report missing required methods
-	if !hasValidate {
-		errors = append(errors, types.ValidationError{
-			PolicyName:    policy.Name,
-			PolicyVersion: policy.Version,
-			FilePath:      policy.Path,
-			Message:       "missing required Validate() method implementation",
-		})
-	}
-
 	if !hasMode {
 		errors = append(errors, types.ValidationError{
 			PolicyName:    policy.Name,

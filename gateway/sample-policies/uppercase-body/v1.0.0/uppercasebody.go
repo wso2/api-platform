@@ -24,13 +24,6 @@ func (p *UppercaseBodyPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// Validate validates the policy configuration
-// This policy has no configuration parameters
-func (p *UppercaseBodyPolicy) Validate(params map[string]interface{}) error {
-	// No parameters to validate
-	return nil
-}
-
 // OnRequest transforms the request body to uppercase
 func (p *UppercaseBodyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	// Check if body is present

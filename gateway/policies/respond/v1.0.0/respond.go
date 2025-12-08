@@ -1,8 +1,6 @@
 package respond
 
 import (
-	"fmt"
-
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
@@ -23,79 +21,6 @@ func (p *RespondPolicy) Mode() policy.ProcessingMode {
 		ResponseHeaderMode: policy.HeaderModeSkip,    // Returns immediate response
 		ResponseBodyMode:   policy.BodyModeSkip,      // Returns immediate response
 	}
-}
-
-// Validate validates the policy configuration
-func (p *RespondPolicy) Validate(params map[string]interface{}) error {
-	// Validate statusCode parameter (optional, defaults to 200)
-	if statusCodeRaw, ok := params["statusCode"]; ok {
-		// Handle both float64 (from JSON) and int
-		switch v := statusCodeRaw.(type) {
-		case float64:
-			statusCode := int(v)
-			if statusCode < 100 || statusCode > 599 {
-				return fmt.Errorf("statusCode must be between 100 and 599")
-			}
-		case int:
-			if v < 100 || v > 599 {
-				return fmt.Errorf("statusCode must be between 100 and 599")
-			}
-		default:
-			return fmt.Errorf("statusCode must be a number")
-		}
-	}
-
-	// Validate body parameter (optional)
-	if bodyRaw, ok := params["body"]; ok {
-		switch bodyRaw.(type) {
-		case string:
-			// Valid: string body
-		case []byte:
-			// Valid: byte array body
-		default:
-			return fmt.Errorf("body must be a string or byte array")
-		}
-	}
-
-	// Validate headers parameter (optional)
-	if headersRaw, ok := params["headers"]; ok {
-		headers, ok := headersRaw.([]interface{})
-		if !ok {
-			return fmt.Errorf("headers must be an array")
-		}
-
-		for i, headerRaw := range headers {
-			headerMap, ok := headerRaw.(map[string]interface{})
-			if !ok {
-				return fmt.Errorf("headers[%d] must be an object with 'name' and 'value' fields", i)
-			}
-
-			// Validate header name
-			nameRaw, ok := headerMap["name"]
-			if !ok {
-				return fmt.Errorf("headers[%d] missing required 'name' field", i)
-			}
-			name, ok := nameRaw.(string)
-			if !ok {
-				return fmt.Errorf("headers[%d].name must be a string", i)
-			}
-			if len(name) == 0 {
-				return fmt.Errorf("headers[%d].name cannot be empty", i)
-			}
-
-			// Validate header value
-			valueRaw, ok := headerMap["value"]
-			if !ok {
-				return fmt.Errorf("headers[%d] missing required 'value' field", i)
-			}
-			_, ok = valueRaw.(string)
-			if !ok {
-				return fmt.Errorf("headers[%d].value must be a string", i)
-			}
-		}
-	}
-
-	return nil
 }
 
 // OnRequest returns an immediate response to the client

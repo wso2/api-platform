@@ -2,10 +2,6 @@ package policyv1alpha
 
 // Policy is the base interface that all policies must implement
 type Policy interface {
-	// Validate validates the policy configuration parameters
-	// Called at configuration time, not request time
-	// Returns error if configuration is invalid
-	Validate(params map[string]interface{}) error
 
 	// Mode returns the policy's processing mode for each phase
 	// Used by the kernel to optimize execution (e.g., skip body buffering if not needed)
