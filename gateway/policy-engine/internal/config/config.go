@@ -124,6 +124,11 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
+	// Extract "policy-engine" section to support unified config file
+	if sub := v.Sub("policy-engine"); sub != nil {
+		v = sub
+	}
+
 	// Unmarshal config
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {

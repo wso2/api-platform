@@ -195,6 +195,9 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load config file: %w", err)
 	}
 
+	// Cut to "gateway-controller" section to support unified config file
+	k = k.Cut("gateway-controller")
+
 	// Load environment variables with prefix "GATEWAY_"
 	// Example: GATEWAY_SERVER_API_PORT=9090 -> server.api_port
 	//          GATEWAY_CONTROL_PLANE_URL=wss://... -> controlplane.url
