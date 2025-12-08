@@ -35,6 +35,9 @@ import (
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	fileaccesslog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
+	dfpcluster "github.com/envoyproxy/go-control-plane/envoy/extensions/clusters/dynamic_forward_proxy/v3"
+	common_dfp "github.com/envoyproxy/go-control-plane/envoy/extensions/common/dynamic_forward_proxy/v3"
+	dfpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/dynamic_forward_proxy/v3"
 	extproc "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
@@ -43,16 +46,23 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/certstore"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/types/known/anypb"
-	"google.golang.org/protobuf/types/known/durationpb"
+	anypb "google.golang.org/protobuf/types/known/anypb"
+	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+)
+
+const (
+	DynamicForwardProxyClusterName          = "dynamic-forward-proxy-cluster"
+	ExternalProcessorGRPCServiceClusterName = "ext-processor-grpc-service"
+	WebSubHubInternalClusterName            = "websubhub-internal-cluster"
 )
 
 // Translator converts API configurations to Envoy xDS resources
@@ -140,17 +150,30 @@ func (t *Translator) TranslateConfigs(
 		// This ensures existing APIs are not overridden when deploying new APIs
 
 		// Create routes and clusters for this API
-		routesList, clusterList, err := t.translateAPIConfig(cfg)
-		if err != nil {
-			log.Error("Failed to translate config",
-				zap.String("id", cfg.ID),
-				zap.String("name", cfg.GetName()),
-				zap.Error(err))
-			continue
+		var routesList []*route.Route
+		var clusterList []*cluster.Cluster
+		var err error
+		if cfg.Configuration.Kind == api.APIConfigurationKindAsyncwebsub {
+			routesList, clusterList, err = t.translateAsyncAPIConfig(cfg)
+			if err != nil {
+				log.Error("Failed to translate config",
+					zap.String("id", cfg.ID),
+					zap.String("name", cfg.GetName()),
+					zap.Error(err))
+				continue
+			}
+		} else {
+			routesList, clusterList, err = t.translateAPIConfig(cfg)
+			if err != nil {
+				log.Error("Failed to translate config",
+					zap.String("id", cfg.ID),
+					zap.String("name", cfg.GetName()),
+					zap.Error(err))
+				continue
+			}
 		}
 
 		allRoutes = append(allRoutes, routesList...)
-
 		// Add clusters (avoiding duplicates)
 		for _, c := range clusterList {
 			clusterMap[c.Name] = c
@@ -213,6 +236,39 @@ func (t *Translator) TranslateConfigs(
 		clusters = append(clusters, policyEngineCluster)
 	}
 
+	if t.routerConfig.EventGateway.Enabled {
+		// Add dynamic forward proxy cluster for WebSubHub
+		dynamicForwardProxyCluster := t.createDynamicForwardProxyCluster()
+		if dynamicForwardProxyCluster == nil {
+			return nil, fmt.Errorf("failed to create dynamic forward proxy cluster")
+		}
+		clusters = append(clusters, dynamicForwardProxyCluster)
+		dynamicProxyListener, err := t.createDynamicFwdListenerForWebSubHub()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create WebSub listener: %w", err)
+		}
+		listeners = append(listeners, dynamicProxyListener)
+
+		parsedURL, err := url.Parse(t.routerConfig.EventGateway.WebSubHubURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid upstream URL: %w", err)
+		}
+		if parsedURL.Port() == "" {
+			parsedURL.Host = fmt.Sprintf("%s:%d", parsedURL.Hostname(), t.routerConfig.EventGateway.WebSubHubPort)
+		}
+		if parsedURL.Scheme == "" {
+			parsedURL.Scheme = "http"
+		}
+
+		websubhubCluster := t.createCluster(WebSubHubInternalClusterName, parsedURL, nil)
+		clusters = append(clusters, websubhubCluster)
+		websubInternalListener, err := t.createListenerForWebSubHub()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create WebSub internal listener: %w", err)
+		}
+		listeners = append(listeners, websubInternalListener)
+	}
+
 	// Add SDS cluster if cert store is enabled
 	// This cluster allows Envoy to fetch certificates from the SDS service
 	if t.certStore != nil {
@@ -240,9 +296,37 @@ func (t *Translator) TranslateConfigs(
 	return resources, nil
 }
 
+// translateAsyncAPIConfig translates a single API configuration
+func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig) ([]*route.Route, []*cluster.Cluster, error) {
+	apiData, err := cfg.Configuration.Spec.AsWebhookAPIData()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse webhook API data: %w", err)
+	}
+
+	t.logger.Info("Started translating routes for WebSub API")
+
+	// Create routes for each operation
+	routesList := make([]*route.Route, 0)
+	for _, ch := range apiData.Channels {
+		// Ensure channel path starts with '/'
+		chPath := ch.Path
+		if !strings.HasPrefix(chPath, "/") {
+			chPath = "/" + chPath
+		}
+		// Always route accepts a POST request for WebSubHub calls
+		r := t.createRoutePerTopic("POST", apiData.Context, apiData.Version, WebSubHubInternalClusterName, chPath)
+		routesList = append(routesList, r)
+	}
+
+	return routesList, nil, nil
+}
+
 // translateAPIConfig translates a single API configuration
 func (t *Translator) translateAPIConfig(cfg *models.StoredConfig) ([]*route.Route, []*cluster.Cluster, error) {
-	apiData := cfg.Configuration.Spec
+	apiData, err := cfg.Configuration.Spec.AsAPIConfigData()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse API config data: %w", err)
+	}
 
 	// Parse upstream URL
 	if len(apiData.Upstreams) == 0 {
@@ -384,6 +468,180 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 	}, nil
 }
 
+func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
+	// Reverse proxy listener: exactly one route /websubhub/operations rewritten to /hub
+	// This allows clients to call /websubhub/operations and internally reach /hub on upstream.
+	routeConfig := &route.RouteConfiguration{
+		Name: "websubhub-internal-route",
+		VirtualHosts: []*route.VirtualHost{{
+			Name:    "websubhub-internal",
+			Domains: []string{"*"},
+			Routes: []*route.Route{{
+				Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Path{Path: "/websubhub/operations"}},
+				Action: &route.Route_Route{Route: &route.RouteAction{
+					ClusterSpecifier: &route.RouteAction_Cluster{Cluster: WebSubHubInternalClusterName},
+					Timeout:          durationpb.New(30 * time.Second),
+					PrefixRewrite:    "/hub", // rewrite path
+				}},
+			}},
+		}},
+	}
+
+	// Router filter
+	routerCfg := &router.Router{}
+	routerAny, err := anypb.New(routerCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal router config: %w", err)
+	}
+
+	// HttpConnectionManager for port 8083
+	hcmCfg := &hcm.HttpConnectionManager{
+		StatPrefix:     "websubhub_internal_8083",
+		CodecType:      hcm.HttpConnectionManager_AUTO,
+		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{RouteConfig: routeConfig},
+		HttpFilters: []*hcm.HttpFilter{
+			{
+				Name:       wellknown.Router,
+				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: routerAny},
+			},
+		},
+	}
+
+	// Attach access logs if enabled
+	if t.routerConfig.AccessLogs.Enabled {
+		accessLogs, err := t.createAccessLogConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create access log config: %w", err)
+		}
+		hcmCfg.AccessLog = accessLogs
+	}
+
+	hcmAny, err := anypb.New(hcmCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal http connection manager: %w", err)
+	}
+
+	return &listener.Listener{
+		Name: "websubhub-internal-8083",
+		Address: &core.Address{Address: &core.Address_SocketAddress{SocketAddress: &core.SocketAddress{
+			Protocol:      core.SocketAddress_TCP,
+			Address:       "0.0.0.0",
+			PortSpecifier: &core.SocketAddress_PortValue{PortValue: 8083},
+		}}},
+		FilterChains: []*listener.FilterChain{{
+			Filters: []*listener.Filter{{
+				Name:       wellknown.HTTPConnectionManager,
+				ConfigType: &listener.Filter_TypedConfig{TypedConfig: hcmAny},
+			}},
+		}},
+	}, nil
+}
+
+// createDynamicFwdListenerForWebSubHub creates an Envoy listener with access logging
+func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener, error) {
+	// Build the route configuration for dynamic forward proxy listener
+	// We ignore the passed virtualHosts here and construct the required one matching the sample.
+	dynamicForwardProxyRouteConfig := &route.RouteConfiguration{
+		Name: "dynamic-forward-proxy-routing",
+		VirtualHosts: []*route.VirtualHost{{
+			Name:    "all-domains",
+			Domains: []string{"*"}, // this should be websubhub domains
+			Routes: []*route.Route{{
+				Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Prefix{Prefix: "/"}},
+				Action: &route.Route_Route{Route: &route.RouteAction{
+					ClusterSpecifier: &route.RouteAction_Cluster{Cluster: DynamicForwardProxyClusterName},
+					Timeout:          durationpb.New(30 * time.Second),
+					RetryPolicy: &route.RetryPolicy{
+						RetryOn:    "5xx,reset,connect-failure,refused-stream",
+						NumRetries: wrapperspb.UInt32(1),
+					},
+				}},
+			}},
+		}},
+	}
+
+	dnsCacheConfig := &common_dfp.DnsCacheConfig{
+		// Required: unique name for the shared DNS cache
+		Name: "dynamic_forward_proxy_cache",
+
+		// Optional: how often DNS entries are refreshed
+		DnsRefreshRate: durationpb.New(60 * time.Second),
+
+		// Optional: how long hosts stay cached
+		HostTtl: durationpb.New(300 * time.Second),
+
+		// Optional: which DNS families to use (AUTO, V4_ONLY, V6_ONLY)
+		DnsLookupFamily: cluster.Cluster_V4_ONLY,
+
+		MaxHosts: &wrapperspb.UInt32Value{Value: 1024},
+	}
+
+	dfpFilterConfig := &dfpv3.FilterConfig{
+		ImplementationSpecifier: &dfpv3.FilterConfig_DnsCacheConfig{
+			DnsCacheConfig: dnsCacheConfig,
+		},
+	}
+
+	// Dynamic forward proxy filter config placeholder (typed config fields omitted for compatibility with current go-control-plane version)
+	dynamicFwdAny, err := anypb.New(dfpFilterConfig)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal dynamic forward proxy config: %w", err)
+	}
+
+	// Router filter
+	routerConfig := &router.Router{}
+	routerAny, err := anypb.New(routerConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal router config: %w", err)
+	}
+
+	httpConnManager := &hcm.HttpConnectionManager{
+		StatPrefix:     "WEBSUBHUB_INBOUND_8082",
+		CodecType:      hcm.HttpConnectionManager_AUTO,
+		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{RouteConfig: dynamicForwardProxyRouteConfig},
+		HttpFilters: []*hcm.HttpFilter{
+			{ // dynamic forward proxy filter
+				Name:       "envoy.filters.http.dynamic_forward_proxy",
+				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: dynamicFwdAny},
+			},
+			{ // router filter must be last
+				Name:       wellknown.Router,
+				ConfigType: &hcm.HttpFilter_TypedConfig{TypedConfig: routerAny},
+			},
+		},
+	}
+
+	// Attach access logs if enabled
+	if t.routerConfig.AccessLogs.Enabled {
+		accessLogs, err := t.createAccessLogConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create access log config: %w", err)
+		}
+		httpConnManager.AccessLog = accessLogs
+	}
+
+	hcmAny, err := anypb.New(httpConnManager)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal http connection manager: %w", err)
+	}
+
+	return &listener.Listener{
+		Name: "dynamic-forward-proxy-8082",
+		Address: &core.Address{Address: &core.Address_SocketAddress{SocketAddress: &core.SocketAddress{
+			Protocol:      core.SocketAddress_TCP,
+			Address:       "0.0.0.0",
+			PortSpecifier: &core.SocketAddress_PortValue{PortValue: 8082},
+		}}},
+		FilterChains: []*listener.FilterChain{{
+			Filters: []*listener.Filter{{
+				Name:       wellknown.HTTPConnectionManager,
+				ConfigType: &listener.Filter_TypedConfig{TypedConfig: hcmAny},
+			}},
+		}},
+	}, nil
+}
+
 // createRouteConfiguration creates a route configuration
 func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost) *route.RouteConfiguration {
 	return &route.RouteConfiguration{
@@ -495,6 +753,40 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 		},
 		Substitution: upstreamPath + "\\1",
 	}
+
+	return r
+}
+
+// createRoutePerTopic creates a route for an operation
+func (t *Translator) createRoutePerTopic(method, context, apiVersion, clusterName, path string) *route.Route {
+	r := &route.Route{
+		Name: GenerateRouteName(method, context, apiVersion, path, t.routerConfig.GatewayHost),
+		Match: &route.RouteMatch{
+			Headers: []*route.HeaderMatcher{{
+				Name: ":method",
+				HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+					StringMatch: &matcher.StringMatcher{
+						MatchPattern: &matcher.StringMatcher_Exact{
+							Exact: method,
+						},
+					},
+				},
+			}},
+		},
+		Action: &route.Route_Route{
+			Route: &route.RouteAction{
+				ClusterSpecifier: &route.RouteAction_Cluster{
+					Cluster: clusterName,
+				},
+			},
+		},
+	}
+
+	r.Match.PathSpecifier = &route.RouteMatch_Path{
+		Path: ConstructFullPath(context, apiVersion, path),
+	}
+
+	r.GetRoute().PrefixRewrite = "/hub"
 
 	return r
 }
@@ -991,6 +1283,37 @@ func (t *Translator) processEndpoint(
 	return []*endpoint.LocalityLbEndpoints{localityLbEndpoints}, nil
 }
 
+// createDynamicForwardProxyCluster creates a dynamic forward proxy cluster for WebSubHub
+func (t *Translator) createDynamicForwardProxyCluster() *cluster.Cluster {
+	// Note: Due to go-control-plane API limitations, we use a placeholder Any for the typed config
+	// The actual DNS cache config should match the filter config in createListenerForWebSubHub
+	clusterConfig := &dfpcluster.ClusterConfig{
+		// optional: control connection pooling / subclusters here
+	}
+	clusterTypeAny, err := anypb.New(clusterConfig)
+	if err != nil {
+		t.logger.Error("Failed to marshal dynamic forward proxy cluster config", zap.Error(err))
+		return nil
+	}
+
+	return &cluster.Cluster{
+		Name:           DynamicForwardProxyClusterName,
+		ConnectTimeout: durationpb.New(5 * time.Second),
+		LbPolicy:       cluster.Cluster_CLUSTER_PROVIDED,
+		ClusterDiscoveryType: &cluster.Cluster_ClusterType{
+			ClusterType: &cluster.Cluster_CustomClusterType{
+				Name:        "envoy.clusters.dynamic_forward_proxy",
+				TypedConfig: clusterTypeAny,
+			},
+		},
+		UpstreamConnectionOptions: &cluster.UpstreamConnectionOptions{
+			TcpKeepalive: &core.TcpKeepalive{
+				KeepaliveTime: &wrapperspb.UInt32Value{Value: 300},
+			},
+		},
+	}
+}
+
 // pathToRegex converts a path with parameters to a regex pattern
 // Converts paths like /weather/v1.0/{country_code}/{city} to ^/weather/v1\.0/[^/]+/[^/]+$
 // Special characters (like dots in version) are escaped, but {params} become [^/]+ patterns
@@ -1038,7 +1361,7 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	if t.routerConfig.AccessLogs.Format == "json" {
 		// Use JSON log format fields from config
 		jsonFormat := t.routerConfig.AccessLogs.JSONFields
-		if len(jsonFormat) == 0 {
+		if jsonFormat == nil || len(jsonFormat) == 0 {
 			return nil, fmt.Errorf("json_fields not configured in access log config")
 		}
 

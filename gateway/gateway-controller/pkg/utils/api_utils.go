@@ -287,3 +287,17 @@ func (s *APIUtilsService) NotifyAPIDeployment(apiID string, apiConfig *models.St
 
 	return nil
 }
+func MapToStruct(data map[string]interface{}, out interface{}) error {
+	// Convert map -> JSON bytes
+	jsonBytes, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal map to JSON: %w", err)
+	}
+
+	// Unmarshal JSON bytes -> target struct
+	if err := json.Unmarshal(jsonBytes, out); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON to struct: %w", err)
+	}
+
+	return nil
+}

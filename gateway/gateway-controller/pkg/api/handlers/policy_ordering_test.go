@@ -142,6 +142,21 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 			description:   "Operation can completely reorder API policies for that specific operation",
 		},
 	}
+	specUnion := api.APIConfiguration_Spec{}
+	specUnion.FromAPIConfigData(api.APIConfigData{
+		Name:    "test-api",
+		Version: "v1.0",
+		Context: "/test",
+		Upstreams: []api.Upstream{
+			{Url: "http://backend.example.com"},
+		},
+		Operations: []api.Operation{
+			{
+				Method: "GET",
+				Path:   "/resource",
+			},
+		},
+	})
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -150,29 +165,21 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 				Configuration: api.APIConfiguration{
 					Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
 					Kind:    api.APIConfigurationKind("http/rest"),
-					Spec: api.APIConfigData{
-						Name:    "test-api",
-						Version: "v1.0",
-						Context: "/test",
-						Upstreams: []api.Upstream{
-							{Url: "http://backend.example.com"},
-						},
-						Operations: []api.Operation{
-							{
-								Method: "GET",
-								Path:   "/resource",
-							},
-						},
-					},
+					Spec:    specUnion,
 				},
 			}
 
+			apiData, err := cfg.Configuration.Spec.AsAPIConfigData()
+			require.NoError(t, err)
+
 			// Set policies
 			if tt.apiPolicies != nil {
-				cfg.Configuration.Spec.Policies = &tt.apiPolicies
+				apiData.Policies = &tt.apiPolicies
+				cfg.Configuration.Spec.FromAPIConfigData(apiData)
 			}
 			if tt.operationPolicies != nil {
-				cfg.Configuration.Spec.Operations[0].Policies = &tt.operationPolicies
+				apiData.Operations[0].Policies = &tt.operationPolicies
+				cfg.Configuration.Spec.FromAPIConfigData(apiData)
 			}
 
 			// Call the function
@@ -239,46 +246,49 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 		{Name: "auth", Version: "v5.0.0"},
 	}
 
+	specUnion := api.APIConfiguration_Spec{}
+	specUnion.FromAPIConfigData(api.APIConfigData{
+		Name:    "test-api",
+		Version: "v1.0",
+		Context: "/test",
+		Upstreams: []api.Upstream{
+			{Url: "http://backend.example.com"},
+		},
+		Operations: []api.Operation{
+			{
+				Method:   "GET",
+				Path:     "/resource1",
+				Policies: &op1Policies,
+			},
+			{
+				Method:   "POST",
+				Path:     "/resource2",
+				Policies: &op2Policies,
+			},
+			{
+				Method:   "PUT",
+				Path:     "/resource3",
+				Policies: &op3Policies,
+			},
+			{
+				Method: "DELETE",
+				Path:   "/resource4",
+				// No policies
+			},
+			{
+				Method:   "PATCH",
+				Path:     "/resource5",
+				Policies: &op5Policies,
+			},
+		},
+		Policies: &apiPolicies,
+	})
+
 	cfg := &models.StoredConfig{
 		Configuration: api.APIConfiguration{
 			Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
 			Kind:    api.APIConfigurationKind("http/rest"),
-			Spec: api.APIConfigData{
-				Name:    "test-api",
-				Version: "v1.0",
-				Context: "/test",
-				Upstreams: []api.Upstream{
-					{Url: "http://backend.example.com"},
-				},
-				Operations: []api.Operation{
-					{
-						Method:   "GET",
-						Path:     "/resource1",
-						Policies: &op1Policies,
-					},
-					{
-						Method:   "POST",
-						Path:     "/resource2",
-						Policies: &op2Policies,
-					},
-					{
-						Method:   "PUT",
-						Path:     "/resource3",
-						Policies: &op3Policies,
-					},
-					{
-						Method: "DELETE",
-						Path:   "/resource4",
-						// No policies
-					},
-					{
-						Method:   "PATCH",
-						Path:     "/resource5",
-						Policies: &op5Policies,
-					},
-				},
-				Policies: &apiPolicies,
-			},
+			Spec:    specUnion,
 		},
 	}
 
@@ -375,26 +385,29 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 		{Name: "validation", Version: "v1.0.0"},
 	}
 
+	specUnion := api.APIConfiguration_Spec{}
+	specUnion.FromAPIConfigData(api.APIConfigData{
+		Name:    "test-api",
+		Version: "v1.0",
+		Context: "/test",
+		Upstreams: []api.Upstream{
+			{Url: "http://backend.example.com"},
+		},
+		Operations: []api.Operation{
+			{
+				Method:   "GET",
+				Path:     "/resource",
+				Policies: &operationPolicies,
+			},
+		},
+		Policies: &apiPolicies,
+	})
+
 	cfg := &models.StoredConfig{
 		Configuration: api.APIConfiguration{
 			Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
 			Kind:    api.APIConfigurationKind("http/rest"),
-			Spec: api.APIConfigData{
-				Name:    "test-api",
-				Version: "v1.0",
-				Context: "/test",
-				Upstreams: []api.Upstream{
-					{Url: "http://backend.example.com"},
-				},
-				Operations: []api.Operation{
-					{
-						Method:   "GET",
-						Path:     "/resource",
-						Policies: &operationPolicies,
-					},
-				},
-				Policies: &apiPolicies,
-			},
+			Spec:    specUnion,
 		},
 	}
 

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
@@ -23,6 +22,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
+	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 	"go.uber.org/zap"
 )
 
@@ -166,14 +166,16 @@ func main() {
 			derivedCount := 0
 			for _, apiConfig := range loadedAPIs {
 				// Derive policy configuration from API
-				storedPolicy := derivePolicyFromAPIConfig(apiConfig, &cfg.Router)
-				if storedPolicy != nil {
-					if err := policyStore.Set(storedPolicy); err != nil {
-						log.Warn("Failed to load policy from API",
-							zap.String("api_id", apiConfig.ID),
-							zap.Error(err))
-					} else {
-						derivedCount++
+				if apiConfig.Configuration.Kind == "http/rest" {
+					storedPolicy := derivePolicyFromAPIConfig(apiConfig, &cfg.Router)
+					if storedPolicy != nil {
+						if err := policyStore.Set(storedPolicy); err != nil {
+							log.Warn("Failed to load policy from API",
+								zap.String("api_id", apiConfig.ID),
+								zap.Error(err))
+						} else {
+							derivedCount++
+						}
 					}
 				}
 			}
@@ -224,7 +226,7 @@ func main() {
 	validator.SetPolicyValidator(policyValidator)
 
 	// Initialize and start control plane client with dependencies for API creation
-	cpClient := controlplane.NewClient(cfg.ControlPlane, log, configStore, db, snapshotManager, validator)
+	cpClient := controlplane.NewClient(cfg.ControlPlane, log, configStore, db, snapshotManager, validator, &cfg.Router)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", zap.Error(err))
 		// Don't fail startup - gateway can run in degraded mode without control plane
@@ -298,7 +300,10 @@ func main() {
 // This is a simplified version of the buildStoredPolicyFromAPI function from handlers
 func derivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.RouterConfig) *models.StoredPolicyConfig {
 	apiCfg := &cfg.Configuration
-	apiData := apiCfg.Spec
+	apiData, err := apiCfg.Spec.AsAPIConfigData()
+	if err != nil {
+		return nil
+	}
 
 	// Collect API-level policies
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance)

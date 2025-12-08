@@ -20,6 +20,7 @@ package storage
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -27,18 +28,20 @@ import (
 
 // ConfigStore holds all API configurations in memory for fast access
 type ConfigStore struct {
-	mu          sync.RWMutex                    // Protects concurrent access
-	configs     map[string]*models.StoredConfig // Key: config ID
-	nameVersion map[string]string               // Key: "name:version" → Value: config ID
-	snapVersion int64                           // Current xDS snapshot version
+	mu           sync.RWMutex                    // Protects concurrent access
+	configs      map[string]*models.StoredConfig // Key: config ID
+	nameVersion  map[string]string               // Key: "name:version" → Value: config ID
+	snapVersion  int64                           // Current xDS snapshot version
+	TopicManager *TopicManager
 }
 
 // NewConfigStore creates a new in-memory config store
 func NewConfigStore() *ConfigStore {
 	return &ConfigStore{
-		configs:     make(map[string]*models.StoredConfig),
-		nameVersion: make(map[string]string),
-		snapVersion: 0,
+		configs:      make(map[string]*models.StoredConfig),
+		nameVersion:  make(map[string]string),
+		snapVersion:  0,
+		TopicManager: NewTopicManager(),
 	}
 }
 
@@ -55,6 +58,13 @@ func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 
 	cs.configs[cfg.ID] = cfg
 	cs.nameVersion[key] = cfg.ID
+
+	if cfg.Configuration.Kind == "async/websub" {
+		err := cs.updateTopics(cfg)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -82,7 +92,42 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 		cs.nameVersion[newKey] = cfg.ID
 	}
 
+	if cfg.Configuration.Kind == "async/websub" {
+		err := cs.updateTopics(cfg)
+		if err != nil {
+			return err
+		}
+	}
+
 	cs.configs[cfg.ID] = cfg
+	return nil
+}
+
+func (cs *ConfigStore) updateTopics(cfg *models.StoredConfig) error {
+	asyncData, err := cfg.Configuration.Spec.AsWebhookAPIData()
+	if err != nil {
+		return fmt.Errorf("failed to parse async API data: %w", err)
+	}
+	// Maintaining a topic map to process topics
+	// Running these inside Add or Delete configs might add extra latency to the API Deployment process
+	// TODO: Optimize topic management if needed by maintaining a separate topic manager struct
+
+	apiTopicsPerRevision := make(map[string]bool)
+	for _, topic := range asyncData.Channels {
+		name := strings.TrimPrefix(asyncData.Name, "/")
+		context := strings.TrimPrefix(asyncData.Context, "/")
+		version := strings.TrimPrefix(asyncData.Version, "/")
+		path := strings.TrimPrefix(topic.Path, "/")
+		modifiedTopic := fmt.Sprintf("%s_%s_%s_%s", name, context, version, path)
+		cs.TopicManager.Add(cfg.ID, modifiedTopic)
+		apiTopicsPerRevision[modifiedTopic] = true
+	}
+
+	for _, topic := range cs.TopicManager.GetAllByConfig(cfg.ID) {
+		if _, exists := apiTopicsPerRevision[topic]; !exists {
+			cs.TopicManager.Remove(cfg.ID, topic)
+		}
+	}
 	return nil
 }
 
@@ -97,6 +142,10 @@ func (cs *ConfigStore) Delete(id string) error {
 	}
 
 	key := cfg.GetCompositeKey()
+
+	if cfg.Configuration.Kind == "async/websub" {
+		cs.TopicManager.RemoveAllForConfig(cfg.ID)
+	}
 	delete(cs.nameVersion, key)
 	delete(cs.configs, id)
 	return nil

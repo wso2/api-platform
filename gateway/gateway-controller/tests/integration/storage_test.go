@@ -58,25 +58,27 @@ func setupTestDB(t *testing.T) (storage.Storage, string, func()) {
 
 // createTestConfig creates a sample API configuration for testing
 func createTestConfig(name, version string) *models.StoredConfig {
+	specUnion := api.APIConfiguration_Spec{}
+	specUnion.FromAPIConfigData(api.APIConfigData{
+		Name:    name,
+		Version: version,
+		Context: "/" + name,
+		Upstreams: []api.Upstream{
+			{Url: "http://example.com"},
+		},
+		Operations: []api.Operation{
+			{
+				Method: api.GET,
+				Path:   "/test",
+			},
+		},
+	})
 	return &models.StoredConfig{
 		ID: uuid.New().String(),
 		Configuration: api.APIConfiguration{
 			Version: api.ApiPlatformWso2Comv1,
-			Kind:    api.Httprest,
-			Spec: api.APIConfigData{
-				Name:    name,
-				Version: version,
-				Context: "/" + name,
-				Upstreams: []api.Upstream{
-					{Url: "http://example.com"},
-				},
-				Operations: []api.Operation{
-					{
-						Method: api.GET,
-						Path:   "/test",
-					},
-				},
-			},
+			Kind:    api.APIConfigurationKindHttprest,
+			Spec:    specUnion,
 		},
 		Status:          models.StatusPending,
 		DeployedVersion: 0,
