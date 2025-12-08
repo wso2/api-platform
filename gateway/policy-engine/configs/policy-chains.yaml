@@ -33,9 +33,9 @@
     #         value: application/json
     #       - name: x-mock-response
     #         value: "true"
-    - name: UppercaseBody
-      version: v1.0.0
-      enabled: true
+    # - name: UppercaseBody
+    #   version: v1.0.0
+    #   enabled: true
     - name: BasicAuth
       version: v1.0.0
       enabled: true
@@ -73,11 +73,11 @@
           - action: SET
             name: auth-success
             value: "true"
-    - name: CountLetters
-      version: v1.0.0
-      enabled: true
-      executionCondition: '"count" in request.Headers'
-      parameters:
-        letters: ["error", "success", "warning", "info", "name", "path", "host"]
-        caseSensitive: false
-        outputFormat: json
+    # - name: CountLetters
+    #   version: v1.0.0
+    #   enabled: true
+    #   executionCondition: '"count" in request.Headers'
+    #   parameters:
+    #     letters: ["error", "success", "warning", "info", "name", "path", "host"]
+    #     caseSensitive: false
+    #     outputFormat: json
