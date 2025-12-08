@@ -21,9 +21,9 @@ package utils
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -32,90 +32,97 @@ import (
 	"go.uber.org/zap"
 )
 
-// APIDeploymentParams contains parameters for API deployment operations
-type APIDeploymentParams struct {
+const (
+	LATEST_SUPPORTED_MCP_SPEC_VERSION = "2025-06-18"
+)
+
+type MCPDeploymentParams struct {
 	Data          []byte      // Raw configuration data (YAML/JSON)
 	ContentType   string      // Content type for parsing
-	APIID         string      // API ID (if provided, used for updates; if empty, generates new UUID)
+	ID            string      // ID (if provided, used for updates; if empty, generates new UUID)
 	CorrelationID string      // Correlation ID for tracking
 	Logger        *zap.Logger // Logger instance
 }
 
-// APIDeploymentResult contains the result of API deployment
-type APIDeploymentResult struct {
-	StoredConfig *models.StoredConfig
-	IsUpdate     bool
-}
-
-// APIDeploymentService provides utilities for API configuration deployment
-type APIDeploymentService struct {
+// MCPDeploymentService provides utilities for MCP proxy configuration deployment
+type MCPDeploymentService struct {
 	store           *storage.ConfigStore
 	db              storage.Storage
 	snapshotManager *xds.SnapshotManager
 	parser          *config.Parser
 	validator       config.Validator
+	transformer     Transformer
 }
 
-// NewAPIDeploymentService creates a new API deployment service
-func NewAPIDeploymentService(
+// NewMCPDeploymentService creates a new MCP deployment service
+func NewMCPDeploymentService(
 	store *storage.ConfigStore,
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
-	validator config.Validator,
-) *APIDeploymentService {
-	return &APIDeploymentService{
+) *MCPDeploymentService {
+	return &MCPDeploymentService{
 		store:           store,
 		db:              db,
 		snapshotManager: snapshotManager,
 		parser:          config.NewParser(),
-		validator:       validator,
+		validator:       config.NewMCPValidator(),
+		transformer:     &MCPTransformer{},
 	}
 }
 
-// DeployAPIConfiguration handles the complete API configuration deployment process
-func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams) (*APIDeploymentResult, error) {
+// DeployMCPConfiguration handles the complete MCP configuration deployment process
+func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams) (*APIDeploymentResult, error) {
+	var mcpConfig api.MCPProxyConfiguration
 	var apiConfig api.APIConfiguration
 	// Parse configuration
-	err := s.parser.Parse(params.Data, params.ContentType, &apiConfig)
+	err := s.parser.Parse(params.Data, params.ContentType, &mcpConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse configuration: %w", err)
 	}
 
 	// Validate configuration
-	validationErrors := s.validator.Validate(&apiConfig)
+	validationErrors := s.validator.Validate(&mcpConfig)
 	if len(validationErrors) > 0 {
+		errors := make([]string, 0, len(validationErrors))
 		params.Logger.Warn("Configuration validation failed",
-			zap.String("api_id", params.APIID),
-			zap.String("name", apiConfig.Spec.Name),
+			zap.String("api_id", params.ID),
+			zap.String("name", mcpConfig.Spec.Name),
 			zap.Int("num_errors", len(validationErrors)))
 
-		for _, e := range validationErrors {
+		for i, e := range validationErrors {
 			params.Logger.Warn("Validation error",
 				zap.String("field", e.Field),
 				zap.String("message", e.Message))
+			errors = append(errors, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
 		}
 
-		return nil, fmt.Errorf("configuration validation failed with %d errors", len(validationErrors))
+		combinedMsg := strings.Join(errors, "; ")
+
+		return nil, fmt.Errorf("configuration validation failed with %d error(s): %s", len(validationErrors), combinedMsg)
 	}
 
 	// Generate API ID if not provided
-	apiID := params.APIID
+	apiID := params.ID
 	if apiID == "" {
 		apiID = generateUUID()
 	}
+
+	// Transform to API configuration
+	apiConfigPtr := s.transformer.Transform(&mcpConfig, &apiConfig)
+	apiConfig = *apiConfigPtr
 
 	// Create stored configuration
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
 		ID:                  apiID,
-		Kind:                string(api.Httprest),
-		Configuration:       apiConfig,
-		SourceConfiguration: apiConfig,
+		Kind:                string(api.Mcp),
 		Status:              models.StatusPending,
 		CreatedAt:           now,
 		UpdatedAt:           now,
 		DeployedAt:          nil,
 		DeployedVersion:     0,
+		Configuration:       apiConfig,
+		SourceConfiguration: mcpConfig,
 	}
 
 	// Try to save/update the configuration
@@ -126,16 +133,16 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 
 	// Log success
 	if isUpdate {
-		params.Logger.Info("API configuration updated",
+		params.Logger.Info("MCP configuration updated",
 			zap.String("api_id", apiID),
-			zap.String("name", apiConfig.Spec.Name),
-			zap.String("version", apiConfig.Spec.Version),
+			zap.String("name", mcpConfig.Spec.Name),
+			zap.String("version", mcpConfig.Spec.Version),
 			zap.String("correlation_id", params.CorrelationID))
 	} else {
-		params.Logger.Info("API configuration created",
+		params.Logger.Info("MCP configuration created",
 			zap.String("api_id", apiID),
-			zap.String("name", apiConfig.Spec.Name),
-			zap.String("version", apiConfig.Spec.Version),
+			zap.String("name", mcpConfig.Spec.Name),
+			zap.String("version", mcpConfig.Spec.Version),
 			zap.String("correlation_id", params.CorrelationID))
 	}
 
@@ -159,14 +166,14 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 }
 
 // saveOrUpdateConfig handles the atomic dual-write operation for saving/updating configuration
-func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *zap.Logger) (bool, error) {
+func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *zap.Logger) (bool, error) {
 	// Try to save to database first (only if persistent mode)
 	if s.db != nil {
 		if err := s.db.SaveConfig(storedCfg); err != nil {
-			// Check if it's a conflict (API already exists)
+			// Check if it's a conflict (Configuration already exists)
 			if storage.IsConflictError(err) {
-				logger.Info("API configuration already exists in database, updating instead",
-					zap.String("api_id", storedCfg.ID),
+				logger.Info("MCP configuration already exists in database, updating instead",
+					zap.String("id", storedCfg.ID),
 					zap.String("name", storedCfg.Configuration.Spec.Name),
 					zap.String("version", storedCfg.Configuration.Spec.Version))
 
@@ -182,8 +189,8 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 	if err := s.store.Add(storedCfg); err != nil {
 		// Check if it's a conflict (API already exists)
 		if storage.IsConflictError(err) {
-			logger.Info("API configuration already exists in memory, updating instead",
-				zap.String("api_id", storedCfg.ID),
+			logger.Info("MCP configuration already exists in memory, updating instead",
+				zap.String("id", storedCfg.ID),
 				zap.String("name", storedCfg.Configuration.Spec.Name),
 				zap.String("version", storedCfg.Configuration.Spec.Version))
 
@@ -202,7 +209,8 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 }
 
 // updateExistingConfig updates an existing API configuration
-func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConfig, logger *zap.Logger) (bool, error) {
+func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConfig,
+	logger *zap.Logger) (bool, error) {
 	// Get existing config
 	existing, err := s.store.GetByNameVersion(newConfig.GetName(), newConfig.GetVersion())
 	if err != nil {
@@ -215,6 +223,7 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	// Update the existing configuration
 	now := time.Now()
 	existing.Configuration = newConfig.Configuration
+	existing.SourceConfiguration = newConfig.SourceConfiguration
 	existing.Status = models.StatusPending
 	existing.UpdatedAt = now
 	existing.DeployedAt = nil
@@ -246,9 +255,4 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	*newConfig = *existing
 
 	return true, nil // Successfully updated existing config
-}
-
-// generateUUID generates a new UUID string
-func generateUUID() string {
-	return uuid.New().String()
 }

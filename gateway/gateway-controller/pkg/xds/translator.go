@@ -117,7 +117,7 @@ func (t *Translator) GetCertStore() *certstore.CertStore {
 // TranslateConfigs translates all API configurations to Envoy resources
 // The correlationID parameter is optional and used for request tracing in logs
 func (t *Translator) TranslateConfigs(
-	configs []*models.StoredAPIConfig,
+	configs []*models.StoredConfig,
 	correlationID string,
 ) (map[resource.Type][]types.Resource, error) {
 	// Create a logger with correlation ID if provided
@@ -144,7 +144,7 @@ func (t *Translator) TranslateConfigs(
 		if err != nil {
 			log.Error("Failed to translate config",
 				zap.String("id", cfg.ID),
-				zap.String("name", cfg.GetAPIName()),
+				zap.String("name", cfg.GetName()),
 				zap.Error(err))
 			continue
 		}
@@ -241,7 +241,7 @@ func (t *Translator) TranslateConfigs(
 }
 
 // translateAPIConfig translates a single API configuration
-func (t *Translator) translateAPIConfig(cfg *models.StoredAPIConfig) ([]*route.Route, []*cluster.Cluster, error) {
+func (t *Translator) translateAPIConfig(cfg *models.StoredConfig) ([]*route.Route, []*cluster.Cluster, error) {
 	apiData := cfg.Configuration.Spec
 
 	// Parse upstream URL

@@ -34,33 +34,35 @@ const (
 	StatusFailed   ConfigStatus = "failed"   // Deployment failed
 )
 
-// StoredAPIConfig represents the configuration stored in the database and in-memory
-type StoredAPIConfig struct {
-	ID              string               `json:"id"`
-	Configuration   api.APIConfiguration `json:"configuration"`
-	Status          ConfigStatus         `json:"status"`
-	CreatedAt       time.Time            `json:"created_at"`
-	UpdatedAt       time.Time            `json:"updated_at"`
-	DeployedAt      *time.Time           `json:"deployed_at,omitempty"`
-	DeployedVersion int64                `json:"deployed_version"`
+// StoredConfig represents the configuration stored in the database and in-memory
+type StoredConfig struct {
+	ID                  string               `json:"id"`
+	Kind                string               `json:"kind"`
+	Configuration       api.APIConfiguration `json:"configuration"`
+	SourceConfiguration any                  `json:"source_configuration,omitempty"`
+	Status              ConfigStatus         `json:"status"`
+	CreatedAt           time.Time            `json:"created_at"`
+	UpdatedAt           time.Time            `json:"updated_at"`
+	DeployedAt          *time.Time           `json:"deployed_at,omitempty"`
+	DeployedVersion     int64                `json:"deployed_version"`
 }
 
 // GetCompositeKey returns the composite key "name:version" for indexing
-func (c *StoredAPIConfig) GetCompositeKey() string {
+func (c *StoredConfig) GetCompositeKey() string {
 	return fmt.Sprintf("%s:%s", c.Configuration.Spec.Name, c.Configuration.Spec.Version)
 }
 
-// GetAPIName returns the API name
-func (c *StoredAPIConfig) GetAPIName() string {
+// GetName returns the API name
+func (c *StoredConfig) GetName() string {
 	return c.Configuration.Spec.Name
 }
 
-// GetAPIVersion returns the API version
-func (c *StoredAPIConfig) GetAPIVersion() string {
+// GetVersion returns the API version
+func (c *StoredConfig) GetVersion() string {
 	return c.Configuration.Spec.Version
 }
 
 // GetContext returns the API context path
-func (c *StoredAPIConfig) GetContext() string {
+func (c *StoredConfig) GetContext() string {
 	return c.Configuration.Spec.Context
 }

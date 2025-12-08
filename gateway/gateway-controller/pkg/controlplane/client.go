@@ -84,7 +84,7 @@ type ConnectionState struct {
 // ControlPlaneClient interface defines the methods needed from the control plane client
 type ControlPlaneClient interface {
 	IsConnected() bool
-	NotifyAPIDeployment(apiID string, apiConfig *models.StoredAPIConfig, revisionID string) error
+	NotifyAPIDeployment(apiID string, apiConfig *models.StoredConfig, revisionID string) error
 }
 
 // Client manages the WebSocket connection to the control plane
@@ -677,7 +677,7 @@ func (c *Client) IsConnected() bool {
 }
 
 // NotifyAPIDeployment sends a REST API call to platform-api when an API is deployed successfully
-func (c *Client) NotifyAPIDeployment(apiID string, apiConfig *models.StoredAPIConfig, revisionID string) error {
+func (c *Client) NotifyAPIDeployment(apiID string, apiConfig *models.StoredConfig, revisionID string) error {
 	// Check if connected to control plane
 	if !c.IsConnected() {
 		c.logger.Debug("Not connected to control plane, skipping API deployment notification",

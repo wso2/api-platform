@@ -198,8 +198,8 @@ func TestLoadFromDatabaseWithMultipleRestarts(t *testing.T) {
 		// Verify configs are correct
 		for _, cfg := range allConfigs {
 			assert.NotEmpty(t, cfg.ID)
-			assert.NotEmpty(t, cfg.GetAPIName())
-			assert.NotEmpty(t, cfg.GetAPIVersion())
+			assert.NotEmpty(t, cfg.GetName())
+			assert.NotEmpty(t, cfg.GetVersion())
 		}
 
 		require.NoError(t, db.Close())
@@ -243,7 +243,7 @@ func TestZeroDataLoss(t *testing.T) {
 	assert.Len(t, configsAfter, 10, "Zero data loss: all 10 configurations should persist")
 
 	// Verify each configuration matches (by ID)
-	beforeMap := make(map[string]*models.StoredAPIConfig)
+	beforeMap := make(map[string]*models.StoredConfig)
 	for _, cfg := range configsBefore {
 		beforeMap[cfg.ID] = cfg
 	}
@@ -251,8 +251,8 @@ func TestZeroDataLoss(t *testing.T) {
 	for _, cfgAfter := range configsAfter {
 		cfgBefore, exists := beforeMap[cfgAfter.ID]
 		assert.True(t, exists, "Configuration should exist in both before and after")
-		assert.Equal(t, cfgBefore.GetAPIName(), cfgAfter.GetAPIName())
-		assert.Equal(t, cfgBefore.GetAPIVersion(), cfgAfter.GetAPIVersion())
+		assert.Equal(t, cfgBefore.GetName(), cfgAfter.GetName())
+		assert.Equal(t, cfgBefore.GetVersion(), cfgAfter.GetVersion())
 		assert.Equal(t, cfgBefore.Status, cfgAfter.Status)
 	}
 

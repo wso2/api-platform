@@ -32,7 +32,7 @@ paths:
       tags:
         - System
       responses:
-        '200':
+        "200":
           description: Gateway Controller is healthy
           content:
             application/json:
@@ -67,7 +67,7 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: '#/components/schemas/APIConfiguration'
+              $ref: "#/components/schemas/APIConfiguration"
             example:
               version: api-platform.wso2.com/v1
               kind: http/rest
@@ -113,7 +113,7 @@ paths:
                     path: /store/order
           application/json:
             schema:
-              $ref: '#/components/schemas/APIConfiguration'
+              $ref: "#/components/schemas/APIConfiguration"
             example:
               version: api-platform.wso2.com/v1
               kind: http/rest
@@ -158,30 +158,30 @@ paths:
                   - method: POST
                     path: /store/order
       responses:
-        '201':
+        "201":
           description: API configuration created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APICreateResponse'
-        '400':
+                $ref: "#/components/schemas/APICreateResponse"
+        "400":
           description: Invalid configuration (validation failed)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '409':
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
           description: Conflict - API with same name and version already exists
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
     get:
       summary: List all API configurations
@@ -192,7 +192,7 @@ paths:
       tags:
         - API Management
       responses:
-        '200':
+        "200":
           description: List of API configurations
           content:
             application/json:
@@ -208,13 +208,13 @@ paths:
                   apis:
                     type: array
                     items:
-                      $ref: '#/components/schemas/APIListItem'
-        '500':
+                      $ref: "#/components/schemas/APIListItem"
+        "500":
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /apis/{name}/{version}:
     get:
@@ -239,27 +239,27 @@ paths:
             type: string
           example: v1.0
       responses:
-        '200':
+        "200":
           description: API configuration details
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIDetailResponse'
+                $ref: "#/components/schemas/APIDetailResponse"
             application/yaml:
               schema:
-                $ref: '#/components/schemas/APIDetailResponse'
-        '404':
+                $ref: "#/components/schemas/APIDetailResponse"
+        "404":
           description: API configuration not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
     put:
       summary: Update an existing API configuration
@@ -292,35 +292,35 @@ paths:
         content:
           application/yaml:
             schema:
-              $ref: '#/components/schemas/APIConfiguration'
+              $ref: "#/components/schemas/APIConfiguration"
           application/json:
             schema:
-              $ref: '#/components/schemas/APIConfiguration'
+              $ref: "#/components/schemas/APIConfiguration"
       responses:
-        '200':
+        "200":
           description: API configuration updated successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIUpdateResponse'
-        '400':
+                $ref: "#/components/schemas/APIUpdateResponse"
+        "400":
           description: Invalid configuration (validation failed)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
           description: API configuration not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
     delete:
       summary: Delete an API configuration
@@ -347,7 +347,7 @@ paths:
             type: string
           example: v1.0
       responses:
-        '200':
+        "200":
           description: API configuration deleted successfully
           content:
             application/json:
@@ -363,18 +363,18 @@ paths:
                   id:
                     type: string
                     example: 550e8400-e29b-41d4-a716-446655440000
-        '404':
+        "404":
           description: API configuration not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /certificates:
     get:
@@ -386,18 +386,18 @@ paths:
       tags:
         - Certificate Management
       responses:
-        '200':
+        "200":
           description: List of certificates
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CertificateListResponse'
-        '500':
+                $ref: "#/components/schemas/CertificateListResponse"
+        "500":
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
     post:
       summary: Upload a new certificate
@@ -416,7 +416,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CertificateUploadRequest'
+              $ref: "#/components/schemas/CertificateUploadRequest"
             example:
               name: my-custom-ca
               certificate: |
@@ -425,24 +425,24 @@ paths:
                 ...
                 -----END CERTIFICATE-----
       responses:
-        '201':
+        "201":
           description: Certificate uploaded successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CertificateResponse'
-        '400':
+                $ref: "#/components/schemas/CertificateResponse"
+        "400":
           description: Invalid certificate format
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /certificates/{id}:
     delete:
@@ -465,7 +465,7 @@ paths:
             type: string
           example: 550e8400-e29b-41d4-a716-446655440000
       responses:
-        '200':
+        "200":
           description: Certificate deleted successfully
           content:
             application/json:
@@ -481,18 +481,18 @@ paths:
                   id:
                     type: string
                     example: 550e8400-e29b-41d4-a716-446655440000
-        '404':
+        "404":
           description: Certificate not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /certificates/reload:
     post:
@@ -508,7 +508,7 @@ paths:
       tags:
         - Certificate Management
       responses:
-        '200':
+        "200":
           description: Certificates reloaded successfully
           content:
             application/json:
@@ -525,12 +525,12 @@ paths:
                     type: integer
                     description: Total bytes of all loaded certificates
                     example: 221599
-        '500':
+        "500":
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /policies:
     get:
@@ -543,18 +543,256 @@ paths:
       tags:
         - Policy Management
       responses:
-        '200':
+        "200":
           description: List of policy definitions
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PolicyListResponse'
-        '500':
+                $ref: "#/components/schemas/PolicyListResponse"
+        "500":
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mcp-proxies:
+    post:
+      summary: Create a new MCP Proxy configuration
+      description: |
+        Submit a new MCP Proxy configuration to the Gateway Controller. The configuration
+        is validated, persisted, and translated to Envoy xDS resources. The Router
+        begins routing traffic for the MCP Proxy within 5 seconds.
+      operationId: createMCPProxy
+      tags:
+        - MCP Proxy Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/MCPProxyConfiguration"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MCPProxyConfiguration"
+      responses:
+        "201":
+          description: MCP Proxy configuration created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APICreateResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - MCP Proxy with same name and version already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      summary: List all MCP Proxy configurations
+      description: |
+        Retrieve a list of all deployed MCP Proxy configurations with metadata.
+        Returns basic information about each MCP Proxy (name, version, context, deployment time).
+      operationId: listMCPProxies
+      tags:
+        - MCP Proxy Management
+      responses:
+        "200":
+          description: List of MCP Proxy configurations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 5
+                  mcp_proxies:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MCPProxyListItem"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mcp-proxies/{name}/{version}:
+    get:
+      summary: Get MCP Proxy configuration by name and version
+      description: Retrieve the complete configuration for a specific MCP Proxy by its name and version
+      operationId: getMCPProxyByNameVersion
+      tags:
+        - MCP Proxy Management
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Name of the MCP Proxy
+          schema:
+            type: string
+          example: mcp-proxy-1
+        - name: version
+          in: path
+          required: true
+          description: Version of the MCP Proxy
+          schema:
+            type: string
+          example: v1.0
+      responses:
+        "200":
+          description: MCP Proxy configuration details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MCPDetailResponse"
+            application/yaml:
+              schema:
+                $ref: "#/components/schemas/MCPDetailResponse"
+        "404":
+          description: MCP Proxy configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      summary: Update an existing MCP Proxy configuration
+      description: |
+        Update an existing MCP Proxy configuration. The update is validated and applied atomically.
+        The Router receives the updated configuration within 5 seconds. In-flight requests
+        complete with the old configuration; new requests use the updated configuration.
+
+        **Important:** If validation fails, the existing configuration remains active.
+      operationId: updateMCPProxy
+      tags:
+        - MCP Proxy Management
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Name of the MCP Proxy to update
+          schema:
+            type: string
+          example: mcp-proxy-1
+        - name: version
+          in: path
+          required: true
+          description: Version of the MCP Proxy to update
+          schema:
+            type: string
+          example: v1.0
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/MCPProxyConfiguration"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MCPProxyConfiguration"
+      responses:
+        "200":
+          description: MCP Proxy configuration updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIUpdateResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: MCP Proxy configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      summary: Delete an MCP Proxy configuration
+      description: |
+        Remove an MCP Proxy configuration from the Gateway Controller. The Router stops
+        accepting traffic for this MCP Proxy within 5 seconds. In-flight requests complete
+        successfully; new requests receive 404 Not Found.
+      operationId: deleteMCPProxy
+      tags:
+        - MCP Proxy Management
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Name of the MCP Proxy to delete
+          schema:
+            type: string
+          example: mcp-proxy-1
+        - name: version
+          in: path
+          required: true
+          description: Version of the MCP Proxy to delete
+          schema:
+            type: string
+          example: v1.0
+      responses:
+        "200":
+          description: MCP Proxy configuration deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: MCP Proxy configuration deleted successfully
+                  id:
+                    type: string
+                    example: 550e8400-e29b-41d4-a716-446655440000
+        "404":
+          description: MCP Proxy configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /config_dump:
     get:
@@ -565,24 +803,24 @@ paths:
         - All loaded policy definitions
         - All registered certificates
         - System status and metadata
-        
+
         This endpoint is useful for debugging, monitoring, and backup purposes.
       operationId: getConfigDump
       tags:
         - System
       responses:
-        '200':
+        "200":
           description: Complete configuration dump
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ConfigDumpResponse'
-        '500':
+                $ref: "#/components/schemas/ConfigDumpResponse"
+        "500":
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
@@ -606,7 +844,7 @@ components:
           enum:
             - http/rest
         spec:
-          $ref: '#/components/schemas/APIConfigData'
+          $ref: "#/components/schemas/APIConfigData"
 
     APIConfigData:
       type: object
@@ -641,18 +879,18 @@ components:
           description: List of backend service URLs
           minItems: 1
           items:
-            $ref: '#/components/schemas/Upstream'
+            $ref: "#/components/schemas/Upstream"
         policies:
           type: array
           description: List of API-level policies applied to all operations unless overridden
           items:
-            $ref: '#/components/schemas/Policy'
+            $ref: "#/components/schemas/Policy"
         operations:
           type: array
           description: List of HTTP operations/routes
           minItems: 1
           items:
-            $ref: '#/components/schemas/Operation'
+            $ref: "#/components/schemas/Operation"
 
     Upstream:
       type: object
@@ -692,7 +930,7 @@ components:
           type: array
           description: List of policies applied only to this operation (overrides or adds to API-level policies)
           items:
-            $ref: '#/components/schemas/Policy'
+            $ref: "#/components/schemas/Policy"
 
     Policy:
       type: object
@@ -757,7 +995,7 @@ components:
         policies:
           type: array
           items:
-            $ref: '#/components/schemas/PolicyDefinition'
+            $ref: "#/components/schemas/PolicyDefinition"
 
     APICreateResponse:
       type: object
@@ -841,7 +1079,7 @@ components:
               format: uuid
               example: 550e8400-e29b-41d4-a716-446655440000
             configuration:
-              $ref: '#/components/schemas/APIConfiguration'
+              $ref: "#/components/schemas/APIConfiguration"
             metadata:
               type: object
               properties:
@@ -865,6 +1103,230 @@ components:
                   format: date-time
                   example: 2025-10-11T10:30:05Z
 
+    MCPProxyConfiguration:
+      type: object
+      required:
+        - version
+        - kind
+        - spec
+      properties:
+        version:
+          type: string
+          description: MCP Proxy specification version
+          example: ai.api-platform.wso2.com/v1
+          enum:
+            - ai.api-platform.wso2.com/v1
+        kind:
+          type: string
+          description: MCP Proxy type
+          example: mcp
+          enum:
+            - mcp
+        spec:
+          $ref: "#/components/schemas/MCPProxyConfigData"
+
+    MCPProxyConfigData:
+      type: object
+      required:
+        - name
+        - version
+        - context
+        - upstreams
+      properties:
+        name:
+          type: string
+          description: Human-readable MCP Proxy name
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: mcp-proxy-1
+        version:
+          type: string
+          description: MCP Proxy version
+          example: v1.0
+        context:
+          type: string
+          description: MCP Proxy context path
+          example: /mcp-proxy
+        specVersion:
+          type: string
+          description: MCP specification version
+          example: 2025-06-18
+        upstreams:
+          type: array
+          description: List of backend service URLs
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/Upstream"
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/MCPTool"
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/MCPResource"
+        prompts:
+          type: array
+          items:
+            $ref: "#/components/schemas/MCPPrompt"
+
+    MCPTool:
+      type: object
+      required:
+        - name
+        - description
+        - inputSchema
+      properties:
+        name:
+          type: string
+          description: Unique identifier for the tool
+        title:
+          type: string
+          description: Optional human-readable name of the tool for display purposes.
+        description:
+          type: string
+          description: Human-readable description of functionality
+        inputSchema:
+          type: string
+          description: JSON Schema defining expected parameters
+        outputSchema:
+          type: string
+          description: Optional JSON Schema defining expected output structure
+
+    MCPResource:
+      type: object
+      required:
+        - uri
+        - name
+      properties:
+        uri:
+          type: string
+          description: Unique identifier for the resource
+        name:
+          type: string
+          description: The name of the resource
+        title:
+          type: string
+          description: Optional human-readable name of the resource for display purposes
+        description:
+          type: string
+          description: Optional description
+        mimeType:
+          type: string
+          description: Optional MIME type
+        size:
+          type: integer
+          description: Optional size in bytes
+
+    MCPPrompt:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Unique identifier for the prompt
+        title:
+          type: string
+          description: Optional human-readable name of the prompt for display purposes
+        description:
+          type: string
+          description: Optional human-readable description
+        arguments:
+          type: array
+          description: Optional list of arguments for customization
+          items:
+            type: object
+            required:
+              - name
+            properties:
+              name:
+                type: string
+                description: Name of the argument
+              description:
+                type: string
+                description: Description of the argument
+              required:
+                type: boolean
+                description: Whether the argument is required
+              title:
+                type: string
+                description: Optional human-readable title of the argument
+
+    MCPProxyListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          example: mcp-proxy-1
+        version:
+          type: string
+          example: v1.0
+        context:
+          type: string
+          example: /mcp-proxy
+        specVersion:
+          type: string
+          example: 2025-06-18
+        status:
+          type: string
+          enum:
+            - pending
+            - deployed
+            - failed
+          example: deployed
+        created_at:
+          type: string
+          format: date-time
+          example: 2025-11-24T10:30:00Z
+        updated_at:
+          type: string
+          format: date-time
+          example: 2025-11-24T10:30:00Z
+
+    MCPDetailResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        mcp:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+              example: 550e8400-e29b-41d4-a716-446655440000
+            configuration:
+              $ref: "#/components/schemas/MCPProxyConfiguration"
+            metadata:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - pending
+                    - deployed
+                    - failed
+                  example: deployed
+                created_at:
+                  type: string
+                  format: date-time
+                  example: 2025-11-24T10:30:00Z
+                updated_at:
+                  type: string
+                  format: date-time
+                  example: 2025-11-24T10:30:00Z
+                deployed_at:
+                  type: string
+                  format: date-time
+                  example: 2025-11-24T10:30:05Z
+
     ErrorResponse:
       type: object
       required:
@@ -882,7 +1344,7 @@ components:
           type: array
           description: Detailed validation errors
           items:
-            $ref: '#/components/schemas/ValidationError'
+            $ref: "#/components/schemas/ValidationError"
 
     ValidationError:
       type: object
@@ -905,7 +1367,7 @@ components:
         name:
           type: string
           description: Unique name for the certificate. Must be unique across all certificates.
-          pattern: '^[a-zA-Z0-9._-]+$'
+          pattern: "^[a-zA-Z0-9._-]+$"
           minLength: 1
           maxLength: 100
           example: my-custom-ca
@@ -961,7 +1423,7 @@ components:
         certificates:
           type: array
           items:
-            $ref: '#/components/schemas/CertificateResponse'
+            $ref: "#/components/schemas/CertificateResponse"
         totalCount:
           type: integer
           description: Total number of certificate files
@@ -996,7 +1458,7 @@ components:
                 format: uuid
                 example: 550e8400-e29b-41d4-a716-446655440000
               configuration:
-                $ref: '#/components/schemas/APIConfiguration'
+                $ref: "#/components/schemas/APIConfiguration"
               metadata:
                 type: object
                 properties:
@@ -1023,12 +1485,12 @@ components:
           type: array
           description: All loaded policy definitions
           items:
-            $ref: '#/components/schemas/PolicyDefinition'
+            $ref: "#/components/schemas/PolicyDefinition"
         certificates:
           type: array
           description: All registered certificates
           items:
-            $ref: '#/components/schemas/CertificateResponse'
+            $ref: "#/components/schemas/CertificateResponse"
         statistics:
           type: object
           description: Summary statistics about the current configuration
@@ -1055,6 +1517,8 @@ tags:
     description: System health and status endpoints
   - name: API Management
     description: CRUD operations for API configurations
+  - name: MCP Proxy Management
+    description: CRUD operations for MCP Proxy configurations
   - name: Policy Management
     description: Registration of reusable policy definitions
   - name: Certificate Management
