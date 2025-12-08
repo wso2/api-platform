@@ -41,33 +41,6 @@ func (p *ModifyHeadersPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// Validate validates the policy configuration
-func (p *ModifyHeadersPolicy) Validate(params map[string]interface{}) error {
-	// At least one of requestHeaders or responseHeaders must be present
-	requestHeadersRaw, hasRequestHeaders := params["requestHeaders"]
-	responseHeadersRaw, hasResponseHeaders := params["responseHeaders"]
-
-	if !hasRequestHeaders && !hasResponseHeaders {
-		return fmt.Errorf("at least one of 'requestHeaders' or 'responseHeaders' must be specified")
-	}
-
-	// Validate requestHeaders if present
-	if hasRequestHeaders {
-		if err := p.validateHeaderModifications(requestHeadersRaw, "requestHeaders"); err != nil {
-			return err
-		}
-	}
-
-	// Validate responseHeaders if present
-	if hasResponseHeaders {
-		if err := p.validateHeaderModifications(responseHeadersRaw, "responseHeaders"); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // validateHeaderModifications validates a list of header modifications
 func (p *ModifyHeadersPolicy) validateHeaderModifications(headersRaw interface{}, fieldName string) error {
 	headers, ok := headersRaw.([]interface{})

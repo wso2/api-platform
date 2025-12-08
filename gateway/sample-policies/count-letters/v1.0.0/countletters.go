@@ -26,56 +26,6 @@ func (p *CountLettersPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// Validate validates the policy configuration
-func (p *CountLettersPolicy) Validate(params map[string]interface{}) error {
-	// Validate letters parameter (required)
-	lettersRaw, ok := params["letters"]
-	if !ok {
-		return fmt.Errorf("'letters' parameter is required")
-	}
-
-	letters, ok := lettersRaw.([]interface{})
-	if !ok {
-		return fmt.Errorf("'letters' must be an array")
-	}
-
-	if len(letters) == 0 {
-		return fmt.Errorf("'letters' array cannot be empty")
-	}
-
-	for i, letterRaw := range letters {
-		letter, ok := letterRaw.(string)
-		if !ok {
-			return fmt.Errorf("letters[%d] must be a string", i)
-		}
-		if len(letter) == 0 {
-			return fmt.Errorf("letters[%d] cannot be empty", i)
-		}
-	}
-
-	// Validate caseSensitive parameter (optional, defaults to false)
-	if caseSensitiveRaw, ok := params["caseSensitive"]; ok {
-		_, ok := caseSensitiveRaw.(bool)
-		if !ok {
-			return fmt.Errorf("'caseSensitive' must be a boolean")
-		}
-	}
-
-	// Validate outputFormat parameter (optional, defaults to "json")
-	if outputFormatRaw, ok := params["outputFormat"]; ok {
-		outputFormat, ok := outputFormatRaw.(string)
-		if !ok {
-			return fmt.Errorf("'outputFormat' must be a string")
-		}
-		outputFormat = strings.ToLower(outputFormat)
-		if outputFormat != "json" && outputFormat != "text" {
-			return fmt.Errorf("'outputFormat' must be 'json' or 'text'")
-		}
-	}
-
-	return nil
-}
-
 // OnRequest is not used by this policy (only processes response body)
 func (p *CountLettersPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	return nil // No request processing needed

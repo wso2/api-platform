@@ -33,56 +33,6 @@ func (p *BasicAuthPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// Validate validates the policy configuration
-func (p *BasicAuthPolicy) Validate(params map[string]interface{}) error {
-	// Validate username parameter (required)
-	usernameRaw, ok := params["username"]
-	if !ok {
-		return fmt.Errorf("'username' parameter is required")
-	}
-	username, ok := usernameRaw.(string)
-	if !ok {
-		return fmt.Errorf("'username' must be a string")
-	}
-	if len(username) == 0 {
-		return fmt.Errorf("'username' cannot be empty")
-	}
-
-	// Validate password parameter (required)
-	passwordRaw, ok := params["password"]
-	if !ok {
-		return fmt.Errorf("'password' parameter is required")
-	}
-	password, ok := passwordRaw.(string)
-	if !ok {
-		return fmt.Errorf("'password' must be a string")
-	}
-	if len(password) == 0 {
-		return fmt.Errorf("'password' cannot be empty")
-	}
-
-	// Validate allowUnauthenticated parameter (optional, defaults to false)
-	if allowUnauthRaw, ok := params["allowUnauthenticated"]; ok {
-		_, ok := allowUnauthRaw.(bool)
-		if !ok {
-			return fmt.Errorf("'allowUnauthenticated' must be a boolean")
-		}
-	}
-
-	// Validate realm parameter (optional)
-	if realmRaw, ok := params["realm"]; ok {
-		realm, ok := realmRaw.(string)
-		if !ok {
-			return fmt.Errorf("'realm' must be a string")
-		}
-		if len(realm) == 0 {
-			return fmt.Errorf("'realm' cannot be empty")
-		}
-	}
-
-	return nil
-}
-
 // OnRequest performs Basic Authentication
 func (p *BasicAuthPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	// Get configuration parameters

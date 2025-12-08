@@ -23,6 +23,15 @@ type ParameterSchema struct {
 	Validation ValidationRules `yaml:"validation,omitempty" json:"validation,omitempty"`
 }
 
+// Parameters groups user-defined and system-defined parameters
+type Parameters struct {
+	// User-defined parameters
+	User []ParameterSchema `yaml:"user" json:"user"`
+
+	// System-defined parameters
+	System []ParameterSchema `yaml:"system" json:"system"`
+}
+
 // PolicyParameters holds policy configuration with type-safe validated values
 type PolicyParameters struct {
 	// Raw parameter values as received from xDS config (JSON/YAML)
@@ -46,9 +55,9 @@ type PolicyDefinition struct {
 	// Human-readable description of what this policy version does
 	Description string `yaml:"description" json:"description"`
 
-	// Parameter schemas for THIS version
+	// Parameters for THIS version
 	// Each schema defines name, type, validation rules
-	ParameterSchemas []ParameterSchema `yaml:"parameters" json:"parameters"`
+	Parameters Parameters `yaml:"parameters" json:"parameters"`
 }
 
 // PolicySpec is a configuration instance specifying how to use a policy
