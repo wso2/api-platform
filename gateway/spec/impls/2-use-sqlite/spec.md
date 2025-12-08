@@ -101,7 +101,7 @@ As a platform architect, I need the gateway-controller's storage layer to be dat
 - **Database Schema**: SQLite database with initial schema version including:
   - `deployments` table: Stores deployment configurations with ID, name, version, created_at, and updated_at fields.
   - Indexes on common query patterns: composite index on (name, version) for name/version lookups
-  - `deployment_configs` table: Stores the configuration files of each deploymeny artifact. 
+  - `deployment_configs` table: Stores the configuration files of each deployment artifact. 
   - **Driver**: Implementation uses mattn/go-sqlite3 (CGO-based, requires gcc at build time)
   - **File Location**: Default path is `./data/gateway.db`, configurable via `storage.sqlite.path` config option
   - **Configuration Structure**:

@@ -171,7 +171,7 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 					zap.String("version", storedCfg.Configuration.Spec.Version))
 
 				// Try to update instead
-				return s.updateExistingConfig(storedCfg)
+				return s.updateExistingConfig(storedCfg, logger)
 			} else {
 				return false, fmt.Errorf("failed to save config to database: %w", err)
 			}
@@ -180,11 +180,6 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 
 	// Try to add to in-memory store
 	if err := s.store.Add(storedCfg); err != nil {
-		// Rollback database write (only if persistent mode)
-		if s.db != nil {
-			_ = s.db.DeleteConfig(storedCfg.ID)
-		}
-
 		// Check if it's a conflict (API already exists)
 		if storage.IsConflictError(err) {
 			logger.Info("API configuration already exists in memory, updating instead",
@@ -193,8 +188,12 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 				zap.String("version", storedCfg.Configuration.Spec.Version))
 
 			// Try to update instead
-			return s.updateExistingConfig(storedCfg)
+			return s.updateExistingConfig(storedCfg, logger)
 		} else {
+			// Rollback database write (only if persistent mode)
+			if s.db != nil {
+				_ = s.db.DeleteConfig(storedCfg.ID)
+			}
 			return false, fmt.Errorf("failed to add config to memory store: %w", err)
 		}
 	}
@@ -203,12 +202,15 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 }
 
 // updateExistingConfig updates an existing API configuration
-func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConfig) (bool, error) {
+func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConfig, logger *zap.Logger) (bool, error) {
 	// Get existing config
 	existing, err := s.store.GetByNameVersion(newConfig.GetName(), newConfig.GetVersion())
 	if err != nil {
 		return false, fmt.Errorf("failed to get existing config: %w", err)
 	}
+
+	// Backup original state for potential rollback
+	original := *existing
 
 	// Update the existing configuration
 	now := time.Now()
@@ -227,6 +229,16 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 
 	// Update in-memory store
 	if err := s.store.Update(existing); err != nil {
+		// Rollback DB to original state since memory update failed
+		if s.db != nil {
+			if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
+				logger.Error("Failed to rollback DB after memory update failure",
+					zap.Error(rbErr),
+					zap.String("id", original.ID),
+					zap.String("name", original.GetName()),
+					zap.String("version", original.GetVersion()))
+			}
+		}
 		return false, fmt.Errorf("failed to update config in memory store: %w", err)
 	}
 
