@@ -12,6 +12,7 @@ The API Platform covers the complete API lifecycle:
 
 - ✅ API ideation and planning
 - ✅ API design and documentation
+- ✅ API deployment handling
 - ✅ API testing and mocking
 - ✅ Runtime management (ingress and egress)
 - ✅ API governance and compliance
@@ -32,6 +33,7 @@ The API Platform covers the complete API lifecycle:
 - **API Gateway**:
   - Based on Envoy Proxy
   - Apart from basic proxy features (routing, TLS, etc), everything else is a policy
+- **API Policies**: GoLang based API Policies with Policy Hub support
 
 ## Architecture
 

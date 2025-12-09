@@ -8,8 +8,8 @@ The Gateway-Controller is the xDS control plane that manages API configurations 
 - **Validation**: Comprehensive validation with field-level error messages
 - **Persistence**: Embedded SQLite database for configuration storage
 - **In-Memory Cache**: Fast access with thread-safe operations
-- **xDS Server**: gRPC server implementing Envoy's State-of-the-World protocol
-- **Zero-Downtime Updates**: Configuration changes applied without dropping connections
+- **xDS Server**: gRPC server implementing xDS State-of-the-World protocol to serve Envoy
+- **Zero-Downtime Updates**: Configuration changes applied without dropping connections (restarts)
 
 ## Architecture
 
