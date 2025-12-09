@@ -103,6 +103,7 @@ type Client struct {
 	validator         config.Validator
 	deploymentService *utils.APIDeploymentService
 	apiUtilsService   *utils.APIUtilsService
+	routerConfig      *config.RouterConfig
 }
 
 // NewClient creates a new control plane client
@@ -113,6 +114,7 @@ func NewClient(
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
 	validator config.Validator,
+	routerConfig *config.RouterConfig,
 ) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 

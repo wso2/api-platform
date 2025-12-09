@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"gopkg.in/yaml.v3"
 )
 
@@ -33,12 +34,26 @@ func NewParser() *Parser {
 	return &Parser{}
 }
 
-// ParseYAML parses YAML content into an API configuration
-func (p *Parser) ParseYAML(data []byte, config interface{}) error {
-	if err := yaml.Unmarshal(data, config); err != nil {
-		return fmt.Errorf("failed to parse YAML: %w", err)
+func (p *Parser) ParseYAML(data []byte, configParsed interface{}) error {
+	var config api.APIConfiguration
+	// Marshal the map to JSON to leverage json.RawMessage handling in union types
+	var intermediate map[string]interface{}
+	if err := yaml.Unmarshal(data, &intermediate); err != nil {
+		return fmt.Errorf("failed to unmarshal YAML: %w", err)
 	}
-
+	jsonBytes, err := json.Marshal(intermediate)
+	if err != nil {
+		return fmt.Errorf("failed to marshal intermediate to JSON: %w", err)
+	}
+	if err := json.Unmarshal(jsonBytes, &config); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON into APIConfiguration: %w", err)
+	}
+	// Assign parsed config to the value pointed by configParsed (interface{})
+	if ptr, ok := configParsed.(*api.APIConfiguration); ok {
+		*ptr = config
+	} else {
+		return fmt.Errorf("configParsed is not of type *api.APIConfiguration")
+	}
 	return nil
 }
 

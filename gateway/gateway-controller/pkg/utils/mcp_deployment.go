@@ -174,8 +174,8 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 			if storage.IsConflictError(err) {
 				logger.Info("MCP configuration already exists in database, updating instead",
 					zap.String("id", storedCfg.ID),
-					zap.String("name", storedCfg.Configuration.Spec.Name),
-					zap.String("version", storedCfg.Configuration.Spec.Version))
+					zap.String("name", storedCfg.GetName()),
+					zap.String("version", storedCfg.GetVersion()))
 
 				// Try to update instead
 				return s.updateExistingConfig(storedCfg, logger)
@@ -191,8 +191,8 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		if storage.IsConflictError(err) {
 			logger.Info("MCP configuration already exists in memory, updating instead",
 				zap.String("id", storedCfg.ID),
-				zap.String("name", storedCfg.Configuration.Spec.Name),
-				zap.String("version", storedCfg.Configuration.Spec.Version))
+				zap.String("name", storedCfg.GetName()),
+				zap.String("version", storedCfg.GetVersion()))
 
 			// Try to update instead
 			return s.updateExistingConfig(storedCfg, logger)

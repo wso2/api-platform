@@ -99,6 +99,14 @@ type RouterConfig struct {
 	Upstream      envoyUpstream      `koanf:"envoy_upstream"`
 	PolicyEngine  PolicyEngineConfig `koanf:"policy_engine"`
 	DownstreamTLS DownstreamTLS      `koanf:"downstream_tls"`
+	EventGateway  EventGatewayConfig `koanf:"event_gateway"`
+}
+
+// EventGatewayConfig holds event gateway specific configurations
+type EventGatewayConfig struct {
+	Enabled       bool   `koanf:"enabled"`
+	WebSubHubURL  string `koanf:"websub_hub_url"`
+	WebSubHubPort int    `koanf:"websub_hub_port"`
 }
 
 // DownstreamTLS holds downstream (listener) TLS configuration
@@ -265,6 +273,11 @@ func defaultConfig() *Config {
 			},
 		},
 		Router: RouterConfig{
+			EventGateway: EventGatewayConfig{
+				Enabled:       true,
+				WebSubHubURL:  "http://host.docker.internal",
+				WebSubHubPort: 9098,
+			},
 			AccessLogs: AccessLogsConfig{
 				Enabled: true,
 				Format:  "json",

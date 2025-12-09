@@ -58,6 +58,9 @@ services:
       - "8080:8080"   # HTTP traffic
       - "8443:8443"   # HTTPS traffic
       - "9901:9901"   # Envoy admin
+      - "8081:8081"
+      - "8082:8082"
+      - "8083:8083"
     environment:
       - XDS_SERVER_HOST=${ROUTER_XDS_SERVER_HOST:-gateway-controller}
       - XDS_SERVER_PORT=18000

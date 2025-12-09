@@ -41,21 +41,31 @@ func NewPolicyValidator(policyDefinitions map[string]api.PolicyDefinition) *Poli
 // ValidatePolicies validates all policies in an API configuration
 func (pv *PolicyValidator) ValidatePolicies(apiConfig *api.APIConfiguration) []ValidationError {
 	var errors []ValidationError
-
-	// Validate API-level policies
-	if apiConfig.Spec.Policies != nil {
-		for i, policy := range *apiConfig.Spec.Policies {
-			errs := pv.validatePolicy(policy, fmt.Sprintf("spec.policies[%d]", i))
-			errors = append(errors, errs...)
+	// TODO: Extend to other kinds if they support policies
+	if apiConfig.Kind == "http/rest" {
+		apiData, err := apiConfig.Spec.AsAPIConfigData()
+		if err != nil {
+			errors = append(errors, ValidationError{
+				Field:   "spec",
+				Message: fmt.Sprintf("Failed to parse API data for policy validation: %v", err),
+			})
+			return errors
 		}
-	}
-
-	// Validate operation-level policies
-	for opIdx, operation := range apiConfig.Spec.Operations {
-		if operation.Policies != nil {
-			for pIdx, policy := range *operation.Policies {
-				errs := pv.validatePolicy(policy, fmt.Sprintf("spec.operations[%d].policies[%d]", opIdx, pIdx))
+		// Validate API-level policies
+		if apiData.Policies != nil {
+			for i, policy := range *apiData.Policies {
+				errs := pv.validatePolicy(policy, fmt.Sprintf("spec.policies[%d]", i))
 				errors = append(errors, errs...)
+			}
+		}
+
+		// Validate operation-level policies
+		for opIdx, operation := range apiData.Operations {
+			if operation.Policies != nil {
+				for pIdx, policy := range *operation.Policies {
+					errs := pv.validatePolicy(policy, fmt.Sprintf("spec.operations[%d].policies[%d]", opIdx, pIdx))
+					errors = append(errors, errs...)
+				}
 			}
 		}
 	}

@@ -129,19 +129,25 @@ func TestMCPTransformer_Transform(t *testing.T) {
 	if res == nil {
 		t.Fatalf("Transform returned nil")
 	}
-	if res.Spec.Name != name || res.Spec.Version != version || res.Spec.Context != context {
+
+	apiData, err := res.Spec.AsAPIConfigData()
+	if err != nil {
+		t.Fatalf("Transform produced invalid API config data: %v", err)
+	}
+
+	if apiData.Name != name || apiData.Version != version || apiData.Context != context {
 		t.Fatalf("Transform did not copy basic fields correctly: got %+v", res.Spec)
 	}
-	if len(res.Spec.Upstreams) != 1 || res.Spec.Upstreams[0].Url != "http://backend:8080" {
-		t.Fatalf("Transform did not copy upstreams correctly: got %+v", res.Spec.Upstreams)
+	if len(apiData.Upstreams) != 1 || apiData.Upstreams[0].Url != "http://backend:8080" {
+		t.Fatalf("Transform did not copy upstreams correctly: got %+v", apiData.Upstreams)
 	}
 	// Should include MCP operations
-	ops := res.Spec.Operations
+	ops := apiData.Operations
 	if len(ops) < 3 {
 		t.Fatalf("expected at least 3 MCP operations, got %d", len(ops))
 	}
 	// Ensure kind and version set
-	if res.Kind != api.Httprest {
+	if res.Kind != api.APIConfigurationKindHttprest {
 		t.Fatalf("expected Kind Httprest, got %s", res.Kind)
 	}
 	if res.Version != api.ApiPlatformWso2Comv1 {

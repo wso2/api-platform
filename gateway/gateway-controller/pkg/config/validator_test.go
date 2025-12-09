@@ -98,20 +98,22 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			specUnion := api.APIConfiguration_Spec{}
+			specUnion.FromAPIConfigData(api.APIConfigData{
+				Name:    tt.apiName,
+				Version: "v1.0",
+				Context: "/test",
+				Upstreams: []api.Upstream{
+					{Url: "http://example.com"},
+				},
+				Operations: []api.Operation{
+					{Method: "GET", Path: "/test"},
+				},
+			})
 			config := &api.APIConfiguration{
 				Version: "api-platform.wso2.com/v1",
 				Kind:    "http/rest",
-				Spec: api.APIConfigData{
-					Name:    tt.apiName,
-					Version: "v1.0",
-					Context: "/test",
-					Upstreams: []api.Upstream{
-						{Url: "http://example.com"},
-					},
-					Operations: []api.Operation{
-						{Method: "GET", Path: "/test"},
-					},
-				},
+				Spec:    specUnion,
 			}
 
 			errors := validator.Validate(config)

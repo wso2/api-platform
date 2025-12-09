@@ -159,7 +159,7 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredConfig) error {
 	// Extract fields for indexed columns
 	name := cfg.GetName()
 	version := cfg.GetVersion()
-	context := cfg.Configuration.Spec.Context
+	context := cfg.GetContext()
 
 	query := `
 		INSERT INTO deployments (
@@ -222,7 +222,7 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
 	// Extract fields for indexed columns
 	name := cfg.GetName()
 	version := cfg.GetVersion()
-	context := cfg.Configuration.Spec.Context
+	context := cfg.GetContext()
 
 	query := `
 		UPDATE deployments
