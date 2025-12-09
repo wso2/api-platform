@@ -113,11 +113,9 @@ func (ec *PolicyExecutionContext) getModeOverride() *extprocconfigv3.ProcessingM
 		}
 	}
 
-	if hasResponseHeaderProcessing {
-		mode.ResponseHeaderMode = extprocconfigv3.ProcessingMode_SEND
-	} else {
-		mode.ResponseHeaderMode = extprocconfigv3.ProcessingMode_SKIP
-	}
+	// TODO: (renuka) Do the optimization to skip response headers if not needed by checking the var hasResponseHeaderProcessing
+	_ = hasResponseHeaderProcessing
+	mode.ResponseHeaderMode = extprocconfigv3.ProcessingMode_SEND
 
 	// Set response body mode based on policy chain requirements
 	if ec.policyChain.RequiresResponseBody {

@@ -79,6 +79,7 @@ version-set: ## Set specific version for a component
 		echo " Set root version to $(VERSION_ARG)"; \
 	elif [ "$(COMPONENT)" = "gateway" ]; then \
 		echo "$(VERSION_ARG)" > gateway/VERSION; \
+		$(MAKE) update-images COMPONENT=gateway VERSION_ARG=$(VERSION_ARG) >/dev/null; \
 		echo " Set gateway version to $(VERSION_ARG)"; \
 	elif [ "$(COMPONENT)" = "platform-api" ]; then \
 		echo "$(VERSION_ARG)" > platform-api/VERSION; \
