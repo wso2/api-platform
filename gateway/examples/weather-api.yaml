@@ -27,7 +27,6 @@ spec:
   policies:
     - name: ModifyHeaders
       version: v1.0.0
-      enabled: true
       params:
         requestHeaders:
           - action: SET
@@ -46,7 +45,6 @@ spec:
       policies:
         - name: ModifyHeaders
           version: v1.0.0
-          enabled: true
           params:
             requestHeaders:
               - action: SET
@@ -58,3 +56,14 @@ spec:
                 value: world
     - method: GET
       path: /alerts/active
+    - method: POST
+      path: /alerts/active
+      policies:
+        - name: Respond
+          version: v1.0.0
+          params:
+            statusCode: 201
+            body: '{"message": "Active weather alert created successfully."}'
+            headers:
+              - name: Content-Type
+                value: application/json

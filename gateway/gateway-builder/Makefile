@@ -26,7 +26,7 @@ GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Docker configuration
-DOCKER_REGISTRY ?= ghcr.io/renuka-fernando/api-platform
+DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-builder
 IMAGE_TAG := $(VERSION)
 FULL_IMAGE := $(IMAGE_NAME):$(IMAGE_TAG)
