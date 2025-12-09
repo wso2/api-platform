@@ -6,43 +6,42 @@ description: |
   metadata in the request context for downstream policies to use.
 
 parameters:
-  user:
-    - name: username
-      type: string
-      required: true
-      description: |
-        Expected username for authentication.
-        Compared against the username in the Basic auth header.
-      validation:
-        minLength: 1
-        maxLength: 256
+  - name: username
+    type: string
+    required: true
+    description: |
+      Expected username for authentication.
+      Compared against the username in the Basic auth header.
+    validation:
+      minLength: 1
+      maxLength: 256
 
-    - name: password
-      type: string
-      required: true
-      description: |
-        Expected password for authentication.
-        Compared against the password in the Basic auth header.
-      validation:
-        minLength: 1
-        maxLength: 256
+  - name: password
+    type: string
+    required: true
+    description: |
+      Expected password for authentication.
+      Compared against the password in the Basic auth header.
+    validation:
+      minLength: 1
+      maxLength: 256
 
-    - name: allowUnauthenticated
-      type: boolean
-      required: false
-      default: false
-      description: |
-        If true, allows unauthenticated requests to proceed to upstream.
-        Authentication status is still recorded in metadata (auth.success = false).
-        If false (default), returns 401 Unauthorized for failed authentication.
+  - name: allowUnauthenticated
+    type: boolean
+    required: false
+    default: false
+    description: |
+      If true, allows unauthenticated requests to proceed to upstream.
+      Authentication status is still recorded in metadata (auth.success = false).
+      If false (default), returns 401 Unauthorized for failed authentication.
 
-    - name: realm
-      type: string
-      required: false
-      default: "Restricted"
-      description: |
-        Authentication realm shown in the WWW-Authenticate header.
-        Displayed to users in browser authentication prompts.
-      validation:
-        minLength: 1
-        maxLength: 256
+  - name: realm
+    type: string
+    required: false
+    default: "Restricted"
+    description: |
+      Authentication realm shown in the WWW-Authenticate header.
+      Displayed to users in browser authentication prompts.
+    validation:
+      minLength: 1
+      maxLength: 256

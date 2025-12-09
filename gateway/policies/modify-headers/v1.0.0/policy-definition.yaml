@@ -6,73 +6,72 @@ description: |
   Can modify request headers before forwarding to upstream and response headers before returning to client.
 
 parameters:
-  users:
-    - name: requestHeaders
-      type: array
-      required: false
-      description: |
-        Array of header modifications to apply during request phase.
-        At least one of requestHeaders or responseHeaders must be specified.
-      items:
-        type: object
-        properties:
-          - name: action
-            type: string
-            required: true
-            description: Action to perform on the header
-            validation:
-              enum:
-                - SET
-                - APPEND
-                - DELETE
+  - name: requestHeaders
+    type: array
+    required: false
+    description: |
+      Array of header modifications to apply during request phase.
+      At least one of requestHeaders or responseHeaders must be specified.
+    items:
+      type: object
+      properties:
+        - name: action
+          type: string
+          required: true
+          description: Action to perform on the header
+          validation:
+            enum:
+              - SET
+              - APPEND
+              - DELETE
 
-          - name: name
-            type: string
-            required: true
-            description: Header name (case-insensitive)
-            validation:
-              minLength: 1
-              maxLength: 256
-              pattern: '^[a-zA-Z0-9-_]+$'
+        - name: name
+          type: string
+          required: true
+          description: Header name (case-insensitive)
+          validation:
+            minLength: 1
+            maxLength: 256
+            pattern: '^[a-zA-Z0-9-_]+$'
 
-          - name: value
-            type: string
-            required: false
-            description: Header value (required for SET and APPEND, ignored for DELETE)
-            validation:
-              maxLength: 8192
+        - name: value
+          type: string
+          required: false
+          description: Header value (required for SET and APPEND, ignored for DELETE)
+          validation:
+            maxLength: 8192
 
-    - name: responseHeaders
-      type: array
-      required: false
-      description: |
-        Array of header modifications to apply during response phase.
-        At least one of requestHeaders or responseHeaders must be specified.
-      items:
-        type: object
-        properties:
-          - name: action
-            type: string
-            required: true
-            description: Action to perform on the header
-            validation:
-              enum:
-                - SET
-                - APPEND
-                - DELETE
+  - name: responseHeaders
+    type: array
+    required: false
+    description: |
+      Array of header modifications to apply during response phase.
+      At least one of requestHeaders or responseHeaders must be specified.
+    items:
+      type: object
+      properties:
+        - name: action
+          type: string
+          required: true
+          description: Action to perform on the header
+          validation:
+            enum:
+              - SET
+              - APPEND
+              - DELETE
 
-          - name: name
-            type: string
-            required: true
-            description: Header name (case-insensitive)
-            validation:
-              minLength: 1
-              maxLength: 256
-              pattern: '^[a-zA-Z0-9-_]+$'
+        - name: name
+          type: string
+          required: true
+          description: Header name (case-insensitive)
+          validation:
+            minLength: 1
+            maxLength: 256
+            pattern: '^[a-zA-Z0-9-_]+$'
 
-          - name: value
-            type: string
-            required: false
-            description: Header value (required for SET and APPEND, ignored for DELETE)
-            validation:
-              maxLength: 8192
+        - name: value
+          type: string
+          required: false
+          description: Header value (required for SET and APPEND, ignored for DELETE)
+          validation:
+            maxLength: 8192
