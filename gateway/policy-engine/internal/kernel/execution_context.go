@@ -233,7 +233,7 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	headers *extprocv3.HttpHeaders,
 ) (*extprocv3.ProcessingResponse, error) {
 	// Build ResponseContext from stored request context and response headers
-	ec.responseContext = ec.buildResponseContext(headers)
+	ec.buildResponseContext(headers)
 
 	// If policy chain requires response body AND body is coming, skip processing headers separately
 	// Headers and body will be processed together in processResponseBody phase
@@ -307,11 +307,11 @@ func (ec *PolicyExecutionContext) processResponseBody(
 }
 
 // buildRequestContext converts Envoy headers to RequestContext
-func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHeaders) *policy.RequestContext {
+func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHeaders) {
 	// Create shared context that will persist across request/response phases
 	sharedCtx := &policy.SharedContext{
 		RequestID: ec.requestID,
-		Metadata:  ec.policyChain.Metadata, // Share chain metadata
+		Metadata:  make(map[string]interface{}),
 	}
 
 	// Create headers map for internal manipulation
@@ -356,11 +356,11 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 		}
 	}
 
-	return ctx
+	ec.requestContext = ctx
 }
 
 // buildResponseContext converts Envoy response headers and stored request context
-func (ec *PolicyExecutionContext) buildResponseContext(headers *extprocv3.HttpHeaders) *policy.ResponseContext {
+func (ec *PolicyExecutionContext) buildResponseContext(headers *extprocv3.HttpHeaders) {
 	// Create response headers map for internal manipulation
 	responseHeadersMap := make(map[string][]string)
 	var responseStatus int
@@ -407,5 +407,7 @@ func (ec *PolicyExecutionContext) buildResponseContext(headers *extprocv3.HttpHe
 		}
 	}
 
-	return ctx
+	// Assign the shared context
+	ctx.SharedContext = ec.requestContext.SharedContext
+	ec.responseContext = ctx
 }
