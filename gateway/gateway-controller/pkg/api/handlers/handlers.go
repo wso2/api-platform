@@ -374,58 +374,60 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 		var regErrs int32
 		var deregErrs int32
 
-		var waitCount int
 		if len(topicsToRegister) > 0 {
-			waitCount++
-		}
-		if len(topicsToUnregister) > 0 {
-			waitCount++
-		}
-
-		wg2.Add(waitCount)
-
-		if len(topicsToRegister) > 0 {
+			wg2.Add(1)
 			go func(list []string) {
 				defer wg2.Done()
 				log.Info("Starting topic registration", zap.Int("total_topics", len(list)), zap.String("api_id", existing.ID))
 				//fmt.Println("Topics Registering Started")
+				var childWg sync.WaitGroup
 				for _, topic := range list {
-					if err := s.deploymentService.RegisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
-						log.Error("Failed to register topic with WebSubHub",
-							zap.Error(err),
-							zap.String("topic", topic),
-							zap.String("api_id", existing.ID))
-						atomic.AddInt32(&regErrs, 1)
-					} else {
-						log.Info("Successfully registered topic with WebSubHub",
-							zap.String("topic", topic),
-							zap.String("api_id", existing.ID))
-					}
+					childWg.Add(1)
+					go func(topic string) {
+						defer childWg.Done()
+						if err := s.deploymentService.RegisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
+							log.Error("Failed to register topic with WebSubHub",
+								zap.Error(err),
+								zap.String("topic", topic),
+								zap.String("api_id", existing.ID))
+							atomic.AddInt32(&regErrs, 1)
+						} else {
+							log.Info("Successfully registered topic with WebSubHub",
+								zap.String("topic", topic),
+								zap.String("api_id", existing.ID))
+						}
+					}(topic)
 				}
-
+				childWg.Wait()
 			}(topicsToRegister)
 		}
 
 		if len(topicsToUnregister) > 0 {
+			wg2.Add(1)
 			go func(list []string) {
 				defer wg2.Done()
 				log.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", existing.ID))
+				var childWg sync.WaitGroup
 				for _, topic := range list {
-					if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
-						log.Error("Failed to deregister topic from WebSubHub",
-							zap.Error(err),
-							zap.String("topic", topic),
-							zap.String("api_id", existing.ID))
-						atomic.AddInt32(&deregErrs, 1)
-					} else {
-						log.Info("Successfully deregistered topic from WebSubHub",
-							zap.String("topic", topic),
-							zap.String("api_id", existing.ID))
-					}
+					childWg.Add(1)
+					go func(topic string) {
+						defer childWg.Done()
+						if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
+							log.Error("Failed to deregister topic from WebSubHub",
+								zap.Error(err),
+								zap.String("topic", topic),
+								zap.String("api_id", existing.ID))
+							atomic.AddInt32(&deregErrs, 1)
+						} else {
+							log.Info("Successfully deregistered topic from WebSubHub",
+								zap.String("topic", topic),
+								zap.String("api_id", existing.ID))
+						}
+					}(topic)
 				}
+				childWg.Wait()
 			}(topicsToUnregister)
 		}
-
 		wg2.Wait()
 
 		log.Info("Topic lifecycle operations completed",
@@ -556,29 +558,31 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 		// This was communication bridge will be created on the gw startup
 		// Can perform internal communication with websub hub without relying on the dynamic rules
 		// Execute topic operations with wait group and errors tracking
-		var wg2 sync.WaitGroup
 		var deregErrs int32
 
 		if len(topicsToUnregister) > 0 {
-			wg2.Add(1)
 			go func(list []string) {
-				defer wg2.Done()
 				log.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", cfg.ID))
+				var childWg sync.WaitGroup
 				for _, topic := range list {
-					if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
-						log.Error("Failed to deregister topic from WebSubHub",
-							zap.Error(err),
-							zap.String("topic", topic),
-							zap.String("api_id", cfg.ID))
-						atomic.AddInt32(&deregErrs, 1)
-					} else {
-						log.Info("Successfully deregistered topic from WebSubHub",
-							zap.String("topic", topic),
-							zap.String("api_id", cfg.ID))
-					}
+					childWg.Add(1)
+					go func(topic string) {
+						defer childWg.Done()
+						if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
+							log.Error("Failed to deregister topic from WebSubHub",
+								zap.Error(err),
+								zap.String("topic", topic),
+								zap.String("api_id", cfg.ID))
+							atomic.AddInt32(&deregErrs, 1)
+						} else {
+							log.Info("Successfully deregistered topic from WebSubHub",
+								zap.String("topic", topic),
+								zap.String("api_id", cfg.ID))
+						}
+					}(topic)
 				}
+				childWg.Wait()
 			}(topicsToUnregister)
-			wg2.Wait()
 		}
 
 		log.Info("Topic lifecycle operations completed",
