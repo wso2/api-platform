@@ -869,7 +869,6 @@ func loadTLSConfig(certPath string) (*tls.Config, error) {
 
 	return &tls.Config{
 		RootCAs:            caCertPool,
-		InsecureSkipVerify: true, // Skip hostname verification when custom CA cert is provided
 	}, nil
 }
 
