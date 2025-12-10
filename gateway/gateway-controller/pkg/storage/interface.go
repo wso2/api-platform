@@ -105,6 +105,46 @@ type Storage interface {
 	// May be expensive for large datasets; consider pagination in future versions.
 	GetAllConfigsByKind(kind string) ([]*models.StoredConfig, error)
 
+	// ========================================
+	// LLM Provider Template Methods
+	// ========================================
+
+	// SaveLLMProviderTemplate persists a new LLM provider template.
+	//
+	// Returns an error if a template with the same name already exists.
+	// Implementations should ensure this operation is atomic (all-or-nothing).
+	SaveLLMProviderTemplate(template *models.StoredLLMProviderTemplate) error
+
+	// UpdateLLMProviderTemplate updates an existing LLM provider template.
+	//
+	// Returns an error if the template does not exist.
+	// Implementations should ensure this operation is atomic and thread-safe.
+	UpdateLLMProviderTemplate(template *models.StoredLLMProviderTemplate) error
+
+	// DeleteLLMProviderTemplate removes an LLM provider template by ID.
+	//
+	// Returns an error if the template does not exist.
+	DeleteLLMProviderTemplate(id string) error
+
+	// GetLLMProviderTemplate retrieves an LLM provider template by ID.
+	//
+	// Returns an error if the template is not found.
+	// This is the fastest lookup method (O(1) for most databases).
+	GetLLMProviderTemplate(id string) (*models.StoredLLMProviderTemplate, error)
+
+	// GetLLMProviderTemplateByName retrieves an LLM provider template by name.
+	//
+	// Returns an error if the template is not found.
+	// This is the most common lookup method for template operations.
+	// Implementations should index name for fast lookups.
+	GetLLMProviderTemplateByName(name string) (*models.StoredLLMProviderTemplate, error)
+
+	// GetAllLLMProviderTemplates retrieves all LLM provider templates.
+	//
+	// Returns an empty slice if no templates exist.
+	// May be expensive for large datasets; consider pagination in future versions.
+	GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTemplate, error)
+
 	// SaveCertificate persists a new certificate.
 	//
 	// Returns an error if a certificate with the same name already exists.

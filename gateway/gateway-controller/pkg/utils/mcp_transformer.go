@@ -19,6 +19,7 @@
 package utils
 
 import (
+	"fmt"
 	"strings"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
@@ -38,17 +39,17 @@ func protocolVersionComparator(base, current string) bool {
 func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration) []api.Operation {
 	operations := []api.Operation{
 		{
-			Method:   api.GET,
+			Method:   api.OperationMethod(api.GET),
 			Path:     constants.MCP_RESOURCE_PATH,
 			Policies: nil,
 		},
 		{
-			Method:   api.POST,
+			Method:   api.OperationMethod(api.POST),
 			Path:     constants.MCP_RESOURCE_PATH,
 			Policies: nil,
 		},
 		{
-			Method:   api.DELETE,
+			Method:   api.OperationMethod(api.DELETE),
 			Path:     constants.MCP_RESOURCE_PATH,
 			Policies: nil,
 		},
@@ -63,7 +64,7 @@ func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration) []api.Operat
 	if protocolVersionComparator(constants.SPEC_VERSION_2025_JUNE, mcpSpecVersion) {
 		operations = append(operations,
 			api.Operation{
-				Method:   api.GET,
+				Method:   api.OperationMethod(api.GET),
 				Path:     constants.MCP_PRM_RESOURCE_PATH,
 				Policies: nil,
 			},
@@ -74,10 +75,10 @@ func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration) []api.Operat
 }
 
 // Transform converts an MCP proxy configuration (input) to an API configuration (output)
-func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) *api.APIConfiguration {
+func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*api.APIConfiguration, error) {
 	mcpConfig, ok := input.(*api.MCPProxyConfiguration)
 	if !ok || mcpConfig == nil {
-		return output
+		return output, fmt.Errorf("invalid input type: expected *api.MCPProxyConfiguration")
 	}
 	output.Version = api.ApiPlatformWso2Comv1
 	output.Kind = api.APIConfigurationKindHttprest
@@ -92,8 +93,8 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) *api
 
 	var specUnion api.APIConfiguration_Spec
 	if err := specUnion.FromAPIConfigData(apiData); err != nil {
-		return nil
+		return nil, err
 	}
 	output.Spec = specUnion
-	return output
+	return output, nil
 }

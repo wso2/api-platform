@@ -33,6 +33,10 @@ type ConfigStore struct {
 	nameVersion  map[string]string               // Key: "name:version" → Value: config ID
 	snapVersion  int64                           // Current xDS snapshot version
 	TopicManager *TopicManager
+
+	// LLM Provider Templates
+	templates        map[string]*models.StoredLLMProviderTemplate // Key: template ID
+	templateIdByName map[string]string
 }
 
 // NewConfigStore creates a new in-memory config store
@@ -42,6 +46,8 @@ func NewConfigStore() *ConfigStore {
 		nameVersion:  make(map[string]string),
 		snapVersion:  0,
 		TopicManager: NewTopicManager(),
+		templates:        make(map[string]*models.StoredLLMProviderTemplate),
+		templateIdByName: make(map[string]string),
 	}
 }
 
@@ -207,6 +213,20 @@ func (cs *ConfigStore) GetAllByKind(kind string) []*models.StoredConfig {
 	return result
 }
 
+// GetByKindNameAndVersion returns a configuration of a specific kind, name and version
+func (cs *ConfigStore) GetByKindNameAndVersion(kind string, name string, version string) *models.StoredConfig {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	all := cs.GetAllByKind(kind)
+	for _, sc := range all {
+		if sc.GetName() == name && sc.GetVersion() == version {
+			return sc
+		}
+	}
+	return nil
+}
+
 // IncrementSnapshotVersion atomically increments and returns the next snapshot version
 func (cs *ConfigStore) IncrementSnapshotVersion() int64 {
 	cs.mu.Lock()
@@ -230,4 +250,97 @@ func (cs *ConfigStore) SetSnapshotVersion(version int64) {
 	defer cs.mu.Unlock()
 
 	cs.snapVersion = version
+}
+
+// ========================================
+// LLM Provider Template Methods
+// ========================================
+
+// AddTemplate adds an LLM provider template to the store
+func (cs *ConfigStore) AddTemplate(template *models.StoredLLMProviderTemplate) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	// Check if template with same name already exists
+	if _, exists := cs.templateIdByName[template.GetName()]; exists {
+		return fmt.Errorf("template with name '%s' already exists", template.GetName())
+	}
+
+	cs.templates[template.ID] = template
+	cs.templateIdByName[template.GetName()] = template.ID
+	return nil
+}
+
+// UpdateTemplate updates an existing LLM provider template in the store
+func (cs *ConfigStore) UpdateTemplate(template *models.StoredLLMProviderTemplate) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	existing, exists := cs.templates[template.ID]
+	if !exists {
+		return fmt.Errorf("template with ID '%s' not found", template.ID)
+	}
+
+	// Remove old name mapping if name changed
+	if existing.GetName() != template.GetName() {
+		delete(cs.templateIdByName, existing.GetName())
+	}
+
+	cs.templates[template.ID] = template
+	cs.templateIdByName[template.GetName()] = template.ID
+	return nil
+}
+
+// DeleteTemplate removes an LLM provider template from the store by ID
+func (cs *ConfigStore) DeleteTemplate(id string) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	template, exists := cs.templates[id]
+	if !exists {
+		return fmt.Errorf("template with ID '%s' not found", id)
+	}
+
+	delete(cs.templates, id)
+	delete(cs.templateIdByName, template.GetName())
+	return nil
+}
+
+// GetTemplate retrieves an LLM provider template by ID
+func (cs *ConfigStore) GetTemplate(id string) (*models.StoredLLMProviderTemplate, error) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	template, exists := cs.templates[id]
+	if !exists {
+		return nil, fmt.Errorf("template with ID '%s' not found", id)
+	}
+
+	return template, nil
+}
+
+// GetTemplateByName retrieves an LLM provider template by name
+func (cs *ConfigStore) GetTemplateByName(name string) (*models.StoredLLMProviderTemplate, error) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	templateId, exists := cs.templateIdByName[name]
+	if !exists {
+		return nil, fmt.Errorf("template with name '%s' not found", name)
+	}
+
+	return cs.templates[templateId], nil
+}
+
+// GetAllTemplates retrieves all LLM provider templates
+func (cs *ConfigStore) GetAllTemplates() []*models.StoredLLMProviderTemplate {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	templates := make([]*models.StoredLLMProviderTemplate, 0, len(cs.templates))
+	for _, template := range cs.templates {
+		templates = append(templates, template)
+	}
+
+	return templates
 }

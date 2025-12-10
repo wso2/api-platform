@@ -16,10 +16,23 @@
  * under the License.
  */
 
-package utils
+package models
 
-import api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+import (
+	"time"
 
-type Transformer interface {
-	Transform(input any, output *api.APIConfiguration) (*api.APIConfiguration, error)
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+)
+
+// StoredLLMProviderTemplate represents the LLM provider template stored in the database and in-memory
+type StoredLLMProviderTemplate struct {
+	ID            string                  `json:"id"`
+	Configuration api.LLMProviderTemplate `json:"configuration"`
+	CreatedAt     time.Time               `json:"created_at"`
+	UpdatedAt     time.Time               `json:"updated_at"`
+}
+
+// GetName returns the template name
+func (t *StoredLLMProviderTemplate) GetName() string {
+	return t.Configuration.Spec.Name
 }

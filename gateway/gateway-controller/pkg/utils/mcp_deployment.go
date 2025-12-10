@@ -108,7 +108,7 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 	}
 
 	// Transform to API configuration
-	apiConfigPtr := s.transformer.Transform(&mcpConfig, &apiConfig)
+	apiConfigPtr, err := s.transformer.Transform(&mcpConfig, &apiConfig)
 	if apiConfigPtr == nil {
 		return nil, fmt.Errorf("failed to transform MCP configuration to API configuration")
 	}

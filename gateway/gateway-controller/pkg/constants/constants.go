@@ -83,4 +83,30 @@ const (
 	MCP_PRM_RESOURCE_PATH      = "/.well-known/oauth-protected-resource"
 	SPEC_VERSION_2025_JUNE     = "2025-06-18"
 	SPEC_VERSION_2025_NOVEMBER = "2025-11-25"
+
+	// Router constants
+	BASE_PATH = "/"
+	WILD_CARD = "*"
+
+	// LLM Transformer constants
+	UPSTREAM_AUTH_APIKEY_POLICY_NAME                = "ModifyHeaders"
+	UPSTREAM_AUTH_APIKEY_POLICY_VERSION             = "v1.0.0"
+	UPSTREAM_AUTH_APIKEY_POLICY_REQUEST_HEADERS_KEY = "requestHeaders"
+	UPSTREAM_AUTH_APIKEY_POLICY_HEADER_ACTION_KEY   = "action"
+	UPSTREAM_AUTH_APIKEY_POLICY_HEADER_ACTION       = "SET"
+	UPSTREAM_AUTH_APIKEY_POLICY_HEADER_NAME         = "name"
+	UPSTREAM_AUTH_APIKEY_POLICY_HEADER_VALUE        = "value"
+	UPSTREAM_AUTH_APIKEY_POLICY_PARAMS              = "requestHeaders:\n" +
+		"  - action: SET\n" +
+		"    name: %s\n" +
+		"    value: %s\n"
+
+	ACCESS_CONTROL_DENY_POLICY_NAME    = "Respond"
+	ACCESS_CONTROL_DENY_POLICY_VERSION = "v1.0.0"
+	// YAML for default 404 Respond policy params
+	ACCESS_CONTROL_DENY_POLICY_PARAMS = "statusCode: 404\n" +
+		"body: \"{\\\"message\\\": \\\"Resource not found.\\\"}\"\n" +
+		"headers:\n" +
+		"  - name: Content-Type\n" +
+		"    value: application/json\n"
 )

@@ -63,7 +63,8 @@ func TestAddMCPSpecificOperations_DefaultVersion(t *testing.T) {
 		t.Fatalf("expected %d operations, got %d", want, len(ops))
 	}
 	// verify paths/methods contain the MCP base ops
-	baseMethods := map[api.OperationMethod]bool{api.GET: true, api.POST: true, api.DELETE: true}
+	baseMethods := map[api.OperationMethod]bool{api.OperationMethod(api.GET): true,
+		api.OperationMethod(api.POST): true, api.OperationMethod(api.DELETE): true}
 	basePath := constants.MCP_RESOURCE_PATH
 	foundBase := 0
 	foundPRM := false
@@ -71,7 +72,7 @@ func TestAddMCPSpecificOperations_DefaultVersion(t *testing.T) {
 		if op.Path == basePath && baseMethods[op.Method] {
 			foundBase++
 		}
-		if op.Path == constants.MCP_PRM_RESOURCE_PATH && op.Method == api.GET {
+		if op.Path == constants.MCP_PRM_RESOURCE_PATH && op.Method == api.OperationMethod(api.GET) {
 			foundPRM = true
 		}
 	}
@@ -97,7 +98,7 @@ func TestAddMCPSpecificOperations_SpecifiedVersion(t *testing.T) {
 	}
 	foundPRM := false
 	for _, op := range ops {
-		if op.Path == constants.MCP_PRM_RESOURCE_PATH && op.Method == api.GET {
+		if op.Path == constants.MCP_PRM_RESOURCE_PATH && op.Method == api.OperationMethod(api.GET) {
 			foundPRM = true
 		}
 	}
