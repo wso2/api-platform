@@ -176,14 +176,14 @@ func (v *LLMValidator) validateLLMProvider(provider *api.LLMProviderConfiguratio
 	}
 
 	// Validate data section
-	if provider.Spec == nil {
+	if &provider.Spec == nil {
 		errors = append(errors, ValidationError{
 			Field:   "spec",
 			Message: "Provider spec is required",
 		})
 		return errors
 	}
-	errors = append(errors, v.validateProviderData(provider.Spec)...)
+	errors = append(errors, v.validateProviderData(&provider.Spec)...)
 
 	return errors
 }
@@ -228,7 +228,7 @@ func (v *LLMValidator) validateProviderData(data *api.LLMProviderConfigData) []V
 		}
 	}
 
-	// Validate access control if present
+	// Validate access control
 	errors = append(errors, v.validateAccessControl("data.accessControl", &data.AccessControl)...)
 
 	return errors
@@ -299,13 +299,27 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string, upstream *ap
 func (v *LLMValidator) validateAccessControl(fieldPrefix string, ac *api.LLMAccessControl) []ValidationError {
 	var errors []ValidationError
 
-	if ac.Mode != nil {
-		if *ac.Mode != "allow_all" && *ac.Mode != "deny_all" {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("%s.mode", fieldPrefix),
-				Message: "Access control mode must be either 'allow_all' or 'deny_all'",
-			})
+	// accessControl is required
+	if ac == nil {
+		return []ValidationError{
+			{
+				Field:   fieldPrefix,
+				Message: "Access control is required",
+			},
 		}
+	}
+
+	// mode is required
+	if ac.Mode == nil {
+		errors = append(errors, ValidationError{
+			Field:   fmt.Sprintf("%s.mode", fieldPrefix),
+			Message: "Access control mode is required",
+		})
+	} else if *ac.Mode != "allow_all" && *ac.Mode != "deny_all" {
+		errors = append(errors, ValidationError{
+			Field:   fmt.Sprintf("%s.mode", fieldPrefix),
+			Message: "Access control mode must be either 'allow_all' or 'deny_all'",
+		})
 	}
 
 	// Validate exceptions if present
