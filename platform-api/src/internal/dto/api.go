@@ -230,14 +230,13 @@ type APIListResponse struct {
 
 // ValidateAPINameExistenceRequest represents the request payload for checking API name existence
 type ValidateAPINameExistenceRequest struct {
-	Name      string `json:"name" binding:"required"`
-	ProjectID string `json:"projectId" binding:"required"`
+	Name string `json:"name" binding:"required"`
 }
 
 // ValidateAPINameExistenceResponse represents the response for checking API name existence
 type ValidateAPINameExistenceResponse struct {
-	Exists    bool   `json:"exists"`
-	Name      string `json:"name"`
-	ProjectID string `json:"projectId"`
-	Message   string `json:"message,omitempty"`
+	Exists         bool   `json:"exists"`
+	Name           string `json:"name"`
+	OrganizationID string `json:"organizationId"`
+	Message        string `json:"message,omitempty"`
 }

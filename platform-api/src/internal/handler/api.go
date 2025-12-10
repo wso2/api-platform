@@ -932,17 +932,12 @@ func (h *APIHandler) CheckAPINameExistence(c *gin.Context) {
 			"API name is required"))
 		return
 	}
-	if req.ProjectID == "" {
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"Project ID is required"))
-		return
-	}
 
 	response, err := h.apiService.CheckAPINameExistence(&req, orgId)
 	if err != nil {
-		if errors.Is(err, constants.ErrProjectNotFound) {
+		if errors.Is(err, constants.ErrOrganizationNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-				"Project not found"))
+				"Organization not found"))
 			return
 		}
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",

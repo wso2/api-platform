@@ -64,6 +64,7 @@ type APIRepository interface {
 	UpdateAPIAssociation(apiId, resourceId, associationType, orgId string) error
 
 	// API name validation methods
+	CheckAPINameExistsInOrganization(name, orgId string) (bool, error)
 	CheckAPINameExistsInProject(name, projectId, orgId string) (bool, error)
 }
 

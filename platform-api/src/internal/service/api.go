@@ -41,6 +41,7 @@ import (
 type APIService struct {
 	apiRepo              repository.APIRepository
 	projectRepo          repository.ProjectRepository
+	orgRepo              repository.OrganizationRepository
 	gatewayRepo          repository.GatewayRepository
 	devPortalRepo        repository.DevPortalRepository
 	publicationRepo      repository.APIPublicationRepository
@@ -53,13 +54,14 @@ type APIService struct {
 
 // NewAPIService creates a new API service
 func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.ProjectRepository,
-	gatewayRepo repository.GatewayRepository, devPortalRepo repository.DevPortalRepository,
-	publicationRepo repository.APIPublicationRepository, backendServiceRepo repository.BackendServiceRepository,
-	upstreamSvc *UpstreamService, gatewayEventsService *GatewayEventsService, devPortalService *DevPortalService,
-	apiUtil *utils.APIUtil) *APIService {
+	orgRepo repository.OrganizationRepository, gatewayRepo repository.GatewayRepository,
+	devPortalRepo repository.DevPortalRepository, publicationRepo repository.APIPublicationRepository,
+	backendServiceRepo repository.BackendServiceRepository, upstreamSvc *UpstreamService,
+	gatewayEventsService *GatewayEventsService, devPortalService *DevPortalService, apiUtil *utils.APIUtil) *APIService {
 	return &APIService{
 		apiRepo:              apiRepo,
 		projectRepo:          projectRepo,
+		orgRepo:              orgRepo,
 		gatewayRepo:          gatewayRepo,
 		devPortalRepo:        devPortalRepo,
 		publicationRepo:      publicationRepo,
@@ -1461,30 +1463,24 @@ func (s *APIService) ImportFromOpenAPI(req *dto.ImportOpenAPIRequest, orgId stri
 	return s.CreateAPI(createReq, orgId)
 }
 
-// CheckAPINameExistence checks if an API with the given name exists within a specific project
+// CheckAPINameExistence checks if an API with the given name exists within a specific organization
 func (s *APIService) CheckAPINameExistence(req *dto.ValidateAPINameExistenceRequest, orgId string) (*dto.ValidateAPINameExistenceResponse, error) {
 	// Validate request
 	if req.Name == "" {
 		return nil, errors.New("API name is required")
 	}
-	if req.ProjectID == "" {
-		return nil, errors.New("project ID is required")
-	}
 
-	// Check if project exists and belongs to the organization
-	project, err := s.projectRepo.GetProjectByUUID(req.ProjectID)
+	// Check if organization exists
+	organization, err := s.orgRepo.GetOrganizationByUUID(orgId)
 	if err != nil {
 		return nil, err
 	}
-	if project == nil {
-		return nil, constants.ErrProjectNotFound
-	}
-	if project.OrganizationID != orgId {
-		return nil, constants.ErrProjectNotFound
+	if organization == nil {
+		return nil, constants.ErrOrganizationNotFound
 	}
 
 	// Check if API name exists within the project
-	exists, err := s.apiRepo.CheckAPINameExistsInProject(req.Name, req.ProjectID, orgId)
+	exists, err := s.apiRepo.CheckAPINameExistsInOrganization(req.Name, orgId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check API name existence: %w", err)
 	}
@@ -1492,16 +1488,16 @@ func (s *APIService) CheckAPINameExistence(req *dto.ValidateAPINameExistenceRequ
 	// Create response with appropriate message
 	var message string
 	if exists {
-		message = fmt.Sprintf("API '%s' already exists in project '%s'", req.Name, project.Name)
+		message = fmt.Sprintf("API '%s' already exists in organization '%s'", req.Name, organization.Name)
 	} else {
-		message = fmt.Sprintf("API '%s' does not exist in project '%s'", req.Name, project.Name)
+		message = fmt.Sprintf("API '%s' does not exist in organization '%s'", req.Name, organization.Name)
 	}
 
 	response := &dto.ValidateAPINameExistenceResponse{
-		Exists:    exists,
-		Name:      req.Name,
-		ProjectID: req.ProjectID,
-		Message:   message,
+		Exists:         exists,
+		Name:           req.Name,
+		OrganizationID: orgId,
+		Message:        message,
 	}
 
 	return response, nil
