@@ -1494,7 +1494,7 @@ func (s *APIService) CheckAPINameExistence(req *dto.ValidateAPINameExistenceRequ
 	if exists {
 		message = fmt.Sprintf("API '%s' already exists in project '%s'", req.Name, project.Name)
 	} else {
-		message = fmt.Sprintf("API name '%s' is available in project '%s'", req.Name, project.Name)
+		message = fmt.Sprintf("API '%s' does not exist in project '%s'", req.Name, project.Name)
 	}
 
 	response := &dto.ValidateAPINameExistenceResponse{
