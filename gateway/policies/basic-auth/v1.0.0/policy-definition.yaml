@@ -45,3 +45,5 @@ parameters:
     validation:
       minLength: 1
       maxLength: 256
+
+initParameters: []

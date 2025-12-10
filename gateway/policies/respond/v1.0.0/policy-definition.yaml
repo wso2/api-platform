@@ -50,3 +50,5 @@ parameters:
           description: Header value
           validation:
             maxLength: 8192
+
+initParameters: []
