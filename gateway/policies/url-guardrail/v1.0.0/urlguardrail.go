@@ -46,16 +46,8 @@ func (p *URLGuardrailPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// Validate validates the policy configuration (empty as requested)
-func (p *URLGuardrailPolicy) Validate(params map[string]interface{}) error {
-	// Validation logic moved to OnRequest/OnResponse
-	return nil
-}
-
 // OnRequest validates URLs in request body
 func (p *URLGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	name, _ := params["name"].(string)
-
 	var requestParams map[string]interface{}
 	if reqParams, ok := params["request"].(map[string]interface{}); ok {
 		requestParams = reqParams
@@ -65,16 +57,14 @@ func (p *URLGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[st
 
 	// Validate parameters
 	if err := p.validateParams(requestParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), name, false, false, []string{}).(policy.RequestAction)
+		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), false, false, []string{}).(policy.RequestAction)
 	}
 
-	return p.validatePayload(ctx.Body.Content, requestParams, name, false).(policy.RequestAction)
+	return p.validatePayload(ctx.Body.Content, requestParams, false).(policy.RequestAction)
 }
 
 // OnResponse validates URLs in response body
 func (p *URLGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	name, _ := params["name"].(string)
-
 	var responseParams map[string]interface{}
 	if respParams, ok := params["response"].(map[string]interface{}); ok {
 		responseParams = respParams
@@ -84,10 +74,10 @@ func (p *URLGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params map[
 
 	// Validate parameters
 	if err := p.validateParams(responseParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), name, true, false, []string{}).(policy.ResponseAction)
+		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), true, false, []string{}).(policy.ResponseAction)
 	}
 
-	return p.validatePayload(ctx.ResponseBody.Content, responseParams, name, true).(policy.ResponseAction)
+	return p.validatePayload(ctx.ResponseBody.Content, responseParams, true).(policy.ResponseAction)
 }
 
 // validateParams validates the actual policy parameters
@@ -138,7 +128,7 @@ func (p *URLGuardrailPolicy) validateParams(params map[string]interface{}) error
 }
 
 // validatePayload validates URLs in payload
-func (p *URLGuardrailPolicy) validatePayload(payload []byte, params map[string]interface{}, name string, isResponse bool) interface{} {
+func (p *URLGuardrailPolicy) validatePayload(payload []byte, params map[string]interface{}, isResponse bool) interface{} {
 	jsonPath, _ := params["jsonPath"].(string)
 	onlyDNS, _ := params["onlyDNS"].(bool)
 	showAssessment, _ := params["showAssessment"].(bool)
@@ -153,13 +143,13 @@ func (p *URLGuardrailPolicy) validatePayload(payload []byte, params map[string]i
 	}
 
 	if payload == nil {
-		return p.buildErrorResponse("body is empty", name, isResponse, showAssessment, []string{})
+		return p.buildErrorResponse("body is empty", isResponse, showAssessment, []string{})
 	}
 
 	// Extract value using JSONPath
 	extractedValue, err := extractStringValueFromJSONPath(payload, jsonPath)
 	if err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), name, isResponse, showAssessment, []string{})
+		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), isResponse, showAssessment, []string{})
 	}
 
 	// Clean and trim
@@ -184,7 +174,7 @@ func (p *URLGuardrailPolicy) validatePayload(payload []byte, params map[string]i
 	}
 
 	if len(invalidURLs) > 0 {
-		return p.buildErrorResponse("violation of url validity detected", name, isResponse, showAssessment, invalidURLs)
+		return p.buildErrorResponse("violation of url validity detected", isResponse, showAssessment, invalidURLs)
 	}
 
 	if isResponse {
@@ -251,8 +241,8 @@ func (p *URLGuardrailPolicy) checkURL(target string, timeout int) bool {
 }
 
 // buildErrorResponse builds an error response for both request and response phases
-func (p *URLGuardrailPolicy) buildErrorResponse(reason string, name string, isResponse bool, showAssessment bool, invalidURLs []string) interface{} {
-	assessment := p.buildAssessmentObject(name, isResponse, reason, showAssessment, invalidURLs)
+func (p *URLGuardrailPolicy) buildErrorResponse(reason string, isResponse bool, showAssessment bool, invalidURLs []string) interface{} {
+	assessment := p.buildAssessmentObject(isResponse, reason, showAssessment, invalidURLs)
 
 	responseBody := map[string]interface{}{
 		"code":    GuardrailAPIMExceptionCode,
@@ -283,10 +273,10 @@ func (p *URLGuardrailPolicy) buildErrorResponse(reason string, name string, isRe
 }
 
 // buildAssessmentObject builds the assessment object
-func (p *URLGuardrailPolicy) buildAssessmentObject(name string, isResponse bool, reason string, showAssessment bool, invalidURLs []string) map[string]interface{} {
+func (p *URLGuardrailPolicy) buildAssessmentObject(isResponse bool, reason string, showAssessment bool, invalidURLs []string) map[string]interface{} {
 	assessment := map[string]interface{}{
 		"action":               "GUARDRAIL_INTERVENED",
-		"interveningGuardrail": name,
+		"interveningGuardrail": "URLGuardrail",
 		"actionReason":         "Violation of url validity detected.",
 	}
 

@@ -39,12 +39,6 @@ func (p *PIIMaskingRegexPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// Validate validates the policy configuration (empty as requested)
-func (p *PIIMaskingRegexPolicy) Validate(params map[string]interface{}) error {
-	// Validation logic moved to OnRequest/OnResponse
-	return nil
-}
-
 // OnRequest masks PII in request body
 func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	// Extract request-specific parameters

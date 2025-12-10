@@ -44,15 +44,8 @@ func (p *AzureContentSafetyContentModerationPolicy) Mode() policy.ProcessingMode
 	}
 }
 
-// Validate validates the policy configuration (empty as requested)
-func (p *AzureContentSafetyContentModerationPolicy) Validate(params map[string]interface{}) error {
-	// Validation logic moved to OnRequest/OnResponse
-	return nil
-}
-
 // OnRequest validates request body content
 func (p *AzureContentSafetyContentModerationPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	name, _ := params["name"].(string)
 
 	var requestParams map[string]interface{}
 	if reqParams, ok := params["request"].(map[string]interface{}); ok {
@@ -63,16 +56,14 @@ func (p *AzureContentSafetyContentModerationPolicy) OnRequest(ctx *policy.Reques
 
 	// Validate parameters
 	if err := p.validateParams(requestParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), name, false, false, nil).(policy.RequestAction)
+		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), false, false, nil).(policy.RequestAction)
 	}
 
-	return p.validatePayload(ctx.Body.Content, requestParams, name, false).(policy.RequestAction)
+	return p.validatePayload(ctx.Body.Content, requestParams, false).(policy.RequestAction)
 }
 
 // OnResponse validates response body content
 func (p *AzureContentSafetyContentModerationPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	name, _ := params["name"].(string)
-
 	var responseParams map[string]interface{}
 	if respParams, ok := params["response"].(map[string]interface{}); ok {
 		responseParams = respParams
@@ -82,10 +73,10 @@ func (p *AzureContentSafetyContentModerationPolicy) OnResponse(ctx *policy.Respo
 
 	// Validate parameters
 	if err := p.validateParams(responseParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), name, true, false, nil).(policy.ResponseAction)
+		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), true, false, nil).(policy.ResponseAction)
 	}
 
-	return p.validatePayload(ctx.ResponseBody.Content, responseParams, name, true).(policy.ResponseAction)
+	return p.validatePayload(ctx.ResponseBody.Content, responseParams, true).(policy.ResponseAction)
 }
 
 // validateParams validates the actual policy parameters
@@ -166,7 +157,7 @@ func (p *AzureContentSafetyContentModerationPolicy) validateParams(params map[st
 }
 
 // validatePayload validates payload against Azure Content Safety
-func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []byte, params map[string]interface{}, name string, isResponse bool) interface{} {
+func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []byte, params map[string]interface{}, isResponse bool) interface{} {
 	jsonPath, _ := params["jsonPath"].(string)
 	passthroughOnError, _ := params["passthroughOnError"].(bool)
 	showAssessment, _ := params["showAssessment"].(bool)
@@ -182,7 +173,7 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 			}
 			return policy.UpstreamRequestModifications{}
 		}
-		return p.buildErrorResponse("azureContentSafetyEndpoint and azureContentSafetyKey are required", name, isResponse, showAssessment, nil)
+		return p.buildErrorResponse("azureContentSafetyEndpoint and azureContentSafetyKey are required", isResponse, showAssessment, nil)
 	}
 
 	// Extract category thresholds
@@ -213,7 +204,7 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 			}
 			return policy.UpstreamRequestModifications{}
 		}
-		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), name, isResponse, showAssessment, nil)
+		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), isResponse, showAssessment, nil)
 	}
 
 	// Clean and trim
@@ -229,7 +220,7 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 			}
 			return policy.UpstreamRequestModifications{}
 		}
-		return p.buildErrorResponse(fmt.Sprintf("error calling Azure Content Safety API: %v", err), name, isResponse, showAssessment, nil)
+		return p.buildErrorResponse(fmt.Sprintf("error calling Azure Content Safety API: %v", err), isResponse, showAssessment, nil)
 	}
 
 	// Check for violations
@@ -241,7 +232,7 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 
 		if threshold >= 0 && severity >= threshold {
 			// Violation detected
-			return p.buildErrorResponse("violation of Azure content safety content moderation detected", name, isResponse, showAssessment, categoriesAnalysis)
+			return p.buildErrorResponse("violation of Azure content safety content moderation detected", isResponse, showAssessment, categoriesAnalysis)
 		}
 	}
 
@@ -405,8 +396,8 @@ func (p *AzureContentSafetyContentModerationPolicy) makeHTTPRequest(method, url 
 }
 
 // buildErrorResponse builds an error response for both request and response phases
-func (p *AzureContentSafetyContentModerationPolicy) buildErrorResponse(reason string, name string, isResponse bool, showAssessment bool, categoriesAnalysis []map[string]interface{}) interface{} {
-	assessment := p.buildAssessmentObject(name, isResponse, reason, showAssessment, categoriesAnalysis)
+func (p *AzureContentSafetyContentModerationPolicy) buildErrorResponse(reason string, isResponse bool, showAssessment bool, categoriesAnalysis []map[string]interface{}) interface{} {
+	assessment := p.buildAssessmentObject(isResponse, reason, showAssessment, categoriesAnalysis)
 
 	responseBody := map[string]interface{}{
 		"code":    GuardrailAPIMExceptionCode,
@@ -437,10 +428,10 @@ func (p *AzureContentSafetyContentModerationPolicy) buildErrorResponse(reason st
 }
 
 // buildAssessmentObject builds the assessment object
-func (p *AzureContentSafetyContentModerationPolicy) buildAssessmentObject(name string, isResponse bool, reason string, showAssessment bool, categoriesAnalysis []map[string]interface{}) map[string]interface{} {
+func (p *AzureContentSafetyContentModerationPolicy) buildAssessmentObject(isResponse bool, reason string, showAssessment bool, categoriesAnalysis []map[string]interface{}) map[string]interface{} {
 	assessment := map[string]interface{}{
 		"action":               "GUARDRAIL_INTERVENED",
-		"interveningGuardrail": name,
+		"interveningGuardrail": "AzureContentSafetyContentModeration",
 		"actionReason":         "Violation of Azure content safety content moderation detected.",
 	}
 

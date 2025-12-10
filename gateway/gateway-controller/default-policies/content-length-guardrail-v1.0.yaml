@@ -7,14 +7,6 @@ description: |
   Supports separate configuration for request and response phases.
 
 parameters:
-  - name: name
-    type: string
-    required: true
-    description: Name of the guardrail policy for identification
-    validation:
-      minLength: 1
-      maxLength: 256
-
   - name: request
     type: object
     required: false

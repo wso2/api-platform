@@ -7,87 +7,67 @@ description: |
   Supports separate configuration for request and response phases.
 
 parameters:
-  - name: name
-    type: string
-    required: true
-    description: Name of the guardrail policy for identification
-    validation:
-      minLength: 1
-      maxLength: 256
+  type: object
+  properties:
+    request:
+      type: object
+      description: Configuration for request phase validation
+      properties:
+        jsonPath:
+          type: string
+          description: |
+            JSONPath expression to extract a specific value from JSON payload.
+            If empty, validates the entire payload as a string.
+            Examples: "$.message", "$.data.content", "$.items[0].text"
+          default: ""
+        onlyDNS:
+          type: boolean
+          description: |
+            If true, validates URLs only via DNS resolution (faster, less reliable).
+            If false (default), validates URLs via HTTP HEAD request (slower, more reliable).
+          default: false
+        timeout:
+          type: integer
+          description: |
+            Timeout in milliseconds for DNS lookup or HTTP HEAD request.
+            Default is 3000ms (3 seconds).
+          default: 3000
+        showAssessment:
+          type: boolean
+          description: |
+            If true, includes detailed assessment information including invalid URLs in error responses.
+            If false, returns minimal error information.
+          default: false
+    response:
+      type: object
+      description: Configuration for response phase validation
+      properties:
+        jsonPath:
+          type: string
+          description: |
+            JSONPath expression to extract a specific value from JSON payload.
+            If empty, validates the entire payload as a string.
+            Examples: "$.message", "$.data.content", "$.items[0].text"
+          default: ""
+        onlyDNS:
+          type: boolean
+          description: |
+            If true, validates URLs only via DNS resolution (faster, less reliable).
+            If false (default), validates URLs via HTTP HEAD request (slower, more reliable).
+          default: false
+        timeout:
+          type: integer
+          description: |
+            Timeout in milliseconds for DNS lookup or HTTP HEAD request.
+            Default is 3000ms (3 seconds).
+          default: 3000
+        showAssessment:
+          type: boolean
+          description: |
+            If true, includes detailed assessment information including invalid URLs in error responses.
+            If false, returns minimal error information.
+          default: false
 
-  - name: request
-    type: object
-    required: false
-    description: Configuration for request phase validation
-    properties:
-      - name: jsonPath
-        type: string
-        required: false
-        default: ""
-        description: |
-          JSONPath expression to extract a specific value from JSON payload.
-          If empty, validates the entire payload as a string.
-          Examples: "$.message", "$.data.content", "$.items[0].text"
-
-      - name: onlyDNS
-        type: boolean
-        required: false
-        default: false
-        description: |
-          If true, validates URLs only via DNS resolution (faster, less reliable).
-          If false (default), validates URLs via HTTP HEAD request (slower, more reliable).
-
-      - name: timeout
-        type: integer
-        required: false
-        default: 3000
-        description: |
-          Timeout in milliseconds for DNS lookup or HTTP HEAD request.
-          Default is 3000ms (3 seconds).
-
-      - name: showAssessment
-        type: boolean
-        required: false
-        default: false
-        description: |
-          If true, includes detailed assessment information including invalid URLs in error responses.
-          If false, returns minimal error information.
-
-  - name: response
-    type: object
-    required: false
-    description: Configuration for response phase validation
-    properties:
-      - name: jsonPath
-        type: string
-        required: false
-        default: ""
-        description: |
-          JSONPath expression to extract a specific value from JSON payload.
-          If empty, validates the entire payload as a string.
-          Examples: "$.message", "$.data.content", "$.items[0].text"
-
-      - name: onlyDNS
-        type: boolean
-        required: false
-        default: false
-        description: |
-          If true, validates URLs only via DNS resolution (faster, less reliable).
-          If false (default), validates URLs via HTTP HEAD request (slower, more reliable).
-
-      - name: timeout
-        type: integer
-        required: false
-        default: 3000
-        description: |
-          Timeout in milliseconds for DNS lookup or HTTP HEAD request.
-          Default is 3000ms (3 seconds).
-
-      - name: showAssessment
-        type: boolean
-        required: false
-        default: false
-        description: |
-          If true, includes detailed assessment information including invalid URLs in error responses.
-          If false, returns minimal error information.
-
+initParameters:
+  type: object
+  properties: {}

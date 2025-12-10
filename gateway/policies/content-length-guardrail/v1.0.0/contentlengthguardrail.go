@@ -36,16 +36,8 @@ func (p *ContentLengthGuardrailPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// Validate validates the policy configuration (empty as requested)
-func (p *ContentLengthGuardrailPolicy) Validate(params map[string]interface{}) error {
-	// Validation logic moved to OnRequest/OnResponse
-	return nil
-}
-
 // OnRequest validates request body content length
 func (p *ContentLengthGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	name, _ := params["name"].(string)
-
 	// Extract request-specific parameters
 	var requestParams map[string]interface{}
 	if reqParams, ok := params["request"].(map[string]interface{}); ok {
@@ -56,16 +48,14 @@ func (p *ContentLengthGuardrailPolicy) OnRequest(ctx *policy.RequestContext, par
 
 	// Validate parameters
 	if err := p.validateParams(requestParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), name, false, false, 0, 0).(policy.RequestAction)
+		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), false, false, 0, 0).(policy.RequestAction)
 	}
 
-	return p.validatePayload(ctx.Body.Content, requestParams, name, false).(policy.RequestAction)
+	return p.validatePayload(ctx.Body.Content, requestParams, false).(policy.RequestAction)
 }
 
 // OnResponse validates response body content length
 func (p *ContentLengthGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	name, _ := params["name"].(string)
-
 	// Extract response-specific parameters
 	var responseParams map[string]interface{}
 	if respParams, ok := params["response"].(map[string]interface{}); ok {
@@ -76,10 +66,10 @@ func (p *ContentLengthGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, p
 
 	// Validate parameters
 	if err := p.validateParams(responseParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), name, true, false, 0, 0).(policy.ResponseAction)
+		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), true, false, 0, 0).(policy.ResponseAction)
 	}
 
-	return p.validatePayloadResponse(ctx.ResponseBody.Content, responseParams, name, true).(policy.ResponseAction)
+	return p.validatePayloadResponse(ctx.ResponseBody.Content, responseParams, true).(policy.ResponseAction)
 }
 
 // validateParams validates the actual policy parameters
@@ -159,7 +149,7 @@ func (p *ContentLengthGuardrailPolicy) validateParams(params map[string]interfac
 }
 
 // validatePayload validates payload content length (request phase)
-func (p *ContentLengthGuardrailPolicy) validatePayload(payload []byte, params map[string]interface{}, name string, isResponse bool) interface{} {
+func (p *ContentLengthGuardrailPolicy) validatePayload(payload []byte, params map[string]interface{}, isResponse bool) interface{} {
 	jsonPath, _ := params["jsonPath"].(string)
 	invert, _ := params["invert"].(bool)
 	showAssessment, _ := params["showAssessment"].(bool)
@@ -184,17 +174,17 @@ func (p *ContentLengthGuardrailPolicy) validatePayload(payload []byte, params ma
 
 	// Validate range
 	if min > max || min < 0 || max <= 0 {
-		return p.buildErrorResponse("invalid content length range", name, isResponse, showAssessment, min, max)
+		return p.buildErrorResponse("invalid content length range", isResponse, showAssessment, min, max)
 	}
 
 	if payload == nil {
-		return p.buildErrorResponse("body is empty", name, isResponse, showAssessment, min, max)
+		return p.buildErrorResponse("body is empty", isResponse, showAssessment, min, max)
 	}
 
 	// Extract value using JSONPath
 	extractedValue, err := extractStringValueFromJSONPath(payload, jsonPath)
 	if err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), name, isResponse, showAssessment, min, max)
+		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), isResponse, showAssessment, min, max)
 	}
 
 	// Clean and trim
@@ -221,7 +211,7 @@ func (p *ContentLengthGuardrailPolicy) validatePayload(payload []byte, params ma
 		} else {
 			reason = fmt.Sprintf("content length %d bytes is outside the allowed range %d-%d bytes", byteCount, min, max)
 		}
-		return p.buildErrorResponse(reason, name, isResponse, showAssessment, min, max)
+		return p.buildErrorResponse(reason, isResponse, showAssessment, min, max)
 	}
 
 	if isResponse {
@@ -231,7 +221,7 @@ func (p *ContentLengthGuardrailPolicy) validatePayload(payload []byte, params ma
 }
 
 // validatePayloadResponse validates payload content length (response phase)
-func (p *ContentLengthGuardrailPolicy) validatePayloadResponse(payload []byte, params map[string]interface{}, name string, isResponse bool) interface{} {
+func (p *ContentLengthGuardrailPolicy) validatePayloadResponse(payload []byte, params map[string]interface{}, isResponse bool) interface{} {
 	jsonPath, _ := params["jsonPath"].(string)
 	invert, _ := params["invert"].(bool)
 	showAssessment, _ := params["showAssessment"].(bool)
@@ -256,17 +246,17 @@ func (p *ContentLengthGuardrailPolicy) validatePayloadResponse(payload []byte, p
 
 	// Validate range
 	if min > max || min < 0 || max <= 0 {
-		return p.buildErrorResponse("invalid content length range", name, isResponse, showAssessment, min, max)
+		return p.buildErrorResponse("invalid content length range", isResponse, showAssessment, min, max)
 	}
 
 	if payload == nil {
-		return p.buildErrorResponse("body is empty", name, isResponse, showAssessment, min, max)
+		return p.buildErrorResponse("body is empty", isResponse, showAssessment, min, max)
 	}
 
 	// Extract value using JSONPath
 	extractedValue, err := extractStringValueFromJSONPath(payload, jsonPath)
 	if err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), name, isResponse, showAssessment, min, max)
+		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), isResponse, showAssessment, min, max)
 	}
 
 	// Clean and trim
@@ -293,7 +283,7 @@ func (p *ContentLengthGuardrailPolicy) validatePayloadResponse(payload []byte, p
 		} else {
 			reason = fmt.Sprintf("content length %d bytes is outside the allowed range %d-%d bytes", byteCount, min, max)
 		}
-		return p.buildErrorResponse(reason, name, isResponse, showAssessment, min, max)
+		return p.buildErrorResponse(reason, isResponse, showAssessment, min, max)
 	}
 
 	if isResponse {
@@ -303,8 +293,8 @@ func (p *ContentLengthGuardrailPolicy) validatePayloadResponse(payload []byte, p
 }
 
 // buildErrorResponse builds an error response for both request and response phases
-func (p *ContentLengthGuardrailPolicy) buildErrorResponse(reason string, name string, isResponse bool, showAssessment bool, min, max int) interface{} {
-	assessment := p.buildAssessmentObject(name, isResponse, reason, showAssessment, min, max)
+func (p *ContentLengthGuardrailPolicy) buildErrorResponse(reason string, isResponse bool, showAssessment bool, min, max int) interface{} {
+	assessment := p.buildAssessmentObject(isResponse, reason, showAssessment, min, max)
 
 	responseBody := map[string]interface{}{
 		"code":    GuardrailAPIMExceptionCode,
@@ -335,10 +325,10 @@ func (p *ContentLengthGuardrailPolicy) buildErrorResponse(reason string, name st
 }
 
 // buildAssessmentObject builds the assessment object
-func (p *ContentLengthGuardrailPolicy) buildAssessmentObject(name string, isResponse bool, reason string, showAssessment bool, min, max int) map[string]interface{} {
+func (p *ContentLengthGuardrailPolicy) buildAssessmentObject(isResponse bool, reason string, showAssessment bool, min, max int) map[string]interface{} {
 	assessment := map[string]interface{}{
 		"action":               "GUARDRAIL_INTERVENED",
-		"interveningGuardrail": name,
+		"interveningGuardrail": "ContentLengthGuardrail",
 		"actionReason":         "Violation of applied content length constraints detected.",
 	}
 

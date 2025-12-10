@@ -7,195 +7,149 @@ description: |
   Supports separate configuration for request and response phases.
 
 parameters:
-  - name: name
-    type: string
-    required: true
-    description: Name of the guardrail policy for identification
-    validation:
-      minLength: 1
-      maxLength: 256
-
-  - name: request
-    type: object
-    required: false
-    description: Configuration for request phase validation
-    properties:
-      - name: azureContentSafetyEndpoint
-        type: string
-        required: true
-        description: Azure Content Safety API endpoint URL (without trailing slash)
-        validation:
+  type: object
+  properties:
+    request:
+      type: object
+      description: Configuration for request phase validation
+      properties:
+        azureContentSafetyEndpoint:
+          type: string
+          description: Azure Content Safety API endpoint URL (without trailing slash)
           minLength: 1
-
-      - name: azureContentSafetyKey
-        type: string
-        required: true
-        description: Azure Content Safety API subscription key
-        validation:
+        azureContentSafetyKey:
+          type: string
+          description: Azure Content Safety API subscription key
           minLength: 1
-
-      - name: hateCategory
-        type: integer
-        required: false
-        default: -1
-        description: |
-          Severity threshold for hate category (0-7).
-          -1 disables this category.
-          Content with severity >= threshold will be blocked.
-        validation:
+        hateCategory:
+          type: integer
+          description: |
+            Severity threshold for hate category (0-7).
+            -1 disables this category.
+            Content with severity >= threshold will be blocked.
           minimum: -1
           maximum: 7
-
-      - name: sexualCategory
-        type: integer
-        required: false
-        default: -1
-        description: |
-          Severity threshold for sexual category (0-7).
-          -1 disables this category.
-          Content with severity >= threshold will be blocked.
-        validation:
+          default: -1
+        sexualCategory:
+          type: integer
+          description: |
+            Severity threshold for sexual category (0-7).
+            -1 disables this category.
+            Content with severity >= threshold will be blocked.
           minimum: -1
           maximum: 7
-
-      - name: selfHarmCategory
-        type: integer
-        required: false
-        default: -1
-        description: |
-          Severity threshold for self-harm category (0-7).
-          -1 disables this category.
-          Content with severity >= threshold will be blocked.
-        validation:
+          default: -1
+        selfHarmCategory:
+          type: integer
+          description: |
+            Severity threshold for self-harm category (0-7).
+            -1 disables this category.
+            Content with severity >= threshold will be blocked.
           minimum: -1
           maximum: 7
-
-      - name: violenceCategory
-        type: integer
-        required: false
-        default: -1
-        description: |
-          Severity threshold for violence category (0-7).
-          -1 disables this category.
-          Content with severity >= threshold will be blocked.
-        validation:
+          default: -1
+        violenceCategory:
+          type: integer
+          description: |
+            Severity threshold for violence category (0-7).
+            -1 disables this category.
+            Content with severity >= threshold will be blocked.
           minimum: -1
           maximum: 7
-
-      - name: jsonPath
-        type: string
-        required: false
-        default: ""
-        description: |
-          JSONPath expression to extract a specific value from JSON payload.
-          If empty, validates the entire payload as a string.
-          Examples: "$.message", "$.data.content", "$.items[0].text"
-
-      - name: passthroughOnError
-        type: boolean
-        required: false
-        default: false
-        description: |
-          If true, allows requests to proceed if Azure Content Safety API call fails.
-          If false (default), blocks requests on API errors.
-
-      - name: showAssessment
-        type: boolean
-        required: false
-        default: false
-        description: |
-          If true, includes detailed assessment information in error responses.
-          If false, returns minimal error information.
-
-  - name: response
-    type: object
-    required: false
-    description: Configuration for response phase validation
-    properties:
-      - name: azureContentSafetyEndpoint
-        type: string
-        required: true
-        description: Azure Content Safety API endpoint URL (without trailing slash)
-        validation:
+          default: -1
+        jsonPath:
+          type: string
+          description: |
+            JSONPath expression to extract a specific value from JSON payload.
+            If empty, validates the entire payload as a string.
+            Examples: "$.message", "$.data.content", "$.items[0].text"
+          default: ""
+        passthroughOnError:
+          type: boolean
+          description: |
+            If true, allows requests to proceed if Azure Content Safety API call fails.
+            If false (default), blocks requests on API errors.
+          default: false
+        showAssessment:
+          type: boolean
+          description: |
+            If true, includes detailed assessment information in error responses.
+            If false, returns minimal error information.
+          default: false
+      required:
+      - azureContentSafetyEndpoint
+      - azureContentSafetyKey
+    response:
+      type: object
+      description: Configuration for response phase validation
+      properties:
+        azureContentSafetyEndpoint:
+          type: string
+          description: Azure Content Safety API endpoint URL (without trailing slash)
           minLength: 1
-
-      - name: azureContentSafetyKey
-        type: string
-        required: true
-        description: Azure Content Safety API subscription key
-        validation:
+        azureContentSafetyKey:
+          type: string
+          description: Azure Content Safety API subscription key
           minLength: 1
-
-      - name: hateCategory
-        type: integer
-        required: false
-        default: -1
-        description: |
-          Severity threshold for hate category (0-7).
-          -1 disables this category.
-          Content with severity >= threshold will be blocked.
-        validation:
+        hateCategory:
+          type: integer
+          description: |
+            Severity threshold for hate category (0-7).
+            -1 disables this category.
+            Content with severity >= threshold will be blocked.
           minimum: -1
           maximum: 7
-
-      - name: sexualCategory
-        type: integer
-        required: false
-        default: -1
-        description: |
-          Severity threshold for sexual category (0-7).
-          -1 disables this category.
-          Content with severity >= threshold will be blocked.
-        validation:
+          default: -1
+        sexualCategory:
+          type: integer
+          description: |
+            Severity threshold for sexual category (0-7).
+            -1 disables this category.
+            Content with severity >= threshold will be blocked.
           minimum: -1
           maximum: 7
-
-      - name: selfHarmCategory
-        type: integer
-        required: false
-        default: -1
-        description: |
-          Severity threshold for self-harm category (0-7).
-          -1 disables this category.
-          Content with severity >= threshold will be blocked.
-        validation:
+          default: -1
+        selfHarmCategory:
+          type: integer
+          description: |
+            Severity threshold for self-harm category (0-7).
+            -1 disables this category.
+            Content with severity >= threshold will be blocked.
           minimum: -1
           maximum: 7
-
-      - name: violenceCategory
-        type: integer
-        required: false
-        default: -1
-        description: |
-          Severity threshold for violence category (0-7).
-          -1 disables this category.
-          Content with severity >= threshold will be blocked.
-        validation:
+          default: -1
+        violenceCategory:
+          type: integer
+          description: |
+            Severity threshold for violence category (0-7).
+            -1 disables this category.
+            Content with severity >= threshold will be blocked.
           minimum: -1
           maximum: 7
+          default: -1
+        jsonPath:
+          type: string
+          description: |
+            JSONPath expression to extract a specific value from JSON payload.
+            If empty, validates the entire payload as a string.
+            Examples: "$.message", "$.data.content", "$.items[0].text"
+          default: ""
+        passthroughOnError:
+          type: boolean
+          description: |
+            If true, allows requests to proceed if Azure Content Safety API call fails.
+            If false (default), blocks requests on API errors.
+          default: false
+        showAssessment:
+          type: boolean
+          description: |
+            If true, includes detailed assessment information in error responses.
+            If false, returns minimal error information.
+          default: false
+      required:
+      - azureContentSafetyEndpoint
+      - azureContentSafetyKey
 
-      - name: jsonPath
-        type: string
-        required: false
-        default: ""
-        description: |
-          JSONPath expression to extract a specific value from JSON payload.
-          If empty, validates the entire payload as a string.
-          Examples: "$.message", "$.data.content", "$.items[0].text"
-
-      - name: passthroughOnError
-        type: boolean
-        required: false
-        default: false
-        description: |
-          If true, allows requests to proceed if Azure Content Safety API call fails.
-          If false (default), blocks requests on API errors.
-
-      - name: showAssessment
-        type: boolean
-        required: false
-        default: false
-        description: |
-          If true, includes detailed assessment information in error responses.
-          If false, returns minimal error information.
-
+initParameters:
+  type: object
+  properties: {}

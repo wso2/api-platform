@@ -36,16 +36,8 @@ func (p *JSONSchemaGuardrailPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// Validate validates the policy configuration (empty as requested)
-func (p *JSONSchemaGuardrailPolicy) Validate(params map[string]interface{}) error {
-	// Validation logic moved to OnRequest/OnResponse
-	return nil
-}
-
 // OnRequest validates request body against JSON schema
 func (p *JSONSchemaGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	name, _ := params["name"].(string)
-
 	var requestParams map[string]interface{}
 	if reqParams, ok := params["request"].(map[string]interface{}); ok {
 		requestParams = reqParams
@@ -55,16 +47,14 @@ func (p *JSONSchemaGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params
 
 	// Validate parameters
 	if err := p.validateParams(requestParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), name, false, false, nil).(policy.RequestAction)
+		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), false, false, nil).(policy.RequestAction)
 	}
 
-	return p.validatePayload(ctx.Body.Content, requestParams, name, false).(policy.RequestAction)
+	return p.validatePayload(ctx.Body.Content, requestParams, false).(policy.RequestAction)
 }
 
 // OnResponse validates response body against JSON schema
 func (p *JSONSchemaGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	name, _ := params["name"].(string)
-
 	var responseParams map[string]interface{}
 	if respParams, ok := params["response"].(map[string]interface{}); ok {
 		responseParams = respParams
@@ -74,10 +64,10 @@ func (p *JSONSchemaGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, para
 
 	// Validate parameters
 	if err := p.validateParams(responseParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), name, true, false, nil).(policy.ResponseAction)
+		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), true, false, nil).(policy.ResponseAction)
 	}
 
-	return p.validatePayload(ctx.ResponseBody.Content, responseParams, name, true).(policy.ResponseAction)
+	return p.validatePayload(ctx.ResponseBody.Content, responseParams, true).(policy.ResponseAction)
 }
 
 // validateParams validates the actual policy parameters
@@ -127,7 +117,7 @@ func (p *JSONSchemaGuardrailPolicy) validateParams(params map[string]interface{}
 }
 
 // validatePayload validates payload against JSON schema
-func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params map[string]interface{}, name string, isResponse bool) interface{} {
+func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params map[string]interface{}, isResponse bool) interface{} {
 	schemaRaw, _ := params["schema"].(string)
 	jsonPath, _ := params["jsonPath"].(string)
 	invert, _ := params["invert"].(bool)
@@ -135,14 +125,14 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params map[s
 
 	// Validate required parameters
 	if schemaRaw == "" {
-		return p.buildErrorResponse("schema parameter is required", name, isResponse, showAssessment, nil)
+		return p.buildErrorResponse("schema parameter is required", isResponse, showAssessment, nil)
 	}
 
 	// Parse schema
 	schemaLoader := gojsonschema.NewStringLoader(schemaRaw)
 
 	if payload == nil {
-		return p.buildErrorResponse("body is empty", name, isResponse, showAssessment, nil)
+		return p.buildErrorResponse("body is empty", isResponse, showAssessment, nil)
 	}
 
 	// Extract value using JSONPath if specified
@@ -150,7 +140,7 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params map[s
 	if jsonPath != "" {
 		extractedValue, err := extractValueFromJSONPathForSchema(payload, jsonPath)
 		if err != nil {
-			return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), name, isResponse, showAssessment, nil)
+			return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), isResponse, showAssessment, nil)
 		}
 		documentLoader = gojsonschema.NewBytesLoader(extractedValue)
 	} else {
@@ -160,7 +150,7 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params map[s
 	// Validate against schema
 	result, err := gojsonschema.Validate(schemaLoader, documentLoader)
 	if err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("error validating schema: %v", err), name, isResponse, showAssessment, nil)
+		return p.buildErrorResponse(fmt.Sprintf("error validating schema: %v", err), isResponse, showAssessment, nil)
 	}
 
 	// Apply inversion logic
@@ -178,7 +168,7 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params map[s
 		} else {
 			reason = "JSON schema validation failed"
 		}
-		return p.buildErrorResponse(reason, name, isResponse, showAssessment, result.Errors())
+		return p.buildErrorResponse(reason, isResponse, showAssessment, result.Errors())
 	}
 
 	if isResponse {
@@ -209,8 +199,8 @@ func extractValueFromJSONPathForSchema(payload []byte, jsonPath string) ([]byte,
 }
 
 // buildErrorResponse builds an error response for both request and response phases
-func (p *JSONSchemaGuardrailPolicy) buildErrorResponse(reason string, name string, isResponse bool, showAssessment bool, errors []gojsonschema.ResultError) interface{} {
-	assessment := p.buildAssessmentObject(name, isResponse, reason, showAssessment, errors)
+func (p *JSONSchemaGuardrailPolicy) buildErrorResponse(reason string, isResponse bool, showAssessment bool, errors []gojsonschema.ResultError) interface{} {
+	assessment := p.buildAssessmentObject(isResponse, reason, showAssessment, errors)
 
 	responseBody := map[string]interface{}{
 		"code":    GuardrailAPIMExceptionCode,
@@ -241,10 +231,10 @@ func (p *JSONSchemaGuardrailPolicy) buildErrorResponse(reason string, name strin
 }
 
 // buildAssessmentObject builds the assessment object
-func (p *JSONSchemaGuardrailPolicy) buildAssessmentObject(name string, isResponse bool, reason string, showAssessment bool, errors []gojsonschema.ResultError) map[string]interface{} {
+func (p *JSONSchemaGuardrailPolicy) buildAssessmentObject(isResponse bool, reason string, showAssessment bool, errors []gojsonschema.ResultError) map[string]interface{} {
 	assessment := map[string]interface{}{
 		"action":               "GUARDRAIL_INTERVENED",
-		"interveningGuardrail": name,
+		"interveningGuardrail": "JSONSchemaGuardrail",
 		"actionReason":         "Violation of JSON schema validation detected.",
 	}
 

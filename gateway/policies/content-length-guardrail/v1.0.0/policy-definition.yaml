@@ -7,99 +7,77 @@ description: |
   Supports separate configuration for request and response phases.
 
 parameters:
-  - name: name
-    type: string
-    required: true
-    description: Name of the guardrail policy for identification
-    validation:
-      minLength: 1
-      maxLength: 256
-
-  - name: request
-    type: object
-    required: false
-    description: Configuration for request phase validation
-    properties:
-      - name: min
-        type: integer
-        required: true
-        description: Minimum allowed byte length (inclusive)
-        validation:
+  type: object
+  properties:
+    request:
+      type: object
+      description: Configuration for request phase validation
+      properties:
+        min:
+          type: integer
+          description: Minimum allowed byte length (inclusive)
           minimum: 0
-
-      - name: max
-        type: integer
-        required: true
-        description: Maximum allowed byte length (inclusive)
-        validation:
+        max:
+          type: integer
+          description: Maximum allowed byte length (inclusive)
           minimum: 1
-
-      - name: jsonPath
-        type: string
-        required: false
-        default: ""
-        description: |
-          JSONPath expression to extract a specific value from JSON payload.
-          If empty, validates the entire payload as a string.
-          Examples: "$.message", "$.data.content", "$.items[0].text"
-
-      - name: invert
-        type: boolean
-        required: false
-        default: false
-        description: |
-          If true, validation passes when content length is NOT within the min-max range (inverted logic).
-          If false (default), validation passes when content length is within the min-max range.
-
-      - name: showAssessment
-        type: boolean
-        required: false
-        default: false
-        description: |
-          If true, includes detailed assessment information in error responses.
-          If false, returns minimal error information.
-
-  - name: response
-    type: object
-    required: false
-    description: Configuration for response phase validation
-    properties:
-      - name: min
-        type: integer
-        required: true
-        description: Minimum allowed byte length (inclusive)
-        validation:
+        jsonPath:
+          type: string
+          description: |
+            JSONPath expression to extract a specific value from JSON payload.
+            If empty, validates the entire payload as a string.
+            Examples: "$.message", "$.data.content", "$.items[0].text"
+          default: ""
+        invert:
+          type: boolean
+          description: |
+            If true, validation passes when content length is NOT within the min-max range (inverted logic).
+            If false (default), validation passes when content length is within the min-max range.
+          default: false
+        showAssessment:
+          type: boolean
+          description: |
+            If true, includes detailed assessment information in error responses.
+            If false, returns minimal error information.
+          default: false
+      required:
+      - min
+      - max
+    response:
+      type: object
+      description: Configuration for response phase validation
+      properties:
+        min:
+          type: integer
+          description: Minimum allowed byte length (inclusive)
           minimum: 0
-
-      - name: max
-        type: integer
-        required: true
-        description: Maximum allowed byte length (inclusive)
-        validation:
+        max:
+          type: integer
+          description: Maximum allowed byte length (inclusive)
           minimum: 1
+        jsonPath:
+          type: string
+          description: |
+            JSONPath expression to extract a specific value from JSON payload.
+            If empty, validates the entire payload as a string.
+            Examples: "$.message", "$.data.content", "$.items[0].text"
+          default: ""
+        invert:
+          type: boolean
+          description: |
+            If true, validation passes when content length is NOT within the min-max range (inverted logic).
+            If false (default), validation passes when content length is within the min-max range.
+          default: false
+        showAssessment:
+          type: boolean
+          description: |
+            If true, includes detailed assessment information in error responses.
+            If false, returns minimal error information.
+          default: false
+      required:
+      - min
+      - max
 
-      - name: jsonPath
-        type: string
-        required: false
-        default: ""
-        description: |
-          JSONPath expression to extract a specific value from JSON payload.
-          If empty, validates the entire payload as a string.
-          Examples: "$.message", "$.data.content", "$.items[0].text"
-
-      - name: invert
-        type: boolean
-        required: false
-        default: false
-        description: |
-          If true, validation passes when content length is NOT within the min-max range (inverted logic).
-          If false (default), validation passes when content length is within the min-max range.
-
-      - name: showAssessment
-        type: boolean
-        required: false
-        default: false
-        description: |
-          If true, includes detailed assessment information in error responses.
-          If false, returns minimal error information.
-
+initParameters:
+  type: object
+  properties: {}

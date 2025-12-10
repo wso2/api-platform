@@ -32,16 +32,8 @@ func (p *RegexGuardrailPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// Validate validates the policy configuration (empty as requested)
-func (p *RegexGuardrailPolicy) Validate(params map[string]interface{}) error {
-	// Validation logic moved to OnRequest/OnResponse
-	return nil
-}
-
 // OnRequest validates request body against regex pattern
 func (p *RegexGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	name, _ := params["name"].(string)
-
 	// Extract request-specific parameters
 	var requestParams map[string]interface{}
 	if reqParams, ok := params["request"].(map[string]interface{}); ok {
@@ -52,7 +44,7 @@ func (p *RegexGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[
 
 	// Validate parameters
 	if err := p.validateParams(requestParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), name, false, false).(policy.RequestAction)
+		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), false, false).(policy.RequestAction)
 	}
 
 	regexPattern, _ := requestParams["regex"].(string)
@@ -63,18 +55,18 @@ func (p *RegexGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[
 	// Compile regex pattern
 	compiledRegex, err := regexp.Compile(regexPattern)
 	if err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("invalid regex pattern: %v", err), name, false, showAssessment).(policy.RequestAction)
+		return p.buildErrorResponse(fmt.Sprintf("invalid regex pattern: %v", err), false, showAssessment).(policy.RequestAction)
 	}
 
 	// Extract value from payload using JSONPath
 	payload := ctx.Body.Content
 	if payload == nil {
-		return p.buildErrorResponse("request body is empty", name, false, showAssessment).(policy.RequestAction)
+		return p.buildErrorResponse("request body is empty", false, showAssessment).(policy.RequestAction)
 	}
 
 	extractedValue, err := extractStringValueFromJSONPath(payload, jsonPath)
 	if err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), name, false, showAssessment).(policy.RequestAction)
+		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), false, showAssessment).(policy.RequestAction)
 	}
 
 	// Perform regex matching
@@ -89,7 +81,7 @@ func (p *RegexGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[
 	}
 
 	if !validationPassed {
-		return p.buildErrorResponse("regex validation failed", name, false, showAssessment).(policy.RequestAction)
+		return p.buildErrorResponse("regex validation failed", false, showAssessment).(policy.RequestAction)
 	}
 
 	// Validation passed, continue to upstream
@@ -98,8 +90,6 @@ func (p *RegexGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[
 
 // OnResponse validates response body against regex pattern
 func (p *RegexGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	name, _ := params["name"].(string)
-
 	// Extract response-specific parameters
 	var responseParams map[string]interface{}
 	if respParams, ok := params["response"].(map[string]interface{}); ok {
@@ -110,7 +100,7 @@ func (p *RegexGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params ma
 
 	// Validate parameters
 	if err := p.validateParams(responseParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), name, true, false).(policy.ResponseAction)
+		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), true, false).(policy.ResponseAction)
 	}
 
 	regexPattern, _ := responseParams["regex"].(string)
@@ -121,18 +111,18 @@ func (p *RegexGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params ma
 	// Compile regex pattern
 	compiledRegex, err := regexp.Compile(regexPattern)
 	if err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("invalid regex pattern: %v", err), name, true, showAssessment).(policy.ResponseAction)
+		return p.buildErrorResponse(fmt.Sprintf("invalid regex pattern: %v", err), true, showAssessment).(policy.ResponseAction)
 	}
 
 	// Extract value from payload using JSONPath
 	payload := ctx.ResponseBody.Content
 	if payload == nil {
-		return p.buildErrorResponse("response body is empty", name, true, showAssessment).(policy.ResponseAction)
+		return p.buildErrorResponse("response body is empty", true, showAssessment).(policy.ResponseAction)
 	}
 
 	extractedValue, err := extractStringValueFromJSONPath(payload, jsonPath)
 	if err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), name, true, showAssessment).(policy.ResponseAction)
+		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), true, showAssessment).(policy.ResponseAction)
 	}
 
 	// Perform regex matching
@@ -147,7 +137,7 @@ func (p *RegexGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params ma
 	}
 
 	if !validationPassed {
-		return p.buildErrorResponse("regex validation failed", name, true, showAssessment).(policy.ResponseAction)
+		return p.buildErrorResponse("regex validation failed", true, showAssessment).(policy.ResponseAction)
 	}
 
 	// Validation passed, continue
@@ -155,8 +145,8 @@ func (p *RegexGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params ma
 }
 
 // buildErrorResponse builds an error response for both request and response phases
-func (p *RegexGuardrailPolicy) buildErrorResponse(reason string, name string, isResponse bool, showAssessment bool) interface{} {
-	assessment := p.buildAssessmentObject(name, isResponse, reason, showAssessment)
+func (p *RegexGuardrailPolicy) buildErrorResponse(reason string, isResponse bool, showAssessment bool) interface{} {
+	assessment := p.buildAssessmentObject(isResponse, reason, showAssessment)
 
 	responseBody := map[string]interface{}{
 		"code":    GuardrailAPIMExceptionCode,
@@ -187,10 +177,10 @@ func (p *RegexGuardrailPolicy) buildErrorResponse(reason string, name string, is
 }
 
 // buildAssessmentObject builds the assessment object
-func (p *RegexGuardrailPolicy) buildAssessmentObject(name string, isResponse bool, reason string, showAssessment bool) map[string]interface{} {
+func (p *RegexGuardrailPolicy) buildAssessmentObject(isResponse bool, reason string, showAssessment bool) map[string]interface{} {
 	assessment := map[string]interface{}{
 		"action":               "GUARDRAIL_INTERVENED",
-		"interveningGuardrail": name,
+		"interveningGuardrail": "RegexGuardrail",
 		"actionReason":         reason,
 	}
 
