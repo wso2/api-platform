@@ -124,14 +124,14 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	if isUpdate {
 		params.Logger.Info("LLM provider configuration updated",
 			zap.String("api_id", apiID),
-			zap.String("name", apiConfig.Spec.Name),
-			zap.String("version", apiConfig.Spec.Version),
+			zap.String("name", storedCfg.GetName()),
+			zap.String("version", storedCfg.GetVersion()),
 			zap.String("correlation_id", params.CorrelationID))
 	} else {
 		params.Logger.Info("LLM provider configuration created",
 			zap.String("api_id", apiID),
-			zap.String("name", apiConfig.Spec.Name),
-			zap.String("version", apiConfig.Spec.Version),
+			zap.String("name", storedCfg.GetName()),
+			zap.String("version", storedCfg.GetVersion()),
 			zap.String("correlation_id", params.CorrelationID))
 	}
 
@@ -157,8 +157,8 @@ func (s *LLMDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 			if storage.IsConflictError(err) {
 				logger.Info("LLM provider config exists in DB; updating",
 					zap.String("id", storedCfg.ID),
-					zap.String("name", storedCfg.Configuration.Spec.Name),
-					zap.String("version", storedCfg.Configuration.Spec.Version))
+					zap.String("name", storedCfg.GetName()),
+					zap.String("version", storedCfg.GetVersion()))
 				return s.updateExistingConfig(storedCfg)
 			}
 			return false, fmt.Errorf("failed to save config to database: %w", err)
@@ -171,8 +171,8 @@ func (s *LLMDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		if storage.IsConflictError(err) {
 			logger.Info("LLM provider config exists in memory; updating",
 				zap.String("id", storedCfg.ID),
-				zap.String("name", storedCfg.Configuration.Spec.Name),
-				zap.String("version", storedCfg.Configuration.Spec.Version))
+				zap.String("name", storedCfg.GetName()),
+				zap.String("version", storedCfg.GetVersion()))
 			return s.updateExistingConfig(storedCfg)
 		}
 		return false, fmt.Errorf("failed to add config to memory store: %w", err)

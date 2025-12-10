@@ -900,7 +900,7 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 
 	log.Info("LLM provider created successfully",
 		zap.String("id", stored.ID),
-		zap.String("name", stored.Configuration.Spec.Name))
+		zap.String("name", stored.GetName()))
 
 	id, _ := uuidToOpenAPIUUID(stored.ID)
 	c.JSON(http.StatusCreated, api.LLMProviderCreateResponse{
