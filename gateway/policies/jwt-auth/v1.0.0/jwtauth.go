@@ -192,6 +192,7 @@ func (p *JwtAuthPolicy) OnRequest(ctx *policy.RequestContext, params map[string]
 								// Configure TLS to skip verification
 								remoteJWKS.tlsConfig = &tls.Config{
 									InsecureSkipVerify: true,
+									MinVersion:         tls.VersionTLS12,
 								}
 							}
 							jwksConfig.Remote = remoteJWKS
@@ -886,6 +887,7 @@ func loadTLSConfig(certPath string) (*tls.Config, error) {
 
 	return &tls.Config{
 		RootCAs: caCertPool,
+		MinVersion:         tls.VersionTLS12,
 	}, nil
 }
 
