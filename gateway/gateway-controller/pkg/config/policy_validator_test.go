@@ -48,7 +48,7 @@ func TestPolicyValidator_ValidatePolicies_Success(t *testing.T) {
 	validator := NewPolicyValidator(policyDefs)
 
 	specUnion := api.APIConfiguration_Spec{}
-	specUnion.FromAPIConfigData(api.APIConfigData{
+	if err := specUnion.FromAPIConfigData(api.APIConfigData{
 		Name:    "Test API",
 		Version: "v1.0",
 		Context: "/test",
@@ -71,7 +71,9 @@ func TestPolicyValidator_ValidatePolicies_Success(t *testing.T) {
 				Path:   "/resource",
 			},
 		},
-	})
+	}); err != nil {
+		t.Fatalf("Failed to create API config data: %v", err)
+	}
 	// Create API config with valid policy
 	apiConfig := &api.APIConfiguration{
 		Version: "api-platform.wso2.com/v1",

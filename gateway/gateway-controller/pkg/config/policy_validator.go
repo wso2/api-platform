@@ -42,7 +42,7 @@ func NewPolicyValidator(policyDefinitions map[string]api.PolicyDefinition) *Poli
 func (pv *PolicyValidator) ValidatePolicies(apiConfig *api.APIConfiguration) []ValidationError {
 	var errors []ValidationError
 	// TODO: Extend to other kinds if they support policies
-	if apiConfig.Kind == "http/rest" {
+	if apiConfig.Kind == api.APIConfigurationKindHttprest {
 		apiData, err := apiConfig.Spec.AsAPIConfigData()
 		if err != nil {
 			errors = append(errors, ValidationError{

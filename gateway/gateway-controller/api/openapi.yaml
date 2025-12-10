@@ -856,8 +856,6 @@ components:
             mapping:
               http/rest: '#/components/schemas/APIConfigData'
               async/websub: '#/components/schemas/WebhookAPIData'
-              async/websocket: '#/components/schemas/WebhookAPIData'
-              async/sse: '#/components/schemas/WebhookAPIData'
 
     APIConfigData:
       type: object
@@ -1036,8 +1034,6 @@ components:
           example: async/websub
           enum:
             - async/websub
-            # - async/websocket
-            # - async/sse
         name:
           type: string
           description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
