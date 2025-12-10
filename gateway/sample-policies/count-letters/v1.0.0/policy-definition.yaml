@@ -37,3 +37,4 @@ parameters:
         - json
         - text
 
+initParameters: []
