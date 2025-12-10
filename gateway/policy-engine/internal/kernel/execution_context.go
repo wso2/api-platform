@@ -406,8 +406,5 @@ func (ec *PolicyExecutionContext) buildResponseContext(headers *extprocv3.HttpHe
 			Present:     false,
 		}
 	}
-
-	// Assign the shared context
-	ctx.SharedContext = ec.requestContext.SharedContext
 	ec.responseContext = ctx
 }

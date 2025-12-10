@@ -230,7 +230,6 @@ func (h *ResourceHandler) buildPolicyChain(config *policyenginev1.PolicyChain) (
 	chain := &registry.PolicyChain{
 		Policies:             policyList,
 		PolicySpecs:          policySpecs,
-		Metadata:             make(map[string]interface{}),
 		RequiresRequestBody:  requiresRequestBody,
 		RequiresResponseBody: requiresResponseBody,
 	}
