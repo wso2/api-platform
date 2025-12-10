@@ -24,7 +24,7 @@ GATEWAY_VERSION := $(shell cat gateway/VERSION 2>/dev/null || echo "0.0.1-SNAPSH
 PLATFORM_API_VERSION := $(shell cat platform-api/VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 
 # Docker registry configuration
-DOCKER_REGISTRY ?= ghcr.io/renuka-fernando/api-platform
+DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 
 # Component names
 COMPONENT ?=
@@ -79,6 +79,7 @@ version-set: ## Set specific version for a component
 		echo " Set root version to $(VERSION_ARG)"; \
 	elif [ "$(COMPONENT)" = "gateway" ]; then \
 		echo "$(VERSION_ARG)" > gateway/VERSION; \
+		$(MAKE) update-images COMPONENT=gateway VERSION_ARG=$(VERSION_ARG) >/dev/null; \
 		echo " Set gateway version to $(VERSION_ARG)"; \
 	elif [ "$(COMPONENT)" = "platform-api" ]; then \
 		echo "$(VERSION_ARG)" > platform-api/VERSION; \

@@ -21,7 +21,6 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 	chain := &registry.PolicyChain{
 		Policies:             make([]policy.Policy, 0),
 		PolicySpecs:          make([]policy.PolicySpec, 0),
-		Metadata:             make(map[string]interface{}),
 		RequiresRequestBody:  false,
 		RequiresResponseBody: false,
 	}

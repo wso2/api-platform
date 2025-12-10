@@ -62,6 +62,14 @@ func (k *Kernel) UnregisterRoute(metadataKey string) {
 	delete(k.Routes, metadataKey)
 }
 
+// ApplyWholeRoutes replaces all existing route mappings with the provided set
+func (k *Kernel) ApplyWholeRoutes(newRoutes map[string]*registry.PolicyChain) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+
+	k.Routes = newRoutes
+}
+
 // DumpRoutes returns a copy of all route mappings for debugging
 // Returns a map of route key -> policy chain
 func (k *Kernel) DumpRoutes() map[string]*registry.PolicyChain {

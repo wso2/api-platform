@@ -22,7 +22,7 @@
 VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 
 # Docker image configuration
-DOCKER_REGISTRY ?= ghcr.io/renuka-fernando/api-platform
+DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-router
 
 .PHONY: help build push clean build-and-push-multiarch

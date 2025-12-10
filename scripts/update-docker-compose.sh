@@ -22,7 +22,7 @@
 
 set -e
 
-DOCKER_REGISTRY=${DOCKER_REGISTRY:-ghcr.io/renuka-fernando/api-platform}
+DOCKER_REGISTRY=${DOCKER_REGISTRY:-ghcr.io/wso2/api-platform}
 
 COMPONENT=$1
 VERSION=$2

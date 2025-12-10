@@ -7,6 +7,11 @@ type Policy interface {
 	// Used by the kernel to optimize execution (e.g., skip body buffering if not needed)
 	Mode() ProcessingMode
 
+	// // OnSetup initializes the policy with configuration parameters
+	// // Called once by the policy engine during policy instantiation
+	// // Returns error if configuration is invalid
+	// OnSetup(params map[string]interface{}) error
+
 	// OnRequest executes the policy during request phase
 	// Called with request context including headers and body (if body mode is BUFFER)
 	// Returns RequestAction with modifications or immediate response
@@ -18,6 +23,11 @@ type Policy interface {
 	// Returns ResponseAction with modifications
 	// Returns nil if policy has no action (pass-through)
 	OnResponse(ctx *ResponseContext, params map[string]interface{}) ResponseAction
+
+	// // OnDestroy performs cleanup when the policy engine is shutting down
+	// // Called once during graceful shutdown to release resources
+	// // Policies should close connections, release locks, and cleanup state
+	// OnDestroy()
 }
 
 // ProcessingMode declares a policy's processing requirements for each phase

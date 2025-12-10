@@ -153,7 +153,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 	*execCtx = newPolicyExecutionContext(s, requestID, metadataKey, chain)
 
 	// Build request context from Envoy headers
-	(*execCtx).requestContext = (*execCtx).buildRequestContext(req.GetRequestHeaders())
+	(*execCtx).buildRequestContext(req.GetRequestHeaders())
 }
 
 // skipAllProcessing returns a response that skips all processing phases

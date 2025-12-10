@@ -14,15 +14,15 @@ import (
 	"github.com/policy-engine/policy-engine/internal/kernel"
 	"github.com/policy-engine/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
-	"github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
+	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 )
 
 // StoredPolicyConfig represents stored policy configuration from gateway-controller
 // Uses SDK types for routes, adds gateway-specific metadata wrapper
 type StoredPolicyConfig struct {
-	ID            string                     `json:"id"`
+	ID            string                       `json:"id"`
 	Configuration policyenginev1.Configuration `json:"configuration"`
-	Version       int64                      `json:"version"`
+	Version       int64                        `json:"version"`
 }
 
 // ResourceHandler handles xDS resource updates
@@ -121,23 +121,7 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 
 	// Apply changes atomically
 	// This replaces ALL routes with the new set from xDS (State of the World)
-	// Since Kernel.Routes is unexported and we need atomic updates,
-	// we'll unregister all routes and register new ones
-
-	// Get current routes to unregister them
-	currentRoutes := h.getAllRouteKeys()
-	for _, routeKey := range currentRoutes {
-		h.kernel.UnregisterRoute(routeKey)
-	}
-
-	// Register new routes
-	for routeKey, chain := range chains {
-		h.kernel.RegisterRoute(routeKey, chain)
-		slog.InfoContext(ctx, "Applied policy chain for route",
-			"route", routeKey,
-			"num_policies", len(chain.Policies),
-			"version", version)
-	}
+	h.kernel.ApplyWholeRoutes(chains)
 
 	slog.InfoContext(ctx, "Policy chain update completed successfully",
 		"version", version,
@@ -246,7 +230,6 @@ func (h *ResourceHandler) buildPolicyChain(config *policyenginev1.PolicyChain) (
 	chain := &registry.PolicyChain{
 		Policies:             policyList,
 		PolicySpecs:          policySpecs,
-		Metadata:             make(map[string]interface{}),
 		RequiresRequestBody:  requiresRequestBody,
 		RequiresResponseBody: requiresResponseBody,
 	}

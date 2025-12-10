@@ -151,7 +151,6 @@ func (cl *ConfigLoader) buildPolicyChain(config *policyenginev1.PolicyChain) (*r
 	chain := &registry.PolicyChain{
 		Policies:             policyList,
 		PolicySpecs:          policySpecs,
-		Metadata:             make(map[string]interface{}),
 		RequiresRequestBody:  requiresRequestBody,
 		RequiresResponseBody: requiresResponseBody,
 	}

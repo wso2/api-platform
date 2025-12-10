@@ -12,11 +12,6 @@ type PolicyChain struct {
 	// Policy specifications (aligned with Policies)
 	PolicySpecs []policy.PolicySpec
 
-	// Shared metadata map for inter-policy communication
-	// Initialized fresh for each request, persists through response phase
-	// Key: string, Value: any (policy-specific data)
-	Metadata map[string]interface{}
-
 	// Computed flag: true if any policy requires request body access
 	// Determines whether ext_proc uses SKIP or BUFFERED mode for request body
 	RequiresRequestBody bool
