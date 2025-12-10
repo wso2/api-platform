@@ -112,7 +112,7 @@ func (c *StoredConfig) GetContext() string {
 }
 
 func (c *StoredConfig) GetPolicies() *[]api.Policy {
-	if c.Configuration.Kind == "http/rest" {
+	if c.Configuration.Kind == api.APIConfigurationKindHttprest {
 		httpData, err := c.Configuration.Spec.AsAPIConfigData()
 		if err != nil {
 			return nil

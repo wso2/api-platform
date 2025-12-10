@@ -91,7 +91,9 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) *api
 	}
 
 	var specUnion api.APIConfiguration_Spec
-	_ = specUnion.FromAPIConfigData(apiData)
+	if err := specUnion.FromAPIConfigData(apiData); err != nil {
+		return nil
+	}
 	output.Spec = specUnion
 	return output
 }

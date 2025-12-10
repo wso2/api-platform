@@ -1040,6 +1040,16 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, name string, version string) 
 	var apiConfig api.APIConfiguration
 	transformer := &utils.MCPTransformer{}
 	transformedAPIConfig := transformer.Transform(&mcpConfig, &apiConfig)
+	if transformedAPIConfig == nil {
+		log.Error("Failed to transform MCP configuration to API configuration",
+			zap.String("name", name),
+			zap.String("version", version))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to transform MCP configuration",
+		})
+		return
+	}
 	apiConfig = *transformedAPIConfig
 
 	// Update stored configuration
