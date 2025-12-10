@@ -126,7 +126,7 @@ func NewClient(
 		snapshotManager:   snapshotManager,
 		parser:            config.NewParser(),
 		validator:         validator,
-		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager, validator),
+		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig),
 		state: &ConnectionState{
 			Current:        Disconnected,
 			Conn:           nil,

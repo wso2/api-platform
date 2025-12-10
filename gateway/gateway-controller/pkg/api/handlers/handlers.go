@@ -76,7 +76,7 @@ func NewAPIServer(
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
 ) *APIServer {
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig)
 	server := &APIServer{
 		store:                store,
 		db:                   db,
@@ -390,7 +390,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 				log.Info("Starting topic registration", zap.Int("total_topics", len(list)), zap.String("api_id", existing.ID))
 				//fmt.Println("Topics Registering Started")
 				for _, topic := range list {
-					if err := s.deploymentService.RegisterTopicWithHub(s.httpClient, topic, s.routerConfig.GatewayHost, log); err != nil {
+					if err := s.deploymentService.RegisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
 						log.Error("Failed to register topic with WebSubHub",
 							zap.Error(err),
 							zap.String("topic", topic),
@@ -411,7 +411,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 				defer wg2.Done()
 				log.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", existing.ID))
 				for _, topic := range list {
-					if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, s.routerConfig.GatewayHost, log); err != nil {
+					if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
 						log.Error("Failed to deregister topic from WebSubHub",
 							zap.Error(err),
 							zap.String("topic", topic),
@@ -565,7 +565,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 				defer wg2.Done()
 				log.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", cfg.ID))
 				for _, topic := range list {
-					if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, s.routerConfig.GatewayHost, log); err != nil {
+					if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
 						log.Error("Failed to deregister topic from WebSubHub",
 							zap.Error(err),
 							zap.String("topic", topic),

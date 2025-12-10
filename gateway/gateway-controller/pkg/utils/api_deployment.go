@@ -69,6 +69,7 @@ func NewAPIDeploymentService(
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
 	validator config.Validator,
+	routerConfig *config.RouterConfig,
 ) *APIDeploymentService {
 	return &APIDeploymentService{
 		store:           store,
@@ -77,6 +78,7 @@ func NewAPIDeploymentService(
 		parser:          config.NewParser(),
 		validator:       validator,
 		httpClient:      &http.Client{Timeout: 10 * time.Second},
+		routerConfig:    routerConfig,
 	}
 }
 
@@ -169,42 +171,53 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			go func(list []string) {
 				defer wg2.Done()
 				params.Logger.Info("Starting topic registration", zap.Int("total_topics", len(list)), zap.String("api_id", apiID))
+				var childWg sync.WaitGroup
 				for _, topic := range list {
-					if err := s.RegisterTopicWithHub(s.httpClient, topic, s.routerConfig.GatewayHost, params.Logger); err != nil {
-						params.Logger.Error("Failed to register topic with WebSubHub",
-							zap.Error(err),
-							zap.String("topic", topic),
-							zap.String("api_id", apiID))
-						atomic.AddInt32(&regErrs, 1)
-						return
-					} else {
-						params.Logger.Info("Successfully registered topic with WebSubHub",
-							zap.String("topic", topic),
-							zap.String("api_id", apiID))
-					}
+					childWg.Add(1)
+					go func(t string) {
+						defer childWg.Done()
+						if err := s.RegisterTopicWithHub(s.httpClient, t, "localhost", 8083, params.Logger); err != nil {
+							params.Logger.Error("Failed to register topic with WebSubHub",
+								zap.Error(err),
+								zap.String("topic", t),
+								zap.String("api_id", apiID))
+							atomic.AddInt32(&regErrs, 1)
+							return
+						} else {
+							params.Logger.Info("Successfully registered topic with WebSubHub",
+								zap.String("topic", t),
+								zap.String("api_id", apiID))
+						}
+					}(topic)
 				}
-
+				childWg.Wait()
 			}(topicsToRegister)
 		}
 
 		if len(topicsToUnregister) > 0 {
 			go func(list []string) {
 				defer wg2.Done()
+				var childWg sync.WaitGroup
 				params.Logger.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", apiID))
 				for _, topic := range list {
-					if err := s.UnregisterTopicWithHub(s.httpClient, topic, s.routerConfig.GatewayHost, params.Logger); err != nil {
-						params.Logger.Error("Failed to deregister topic from WebSubHub",
-							zap.Error(err),
-							zap.String("topic", topic),
-							zap.String("api_id", apiID))
-						atomic.AddInt32(&deregErrs, 1)
-						return
-					} else {
-						params.Logger.Info("Successfully deregistered topic from WebSubHub",
-							zap.String("topic", topic),
-							zap.String("api_id", apiID))
-					}
+					childWg.Add(1)
+					go func(t string) {
+						defer childWg.Done()
+						if err := s.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, params.Logger); err != nil {
+							params.Logger.Error("Failed to deregister topic from WebSubHub",
+								zap.Error(err),
+								zap.String("topic", topic),
+								zap.String("api_id", apiID))
+							atomic.AddInt32(&deregErrs, 1)
+							return
+						} else {
+							params.Logger.Info("Successfully deregistered topic from WebSubHub",
+								zap.String("topic", topic),
+								zap.String("api_id", apiID))
+						}
+					}(topic)
 				}
+				childWg.Wait()
 			}(topicsToUnregister)
 		}
 
@@ -399,24 +412,24 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 }
 
 // RegisterTopicWithHub registers a topic with the WebSubHub
-func (s *APIDeploymentService) RegisterTopicWithHub(httpClient *http.Client, topic, gwHost string, logger *zap.Logger) error {
-	return s.sendTopicRequestToHub(httpClient, topic, "register", gwHost, logger)
+func (s *APIDeploymentService) RegisterTopicWithHub(httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *zap.Logger) error {
+	return s.sendTopicRequestToHub(httpClient, topic, "register", webSubHubHost, webSubPort, logger)
 }
 
 // UnregisterTopicWithHub unregisters a topic from the WebSubHub
-func (s *APIDeploymentService) UnregisterTopicWithHub(httpClient *http.Client, topic, gwHost string, logger *zap.Logger) error {
-	return s.sendTopicRequestToHub(httpClient, topic, "deregister", gwHost, logger)
+func (s *APIDeploymentService) UnregisterTopicWithHub(httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *zap.Logger) error {
+	return s.sendTopicRequestToHub(httpClient, topic, "deregister", webSubHubHost, webSubPort, logger)
 }
 
 // sendTopicRequestToHub sends a topic registration/unregistration request to the WebSubHub
-func (s *APIDeploymentService) sendTopicRequestToHub(httpClient *http.Client, topic string, mode string, gwHost string, logger *zap.Logger) error {
+func (s *APIDeploymentService) sendTopicRequestToHub(httpClient *http.Client, topic string, mode string, webSubHubHost string, webSubPort int, logger *zap.Logger) error {
 	// Prepare form data
 	formData := url.Values{}
 	formData.Set("hub.mode", mode)
 	formData.Set("hub.topic", topic)
 
 	// Build target URL to gwHost reverse proxy endpoint (no proxy)
-	targetURL := fmt.Sprintf("http://%s:8083/websubhub/operations", gwHost)
+	targetURL := fmt.Sprintf("http://%s:%d/websubhub/operations", webSubHubHost, webSubPort)
 
 	// Retry on 404 Not Found (hub might not be ready immediately)
 	const maxRetries = 5
