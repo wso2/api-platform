@@ -1,0 +1,105 @@
+name: WordCountGuardrail
+version: v1.0.0
+description: |
+  Validates the word count of request or response body content.
+  Supports JSONPath extraction to validate specific fields within JSON payloads.
+  Can be configured with min/max word count constraints and inverted logic.
+  Supports separate configuration for request and response phases.
+
+parameters:
+  - name: name
+    type: string
+    required: true
+    description: Name of the guardrail policy for identification
+    validation:
+      minLength: 1
+      maxLength: 256
+
+  - name: request
+    type: object
+    required: false
+    description: Configuration for request phase validation
+    properties:
+      - name: min
+        type: integer
+        required: true
+        description: Minimum allowed word count (inclusive)
+        validation:
+          minimum: 0
+
+      - name: max
+        type: integer
+        required: true
+        description: Maximum allowed word count (inclusive)
+        validation:
+          minimum: 1
+
+      - name: jsonPath
+        type: string
+        required: false
+        default: ""
+        description: |
+          JSONPath expression to extract a specific value from JSON payload.
+          If empty, validates the entire payload as a string.
+          Examples: "$.message", "$.data.content", "$.items[0].text"
+
+      - name: invert
+        type: boolean
+        required: false
+        default: false
+        description: |
+          If true, validation passes when word count is NOT within the min-max range (inverted logic).
+          If false (default), validation passes when word count is within the min-max range.
+
+      - name: showAssessment
+        type: boolean
+        required: false
+        default: false
+        description: |
+          If true, includes detailed assessment information in error responses.
+          If false, returns minimal error information.
+
+  - name: response
+    type: object
+    required: false
+    description: Configuration for response phase validation
+    properties:
+      - name: min
+        type: integer
+        required: true
+        description: Minimum allowed word count (inclusive)
+        validation:
+          minimum: 0
+
+      - name: max
+        type: integer
+        required: true
+        description: Maximum allowed word count (inclusive)
+        validation:
+          minimum: 1
+
+      - name: jsonPath
+        type: string
+        required: false
+        default: ""
+        description: |
+          JSONPath expression to extract a specific value from JSON payload.
+          If empty, validates the entire payload as a string.
+          Examples: "$.message", "$.data.content", "$.items[0].text"
+
+      - name: invert
+        type: boolean
+        required: false
+        default: false
+        description: |
+          If true, validation passes when word count is NOT within the min-max range (inverted logic).
+          If false (default), validation passes when word count is within the min-max range.
+
+      - name: showAssessment
+        type: boolean
+        required: false
+        default: false
+        description: |
+          If true, includes detailed assessment information in error responses.
+          If false, returns minimal error information.
+

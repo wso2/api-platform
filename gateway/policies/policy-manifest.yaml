@@ -19,3 +19,43 @@ policies:
   - name: JwtAuthentication
     version: v1.0.0
     filePath: ./jwt-auth/v1.0.0
+
+  # WordCountGuardrail Policy
+  - name: WordCountGuardrail
+    version: v1.0.0
+    filePath: ./word-count-guardrail/v1.0.0
+
+  # SentenceCountGuardrail Policy
+  - name: SentenceCountGuardrail
+    version: v1.0.0
+    filePath: ./sentence-count-guardrail/v1.0.0
+
+  # UrlGuardrail Policy
+  - name: URLGuardrail
+    version: v1.0.0
+    filePath: ./url-guardrail/v1.0.0
+
+  # RegexGuardrail Policy
+  - name: RegexGuardrail
+    version: v1.0.0
+    filePath: ./regex-guardrail/v1.0.0
+
+  # ContentLengthGuardrail Policy
+  - name: ContentLengthGuardrail
+    version: v1.0.0
+    filePath: ./content-length-guardrail/v1.0.0
+
+  # PIIMaskingRegex Policy
+  - name: PIIMaskingRegex
+    version: v1.0.0
+    filePath: ./pii-masking-regex/v1.0.0
+  
+  # AzureContentSafetyContentModeration Policy
+  - name: AzureContentSafetyContentModeration
+    version: v1.0.0
+    filePath: ./azure-content-safety-content-moderation/v1.0.0
+
+  # JSONSchemaGuardrail Policy
+  - name: JSONSchemaGuardrail
+    version: v1.0.0
+    filePath: ./json-schema-guardrail/v1.0.0
