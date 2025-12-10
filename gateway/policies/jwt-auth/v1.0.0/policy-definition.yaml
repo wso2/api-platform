@@ -91,6 +91,10 @@ initParameters:
                   certificatePath:
                     type: string
                     description: Optional path to CA certificate file for validating self-signed JWKS endpoints (e.g., /etc/certs/ca.pem).
+                  skipTlsVerify:
+                    type: boolean
+                    default: false
+                    description: If true, skip TLS certificate verification for the JWKS endpoint. Use with caution, only for testing or trusted internal endpoints.
               local:
                 type: object
                 description: Local certificate configuration for signature verification. Either 'inline' or 'certificatePath' must be provided, but not both.

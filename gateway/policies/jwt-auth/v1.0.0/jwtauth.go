@@ -59,6 +59,7 @@ type JWKSConfig struct {
 type RemoteJWKS struct {
 	URI             string      // JWKS endpoint URL
 	CertificatePath string      // Optional CA certificate path for self-signed endpoints
+	SkipTlsVerify   bool        // Skip TLS certificate verification (use with caution)
 	tlsConfig       *tls.Config // Cached TLS config for this endpoint
 }
 
@@ -140,9 +141,6 @@ func (p *JwtAuthPolicy) OnRequest(ctx *policy.RequestContext, params map[string]
 		jwksFetchRetryInterval = 2 * time.Second
 	}
 
-	// Update HTTP client timeout
-	p.httpClient.Timeout = jwksFetchTimeout
-
 	// Get key managers configuration
 	keyManagersRaw, ok := params["keyManagers"]
 	if !ok {
@@ -175,11 +173,13 @@ func (p *JwtAuthPolicy) OnRequest(ctx *policy.RequestContext, params map[string]
 					if remoteRaw, ok := jwksRaw["remote"].(map[string]interface{}); ok {
 						uri := getString(remoteRaw["uri"])
 						certPath := getString(remoteRaw["certificatePath"])
+						skipTlsVerify := getBool(remoteRaw["skipTlsVerify"])
 
 						if uri != "" {
 							remoteJWKS := &RemoteJWKS{
 								URI:             uri,
 								CertificatePath: certPath,
+								SkipTlsVerify:   skipTlsVerify,
 							}
 							// Load and cache TLS config if certificate path is provided
 							if certPath != "" {
@@ -188,6 +188,11 @@ func (p *JwtAuthPolicy) OnRequest(ctx *policy.RequestContext, params map[string]
 									continue // Skip this key manager if cert loading fails
 								}
 								remoteJWKS.tlsConfig = tlsConfig
+							} else if skipTlsVerify {
+								// Configure TLS to skip verification
+								remoteJWKS.tlsConfig = &tls.Config{
+									InsecureSkipVerify: true,
+								}
 							}
 							jwksConfig.Remote = remoteJWKS
 						}
@@ -270,7 +275,7 @@ func (p *JwtAuthPolicy) OnRequest(ctx *policy.RequestContext, params map[string]
 
 	// Validate token and signature
 	claims, err := p.validateTokenWithSignature(token, unverifiedToken, keyManagers, userIssuers,
-		allowedAlgorithms, leeway, jwksCacheTtl, jwksFetchRetryCount, jwksFetchRetryInterval)
+		allowedAlgorithms, leeway, jwksCacheTtl, jwksFetchTimeout, jwksFetchRetryCount, jwksFetchRetryInterval)
 	if err != nil {
 		return p.handleAuthFailure(ctx, onFailureStatusCode, errorMessageFormat, fmt.Sprintf("token validation failed: %v", err))
 	}
@@ -342,7 +347,7 @@ func (p *JwtAuthPolicy) OnRequest(ctx *policy.RequestContext, params map[string]
 // validateTokenWithSignature validates JWT signature using JWKS
 func (p *JwtAuthPolicy) validateTokenWithSignature(tokenString string, unverifiedToken *jwt.Token,
 	keyManagers map[string]*KeyManager, userIssuers []string, allowedAlgorithms []string,
-	leeway time.Duration, cacheTTL time.Duration, retryCount int, retryInterval time.Duration) (jwt.MapClaims, error) {
+	leeway time.Duration, cacheTTL time.Duration, fetchTimeout time.Duration, retryCount int, retryInterval time.Duration) (jwt.MapClaims, error) {
 
 	unverifiedClaims, ok := unverifiedToken.Claims.(jwt.MapClaims)
 	if !ok {
@@ -448,7 +453,7 @@ func (p *JwtAuthPolicy) validateTokenWithSignature(tokenString string, unverifie
 		// Fall back to remote JWKS-based validation
 		if km.JWKS.Remote != nil {
 			// Get JWKS with retry logic
-			jwks, err := p.fetchJWKSWithRetry(km.JWKS.Remote, cacheTTL, retryCount, retryInterval)
+			jwks, err := p.fetchJWKSWithRetry(km.JWKS.Remote, cacheTTL, fetchTimeout, retryCount, retryInterval)
 			if err != nil {
 				lastErr = fmt.Errorf("failed to fetch JWKS from %s: %w", km.JWKS.Remote.URI, err)
 				continue
@@ -503,7 +508,7 @@ func (p *JwtAuthPolicy) validateTokenWithSignature(tokenString string, unverifie
 }
 
 // fetchJWKSWithRetry fetches JWKS with caching and retry logic
-func (p *JwtAuthPolicy) fetchJWKSWithRetry(remote *RemoteJWKS, cacheTTL time.Duration, retryCount int, retryInterval time.Duration) (*CachedJWKS, error) {
+func (p *JwtAuthPolicy) fetchJWKSWithRetry(remote *RemoteJWKS, cacheTTL time.Duration, fetchTimeout time.Duration, retryCount int, retryInterval time.Duration) (*CachedJWKS, error) {
 	// Check cache first
 	p.cacheMutex.RLock()
 	if cached, ok := p.cacheStore[remote.URI]; ok {
@@ -517,7 +522,7 @@ func (p *JwtAuthPolicy) fetchJWKSWithRetry(remote *RemoteJWKS, cacheTTL time.Dur
 	// Not in cache or expired, fetch from server
 	var lastErr error
 	for attempt := 0; attempt <= retryCount; attempt++ {
-		jwks, err := p.fetchJWKS(remote)
+		jwks, err := p.fetchJWKS(remote, fetchTimeout)
 		if err == nil {
 			// Cache the result
 			p.cacheMutex.Lock()
@@ -537,9 +542,9 @@ func (p *JwtAuthPolicy) fetchJWKSWithRetry(remote *RemoteJWKS, cacheTTL time.Dur
 }
 
 // fetchJWKS fetches JWKS from the given remote configuration
-func (p *JwtAuthPolicy) fetchJWKS(remote *RemoteJWKS) (*CachedJWKS, error) {
-	// Create HTTP request with custom TLS config if needed
-	client := p.httpClient
+func (p *JwtAuthPolicy) fetchJWKS(remote *RemoteJWKS, fetchTimeout time.Duration) (*CachedJWKS, error) {
+	// Create a new HTTP client per request to avoid race conditions on shared state
+	var client *http.Client
 	if remote.tlsConfig != nil {
 		// Create a new client with custom TLS config
 		customTransport := &http.Transport{
@@ -547,7 +552,12 @@ func (p *JwtAuthPolicy) fetchJWKS(remote *RemoteJWKS) (*CachedJWKS, error) {
 		}
 		client = &http.Client{
 			Transport: customTransport,
-			Timeout:   p.httpClient.Timeout,
+			Timeout:   fetchTimeout,
+		}
+	} else {
+		// Create a new client with default transport
+		client = &http.Client{
+			Timeout: fetchTimeout,
 		}
 	}
 
@@ -784,6 +794,13 @@ func getString(v interface{}) string {
 	return ""
 }
 
+func getBool(v interface{}) bool {
+	if b, ok := v.(bool); ok {
+		return b
+	}
+	return false
+}
+
 func getStringParam(params map[string]interface{}, key, defaultValue string) string {
 	if v, ok := params[key]; ok {
 		if s, ok := v.(string); ok {
@@ -868,7 +885,7 @@ func loadTLSConfig(certPath string) (*tls.Config, error) {
 	}
 
 	return &tls.Config{
-		RootCAs:            caCertPool,
+		RootCAs: caCertPool,
 	}, nil
 }
 

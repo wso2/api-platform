@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -621,6 +622,194 @@ func TestJWTAuthPolicy_RemoteWithSelfSignedCert(t *testing.T) {
 	}
 }
 
+// TestJWTAuthPolicy_SkipTlsVerify_Success tests JWT validation when skipTlsVerify is true with self-signed JWKS endpoint
+func TestJWTAuthPolicy_SkipTlsVerify_Success(t *testing.T) {
+	// Generate test keys
+	privateKey, publicKey := generateTestKeys(t)
+
+	// Create an unstarted HTTPS server
+	unstarted := createHTTPSJWKSServerUnstarted(t, publicKey, "test-kid")
+
+	// Create a self-signed certificate for localhost
+	certKeyPath, _, caPath := createSelfSignedCertForHost(t, "https://localhost:443")
+	defer func() {
+		parts := strings.Split(certKeyPath, ":")
+		if len(parts) == 2 {
+			os.Remove(parts[0])
+			os.Remove(parts[1])
+		}
+		os.Remove(caPath)
+	}()
+
+	// Load the certificate and configure TLS on the server
+	parts := strings.Split(certKeyPath, ":")
+	if len(parts) != 2 {
+		t.Fatalf("Expected cert:key format, got %s", certKeyPath)
+	}
+
+	tlsCert, err := tls.LoadX509KeyPair(parts[0], parts[1])
+	if err != nil {
+		t.Fatalf("Failed to load TLS certificate: %v", err)
+	}
+
+	unstarted.TLS = &tls.Config{
+		Certificates: []tls.Certificate{tlsCert},
+	}
+
+	// Start the HTTPS server
+	unstarted.StartTLS()
+	jwksServer := unstarted
+	defer jwksServer.Close()
+
+	// Create test token
+	token := createTestToken(t, privateKey, map[string]interface{}{
+		"sub": "user123",
+		"iss": "https://issuer.example.com",
+		"aud": "api-audience",
+	})
+
+	// Create policy instance
+	p := NewPolicy().(*JwtAuthPolicy)
+
+	// Create request context
+	ctx := createMockRequestContext(map[string][]string{
+		"authorization": {fmt.Sprintf("Bearer %s", token)},
+	})
+
+	// Create params with skipTlsVerify=true (no certificatePath needed)
+	params := map[string]interface{}{
+		"headerName":          "Authorization",
+		"authHeaderScheme":    "Bearer",
+		"onFailureStatusCode": 401,
+		"errorMessageFormat":  "json",
+		"leeway":              "30s",
+		"allowedAlgorithms":   []interface{}{"RS256"},
+		"keyManagers": []interface{}{
+			map[string]interface{}{
+				"name":   "test-issuer",
+				"issuer": "https://issuer.example.com",
+				"jwks": map[string]interface{}{
+					"remote": map[string]interface{}{
+						"uri":           jwksServer.URL + "/jwks.json",
+						"skipTlsVerify": true, // Skip TLS verification
+					},
+				},
+			},
+		},
+		"audiences": []interface{}{"api-audience"},
+	}
+
+	// Execute policy
+	action := p.OnRequest(ctx, params)
+
+	// Verify successful authentication - TLS verification was skipped
+	if ctx.Metadata["auth.success"] != true {
+		t.Errorf("Expected auth.success to be true with skipTlsVerify=true, got %v", ctx.Metadata["auth.success"])
+	}
+
+	// Verify it's an UpstreamRequestModifications action
+	if _, ok := action.(policy.UpstreamRequestModifications); !ok {
+		t.Fatalf("Expected UpstreamRequestModifications, got %T", action)
+	}
+}
+
+// TestJWTAuthPolicy_SkipTlsVerify_False_Fails tests JWT validation fails when skipTlsVerify is false with self-signed JWKS endpoint
+func TestJWTAuthPolicy_SkipTlsVerify_False_Fails(t *testing.T) {
+	// Generate test keys
+	privateKey, publicKey := generateTestKeys(t)
+
+	// Create an unstarted HTTPS server
+	unstarted := createHTTPSJWKSServerUnstarted(t, publicKey, "test-kid")
+
+	// Create a self-signed certificate for localhost
+	certKeyPath, _, caPath := createSelfSignedCertForHost(t, "https://localhost:443")
+	defer func() {
+		parts := strings.Split(certKeyPath, ":")
+		if len(parts) == 2 {
+			os.Remove(parts[0])
+			os.Remove(parts[1])
+		}
+		os.Remove(caPath)
+	}()
+
+	// Load the certificate and configure TLS on the server
+	parts := strings.Split(certKeyPath, ":")
+	if len(parts) != 2 {
+		t.Fatalf("Expected cert:key format, got %s", certKeyPath)
+	}
+
+	tlsCert, err := tls.LoadX509KeyPair(parts[0], parts[1])
+	if err != nil {
+		t.Fatalf("Failed to load TLS certificate: %v", err)
+	}
+
+	unstarted.TLS = &tls.Config{
+		Certificates: []tls.Certificate{tlsCert},
+	}
+
+	// Start the HTTPS server
+	unstarted.StartTLS()
+	jwksServer := unstarted
+	defer jwksServer.Close()
+
+	// Create test token
+	token := createTestToken(t, privateKey, map[string]interface{}{
+		"sub": "user123",
+		"iss": "https://issuer.example.com",
+		"aud": "api-audience",
+	})
+
+	// Create policy instance
+	p := NewPolicy().(*JwtAuthPolicy)
+
+	// Create request context
+	ctx := createMockRequestContext(map[string][]string{
+		"authorization": {fmt.Sprintf("Bearer %s", token)},
+	})
+
+	// Create params WITHOUT skipTlsVerify or certificatePath - should fail TLS verification
+	params := map[string]interface{}{
+		"headerName":          "Authorization",
+		"authHeaderScheme":    "Bearer",
+		"onFailureStatusCode": 401,
+		"errorMessageFormat":  "json",
+		"leeway":              "30s",
+		"allowedAlgorithms":   []interface{}{"RS256"},
+		"keyManagers": []interface{}{
+			map[string]interface{}{
+				"name":   "test-issuer",
+				"issuer": "https://issuer.example.com",
+				"jwks": map[string]interface{}{
+					"remote": map[string]interface{}{
+						"uri":           jwksServer.URL + "/jwks.json",
+						"skipTlsVerify": false, // Explicitly set to false (default)
+					},
+				},
+			},
+		},
+		"audiences": []interface{}{"api-audience"},
+		"jwksFetchRetryCount":    0,
+	}
+
+	// Execute policy
+	action := p.OnRequest(ctx, params)
+
+	// Verify authentication failed - TLS verification should fail for self-signed cert
+	if ctx.Metadata["auth.success"] != false {
+		t.Errorf("Expected auth.success to be false with skipTlsVerify=false and self-signed cert, got %v", ctx.Metadata["auth.success"])
+	}
+
+	// Verify it's an ImmediateResponse (error)
+	response, ok := action.(policy.ImmediateResponse)
+	if !ok {
+		t.Fatalf("Expected ImmediateResponse for TLS verification failure, got %T", action)
+	}
+
+	if response.StatusCode != 401 {
+		t.Errorf("Expected status code 401, got %d", response.StatusCode)
+	}
+}
+
 // TestJWTAuthPolicy_LocalInlineCertificate tests JWT validation with inline certificate
 func TestJWTAuthPolicy_LocalInlineCertificate(t *testing.T) {
 	// Generate test keys
@@ -906,7 +1095,8 @@ func createSelfSignedCertForHost(t *testing.T, hostURL string) (string, []byte, 
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
 		IsCA:                  true,
-		DNSNames:              []string{hostname, "127.0.0.1", "localhost"},
+		DNSNames:              []string{hostname, "localhost"},
+		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
 	}
 
 	// Create self-signed certificate
