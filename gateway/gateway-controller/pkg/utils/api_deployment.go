@@ -165,18 +165,18 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 				var childWg sync.WaitGroup
 				for _, topic := range list {
 					childWg.Add(1)
-					go func(t string) {
+					go func(topic string) {
 						defer childWg.Done()
-						if err := s.RegisterTopicWithHub(s.httpClient, t, "localhost", 8083, params.Logger); err != nil {
+						if err := s.RegisterTopicWithHub(s.httpClient, topic, "localhost", 8083, params.Logger); err != nil {
 							params.Logger.Error("Failed to register topic with WebSubHub",
 								zap.Error(err),
-								zap.String("topic", t),
+								zap.String("topic", topic),
 								zap.String("api_id", apiID))
 							atomic.AddInt32(&regErrs, 1)
 							return
 						} else {
 							params.Logger.Info("Successfully registered topic with WebSubHub",
-								zap.String("topic", t),
+								zap.String("topic", topic),
 								zap.String("api_id", apiID))
 						}
 					}(topic)
@@ -193,18 +193,18 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 				params.Logger.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", apiID))
 				for _, topic := range list {
 					childWg.Add(1)
-					go func(t string) {
+					go func(topic string) {
 						defer childWg.Done()
 						if err := s.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, params.Logger); err != nil {
 							params.Logger.Error("Failed to deregister topic from WebSubHub",
 								zap.Error(err),
-								zap.String("topic", t),
+								zap.String("topic", topic),
 								zap.String("api_id", apiID))
 							atomic.AddInt32(&deregErrs, 1)
 							return
 						} else {
 							params.Logger.Info("Successfully deregistered topic from WebSubHub",
-								zap.String("topic", t),
+								zap.String("topic", topic),
 								zap.String("api_id", apiID))
 						}
 					}(topic)
