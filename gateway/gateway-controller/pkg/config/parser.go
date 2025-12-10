@@ -35,26 +35,36 @@ func NewParser() *Parser {
 }
 
 func (p *Parser) ParseYAML(data []byte, configParsed interface{}) error {
-	var config api.APIConfiguration
-	// Marshal the map to JSON to leverage json.RawMessage handling in union types
-	var intermediate map[string]interface{}
-	if err := yaml.Unmarshal(data, &intermediate); err != nil {
-		return fmt.Errorf("failed to unmarshal YAML: %w", err)
+	// Handle different expected target types differently.
+	// - If caller expects *api.APIConfiguration, use the JSON-intermediate approach
+	//   to preserve json.RawMessage handling for union fields.
+	// - If caller expects *api.MCPProxyConfiguration, perform normal YAML
+	//   unmarshalling directly into that struct.
+	switch target := configParsed.(type) {
+	case *api.APIConfiguration:
+		var config api.APIConfiguration
+		var intermediate map[string]interface{}
+		if err := yaml.Unmarshal(data, &intermediate); err != nil {
+			return fmt.Errorf("failed to unmarshal YAML: %w", err)
+		}
+		jsonBytes, err := json.Marshal(intermediate)
+		if err != nil {
+			return fmt.Errorf("failed to marshal intermediate to JSON: %w", err)
+		}
+		if err := json.Unmarshal(jsonBytes, &config); err != nil {
+			return fmt.Errorf("failed to unmarshal JSON into APIConfiguration: %w", err)
+		}
+		*target = config
+		return nil
+	case *api.MCPProxyConfiguration:
+		// For MCPProxyConfiguration parse directly from YAML
+		if err := yaml.Unmarshal(data, target); err != nil {
+			return fmt.Errorf("failed to unmarshal YAML into MCPProxyConfiguration: %w", err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("failed to unmarshal YAML into target type")
 	}
-	jsonBytes, err := json.Marshal(intermediate)
-	if err != nil {
-		return fmt.Errorf("failed to marshal intermediate to JSON: %w", err)
-	}
-	if err := json.Unmarshal(jsonBytes, &config); err != nil {
-		return fmt.Errorf("failed to unmarshal JSON into APIConfiguration: %w", err)
-	}
-	// Assign parsed config to the value pointed by configParsed (interface{})
-	if ptr, ok := configParsed.(*api.APIConfiguration); ok {
-		*ptr = config
-	} else {
-		return fmt.Errorf("configParsed is not of type *api.APIConfiguration")
-	}
-	return nil
 }
 
 // ParseJSON parses JSON content into an API configuration
