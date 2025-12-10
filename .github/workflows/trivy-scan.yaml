@@ -25,7 +25,7 @@ jobs:
           format: 'table'
           ignore-unfixed: true
           vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
+          severity: 'LOW,MEDIUM,CRITICAL,HIGH'
   scan-gateway-router:
     runs-on: ubuntu-latest
     steps:
@@ -36,7 +36,7 @@ jobs:
           format: 'table'
           ignore-unfixed: true
           vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
+          severity: 'LOW,MEDIUM,CRITICAL,HIGH'
   scan-gateway-operator:
     runs-on: ubuntu-latest
     steps:
@@ -47,7 +47,7 @@ jobs:
           format: 'table'
           ignore-unfixed: true
           vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
+          severity: 'LOW,MEDIUM,CRITICAL,HIGH'
   scan-gateway-builder:
     runs-on: ubuntu-latest
     steps:
@@ -58,4 +58,4 @@ jobs:
           format: 'table'
           ignore-unfixed: true
           vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
+          severity: 'LOW,MEDIUM,CRITICAL,HIGH'
