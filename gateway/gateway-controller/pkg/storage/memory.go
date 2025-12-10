@@ -42,10 +42,10 @@ type ConfigStore struct {
 // NewConfigStore creates a new in-memory config store
 func NewConfigStore() *ConfigStore {
 	return &ConfigStore{
-		configs:      make(map[string]*models.StoredConfig),
-		nameVersion:  make(map[string]string),
-		snapVersion:  0,
-		TopicManager: NewTopicManager(),
+		configs:          make(map[string]*models.StoredConfig),
+		nameVersion:      make(map[string]string),
+		snapVersion:      0,
+		TopicManager:     NewTopicManager(),
 		templates:        make(map[string]*models.StoredLLMProviderTemplate),
 		templateIdByName: make(map[string]string),
 	}
@@ -218,8 +218,11 @@ func (cs *ConfigStore) GetByKindNameAndVersion(kind string, name string, version
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
-	all := cs.GetAllByKind(kind)
-	for _, sc := range all {
+	for _, cfg := range cs.configs {
+		if cfg.Kind != kind {
+			continue
+		}
+		sc := cfg
 		if sc.GetName() == name && sc.GetVersion() == version {
 			return sc
 		}

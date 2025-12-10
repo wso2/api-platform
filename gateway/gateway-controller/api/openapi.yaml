@@ -2023,7 +2023,7 @@ components:
       required:
         - version
         - kind
-        - data
+        - spec
       properties:
         version:
           type: string
@@ -2054,12 +2054,12 @@ components:
           description: Human-readable LLM Provider name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
           minLength: 1
           maxLength: 100
-          pattern: ^[a-zA-Z0-9\\-_\\. ]+$
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
           example: wso2-openai-provider
         version:
           type: string
           description: Semantic version of the LLM Provider
-          pattern: ^v\\d+\\.\\d+$
+          pattern: '^v\d+\.\d+$'
           example: v1.0
         context:
           type: string

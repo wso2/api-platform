@@ -88,13 +88,13 @@ func (t *LLMProviderTransformer) Transform(input any, output *api.APIConfigurati
 				op := api.Operation{Method: api.OperationMethod(m), Path: ex.Path}
 
 				// Build Respond policy params as requested
-				var m map[string]interface{}
-				if err := yaml.Unmarshal([]byte(constants.ACCESS_CONTROL_DENY_POLICY_PARAMS), &m); err != nil {
+				var policyParams map[string]interface{}
+				if err := yaml.Unmarshal([]byte(constants.ACCESS_CONTROL_DENY_POLICY_PARAMS), &policyParams); err != nil {
 					return nil, err
 				}
 				pol := api.Policy{
 					Name:    constants.ACCESS_CONTROL_DENY_POLICY_NAME,
-					Version: constants.ACCESS_CONTROL_DENY_POLICY_VERSION, Params: &m}
+					Version: constants.ACCESS_CONTROL_DENY_POLICY_VERSION, Params: &policyParams}
 				op.Policies = &[]api.Policy{pol}
 				ops = append(ops, op)
 			}

@@ -91,7 +91,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	// Transform to APIConfiguration
 	_, err := s.transformer.Transform(&providerConfig, &apiConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to transform LLM provider to API configuration")
+		return nil, fmt.Errorf("failed to transform LLM provider to API configuration: %w", err)
 	}
 
 	// Generate API ID if not provided
@@ -166,7 +166,11 @@ func (s *LLMDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 	}
 	if err := s.store.Add(storedCfg); err != nil {
 		if s.db != nil {
-			_ = s.db.DeleteConfig(storedCfg.ID)
+			if delErr := s.db.DeleteConfig(storedCfg.ID); delErr != nil {
+				logger.Warn("Failed to rollback DB config after memory store conflict",
+					zap.String("id", storedCfg.ID),
+					zap.Error(delErr))
+			}
 		}
 		if storage.IsConflictError(err) {
 			logger.Info("LLM provider config exists in memory; updating",

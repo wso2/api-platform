@@ -35,7 +35,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	openapi_types "github.com/oapi-codegen/runtime/types"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -44,6 +43,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
+	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 	"go.uber.org/zap"
 )
 
@@ -1052,7 +1052,15 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, name string, version strin
 	cfg, err := s.llmDeploymentService.DeleteLLMProvider(name, version, correlationID, log)
 	if err != nil {
 		log.Warn("Failed to delete LLM provider configuration", zap.String("name", name), zap.String("version", version), zap.Error(err))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
+		// Check if it's a not found error
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: err.Error(),
 		})

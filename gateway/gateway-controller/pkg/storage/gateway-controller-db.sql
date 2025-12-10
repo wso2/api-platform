@@ -83,20 +83,20 @@ CREATE TABLE IF NOT EXISTS deployment_configs (
     FOREIGN KEY(id) REFERENCES deployments(id) ON DELETE CASCADE
 );
 
--- LLM Provider Templates table (added in schema version 3)
+-- LLM Provider Templates table (added in schema version 4)
 CREATE TABLE IF NOT EXISTS llm_provider_templates (
     -- Primary identifier (UUID)
-                                                      id TEXT PRIMARY KEY,
+    id TEXT PRIMARY KEY,
 
     -- Template name (must be unique)
-                                                      name TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL UNIQUE,
 
     -- Full template configuration as JSON
-                                                      configuration TEXT NOT NULL,
+    configuration TEXT NOT NULL,
 
     -- Timestamps
-                                                      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                                                      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Index for fast name lookups

@@ -78,7 +78,7 @@ func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration) []api.Operat
 func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*api.APIConfiguration, error) {
 	mcpConfig, ok := input.(*api.MCPProxyConfiguration)
 	if !ok || mcpConfig == nil {
-		return output, fmt.Errorf("invalid input type: expected *api.MCPProxyConfiguration")
+		return nil, fmt.Errorf("invalid input type: expected *api.MCPProxyConfiguration")
 	}
 	output.Version = api.ApiPlatformWso2Comv1
 	output.Kind = api.APIConfigurationKindHttprest
