@@ -108,6 +108,9 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 	apiId := uuid.New().String()
 
 	// Set default values if not provided
+	if req.DisplayName == "" {
+		req.DisplayName = req.Name
+	}
 	if req.Provider == "" {
 		req.Provider = "admin" // Default provider
 	}
@@ -1463,11 +1466,11 @@ func (s *APIService) ImportFromOpenAPI(req *dto.ImportOpenAPIRequest, orgId stri
 	return s.CreateAPI(createReq, orgId)
 }
 
-// CheckAPINameExistence checks if an API with the given name exists within a specific organization
-func (s *APIService) CheckAPINameExistence(req *dto.ValidateAPINameExistenceRequest, orgId string) (*dto.ValidateAPINameExistenceResponse, error) {
-	// Validate request
-	if req.Name == "" {
-		return nil, errors.New("API name is required")
+// ValidateAPI validates if an API with the given identifier or name+version combination exists within an organization
+func (s *APIService) ValidateAPI(req *dto.APIValidationRequest, orgId string) (*dto.APIValidationResponse, error) {
+	// Validate request - either identifier OR both name and version must be provided
+	if req.Identifier == "" && (req.Name == "" || req.Version == "") {
+		return nil, errors.New("either 'identifier' or both 'name' and 'version' parameters are required")
 	}
 
 	// Check if organization exists
@@ -1479,25 +1482,41 @@ func (s *APIService) CheckAPINameExistence(req *dto.ValidateAPINameExistenceRequ
 		return nil, constants.ErrOrganizationNotFound
 	}
 
-	// Check if API name exists within the project
-	exists, err := s.apiRepo.CheckAPINameExistsInOrganization(req.Name, orgId)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check API name existence: %w", err)
-	}
+	var exists bool
+	var validationError *dto.APIValidationError
 
-	// Create response with appropriate message
-	var message string
-	if exists {
-		message = fmt.Sprintf("API '%s' already exists in organization '%s'", req.Name, organization.Name)
+	// Check existence based on the provided parameters
+	if req.Identifier != "" {
+		// Validate by identifier
+		exists, err = s.apiRepo.CheckAPIExistsByIdentifierInOrganization(req.Identifier, orgId)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check API existence by identifier: %w", err)
+		}
+		if exists {
+			validationError = &dto.APIValidationError{
+				Code:    "api-identifier-already-exists",
+				Message: fmt.Sprintf("An API with identifier '%s' already exists in the organization.", req.Identifier),
+			}
+		}
 	} else {
-		message = fmt.Sprintf("API '%s' does not exist in organization '%s'", req.Name, organization.Name)
+		// Validate by name and version
+		exists, err = s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgId)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check API existence by name and version: %w", err)
+		}
+		if exists {
+			validationError = &dto.APIValidationError{
+				Code: "api-name-version-already-exists",
+				Message: fmt.Sprintf("The API name '%s' with version '%s' already exists in the organization.",
+					req.Name, req.Version),
+			}
+		}
 	}
 
-	response := &dto.ValidateAPINameExistenceResponse{
-		Exists:         exists,
-		Name:           req.Name,
-		OrganizationID: orgId,
-		Message:        message,
+	// Create response
+	response := &dto.APIValidationResponse{
+		Valid: !exists, // valid means the API doesn't exist (available for use)
+		Error: validationError,
 	}
 
 	return response, nil

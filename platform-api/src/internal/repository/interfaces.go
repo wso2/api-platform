@@ -64,8 +64,8 @@ type APIRepository interface {
 	UpdateAPIAssociation(apiId, resourceId, associationType, orgId string) error
 
 	// API name validation methods
-	CheckAPINameExistsInOrganization(name, orgId string) (bool, error)
-	CheckAPINameExistsInProject(name, projectId, orgId string) (bool, error)
+	CheckAPIExistsByIdentifierInOrganization(identifier, orgId string) (bool, error)
+	CheckAPIExistsByNameAndVersionInOrganization(name, version, orgId string) (bool, error)
 }
 
 // BackendServiceRepository defines the interface for backend service data operations

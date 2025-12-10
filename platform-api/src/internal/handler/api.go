@@ -911,8 +911,8 @@ func (h *APIHandler) ImportOpenAPI(c *gin.Context) {
 	c.JSON(http.StatusCreated, api)
 }
 
-// CheckAPINameExistence handles POST /api/v1/apis/check-name-existence
-func (h *APIHandler) CheckAPINameExistence(c *gin.Context) {
+// ValidateAPI handles GET /api/v1/apis/validate
+func (h *APIHandler) ValidateAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
@@ -920,20 +920,20 @@ func (h *APIHandler) CheckAPINameExistence(c *gin.Context) {
 		return
 	}
 
-	var req dto.ValidateAPINameExistenceRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var req dto.APIValidationRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
 		return
 	}
 
-	// Validate required fields
-	if req.Name == "" {
+	// Validate that either identifier OR both name and version are provided
+	if req.Identifier == "" && (req.Name == "" || req.Version == "") {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
-			"API name is required"))
+			"Either 'identifier' or both 'name' and 'version' query parameters are required"))
 		return
 	}
 
-	response, err := h.apiService.CheckAPINameExistence(&req, orgId)
+	response, err := h.apiService.ValidateAPI(&req, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrOrganizationNotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -941,16 +941,12 @@ func (h *APIHandler) CheckAPINameExistence(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
-			"Failed to check API name existence"))
+			"Failed to validate API"))
 		return
 	}
 
-	// Return 409 if API name exists, 200 if it doesn't exist (following OpenAPI spec)
-	if response.Exists {
-		c.JSON(http.StatusConflict, response)
-	} else {
-		c.JSON(http.StatusOK, response)
-	}
+	// Always return 200 OK with the validation result
+	c.JSON(http.StatusOK, response)
 }
 
 // RegisterRoutes registers all API routes
@@ -963,7 +959,7 @@ func (h *APIHandler) RegisterRoutes(r *gin.Engine) {
 		apiGroup.GET("/:apiId", h.GetAPI)
 		apiGroup.PUT("/:apiId", h.UpdateAPI)
 		apiGroup.DELETE("/:apiId", h.DeleteAPI)
-		apiGroup.POST("/check-name-existence", h.CheckAPINameExistence)
+		apiGroup.GET("/validate", h.ValidateAPI)
 		apiGroup.POST("/:apiId/deploy-revision", h.DeployAPIRevision)
 		apiGroup.GET("/:apiId/gateways", h.GetAPIGateways)
 		apiGroup.POST("/:apiId/gateways", h.AddGatewaysToAPI)
