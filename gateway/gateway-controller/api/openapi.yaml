@@ -216,28 +216,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /apis/{name}/{version}:
+  /apis/{handle}:
     get:
-      summary: Get API configuration by name and version
-      description: Retrieve the complete configuration for a specific API by its name and version
-      operationId: getAPIByNameVersion
+      summary: Get API configuration by handle
+      description: Retrieve the complete configuration for a specific API by its handle (from metadata.name)
+      operationId: getAPIByHandle
       tags:
         - API Management
       parameters:
-        - name: name
+        - name: handle
           in: path
           required: true
-          description: Name of the API
+          description: Identifier of the API (metadata.name from YAML)
           schema:
             type: string
-          example: weather-api
-        - name: version
-          in: path
-          required: true
-          description: Version of the API
-          schema:
-            type: string
-          example: v1.0
+          example: weather-api-v1.0
       responses:
         "200":
           description: API configuration details
@@ -273,20 +266,13 @@ paths:
       tags:
         - API Management
       parameters:
-        - name: name
+        - name: handle
           in: path
           required: true
-          description: Name of the API to update
+          description: Identifier of the API to update (metadata.name from YAML)
           schema:
             type: string
-          example: weather-api
-        - name: version
-          in: path
-          required: true
-          description: Version of the API to update
-          schema:
-            type: string
-          example: v1.0
+          example: weather-api-v1.0
       requestBody:
         required: true
         content:
@@ -332,20 +318,13 @@ paths:
       tags:
         - API Management
       parameters:
-        - name: name
+        - name: handle
           in: path
           required: true
-          description: Name of the API to delete
+          description: Identifier of the API to delete (metadata.name from YAML)
           schema:
             type: string
-          example: weather-api
-        - name: version
-          in: path
-          required: true
-          description: Version of the API to delete
-          schema:
-            type: string
-          example: v1.0
+          example: weather-api-v1.0
       responses:
         "200":
           description: API configuration deleted successfully
@@ -634,28 +613,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /mcp-proxies/{name}/{version}:
+  /mcp-proxies/{handle}:
     get:
-      summary: Get MCP Proxy configuration by name and version
-      description: Retrieve the complete configuration for a specific MCP Proxy by its name and version
-      operationId: getMCPProxyByNameVersion
+      summary: Get MCP Proxy configuration by handle
+      description: Retrieve the complete configuration for a specific MCP Proxy by its handle (from metadata.name)
+      operationId: getMCPProxyByHandle
       tags:
         - MCP Proxy Management
       parameters:
-        - name: name
+        - name: handle
           in: path
           required: true
-          description: Name of the MCP Proxy
+          description: Identifier of the MCP Proxy (metadata.name from YAML)
           schema:
             type: string
-          example: mcp-proxy-1
-        - name: version
-          in: path
-          required: true
-          description: Version of the MCP Proxy
-          schema:
-            type: string
-          example: v1.0
+          example: everything-mcp-v1.0
       responses:
         "200":
           description: MCP Proxy configuration details
@@ -691,20 +663,13 @@ paths:
       tags:
         - MCP Proxy Management
       parameters:
-        - name: name
+        - name: handle
           in: path
           required: true
-          description: Name of the MCP Proxy to update
+          description: Identifier of the MCP Proxy to update (metadata.name from YAML)
           schema:
             type: string
-          example: mcp-proxy-1
-        - name: version
-          in: path
-          required: true
-          description: Version of the MCP Proxy to update
-          schema:
-            type: string
-          example: v1.0
+          example: everything-mcp-v1.0
       requestBody:
         required: true
         content:
@@ -750,20 +715,13 @@ paths:
       tags:
         - MCP Proxy Management
       parameters:
-        - name: name
+        - name: handle
           in: path
           required: true
-          description: Name of the MCP Proxy to delete
+          description: Handle of the MCP Proxy to delete (metadata.name from YAML)
           schema:
             type: string
-          example: mcp-proxy-1
-        - name: version
-          in: path
-          required: true
-          description: Version of the MCP Proxy to delete
-          schema:
-            type: string
-          example: v1.0
+          example: everything-mcp-v1.0
       responses:
         "200":
           description: MCP Proxy configuration deleted successfully
@@ -1289,11 +1247,23 @@ components:
             - async/websub
             - async/websocket
             - async/sse
+        metadata:
+          $ref: "#/components/schemas/Metadata"
         spec:
           description: API configuration payload (REST or Async API variants)
           anyOf:
             - $ref: '#/components/schemas/APIConfigData'
             - $ref: '#/components/schemas/WebhookAPIData'
+
+    Metadata:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Unique handle for the resource
+          example: weather-api-v1.0
 
     APIConfigData:
       type: object
@@ -1742,8 +1712,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
-          example: 550e8400-e29b-41d4-a716-446655440000
+          example: weather-api-v1.0
         name:
           type: string
           example: weather-api
@@ -1826,6 +1795,8 @@ components:
           example: mcp
           enum:
             - mcp
+        metadata:
+          $ref: "#/components/schemas/Metadata"
         spec:
           $ref: "#/components/schemas/MCPProxyConfigData"
 
@@ -1963,8 +1934,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
-          example: 550e8400-e29b-41d4-a716-446655440000
+          example: mcp-proxy-1-v1.0
         name:
           type: string
           example: mcp-proxy-1

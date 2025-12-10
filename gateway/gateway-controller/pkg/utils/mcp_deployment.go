@@ -114,6 +114,46 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 	}
 	apiConfig = *apiConfigPtr
 
+	var handle string
+	if apiConfig.Metadata != nil {
+		handle = apiConfig.Metadata.Name
+	}
+
+	name, version, err := ExtractNameVersion(apiConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.store != nil {
+		if name != "" && version != "" {
+			if _, err := s.store.GetByNameVersion(name, version); err == nil {
+				return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, name, version)
+			}
+		}
+		if handle != "" {
+			for _, c := range s.store.GetAll() {
+				if c.GetHandle() == handle {
+					return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
+				}
+			}
+		}
+	}
+
+	if s.store != nil {
+		if name != "" && version != "" {
+			if _, err := s.store.GetByNameVersion(name, version); err == nil {
+				return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, name, version)
+			}
+		}
+		if handle != "" {
+			for _, c := range s.store.GetAll() {
+				if c.GetHandle() == handle {
+					return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
+				}
+			}
+		}
+	}
+
 	// Create stored configuration
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
@@ -175,13 +215,7 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		if err := s.db.SaveConfig(storedCfg); err != nil {
 			// Check if it's a conflict (Configuration already exists)
 			if storage.IsConflictError(err) {
-				logger.Info("MCP configuration already exists in database, updating instead",
-					zap.String("id", storedCfg.ID),
-					zap.String("name", storedCfg.GetName()),
-					zap.String("version", storedCfg.GetVersion()))
-
-				// Try to update instead
-				return s.updateExistingConfig(storedCfg, logger)
+				return false, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, storedCfg.GetName(), storedCfg.GetVersion())
 			} else {
 				return false, fmt.Errorf("failed to save config to database: %w", err)
 			}
@@ -192,13 +226,10 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 	if err := s.store.Add(storedCfg); err != nil {
 		// Check if it's a conflict (API already exists)
 		if storage.IsConflictError(err) {
-			logger.Info("MCP configuration already exists in memory, updating instead",
-				zap.String("id", storedCfg.ID),
-				zap.String("name", storedCfg.GetName()),
-				zap.String("version", storedCfg.GetVersion()))
-
-			// Try to update instead
-			return s.updateExistingConfig(storedCfg, logger)
+			if s.db != nil {
+				_ = s.db.DeleteConfig(storedCfg.ID)
+			}
+			return false, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, storedCfg.GetName(), storedCfg.GetVersion())
 		} else {
 			// Rollback database write (only if persistent mode)
 			if s.db != nil {

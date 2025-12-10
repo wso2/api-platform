@@ -172,6 +172,59 @@ func (s *SQLiteStorage) initSchema() error {
 			version = 4
 		}
 
+		if version == 4 {
+			// SQLite doesn't support adding NOT NULL columns directly
+			// Have to recreate the table
+			if _, err := s.db.Exec(`
+				CREATE TABLE deployments_new (
+					id TEXT PRIMARY KEY,
+					name TEXT NOT NULL,
+					version TEXT NOT NULL,
+					context TEXT NOT NULL,
+					kind TEXT NOT NULL,
+					handle TEXT NOT NULL UNIQUE,
+					status TEXT NOT NULL CHECK(status IN ('pending', 'deployed', 'failed')),
+					created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+					deployed_at TIMESTAMP,
+					deployed_version INTEGER NOT NULL DEFAULT 0,
+					UNIQUE(name, version)
+				);
+			`); err != nil {
+				return fmt.Errorf("failed to create deployments_new table: %w", err)
+			}
+			if _, err := s.db.Exec(`
+				INSERT INTO deployments_new 
+				SELECT id, name, version, context, kind, name || '-' || version AS handle, status, created_at, updated_at, deployed_at, deployed_version 
+				FROM deployments;
+			`); err != nil {
+				return fmt.Errorf("failed to copy data to deployments_new: %w", err)
+			}
+			if _, err := s.db.Exec(`DROP TABLE deployments;`); err != nil {
+				return fmt.Errorf("failed to drop old deployments table: %w", err)
+			}
+			if _, err := s.db.Exec(`ALTER TABLE deployments_new RENAME TO deployments;`); err != nil {
+				return fmt.Errorf("failed to rename deployments_new to deployments: %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_name_version ON deployments(name, version);`); err != nil {
+				return fmt.Errorf("failed to recreate idx_name_version: %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_status ON deployments(status);`); err != nil {
+				return fmt.Errorf("failed to recreate idx_status: %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_context ON deployments(context);`); err != nil {
+				return fmt.Errorf("failed to recreate idx_context: %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_kind ON deployments(kind);`); err != nil {
+				return fmt.Errorf("failed to recreate idx_kind: %w", err)
+			}
+			if _, err := s.db.Exec("PRAGMA user_version = 4"); err != nil {
+				return fmt.Errorf("failed to set schema version to 4: %w", err)
+			}
+			s.logger.Info("Schema migrated to version 4 (handle column with NOT NULL UNIQUE constraint)")
+			version = 5
+		}
+
 		s.logger.Info("Database schema up to date", zap.Int("version", version))
 	}
 
@@ -184,12 +237,17 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredConfig) error {
 	name := cfg.GetName()
 	version := cfg.GetVersion()
 	context := cfg.GetContext()
+	handle := cfg.GetHandle()
+
+	if handle == "" {
+		return fmt.Errorf("handle (metadata.name) is required and cannot be empty")
+	}
 
 	query := `
 		INSERT INTO deployments (
-			id, name, version, context, kind,
+			id, name, version, context, kind, handle,
 			status, created_at, updated_at, deployed_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	stmt, err := s.db.Prepare(query)
@@ -205,6 +263,7 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredConfig) error {
 		version,
 		context,
 		cfg.Kind,
+		handle,
 		cfg.Status,
 		now,
 		now,
@@ -247,10 +306,15 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
 	name := cfg.GetName()
 	version := cfg.GetVersion()
 	context := cfg.GetContext()
+	handle := cfg.GetHandle()
+
+	if handle == "" {
+		return fmt.Errorf("handle (metadata.name) is required and cannot be empty")
+	}
 
 	query := `
 		UPDATE deployments
-		SET name = ?, version = ?, context = ?, kind = ?,
+		SET name = ?, version = ?, context = ?, kind = ?, handle = ?,
 			status = ?, updated_at = ?,
 			deployed_version = ?
 		WHERE id = ?
@@ -267,6 +331,7 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
 		version,
 		context,
 		cfg.Kind,
+		handle,
 		cfg.Status,
 		time.Now(),
 		cfg.DeployedVersion,
@@ -406,6 +471,60 @@ func (s *SQLiteStorage) GetConfigByNameVersion(name, version string) (*models.St
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("%w: name=%s, version=%s", ErrNotFound, name, version)
+		}
+		return nil, fmt.Errorf("failed to query configuration: %w", err)
+	}
+
+	// Parse deployed_at (nullable field)
+	if deployedAt.Valid {
+		cfg.DeployedAt = &deployedAt.Time
+	}
+
+	// Deserialize JSON configuration
+	if configJSON != "" {
+		if err := json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal configuration: %w", err)
+		}
+	}
+	if sourceConfigJSON != "" {
+		if err := json.Unmarshal([]byte(sourceConfigJSON), &cfg.SourceConfiguration); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal source configuration: %w", err)
+		}
+	}
+
+	return &cfg, nil
+}
+
+// GetConfigByHandle retrieves a deployment configuration by handle (metadata.name)
+func (s *SQLiteStorage) GetConfigByHandle(handle string) (*models.StoredConfig, error) {
+	query := `
+		SELECT d.id, d.kind, dc.configuration, dc.source_configuration, d.status, d.created_at, d.updated_at,
+			   d.deployed_at, d.deployed_version
+		FROM deployments d
+		LEFT JOIN deployment_configs dc ON d.id = dc.id
+		WHERE d.handle = ?
+	`
+
+	var cfg models.StoredConfig
+	var configJSON string
+	var sourceConfigJSON string
+	var deployedAt sql.NullTime
+
+	err := s.db.QueryRow(query, handle).Scan(
+		&cfg.ID,
+		&cfg.Kind,
+		&configJSON,
+		&sourceConfigJSON,
+		&cfg.Status,
+		&cfg.CreatedAt,
+		&cfg.UpdatedAt,
+		&deployedAt,
+		&cfg.DeployedVersion,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: handle=%s", ErrNotFound, handle)
 		}
 		return nil, fmt.Errorf("failed to query configuration: %w", err)
 	}
