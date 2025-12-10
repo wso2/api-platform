@@ -1,28 +1,5 @@
 package policyv1alpha
 
-// ParameterSchema defines validation rules for a policy parameter
-type ParameterSchema struct {
-	// Parameter name (e.g., "jwksUrl", "maxRequests", "allowedOrigins")
-	Name string `yaml:"name" json:"name"`
-
-	// Parameter type (string, int, float, duration, array, uri, etc.)
-	Type ParameterType `yaml:"type" json:"type"`
-
-	// Human-readable description for documentation
-	Description string `yaml:"description" json:"description"`
-
-	// true if parameter must be provided in configuration
-	Required bool `yaml:"required" json:"required"`
-
-	// Default value if not provided (must match Type)
-	// nil if no default (required parameters should have no default)
-	Default interface{} `yaml:"default,omitempty" json:"default,omitempty"`
-
-	// Validation rules based on type
-	// Contains type-specific constraints (min/max, pattern, enum, etc.)
-	Validation ValidationRules `yaml:"validation,omitempty" json:"validation,omitempty"`
-}
-
 // PolicyParameters holds policy configuration with type-safe validated values
 type PolicyParameters struct {
 	// Raw parameter values as received from xDS config (JSON/YAML)
@@ -48,10 +25,10 @@ type PolicyDefinition struct {
 
 	// Parameters for THIS version
 	// Each schema defines name, type, validation rules
-	Parameters []ParameterSchema `yaml:"parameters" json:"parameters"`
+	Parameters map[string]interface{} `yaml:"parameters" json:"parameters"`
 
 	// InitParameters for THIS version
-	InitParameters []ParameterSchema `yaml:"initParameters" json:"initParameters"`
+	InitParameters map[string]interface{} `yaml:"initParameters" json:"initParameters"`
 }
 
 // PolicySpec is a configuration instance specifying how to use a policy
