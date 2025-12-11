@@ -30,14 +30,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
-	"gopkg.in/yaml.v3"
-
 	"github.com/gin-gonic/gin"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -78,6 +76,7 @@ func NewAPIServer(
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
 ) *APIServer {
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator)
 	server := &APIServer{
 		store:                store,
 		db:                   db,
@@ -87,9 +86,9 @@ func NewAPIServer(
 		parser:               config.NewParser(),
 		validator:            validator,
 		logger:               logger,
-		deploymentService:    utils.NewAPIDeploymentService(store, db, snapshotManager, validator),
+		deploymentService:    deploymentService,
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
-		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager),
+		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, deploymentService),
 		controlPlaneClient:   controlPlaneClient,
 		routerConfig:         routerConfig,
 		httpClient:           &http.Client{Timeout: 10 * time.Second},
@@ -729,32 +728,19 @@ func (s *APIServer) GetLLMProviderTemplateByName(c *gin.Context, name string) {
 
 	id, _ := uuidToOpenAPIUUID(template.ID)
 
-	// Return response based on Accept header
-	accept := c.GetHeader("Accept")
-	if strings.Contains(accept, "yaml") {
-		yamlData, err := yaml.Marshal(template.Configuration)
-		if err != nil {
-			log.Error("Failed to marshal template to YAML", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Failed to generate YAML response",
-			})
-			return
-		}
-		c.Data(http.StatusOK, "application/yaml", yamlData)
-		return
+	// Return response with a simple JSON structure similar to GetAPIByNameVersion
+	tmplDetail := gin.H{
+		"id":            id,
+		"configuration": template.Configuration,
+		"metadata": gin.H{
+			"created_at": template.CreatedAt,
+			"updated_at": template.UpdatedAt,
+		},
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"template": gin.H{
-			"id":            id,
-			"configuration": template.Configuration,
-			"metadata": gin.H{
-				"created_at": template.CreatedAt,
-				"updated_at": template.UpdatedAt,
-			},
-		},
+		"status":   "success",
+		"template": tmplDetail,
 	})
 }
 
@@ -930,62 +916,35 @@ func (s *APIServer) GetLLMProviderByNameVersion(c *gin.Context, name string, ver
 
 	cfg := s.store.GetByKindNameAndVersion(string(api.Llmprovider), name, version)
 	if cfg == nil {
-		log.Warn("LLM provider configuration not found", zap.String("name", name), zap.String("version", version))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{Status: "error", Message: fmt.Sprintf("LLM provider configuration with name '%s' and version '%s' not found", name, version)})
+		log.Warn("LLM provider configuration not found",
+			zap.String("name", name),
+			zap.String("version", version))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("LLM provider configuration with name '%s' and version '%s' not found", name, version),
+		})
 		return
 	}
 
-	// Convert SourceConfiguration back to LLMProviderConfiguration
-	var prov api.LLMProviderConfiguration
-	j, _ := json.Marshal(cfg.SourceConfiguration)
-	if err := json.Unmarshal(j, &prov); err != nil {
-		log.Error("Failed to unmarshal stored LLM provider configuration", zap.String("id", cfg.ID), zap.Error(err))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get stored LLM provider configuration"})
-		return
-	}
-
-	id, _ := uuidToOpenAPIUUID(cfg.ID)
-	resp := api.LLMProviderDetailResponse{Status: stringPtr("success")}
-	resp.Provider = &struct {
-		Configuration    *api.LLMProviderConfiguration                          "json:\"configuration,omitempty\" yaml:\"configuration,omitempty\""
-		DeploymentStatus *api.LLMProviderDetailResponseProviderDeploymentStatus "json:\"deployment_status,omitempty\" yaml:\"deployment_status,omitempty\""
-		Id               *openapi_types.UUID                                    "json:\"id,omitempty\" yaml:\"id,omitempty\""
-		Metadata         *struct {
-			CreatedAt  *time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-			DeployedAt *time.Time `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
-			UpdatedAt  *time.Time `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
-		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	}{
-		Configuration: &prov,
-		Id:            id,
-		Metadata: &struct {
-			CreatedAt  *time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-			DeployedAt *time.Time `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
-			UpdatedAt  *time.Time `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
-		}{
-			CreatedAt: &cfg.CreatedAt,
-			UpdatedAt: &cfg.UpdatedAt,
+	// Build response similar to GetAPIByNameVersion
+	providerDetail := gin.H{
+		"id":            cfg.ID,
+		"configuration": cfg.SourceConfiguration,
+		"metadata": gin.H{
+			"status":     string(cfg.Status),
+			"created_at": cfg.CreatedAt.Format(time.RFC3339),
+			"updated_at": cfg.UpdatedAt.Format(time.RFC3339),
 		},
 	}
 
 	if cfg.DeployedAt != nil {
-		resp.Provider.Metadata.DeployedAt = cfg.DeployedAt
+		providerDetail["metadata"].(gin.H)["deployed_at"] = cfg.DeployedAt.Format(time.RFC3339)
 	}
 
-	// Map deployment status
-	sw := string(cfg.Status)
-	if sw == string(models.StatusDeployed) {
-		st := api.LLMProviderDetailResponseProviderDeploymentStatusDeployed
-		resp.Provider.DeploymentStatus = &st
-	} else if sw == string(models.StatusFailed) {
-		st := api.LLMProviderDetailResponseProviderDeploymentStatusFailed
-		resp.Provider.DeploymentStatus = &st
-	} else {
-		st := api.LLMProviderDetailResponseProviderDeploymentStatusPending
-		resp.Provider.DeploymentStatus = &st
-	}
-
-	c.JSON(http.StatusOK, resp)
+	c.JSON(http.StatusOK, gin.H{
+		"status":   "success",
+		"provider": providerDetail,
+	})
 }
 
 // UpdateLLMProvider implements ServerInterface.UpdateLLMProvider

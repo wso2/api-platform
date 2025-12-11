@@ -259,38 +259,70 @@ func (cs *ConfigStore) SetSnapshotVersion(version int64) {
 // LLM Provider Template Methods
 // ========================================
 
-// AddTemplate adds an LLM provider template to the store
+// AddTemplate adds a new LLM provider template. ID must be unique and immutable; name must be unique.
 func (cs *ConfigStore) AddTemplate(template *models.StoredLLMProviderTemplate) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	// Check if template with same name already exists
-	if _, exists := cs.templateIdByName[template.GetName()]; exists {
-		return fmt.Errorf("template with name '%s' already exists", template.GetName())
+	// Normalize inputs
+	id := strings.TrimSpace(template.ID)
+	name := strings.TrimSpace(template.GetName())
+
+	if id == "" || name == "" {
+		return fmt.Errorf("template ID and name is required")
 	}
 
-	cs.templates[template.ID] = template
-	cs.templateIdByName[template.GetName()] = template.ID
+	// Enforce unique immutable ID: cannot add if ID already exists
+	if _, exists := cs.templates[id]; exists {
+		return fmt.Errorf("template with ID '%s' already exists", id)
+	}
+
+	// Enforce unique name: cannot add if name already mapped to a different ID
+	if _, exists := cs.templateIdByName[name]; exists {
+		return fmt.Errorf("template with name '%s' already exists", name)
+	}
+
+	// Store
+	cs.templates[id] = template
+	cs.templateIdByName[name] = id
 	return nil
 }
 
-// UpdateTemplate updates an existing LLM provider template in the store
+// UpdateTemplate updates an existing LLM provider template's metadata. ID cannot change; only name can change.
 func (cs *ConfigStore) UpdateTemplate(template *models.StoredLLMProviderTemplate) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	existing, exists := cs.templates[template.ID]
+	// Normalize inputs
+	id := strings.TrimSpace(template.ID)
+	newName := strings.TrimSpace(template.GetName())
+
+	if id == "" || newName == "" {
+		return fmt.Errorf("template ID and name is required")
+	}
+
+	// Require existing template by ID (ID is immutable)
+	existing, exists := cs.templates[id]
 	if !exists {
-		return fmt.Errorf("template with ID '%s' not found", template.ID)
+		return fmt.Errorf("template with ID '%s' not found", id)
 	}
 
-	// Remove old name mapping if name changed
-	if existing.GetName() != template.GetName() {
-		delete(cs.templateIdByName, existing.GetName())
+	oldName := strings.TrimSpace(existing.GetName())
+
+	// If name is changing, ensure no collision with another template
+	if newName != oldName {
+		if mappedID, exists := cs.templateIdByName[newName]; exists && mappedID != id {
+			return fmt.Errorf("template with given name '%s' already exists", newName)
+		}
+		// Remove old name mapping if it points to this ID
+		if mappedID, ok := cs.templateIdByName[oldName]; ok && mappedID == id {
+			delete(cs.templateIdByName, oldName)
+		}
 	}
 
-	cs.templates[template.ID] = template
-	cs.templateIdByName[template.GetName()] = template.ID
+	// Update stored template and refresh name mapping
+	cs.templates[id] = template
+	cs.templateIdByName[newName] = id
 	return nil
 }
 

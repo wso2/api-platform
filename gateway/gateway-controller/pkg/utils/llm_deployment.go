@@ -43,23 +43,26 @@ type LLMDeploymentParams struct {
 
 // LLMDeploymentService encapsulates validate+transform+persist+deploy for LLM Providers
 type LLMDeploymentService struct {
-	store           *storage.ConfigStore
-	db              storage.Storage
-	snapshotManager *xds.SnapshotManager
-	parser          *config.Parser
-	validator       *config.LLMValidator
-	transformer     Transformer
+	store             *storage.ConfigStore
+	db                storage.Storage
+	snapshotManager   *xds.SnapshotManager
+	deploymentService *APIDeploymentService
+	parser            *config.Parser
+	validator         *config.LLMValidator
+	transformer       Transformer
 }
 
 // NewLLMDeploymentService initializes the service
-func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage, snapshotManager *xds.SnapshotManager) *LLMDeploymentService {
+func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
+	snapshotManager *xds.SnapshotManager, deploymentService *APIDeploymentService) *LLMDeploymentService {
 	return &LLMDeploymentService{
-		store:           store,
-		db:              db,
-		snapshotManager: snapshotManager,
-		parser:          config.NewParser(),
-		validator:       config.NewLLMValidator(),
-		transformer:     NewLLMProviderTransformer(store),
+		store:             store,
+		db:                db,
+		snapshotManager:   snapshotManager,
+		deploymentService: deploymentService,
+		parser:            config.NewParser(),
+		validator:         config.NewLLMValidator(),
+		transformer:       NewLLMProviderTransformer(store),
 	}
 }
 
@@ -115,7 +118,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	}
 
 	// Save or update
-	isUpdate, err := s.saveOrUpdateConfig(storedCfg, params.Logger)
+	isUpdate, err := s.deploymentService.saveOrUpdateConfig(storedCfg, params.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -150,65 +153,6 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate}, nil
 }
 
-// saveOrUpdateConfig performs atomic dual-write similar to MCP service
-func (s *LLMDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig, logger *zap.Logger) (bool, error) {
-	if s.db != nil {
-		if err := s.db.SaveConfig(storedCfg); err != nil {
-			if storage.IsConflictError(err) {
-				logger.Info("LLM provider config exists in DB; updating",
-					zap.String("id", storedCfg.ID),
-					zap.String("name", storedCfg.GetName()),
-					zap.String("version", storedCfg.GetVersion()))
-				return s.updateExistingConfig(storedCfg)
-			}
-			return false, fmt.Errorf("failed to save config to database: %w", err)
-		}
-	}
-	if err := s.store.Add(storedCfg); err != nil {
-		if s.db != nil {
-			if delErr := s.db.DeleteConfig(storedCfg.ID); delErr != nil {
-				logger.Warn("Failed to rollback DB config after memory store conflict",
-					zap.String("id", storedCfg.ID),
-					zap.Error(delErr))
-			}
-		}
-		if storage.IsConflictError(err) {
-			logger.Info("LLM provider config exists in memory; updating",
-				zap.String("id", storedCfg.ID),
-				zap.String("name", storedCfg.GetName()),
-				zap.String("version", storedCfg.GetVersion()))
-			return s.updateExistingConfig(storedCfg)
-		}
-		return false, fmt.Errorf("failed to add config to memory store: %w", err)
-	}
-	return false, nil
-}
-
-// updateExistingConfig updates an existing stored configuration
-func (s *LLMDeploymentService) updateExistingConfig(newConfig *models.StoredConfig) (bool, error) {
-	existing, err := s.store.GetByNameVersion(newConfig.GetName(), newConfig.GetVersion())
-	if err != nil {
-		return false, fmt.Errorf("failed to get existing config: %w", err)
-	}
-	now := time.Now()
-	existing.Configuration = newConfig.Configuration
-	existing.SourceConfiguration = newConfig.SourceConfiguration
-	existing.Status = models.StatusPending
-	existing.UpdatedAt = now
-	existing.DeployedAt = nil
-	existing.DeployedVersion = 0
-	if s.db != nil {
-		if err := s.db.UpdateConfig(existing); err != nil {
-			return false, fmt.Errorf("failed to update config in database: %w", err)
-		}
-	}
-	if err := s.store.Update(existing); err != nil {
-		return false, fmt.Errorf("failed to update config in memory store: %w", err)
-	}
-	*newConfig = *existing
-	return true, nil
-}
-
 // LLMTemplateParams Template params for CRUD
 type LLMTemplateParams struct {
 	Spec        []byte
@@ -216,8 +160,8 @@ type LLMTemplateParams struct {
 	Logger      *zap.Logger
 }
 
-// CreateLLMProviderTemplate parses, validates, and persists a template
-func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParams) (*models.StoredLLMProviderTemplate, error) {
+// parseAndValidateLLMTemplate parses the raw spec and validates it, returning the typed template.
+func (s *LLMDeploymentService) parseAndValidateLLMTemplate(params LLMTemplateParams) (*api.LLMProviderTemplate, error) {
 	var tmpl api.LLMProviderTemplate
 	if err := s.parser.Parse(params.Spec, params.ContentType, &tmpl); err != nil {
 		return nil, fmt.Errorf("failed to parse template configuration: %w", err)
@@ -225,16 +169,30 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 	validationErrors := s.validator.Validate(&tmpl)
 	if len(validationErrors) > 0 {
 		errs := make([]string, 0, len(validationErrors))
-		params.Logger.Warn("Template validation failed", zap.String("name", tmpl.Spec.Name), zap.Int("error_count", len(validationErrors)))
+		if params.Logger != nil {
+			params.Logger.Warn("Template validation failed", zap.String("name", tmpl.Spec.Name), zap.Int("error_count", len(validationErrors)))
+		}
 		for i, e := range validationErrors {
-			params.Logger.Warn("Validation error", zap.String("field", e.Field), zap.String("message", e.Message))
+			if params.Logger != nil {
+				params.Logger.Warn("Validation error", zap.String("field", e.Field), zap.String("message", e.Message))
+			}
 			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
 		}
 		return nil, fmt.Errorf("template validation failed with %d error(s): %s", len(validationErrors), strings.Join(errs, "; "))
 	}
+	return &tmpl, nil
+}
+
+// CreateLLMProviderTemplate parses, validates, and persists a template
+func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParams) (*models.StoredLLMProviderTemplate, error) {
+	tmpl, err := s.parseAndValidateLLMTemplate(params)
+	if err != nil {
+		return nil, err
+	}
+
 	stored := &models.StoredLLMProviderTemplate{
 		ID:            generateUUID(),
-		Configuration: tmpl,
+		Configuration: *tmpl,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 	}
@@ -262,23 +220,15 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(name string, params LLM
 	if err != nil {
 		return nil, fmt.Errorf("template with name '%s' not found", name)
 	}
-	var tmpl api.LLMProviderTemplate
-	if err := s.parser.Parse(params.Spec, params.ContentType, &tmpl); err != nil {
-		return nil, fmt.Errorf("failed to parse template configuration: %w", err)
+
+	tmpl, err := s.parseAndValidateLLMTemplate(params)
+	if err != nil {
+		return nil, err
 	}
-	validationErrors := s.validator.Validate(&tmpl)
-	if len(validationErrors) > 0 {
-		errs := make([]string, 0, len(validationErrors))
-		params.Logger.Warn("Template validation failed", zap.String("name", tmpl.Spec.Name), zap.Int("error_count", len(validationErrors)))
-		for i, e := range validationErrors {
-			params.Logger.Warn("Validation error", zap.String("field", e.Field), zap.String("message", e.Message))
-			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
-		}
-		return nil, fmt.Errorf("template validation failed with %d error(s): %s", len(validationErrors), strings.Join(errs, "; "))
-	}
+
 	updated := &models.StoredLLMProviderTemplate{
 		ID:            existing.ID,
-		Configuration: tmpl,
+		Configuration: *tmpl,
 		CreatedAt:     existing.CreatedAt,
 		UpdatedAt:     time.Now(),
 	}
