@@ -2346,6 +2346,12 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, name string, version string) 
 			zap.Error(err),
 			zap.String("name", name),
 			zap.String("version", version))
+		// Rollback database save to maintain consistency
+		if s.db != nil {
+			if delErr := s.db.DeleteAPIKey(apiKey.APIKey); delErr != nil {
+				log.Error("Failed to rollback API key from database", zap.Error(delErr))
+			}
+		}
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to store API key",

@@ -199,10 +199,10 @@ func (s *SQLiteStorage) initSchema() error {
 			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);`); err != nil {
 				return fmt.Errorf("failed to create api_keys expiry index: %w", err)
 			}
-			if _, err := s.db.Exec("PRAGMA user_version = 4"); err != nil {
-				return fmt.Errorf("failed to set schema version to 4: %w", err)
+			if _, err := s.db.Exec("PRAGMA user_version = 5"); err != nil {
+				return fmt.Errorf("failed to set schema version to 5: %w", err)
 			}
-			s.logger.Info("Schema migrated to version 4 (api_keys table)")
+			s.logger.Info("Schema migrated to version 5 (api_keys table)")
 			version = 5
 		}
 
@@ -1198,7 +1198,7 @@ func (s *SQLiteStorage) UpdateAPIKey(apiKey *models.APIKey) error {
 	}
 
 	s.logger.Info("API key updated successfully",
-		zap.String("key", apiKey.APIKey),
+		zap.String(" id", apiKey.ID),
 		zap.String("status", string(apiKey.Status)))
 
 	return nil
@@ -1222,7 +1222,7 @@ func (s *SQLiteStorage) DeleteAPIKey(key string) error {
 		return fmt.Errorf("%w: API key not found", ErrNotFound)
 	}
 
-	s.logger.Info("API key deleted successfully", zap.String("key", key))
+	s.logger.Info("API key deleted successfully", zap.String("key_prefix", key[:min(8, len(key))]+"***"))
 
 	return nil
 }
