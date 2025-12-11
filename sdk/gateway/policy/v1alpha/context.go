@@ -25,6 +25,25 @@ type SharedContext struct {
 	// Persists from request phase through response phase
 	// Policies read/write this map to coordinate behavior
 	Metadata map[string]interface{}
+
+	// API metadata fields (populated by policy engine at request time)
+	// These provide context about which API and operation is being processed
+
+	// APIName is the name of the API (e.g., "PetStore")
+	APIName string
+
+	// APIVersion is the version of the API (e.g., "v1.0.0")
+	APIVersion string
+
+	// APIContext is the base context path of the API (e.g., "/petstore")
+	// This is the base path without the version
+	APIContext string
+
+	// OperationPath is the operation path pattern from the API definition
+	// (e.g., "/pets/{id}" for a parameterized path)
+	// This differs from RequestContext.Path which contains the actual request path
+	// with resolved parameters (e.g., "/petstore/v1.0.0/pets/123")
+	OperationPath string
 }
 
 // RequestContext is mutable context for request phase containing current request state
