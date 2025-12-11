@@ -23,11 +23,11 @@ func (t *LLMProviderTransformer) Transform(input any, output *api.APIConfigurati
 		return nil, fmt.Errorf("invalid input type: expected *api.LLMProviderConfiguration")
 	}
 
-	// @TODO: Step 1) Retrieve the referenced template from in-memory and configure token based rate-limiting policy
-	//tmpl, err := t.store.GetTemplateByName(provider.Spec.Template)
-	//if err != nil {
-	//	return nil, fmt.Errorf("failed to retrieve template '%s': %w", provider.Spec.Template, err)
-	//}
+	// @TODO: Step 1) Configure token based rate-limiting policy based on template configs
+	_, err := t.store.GetTemplateByName(provider.Spec.Template)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve template '%s': %w", provider.Spec.Template, err)
+	}
 
 	output.Kind = api.APIConfigurationKindHttprest
 	output.Version = api.ApiPlatformWso2Comv1
@@ -72,7 +72,7 @@ func (t *LLMProviderTransformer) Transform(input any, output *api.APIConfigurati
 	}
 
 	// Step 4) Apply access control
-	mode := *provider.Spec.AccessControl.Mode
+	mode := provider.Spec.AccessControl.Mode
 	var exceptions []api.RouteException
 	if provider.Spec.AccessControl.Exceptions != nil {
 		exceptions = *provider.Spec.AccessControl.Exceptions

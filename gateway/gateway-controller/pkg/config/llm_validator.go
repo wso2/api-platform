@@ -303,12 +303,7 @@ func (v *LLMValidator) validateAccessControl(fieldPrefix string, ac *api.LLMAcce
 	}
 
 	// mode is required
-	if ac.Mode == nil {
-		errors = append(errors, ValidationError{
-			Field:   fmt.Sprintf("%s.mode", fieldPrefix),
-			Message: "Access control mode is required",
-		})
-	} else if *ac.Mode != "allow_all" && *ac.Mode != "deny_all" {
+	if ac.Mode != "allow_all" && ac.Mode != "deny_all" {
 		errors = append(errors, ValidationError{
 			Field:   fmt.Sprintf("%s.mode", fieldPrefix),
 			Message: "Access control mode must be either 'allow_all' or 'deny_all'",
