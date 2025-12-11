@@ -56,10 +56,13 @@ type ApiListResponse = {
 
 export type CreateApiPayload = {
   name: string;
+  displayName?: string;
   context: string;
   version: string;
   projectId: string;
   description?: string;
+  /** Optional type to drive creation UX (e.g., MCPServer, HttpProxyApi) */
+  type?: string;
   backendServices?: ApiBackendService[];
   operations?: ApiOperation[];
   /** raw OAS (yaml/json) if your backend uses it */

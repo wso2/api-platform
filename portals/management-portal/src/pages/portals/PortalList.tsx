@@ -178,7 +178,7 @@ const PortalList: React.FC<PortalListProps> = ({
         }}
         title={confirmationDialog.title}
         message={confirmationDialog.message}
-        confirmText={confirmationDialog.confirmText}
+        primaryBtnText={confirmationDialog.confirmText}
         severity={confirmationDialog.severity}
       />
     </>

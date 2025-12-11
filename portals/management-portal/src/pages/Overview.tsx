@@ -1,6 +1,6 @@
 import React from "react";
 import { Box } from "@mui/material";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import OrgOverview from "./overview/orgOverview/OrgOverview";
 import { useOrganization } from "../context/OrganizationContext";
 import { useProjects } from "../context/ProjectContext";
@@ -20,9 +20,14 @@ const Overview: React.FC = () => {
     refreshProjects,
     createProject,
   } = useProjects();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const currentOrgHandle =
     params.orgHandle ?? organization?.handle ?? "organization";
+  const shouldAutoOpenCreate = searchParams.get("createProject") === "true";
+  const [autoOpenCreate, setAutoOpenCreate] = React.useState(
+    shouldAutoOpenCreate
+  );
 
   React.useEffect(() => {
     const slug = params.projectHandle;
@@ -55,6 +60,23 @@ const Overview: React.FC = () => {
     currentOrgHandle,
   ]);
 
+  React.useEffect(() => {
+    if (!shouldAutoOpenCreate) {
+      return;
+    }
+    setAutoOpenCreate(true);
+    setSelectedProject(null);
+    const next = new URLSearchParams(searchParams);
+    next.delete("createProject");
+    setSearchParams(next, { replace: true });
+  }, [
+    searchParams,
+    setSearchParams,
+    setAutoOpenCreate,
+    setSelectedProject,
+    shouldAutoOpenCreate,
+  ]);
+
   const handleSelectProject = React.useCallback(
     (project: Project) => {
       setSelectedProject(project);
@@ -71,17 +93,26 @@ const Overview: React.FC = () => {
   const handleCreateProject = React.useCallback(
     async (name?: string, description?: string) => {
       try {
-        const project = await createProject(name, description);
+        await createProject(name, description);
         await refreshProjects();
-        handleSelectProject(project);
+        setSelectedProject(null);
+        setAutoOpenCreate(false);
+        navigate(`/${currentOrgHandle}/overview`, { replace: true });
       } catch (error) {
         console.error("Failed to create project", error);
       }
     },
-    [createProject, refreshProjects, handleSelectProject]
+    [
+      createProject,
+      currentOrgHandle,
+      navigate,
+      refreshProjects,
+      setAutoOpenCreate,
+      setSelectedProject,
+    ]
   );
 
-  const showProjectContent = Boolean(selectedProject);
+  const showProjectContent = Boolean(selectedProject && params.projectHandle);
 
   return (
     <Box>
@@ -90,6 +121,8 @@ const Overview: React.FC = () => {
           projects={projects}
           onSelectProject={handleSelectProject}
           onCreateProject={handleCreateProject}
+          autoOpenCreate={autoOpenCreate}
+          onAutoOpenCreateHandled={() => setAutoOpenCreate(false)}
           // onRefresh={refreshProjects}
           loading={projectsLoading}
         />

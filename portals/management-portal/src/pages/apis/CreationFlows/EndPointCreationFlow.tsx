@@ -15,6 +15,7 @@ import { TextInput } from "../../../components/src/components/TextInput";
 import {
   useCreateComponentBuildpackContext,
 } from "../../../context/CreateComponentBuildpackContext";
+import { type CreateApiPayload } from "../../../hooks/apis";
 import CreationMetaData from "./CreationMetaData";
 
 type EndpointWizardStep = "endpoint" | "details";
@@ -23,19 +24,7 @@ type EndpointCreationState = {
   endpointUrl: string;
 };
 
-type CreateApiFn = (payload: {
-  name: string;
-  context: string;
-  version: string;
-  description?: string;
-  projectId: string;
-  backendServices: Array<{
-    name: string;
-    isDefault: boolean;
-    endpoints: Array<{ url: string; description?: string }>;
-    retries: number;
-  }>;
-}) => Promise<unknown>;
+type CreateApiFn = (payload: CreateApiPayload) => Promise<unknown>;
 
 type Props = {
   open: boolean;
@@ -126,11 +115,12 @@ const EndPointCreationFlow: React.FC<Props> = ({
 
   const handleCreate = React.useCallback(async () => {
     const endpointUrl = wizardState.endpointUrl.trim();
-    const name = (endpointMeta?.name || "").trim();
+    const displayName = (endpointMeta?.displayName || endpointMeta?.name || "").trim();
+    const identifier = (endpointMeta?.identifier || endpointMeta?.name || "").trim();
     const context = (endpointMeta?.context || "").trim();
     const version = (endpointMeta?.version || "").trim() || "1.0.0";
 
-    if (!endpointUrl || !name || !context) {
+    if (!endpointUrl || !displayName || !identifier || !context) {
       setWizardError("Please complete all required fields.");
       return;
     }
@@ -143,7 +133,8 @@ const EndPointCreationFlow: React.FC<Props> = ({
       )}${Math.random().toString(36).slice(2, 8)}`;
 
       await createApi({
-        name,
+        name: identifier,
+        displayName,
         context: context.startsWith("/") ? context : `/${context}`,
         version,
         description: endpointMeta?.description?.trim() || undefined,
