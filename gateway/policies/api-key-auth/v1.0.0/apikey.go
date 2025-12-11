@@ -56,11 +56,23 @@ type ErrorResponse struct {
 }
 
 // APIKeyPolicy implements API Key Authentication
-type APIKeyPolicy struct{}
+type APIKeyPolicy struct {
+	httpClient *http.Client
+}
+
+var ins = &APIKeyPolicy{
+	httpClient: &http.Client{
+		Timeout: DefaultHTTPTimeout,
+	},
+}
 
 // NewPolicy creates a new APIKeyPolicy instance
-func NewPolicy() policy.Policy {
-	return &APIKeyPolicy{}
+func NewPolicy(
+	metadata policy.PolicyMetadata,
+	initParams map[string]interface{},
+	params map[string]interface{},
+) (policy.Policy, error) {
+	return ins, nil
 }
 
 // Mode returns the processing mode for this policy
@@ -169,11 +181,11 @@ func (p *APIKeyPolicy) validateAPIKey(apiName, apiVersion, apiKey string) bool {
 
 	switch prefix {
 	case "gw":
-		return validateGatewayAPIKey(apiName, apiVersion, apiKey)
+		return p.validateGatewayAPIKey(apiName, apiVersion, apiKey)
 	case "mgt":
-		return validateManagementPortalAPIKey(apiName, apiVersion, apiKey)
+		return p.validateManagementPortalAPIKey(apiName, apiVersion, apiKey)
 	case "dev":
-		return validateDevPortalAPIKey(apiName, apiVersion, apiKey)
+		return p.validateDevPortalAPIKey(apiName, apiVersion, apiKey)
 	default:
 		return false
 	}
@@ -230,7 +242,7 @@ func extractAPIKeyPrefix(apiKey string) string {
 }
 
 // validateGatewayAPIKey validates API keys with "gw_" prefix against the gateway controller database
-func validateGatewayAPIKey(apiName, apiVersion, apiKey string) bool {
+func (p *APIKeyPolicy) validateGatewayAPIKey(apiName, apiVersion, apiKey string) bool {
 	// Get gateway controller base URL from environment or use default
 	baseURL := getGatewayControllerBaseURL()
 
@@ -252,11 +264,6 @@ func validateGatewayAPIKey(apiName, apiVersion, apiKey string) bool {
 		return false
 	}
 
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: DefaultHTTPTimeout,
-	}
-
 	// Create HTTP request
 	httpReq, err := http.NewRequest("POST", requestURL, bytes.NewBuffer(payload))
 	if err != nil {
@@ -267,8 +274,8 @@ func validateGatewayAPIKey(apiName, apiVersion, apiKey string) bool {
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
 
-	// Make the request
-	resp, err := client.Do(httpReq)
+	// Make the request using the policy's HTTP client
+	resp, err := p.httpClient.Do(httpReq)
 	if err != nil {
 		// Network error or timeout - treat as validation failure
 		return false
@@ -314,11 +321,11 @@ func getGatewayControllerBaseURL() string {
 }
 
 // validateManagementPortalAPIKey validates API keys with "mgt_" prefix against the management portal
-func validateManagementPortalAPIKey(apiName, apiVersion, apiKey string) bool {
+func (p *APIKeyPolicy) validateManagementPortalAPIKey(apiName, apiVersion, apiKey string) bool {
 	// TODO: Implement management portal API key validation
 	// This should make an HTTP request to the management portal's API key validation endpoint
 	// Example implementation:
-	// 1. Create HTTP client
+	// 1. Use p.httpClient to make HTTP request
 	// 2. Make POST request to management portal: POST /api/v1/validate-key
 	// 3. Send payload: {"apiName": apiName, "apiVersion": apiVersion, "apiKey": apiKey}
 	// 4. Parse response and return validation result
@@ -327,11 +334,11 @@ func validateManagementPortalAPIKey(apiName, apiVersion, apiKey string) bool {
 }
 
 // validateDevPortalAPIKey validates API keys with "dev_" prefix against the developer portal
-func validateDevPortalAPIKey(apiName, apiVersion, apiKey string) bool {
+func (p *APIKeyPolicy) validateDevPortalAPIKey(apiName, apiVersion, apiKey string) bool {
 	// TODO: Implement developer portal API key validation
 	// This should make an HTTP request to the developer portal's API key validation endpoint
 	// Example implementation:
-	// 1. Create HTTP client
+	// 1. Use p.httpClient to make HTTP request
 	// 2. Make POST request to developer portal: POST /api/v1/validate-key
 	// 3. Send payload: {"apiName": apiName, "apiVersion": apiVersion, "apiKey": apiKey}
 	// 4. Parse response and return validation result
