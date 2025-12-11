@@ -62,10 +62,6 @@ func (v *APIKeyValidator) ValidateAPIKey(apiName, apiVersion, apiKey string) (bo
 	switch prefix {
 	case "gw":
 		return v.validateGatewayAPIKey(apiName, apiVersion, apiKey)
-	case "mgt":
-		return v.validateManagementPortalAPIKey(apiName, apiVersion, apiKey)
-	case "dev":
-		return v.validateDevPortalAPIKey(apiName, apiVersion, apiKey)
 	default:
 		v.logger.Warn("Unknown API key prefix", zap.String("prefix", prefix))
 		return false, nil
@@ -135,42 +131,4 @@ func (v *APIKeyValidator) validateGatewayAPIKey(apiName, apiVersion, apiKey stri
 		}()))
 
 	return isValid, nil
-}
-
-// validateManagementPortalAPIKey validates API keys with "mgt_" prefix against the management portal
-func (v *APIKeyValidator) validateManagementPortalAPIKey(apiName, apiVersion, apiKey string) (bool, error) {
-	v.logger.Debug("Validating management portal API key",
-		zap.String("apiName", apiName),
-		zap.String("apiVersion", apiVersion),
-	)
-
-	// TODO: Implement management portal API key validation
-	// This should make an HTTP request to the management portal's API key validation endpoint
-	// Example implementation:
-	// 1. Create HTTP client
-	// 2. Make POST request to management portal: POST /api/v1/validate-key
-	// 3. Send payload: {"apiName": apiName, "apiVersion": apiVersion, "apiKey": apiKey}
-	// 4. Parse response and return validation result
-
-	v.logger.Warn("Management portal API key validation not yet implemented")
-	return false, nil
-}
-
-// validateDevPortalAPIKey validates API keys with "dev_" prefix against the developer portal
-func (v *APIKeyValidator) validateDevPortalAPIKey(apiName, apiVersion, apiKey string) (bool, error) {
-	v.logger.Debug("Validating developer portal API key",
-		zap.String("apiName", apiName),
-		zap.String("apiVersion", apiVersion),
-	)
-
-	// TODO: Implement developer portal API key validation
-	// This should make an HTTP request to the developer portal's API key validation endpoint
-	// Example implementation:
-	// 1. Create HTTP client
-	// 2. Make POST request to developer portal: POST /api/v1/validate-key
-	// 3. Send payload: {"apiName": apiName, "apiVersion": apiVersion, "apiKey": apiKey}
-	// 4. Parse response and return validation result
-
-	v.logger.Warn("Developer portal API key validation not yet implemented")
-	return false, nil
 }
