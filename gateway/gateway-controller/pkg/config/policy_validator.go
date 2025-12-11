@@ -89,14 +89,16 @@ func (pv *PolicyValidator) validatePolicy(policy api.Policy, fieldPath string) [
 	}
 
 	// Validate policy parameters against JSON schema if schema is defined
-	if policyDef.ParametersSchema != nil {
+	if policyDef.Parameters != nil {
 		// If params is nil, validate against an empty object to enforce required fields
 		params := make(map[string]interface{})
 		if policy.Params != nil {
 			params = *policy.Params
 		}
-		schemaErrs := pv.validatePolicyParams(params, *policyDef.ParametersSchema, fieldPath+".params")
+		schemaErrs := pv.validatePolicyParams(params, *policyDef.Parameters, fieldPath+".params")
 		errors = append(errors, schemaErrs...)
+	} else {
+
 	}
 
 	return errors
