@@ -532,13 +532,275 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /policies:
+    get:
+      summary: List all registered policy definitions
+      description: |
+        Retrieve all currently loaded policy definitions from the controller.
+        Policy definitions are loaded from files in the policies directory at
+        controller startup and stored in memory.
+      operationId: listPolicies
+      tags:
+        - Policy Management
+      responses:
+        "200":
+          description: List of policy definitions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicyListResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mcp-proxies:
+    post:
+      summary: Create a new MCP Proxy configuration
+      description: |
+        Submit a new MCP Proxy configuration to the Gateway Controller. The configuration
+        is validated, persisted, and translated to Envoy xDS resources. The Router
+        begins routing traffic for the MCP Proxy within 5 seconds.
+      operationId: createMCPProxy
+      tags:
+        - MCP Proxy Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/MCPProxyConfiguration"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MCPProxyConfiguration"
+      responses:
+        "201":
+          description: MCP Proxy configuration created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APICreateResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Conflict - MCP Proxy with same name and version already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      summary: List all MCP Proxy configurations
+      description: |
+        Retrieve a list of all deployed MCP Proxy configurations with metadata.
+        Returns basic information about each MCP Proxy (name, version, context, deployment time).
+      operationId: listMCPProxies
+      tags:
+        - MCP Proxy Management
+      responses:
+        "200":
+          description: List of MCP Proxy configurations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 5
+                  mcp_proxies:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MCPProxyListItem"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mcp-proxies/{name}/{version}:
+    get:
+      summary: Get MCP Proxy configuration by name and version
+      description: Retrieve the complete configuration for a specific MCP Proxy by its name and version
+      operationId: getMCPProxyByNameVersion
+      tags:
+        - MCP Proxy Management
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Name of the MCP Proxy
+          schema:
+            type: string
+          example: mcp-proxy-1
+        - name: version
+          in: path
+          required: true
+          description: Version of the MCP Proxy
+          schema:
+            type: string
+          example: v1.0
+      responses:
+        "200":
+          description: MCP Proxy configuration details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MCPDetailResponse"
+            application/yaml:
+              schema:
+                $ref: "#/components/schemas/MCPDetailResponse"
+        "404":
+          description: MCP Proxy configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      summary: Update an existing MCP Proxy configuration
+      description: |
+        Update an existing MCP Proxy configuration. The update is validated and applied atomically.
+        The Router receives the updated configuration within 5 seconds. In-flight requests
+        complete with the old configuration; new requests use the updated configuration.
+
+        **Important:** If validation fails, the existing configuration remains active.
+      operationId: updateMCPProxy
+      tags:
+        - MCP Proxy Management
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Name of the MCP Proxy to update
+          schema:
+            type: string
+          example: mcp-proxy-1
+        - name: version
+          in: path
+          required: true
+          description: Version of the MCP Proxy to update
+          schema:
+            type: string
+          example: v1.0
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/MCPProxyConfiguration"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MCPProxyConfiguration"
+      responses:
+        "200":
+          description: MCP Proxy configuration updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIUpdateResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: MCP Proxy configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      summary: Delete an MCP Proxy configuration
+      description: |
+        Remove an MCP Proxy configuration from the Gateway Controller. The Router stops
+        accepting traffic for this MCP Proxy within 5 seconds. In-flight requests complete
+        successfully; new requests receive 404 Not Found.
+      operationId: deleteMCPProxy
+      tags:
+        - MCP Proxy Management
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Name of the MCP Proxy to delete
+          schema:
+            type: string
+          example: mcp-proxy-1
+        - name: version
+          in: path
+          required: true
+          description: Version of the MCP Proxy to delete
+          schema:
+            type: string
+          example: v1.0
+      responses:
+        "200":
+          description: MCP Proxy configuration deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: MCP Proxy configuration deleted successfully
+                  id:
+                    type: string
+                    example: 550e8400-e29b-41d4-a716-446655440000
+        "404":
+          description: MCP Proxy configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /llm-providers/templates:
     post:
       summary: Create a new LLM provider template
       description: |
         Submit a new LLM provider template configuration. The template defines
         token tracking and model extraction related metadata.
-        
+
         **Validation Rules:**
         - Template name must be unique
         - Token identifiers must use valid JSONPath expressions
@@ -974,268 +1236,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-
-  /policies:
-    get:
-      summary: List all registered policy definitions
-      description: |
-        Retrieve all currently loaded policy definitions from the controller.
-        Policy definitions are loaded from files in the policies directory at
-        controller startup and stored in memory.
-      operationId: listPolicies
-      tags:
-        - Policy Management
-      responses:
-        "200":
-          description: List of policy definitions
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PolicyListResponse"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /mcp-proxies:
-    post:
-      summary: Create a new MCP Proxy configuration
-      description: |
-        Submit a new MCP Proxy configuration to the Gateway Controller. The configuration
-        is validated, persisted, and translated to Envoy xDS resources. The Router
-        begins routing traffic for the MCP Proxy within 5 seconds.
-      operationId: createMCPProxy
-      tags:
-        - MCP Proxy Management
-      requestBody:
-        required: true
-        content:
-          application/yaml:
-            schema:
-              $ref: "#/components/schemas/MCPProxyConfiguration"
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MCPProxyConfiguration"
-      responses:
-        "201":
-          description: MCP Proxy configuration created successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/APICreateResponse"
-        "400":
-          description: Invalid configuration (validation failed)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: Conflict - MCP Proxy with same name and version already exists
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-    get:
-      summary: List all MCP Proxy configurations
-      description: |
-        Retrieve a list of all deployed MCP Proxy configurations with metadata.
-        Returns basic information about each MCP Proxy (name, version, context, deployment time).
-      operationId: listMCPProxies
-      tags:
-        - MCP Proxy Management
-      responses:
-        "200":
-          description: List of MCP Proxy configurations
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: success
-                  count:
-                    type: integer
-                    example: 5
-                  mcp_proxies:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/MCPProxyListItem"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /mcp-proxies/{name}/{version}:
-    get:
-      summary: Get MCP Proxy configuration by name and version
-      description: Retrieve the complete configuration for a specific MCP Proxy by its name and version
-      operationId: getMCPProxyByNameVersion
-      tags:
-        - MCP Proxy Management
-      parameters:
-        - name: name
-          in: path
-          required: true
-          description: Name of the MCP Proxy
-          schema:
-            type: string
-          example: mcp-proxy-1
-        - name: version
-          in: path
-          required: true
-          description: Version of the MCP Proxy
-          schema:
-            type: string
-          example: v1.0
-      responses:
-        "200":
-          description: MCP Proxy configuration details
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MCPDetailResponse"
-            application/yaml:
-              schema:
-                $ref: "#/components/schemas/MCPDetailResponse"
-        "404":
-          description: MCP Proxy configuration not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-    put:
-      summary: Update an existing MCP Proxy configuration
-      description: |
-        Update an existing MCP Proxy configuration. The update is validated and applied atomically.
-        The Router receives the updated configuration within 5 seconds. In-flight requests
-        complete with the old configuration; new requests use the updated configuration.
-
-        **Important:** If validation fails, the existing configuration remains active.
-      operationId: updateMCPProxy
-      tags:
-        - MCP Proxy Management
-      parameters:
-        - name: name
-          in: path
-          required: true
-          description: Name of the MCP Proxy to update
-          schema:
-            type: string
-          example: mcp-proxy-1
-        - name: version
-          in: path
-          required: true
-          description: Version of the MCP Proxy to update
-          schema:
-            type: string
-          example: v1.0
-      requestBody:
-        required: true
-        content:
-          application/yaml:
-            schema:
-              $ref: "#/components/schemas/MCPProxyConfiguration"
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MCPProxyConfiguration"
-      responses:
-        "200":
-          description: MCP Proxy configuration updated successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/APIUpdateResponse"
-        "400":
-          description: Invalid configuration (validation failed)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: MCP Proxy configuration not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-    delete:
-      summary: Delete an MCP Proxy configuration
-      description: |
-        Remove an MCP Proxy configuration from the Gateway Controller. The Router stops
-        accepting traffic for this MCP Proxy within 5 seconds. In-flight requests complete
-        successfully; new requests receive 404 Not Found.
-      operationId: deleteMCPProxy
-      tags:
-        - MCP Proxy Management
-      parameters:
-        - name: name
-          in: path
-          required: true
-          description: Name of the MCP Proxy to delete
-          schema:
-            type: string
-          example: mcp-proxy-1
-        - name: version
-          in: path
-          required: true
-          description: Version of the MCP Proxy to delete
-          schema:
-            type: string
-          example: v1.0
-      responses:
-        "200":
-          description: MCP Proxy configuration deleted successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: success
-                  message:
-                    type: string
-                    example: MCP Proxy configuration deleted successfully
-                  id:
-                    type: string
-                    example: 550e8400-e29b-41d4-a716-446655440000
-        "404":
-          description: MCP Proxy configuration not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
 
   /config_dump:
     get:
