@@ -29,7 +29,7 @@ func (t *LLMProviderTransformer) Transform(input any, output *api.APIConfigurati
 		return nil, fmt.Errorf("failed to retrieve template '%s': %w", provider.Spec.Template, err)
 	}
 
-	output.Kind = api.APIConfigurationKindHttprest
+	output.Kind = api.Httprest
 	output.Version = api.ApiPlatformWso2Comv1
 
 	spec := api.APIConfigData{}

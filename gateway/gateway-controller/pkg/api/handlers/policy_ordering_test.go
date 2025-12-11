@@ -164,7 +164,7 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 			cfg := &models.StoredConfig{
 				Configuration: api.APIConfiguration{
 					Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
-					Kind:    api.APIConfigurationKind("http/rest"),
+					Kind:    api.APIConfigurationKind(api.Httprest),
 					Spec:    specUnion,
 				},
 			}
@@ -287,7 +287,7 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 	cfg := &models.StoredConfig{
 		Configuration: api.APIConfiguration{
 			Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
-			Kind:    api.APIConfigurationKind("http/rest"),
+			Kind:    api.APIConfigurationKind(api.Httprest),
 			Spec:    specUnion,
 		},
 	}
@@ -406,7 +406,7 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 	cfg := &models.StoredConfig{
 		Configuration: api.APIConfiguration{
 			Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
-			Kind:    api.APIConfigurationKind("http/rest"),
+			Kind:    api.Httprest,
 			Spec:    specUnion,
 		},
 	}

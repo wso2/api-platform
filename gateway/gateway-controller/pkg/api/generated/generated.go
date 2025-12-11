@@ -8,7 +8,6 @@ import (
 	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -22,17 +21,12 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
-// Defines values for APIConfigDataApiType.
-const (
-	APIConfigDataApiTypeHttprest APIConfigDataApiType = "http/rest"
-)
-
 // Defines values for APIConfigurationKind.
 const (
-	APIConfigurationKindAsyncsse       APIConfigurationKind = "async/sse"
-	APIConfigurationKindAsyncwebsocket APIConfigurationKind = "async/websocket"
-	APIConfigurationKindAsyncwebsub    APIConfigurationKind = "async/websub"
-	APIConfigurationKindHttprest       APIConfigurationKind = "http/rest"
+	Asyncsse       APIConfigurationKind = "async/sse"
+	Asyncwebsocket APIConfigurationKind = "async/websocket"
+	Asyncwebsub    APIConfigurationKind = "async/websub"
+	Httprest       APIConfigurationKind = "http/rest"
 )
 
 // Defines values for APIConfigurationVersion.
@@ -189,16 +183,8 @@ const (
 	UpstreamWithAuthAuthTypeBearer UpstreamWithAuthAuthType = "bearer"
 )
 
-// Defines values for WebhookAPIDataApiType.
-const (
-	Asyncwebsub WebhookAPIDataApiType = "async/websub"
-)
-
 // APIConfigData defines model for APIConfigData.
 type APIConfigData struct {
-	// ApiType API type
-	ApiType APIConfigDataApiType `json:"apiType" yaml:"apiType"`
-
 	// Context Base path for all API routes (must start with /, no trailing slash)
 	Context string `json:"context" yaml:"context"`
 
@@ -217,9 +203,6 @@ type APIConfigData struct {
 	// Version Semantic version of the API
 	Version string `json:"version" yaml:"version"`
 }
-
-// APIConfigDataApiType API type
-type APIConfigDataApiType string
 
 // APIConfiguration defines model for APIConfiguration.
 type APIConfiguration struct {
@@ -928,9 +911,6 @@ type ValidationError struct {
 
 // WebhookAPIData defines model for WebhookAPIData.
 type WebhookAPIData struct {
-	// ApiType API type
-	ApiType WebhookAPIDataApiType `json:"apiType" yaml:"apiType"`
-
 	// Channels List of operations - HTTP operations for REST APIs or event/topic operations for async APIs
 	Channels []Channel `json:"channels" yaml:"channels"`
 
@@ -949,9 +929,6 @@ type WebhookAPIData struct {
 	// Version Semantic version of the API
 	Version string `json:"version" yaml:"version"`
 }
-
-// WebhookAPIDataApiType API type
-type WebhookAPIDataApiType string
 
 // CreateAPIJSONRequestBody defines body for CreateAPI for application/json ContentType.
 type CreateAPIJSONRequestBody = APIConfiguration
@@ -989,7 +966,6 @@ func (t APIConfiguration_Spec) AsAPIConfigData() (APIConfigData, error) {
 
 // FromAPIConfigData overwrites any union data inside the APIConfiguration_Spec as the provided APIConfigData
 func (t *APIConfiguration_Spec) FromAPIConfigData(v APIConfigData) error {
-	v.ApiType = "http/rest"
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
@@ -997,7 +973,6 @@ func (t *APIConfiguration_Spec) FromAPIConfigData(v APIConfigData) error {
 
 // MergeAPIConfigData performs a merge with any union data inside the APIConfiguration_Spec, using the provided APIConfigData
 func (t *APIConfiguration_Spec) MergeAPIConfigData(v APIConfigData) error {
-	v.ApiType = "http/rest"
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -1017,7 +992,6 @@ func (t APIConfiguration_Spec) AsWebhookAPIData() (WebhookAPIData, error) {
 
 // FromWebhookAPIData overwrites any union data inside the APIConfiguration_Spec as the provided WebhookAPIData
 func (t *APIConfiguration_Spec) FromWebhookAPIData(v WebhookAPIData) error {
-	v.ApiType = "async/websub"
 	b, err := json.Marshal(v)
 	t.union = b
 	return err
@@ -1025,7 +999,6 @@ func (t *APIConfiguration_Spec) FromWebhookAPIData(v WebhookAPIData) error {
 
 // MergeWebhookAPIData performs a merge with any union data inside the APIConfiguration_Spec, using the provided WebhookAPIData
 func (t *APIConfiguration_Spec) MergeWebhookAPIData(v WebhookAPIData) error {
-	v.ApiType = "async/websub"
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -1034,29 +1007,6 @@ func (t *APIConfiguration_Spec) MergeWebhookAPIData(v WebhookAPIData) error {
 	merged, err := runtime.JSONMerge(t.union, b)
 	t.union = merged
 	return err
-}
-
-func (t APIConfiguration_Spec) Discriminator() (string, error) {
-	var discriminator struct {
-		Discriminator string `json:"apiType"`
-	}
-	err := json.Unmarshal(t.union, &discriminator)
-	return discriminator.Discriminator, err
-}
-
-func (t APIConfiguration_Spec) ValueByDiscriminator() (interface{}, error) {
-	discriminator, err := t.Discriminator()
-	if err != nil {
-		return nil, err
-	}
-	switch discriminator {
-	case "async/websub":
-		return t.AsWebhookAPIData()
-	case "http/rest":
-		return t.AsAPIConfigData()
-	default:
-		return nil, errors.New("unknown discriminator value: " + discriminator)
-	}
 }
 
 func (t APIConfiguration_Spec) MarshalJSON() ([]byte, error) {
