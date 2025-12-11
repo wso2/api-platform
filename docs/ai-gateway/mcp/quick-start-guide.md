@@ -60,14 +60,14 @@ spec:
   upstreams:
     - url: http://everything:3001
   tools: []
-  resources:[]
+  resources: []
   prompts: []
 EOF
 ```
 To test MCP traffic routing through the gateway, add the following URL to your MCP client and connect to the server.
 
 ```
-http://localhost:8080/everything/v1.0/mcp
+http://localhost:8080/everything/mcp
 ```
 
 ## Stopping the Gateway
