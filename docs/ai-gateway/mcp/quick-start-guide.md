@@ -19,6 +19,7 @@ docker --version
 docker compose version
 ```
 
+Replace ${version} with the actual release version of the API Platform Gateway.
 ```bash
 # Download distribution.
 wget https://github.com/wso2/api-platform/releases/download/gateway-${version}/gateway-${version}.zip
@@ -80,7 +81,7 @@ docker rm everything
 
 When stopping the gateway, you have two options:
 
-**Option 1: Stop runtime, keep data (persisted proxies and configuration)**
+### Option 1: Stop runtime, keep data (persisted proxies and configuration)
 
 ```bash
 docker compose down
@@ -88,7 +89,7 @@ docker compose down
 
 This stops the containers but preserves the `controller-data` volume. When you restart with `docker compose up`, all your API configurations will be restored.
 
-**Option 2: Complete shutdown with data cleanup (fresh start)**
+### Option 2: Complete shutdown with data cleanup (fresh start)
 ```bash
 docker compose down -v
 ```
