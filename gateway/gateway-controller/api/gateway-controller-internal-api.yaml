@@ -16,8 +16,8 @@ servers:
     description: Docker/Kubernetes deployment
 
 paths:
-  /api/internal/v1/apis/{name}/{version}/validate/{apikey}:
-    get:
+  /api/internal/v1/apis/{name}/{version}/validate-apikey:
+    post:
       summary: Validate API key for a specific API
       description: |
         Validates whether the provided API key is valid for accessing the specified API name and version.
@@ -40,13 +40,13 @@ paths:
           schema:
             type: string
             example: "1.0.0"
-        - name: apikey
-          in: path
-          required: true
-          description: The API key to validate
-          schema:
-            type: string
-            example: "abc123xyz789"
+      requestBody:
+        required: true
+        description: Request body containing the API key to validate
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiKeyValidationRequest'
       responses:
         "200":
           description: API key validation result
@@ -75,6 +75,18 @@ paths:
 
 components:
   schemas:
+    ApiKeyValidationRequest:
+      type: object
+      required:
+        - apiKey
+      properties:
+        apiKey:
+          type: string
+          description: The API key to validate
+          example: "gw_abc123xyz789"
+          minLength: 8
+      additionalProperties: false
+
     ApiKeyValidationResponse:
       type: object
       required:

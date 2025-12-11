@@ -18,6 +18,12 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// ApiKeyValidationRequest defines model for ApiKeyValidationRequest.
+type ApiKeyValidationRequest struct {
+	// ApiKey The API key to validate
+	ApiKey string `json:"apiKey" yaml:"apiKey"`
+}
+
 // ApiKeyValidationResponse defines model for ApiKeyValidationResponse.
 type ApiKeyValidationResponse struct {
 	// IsValid Whether the API key is valid for the specified API
@@ -43,11 +49,14 @@ type ValidationError struct {
 	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
 }
 
+// ValidateApiKeyJSONRequestBody defines body for ValidateApiKey for application/json ContentType.
+type ValidateApiKeyJSONRequestBody = ApiKeyValidationRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Validate API key for a specific API
-	// (GET /api/internal/v1/apis/{name}/{version}/validate/{apikey})
-	ValidateApiKey(c *gin.Context, name string, version string, apikey string)
+	// (POST /api/internal/v1/apis/{name}/{version}/validate-apikey)
+	ValidateApiKey(c *gin.Context, name string, version string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -82,15 +91,6 @@ func (siw *ServerInterfaceWrapper) ValidateApiKey(c *gin.Context) {
 		return
 	}
 
-	// ------------- Path parameter "apikey" -------------
-	var apikey string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "apikey", c.Param("apikey"), &apikey, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apikey: %w", err), http.StatusBadRequest)
-		return
-	}
-
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -98,7 +98,7 @@ func (siw *ServerInterfaceWrapper) ValidateApiKey(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ValidateApiKey(c, name, version, apikey)
+	siw.Handler.ValidateApiKey(c, name, version)
 }
 
 // GinServerOptions provides options for the Gin server.
@@ -128,29 +128,30 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
-	router.GET(options.BaseURL+"/api/internal/v1/apis/:name/:version/validate/:apikey", wrapper.ValidateApiKey)
+	router.POST(options.BaseURL+"/api/internal/v1/apis/:name/:version/validate-apikey", wrapper.ValidateApiKey)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/7xWwXLbNhD9FQzaIy3KdjqteUvTtPWk03ocT3OIfViRSxExCKDAUjGr0b93FiAlymJa",
-	"Hzq5kcRi9+3D2wduZWlbZw0aCrLYylA22EJ8fO3UO+z/BK0qIGXNLQZnTUBeg6pS/A30jbcOPSkMsqhB",
-	"B8ykm3zaShViCn6sMJReOd4oC/mhQWrQC2pQvL65Fo/YCxXEhqNFbdNCcFiqWmHFITKT+ASt0ygL8h1m",
-	"knqHspArazWCkbtdJj3+1SmPlSw+7ms/7CPt6hOWJHeZfOu99dOejmEjL4dT1D8hgdJYJZyRGDHEZlIR",
-	"tnHPtx5rWchv8gO7+UBtfmA0QmAsAzjwHnp+bzEEWONp9V/VujnTuEGdiorp8oQd+caaWq07nwBOsNYR",
-	"vdzXDOSVWXPRQEBd6n2fJhY5DX5G87DzgHuO7+dtnzBeK9QzMvmZPwtqgAbsk26OWjbQ4lxfXyaza8Gc",
-	"eYQKVhoHQsfoaebfoUWW5r7nOUKeNcyflKktly2tISiJHyPIQn54/8dFFP2NBqqtb8UdQstojyFeG0Jv",
-	"QIvbt+/v4gYejF+A8DP04o015K3W6AUTGSkJiSrwKIwlgU/OBqwEWYFPQ65SKxbk4t7cm7tGhZjXebtR",
-	"FQahxpJ1Z8o044r6WPdAfCZaaxRZ7j4TYCoBVauMCpRQ3BvXea4cxGdFjTJxmGdwY2lDHwjbxT2fJimK",
-	"jM9E7qlIRrBBHxJH54vlYsnUWYcGnJKFvFwsF5cykw6oidrKwal87CzfnPN7yLd8Grt8O+Ta5UODmG/B",
-	"qUfsd7x3jXSqnUHN3N/ExgYSq3k/g7LEEJRZnzqbYCSRxwHL4t7cInXeBAFisDfhB7cSylSqBBpTTcbb",
-	"Y+g0JTL3mriuJoiTrUdyPLRIyC738Xl/dw0mTLYeDZr9jZeYVJmNSh6m7mAHyZiT2R2biUMKZD3Ojc9c",
-	"/YGK/4QwSuFlKJJcXghhPEeyI8k4jyHp5YUQYFWeX1w+9X9//8PVDJIHzpJOOor3YrkcXQRN1CI4p6MA",
-	"rMk/BUa7nRT6t8vni5d6NKxjAsbmT+TFw/bqfwR1fBXPIPkRqmi+GEicCWXSTE0EHAG9+nqA4shaErXt",
-	"TMXVv/uadOytMKDfsImm/wi+w7u2Bd9Pxn0v4ehAo+uUwzQRrHn65dRcxUEd8iFWT2XmbOI3W4IWFf+Q",
-	"WNdy55nsvJaFbIhckeeaAxobqLhaXrFLn/xP2fIRff6uW6E3yIZaodO2n0u2TrfCWbm/FYasD7t/AgAA",
-	"//97pxnTyAoAAA==",
+	"H4sIAAAAAAAC/7xWUW/bNhf9KwS/71GxnKTDGr21XbcFLbYgDdaHOhiuxSuLDUWy5JUTzfB/H0hKtlyp",
+	"6wZsfbNF6t5zDs891I6XprFGoybPix33ZY0NxJ8vrHyD3W+gpACSRt/ipxY9hSUQQoZHoG6csehIoudF",
+	"Bcpjxu3o0Y5DrBJ+CfSlkza8xwt+VyN7cXPNHrBjZNg2tUGecXyCxirkBd88/g7r8vzi8qn74/vnVzzj",
+	"jdRvUW+o5sXzjFNnwzZPTuoN3+8z7vBTKx0KXnwYOt8f9pn1RyyJ77MZat4a7fEfcpM+lpiSe18j1egY",
+	"jUhKn0iyyqQFb7GUlUQRtox5k2vxAHptjELQE3ZD7zl6r50zbszpFDaGZT9F/QMSSIViOAxpNOv3ZlwS",
+	"NvGd/zuseMH/lx+Nk/euyY+KRggBSw8OnIMu/G/Qe9jgtPvPclOfKdyiSk3ZeHnsildGV3LTugRwhLWK",
+	"6PnEFxn3BNQm7ocysQn/mon6N4+45/T+nPZE8UqimrHJj+Exoxqoxz5ic0JZQ4NzvL4sZtuAPnMIAtYK",
+	"e0GH3ePKv0CDwZoHznOCfEY4PJK6MqFtaTRBGUMhgiz4+3e/XkTT3yigyriG3SE0Ae0pxGtN6DQodvv6",
+	"3V18IQzGT0D4CB17ZTQ5oxQ6FoSMkvgkFThk2hDDJ2s8ipAe+NTXKpUMhlys9Erf1dLHutaZrRTomRxa",
+	"Vq0u04xL6mLfo/AZa4yWZAL7jIEWDEQjtfSUUKy0bV3o7NmjpFrqOMwzuLE0vvOEzWIVTpMkRcVndh6k",
+	"SEGwReeTRueL5WIZpDMWNVjJC365WC4uecYtUB29lYOV+cAs356H/z7fhdPY57u+1j4fAvYMrHxIgWxN",
+	"SvPTc+nNHOiNUqzXUMzHGZQlei/1ZhpsLACJMvZQFit9i9Q67RmwPt2Y68OKSS1kCTSUGk23Q98qSloe",
+	"LHEtRohTqkdtHDRIGELuw9zFEzGZasjnEG9hKWjKs8HI/dAd0yDlcsq60yyxSJ6Mw7npmevfS/FVCIMT",
+	"/h6K5JYphPv0Onp6aUQ3TC3qdJVbq6LiRucffUC4GxX/q7D/0vdBzIdTzv0SWxvRsRgZUg9HPP8RcMo3",
+	"hnJySPT8xXL5H9Lo780ZHgPWiS3DjD77F0Gd3uAzSF6CYP2hsjMmdZrFkfEjoGffDlAcdUOsMq0Woft3",
+	"31KOQ4J6dNuQvenzI1z9bdOA60YxcXBcTK4hrcp+Cgk2ITX4OJPZ0R38PnZPbebi5a0pQTERvmOMbQLz",
+	"jLdO8YLXRLbIcxU21MZTcbW8CuE++Qwz5QO6/E27RqcxBLFAq0w3V2yTLpOz8nCZ9FXv938GAAD//5uK",
+	"BofaCwAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

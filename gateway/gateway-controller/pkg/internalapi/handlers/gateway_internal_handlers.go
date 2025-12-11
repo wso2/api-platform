@@ -54,9 +54,28 @@ func NewInternalAPIServer(
 }
 
 // ValidateApiKey validates whether the provided API key is valid for accessing the specified API name and version
-func (s *InternalAPIServer) ValidateApiKey(c *gin.Context, name string, version string, apikey string) {
+func (s *InternalAPIServer) ValidateApiKey(c *gin.Context, name string, version string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
+
+	var req internalapi.ValidateApiKeyJSONRequestBody
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn("Failed to bind request body", zap.Error(err))
+		c.JSON(http.StatusBadRequest, internalapi.ErrorResponse{
+			Status:  "error",
+			Message: "Invalid request body",
+		})
+		return
+	}
+	apikey := req.ApiKey
+	if apikey == "" {
+		log.Warn("API key is missing in request body")
+		c.JSON(http.StatusBadRequest, internalapi.ErrorResponse{
+			Status:  "error",
+			Message: "API key cannot be empty",
+		})
+		return
+	}
 
 	log.Info("Validating API key",
 		zap.String("apiName", name),
