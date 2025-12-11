@@ -1,0 +1,118 @@
+openapi: 3.0.3
+info:
+  title: Gateway Controller Internal API
+  description: |
+    Internal REST API for Gateway Controller operations that are not exposed to external clients.
+    
+    This API provides internal functionality for validation, monitoring, and administration
+    purposes within the Gateway Controller ecosystem.
+  version: 1.0.0
+  contact:
+    name: WSO2 API Platform Team
+servers:
+  - url: http://localhost:9090
+    description: Local development
+  - url: http://gateway-controller:9090
+    description: Docker/Kubernetes deployment
+
+paths:
+  /api/internal/v1/apis/{name}/{version}/validate/{apikey}:
+    get:
+      summary: Validate API key for a specific API
+      description: |
+        Validates whether the provided API key is valid for accessing the specified API name and version.
+        Returns a boolean response indicating the validation result.
+      operationId: validateApiKey
+      tags:
+        - Internal API Validation
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: The name of the API
+          schema:
+            type: string
+            example: "petstore"
+        - name: version
+          in: path
+          required: true
+          description: The version of the API
+          schema:
+            type: string
+            example: "1.0.0"
+        - name: apikey
+          in: path
+          required: true
+          description: The API key to validate
+          schema:
+            type: string
+            example: "abc123xyz789"
+      responses:
+        "200":
+          description: API key validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyValidationResponse'
+        "400":
+          description: Bad request - invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          description: API not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    ApiKeyValidationResponse:
+      type: object
+      required:
+        - isValid
+      properties:
+        isValid:
+          type: boolean
+          description: Whether the API key is valid for the specified API
+          example: true
+      additionalProperties: false
+
+    ErrorResponse:
+      type: object
+      required:
+        - status
+        - message
+      properties:
+        status:
+          type: string
+          example: error
+        message:
+          type: string
+          description: High-level error description
+          example: Configuration validation failed
+        errors:
+          type: array
+          description: Detailed validation errors
+          items:
+            $ref: "#/components/schemas/ValidationError"
+
+    ValidationError:
+      type: object
+      properties:
+        field:
+          type: string
+          description: Field that failed validation
+          example: name
+        message:
+          type: string
+          description: Human-readable error message
+          example: Name is required
