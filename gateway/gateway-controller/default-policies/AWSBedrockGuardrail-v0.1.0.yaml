@@ -1,5 +1,5 @@
 name: AWSBedrockGuardrail
-version: v1.0.0
+version: v0.1.0
 description: |
   Validates request or response body content against AWS Bedrock Guardrails.
   Supports content filtering, topic detection, word filtering, and PII detection/masking.

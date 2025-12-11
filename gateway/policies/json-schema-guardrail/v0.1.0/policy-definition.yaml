@@ -1,5 +1,5 @@
 name: JSONSchemaGuardrail
-version: v1.0.0
+version: v0.1.0
 description: |
   Validates request or response body content against a JSON Schema.
   Supports JSONPath extraction to validate specific fields within JSON payloads.

@@ -1,5 +1,5 @@
 name: PIIMaskingRegex
-version: v1.0.0
+version: v0.1.0
 description: |
   Masks or redacts Personally Identifiable Information (PII) from request/response bodies using regex patterns.
   Supports two modes: masking (replaces with placeholders that can be restored in responses) and redaction (replaces with *****).

@@ -1,5 +1,5 @@
 name: AzureContentSafetyContentModeration
-version: v1.0.0
+version: v0.1.0
 description: |
   Validates request or response body content against Azure Content Safety API for content moderation.
   Supports detection of hate speech, sexual content, self-harm, and violence with configurable severity thresholds.

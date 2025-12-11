@@ -1,9 +1,9 @@
-name: WordCountGuardrail
-version: v1.0.0
+name: SentenceCountGuardrail
+version: v0.1.0
 description: |
-  Validates the word count of request or response body content.
+  Validates the sentence count of request or response body content.
   Supports JSONPath extraction to validate specific fields within JSON payloads.
-  Can be configured with min/max word count constraints and inverted logic.
+  Can be configured with min/max sentence count constraints and inverted logic.
   Supports separate configuration for request and response phases.
 
 parameters:
@@ -15,11 +15,11 @@ parameters:
       properties:
         min:
           type: integer
-          description: Minimum allowed word count (inclusive)
+          description: Minimum allowed sentence count (inclusive)
           minimum: 0
         max:
           type: integer
-          description: Maximum allowed word count (inclusive)
+          description: Maximum allowed sentence count (inclusive)
           minimum: 1
         jsonPath:
           type: string
@@ -31,8 +31,8 @@ parameters:
         invert:
           type: boolean
           description: |
-            If true, validation passes when word count is NOT within the min-max range (inverted logic).
-            If false (default), validation passes when word count is within the min-max range.
+            If true, validation passes when sentence count is NOT within the min-max range (inverted logic).
+            If false (default), validation passes when sentence count is within the min-max range.
           default: false
         showAssessment:
           type: boolean
@@ -49,11 +49,11 @@ parameters:
       properties:
         min:
           type: integer
-          description: Minimum allowed word count (inclusive)
+          description: Minimum allowed sentence count (inclusive)
           minimum: 0
         max:
           type: integer
-          description: Maximum allowed word count (inclusive)
+          description: Maximum allowed sentence count (inclusive)
           minimum: 1
         jsonPath:
           type: string
@@ -65,8 +65,8 @@ parameters:
         invert:
           type: boolean
           description: |
-            If true, validation passes when word count is NOT within the min-max range (inverted logic).
-            If false (default), validation passes when word count is within the min-max range.
+            If true, validation passes when sentence count is NOT within the min-max range (inverted logic).
+            If false (default), validation passes when sentence count is within the min-max range.
           default: false
         showAssessment:
           type: boolean
