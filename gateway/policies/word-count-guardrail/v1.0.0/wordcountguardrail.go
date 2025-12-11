@@ -52,7 +52,7 @@ func (p *WordCountGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params 
 
 	// Validate parameters
 	if err := p.validateParams(requestParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), false, false, 0, 0).(policy.RequestAction)
+		return p.buildErrorResponse("Parameter validation failed", err, false, false, 0, 0).(policy.RequestAction)
 	}
 
 	var content []byte
@@ -74,7 +74,7 @@ func (p *WordCountGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, param
 
 	// Validate parameters
 	if err := p.validateParams(responseParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), true, false, 0, 0).(policy.ResponseAction)
+		return p.buildErrorResponse("Parameter validation failed", err, true, false, 0, 0).(policy.ResponseAction)
 	}
 
 	var content []byte
@@ -186,17 +186,17 @@ func (p *WordCountGuardrailPolicy) validatePayload(payload []byte, params map[st
 
 	// Validate range
 	if min > max || min < 0 || max <= 0 {
-		return p.buildErrorResponse("invalid word count range", isResponse, showAssessment, min, max)
+		return p.buildErrorResponse("Invalid word count range", fmt.Errorf("invalid word count range: min %d > max %d or min %d < 0 or max %d <= 0", min, max, min, max), isResponse, showAssessment, min, max)
 	}
 
 	if payload == nil {
-		return p.buildErrorResponse("body is empty", isResponse, showAssessment, min, max)
+		return p.buildErrorResponse("Body is empty", fmt.Errorf("payload is nil"), isResponse, showAssessment, min, max)
 	}
 
 	// Extract value using JSONPath
 	extractedValue, err := extractStringValueFromJSONPath(payload, jsonPath)
 	if err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), isResponse, showAssessment, min, max)
+		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, showAssessment, min, max)
 	}
 
 	// Clean and trim
@@ -229,7 +229,7 @@ func (p *WordCountGuardrailPolicy) validatePayload(payload []byte, params map[st
 		} else {
 			reason = fmt.Sprintf("word count %d is outside the allowed range %d-%d words", wordCount, min, max)
 		}
-		return p.buildErrorResponse(reason, isResponse, showAssessment, min, max)
+		return p.buildErrorResponse(reason, nil, isResponse, showAssessment, min, max)
 	}
 
 	if isResponse {
@@ -239,8 +239,8 @@ func (p *WordCountGuardrailPolicy) validatePayload(payload []byte, params map[st
 }
 
 // buildErrorResponse builds an error response for both request and response phases
-func (p *WordCountGuardrailPolicy) buildErrorResponse(reason string, isResponse bool, showAssessment bool, min, max int) interface{} {
-	assessment := p.buildAssessmentObject(isResponse, reason, showAssessment, min, max)
+func (p *WordCountGuardrailPolicy) buildErrorResponse(reason string, validationError error, isResponse bool, showAssessment bool, min, max int) interface{} {
+	assessment := p.buildAssessmentObject(reason, validationError, isResponse, showAssessment, min, max)
 
 	responseBody := map[string]interface{}{
 		"code":    GuardrailAPIMExceptionCode,
@@ -271,11 +271,10 @@ func (p *WordCountGuardrailPolicy) buildErrorResponse(reason string, isResponse 
 }
 
 // buildAssessmentObject builds the assessment object
-func (p *WordCountGuardrailPolicy) buildAssessmentObject(isResponse bool, reason string, showAssessment bool, min, max int) map[string]interface{} {
+func (p *WordCountGuardrailPolicy) buildAssessmentObject(reason string, validationError error, isResponse bool, showAssessment bool, min, max int) map[string]interface{} {
 	assessment := map[string]interface{}{
 		"action":               "GUARDRAIL_INTERVENED",
 		"interveningGuardrail": "WordCountGuardrail",
-		"actionReason":         "Violation of applied word count constraints detected.",
 	}
 
 	if isResponse {
@@ -284,14 +283,24 @@ func (p *WordCountGuardrailPolicy) buildAssessmentObject(isResponse bool, reason
 		assessment["direction"] = "REQUEST"
 	}
 
+	if validationError != nil {
+		assessment["actionReason"] = reason
+	} else {
+		assessment["actionReason"] = "Violation of applied word count constraints detected."
+	}
+
 	if showAssessment {
-		var assessmentMessage string
-		if strings.Contains(reason, "excluded range") {
-			assessmentMessage = fmt.Sprintf("Violation of word count detected. Expected word count to be outside the range of %d to %d words.", min, max)
+		if validationError != nil {
+			assessment["assessments"] = []string{validationError.Error()}
 		} else {
-			assessmentMessage = fmt.Sprintf("Violation of word count detected. Expected word count to be between %d and %d words.", min, max)
+			var assessmentMessage string
+			if strings.Contains(reason, "excluded range") {
+				assessmentMessage = fmt.Sprintf("Violation of word count detected. Expected word count to be outside the range of %d to %d words.", min, max)
+			} else {
+				assessmentMessage = fmt.Sprintf("Violation of word count detected. Expected word count to be between %d and %d words.", min, max)
+			}
+			assessment["assessments"] = assessmentMessage
 		}
-		assessment["assessments"] = assessmentMessage
 	}
 
 	return assessment

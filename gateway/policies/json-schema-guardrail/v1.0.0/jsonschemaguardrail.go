@@ -44,13 +44,14 @@ func (p *JSONSchemaGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params
 
 	// Validate parameters
 	if err := p.validateParams(requestParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), false, false, nil).(policy.RequestAction)
+		return p.buildErrorResponse("Parameter validation failed", err, false, false, nil).(policy.RequestAction)
 	}
 
-	if ctx.Body == nil {
-		return p.buildErrorResponse("body is empty", false, false, nil).(policy.RequestAction)
+	content := []byte{}
+	if ctx.Body != nil {
+		content = ctx.Body.Content
 	}
-	return p.validatePayload(ctx.Body.Content, requestParams, false).(policy.RequestAction)
+	return p.validatePayload(content, requestParams, false).(policy.RequestAction)
 }
 
 // OnResponse validates response body against JSON schema
@@ -64,13 +65,14 @@ func (p *JSONSchemaGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, para
 
 	// Validate parameters
 	if err := p.validateParams(responseParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), true, false, nil).(policy.ResponseAction)
+		return p.buildErrorResponse("Parameter validation failed", err, true, false, nil).(policy.ResponseAction)
 	}
 
-	if ctx.ResponseBody == nil {
-		return p.buildErrorResponse("body is empty", true, false, nil).(policy.ResponseAction)
+	content := []byte{}
+	if ctx.ResponseBody != nil {
+		content = ctx.ResponseBody.Content
 	}
-	return p.validatePayload(ctx.ResponseBody.Content, responseParams, true).(policy.ResponseAction)
+	return p.validatePayload(content, responseParams, true).(policy.ResponseAction)
 }
 
 // validateParams validates the actual policy parameters
@@ -128,14 +130,14 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params map[s
 
 	// Validate required parameters
 	if schemaRaw == "" {
-		return p.buildErrorResponse("schema parameter is required", isResponse, showAssessment, nil)
+		return p.buildErrorResponse("Schema parameter is required", fmt.Errorf("schema parameter is required"), isResponse, showAssessment, nil)
 	}
 
 	// Parse schema
 	schemaLoader := gojsonschema.NewStringLoader(schemaRaw)
 
 	if payload == nil {
-		return p.buildErrorResponse("body is empty", isResponse, showAssessment, nil)
+		return p.buildErrorResponse("Request body is empty", fmt.Errorf("request body is empty"), isResponse, showAssessment, nil)
 	}
 
 	// Extract value using JSONPath if specified
@@ -143,7 +145,7 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params map[s
 	if jsonPath != "" {
 		extractedValue, err := extractValueFromJSONPathForSchema(payload, jsonPath)
 		if err != nil {
-			return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), isResponse, showAssessment, nil)
+			return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, showAssessment, nil)
 		}
 		documentLoader = gojsonschema.NewBytesLoader(extractedValue)
 	} else {
@@ -153,7 +155,7 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params map[s
 	// Validate against schema
 	result, err := gojsonschema.Validate(schemaLoader, documentLoader)
 	if err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("error validating schema: %v", err), isResponse, showAssessment, nil)
+		return p.buildErrorResponse("Error validating schema", err, isResponse, showAssessment, nil)
 	}
 
 	// Apply inversion logic
@@ -171,7 +173,7 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params map[s
 		} else {
 			reason = "JSON schema validation failed"
 		}
-		return p.buildErrorResponse(reason, isResponse, showAssessment, result.Errors())
+		return p.buildErrorResponse(reason, nil, isResponse, showAssessment, result.Errors())
 	}
 
 	if isResponse {
@@ -202,8 +204,8 @@ func extractValueFromJSONPathForSchema(payload []byte, jsonPath string) ([]byte,
 }
 
 // buildErrorResponse builds an error response for both request and response phases
-func (p *JSONSchemaGuardrailPolicy) buildErrorResponse(reason string, isResponse bool, showAssessment bool, errors []gojsonschema.ResultError) interface{} {
-	assessment := p.buildAssessmentObject(isResponse, reason, showAssessment, errors)
+func (p *JSONSchemaGuardrailPolicy) buildErrorResponse(reason string, validationError error, isResponse bool, showAssessment bool, errors []gojsonschema.ResultError) interface{} {
+	assessment := p.buildAssessmentObject(reason, validationError, isResponse, showAssessment, errors)
 
 	responseBody := map[string]interface{}{
 		"code":    GuardrailAPIMExceptionCode,
@@ -211,7 +213,11 @@ func (p *JSONSchemaGuardrailPolicy) buildErrorResponse(reason string, isResponse
 		"message": assessment,
 	}
 
-	bodyBytes, _ := json.Marshal(responseBody)
+	bodyBytes, err := json.Marshal(responseBody)
+	if err != nil {
+		// Fallback to minimal error response
+		bodyBytes = []byte(fmt.Sprintf(`{"code":%d,"type":"JSON_SCHEMA_GUARDRAIL","message":"Internal error"}`, GuardrailAPIMExceptionCode))
+	}
 
 	if isResponse {
 		statusCode := GuardrailErrorCode
@@ -234,11 +240,10 @@ func (p *JSONSchemaGuardrailPolicy) buildErrorResponse(reason string, isResponse
 }
 
 // buildAssessmentObject builds the assessment object
-func (p *JSONSchemaGuardrailPolicy) buildAssessmentObject(isResponse bool, reason string, showAssessment bool, errors []gojsonschema.ResultError) map[string]interface{} {
+func (p *JSONSchemaGuardrailPolicy) buildAssessmentObject(reason string, validationError error, isResponse bool, showAssessment bool, errors []gojsonschema.ResultError) map[string]interface{} {
 	assessment := map[string]interface{}{
 		"action":               "GUARDRAIL_INTERVENED",
 		"interveningGuardrail": "JSONSchemaGuardrail",
-		"actionReason":         "Violation of JSON schema validation detected.",
 	}
 
 	if isResponse {
@@ -247,16 +252,26 @@ func (p *JSONSchemaGuardrailPolicy) buildAssessmentObject(isResponse bool, reaso
 		assessment["direction"] = "REQUEST"
 	}
 
-	if showAssessment && len(errors) > 0 {
-		errorDetails := make([]map[string]interface{}, 0, len(errors))
-		for _, err := range errors {
-			errorDetails = append(errorDetails, map[string]interface{}{
-				"field":       err.Field(),
-				"description": err.Description(),
-				"value":       err.Value(),
-			})
+	if validationError != nil {
+		assessment["actionReason"] = reason
+	} else {
+		assessment["actionReason"] = "Violation of JSON schema detected."
+	}
+
+	if showAssessment {
+		if validationError != nil {
+			assessment["assessments"] = []string{validationError.Error()}
+		} else if len(errors) > 0 {
+			errorDetails := make([]map[string]interface{}, 0, len(errors))
+			for _, err := range errors {
+				errorDetails = append(errorDetails, map[string]interface{}{
+					"field":       err.Field(),
+					"description": err.Description(),
+					"value":       err.Value(),
+				})
+			}
+			assessment["assessments"] = errorDetails
 		}
-		assessment["assessments"] = errorDetails
 	}
 
 	return assessment

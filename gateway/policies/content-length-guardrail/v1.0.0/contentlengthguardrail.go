@@ -48,7 +48,7 @@ func (p *ContentLengthGuardrailPolicy) OnRequest(ctx *policy.RequestContext, par
 
 	// Validate parameters
 	if err := p.validateParams(requestParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), false, false, 0, 0).(policy.RequestAction)
+		return p.buildErrorResponse("Parameter validation failed", err, false, false, 0, 0).(policy.RequestAction)
 	}
 
 	var content []byte
@@ -70,13 +70,14 @@ func (p *ContentLengthGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, p
 
 	// Validate parameters
 	if err := p.validateParams(responseParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), true, false, 0, 0).(policy.ResponseAction)
+		return p.buildErrorResponse("Parameter validation failed", err, true, false, 0, 0).(policy.ResponseAction)
 	}
 
-	if ctx.ResponseBody == nil {
-		return p.buildErrorResponse("body is empty", true, false, 0, 0).(policy.ResponseAction)
+	content := []byte{}
+	if ctx.ResponseBody != nil {
+		content = ctx.ResponseBody.Content
 	}
-	return p.validatePayload(ctx.ResponseBody.Content, responseParams, true).(policy.ResponseAction)
+	return p.validatePayload(content, responseParams, true).(policy.ResponseAction)
 }
 
 // validateParams validates the actual policy parameters
@@ -181,17 +182,17 @@ func (p *ContentLengthGuardrailPolicy) validatePayload(payload []byte, params ma
 
 	// Validate range
 	if min > max || min < 0 || max <= 0 {
-		return p.buildErrorResponse("invalid content length range", isResponse, showAssessment, min, max)
+		return p.buildErrorResponse("Invalid content length range", fmt.Errorf("invalid content length range: min %d > max %d or min %d < 0 or max %d <= 0", min, max, min, max), isResponse, showAssessment, min, max)
 	}
 
 	if payload == nil {
-		return p.buildErrorResponse("body is empty", isResponse, showAssessment, min, max)
+		return p.buildErrorResponse("Body is empty", fmt.Errorf("payload is nil"), isResponse, showAssessment, min, max)
 	}
 
 	// Extract value using JSONPath
 	extractedValue, err := extractStringValueFromJSONPath(payload, jsonPath)
 	if err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), isResponse, showAssessment, min, max)
+		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, showAssessment, min, max)
 	}
 
 	// Clean and trim
@@ -218,7 +219,7 @@ func (p *ContentLengthGuardrailPolicy) validatePayload(payload []byte, params ma
 		} else {
 			reason = fmt.Sprintf("content length %d bytes is outside the allowed range %d-%d bytes", byteCount, min, max)
 		}
-		return p.buildErrorResponse(reason, isResponse, showAssessment, min, max)
+		return p.buildErrorResponse(reason, nil, isResponse, showAssessment, min, max)
 	}
 
 	if isResponse {
@@ -228,8 +229,8 @@ func (p *ContentLengthGuardrailPolicy) validatePayload(payload []byte, params ma
 }
 
 // buildErrorResponse builds an error response for both request and response phases
-func (p *ContentLengthGuardrailPolicy) buildErrorResponse(reason string, isResponse bool, showAssessment bool, min, max int) interface{} {
-	assessment := p.buildAssessmentObject(isResponse, reason, showAssessment, min, max)
+func (p *ContentLengthGuardrailPolicy) buildErrorResponse(reason string, validationError error, isResponse bool, showAssessment bool, min, max int) interface{} {
+	assessment := p.buildAssessmentObject(reason, validationError, isResponse, showAssessment, min, max)
 
 	responseBody := map[string]interface{}{
 		"code":    GuardrailAPIMExceptionCode,
@@ -237,11 +238,7 @@ func (p *ContentLengthGuardrailPolicy) buildErrorResponse(reason string, isRespo
 		"message": assessment,
 	}
 
-	bodyBytes, err := json.Marshal(responseBody)
-	if err != nil {
-		// Fallback to a minimal error response
-		bodyBytes = []byte(`{"code":900514,"type":"CONTENT_LENGTH_GUARDRAIL","message":"Internal error"}`)
-	}
+	bodyBytes, _ := json.Marshal(responseBody)
 
 	if isResponse {
 		statusCode := GuardrailErrorCode
@@ -264,11 +261,10 @@ func (p *ContentLengthGuardrailPolicy) buildErrorResponse(reason string, isRespo
 }
 
 // buildAssessmentObject builds the assessment object
-func (p *ContentLengthGuardrailPolicy) buildAssessmentObject(isResponse bool, reason string, showAssessment bool, min, max int) map[string]interface{} {
+func (p *ContentLengthGuardrailPolicy) buildAssessmentObject(reason string, validationError error, isResponse bool, showAssessment bool, min, max int) map[string]interface{} {
 	assessment := map[string]interface{}{
 		"action":               "GUARDRAIL_INTERVENED",
 		"interveningGuardrail": "ContentLengthGuardrail",
-		"actionReason":         "Violation of applied content length constraints detected.",
 	}
 
 	if isResponse {
@@ -277,14 +273,24 @@ func (p *ContentLengthGuardrailPolicy) buildAssessmentObject(isResponse bool, re
 		assessment["direction"] = "REQUEST"
 	}
 
+	if validationError != nil {
+		assessment["actionReason"] = reason
+	} else {
+		assessment["actionReason"] = "Violation of applied content length constraints detected."
+	}
+
 	if showAssessment {
-		var assessmentMessage string
-		if strings.Contains(reason, "excluded range") {
-			assessmentMessage = fmt.Sprintf("Violation of content length detected. Expected content length to be outside the range of %d to %d bytes.", min, max)
+		if validationError != nil {
+			assessment["assessments"] = []string{validationError.Error()}
 		} else {
-			assessmentMessage = fmt.Sprintf("Violation of content length detected. Expected content length to be between %d and %d bytes.", min, max)
+			var assessmentMessage string
+			if strings.Contains(reason, "excluded range") {
+				assessmentMessage = fmt.Sprintf("Violation of content length detected. Expected content length to be outside the range of %d to %d bytes.", min, max)
+			} else {
+				assessmentMessage = fmt.Sprintf("Violation of content length detected. Expected content length to be between %d and %d bytes.", min, max)
+			}
+			assessment["assessments"] = assessmentMessage
 		}
-		assessment["assessments"] = assessmentMessage
 	}
 
 	return assessment

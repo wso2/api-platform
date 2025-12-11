@@ -59,3 +59,8 @@ policies:
   - name: JSONSchemaGuardrail
     version: v1.0.0
     filePath: ./json-schema-guardrail/v1.0.0
+  
+  # AWSBedrockGuardrail Policy
+  - name: AWSBedrockGuardrail
+    version: v1.0.0
+    filePath: ./aws-bedrock-guardrail/v1.0.0

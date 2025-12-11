@@ -56,7 +56,7 @@ func (p *AzureContentSafetyContentModerationPolicy) OnRequest(ctx *policy.Reques
 
 	// Validate parameters
 	if err := p.validateParams(requestParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), false, false, nil).(policy.RequestAction)
+		return p.buildErrorResponse("Parameter validation failed", err, false, false, nil).(policy.RequestAction)
 	}
 
 	var content []byte
@@ -77,10 +77,14 @@ func (p *AzureContentSafetyContentModerationPolicy) OnResponse(ctx *policy.Respo
 
 	// Validate parameters
 	if err := p.validateParams(responseParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), true, false, nil).(policy.ResponseAction)
+		return p.buildErrorResponse("Parameter validation failed", err, true, false, nil).(policy.ResponseAction)
 	}
 
-	return p.validatePayload(ctx.ResponseBody.Content, responseParams, true).(policy.ResponseAction)
+	var content []byte
+	if ctx.ResponseBody != nil {
+		content = ctx.ResponseBody.Content
+	}
+	return p.validatePayload(content, responseParams, true).(policy.ResponseAction)
 }
 
 // validateParams validates the actual policy parameters
@@ -177,7 +181,7 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 			}
 			return policy.UpstreamRequestModifications{}
 		}
-		return p.buildErrorResponse("azureContentSafetyEndpoint and azureContentSafetyKey are required", isResponse, showAssessment, nil)
+		return p.buildErrorResponse("AzureContentSafetyEndpoint and azureContentSafetyKey are required", fmt.Errorf("azureContentSafetyEndpoint and azureContentSafetyKey are required"), isResponse, showAssessment, nil)
 	}
 
 	// Extract category thresholds
@@ -208,7 +212,7 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 			}
 			return policy.UpstreamRequestModifications{}
 		}
-		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), isResponse, showAssessment, nil)
+		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, showAssessment, nil)
 	}
 
 	// Clean and trim
@@ -224,7 +228,7 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 			}
 			return policy.UpstreamRequestModifications{}
 		}
-		return p.buildErrorResponse(fmt.Sprintf("error calling Azure Content Safety API: %v", err), isResponse, showAssessment, nil)
+		return p.buildErrorResponse("Error calling Azure Content Safety API", err, isResponse, showAssessment, nil)
 	}
 
 	// Check for violations
@@ -236,7 +240,7 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 
 		if threshold >= 0 && severity >= threshold {
 			// Violation detected
-			return p.buildErrorResponse("violation of Azure content safety content moderation detected", isResponse, showAssessment, categoriesAnalysis)
+			return p.buildErrorResponse("Violation of Azure content safety content moderation detected", nil, isResponse, showAssessment, categoriesAnalysis)
 		}
 	}
 
@@ -400,8 +404,8 @@ func (p *AzureContentSafetyContentModerationPolicy) makeHTTPRequest(method, url 
 }
 
 // buildErrorResponse builds an error response for both request and response phases
-func (p *AzureContentSafetyContentModerationPolicy) buildErrorResponse(reason string, isResponse bool, showAssessment bool, categoriesAnalysis []map[string]interface{}) interface{} {
-	assessment := p.buildAssessmentObject(isResponse, reason, showAssessment, categoriesAnalysis)
+func (p *AzureContentSafetyContentModerationPolicy) buildErrorResponse(reason string, validationError error, isResponse bool, showAssessment bool, categoriesAnalysis []map[string]interface{}) interface{} {
+	assessment := p.buildAssessmentObject(reason, validationError, isResponse, showAssessment, categoriesAnalysis)
 
 	responseBody := map[string]interface{}{
 		"code":    GuardrailAPIMExceptionCode,
@@ -432,11 +436,10 @@ func (p *AzureContentSafetyContentModerationPolicy) buildErrorResponse(reason st
 }
 
 // buildAssessmentObject builds the assessment object
-func (p *AzureContentSafetyContentModerationPolicy) buildAssessmentObject(isResponse bool, reason string, showAssessment bool, categoriesAnalysis []map[string]interface{}) map[string]interface{} {
+func (p *AzureContentSafetyContentModerationPolicy) buildAssessmentObject(reason string, validationError error, isResponse bool, showAssessment bool, categoriesAnalysis []map[string]interface{}) map[string]interface{} {
 	assessment := map[string]interface{}{
 		"action":               "GUARDRAIL_INTERVENED",
 		"interveningGuardrail": "AzureContentSafetyContentModeration",
-		"actionReason":         "Violation of Azure content safety content moderation detected.",
 	}
 
 	if isResponse {
@@ -445,29 +448,37 @@ func (p *AzureContentSafetyContentModerationPolicy) buildAssessmentObject(isResp
 		assessment["direction"] = "REQUEST"
 	}
 
-	if showAssessment && len(categoriesAnalysis) > 0 {
-		assessmentsWrapper := map[string]interface{}{
-			"inspectedContent": reason,
-		}
+	if validationError != nil {
+		assessment["actionReason"] = reason
+	} else {
+		assessment["actionReason"] = "Violation of Azure content safety content moderation detected."
+	}
 
-		var assessmentsArray []map[string]interface{}
-		for _, analysis := range categoriesAnalysis {
-			category, _ := analysis["category"].(string)
-			severityFloat, _ := analysis["severity"].(float64)
-			severity := int(severityFloat)
-
-			categoryAssessment := map[string]interface{}{
-				"category": category,
-				"severity": severity,
-				"result":   "FAIL", // If we're here, it's a violation
+	if showAssessment {
+		if validationError != nil {
+			assessment["assessments"] = []string{validationError.Error()}
+		} else if len(categoriesAnalysis) > 0 {
+			assessmentsWrapper := map[string]interface{}{
+				"inspectedContent": reason,
 			}
-			assessmentsArray = append(assessmentsArray, categoryAssessment)
-		}
 
-		assessmentsWrapper["categories"] = assessmentsArray
-		assessment["assessments"] = assessmentsWrapper
-	} else if showAssessment {
-		assessment["assessments"] = categoriesAnalysis
+			var assessmentsArray []map[string]interface{}
+			for _, analysis := range categoriesAnalysis {
+				category, _ := analysis["category"].(string)
+				severityFloat, _ := analysis["severity"].(float64)
+				severity := int(severityFloat)
+
+				categoryAssessment := map[string]interface{}{
+					"category": category,
+					"severity": severity,
+					"result":   "FAIL", // If we're here, it's a violation
+				}
+				assessmentsArray = append(assessmentsArray, categoryAssessment)
+			}
+
+			assessmentsWrapper["categories"] = assessmentsArray
+			assessment["assessments"] = assessmentsWrapper
+		}
 	}
 
 	return assessment

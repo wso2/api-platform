@@ -20,6 +20,7 @@ const (
 var (
 	textCleanRegexCompiled     = regexp.MustCompile(TextCleanRegex)
 	sentenceSplitRegexCompiled = regexp.MustCompile(SentenceSplitRegex)
+	arrayIndexRegex            = regexp.MustCompile(`^([a-zA-Z0-9_]+)\[(-?\d+)\]$`)
 )
 
 // SentenceCountGuardrailPolicy implements sentence count validation
@@ -51,7 +52,7 @@ func (p *SentenceCountGuardrailPolicy) OnRequest(ctx *policy.RequestContext, par
 
 	// Validate parameters
 	if err := p.validateParams(requestParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), false, false, 0, 0).(policy.RequestAction)
+		return p.buildErrorResponse("Parameter validation failed", err, false, false, 0, 0).(policy.RequestAction)
 	}
 	var content []byte
 	if ctx.Body != nil {
@@ -71,7 +72,7 @@ func (p *SentenceCountGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, p
 
 	// Validate parameters
 	if err := p.validateParams(responseParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), true, false, 0, 0).(policy.ResponseAction)
+		return p.buildErrorResponse("Parameter validation failed", err, true, false, 0, 0).(policy.ResponseAction)
 	}
 
 	var content []byte
@@ -183,17 +184,17 @@ func (p *SentenceCountGuardrailPolicy) validatePayload(payload []byte, params ma
 
 	// Validate range
 	if min > max || min < 0 || max <= 0 {
-		return p.buildErrorResponse("invalid sentence count range", isResponse, showAssessment, min, max)
+		return p.buildErrorResponse("Invalid sentence count range", fmt.Errorf("invalid sentence count range: min %d > max %d or min %d < 0 or max %d <= 0", min, max, min, max), isResponse, showAssessment, min, max)
 	}
 
 	if payload == nil {
-		return p.buildErrorResponse("body is empty", isResponse, showAssessment, min, max)
+		return p.buildErrorResponse("Body is empty", fmt.Errorf("payload is nil"), isResponse, showAssessment, min, max)
 	}
 
 	// Extract value using JSONPath
 	extractedValue, err := extractStringValueFromJSONPath(payload, jsonPath)
 	if err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), isResponse, showAssessment, min, max)
+		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, showAssessment, min, max)
 	}
 
 	// Clean and trim
@@ -226,7 +227,7 @@ func (p *SentenceCountGuardrailPolicy) validatePayload(payload []byte, params ma
 		} else {
 			reason = fmt.Sprintf("sentence count %d is outside the allowed range %d-%d sentences", sentenceCount, min, max)
 		}
-		return p.buildErrorResponse(reason, isResponse, showAssessment, min, max)
+		return p.buildErrorResponse(reason, nil, isResponse, showAssessment, min, max)
 	}
 
 	if isResponse {
@@ -236,8 +237,8 @@ func (p *SentenceCountGuardrailPolicy) validatePayload(payload []byte, params ma
 }
 
 // buildErrorResponse builds an error response for both request and response phases
-func (p *SentenceCountGuardrailPolicy) buildErrorResponse(reason string, isResponse bool, showAssessment bool, min, max int) interface{} {
-	assessment := p.buildAssessmentObject(isResponse, reason, showAssessment, min, max)
+func (p *SentenceCountGuardrailPolicy) buildErrorResponse(reason string, validationError error, isResponse bool, showAssessment bool, min, max int) interface{} {
+	assessment := p.buildAssessmentObject(reason, validationError, isResponse, showAssessment, min, max)
 
 	responseBody := map[string]interface{}{
 		"code":    GuardrailAPIMExceptionCode,
@@ -245,10 +246,7 @@ func (p *SentenceCountGuardrailPolicy) buildErrorResponse(reason string, isRespo
 		"message": assessment,
 	}
 
-	bodyBytes, err := json.Marshal(responseBody)
-	if err != nil {
-		bodyBytes = []byte(`{"code":900514,"type":"SENTENCE_COUNT_GUARDRAIL","message":"Internal error"}`)
-	}
+	bodyBytes, _ := json.Marshal(responseBody)
 
 	if isResponse {
 		statusCode := GuardrailErrorCode
@@ -271,11 +269,10 @@ func (p *SentenceCountGuardrailPolicy) buildErrorResponse(reason string, isRespo
 }
 
 // buildAssessmentObject builds the assessment object
-func (p *SentenceCountGuardrailPolicy) buildAssessmentObject(isResponse bool, reason string, showAssessment bool, min, max int) map[string]interface{} {
+func (p *SentenceCountGuardrailPolicy) buildAssessmentObject(reason string, validationError error, isResponse bool, showAssessment bool, min, max int) map[string]interface{} {
 	assessment := map[string]interface{}{
 		"action":               "GUARDRAIL_INTERVENED",
 		"interveningGuardrail": "SentenceCountGuardrail",
-		"actionReason":         "Violation of applied sentence count constraints detected.",
 	}
 
 	if isResponse {
@@ -284,14 +281,24 @@ func (p *SentenceCountGuardrailPolicy) buildAssessmentObject(isResponse bool, re
 		assessment["direction"] = "REQUEST"
 	}
 
+	if validationError != nil {
+		assessment["actionReason"] = reason
+	} else {
+		assessment["actionReason"] = "Violation of applied sentence count constraints detected"
+	}
+
 	if showAssessment {
-		var assessmentMessage string
-		if strings.Contains(reason, "excluded range") {
-			assessmentMessage = fmt.Sprintf("Violation of sentence count detected. Expected sentence count to be outside the range of %d to %d sentences.", min, max)
+		if validationError != nil {
+			assessment["assessments"] = []string{validationError.Error()}
 		} else {
-			assessmentMessage = fmt.Sprintf("Violation of sentence count detected. Expected sentence count to be between %d and %d sentences.", min, max)
+			var assessmentMessage string
+			if strings.Contains(reason, "excluded range") {
+				assessmentMessage = fmt.Sprintf("Violation of sentence count detected. Expected sentence count to be outside the range of %d to %d sentences.", min, max)
+			} else {
+				assessmentMessage = fmt.Sprintf("Violation of sentence count detected. Expected sentence count to be between %d and %d sentences.", min, max)
+			}
+			assessment["assessments"] = assessmentMessage
 		}
-		assessment["assessments"] = assessmentMessage
 	}
 
 	return assessment
@@ -321,6 +328,12 @@ func extractStringValueFromJSONPath(payload []byte, jsonPath string) (string, er
 		return strconv.FormatFloat(v, 'f', -1, 64), nil
 	case int:
 		return strconv.Itoa(v), nil
+	case []interface{}:
+		var parts []string
+		for _, item := range v {
+			parts = append(parts, fmt.Sprintf("%v", item))
+		}
+		return strings.Join(parts, " "), nil
 	default:
 		return fmt.Sprintf("%v", v), nil
 	}
@@ -344,13 +357,10 @@ func extractRecursive(current interface{}, keys []string) (interface{}, error) {
 	key := keys[0]
 	remaining := keys[1:]
 
-	// Handle array indexing
-	arrayIndexRegex := regexp.MustCompile(`^([a-zA-Z0-9_]+)\[(-?\d+)\]$`)
 	if matches := arrayIndexRegex.FindStringSubmatch(key); len(matches) == 3 {
 		arrayName := matches[1]
 		idxStr := matches[2]
-		idx := 0
-		fmt.Sscanf(idxStr, "%d", &idx)
+		idx, _ := strconv.Atoi(idxStr)
 
 		if node, ok := current.(map[string]interface{}); ok {
 			if arrVal, exists := node[arrayName]; exists {
