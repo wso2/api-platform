@@ -145,6 +145,35 @@ type Storage interface {
 	// May be expensive for large datasets; consider pagination in future versions.
 	GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTemplate, error)
 
+	// SaveAPIKey persists a new API key.
+	//
+	// Returns an error if an API key with the same key value already exists.
+	// Implementations should ensure this operation is atomic (all-or-nothing).
+	SaveAPIKey(apiKey *models.APIKey) error
+
+	// GetAPIKeyByKey retrieves an API key by its key value.
+	//
+	// Returns an error if the API key is not found.
+	// This is used for API key validation during authentication.
+	GetAPIKeyByKey(key string) (*models.APIKey, error)
+
+	// GetAPIKeysByAPI retrieves all API keys for a specific API (name and version).
+	//
+	// Returns an empty slice if no API keys exist for the API.
+	// Used for listing API keys associated with an API.
+	GetAPIKeysByAPI(apiName, apiVersion string) ([]*models.APIKey, error)
+
+	// UpdateAPIKey updates an existing API key (e.g., to revoke or expire it).
+	//
+	// Returns an error if the API key does not exist.
+	// Implementations should ensure this operation is atomic and thread-safe.
+	UpdateAPIKey(apiKey *models.APIKey) error
+
+	// DeleteAPIKey removes an API key by its key value.
+	//
+	// Returns an error if the API key does not exist.
+	DeleteAPIKey(key string) error
+
 	// SaveCertificate persists a new certificate.
 	//
 	// Returns an error if a certificate with the same name already exists.
