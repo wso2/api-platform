@@ -81,31 +81,3 @@ parameters:
 initParameters:
   type: object
   properties: {}
-
-
-
-
-# version: api-platform.wso2.com/v1
-# kind: http/rest
-# spec:
-#   name: WordCountGuardrail-Test-API-1
-#   version: v1.0
-#   context: /word-count-guardrail/v1.0
-#   upstreams:
-#     - url: http://host.docker.internal:4040
-#   operations:
-#     - method: POST
-#       path: /message
-#       policies:
-#         - name: WordCountGuardrail
-#           version: v1.0.0
-#           enabled: true
-#           params:
-#             request:
-#               min: 3
-#               max: 500
-#               jsonPath: "$.messages[0].content"
-#             response:
-#               min: 10
-#               max: 500
-#               jsonPath: "$.choices[0].message.content"

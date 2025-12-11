@@ -33,8 +33,12 @@ var (
 type URLGuardrailPolicy struct{}
 
 // NewPolicy creates a new URLGuardrailPolicy instance
-func NewPolicy() policy.Policy {
-	return &URLGuardrailPolicy{}
+func NewPolicy(
+	metadata policy.PolicyMetadata,
+	initParams map[string]interface{},
+	params map[string]interface{},
+) (policy.Policy, error) {
+	return &URLGuardrailPolicy{}, nil
 }
 
 // Mode returns the processing mode for this policy
@@ -259,7 +263,10 @@ func (p *URLGuardrailPolicy) buildErrorResponse(reason string, validationError e
 		"message": assessment,
 	}
 
-	bodyBytes, _ := json.Marshal(responseBody)
+	bodyBytes, err := json.Marshal(responseBody)
+	if err != nil {
+		bodyBytes = []byte(fmt.Sprintf(`{"code":%d,"type":"URL_GUARDRAIL","message":"Internal error"}`, GuardrailAPIMExceptionCode))
+	}
 
 	if isResponse {
 		statusCode := GuardrailErrorCode

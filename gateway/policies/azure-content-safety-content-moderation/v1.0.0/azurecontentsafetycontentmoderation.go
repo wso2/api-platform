@@ -28,68 +28,43 @@ const (
 var textCleanRegexCompiled = regexp.MustCompile(TextCleanRegex)
 
 // AzureContentSafetyContentModerationPolicy implements Azure Content Safety content moderation
-type AzureContentSafetyContentModerationPolicy struct{}
+type AzureContentSafetyContentModerationPolicy struct {
+	// Static configuration from initParams
+	endpoint string
+	apiKey   string
+}
 
 // NewPolicy creates a new AzureContentSafetyContentModerationPolicy instance
-func NewPolicy() policy.Policy {
-	return &AzureContentSafetyContentModerationPolicy{}
+func NewPolicy(
+	metadata policy.PolicyMetadata,
+	initParams map[string]interface{},
+	params map[string]interface{},
+) (policy.Policy, error) {
+	// Validate and extract static configuration from initParams
+	if err := validateAzureConfigParams(initParams); err != nil {
+		return nil, fmt.Errorf("invalid initParams: %w", err)
+	}
+
+	policy := &AzureContentSafetyContentModerationPolicy{
+		endpoint: getStringParam(initParams, "azureContentSafetyEndpoint"),
+		apiKey:   getStringParam(initParams, "azureContentSafetyKey"),
+	}
+
+	return policy, nil
 }
 
-// Mode returns the processing mode for this policy
-func (p *AzureContentSafetyContentModerationPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeSkip,
-		RequestBodyMode:    policy.BodyModeBuffer,
-		ResponseHeaderMode: policy.HeaderModeSkip,
-		ResponseBodyMode:   policy.BodyModeBuffer,
+// getStringParam safely extracts a string parameter
+func getStringParam(params map[string]interface{}, key string) string {
+	if val, ok := params[key]; ok {
+		if str, ok := val.(string); ok {
+			return str
+		}
 	}
+	return ""
 }
 
-// OnRequest validates request body content
-func (p *AzureContentSafetyContentModerationPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-
-	var requestParams map[string]interface{}
-	if reqParams, ok := params["request"].(map[string]interface{}); ok {
-		requestParams = reqParams
-	} else {
-		return policy.UpstreamRequestModifications{}
-	}
-
-	// Validate parameters
-	if err := p.validateParams(requestParams); err != nil {
-		return p.buildErrorResponse("Parameter validation failed", err, false, false, nil).(policy.RequestAction)
-	}
-
-	var content []byte
-	if ctx.Body != nil {
-		content = ctx.Body.Content
-	}
-	return p.validatePayload(content, requestParams, false).(policy.RequestAction)
-}
-
-// OnResponse validates response body content
-func (p *AzureContentSafetyContentModerationPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	var responseParams map[string]interface{}
-	if respParams, ok := params["response"].(map[string]interface{}); ok {
-		responseParams = respParams
-	} else {
-		return policy.UpstreamResponseModifications{}
-	}
-
-	// Validate parameters
-	if err := p.validateParams(responseParams); err != nil {
-		return p.buildErrorResponse("Parameter validation failed", err, true, false, nil).(policy.ResponseAction)
-	}
-
-	var content []byte
-	if ctx.ResponseBody != nil {
-		content = ctx.ResponseBody.Content
-	}
-	return p.validatePayload(content, responseParams, true).(policy.ResponseAction)
-}
-
-// validateParams validates the actual policy parameters
-func (p *AzureContentSafetyContentModerationPolicy) validateParams(params map[string]interface{}) error {
+// validateAzureConfigParams validates Azure configuration parameters (from initParams)
+func validateAzureConfigParams(params map[string]interface{}) error {
 	// Validate azureContentSafetyEndpoint (required)
 	endpointRaw, ok := params["azureContentSafetyEndpoint"]
 	if !ok {
@@ -116,6 +91,85 @@ func (p *AzureContentSafetyContentModerationPolicy) validateParams(params map[st
 		return fmt.Errorf("'azureContentSafetyKey' cannot be empty")
 	}
 
+	return nil
+}
+
+// Mode returns the processing mode for this policy
+func (p *AzureContentSafetyContentModerationPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{
+		RequestHeaderMode:  policy.HeaderModeSkip,
+		RequestBodyMode:    policy.BodyModeBuffer,
+		ResponseHeaderMode: policy.HeaderModeSkip,
+		ResponseBodyMode:   policy.BodyModeBuffer,
+	}
+}
+
+// OnRequest validates request body content
+func (p *AzureContentSafetyContentModerationPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+	var requestParams map[string]interface{}
+	if reqParams, ok := params["request"].(map[string]interface{}); ok {
+		requestParams = reqParams
+	} else {
+		return policy.UpstreamRequestModifications{}
+	}
+
+	// Validate request-specific parameters
+	if err := p.validateRequestResponseParams(requestParams); err != nil {
+		return p.buildErrorResponse("Parameter validation failed", err, false, false, nil).(policy.RequestAction)
+	}
+
+	var content []byte
+	if ctx.Body != nil {
+		content = ctx.Body.Content
+	}
+	return p.validatePayload(content, requestParams, false).(policy.RequestAction)
+}
+
+// OnResponse validates response body content
+func (p *AzureContentSafetyContentModerationPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
+	var responseParams map[string]interface{}
+	if respParams, ok := params["response"].(map[string]interface{}); ok {
+		responseParams = respParams
+	} else {
+		return policy.UpstreamResponseModifications{}
+	}
+
+	// Validate response-specific parameters
+	if err := p.validateRequestResponseParams(responseParams); err != nil {
+		return p.buildErrorResponse("Parameter validation failed", err, true, false, nil).(policy.ResponseAction)
+	}
+
+	var content []byte
+	if ctx.ResponseBody != nil {
+		content = ctx.ResponseBody.Content
+	}
+	return p.validatePayload(content, responseParams, true).(policy.ResponseAction)
+}
+
+// validateRequestResponseParams validates request/response specific parameters
+func (p *AzureContentSafetyContentModerationPolicy) validateRequestResponseParams(params map[string]interface{}) error {
+	// Validate optional parameters
+	if jsonPathRaw, ok := params["jsonPath"]; ok {
+		_, ok := jsonPathRaw.(string)
+		if !ok {
+			return fmt.Errorf("'jsonPath' must be a string")
+		}
+	}
+
+	if passthroughOnErrorRaw, ok := params["passthroughOnError"]; ok {
+		_, ok := passthroughOnErrorRaw.(bool)
+		if !ok {
+			return fmt.Errorf("'passthroughOnError' must be a boolean")
+		}
+	}
+
+	if showAssessmentRaw, ok := params["showAssessment"]; ok {
+		_, ok := showAssessmentRaw.(bool)
+		if !ok {
+			return fmt.Errorf("'showAssessment' must be a boolean")
+		}
+	}
+
 	// Validate category thresholds (optional, -1 to 7)
 	categories := []string{"hateCategory", "sexualCategory", "selfHarmCategory", "violenceCategory"}
 	for _, catName := range categories {
@@ -140,28 +194,6 @@ func (p *AzureContentSafetyContentModerationPolicy) validateParams(params map[st
 		}
 	}
 
-	// Validate optional parameters
-	if jsonPathRaw, ok := params["jsonPath"]; ok {
-		_, ok := jsonPathRaw.(string)
-		if !ok {
-			return fmt.Errorf("'jsonPath' must be a string")
-		}
-	}
-
-	if passthroughOnErrorRaw, ok := params["passthroughOnError"]; ok {
-		_, ok := passthroughOnErrorRaw.(bool)
-		if !ok {
-			return fmt.Errorf("'passthroughOnError' must be a boolean")
-		}
-	}
-
-	if showAssessmentRaw, ok := params["showAssessment"]; ok {
-		_, ok := showAssessmentRaw.(bool)
-		if !ok {
-			return fmt.Errorf("'showAssessment' must be a boolean")
-		}
-	}
-
 	return nil
 }
 
@@ -171,11 +203,7 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 	passthroughOnError, _ := params["passthroughOnError"].(bool)
 	showAssessment, _ := params["showAssessment"].(bool)
 
-	// Extract Azure configuration
-	endpoint, _ := params["azureContentSafetyEndpoint"].(string)
-	apiKey, _ := params["azureContentSafetyKey"].(string)
-
-	// Extract category thresholds
+	// Build category thresholds from params (dynamic configuration)
 	categoryMap := p.buildCategoryMap(params)
 	categories := p.getValidCategories(categoryMap)
 
@@ -211,7 +239,7 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 	extractedValue = strings.TrimSpace(extractedValue)
 
 	// Call Azure Content Safety API
-	categoriesAnalysis, err := p.callAzureContentSafetyAPI(endpoint, apiKey, extractedValue, categories)
+	categoriesAnalysis, err := p.callAzureContentSafetyAPI(p.endpoint, p.apiKey, extractedValue, categories)
 	if err != nil {
 		if passthroughOnError {
 			if isResponse {
@@ -406,7 +434,7 @@ func (p *AzureContentSafetyContentModerationPolicy) buildErrorResponse(reason st
 
 	bodyBytes, err := json.Marshal(responseBody)
 	if err != nil {
-		bodyBytes = []byte(fmt.Sprintf(`{"code":%d,"type":"AWS_BEDROCK_GUARDRAIL","message":"Internal error"}`, GuardrailAPIMExceptionCode))
+		bodyBytes = []byte(fmt.Sprintf(`{"code":%d,"type":"AZURE_CONTENT_SAFETY_CONTENT_MODERATION","message":"Internal error"}`, GuardrailAPIMExceptionCode))
 	}
 
 	if isResponse {

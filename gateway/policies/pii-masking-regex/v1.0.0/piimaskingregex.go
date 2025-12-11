@@ -23,8 +23,12 @@ var textCleanRegexCompiled = regexp.MustCompile(TextCleanRegex)
 type PIIMaskingRegexPolicy struct{}
 
 // NewPolicy creates a new PIIMaskingRegexPolicy instance
-func NewPolicy() policy.Policy {
-	return &PIIMaskingRegexPolicy{}
+func NewPolicy(
+	metadata policy.PolicyMetadata,
+	initParams map[string]interface{},
+	params map[string]interface{},
+) (policy.Policy, error) {
+	return &PIIMaskingRegexPolicy{}, nil
 }
 
 // Mode returns the processing mode for this policy
@@ -396,7 +400,10 @@ func (p *PIIMaskingRegexPolicy) buildErrorResponse(reason string) interface{} {
 		"message": "Error occurred during PIIMaskingRegex mediation: " + reason,
 	}
 
-	bodyBytes, _ := json.Marshal(responseBody)
+	bodyBytes, err := json.Marshal(responseBody)
+	if err != nil {
+		bodyBytes = []byte(fmt.Sprintf(`{"code":%d,"type":"PII_MASKING_REGEX","message":"Internal error"}`, APIMInternalExceptionCode))
+	}
 
 	// For PII masking, errors typically occur in request phase, but return as ImmediateResponse
 	return policy.ImmediateResponse{

@@ -10,42 +10,6 @@ description: |
 parameters:
   type: object
   properties:
-    region:
-      type: string
-      description: AWS region where the Bedrock Guardrail is located (e.g., "us-east-1")
-      minLength: 1
-    guardrailID:
-      type: string
-      description: AWS Bedrock Guardrail identifier
-      minLength: 1
-    guardrailVersion:
-      type: string
-      description: AWS Bedrock Guardrail version (e.g., "DRAFT", "1")
-      minLength: 1
-    awsAccessKeyID:
-      type: string
-      description: AWS access key ID (for static credentials or role assumption)
-      minLength: 1
-    awsSecretAccessKey:
-      type: string
-      description: AWS secret access key (for static credentials or role assumption)
-      minLength: 1
-    awsSessionToken:
-      type: string
-      description: AWS session token (optional, for temporary credentials)
-      minLength: 1
-    awsRoleARN:
-      type: string
-      description: AWS IAM role ARN to assume (for role-based authentication)
-      minLength: 1
-    awsRoleRegion:
-      type: string
-      description: AWS region for role assumption (required if awsRoleARN is specified)
-      minLength: 1
-    awsRoleExternalID:
-      type: string
-      description: External ID for role assumption (optional)
-      minLength: 1
     request:
       type: object
       description: Configuration for request phase validation
@@ -104,11 +68,47 @@ parameters:
             If true, includes detailed assessment information from AWS Bedrock Guardrail in error responses.
             If false, returns minimal error information.
           default: false
+
+initParameters:
+  type: object
+  properties:
+    region:
+      type: string
+      description: AWS region where the Bedrock Guardrail is located (e.g., "us-east-1")
+      minLength: 1
+    guardrailID:
+      type: string
+      description: AWS Bedrock Guardrail identifier
+      minLength: 1
+    guardrailVersion:
+      type: string
+      description: AWS Bedrock Guardrail version (e.g., "DRAFT", "1")
+      minLength: 1
+    awsAccessKeyID:
+      type: string
+      description: AWS access key ID (for static credentials or role assumption)
+      minLength: 1
+    awsSecretAccessKey:
+      type: string
+      description: AWS secret access key (for static credentials or role assumption)
+      minLength: 1
+    awsSessionToken:
+      type: string
+      description: AWS session token (optional, for temporary credentials)
+      minLength: 1
+    awsRoleARN:
+      type: string
+      description: AWS IAM role ARN to assume (for role-based authentication)
+      minLength: 1
+    awsRoleRegion:
+      type: string
+      description: AWS region for role assumption (required if awsRoleARN is specified)
+      minLength: 1
+    awsRoleExternalID:
+      type: string
+      description: External ID for role assumption (optional)
+      minLength: 1
   required:
   - region
   - guardrailID
   - guardrailVersion
-
-initParameters:
-  type: object
-  properties: {}

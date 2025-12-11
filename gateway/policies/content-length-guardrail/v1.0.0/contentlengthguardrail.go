@@ -23,8 +23,12 @@ var textCleanRegexCompiled = regexp.MustCompile(TextCleanRegex)
 type ContentLengthGuardrailPolicy struct{}
 
 // NewPolicy creates a new ContentLengthGuardrailPolicy instance
-func NewPolicy() policy.Policy {
-	return &ContentLengthGuardrailPolicy{}
+func NewPolicy(
+	metadata policy.PolicyMetadata,
+	initParams map[string]interface{},
+	params map[string]interface{},
+) (policy.Policy, error) {
+	return &ContentLengthGuardrailPolicy{}, nil
 }
 
 // Mode returns the processing mode for this policy
@@ -230,7 +234,10 @@ func (p *ContentLengthGuardrailPolicy) buildErrorResponse(reason string, validat
 		"message": assessment,
 	}
 
-	bodyBytes, _ := json.Marshal(responseBody)
+	bodyBytes, err := json.Marshal(responseBody)
+	if err != nil {
+		bodyBytes = []byte(fmt.Sprintf(`{"code":%d,"type":"CONTENT_LENGTH_GUARDRAIL","message":"Internal error"}`, GuardrailAPIMExceptionCode))
+	}
 
 	if isResponse {
 		statusCode := GuardrailErrorCode

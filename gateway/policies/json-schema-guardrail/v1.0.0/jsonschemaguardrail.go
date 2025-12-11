@@ -18,8 +18,12 @@ const (
 type JSONSchemaGuardrailPolicy struct{}
 
 // NewPolicy creates a new JSONSchemaGuardrailPolicy instance
-func NewPolicy() policy.Policy {
-	return &JSONSchemaGuardrailPolicy{}
+func NewPolicy(
+	metadata policy.PolicyMetadata,
+	initParams map[string]interface{},
+	params map[string]interface{},
+) (policy.Policy, error) {
+	return &JSONSchemaGuardrailPolicy{}, nil
 }
 
 // Mode returns the processing mode for this policy

@@ -28,83 +28,71 @@ const (
 var textCleanRegexCompiled = regexp.MustCompile(TextCleanRegex)
 
 // AWSBedrockGuardrailPolicy implements AWS Bedrock Guardrail validation
-type AWSBedrockGuardrailPolicy struct{}
+type AWSBedrockGuardrailPolicy struct {
+	// Static configuration from initParams
+	region             string
+	guardrailID        string
+	guardrailVersion   string
+	awsAccessKeyID     string
+	awsSecretAccessKey string
+	awsSessionToken    string
+	awsRoleARN         string
+	awsRoleRegion      string
+	awsRoleExternalID  string
+}
 
 // NewPolicy creates a new AWSBedrockGuardrailPolicy instance
-func NewPolicy() policy.Policy {
-	return &AWSBedrockGuardrailPolicy{}
+func NewPolicy(
+	metadata policy.PolicyMetadata,
+	initParams map[string]interface{},
+	params map[string]interface{},
+) (policy.Policy, error) {
+	// Validate and extract static configuration from initParams
+	if err := validateAWSConfigParams(initParams); err != nil {
+		return nil, fmt.Errorf("invalid initParams: %w", err)
+	}
+
+	policy := &AWSBedrockGuardrailPolicy{
+		region:           getStringParam(initParams, "region"),
+		guardrailID:      getStringParam(initParams, "guardrailID"),
+		guardrailVersion: getStringParam(initParams, "guardrailVersion"),
+	}
+
+	// Optional AWS credentials
+	if val, ok := initParams["awsAccessKeyID"]; ok {
+		policy.awsAccessKeyID = val.(string)
+	}
+	if val, ok := initParams["awsSecretAccessKey"]; ok {
+		policy.awsSecretAccessKey = val.(string)
+	}
+	if val, ok := initParams["awsSessionToken"]; ok {
+		policy.awsSessionToken = val.(string)
+	}
+	if val, ok := initParams["awsRoleARN"]; ok {
+		policy.awsRoleARN = val.(string)
+	}
+	if val, ok := initParams["awsRoleRegion"]; ok {
+		policy.awsRoleRegion = val.(string)
+	}
+	if val, ok := initParams["awsRoleExternalID"]; ok {
+		policy.awsRoleExternalID = val.(string)
+	}
+
+	return policy, nil
 }
 
-// Mode returns the processing mode for this policy
-func (p *AWSBedrockGuardrailPolicy) Mode() policy.ProcessingMode {
-	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeSkip,
-		RequestBodyMode:    policy.BodyModeBuffer,
-		ResponseHeaderMode: policy.HeaderModeSkip,
-		ResponseBodyMode:   policy.BodyModeBuffer,
+// getStringParam safely extracts a string parameter
+func getStringParam(params map[string]interface{}, key string) string {
+	if val, ok := params[key]; ok {
+		if str, ok := val.(string); ok {
+			return str
+		}
 	}
+	return ""
 }
 
-// OnRequest validates request body using AWS Bedrock Guardrail
-func (p *AWSBedrockGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	// Validate top-level AWS configuration parameters
-	if err := p.validateAWSConfigParams(params); err != nil {
-		return p.buildErrorResponse("Parameter validation failed", err, false, false, nil).(policy.RequestAction)
-	}
-
-	var requestParams map[string]interface{}
-	if reqParams, ok := params["request"].(map[string]interface{}); ok {
-		requestParams = reqParams
-	} else {
-		return policy.UpstreamRequestModifications{}
-	}
-
-	// Validate request-specific parameters
-	if err := p.validateRequestResponseParams(requestParams); err != nil {
-		return p.buildErrorResponse("Parameter validation failed", err, false, false, nil).(policy.RequestAction)
-	}
-
-	// Merge AWS config params with request params
-	mergedParams := p.mergeParams(params, requestParams)
-
-	var content []byte
-	if ctx.Body != nil {
-		content = ctx.Body.Content
-	}
-	return p.validatePayload(content, mergedParams, false, ctx.Metadata).(policy.RequestAction)
-}
-
-// OnResponse validates response body using AWS Bedrock Guardrail
-func (p *AWSBedrockGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	// Validate top-level AWS configuration parameters
-	if err := p.validateAWSConfigParams(params); err != nil {
-		return p.buildErrorResponse("Parameter validation failed", err, true, false, nil).(policy.ResponseAction)
-	}
-
-	var responseParams map[string]interface{}
-	if respParams, ok := params["response"].(map[string]interface{}); ok {
-		responseParams = respParams
-	} else {
-		return policy.UpstreamResponseModifications{}
-	}
-
-	// Validate response-specific parameters
-	if err := p.validateRequestResponseParams(responseParams); err != nil {
-		return p.buildErrorResponse("Parameter validation failed", err, true, false, nil).(policy.ResponseAction)
-	}
-
-	// Merge AWS config params with response params
-	mergedParams := p.mergeParams(params, responseParams)
-
-	var content []byte
-	if ctx.ResponseBody != nil {
-		content = ctx.ResponseBody.Content
-	}
-	return p.validatePayload(content, mergedParams, true, ctx.Metadata).(policy.ResponseAction)
-}
-
-// validateAWSConfigParams validates AWS configuration parameters (top-level)
-func (p *AWSBedrockGuardrailPolicy) validateAWSConfigParams(params map[string]interface{}) error {
+// validateAWSConfigParams validates AWS configuration parameters (from initParams)
+func validateAWSConfigParams(params map[string]interface{}) error {
 	// Validate region (required)
 	regionRaw, ok := params["region"]
 	if !ok {
@@ -203,6 +191,58 @@ func (p *AWSBedrockGuardrailPolicy) validateAWSConfigParams(params map[string]in
 	return nil
 }
 
+// Mode returns the processing mode for this policy
+func (p *AWSBedrockGuardrailPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{
+		RequestHeaderMode:  policy.HeaderModeSkip,
+		RequestBodyMode:    policy.BodyModeBuffer,
+		ResponseHeaderMode: policy.HeaderModeSkip,
+		ResponseBodyMode:   policy.BodyModeBuffer,
+	}
+}
+
+// OnRequest validates request body using AWS Bedrock Guardrail
+func (p *AWSBedrockGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+	var requestParams map[string]interface{}
+	if reqParams, ok := params["request"].(map[string]interface{}); ok {
+		requestParams = reqParams
+	} else {
+		return policy.UpstreamRequestModifications{}
+	}
+
+	// Validate request-specific parameters
+	if err := p.validateRequestResponseParams(requestParams); err != nil {
+		return p.buildErrorResponse("Parameter validation failed", err, false, false, nil).(policy.RequestAction)
+	}
+
+	var content []byte
+	if ctx.Body != nil {
+		content = ctx.Body.Content
+	}
+	return p.validatePayload(content, requestParams, false, ctx.Metadata).(policy.RequestAction)
+}
+
+// OnResponse validates response body using AWS Bedrock Guardrail
+func (p *AWSBedrockGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
+	var responseParams map[string]interface{}
+	if respParams, ok := params["response"].(map[string]interface{}); ok {
+		responseParams = respParams
+	} else {
+		return policy.UpstreamResponseModifications{}
+	}
+
+	// Validate response-specific parameters
+	if err := p.validateRequestResponseParams(responseParams); err != nil {
+		return p.buildErrorResponse("Parameter validation failed", err, true, false, nil).(policy.ResponseAction)
+	}
+
+	var content []byte
+	if ctx.ResponseBody != nil {
+		content = ctx.ResponseBody.Content
+	}
+	return p.validatePayload(content, responseParams, true, ctx.Metadata).(policy.ResponseAction)
+}
+
 // validateRequestResponseParams validates request/response specific parameters
 func (p *AWSBedrockGuardrailPolicy) validateRequestResponseParams(params map[string]interface{}) error {
 	// Validate optional parameters
@@ -237,58 +277,12 @@ func (p *AWSBedrockGuardrailPolicy) validateRequestResponseParams(params map[str
 	return nil
 }
 
-// mergeParams merges AWS config params from top-level params with request/response params
-func (p *AWSBedrockGuardrailPolicy) mergeParams(topLevelParams, requestResponseParams map[string]interface{}) map[string]interface{} {
-	merged := make(map[string]interface{})
-
-	// Copy AWS config params from top-level
-	if region, ok := topLevelParams["region"]; ok {
-		merged["region"] = region
-	}
-	if guardrailID, ok := topLevelParams["guardrailID"]; ok {
-		merged["guardrailID"] = guardrailID
-	}
-	if guardrailVersion, ok := topLevelParams["guardrailVersion"]; ok {
-		merged["guardrailVersion"] = guardrailVersion
-	}
-	if awsAccessKeyID, ok := topLevelParams["awsAccessKeyID"]; ok {
-		merged["awsAccessKeyID"] = awsAccessKeyID
-	}
-	if awsSecretAccessKey, ok := topLevelParams["awsSecretAccessKey"]; ok {
-		merged["awsSecretAccessKey"] = awsSecretAccessKey
-	}
-	if awsSessionToken, ok := topLevelParams["awsSessionToken"]; ok {
-		merged["awsSessionToken"] = awsSessionToken
-	}
-	if awsRoleARN, ok := topLevelParams["awsRoleARN"]; ok {
-		merged["awsRoleARN"] = awsRoleARN
-	}
-	if awsRoleRegion, ok := topLevelParams["awsRoleRegion"]; ok {
-		merged["awsRoleRegion"] = awsRoleRegion
-	}
-	if awsRoleExternalID, ok := topLevelParams["awsRoleExternalID"]; ok {
-		merged["awsRoleExternalID"] = awsRoleExternalID
-	}
-
-	// Copy request/response specific params (these override top-level if they exist)
-	for k, v := range requestResponseParams {
-		merged[k] = v
-	}
-
-	return merged
-}
-
 // validatePayload validates payload against AWS Bedrock Guardrail
 func (p *AWSBedrockGuardrailPolicy) validatePayload(payload []byte, params map[string]interface{}, isResponse bool, metadata map[string]interface{}) interface{} {
 	jsonPath, _ := params["jsonPath"].(string)
 	redactPII, _ := params["redactPII"].(bool)
 	passthroughOnError, _ := params["passthroughOnError"].(bool)
 	showAssessment, _ := params["showAssessment"].(bool)
-
-	// Extract AWS configuration
-	region, _ := params["region"].(string)
-	guardrailID, _ := params["guardrailID"].(string)
-	guardrailVersion, _ := params["guardrailVersion"].(string)
 
 	// Transform response if redactPII is disabled and PIIs identified in request
 	if !redactPII && isResponse {
@@ -329,7 +323,7 @@ func (p *AWSBedrockGuardrailPolicy) validatePayload(payload []byte, params map[s
 	extractedValue = strings.TrimSpace(extractedValue)
 
 	// Create AWS config
-	awsCfg, err := p.loadAWSConfig(context.Background(), params, region)
+	awsCfg, err := p.loadAWSConfig(context.Background(), p.region)
 	if err != nil {
 		if passthroughOnError {
 			if isResponse {
@@ -341,7 +335,7 @@ func (p *AWSBedrockGuardrailPolicy) validatePayload(payload []byte, params map[s
 	}
 
 	// Call AWS Bedrock Guardrail
-	output, err := p.applyBedrockGuardrail(context.Background(), awsCfg, guardrailID, guardrailVersion, extractedValue)
+	output, err := p.applyBedrockGuardrail(context.Background(), awsCfg, p.guardrailID, p.guardrailVersion, extractedValue)
 	if err != nil {
 		if passthroughOnError {
 			if isResponse {
@@ -389,14 +383,14 @@ func (p *AWSBedrockGuardrailPolicy) validatePayload(payload []byte, params map[s
 }
 
 // loadAWSConfig creates AWS configuration with custom credentials and role assumption
-func (p *AWSBedrockGuardrailPolicy) loadAWSConfig(ctx context.Context, params map[string]interface{}, region string) (aws.Config, error) {
-	// Extract AWS credentials
-	accessKeyID, _ := params["awsAccessKeyID"].(string)
-	secretAccessKey, _ := params["awsSecretAccessKey"].(string)
-	sessionToken, _ := params["awsSessionToken"].(string)
-	roleARN, _ := params["awsRoleARN"].(string)
-	roleRegion, _ := params["awsRoleRegion"].(string)
-	roleExternalID, _ := params["awsRoleExternalID"].(string)
+func (p *AWSBedrockGuardrailPolicy) loadAWSConfig(ctx context.Context, region string) (aws.Config, error) {
+	// Use AWS credentials from policy instance (initParams)
+	accessKeyID := p.awsAccessKeyID
+	secretAccessKey := p.awsSecretAccessKey
+	sessionToken := p.awsSessionToken
+	roleARN := p.awsRoleARN
+	roleRegion := p.awsRoleRegion
+	roleExternalID := p.awsRoleExternalID
 
 	// Check if role-based authentication should be used
 	if roleARN != "" && roleRegion != "" {

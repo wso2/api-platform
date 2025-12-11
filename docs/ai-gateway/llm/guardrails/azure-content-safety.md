@@ -19,7 +19,7 @@ The Azure Content Safety Content Moderation Guardrail validates request or respo
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `azureContentSafetyEndpoint` | string | Yes | - | Azure Content Safety API endpoint URL (without trailing slash). Example: "https://your-resource.cognitiveservices.azure.com". |
+| `azureContentSafetyEndpoint` | string | Yes | - | Azure Content Safety API endpoint URL (without trailing slash). Example: `https://your-resource.cognitiveservices.azure.com`. |
 | `azureContentSafetyKey` | string | Yes | - | Azure Content Safety API subscription key. |
 | `hateCategory` | integer | No | `-1` | Severity threshold for hate category (0-7). -1 disables this category. Content with severity >= threshold will be blocked. |
 | `sexualCategory` | integer | No | `-1` | Severity threshold for sexual category (0-7). -1 disables this category. Content with severity >= threshold will be blocked. |

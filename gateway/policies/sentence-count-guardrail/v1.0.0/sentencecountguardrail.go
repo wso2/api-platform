@@ -27,8 +27,12 @@ var (
 type SentenceCountGuardrailPolicy struct{}
 
 // NewPolicy creates a new SentenceCountGuardrailPolicy instance
-func NewPolicy() policy.Policy {
-	return &SentenceCountGuardrailPolicy{}
+func NewPolicy(
+	metadata policy.PolicyMetadata,
+	initParams map[string]interface{},
+	params map[string]interface{},
+) (policy.Policy, error) {
+	return &SentenceCountGuardrailPolicy{}, nil
 }
 
 // Mode returns the processing mode for this policy
@@ -237,7 +241,10 @@ func (p *SentenceCountGuardrailPolicy) buildErrorResponse(reason string, validat
 		"message": assessment,
 	}
 
-	bodyBytes, _ := json.Marshal(responseBody)
+	bodyBytes, err := json.Marshal(responseBody)
+	if err != nil {
+		bodyBytes = []byte(fmt.Sprintf(`{"code":%d,"type":"SENTENCE_COUNT_GUARDRAIL","message":"Internal error"}`, GuardrailAPIMExceptionCode))
+	}
 
 	if isResponse {
 		statusCode := GuardrailErrorCode

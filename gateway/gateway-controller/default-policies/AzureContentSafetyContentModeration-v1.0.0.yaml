@@ -13,14 +13,25 @@ parameters:
       type: object
       description: Configuration for request phase validation
       properties:
-        azureContentSafetyEndpoint:
+        jsonPath:
           type: string
-          description: Azure Content Safety API endpoint URL (without trailing slash)
-          minLength: 1
-        azureContentSafetyKey:
-          type: string
-          description: Azure Content Safety API subscription key
-          minLength: 1
+          description: |
+            JSONPath expression to extract a specific value from JSON payload.
+            If empty, validates the entire payload as a string.
+            Examples: "$.message", "$.data.content", "$.items[0].text"
+          default: ""
+        passthroughOnError:
+          type: boolean
+          description: |
+            If true, allows requests to proceed if Azure Content Safety API call fails.
+            If false (default), blocks requests on API errors.
+          default: false
+        showAssessment:
+          type: boolean
+          description: |
+            If true, includes detailed assessment information in error responses.
+            If false, returns minimal error information.
+          default: false
         hateCategory:
           type: integer
           description: |
@@ -57,40 +68,29 @@ parameters:
           minimum: -1
           maximum: 7
           default: -1
-        jsonPath:
-          type: string
-          description: |
-            JSONPath expression to extract a specific value from JSON payload.
-            If empty, validates the entire payload as a string.
-            Examples: "$.message", "$.data.content", "$.items[0].text"
-          default: ""
-        passthroughOnError:
-          type: boolean
-          description: |
-            If true, allows requests to proceed if Azure Content Safety API call fails.
-            If false (default), blocks requests on API errors.
-          default: false
-        showAssessment:
-          type: boolean
-          description: |
-            If true, includes detailed assessment information in error responses.
-            If false, returns minimal error information.
-          default: false
-      required:
-      - azureContentSafetyEndpoint
-      - azureContentSafetyKey
     response:
       type: object
       description: Configuration for response phase validation
       properties:
-        azureContentSafetyEndpoint:
+        jsonPath:
           type: string
-          description: Azure Content Safety API endpoint URL (without trailing slash)
-          minLength: 1
-        azureContentSafetyKey:
-          type: string
-          description: Azure Content Safety API subscription key
-          minLength: 1
+          description: |
+            JSONPath expression to extract a specific value from JSON payload.
+            If empty, validates the entire payload as a string.
+            Examples: "$.message", "$.data.content", "$.items[0].text"
+          default: ""
+        passthroughOnError:
+          type: boolean
+          description: |
+            If true, allows requests to proceed if Azure Content Safety API call fails.
+            If false (default), blocks requests on API errors.
+          default: false
+        showAssessment:
+          type: boolean
+          description: |
+            If true, includes detailed assessment information in error responses.
+            If false, returns minimal error information.
+          default: false
         hateCategory:
           type: integer
           description: |
@@ -127,29 +127,18 @@ parameters:
           minimum: -1
           maximum: 7
           default: -1
-        jsonPath:
-          type: string
-          description: |
-            JSONPath expression to extract a specific value from JSON payload.
-            If empty, validates the entire payload as a string.
-            Examples: "$.message", "$.data.content", "$.items[0].text"
-          default: ""
-        passthroughOnError:
-          type: boolean
-          description: |
-            If true, allows requests to proceed if Azure Content Safety API call fails.
-            If false (default), blocks requests on API errors.
-          default: false
-        showAssessment:
-          type: boolean
-          description: |
-            If true, includes detailed assessment information in error responses.
-            If false, returns minimal error information.
-          default: false
-      required:
-      - azureContentSafetyEndpoint
-      - azureContentSafetyKey
 
 initParameters:
   type: object
-  properties: {}
+  properties:
+    azureContentSafetyEndpoint:
+      type: string
+      description: Azure Content Safety API endpoint URL (without trailing slash)
+      minLength: 1
+    azureContentSafetyKey:
+      type: string
+      description: Azure Content Safety API subscription key
+      minLength: 1
+  required:
+  - azureContentSafetyEndpoint
+  - azureContentSafetyKey

@@ -18,8 +18,12 @@ const (
 type RegexGuardrailPolicy struct{}
 
 // NewPolicy creates a new RegexGuardrailPolicy instance
-func NewPolicy() policy.Policy {
-	return &RegexGuardrailPolicy{}
+func NewPolicy(
+	metadata policy.PolicyMetadata,
+	initParams map[string]interface{},
+	params map[string]interface{},
+) (policy.Policy, error) {
+	return &RegexGuardrailPolicy{}, nil
 }
 
 // Mode returns the processing mode for this policy
@@ -121,7 +125,10 @@ func (p *RegexGuardrailPolicy) buildErrorResponse(reason string, validationError
 		"message": assessment,
 	}
 
-	bodyBytes, _ := json.Marshal(responseBody)
+	bodyBytes, err := json.Marshal(responseBody)
+	if err != nil {
+		bodyBytes = []byte(fmt.Sprintf(`{"code":%d,"type":"REGEX_GUARDRAIL","message":"Internal error"}`, GuardrailAPIMExceptionCode))
+	}
 
 	if isResponse {
 		statusCode := GuardrailErrorCode
