@@ -8,9 +8,11 @@ import (
 )
 
 // PolicyRegistry provides centralized policy lookup
+// THREAD-SAFETY: This registry is initialized during program startup (via init() functions)
+// before any concurrent access begins. All Register() calls must complete before the gRPC
+// server starts serving requests. After initialization, the maps are read-only and safe for
+// concurrent access without synchronization.
 type PolicyRegistry struct {
-	mu sync.RWMutex
-
 	// Policy definitions indexed by "name:version" composite key
 	// Example key: "jwtValidation:v1.0.0"
 	Definitions map[string]*policy.PolicyDefinition
@@ -37,9 +39,6 @@ func GetRegistry() *PolicyRegistry {
 
 // GetDefinition retrieves a policy definition by name and version
 func (r *PolicyRegistry) GetDefinition(name, version string) (*policy.PolicyDefinition, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	key := compositeKey(name, version)
 	def, ok := r.Definitions[key]
 	if !ok {
@@ -55,9 +54,6 @@ func (r *PolicyRegistry) CreateInstance(
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
 ) (policy.Policy, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	key := compositeKey(name, version)
 
 	factory, ok := r.Factories[key]
@@ -88,9 +84,6 @@ func (r *PolicyRegistry) CreateInstance(
 // GetFactory retrieves a policy factory by name and version
 // Useful for validation without creating instances
 func (r *PolicyRegistry) GetFactory(name, version string) (policy.PolicyFactory, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	key := compositeKey(name, version)
 	factory, ok := r.Factories[key]
 	if !ok {
@@ -100,10 +93,8 @@ func (r *PolicyRegistry) GetFactory(name, version string) (policy.PolicyFactory,
 }
 
 // Register registers a policy definition and factory function
+// This method is ONLY called during init() before any concurrent access begins. Hence no need for synchronization.
 func (r *PolicyRegistry) Register(def *policy.PolicyDefinition, factory policy.PolicyFactory) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	key := compositeKey(def.Name, def.Version)
 
 	// Check for duplicates
@@ -116,7 +107,6 @@ func (r *PolicyRegistry) Register(def *policy.PolicyDefinition, factory policy.P
 	return nil
 }
 
-
 // compositeKey creates a composite key from name and version
 func compositeKey(name, version string) string {
 	return fmt.Sprintf("%s:%s", name, version)
@@ -125,9 +115,6 @@ func compositeKey(name, version string) string {
 // DumpPolicies returns all registered policy definitions for debugging
 // Returns a copy of the definitions map
 func (r *PolicyRegistry) DumpPolicies() map[string]*policy.PolicyDefinition {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	// Create a copy of the definitions map
 	dump := make(map[string]*policy.PolicyDefinition, len(r.Definitions))
 	for key, def := range r.Definitions {
