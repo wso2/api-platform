@@ -572,7 +572,7 @@ const ApiOverviewContent: React.FC = () => {
                 lineHeight: 1,
               }}
             >
-              {api.displayName?.slice(0, 2).toUpperCase() || "AP"}
+              {api.displayName || api.name}
             </Typography>
           </Box>
 

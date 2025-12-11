@@ -112,7 +112,9 @@ const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
           onClick={() => {
             try {
               void onConfirm();
-            } catch {}
+            } catch (err) {
+              console.error("Confirmation action failed:", err);
+            }
             onClose();
           }}
         >

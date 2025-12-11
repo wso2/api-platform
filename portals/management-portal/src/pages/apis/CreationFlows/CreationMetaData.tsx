@@ -60,14 +60,10 @@ const CreationMetaData: React.FC<Props> = ({
 
   const change = (patch: Partial<ProxyMetadata>) =>
     setMeta({ ...meta, ...patch });
-
-  // ----- Identifier editing state -----
-  // If identifier was edited earlier, allow it to be editable immediately.
   const [isIdentifierEditing, setIsIdentifierEditing] = React.useState(
     !!meta.identifierEdited
   );
 
-  // If we already have a name but no identifier yet, generate it once on mount
   React.useEffect(() => {
     if (
       meta.name &&
@@ -84,21 +80,19 @@ const CreationMetaData: React.FC<Props> = ({
 
   const handleNameChange = (v: string) => {
     const slug = slugify(v);
+    const trimmed = v.trim();
 
     const nextPatch: Partial<ProxyMetadata> & {
       identifier?: string;
       identifierEdited?: boolean;
     } = {
-      name: slug ? slug : v,
+      name: slug || trimmed,
       displayName: v,
     };
 
-    // Keep generating context from name until user edits context manually
     if (!meta.contextEdited) {
       nextPatch.context = slug ? `/${slug}` : "";
     }
-
-    // Generate identifier from name until user edits identifier manually
     if (!meta.identifierEdited && !isIdentifierEditing) {
       nextPatch.identifier = buildIdentifierFromName(v);
     }
@@ -118,28 +112,17 @@ const CreationMetaData: React.FC<Props> = ({
   };
 
   const handleIdentifierEditClick = () => {
-    // When user clicks edit:
-    // - mark as edited so we stop auto-generating from name
-    // - allow the field to be edited
     setIsIdentifierEditing(true);
     change({
       identifierEdited: true,
     });
   };
-
-  // Initial state: identifier is read-only (disabled) until user clicks "Edit"
   const identifierDisabled =
     !!readOnlyFields?.["identifier"] || !isIdentifierEditing;
 
   return (
     <Stack spacing={2}>
-      {title ? (
-        <Typography variant="subtitle2">
-          {title}
-        </Typography>
-      ) : null}
-
-      {/* First row: Name | Identifier | Version */}
+      {title ? <Typography variant="subtitle2">{title}</Typography> : null}
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 4 }}>
           <TextInput
@@ -162,12 +145,12 @@ const CreationMetaData: React.FC<Props> = ({
               onChange={(v: string) => handleIdentifierChange(v)}
               testId=""
               size="medium"
-              readonly={identifierDisabled} 
+              readonly={identifierDisabled}
             />
             <Button
               size="medium"
               startIcon={<Edit />}
-              testId="component-name-edit"
+              testId="identifier-edit"
               variant="link"
               onClick={handleIdentifierEditClick}
               disabled={!!readOnlyFields?.["identifier"]}
@@ -185,8 +168,6 @@ const CreationMetaData: React.FC<Props> = ({
           />
         </Grid>
       </Grid>
-
-      {/* Then Target, Context, Description */}
       <TextInput
         label="Target"
         placeholder="https://api.example.com/v1"
