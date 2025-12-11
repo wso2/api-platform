@@ -176,13 +176,6 @@ func (v *LLMValidator) validateLLMProvider(provider *api.LLMProviderConfiguratio
 	}
 
 	// Validate data section
-	if &provider.Spec == nil {
-		errors = append(errors, ValidationError{
-			Field:   "spec",
-			Message: "Provider spec is required",
-		})
-		return errors
-	}
 	errors = append(errors, v.validateProviderData(&provider.Spec)...)
 
 	return errors

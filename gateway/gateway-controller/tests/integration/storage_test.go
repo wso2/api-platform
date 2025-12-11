@@ -68,7 +68,7 @@ func createTestConfig(name, version string) *models.StoredConfig {
 		},
 		Operations: []api.Operation{
 			{
-				Method: api.GET,
+				Method: api.OperationMethod(api.GET),
 				Path:   "/test",
 			},
 		},

@@ -276,19 +276,21 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(name string, params LLM
 		}
 		return nil, fmt.Errorf("template validation failed with %d error(s): %s", len(validationErrors), strings.Join(errs, "; "))
 	}
-	existing.Configuration = tmpl
-	existing.UpdatedAt = time.Now()
+	updated := &models.StoredLLMProviderTemplate{
+		ID:            existing.ID,
+		Configuration: tmpl,
+		CreatedAt:     existing.CreatedAt,
+		UpdatedAt:     time.Now(),
+	}
 	if s.db != nil {
-		if sqlite, ok := s.db.(*storage.SQLiteStorage); ok {
-			if err := sqlite.UpdateLLMProviderTemplate(existing); err != nil {
-				return nil, fmt.Errorf("failed to update template in database: %w", err)
-			}
+		if err := s.db.UpdateLLMProviderTemplate(updated); err != nil {
+			return nil, fmt.Errorf("failed to update template in database: %w", err)
 		}
 	}
-	if err := s.store.UpdateTemplate(existing); err != nil {
+	if err := s.store.UpdateTemplate(updated); err != nil {
 		return nil, fmt.Errorf("failed to update template in memory store: %w", err)
 	}
-	return existing, nil
+	return updated, nil
 }
 
 // DeleteLLMProviderTemplate deletes a template by name
