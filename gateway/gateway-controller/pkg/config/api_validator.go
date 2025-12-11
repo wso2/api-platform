@@ -85,7 +85,7 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 	}
 
 	// Validate kind
-	if config.Kind != "http/rest" && config.Kind != "async/websub" {
+	if config.Kind != api.Httprest && config.Kind != api.Asyncwebsub {
 		errors = append(errors, ValidationError{
 			Field:   "kind",
 			Message: "Unsupported API kind (only 'http/rest' and 'async/websub' are supported)",
@@ -93,7 +93,7 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 	}
 
 	switch config.Kind {
-	case "http/rest":
+	case api.Httprest:
 		spec, err := config.Spec.AsAPIConfigData()
 		if err != nil {
 			errors = append(errors, ValidationError{
@@ -104,7 +104,7 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 			// Validate data section
 			errors = append(errors, v.validateRestData(&spec)...)
 		}
-	case "async/websub":
+	case api.Asyncwebsub:
 		spec, err := config.Spec.AsWebhookAPIData()
 		if err != nil {
 			errors = append(errors, ValidationError{

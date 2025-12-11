@@ -148,7 +148,7 @@ func TestMCPTransformer_Transform(t *testing.T) {
 		t.Fatalf("expected at least 3 MCP operations, got %d", len(ops))
 	}
 	// Ensure kind and version set
-	if res.Kind != api.APIConfigurationKindHttprest {
+	if res.Kind != api.Httprest {
 		t.Fatalf("expected Kind Httprest, got %s", res.Kind)
 	}
 	if res.Version != api.ApiPlatformWso2Comv1 {

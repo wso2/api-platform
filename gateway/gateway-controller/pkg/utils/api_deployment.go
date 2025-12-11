@@ -95,14 +95,15 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	var apiVersion string
 
 	switch apiConfig.Kind {
-	case api.APIConfigurationKindHttprest:
+	case api.Httprest:
 		apiData, err := apiConfig.Spec.AsAPIConfigData()
+		fmt.Println("APIData: ", apiData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse REST API data: %w", err)
 		}
 		apiName = apiData.Name
 		apiVersion = apiData.Version
-	case api.APIConfigurationKindAsyncwebsub:
+	case api.Asyncwebsub:
 		webhookData, err := apiConfig.Spec.AsWebhookAPIData()
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse WebSub API data: %w", err)
@@ -138,7 +139,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
 		ID:                  apiID,
-		Kind:                string(api.APIConfigDataApiTypeHttprest),
+		Kind:                string(apiConfig.Kind),
 		Configuration:       apiConfig,
 		SourceConfiguration: apiConfig,
 		Status:              models.StatusPending,
@@ -148,7 +149,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		DeployedVersion:     0,
 	}
 
-	if apiConfig.Kind == "async/websub" {
+	if apiConfig.Kind == api.Asyncwebsub {
 		topicsToRegister, topicsToUnregister := s.GetTopicsForUpdate(*storedCfg)
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
 		// This was communication bridge will be created on the gw startup

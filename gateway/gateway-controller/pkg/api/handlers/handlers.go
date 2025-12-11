@@ -228,7 +228,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 // ListAPIs implements ServerInterface.ListAPIs
 // (GET /apis)
 func (s *APIServer) ListAPIs(c *gin.Context) {
-	configs := s.store.GetAllByKind(string(api.APIConfigurationKindHttprest))
+	configs := s.store.GetAllByKind(string(api.Httprest))
 
 	items := make([]api.APIListItem, 0, len(configs))
 	for _, cfg := range configs {
@@ -364,7 +364,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 	existing.DeployedAt = nil
 	existing.DeployedVersion = 0
 
-	if apiConfig.Kind == api.APIConfigurationKindAsyncwebsub {
+	if apiConfig.Kind == api.Asyncwebsub {
 		topicsToRegister, topicsToUnregister := s.deploymentService.GetTopicsForUpdate(*existing)
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
 		// This was communication bridge will be created on the gw startup
@@ -551,7 +551,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 		}
 	}
 
-	if cfg.Configuration.Kind == api.APIConfigurationKindAsyncwebsub {
+	if cfg.Configuration.Kind == api.Asyncwebsub {
 		topicsToUnregister := s.deploymentService.GetTopicsForDelete(*cfg)
 
 		var deregErrs int32
@@ -1096,7 +1096,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 
 	routes := make([]policyenginev1.PolicyChain, 0)
 	switch apiCfg.Kind {
-	case api.APIConfigurationKindAsyncwebsub:
+	case api.Asyncwebsub:
 		// Build routes with merged policies
 		apiData, err := apiCfg.Spec.AsWebhookAPIData()
 		if err != nil {
@@ -1141,7 +1141,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 				Policies: finalPolicies,
 			})
 		}
-	case api.APIConfigurationKindHttprest:
+	case api.Httprest:
 		// Build routes with merged policies
 		apiData, err := apiCfg.Spec.AsAPIConfigData()
 		if err != nil {

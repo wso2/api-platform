@@ -24,7 +24,6 @@ func TestDeployAPIConfigurationWebSubKindTopicRegistration(t *testing.T) {
 	yamlConfig := `kind: async/websub
 version: api-platform.wso2.com/v1
 spec:
-  apiType: async/websub
   name: testapi
   context: /test
   version: v1
@@ -70,7 +69,6 @@ func TestDeployAPIConfigurationWebSubKindRevisionDeployment(t *testing.T) {
 	yamlConfig := `kind: async/websub
 version: api-platform.wso2.com/v1
 spec:
-  apiType: async/websub
   name: testapi
   context: /test
   version: v1
@@ -110,7 +108,6 @@ spec:
 	yamlConfig2 := `kind: async/websub
 version: api-platform.wso2.com/v1
 spec:
-  apiType: async/websub
   name: testapi
   context: /test
   version: v1
@@ -154,7 +151,6 @@ func TestTopicRegistrationForConcurrentAPIConfigs(t *testing.T) {
 	yamlA := `kind: async/websub
 version: api-platform.wso2.com/v1
 spec:
-  apiType: async/websub
   name: apiA
   context: /a
   version: v1
@@ -169,7 +165,6 @@ spec:
 	yamlB := `kind: async/websub
 version: api-platform.wso2.com/v1
 spec:
-  apiType: async/websub
   name: apiB
   context: /b
   version: v1
@@ -256,7 +251,6 @@ func TestTopicDeregistrationOnConfigDeletion(t *testing.T) {
 	yamlConfig := `kind: async/websub
 version: api-platform.wso2.com/v1
 spec:
-  apiType: async/websub
   name: testapi
   context: /test
   version: v1

@@ -1291,14 +1291,9 @@ components:
             - async/sse
         spec:
           description: API configuration payload (REST or Async API variants)
-          oneOf:
+          anyOf:
             - $ref: '#/components/schemas/APIConfigData'
             - $ref: '#/components/schemas/WebhookAPIData'
-          discriminator:
-            propertyName: apiType
-            mapping:
-              http/rest: '#/components/schemas/APIConfigData'
-              async/websub: '#/components/schemas/WebhookAPIData'
 
     APIConfigData:
       type: object
@@ -1308,7 +1303,7 @@ components:
         - context
         - upstreams
         - operations
-        - apiType
+        # - kind
       properties:
         name:
           type: string
@@ -1317,12 +1312,12 @@ components:
           maxLength: 100
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
           example: weather-api
-        apiType:
-          type: string
-          description: API type
-          example: http/rest
-          enum:
-            - http/rest
+        # kind:
+        #   type: string
+        #   description: API type
+        #   example: http/rest
+        #   enum:
+        #     - http/rest
         version:
           type: string
           description: Semantic version of the API
@@ -1468,19 +1463,19 @@ components:
     WebhookAPIData:
       type: object
       required:
-        - apiType
+        # - kind
         - name
         - version
         - context
         - servers
         - channels
       properties:
-        apiType:
-          type: string
-          description: API type
-          example: async/websub
-          enum:
-            - async/websub
+        # kind:
+        #   type: string
+        #   description: API type
+        #   example: async/websub
+        #   enum:
+        #     - async/websub
         name:
           type: string
           description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
