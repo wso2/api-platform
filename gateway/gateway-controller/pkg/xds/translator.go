@@ -659,11 +659,23 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 	// Format: HttpMethod|RoutePath|Vhost (e.g., "GET|/weather/v1.0/us/seattle|localhost")
 	routeName := GenerateRouteName(method, context, apiVersion, path, t.routerConfig.GatewayHost)
 
+	// Check if path is a wildcard catch-all (e.g., /v1/*)
+	isWildcardPath := strings.HasSuffix(path, "/*")
+
 	// Check if path contains parameters (e.g., {country_code})
 	hasParams := strings.Contains(path, "{")
 
 	var pathSpecifier *route.RouteMatch_SafeRegex
-	if hasParams {
+	if isWildcardPath {
+		// For wildcard paths, use prefix matching by removing the /*
+		// This will match /v1/foo, /v1/foo/bar, etc.
+		prefixPath := strings.TrimSuffix(fullPath, "/*")
+		pathSpecifier = &route.RouteMatch_SafeRegex{
+			SafeRegex: &matcher.RegexMatcher{
+				Regex: "^" + regexp.QuoteMeta(prefixPath) + "/.*$",
+			},
+		}
+	} else if hasParams {
 		// Use regex matching for parameterized paths
 		regexPattern := t.pathToRegex(fullPath)
 		pathSpecifier = &route.RouteMatch_SafeRegex{
@@ -674,19 +686,8 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 	}
 
 	r := &route.Route{
-		Name: routeName,
-		Match: &route.RouteMatch{
-			Headers: []*route.HeaderMatcher{{
-				Name: ":method",
-				HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
-					StringMatch: &matcher.StringMatcher{
-						MatchPattern: &matcher.StringMatcher_Exact{
-							Exact: method,
-						},
-					},
-				},
-			}},
-		},
+		Name:  routeName,
+		Match: &route.RouteMatch{},
 		Action: &route.Route_Route{
 			Route: &route.RouteAction{
 				HostRewriteSpecifier: &route.RouteAction_AutoHostRewrite{
@@ -707,6 +708,22 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 		},
 	}
 
+	// Only add headers if not a wildcard path
+	if !isWildcardPath {
+		r.Match = &route.RouteMatch{
+			Headers: []*route.HeaderMatcher{{
+				Name: ":method",
+				HeaderMatchSpecifier: &route.HeaderMatcher_StringMatch{
+					StringMatch: &matcher.StringMatcher{
+						MatchPattern: &matcher.StringMatcher_Exact{
+							Exact: method,
+						},
+					},
+				},
+			}},
+		}
+	}
+
 	// Attach dynamic metadata for downstream correlation (policies, logging, tracing)
 	metaMap := map[string]interface{}{
 		"route_name":  routeName,
@@ -723,7 +740,7 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 	}
 
 	// Set path specifier based on whether we have parameters
-	if hasParams {
+	if isWildcardPath || hasParams {
 		r.Match.PathSpecifier = pathSpecifier
 	} else {
 		// Use exact path matching for non-parameterized paths
@@ -745,7 +762,15 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 	if upstreamPath == "/" {
 		upstreamPath = ""
 	}
-	contextWithVersion := ConstructFullPath(context, apiVersion, "")
+	// For wildcard routes, construct the regex to match everything after the prefix
+	var contextWithVersion string
+	if isWildcardPath {
+		// Remove the /* from the end before constructing the context
+		pathWithoutWildcard := strings.TrimSuffix(path, "/*")
+		contextWithVersion = ConstructFullPath(context, apiVersion, pathWithoutWildcard)
+	} else {
+		contextWithVersion = ConstructFullPath(context, apiVersion, "")
+	}
 	escapedContext := regexp.QuoteMeta(contextWithVersion)
 	r.GetRoute().RegexRewrite = &matcher.RegexMatchAndSubstitute{
 		Pattern: &matcher.RegexMatcher{

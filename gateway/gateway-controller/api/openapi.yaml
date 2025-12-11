@@ -794,6 +794,449 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /llm-provider-templates:
+    post:
+      summary: Create a new LLM provider template
+      description: |
+        Submit a new LLM provider template configuration. The template defines
+        token tracking and model extraction related metadata.
+
+        **Validation Rules:**
+        - Template name must be unique
+        - Token identifiers must use valid JSONPath expressions
+      operationId: createLLMProviderTemplate
+      tags:
+        - LLM Provider Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/LLMProviderTemplate'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMProviderTemplate'
+      responses:
+        '201':
+          description: LLM provider template created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplateCreateResponse'
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - Template with same name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List all LLM provider templates
+      description: |
+        Retrieve a list of all LLM provider templates.
+      operationId: listLLMProviderTemplates
+      tags:
+        - LLM Provider Management
+      responses:
+        '200':
+          description: List of LLM provider templates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 3
+                  templates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LLMProviderTemplateListItem'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-provider-templates/{name}:
+    get:
+      summary: Get LLM provider template by name
+      description: Retrieve the complete configuration for a specific LLM provider template
+      operationId: getLLMProviderTemplateByName
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Name of the LLM provider template
+          schema:
+            type: string
+          example: openai_v1.0
+      responses:
+        '200':
+          description: LLM provider template details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplateDetailResponse'
+            application/yaml:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplateDetailResponse'
+        '404':
+          description: LLM provider template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update an existing LLM provider template
+      description: |
+        Update an existing LLM provider template configuration.
+      operationId: updateLLMProviderTemplate
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Name of the template to update
+          schema:
+            type: string
+          example: openai_v1.0
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/LLMProviderTemplate'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMProviderTemplate'
+      responses:
+        '200':
+          description: LLM provider template updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderTemplateUpdateResponse'
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM provider template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete an LLM provider template
+      description: |
+        Remove an LLM provider template from the Gateway Controller.
+      operationId: deleteLLMProviderTemplate
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Name of the template to delete
+          schema:
+            type: string
+          example: openai_v1.0
+      responses:
+        '200':
+          description: LLM provider template deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: LLM provider template deleted successfully
+                  id:
+                    type: string
+                    example: 550e8400-e29b-41d4-a716-446655440000
+        '404':
+          description: LLM provider template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-providers:
+    post:
+      summary: Create a new LLM provider
+      description: |
+        Deploy a new LLM provider configuration. The provider defines how to interact
+        with an LLM service, including upstream endpoints, authentication, access control,
+        and policies.
+      operationId: createLLMProvider
+      tags:
+        - LLM Provider Management
+      requestBody:
+        required: true
+        description: LLM provider configuration in YAML or JSON format
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/LLMProviderConfiguration'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMProviderConfiguration'
+      responses:
+        '201':
+          description: LLM provider created and deployed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderCreateResponse'
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - Provider with same name and version already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List all LLM providers
+      description: Retrieve a list of all LLM providers
+      operationId: listLLMProviders
+      tags:
+        - LLM Provider Management
+      responses:
+        '200':
+          description: List of LLM providers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 2
+                  providers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LLMProviderListItem'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /llm-providers/{name}/{version}:
+    get:
+      summary: Get LLM provider by name and version
+      description: Retrieve the complete configuration for a specific LLM provider
+      operationId: getLLMProviderByNameVersion
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Name of the LLM provider
+          schema:
+            type: string
+          example: wso2-openai-provider
+        - name: version
+          in: path
+          required: true
+          description: Version of the LLM provider
+          schema:
+            type: string
+          example: v1.0
+      responses:
+        '200':
+          description: LLM provider details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderDetailResponse'
+            application/yaml:
+              schema:
+                $ref: '#/components/schemas/LLMProviderDetailResponse'
+        '404':
+          description: LLM provider not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update an existing LLM provider
+      description: Update the configuration of an existing LLM provider
+      operationId: updateLLMProvider
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Name of the LLM provider
+          schema:
+            type: string
+          example: wso2-openai-provider
+        - name: version
+          in: path
+          required: true
+          description: Version of the LLM provider
+          schema:
+            type: string
+          example: v1.0
+      requestBody:
+        required: true
+        description: Updated LLM provider configuration
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/LLMProviderConfiguration'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LLMProviderConfiguration'
+      responses:
+        '200':
+          description: LLM provider updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LLMProviderUpdateResponse'
+        '400':
+          description: Invalid configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: LLM provider not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete an LLM provider
+      description: Remove an LLM provider from the Gateway Controller
+      operationId: deleteLLMProvider
+      tags:
+        - LLM Provider Management
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Name of the LLM provider
+          schema:
+            type: string
+          example: wso2-openai-provider
+        - name: version
+          in: path
+          required: true
+          description: Version of the LLM provider
+          schema:
+            type: string
+          example: v1.0
+      responses:
+        '200':
+          description: LLM provider deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: LLM provider deleted successfully
+                  id:
+                    type: string
+                    example: 550e8400-e29b-41d4-a716-446655440000
+        '404':
+          description: LLM provider not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /config_dump:
     get:
       summary: Dump current configuration state
@@ -1583,6 +2026,430 @@ components:
           type: string
           description: Human-readable error message
           example: Context must start with / and cannot end with /
+
+    LLMProviderTemplate:
+      type: object
+      required:
+        - version
+        - kind
+        - spec
+      properties:
+        version:
+          type: string
+          description: Template specification version
+          example: ai.api-platform.wso2.com/v1
+          enum:
+            - ai.api-platform.wso2.com/v1
+        kind:
+          type: string
+          description: Template kind
+          example: llm/provider-template
+          enum:
+            - llm/provider-template
+        spec:
+          $ref: '#/components/schemas/LLMProviderTemplateData'
+
+    LLMProviderTemplateData:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Unique name for the provider template
+          example: openai_v1.0
+        promptTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        completionTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        totalTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        requestModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+
+    ExtractionIdentifier:
+      type: object
+      required:
+        - location
+        - identifier
+      properties:
+        location:
+          type: string
+          description: Where to find the token information
+          enum:
+            - payload
+            - header
+          example: payload
+        identifier:
+          type: string
+          description: JSONPath expression or header name to identify the token value
+          example: $.usage.inputTokens
+
+    LLMProviderTemplateCreateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: LLM provider template created successfully
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        created_at:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+
+    LLMProviderTemplateUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: LLM provider template updated successfully
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        updated_at:
+          type: string
+          format: date-time
+          example: 2025-10-11T11:45:00Z
+
+    LLMProviderTemplateListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          example: openai_v1.0
+        created_at:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+        updated_at:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+
+    LLMProviderTemplateDetailResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        template:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+              example: 550e8400-e29b-41d4-a716-446655440000
+            configuration:
+              $ref: '#/components/schemas/LLMProviderTemplate'
+            metadata:
+              type: object
+              properties:
+                created_at:
+                  type: string
+                  format: date-time
+                  example: 2025-10-11T10:30:00Z
+                updated_at:
+                  type: string
+                  format: date-time
+                  example: 2025-10-11T10:30:00Z
+
+    LLMProviderCreateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: LLM provider created successfully
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        created_at:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+
+    LLMProviderUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: LLM provider updated successfully
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        updated_at:
+          type: string
+          format: date-time
+          example: 2025-11-25T11:45:00Z
+
+    LLMProviderListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          example: wso2-openai-provider
+        version:
+          type: string
+          example: v1.0
+        template:
+          type: string
+          example: openai_v1.0
+        status:
+          type: string
+          enum:
+            - pending
+            - deployed
+            - failed
+          example: deployed
+        created_at:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+        updated_at:
+          type: string
+          format: date-time
+          example: 2025-11-25T10:30:00Z
+
+    LLMProviderDetailResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        provider:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+              example: 550e8400-e29b-41d4-a716-446655440000
+            configuration:
+              $ref: '#/components/schemas/LLMProviderConfiguration'
+            deployment_status:
+              type: string
+              enum:
+                - pending
+                - deployed
+                - failed
+              example: deployed
+            metadata:
+              type: object
+              properties:
+                created_at:
+                  type: string
+                  format: date-time
+                  example: 2025-11-25T10:30:00Z
+                updated_at:
+                  type: string
+                  format: date-time
+                  example: 2025-11-25T10:30:00Z
+                deployed_at:
+                  type: string
+                  format: date-time
+                  example: 2025-11-25T10:35:00Z
+
+    LLMProviderConfiguration:
+      type: object
+      required:
+        - version
+        - kind
+        - spec
+      properties:
+        version:
+          type: string
+          description: Provider specification version
+          example: ai.api-platform.wso2.com/v1
+          enum:
+            - ai.api-platform.wso2.com/v1
+        kind:
+          type: string
+          description: Provider kind
+          example: llm/provider
+          enum:
+            - llm/provider
+        spec:
+          $ref: '#/components/schemas/LLMProviderConfigData'
+
+    LLMProviderConfigData:
+      type: object
+      required:
+        - name
+        - version
+        - template
+        - upstreams
+        - accessControl
+      properties:
+        name:
+          type: string
+          description: Human-readable LLM Provider name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: wso2-openai-provider
+        version:
+          type: string
+          description: Semantic version of the LLM Provider
+          pattern: '^v\d+\.\d+$'
+          example: v1.0
+        context:
+          type: string
+          description: Base path for all API routes (must start with /, no trailing slash)
+          pattern: '^\/([a-zA-Z0-9_\-\/]*[^\/])?$'
+          default: /
+          minLength: 1
+          maxLength: 200
+          example: /openai
+        host:
+          type: string
+          description: >
+            Virtual host name used for routing. Supports standard domain names,
+            subdomains, or wildcard domains. Must follow RFC-compliant hostname
+            rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
+          pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+          minLength: 1
+          maxLength: 253
+          example: "api.openai"
+        template:
+          type: string
+          description: Template name to use for this LLM Provider
+          example: openai_v1.0
+        upstreams:
+          type: array
+          description: List of backend service URLs
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/UpstreamWithAuth"
+        accessControl:
+          $ref: '#/components/schemas/LLMAccessControl'
+        policies:
+          type: array
+          description: List of policies applied only to this operation (overrides or adds to API-level policies)
+          items:
+            $ref: "#/components/schemas/LLMPolicy"
+
+    UpstreamAuth:
+      type: object
+      properties:
+        auth:
+          type: object
+          required:
+            - type
+          properties:
+            type:
+              type: string
+              enum: [ api-key, bearer ]
+            header:
+              type: string
+            value:
+              type: string
+
+    UpstreamWithAuth:
+      allOf:
+        - $ref: '#/components/schemas/Upstream'
+        - $ref: '#/components/schemas/UpstreamAuth'
+
+    LLMAccessControl:
+      type: object
+      required:
+        - mode
+      properties:
+        mode:
+          type: string
+          description: Access control mode
+          example: deny_all
+          enum:
+            - allow_all
+            - deny_all
+        exceptions:
+          type: array
+          description: Path exceptions to the access control mode
+          items:
+            $ref: '#/components/schemas/RouteException'
+
+    RouteException:
+      type: object
+      required:
+        - path
+        - methods
+      properties:
+        path:
+          type: string
+          description: Path pattern
+          example: /chat/completions
+        methods:
+          type: array
+          description: HTTP methods
+          items:
+            type: string
+            enum:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - PATCH
+
+    LLMPolicy:
+      type: object
+      required:
+        - name
+        - version
+        - paths
+      properties:
+        name:
+          type: string
+          example: budgetControl
+        version:
+          type: string
+          example: v1.0.0
+        paths:
+          type: array
+          items:
+            $ref: '#/components/schemas/LLMPolicyPath'
+
+    LLMPolicyPath:
+      type: object
+      required:
+        - path
+        - methods
+        - params
+      properties:
+        path:
+          type: string
+          example: /chat/completions
+        methods:
+          type: array
+          items:
+            type: string
+            enum: [ GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD ]
+        params:
+          type: object
+          description: JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.
+          additionalProperties: true
 
     CertificateUploadRequest:
       type: object

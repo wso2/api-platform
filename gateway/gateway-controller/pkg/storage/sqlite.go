@@ -148,6 +148,29 @@ func (s *SQLiteStorage) initSchema() error {
 			version = 3
 		}
 
+		if version == 3 {
+			// Add llm_provider_templates table
+			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS llm_provider_templates (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL UNIQUE,
+				configuration TEXT NOT NULL,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);`); err != nil {
+				return fmt.Errorf("failed to migrate schema to version 4: %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_template_name ON llm_provider_templates(name);`); err != nil {
+				return fmt.Errorf("failed to create llm_provider_templates index: %w", err)
+			}
+			if _, err := s.db.Exec("PRAGMA user_version = 4"); err != nil {
+				return fmt.Errorf("failed to set schema version to 4: %w", err)
+			}
+
+			s.logger.Info("Schema migrated to version 4 (llm_provider_templates)")
+
+			version = 4
+		}
+
 		s.logger.Info("Database schema up to date", zap.Int("version", version))
 	}
 
@@ -539,6 +562,250 @@ func (s *SQLiteStorage) GetAllConfigsByKind(kind string) ([]*models.StoredConfig
 	}
 
 	return configs, nil
+}
+
+// LoadLLMProviderTemplatesFromDatabase loads all LLM Provider templates from database into in-memory store
+func LoadLLMProviderTemplatesFromDatabase(storage Storage, cache *ConfigStore) error {
+	// Get all llm provider template configurations from persistent storage
+	templates, err := storage.GetAllLLMProviderTemplates()
+	if err != nil {
+		return fmt.Errorf("failed to load templates from database: %w", err)
+	}
+
+	for _, template := range templates {
+		if err := cache.AddTemplate(template); err != nil {
+			return fmt.Errorf("failed to load llm provider template %s into cache: %w", template.GetName(), err)
+		}
+	}
+
+	return nil
+}
+
+// SaveLLMProviderTemplate persists a new LLM provider template
+func (s *SQLiteStorage) SaveLLMProviderTemplate(template *models.StoredLLMProviderTemplate) error {
+	// Serialize configuration to JSON
+	configJSON, err := json.Marshal(template.Configuration)
+	if err != nil {
+		return fmt.Errorf("failed to marshal template configuration: %w", err)
+	}
+
+	name := template.GetName()
+
+	query := `
+		INSERT INTO llm_provider_templates (
+			id, name, configuration, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?)
+	`
+
+	now := time.Now()
+	_, err = s.db.Exec(query,
+		template.ID,
+		name,
+		string(configJSON),
+		now,
+		now,
+	)
+
+	if err != nil {
+		// Check for unique constraint violation
+		if isUniqueConstraintError(err) || (err != nil && err.Error() == "UNIQUE constraint failed: llm_provider_templates.name") {
+			return fmt.Errorf("%w: template with name '%s' already exists", ErrConflict, name)
+		}
+		return fmt.Errorf("failed to insert template: %w", err)
+	}
+
+	s.logger.Info("LLM provider template saved",
+		zap.String("id", template.ID),
+		zap.String("name", name))
+
+	return nil
+}
+
+// UpdateLLMProviderTemplate updates an existing LLM provider template
+func (s *SQLiteStorage) UpdateLLMProviderTemplate(template *models.StoredLLMProviderTemplate) error {
+	// Check if template exists
+	_, err := s.GetLLMProviderTemplate(template.ID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("cannot update non-existent template: %w", err)
+		}
+		return err
+	}
+
+	// Serialize configuration to JSON
+	configJSON, err := json.Marshal(template.Configuration)
+	if err != nil {
+		return fmt.Errorf("failed to marshal template configuration: %w", err)
+	}
+
+	name := template.GetName()
+
+	query := `
+		UPDATE llm_provider_templates
+		SET name = ?, configuration = ?, updated_at = ?
+		WHERE id = ?
+	`
+
+	result, err := s.db.Exec(query,
+		name,
+		string(configJSON),
+		time.Now(),
+		template.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update template: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		return fmt.Errorf("%w: id=%s", ErrNotFound, template.ID)
+	}
+
+	s.logger.Info("LLM provider template updated",
+		zap.String("id", template.ID),
+		zap.String("name", name))
+
+	return nil
+}
+
+// DeleteLLMProviderTemplate removes an LLM provider template by ID
+func (s *SQLiteStorage) DeleteLLMProviderTemplate(id string) error {
+	query := `DELETE FROM llm_provider_templates WHERE id = ?`
+
+	result, err := s.db.Exec(query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete template: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		return fmt.Errorf("%w: id=%s", ErrNotFound, id)
+	}
+
+	s.logger.Info("LLM provider template deleted", zap.String("id", id))
+
+	return nil
+}
+
+// GetLLMProviderTemplate retrieves an LLM provider template by ID
+func (s *SQLiteStorage) GetLLMProviderTemplate(id string) (*models.StoredLLMProviderTemplate, error) {
+	query := `
+		SELECT id, configuration, created_at, updated_at
+		FROM llm_provider_templates
+		WHERE id = ?
+	`
+
+	var template models.StoredLLMProviderTemplate
+	var configJSON string
+
+	err := s.db.QueryRow(query, id).Scan(
+		&template.ID,
+		&configJSON,
+		&template.CreatedAt,
+		&template.UpdatedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: id=%s", ErrNotFound, id)
+		}
+		return nil, fmt.Errorf("failed to query template: %w", err)
+	}
+
+	// Deserialize JSON configuration
+	if err := json.Unmarshal([]byte(configJSON), &template.Configuration); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal template configuration: %w", err)
+	}
+
+	return &template, nil
+}
+
+// GetLLMProviderTemplateByName retrieves an LLM provider template by name
+func (s *SQLiteStorage) GetLLMProviderTemplateByName(name string) (*models.StoredLLMProviderTemplate, error) {
+	query := `
+		SELECT id, configuration, created_at, updated_at
+		FROM llm_provider_templates
+		WHERE name = ?
+	`
+
+	var template models.StoredLLMProviderTemplate
+	var configJSON string
+
+	err := s.db.QueryRow(query, name).Scan(
+		&template.ID,
+		&configJSON,
+		&template.CreatedAt,
+		&template.UpdatedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: name=%s", ErrNotFound, name)
+		}
+		return nil, fmt.Errorf("failed to query template: %w", err)
+	}
+
+	// Deserialize JSON configuration
+	if err := json.Unmarshal([]byte(configJSON), &template.Configuration); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal template configuration: %w", err)
+	}
+
+	return &template, nil
+}
+
+// GetAllLLMProviderTemplates retrieves all LLM provider templates
+func (s *SQLiteStorage) GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTemplate, error) {
+	query := `
+		SELECT id, configuration, created_at, updated_at
+		FROM llm_provider_templates
+		ORDER BY created_at DESC
+	`
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query templates: %w", err)
+	}
+	defer rows.Close()
+
+	var templates []*models.StoredLLMProviderTemplate
+
+	for rows.Next() {
+		var template models.StoredLLMProviderTemplate
+		var configJSON string
+
+		err := rows.Scan(
+			&template.ID,
+			&configJSON,
+			&template.CreatedAt,
+			&template.UpdatedAt,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		// Deserialize JSON configuration
+		if err := json.Unmarshal([]byte(configJSON), &template.Configuration); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal template configuration: %w", err)
+		}
+
+		templates = append(templates, &template)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
+	}
+
+	return templates, nil
 }
 
 // SaveCertificate persists a certificate to the database

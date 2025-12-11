@@ -102,6 +102,9 @@ func main() {
 		if err := storage.LoadFromDatabase(db, configStore); err != nil {
 			log.Fatal("Failed to load configurations from database", zap.Error(err))
 		}
+		if err := storage.LoadLLMProviderTemplatesFromDatabase(db, configStore); err != nil {
+			log.Fatal("Failed to load llm provider template configurations from database", zap.Error(err))
+		}
 		log.Info("Loaded configurations", zap.Int("count", len(configStore.GetAll())))
 	}
 
