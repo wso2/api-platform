@@ -1095,7 +1095,8 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 	}
 
 	routes := make([]policyenginev1.PolicyChain, 0)
-	if apiCfg.Kind == api.APIConfigurationKindAsyncwebsub {
+	switch apiCfg.Kind {
+	case api.APIConfigurationKindAsyncwebsub:
 		// Build routes with merged policies
 		apiData, err := apiCfg.Spec.AsWebhookAPIData()
 		if err != nil {
@@ -1134,13 +1135,13 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 				}
 			}
 
-			routeKey := xds.GenerateRouteName("SUBSCRIBE", apiData.Context, apiData.Version, ch.Path, s.routerConfig.GatewayHost)
+			routeKey := xds.GenerateRouteName("POST", apiData.Context, apiData.Version, ch.Path, s.routerConfig.GatewayHost)
 			routes = append(routes, policyenginev1.PolicyChain{
 				RouteKey: routeKey,
 				Policies: finalPolicies,
 			})
 		}
-	} else if apiCfg.Kind == api.APIConfigurationKindHttprest {
+	case api.APIConfigurationKindHttprest:
 		// Build routes with merged policies
 		apiData, err := apiCfg.Spec.AsAPIConfigData()
 		if err != nil {
