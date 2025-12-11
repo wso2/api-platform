@@ -185,7 +185,7 @@ func (s *SQLiteStorage) initSchema() error {
 				expires_at TIMESTAMP NULL,
 				FOREIGN KEY (api_name, api_version) REFERENCES deployments(name, version) ON DELETE CASCADE
 			);`); err != nil {
-				return fmt.Errorf("failed to migrate schema to version 4 (api_keys): %w", err)
+				return fmt.Errorf("failed to migrate schema to version 5 (api_keys): %w", err)
 			}
 			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);`); err != nil {
 				return fmt.Errorf("failed to create api_keys key index: %w", err)
@@ -1198,7 +1198,7 @@ func (s *SQLiteStorage) UpdateAPIKey(apiKey *models.APIKey) error {
 	}
 
 	s.logger.Info("API key updated successfully",
-		zap.String(" id", apiKey.ID),
+		zap.String("id", apiKey.ID),
 		zap.String("status", string(apiKey.Status)))
 
 	return nil
