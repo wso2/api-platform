@@ -38,6 +38,10 @@ type ConfigStore struct {
 	// LLM Provider Templates
 	templates          map[string]*models.StoredLLMProviderTemplate // Key: template ID
 	templateIdByHandle map[string]string
+
+	// API Keys storage
+	apiKeys      map[string]*models.APIKey   // Key: API key value → Value: APIKey
+	apiKeysByAPI map[string][]*models.APIKey // Key: "name:version" → Value: slice of APIKeys
 }
 
 // NewConfigStore creates a new in-memory config store
@@ -49,6 +53,8 @@ func NewConfigStore() *ConfigStore {
 		TopicManager:       NewTopicManager(),
 		templates:          make(map[string]*models.StoredLLMProviderTemplate),
 		templateIdByHandle: make(map[string]string),
+		apiKeys:          make(map[string]*models.APIKey),
+		apiKeysByAPI:     make(map[string][]*models.APIKey),
 	}
 }
 
@@ -396,4 +402,118 @@ func (cs *ConfigStore) GetAllTemplates() []*models.StoredLLMProviderTemplate {
 	}
 
 	return templates
+}
+
+// getAPIKeyCacheKey generates a cache key from API name and version
+func (cs *ConfigStore) getAPIKeyCacheKey(apiName, apiVersion string) string {
+	return apiName + ":" + apiVersion
+}
+
+// StoreAPIKey stores an API key in the in-memory cache
+func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
+	if apiKey == nil {
+		return fmt.Errorf("API key cannot be nil")
+	}
+
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	// Check if API key already exists
+	if _, exists := cs.apiKeys[apiKey.APIKey]; exists {
+		return ErrConflict
+	}
+
+	// Store by API key value
+	cs.apiKeys[apiKey.APIKey] = apiKey
+
+	// Store by API name:version
+	cacheKey := cs.getAPIKeyCacheKey(apiKey.APIName, apiKey.APIVersion)
+	cs.apiKeysByAPI[cacheKey] = append(cs.apiKeysByAPI[cacheKey], apiKey)
+
+	return nil
+}
+
+// GetAPIKeyByKey retrieves an API key by its key value
+func (cs *ConfigStore) GetAPIKeyByKey(key string) (*models.APIKey, error) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	apiKey, exists := cs.apiKeys[key]
+	if !exists {
+		return nil, ErrNotFound
+	}
+
+	return apiKey, nil
+}
+
+// GetAPIKeysByAPI retrieves all API keys for a specific API (name and version)
+func (cs *ConfigStore) GetAPIKeysByAPI(apiName, apiVersion string) ([]*models.APIKey, error) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	cacheKey := cs.getAPIKeyCacheKey(apiName, apiVersion)
+	apiKeys, exists := cs.apiKeysByAPI[cacheKey]
+	if !exists {
+		return []*models.APIKey{}, nil // Return empty slice instead of nil
+	}
+
+	// Return a copy to prevent external modification
+	result := make([]*models.APIKey, len(apiKeys))
+	copy(result, apiKeys)
+	return result, nil
+}
+
+// RemoveAPIKey removes an API key from the in-memory cache
+func (cs *ConfigStore) RemoveAPIKey(apiKey string) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	// Get the API key first to find its API association
+	key, exists := cs.apiKeys[apiKey]
+	if !exists {
+		return ErrNotFound
+	}
+
+	// Remove from main map
+	delete(cs.apiKeys, apiKey)
+
+	// Remove from API-specific map
+	cacheKey := cs.getAPIKeyCacheKey(key.APIName, key.APIVersion)
+	if apiKeys, exists := cs.apiKeysByAPI[cacheKey]; exists {
+		for i, k := range apiKeys {
+			if k.APIKey == apiKey {
+				// Remove from slice
+				cs.apiKeysByAPI[cacheKey] = append(apiKeys[:i], apiKeys[i+1:]...)
+				break
+			}
+		}
+		// Clean up empty slices
+		if len(cs.apiKeysByAPI[cacheKey]) == 0 {
+			delete(cs.apiKeysByAPI, cacheKey)
+		}
+	}
+
+	return nil
+}
+
+// RemoveAPIKeysByAPI removes all API keys for a specific API
+func (cs *ConfigStore) RemoveAPIKeysByAPI(apiName, apiVersion string) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	cacheKey := cs.getAPIKeyCacheKey(apiName, apiVersion)
+	apiKeys, exists := cs.apiKeysByAPI[cacheKey]
+	if !exists {
+		return nil // No keys to remove
+	}
+
+	// Remove from main map
+	for _, key := range apiKeys {
+		delete(cs.apiKeys, key.APIKey)
+	}
+
+	// Remove from API-specific map
+	delete(cs.apiKeysByAPI, cacheKey)
+
+	return nil
 }

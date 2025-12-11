@@ -775,6 +775,38 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 			})
 			return
 		}
+
+		// Delete associated API keys from database
+		apiKeys, err := s.db.GetAPIKeysByAPI(name, version)
+		if err != nil {
+			log.Warn("Failed to retrieve API keys for deletion",
+				zap.String("name", name),
+				zap.String("version", version),
+				zap.Error(err))
+		} else {
+			for _, apiKey := range apiKeys {
+				if err := s.db.DeleteAPIKey(apiKey.APIKey); err != nil {
+					log.Error("Failed to delete API key from database",
+						zap.String("keyId", apiKey.ID),
+						zap.String("name", name),
+						zap.String("version", version),
+						zap.Error(err))
+				} else {
+					log.Debug("API key deleted from database",
+						zap.String("keyId", apiKey.ID),
+						zap.String("name", name),
+						zap.String("version", version))
+				}
+			}
+		}
+	}
+
+	// Remove API keys from ConfigStore
+	if err := s.store.RemoveAPIKeysByAPI(name, version); err != nil {
+		log.Warn("Failed to remove API keys from ConfigStore",
+			zap.String("name", name),
+			zap.String("version", version),
+			zap.Error(err))
 	}
 
 	if cfg.Configuration.Kind == api.Asyncwebsub {
@@ -2306,6 +2338,19 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, name string, version string) 
 				return
 			}
 		}
+	}
+
+	// Store the generated API key in the ConfigStore
+	if err := s.store.StoreAPIKey(apiKey); err != nil {
+		log.Error("Failed to store API key in ConfigStore",
+			zap.Error(err),
+			zap.String("name", name),
+			zap.String("version", version))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to store API key",
+		})
+		return
 	}
 
 	log.Info("API key generated successfully",

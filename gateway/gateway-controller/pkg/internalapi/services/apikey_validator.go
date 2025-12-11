@@ -19,7 +19,7 @@
 package services
 
 import (
-	"fmt"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"strings"
 	"time"
 
@@ -88,13 +88,31 @@ func (v *APIKeyValidator) validateGatewayAPIKey(apiName, apiVersion, apiKey stri
 		zap.String("apiVersion", apiVersion),
 	)
 
-	// Look up the API key in the database
-	storedAPIKey, err := v.db.GetAPIKeyByKey(apiKey)
+	// Look up the API key
+	var storedAPIKey *models.APIKey
+	var err error
+	storedAPIKey, err = v.store.GetAPIKeyByKey(apiKey)
 	if err != nil {
-		v.logger.Debug("API key not found in database",
+		v.logger.Debug("API key not found in memory",
 			zap.String("apiName", apiName),
 			zap.String("apiVersion", apiVersion),
 			zap.Error(err))
+		if v.db != nil {
+			// Fallback to persistent storage
+			storedAPIKey, err = v.db.GetAPIKeyByKey(apiKey)
+			if err != nil {
+				v.logger.Debug("API key not found in persistent storage",
+					zap.String("apiName", apiName),
+					zap.String("apiVersion", apiVersion),
+					zap.Error(err))
+				return false, nil // API key doesn't exist
+			}
+		} else {
+			return false, nil // API key doesn't exist
+		}
+	}
+
+	if storedAPIKey == nil {
 		return false, nil // API key doesn't exist
 	}
 
@@ -135,7 +153,7 @@ func (v *APIKeyValidator) validateManagementPortalAPIKey(apiName, apiVersion, ap
 	// 4. Parse response and return validation result
 
 	v.logger.Warn("Management portal API key validation not yet implemented")
-	return false, fmt.Errorf("management portal API key validation not implemented")
+	return false, nil
 }
 
 // validateDevPortalAPIKey validates API keys with "dev_" prefix against the developer portal
@@ -154,5 +172,5 @@ func (v *APIKeyValidator) validateDevPortalAPIKey(apiName, apiVersion, apiKey st
 	// 4. Parse response and return validation result
 
 	v.logger.Warn("Developer portal API key validation not yet implemented")
-	return false, fmt.Errorf("developer portal API key validation not implemented")
+	return false, nil
 }
