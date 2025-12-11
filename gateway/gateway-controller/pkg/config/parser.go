@@ -34,7 +34,7 @@ func NewParser() *Parser {
 	return &Parser{}
 }
 
-func (p *Parser) ParseYAML(data []byte, configParsed interface{}) error {
+func (p *Parser) ParseAPIConfigYAML(data []byte, configParsed interface{}) error {
 	// Handle different expected target types differently.
 	// - If caller expects *api.APIConfiguration, use the JSON-intermediate approach
 	//   to preserve json.RawMessage handling for union fields.
@@ -51,19 +51,16 @@ func (p *Parser) ParseYAML(data []byte, configParsed interface{}) error {
 		if err != nil {
 			return fmt.Errorf("failed to marshal intermediate to JSON: %w", err)
 		}
-		if err := json.Unmarshal(jsonBytes, &config); err != nil {
+		if err := p.ParseJSON(jsonBytes, &config); err != nil {
 			return fmt.Errorf("failed to unmarshal JSON into APIConfiguration: %w", err)
 		}
 		*target = config
 		return nil
-	case *api.MCPProxyConfiguration:
-		// For MCPProxyConfiguration parse directly from YAML
+	default:
 		if err := yaml.Unmarshal(data, target); err != nil {
 			return fmt.Errorf("failed to unmarshal YAML into MCPProxyConfiguration: %w", err)
 		}
 		return nil
-	default:
-		return fmt.Errorf("failed to unmarshal YAML into target type")
 	}
 }
 
@@ -76,16 +73,23 @@ func (p *Parser) ParseJSON(data []byte, config interface{}) error {
 	return nil
 }
 
+func (p *Parser) ParseYAML(data []byte, config interface{}) error {
+	if err := yaml.Unmarshal(data, config); err != nil {
+		return fmt.Errorf("failed to parse YAML: %w", err)
+	}
+	return nil
+}
+
 // Parse attempts to parse data as either YAML or JSON
 func (p *Parser) Parse(data []byte, contentType string, config interface{}) error {
 	switch contentType {
 	case "application/yaml", "application/x-yaml", "text/yaml":
-		return p.ParseYAML(data, config)
+		return p.ParseAPIConfigYAML(data, config)
 	case "application/json":
 		return p.ParseJSON(data, config)
 	default:
 		// Try YAML first, then JSON
-		if err := p.ParseYAML(data, config); err == nil {
+		if err := p.ParseAPIConfigYAML(data, config); err == nil {
 			return nil
 		}
 

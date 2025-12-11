@@ -94,14 +94,15 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	var apiName string
 	var apiVersion string
 
-	if apiConfig.Kind == "http/rest" {
+	switch apiConfig.Kind {
+	case api.APIConfigurationKindHttprest:
 		apiData, err := apiConfig.Spec.AsAPIConfigData()
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse REST API data: %w", err)
 		}
 		apiName = apiData.Name
 		apiVersion = apiData.Version
-	} else if apiConfig.Kind == "async/websub" {
+	case api.APIConfigurationKindAsyncwebsub:
 		webhookData, err := apiConfig.Spec.AsWebhookAPIData()
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse WebSub API data: %w", err)
