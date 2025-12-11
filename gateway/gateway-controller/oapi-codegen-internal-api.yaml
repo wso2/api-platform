@@ -1,0 +1,10 @@
+package: internalapi
+output: pkg/internalapi/generated/generated.go
+generate:
+  gin-server: true
+  models: true
+  embedded-spec: true
+  strict-server: false
+output-options:
+  yaml-tags: true
+
