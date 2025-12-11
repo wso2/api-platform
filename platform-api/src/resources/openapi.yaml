@@ -1654,9 +1654,8 @@ components:
       properties:
         id:
           type: string
-          description: Unique identifier for the api artifact
-          readOnly: true
-          example: 01234567-0123-0123-0123-012345678901
+          description: Unique handle/identifier for the API. Can be provided during creation or auto-generated.
+          example: my-api-handle
         name:
           minLength: 1
           pattern: '(^[^~!@#;:%^*()+={}|\\<>"'',&$\[\]\/]*$)'
@@ -3632,12 +3631,11 @@ components:
       name: apiId
       in: path
       description: |
-        **API ID** consisting of the **UUID** of the API.
+        **API ID** consisting of the **handle** (unique identifier) of the API.
       required: true
       schema:
         type: string
-        format: uuid
-        example: ivbda7385-chs529-63bf-8bd2-7437690
+        example: my-api-handle
 
     revisionId-Q:
       name: revisionId

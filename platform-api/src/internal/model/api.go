@@ -24,6 +24,7 @@ import (
 // API represents an API entity in the platform
 type API struct {
 	ID               string              `json:"id" db:"uuid"`
+	Handle           string              `json:"handle" db:"handle"`
 	Name             string              `json:"name" db:"name"`
 	DisplayName      string              `json:"displayName,omitempty" db:"display_name"`
 	Description      string              `json:"description,omitempty" db:"description"`

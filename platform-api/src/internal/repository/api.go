@@ -58,15 +58,15 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 
 	// Insert main API record
 	apiQuery := `
-		INSERT INTO apis (uuid, name, display_name, description, context, version, provider, 
-			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision, 
+		INSERT INTO apis (uuid, handle, name, display_name, description, context, version, provider,
+			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	securityEnabled := api.Security != nil && api.Security.Enabled
 
-	_, err = tx.Exec(apiQuery, api.ID, api.Name, api.DisplayName, api.Description,
+	_, err = tx.Exec(apiQuery, api.ID, api.Handle, api.Name, api.DisplayName, api.Description,
 		api.Context, api.Version, api.Provider, api.ProjectID, api.OrganizationID, api.LifeCycleStatus,
 		api.HasThumbnail, api.IsDefaultVersion, api.IsRevision, api.RevisionedAPIID,
 		api.RevisionID, api.Type, string(transportJSON), securityEnabled, api.CreatedAt, api.UpdatedAt)
@@ -117,7 +117,7 @@ func (r *APIRepo) GetAPIByUUID(apiId string) (*model.API, error) {
 	api := &model.API{}
 
 	query := `
-		SELECT uuid, name, display_name, description, context, version, provider,
+		SELECT uuid, handle, name, display_name, description, context, version, provider,
 			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
 		FROM apis WHERE uuid = ?
@@ -126,7 +126,47 @@ func (r *APIRepo) GetAPIByUUID(apiId string) (*model.API, error) {
 	var transportJSON string
 	var securityEnabled bool
 	err := r.db.QueryRow(query, apiId).Scan(
-		&api.ID, &api.Name, &api.DisplayName, &api.Description, &api.Context,
+		&api.ID, &api.Handle, &api.Name, &api.DisplayName, &api.Description, &api.Context,
+		&api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID, &api.LifeCycleStatus,
+		&api.HasThumbnail, &api.IsDefaultVersion, &api.IsRevision,
+		&api.RevisionedAPIID, &api.RevisionID, &api.Type, &transportJSON,
+		&securityEnabled, &api.CreatedAt, &api.UpdatedAt)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// Parse transport JSON
+	if transportJSON != "" {
+		json.Unmarshal([]byte(transportJSON), &api.Transport)
+	}
+
+	// Load related configurations
+	if err := r.loadAPIConfigurations(api); err != nil {
+		return nil, err
+	}
+
+	return api, nil
+}
+
+// GetAPIByHandle retrieves an API by handle and organization ID with all its configurations
+func (r *APIRepo) GetAPIByHandle(handle, orgId string) (*model.API, error) {
+	api := &model.API{}
+
+	query := `
+		SELECT uuid, handle, name, display_name, description, context, version, provider,
+			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
+			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
+		FROM apis WHERE handle = ? AND organization_uuid = ?
+	`
+
+	var transportJSON string
+	var securityEnabled bool
+	err := r.db.QueryRow(query, handle, orgId).Scan(
+		&api.ID, &api.Handle, &api.Name, &api.DisplayName, &api.Description, &api.Context,
 		&api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID, &api.LifeCycleStatus,
 		&api.HasThumbnail, &api.IsDefaultVersion, &api.IsRevision,
 		&api.RevisionedAPIID, &api.RevisionID, &api.Type, &transportJSON,
@@ -155,7 +195,7 @@ func (r *APIRepo) GetAPIByUUID(apiId string) (*model.API, error) {
 // GetAPIsByProjectID retrieves all APIs for a project
 func (r *APIRepo) GetAPIsByProjectID(projectID string) ([]*model.API, error) {
 	query := `
-		SELECT uuid, name, display_name, description, context, version, provider,
+		SELECT uuid, handle, name, display_name, description, context, version, provider,
 			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
 		FROM apis WHERE project_uuid = ? ORDER BY created_at DESC
@@ -173,7 +213,7 @@ func (r *APIRepo) GetAPIsByProjectID(projectID string) ([]*model.API, error) {
 		var transportJSON string
 		var securityEnabled bool
 
-		err := rows.Scan(&api.ID, &api.Name, &api.DisplayName, &api.Description,
+		err := rows.Scan(&api.ID, &api.Handle, &api.Name, &api.DisplayName, &api.Description,
 			&api.Context, &api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID,
 			&api.LifeCycleStatus, &api.HasThumbnail, &api.IsDefaultVersion,
 			&api.IsRevision, &api.RevisionedAPIID, &api.RevisionID, &api.Type,
@@ -206,7 +246,7 @@ func (r *APIRepo) GetAPIsByOrganizationID(orgID string, projectID *string) ([]*m
 	if projectID != nil && *projectID != "" {
 		// Filter by specific project within the organization
 		query = `
-			SELECT uuid, name, display_name, description, context, version, provider,
+			SELECT uuid, handle, name, display_name, description, context, version, provider,
 				project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 				revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
 			FROM apis
@@ -217,7 +257,7 @@ func (r *APIRepo) GetAPIsByOrganizationID(orgID string, projectID *string) ([]*m
 	} else {
 		// Get all APIs for the organization
 		query = `
-			SELECT uuid, name, display_name, description, context, version, provider,
+			SELECT uuid, handle, name, display_name, description, context, version, provider,
 				project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 				revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
 			FROM apis
@@ -239,7 +279,7 @@ func (r *APIRepo) GetAPIsByOrganizationID(orgID string, projectID *string) ([]*m
 		var transportJSON string
 		var securityEnabled bool
 
-		err := rows.Scan(&api.ID, &api.Name, &api.DisplayName, &api.Description,
+		err := rows.Scan(&api.ID, &api.Handle, &api.Name, &api.DisplayName, &api.Description,
 			&api.Context, &api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID,
 			&api.LifeCycleStatus, &api.HasThumbnail, &api.IsDefaultVersion,
 			&api.IsRevision, &api.RevisionedAPIID, &api.RevisionID, &api.Type,
@@ -366,6 +406,77 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 	return tx.Commit()
 }
 
+// UpdateAPIByHandle modifies an existing API identified by handle and organization ID
+func (r *APIRepo) UpdateAPIByHandle(handle, orgId string, api *model.API) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	api.UpdatedAt = time.Now()
+
+	// Convert transport slice to JSON
+	transportJSON, _ := json.Marshal(api.Transport)
+	securityEnabled := api.Security != nil && api.Security.Enabled
+
+	// Update main API record
+	query := `
+		UPDATE apis SET display_name = ?, description = ?,
+			provider = ?, lifecycle_status = ?, has_thumbnail = ?,
+			is_default_version = ?, is_revision = ?, revisioned_api_id = ?,
+			revision_id = ?, type = ?, transport = ?, security_enabled = ?, updated_at = ?
+		WHERE handle = ? AND organization_uuid = ?
+	`
+	_, err = tx.Exec(query, api.DisplayName, api.Description,
+		api.Provider, api.LifeCycleStatus,
+		api.HasThumbnail, api.IsDefaultVersion, api.IsRevision,
+		api.RevisionedAPIID, api.RevisionID, api.Type, string(transportJSON),
+		securityEnabled, api.UpdatedAt, handle, orgId)
+	if err != nil {
+		return err
+	}
+
+	// Delete existing configurations and re-insert
+	if err := r.deleteAPIConfigurations(tx, api.ID); err != nil {
+		return err
+	}
+
+	// Re-insert configurations
+	if api.MTLS != nil {
+		if err := r.insertMTLSConfig(tx, api.ID, api.MTLS); err != nil {
+			return err
+		}
+	}
+
+	if api.Security != nil {
+		if err := r.insertSecurityConfig(tx, api.ID, api.Security); err != nil {
+			return err
+		}
+	}
+
+	if api.CORS != nil {
+		if err := r.insertCORSConfig(tx, api.ID, api.CORS); err != nil {
+			return err
+		}
+	}
+
+	if api.APIRateLimiting != nil {
+		if err := r.insertRateLimitingConfig(tx, api.ID, api.APIRateLimiting); err != nil {
+			return err
+		}
+	}
+
+	// Re-insert operations
+	for _, operation := range api.Operations {
+		if err := r.insertOperation(tx, api.ID, api.OrganizationID, &operation); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
 // DeleteAPI removes an API and all its configurations
 func (r *APIRepo) DeleteAPI(apiId string) error {
 	// Start transaction for atomicity
@@ -403,6 +514,37 @@ func (r *APIRepo) DeleteAPI(apiId string) error {
 	}
 
 	return tx.Commit()
+}
+
+// DeleteAPIByHandle removes an API and all its configurations by handle and organization ID
+func (r *APIRepo) DeleteAPIByHandle(handle, orgId string) error {
+	// First get the API UUID by handle
+	api, err := r.GetAPIByHandle(handle, orgId)
+	if err != nil {
+		return err
+	}
+	if api == nil {
+		return fmt.Errorf("API with handle %s not found", handle)
+	}
+
+	// Use the existing DeleteAPI method with the UUID
+	return r.DeleteAPI(api.ID)
+}
+
+// CheckAPIExistsByHandleInOrganization checks if an API with the given handle exists within a specific organization
+func (r *APIRepo) CheckAPIExistsByHandleInOrganization(handle, orgId string) (bool, error) {
+	query := `
+		SELECT COUNT(*) FROM apis
+		WHERE handle = ? AND organization_uuid = ?
+	`
+
+	var count int
+	err := r.db.QueryRow(query, handle, orgId).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
 }
 
 // Helper methods for loading configurations
