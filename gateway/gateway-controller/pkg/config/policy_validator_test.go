@@ -30,7 +30,7 @@ func TestPolicyValidator_ValidatePolicies_Success(t *testing.T) {
 		"APIKeyValidation|v1.0.0": {
 			Name:    "APIKeyValidation",
 			Version: "v1.0.0",
-			ParametersSchema: &map[string]interface{}{
+			Parameters: &map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"header": map[string]interface{}{
@@ -136,7 +136,7 @@ func TestPolicyValidator_InvalidParameters(t *testing.T) {
 		"APIKeyValidation|v1.0.0": {
 			Name:    "APIKeyValidation",
 			Version: "v1.0.0",
-			ParametersSchema: &map[string]interface{}{
+			Parameters: &map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"header": map[string]interface{}{
@@ -197,7 +197,7 @@ func TestPolicyValidator_OperationLevelPolicies(t *testing.T) {
 		"RateLimiting|v1.0.0": {
 			Name:    "RateLimiting",
 			Version: "v1.0.0",
-			ParametersSchema: &map[string]interface{}{
+			Parameters: &map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"rate": map[string]interface{}{
@@ -309,7 +309,7 @@ func TestPolicyValidator_TypeMismatch(t *testing.T) {
 		"TestPolicy|v1.0.0": {
 			Name:    "TestPolicy",
 			Version: "v1.0.0",
-			ParametersSchema: &map[string]interface{}{
+			Parameters: &map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"count": map[string]interface{}{
@@ -365,7 +365,7 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 		"JWTValidation|v1.0.0": {
 			Name:    "JWTValidation",
 			Version: "v1.0.0",
-			ParametersSchema: &map[string]interface{}{
+			Parameters: &map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
 					"issuer": map[string]interface{}{

@@ -44,7 +44,32 @@ test: ## Run unit and integration tests
 	@echo "Running tests..."
 	@go test -v ./... -cover
 
-build: generate ## Build Docker image
+copy-policy-definitions: ## Copy policy definitions from policy-manifest.yaml
+	@# Check if yq is installed
+	@if ! command -v yq >/dev/null 2>&1; then \
+		echo "yq is not installed. Please install yq before running this target."; \
+		echo "  MacOS: brew install yq"; \
+		echo "  Linux: sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq"; \
+		exit 1; \
+	fi
+	@echo "Copying policy definitions..."
+	@mkdir -p policies
+	@yq e '.policies[] | .name + "|" + .version + "|" + .filePath' ../policies/policy-manifest.yaml | \
+	while IFS= read -r line; do \
+		name=$$(echo "$$line" | cut -d'|' -f1); \
+		version=$$(echo "$$line" | cut -d'|' -f2); \
+		filepath=$$(echo "$$line" | cut -d'|' -f3); \
+		src="../policies/$${filepath#./}/policy-definition.yaml"; \
+		dest="default-policies/$${name}-$${version}.yaml"; \
+		if [ -f "$$src" ]; then \
+			cp "$$src" "$$dest"; \
+			echo "  Copied $$src -> $$dest"; \
+		else \
+			echo "  Warning: $$src not found"; \
+		fi; \
+	done
+
+build: generate copy-policy-definitions ## Build Docker image
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \

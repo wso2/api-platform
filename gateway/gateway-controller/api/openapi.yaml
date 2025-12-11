@@ -1439,9 +1439,13 @@ components:
           type: string
           description: Human readable description of the policy's purpose
           maxLength: 2000
-        parametersSchema:
+        parameters:
           type: object
           description: JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.
+          additionalProperties: true
+        initParameters:
+          type: object
+          description: JSON Schema describing any initialization parameters for this policy. This itself is a JSON Schema document.
           additionalProperties: true
 
     PolicyListResponse:

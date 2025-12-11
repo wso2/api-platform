@@ -152,7 +152,7 @@ func (pl *PolicyLoader) loadPolicyFile(filePath string) (*api.PolicyDefinition, 
 			zap.String("file", filePath),
 			zap.String("name", policyDef.Name),
 			zap.String("version", policyDef.Version),
-			zap.Any("parametersSchema", policyDef.ParametersSchema))
+			zap.Any("parameters", policyDef.Parameters))
 	}
 
 	// Log serialized JSON to see what will be stored
