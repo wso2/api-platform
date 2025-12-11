@@ -73,7 +73,7 @@ RUN /usr/local/bin/gateway-builder \
     -out-dir /workspace/output
 
 # Stage 3: Runtime - Minimal image with compiled binary
-FROM alpine:3.22.2
+FROM alpine:3.23.0
 
 RUN apk --no-cache add ca-certificates
 
