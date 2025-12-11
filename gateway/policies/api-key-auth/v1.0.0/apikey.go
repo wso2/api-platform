@@ -88,12 +88,20 @@ func (p *APIKeyPolicy) Mode() policy.ProcessingMode {
 // OnRequest performs API Key Authentication
 func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	// Get configuration parameters
-	keyName := params["key"].(string)
-	location := params["in"].(string)
+	keyName, ok := params["key"].(string)
+	if !ok || keyName == "" {
+		return p.handleAuthFailure(ctx, "missing or invalid 'key' configuration")
+	}
+	location, ok := params["in"].(string)
+	if !ok || location == "" {
+		return p.handleAuthFailure(ctx, "missing or invalid 'in' configuration")
+	}
 
 	var valuePrefix string
 	if valuePrefixRaw, ok := params["value-prefix"]; ok {
-		valuePrefix = valuePrefixRaw.(string)
+		if vp, ok := valuePrefixRaw.(string); ok {
+			valuePrefix = vp
+		}
 	}
 
 	// Extract API key based on location
