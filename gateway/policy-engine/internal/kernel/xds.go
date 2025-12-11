@@ -52,7 +52,7 @@ func (cl *ConfigLoader) LoadFromFile(path string) error {
 	// Build all chains first, then replace atomically
 	chains := make(map[string]*registry.PolicyChain)
 	for _, config := range configs {
-		chain, err := cl.buildPolicyChain(&config)
+		chain, err := cl.buildPolicyChain(config.RouteKey, &config)
 		if err != nil {
 			return fmt.Errorf("failed to build policy chain for route %s: %w", config.RouteKey, err)
 		}
@@ -95,7 +95,7 @@ func (cl *ConfigLoader) validateConfig(config *policyenginev1.PolicyChain) error
 			return fmt.Errorf("policy[%d]: %w", i, err)
 		}
 
-		_, err = cl.registry.GetImplementation(policyConfig.Name, policyConfig.Version)
+		_, err = cl.registry.GetFactory(policyConfig.Name, policyConfig.Version)
 		if err != nil {
 			return fmt.Errorf("policy[%d]: %w", i, err)
 		}
@@ -105,7 +105,7 @@ func (cl *ConfigLoader) validateConfig(config *policyenginev1.PolicyChain) error
 }
 
 // buildPolicyChain builds a PolicyChain from configuration
-func (cl *ConfigLoader) buildPolicyChain(config *policyenginev1.PolicyChain) (*registry.PolicyChain, error) {
+func (cl *ConfigLoader) buildPolicyChain(routeKey string, config *policyenginev1.PolicyChain) (*registry.PolicyChain, error) {
 	var policyList []policy.Policy
 	var policySpecs []policy.PolicySpec
 
@@ -113,10 +113,16 @@ func (cl *ConfigLoader) buildPolicyChain(config *policyenginev1.PolicyChain) (*r
 	requiresResponseBody := false
 
 	for _, policyConfig := range config.Policies {
-		// Get policy implementation
-		impl, err := cl.registry.GetImplementation(policyConfig.Name, policyConfig.Version)
+		// Create metadata with route information
+		metadata := policy.PolicyMetadata{
+			RouteName: routeKey,
+		}
+
+		// Create instance using factory with metadata and params
+		impl, err := cl.registry.CreateInstance(policyConfig.Name, policyConfig.Version, metadata, policyConfig.Parameters)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to create policy instance %s:%s for route %s: %w",
+				policyConfig.Name, policyConfig.Version, routeKey, err)
 		}
 
 		// Build PolicySpec

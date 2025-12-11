@@ -6,12 +6,14 @@ import (
 	"io"
 	"log/slog"
 
+	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocconfigv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/prototext"
 
 	"github.com/policy-engine/policy-engine/internal/executor"
 )
@@ -135,13 +137,17 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 // T061: Extract metadata key from request and get policy chain
 // T064: Generate request ID
 func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context, req *extprocv3.ProcessingRequest, execCtx **PolicyExecutionContext) {
-	// Extract metadata key from request
-	metadataKey := s.extractMetadataKey(req)
+	// Extract route metadata from request
+	routeMetadata := s.extractRouteMetadata(req)
 
-	// Get policy chain for this route
-	chain := s.kernel.GetPolicyChainForKey(metadataKey)
+	// Get policy chain for this route using route name
+	chain := s.kernel.GetPolicyChainForKey(routeMetadata.RouteName)
 	if chain == nil {
-		slog.InfoContext(ctx, "No policy chain found for route, skipping all processing", "route", metadataKey)
+		slog.InfoContext(ctx, "No policy chain found for route, skipping all processing",
+			"route", routeMetadata.RouteName,
+			"api_name", routeMetadata.APIName,
+			"api_version", routeMetadata.APIVersion,
+			"context", routeMetadata.Context)
 		*execCtx = nil
 		return
 	}
@@ -150,10 +156,10 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 	requestID := s.generateRequestID()
 
 	// Create execution context for this request-response lifecycle
-	*execCtx = newPolicyExecutionContext(s, requestID, metadataKey, chain)
+	*execCtx = newPolicyExecutionContext(s, requestID, routeMetadata.RouteName, chain)
 
-	// Build request context from Envoy headers
-	(*execCtx).buildRequestContext(req.GetRequestHeaders())
+	// Build request context from Envoy headers with route metadata
+	(*execCtx).buildRequestContext(req.GetRequestHeaders(), routeMetadata)
 }
 
 // skipAllProcessing returns a response that skips all processing phases
@@ -172,29 +178,71 @@ func (s *ExternalProcessorServer) skipAllProcessing() *extprocv3.ProcessingRespo
 	}
 }
 
-// extractMetadataKey extracts the route identifier from Envoy metadata
-// T061: extractMetadataKey implementation
-func (s *ExternalProcessorServer) extractMetadataKey(req *extprocv3.ProcessingRequest) string {
-	// Extract route name from Envoy attributes
-	// Path: req.Attributes["envoy.filters.http.ext_proc"].Fields["xds.route_name"]
-	if req.Attributes != nil {
-		if extProcAttrs, ok := req.Attributes["envoy.filters.http.ext_proc"]; ok {
-			if extProcAttrs.Fields != nil {
-				if routeNameValue, ok := extProcAttrs.Fields["xds.route_name"]; ok {
-					if stringValue := routeNameValue.GetStringValue(); stringValue != "" {
-						return stringValue
+// RouteMetadata contains metadata about the route
+type RouteMetadata struct {
+	RouteName     string
+	APIName       string
+	APIVersion    string
+	Context       string
+	OperationPath string
+}
+
+// extractRouteMetadata extracts the route metadata from Envoy metadata
+func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.ProcessingRequest) RouteMetadata {
+	metadata := RouteMetadata{}
+
+	if req.Attributes == nil {
+		return metadata
+	}
+
+	extProcAttrs, ok := req.Attributes["envoy.filters.http.ext_proc"]
+	if !ok || extProcAttrs.Fields == nil {
+		return metadata
+	}
+
+	// Extract route name from xds.route_name
+	if routeNameValue, ok := extProcAttrs.Fields["xds.route_name"]; ok {
+		if stringValue := routeNameValue.GetStringValue(); stringValue != "" {
+			metadata.RouteName = stringValue
+		}
+	}
+
+	// Extract API metadata from xds.route_metadata
+	if routeMetadataValue, ok := extProcAttrs.Fields["xds.route_metadata"]; ok {
+		if metadataStr := routeMetadataValue.GetStringValue(); metadataStr != "" {
+			// Parse the protobuf text format string using prototext
+			var envoyMetadata core.Metadata
+			if err := prototext.Unmarshal([]byte(metadataStr), &envoyMetadata); err != nil {
+				slog.Warn("Failed to unmarshal route metadata", "error", err)
+			} else {
+				// Extract fields from "wso2.route" filter metadata
+				if routeStruct, ok := envoyMetadata.FilterMetadata["wso2.route"]; ok && routeStruct.Fields != nil {
+					if apiNameValue, ok := routeStruct.Fields["api_name"]; ok {
+						metadata.APIName = apiNameValue.GetStringValue()
+					}
+					if apiVersionValue, ok := routeStruct.Fields["api_version"]; ok {
+						metadata.APIVersion = apiVersionValue.GetStringValue()
+					}
+					if apiContextValue, ok := routeStruct.Fields["api_context"]; ok {
+						metadata.Context = apiContextValue.GetStringValue()
+					}
+					if operationPath, ok := routeStruct.Fields["path"]; ok {
+						metadata.OperationPath = operationPath.GetStringValue()
 					}
 				}
 			}
 		}
 	}
 
-	// Default route if no metadata key found
-	return "default"
+	// If no route name found, use default
+	if metadata.RouteName == "" {
+		metadata.RouteName = "default"
+	}
+
+	return metadata
 }
 
 // generateRequestID generates a unique request identifier
-// T064: Request ID generation implementation
 func (s *ExternalProcessorServer) generateRequestID() string {
 	return uuid.New().String()
 }

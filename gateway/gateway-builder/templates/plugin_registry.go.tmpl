@@ -23,10 +23,11 @@ func init() {
 	{{- range .Policies }}
 	// Register {{ .Name }} {{ .Version }}
 	policyDef_{{ .ImportAlias }} := &policy.PolicyDefinition{
-		Name:    "{{ .Name }}",
-		Version: "{{ .Version }}",
+		Name:           "{{ .Name }}",
+		Version:        "{{ .Version }}",
+		InitParameters: nil,
 	}
-	if err := registry.GetRegistry().Register(policyDef_{{ .ImportAlias }}, {{ .ImportAlias }}.NewPolicy()); err != nil {
+	if err := registry.GetRegistry().Register(policyDef_{{ .ImportAlias }}, {{ .ImportAlias }}.NewPolicy); err != nil {
 		slog.ErrorContext(ctx, "Failed to register policy", "policy", "{{ .Name }}", "version", "{{ .Version }}", "error", err)
 	} else {
 		slog.InfoContext(ctx, "Registered policy", "policy", "{{ .Name }}", "version", "{{ .Version }}")

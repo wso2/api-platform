@@ -1487,7 +1487,7 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 		FailureModeAllow:  policyEngine.FailureModeAllow,
 		RouteCacheAction:  routeCacheAction,
 		AllowModeOverride: policyEngine.AllowModeOverride,
-		RequestAttributes: []string{constants.ExtProcRequestAttributeRouteName},
+		RequestAttributes: []string{constants.ExtProcRequestAttributeRouteName, constants.ExtProcRequestAttributeRouteMetadata},
 		ProcessingMode: &extproc.ProcessingMode{
 			RequestHeaderMode: requestHeaderMode,
 		},

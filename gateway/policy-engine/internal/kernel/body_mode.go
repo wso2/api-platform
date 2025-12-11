@@ -1,6 +1,8 @@
 package kernel
 
 import (
+	"fmt"
+
 	"github.com/policy-engine/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
@@ -27,10 +29,16 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 
 	// Build policy list and compute body requirements
 	for _, spec := range policySpecs {
-		// Get policy implementation
-		impl, err := reg.GetImplementation(spec.Name, spec.Version)
+		// Create metadata with route information
+		metadata := policy.PolicyMetadata{
+			RouteName: routeKey,
+		}
+
+		// Create instance using factory with metadata and params
+		impl, err := reg.CreateInstance(spec.Name, spec.Version, metadata, spec.Parameters.Raw)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to create policy instance %s:%s for route %s: %w",
+				spec.Name, spec.Version, routeKey, err)
 		}
 
 		// Add to policy list
