@@ -8,13 +8,14 @@ import (
 
 // DiscoveredPolicy represents a policy found during the discovery phase
 type DiscoveredPolicy struct {
-	Name        string
-	Version     string
-	Path        string
-	YAMLPath    string
-	GoModPath   string
-	SourceFiles []string
-	Definition  *policy.PolicyDefinition
+	Name           string
+	Version        string
+	Path           string
+	YAMLPath       string
+	GoModPath      string
+	SourceFiles    []string
+	InitParameters map[string]interface{}
+	Definition     *policy.PolicyDefinition
 }
 
 // ConditionDef represents execution conditions
