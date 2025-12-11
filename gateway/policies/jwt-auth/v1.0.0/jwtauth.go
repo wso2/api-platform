@@ -85,15 +85,21 @@ type JWKSKey struct {
 	Alg string `json:"alg"` // Algorithm
 }
 
-// NewPolicy creates a new JwtAuthPolicy instance
-func NewPolicy() policy.Policy {
-	return &JwtAuthPolicy{
-		cacheStore: make(map[string]*CachedJWKS),
-		cacheTTLs:  make(map[string]time.Time),
-		httpClient: &http.Client{
-			Timeout: 5 * time.Second,
-		},
-	}
+var ins = &JwtAuthPolicy{
+	cacheStore: make(map[string]*CachedJWKS),
+	cacheTTLs:  make(map[string]time.Time),
+	httpClient: &http.Client{
+		Timeout: 5 * time.Second,
+	},
+}
+
+// NewPolicy creates a new BasicAuthPolicy instance
+func NewPolicy(
+	metadata policy.PolicyMetadata,
+	initParams map[string]interface{},
+	params map[string]interface{},
+) (policy.Policy, error) {
+	return ins, nil
 }
 
 // Mode returns the processing mode for this policy
@@ -886,8 +892,8 @@ func loadTLSConfig(certPath string) (*tls.Config, error) {
 	}
 
 	return &tls.Config{
-		RootCAs: caCertPool,
-		MinVersion:         tls.VersionTLS12,
+		RootCAs:    caCertPool,
+		MinVersion: tls.VersionTLS12,
 	}, nil
 }
 

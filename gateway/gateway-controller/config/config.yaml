@@ -143,7 +143,7 @@ router:
     port: 9001
 
     # Timeout for gRPC service connection (in milliseconds)
-    timeout_ms: 250
+    timeout_ms: 60000
 
     # Failure mode: false = fail closed (deny requests on error), true = fail open (allow requests on error)
     failure_mode_allow: false
@@ -160,7 +160,7 @@ router:
     request_header_mode: SEND
 
     # Message timeout for policy engine processing (in milliseconds)
-    message_timeout_ms: 250
+    message_timeout_ms: 60000
 
     # TLS configuration for policy engine connection
     tls:

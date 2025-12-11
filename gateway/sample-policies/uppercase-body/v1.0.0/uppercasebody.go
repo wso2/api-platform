@@ -9,9 +9,15 @@ import (
 // UppercaseBodyPolicy transforms request body text to uppercase
 type UppercaseBodyPolicy struct{}
 
-// NewPolicy creates a new UppercaseBodyPolicy instance
-func NewPolicy() policy.Policy {
-	return &UppercaseBodyPolicy{}
+var ins = &UppercaseBodyPolicy{}
+
+// NewPolicy creates a new BasicAuthPolicy instance
+func NewPolicy(
+	metadata policy.PolicyMetadata,
+	initParams map[string]interface{},
+	params map[string]interface{},
+) (policy.Policy, error) {
+	return ins, nil
 }
 
 // Mode returns the processing mode for this policy

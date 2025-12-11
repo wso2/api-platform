@@ -1,16 +1,18 @@
 package policyv1alpha
 
+// PolicyMetadata contains metadata passed to NewPolicy for instance creation
+// This will be passed to the NewPolicy factory function to provide context about policy
+type PolicyMetadata struct {
+	// RouteName is the unique identifier for the route this policy is attached to
+	RouteName string
+}
+
 // Policy is the base interface that all policies must implement
 type Policy interface {
 
 	// Mode returns the policy's processing mode for each phase
 	// Used by the kernel to optimize execution (e.g., skip body buffering if not needed)
 	Mode() ProcessingMode
-
-	// // OnSetup initializes the policy with configuration parameters
-	// // Called once by the policy engine during policy instantiation
-	// // Returns error if configuration is invalid
-	// OnSetup(params map[string]interface{}) error
 
 	// OnRequest executes the policy during request phase
 	// Called with request context including headers and body (if body mode is BUFFER)
@@ -23,12 +25,30 @@ type Policy interface {
 	// Returns ResponseAction with modifications
 	// Returns nil if policy has no action (pass-through)
 	OnResponse(ctx *ResponseContext, params map[string]interface{}) ResponseAction
-
-	// // OnDestroy performs cleanup when the policy engine is shutting down
-	// // Called once during graceful shutdown to release resources
-	// // Policies should close connections, release locks, and cleanup state
-	// OnDestroy()
 }
+
+// PolicyFactory is the function signature for creating policy instances
+// Policy implementations must export a NewPolicy function with this signature:
+//
+//	func NewPolicy(
+//	    metadata PolicyMetadata,
+//	    initParams map[string]interface{},
+//	    params map[string]interface{},
+//	) (Policy, error)
+//
+// Parameters:
+//   - metadata: Contains route-level metadata (routeName, etc.)
+//   - initParams: Static policy configuration from policy definition
+//   - params: Dynamic user parameters from API configuration
+//
+// Returns:
+//   - Policy instance (can be singleton, cached, or per-route)
+//   - Error if initialization/validation fails
+//
+// The policy should perform all initialization, validation, and preprocessing
+// in NewPolicy. This includes parsing configuration, caching expensive operations,
+// and setting up any required state.
+type PolicyFactory func(metadata PolicyMetadata, initParams map[string]interface{}, params map[string]interface{}) (Policy, error)
 
 // ProcessingMode declares a policy's processing requirements for each phase
 // Used by the kernel to optimize execution (skip unnecessary phases, buffer strategically)

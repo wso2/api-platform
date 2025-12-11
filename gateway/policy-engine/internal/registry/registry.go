@@ -15,9 +15,9 @@ type PolicyRegistry struct {
 	// Example key: "jwtValidation:v1.0.0"
 	Definitions map[string]*policy.PolicyDefinition
 
-	// Policy implementations indexed by "name:version" composite key
-	// Value is Policy interface (can be cast to RequestPolicy/ResponsePolicy)
-	Implementations map[string]policy.Policy
+	// Policy factory functions indexed by "name:version" composite key
+	// Factory creates policy instances with metadata, initParams, and params
+	Factories map[string]policy.PolicyFactory
 }
 
 // Global singleton registry
@@ -28,8 +28,8 @@ var registryOnce sync.Once
 func GetRegistry() *PolicyRegistry {
 	registryOnce.Do(func() {
 		globalRegistry = &PolicyRegistry{
-			Definitions:     make(map[string]*policy.PolicyDefinition),
-			Implementations: make(map[string]policy.Policy),
+			Definitions: make(map[string]*policy.PolicyDefinition),
+			Factories:   make(map[string]policy.PolicyFactory),
 		}
 	})
 	return globalRegistry
@@ -48,21 +48,59 @@ func (r *PolicyRegistry) GetDefinition(name, version string) (*policy.PolicyDefi
 	return def, nil
 }
 
-// GetImplementation retrieves a policy implementation by name and version
-func (r *PolicyRegistry) GetImplementation(name, version string) (policy.Policy, error) {
+// CreateInstance creates a new policy instance for a specific route
+// This method is called during BuildPolicyChain for each route-policy combination
+func (r *PolicyRegistry) CreateInstance(
+	name, version string,
+	metadata policy.PolicyMetadata,
+	params map[string]interface{},
+) (policy.Policy, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	key := compositeKey(name, version)
-	impl, ok := r.Implementations[key]
+
+	factory, ok := r.Factories[key]
 	if !ok {
-		return nil, fmt.Errorf("policy implementation not found: %s", key)
+		return nil, fmt.Errorf("policy factory not found: %s", key)
 	}
-	return impl, nil
+
+	def, ok := r.Definitions[key]
+	if !ok {
+		return nil, fmt.Errorf("policy definition not found: %s", key)
+	}
+
+	// Extract initParams from PolicyDefinition
+	initParams := def.InitParameters
+	if initParams == nil {
+		initParams = make(map[string]interface{})
+	}
+
+	// Call factory to create instance
+	instance, err := factory(metadata, initParams, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create policy instance %s: %w", key, err)
+	}
+
+	return instance, nil
 }
 
-// Register registers a policy definition and implementation
-func (r *PolicyRegistry) Register(def *policy.PolicyDefinition, impl policy.Policy) error {
+// GetFactory retrieves a policy factory by name and version
+// Useful for validation without creating instances
+func (r *PolicyRegistry) GetFactory(name, version string) (policy.PolicyFactory, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	key := compositeKey(name, version)
+	factory, ok := r.Factories[key]
+	if !ok {
+		return nil, fmt.Errorf("policy factory not found: %s", key)
+	}
+	return factory, nil
+}
+
+// Register registers a policy definition and factory function
+func (r *PolicyRegistry) Register(def *policy.PolicyDefinition, factory policy.PolicyFactory) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -74,21 +112,10 @@ func (r *PolicyRegistry) Register(def *policy.PolicyDefinition, impl policy.Poli
 	}
 
 	r.Definitions[key] = def
-	r.Implementations[key] = impl
+	r.Factories[key] = factory
 	return nil
 }
 
-// RegisterImplementation is a convenience method to register a policy implementation
-// without a full PolicyDefinition. It creates a minimal definition automatically.
-// This is primarily used by the generated plugin_registry.go code.
-func (r *PolicyRegistry) RegisterImplementation(name, version string, impl policy.Policy) error {
-	// Create a minimal policy definition
-	def := &policy.PolicyDefinition{
-		Name:    name,
-		Version: version,
-	}
-	return r.Register(def, impl)
-}
 
 // compositeKey creates a composite key from name and version
 func compositeKey(name, version string) string {

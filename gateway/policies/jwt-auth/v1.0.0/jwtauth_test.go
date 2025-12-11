@@ -42,9 +42,6 @@ func TestJWTAuthPolicy_ValidToken(t *testing.T) {
 		"name":  "John Doe",
 	})
 
-	// Create policy instance
-	p := NewPolicy().(*JwtAuthPolicy)
-
 	// Create request context with Authorization header
 	ctx := createMockRequestContext(map[string][]string{
 		"authorization": {fmt.Sprintf("Bearer %s", token)},
@@ -81,6 +78,12 @@ func TestJWTAuthPolicy_ValidToken(t *testing.T) {
 		},
 	}
 
+	// Create policy instance
+	p, err := NewPolicy(policy.PolicyMetadata{}, map[string]interface{}{}, params)
+	if err != nil {
+		t.Fatalf("Failed to create policy: %v", err)
+	}
+
 	// Execute policy
 	action := p.OnRequest(ctx, params)
 
@@ -111,8 +114,6 @@ func TestJWTAuthPolicy_ValidToken(t *testing.T) {
 
 // TestJWTAuthPolicy_MissingToken tests authentication failure when Authorization header is missing
 func TestJWTAuthPolicy_MissingToken(t *testing.T) {
-	p := NewPolicy().(*JwtAuthPolicy)
-
 	// Create request context without Authorization header
 	ctx := createMockRequestContext(map[string][]string{})
 
@@ -135,6 +136,11 @@ func TestJWTAuthPolicy_MissingToken(t *testing.T) {
 		},
 	}
 
+	p, err := NewPolicy(policy.PolicyMetadata{}, map[string]interface{}{}, params)
+	if err != nil {
+		t.Fatalf("Failed to create policy: %v", err)
+	}
+
 	action := p.OnRequest(ctx, params)
 
 	// Verify authentication failed
@@ -155,8 +161,6 @@ func TestJWTAuthPolicy_MissingToken(t *testing.T) {
 
 // TestJWTAuthPolicy_InvalidTokenFormat tests with malformed token
 func TestJWTAuthPolicy_InvalidTokenFormat(t *testing.T) {
-	p := NewPolicy().(*JwtAuthPolicy)
-
 	ctx := createMockRequestContext(map[string][]string{
 		"authorization": {"Bearer invalid.token"},
 	})
@@ -175,6 +179,11 @@ func TestJWTAuthPolicy_InvalidTokenFormat(t *testing.T) {
 				},
 			},
 		},
+	}
+
+	p, err := NewPolicy(policy.PolicyMetadata{}, map[string]interface{}{}, params)
+	if err != nil {
+		t.Fatalf("Failed to create policy: %v", err)
 	}
 
 	action := p.OnRequest(ctx, params)
@@ -202,8 +211,6 @@ func TestJWTAuthPolicy_ExpiredToken(t *testing.T) {
 		"iss": "https://issuer.example.com",
 	}, expiredTime)
 
-	p := NewPolicy().(*JwtAuthPolicy)
-
 	ctx := createMockRequestContext(map[string][]string{
 		"authorization": {fmt.Sprintf("Bearer %s", token)},
 	})
@@ -221,6 +228,11 @@ func TestJWTAuthPolicy_ExpiredToken(t *testing.T) {
 				},
 			},
 		},
+	}
+
+	p, err := NewPolicy(policy.PolicyMetadata{}, map[string]interface{}{}, params)
+	if err != nil {
+		t.Fatalf("Failed to create policy: %v", err)
 	}
 
 	action := p.OnRequest(ctx, params)
@@ -247,8 +259,6 @@ func TestJWTAuthPolicy_InvalidAudience(t *testing.T) {
 		"iss": "https://issuer.example.com",
 	})
 
-	p := NewPolicy().(*JwtAuthPolicy)
-
 	ctx := createMockRequestContext(map[string][]string{
 		"authorization": {fmt.Sprintf("Bearer %s", token)},
 	})
@@ -266,6 +276,11 @@ func TestJWTAuthPolicy_InvalidAudience(t *testing.T) {
 				},
 			},
 		},
+	}
+
+	p, err := NewPolicy(policy.PolicyMetadata{}, map[string]interface{}{}, params)
+	if err != nil {
+		t.Fatalf("Failed to create policy: %v", err)
 	}
 
 	action := p.OnRequest(ctx, params)
@@ -292,8 +307,6 @@ func TestJWTAuthPolicy_CustomClaims(t *testing.T) {
 		"iss":  "https://issuer.example.com",
 	})
 
-	p := NewPolicy().(*JwtAuthPolicy)
-
 	ctx := createMockRequestContext(map[string][]string{
 		"authorization": {fmt.Sprintf("Bearer %s", token)},
 	})
@@ -313,6 +326,11 @@ func TestJWTAuthPolicy_CustomClaims(t *testing.T) {
 				},
 			},
 		},
+	}
+
+	p, err := NewPolicy(policy.PolicyMetadata{}, map[string]interface{}{}, params)
+	if err != nil {
+		t.Fatalf("Failed to create policy: %v", err)
 	}
 
 	action := p.OnRequest(ctx, params)
@@ -339,8 +357,6 @@ func TestJWTAuthPolicy_InvalidCustomClaims(t *testing.T) {
 		"iss":  "https://issuer.example.com",
 	})
 
-	p := NewPolicy().(*JwtAuthPolicy)
-
 	ctx := createMockRequestContext(map[string][]string{
 		"authorization": {fmt.Sprintf("Bearer %s", token)},
 	})
@@ -360,6 +376,11 @@ func TestJWTAuthPolicy_InvalidCustomClaims(t *testing.T) {
 				},
 			},
 		},
+	}
+
+	p, err := NewPolicy(policy.PolicyMetadata{}, map[string]interface{}{}, params)
+	if err != nil {
+		t.Fatalf("Failed to create policy: %v", err)
 	}
 
 	action := p.OnRequest(ctx, params)
@@ -390,8 +411,6 @@ func TestJWTAuthPolicy_InvalidSignature(t *testing.T) {
 		"iss": "https://issuer.example.com",
 	})
 
-	p := NewPolicy().(*JwtAuthPolicy)
-
 	ctx := createMockRequestContext(map[string][]string{
 		"authorization": {fmt.Sprintf("Bearer %s", token)},
 	})
@@ -408,6 +427,11 @@ func TestJWTAuthPolicy_InvalidSignature(t *testing.T) {
 				},
 			},
 		},
+	}
+
+	p, err := NewPolicy(policy.PolicyMetadata{}, map[string]interface{}{}, params)
+	if err != nil {
+		t.Fatalf("Failed to create policy: %v", err)
 	}
 
 	action := p.OnRequest(ctx, params)
@@ -438,8 +462,6 @@ func TestJWTAuthPolicy_CustomHeaderPrefix(t *testing.T) {
 		"iss": "https://issuer.example.com",
 	})
 
-	p := NewPolicy().(*JwtAuthPolicy)
-
 	ctx := createMockRequestContext(map[string][]string{
 		"authorization": {fmt.Sprintf("JWT %s", token)},
 	})
@@ -459,6 +481,11 @@ func TestJWTAuthPolicy_CustomHeaderPrefix(t *testing.T) {
 		},
 	}
 
+	p, err := NewPolicy(policy.PolicyMetadata{}, map[string]interface{}{}, params)
+	if err != nil {
+		t.Fatalf("Failed to create policy: %v", err)
+	}
+
 	action := p.OnRequest(ctx, params)
 
 	if ctx.Metadata["auth.success"] != true {
@@ -473,8 +500,6 @@ func TestJWTAuthPolicy_CustomHeaderPrefix(t *testing.T) {
 
 // TestJWTAuthPolicy_ErrorResponseFormat tests different error response formats
 func TestJWTAuthPolicy_ErrorResponseFormatJSON(t *testing.T) {
-	p := NewPolicy().(*JwtAuthPolicy)
-
 	ctx := createMockRequestContext(map[string][]string{})
 
 	params := map[string]interface{}{
@@ -491,6 +516,11 @@ func TestJWTAuthPolicy_ErrorResponseFormatJSON(t *testing.T) {
 		},
 	}
 
+	p, err := NewPolicy(policy.PolicyMetadata{}, map[string]interface{}{}, params)
+	if err != nil {
+		t.Fatalf("Failed to create policy: %v", err)
+	}
+
 	action := p.OnRequest(ctx, params)
 
 	response := action.(policy.ImmediateResponse)
@@ -505,8 +535,6 @@ func TestJWTAuthPolicy_ErrorResponseFormatJSON(t *testing.T) {
 }
 
 func TestJWTAuthPolicy_ErrorResponseFormatPlain(t *testing.T) {
-	p := NewPolicy().(*JwtAuthPolicy)
-
 	ctx := createMockRequestContext(map[string][]string{})
 
 	params := map[string]interface{}{
@@ -521,6 +549,11 @@ func TestJWTAuthPolicy_ErrorResponseFormatPlain(t *testing.T) {
 				},
 			},
 		},
+	}
+
+	p, err := NewPolicy(policy.PolicyMetadata{}, map[string]interface{}{}, params)
+	if err != nil {
+		t.Fatalf("Failed to create policy: %v", err)
 	}
 
 	action := p.OnRequest(ctx, params)
@@ -577,9 +610,6 @@ func TestJWTAuthPolicy_RemoteWithSelfSignedCert(t *testing.T) {
 		"aud": "api-audience",
 	})
 
-	// Create policy instance
-	p := NewPolicy().(*JwtAuthPolicy)
-
 	// Create request context
 	ctx := createMockRequestContext(map[string][]string{
 		"authorization": {fmt.Sprintf("Bearer %s", token)},
@@ -606,6 +636,11 @@ func TestJWTAuthPolicy_RemoteWithSelfSignedCert(t *testing.T) {
 			},
 		},
 		"audiences": []interface{}{"api-audience"},
+	}
+
+	p, err := NewPolicy(policy.PolicyMetadata{}, map[string]interface{}{}, params)
+	if err != nil {
+		t.Fatalf("Failed to create policy: %v", err)
 	}
 
 	// Execute policy
@@ -668,9 +703,6 @@ func TestJWTAuthPolicy_SkipTlsVerify_Success(t *testing.T) {
 		"aud": "api-audience",
 	})
 
-	// Create policy instance
-	p := NewPolicy().(*JwtAuthPolicy)
-
 	// Create request context
 	ctx := createMockRequestContext(map[string][]string{
 		"authorization": {fmt.Sprintf("Bearer %s", token)},
@@ -697,6 +729,11 @@ func TestJWTAuthPolicy_SkipTlsVerify_Success(t *testing.T) {
 			},
 		},
 		"audiences": []interface{}{"api-audience"},
+	}
+
+	p, err := NewPolicy(policy.PolicyMetadata{}, map[string]interface{}{}, params)
+	if err != nil {
+		t.Fatalf("Failed to create policy: %v", err)
 	}
 
 	// Execute policy
@@ -759,9 +796,6 @@ func TestJWTAuthPolicy_SkipTlsVerify_False_Fails(t *testing.T) {
 		"aud": "api-audience",
 	})
 
-	// Create policy instance
-	p := NewPolicy().(*JwtAuthPolicy)
-
 	// Create request context
 	ctx := createMockRequestContext(map[string][]string{
 		"authorization": {fmt.Sprintf("Bearer %s", token)},
@@ -787,8 +821,13 @@ func TestJWTAuthPolicy_SkipTlsVerify_False_Fails(t *testing.T) {
 				},
 			},
 		},
-		"audiences": []interface{}{"api-audience"},
-		"jwksFetchRetryCount":    0,
+		"audiences":           []interface{}{"api-audience"},
+		"jwksFetchRetryCount": 0,
+	}
+
+	p, err := NewPolicy(policy.PolicyMetadata{}, map[string]interface{}{}, params)
+	if err != nil {
+		t.Fatalf("Failed to create policy: %v", err)
 	}
 
 	// Execute policy
@@ -825,9 +864,6 @@ func TestJWTAuthPolicy_LocalInlineCertificate(t *testing.T) {
 	// Convert public key to PEM format for inline use
 	pubKeyPEM := publicKeyToPEM(t, publicKey)
 
-	// Create policy instance
-	p := NewPolicy().(*JwtAuthPolicy)
-
 	// Create request context
 	ctx := createMockRequestContext(map[string][]string{
 		"authorization": {fmt.Sprintf("Bearer %s", token)},
@@ -853,6 +889,11 @@ func TestJWTAuthPolicy_LocalInlineCertificate(t *testing.T) {
 			},
 		},
 		"audiences": []interface{}{"api-audience"},
+	}
+
+	p, err := NewPolicy(policy.PolicyMetadata{}, map[string]interface{}{}, params)
+	if err != nil {
+		t.Fatalf("Failed to create policy: %v", err)
 	}
 
 	// Execute policy
@@ -885,9 +926,6 @@ func TestJWTAuthPolicy_LocalCertificateFile(t *testing.T) {
 	certPath := writeCertificateToFile(t, publicKey)
 	defer os.Remove(certPath)
 
-	// Create policy instance
-	p := NewPolicy().(*JwtAuthPolicy)
-
 	// Create request context
 	ctx := createMockRequestContext(map[string][]string{
 		"authorization": {fmt.Sprintf("Bearer %s", token)},
@@ -913,6 +951,11 @@ func TestJWTAuthPolicy_LocalCertificateFile(t *testing.T) {
 			},
 		},
 		"audiences": []interface{}{"api-audience"},
+	}
+
+	p, err := NewPolicy(policy.PolicyMetadata{}, map[string]interface{}{}, params)
+	if err != nil {
+		t.Fatalf("Failed to create policy: %v", err)
 	}
 
 	// Execute policy
