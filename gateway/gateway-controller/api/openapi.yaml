@@ -794,7 +794,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /llm-providers/templates:
+  /llm-provider-templates:
     post:
       summary: Create a new LLM provider template
       description: |
@@ -874,7 +874,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /llm-providers/templates/{name}:
+  /llm-provider-templates/{name}:
     get:
       summary: Get LLM provider template by name
       description: Retrieve the complete configuration for a specific LLM provider template
@@ -1772,6 +1772,261 @@ components:
                   format: date-time
                   example: 2025-10-11T10:30:05Z
 
+    MCPProxyConfiguration:
+      type: object
+      required:
+        - version
+        - kind
+        - spec
+      properties:
+        version:
+          type: string
+          description: MCP Proxy specification version
+          example: ai.api-platform.wso2.com/v1
+          enum:
+            - ai.api-platform.wso2.com/v1
+        kind:
+          type: string
+          description: MCP Proxy type
+          example: mcp
+          enum:
+            - mcp
+        spec:
+          $ref: "#/components/schemas/MCPProxyConfigData"
+
+    MCPProxyConfigData:
+      type: object
+      required:
+        - name
+        - version
+        - context
+        - upstreams
+      properties:
+        name:
+          type: string
+          description: Human-readable MCP Proxy name
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-zA-Z0-9\-_\. ]+$'
+          example: mcp-proxy-1
+        version:
+          type: string
+          description: MCP Proxy version
+          example: v1.0
+        context:
+          type: string
+          description: MCP Proxy context path
+          example: /mcp-proxy
+        specVersion:
+          type: string
+          description: MCP specification version
+          example: 2025-06-18
+        upstreams:
+          type: array
+          description: List of backend service URLs
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/Upstream"
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/MCPTool"
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/MCPResource"
+        prompts:
+          type: array
+          items:
+            $ref: "#/components/schemas/MCPPrompt"
+
+    MCPTool:
+      type: object
+      required:
+        - name
+        - description
+        - inputSchema
+      properties:
+        name:
+          type: string
+          description: Unique identifier for the tool
+        title:
+          type: string
+          description: Optional human-readable name of the tool for display purposes.
+        description:
+          type: string
+          description: Human-readable description of functionality
+        inputSchema:
+          type: string
+          description: JSON Schema defining expected parameters
+        outputSchema:
+          type: string
+          description: Optional JSON Schema defining expected output structure
+
+    MCPResource:
+      type: object
+      required:
+        - uri
+        - name
+      properties:
+        uri:
+          type: string
+          description: Unique identifier for the resource
+        name:
+          type: string
+          description: The name of the resource
+        title:
+          type: string
+          description: Optional human-readable name of the resource for display purposes
+        description:
+          type: string
+          description: Optional description
+        mimeType:
+          type: string
+          description: Optional MIME type
+        size:
+          type: integer
+          description: Optional size in bytes
+
+    MCPPrompt:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Unique identifier for the prompt
+        title:
+          type: string
+          description: Optional human-readable name of the prompt for display purposes
+        description:
+          type: string
+          description: Optional human-readable description
+        arguments:
+          type: array
+          description: Optional list of arguments for customization
+          items:
+            type: object
+            required:
+              - name
+            properties:
+              name:
+                type: string
+                description: Name of the argument
+              description:
+                type: string
+                description: Description of the argument
+              required:
+                type: boolean
+                description: Whether the argument is required
+              title:
+                type: string
+                description: Optional human-readable title of the argument
+
+    MCPProxyListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          example: mcp-proxy-1
+        version:
+          type: string
+          example: v1.0
+        context:
+          type: string
+          example: /mcp-proxy
+        specVersion:
+          type: string
+          example: 2025-06-18
+        status:
+          type: string
+          enum:
+            - pending
+            - deployed
+            - failed
+          example: deployed
+        created_at:
+          type: string
+          format: date-time
+          example: 2025-11-24T10:30:00Z
+        updated_at:
+          type: string
+          format: date-time
+          example: 2025-11-24T10:30:00Z
+
+    MCPDetailResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        mcp:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+              example: 550e8400-e29b-41d4-a716-446655440000
+            configuration:
+              $ref: "#/components/schemas/MCPProxyConfiguration"
+            metadata:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - pending
+                    - deployed
+                    - failed
+                  example: deployed
+                created_at:
+                  type: string
+                  format: date-time
+                  example: 2025-11-24T10:30:00Z
+                updated_at:
+                  type: string
+                  format: date-time
+                  example: 2025-11-24T10:30:00Z
+                deployed_at:
+                  type: string
+                  format: date-time
+                  example: 2025-11-24T10:30:05Z
+
+    ErrorResponse:
+      type: object
+      required:
+        - status
+        - message
+      properties:
+        status:
+          type: string
+          example: error
+        message:
+          type: string
+          description: High-level error description
+          example: Configuration validation failed
+        errors:
+          type: array
+          description: Detailed validation errors
+          items:
+            $ref: "#/components/schemas/ValidationError"
+
+    ValidationError:
+      type: object
+      properties:
+        field:
+          type: string
+          description: Field that failed validation
+          example: spec.context
+        message:
+          type: string
+          description: Human-readable error message
+          example: Context must start with / and cannot end with /
+
     LLMProviderTemplate:
       type: object
       required:
@@ -2193,261 +2448,6 @@ components:
           type: object
           description: JSON Schema describing the parameters accepted by this policy. This itself is a JSON Schema document.
           additionalProperties: true
-
-    MCPProxyConfiguration:
-      type: object
-      required:
-        - version
-        - kind
-        - spec
-      properties:
-        version:
-          type: string
-          description: MCP Proxy specification version
-          example: ai.api-platform.wso2.com/v1
-          enum:
-            - ai.api-platform.wso2.com/v1
-        kind:
-          type: string
-          description: MCP Proxy type
-          example: mcp
-          enum:
-            - mcp
-        spec:
-          $ref: "#/components/schemas/MCPProxyConfigData"
-
-    MCPProxyConfigData:
-      type: object
-      required:
-        - name
-        - version
-        - context
-        - upstreams
-      properties:
-        name:
-          type: string
-          description: Human-readable MCP Proxy name
-          minLength: 1
-          maxLength: 100
-          pattern: '^[a-zA-Z0-9\-_\. ]+$'
-          example: mcp-proxy-1
-        version:
-          type: string
-          description: MCP Proxy version
-          example: v1.0
-        context:
-          type: string
-          description: MCP Proxy context path
-          example: /mcp-proxy
-        specVersion:
-          type: string
-          description: MCP specification version
-          example: 2025-06-18
-        upstreams:
-          type: array
-          description: List of backend service URLs
-          minItems: 1
-          items:
-            $ref: "#/components/schemas/Upstream"
-        tools:
-          type: array
-          items:
-            $ref: "#/components/schemas/MCPTool"
-        resources:
-          type: array
-          items:
-            $ref: "#/components/schemas/MCPResource"
-        prompts:
-          type: array
-          items:
-            $ref: "#/components/schemas/MCPPrompt"
-
-    MCPTool:
-      type: object
-      required:
-        - name
-        - description
-        - inputSchema
-      properties:
-        name:
-          type: string
-          description: Unique identifier for the tool
-        title:
-          type: string
-          description: Optional human-readable name of the tool for display purposes.
-        description:
-          type: string
-          description: Human-readable description of functionality
-        inputSchema:
-          type: string
-          description: JSON Schema defining expected parameters
-        outputSchema:
-          type: string
-          description: Optional JSON Schema defining expected output structure
-
-    MCPResource:
-      type: object
-      required:
-        - uri
-        - name
-      properties:
-        uri:
-          type: string
-          description: Unique identifier for the resource
-        name:
-          type: string
-          description: The name of the resource
-        title:
-          type: string
-          description: Optional human-readable name of the resource for display purposes
-        description:
-          type: string
-          description: Optional description
-        mimeType:
-          type: string
-          description: Optional MIME type
-        size:
-          type: integer
-          description: Optional size in bytes
-
-    MCPPrompt:
-      type: object
-      required:
-        - name
-      properties:
-        name:
-          type: string
-          description: Unique identifier for the prompt
-        title:
-          type: string
-          description: Optional human-readable name of the prompt for display purposes
-        description:
-          type: string
-          description: Optional human-readable description
-        arguments:
-          type: array
-          description: Optional list of arguments for customization
-          items:
-            type: object
-            required:
-              - name
-            properties:
-              name:
-                type: string
-                description: Name of the argument
-              description:
-                type: string
-                description: Description of the argument
-              required:
-                type: boolean
-                description: Whether the argument is required
-              title:
-                type: string
-                description: Optional human-readable title of the argument
-
-    MCPProxyListItem:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-          example: 550e8400-e29b-41d4-a716-446655440000
-        name:
-          type: string
-          example: mcp-proxy-1
-        version:
-          type: string
-          example: v1.0
-        context:
-          type: string
-          example: /mcp-proxy
-        specVersion:
-          type: string
-          example: 2025-06-18
-        status:
-          type: string
-          enum:
-            - pending
-            - deployed
-            - failed
-          example: deployed
-        created_at:
-          type: string
-          format: date-time
-          example: 2025-11-24T10:30:00Z
-        updated_at:
-          type: string
-          format: date-time
-          example: 2025-11-24T10:30:00Z
-
-    MCPDetailResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: success
-        mcp:
-          type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-              example: 550e8400-e29b-41d4-a716-446655440000
-            configuration:
-              $ref: "#/components/schemas/MCPProxyConfiguration"
-            metadata:
-              type: object
-              properties:
-                status:
-                  type: string
-                  enum:
-                    - pending
-                    - deployed
-                    - failed
-                  example: deployed
-                created_at:
-                  type: string
-                  format: date-time
-                  example: 2025-11-24T10:30:00Z
-                updated_at:
-                  type: string
-                  format: date-time
-                  example: 2025-11-24T10:30:00Z
-                deployed_at:
-                  type: string
-                  format: date-time
-                  example: 2025-11-24T10:30:05Z
-
-    ErrorResponse:
-      type: object
-      required:
-        - status
-        - message
-      properties:
-        status:
-          type: string
-          example: error
-        message:
-          type: string
-          description: High-level error description
-          example: Configuration validation failed
-        errors:
-          type: array
-          description: Detailed validation errors
-          items:
-            $ref: "#/components/schemas/ValidationError"
-
-    ValidationError:
-      type: object
-      properties:
-        field:
-          type: string
-          description: Field that failed validation
-          example: spec.context
-        message:
-          type: string
-          description: Human-readable error message
-          example: Context must start with / and cannot end with /
 
     CertificateUploadRequest:
       type: object
