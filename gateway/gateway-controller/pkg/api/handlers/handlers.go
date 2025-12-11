@@ -554,14 +554,13 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 	if cfg.Configuration.Kind == api.APIConfigurationKindAsyncwebsub {
 		topicsToUnregister := s.deploymentService.GetTopicsForDelete(*cfg)
 
-		// TODO: Pre configure the dynamic forward proxy rules for event gw
-		// This was communication bridge will be created on the gw startup
-		// Can perform internal communication with websub hub without relying on the dynamic rules
-		// Execute topic operations with wait group and errors tracking
 		var deregErrs int32
+		var wg sync.WaitGroup
 
 		if len(topicsToUnregister) > 0 {
+			wg.Add(1)
 			go func(list []string) {
+				defer wg.Done()
 				log.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", cfg.ID))
 				var childWg sync.WaitGroup
 				for _, topic := range list {
@@ -584,6 +583,8 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 				childWg.Wait()
 			}(topicsToUnregister)
 		}
+
+		wg.Wait()
 
 		log.Info("Topic lifecycle operations completed",
 			zap.String("api_id", cfg.ID),
