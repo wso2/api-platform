@@ -239,7 +239,7 @@ func DiscoverPoliciesFromManifest(manifestPath string, baseDir string) ([]*types
 			YAMLPath:       policyYAMLPath,
 			GoModPath:      filepath.Join(policyPath, "go.mod"),
 			SourceFiles:    sourceFiles,
-			InitParameters: definition.InitParameters,
+			InitParameters: ExtractDefaultValues(definition.InitParameters),
 			Definition:     definition,
 		}
 

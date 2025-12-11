@@ -16,6 +16,10 @@ type Config struct {
 	XDS        XDSConfig        `mapstructure:"xds"`
 	FileConfig FileConfigConfig `mapstructure:"file_config"`
 	Logging    LoggingConfig    `mapstructure:"logging"`
+
+	// RawConfig holds the complete raw configuration map including custom fields
+	// This is used for resolving $config() CEL expressions in policy initParameters
+	RawConfig map[string]interface{} `mapstructure:",remain"`
 }
 
 // ServerConfig holds ext_proc server configuration
@@ -129,6 +133,9 @@ func Load(configPath string) (*Config, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+
+	// Capture complete raw config map for $config() resolution
+	cfg.RawConfig = v.AllSettings()
 
 	// Validate config
 	if err := cfg.Validate(); err != nil {
