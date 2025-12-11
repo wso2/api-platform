@@ -34,27 +34,34 @@ func NewParser() *Parser {
 	return &Parser{}
 }
 
-func (p *Parser) ParseYAML(data []byte, configParsed interface{}) error {
-	var config api.APIConfiguration
-	// Marshal the map to JSON to leverage json.RawMessage handling in union types
-	var intermediate map[string]interface{}
-	if err := yaml.Unmarshal(data, &intermediate); err != nil {
-		return fmt.Errorf("failed to unmarshal YAML: %w", err)
+func (p *Parser) ParseAPIConfigYAML(data []byte, configParsed interface{}) error {
+	// Handle different expected target types differently.
+	// - If caller expects *api.APIConfiguration, use the JSON-intermediate approach
+	//   to preserve json.RawMessage handling for union fields.
+	// - If caller expects *api.MCPProxyConfiguration, perform normal YAML
+	//   unmarshalling directly into that struct.
+	switch target := configParsed.(type) {
+	case *api.APIConfiguration:
+		var config api.APIConfiguration
+		var intermediate map[string]interface{}
+		if err := yaml.Unmarshal(data, &intermediate); err != nil {
+			return fmt.Errorf("failed to unmarshal YAML: %w", err)
+		}
+		jsonBytes, err := json.Marshal(intermediate)
+		if err != nil {
+			return fmt.Errorf("failed to marshal intermediate to JSON: %w", err)
+		}
+		if err := p.ParseJSON(jsonBytes, &config); err != nil {
+			return fmt.Errorf("failed to unmarshal JSON into APIConfiguration: %w", err)
+		}
+		*target = config
+		return nil
+	default:
+		if err := yaml.Unmarshal(data, target); err != nil {
+			return fmt.Errorf("failed to unmarshal YAML into MCPProxyConfiguration: %w", err)
+		}
+		return nil
 	}
-	jsonBytes, err := json.Marshal(intermediate)
-	if err != nil {
-		return fmt.Errorf("failed to marshal intermediate to JSON: %w", err)
-	}
-	if err := json.Unmarshal(jsonBytes, &config); err != nil {
-		return fmt.Errorf("failed to unmarshal JSON into APIConfiguration: %w", err)
-	}
-	// Assign parsed config to the value pointed by configParsed (interface{})
-	if ptr, ok := configParsed.(*api.APIConfiguration); ok {
-		*ptr = config
-	} else {
-		return fmt.Errorf("configParsed is not of type *api.APIConfiguration")
-	}
-	return nil
 }
 
 // ParseJSON parses JSON content into an API configuration
@@ -66,16 +73,23 @@ func (p *Parser) ParseJSON(data []byte, config interface{}) error {
 	return nil
 }
 
+func (p *Parser) ParseYAML(data []byte, config interface{}) error {
+	if err := yaml.Unmarshal(data, config); err != nil {
+		return fmt.Errorf("failed to parse YAML: %w", err)
+	}
+	return nil
+}
+
 // Parse attempts to parse data as either YAML or JSON
 func (p *Parser) Parse(data []byte, contentType string, config interface{}) error {
 	switch contentType {
 	case "application/yaml", "application/x-yaml", "text/yaml":
-		return p.ParseYAML(data, config)
+		return p.ParseAPIConfigYAML(data, config)
 	case "application/json":
 		return p.ParseJSON(data, config)
 	default:
 		// Try YAML first, then JSON
-		if err := p.ParseYAML(data, config); err == nil {
+		if err := p.ParseAPIConfigYAML(data, config); err == nil {
 			return nil
 		}
 

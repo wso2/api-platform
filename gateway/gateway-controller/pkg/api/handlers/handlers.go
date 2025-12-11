@@ -76,7 +76,7 @@ func NewAPIServer(
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
 ) *APIServer {
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig)
 	server := &APIServer{
 		store:                store,
 		db:                   db,
@@ -374,58 +374,60 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 		var regErrs int32
 		var deregErrs int32
 
-		var waitCount int
 		if len(topicsToRegister) > 0 {
-			waitCount++
-		}
-		if len(topicsToUnregister) > 0 {
-			waitCount++
-		}
-
-		wg2.Add(waitCount)
-
-		if len(topicsToRegister) > 0 {
+			wg2.Add(1)
 			go func(list []string) {
 				defer wg2.Done()
 				log.Info("Starting topic registration", zap.Int("total_topics", len(list)), zap.String("api_id", existing.ID))
 				//fmt.Println("Topics Registering Started")
+				var childWg sync.WaitGroup
 				for _, topic := range list {
-					if err := s.deploymentService.RegisterTopicWithHub(s.httpClient, topic, s.routerConfig.GatewayHost, log); err != nil {
-						log.Error("Failed to register topic with WebSubHub",
-							zap.Error(err),
-							zap.String("topic", topic),
-							zap.String("api_id", existing.ID))
-						atomic.AddInt32(&regErrs, 1)
-					} else {
-						log.Info("Successfully registered topic with WebSubHub",
-							zap.String("topic", topic),
-							zap.String("api_id", existing.ID))
-					}
+					childWg.Add(1)
+					go func(topic string) {
+						defer childWg.Done()
+						if err := s.deploymentService.RegisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
+							log.Error("Failed to register topic with WebSubHub",
+								zap.Error(err),
+								zap.String("topic", topic),
+								zap.String("api_id", existing.ID))
+							atomic.AddInt32(&regErrs, 1)
+						} else {
+							log.Info("Successfully registered topic with WebSubHub",
+								zap.String("topic", topic),
+								zap.String("api_id", existing.ID))
+						}
+					}(topic)
 				}
-
+				childWg.Wait()
 			}(topicsToRegister)
 		}
 
 		if len(topicsToUnregister) > 0 {
+			wg2.Add(1)
 			go func(list []string) {
 				defer wg2.Done()
 				log.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", existing.ID))
+				var childWg sync.WaitGroup
 				for _, topic := range list {
-					if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, s.routerConfig.GatewayHost, log); err != nil {
-						log.Error("Failed to deregister topic from WebSubHub",
-							zap.Error(err),
-							zap.String("topic", topic),
-							zap.String("api_id", existing.ID))
-						atomic.AddInt32(&deregErrs, 1)
-					} else {
-						log.Info("Successfully deregistered topic from WebSubHub",
-							zap.String("topic", topic),
-							zap.String("api_id", existing.ID))
-					}
+					childWg.Add(1)
+					go func(topic string) {
+						defer childWg.Done()
+						if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
+							log.Error("Failed to deregister topic from WebSubHub",
+								zap.Error(err),
+								zap.String("topic", topic),
+								zap.String("api_id", existing.ID))
+							atomic.AddInt32(&deregErrs, 1)
+						} else {
+							log.Info("Successfully deregistered topic from WebSubHub",
+								zap.String("topic", topic),
+								zap.String("api_id", existing.ID))
+						}
+					}(topic)
 				}
+				childWg.Wait()
 			}(topicsToUnregister)
 		}
-
 		wg2.Wait()
 
 		log.Info("Topic lifecycle operations completed",
@@ -552,34 +554,37 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 	if cfg.Configuration.Kind == api.APIConfigurationKindAsyncwebsub {
 		topicsToUnregister := s.deploymentService.GetTopicsForDelete(*cfg)
 
-		// TODO: Pre configure the dynamic forward proxy rules for event gw
-		// This was communication bridge will be created on the gw startup
-		// Can perform internal communication with websub hub without relying on the dynamic rules
-		// Execute topic operations with wait group and errors tracking
-		var wg2 sync.WaitGroup
 		var deregErrs int32
+		var wg sync.WaitGroup
 
 		if len(topicsToUnregister) > 0 {
-			wg2.Add(1)
+			wg.Add(1)
 			go func(list []string) {
-				defer wg2.Done()
+				defer wg.Done()
 				log.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", cfg.ID))
+				var childWg sync.WaitGroup
 				for _, topic := range list {
-					if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, s.routerConfig.GatewayHost, log); err != nil {
-						log.Error("Failed to deregister topic from WebSubHub",
-							zap.Error(err),
-							zap.String("topic", topic),
-							zap.String("api_id", cfg.ID))
-						atomic.AddInt32(&deregErrs, 1)
-					} else {
-						log.Info("Successfully deregistered topic from WebSubHub",
-							zap.String("topic", topic),
-							zap.String("api_id", cfg.ID))
-					}
+					childWg.Add(1)
+					go func(topic string) {
+						defer childWg.Done()
+						if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
+							log.Error("Failed to deregister topic from WebSubHub",
+								zap.Error(err),
+								zap.String("topic", topic),
+								zap.String("api_id", cfg.ID))
+							atomic.AddInt32(&deregErrs, 1)
+						} else {
+							log.Info("Successfully deregistered topic from WebSubHub",
+								zap.String("topic", topic),
+								zap.String("api_id", cfg.ID))
+						}
+					}(topic)
 				}
+				childWg.Wait()
 			}(topicsToUnregister)
-			wg2.Wait()
 		}
+
+		wg.Wait()
 
 		log.Info("Topic lifecycle operations completed",
 			zap.String("api_id", cfg.ID),
@@ -1090,7 +1095,8 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 	}
 
 	routes := make([]policyenginev1.PolicyChain, 0)
-	if apiCfg.Kind == api.APIConfigurationKindAsyncwebsub {
+	switch apiCfg.Kind {
+	case api.APIConfigurationKindAsyncwebsub:
 		// Build routes with merged policies
 		apiData, err := apiCfg.Spec.AsWebhookAPIData()
 		if err != nil {
@@ -1129,13 +1135,13 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 				}
 			}
 
-			routeKey := xds.GenerateRouteName("SUBSCRIBE", apiData.Context, apiData.Version, ch.Path, s.routerConfig.GatewayHost)
+			routeKey := xds.GenerateRouteName("POST", apiData.Context, apiData.Version, ch.Path, s.routerConfig.GatewayHost)
 			routes = append(routes, policyenginev1.PolicyChain{
 				RouteKey: routeKey,
 				Policies: finalPolicies,
 			})
 		}
-	} else if apiCfg.Kind == api.APIConfigurationKindHttprest {
+	case api.APIConfigurationKindHttprest:
 		// Build routes with merged policies
 		apiData, err := apiCfg.Spec.AsAPIConfigData()
 		if err != nil {

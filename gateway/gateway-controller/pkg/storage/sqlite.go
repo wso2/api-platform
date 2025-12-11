@@ -84,6 +84,7 @@ func (s *SQLiteStorage) initSchema() error {
 
 	if version == 0 {
 		s.logger.Info("Initializing database schema (version 1)")
+		s.logger.Debug("Creating schema with SQL", zap.String("schema_sql", schemaSQL))
 
 		// Execute schema creation SQL
 		if _, err := s.db.Exec(schemaSQL); err != nil {
