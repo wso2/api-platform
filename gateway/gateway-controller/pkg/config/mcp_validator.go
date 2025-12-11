@@ -177,7 +177,7 @@ func (v *MCPValidator) validateContext(context string) []ValidationError {
 }
 
 // validateUpstream validates the upstream configuration
-func (v *MCPValidator) validateUpstream(upstreams []api.Upstream) []ValidationError {
+func (v *MCPValidator) validateUpstream(upstreams []api.MCPUpstream) []ValidationError {
 	var errors []ValidationError
 
 	if len(upstreams) == 0 {

@@ -19,7 +19,7 @@
 version: ai.api-platform.wso2.com/v1
 kind: llm/provider-template
 spec:
-  name: openai_v1.0
+  name: openai
   promptTokens:
     location: payload
     identifier: $.usage.inputTokens

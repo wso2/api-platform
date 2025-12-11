@@ -103,8 +103,13 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 				Name:    tt.apiName,
 				Version: "v1.0",
 				Context: "/test",
-				Upstreams: []api.Upstream{
-					{Url: "http://example.com"},
+				Upstream: struct {
+					Main    api.Upstream  `json:"main" yaml:"main"`
+					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+				}{
+					Main: api.Upstream{
+						Url: func() *string { s := "http://example.com"; return &s }(),
+					},
 				},
 				Operations: []api.Operation{
 					{Method: "GET", Path: "/test"},

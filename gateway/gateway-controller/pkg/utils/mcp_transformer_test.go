@@ -111,7 +111,7 @@ func TestMCPTransformer_Transform(t *testing.T) {
 	name := "petstore"
 	version := "1.0.0"
 	context := "/petstore"
-	upstreams := []api.Upstream{{
+	upstreams := []api.MCPUpstream{{
 		Url: "http://backend:8080",
 	}}
 	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
@@ -139,8 +139,8 @@ func TestMCPTransformer_Transform(t *testing.T) {
 	if apiData.Name != name || apiData.Version != version || apiData.Context != context {
 		t.Fatalf("Transform did not copy basic fields correctly: got %+v", res.Spec)
 	}
-	if len(apiData.Upstreams) != 1 || apiData.Upstreams[0].Url != "http://backend:8080" {
-		t.Fatalf("Transform did not copy upstreams correctly: got %+v", apiData.Upstreams)
+	if *apiData.Upstream.Main.Url != "http://backend:8080" {
+		t.Fatalf("Transform did not copy upstreams correctly: got %+v", *apiData.Upstream.Main.Url)
 	}
 	// Should include MCP operations
 	ops := apiData.Operations

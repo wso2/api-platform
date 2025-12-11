@@ -116,6 +116,10 @@ func GenerateRouteName(method, context, apiVersion, path, vhost string) string {
 // Example 2: context=/weather, version=v1.0, path=/us/seattle -> /weather/us/seattle
 func ConstructFullPath(context, apiVersion, path string) string {
 	contextWithVersion := strings.ReplaceAll(context, "$version", apiVersion)
+	// Allow root context "/"
+	if contextWithVersion == "/" {
+		contextWithVersion = ""
+	}
 	return contextWithVersion + path
 }
 
@@ -195,15 +199,33 @@ func (t *Translator) TranslateConfigs(
 		},
 	})
 
-	// Create a single virtual host with all routes
-	virtualHost := &route.VirtualHost{
-		Name:    "all_apis",
-		Domains: []string{"*"},
-		Routes:  allRoutes,
+	// Group routes by vhost
+	vhostMap := make(map[string][]*route.Route)
+
+	for _, r := range allRoutes {
+		// Extract vhost from route name: "METHOD|PATH|VHOST"
+		parts := strings.Split(r.Name, "|")
+		if len(parts) != 3 {
+			continue // or handle error
+		}
+		vhost := parts[2]
+
+		vhostMap[vhost] = append(vhostMap[vhost], r)
+	}
+
+	// Create a virtual host for each vhost
+	var virtualHosts []*route.VirtualHost
+	for vhost, routes := range vhostMap {
+		virtualHost := &route.VirtualHost{
+			Name:    vhost,
+			Domains: []string{vhost}, // or []string{"*"} if you want wildcard
+			Routes:  routes,
+		}
+		virtualHosts = append(virtualHosts, virtualHost)
 	}
 
 	// Always create the HTTP listener, even with no APIs deployed
-	httpListener, err := t.createListener([]*route.VirtualHost{virtualHost}, false)
+	httpListener, err := t.createListener(virtualHosts, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP listener: %w", err)
 	}
@@ -213,7 +235,7 @@ func (t *Translator) TranslateConfigs(
 	if t.routerConfig.HTTPSEnabled {
 		log.Info("HTTPS is enabled, creating HTTPS listener",
 			zap.Int("https_port", t.routerConfig.HTTPSPort))
-		httpsListener, err := t.createListener([]*route.VirtualHost{virtualHost}, true)
+		httpsListener, err := t.createListener(virtualHosts, true)
 		if err != nil {
 			log.Error("Failed to create HTTPS listener", zap.Error(err))
 			return nil, fmt.Errorf("failed to create HTTPS listener: %w", err)
@@ -328,30 +350,90 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig) ([]*route.Rout
 		return nil, nil, fmt.Errorf("failed to parse API config data: %w", err)
 	}
 
-	// Parse upstream URL
-	if len(apiData.Upstreams) == 0 {
-		return nil, nil, fmt.Errorf("no upstream configured")
-	}
+	clusters := []*cluster.Cluster{}
 
-	upstreamURL := apiData.Upstreams[0].Url
-	parsedURL, err := url.Parse(upstreamURL)
+	// -------- MAIN UPSTREAM --------
+	mainClusterName, parsedMainURL, err := t.resolveUpstreamCluster("main", &apiData.Upstream.Main)
 	if err != nil {
-		return nil, nil, fmt.Errorf("invalid upstream URL: %w", err)
+		return nil, nil, err
+	}
+	mainCluster := t.createCluster(mainClusterName, parsedMainURL, nil)
+	clusters = append(clusters, mainCluster)
+
+	// -------- SANDBOX UPSTREAM --------
+	if apiData.Upstream.Sandbox != nil {
+		sbClusterName, parsedSbURL, err := t.resolveUpstreamCluster("sandbox", apiData.Upstream.Sandbox)
+		if err != nil {
+			return nil, nil, err
+		}
+		sandboxCluster := t.createCluster(sbClusterName, parsedSbURL, nil)
+		clusters = append(clusters, sandboxCluster)
 	}
 
-	// Create cluster for this upstream
-	clusterName := t.sanitizeClusterName(parsedURL.Host, parsedURL.Scheme)
-	// @TODO: Handle upstream certificates and pass them to createCluster
-	c := t.createCluster(clusterName, parsedURL, nil)
-
-	// Create routes for each operation
+	// Create routes for each operation (default to main cluster)
 	routesList := make([]*route.Route, 0)
-	for _, op := range apiData.Operations {
-		r := t.createRoute(apiData.Name, apiData.Version, apiData.Context, string(op.Method), op.Path, clusterName, parsedURL.Path)
-		routesList = append(routesList, r)
+	mainRoutesList := make([]*route.Route, 0)
+
+	// Determine effective vhosts (fallback to global router defaults when not provided)
+	effectiveMainVHost := t.config.Router.VHosts.Main.Default
+	effectiveSandboxVHost := t.config.Router.VHosts.Sandbox.Default
+	if apiData.Vhosts != nil {
+		if strings.TrimSpace(apiData.Vhosts.Main) != "" {
+			effectiveMainVHost = apiData.Vhosts.Main
+		}
+		if apiData.Vhosts.Sandbox != nil && strings.TrimSpace(*apiData.Vhosts.Sandbox) != "" {
+			effectiveSandboxVHost = *apiData.Vhosts.Sandbox
+		}
 	}
 
-	return routesList, []*cluster.Cluster{c}, nil
+	for _, op := range apiData.Operations {
+		// Use mainClusterName by default; path rewrite based on main upstream path
+		r := t.createRoute(apiData.Name, apiData.Version, apiData.Context, string(op.Method), op.Path,
+			mainClusterName, parsedMainURL.Path, effectiveMainVHost)
+		mainRoutesList = append(mainRoutesList, r)
+	}
+	routesList = append(routesList, mainRoutesList...)
+
+	// Create sandbox routes for each operation
+	sbRoutesList := make([]*route.Route, 0)
+	for _, op := range apiData.Operations {
+		// Use mainClusterName by default; path rewrite based on main upstream path
+		r := t.createRoute(apiData.Name, apiData.Version, apiData.Context, string(op.Method), op.Path,
+			mainClusterName, parsedMainURL.Path, effectiveSandboxVHost)
+		sbRoutesList = append(sbRoutesList, r)
+	}
+	routesList = append(routesList, sbRoutesList...)
+
+	return routesList, clusters, nil
+}
+
+// resolveUpstreamCluster validates an upstream (main or sandbox) and creates its cluster.
+// Returns clusterName, parsedURL, and error.
+func (t *Translator) resolveUpstreamCluster(upstreamName string, up *api.Upstream) (string, *url.URL, error) {
+	// Validate URL or ref
+	var rawURL string
+	if up.Url != nil && strings.TrimSpace(*up.Url) != "" {
+		rawURL = strings.TrimSpace(*up.Url)
+	} else if up.Ref != nil && strings.TrimSpace(*up.Ref) != "" {
+		return "", nil, fmt.Errorf("upstream ref is not supported yet for %s: %s",
+			upstreamName, strings.TrimSpace(*up.Ref))
+	} else {
+		return "", nil, fmt.Errorf("no %s upstream configured", upstreamName)
+	}
+
+	// Parse URL
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return "", nil, fmt.Errorf("invalid %s upstream URL: %w", upstreamName, err)
+	}
+	if parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+		return "", nil, fmt.Errorf("invalid %s upstream URL: must include host and http/https scheme", upstreamName)
+	}
+
+	// Generate cluster name
+	clusterName := t.sanitizeClusterName(parsedURL.Host, parsedURL.Scheme)
+
+	return clusterName, parsedURL, nil
 }
 
 // createListener creates an Envoy listener with access logging
@@ -651,13 +733,14 @@ func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost)
 }
 
 // createRoute creates a route for an operation
-func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clusterName, upstreamPath string) *route.Route {
+func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clusterName,
+	upstreamPath string, vhost string) *route.Route {
 	// Build the full path using the utility function
 	fullPath := ConstructFullPath(context, apiVersion, path)
 
 	// Generate unique route name using the helper function
 	// Format: HttpMethod|RoutePath|Vhost (e.g., "GET|/weather/v1.0/us/seattle|localhost")
-	routeName := GenerateRouteName(method, context, apiVersion, path, t.routerConfig.GatewayHost)
+	routeName := GenerateRouteName(method, context, apiVersion, path, vhost)
 
 	// Check if path is a wildcard catch-all (e.g., /v1/*)
 	isWildcardPath := strings.HasSuffix(path, "/*")

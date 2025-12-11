@@ -126,6 +126,42 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 	return errors
 }
 
+// validateUpstream validates a single upstream definition (main or sandbox)
+func (v *APIValidator) validateUpstream(label string, up *api.Upstream) []ValidationError {
+	var errors []ValidationError
+	if up == nil {
+		return errors
+	}
+
+	// Allow reference-based upstreams
+	if up.Ref != nil {
+		ref := strings.TrimSpace(*up.Ref)
+		if ref == "" {
+			errors = append(errors, ValidationError{Field: "spec.upstream." + label + ".ref", Message: "Upstream ref cannot be empty"})
+		}
+		return errors
+	}
+
+	// Validate direct URL-based upstreams
+	if up.Url == nil || strings.TrimSpace(*up.Url) == "" {
+		errors = append(errors, ValidationError{Field: "spec.upstream." + label + ".url", Message: "Upstream URL is required"})
+		return errors
+	}
+
+	parsedURL, err := url.Parse(*up.Url)
+	if err != nil {
+		errors = append(errors, ValidationError{Field: "spec.upstream." + label + ".url", Message: fmt.Sprintf("Invalid URL format: %v", err)})
+		return errors
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		errors = append(errors, ValidationError{Field: "spec.upstream." + label + ".url", Message: "Upstream URL must use http or https scheme"})
+	}
+	if parsedURL.Host == "" {
+		errors = append(errors, ValidationError{Field: "spec.upstream." + label + ".url", Message: "Upstream URL must include a host"})
+	}
+	return errors
+}
+
 // validateRestData validates the data section of the configuration for http/rest kind
 func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationError {
 	var errors []ValidationError
@@ -164,8 +200,11 @@ func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationErr
 	// Validate context
 	errors = append(errors, v.validateContext(spec.Context)...)
 
-	// Validate upstream
-	errors = append(errors, v.validateUpstream(spec.Upstreams)...)
+	// Validate upstream (main + optional sandbox)
+	errors = append(errors, v.validateUpstream("main", &spec.Upstream.Main)...)
+	if spec.Upstream.Sandbox != nil {
+		errors = append(errors, v.validateUpstream("sandbox", spec.Upstream.Sandbox)...)
+	}
 
 	// Validate operations
 	errors = append(errors, v.validateOperations(spec.Operations)...)
@@ -356,57 +395,6 @@ func (v *APIValidator) validatePathParametersForAsyncAPIs(path string) bool {
 	openCount := strings.Count(path, "{")
 	closeCount := strings.Count(path, "}")
 	return openCount == 0 && closeCount == 0
-}
-
-// validateUpstream validates the upstream configuration
-func (v *APIValidator) validateUpstream(upstream []api.Upstream) []ValidationError {
-	var errors []ValidationError
-
-	if len(upstream) == 0 {
-		errors = append(errors, ValidationError{
-			Field:   "spec.upstreams",
-			Message: "At least one upstream URL is required",
-		})
-		return errors
-	}
-
-	for i, up := range upstream {
-		if up.Url == "" {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.upstreams[%d].url", i),
-				Message: "Upstream URL is required",
-			})
-			continue
-		}
-
-		// Validate URL format
-		parsedURL, err := url.Parse(up.Url)
-		if err != nil {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.upstreams[%d].url", i),
-				Message: fmt.Sprintf("Invalid URL format: %v", err),
-			})
-			continue
-		}
-
-		// Ensure scheme is http or https
-		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.upstreams[%d].url", i),
-				Message: "Upstream URL must use http or https scheme",
-			})
-		}
-
-		// Ensure host is present
-		if parsedURL.Host == "" {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.upstreams[%d].url", i),
-				Message: "Upstream URL must include a host",
-			})
-		}
-	}
-
-	return errors
 }
 
 // validateOperations validates the operations configuration

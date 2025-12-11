@@ -40,7 +40,7 @@ type LLMValidator struct {
 func NewLLMValidator() *LLMValidator {
 	return &LLMValidator{
 		versionRegex:         regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
-		urlFriendlyNameRegex: regexp.MustCompile(`^[a-zA-Z0-9\-_\. ]+$`),
+		urlFriendlyNameRegex: regexp.MustCompile(`^[a-zA-Z0-9._-]+$`),
 		specRegex:            regexp.MustCompile(`^ai\.api-platform\.wso2\.com/v?(\d+)(\.\d+)?(\.\d+)?$`),
 	}
 }
@@ -107,26 +107,26 @@ func (v *LLMValidator) validateTemplateData(data *api.LLMProviderTemplateData) [
 	// Validate name
 	if !v.urlFriendlyNameRegex.MatchString(data.Name) {
 		errors = append(errors, ValidationError{
-			Field:   "data.name",
+			Field:   "spec.name",
 			Message: "Template name must contain only letters, numbers, spaces, hyphens, underscores, and dots",
 		})
 	}
 
 	// Validate token identifiers if present
 	if data.PromptTokens != nil {
-		errors = append(errors, v.validateExtractionIdentifier("data.promptTokens", data.PromptTokens)...)
+		errors = append(errors, v.validateExtractionIdentifier("spec.promptTokens", data.PromptTokens)...)
 	}
 
 	if data.CompletionTokens != nil {
-		errors = append(errors, v.validateExtractionIdentifier("data.completionTokens", data.CompletionTokens)...)
+		errors = append(errors, v.validateExtractionIdentifier("spec.completionTokens", data.CompletionTokens)...)
 	}
 
 	if data.TotalTokens != nil {
-		errors = append(errors, v.validateExtractionIdentifier("data.totalTokens", data.TotalTokens)...)
+		errors = append(errors, v.validateExtractionIdentifier("spec.totalTokens", data.TotalTokens)...)
 	}
 
 	if data.RequestModel != nil {
-		errors = append(errors, v.validateExtractionIdentifier("data.requestModel", data.RequestModel)...)
+		errors = append(errors, v.validateExtractionIdentifier("spec.requestModel", data.RequestModel)...)
 	}
 
 	return errors
@@ -188,7 +188,7 @@ func (v *LLMValidator) validateProviderData(data *api.LLMProviderConfigData) []V
 	// Validate name
 	if !v.urlFriendlyNameRegex.MatchString(data.Name) {
 		errors = append(errors, ValidationError{
-			Field:   "data.name",
+			Field:   "spec.name",
 			Message: "Provider name must contain only letters, numbers, spaces, hyphens, underscores, and dots",
 		})
 	}
@@ -196,7 +196,7 @@ func (v *LLMValidator) validateProviderData(data *api.LLMProviderConfigData) []V
 	// Validate version
 	if data.Version == "" {
 		errors = append(errors, ValidationError{
-			Field:   "data.version",
+			Field:   "spec.version",
 			Message: "Provider version is required",
 		})
 	}
@@ -204,31 +204,23 @@ func (v *LLMValidator) validateProviderData(data *api.LLMProviderConfigData) []V
 	// Validate template reference
 	if data.Template == "" {
 		errors = append(errors, ValidationError{
-			Field:   "data.template",
+			Field:   "spec.template",
 			Message: "Template reference is required",
 		})
 	}
 
 	// Validate upstreams
-	if len(data.Upstreams) == 0 {
-		errors = append(errors, ValidationError{
-			Field:   "data.upstreams",
-			Message: "At least one upstream is required",
-		})
-	} else {
-		for i, upstream := range data.Upstreams {
-			errors = append(errors, v.validateUpstreamWithAuth(fmt.Sprintf("data.upstreams[%d]", i), &upstream)...)
-		}
-	}
+	errors = append(errors, v.validateUpstreamWithAuth(fmt.Sprintf("spec.upstream"), &data.Upstream)...)
 
 	// Validate access control
-	errors = append(errors, v.validateAccessControl("data.accessControl", &data.AccessControl)...)
+	errors = append(errors, v.validateAccessControl("spec.accessControl", &data.AccessControl)...)
 
 	return errors
 }
 
 // validateUpstreamWithAuth validates an UpstreamWithAuth configuration
-func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string, upstream *api.UpstreamWithAuth) []ValidationError {
+func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
+	upstream *api.LLMProviderConfigData_Upstream) []ValidationError {
 	var errors []ValidationError
 
 	if upstream == nil {
@@ -240,12 +232,12 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string, upstream *ap
 	}
 
 	// Validate URL
-	if upstream.Url == "" {
+	if *upstream.Url == "" {
 		errors = append(errors, ValidationError{
 			Field:   fmt.Sprintf("%s.url", fieldPrefix),
 			Message: "Upstream URL is required",
 		})
-	} else if !regexp.MustCompile(`^https?://`).MatchString(upstream.Url) {
+	} else if !regexp.MustCompile(`^https?://`).MatchString(*upstream.Url) {
 		errors = append(errors, ValidationError{
 			Field:   fmt.Sprintf("%s.url", fieldPrefix),
 			Message: "Upstream URL must start with http:// or https://",

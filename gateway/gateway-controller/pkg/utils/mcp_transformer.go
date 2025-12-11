@@ -84,10 +84,17 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 	output.Kind = api.Httprest
 	// Build APIConfigData and set it into the APIConfiguration_Spec union
 	apiData := api.APIConfigData{
-		Name:       mcpConfig.Spec.Name,
-		Version:    mcpConfig.Spec.Version,
-		Context:    mcpConfig.Spec.Context,
-		Upstreams:  mcpConfig.Spec.Upstreams,
+		Name:    mcpConfig.Spec.Name,
+		Version: mcpConfig.Spec.Version,
+		Context: mcpConfig.Spec.Context,
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: &mcpConfig.Spec.Upstreams[0].Url,
+			},
+		},
 		Operations: addMCPSpecificOperations(mcpConfig),
 	}
 

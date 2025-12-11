@@ -147,8 +147,13 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 		Name:    "test-api",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Operations: []api.Operation{
 			{
@@ -251,8 +256,13 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 		Name:    "test-api",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Operations: []api.Operation{
 			{
@@ -390,8 +400,13 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 		Name:    "test-api",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Operations: []api.Operation{
 			{
