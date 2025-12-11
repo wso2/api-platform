@@ -51,7 +51,11 @@ func (p *ContentLengthGuardrailPolicy) OnRequest(ctx *policy.RequestContext, par
 		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), false, false, 0, 0).(policy.RequestAction)
 	}
 
-	return p.validatePayload(ctx.Body.Content, requestParams, false).(policy.RequestAction)
+	var content []byte
+	if ctx.Body != nil {
+		content = ctx.Body.Content
+	}
+	return p.validatePayload(content, requestParams, false).(policy.RequestAction)
 }
 
 // OnResponse validates response body content length
@@ -69,6 +73,9 @@ func (p *ContentLengthGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, p
 		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), true, false, 0, 0).(policy.ResponseAction)
 	}
 
+	if ctx.ResponseBody == nil {
+		return p.buildErrorResponse("body is empty", true, false, 0, 0).(policy.ResponseAction)
+	}
 	return p.validatePayloadResponse(ctx.ResponseBody.Content, responseParams, true).(policy.ResponseAction)
 }
 

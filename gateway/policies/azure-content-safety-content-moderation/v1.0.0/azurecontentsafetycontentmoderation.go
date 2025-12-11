@@ -59,7 +59,11 @@ func (p *AzureContentSafetyContentModerationPolicy) OnRequest(ctx *policy.Reques
 		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), false, false, nil).(policy.RequestAction)
 	}
 
-	return p.validatePayload(ctx.Body.Content, requestParams, false).(policy.RequestAction)
+	var content []byte
+	if ctx.Body != nil {
+		content = ctx.Body.Content
+	}
+	return p.validatePayload(content, requestParams, false).(policy.RequestAction)
 }
 
 // OnResponse validates response body content

@@ -68,10 +68,10 @@ func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map
 		return policy.UpstreamRequestModifications{}
 	}
 
-	payload := ctx.Body.Content
-	if payload == nil {
+	if ctx.Body == nil || ctx.Body.Content == nil {
 		return policy.UpstreamRequestModifications{}
 	}
+	payload := ctx.Body.Content
 
 	// Extract value using JSONPath
 	extractedValue, err := extractStringValueFromJSONPath(payload, jsonPath)
@@ -142,10 +142,10 @@ func (p *PIIMaskingRegexPolicy) OnResponse(ctx *policy.ResponseContext, params m
 		return policy.UpstreamResponseModifications{}
 	}
 
-	payload := ctx.ResponseBody.Content
-	if payload == nil {
+	if ctx.ResponseBody == nil || ctx.ResponseBody.Content == nil {
 		return policy.UpstreamResponseModifications{}
 	}
+	payload := ctx.ResponseBody.Content
 
 	// Restore PII in response
 	restoredContent := p.restorePIIInResponse(string(payload), maskedPIIMap)
@@ -291,8 +291,9 @@ func (p *PIIMaskingRegexPolicy) maskPIIFromContent(content string, piiEntities m
 	for key, pattern := range piiEntities {
 		matches := pattern.FindAllString(maskedContent, -1)
 		for _, match := range matches {
-			// Skip if this match is already processed or if it's a placeholder
-			if _, exists := allMatches[match]; !exists && !strings.Contains(match, "[") && !strings.Contains(match, "]") {
+			// Skip if already processed or if it matches the placeholder format [TYPE_XXXX]
+			placeholderPattern := regexp.MustCompile(`^\[[A-Z_]+_[0-9a-f]{4}\]$`)
+			if _, exists := allMatches[match]; !exists && !placeholderPattern.MatchString(match) {
 				// Generate unique placeholder like [EMAIL_0000]
 				placeholder := fmt.Sprintf("[%s_%04x]", key, counter)
 				allMatches[match] = placeholder

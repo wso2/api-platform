@@ -53,8 +53,11 @@ func (p *SentenceCountGuardrailPolicy) OnRequest(ctx *policy.RequestContext, par
 	if err := p.validateParams(requestParams); err != nil {
 		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), false, false, 0, 0).(policy.RequestAction)
 	}
-
-	return p.validatePayload(ctx.Body.Content, requestParams, false).(policy.RequestAction)
+	var content []byte
+	if ctx.Body != nil {
+		content = ctx.Body.Content
+	}
+	return p.validatePayload(content, requestParams, false).(policy.RequestAction)
 }
 
 // OnResponse validates response body sentence count
@@ -71,7 +74,11 @@ func (p *SentenceCountGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, p
 		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), true, false, 0, 0).(policy.ResponseAction)
 	}
 
-	return p.validatePayload(ctx.ResponseBody.Content, responseParams, true).(policy.ResponseAction)
+	var content []byte
+	if ctx.ResponseBody != nil {
+		content = ctx.ResponseBody.Content
+	}
+	return p.validatePayload(content, responseParams, true).(policy.ResponseAction)
 }
 
 // validateParams validates the actual policy parameters

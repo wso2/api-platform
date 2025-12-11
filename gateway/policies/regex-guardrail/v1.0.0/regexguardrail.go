@@ -59,10 +59,10 @@ func (p *RegexGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[
 	}
 
 	// Extract value from payload using JSONPath
-	payload := ctx.Body.Content
-	if payload == nil {
+	if ctx.Body == nil || ctx.Body.Content == nil {
 		return p.buildErrorResponse("request body is empty", false, showAssessment).(policy.RequestAction)
 	}
+	payload := ctx.Body.Content
 
 	extractedValue, err := extractStringValueFromJSONPath(payload, jsonPath)
 	if err != nil {
@@ -115,10 +115,10 @@ func (p *RegexGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params ma
 	}
 
 	// Extract value from payload using JSONPath
-	payload := ctx.ResponseBody.Content
-	if payload == nil {
+	if ctx.ResponseBody == nil || ctx.ResponseBody.Content == nil {
 		return p.buildErrorResponse("response body is empty", true, showAssessment).(policy.ResponseAction)
 	}
+	payload := ctx.ResponseBody.Content
 
 	extractedValue, err := extractStringValueFromJSONPath(payload, jsonPath)
 	if err != nil {

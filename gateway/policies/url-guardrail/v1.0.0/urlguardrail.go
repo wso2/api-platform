@@ -60,7 +60,11 @@ func (p *URLGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[st
 		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), false, false, []string{}).(policy.RequestAction)
 	}
 
-	return p.validatePayload(ctx.Body.Content, requestParams, false).(policy.RequestAction)
+	var content []byte
+	if ctx.Body != nil {
+		content = ctx.Body.Content
+	}
+	return p.validatePayload(content, requestParams, false).(policy.RequestAction)
 }
 
 // OnResponse validates URLs in response body
@@ -77,7 +81,11 @@ func (p *URLGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params map[
 		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), true, false, []string{}).(policy.ResponseAction)
 	}
 
-	return p.validatePayload(ctx.ResponseBody.Content, responseParams, true).(policy.ResponseAction)
+	var content []byte
+	if ctx.ResponseBody != nil {
+		content = ctx.ResponseBody.Content
+	}
+	return p.validatePayload(content, responseParams, true).(policy.ResponseAction)
 }
 
 // validateParams validates the actual policy parameters
