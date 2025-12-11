@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	utils "github.com/wso2/api-platform/sdk/utils"
 )
 
 const (
@@ -39,7 +40,7 @@ func (p *AWSBedrockGuardrailPolicy) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{
 		RequestHeaderMode:  policy.HeaderModeSkip,
 		RequestBodyMode:    policy.BodyModeBuffer,
-		ResponseHeaderMode: policy.HeaderModeProcess,
+		ResponseHeaderMode: policy.HeaderModeSkip,
 		ResponseBodyMode:   policy.BodyModeBuffer,
 	}
 }
@@ -289,16 +290,6 @@ func (p *AWSBedrockGuardrailPolicy) validatePayload(payload []byte, params map[s
 	guardrailID, _ := params["guardrailID"].(string)
 	guardrailVersion, _ := params["guardrailVersion"].(string)
 
-	if region == "" || guardrailID == "" || guardrailVersion == "" {
-		if passthroughOnError {
-			if isResponse {
-				return policy.UpstreamResponseModifications{}
-			}
-			return policy.UpstreamRequestModifications{}
-		}
-		return p.buildErrorResponse("Region, guardrailID, and guardrailVersion are required", fmt.Errorf("region, guardrailID, and guardrailVersion are required"), isResponse, showAssessment, nil)
-	}
-
 	// Transform response if redactPII is disabled and PIIs identified in request
 	if !redactPII && isResponse {
 		if maskedPII, exists := metadata[MetadataKeyPIIEntities]; exists {
@@ -322,7 +313,7 @@ func (p *AWSBedrockGuardrailPolicy) validatePayload(payload []byte, params map[s
 	}
 
 	// Extract value using JSONPath
-	extractedValue, err := extractStringValueFromJSONPath(payload, jsonPath)
+	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, jsonPath)
 	if err != nil {
 		if passthroughOnError {
 			if isResponse {
@@ -667,7 +658,7 @@ func (p *AWSBedrockGuardrailPolicy) updatePayloadWithMaskedContent(originalPaylo
 		return []byte(modifiedContent)
 	}
 
-	err := setValueAtJSONPath(jsonData, jsonPath, modifiedContent)
+	err := utils.SetValueAtJSONPath(jsonData, jsonPath, modifiedContent)
 	if err != nil {
 		return originalPayload
 	}
@@ -690,7 +681,10 @@ func (p *AWSBedrockGuardrailPolicy) buildErrorResponse(reason string, validation
 		"message": assessment,
 	}
 
-	bodyBytes, _ := json.Marshal(responseBody)
+	bodyBytes, err := json.Marshal(responseBody)
+	if err != nil {
+		bodyBytes = []byte(fmt.Sprintf(`{"code":%d,"type":"AWS_BEDROCK_GUARDRAIL","message":"Internal error"}`, GuardrailAPIMExceptionCode))
+	}
 
 	if isResponse {
 		statusCode := GuardrailErrorCode
@@ -845,202 +839,4 @@ func (p *AWSBedrockGuardrailPolicy) convertBedrockAssessmentToMap(assessment typ
 	}
 
 	return assessmentMap
-}
-
-// extractStringValueFromJSONPath extracts a value from JSON using JSONPath
-func extractStringValueFromJSONPath(payload []byte, jsonPath string) (string, error) {
-	if jsonPath == "" {
-		return string(payload), nil
-	}
-
-	var jsonData map[string]interface{}
-	if err := json.Unmarshal(payload, &jsonData); err != nil {
-		return "", fmt.Errorf("error unmarshaling JSON: %w", err)
-	}
-
-	value, err := extractValueFromJSONPath(jsonData, jsonPath)
-	if err != nil {
-		return "", err
-	}
-
-	// Convert to string
-	switch v := value.(type) {
-	case string:
-		return v, nil
-	case float64:
-		return fmt.Sprintf("%.0f", v), nil
-	case int:
-		return fmt.Sprintf("%d", v), nil
-	default:
-		return fmt.Sprintf("%v", v), nil
-	}
-}
-
-// extractValueFromJSONPath extracts a value from a nested JSON structure based on a JSON path
-func extractValueFromJSONPath(data map[string]interface{}, jsonPath string) (interface{}, error) {
-	keys := strings.Split(jsonPath, ".")
-	if len(keys) > 0 && keys[0] == "$" {
-		keys = keys[1:]
-	}
-
-	return extractRecursive(data, keys)
-}
-
-func extractRecursive(current interface{}, keys []string) (interface{}, error) {
-	if len(keys) == 0 {
-		return current, nil
-	}
-
-	key := keys[0]
-	remaining := keys[1:]
-
-	// Handle array indexing
-	arrayIndexRegex := regexp.MustCompile(`^([a-zA-Z0-9_]+)\[(-?\d+)\]$`)
-	if matches := arrayIndexRegex.FindStringSubmatch(key); len(matches) == 3 {
-		arrayName := matches[1]
-		idxStr := matches[2]
-		idx := 0
-		fmt.Sscanf(idxStr, "%d", &idx)
-
-		if node, ok := current.(map[string]interface{}); ok {
-			if arrVal, exists := node[arrayName]; exists {
-				if arr, ok := arrVal.([]interface{}); ok {
-					if idx < 0 {
-						idx = len(arr) + idx
-					}
-					if idx < 0 || idx >= len(arr) {
-						return nil, fmt.Errorf("array index out of range: %d", idx)
-					}
-					return extractRecursive(arr[idx], remaining)
-				}
-				return nil, fmt.Errorf("not an array: %s", arrayName)
-			}
-			return nil, fmt.Errorf("key not found: %s", arrayName)
-		}
-		return nil, fmt.Errorf("invalid structure for key: %s", arrayName)
-	}
-
-	// Handle wildcard
-	if key == "*" {
-		var results []interface{}
-		switch node := current.(type) {
-		case map[string]interface{}:
-			for _, v := range node {
-				res, err := extractRecursive(v, remaining)
-				if err == nil {
-					results = append(results, res)
-				}
-			}
-		case []interface{}:
-			for _, v := range node {
-				res, err := extractRecursive(v, remaining)
-				if err == nil {
-					results = append(results, res)
-				}
-			}
-		default:
-			return nil, fmt.Errorf("wildcard used on non-iterable node")
-		}
-		return results, nil
-	}
-
-	// Regular object key
-	if node, ok := current.(map[string]interface{}); ok {
-		if val, exists := node[key]; exists {
-			return extractRecursive(val, remaining)
-		}
-		return nil, fmt.Errorf("key not found: %s", key)
-	}
-
-	return nil, fmt.Errorf("invalid structure for key: %s", key)
-}
-
-// setValueAtJSONPath sets a value at the specified JSONPath in the given JSON object
-func setValueAtJSONPath(jsonData map[string]interface{}, jsonPath, value string) error {
-	path := strings.TrimPrefix(jsonPath, "$.")
-	if path == "" {
-		return fmt.Errorf("invalid empty path")
-	}
-
-	pathComponents := strings.Split(path, ".")
-	current := interface{}(jsonData)
-	arrayIndexRegex := regexp.MustCompile(`^([a-zA-Z0-9_]+)\[(-?\d+)\]$`)
-
-	for i := 0; i < len(pathComponents)-1; i++ {
-		key := pathComponents[i]
-
-		if matches := arrayIndexRegex.FindStringSubmatch(key); len(matches) == 3 {
-			arrayName := matches[1]
-			idxStr := matches[2]
-			idx := 0
-			fmt.Sscanf(idxStr, "%d", &idx)
-
-			if node, ok := current.(map[string]interface{}); ok {
-				if arrVal, exists := node[arrayName]; exists {
-					if arr, ok := arrVal.([]interface{}); ok {
-						if idx < 0 {
-							idx = len(arr) + idx
-						}
-						if idx < 0 || idx >= len(arr) {
-							return fmt.Errorf("array index out of range: %s", idxStr)
-						}
-						current = arr[idx]
-					} else {
-						return fmt.Errorf("not an array: %s", arrayName)
-					}
-				} else {
-					return fmt.Errorf("key not found: %s", arrayName)
-				}
-			} else {
-				return fmt.Errorf("invalid structure for key: %s", arrayName)
-			}
-		} else {
-			if node, ok := current.(map[string]interface{}); ok {
-				if val, exists := node[key]; exists {
-					current = val
-				} else {
-					return fmt.Errorf("key not found: %s", key)
-				}
-			} else {
-				return fmt.Errorf("invalid structure for key: %s", key)
-			}
-		}
-	}
-
-	finalKey := pathComponents[len(pathComponents)-1]
-
-	if matches := arrayIndexRegex.FindStringSubmatch(finalKey); len(matches) == 3 {
-		arrayName := matches[1]
-		idxStr := matches[2]
-		idx := 0
-		fmt.Sscanf(idxStr, "%d", &idx)
-
-		if node, ok := current.(map[string]interface{}); ok {
-			if arrVal, exists := node[arrayName]; exists {
-				if arr, ok := arrVal.([]interface{}); ok {
-					if idx < 0 {
-						idx = len(arr) + idx
-					}
-					if idx < 0 || idx >= len(arr) {
-						return fmt.Errorf("array index out of range: %s", idxStr)
-					}
-					arr[idx] = value
-				} else {
-					return fmt.Errorf("not an array: %s", arrayName)
-				}
-			} else {
-				return fmt.Errorf("key not found: %s", arrayName)
-			}
-		} else {
-			return fmt.Errorf("invalid structure for key: %s", arrayName)
-		}
-	} else {
-		if node, ok := current.(map[string]interface{}); ok {
-			node[finalKey] = value
-		} else {
-			return fmt.Errorf("invalid structure for final key: %s", finalKey)
-		}
-	}
-
-	return nil
 }

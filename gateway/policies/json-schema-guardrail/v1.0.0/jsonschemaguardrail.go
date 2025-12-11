@@ -3,10 +3,9 @@ package jsonschemaguardrail
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
-	"strings"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	utils "github.com/wso2/api-platform/sdk/utils"
 	"github.com/xeipuuv/gojsonschema"
 )
 
@@ -128,17 +127,8 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params map[s
 	invert, _ := params["invert"].(bool)
 	showAssessment, _ := params["showAssessment"].(bool)
 
-	// Validate required parameters
-	if schemaRaw == "" {
-		return p.buildErrorResponse("Schema parameter is required", fmt.Errorf("schema parameter is required"), isResponse, showAssessment, nil)
-	}
-
 	// Parse schema
 	schemaLoader := gojsonschema.NewStringLoader(schemaRaw)
-
-	if payload == nil {
-		return p.buildErrorResponse("Request body is empty", fmt.Errorf("request body is empty"), isResponse, showAssessment, nil)
-	}
 
 	// Extract value using JSONPath if specified
 	var documentLoader gojsonschema.JSONLoader
@@ -189,7 +179,7 @@ func extractValueFromJSONPathForSchema(payload []byte, jsonPath string) ([]byte,
 		return nil, fmt.Errorf("error unmarshaling JSON: %w", err)
 	}
 
-	value, err := extractValueFromJSONPath(jsonData, jsonPath)
+	value, err := utils.ExtractValueFromJsonpath(jsonData, jsonPath)
 	if err != nil {
 		return nil, err
 	}
@@ -275,83 +265,4 @@ func (p *JSONSchemaGuardrailPolicy) buildAssessmentObject(reason string, validat
 	}
 
 	return assessment
-}
-
-// extractValueFromJSONPath extracts a value from a nested JSON structure based on a JSON path
-func extractValueFromJSONPath(data map[string]interface{}, jsonPath string) (interface{}, error) {
-	keys := strings.Split(jsonPath, ".")
-	if len(keys) > 0 && keys[0] == "$" {
-		keys = keys[1:]
-	}
-
-	return extractRecursive(data, keys)
-}
-
-func extractRecursive(current interface{}, keys []string) (interface{}, error) {
-	if len(keys) == 0 {
-		return current, nil
-	}
-
-	key := keys[0]
-	remaining := keys[1:]
-
-	// Handle array indexing
-	arrayIndexRegex := regexp.MustCompile(`^([a-zA-Z0-9_]+)\[(-?\d+)\]$`)
-	if matches := arrayIndexRegex.FindStringSubmatch(key); len(matches) == 3 {
-		arrayName := matches[1]
-		idxStr := matches[2]
-		idx := 0
-		fmt.Sscanf(idxStr, "%d", &idx)
-
-		if node, ok := current.(map[string]interface{}); ok {
-			if arrVal, exists := node[arrayName]; exists {
-				if arr, ok := arrVal.([]interface{}); ok {
-					if idx < 0 {
-						idx = len(arr) + idx
-					}
-					if idx < 0 || idx >= len(arr) {
-						return nil, fmt.Errorf("array index out of range: %d", idx)
-					}
-					return extractRecursive(arr[idx], remaining)
-				}
-				return nil, fmt.Errorf("not an array: %s", arrayName)
-			}
-			return nil, fmt.Errorf("key not found: %s", arrayName)
-		}
-		return nil, fmt.Errorf("invalid structure for key: %s", arrayName)
-	}
-
-	// Handle wildcard
-	if key == "*" {
-		var results []interface{}
-		switch node := current.(type) {
-		case map[string]interface{}:
-			for _, v := range node {
-				res, err := extractRecursive(v, remaining)
-				if err == nil {
-					results = append(results, res)
-				}
-			}
-		case []interface{}:
-			for _, v := range node {
-				res, err := extractRecursive(v, remaining)
-				if err == nil {
-					results = append(results, res)
-				}
-			}
-		default:
-			return nil, fmt.Errorf("wildcard used on non-iterable node")
-		}
-		return results, nil
-	}
-
-	// Regular object key
-	if node, ok := current.(map[string]interface{}); ok {
-		if val, exists := node[key]; exists {
-			return extractRecursive(val, remaining)
-		}
-		return nil, fmt.Errorf("key not found: %s", key)
-	}
-
-	return nil, fmt.Errorf("invalid structure for key: %s", key)
 }

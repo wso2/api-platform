@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"strings"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	utils "github.com/wso2/api-platform/sdk/utils"
 )
 
 const (
@@ -83,26 +83,14 @@ func (p *RegexGuardrailPolicy) validatePayload(payload []byte, params map[string
 	invert, _ := params["invert"].(bool)
 	showAssessment, _ := params["showAssessment"].(bool)
 
-	// Compile regex pattern
-	compiledRegex, err := regexp.Compile(regexPattern)
-	if err != nil {
-		return p.buildErrorResponse("Invalid regex pattern", err, isResponse, showAssessment)
-	}
-
-	if payload == nil {
-		if isResponse {
-			return p.buildErrorResponse("Response body is empty", fmt.Errorf("response body is empty"), isResponse, showAssessment)
-		}
-		return p.buildErrorResponse("Request body is empty", nil, isResponse, showAssessment)
-	}
-
 	// Extract value using JSONPath
-	extractedValue, err := extractStringValueFromJSONPath(payload, jsonPath)
+	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, jsonPath)
 	if err != nil {
 		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, showAssessment)
 	}
 
-	// Perform regex matching
+	// Compile regex pattern
+	compiledRegex, _ := regexp.Compile(regexPattern)
 	matched := compiledRegex.MatchString(extractedValue)
 
 	// Apply inversion logic
@@ -198,6 +186,11 @@ func (p *RegexGuardrailPolicy) validateParams(params map[string]interface{}) err
 		return fmt.Errorf("'regex' cannot be empty")
 	}
 
+	_, err := regexp.Compile(regexPattern)
+	if err != nil {
+		return fmt.Errorf("invalid regex pattern: %w", err)
+	}
+
 	// Validate optional parameters
 	if jsonPathRaw, ok := params["jsonPath"]; ok {
 		_, ok := jsonPathRaw.(string)
@@ -221,112 +214,4 @@ func (p *RegexGuardrailPolicy) validateParams(params map[string]interface{}) err
 	}
 
 	return nil
-}
-
-// extractStringValueFromJSONPath extracts a value from JSON using JSONPath
-func extractStringValueFromJSONPath(payload []byte, jsonPath string) (string, error) {
-	if jsonPath == "" {
-		return string(payload), nil
-	}
-
-	var jsonData map[string]interface{}
-	if err := json.Unmarshal(payload, &jsonData); err != nil {
-		return "", fmt.Errorf("error unmarshaling JSON: %w", err)
-	}
-
-	value, err := extractValueFromJSONPath(jsonData, jsonPath)
-	if err != nil {
-		return "", err
-	}
-
-	// Convert to string
-	switch v := value.(type) {
-	case string:
-		return v, nil
-	case float64:
-		return fmt.Sprintf("%.0f", v), nil
-	case int:
-		return fmt.Sprintf("%d", v), nil
-	default:
-		return fmt.Sprintf("%v", v), nil
-	}
-}
-
-// extractValueFromJSONPath extracts a value from a nested JSON structure based on a JSON path
-func extractValueFromJSONPath(data map[string]interface{}, jsonPath string) (interface{}, error) {
-	keys := strings.Split(jsonPath, ".")
-	if len(keys) > 0 && keys[0] == "$" {
-		keys = keys[1:]
-	}
-
-	return extractRecursive(data, keys)
-}
-
-func extractRecursive(current interface{}, keys []string) (interface{}, error) {
-	if len(keys) == 0 {
-		return current, nil
-	}
-
-	key := keys[0]
-	remaining := keys[1:]
-
-	// Handle array indexing (e.g., "items[0]")
-	arrayIndexRegex := regexp.MustCompile(`^([a-zA-Z0-9_]+)\[(-?\d+)\]$`)
-	if matches := arrayIndexRegex.FindStringSubmatch(key); len(matches) == 3 {
-		arrayName := matches[1]
-		idxStr := matches[2]
-		idx := 0
-		fmt.Sscanf(idxStr, "%d", &idx)
-
-		if node, ok := current.(map[string]interface{}); ok {
-			if arrVal, exists := node[arrayName]; exists {
-				if arr, ok := arrVal.([]interface{}); ok {
-					if idx < 0 {
-						idx = len(arr) + idx
-					}
-					if idx < 0 || idx >= len(arr) {
-						return nil, fmt.Errorf("array index out of range: %d", idx)
-					}
-					return extractRecursive(arr[idx], remaining)
-				}
-				return nil, fmt.Errorf("not an array: %s", arrayName)
-			}
-			return nil, fmt.Errorf("key not found: %s", arrayName)
-		}
-		return nil, fmt.Errorf("invalid structure for key: %s", arrayName)
-	}
-
-	// Handle wildcard
-	if key == "*" {
-		var results []interface{}
-		switch node := current.(type) {
-		case map[string]interface{}:
-			for _, v := range node {
-				res, err := extractRecursive(v, remaining)
-				if err == nil {
-					results = append(results, res)
-				}
-			}
-		case []interface{}:
-			for _, v := range node {
-				res, err := extractRecursive(v, remaining)
-				if err == nil {
-					results = append(results, res)
-				}
-			}
-		default:
-			return nil, fmt.Errorf("wildcard used on non-iterable node")
-		}
-		return results, nil
-	}
-
-	// Regular object key
-	if node, ok := current.(map[string]interface{}); ok {
-		if val, exists := node[key]; exists {
-			return extractRecursive(val, remaining)
-		}
-		return nil, fmt.Errorf("key not found: %s", key)
-	}
-
-	return nil, fmt.Errorf("invalid structure for key: %s", key)
 }

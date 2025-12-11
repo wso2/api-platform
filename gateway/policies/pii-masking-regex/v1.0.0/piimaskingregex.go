@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	utils "github.com/wso2/api-platform/sdk/utils"
 )
 
 const (
@@ -71,7 +72,7 @@ func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map
 	payload := ctx.Body.Content
 
 	// Extract value using JSONPath
-	extractedValue, err := extractStringValueFromJSONPath(payload, jsonPath)
+	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, jsonPath)
 	if err != nil {
 		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err)).(policy.RequestAction)
 	}
@@ -372,7 +373,7 @@ func (p *PIIMaskingRegexPolicy) updatePayloadWithMaskedContent(originalPayload [
 	}
 
 	// Set the new value at the JSONPath location
-	err := setValueAtJSONPath(jsonData, jsonPath, modifiedContent)
+	err := utils.SetValueAtJSONPath(jsonData, jsonPath, modifiedContent)
 	if err != nil {
 		// Fallback to returning the original payload
 		return originalPayload
@@ -386,105 +387,6 @@ func (p *PIIMaskingRegexPolicy) updatePayloadWithMaskedContent(originalPayload [
 	}
 
 	return updatedPayload
-}
-
-// setValueAtJSONPath sets a value at the specified JSONPath in the given JSON object
-func setValueAtJSONPath(jsonData map[string]interface{}, jsonPath, value string) error {
-	// Remove the leading "$." if present
-	path := strings.TrimPrefix(jsonPath, "$.")
-	if path == "" {
-		return fmt.Errorf("invalid empty path")
-	}
-
-	// Split the path into components
-	pathComponents := strings.Split(path, ".")
-
-	// Navigate to the parent object/array
-	current := interface{}(jsonData)
-	arrayIndexRegex := regexp.MustCompile(`^([a-zA-Z0-9_]+)\[(-?\d+)\]$`)
-
-	for i := 0; i < len(pathComponents)-1; i++ {
-		key := pathComponents[i]
-
-		// Check if this key contains array indexing
-		if matches := arrayIndexRegex.FindStringSubmatch(key); len(matches) == 3 {
-			arrayName := matches[1]
-			idxStr := matches[2]
-			idx := 0
-			fmt.Sscanf(idxStr, "%d", &idx)
-
-			if node, ok := current.(map[string]interface{}); ok {
-				if arrVal, exists := node[arrayName]; exists {
-					if arr, ok := arrVal.([]interface{}); ok {
-						if idx < 0 {
-							idx = len(arr) + idx
-						}
-						if idx < 0 || idx >= len(arr) {
-							return fmt.Errorf("array index out of range: %s", idxStr)
-						}
-						current = arr[idx]
-					} else {
-						return fmt.Errorf("not an array: %s", arrayName)
-					}
-				} else {
-					return fmt.Errorf("key not found: %s", arrayName)
-				}
-			} else {
-				return fmt.Errorf("invalid structure for key: %s", arrayName)
-			}
-		} else {
-			// Regular object key
-			if node, ok := current.(map[string]interface{}); ok {
-				if val, exists := node[key]; exists {
-					current = val
-				} else {
-					return fmt.Errorf("key not found: %s", key)
-				}
-			} else {
-				return fmt.Errorf("invalid structure for key: %s", key)
-			}
-		}
-	}
-
-	// Handle the final key (could be array index or object key)
-	finalKey := pathComponents[len(pathComponents)-1]
-
-	// Check if the final key contains array indexing
-	if matches := arrayIndexRegex.FindStringSubmatch(finalKey); len(matches) == 3 {
-		arrayName := matches[1]
-		idxStr := matches[2]
-		idx := 0
-		fmt.Sscanf(idxStr, "%d", &idx)
-
-		if node, ok := current.(map[string]interface{}); ok {
-			if arrVal, exists := node[arrayName]; exists {
-				if arr, ok := arrVal.([]interface{}); ok {
-					if idx < 0 {
-						idx = len(arr) + idx
-					}
-					if idx < 0 || idx >= len(arr) {
-						return fmt.Errorf("array index out of range: %s", idxStr)
-					}
-					arr[idx] = value
-				} else {
-					return fmt.Errorf("not an array: %s", arrayName)
-				}
-			} else {
-				return fmt.Errorf("key not found: %s", arrayName)
-			}
-		} else {
-			return fmt.Errorf("invalid structure for key: %s", arrayName)
-		}
-	} else {
-		// Regular object key
-		if node, ok := current.(map[string]interface{}); ok {
-			node[finalKey] = value
-		} else {
-			return fmt.Errorf("invalid structure for final key: %s", finalKey)
-		}
-	}
-
-	return nil
 }
 
 // buildErrorResponse builds an error response for both request and response phases
@@ -504,112 +406,4 @@ func (p *PIIMaskingRegexPolicy) buildErrorResponse(reason string) interface{} {
 		},
 		Body: bodyBytes,
 	}
-}
-
-// extractStringValueFromJSONPath extracts a value from JSON using JSONPath
-func extractStringValueFromJSONPath(payload []byte, jsonPath string) (string, error) {
-	if jsonPath == "" {
-		return string(payload), nil
-	}
-
-	var jsonData map[string]interface{}
-	if err := json.Unmarshal(payload, &jsonData); err != nil {
-		return "", fmt.Errorf("error unmarshaling JSON: %w", err)
-	}
-
-	value, err := extractValueFromJSONPath(jsonData, jsonPath)
-	if err != nil {
-		return "", err
-	}
-
-	// Convert to string
-	switch v := value.(type) {
-	case string:
-		return v, nil
-	case float64:
-		return fmt.Sprintf("%.0f", v), nil
-	case int:
-		return fmt.Sprintf("%d", v), nil
-	default:
-		return fmt.Sprintf("%v", v), nil
-	}
-}
-
-// extractValueFromJSONPath extracts a value from a nested JSON structure based on a JSON path
-func extractValueFromJSONPath(data map[string]interface{}, jsonPath string) (interface{}, error) {
-	keys := strings.Split(jsonPath, ".")
-	if len(keys) > 0 && keys[0] == "$" {
-		keys = keys[1:]
-	}
-
-	return extractRecursive(data, keys)
-}
-
-func extractRecursive(current interface{}, keys []string) (interface{}, error) {
-	if len(keys) == 0 {
-		return current, nil
-	}
-
-	key := keys[0]
-	remaining := keys[1:]
-
-	// Handle array indexing
-	arrayIndexRegex := regexp.MustCompile(`^([a-zA-Z0-9_]+)\[(-?\d+)\]$`)
-	if matches := arrayIndexRegex.FindStringSubmatch(key); len(matches) == 3 {
-		arrayName := matches[1]
-		idxStr := matches[2]
-		idx := 0
-		fmt.Sscanf(idxStr, "%d", &idx)
-
-		if node, ok := current.(map[string]interface{}); ok {
-			if arrVal, exists := node[arrayName]; exists {
-				if arr, ok := arrVal.([]interface{}); ok {
-					if idx < 0 {
-						idx = len(arr) + idx
-					}
-					if idx < 0 || idx >= len(arr) {
-						return nil, fmt.Errorf("array index out of range: %d", idx)
-					}
-					return extractRecursive(arr[idx], remaining)
-				}
-				return nil, fmt.Errorf("not an array: %s", arrayName)
-			}
-			return nil, fmt.Errorf("key not found: %s", arrayName)
-		}
-		return nil, fmt.Errorf("invalid structure for key: %s", arrayName)
-	}
-
-	// Handle wildcard
-	if key == "*" {
-		var results []interface{}
-		switch node := current.(type) {
-		case map[string]interface{}:
-			for _, v := range node {
-				res, err := extractRecursive(v, remaining)
-				if err == nil {
-					results = append(results, res)
-				}
-			}
-		case []interface{}:
-			for _, v := range node {
-				res, err := extractRecursive(v, remaining)
-				if err == nil {
-					results = append(results, res)
-				}
-			}
-		default:
-			return nil, fmt.Errorf("wildcard used on non-iterable node")
-		}
-		return results, nil
-	}
-
-	// Regular object key
-	if node, ok := current.(map[string]interface{}); ok {
-		if val, exists := node[key]; exists {
-			return extractRecursive(val, remaining)
-		}
-		return nil, fmt.Errorf("key not found: %s", key)
-	}
-
-	return nil, fmt.Errorf("invalid structure for key: %s", key)
 }

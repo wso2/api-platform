@@ -12,6 +12,7 @@ import (
 	"time"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	utils "github.com/wso2/api-platform/sdk/utils"
 )
 
 const (
@@ -174,16 +175,6 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 	endpoint, _ := params["azureContentSafetyEndpoint"].(string)
 	apiKey, _ := params["azureContentSafetyKey"].(string)
 
-	if endpoint == "" || apiKey == "" {
-		if passthroughOnError {
-			if isResponse {
-				return policy.UpstreamResponseModifications{}
-			}
-			return policy.UpstreamRequestModifications{}
-		}
-		return p.buildErrorResponse("AzureContentSafetyEndpoint and azureContentSafetyKey are required", fmt.Errorf("azureContentSafetyEndpoint and azureContentSafetyKey are required"), isResponse, showAssessment, nil)
-	}
-
 	// Extract category thresholds
 	categoryMap := p.buildCategoryMap(params)
 	categories := p.getValidCategories(categoryMap)
@@ -204,7 +195,7 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 	}
 
 	// Extract value using JSONPath
-	extractedValue, err := extractStringValueFromJSONPath(payload, jsonPath)
+	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, jsonPath)
 	if err != nil {
 		if passthroughOnError {
 			if isResponse {
@@ -413,7 +404,10 @@ func (p *AzureContentSafetyContentModerationPolicy) buildErrorResponse(reason st
 		"message": assessment,
 	}
 
-	bodyBytes, _ := json.Marshal(responseBody)
+	bodyBytes, err := json.Marshal(responseBody)
+	if err != nil {
+		bodyBytes = []byte(fmt.Sprintf(`{"code":%d,"type":"AWS_BEDROCK_GUARDRAIL","message":"Internal error"}`, GuardrailAPIMExceptionCode))
+	}
 
 	if isResponse {
 		statusCode := GuardrailErrorCode
@@ -482,112 +476,4 @@ func (p *AzureContentSafetyContentModerationPolicy) buildAssessmentObject(reason
 	}
 
 	return assessment
-}
-
-// extractStringValueFromJSONPath extracts a value from JSON using JSONPath
-func extractStringValueFromJSONPath(payload []byte, jsonPath string) (string, error) {
-	if jsonPath == "" {
-		return string(payload), nil
-	}
-
-	var jsonData map[string]interface{}
-	if err := json.Unmarshal(payload, &jsonData); err != nil {
-		return "", fmt.Errorf("error unmarshaling JSON: %w", err)
-	}
-
-	value, err := extractValueFromJSONPath(jsonData, jsonPath)
-	if err != nil {
-		return "", err
-	}
-
-	// Convert to string
-	switch v := value.(type) {
-	case string:
-		return v, nil
-	case float64:
-		return strconv.FormatFloat(v, 'f', -1, 64), nil
-	case int:
-		return strconv.Itoa(v), nil
-	default:
-		return fmt.Sprintf("%v", v), nil
-	}
-}
-
-// extractValueFromJSONPath extracts a value from a nested JSON structure based on a JSON path
-func extractValueFromJSONPath(data map[string]interface{}, jsonPath string) (interface{}, error) {
-	keys := strings.Split(jsonPath, ".")
-	if len(keys) > 0 && keys[0] == "$" {
-		keys = keys[1:]
-	}
-
-	return extractRecursive(data, keys)
-}
-
-func extractRecursive(current interface{}, keys []string) (interface{}, error) {
-	if len(keys) == 0 {
-		return current, nil
-	}
-
-	key := keys[0]
-	remaining := keys[1:]
-
-	// Handle array indexing
-	arrayIndexRegex := regexp.MustCompile(`^([a-zA-Z0-9_]+)\[(-?\d+)\]$`)
-	if matches := arrayIndexRegex.FindStringSubmatch(key); len(matches) == 3 {
-		arrayName := matches[1]
-		idxStr := matches[2]
-		idx := 0
-		fmt.Sscanf(idxStr, "%d", &idx)
-
-		if node, ok := current.(map[string]interface{}); ok {
-			if arrVal, exists := node[arrayName]; exists {
-				if arr, ok := arrVal.([]interface{}); ok {
-					if idx < 0 {
-						idx = len(arr) + idx
-					}
-					if idx < 0 || idx >= len(arr) {
-						return nil, fmt.Errorf("array index out of range: %d", idx)
-					}
-					return extractRecursive(arr[idx], remaining)
-				}
-				return nil, fmt.Errorf("not an array: %s", arrayName)
-			}
-			return nil, fmt.Errorf("key not found: %s", arrayName)
-		}
-		return nil, fmt.Errorf("invalid structure for key: %s", arrayName)
-	}
-
-	// Handle wildcard
-	if key == "*" {
-		var results []interface{}
-		switch node := current.(type) {
-		case map[string]interface{}:
-			for _, v := range node {
-				res, err := extractRecursive(v, remaining)
-				if err == nil {
-					results = append(results, res)
-				}
-			}
-		case []interface{}:
-			for _, v := range node {
-				res, err := extractRecursive(v, remaining)
-				if err == nil {
-					results = append(results, res)
-				}
-			}
-		default:
-			return nil, fmt.Errorf("wildcard used on non-iterable node")
-		}
-		return results, nil
-	}
-
-	// Regular object key
-	if node, ok := current.(map[string]interface{}); ok {
-		if val, exists := node[key]; exists {
-			return extractRecursive(val, remaining)
-		}
-		return nil, fmt.Errorf("key not found: %s", key)
-	}
-
-	return nil, fmt.Errorf("invalid structure for key: %s", key)
 }
