@@ -76,7 +76,7 @@ func (p *ContentLengthGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, p
 	if ctx.ResponseBody == nil {
 		return p.buildErrorResponse("body is empty", true, false, 0, 0).(policy.ResponseAction)
 	}
-	return p.validatePayloadResponse(ctx.ResponseBody.Content, responseParams, true).(policy.ResponseAction)
+	return p.validatePayload(ctx.ResponseBody.Content, responseParams, true).(policy.ResponseAction)
 }
 
 // validateParams validates the actual policy parameters
@@ -227,78 +227,6 @@ func (p *ContentLengthGuardrailPolicy) validatePayload(payload []byte, params ma
 	return policy.UpstreamRequestModifications{}
 }
 
-// validatePayloadResponse validates payload content length (response phase)
-func (p *ContentLengthGuardrailPolicy) validatePayloadResponse(payload []byte, params map[string]interface{}, isResponse bool) interface{} {
-	jsonPath, _ := params["jsonPath"].(string)
-	invert, _ := params["invert"].(bool)
-	showAssessment, _ := params["showAssessment"].(bool)
-
-	// Extract min and max
-	min := 0
-	max := 0
-	if minRaw, ok := params["min"]; ok {
-		if minFloat, ok := minRaw.(float64); ok {
-			min = int(minFloat)
-		} else if minInt, ok := minRaw.(int); ok {
-			min = minInt
-		}
-	}
-	if maxRaw, ok := params["max"]; ok {
-		if maxFloat, ok := maxRaw.(float64); ok {
-			max = int(maxFloat)
-		} else if maxInt, ok := maxRaw.(int); ok {
-			max = maxInt
-		}
-	}
-
-	// Validate range
-	if min > max || min < 0 || max <= 0 {
-		return p.buildErrorResponse("invalid content length range", isResponse, showAssessment, min, max)
-	}
-
-	if payload == nil {
-		return p.buildErrorResponse("body is empty", isResponse, showAssessment, min, max)
-	}
-
-	// Extract value using JSONPath
-	extractedValue, err := extractStringValueFromJSONPath(payload, jsonPath)
-	if err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err), isResponse, showAssessment, min, max)
-	}
-
-	// Clean and trim
-	extractedValue = textCleanRegexCompiled.ReplaceAllString(extractedValue, "")
-	extractedValue = strings.TrimSpace(extractedValue)
-
-	// Count bytes
-	byteCount := len([]byte(extractedValue))
-
-	// Check if within range
-	isWithinRange := byteCount >= min && byteCount <= max
-
-	var validationPassed bool
-	if invert {
-		validationPassed = !isWithinRange // Inverted: pass if NOT in range
-	} else {
-		validationPassed = isWithinRange // Normal: pass if in range
-	}
-
-	if !validationPassed {
-		var reason string
-		if invert {
-			reason = fmt.Sprintf("content length %d bytes is within the excluded range %d-%d bytes", byteCount, min, max)
-		} else {
-			reason = fmt.Sprintf("content length %d bytes is outside the allowed range %d-%d bytes", byteCount, min, max)
-		}
-		return p.buildErrorResponse(reason, isResponse, showAssessment, min, max)
-	}
-
-	if isResponse {
-		return policy.UpstreamResponseModifications{}
-	}
-	return policy.UpstreamRequestModifications{}
-}
-
 // buildErrorResponse builds an error response for both request and response phases
 func (p *ContentLengthGuardrailPolicy) buildErrorResponse(reason string, isResponse bool, showAssessment bool, min, max int) interface{} {
 	assessment := p.buildAssessmentObject(isResponse, reason, showAssessment, min, max)
@@ -309,7 +237,11 @@ func (p *ContentLengthGuardrailPolicy) buildErrorResponse(reason string, isRespo
 		"message": assessment,
 	}
 
-	bodyBytes, _ := json.Marshal(responseBody)
+	bodyBytes, err := json.Marshal(responseBody)
+	if err != nil {
+		// Fallback to a minimal error response
+		bodyBytes = []byte(`{"code":900514,"type":"CONTENT_LENGTH_GUARDRAIL","message":"Internal error"}`)
+	}
 
 	if isResponse {
 		statusCode := GuardrailErrorCode

@@ -245,7 +245,10 @@ func (p *SentenceCountGuardrailPolicy) buildErrorResponse(reason string, isRespo
 		"message": assessment,
 	}
 
-	bodyBytes, _ := json.Marshal(responseBody)
+	bodyBytes, err := json.Marshal(responseBody)
+	if err != nil {
+		bodyBytes = []byte(`{"code":900514,"type":"SENTENCE_COUNT_GUARDRAIL","message":"Internal error"}`)
+	}
 
 	if isResponse {
 		statusCode := GuardrailErrorCode

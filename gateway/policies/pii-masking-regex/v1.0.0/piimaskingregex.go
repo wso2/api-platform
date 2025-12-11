@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"sync"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
@@ -20,9 +19,7 @@ const (
 var textCleanRegexCompiled = regexp.MustCompile(TextCleanRegex)
 
 // PIIMaskingRegexPolicy implements regex-based PII masking
-type PIIMaskingRegexPolicy struct {
-	patternMu sync.RWMutex
-}
+type PIIMaskingRegexPolicy struct{}
 
 // NewPolicy creates a new PIIMaskingRegexPolicy instance
 func NewPolicy() policy.Policy {

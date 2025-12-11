@@ -13,10 +13,7 @@ import (
 const (
 	GuardrailErrorCode         = 446
 	GuardrailAPIMExceptionCode = 900514
-	TextCleanRegex             = "^\"|\"$"
 )
-
-var textCleanRegexCompiled = regexp.MustCompile(TextCleanRegex)
 
 // JSONSchemaGuardrailPolicy implements JSON schema validation
 type JSONSchemaGuardrailPolicy struct{}
@@ -50,11 +47,10 @@ func (p *JSONSchemaGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params
 		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err), false, false, nil).(policy.RequestAction)
 	}
 
-	var content []byte
-	if ctx.Body != nil {
-		content = ctx.Body.Content
+	if ctx.Body == nil {
+		return p.buildErrorResponse("body is empty", false, false, nil).(policy.RequestAction)
 	}
-	return p.validatePayload(content, requestParams, false).(policy.RequestAction)
+	return p.validatePayload(ctx.Body.Content, requestParams, false).(policy.RequestAction)
 }
 
 // OnResponse validates response body against JSON schema
