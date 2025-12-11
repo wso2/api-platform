@@ -779,6 +779,34 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /apis/validate:
+    get:
+      summary: Validate API identifier, name and version uniqueness within an organization
+      description: |
+        Validates if an API with the given identifier exists in an organization and if an API with the given name and 
+        version combination exists within an organization. Either provide an identifier OR a combination of name and
+        version as query parameters. Organization ID is automatically extracted from the JWT token.
+      operationId: ValidateAPI
+      tags:
+        - APIs
+      parameters:
+        - $ref: '#/components/parameters/api-identifier-Q'
+        - $ref: '#/components/parameters/api-name-Q'
+        - $ref: '#/components/parameters/api-version-Q'
+      responses:
+        '200':
+          description: API validation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIValidationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /gateways:
     post:
       summary: Register a new gateway
@@ -3497,6 +3525,33 @@ components:
                   - version
                   - projectId
 
+    APIValidationResponse:
+      type: object
+      required:
+        - valid
+        - error
+      properties:
+        valid:
+          type: boolean
+          description: Whether the API identifier or name-version combination is valid (not already in use) in the organization
+          example: true
+        error:
+          type: object
+          nullable: true
+          description: Error details if validation fails
+          properties:
+            code:
+              type: string
+              description: Error code indicating the type of validation failure
+              example: "api-already-exists"
+            message:
+              type: string
+              description: Human-readable error message
+              example: "The API name–version combination is already in use."
+          required:
+            - code
+            - message
+
   responses:
     Unauthorized:
       description: Unauthorized. Authentication credentials are missing or invalid.
@@ -3615,6 +3670,39 @@ components:
         type: string
         format: uuid
         example: "987e6543-e21b-45d3-a789-426614174999"
+
+    api-identifier-Q:
+      name: identifier
+      in: query
+      required: false
+      description: |
+        **API Identifier** to check for existence within the organization.
+        Either this parameter or both 'name' and 'version' parameters are required.
+      schema:
+        type: string
+        example: "weather-v1"
+
+    api-name-Q:
+      name: name
+      in: query
+      required: false
+      description: |
+        **API Name** to check for existence within the organization.
+        Must be used together with 'version' parameter if 'identifier' is not provided.
+      schema:
+        type: string
+        example: "Weather API"
+
+    api-version-Q:
+      name: version
+      in: query
+      required: false
+      description: |
+        **API Version** to check for existence within the organization.
+        Must be used together with 'name' parameter if 'identifier' is not provided.
+      schema:
+        type: string
+        example: "v1"
 
     GatewayID:
       name: gatewayId

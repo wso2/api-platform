@@ -227,3 +227,22 @@ type APIListResponse struct {
 	List       []*API     `json:"list" yaml:"list"`             // Array of API objects
 	Pagination Pagination `json:"pagination" yaml:"pagination"` // Pagination metadata
 }
+
+// APIValidationRequest represents the request parameters for API validation
+type APIValidationRequest struct {
+	Identifier string `form:"identifier"`
+	Name       string `form:"name"`
+	Version    string `form:"version"`
+}
+
+// APIValidationResponse represents the response for API validation
+type APIValidationResponse struct {
+	Valid bool                `json:"valid"`
+	Error *APIValidationError `json:"error"`
+}
+
+// APIValidationError represents the error object in the validation response
+type APIValidationError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}

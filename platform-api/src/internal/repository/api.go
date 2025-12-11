@@ -1077,3 +1077,35 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiId, organizationId string) ([]*mo
 
 	return gateways, rows.Err()
 }
+
+// CheckAPIExistsByIdentifierInOrganization checks if an API with the given identifier exists within a specific organization
+func (r *APIRepo) CheckAPIExistsByIdentifierInOrganization(identifier, orgId string) (bool, error) {
+	query := `
+		SELECT COUNT(*) FROM apis 
+		WHERE name = ? AND organization_uuid = ?
+	`
+
+	var count int
+	err := r.db.QueryRow(query, identifier, orgId).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+// CheckAPIExistsByNameAndVersionInOrganization checks if an API with the given name and version exists within a specific organization
+func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, orgId string) (bool, error) {
+	query := `
+		SELECT COUNT(*) FROM apis 
+		WHERE display_name = ? AND version = ? AND organization_uuid = ?
+	`
+
+	var count int
+	err := r.db.QueryRow(query, name, version, orgId).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}

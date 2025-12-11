@@ -41,6 +41,7 @@ import (
 type APIService struct {
 	apiRepo              repository.APIRepository
 	projectRepo          repository.ProjectRepository
+	orgRepo              repository.OrganizationRepository
 	gatewayRepo          repository.GatewayRepository
 	devPortalRepo        repository.DevPortalRepository
 	publicationRepo      repository.APIPublicationRepository
@@ -53,13 +54,14 @@ type APIService struct {
 
 // NewAPIService creates a new API service
 func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.ProjectRepository,
-	gatewayRepo repository.GatewayRepository, devPortalRepo repository.DevPortalRepository,
-	publicationRepo repository.APIPublicationRepository, backendServiceRepo repository.BackendServiceRepository,
-	upstreamSvc *UpstreamService, gatewayEventsService *GatewayEventsService, devPortalService *DevPortalService,
-	apiUtil *utils.APIUtil) *APIService {
+	orgRepo repository.OrganizationRepository, gatewayRepo repository.GatewayRepository,
+	devPortalRepo repository.DevPortalRepository, publicationRepo repository.APIPublicationRepository,
+	backendServiceRepo repository.BackendServiceRepository, upstreamSvc *UpstreamService,
+	gatewayEventsService *GatewayEventsService, devPortalService *DevPortalService, apiUtil *utils.APIUtil) *APIService {
 	return &APIService{
 		apiRepo:              apiRepo,
 		projectRepo:          projectRepo,
+		orgRepo:              orgRepo,
 		gatewayRepo:          gatewayRepo,
 		devPortalRepo:        devPortalRepo,
 		publicationRepo:      publicationRepo,
@@ -106,6 +108,9 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 	apiId := uuid.New().String()
 
 	// Set default values if not provided
+	if req.DisplayName == "" {
+		req.DisplayName = req.Name
+	}
 	if req.Provider == "" {
 		req.Provider = "admin" // Default provider
 	}
@@ -1459,4 +1464,60 @@ func (s *APIService) ImportFromOpenAPI(req *dto.ImportOpenAPIRequest, orgId stri
 
 	// Create the API
 	return s.CreateAPI(createReq, orgId)
+}
+
+// ValidateAPI validates if an API with the given identifier or name+version combination exists within an organization
+func (s *APIService) ValidateAPI(req *dto.APIValidationRequest, orgId string) (*dto.APIValidationResponse, error) {
+	// Validate request - either identifier OR both name and version must be provided
+	if req.Identifier == "" && (req.Name == "" || req.Version == "") {
+		return nil, errors.New("either 'identifier' or both 'name' and 'version' parameters are required")
+	}
+
+	// Check if organization exists
+	organization, err := s.orgRepo.GetOrganizationByUUID(orgId)
+	if err != nil {
+		return nil, err
+	}
+	if organization == nil {
+		return nil, constants.ErrOrganizationNotFound
+	}
+
+	var exists bool
+	var validationError *dto.APIValidationError
+
+	// Check existence based on the provided parameters
+	if req.Identifier != "" {
+		// Validate by identifier
+		exists, err = s.apiRepo.CheckAPIExistsByIdentifierInOrganization(req.Identifier, orgId)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check API existence by identifier: %w", err)
+		}
+		if exists {
+			validationError = &dto.APIValidationError{
+				Code:    "api-identifier-already-exists",
+				Message: fmt.Sprintf("An API with identifier '%s' already exists in the organization.", req.Identifier),
+			}
+		}
+	} else {
+		// Validate by name and version
+		exists, err = s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgId)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check API existence by name and version: %w", err)
+		}
+		if exists {
+			validationError = &dto.APIValidationError{
+				Code: "api-name-version-already-exists",
+				Message: fmt.Sprintf("The API name '%s' with version '%s' already exists in the organization.",
+					req.Name, req.Version),
+			}
+		}
+	}
+
+	// Create response
+	response := &dto.APIValidationResponse{
+		Valid: !exists, // valid means the API doesn't exist (available for use)
+		Error: validationError,
+	}
+
+	return response, nil
 }
