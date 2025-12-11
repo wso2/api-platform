@@ -94,7 +94,10 @@ func (p *RegexGuardrailPolicy) validatePayload(payload []byte, params map[string
 	}
 
 	// Compile regex pattern
-	compiledRegex, _ := regexp.Compile(regexPattern)
+	compiledRegex, err := regexp.Compile(regexPattern)
+	if err != nil {
+		return p.buildErrorResponse("Invalid regex pattern", err, isResponse, showAssessment)
+	}
 	matched := compiledRegex.MatchString(extractedValue)
 
 	// Apply inversion logic

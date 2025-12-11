@@ -65,7 +65,7 @@ Ensure user input contains a valid email address:
 ```yaml
 policies:
   - name: RegexGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -80,7 +80,7 @@ Block requests containing password-related content using inverted logic:
 ```yaml
 policies:
   - name: RegexGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -96,7 +96,7 @@ Ensure AI responses follow a specific format (e.g., must start with a capital le
 ```yaml
 policies:
   - name: RegexGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       response:
@@ -112,7 +112,7 @@ Validate phone numbers in a specific format:
 ```yaml
 policies:
   - name: RegexGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -127,7 +127,7 @@ Prevent admin-related requests using case-insensitive matching and inverted logi
 ```yaml
 policies:
   - name: RegexGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:

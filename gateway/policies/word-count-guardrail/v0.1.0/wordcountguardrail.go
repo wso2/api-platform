@@ -179,6 +179,10 @@ func (p *WordCountGuardrailPolicy) validatePayload(payload []byte, params map[st
 			min = int(minFloat)
 		} else if minInt, ok := minRaw.(int); ok {
 			min = minInt
+		} else if minStr, ok := minRaw.(string); ok {
+			if parsed, err := strconv.ParseFloat(minStr, 64); err == nil {
+				min = int(parsed)
+			}
 		}
 	}
 	if maxRaw, ok := params["max"]; ok {
@@ -186,6 +190,10 @@ func (p *WordCountGuardrailPolicy) validatePayload(payload []byte, params map[st
 			max = int(maxFloat)
 		} else if maxInt, ok := maxRaw.(int); ok {
 			max = maxInt
+		} else if maxStr, ok := maxRaw.(string); ok {
+			if parsed, err := strconv.ParseFloat(maxStr, 64); err == nil {
+				max = int(parsed)
+			}
 		}
 	}
 

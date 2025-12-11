@@ -60,22 +60,34 @@ func NewPolicy(
 
 	// Optional AWS credentials
 	if val, ok := initParams["awsAccessKeyID"]; ok {
-		policy.awsAccessKeyID = val.(string)
+		if str, ok := val.(string); ok {
+			policy.awsAccessKeyID = str
+		}
 	}
 	if val, ok := initParams["awsSecretAccessKey"]; ok {
-		policy.awsSecretAccessKey = val.(string)
+		if str, ok := val.(string); ok {
+			policy.awsSecretAccessKey = str
+		}
 	}
 	if val, ok := initParams["awsSessionToken"]; ok {
-		policy.awsSessionToken = val.(string)
+		if str, ok := val.(string); ok {
+			policy.awsSessionToken = str
+		}
 	}
 	if val, ok := initParams["awsRoleARN"]; ok {
-		policy.awsRoleARN = val.(string)
+		if str, ok := val.(string); ok {
+			policy.awsRoleARN = str
+		}
 	}
 	if val, ok := initParams["awsRoleRegion"]; ok {
-		policy.awsRoleRegion = val.(string)
+		if str, ok := val.(string); ok {
+			policy.awsRoleRegion = str
+		}
 	}
 	if val, ok := initParams["awsRoleExternalID"]; ok {
-		policy.awsRoleExternalID = val.(string)
+		if str, ok := val.(string); ok {
+			policy.awsRoleExternalID = str
+		}
 	}
 
 	return policy, nil

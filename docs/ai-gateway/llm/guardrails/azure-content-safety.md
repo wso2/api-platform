@@ -76,7 +76,7 @@ Block content with medium to high severity in all categories:
 ```yaml
 policies:
   - name: AzureContentSafetyContentModeration
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -97,7 +97,7 @@ Only filter hate speech and violence, disable sexual and self-harm:
 ```yaml
 policies:
   - name: AzureContentSafetyContentModeration
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -117,7 +117,7 @@ Block even low-severity content:
 ```yaml
 policies:
   - name: AzureContentSafetyContentModeration
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -138,7 +138,7 @@ Validate AI-generated responses for harmful content:
 ```yaml
 policies:
   - name: AzureContentSafetyContentModeration
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       response:
@@ -160,7 +160,7 @@ Allow requests to proceed if Azure API fails:
 ```yaml
 policies:
   - name: AzureContentSafetyContentModeration
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:

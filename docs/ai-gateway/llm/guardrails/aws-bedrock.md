@@ -128,7 +128,7 @@ If `jsonPath` is empty or not specified, the entire payload is treated as a stri
 ```yaml
 policies:
   - name: AWSBedrockGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       region: "us-east-1"
@@ -150,7 +150,7 @@ policies:
 ```yaml
 policies:
   - name: AWSBedrockGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       region: "ap-southeast-2"
@@ -169,7 +169,7 @@ policies:
 ```yaml
 policies:
   - name: AWSBedrockGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       region: "us-east-1"
@@ -191,7 +191,7 @@ Allow requests to proceed if AWS API fails:
 ```yaml
 policies:
   - name: AWSBedrockGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       region: "us-east-1"

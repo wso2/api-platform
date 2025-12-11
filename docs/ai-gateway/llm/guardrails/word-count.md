@@ -56,7 +56,7 @@ Validate that request messages contain between 10 and 500 words:
 ```yaml
 policies:
   - name: WordCountGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -72,7 +72,7 @@ Ensure AI responses are comprehensive (at least 50 words) but not excessive (max
 ```yaml
 policies:
   - name: WordCountGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       response:
@@ -89,7 +89,7 @@ Block requests that are too short (less than 5 words) or too long (more than 100
 ```yaml
 policies:
   - name: WordCountGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -106,7 +106,7 @@ Validate the entire request body without JSONPath extraction:
 ```yaml
 policies:
   - name: WordCountGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:

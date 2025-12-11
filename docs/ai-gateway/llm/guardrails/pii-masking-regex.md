@@ -73,7 +73,7 @@ Mask email addresses and phone numbers in requests, restore in responses:
 ```yaml
 policies:
   - name: PIIMaskingRegex
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -95,7 +95,7 @@ Permanently redact credit card numbers and SSNs:
 ```yaml
 policies:
   - name: PIIMaskingRegex
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -117,7 +117,7 @@ Mask various PII types with different patterns:
 ```yaml
 policies:
   - name: PIIMaskingRegex
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -143,7 +143,7 @@ Process the entire request body without JSONPath extraction:
 ```yaml
 policies:
   - name: PIIMaskingRegex
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:

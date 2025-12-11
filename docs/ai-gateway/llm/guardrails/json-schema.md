@@ -65,7 +65,7 @@ Validate that request contains a user object with required fields:
 ```yaml
 policies:
   - name: JSONSchemaGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -88,7 +88,7 @@ Validate a specific field within the JSON payload:
 ```yaml
 policies:
   - name: JSONSchemaGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -110,7 +110,7 @@ Validate that response contains an array of items with specific structure:
 ```yaml
 policies:
   - name: JSONSchemaGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       response:
@@ -140,7 +140,7 @@ Validate nested structures with multiple levels:
 ```yaml
 policies:
   - name: JSONSchemaGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -178,7 +178,7 @@ Block requests that match a specific schema pattern:
 ```yaml
 policies:
   - name: JSONSchemaGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:

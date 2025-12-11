@@ -65,7 +65,7 @@ Ensure requests contain between 1 and 10 sentences:
 ```yaml
 policies:
   - name: SentenceCountGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -81,7 +81,7 @@ Ensure AI responses are comprehensive (at least 3 sentences) but concise (maximu
 ```yaml
 policies:
   - name: SentenceCountGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       response:
@@ -98,7 +98,7 @@ Block requests that are too brief (less than 2 sentences) or too verbose (more t
 ```yaml
 policies:
   - name: SentenceCountGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -115,7 +115,7 @@ Validate the entire request body without JSONPath extraction:
 ```yaml
 policies:
   - name: SentenceCountGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:

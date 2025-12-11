@@ -56,7 +56,7 @@ Limit request payloads to between 100 bytes and 1MB:
 ```yaml
 policies:
   - name: ContentLengthGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -71,7 +71,7 @@ Ensure AI responses are substantial (at least 500 bytes) but not excessive (maxi
 ```yaml
 policies:
   - name: ContentLengthGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       response:
@@ -88,7 +88,7 @@ Validate a specific field within the JSON payload:
 ```yaml
 policies:
   - name: ContentLengthGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -104,7 +104,7 @@ Block requests that are too small (less than 50 bytes) or too large (more than 1
 ```yaml
 policies:
   - name: ContentLengthGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:

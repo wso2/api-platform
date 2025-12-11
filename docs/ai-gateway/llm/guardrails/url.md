@@ -73,7 +73,7 @@ Validate URLs in request content using HTTP HEAD requests:
 ```yaml
 policies:
   - name: URLGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -89,7 +89,7 @@ Quick validation using DNS resolution only:
 ```yaml
 policies:
   - name: URLGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:
@@ -105,7 +105,7 @@ Ensure AI responses contain only valid, reachable URLs:
 ```yaml
 policies:
   - name: URLGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       response:
@@ -122,7 +122,7 @@ Validate URLs in the entire request body:
 ```yaml
 policies:
   - name: URLGuardrail
-    version: v1.0.0
+    version: v0.1.0
     enabled: true
     params:
       request:

@@ -287,14 +287,14 @@ func (p *PIIMaskingRegexPolicy) maskPIIFromContent(content string, piiEntities m
 	maskedContent := content
 	maskedPIIEntities := make(map[string]string)
 	counter := 0
+	// Pre-compile placeholder pattern for efficiency
+	placeholderPattern := regexp.MustCompile(`^\[[A-Z_]+_[0-9a-f]{4}\]$`)
 
 	// First pass: find all matches without replacing to avoid nested replacements
 	allMatches := make(map[string]string) // original -> placeholder
 	for key, pattern := range piiEntities {
 		matches := pattern.FindAllString(maskedContent, -1)
 		for _, match := range matches {
-			// Skip if already processed or if it matches the placeholder format [TYPE_XXXX]
-			placeholderPattern := regexp.MustCompile(`^\[[A-Z_]+_[0-9a-f]{4}\]$`)
 			if _, exists := allMatches[match]; !exists && !placeholderPattern.MatchString(match) {
 				// Generate unique placeholder like [EMAIL_0000]
 				placeholder := fmt.Sprintf("[%s_%04x]", key, counter)
