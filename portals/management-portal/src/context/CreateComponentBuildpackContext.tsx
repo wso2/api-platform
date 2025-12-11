@@ -3,6 +3,9 @@ import * as React from "react";
 /* ---------- Types ---------- */
 export type ProxyMetadata = {
   name: string;
+  displayName?: string;
+  identifier?: string;
+  identifierEdited?: boolean;
   target?: string;
   context: string;
   version: string;
@@ -29,11 +32,14 @@ type Ctx = {
 
 const defaultMeta: ProxyMetadata = {
   name: "",
+  displayName: "",
   target: "",
   context: "",
   version: "1.0.0",
   description: "",
   contextEdited: false,
+  identifier: "",
+  identifierEdited: false,
 };
 
 /* ---------- Context ---------- */

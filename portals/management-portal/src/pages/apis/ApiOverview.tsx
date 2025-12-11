@@ -572,7 +572,7 @@ const ApiOverviewContent: React.FC = () => {
                 lineHeight: 1,
               }}
             >
-              {api.name?.slice(0, 2).toUpperCase() || "AP"}
+              {api.displayName?.slice(0, 2).toUpperCase() || "AP"}
             </Typography>
           </Box>
 
@@ -582,7 +582,7 @@ const ApiOverviewContent: React.FC = () => {
                 label={(api.transport?.[0] ?? "HTTP").toUpperCase()}
               />
               <Typography variant="h3" fontWeight={800}>
-                {api.name}
+                {api.displayName}
               </Typography>
             </Stack>
 
@@ -594,7 +594,7 @@ const ApiOverviewContent: React.FC = () => {
               {api.description}
             </Typography>
             <Box sx={{ mt: 2, display: "flex", alignItems: "center" }}>
-              <Typography variant="subtitle1" sx={{ color: "#636262ff" }}>
+              <Typography variant="body2" sx={{ color: "#636262ff" }}>
                 Created
               </Typography>
 

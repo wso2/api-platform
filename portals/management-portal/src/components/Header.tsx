@@ -10,7 +10,6 @@ import {
   ButtonBase,
   Popover,
   Paper,
-  TextField,
   InputAdornment,
   List,
   ListItemButton,
@@ -72,7 +71,7 @@ const Header: React.FC = () => {
 
   const proxyPlaceholder = "Select API";
   const [proxy, setProxy] = React.useState(proxyPlaceholder);
-  const [showOrg, setShowOrg] = React.useState(true);
+  const showOrg = true;
   const [showProxy, setShowProxy] = React.useState(false);
   const [menuAnchor, setMenuAnchor] = React.useState<HTMLElement | null>(null);
   const [activeMenu, setActiveMenu] = React.useState<
@@ -337,8 +336,25 @@ const Header: React.FC = () => {
   };
 
   const handleCreateProject = React.useCallback(() => {
-    console.log("Create New clicked");
-  }, []);
+    closeActiveMenu();
+    lastSelectedProjectNameRef.current = null;
+    setSelectedProject(null);
+    setShowProxy(false);
+    setProxy(proxyPlaceholder);
+    selectApi(null);
+    const basePath = currentOrgHandle
+      ? `/${currentOrgHandle}/overview`
+      : "/overview";
+    navigate(`${basePath}?createProject=true`);
+  }, [
+    closeActiveMenu,
+    currentOrgHandle,
+    navigate,
+    proxyPlaceholder,
+    selectApi,
+    setSelectedProject,
+    setShowProxy,
+  ]);
 
   const handleCreateProxy = React.useCallback(() => {
     console.log("Create New proxy clicked");
@@ -424,11 +440,6 @@ const Header: React.FC = () => {
                   : [{ label: organizationName }]
               }
               menuTitle="All Organizations"
-              onRemove={() => {
-                closeActiveMenu();
-                setShowOrg(false);
-                navigate("/");
-              }}
             />
           )}
 
@@ -806,12 +817,9 @@ function FieldPicker({
           width,
           height,
           padding: 1,
-          // px: 1.25,
-          // py: 1,
           borderRadius: 2,
           bgcolor: "action.hover",
           border: "1px solid #3d39391f",
-          // borderColor: "divider",
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",

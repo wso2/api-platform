@@ -1,23 +1,8 @@
 import React from "react";
-import {
-  Box,
-  CardActionArea,
-  CardContent,
-  Chip,
-  CircularProgress,
-  Rating,
-  Stack,
-  Tooltip,
-  Typography,
-} from "@mui/material";
+import { Box, CircularProgress, Stack, Typography } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
-import DeleteIcon from "@mui/icons-material/Delete";
 import { useNavigate, useParams } from "react-router-dom";
-
-import { Card } from "../components/src/components/Card";
 import { Button } from "../components/src/components/Button";
-import { IconButton } from "../components/src/components/IconButton";
-import theme from "../theme";
 import { openSidebarGroup } from "../utils/sidebar";
 import { useApisContext } from "../context/ApiContext";
 import { useOrganization } from "../context/OrganizationContext";
@@ -32,171 +17,9 @@ import { SearchBar } from "../components/src/components/SearchBar";
 import EndPointCreationFlow from "./apis/CreationFlows/EndPointCreationFlow";
 import APIContractCreationFlow from "./apis/CreationFlows/APIContractCreationFlow";
 import ConfirmationDialog from "../common/ConfirmationDialog";
-import CardsPageLayout from "../common/CardsPageLayout";
+import NoDataImage from "../pages/overview/widgets/NoData.svg";
 
-/* ---------------- helpers ---------------- */
-
-type ApiCardData = {
-  id: string;
-  name: string;
-  owner: string;
-  version: string;
-  context: string;
-  description: string;
-  tags: string[];
-  extraTagsCount: number;
-  rating: number;
-};
-
-const initials = (name: string) => {
-  const letters = name.replace(/[^A-Za-z]/g, "");
-  if (!letters) return "API";
-  return (letters[0] + (letters[1] || "")).toUpperCase();
-};
-
-const ApiCard: React.FC<{
-  api: ApiCardData;
-  onClick: () => void;
-  onDelete: (e: React.MouseEvent) => void;
-}> = ({ api, onClick, onDelete }) => (
-  <Card
-    style={{
-      padding: 16,
-      position: "relative",
-      width: 350,
-      minHeight: 260,
-    }}
-    testId={api.id}
-  >
-    <CardActionArea onClick={onClick} sx={{ borderRadius: 1 }}>
-      <CardContent sx={{ p: 0 }}>
-        <Box display="flex" alignItems="center" gap={2}>
-          <Box
-            sx={{
-              width: 65,
-              height: 65,
-              borderRadius: 0.5,
-              backgroundImage: `linear-gradient(135deg,
-${theme.palette.augmentColor({ color: { main: "#059669" } }).light} 0%,
-#059669 55%,
-${theme.palette.augmentColor({ color: { main: "#059669" } }).dark} 100%)`,
-              color: "common.white",
-              fontWeight: 800,
-              fontSize: 28,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              mb: 1.5,
-            }}
-          >
-            {initials(api.name)}
-          </Box>
-          <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography 
-              variant="h4" 
-              sx={{ 
-                lineHeight: 1.2,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {api.name}
-            </Typography>
-            <Stack direction="row" spacing={2} useFlexGap>
-              <Box>
-                <Typography variant="caption" color="text.secondary">
-                  By: {api.owner}
-                </Typography>
-              </Box>
-            </Stack>
-          </Box>
-        </Box>
-
-        <Stack direction="row" spacing={3} sx={{ mb: 1 }}>
-          <Box>
-            <Typography variant="caption" color="text.secondary">
-              Version
-            </Typography>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {api.version}
-            </Typography>
-          </Box>
-          <Box>
-            <Typography variant="caption" color="text.secondary">
-              Context
-            </Typography>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {api.context}
-            </Typography>
-          </Box>
-        </Stack>
-
-        {(() => {
-          const desc = api.description ?? "";
-          const isTruncated = desc.length > 90;
-          const short = isTruncated ? desc.slice(0, 90).trimEnd() + "…" : desc;
-
-          return isTruncated ? (
-            <Tooltip title={desc} placement="top" arrow>
-              <Typography
-                fontSize={12}
-                color="#bbbabaff"
-                sx={{ mb: 1.25 }}
-              >
-                {short}
-              </Typography>
-            </Tooltip>
-          ) : (
-            <Typography fontSize={12} color="#bbbabaff" sx={{ mb: 1.25 }}>
-              {desc}
-            </Typography>
-          );
-        })()}
-
-        <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", mb: 1 }}>
-          {api.tags.map((t) => (
-            <Chip
-              key={t}
-              label={t}
-              size="small"
-              variant="outlined"
-              sx={{ borderRadius: 1 }}
-            />
-          ))}
-          {!!api.extraTagsCount && (
-            <Chip
-              label={`+${api.extraTagsCount}`}
-              size="small"
-              variant="outlined"
-              sx={{ borderRadius: 1 }}
-            />
-          )}
-        </Stack>
-
-        <Stack direction="row" alignItems="center" spacing={1}>
-          <Rating size="small" readOnly value={api.rating} precision={0.5} />
-          <Typography variant="caption" color="text.secondary">
-            {api.rating.toFixed(1)}/5.0
-          </Typography>
-        </Stack>
-      </CardContent>
-    </CardActionArea>
-    <IconButton
-      onClick={onDelete}
-      size="small"
-      color="error"
-      aria-label="Delete API"
-      sx={{
-        position: "absolute",
-        bottom: 8,
-        right: 8,
-      }}
-    >
-      <DeleteIcon fontSize="small" />
-    </IconButton>
-  </Card>
-);
+import ApiCard, { type ApiCardData } from "../pages/apis/ApiCard";
 
 const toCardData = (api: ApiSummary): ApiCardData => {
   const transports = api.transport ?? [];
@@ -205,8 +28,8 @@ const toCardData = (api: ApiSummary): ApiCardData => {
 
   return {
     id: api.id,
-    name: api.name,
-    owner: api.provider ?? "Unknown",
+    name: api.displayName ?? api.name,
+    provider: api.provider ?? "Unknown",
     version: api.version,
     context: api.context,
     description: api.description ?? "No description provided.",
@@ -216,15 +39,21 @@ const toCardData = (api: ApiSummary): ApiCardData => {
   };
 };
 
-/* ---------------- page ---------------- */
-
 const ApiListContent: React.FC = () => {
   const navigate = useNavigate();
   const params = useParams<{ orgHandle?: string; projectHandle?: string }>();
   const { organization } = useOrganization();
   const { projects, selectedProject, setSelectedProject, projectsLoaded } =
     useProjects();
-  const { apis, loading, createApi, selectApi, deleteApi, importOpenApi, refreshApis } = useApisContext();
+  const {
+    apis,
+    loading,
+    createApi,
+    selectApi,
+    deleteApi,
+    importOpenApi,
+    refreshApis,
+  } = useApisContext();
 
   const [query, setQuery] = React.useState("");
   const [wizardOpen, setWizardOpen] = React.useState(false);
@@ -233,8 +62,8 @@ const ApiListContent: React.FC = () => {
   const [deleteDialog, setDeleteDialog] = React.useState<{
     open: boolean;
     apiId: string;
-    apiName: string;
-  }>({ open: false, apiId: "", apiName: "" });
+    apiDisplayName: string;
+  }>({ open: false, apiId: "", apiDisplayName: "" });
 
   const orgHandle = organization?.handle ?? params.orgHandle ?? "";
   const projectSlugParam = params.projectHandle ?? null;
@@ -301,9 +130,9 @@ const ApiListContent: React.FC = () => {
   );
 
   const handleDelete = React.useCallback(
-    (apiId: string, apiName: string, e: React.MouseEvent) => {
+    (apiId: string, apiDisplayName: string, e: React.MouseEvent) => {
       e.stopPropagation();
-      setDeleteDialog({ open: true, apiId, apiName });
+      setDeleteDialog({ open: true, apiId, apiDisplayName });
     },
     []
   );
@@ -311,19 +140,14 @@ const ApiListContent: React.FC = () => {
   const confirmDelete = React.useCallback(async () => {
     try {
       await deleteApi(deleteDialog.apiId);
-      setDeleteDialog({ open: false, apiId: "", apiName: "" });
+      setDeleteDialog({ open: false, apiId: "", apiDisplayName: "" });
     } catch (error) {
       console.error("Failed to delete API:", error);
     }
   }, [deleteApi, deleteDialog.apiId]);
 
-  // First-time empty (no search & no apis) -> hide toolbar
   const isFirstTimeEmpty =
     !loading && !query.trim() && filteredApis.length === 0;
-
-  // Show toolbar when not inside flows/templates and not first-time empty
-  const showToolbar =
-    !wizardOpen && !templatesOpen && !contractOpen && !isFirstTimeEmpty;
 
   const handleEmptyStateAction = React.useCallback(
     (action: EmptyStateAction) => {
@@ -337,7 +161,6 @@ const ApiListContent: React.FC = () => {
         setContractOpen(true);
         return;
       }
-      // other templates can be wired similarly
       console.info("Learn more clicked", action.template);
     },
     []
@@ -363,8 +186,6 @@ const ApiListContent: React.FC = () => {
 
   return (
     <Box>
-
-      {/* Endpoint Creation Flow */}
       {wizardOpen && (
         <EndPointCreationFlow
           open={wizardOpen}
@@ -377,7 +198,6 @@ const ApiListContent: React.FC = () => {
         />
       )}
 
-      {/* Contract Creation Flow */}
       {contractOpen && (
         <APIContractCreationFlow
           open={contractOpen}
@@ -391,12 +211,10 @@ const ApiListContent: React.FC = () => {
         />
       )}
 
-      {/* Template grid (visible when user presses Create) */}
       {templatesOpen && !wizardOpen && !contractOpen && (
         <ApiEmptyState onAction={handleEmptyStateAction} />
       )}
 
-      {/* Main content area */}
       {!wizardOpen && !templatesOpen && !contractOpen && (
         <>
           {loading ? (
@@ -409,22 +227,27 @@ const ApiListContent: React.FC = () => {
               <CircularProgress size={28} />
             </Box>
           ) : query.trim() && filteredApis.length === 0 ? (
-            // Search active but no matches: show message below the toolbar
-            <Box textAlign="center" mt={6}>
-              <Typography variant="h5" fontWeight={700}>
-                No APIs match “{query}”
-              </Typography>
-              <Typography color="text.secondary" sx={{ mt: 1 }}>
-                Try a different name, context, or tag.
-              </Typography>
-            </Box>
-          ) : isFirstTimeEmpty ? (
-            <ApiEmptyState onAction={handleEmptyStateAction} />
-          ) : (
-            <CardsPageLayout
-              showToolbar={showToolbar}
-              topLeft={<Typography variant="h3">APIs</Typography>}
-              topRight={
+            // Search active but no results: show toolbar + message in same grid
+            <Box
+              sx={{
+                display: "grid",
+                gap: 3,
+                justifyContent: "center",
+                gridTemplateColumns: "repeat(auto-fill, 320px)",
+              }}
+            >
+              {/* Toolbar */}
+              <Box
+                sx={{
+                  gridColumn: "1 / -1",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  mb: 1,
+                }}
+              >
+                <Typography variant="h3">APIs</Typography>
+
                 <Stack direction="row" spacing={1} alignItems="center">
                   <SearchBar
                     testId="api-search"
@@ -439,60 +262,148 @@ const ApiListContent: React.FC = () => {
                   <Button
                     variant="contained"
                     startIcon={<AddIcon />}
-                    sx={{ textTransform: 'none' }}
+                    sx={{ textTransform: "none" }}
                     onClick={() => setTemplatesOpen(true)}
                   >
                     Create
                   </Button>
                 </Stack>
-              }
+              </Box>
+              <Box
+                sx={{
+                  gridColumn: "1 / -1",
+                  textAlign: "center",
+                  mt: 4,
+                }}
+              >
+                {/* No Data Illustration */}
+                <Box
+                  component="img"
+                  src={NoDataImage}
+                  alt="No data"
+                  sx={{
+                    width: 60,
+                    height: "auto",
+                    opacity: 0.9,
+                    mb: 1,
+                  }}
+                />
+
+                <Typography variant="h5" fontWeight={700}>
+                  No APIs match “{query}”
+                </Typography>
+                <Typography color="text.secondary" sx={{ mt: 1 }}>
+                  Try a different name, context, or tag.
+                </Typography>
+              </Box>
+            </Box>
+          ) : isFirstTimeEmpty ? (
+            <ApiEmptyState onAction={handleEmptyStateAction} />
+          ) : (
+            // Normal view: toolbar + cards grid
+            <Box
+              sx={{
+                display: "grid",
+                gap: 3,
+                justifyContent: "center",
+                gridTemplateColumns: "repeat(auto-fill, 320px)",
+              }}
             >
+              {/* Toolbar */}
+              <Box
+                sx={{
+                  gridColumn: "1 / -1",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  mb: 1,
+                }}
+              >
+                <Typography variant="h3">APIs</Typography>
+
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <SearchBar
+                    testId="api-search"
+                    placeholder="Search APIs"
+                    inputValue={query}
+                    onChange={setQuery}
+                    iconPlacement="left"
+                    bordered
+                    size="medium"
+                    color="secondary"
+                  />
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    sx={{ textTransform: "none" }}
+                    onClick={() => setTemplatesOpen(true)}
+                  >
+                    Create
+                  </Button>
+                </Stack>
+              </Box>
+
+              {/* Cards */}
               {filteredApis.map((apiSummary) => {
                 const card = toCardData(apiSummary);
                 return (
-                  <Box key={apiSummary.id} sx={{ display: 'flex', justifyContent: 'center' }}>
-                    <ApiCard
-                      api={card}
-                      onClick={() => handleNavigate(apiSummary)}
-                      onDelete={(e) => handleDelete(apiSummary.id, apiSummary.name, e)}
-                    />
-                  </Box>
+                  <ApiCard
+                    key={apiSummary.id}
+                    api={card}
+                    onClick={() => handleNavigate(apiSummary)}
+                    onDelete={(e) =>
+                      handleDelete(
+                        apiSummary.id,
+                        apiSummary.displayName ?? apiSummary.name,
+                        e
+                      )
+                    }
+                  />
                 );
               })}
-            </CardsPageLayout>
+            </Box>
           )}
         </>
       )}
 
       <ConfirmationDialog
         open={deleteDialog.open}
-        onClose={() => setDeleteDialog({ open: false, apiId: "", apiName: "" })}
+        onClose={() =>
+          setDeleteDialog({ open: false, apiId: "", apiDisplayName: "" })
+        }
         onConfirm={confirmDelete}
         title="Delete API"
         message={
           <Box>
-            <Typography variant="body1" sx={{ display: 'inline', mr: 0.5, color: 'text.primary' }}>
+            <Typography
+              variant="body1"
+              sx={{ display: "inline", mr: 0.5, color: "text.primary" }}
+            >
               Are you sure you want to remove the API
             </Typography>
             <Typography
               component="span"
-              sx={{ fontWeight: 700, fontSize: '1.05rem', ml: 0.5 }}
+              sx={{ fontWeight: 700, fontSize: "1.05rem", ml: 0.5 }}
             >
-              "{deleteDialog.apiName}"
+              "{deleteDialog.apiDisplayName}"
             </Typography>
-            <Typography component="span" sx={{ ml: 0.5, display: 'inline', color: 'text.primary' }}>
+            <Typography
+              variant="body1"
+              sx={{ ml: 0.5, display: "inline", color: "text.primary" }}
+            >
               ?
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              This action will be irreversible and all related details will be lost. Please type in the component name below to confirm.
+              This action will be irreversible and all related details will be
+              lost. Please type the API display name below to confirm.
             </Typography>
           </Box>
         }
-        confirmText="Delete"
+        primaryBtnText="Delete"
         cancelText="Cancel"
         severity="error"
-        confirmationText={deleteDialog.apiName}
-        confirmationPlaceholder={"Enter API name to confirm"}
+        confirmationText={deleteDialog.apiDisplayName}
+        confirmationPlaceholder={"Enter API display name to confirm"}
       />
     </Box>
   );

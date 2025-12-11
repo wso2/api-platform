@@ -44,7 +44,7 @@ const VersionInput: React.FC<Props> = ({ value, onChange, disabled, label }) => 
         <Box sx={{ width: 96 }}>
           <TextInput
             label={label ?? ""}
-            size="small"
+            size="medium"
             value={majorState}
             onChange={(v: string) => {
               touchedRef.current = true;
@@ -63,7 +63,7 @@ const VersionInput: React.FC<Props> = ({ value, onChange, disabled, label }) => 
 
         <Box sx={{ width: 96, mt:3 }}>
           <TextInput
-            size="small"
+            size="medium"
             value={minorState}
             onChange={(v: string) => {
               touchedRef.current = true;

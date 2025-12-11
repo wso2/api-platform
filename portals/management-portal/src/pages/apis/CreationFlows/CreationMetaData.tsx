@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Stack, Typography } from "@mui/material";
+import { Stack, Typography, Grid } from "@mui/material";
 
 import {
   useCreateComponentBuildpackContext,
@@ -7,24 +7,25 @@ import {
 } from "../../../context/CreateComponentBuildpackContext";
 import { TextInput } from "../../../components/src/components/TextInput";
 import VersionInput from "../../../common/VersionInput";
+import { Button } from "../../../components/src/components/Button";
+import Edit from "../../../components/src/Icons/generated/Edit";
 
 const slugify = (val: string) =>
-  val.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  val
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const buildIdentifierFromName = (name: string) => slugify(name);
 
 type Scope = "contract" | "endpoint";
 
 type Props = {
-  /**
-   * Which slice of context to use.
-   * Ignored if you pass value/onChange and use it as a controlled form.
-   */
   scope: Scope;
-
-  /** Optional controlled usage (overrides context). */
   value?: ProxyMetadata;
   onChange?: (next: ProxyMetadata) => void;
-
-  readOnlyFields?: Partial<Record<keyof ProxyMetadata, boolean>>;
+  readOnlyFields?: Partial<Record<keyof ProxyMetadata | "identifier", boolean>>;
   title?: string;
 };
 
@@ -35,18 +36,22 @@ const CreationMetaData: React.FC<Props> = ({
   readOnlyFields,
   title,
 }) => {
-  const usingContext = !value && !onChange;
   const ctx = useCreateComponentBuildpackContext();
 
-  const meta =
-    value ??
+  const meta: ProxyMetadata & {
+    identifier?: string;
+    identifierEdited?: boolean;
+  } = value ??
     (scope === "contract" ? ctx.contractMeta : ctx.endpointMeta) ?? {
       name: "",
+      displayName: "",
       target: "",
       context: "",
       version: "1.0.0",
       description: "",
       contextEdited: false,
+      identifier: "",
+      identifierEdited: false,
     };
 
   const setMeta =
@@ -56,37 +61,132 @@ const CreationMetaData: React.FC<Props> = ({
   const change = (patch: Partial<ProxyMetadata>) =>
     setMeta({ ...meta, ...patch });
 
-  const handleNameChange = (v: string) => {
-    if (!meta.contextEdited) {
-      const slug = slugify(v);
-      change({ name: v, context: slug ? `/${slug}` : "" });
-    } else {
-      change({ name: v });
+  // ----- Identifier editing state -----
+  // If identifier was edited earlier, allow it to be editable immediately.
+  const [isIdentifierEditing, setIsIdentifierEditing] = React.useState(
+    !!meta.identifierEdited
+  );
+
+  // If we already have a name but no identifier yet, generate it once on mount
+  React.useEffect(() => {
+    if (
+      meta.name &&
+      !meta.identifier &&
+      !meta.identifierEdited &&
+      !isIdentifierEditing
+    ) {
+      change({
+        identifier: buildIdentifierFromName(meta.name),
+      });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleNameChange = (v: string) => {
+    const slug = slugify(v);
+
+    const nextPatch: Partial<ProxyMetadata> & {
+      identifier?: string;
+      identifierEdited?: boolean;
+    } = {
+      name: slug ? slug : v,
+      displayName: v,
+    };
+
+    // Keep generating context from name until user edits context manually
+    if (!meta.contextEdited) {
+      nextPatch.context = slug ? `/${slug}` : "";
+    }
+
+    // Generate identifier from name until user edits identifier manually
+    if (!meta.identifierEdited && !isIdentifierEditing) {
+      nextPatch.identifier = buildIdentifierFromName(v);
+    }
+
+    change(nextPatch);
   };
 
   const handleContextChange = (v: string) => {
     change({ context: v, contextEdited: true });
   };
 
+  const handleIdentifierChange = (v: string) => {
+    change({
+      identifier: slugify(v),
+      identifierEdited: true,
+    });
+  };
+
+  const handleIdentifierEditClick = () => {
+    // When user clicks edit:
+    // - mark as edited so we stop auto-generating from name
+    // - allow the field to be edited
+    setIsIdentifierEditing(true);
+    change({
+      identifierEdited: true,
+    });
+  };
+
+  // Initial state: identifier is read-only (disabled) until user clicks "Edit"
+  const identifierDisabled =
+    !!readOnlyFields?.["identifier"] || !isIdentifierEditing;
+
   return (
     <Stack spacing={2}>
       {title ? (
-        <Typography variant="subtitle2" sx={{ mb: 0.25 }}>
+        <Typography variant="subtitle2">
           {title}
         </Typography>
       ) : null}
 
-      <TextInput
-        label="Name"
-        placeholder="Sample API"
-        value={meta.name || ""}
-        onChange={(v: string) => handleNameChange(v)}
-        testId=""
-        size="medium"
-        disabled={!!readOnlyFields?.name}
-      />
+      {/* First row: Name | Identifier | Version */}
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <TextInput
+            label="Name"
+            placeholder="Sample API"
+            value={meta.displayName || meta.name || ""}
+            onChange={(v: string) => handleNameChange(v)}
+            testId=""
+            size="medium"
+            disabled={!!readOnlyFields?.name}
+          />
+        </Grid>
 
+        <Grid size={{ xs: 12, md: 5 }}>
+          <Stack direction="row" spacing={1} alignItems="flex-end">
+            <TextInput
+              label="Identifier"
+              placeholder="reading-list-api-rw"
+              value={meta.identifier ?? ""}
+              onChange={(v: string) => handleIdentifierChange(v)}
+              testId=""
+              size="medium"
+              readonly={identifierDisabled} 
+            />
+            <Button
+              size="medium"
+              startIcon={<Edit />}
+              testId="component-name-edit"
+              variant="link"
+              onClick={handleIdentifierEditClick}
+              disabled={!!readOnlyFields?.["identifier"]}
+              style={{ marginBottom: 4 }}
+            />
+          </Stack>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 3 }}>
+          <VersionInput
+            value={meta.version}
+            onChange={(v: string) => change({ version: v })}
+            disabled={!!readOnlyFields?.version}
+            label="Version"
+          />
+        </Grid>
+      </Grid>
+
+      {/* Then Target, Context, Description */}
       <TextInput
         label="Target"
         placeholder="https://api.example.com/v1"
@@ -106,13 +206,6 @@ const CreationMetaData: React.FC<Props> = ({
         testId=""
         size="medium"
         disabled={!!readOnlyFields?.context}
-      />
-
-      <VersionInput
-        value={meta.version}
-        onChange={(v: string) => change({ version: v })}
-        disabled={!!readOnlyFields?.version}
-        label="Version"
       />
 
       <TextInput

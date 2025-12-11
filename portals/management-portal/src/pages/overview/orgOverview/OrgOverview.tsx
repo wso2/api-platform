@@ -29,6 +29,8 @@ type OrgOverviewProps = {
   onCreateProject?: (name: string, description: string) => Promise<void>;
   onRefresh?: () => Promise<void> | void;
   loading?: boolean;
+  autoOpenCreate?: boolean;
+  onAutoOpenCreateHandled?: () => void;
 };
 
 const getRelativeTime = (isoDate: string): string => {
@@ -70,13 +72,21 @@ const OrgOverview: React.FC<OrgOverviewProps> = ({
   onCreateProject,
   onRefresh,
   loading,
+  autoOpenCreate,
+  onAutoOpenCreateHandled,
 }) => {
   const [query, setQuery] = React.useState("");
-  const [createOpen, setCreateOpen] = React.useState(false);
+  const [createOpen, setCreateOpen] = React.useState(Boolean(autoOpenCreate));
 
   const openCreate = React.useCallback(() => {
     setCreateOpen(true);
   }, []);
+
+  React.useEffect(() => {
+    if (!autoOpenCreate) return;
+    setCreateOpen(true);
+    onAutoOpenCreateHandled?.();
+  }, [autoOpenCreate, onAutoOpenCreateHandled]);
 
   const filtered = React.useMemo(() => {
     if (!query.trim()) return projects;

@@ -3,19 +3,30 @@ import { Box, Paper, Stack, Typography, Alert, Grid } from "@mui/material";
 import { Button } from "../../../../components/src/components/Button";
 import { TextInput } from "../../../../components/src/components/TextInput";
 import CreationMetaData from "../CreationMetaData";
+import { useCreateComponentBuildpackContext } from "../../../../context/CreateComponentBuildpackContext";
 import {
-  useCreateComponentBuildpackContext,
-} from "../../../../context/CreateComponentBuildpackContext";
-import { useOpenApiValidation, type OpenApiValidationResponse } from "../../../../hooks/validation";
+  useOpenApiValidation,
+  type OpenApiValidationResponse,
+} from "../../../../hooks/validation";
 import { ApiOperationsList } from "../../../../components/src/components/Common/ApiOperationsList";
 import type { ImportOpenApiRequest, ApiSummary } from "../../../../hooks/apis";
-import { defaultServiceName, firstServerUrl, deriveContext, mapOperations, formatVersionToMajorMinor, isValidMajorMinorVersion } from "../../../../helpers/openApiHelpers";
+import {
+  defaultServiceName,
+  firstServerUrl,
+  deriveContext,
+  mapOperations,
+  formatVersionToMajorMinor,
+  isValidMajorMinorVersion,
+} from "../../../../helpers/openApiHelpers";
 
 /* ---------- Types ---------- */
 type Props = {
   open: boolean;
   selectedProjectId: string;
-  importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<ApiSummary>;
+  importOpenApi: (
+    payload: ImportOpenApiRequest,
+    opts?: { signal?: AbortSignal }
+  ) => Promise<ApiSummary>;
   refreshApis: (projectId?: string) => Promise<ApiSummary[]>;
   onClose: () => void;
 };
@@ -24,15 +35,23 @@ type Step = "url" | "details";
 
 /* ---------- component ---------- */
 
-const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenApi, refreshApis, onClose }) => {
+const URLCreationFlow: React.FC<Props> = ({
+  open,
+  selectedProjectId,
+  importOpenApi,
+  refreshApis,
+  onClose,
+}) => {
   const [step, setStep] = React.useState<Step>("url");
   const [specUrl, setSpecUrl] = React.useState<string>("");
-  const [validationResult, setValidationResult] = React.useState<OpenApiValidationResponse | null>(null);
+  const [validationResult, setValidationResult] =
+    React.useState<OpenApiValidationResponse | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [validating, setValidating] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
 
-  const { contractMeta, setContractMeta, resetContractMeta } = useCreateComponentBuildpackContext();
+  const { contractMeta, setContractMeta, resetContractMeta } =
+    useCreateComponentBuildpackContext();
   const { validateOpenApiUrl } = useOpenApiValidation();
   const abortControllerRef = React.useRef<AbortController | null>(null);
 
@@ -53,21 +72,24 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
     }
   }, [open, resetContractMeta]);
 
-  const autoFill = React.useCallback((api: any) => {
-    const title = api?.name?.trim() || api?.displayName?.trim() || "";
-    const version = formatVersionToMajorMinor(api?.version);
-    const description = api?.description || "";
-    const targetUrl = firstServerUrl(api);
+  const autoFill = React.useCallback(
+    (api: any) => {
+      const title = api?.name?.trim() || api?.displayName?.trim() || "";
+      const version = formatVersionToMajorMinor(api?.version);
+      const description = api?.description || "";
+      const targetUrl = firstServerUrl(api);
 
-    setContractMeta((prev: any) => ({
-      ...prev,
-      name: title || prev?.name || "Sample API",
-      version,
-      description,
-      context: deriveContext(api),
-      target: prev?.target || targetUrl || "",
-    }));
-  }, [setContractMeta]);
+      setContractMeta((prev: any) => ({
+        ...prev,
+        name: title || prev?.name || "Sample API",
+        version,
+        description,
+        context: deriveContext(api),
+        target: prev?.target || targetUrl || "",
+      }));
+    },
+    [setContractMeta]
+  );
 
   const handleFetchAndPreview = React.useCallback(async () => {
     if (!specUrl.trim()) return;
@@ -81,18 +103,21 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
       setValidating(true);
       setValidationResult(null);
 
-      const result = await validateOpenApiUrl(specUrl.trim(), { signal: abortController.signal });
+      const result = await validateOpenApiUrl(specUrl.trim(), {
+        signal: abortController.signal,
+      });
       setValidationResult(result);
 
       if (result.isAPIDefinitionValid) {
         autoFill(result.api);
         setStep("details");
       } else {
-        const errorMsg = result.errors?.join(", ") || "Invalid OpenAPI definition";
+        const errorMsg =
+          result.errors?.join(", ") || "Invalid OpenAPI definition";
         setError(errorMsg);
       }
     } catch (e: any) {
-      if (e.name === 'AbortError') return;
+      if (e.name === "AbortError") return;
       setError(e?.message || "Failed to validate OpenAPI from URL");
       setValidationResult(null);
     } finally {
@@ -146,17 +171,16 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
     setError(null);
 
     const serviceName = defaultServiceName(name);
-    const backendServices =
-      target
-        ? [
-            {
-              name: serviceName,
-              isDefault: true,
-              retries: 2,
-              endpoints: [{ url: target, description: "Primary backend" }],
-            },
-          ]
-        : [];
+    const backendServices = target
+      ? [
+          {
+            name: serviceName,
+            isDefault: true,
+            retries: 2,
+            endpoints: [{ url: target, description: "Primary backend" }],
+          },
+        ]
+      : [];
 
     try {
       await importOpenApi({
@@ -212,9 +236,7 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
                 <Button
                   variant="text"
                   onClick={() =>
-                    setSpecUrl(
-                      "https://petstore.swagger.io/v2/swagger.json"
-                    )
+                    setSpecUrl("https://petstore.swagger.io/v2/swagger.json")
                   }
                   disabled={validating}
                 >
@@ -238,7 +260,11 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
             </Paper>
 
             <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-              <Button variant="outlined" onClick={finishAndClose} sx={{ textTransform: "none" }}>
+              <Button
+                variant="outlined"
+                onClick={finishAndClose}
+                sx={{ textTransform: "none" }}
+              >
                 Cancel
               </Button>
             </Stack>
@@ -260,8 +286,8 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
                 sx={{ p: 3, borderRadius: 2, color: "text.secondary" }}
               >
                 <Typography variant="body2">
-                  Enter a direct URL to an OpenAPI/Swagger document (YAML or JSON).
-                  We'll fetch and preview it here.
+                  Enter a direct URL to an OpenAPI/Swagger document (YAML or
+                  JSON). We'll fetch and preview it here.
                 </Typography>
               </Paper>
             )}
@@ -272,43 +298,51 @@ const URLCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenA
       {step === "details" && (
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 6 }}>
-            <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-              <CreationMetaData scope="contract" title="API Details" />
-
-              <Stack
-                direction="row"
-                spacing={1}
-                justifyContent="flex-end"
-                sx={{ mt: 3 }}
+            {/* <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}> */}
+            <CreationMetaData scope="contract" title="API Details" />
+            <Stack
+              direction="row"
+              spacing={1}
+              justifyContent="flex-start"
+              sx={{ mt: 3 }}
+            >
+              <Button
+                variant="outlined"
+                onClick={() => setStep("url")}
+                sx={{ textTransform: "none" }}
               >
-                <Button variant="outlined" onClick={() => setStep("url")} sx={{ textTransform: "none" }}>
-                  Back
-                </Button>
-                <Button
-                  variant="contained"
-                  disabled={
-                    creating ||
-                    !(contractMeta?.name || "").trim() ||
-                    !(contractMeta?.context || "").trim() ||
-                    !isValidMajorMinorVersion((contractMeta?.version || "").trim())
-                  }
-                  onClick={onCreate}
-                  sx={{ textTransform: "none" }}
-                >
-                  {creating ? "Creating..." : "Create"}
-                </Button>
-              </Stack>
+                Back
+              </Button>
+              <Button
+                variant="contained"
+                disabled={
+                  creating ||
+                  !(contractMeta?.name || "").trim() ||
+                  !(contractMeta?.context || "").trim() ||
+                  !isValidMajorMinorVersion(
+                    (contractMeta?.version || "").trim()
+                  )
+                }
+                onClick={onCreate}
+                sx={{ textTransform: "none" }}
+              >
+                {creating ? "Creating..." : "Create"}
+              </Button>
+            </Stack>
 
-              {error && (
-                <Alert severity="error" sx={{ mt: 2 }}>
-                  {error}
-                </Alert>
-              )}
-            </Paper>
+            {error && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {error}
+              </Alert>
+            )}
+            {/* </Paper> */}
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }}>
-            <ApiOperationsList title="Fetched OAS Definition" operations={previewOps} />
+            <ApiOperationsList
+              title="Fetched OAS Definition"
+              operations={previewOps}
+            />
           </Grid>
         </Grid>
       )}
