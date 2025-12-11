@@ -1742,6 +1742,9 @@ type ServerInterface interface {
 	// Update an existing API configuration
 	// (PUT /apis/{id})
 	UpdateAPI(c *gin.Context, id string)
+	// Generate API key for an API
+	// (POST /apis/{name}/{version}/api-key)
+	GenerateAPIKey(c *gin.Context, name string, version string)
 	// List all custom certificates
 	// (GET /certificates)
 	ListCertificates(c *gin.Context)
@@ -1945,8 +1948,8 @@ func (siw *ServerInterfaceWrapper) GetAPIById(c *gin.Context) {
 	siw.Handler.GetAPIById(c, id)
 }
 
-// UpdateAPI operation middleware
-func (siw *ServerInterfaceWrapper) UpdateAPI(c *gin.Context) {
+// GenerateAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) GenerateAPIKey(c *gin.Context) {
 
 	var err error
 
@@ -1967,6 +1970,39 @@ func (siw *ServerInterfaceWrapper) UpdateAPI(c *gin.Context) {
 	}
 
 	siw.Handler.UpdateAPI(c, id)
+}
+
+// GenerateAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) GenerateAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GenerateAPIKey(c, name, version)
 }
 
 // ListCertificates operation middleware
@@ -2635,6 +2671,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/apis/:id", wrapper.DeleteAPI)
 	router.GET(options.BaseURL+"/apis/:id", wrapper.GetAPIById)
 	router.PUT(options.BaseURL+"/apis/:id", wrapper.UpdateAPI)
+	router.POST(options.BaseURL+"/apis/:name/:version/api-key", wrapper.GenerateAPIKey)
 	router.GET(options.BaseURL+"/certificates", wrapper.ListCertificates)
 	router.POST(options.BaseURL+"/certificates", wrapper.UploadCertificate)
 	router.POST(options.BaseURL+"/certificates/reload", wrapper.ReloadCertificates)

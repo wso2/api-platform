@@ -21,6 +21,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -2230,4 +2231,96 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 		zap.Int("apis", len(apisSlice)),
 		zap.Int("policies", len(policies)),
 		zap.Int("certificates", len(certificates)))
+}
+
+// GenerateAPIKey implements ServerInterface.GenerateAPIKey
+// (POST /apis/{name}/{version}/api-key)
+func (s *APIServer) GenerateAPIKey(c *gin.Context, name string, version string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+
+	// Check if API exists
+	_, err := s.store.GetByNameVersion(name, version)
+	if err != nil {
+		log.Warn("API configuration not found for API Key generation",
+			zap.String("name", name),
+			zap.String("version", version))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("API configuration with name '%s' and version '%s' not found", name, version),
+		})
+		return
+	}
+
+	// Generate new API key
+	apiKey, err := models.GenerateAPIKey(name, version)
+	if err != nil {
+		log.Error("Failed to generate API key",
+			zap.Error(err),
+			zap.String("name", name),
+			zap.String("version", version))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to generate API key",
+		})
+		return
+	}
+
+	// Save API key to database (only if persistent mode)
+	if s.db != nil {
+		if err := s.db.SaveAPIKey(apiKey); err != nil {
+			if errors.Is(err, storage.ErrConflict) {
+				// This should be extremely rare with 32-byte random keys
+				log.Warn("API key collision detected, retrying",
+					zap.String("name", name),
+					zap.String("version", version))
+
+				// Retry once with a new key
+				apiKey, err = models.GenerateAPIKey(name, version)
+				if err != nil {
+					log.Error("Failed to regenerate API key after collision", zap.Error(err))
+					c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+						Status:  "error",
+						Message: "Failed to generate unique API key",
+					})
+					return
+				}
+
+				if err := s.db.SaveAPIKey(apiKey); err != nil {
+					log.Error("Failed to save API key after retry", zap.Error(err))
+					c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+						Status:  "error",
+						Message: "Failed to save API key",
+					})
+					return
+				}
+			} else {
+				log.Error("Failed to save API key to database",
+					zap.Error(err),
+					zap.String("name", name),
+					zap.String("version", version))
+				c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+					Status:  "error",
+					Message: "Failed to save API key",
+				})
+				return
+			}
+		}
+	}
+
+	log.Info("API key generated successfully",
+		zap.String("name", name),
+		zap.String("version", version),
+		zap.String("key_id", apiKey.ID))
+
+	// Return success response
+	c.JSON(http.StatusCreated, gin.H{
+		"status":     "success",
+		"message":    "API key generated successfully",
+		"name":       apiKey.APIName,
+		"version":    apiKey.APIVersion,
+		"api_key":    apiKey.APIKey,
+		"created_at": apiKey.CreatedAt.Format(time.RFC3339),
+		"expires_at": nil, // No expiration by default
+	})
 }

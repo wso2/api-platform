@@ -103,5 +103,35 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
 -- Index for fast name lookups
 CREATE INDEX IF NOT EXISTS idx_template_handle ON llm_provider_templates(handle);
 
--- Set schema version to 4
-PRAGMA user_version = 4;
+-- Table for API keys
+CREATE TABLE IF NOT EXISTS api_keys (
+    -- Primary identifier (UUID)
+    id TEXT PRIMARY KEY,
+    
+    -- The generated API key
+    api_key TEXT NOT NULL UNIQUE,
+    
+    -- API reference
+    api_name TEXT NOT NULL,
+    api_version TEXT NOT NULL,
+    
+    -- Key status
+    status TEXT NOT NULL CHECK(status IN ('active', 'revoked', 'expired')) DEFAULT 'active',
+    
+    -- Timestamps
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NULL,  -- NULL means no expiration
+    
+    -- Foreign key relationship to deployments
+    FOREIGN KEY (api_name, api_version) REFERENCES deployments(name, version) ON DELETE CASCADE
+);
+
+-- Indexes for API key lookups
+CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);
+CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(api_name, api_version);
+CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_keys(status);
+CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);
+
+-- Set schema version to 5
+PRAGMA user_version = 5;

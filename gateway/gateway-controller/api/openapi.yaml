@@ -347,6 +347,82 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /apis/{name}/{version}/api-key:
+    post:
+      summary: Generate API key for an API
+      description: |
+        Generate a new API key for the specified API. The generated key can be
+        used by clients to authenticate requests to the API if API Key validation
+        policy is applied. The key is a 32-byte random value encoded in hexadecimal
+        and prefixed with "gw_".
+      operationId: generateAPIKey
+      tags:
+        - API Management
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: Name of the API to generate the API key for
+          schema:
+            type: string
+          example: weather-api
+        - name: version
+          in: path
+          required: true
+          description: Version of the API
+          schema:
+            type: string
+          example: v1.0
+      responses:
+        '201':
+          description: API key generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: API key generated successfully
+                  name:
+                    type: string
+                    description: Name of the API
+                    example: weather-api
+                  version:
+                    type: string
+                    description: Version of the API
+                    example: v1.0
+                  api_key:
+                    type: string
+                    description: Generated API key with gw_ prefix
+                    example: "gw_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                  created_at:
+                    type: string
+                    format: date-time
+                    description: Timestamp when the API key was generated
+                    example: "2025-12-08T10:30:00Z"
+                  expires_at:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    description: Expiration timestamp (null if no expiration)
+                    example: null
+        '404':
+          description: API configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /certificates:
     get:
       summary: List all custom certificates
