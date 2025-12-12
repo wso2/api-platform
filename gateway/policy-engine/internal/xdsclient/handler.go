@@ -198,20 +198,21 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 		}
 
 		// Create instance using factory with metadata and params
-		impl, err := h.registry.CreateInstance(policyConfig.Name, policyConfig.Version, metadata, policyConfig.Parameters)
+		// CreateInstance returns the policy and merged params (initParams + runtime params)
+		impl, mergedParams, err := h.registry.CreateInstance(policyConfig.Name, policyConfig.Version, metadata, policyConfig.Parameters)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create policy instance %s:%s for route %s: %w",
 				policyConfig.Name, policyConfig.Version, routeKey, err)
 		}
 
-		// Build PolicySpec
+		// Build PolicySpec with merged params so OnRequest/OnResponse receive merged values
 		spec := policy.PolicySpec{
 			Name:               policyConfig.Name,
 			Version:            policyConfig.Version,
 			Enabled:            policyConfig.Enabled,
 			ExecutionCondition: policyConfig.ExecutionCondition,
 			Parameters: policy.PolicyParameters{
-				Raw: policyConfig.Parameters,
+				Raw: mergedParams,
 			},
 		}
 

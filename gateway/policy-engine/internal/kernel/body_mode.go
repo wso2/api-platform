@@ -35,11 +35,15 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 		}
 
 		// Create instance using factory with metadata and params
-		impl, err := reg.CreateInstance(spec.Name, spec.Version, metadata, spec.Parameters.Raw)
+		// CreateInstance returns the policy and merged params (initParams + runtime params)
+		impl, mergedParams, err := reg.CreateInstance(spec.Name, spec.Version, metadata, spec.Parameters.Raw)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create policy instance %s:%s for route %s: %w",
 				spec.Name, spec.Version, routeKey, err)
 		}
+
+		// Update spec with merged params so OnRequest/OnResponse receive merged values
+		spec.Parameters.Raw = mergedParams
 
 		// Add to policy list
 		chain.Policies = append(chain.Policies, impl)

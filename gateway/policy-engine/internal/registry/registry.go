@@ -70,21 +70,22 @@ func (r *PolicyRegistry) GetDefinition(name, version string) (*policy.PolicyDefi
 
 // CreateInstance creates a new policy instance for a specific route
 // This method is called during BuildPolicyChain for each route-policy combination
+// Returns the policy instance and the merged parameters (initParams + params)
 func (r *PolicyRegistry) CreateInstance(
 	name, version string,
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
-) (policy.Policy, error) {
+) (policy.Policy, map[string]interface{}, error) {
 	key := compositeKey(name, version)
 
 	factory, ok := r.Factories[key]
 	if !ok {
-		return nil, fmt.Errorf("policy factory not found: %s", key)
+		return nil, nil, fmt.Errorf("policy factory not found: %s", key)
 	}
 
 	def, ok := r.Definitions[key]
 	if !ok {
-		return nil, fmt.Errorf("policy definition not found: %s", key)
+		return nil, nil, fmt.Errorf("policy definition not found: %s", key)
 	}
 
 	// Extract initParams from PolicyDefinition
@@ -104,10 +105,10 @@ func (r *PolicyRegistry) CreateInstance(
 	// Call factory to create instance with merged params
 	instance, err := factory(metadata, mergedParams)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create policy instance %s: %w", key, err)
+		return nil, nil, fmt.Errorf("failed to create policy instance %s: %w", key, err)
 	}
 
-	return instance, nil
+	return instance, mergedParams, nil
 }
 
 // GetFactory retrieves a policy factory by name and version
