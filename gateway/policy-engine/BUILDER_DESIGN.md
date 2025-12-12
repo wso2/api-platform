@@ -392,7 +392,7 @@ func init() {
 
     {{- range .Policies}}
     // Register {{.Name}}:{{.Version}}
-    if err := registry.Register({{.ImportAlias}}.NewPolicy()); err != nil {
+    if err := registry.Register({{.ImportAlias}}.GetPolicy()); err != nil {
         panic("Failed to register policy {{.Name}}:{{.Version}}: " + err.Error())
     }
     {{- end}}
@@ -435,7 +435,7 @@ for i in $(seq 0 $((policy_count - 1))); do
     import_alias=$(echo "${name}_${version}" | sed 's/[^a-zA-Z0-9_]/_/g')
 
     imports+="    $import_alias \"$module_path\"\n"
-    registrations+="    registry.Register($import_alias.NewPolicy())\n"
+    registrations+="    registry.Register($import_alias.GetPolicy())\n"
 
     # Add to go.mod replace directives (for local development)
     echo "replace $module_path => $path" >> "$SRC_DIR/go.mod"
@@ -887,8 +887,8 @@ import (
 
 type JWTPolicy struct{}
 
-func NewPolicy() policies.Policy {
-    return &JWTPolicy{}
+func GetPolicy(metadata policies.PolicyMetadata, params map[string]interface{}) (policies.Policy, error) {
+    return &JWTPolicy{}, nil
 }
 
 func (p *JWTPolicy) Name() string {
@@ -987,8 +987,8 @@ type ResponsePolicy interface {
 }
 
 // Factory function that builder expects
-func NewPolicy() Policy {
-    return &YourPolicyImplementation{}
+func GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, error) {
+    return &YourPolicyImplementation{}, nil
 }
 ```
 

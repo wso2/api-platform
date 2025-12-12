@@ -46,7 +46,7 @@ parameters:
       type: string
       description: Override for the authorization header scheme prefix (e.g., "Bearer", "JWT"). If specified at user-level, takes precedence over system configuration for this route.
 
-initParameters:          
+systemParameters:          
   type: object
   additionalProperties: false
   properties:
@@ -113,62 +113,62 @@ initParameters:
                   certificatePath:
                     type: string
                     description: Path to certificate or public key file (e.g., /etc/certs/public.pem).
-      "wso2/defaultValue": "$config(JWTAuth.KeyManagers)"
+      "wso2/defaultValue": "${config.JWTAuth.KeyManagers}"
 
     jwksCacheTtl:
       type: string
       description: Duration string for JWKS caching (e.g., "5m"). If omitted a default is used.
-      "wso2/defaultValue": "$config(JWTAuth.JwksCacheTtl)"
+      "wso2/defaultValue": "${config.JWTAuth.JwksCacheTtl}"
 
     jwksFetchTimeout:
       type: string
       description: Timeout for HTTP fetch of JWKS, e.g., "5s".
-      "wso2/defaultValue": "$config(JWTAuth.JwksFetchTimeout)"
+      "wso2/defaultValue": "${config.JWTAuth.JwksFetchTimeout}"
 
     jwksFetchRetryCount:
       type: integer
       description: Number of retries for JWKS fetch on transient failures.
-      "wso2/defaultValue": "$config(JWTAuth.JwksFetchRetryCount)"
+      "wso2/defaultValue": "${config.JWTAuth.JwksFetchRetryCount}"
 
     jwksFetchRetryInterval:
       type: string
       description: Interval between JWKS fetch retries, e.g., "2s".
-      "wso2/defaultValue": "$config(JWTAuth.JwksFetchRetryInterval)"
+      "wso2/defaultValue": "${config.JWTAuth.JwksFetchRetryInterval}"
 
     allowedAlgorithms:
       type: array
       description: Allowed JWT signing algorithms (e.g., ["RS256","ES256"]).
       items:
         type: string
-      "wso2/defaultValue": "$config(JWTAuth.AllowedAlgorithms)"
+      "wso2/defaultValue": "${config.JWTAuth.AllowedAlgorithms}"
 
     leeway:
       type: string
       description: Clock skew allowance for exp/nbf checks, e.g., "30s".
-      "wso2/defaultValue": "$config(JWTAuth.Leeway)"
+      "wso2/defaultValue": "${config.JWTAuth.Leeway}"
 
     authHeaderScheme:
       type: string
       description: Expected scheme prefix in the authorization header (e.g., "Bearer"). If set, runtime enforces the scheme; if omitted, runtime may accept raw header values or strip known schemes.
       default: Bearer
-      "wso2/defaultValue": "$config(JWTAuth.AuthHeaderScheme)"
+      "wso2/defaultValue": "${config.JWTAuth.AuthHeaderScheme}"
 
     headerName:
       type: string
       description: Header name to extract token from (default "Authorization").
       default: Authorization
-      "wso2/defaultValue": "$config(JWTAuth.HeaderName)"
+      "wso2/defaultValue": "${config.JWTAuth.HeaderName}"
 
     onFailureStatusCode:
       type: integer
       description: HTTP status code to return on authentication failure (401 for Unauthorized, 403 for Forbidden).
       default: 401
-      "wso2/defaultValue": "$config(JWTAuth.OnFailureStatusCode)"
+      "wso2/defaultValue": "${config.JWTAuth.OnFailureStatusCode}"
 
     errorMessageFormat:
       type: string
       description: Format of error response on JWT validation failure. Supported values are "json" (structured error), "plain" (plain text), or "minimal" (minimal response).
       default: json
-      "wso2/defaultValue": "$config(JWTAuth.ErrorMessageFormat)"
+      "wso2/defaultValue": "${config.JWTAuth.ErrorMessageFormat}"
 
   required: ["keyManagers"]

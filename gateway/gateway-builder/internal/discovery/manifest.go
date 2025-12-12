@@ -233,14 +233,14 @@ func DiscoverPoliciesFromManifest(manifestPath string, baseDir string) ([]*types
 
 		// Create discovered policy
 		policy := &types.DiscoveredPolicy{
-			Name:           definition.Name,
-			Version:        definition.Version,
-			Path:           policyPath,
-			YAMLPath:       policyYAMLPath,
-			GoModPath:      filepath.Join(policyPath, "go.mod"),
-			SourceFiles:    sourceFiles,
-			InitParameters: ExtractDefaultValues(definition.InitParameters),
-			Definition:     definition,
+			Name:             definition.Name,
+			Version:          definition.Version,
+			Path:             policyPath,
+			YAMLPath:         policyYAMLPath,
+			GoModPath:        filepath.Join(policyPath, "go.mod"),
+			SourceFiles:      sourceFiles,
+			SystemParameters: ExtractDefaultValues(definition.SystemParameters),
+			Definition:       definition,
 		}
 
 		discovered = append(discovered, policy)

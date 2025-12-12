@@ -21,7 +21,7 @@ type PolicyRegistry struct {
 	// Factory creates policy instances with metadata, initParams, and params
 	Factories map[string]policy.PolicyFactory
 
-	// ConfigResolver resolves $config() CEL expressions in initParameters
+	// ConfigResolver resolves ${config} CEL expressions in systemParameters
 	ConfigResolver *ConfigResolver
 }
 
@@ -40,6 +40,24 @@ func GetRegistry() *PolicyRegistry {
 	return globalRegistry
 }
 
+// mergeParams merges initParams (resolved) with runtime params
+// Runtime params override init params when keys conflict
+func mergeParams(initParams, params map[string]interface{}) map[string]interface{} {
+	merged := make(map[string]interface{}, len(initParams)+len(params))
+
+	// Copy initParams first
+	for k, v := range initParams {
+		merged[k] = v
+	}
+
+	// Override with runtime params
+	for k, v := range params {
+		merged[k] = v
+	}
+
+	return merged
+}
+
 // GetDefinition retrieves a policy definition by name and version
 func (r *PolicyRegistry) GetDefinition(name, version string) (*policy.PolicyDefinition, error) {
 	key := compositeKey(name, version)
@@ -52,41 +70,50 @@ func (r *PolicyRegistry) GetDefinition(name, version string) (*policy.PolicyDefi
 
 // CreateInstance creates a new policy instance for a specific route
 // This method is called during BuildPolicyChain for each route-policy combination
+// Returns the policy instance and the merged parameters (initParams + params)
 func (r *PolicyRegistry) CreateInstance(
 	name, version string,
 	metadata policy.PolicyMetadata,
 	params map[string]interface{},
-) (policy.Policy, error) {
+) (policy.Policy, map[string]interface{}, error) {
 	key := compositeKey(name, version)
 
 	factory, ok := r.Factories[key]
 	if !ok {
-		return nil, fmt.Errorf("policy factory not found: %s", key)
+		return nil, nil, fmt.Errorf("policy factory not found: %s", key)
 	}
 
 	def, ok := r.Definitions[key]
 	if !ok {
-		return nil, fmt.Errorf("policy definition not found: %s", key)
+		return nil, nil, fmt.Errorf("policy definition not found: %s", key)
 	}
 
 	// Extract initParams from PolicyDefinition
-	initParams := def.InitParameters
+	initParams := def.SystemParameters
 	if initParams == nil {
 		initParams = make(map[string]interface{})
 	}
 
-	// Resolve $config() references in initParams
-	if r.ConfigResolver != nil {
-		initParams = r.ConfigResolver.ResolveMap(initParams)
+	// Resolve ${config} references in initParams
+	if r.ConfigResolver == nil {
+		return nil, nil, fmt.Errorf("policy %s: ConfigResolver is not initialized", key)
 	}
-
-	// Call factory to create instance
-	instance, err := factory(metadata, initParams, params)
+	var err error
+	initParams, err = r.ConfigResolver.ResolveMap(initParams)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create policy instance %s: %w", key, err)
+		return nil, nil, fmt.Errorf("failed to resolve config for policy %s: %w", key, err)
 	}
 
-	return instance, nil
+	// Merge resolved initParams with runtime params (params override initParams)
+	mergedParams := mergeParams(initParams, params)
+
+	// Call factory to create instance with merged params
+	instance, err := factory(metadata, mergedParams)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create policy instance %s: %w", key, err)
+	}
+
+	return instance, mergedParams, nil
 }
 
 // GetFactory retrieves a policy factory by name and version
@@ -115,10 +142,15 @@ func (r *PolicyRegistry) Register(def *policy.PolicyDefinition, factory policy.P
 	return nil
 }
 
-// SetConfig sets the configuration for resolving $config() references in initParameters
+// SetConfig sets the configuration for resolving ${config} references in systemParameters
 // This should be called during startup after loading the config file
-func (r *PolicyRegistry) SetConfig(config map[string]interface{}) {
-	r.ConfigResolver = NewConfigResolver(config)
+func (r *PolicyRegistry) SetConfig(config map[string]interface{}) error {
+	resolver, err := NewConfigResolver(config)
+	if err != nil {
+		return fmt.Errorf("failed to create config resolver: %w", err)
+	}
+	r.ConfigResolver = resolver
+	return nil
 }
 
 // compositeKey creates a composite key from name and version

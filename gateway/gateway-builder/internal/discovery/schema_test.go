@@ -62,12 +62,12 @@ func TestExtractDefaultValues_Precedence(t *testing.T) {
 					"prop1": map[string]interface{}{
 						"type":              "string",
 						"default":           "default-value",
-						"wso2/defaultValue": "$config(Prop1)",
+						"wso2/defaultValue": "${config.Prop1}",
 					},
 				},
 			},
 			want: map[string]interface{}{
-				"prop1": "$config(Prop1)",
+				"prop1": "${config.Prop1}",
 			},
 		},
 		{
@@ -92,12 +92,12 @@ func TestExtractDefaultValues_Precedence(t *testing.T) {
 				"properties": map[string]interface{}{
 					"prop1": map[string]interface{}{
 						"type":              "string",
-						"wso2/defaultValue": "$config(Prop1)",
+						"wso2/defaultValue": "${config.Prop1}",
 					},
 				},
 			},
 			want: map[string]interface{}{
-				"prop1": "$config(Prop1)",
+				"prop1": "${config.Prop1}",
 			},
 		},
 		{
@@ -168,36 +168,36 @@ func TestExtractDefaultValues_JWTAuthRealWorld(t *testing.T) {
 			"authHeaderScheme": map[string]interface{}{
 				"type":              "string",
 				"default":           "Bearer",
-				"wso2/defaultValue": "$config(JWTAuth.AuthHeaderScheme)",
+				"wso2/defaultValue": "${config.JWTAuth.AuthHeaderScheme}",
 			},
 			"headerName": map[string]interface{}{
 				"type":              "string",
 				"default":           "Authorization",
-				"wso2/defaultValue": "$config(JWTAuth.HeaderName)",
+				"wso2/defaultValue": "${config.JWTAuth.HeaderName}",
 			},
 			"onFailureStatusCode": map[string]interface{}{
 				"type":              "integer",
 				"default":           401,
-				"wso2/defaultValue": "$config(JWTAuth.OnFailureStatusCode)",
+				"wso2/defaultValue": "${config.JWTAuth.OnFailureStatusCode}",
 			},
 			"jwksCacheTtl": map[string]interface{}{
 				"type":              "string",
-				"wso2/defaultValue": "$config(JWTAuth.JwksCacheTtl)",
+				"wso2/defaultValue": "${config.JWTAuth.JwksCacheTtl}",
 			},
 			"keyManagers": map[string]interface{}{
 				"type":              "array",
-				"wso2/defaultValue": "$config(JWTAuth.KeyManagers)",
+				"wso2/defaultValue": "${config.JWTAuth.KeyManagers}",
 			},
 		},
 	}
 
 	got := ExtractDefaultValues(schema)
 	want := map[string]interface{}{
-		"authHeaderScheme":    "$config(JWTAuth.AuthHeaderScheme)",
-		"headerName":          "$config(JWTAuth.HeaderName)",
-		"onFailureStatusCode": "$config(JWTAuth.OnFailureStatusCode)",
-		"jwksCacheTtl":        "$config(JWTAuth.JwksCacheTtl)",
-		"keyManagers":         "$config(JWTAuth.KeyManagers)",
+		"authHeaderScheme":    "${config.JWTAuth.AuthHeaderScheme}",
+		"headerName":          "${config.JWTAuth.HeaderName}",
+		"onFailureStatusCode": "${config.JWTAuth.OnFailureStatusCode}",
+		"jwksCacheTtl":        "${config.JWTAuth.JwksCacheTtl}",
+		"keyManagers":         "${config.JWTAuth.KeyManagers}",
 	}
 
 	if !reflect.DeepEqual(got, want) {
@@ -216,7 +216,7 @@ func TestExtractDefaultValues_MixedProperties(t *testing.T) {
 			},
 			"withWso2Default": map[string]interface{}{
 				"type":              "string",
-				"wso2/defaultValue": "$config(Value2)",
+				"wso2/defaultValue": "${config.Value2}",
 			},
 			"noDefault": map[string]interface{}{
 				"type": "string",
@@ -224,7 +224,7 @@ func TestExtractDefaultValues_MixedProperties(t *testing.T) {
 			"withBothDefaults": map[string]interface{}{
 				"type":              "integer",
 				"default":           100,
-				"wso2/defaultValue": "$config(Value3)",
+				"wso2/defaultValue": "${config.Value3}",
 			},
 		},
 	}
@@ -232,8 +232,8 @@ func TestExtractDefaultValues_MixedProperties(t *testing.T) {
 	got := ExtractDefaultValues(schema)
 	want := map[string]interface{}{
 		"withDefault":      "value1",
-		"withWso2Default":  "$config(Value2)",
-		"withBothDefaults": "$config(Value3)", // wso2/defaultValue takes precedence
+		"withWso2Default":  "${config.Value2}",
+		"withBothDefaults": "${config.Value3}", // wso2/defaultValue takes precedence
 	}
 
 	if !reflect.DeepEqual(got, want) {

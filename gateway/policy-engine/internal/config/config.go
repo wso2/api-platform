@@ -18,7 +18,7 @@ type Config struct {
 	Logging    LoggingConfig    `mapstructure:"logging"`
 
 	// RawConfig holds the complete raw configuration map including custom fields
-	// This is used for resolving $config() CEL expressions in policy initParameters
+	// This is used for resolving ${config} CEL expressions in policy systemParameters
 	RawConfig map[string]interface{} `mapstructure:",remain"`
 }
 
@@ -134,7 +134,7 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	// Capture complete raw config map for $config() resolution
+	// Capture complete raw config map for ${config} CEL resolution
 	cfg.RawConfig = v.AllSettings()
 
 	// Validate config

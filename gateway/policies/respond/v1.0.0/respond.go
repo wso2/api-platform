@@ -10,10 +10,8 @@ type RespondPolicy struct{}
 
 var ins = &RespondPolicy{}
 
-// NewPolicy creates a new BasicAuthPolicy instance
-func NewPolicy(
+func GetPolicy(
 	metadata policy.PolicyMetadata,
-	initParams map[string]interface{},
 	params map[string]interface{},
 ) (policy.Policy, error) {
 	return ins, nil
