@@ -155,10 +155,6 @@ func (r *ConfigResolver) evaluateCEL(expression string) (interface{}, error) {
 		return nil, fmt.Errorf("CEL environment not initialized")
 	}
 
-	// Lowercase the expression to match Viper's key normalization
-	// Viper converts all YAML keys to lowercase, so we need to match that
-	expression = strings.ToLower(expression)
-
 	// Parse the CEL expression
 	ast, issues := r.env.Compile(expression)
 	if issues != nil && issues.Err() != nil {
