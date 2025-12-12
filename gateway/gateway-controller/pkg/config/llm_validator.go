@@ -197,7 +197,7 @@ func (v *LLMValidator) validateProviderData(data *api.LLMProviderConfigData) []V
 	if !v.urlFriendlyNameRegex.MatchString(data.Name) {
 		errors = append(errors, ValidationError{
 			Field:   "spec.name",
-			Message: "Provider name must contain only letters, numbers, spaces, hyphens, underscores, and dots",
+			Message: "Provider name must contain only letters, numbers, hyphens, underscores, and dots",
 		})
 	}
 

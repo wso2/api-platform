@@ -46,11 +46,11 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/certstore"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
-	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"
 	anypb "google.golang.org/protobuf/types/known/anypb"
@@ -217,7 +217,7 @@ func (t *Translator) TranslateConfigs(
 		})
 		virtualHost := &route.VirtualHost{
 			Name:    vhost,
-			Domains: []string{vhost}, // or []string{"*"} if you want wildcard
+			Domains: []string{vhost, vhost + ":*"},
 			Routes:  routes,
 		}
 		virtualHosts = append(virtualHosts, virtualHost)
