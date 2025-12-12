@@ -68,75 +68,97 @@ If `jsonPath` is empty or not specified, the entire payload is treated as a stri
 
 ### Example 1: Basic URL Validation
 
-Validate URLs in request content using HTTP HEAD requests:
+Deploy an LLM provider that validates URLs in request content using HTTP HEAD requests:
 
-```yaml
-policies:
-  - name: URLGuardrail
-    version: v0.1.0
-    paths:
+```bash
+curl -X POST http://localhost:9090/llm-providers \
+  -H "Content-Type: application/yaml" \
+  --data-binary @- <<'EOF'
+version: ai.api-platform.wso2.com/v1
+kind: llm/provider
+spec:
+  name: url-guardrail-provider
+  version: v1.0
+  template: openai
+  vhost: openai
+  upstream:
+    url: https://api.openai.com/v1
+    auth:
+      type: api-key
+      header: Authorization
+      value: <openai-apikey>
+  accessControl:
+    mode: deny_all
+    exceptions:
       - path: /chat/completions
         methods: [POST]
-        params:
-          request:
-            jsonPath: "$.messages[0].content"
-            onlyDNS: false
-            timeout: 5000
+      - path: /models
+        methods: [GET]
+      - path: /models/{modelId}
+        methods: [GET]
+  policies:
+    - name: URLGuardrail
+      version: v0.1.0
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            request:
+              jsonPath: "$.messages[0].content"
+              onlyDNS: false
+              timeout: 5000
+EOF
 ```
 
-### Example 2: Fast DNS-Only Validation
+**Test the guardrail:**
 
-Quick validation using DNS resolution only:
+**Note**: Ensure that "openai" is mapped to the appropriate IP address (e.g., 127.0.0.1) in your `/etc/hosts` file. or remove the vhost from the llm provider configuration and use localhost to invoke.
 
-```yaml
-policies:
-  - name: URLGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            jsonPath: "$.messages[0].content"
-            onlyDNS: true
-            timeout: 2000
+```bash
+# Valid request (should pass)
+curl -X POST http://openai:8080/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Host: openai" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Visit https://www.example.com for more information"
+      }
+    ]
+  }'
+
+# Invalid request - invalid URL (should fail with HTTP 422)
+curl -X POST http://openai:8080/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Host: openai" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Visit https://invalid-url-that-does-not-exist-12345.com"
+      }
+    ]
+  }'
 ```
 
-### Example 3: Response URL Validation
+### Additional Configuration Options
 
-Ensure AI responses contain only valid, reachable URLs:
+You can customize the guardrail behavior by modifying the `policies` section:
 
-```yaml
-policies:
-  - name: URLGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          response:
-            jsonPath: "$.choices[0].message.content"
-            onlyDNS: false
-            timeout: 3000
-            showAssessment: true
-```
+- **Request and Response Validation**: Configure both `request` and `response` parameters to validate URLs in both directions. Use `showAssessment: true` to include detailed assessment information including invalid URLs in error responses.
 
-### Example 4: Full Payload Validation
+- **DNS-Only Validation**: Set `onlyDNS: true` for faster validation that only checks DNS resolution. This is less reliable but faster than HTTP HEAD validation.
 
-Validate URLs in the entire request body:
+- **HTTP HEAD Validation**: Set `onlyDNS: false` (default) for more thorough validation that performs both DNS lookup and HTTP HEAD request to verify URL reachability.
 
-```yaml
-policies:
-  - name: URLGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            onlyDNS: false
-            timeout: 5000
-```
+- **Timeout Configuration**: Adjust the `timeout` parameter (in milliseconds) based on network conditions and acceptable latency. Default is 3000ms (3 seconds).
+
+- **Full Payload Validation**: Omit the `jsonPath` parameter to validate URLs in the entire request body without JSONPath extraction.
+
+- **Field-Specific Validation**: Use `jsonPath` to extract and validate URLs from specific fields within JSON payloads (e.g., `"$.messages[0].content"` for message content or `"$.choices[0].message.content"` for response content).
 
 ## Use Cases
 
@@ -152,11 +174,10 @@ policies:
 
 ## Error Response
 
-When validation fails, the guardrail returns an HTTP 446 status code with the following structure:
+When validation fails, the guardrail returns an HTTP 422 status code with the following structure:
 
 ```json
 {
-  "code": 900514,
   "type": "URL_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
@@ -171,21 +192,20 @@ If `showAssessment` is enabled, additional details including invalid URLs are in
 
 ```json
 {
-    "code": 900514,
-    "type": "URL_GUARDRAIL",
-    "message": {
-        "action": "GUARDRAIL_INTERVENED",
-        "interveningGuardrail": "URLGuardrail",
-        "actionReason": "Violation of url validity detected.",
-        "assessments": {
-            "invalidUrls": [
-                "http://example.com/suspicious-link",
-                "https://foo.bar.baz"
-            ],
-            "message": "One or more URLs in the payload failed validation."
-        },
-        "direction": "REQUEST"
-    }
+  "type": "URL_GUARDRAIL",
+  "message": {
+    "action": "GUARDRAIL_INTERVENED",
+    "interveningGuardrail": "URLGuardrail",
+    "actionReason": "Violation of url validity detected.",
+    "assessments": {
+      "invalidUrls": [
+        "http://example.com/suspicious-link",
+        "https://foo.bar.baz"
+      ],
+      "message": "One or more URLs in the payload failed validation."
+    },
+    "direction": "REQUEST"
+  }
 }
 ```
 

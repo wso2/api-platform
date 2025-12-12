@@ -57,6 +57,6 @@ parameters:
             If false (default), restores masked PII from request phase.
           default: false
 
-initParameters:
+systemParameters:         
   type: object
   properties: {}

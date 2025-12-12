@@ -12,9 +12,8 @@ import (
 )
 
 const (
-	GuardrailErrorCode         = 446
-	GuardrailAPIMExceptionCode = 900514
-	TextCleanRegex             = "^\"|\"$"
+	GuardrailErrorCode = 422
+	TextCleanRegex     = "^\"|\"$"
 )
 
 var textCleanRegexCompiled = regexp.MustCompile(TextCleanRegex)
@@ -242,14 +241,13 @@ func (p *ContentLengthGuardrailPolicy) buildErrorResponse(reason string, validat
 	assessment := p.buildAssessmentObject(reason, validationError, isResponse, showAssessment, min, max)
 
 	responseBody := map[string]interface{}{
-		"code":    GuardrailAPIMExceptionCode,
 		"type":    "CONTENT_LENGTH_GUARDRAIL",
 		"message": assessment,
 	}
 
 	bodyBytes, err := json.Marshal(responseBody)
 	if err != nil {
-		bodyBytes = []byte(fmt.Sprintf(`{"code":%d,"type":"CONTENT_LENGTH_GUARDRAIL","message":"Internal error"}`, GuardrailAPIMExceptionCode))
+		bodyBytes = []byte(`{"type":"CONTENT_LENGTH_GUARDRAIL","message":"Internal error"}`)
 	}
 
 	if isResponse {

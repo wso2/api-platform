@@ -60,148 +60,103 @@ The guardrail supports JSON Schema Draft 7, including:
 
 ### Example 1: Basic Object Validation
 
-Validate that request contains a user object with required fields:
+Deploy an LLM provider that validates that request contains a user object with required fields:
 
-```yaml
-policies:
-  - name: JSONSchemaGuardrail
-    version: v0.1.0
-    paths:
+```bash
+curl -X POST http://localhost:9090/llm-providers \
+  -H "Content-Type: application/yaml" \
+  --data-binary @- <<'EOF'
+version: ai.api-platform.wso2.com/v1
+kind: llm/provider
+spec:
+  name: json-schema-provider
+  version: v1.0
+  template: openai
+  vhost: openai
+  upstream:
+    url: https://api.openai.com/v1
+    auth:
+      type: api-key
+      header: Authorization
+      value: <openai-apikey>
+  accessControl:
+    mode: deny_all
+    exceptions:
       - path: /chat/completions
         methods: [POST]
-        params:
-          request:
-            schema: |
-              {
-                "type": "object",
-                "properties": {
-                  "name": {"type": "string", "minLength": 1},
-                  "email": {"type": "string", "format": "email"},
-                  "age": {"type": "integer", "minimum": 18}
-                },
-                "required": ["name", "email"]
-              }
-```
-
-### Example 2: Field-Specific Validation
-
-Validate a specific field within the JSON payload:
-
-```yaml
-policies:
-  - name: JSONSchemaGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            schema: |
-              {
-                "type": "object",
-                "properties": {
-                  "content": {"type": "string", "minLength": 10, "maxLength": 1000}
-                },
-                "required": ["content"]
-              }
-            jsonPath: "$.messages[0]"
-```
-
-### Example 3: Array Validation
-
-Validate that response contains an array of items with specific structure:
-
-```yaml
-policies:
-  - name: JSONSchemaGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          response:
-            schema: |
-              {
-                "type": "array",
-                "items": {
+      - path: /models
+        methods: [GET]
+      - path: /models/{modelId}
+        methods: [GET]
+  policies:
+    - name: JSONSchemaGuardrail
+      version: v0.1.0
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            request:
+              schema: |
+                {
                   "type": "object",
                   "properties": {
-                    "id": {"type": "string"},
-                    "title": {"type": "string", "minLength": 1},
-                    "score": {"type": "number", "minimum": 0, "maximum": 100}
+                    "name": {"type": "string", "minLength": 1},
+                    "email": {"type": "string", "format": "email"},
+                    "age": {"type": "integer", "minimum": 18}
                   },
-                  "required": ["id", "title"]
-                },
-                "minItems": 1,
-                "maxItems": 100
-              }
-            jsonPath: "$.results"
-            showAssessment: true
+                  "required": ["name", "email"]
+                }
+EOF
 ```
 
-### Example 4: Complex Nested Validation
+**Test the guardrail:**
 
-Validate nested structures with multiple levels:
+**Note**: Ensure that "openai" is mapped to the appropriate IP address (e.g., 127.0.0.1) in your `/etc/hosts` file. or remove the vhost from the llm provider configuration and use localhost to invoke.
 
-```yaml
-policies:
-  - name: JSONSchemaGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            schema: |
-              {
-                "type": "object",
-                "properties": {
-                  "user": {
-                    "type": "object",
-                    "properties": {
-                      "profile": {
-                        "type": "object",
-                        "properties": {
-                          "firstName": {"type": "string"},
-                          "lastName": {"type": "string"},
-                          "preferences": {
-                            "type": "array",
-                            "items": {"type": "string"}
-                          }
-                        },
-                        "required": ["firstName", "lastName"]
-                      }
-                    },
-                    "required": ["profile"]
-                  }
-                },
-                "required": ["user"]
-              }
+```bash
+# Valid request (should pass)
+curl -X POST http://openai:8080/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Host: openai" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello"
+      }
+    ],
+    "name": "John Doe",
+    "email": "john@example.com",
+    "age": 25
+  }'
+
+# Invalid request - missing required fields (should fail with HTTP 422)
+curl -X POST http://openai:8080/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Host: openai" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello"
+      }
+    ]
+  }'
 ```
 
-### Example 5: Inverted Logic
+### Additional Configuration Options
 
-Block requests that match a specific schema pattern:
+You can customize the guardrail behavior by modifying the `policies` section:
 
-```yaml
-policies:
-  - name: JSONSchemaGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            schema: |
-              {
-                "type": "object",
-                "properties": {
-                  "sensitive": {"type": "boolean"}
-                },
-                "required": ["sensitive"]
-              }
-            invert: true
-```
+- **Request and Response Validation**: Configure both `request` and `response` parameters to validate JSON schemas in both directions. Use `showAssessment: true` to include detailed validation error information in error responses.
+
+- **Inverted Logic**: Set `invert: true` to allow only content that does *not* match the schema. This is useful for blocking requests that match specific schema patterns.
+
+- **Full Payload Validation**: Omit the `jsonPath` parameter to validate the entire request body against the schema.
+
+- **Field-Specific Validation**: Use `jsonPath` to extract and validate specific fields within JSON payloads (e.g., `"$.messages[0]"` for message objects or `"$.results"` for response arrays).
 
 ## Use Cases
 
@@ -217,17 +172,16 @@ policies:
 
 ## Error Response
 
-When validation fails, the guardrail returns an HTTP 446 status code with the following structure:
+When validation fails, the guardrail returns an HTTP 422 status code with the following structure:
 
 ```json
 {
-  "code": 900514,
   "type": "JSON_SCHEMA_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
+    "interveningGuardrail": "JSONSchemaGuardrail",
     "actionReason": "Violation of JSON schema detected.",
-    "direction": "REQUEST",
-    "interveningGuardrail": "JSONSchemaGuardrail"
+    "direction": "REQUEST"
   }
 }
 ```
@@ -236,9 +190,10 @@ If `showAssessment` is enabled, detailed validation errors are included:
 
 ```json
 {
-  "code": 900514,
+  "type": "JSON_SCHEMA_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
+    "interveningGuardrail": "JSONSchemaGuardrail",
     "actionReason": "Violation of JSON schema detected.",
     "assessments": [
       {
@@ -247,10 +202,8 @@ If `showAssessment` is enabled, detailed validation errors are included:
         "value": "Hi"
       }
     ],
-    "direction": "REQUEST",
-    "interveningGuardrail": "JSONSchemaGuardrail"
-  },
-  "type": "JSON_SCHEMA_GUARDRAIL"
+    "direction": "REQUEST"
+  }
 }
 ```
 

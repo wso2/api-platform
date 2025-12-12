@@ -10,8 +10,7 @@ import (
 )
 
 const (
-	GuardrailErrorCode         = 446
-	GuardrailAPIMExceptionCode = 900514
+	GuardrailErrorCode = 422
 )
 
 // JSONSchemaGuardrailPolicy implements JSON schema validation
@@ -230,7 +229,6 @@ func (p *JSONSchemaGuardrailPolicy) buildErrorResponse(reason string, validation
 	assessment := p.buildAssessmentObject(reason, validationError, isResponse, showAssessment, errors)
 
 	responseBody := map[string]interface{}{
-		"code":    GuardrailAPIMExceptionCode,
 		"type":    "JSON_SCHEMA_GUARDRAIL",
 		"message": assessment,
 	}
@@ -238,7 +236,7 @@ func (p *JSONSchemaGuardrailPolicy) buildErrorResponse(reason string, validation
 	bodyBytes, err := json.Marshal(responseBody)
 	if err != nil {
 		// Fallback to minimal error response
-		bodyBytes = []byte(fmt.Sprintf(`{"code":%d,"type":"JSON_SCHEMA_GUARDRAIL","message":"Internal error"}`, GuardrailAPIMExceptionCode))
+		bodyBytes = []byte(`{"type":"JSON_SCHEMA_GUARDRAIL","message":"Internal error"}`)
 	}
 
 	if isResponse {
