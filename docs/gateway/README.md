@@ -13,7 +13,7 @@ A complete API gateway system consisting of Gateway-Controller (xDS control plan
 ### Router
 - **Purpose**: Envoy Proxy-based data plane that routes HTTP traffic to backend services
 - **Technology**: Envoy Proxy 1.35.3
-- **Port**: 8080 (HTTP traffic)
+- **Ports**: 8080 (HTTP traffic), 8443 (HTTPS traffic)
 - **Admin Port**: 9901 (Envoy admin interface)
 
 ### Policy Engine
@@ -55,7 +55,7 @@ unzip gateway-v0.1.0.zip
 
 
 # Start the complete stack
-cd gateway/
+cd gateway-v0.1.0/
 docker compose up -d
 
 # Verify gateway controller is running
@@ -96,7 +96,7 @@ EOF
 
 # Test routing through the gateway
 curl http://localhost:8080/weather/v1.0/us/seattle
-curl https://localhost:5443/weather/v1.0/us/seattle -k
+curl https://localhost:8443/weather/v1.0/us/seattle -k
 ```
 
 ### Stopping the Gateway

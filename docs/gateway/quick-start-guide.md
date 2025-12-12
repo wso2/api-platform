@@ -20,14 +20,14 @@ Ensure `docker` and `docker compose` commands are available.
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway-v0.0.1/gateway-v0.0.1.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway-v0.1.0/gateway-v0.1.0.zip
 
 # Unzip the downloaded distribution.
-unzip gateway-v0.0.1.zip
+unzip gateway-v0.1.0.zip
 
 
 # Start the complete stack
-cd gateway/
+cd gateway-v0.1.0/
 docker compose up -d
 
 # Verify gateway controller is running
@@ -67,7 +67,7 @@ EOF
 
 # Test routing through the gateway
 curl http://localhost:8080/weather/v1.0/us/seattle
-curl https://localhost:5443/weather/v1.0/us/seattle -k
+curl https://localhost:8443/weather/v1.0/us/seattle -k
 ```
 
 ### Stopping the Gateway
