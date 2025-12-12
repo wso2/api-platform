@@ -38,6 +38,7 @@ type Props = {
 };
 
 type NameVersionOverride = { name?: string; version?: string; force?: boolean };
+type IdentifierOverride = { identifier?: string; force?: boolean };
 
 const CreationMetaData: React.FC<Props> = ({
   scope,
@@ -84,6 +85,10 @@ const CreationMetaData: React.FC<Props> = ({
     null
   );
 
+  const [nameVersionValidating, setNameVersionValidating] =
+    React.useState(false);
+  const [identifierValidating, setIdentifierValidating] = React.useState(false);
+
   const lastCheckedNameVersionRef = React.useRef<{
     name: string;
     version: string;
@@ -97,9 +102,8 @@ const CreationMetaData: React.FC<Props> = ({
   const didInitValidateRef = React.useRef(false);
   const debounceMs = 2000;
 
-  const onValidationChangeRef = React.useRef<Props["onValidationChange"]>(
-    onValidationChange
-  );
+  const onValidationChangeRef =
+    React.useRef<Props["onValidationChange"]>(onValidationChange);
   React.useEffect(() => {
     onValidationChangeRef.current = onValidationChange;
   }, [onValidationChange]);
@@ -143,12 +147,9 @@ const CreationMetaData: React.FC<Props> = ({
   const identifierDisplayValue = React.useMemo(() => {
     const base = (meta.identifier ?? "").trim();
     if (!base) return "";
-    if (meta.identifierEdited) {
-      return base;
-    }
+    if (meta.identifierEdited) return base;
     if (!versionMajor) return base;
     if (/-v\d+$/i.test(base)) return base;
-
     return `${base}-v${versionMajor}`;
   }, [meta.identifier, meta.identifierEdited, versionMajor]);
 
@@ -183,16 +184,17 @@ const CreationMetaData: React.FC<Props> = ({
         return;
       }
 
-      lastCheckedNameVersionRef.current = {
-        name: effectiveName,
-        version: effectiveVersion,
-      };
-
       try {
+        setNameVersionValidating(true);
+
         const res = await validateNameVersion({
           name: effectiveName,
           version: effectiveVersion,
         });
+        lastCheckedNameVersionRef.current = {
+          name: effectiveName,
+          version: effectiveVersion,
+        };
 
         if (!res.valid) {
           setNameVersionError(
@@ -202,11 +204,15 @@ const CreationMetaData: React.FC<Props> = ({
           setNameVersionError(null);
         }
       } catch (e) {
+        lastCheckedNameVersionRef.current = null;
+
         const msg =
           e instanceof Error
             ? e.message
             : "Failed to validate name and version.";
         setNameVersionError(msg);
+      } finally {
+        setNameVersionValidating(false);
       }
     },
     [meta.displayName, meta.name, meta.version, validateNameVersion]
@@ -236,20 +242,21 @@ const CreationMetaData: React.FC<Props> = ({
   );
 
   const runIdentifierValidation = React.useCallback(
-    async (override?: { identifier?: string }) => {
-      const effectiveIdentifier = (
-        override?.identifier ?? identifierToValidate
+    async (override?: IdentifierOverride) => {
+      const effectiveIdentifier = slugify(
+        (override?.identifier ?? identifierToValidate).trim()
       ).trim();
 
       if (!effectiveIdentifier) return;
 
       const last = lastCheckedIdentifierRef.current;
-      if (last === effectiveIdentifier) return;
-
-      lastCheckedIdentifierRef.current = effectiveIdentifier;
+      if (!override?.force && last === effectiveIdentifier) return;
 
       try {
+        setIdentifierValidating(true);
+
         const res = await validateIdentifier(effectiveIdentifier);
+        lastCheckedIdentifierRef.current = effectiveIdentifier;
 
         if (!res.valid) {
           setIdentifierError(
@@ -259,9 +266,12 @@ const CreationMetaData: React.FC<Props> = ({
           setIdentifierError(null);
         }
       } catch (e) {
+        lastCheckedIdentifierRef.current = null;
         const msg =
           e instanceof Error ? e.message : "Failed to validate identifier.";
         setIdentifierError(msg);
+      } finally {
+        setIdentifierValidating(false);
       }
     },
     [identifierToValidate, validateIdentifier]
@@ -280,7 +290,7 @@ const CreationMetaData: React.FC<Props> = ({
   );
 
   const flushIdentifierValidation = React.useCallback(
-    (override?: { identifier?: string }) => {
+    (override?: IdentifierOverride) => {
       if (identifierTimerRef.current) {
         window.clearTimeout(identifierTimerRef.current);
         identifierTimerRef.current = null;
@@ -349,9 +359,18 @@ const CreationMetaData: React.FC<Props> = ({
     onValidationChangeRef.current?.({
       nameVersionError,
       identifierError,
-      hasError: !!nameVersionError || !!identifierError,
+      hasError:
+        !!nameVersionError ||
+        !!identifierError ||
+        nameVersionValidating ||
+        identifierValidating,
     });
-  }, [nameVersionError, identifierError]);
+  }, [
+    nameVersionError,
+    identifierError,
+    nameVersionValidating,
+    identifierValidating,
+  ]);
 
   return (
     <Stack spacing={2}>
@@ -382,7 +401,7 @@ const CreationMetaData: React.FC<Props> = ({
                 setIdentifierError(null);
                 scheduleIdentifierValidation({ identifier: v });
               }}
-              onBlur={(() => flushIdentifierValidation()) as any}
+              onBlur={(() => flushIdentifierValidation({ force: true })) as any}
               testId="Identifier"
               size="medium"
               readonly={identifierDisabled}
