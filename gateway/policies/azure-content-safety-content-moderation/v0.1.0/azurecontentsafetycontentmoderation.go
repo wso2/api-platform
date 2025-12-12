@@ -313,7 +313,7 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 
 		if threshold >= 0 && severity >= threshold {
 			// Violation detected
-			return p.buildErrorResponse("Violation of Azure content safety content moderation detected", nil, isResponse, params.ShowAssessment, categoriesAnalysis)
+			return p.buildErrorResponse("Violation of Azure content safety content moderation detected", nil, isResponse, params.ShowAssessment, categoriesAnalysis, extractedValue)
 		}
 	}
 
@@ -443,8 +443,8 @@ func (p *AzureContentSafetyContentModerationPolicy) makeHTTPRequest(method, url 
 }
 
 // buildErrorResponse builds an error response for both request and response phases
-func (p *AzureContentSafetyContentModerationPolicy) buildErrorResponse(reason string, validationError error, isResponse bool, showAssessment bool, categoriesAnalysis []map[string]interface{}) interface{} {
-	assessment := p.buildAssessmentObject(reason, validationError, isResponse, showAssessment, categoriesAnalysis)
+func (p *AzureContentSafetyContentModerationPolicy) buildErrorResponse(reason string, validationError error, isResponse bool, showAssessment bool, categoriesAnalysis []map[string]interface{}, inspectedContent string) interface{} {
+	assessment := p.buildAssessmentObject(reason, validationError, isResponse, showAssessment, categoriesAnalysis, inspectedContent)
 
 	responseBody := map[string]interface{}{
 		"code":    GuardrailAPIMExceptionCode,
@@ -478,7 +478,7 @@ func (p *AzureContentSafetyContentModerationPolicy) buildErrorResponse(reason st
 }
 
 // buildAssessmentObject builds the assessment object
-func (p *AzureContentSafetyContentModerationPolicy) buildAssessmentObject(reason string, validationError error, isResponse bool, showAssessment bool, categoriesAnalysis []map[string]interface{}) map[string]interface{} {
+func (p *AzureContentSafetyContentModerationPolicy) buildAssessmentObject(reason string, validationError error, isResponse bool, showAssessment bool, categoriesAnalysis []map[string]interface{}, inspectedContent string) map[string]interface{} {
 	assessment := map[string]interface{}{
 		"action":               "GUARDRAIL_INTERVENED",
 		"interveningGuardrail": "AzureContentSafetyContentModeration",
@@ -501,7 +501,7 @@ func (p *AzureContentSafetyContentModerationPolicy) buildAssessmentObject(reason
 			assessment["assessments"] = []string{validationError.Error()}
 		} else if len(categoriesAnalysis) > 0 {
 			assessmentsWrapper := map[string]interface{}{
-				"inspectedContent": reason,
+				"inspectedContent": inspectedContent,
 			}
 
 			var assessmentsArray []map[string]interface{}

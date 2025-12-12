@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
@@ -272,8 +273,13 @@ func (p *PIIMaskingRegexPolicy) maskPIIFromContent(content string, piiEntities m
 	}
 
 	// Second pass: replace all matches
-	for original, placeholder := range allMatches {
-		maskedContent = strings.ReplaceAll(maskedContent, original, placeholder)
+	originals := make([]string, 0, len(allMatches))
+	for original := range allMatches {
+		originals = append(originals, original)
+	}
+	sort.Slice(originals, func(i, j int) bool { return len(originals[i]) > len(originals[j]) })
+	for _, original := range originals {
+		maskedContent = strings.ReplaceAll(maskedContent, original, allMatches[original])
 	}
 
 	// Store PII mappings in metadata for response restoration

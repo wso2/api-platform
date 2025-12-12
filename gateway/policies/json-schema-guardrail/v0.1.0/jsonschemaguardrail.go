@@ -204,9 +204,13 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params JSONS
 
 // extractValueFromJSONPathForSchema extracts a value from JSON using JSONPath and returns as JSON bytes
 func extractValueFromJSONPathForSchema(payload []byte, jsonPath string) ([]byte, error) {
-	var jsonData map[string]interface{}
-	if err := json.Unmarshal(payload, &jsonData); err != nil {
+	var any interface{}
+	if err := json.Unmarshal(payload, &any); err != nil {
 		return nil, fmt.Errorf("error unmarshaling JSON: %w", err)
+	}
+	jsonData, ok := any.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("jsonPath extraction requires a JSON object payload (got %T)", any)
 	}
 
 	value, err := utils.ExtractValueFromJsonpath(jsonData, jsonPath)

@@ -157,6 +157,13 @@ func (p *RegexGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params ma
 
 // validatePayload validates payload against regex pattern
 func (p *RegexGuardrailPolicy) validatePayload(payload []byte, params RegexGuardrailPolicyParams, isResponse bool) interface{} {
+	// Nothing to validate (avoid blocking no-body requests / 204 responses)
+	if len(payload) == 0 {
+		if isResponse {
+			return policy.UpstreamResponseModifications{}
+		}
+		return policy.UpstreamRequestModifications{}
+	}
 	// Extract value using JSONPath
 	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, params.JsonPath)
 	if err != nil {

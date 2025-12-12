@@ -297,7 +297,7 @@ func (p *ContentLengthGuardrailPolicy) buildAssessmentObject(reason string, vali
 			} else {
 				assessmentMessage = fmt.Sprintf("Violation of content length detected. Expected content length to be between %d and %d bytes.", min, max)
 			}
-			assessment["assessments"] = assessmentMessage
+			assessment["assessments"] = []string{assessmentMessage}
 		}
 	}
 
