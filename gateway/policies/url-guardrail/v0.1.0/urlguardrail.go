@@ -17,11 +17,10 @@ import (
 )
 
 const (
-	GuardrailErrorCode         = 446
-	GuardrailAPIMExceptionCode = 900514
-	TextCleanRegex             = "^\"|\"$"
-	URLRegex                   = "https?://[^\\s,\"'{}\\[\\]\\\\`*]+"
-	DefaultTimeout             = 3000 // milliseconds
+	GuardrailErrorCode = 422
+	TextCleanRegex     = "^\"|\"$"
+	URLRegex           = "https?://[^\\s,\"'{}\\[\\]\\\\`*]+"
+	DefaultTimeout     = 3000 // milliseconds
 )
 
 var (
@@ -289,14 +288,13 @@ func (p *URLGuardrailPolicy) buildErrorResponse(reason string, validationError e
 	assessment := p.buildAssessmentObject(reason, validationError, isResponse, showAssessment, invalidURLs)
 
 	responseBody := map[string]interface{}{
-		"code":    GuardrailAPIMExceptionCode,
 		"type":    "URL_GUARDRAIL",
 		"message": assessment,
 	}
 
 	bodyBytes, err := json.Marshal(responseBody)
 	if err != nil {
-		bodyBytes = []byte(fmt.Sprintf(`{"code":%d,"type":"URL_GUARDRAIL","message":"Internal error"}`, GuardrailAPIMExceptionCode))
+		bodyBytes = []byte(`{"type":"URL_GUARDRAIL","message":"Internal error"}`)
 	}
 
 	if isResponse {

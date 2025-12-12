@@ -60,91 +60,92 @@ The guardrail uses Go's standard regexp package, which supports RE2 syntax. Key 
 
 ### Example 1: Email Validation
 
-Ensure user input contains a valid email address:
+Deploy an LLM provider that ensures user input contains a valid email address:
 
-```yaml
-policies:
-  - name: RegexGuardrail
-    version: v0.1.0
-    paths:
+```bash
+curl -X POST http://localhost:9090/llm-providers \
+  -H "Content-Type: application/yaml" \
+  --data-binary @- <<'EOF'
+version: ai.api-platform.wso2.com/v1
+kind: llm/provider
+spec:
+  name: regex-provider
+  version: v1.0
+  template: openai
+  vhost: openai
+  upstream:
+    url: https://api.openai.com/v1
+    auth:
+      type: api-key
+      header: Authorization
+      value: <openai-apikey>
+  accessControl:
+    mode: deny_all
+    exceptions:
       - path: /chat/completions
         methods: [POST]
-        params:
-          request:
-            regex: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
-            jsonPath: "$.messages[0].content"
+      - path: /models
+        methods: [GET]
+      - path: /models/{modelId}
+        methods: [GET]
+  policies:
+    - name: RegexGuardrail
+      version: v0.1.0
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            request:
+              regex: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+              jsonPath: "$.messages[0].content"
+EOF
 ```
 
-### Example 2: Block Prohibited Patterns
+**Test the guardrail:**
 
-Block requests containing password-related content using inverted logic:
+**Note**: Ensure that "openai" is mapped to the appropriate IP address (e.g., 127.0.0.1) in your `/etc/hosts` file. or remove the vhost from the llm provider configuration and use localhost to invoke.
 
-```yaml
-policies:
-  - name: RegexGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            regex: "(?i).*password.*"
-            invert: true
-            jsonPath: "$.messages[0].content"
+```bash
+# Valid request (should pass)
+curl -X POST http://openai:8080/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Host: openai" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Contact me at user@example.com"
+      }
+    ]
+  }'
+
+# Invalid request - no email (should fail with HTTP 422)
+curl -X POST http://openai:8080/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Host: openai" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Contact me"
+      }
+    ]
+  }'
 ```
 
-### Example 3: Response Format Validation
+### Additional Configuration Options
 
-Ensure AI responses follow a specific format (e.g., must start with a capital letter):
+You can customize the guardrail behavior by modifying the `policies` section:
 
-```yaml
-policies:
-  - name: RegexGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          response:
-            regex: "^[A-Z].*"
-            jsonPath: "$.choices[0].message.content"
-            showAssessment: true
-```
+- **Request and Response Validation**: Configure both `request` and `response` parameters to validate patterns in both directions. Use `showAssessment: true` to include detailed assessment information in error responses.
 
-### Example 4: Phone Number Validation
+- **Inverted Logic**: Set `invert: true` to allow only content that does *not* match the regex pattern. This is useful for blocking prohibited patterns (e.g., password-related content, admin keywords).
 
-Validate phone numbers in a specific format:
+- **Full Payload Validation**: Omit the `jsonPath` parameter to validate the entire request body without JSONPath extraction.
 
-```yaml
-policies:
-  - name: RegexGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            regex: "^\\+?[1-9]\\d{1,14}$"
-            jsonPath: "$.phone"
-```
-
-### Example 5: Block Admin-Related Content
-
-Prevent admin-related requests using case-insensitive matching and inverted logic:
-
-```yaml
-policies:
-  - name: RegexGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            regex: "(?i).*admin.*"
-            invert: true
-            jsonPath: "$.messages[0].content"
-```
+- **Field-Specific Validation**: Use `jsonPath` to extract and validate specific fields within JSON payloads (e.g., `"$.messages[0].content"` for message content or `"$.choices[0].message.content"` for response content).
 
 ## Use Cases
 
@@ -160,19 +161,17 @@ policies:
 
 ## Error Response
 
-When validation fails, the guardrail returns an HTTP 446 status code with the following structure:
+When validation fails, the guardrail returns an HTTP 422 status code with the following structure:
 
 ```json
 {
-    "code": 900514,
-    "message": {
-        "action": "GUARDRAIL_INTERVENED",
-        "actionReason": "Violation of regular expression detected.",
-        "assessments": "Violated regular expression: (?i)ignore\\s+all\\s+previous\\s+instructions",
-        "direction": "REQUEST",
-        "interveningGuardrail": "RegexGuardrail"
-    },
-    "type": "REGEX_GUARDRAIL"
+  "type": "REGEX_GUARDRAIL",
+  "message": {
+    "action": "GUARDRAIL_INTERVENED",
+    "interveningGuardrail": "RegexGuardrail",
+    "actionReason": "Violation of regular expression detected.",
+    "direction": "REQUEST"
+  }
 }
 ```
 
@@ -180,15 +179,14 @@ If `showAssessment` is enabled, additional details are included:
 
 ```json
 {
-    "code": 900514,
-    "message": {
-        "action": "GUARDRAIL_INTERVENED",
-        "actionReason": "Violation of regular expression detected.",
-        "assessments": "Violated regular expression: (?i)ignore\\s+all\\s+previous\\s+instructions",
-        "direction": "REQUEST",
-        "interveningGuardrail": "Regex Guardrail"
-    },
-    "type": "REGEX_GUARDRAIL"
+  "type": "REGEX_GUARDRAIL",
+  "message": {
+    "action": "GUARDRAIL_INTERVENED",
+    "interveningGuardrail": "RegexGuardrail",
+    "actionReason": "Violation of regular expression detected.",
+    "assessments": "Violation of regular expression detected. (?i)ignore\\s+all\\s+previous\\s+instructions",
+    "direction": "REQUEST"
+  }
 }
 ```
 

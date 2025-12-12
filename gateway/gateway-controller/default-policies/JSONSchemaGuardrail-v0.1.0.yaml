@@ -72,6 +72,6 @@ parameters:
       required:
       - schema
 
-initParameters:
+systemParameters:         
   type: object
   properties: {}

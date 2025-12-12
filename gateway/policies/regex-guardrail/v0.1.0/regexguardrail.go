@@ -10,8 +10,7 @@ import (
 )
 
 const (
-	GuardrailErrorCode         = 446
-	GuardrailAPIMExceptionCode = 900514
+	GuardrailErrorCode = 422
 )
 
 // RegexGuardrailPolicy implements regex-based content validation
@@ -198,14 +197,13 @@ func (p *RegexGuardrailPolicy) buildErrorResponse(reason string, validationError
 	assessment := p.buildAssessmentObject(reason, validationError, isResponse, showAssessment)
 
 	responseBody := map[string]interface{}{
-		"code":    GuardrailAPIMExceptionCode,
 		"type":    "REGEX_GUARDRAIL",
 		"message": assessment,
 	}
 
 	bodyBytes, err := json.Marshal(responseBody)
 	if err != nil {
-		bodyBytes = []byte(fmt.Sprintf(`{"code":%d,"type":"REGEX_GUARDRAIL","message":"Internal error"}`, GuardrailAPIMExceptionCode))
+		bodyBytes = []byte(`{"type":"REGEX_GUARDRAIL","message":"Internal error"}`)
 	}
 
 	if isResponse {

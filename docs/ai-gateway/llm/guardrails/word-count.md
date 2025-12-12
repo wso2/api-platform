@@ -51,76 +51,94 @@ If `jsonPath` is empty or not specified, the entire payload is treated as a stri
 
 ### Example 1: Basic Word Count Validation
 
-Validate that request messages contain between 10 and 500 words:
+Deploy an LLM provider that validates request messages contain between 10 and 500 words:
 
-```yaml
-policies:
-  - name: WordCountGuardrail
-    version: v0.1.0
-    paths:
+```bash
+curl -X POST http://localhost:9090/llm-providers \
+  -H "Content-Type: application/yaml" \
+  --data-binary @- <<'EOF'
+version: ai.api-platform.wso2.com/v1
+kind: llm/provider
+spec:
+  name: word-count-provider
+  version: v1.0
+  template: openai
+  vhost: openai
+  upstream:
+    url: https://api.openai.com/v1
+    auth:
+      type: api-key
+      header: Authorization
+      value: <openai-apikey>
+  accessControl:
+    mode: deny_all
+    exceptions:
       - path: /chat/completions
         methods: [POST]
-        params:
-          request:
-            min: 10
-            max: 500
-            jsonPath: "$.messages[0].content"
+      - path: /models
+        methods: [GET]
+      - path: /models/{modelId}
+        methods: [GET]
+  policies:
+    - name: WordCountGuardrail
+      version: v0.1.0
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            request:
+              min: 10
+              max: 500
+              jsonPath: "$.messages[0].content"
+EOF
 ```
 
-### Example 2: Response Quality Control
+**Test the guardrail:**
 
-Ensure AI responses are comprehensive (at least 50 words) but not excessive (maximum 2000 words):
+**Note**: Ensure that "openai" is mapped to the appropriate IP address (e.g., 127.0.0.1) in your `/etc/hosts` file. or remove the vhost from the llm provider cionfiguration and use localhost to invoke.
 
-```yaml
-policies:
-  - name: WordCountGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          response:
-            min: 50
-            max: 2000
-            jsonPath: "$.choices[0].message.content"
-            showAssessment: true
+```bash
+# Valid request (should pass)
+curl -X POST http://openai:8080/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Host: openai" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Please explain artificial intelligence in simple terms for beginners"
+      }
+    ]
+  }'
+
+# Invalid request - too few words (should fail with HTTP 422)
+curl -X POST http://openai:8080/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Host: openai" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hi"
+      }
+    ]
+  }'
 ```
 
-### Example 3: Inverted Logic
+### Additional Configuration Options
 
-Block requests that are too short (less than 5 words) or too long (more than 1000 words) using inverted logic:
+You can customize the guardrail behavior by modifying the `policies` section:
 
-```yaml
-policies:
-  - name: WordCountGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            min: 5
-            max: 1000
-            invert: true
-            jsonPath: "$.messages[0].content"
-```
+- **Request and Response Validation**: Configure both `request` and `response` parameters to validate word counts in both directions. Use `showAssessment: true` to include detailed assessment information in error responses.
 
-### Example 4: Full Payload Validation
+- **Inverted Logic**: Set `invert: true` to allow only content *outside* the specified word range. This is useful for blocking content that falls within a prohibited range.
 
-Validate the entire request body without JSONPath extraction:
+- **Full Payload Validation**: Omit the `jsonPath` parameter to validate the entire request body without JSONPath extraction.
 
-```yaml
-policies:
-  - name: WordCountGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            min: 1
-            max: 10000
-```
+- **Field-Specific Validation**: Use `jsonPath` to extract and validate specific fields within JSON payloads (e.g., `"$.messages[0].content"` for message content or `"$.choices[0].message.content"` for response content).
+
 
 ## Use Cases
 
@@ -134,11 +152,10 @@ policies:
 
 ## Error Response
 
-When validation fails, the guardrail returns an HTTP 446 status code with the following structure:
+When validation fails, the guardrail returns an HTTP 422 status code with the following structure:
 
 ```json
 {
-  "code": 900514,
   "type": "WORD_COUNT_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
@@ -153,7 +170,6 @@ If `showAssessment` is enabled, additional details are included:
 
 ```json
 {
-  "code": 900514,
   "type": "WORD_COUNT_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",

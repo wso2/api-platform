@@ -68,6 +68,6 @@ parameters:
             If false, returns minimal error information.
           default: false
 
-initParameters:
+systemParameters:
   type: object
   properties: {}

@@ -51,75 +51,92 @@ If `jsonPath` is empty or not specified, the entire payload is treated as a stri
 
 ### Example 1: Basic Content Length Validation
 
-Limit request payloads to between 100 bytes and 1MB:
+Deploy an LLM provider that limits request payloads to between 100 bytes and 1MB:
 
-```yaml
-policies:
-  - name: ContentLengthGuardrail
-    version: v0.1.0
-    paths:
+```bash
+curl -X POST http://localhost:9090/llm-providers \
+  -H "Content-Type: application/yaml" \
+  --data-binary @- <<'EOF'
+version: ai.api-platform.wso2.com/v1
+kind: llm/provider
+spec:
+  name: content-length-provider
+  version: v1.0
+  template: openai
+  vhost: openai
+  upstream:
+    url: https://api.openai.com/v1
+    auth:
+      type: api-key
+      header: Authorization
+      value: <openai-apikey>
+  accessControl:
+    mode: deny_all
+    exceptions:
       - path: /chat/completions
         methods: [POST]
-        params:
-          request:
-            min: 100
-            max: 1048576
+      - path: /models
+        methods: [GET]
+      - path: /models/{modelId}
+        methods: [GET]
+  policies:
+    - name: ContentLengthGuardrail
+      version: v0.1.0
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            request:
+              min: 100
+              max: 1048576
+EOF
 ```
 
-### Example 2: Response Size Control
+**Test the guardrail:**
 
-Ensure AI responses are substantial (at least 500 bytes) but not excessive (maximum 100KB):
+**Note**: Ensure that "openai" is mapped to the appropriate IP address (e.g., 127.0.0.1) in your `/etc/hosts` file. or remove the vhost from the llm provider configuration and use localhost to invoke.
 
-```yaml
-policies:
-  - name: ContentLengthGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          response:
-            min: 500
-            max: 102400
-            jsonPath: "$.choices[0].message.content"
-            showAssessment: true
+```bash
+# Valid request (should pass)
+curl -X POST http://openai:8080/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Host: openai" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Please explain artificial intelligence in simple terms for beginners"
+      }
+    ]
+  }'
+
+# Invalid request - too small (should fail with HTTP 422)
+curl -X POST http://openai:8080/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Host: openai" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hi"
+      }
+    ]
+  }'
 ```
 
-### Example 3: Field-Specific Validation
+### Additional Configuration Options
 
-Validate a specific field within the JSON payload:
+You can customize the guardrail behavior by modifying the `policies` section:
 
-```yaml
-policies:
-  - name: ContentLengthGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            min: 10
-            max: 1000
-            jsonPath: "$.messages[0].content"
-```
+- **Request and Response Validation**: Configure both `request` and `response` parameters to validate byte lengths in both directions. Use `showAssessment: true` to include detailed assessment information in error responses.
 
-### Example 4: Inverted Logic
+- **Inverted Logic**: Set `invert: true` to allow only content *outside* the specified byte range. This is useful for blocking content that falls within a prohibited size range.
 
-Block requests that are too small (less than 50 bytes) or too large (more than 10MB) using inverted logic:
+- **Full Payload Validation**: Omit the `jsonPath` parameter to validate the entire request body without JSONPath extraction.
 
-```yaml
-policies:
-  - name: ContentLengthGuardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            min: 50
-            max: 10485760
-            invert: true
-```
+- **Field-Specific Validation**: Use `jsonPath` to extract and validate specific fields within JSON payloads (e.g., `"$.messages[0].content"` for message content or `"$.choices[0].message.content"` for response content).
 
 ## Use Cases
 
@@ -135,18 +152,17 @@ policies:
 
 ## Error Response
 
-When validation fails, the guardrail returns an HTTP 446 status code with the following structure:
+When validation fails, the guardrail returns an HTTP 422 status code with the following structure:
 
 ```json
 {
-    "code": 900514,
-    "message": {
-        "action": "GUARDRAIL_INTERVENED",
-        "actionReason": "Violation of applied content length constraints detected.",
-        "direction": "REQUEST",
-        "interveningGuardrail": "ContentLengthGuardrail"
-    },
-    "type": "CONTENT_LENGTH_GUARDRAIL"
+  "type": "CONTENT_LENGTH_GUARDRAIL",
+  "message": {
+    "action": "GUARDRAIL_INTERVENED",
+    "interveningGuardrail": "ContentLengthGuardrail",
+    "actionReason": "Violation of applied content length constraints detected.",
+    "direction": "REQUEST"
+  }
 }
 ```
 
@@ -154,15 +170,14 @@ If `showAssessment` is enabled, additional details are included:
 
 ```json
 {
-    "code": 900514,
-    "message": {
-        "action": "GUARDRAIL_INTERVENED",
-        "actionReason": "Violation of applied content length constraints detected.",
-        "assessments": "Violation of content length detected. Expected between 10 and 100 bytes.",
-        "direction": "REQUEST",
-        "interveningGuardrail": "Content Length Guardrail"
-    },
-    "type": "CONTENT_LENGTH_GUARDRAIL"
+  "type": "CONTENT_LENGTH_GUARDRAIL",
+  "message": {
+    "action": "GUARDRAIL_INTERVENED",
+    "interveningGuardrail": "ContentLengthGuardrail",
+    "actionReason": "Violation of applied content length constraints detected.",
+    "assessments": "Violation of content length detected. Expected between 10 and 100 bytes.",
+    "direction": "REQUEST"
+  }
 }
 ```
 

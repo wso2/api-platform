@@ -68,100 +68,87 @@ If `jsonPath` is empty or not specified, the entire payload is processed as a st
 
 ### Example 1: Basic PII Masking
 
-Mask email addresses and phone numbers in requests, restore in responses:
+Deploy an LLM provider that masks email addresses and phone numbers in requests and restores them in responses:
 
-```yaml
-policies:
-  - name: PIIMaskingRegex
-    version: v0.1.0
-    paths:
+```bash
+curl -X POST http://localhost:9090/llm-providers \
+  -H "Content-Type: application/yaml" \
+  --data-binary @- <<'EOF'
+version: ai.api-platform.wso2.com/v1
+kind: llm/provider
+spec:
+  name: pii-masking-provider
+  version: v1.0
+  template: openai
+  vhost: openai
+  upstream:
+    url: https://api.openai.com/v1
+    auth:
+      type: api-key
+      header: Authorization
+      value: <openai-apikey>
+  accessControl:
+    mode: deny_all
+    exceptions:
       - path: /chat/completions
         methods: [POST]
-        params:
-          request:
-            piiEntities:
-              - piiEntity: "EMAIL"
-                piiRegex: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
-              - piiEntity: "PHONE"
-                piiRegex: "\\+?[1-9]\\d{1,14}"
-            jsonPath: "$.messages[0].content"
-            redactPII: false
-          response:
-            redactPII: false
+      - path: /models
+        methods: [GET]
+      - path: /models/{modelId}
+        methods: [GET]
+  policies:
+    - name: PIIMaskingRegex
+      version: v0.1.0
+      paths:
+        - path: /chat/completions
+          methods: [POST]
+          params:
+            request:
+              piiEntities:
+                - piiEntity: "EMAIL"
+                  piiRegex: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+                - piiEntity: "PHONE"
+                  piiRegex: "\\+?[1-9]\\d{1,14}"
+              jsonPath: "$.messages[0].content"
+              redactPII: false
+            response:
+              redactPII: false
+EOF
 ```
 
-### Example 2: PII Redaction
+**Test the guardrail:**
 
-Permanently redact credit card numbers and SSNs:
+**Note**: Ensure that "openai" is mapped to the appropriate IP address (e.g., 127.0.0.1) in your `/etc/hosts` file. or remove the vhost from the llm provider configuration and use localhost to invoke.
 
-```yaml
-policies:
-  - name: PIIMaskingRegex
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            piiEntities:
-              - piiEntity: "CREDIT_CARD"
-                piiRegex: "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
-              - piiEntity: "SSN"
-                piiRegex: "\\b\\d{3}-\\d{2}-\\d{4}\\b"
-            jsonPath: "$.messages[0].content"
-            redactPII: true
-          response:
-            redactPII: true
+```bash
+# Request with PII (should be masked)
+curl -X POST http://openai:8080/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Host: openai" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Contact me at john.doe@example.com or call +1234567890"
+      }
+    ]
+  }'
 ```
 
-### Example 3: Multiple PII Types
+### Additional Configuration Options
 
-Mask various PII types with different patterns:
+You can customize the guardrail behavior by modifying the `policies` section:
 
-```yaml
-policies:
-  - name: PIIMaskingRegex
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            piiEntities:
-              - piiEntity: "EMAIL"
-                piiRegex: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
-              - piiEntity: "PHONE"
-                piiRegex: "\\+?[1-9]\\d{1,14}"
-              - piiEntity: "IP_ADDRESS"
-                piiRegex: "\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b"
-              - piiEntity: "DATE_OF_BIRTH"
-                piiRegex: "\\b\\d{4}-\\d{2}-\\d{2}\\b"
-            jsonPath: "$.messages[0].content"
-            redactPII: false
-          response:
-            redactPII: false
-```
+- **PII Redaction**: Set `redactPII: true` to permanently replace PII with "*****" (cannot be restored). Set `redactPII: false` to use masking mode with placeholders that can be restored in responses.
 
-### Example 4: Full Payload Processing
+- **Multiple PII Types**: Configure multiple `piiEntities` in the array to detect and mask/redact various PII types (e.g., EMAIL, PHONE, CREDIT_CARD, SSN, IP_ADDRESS, DATE_OF_BIRTH).
 
-Process the entire request body without JSONPath extraction:
+- **Full Payload Processing**: Omit the `jsonPath` parameter to process the entire request body without JSONPath extraction.
 
-```yaml
-policies:
-  - name: PIIMaskingRegex
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            piiEntities:
-              - piiEntity: "EMAIL"
-                piiRegex: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
-            redactPII: false
-          response:
-            redactPII: false
-```
+- **Field-Specific Processing**: Use `jsonPath` to extract and process PII from specific fields within JSON payloads (e.g., `"$.messages[0].content"` for message content).
+
+- **Response Restoration**: When using masking mode (`redactPII: false`), set `response.redactPII: false` to restore masked PII values in responses. Set `response.redactPII: true` if PII was permanently redacted in the request phase.
 
 ## Use Cases
 

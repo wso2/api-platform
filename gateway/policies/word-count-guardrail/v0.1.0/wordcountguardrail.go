@@ -12,10 +12,9 @@ import (
 )
 
 const (
-	GuardrailErrorCode         = 446
-	GuardrailAPIMExceptionCode = 900514
-	TextCleanRegex             = "^\"|\"$"
-	WordSplitRegex             = "\\s+"
+	GuardrailErrorCode = 422
+	TextCleanRegex     = "^\"|\"$"
+	WordSplitRegex     = "\\s+"
 )
 
 var (
@@ -252,14 +251,13 @@ func (p *WordCountGuardrailPolicy) buildErrorResponse(reason string, validationE
 	assessment := p.buildAssessmentObject(reason, validationError, isResponse, showAssessment, min, max)
 
 	responseBody := map[string]interface{}{
-		"code":    GuardrailAPIMExceptionCode,
 		"type":    "WORD_COUNT_GUARDRAIL",
 		"message": assessment,
 	}
 
 	bodyBytes, err := json.Marshal(responseBody)
 	if err != nil {
-		bodyBytes = []byte(fmt.Sprintf(`{"code":%d,"type":"WORD_COUNT_GUARDRAIL","message":"Internal error"}`, GuardrailAPIMExceptionCode))
+		bodyBytes = []byte(`{"type":"WORD_COUNT_GUARDRAIL","message":"Internal error"}`)
 	}
 
 	if isResponse {

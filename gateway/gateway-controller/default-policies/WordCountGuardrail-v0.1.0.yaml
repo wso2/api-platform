@@ -78,6 +78,6 @@ parameters:
       - min
       - max
 
-initParameters:
+systemParameters:
   type: object
   properties: {}

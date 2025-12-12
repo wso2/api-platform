@@ -22,10 +22,7 @@ var textCleanRegexCompiled = regexp.MustCompile(TextCleanRegex)
 
 // PIIMaskingRegexPolicy implements regex-based PII masking
 type PIIMaskingRegexPolicy struct {
-	hasRequestParams  bool
-	hasResponseParams bool
-	requestParams     PIIMaskingRegexPolicyParams
-	responseParams    PIIMaskingRegexPolicyParams
+	params PIIMaskingRegexPolicyParams
 }
 
 type PIIMaskingRegexPolicyParams struct {
@@ -40,30 +37,12 @@ func GetPolicy(
 ) (policy.Policy, error) {
 	p := &PIIMaskingRegexPolicy{}
 
-	// Extract and parse request parameters if present
-	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {
-		requestParams, err := parseParams(requestParamsRaw, true) // true = required for request
-		if err != nil {
-			return nil, fmt.Errorf("invalid request parameters: %w", err)
-		}
-		p.hasRequestParams = true
-		p.requestParams = requestParams
+	// Parse parameters (piiEntities is required)
+	policyParams, err := parseParams(params, true) // true = piiEntities is required
+	if err != nil {
+		return nil, fmt.Errorf("invalid parameters: %w", err)
 	}
-
-	// Extract and parse response parameters if present
-	if responseParamsRaw, ok := params["response"].(map[string]interface{}); ok {
-		responseParams, err := parseParams(responseParamsRaw, false) // false = optional for response
-		if err != nil {
-			return nil, fmt.Errorf("invalid response parameters: %w", err)
-		}
-		p.hasResponseParams = true
-		p.responseParams = responseParams
-	}
-
-	// At least one of request or response must be present
-	if !p.hasRequestParams && !p.hasResponseParams {
-		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
-	}
+	p.params = policyParams
 
 	return p, nil
 }
@@ -167,11 +146,7 @@ func (p *PIIMaskingRegexPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest masks PII in request body
 func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	if !p.hasRequestParams {
-		return policy.UpstreamRequestModifications{}
-	}
-
-	if len(p.requestParams.PIIEntities) == 0 {
+	if len(p.params.PIIEntities) == 0 {
 		// No PII entities configured, pass through
 		return policy.UpstreamRequestModifications{}
 	}
@@ -182,7 +157,7 @@ func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map
 	payload := ctx.Body.Content
 
 	// Extract value using JSONPath
-	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, p.requestParams.JsonPath)
+	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, p.params.JsonPath)
 	if err != nil {
 		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err)).(policy.RequestAction)
 	}
@@ -192,12 +167,12 @@ func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map
 	extractedValue = strings.TrimSpace(extractedValue)
 
 	var modifiedContent string
-	if p.requestParams.RedactPII {
+	if p.params.RedactPII {
 		// Redaction mode: replace with *****
-		modifiedContent = p.redactPIIFromContent(extractedValue, p.requestParams.PIIEntities)
+		modifiedContent = p.redactPIIFromContent(extractedValue, p.params.PIIEntities)
 	} else {
 		// Masking mode: replace with placeholders and store mappings
-		modifiedContent, err = p.maskPIIFromContent(extractedValue, p.requestParams.PIIEntities, ctx.Metadata)
+		modifiedContent, err = p.maskPIIFromContent(extractedValue, p.params.PIIEntities, ctx.Metadata)
 		if err != nil {
 			return p.buildErrorResponse(fmt.Sprintf("error masking PII: %v", err)).(policy.RequestAction)
 		}
@@ -205,7 +180,7 @@ func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map
 
 	// If content was modified, update the payload
 	if modifiedContent != "" && modifiedContent != extractedValue {
-		modifiedPayload := p.updatePayloadWithMaskedContent(payload, extractedValue, modifiedContent, p.requestParams.JsonPath)
+		modifiedPayload := p.updatePayloadWithMaskedContent(payload, extractedValue, modifiedContent, p.params.JsonPath)
 		return policy.UpstreamRequestModifications{
 			Body: modifiedPayload,
 		}
@@ -216,12 +191,8 @@ func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map
 
 // OnResponse restores PII in response body (if redactPII is false)
 func (p *PIIMaskingRegexPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	if !p.hasResponseParams {
-		return policy.UpstreamResponseModifications{}
-	}
-
 	// If redactPII is true, no restoration needed
-	if p.responseParams.RedactPII {
+	if p.params.RedactPII {
 		return policy.UpstreamResponseModifications{}
 	}
 
@@ -326,7 +297,7 @@ func (p *PIIMaskingRegexPolicy) redactPIIFromContent(content string, piiEntities
 
 // restorePIIInResponse handles PII restoration in responses when redactPII is disabled
 func (p *PIIMaskingRegexPolicy) restorePIIInResponse(originalContent string, maskedPIIEntities map[string]string) string {
-	if maskedPIIEntities == nil || len(maskedPIIEntities) == 0 {
+	if len(maskedPIIEntities) == 0 {
 		return originalContent
 	}
 
