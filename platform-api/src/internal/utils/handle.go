@@ -18,9 +18,10 @@
 package utils
 
 import (
-	"errors"
 	"regexp"
 	"strings"
+
+	"platform-api/src/internal/constants"
 
 	"github.com/google/uuid"
 )
@@ -41,15 +42,6 @@ var (
 	multipleHyphensRegex = regexp.MustCompile(`-+`)
 )
 
-var (
-	ErrHandleEmpty        = errors.New("handle cannot be empty")
-	ErrHandleTooShort     = errors.New("handle must be at least 3 characters")
-	ErrHandleTooLong      = errors.New("handle must be at most 63 characters")
-	ErrHandleInvalid      = errors.New("handle must be lowercase alphanumeric with hyphens only (no consecutive hyphens, cannot start or end with hyphen)")
-	ErrHandleGenFailed    = errors.New("failed to generate unique handle after maximum retries")
-	ErrHandleSourceEmpty  = errors.New("source string cannot be empty")
-)
-
 // ValidateHandle validates a user-provided handle.
 // Handle must be:
 // - Lowercase only
@@ -60,16 +52,16 @@ var (
 // - Length between 3 and 63 characters
 func ValidateHandle(handle string) error {
 	if handle == "" {
-		return ErrHandleEmpty
+		return constants.ErrHandleEmpty
 	}
 	if len(handle) < handleMinLength {
-		return ErrHandleTooShort
+		return constants.ErrHandleTooShort
 	}
 	if len(handle) > handleMaxLength {
-		return ErrHandleTooLong
+		return constants.ErrHandleTooLong
 	}
 	if !validHandleRegex.MatchString(handle) {
-		return ErrHandleInvalid
+		return constants.ErrInvalidHandle
 	}
 	return nil
 }
@@ -87,7 +79,7 @@ func ValidateHandle(handle string) error {
 //   - Error if source is empty or all retries exhausted
 func GenerateHandle(source string, existsCheck func(string) bool) (string, error) {
 	if strings.TrimSpace(source) == "" {
-		return "", ErrHandleSourceEmpty
+		return "", constants.ErrHandleSourceEmpty
 	}
 
 	// Generate base handle from source
@@ -121,7 +113,7 @@ func GenerateHandle(source string, existsCheck func(string) bool) (string, error
 		}
 	}
 
-	return "", ErrHandleGenFailed
+	return "", constants.ErrHandleGenerationFailed
 }
 
 // sanitizeToHandle converts a string to a valid handle format

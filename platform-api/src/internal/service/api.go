@@ -107,20 +107,29 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 	// Generate internal UUID for the API (used for DB foreign keys)
 	apiUUID := uuid.New().String()
 
-	// Use provided ID as handle, or generate a random one
-	handle := req.ID
-	if handle == "" {
-		// Generate a random handle (first 8 chars of a new UUID)
-		handle = uuid.New().String()[:8]
-	}
-
-	// Check if handle already exists in the organization
-	handleExists, err := s.apiRepo.CheckAPIExistsByHandleInOrganization(handle, orgId)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check handle uniqueness: %w", err)
-	}
-	if handleExists {
-		return nil, fmt.Errorf("API with handle '%s' already exists in the organization", handle)
+	// Handle the API handle (user-facing identifier)
+	var handle string
+	if req.ID != "" {
+		// Validate user-provided handle
+		if err := utils.ValidateHandle(req.ID); err != nil {
+			return nil, err
+		}
+		// Check if handle already exists in the organization
+		handleExists, err := s.apiRepo.CheckAPIExistsByHandleInOrganization(req.ID, orgId)
+		if err != nil {
+			return nil, err
+		}
+		if handleExists {
+			return nil, constants.ErrHandleExists
+		}
+		handle = req.ID
+	} else {
+		// Generate handle from API name with collision detection
+		var err error
+		handle, err = utils.GenerateHandle(req.Name, s.HandleExistsCheck(orgId))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Set default values if not provided
@@ -252,6 +261,19 @@ func (s *APIService) GetAPIByHandle(handle, orgId string) (*dto.API, error) {
 
 	api := s.apiUtil.ModelToDTO(apiModel)
 	return api, nil
+}
+
+// HandleExistsCheck returns a function that checks if an API handle exists in the organization.
+// This is designed to be used with utils.GenerateHandle for handle generation with collision detection.
+func (s *APIService) HandleExistsCheck(orgId string) func(string) bool {
+	return func(handle string) bool {
+		exists, err := s.apiRepo.CheckAPIExistsByHandleInOrganization(handle, orgId)
+		if err != nil {
+			// On error, assume it exists to be safe (will trigger retry)
+			return true
+		}
+		return exists
+	}
 }
 
 // GetAPIsByOrganization retrieves all APIs for an organization with optional project filter
