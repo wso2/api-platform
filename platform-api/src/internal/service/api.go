@@ -323,107 +323,16 @@ func (s *APIService) UpdateAPI(apiId string, req *UpdateAPIRequest, orgId string
 		return nil, constants.ErrAPINotFound
 	}
 
-	existingAPI := s.apiUtil.ModelToDTO(existingAPIModel)
-
-	// Validate update request
-	if err := s.validateUpdateAPIRequest(req); err != nil {
+	// Apply updates using shared helper
+	existingAPI, err := s.applyAPIUpdates(existingAPIModel, req, orgId)
+	if err != nil {
 		return nil, err
-	}
-
-	// Update fields (only allow certain fields to be updated)
-	if req.DisplayName != nil {
-		existingAPI.DisplayName = *req.DisplayName
-	}
-	if req.Description != nil {
-		existingAPI.Description = *req.Description
-	}
-	if req.Provider != nil {
-		existingAPI.Provider = *req.Provider
-	}
-	if req.LifeCycleStatus != nil {
-		existingAPI.LifeCycleStatus = *req.LifeCycleStatus
-	}
-	if req.HasThumbnail != nil {
-		existingAPI.HasThumbnail = *req.HasThumbnail
-	}
-	if req.IsDefaultVersion != nil {
-		existingAPI.IsDefaultVersion = *req.IsDefaultVersion
-	}
-	if req.IsRevision != nil {
-		existingAPI.IsRevision = *req.IsRevision
-	}
-	if req.RevisionedAPIID != nil {
-		existingAPI.RevisionedAPIID = *req.RevisionedAPIID
-	}
-	if req.RevisionID != nil {
-		existingAPI.RevisionID = *req.RevisionID
-	}
-	if req.Type != nil {
-		existingAPI.Type = *req.Type
-	}
-	if req.Transport != nil {
-		existingAPI.Transport = *req.Transport
-	}
-	if req.MTLS != nil {
-		existingAPI.MTLS = req.MTLS
-	}
-	if req.Security != nil {
-		existingAPI.Security = req.Security
-	}
-	if req.CORS != nil {
-		existingAPI.CORS = req.CORS
-	}
-	if req.BackendServices != nil {
-		// Process backend services: check if they exist, create or update them
-		var backendServiceUUIDs []string
-		for _, backendService := range *req.BackendServices {
-			backendServiceUUID, err := s.upstreamService.UpsertBackendService(&backendService, orgId)
-			if err != nil {
-				return nil, fmt.Errorf("failed to process backend service '%s': %w", backendService.Name, err)
-			}
-			backendServiceUUIDs = append(backendServiceUUIDs, backendServiceUUID)
-		}
-
-		// Remove existing associations and add new ones
-		// First, get existing associations to remove them
-		existingBackendServices, err := s.upstreamService.GetBackendServicesByAPIID(apiId)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get existing backend services: %w", err)
-		}
-
-		// Remove existing associations
-		for _, existingService := range existingBackendServices {
-			if err := s.upstreamService.DisassociateBackendServiceFromAPI(apiId, existingService.ID); err != nil {
-				return nil, fmt.Errorf("failed to remove existing backend service association: %w", err)
-			}
-		}
-
-		// Add new associations
-		for i, backendServiceUUID := range backendServiceUUIDs {
-			isDefault := i == 0 // First backend service is default
-			if len(*req.BackendServices) > 0 && i < len(*req.BackendServices) {
-				// Check if isDefault was explicitly set in the request
-				isDefault = (*req.BackendServices)[i].IsDefault
-			}
-
-			if err := s.upstreamService.AssociateBackendServiceWithAPI(apiId, backendServiceUUID, isDefault); err != nil {
-				return nil, fmt.Errorf("failed to associate backend service with API: %w", err)
-			}
-		}
-
-		existingAPI.BackendServices = *req.BackendServices
-	}
-	if req.APIRateLimiting != nil {
-		existingAPI.APIRateLimiting = req.APIRateLimiting
-	}
-	if req.Operations != nil {
-		existingAPI.Operations = *req.Operations
 	}
 
 	// Update API in repository
 	updatedAPIModel := s.apiUtil.DTOToModel(existingAPI)
 	if err := s.apiRepo.UpdateAPI(updatedAPIModel); err != nil {
-		return nil, fmt.Errorf("failed to update api: %w", err)
+		return nil, err
 	}
 
 	return existingAPI, nil
@@ -470,106 +379,17 @@ func (s *APIService) UpdateAPIByHandle(handle string, req *UpdateAPIRequest, org
 		return nil, constants.ErrAPINotFound
 	}
 
-	existingAPI := s.apiUtil.ModelToDTO(existingAPIModel)
-
-	// Validate update request
-	if err := s.validateUpdateAPIRequest(req); err != nil {
+	// Apply updates using shared helper
+	existingAPI, err := s.applyAPIUpdates(existingAPIModel, req, orgId)
+	if err != nil {
 		return nil, err
-	}
-
-	// Update fields (only allow certain fields to be updated)
-	if req.DisplayName != nil {
-		existingAPI.DisplayName = *req.DisplayName
-	}
-	if req.Description != nil {
-		existingAPI.Description = *req.Description
-	}
-	if req.Provider != nil {
-		existingAPI.Provider = *req.Provider
-	}
-	if req.LifeCycleStatus != nil {
-		existingAPI.LifeCycleStatus = *req.LifeCycleStatus
-	}
-	if req.HasThumbnail != nil {
-		existingAPI.HasThumbnail = *req.HasThumbnail
-	}
-	if req.IsDefaultVersion != nil {
-		existingAPI.IsDefaultVersion = *req.IsDefaultVersion
-	}
-	if req.IsRevision != nil {
-		existingAPI.IsRevision = *req.IsRevision
-	}
-	if req.RevisionedAPIID != nil {
-		existingAPI.RevisionedAPIID = *req.RevisionedAPIID
-	}
-	if req.RevisionID != nil {
-		existingAPI.RevisionID = *req.RevisionID
-	}
-	if req.Type != nil {
-		existingAPI.Type = *req.Type
-	}
-	if req.Transport != nil {
-		existingAPI.Transport = *req.Transport
-	}
-	if req.MTLS != nil {
-		existingAPI.MTLS = req.MTLS
-	}
-	if req.Security != nil {
-		existingAPI.Security = req.Security
-	}
-	if req.CORS != nil {
-		existingAPI.CORS = req.CORS
-	}
-	if req.BackendServices != nil {
-		// Process backend services: check if they exist, create or update them
-		var backendServiceUUIDs []string
-		for _, backendService := range *req.BackendServices {
-			backendServiceUUID, err := s.upstreamService.UpsertBackendService(&backendService, orgId)
-			if err != nil {
-				return nil, fmt.Errorf("failed to process backend service '%s': %w", backendService.Name, err)
-			}
-			backendServiceUUIDs = append(backendServiceUUIDs, backendServiceUUID)
-		}
-
-		// Remove existing associations and add new ones (use internal UUID)
-		existingBackendServices, err := s.upstreamService.GetBackendServicesByAPIID(existingAPIModel.ID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get existing backend services: %w", err)
-		}
-
-		// Remove existing associations
-		for _, existingService := range existingBackendServices {
-			if err := s.upstreamService.DisassociateBackendServiceFromAPI(existingAPIModel.ID, existingService.ID); err != nil {
-				return nil, fmt.Errorf("failed to remove existing backend service association: %w", err)
-			}
-		}
-
-		// Add new associations
-		for i, backendServiceUUID := range backendServiceUUIDs {
-			isDefault := i == 0
-			if len(*req.BackendServices) > 0 && i < len(*req.BackendServices) {
-				isDefault = (*req.BackendServices)[i].IsDefault
-			}
-
-			if err := s.upstreamService.AssociateBackendServiceWithAPI(existingAPIModel.ID, backendServiceUUID, isDefault); err != nil {
-				return nil, fmt.Errorf("failed to associate backend service with API: %w", err)
-			}
-		}
-
-		existingAPI.BackendServices = *req.BackendServices
-	}
-	if req.APIRateLimiting != nil {
-		existingAPI.APIRateLimiting = req.APIRateLimiting
-	}
-	if req.Operations != nil {
-		existingAPI.Operations = *req.Operations
 	}
 
 	// Update API in repository using handle
 	updatedAPIModel := s.apiUtil.DTOToModel(existingAPI)
 	updatedAPIModel.ID = existingAPIModel.ID // Preserve the internal UUID
 	if err := s.apiRepo.UpdateAPIByHandle(handle, orgId, updatedAPIModel); err != nil {
-		return nil, fmt.Errorf("failed to update api: %w", err)
+		return nil, err
 	}
 
 	return existingAPI, nil
@@ -1088,6 +908,113 @@ func (s *APIService) validateCreateAPIRequest(req *CreateAPIRequest) error {
 			if !constants.ValidTransports[strings.ToLower(transport)] {
 				return constants.ErrInvalidTransport
 			}
+		}
+	}
+
+	return nil
+}
+
+// applyAPIUpdates applies update request fields to an existing API model and handles backend services
+func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *UpdateAPIRequest, orgId string) (*dto.API, error) {
+	// Validate update request
+	if err := s.validateUpdateAPIRequest(req); err != nil {
+		return nil, err
+	}
+
+	existingAPI := s.apiUtil.ModelToDTO(existingAPIModel)
+
+	// Update fields (only allow certain fields to be updated)
+	if req.DisplayName != nil {
+		existingAPI.DisplayName = *req.DisplayName
+	}
+	if req.Description != nil {
+		existingAPI.Description = *req.Description
+	}
+	if req.Provider != nil {
+		existingAPI.Provider = *req.Provider
+	}
+	if req.LifeCycleStatus != nil {
+		existingAPI.LifeCycleStatus = *req.LifeCycleStatus
+	}
+	if req.HasThumbnail != nil {
+		existingAPI.HasThumbnail = *req.HasThumbnail
+	}
+	if req.IsDefaultVersion != nil {
+		existingAPI.IsDefaultVersion = *req.IsDefaultVersion
+	}
+	if req.IsRevision != nil {
+		existingAPI.IsRevision = *req.IsRevision
+	}
+	if req.RevisionedAPIID != nil {
+		existingAPI.RevisionedAPIID = *req.RevisionedAPIID
+	}
+	if req.RevisionID != nil {
+		existingAPI.RevisionID = *req.RevisionID
+	}
+	if req.Type != nil {
+		existingAPI.Type = *req.Type
+	}
+	if req.Transport != nil {
+		existingAPI.Transport = *req.Transport
+	}
+	if req.MTLS != nil {
+		existingAPI.MTLS = req.MTLS
+	}
+	if req.Security != nil {
+		existingAPI.Security = req.Security
+	}
+	if req.CORS != nil {
+		existingAPI.CORS = req.CORS
+	}
+	if req.BackendServices != nil {
+		if err := s.updateAPIBackendServices(existingAPIModel.ID, req.BackendServices, orgId); err != nil {
+			return nil, err
+		}
+		existingAPI.BackendServices = *req.BackendServices
+	}
+	if req.APIRateLimiting != nil {
+		existingAPI.APIRateLimiting = req.APIRateLimiting
+	}
+	if req.Operations != nil {
+		existingAPI.Operations = *req.Operations
+	}
+
+	return existingAPI, nil
+}
+
+// updateAPIBackendServices handles backend service updates for an API
+func (s *APIService) updateAPIBackendServices(apiUUID string, backendServices *[]dto.BackendService, orgId string) error {
+	// Process backend services: check if they exist, create or update them
+	var backendServiceUUIDs []string
+	for _, backendService := range *backendServices {
+		backendServiceUUID, err := s.upstreamService.UpsertBackendService(&backendService, orgId)
+		if err != nil {
+			return fmt.Errorf("failed to process backend service '%s': %w", backendService.Name, err)
+		}
+		backendServiceUUIDs = append(backendServiceUUIDs, backendServiceUUID)
+	}
+
+	// Remove existing associations
+	existingBackendServices, err := s.upstreamService.GetBackendServicesByAPIID(apiUUID)
+	if err != nil {
+		return fmt.Errorf("failed to get existing backend services: %w", err)
+	}
+
+	for _, existingService := range existingBackendServices {
+		if err := s.upstreamService.DisassociateBackendServiceFromAPI(apiUUID, existingService.ID); err != nil {
+			return fmt.Errorf("failed to remove existing backend service association: %w", err)
+		}
+	}
+
+	// Add new associations
+	for i, backendServiceUUID := range backendServiceUUIDs {
+		isDefault := i == 0
+		if len(*backendServices) > 0 && i < len(*backendServices) {
+			isDefault = (*backendServices)[i].IsDefault
+		}
+
+		if err := s.upstreamService.AssociateBackendServiceWithAPI(apiUUID, backendServiceUUID, isDefault); err != nil {
+			return fmt.Errorf("failed to associate backend service with API: %w", err)
 		}
 	}
 
