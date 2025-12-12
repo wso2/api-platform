@@ -52,13 +52,6 @@ func (r *ConfigResolver) ResolveValue(value interface{}) (interface{}, error) {
 		return value, nil
 	}
 
-	configJSON, err := json.MarshalIndent(r.config, "", "  ")
-	if err != nil {
-		slog.Debug("Failed to marshal config to JSON", "error", err)
-	} else {
-		slog.Debug("ConfigResolver loaded config:\n" + string(configJSON))
-	}
-
 	// Only process string values
 	strValue, ok := value.(string)
 	if !ok {
