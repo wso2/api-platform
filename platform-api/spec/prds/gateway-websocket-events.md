@@ -7,7 +7,7 @@ Enables real-time bidirectional communication between the platform and gateway i
 ## User Scenarios
 
 ### Gateway Connection Management
-- Gateways establish persistent WebSocket connections to platform at `wss://platform-api:8443/api/internal/v1/ws/gateways/connect`
+- Gateways establish persistent WebSocket connections to platform at `wss://platform-api:9243/api/internal/v1/ws/gateways/connect`
 - Platform maintains in-memory connection registry supporting multiple connections per gateway ID for clustering
 - Heartbeat mechanism with 20-second ping and 30-second timeout detects ungraceful disconnections
 - Authentication via API key validates gateways before connection upgrade

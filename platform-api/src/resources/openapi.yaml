@@ -28,7 +28,7 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
 
 servers:
-  - url: https://localhost:8443/api/v1
+  - url: https://localhost:9243/api/v1
     description: Development server (HTTPS)
   - url: https://api.platform.com/api/v1
     description: Production server
