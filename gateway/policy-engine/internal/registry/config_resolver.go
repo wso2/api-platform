@@ -1,11 +1,9 @@
 package registry
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"regexp"
-	"strings"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
