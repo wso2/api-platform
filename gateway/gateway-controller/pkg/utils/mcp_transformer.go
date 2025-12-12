@@ -82,6 +82,11 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 	}
 	output.Version = api.ApiPlatformWso2Comv1
 	output.Kind = api.Httprest
+
+	if len(mcpConfig.Spec.Upstreams) == 0 {
+		return nil, fmt.Errorf("at least one upstream is required")
+	}
+
 	// Build APIConfigData and set it into the APIConfiguration_Spec union
 	apiData := api.APIConfigData{
 		Name:    mcpConfig.Spec.Name,

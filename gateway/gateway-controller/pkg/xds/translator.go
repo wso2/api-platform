@@ -184,21 +184,6 @@ func (t *Translator) TranslateConfigs(
 		}
 	}
 
-	// Add a catch-all route that returns 404 for unmatched requests
-	// This should be the last route (lowest priority)
-	allRoutes = append(allRoutes, &route.Route{
-		Match: &route.RouteMatch{
-			PathSpecifier: &route.RouteMatch_Prefix{
-				Prefix: "/",
-			},
-		},
-		Action: &route.Route_DirectResponse{
-			DirectResponse: &route.DirectResponseAction{
-				Status: 404,
-			},
-		},
-	})
-
 	// Group routes by vhost
 	vhostMap := make(map[string][]*route.Route)
 
@@ -206,6 +191,7 @@ func (t *Translator) TranslateConfigs(
 		// Extract vhost from route name: "METHOD|PATH|VHOST"
 		parts := strings.Split(r.Name, "|")
 		if len(parts) != 3 {
+			// Routes without proper naming (e.g., catch-all 404) should be added to all vhosts later
 			continue // or handle error
 		}
 		vhost := parts[2]
@@ -216,6 +202,19 @@ func (t *Translator) TranslateConfigs(
 	// Create a virtual host for each vhost
 	var virtualHosts []*route.VirtualHost
 	for vhost, routes := range vhostMap {
+		// Append the catch-all 404 route as the last route for each vhost (lowest priority)
+		routes = append(routes, &route.Route{
+			Match: &route.RouteMatch{
+				PathSpecifier: &route.RouteMatch_Prefix{
+					Prefix: "/",
+				},
+			},
+			Action: &route.Route_DirectResponse{
+				DirectResponse: &route.DirectResponseAction{
+					Status: 404,
+				},
+			},
+		})
 		virtualHost := &route.VirtualHost{
 			Name:    vhost,
 			Domains: []string{vhost}, // or []string{"*"} if you want wildcard
@@ -360,16 +359,6 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig) ([]*route.Rout
 	mainCluster := t.createCluster(mainClusterName, parsedMainURL, nil)
 	clusters = append(clusters, mainCluster)
 
-	// -------- SANDBOX UPSTREAM --------
-	if apiData.Upstream.Sandbox != nil {
-		sbClusterName, parsedSbURL, err := t.resolveUpstreamCluster("sandbox", apiData.Upstream.Sandbox)
-		if err != nil {
-			return nil, nil, err
-		}
-		sandboxCluster := t.createCluster(sbClusterName, parsedSbURL, nil)
-		clusters = append(clusters, sandboxCluster)
-	}
-
 	// Create routes for each operation (default to main cluster)
 	routesList := make([]*route.Route, 0)
 	mainRoutesList := make([]*route.Route, 0)
@@ -394,15 +383,25 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig) ([]*route.Rout
 	}
 	routesList = append(routesList, mainRoutesList...)
 
-	// Create sandbox routes for each operation
-	sbRoutesList := make([]*route.Route, 0)
-	for _, op := range apiData.Operations {
-		// Use mainClusterName by default; path rewrite based on main upstream path
-		r := t.createRoute(apiData.Name, apiData.Version, apiData.Context, string(op.Method), op.Path,
-			mainClusterName, parsedMainURL.Path, effectiveSandboxVHost)
-		sbRoutesList = append(sbRoutesList, r)
+	// -------- SANDBOX UPSTREAM --------
+	if apiData.Upstream.Sandbox != nil {
+		sbClusterName, parsedSbURL, err := t.resolveUpstreamCluster("sandbox", apiData.Upstream.Sandbox)
+		if err != nil {
+			return nil, nil, err
+		}
+		sandboxCluster := t.createCluster(sbClusterName, parsedSbURL, nil)
+		clusters = append(clusters, sandboxCluster)
+
+		// Create sandbox routes for each operation
+		sbRoutesList := make([]*route.Route, 0)
+		for _, op := range apiData.Operations {
+			// Use sbClusterName for sandbox upstream path
+			r := t.createRoute(apiData.Name, apiData.Version, apiData.Context, string(op.Method), op.Path,
+				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost)
+			sbRoutesList = append(sbRoutesList, r)
+		}
+		routesList = append(routesList, sbRoutesList...)
 	}
-	routesList = append(routesList, sbRoutesList...)
 
 	return routesList, clusters, nil
 }

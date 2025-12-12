@@ -108,7 +108,7 @@ func (v *LLMValidator) validateTemplateData(data *api.LLMProviderTemplateData) [
 	if !v.urlFriendlyNameRegex.MatchString(data.Name) {
 		errors = append(errors, ValidationError{
 			Field:   "spec.name",
-			Message: "Template name must contain only letters, numbers, spaces, hyphens, underscores, and dots",
+			Message: "Template name must contain only letters, numbers, hyphens, underscores, and dots",
 		})
 	}
 
@@ -185,6 +185,14 @@ func (v *LLMValidator) validateLLMProvider(provider *api.LLMProviderConfiguratio
 func (v *LLMValidator) validateProviderData(data *api.LLMProviderConfigData) []ValidationError {
 	var errors []ValidationError
 
+	// Check if data is nil
+	if data == nil {
+		return []ValidationError{{
+			Field:   "spec",
+			Message: "Provider data is required",
+		}}
+	}
+
 	// Validate name
 	if !v.urlFriendlyNameRegex.MatchString(data.Name) {
 		errors = append(errors, ValidationError{
@@ -253,10 +261,10 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
 				Field:   fmt.Sprintf("%s.auth.type", fieldPrefix),
 				Message: "Auth type is required",
 			})
-		} else if auth.Type != "api-key" && auth.Type != "bearer" {
+		} else if auth.Type != "api-key" {
 			errors = append(errors, ValidationError{
 				Field:   fmt.Sprintf("%s.auth.type", fieldPrefix),
-				Message: "Auth type must be either 'api-key' or 'bearer'",
+				Message: "Auth type must be 'api-key'",
 			})
 		}
 

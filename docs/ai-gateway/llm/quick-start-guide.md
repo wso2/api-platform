@@ -56,7 +56,7 @@ spec:
     auth:
       type: api-key
       header: Authorization
-      value: secret-openai-apikey
+      value: <openai-apikey>
   accessControl:
     mode: deny_all
     exceptions:

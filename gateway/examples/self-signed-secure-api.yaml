@@ -24,7 +24,7 @@ spec:
   upstream:
     main:
       url: https://secure-backend:5443/api/v2
-    # - url: http://httpbin.org/anything
+      # url: http://httpbin.org/anything
   policies:
     - name: JwtAuthentication
       version: v1.0.0

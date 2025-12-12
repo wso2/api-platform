@@ -22,7 +22,7 @@ spec:
   name: wso2-openai-provider
   version: v1.0
   template: openai
-  vhost: openai
+  vhost: api.openai.local
   upstream:
     url: https://api.openai.com/v1
     auth:
