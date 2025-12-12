@@ -240,7 +240,7 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
 	}
 
 	// Validate URL
-	if *upstream.Url == "" {
+	if upstream.Url == nil || *upstream.Url == "" {
 		errors = append(errors, ValidationError{
 			Field:   fmt.Sprintf("%s.url", fieldPrefix),
 			Message: "Upstream URL is required",
