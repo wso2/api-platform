@@ -262,7 +262,7 @@ func main() {
 
 	// Initialize API server with the configured validator
 	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient,
-		policyDefinitions, validator, &cfg.GatewayController.Router)
+		policyDefinitions, templateDefinitions, validator, &cfg.GatewayController.Router)
 
 	// Register API routes (includes certificate management endpoints from OpenAPI spec)
 	api.RegisterHandlers(router, apiServer)
