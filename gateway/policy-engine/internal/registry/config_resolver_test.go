@@ -24,19 +24,24 @@ func TestConfigResolver_ResolveValue(t *testing.T) {
 		expected interface{}
 	}{
 		{
-			name:     "resolve config reference",
-			input:    "$config(jwtauth.allowedalgorithms)",
+			name:     "resolve config reference - dot notation",
+			input:    "${config.jwtauth.allowedalgorithms}",
 			expected: "RS256,RS384,RS512",
 		},
 		{
 			name:     "resolve nested config reference",
-			input:    "$config(jwtauth.headerName)",
+			input:    "${config.jwtauth.headerName}",
 			expected: "Authorization",
 		},
 		{
 			name:     "resolve integer config",
-			input:    "$config(ratelimit.maxrequests)",
-			expected: 100,
+			input:    "${config.ratelimit.maxrequests}",
+			expected: int64(100), // CEL returns int64
+		},
+		{
+			name:     "resolve config reference - bracket notation",
+			input:    "${config[\"jwtauth\"][\"allowedalgorithms\"]}",
+			expected: "RS256,RS384,RS512",
 		},
 		{
 			name:     "non-config string unchanged",
@@ -50,13 +55,13 @@ func TestConfigResolver_ResolveValue(t *testing.T) {
 		},
 		{
 			name:     "invalid config reference unchanged",
-			input:    "$config(nonexistent.path)",
-			expected: "$config(nonexistent.path)",
+			input:    "${config.nonexistent.path}",
+			expected: "${config.nonexistent.path}",
 		},
 		{
 			name:     "malformed reference unchanged",
-			input:    "$config(incomplete",
-			expected: "$config(incomplete",
+			input:    "${config.incomplete",
+			expected: "${config.incomplete",
 		},
 	}
 
@@ -81,8 +86,8 @@ func TestConfigResolver_ResolveMap(t *testing.T) {
 	resolver := NewConfigResolver(config)
 
 	input := map[string]interface{}{
-		"allowedAlgorithms": "$config(jwtauth.allowedalgorithms)",
-		"headerName":        "$config(jwtauth.headername)",
+		"allowedAlgorithms": "${config.jwtauth.allowedalgorithms}",
+		"headerName":        "${config.jwtauth.headername}",
 		"statusCode":        401,
 		"realm":             "Restricted",
 	}
@@ -90,7 +95,7 @@ func TestConfigResolver_ResolveMap(t *testing.T) {
 	expected := map[string]interface{}{
 		"allowedAlgorithms": "RS256,RS384",
 		"headerName":        "Authorization",
-		"statusCode":        401,
+		"statusCode":        401, // Not a config ref, stays as original int
 		"realm":             "Restricted",
 	}
 
@@ -104,7 +109,7 @@ func TestConfigResolver_ResolveMap(t *testing.T) {
 func TestConfigResolver_ResolveNestedStructures(t *testing.T) {
 	config := map[string]interface{}{
 		"jwtauth": map[string]interface{}{
-			"allowedalgorithms": []string{"RS256", "RS384"},
+			"allowedalgorithms": []interface{}{"RS256", "RS384"},
 		},
 	}
 
@@ -112,10 +117,10 @@ func TestConfigResolver_ResolveNestedStructures(t *testing.T) {
 
 	input := map[string]interface{}{
 		"nested": map[string]interface{}{
-			"algorithms": "$config(jwtauth.allowedalgorithms)",
+			"algorithms": "${config.jwtauth.allowedalgorithms}",
 		},
 		"array": []interface{}{
-			"$config(jwtauth.allowedalgorithms)",
+			"${config.jwtauth.allowedalgorithms}",
 			"plain-value",
 		},
 	}
@@ -125,14 +130,15 @@ func TestConfigResolver_ResolveNestedStructures(t *testing.T) {
 	// Check nested map resolution
 	nestedMap := got["nested"].(map[string]interface{})
 	algorithms := nestedMap["algorithms"]
-	if !reflect.DeepEqual(algorithms, []string{"RS256", "RS384"}) {
-		t.Errorf("Nested map resolution failed: got %v", algorithms)
+	expected := []interface{}{"RS256", "RS384"}
+	if !reflect.DeepEqual(algorithms, expected) {
+		t.Errorf("Nested map resolution failed: got %v (%T), want %v (%T)", algorithms, algorithms, expected, expected)
 	}
 
 	// Check array resolution
 	arrayVal := got["array"].([]interface{})
-	if !reflect.DeepEqual(arrayVal[0], []string{"RS256", "RS384"}) {
-		t.Errorf("Array resolution failed: got %v", arrayVal[0])
+	if !reflect.DeepEqual(arrayVal[0], expected) {
+		t.Errorf("Array resolution failed: got %v (%T), want %v (%T)", arrayVal[0], arrayVal[0], expected, expected)
 	}
 	if arrayVal[1] != "plain-value" {
 		t.Errorf("Array plain value changed: got %v", arrayVal[1])
@@ -142,7 +148,7 @@ func TestConfigResolver_ResolveNestedStructures(t *testing.T) {
 func TestConfigResolver_NilConfig(t *testing.T) {
 	resolver := NewConfigResolver(nil)
 
-	input := "$config(some.path)"
+	input := "${config.some.path}"
 	got := resolver.ResolveValue(input)
 
 	if got != input {
@@ -150,8 +156,104 @@ func TestConfigResolver_NilConfig(t *testing.T) {
 	}
 }
 
-func TestConfigResolver_ResolvePath_CaseInsensitive(t *testing.T) {
-	// Viper lowercases all keys
+func TestConfigResolver_CELComplexExpressions(t *testing.T) {
+	config := map[string]interface{}{
+		"jwtauth": map[string]interface{}{
+			"enabled":           true,
+			"allowedalgorithms": "RS256,RS384,RS512",
+			"headerName":        "Authorization",
+		},
+		"ratelimit": map[string]interface{}{
+			"maxrequests": 100,
+		},
+	}
+
+	resolver := NewConfigResolver(config)
+
+	tests := []struct {
+		name     string
+		input    interface{}
+		expected interface{}
+	}{
+		{
+			name:     "CEL mixed notation",
+			input:    "${config.jwtauth[\"headerName\"]}",
+			expected: "Authorization",
+		},
+		{
+			name:     "CEL boolean value",
+			input:    "${config.jwtauth.enabled}",
+			expected: true,
+		},
+		{
+			name:     "CEL conditional expression",
+			input:    "${config.jwtauth.enabled ? config.jwtauth.allowedalgorithms : \"HS256\"}",
+			expected: "RS256,RS384,RS512",
+		},
+		{
+			name:     "CEL conditional false branch",
+			input:    "${!config.jwtauth.enabled ? config.jwtauth.allowedalgorithms : \"HS256\"}",
+			expected: "HS256",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolver.ResolveValue(tt.input)
+			if !reflect.DeepEqual(got, tt.expected) {
+				t.Errorf("ResolveValue() = %v (%T), want %v (%T)", got, got, tt.expected, tt.expected)
+			}
+		})
+	}
+}
+
+func TestConfigResolver_CELArrayAccess(t *testing.T) {
+	config := map[string]interface{}{
+		"jwtauth": map[string]interface{}{
+			"allowedalgorithms": []interface{}{"RS256", "RS384", "RS512"},
+		},
+	}
+
+	resolver := NewConfigResolver(config)
+
+	tests := []struct {
+		name     string
+		input    interface{}
+		expected interface{}
+	}{
+		{
+			name:     "CEL array access - first element",
+			input:    "${config.jwtauth.allowedalgorithms[0]}",
+			expected: "RS256",
+		},
+		{
+			name:     "CEL array access - second element",
+			input:    "${config.jwtauth.allowedalgorithms[1]}",
+			expected: "RS384",
+		},
+		{
+			name:     "CEL entire array",
+			input:    "${config.jwtauth.allowedalgorithms}",
+			expected: []interface{}{"RS256", "RS384", "RS512"},
+		},
+		{
+			name:     "CEL array size",
+			input:    "${size(config.jwtauth.allowedalgorithms)}",
+			expected: int64(3),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolver.ResolveValue(tt.input)
+			if !reflect.DeepEqual(got, tt.expected) {
+				t.Errorf("ResolveValue() = %v (%T), want %v (%T)", got, got, tt.expected, tt.expected)
+			}
+		})
+	}
+}
+
+func TestConfigResolver_CELInvalidReference(t *testing.T) {
 	config := map[string]interface{}{
 		"jwtauth": map[string]interface{}{
 			"allowedalgorithms": "RS256",
@@ -160,17 +262,255 @@ func TestConfigResolver_ResolvePath_CaseInsensitive(t *testing.T) {
 
 	resolver := NewConfigResolver(config)
 
-	// Test with original case
-	tests := []string{
-		"$config(JWTAuth.AllowedAlgorithms)",
-		"$config(jwtauth.allowedalgorithms)",
-		"$config(JWTAuth.allowedalgorithms)",
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "CEL non-existent path",
+			input: "${config.nonexistent.path}",
+		},
+		{
+			name:  "CEL malformed expression - unclosed bracket",
+			input: "${config.jwtauth[}",
+		},
+		{
+			name:  "CEL malformed expression - missing closing brace",
+			input: "${config.jwtauth.allowedalgorithms",
+		},
+		{
+			name:  "not a config reference",
+			input: "plain string value",
+		},
 	}
 
-	for _, input := range tests {
-		got := resolver.ResolveValue(input)
-		if got != "RS256" {
-			t.Errorf("Case-insensitive resolution failed for %s: got %v, want RS256", input, got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolver.ResolveValue(tt.input)
+			// Should return original value on error
+			if got != tt.input {
+				t.Errorf("Invalid CEL reference should return original: got %v, want %v", got, tt.input)
+			}
+		})
+	}
+}
+
+func TestConfigResolver_TemplateSubstitution(t *testing.T) {
+	config := map[string]interface{}{
+		"api": map[string]interface{}{
+			"host":     "api.example.com",
+			"port":     8080,
+			"protocol": "https",
+		},
+		"timeout": 30,
+		"service": map[string]interface{}{
+			"name": "my-service",
+		},
+	}
+
+	resolver := NewConfigResolver(config)
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "single expression in middle",
+			input:    "The timeout is ${config.timeout} seconds",
+			expected: "The timeout is 30 seconds",
+		},
+		{
+			name:     "multiple expressions",
+			input:    "${config.api.protocol}://${config.api.host}:${config.api.port}",
+			expected: "https://api.example.com:8080",
+		},
+		{
+			name:     "expression at start",
+			input:    "${config.service.name} is running",
+			expected: "my-service is running",
+		},
+		{
+			name:     "expression at end",
+			input:    "Service name: ${config.service.name}",
+			expected: "Service name: my-service",
+		},
+		{
+			name:     "same expression multiple times",
+			input:    "${config.timeout}s timeout, retry after ${config.timeout}s",
+			expected: "30s timeout, retry after 30s",
+		},
+		{
+			name:     "complex template",
+			input:    "Connect to ${config.api.protocol}://${config.api.host}:${config.api.port} (timeout: ${config.timeout}s)",
+			expected: "Connect to https://api.example.com:8080 (timeout: 30s)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolver.ResolveValue(tt.input)
+			if got != tt.expected {
+				t.Errorf("ResolveValue() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestConfigResolver_SingleExpressionPreservesType(t *testing.T) {
+	config := map[string]interface{}{
+		"timeout":     30,
+		"enabled":     true,
+		"values":      []interface{}{"a", "b", "c"},
+		"name":        "test",
+		"ratelimit":   int64(100),
+		"temperature": 98.6,
+	}
+
+	resolver := NewConfigResolver(config)
+
+	tests := []struct {
+		name     string
+		input    string
+		expected interface{}
+	}{
+		{
+			name:     "integer type preserved",
+			input:    "${config.timeout}",
+			expected: int64(30),
+		},
+		{
+			name:     "boolean type preserved",
+			input:    "${config.enabled}",
+			expected: true,
+		},
+		{
+			name:     "array type preserved",
+			input:    "${config.values}",
+			expected: []interface{}{"a", "b", "c"},
+		},
+		{
+			name:     "string type preserved",
+			input:    "${config.name}",
+			expected: "test",
+		},
+		{
+			name:     "int64 type preserved",
+			input:    "${config.ratelimit}",
+			expected: int64(100),
+		},
+		{
+			name:     "float type preserved",
+			input:    "${config.temperature}",
+			expected: 98.6,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolver.ResolveValue(tt.input)
+			if !reflect.DeepEqual(got, tt.expected) {
+				t.Errorf("ResolveValue() = %v (%T), want %v (%T)", got, got, tt.expected, tt.expected)
+			}
+		})
+	}
+}
+
+func TestConfigResolver_ObjectAndArrayTypes(t *testing.T) {
+	config := map[string]interface{}{
+		"database": map[string]interface{}{
+			"host": "localhost",
+			"port": 5432,
+		},
+		"allowedMethods": []interface{}{"GET", "POST", "PUT"},
+		"nestedArray": []interface{}{
+			map[string]interface{}{"id": 1, "name": "first"},
+			map[string]interface{}{"id": 2, "name": "second"},
+		},
+	}
+
+	resolver := NewConfigResolver(config)
+
+	t.Run("object type preserved", func(t *testing.T) {
+		result := resolver.ResolveValue("${config.database}")
+		resultMap, ok := result.(map[string]interface{})
+		if !ok {
+			t.Fatalf("Expected map[string]interface{}, got %T", result)
 		}
+		if resultMap["host"] != "localhost" {
+			t.Errorf("Expected host=localhost, got %v", resultMap["host"])
+		}
+		// Note: nested values preserve their original types from the config
+		if resultMap["port"] != 5432 {
+			t.Errorf("Expected port=5432, got %v (%T)", resultMap["port"], resultMap["port"])
+		}
+	})
+
+	t.Run("array of strings type preserved", func(t *testing.T) {
+		result := resolver.ResolveValue("${config.allowedMethods}")
+		resultArray, ok := result.([]interface{})
+		if !ok {
+			t.Fatalf("Expected []interface{}, got %T", result)
+		}
+		if len(resultArray) != 3 {
+			t.Errorf("Expected array length 3, got %d", len(resultArray))
+		}
+		if resultArray[0] != "GET" {
+			t.Errorf("Expected first element 'GET', got %v", resultArray[0])
+		}
+	})
+
+	t.Run("array of objects type preserved", func(t *testing.T) {
+		result := resolver.ResolveValue("${config.nestedArray}")
+		resultArray, ok := result.([]interface{})
+		if !ok {
+			t.Fatalf("Expected []interface{}, got %T", result)
+		}
+		if len(resultArray) != 2 {
+			t.Errorf("Expected array length 2, got %d", len(resultArray))
+		}
+		firstItem, ok := resultArray[0].(map[string]interface{})
+		if !ok {
+			t.Fatalf("Expected first item to be map[string]interface{}, got %T", resultArray[0])
+		}
+		if firstItem["name"] != "first" {
+			t.Errorf("Expected name='first', got %v", firstItem["name"])
+		}
+	})
+}
+
+func TestConfigResolver_TemplateWithErrors(t *testing.T) {
+	config := map[string]interface{}{
+		"api": map[string]interface{}{
+			"host": "api.example.com",
+		},
+	}
+
+	resolver := NewConfigResolver(config)
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "partial resolution - one valid, one invalid",
+			input:    "Host: ${config.api.host}, Port: ${config.api.port}",
+			expected: "Host: api.example.com, Port: ${config.api.port}",
+		},
+		{
+			name:     "all invalid expressions kept",
+			input:    "${config.invalid.a} and ${config.invalid.b}",
+			expected: "${config.invalid.a} and ${config.invalid.b}",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolver.ResolveValue(tt.input)
+			if got != tt.expected {
+				t.Errorf("ResolveValue() = %v, want %v", got, tt.expected)
+			}
+		})
 	}
 }
