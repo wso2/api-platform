@@ -19,3 +19,38 @@ policies:
   - name: JwtAuthentication
     version: v1.0.0
     filePath: ./jwt-auth/v1.0.0
+
+  # WordCountGuardrail Policy
+  - name: WordCountGuardrail
+    version: v0.1.0
+    filePath: ./word-count-guardrail/v0.1.0
+
+  # SentenceCountGuardrail Policy
+  - name: SentenceCountGuardrail
+    version: v0.1.0
+    filePath: ./sentence-count-guardrail/v0.1.0
+
+  # UrlGuardrail Policy
+  - name: URLGuardrail
+    version: v0.1.0
+    filePath: ./url-guardrail/v0.1.0
+
+  # RegexGuardrail Policy
+  - name: RegexGuardrail
+    version: v0.1.0
+    filePath: ./regex-guardrail/v0.1.0
+
+  # ContentLengthGuardrail Policy
+  - name: ContentLengthGuardrail
+    version: v0.1.0
+    filePath: ./content-length-guardrail/v0.1.0
+
+  # PIIMaskingRegex Policy
+  - name: PIIMaskingRegex
+    version: v0.1.0
+    filePath: ./pii-masking-regex/v0.1.0
+
+  # JSONSchemaGuardrail Policy
+  - name: JSONSchemaGuardrail
+    version: v0.1.0
+    filePath: ./json-schema-guardrail/v0.1.0
