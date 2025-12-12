@@ -888,7 +888,7 @@ paths:
           description: Name of the LLM provider template
           schema:
             type: string
-          example: openai_v1.0
+          example: openai
       responses:
         '200':
           description: LLM provider template details
@@ -926,7 +926,7 @@ paths:
           description: Name of the template to update
           schema:
             type: string
-          example: openai_v1.0
+          example: openai
       requestBody:
         required: true
         content:
@@ -976,7 +976,7 @@ paths:
           description: Name of the template to delete
           schema:
             type: string
-          example: openai_v1.0
+          example: openai
       responses:
         '200':
           description: LLM provider template deleted successfully
@@ -1301,7 +1301,7 @@ components:
         - name
         - version
         - context
-        - upstreams
+        - upstream
         - operations
         # - kind
       properties:
@@ -1330,12 +1330,32 @@ components:
           minLength: 1
           maxLength: 200
           example: /weather
-        upstreams:
-          type: array
-          description: List of backend service URLs
-          minItems: 1
-          items:
-            $ref: "#/components/schemas/Upstream"
+        upstream:
+          type: object
+          required:
+            - main
+          description: API-level upstream configuration
+          properties:
+            main:
+              $ref: "#/components/schemas/Upstream"
+            sandbox:
+              $ref: "#/components/schemas/Upstream"
+        vhosts:
+          type: object
+          required:
+            - main
+          description: Custom virtual hosts/domains for the API
+          properties:
+            main:
+              type: string
+              description: Custom virtual host/domain for production traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: api.example.com
+            sandbox:
+              type: string
+              description: Custom virtual host/domain for sandbox traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: sandbox-api.example.com
         policies:
           type: array
           description: List of API-level policies applied to all operations unless overridden
@@ -1348,7 +1368,7 @@ components:
           items:
             $ref: "#/components/schemas/Operation"
 
-    Upstream:
+    MCPUpstream:
       type: object
       required:
         - url
@@ -1358,6 +1378,22 @@ components:
           format: uri
           description: Backend service URL (may include path prefix like /api/v2)
           example: https://api.weather.com/api/v2
+
+    Upstream:
+      type: object
+      oneOf:
+        - required: [ "url" ]
+        - required: [ "ref" ]
+      description: Upstream backend configuration (single target or reference)
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Direct backend URL to route traffic to
+          example: http://prod-backend:5000/api/v2
+        ref:
+          type: string
+          description: Reference to a predefined upstreamDefinition
 
     Operation:
       type: object
@@ -1825,7 +1861,7 @@ components:
           description: List of backend service URLs
           minItems: 1
           items:
-            $ref: "#/components/schemas/Upstream"
+            $ref: "#/components/schemas/MCPUpstream"
         tools:
           type: array
           items:
@@ -2056,7 +2092,7 @@ components:
         name:
           type: string
           description: Unique name for the provider template
-          example: openai_v1.0
+          example: openai
         promptTokens:
           $ref: '#/components/schemas/ExtractionIdentifier'
         completionTokens:
@@ -2129,7 +2165,7 @@ components:
           example: 550e8400-e29b-41d4-a716-446655440000
         name:
           type: string
-          example: openai_v1.0
+          example: openai
         created_at:
           type: string
           format: date-time
@@ -2217,7 +2253,7 @@ components:
           example: v1.0
         template:
           type: string
-          example: openai_v1.0
+          example: openai
         status:
           type: string
           enum:
@@ -2300,7 +2336,7 @@ components:
         - name
         - version
         - template
-        - upstreams
+        - upstream
         - accessControl
       properties:
         name:
@@ -2323,7 +2359,7 @@ components:
           minLength: 1
           maxLength: 200
           example: /openai
-        host:
+        vhost:
           type: string
           description: >
             Virtual host name used for routing. Supports standard domain names,
@@ -2336,13 +2372,11 @@ components:
         template:
           type: string
           description: Template name to use for this LLM Provider
-          example: openai_v1.0
-        upstreams:
-          type: array
-          description: List of backend service URLs
-          minItems: 1
-          items:
-            $ref: "#/components/schemas/UpstreamWithAuth"
+          example: openai
+        upstream:
+          allOf:
+            - $ref: "#/components/schemas/Upstream"
+            - $ref: "#/components/schemas/UpstreamAuth"
         accessControl:
           $ref: '#/components/schemas/LLMAccessControl'
         policies:
@@ -2366,11 +2400,6 @@ components:
               type: string
             value:
               type: string
-
-    UpstreamWithAuth:
-      allOf:
-        - $ref: '#/components/schemas/Upstream'
-        - $ref: '#/components/schemas/UpstreamAuth'
 
     LLMAccessControl:
       type: object

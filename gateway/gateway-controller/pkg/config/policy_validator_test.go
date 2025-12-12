@@ -52,8 +52,13 @@ func TestPolicyValidator_ValidatePolicies_Success(t *testing.T) {
 		Name:    "Test API",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Policies: &[]api.Policy{
 			{
@@ -97,8 +102,13 @@ func TestPolicyValidator_PolicyNotFound(t *testing.T) {
 		Name:    "Test API",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Policies: &[]api.Policy{
 			{
@@ -159,8 +169,13 @@ func TestPolicyValidator_InvalidParameters(t *testing.T) {
 		Name:    "Test API",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Policies: &[]api.Policy{
 			{
@@ -217,8 +232,13 @@ func TestPolicyValidator_OperationLevelPolicies(t *testing.T) {
 		Name:    "Test API",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Operations: []api.Operation{
 			{
@@ -265,8 +285,13 @@ func TestPolicyValidator_MultipleErrors(t *testing.T) {
 		Name:    "Test API",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Policies: &[]api.Policy{
 			{
@@ -328,8 +353,13 @@ func TestPolicyValidator_TypeMismatch(t *testing.T) {
 		Name:    "Test API",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Policies: &[]api.Policy{
 			{
@@ -388,8 +418,13 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 		Name:    "Test API",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Policies: &[]api.Policy{
 			{

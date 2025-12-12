@@ -63,8 +63,13 @@ func createTestConfig(name, version string) *models.StoredConfig {
 		Name:    name,
 		Version: version,
 		Context: "/" + name,
-		Upstreams: []api.Upstream{
-			{Url: "http://example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://example.com"; return &s }(),
+			},
 		},
 		Operations: []api.Operation{
 			{

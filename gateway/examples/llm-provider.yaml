@@ -21,14 +21,14 @@ kind: llm/provider
 spec:
   name: wso2-openai-provider
   version: v1.0
-  template: openai_v1.0
-  context: /v1
-  upstreams:
-    - url: https://api.openai.com/v1
-      auth:
-        type: api-key
-        header: Authorization
-        value: secret-openai-apikey
+  template: openai
+  vhost: api.openai.local
+  upstream:
+    url: https://api.openai.com/v1
+    auth:
+      type: api-key
+      header: Authorization
+      value: <openai_apikey>
   accessControl:
     mode: deny_all
     exceptions:

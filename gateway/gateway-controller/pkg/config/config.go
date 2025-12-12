@@ -100,6 +100,7 @@ type RouterConfig struct {
 	PolicyEngine  PolicyEngineConfig `koanf:"policy_engine"`
 	DownstreamTLS DownstreamTLS      `koanf:"downstream_tls"`
 	EventGateway  EventGatewayConfig `koanf:"event_gateway"`
+	VHosts        VHostsConfig       `koanf:"vhosts"`
 }
 
 // EventGatewayConfig holds event gateway specific configurations
@@ -141,6 +142,19 @@ type upstreamTimeout struct {
 	RouteTimeoutInSeconds     uint32 `koanf:"route_timeout_in_seconds"`
 	MaxRouteTimeoutInSeconds  uint32 `koanf:"max_route_timeout_in_seconds"`
 	RouteIdleTimeoutInSeconds uint32 `koanf:"route_idle_timeout_in_seconds"`
+}
+
+// VHostsConfig for vhosts configuration
+type VHostsConfig struct {
+	Main    VHostEntry `koanf:"main"`
+	Sandbox VHostEntry `koanf:"sandbox"`
+}
+
+type VHostEntry struct {
+	// Optional explicit domain list for the vhost (examples: "*.wso2.com", "api.example.com").
+	// If empty, the router will rely on the default pattern.
+	Domains []string `koanf:"domains"`
+	Default string   `koanf:"default"`
 }
 
 // PolicyEngineConfig holds policy engine ext_proc filter configuration
@@ -348,6 +362,10 @@ func defaultConfig() *Config {
 					SkipVerify: false,
 				},
 			},
+			VHosts: VHostsConfig{
+				Main:    VHostEntry{Default: "*"},
+				Sandbox: VHostEntry{Default: "sandbox-*"},
+			},
 		},
 		Logging: LoggingConfig{
 			Level:  "info",
@@ -467,6 +485,11 @@ func (c *Config) Validate() error {
 
 	// Validate policy engine configuration
 	if err := c.validatePolicyEngineConfig(); err != nil {
+		return err
+	}
+
+	// Validate vhost configuration
+	if err := c.validateVHostsConfig(); err != nil {
 		return err
 	}
 
@@ -813,6 +836,42 @@ func (c *Config) validatePolicyEngineConfig() error {
 			policyEngine.RequestHeaderMode)
 	}
 
+	return nil
+}
+
+// validateVHostsConfig validates the vhosts configuration
+func (c *Config) validateVHostsConfig() error {
+	if strings.TrimSpace(c.Router.VHosts.Main.Default) == "" {
+		return fmt.Errorf("router.vhosts.main.default must be a non-empty string")
+	}
+	if strings.TrimSpace(c.Router.VHosts.Sandbox.Default) == "" {
+		return fmt.Errorf("router.vhosts.sandbox.default must be a non-empty string")
+	}
+
+	// Validate main.domains (only if not nil)
+	if err := validateDomains("router.vhosts.main.domains", c.Router.VHosts.Main.Domains); err != nil {
+		return err
+	}
+
+	// Validate sandbox.domains (only if not nil)
+	if err := validateDomains("router.vhosts.sandbox.domains", c.Router.VHosts.Sandbox.Domains); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateDomains(field string, domains []string) error {
+	if domains == nil {
+		// nil means "not configured" → valid
+		return nil
+	}
+
+	for i, d := range domains {
+		if strings.TrimSpace(d) == "" {
+			return fmt.Errorf("%s[%d] must be a non-empty string", field, i)
+		}
+	}
 	return nil
 }
 

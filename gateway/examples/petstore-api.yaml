@@ -22,8 +22,9 @@ spec:
   name: PetStore API test
   version: v1.0
   context: /petstoretest
-  upstreams:
-    - url: http://petstore.swagger.io/v2
+  upstream:
+    main:
+      url: http://petstore.swagger.io/v2
   policies:
     - name: apiKeyValidation
       version: v1.0.0

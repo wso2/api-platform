@@ -39,35 +39,37 @@ func (t *LLMProviderTransformer) Transform(input any, output *api.APIConfigurati
 	if provider.Spec.Context != nil {
 		spec.Context = *provider.Spec.Context
 	}
-	// TODO: Map vhosts if provided in provider.Spec.Host
 
 	// Step 2) Upstreams: map provider.Spec.Upstreams to api.Upstreams
-	if len(provider.Spec.Upstreams) > 0 {
-		ups := make([]api.Upstream, 0, len(provider.Spec.Upstreams))
-		for _, u := range provider.Spec.Upstreams {
-			ups = append(ups, api.Upstream{Url: u.Url})
+	// Map provider upstream and vhost to API main upstream and vhost
+	spec.Upstream.Main = api.Upstream{
+		Url: provider.Spec.Upstream.Url,
+	}
+	if provider.Spec.Vhost != nil {
+		spec.Vhosts = &struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: *provider.Spec.Vhost,
 		}
-		spec.Upstreams = ups
 	}
 
 	// Step 3) Map upstream auth to corresponding api policy
-	if len(provider.Spec.Upstreams) > 0 {
-		upstream := provider.Spec.Upstreams[0]
-		if upstream.Auth != nil {
-			switch upstream.Auth.Type {
-			case api.UpstreamWithAuthAuthTypeApiKey:
-				// Add API Key auth policy at API level
-				params, err := GetUpstreamAuthApikeyPolicyParams(*upstream.Auth.Header, *upstream.Auth.Value)
-				if err != nil {
-					return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
-				}
-				mh := api.Policy{
-					Name:    constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME,
-					Version: constants.UPSTREAM_AUTH_APIKEY_POLICY_VERSION, Params: &params}
-				spec.Policies = &[]api.Policy{mh}
-			default:
-				return nil, fmt.Errorf("unsupported upstream auth type: %s", upstream.Auth.Type)
+	upstream := provider.Spec.Upstream
+	if upstream.Auth != nil {
+		switch upstream.Auth.Type {
+		case api.LLMProviderConfigDataUpstreamAuthTypeApiKey:
+			// Add API Key auth policy at API level
+			params, err := GetUpstreamAuthApikeyPolicyParams(*upstream.Auth.Header, *upstream.Auth.Value)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
 			}
+			mh := api.Policy{
+				Name:    constants.UPSTREAM_AUTH_APIKEY_POLICY_NAME,
+				Version: constants.UPSTREAM_AUTH_APIKEY_POLICY_VERSION, Params: &params}
+			spec.Policies = &[]api.Policy{mh}
+		default:
+			return nil, fmt.Errorf("unsupported upstream auth type: %s", upstream.Auth.Type)
 		}
 	}
 

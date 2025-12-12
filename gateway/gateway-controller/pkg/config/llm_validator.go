@@ -40,7 +40,7 @@ type LLMValidator struct {
 func NewLLMValidator() *LLMValidator {
 	return &LLMValidator{
 		versionRegex:         regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
-		urlFriendlyNameRegex: regexp.MustCompile(`^[a-zA-Z0-9\-_\. ]+$`),
+		urlFriendlyNameRegex: regexp.MustCompile(`^[a-zA-Z0-9._-]+$`),
 		specRegex:            regexp.MustCompile(`^ai\.api-platform\.wso2\.com/v?(\d+)(\.\d+)?(\.\d+)?$`),
 	}
 }
@@ -107,26 +107,26 @@ func (v *LLMValidator) validateTemplateData(data *api.LLMProviderTemplateData) [
 	// Validate name
 	if !v.urlFriendlyNameRegex.MatchString(data.Name) {
 		errors = append(errors, ValidationError{
-			Field:   "data.name",
-			Message: "Template name must contain only letters, numbers, spaces, hyphens, underscores, and dots",
+			Field:   "spec.name",
+			Message: "Template name must contain only letters, numbers, hyphens, underscores, and dots",
 		})
 	}
 
 	// Validate token identifiers if present
 	if data.PromptTokens != nil {
-		errors = append(errors, v.validateExtractionIdentifier("data.promptTokens", data.PromptTokens)...)
+		errors = append(errors, v.validateExtractionIdentifier("spec.promptTokens", data.PromptTokens)...)
 	}
 
 	if data.CompletionTokens != nil {
-		errors = append(errors, v.validateExtractionIdentifier("data.completionTokens", data.CompletionTokens)...)
+		errors = append(errors, v.validateExtractionIdentifier("spec.completionTokens", data.CompletionTokens)...)
 	}
 
 	if data.TotalTokens != nil {
-		errors = append(errors, v.validateExtractionIdentifier("data.totalTokens", data.TotalTokens)...)
+		errors = append(errors, v.validateExtractionIdentifier("spec.totalTokens", data.TotalTokens)...)
 	}
 
 	if data.RequestModel != nil {
-		errors = append(errors, v.validateExtractionIdentifier("data.requestModel", data.RequestModel)...)
+		errors = append(errors, v.validateExtractionIdentifier("spec.requestModel", data.RequestModel)...)
 	}
 
 	return errors
@@ -185,18 +185,26 @@ func (v *LLMValidator) validateLLMProvider(provider *api.LLMProviderConfiguratio
 func (v *LLMValidator) validateProviderData(data *api.LLMProviderConfigData) []ValidationError {
 	var errors []ValidationError
 
+	// Check if data is nil
+	if data == nil {
+		return []ValidationError{{
+			Field:   "spec",
+			Message: "Provider data is required",
+		}}
+	}
+
 	// Validate name
 	if !v.urlFriendlyNameRegex.MatchString(data.Name) {
 		errors = append(errors, ValidationError{
-			Field:   "data.name",
-			Message: "Provider name must contain only letters, numbers, spaces, hyphens, underscores, and dots",
+			Field:   "spec.name",
+			Message: "Provider name must contain only letters, numbers, hyphens, underscores, and dots",
 		})
 	}
 
 	// Validate version
 	if data.Version == "" {
 		errors = append(errors, ValidationError{
-			Field:   "data.version",
+			Field:   "spec.version",
 			Message: "Provider version is required",
 		})
 	}
@@ -204,31 +212,23 @@ func (v *LLMValidator) validateProviderData(data *api.LLMProviderConfigData) []V
 	// Validate template reference
 	if data.Template == "" {
 		errors = append(errors, ValidationError{
-			Field:   "data.template",
+			Field:   "spec.template",
 			Message: "Template reference is required",
 		})
 	}
 
 	// Validate upstreams
-	if len(data.Upstreams) == 0 {
-		errors = append(errors, ValidationError{
-			Field:   "data.upstreams",
-			Message: "At least one upstream is required",
-		})
-	} else {
-		for i, upstream := range data.Upstreams {
-			errors = append(errors, v.validateUpstreamWithAuth(fmt.Sprintf("data.upstreams[%d]", i), &upstream)...)
-		}
-	}
+	errors = append(errors, v.validateUpstreamWithAuth(fmt.Sprintf("spec.upstream"), &data.Upstream)...)
 
 	// Validate access control
-	errors = append(errors, v.validateAccessControl("data.accessControl", &data.AccessControl)...)
+	errors = append(errors, v.validateAccessControl("spec.accessControl", &data.AccessControl)...)
 
 	return errors
 }
 
 // validateUpstreamWithAuth validates an UpstreamWithAuth configuration
-func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string, upstream *api.UpstreamWithAuth) []ValidationError {
+func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
+	upstream *api.LLMProviderConfigData_Upstream) []ValidationError {
 	var errors []ValidationError
 
 	if upstream == nil {
@@ -240,12 +240,12 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string, upstream *ap
 	}
 
 	// Validate URL
-	if upstream.Url == "" {
+	if upstream.Url == nil || *upstream.Url == "" {
 		errors = append(errors, ValidationError{
 			Field:   fmt.Sprintf("%s.url", fieldPrefix),
 			Message: "Upstream URL is required",
 		})
-	} else if !regexp.MustCompile(`^https?://`).MatchString(upstream.Url) {
+	} else if !regexp.MustCompile(`^https?://`).MatchString(*upstream.Url) {
 		errors = append(errors, ValidationError{
 			Field:   fmt.Sprintf("%s.url", fieldPrefix),
 			Message: "Upstream URL must start with http:// or https://",
@@ -261,25 +261,25 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string, upstream *ap
 				Field:   fmt.Sprintf("%s.auth.type", fieldPrefix),
 				Message: "Auth type is required",
 			})
-		} else if auth.Type != "api-key" && auth.Type != "bearer" {
+		} else if auth.Type != "api-key" {
 			errors = append(errors, ValidationError{
 				Field:   fmt.Sprintf("%s.auth.type", fieldPrefix),
-				Message: "Auth type must be either 'api-key' or 'bearer'",
+				Message: "Auth type must be 'api-key'",
 			})
 		}
 
-		// If type is present, header and value should also be present
-		if auth.Type != "" {
+		// If type is api-key, header and value should also be present
+		if auth.Type == "api-key" {
 			if auth.Header == nil || *auth.Header == "" {
 				errors = append(errors, ValidationError{
 					Field:   fmt.Sprintf("%s.auth.header", fieldPrefix),
-					Message: "Auth header is required when auth type is set",
+					Message: "Auth header is required when api-key auth type is set",
 				})
 			}
 			if auth.Value == nil || *auth.Value == "" {
 				errors = append(errors, ValidationError{
 					Field:   fmt.Sprintf("%s.auth.value", fieldPrefix),
-					Message: "Auth value is required when auth type is set",
+					Message: "Auth value is required when api-key auth type is set",
 				})
 			}
 		}
