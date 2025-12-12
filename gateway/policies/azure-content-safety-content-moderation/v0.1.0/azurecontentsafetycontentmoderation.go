@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -158,24 +157,13 @@ func parseRequestResponseParams(params map[string]interface{}) (AzureContentSafe
 	return result, nil
 }
 
-// extractInt safely extracts an integer from various types
+// extractInt only allows strictly integer type
 func extractInt(value interface{}) (int, error) {
-	switch v := value.(type) {
-	case int:
-		return v, nil
-	case int64:
-		return int(v), nil
-	case float64:
-		return int(v), nil
-	case string:
-		parsed, err := strconv.ParseFloat(v, 64)
-		if err != nil {
-			return 0, err
-		}
-		return int(parsed), nil
-	default:
-		return 0, fmt.Errorf("cannot convert %T to int", value)
+	v, ok := value.(int)
+	if !ok {
+		return 0, fmt.Errorf("expected an integer but got %T", value)
 	}
+	return v, nil
 }
 
 // getStringParam safely extracts a string parameter
@@ -285,7 +273,7 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 			}
 			return policy.UpstreamRequestModifications{}
 		}
-		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment, nil)
+		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment, nil, "")
 	}
 
 	// Clean and trim
@@ -301,7 +289,7 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 			}
 			return policy.UpstreamRequestModifications{}
 		}
-		return p.buildErrorResponse("Error calling Azure Content Safety API", err, isResponse, params.ShowAssessment, nil)
+		return p.buildErrorResponse("Error calling Azure Content Safety API", err, isResponse, params.ShowAssessment, nil, "")
 	}
 
 	// Check for violations

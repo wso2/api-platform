@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
@@ -136,24 +135,13 @@ func parseParams(params map[string]interface{}) (ContentLengthGuardrailPolicyPar
 	return result, nil
 }
 
-// extractInt safely extracts an integer from various types
+// extractInt only allows strictly integer type
 func extractInt(value interface{}) (int, error) {
-	switch v := value.(type) {
-	case int:
-		return v, nil
-	case int64:
-		return int(v), nil
-	case float64:
-		return int(v), nil
-	case string:
-		parsed, err := strconv.ParseFloat(v, 64)
-		if err != nil {
-			return 0, err
-		}
-		return int(parsed), nil
-	default:
-		return 0, fmt.Errorf("cannot convert %T to int", value)
+	v, ok := value.(int)
+	if !ok {
+		return 0, fmt.Errorf("expected an integer but got %T", value)
 	}
+	return v, nil
 }
 
 // Mode returns the processing mode for this policy
