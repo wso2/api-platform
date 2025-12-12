@@ -27,7 +27,7 @@ spec:
       # url: http://httpbin.org/anything
   policies:
     - name: JwtAuthentication
-      version: v1.0.0
+      version: v0.1.0
       params:
         keyManagers:
           - name: WSO2KeyManager

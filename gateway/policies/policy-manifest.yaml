@@ -17,8 +17,8 @@ policies:
     filePath: ./basic-auth/v1.0.0
 
   - name: JwtAuthentication
-    version: v1.0.0
-    filePath: ./jwt-auth/v1.0.0
+    version: v0.1.0
+    filePath: ./jwt-auth/v0.1.0
 
   # WordCountGuardrail Policy
   - name: WordCountGuardrail

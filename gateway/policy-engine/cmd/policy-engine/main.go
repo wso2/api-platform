@@ -60,15 +60,15 @@ func main() {
 		"git_commit", GitCommit,
 		"build_date", BuildDate,
 		"config_file", *configFile,
-		"config_mode", cfg.ConfigMode.Mode,
-		"extproc_port", cfg.Server.ExtProcPort)
+		"config_mode", cfg.PolicyEngine.ConfigMode.Mode,
+		"extproc_port", cfg.PolicyEngine.Server.ExtProcPort)
 
 	// Initialize core components
 	k := kernel.NewKernel()
 	reg := registry.GetRegistry()
 
 	// Set config in registry for ${config} CEL resolution
-	if err := reg.SetConfig(cfg.RawConfig); err != nil {
+	if err := reg.SetConfig(cfg.PolicyEngine.RawConfig); err != nil {
 		slog.ErrorContext(ctx, "Failed to set config in registry", "error", err)
 		os.Exit(1)
 	}
@@ -89,7 +89,7 @@ func main() {
 
 	// Initialize configuration source based on mode
 	var xdsClient *xdsclient.Client
-	switch cfg.ConfigMode.Mode {
+	switch cfg.PolicyEngine.ConfigMode.Mode {
 	case "xds":
 		xdsClient, err = initializeXDSClient(ctx, cfg, k, reg)
 		if err != nil {
@@ -107,17 +107,17 @@ func main() {
 		slog.InfoContext(ctx, "File configuration loaded successfully")
 
 	default:
-		slog.ErrorContext(ctx, "Invalid config mode", "mode", cfg.ConfigMode.Mode)
+		slog.ErrorContext(ctx, "Invalid config mode", "mode", cfg.PolicyEngine.ConfigMode.Mode)
 		os.Exit(1)
 	}
 
 	// Create and start ext_proc gRPC server
 	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor)
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Server.ExtProcPort))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.PolicyEngine.Server.ExtProcPort))
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to listen on port",
-			"port", cfg.Server.ExtProcPort,
+			"port", cfg.PolicyEngine.Server.ExtProcPort,
 			"error", err)
 		os.Exit(1)
 	}
@@ -125,12 +125,12 @@ func main() {
 	grpcServer := grpc.NewServer()
 	extprocv3.RegisterExternalProcessorServer(grpcServer, extprocServer)
 
-	slog.InfoContext(ctx, "Policy Engine listening", "port", cfg.Server.ExtProcPort)
+	slog.InfoContext(ctx, "Policy Engine listening", "port", cfg.PolicyEngine.Server.ExtProcPort)
 
 	// Start admin HTTP server if enabled
 	var adminServer *admin.Server
-	if cfg.Admin.Enabled {
-		adminServer = admin.NewServer(&cfg.Admin, k, reg)
+	if cfg.PolicyEngine.Admin.Enabled {
+		adminServer = admin.NewServer(&cfg.PolicyEngine.Admin, k, reg)
 		go func() {
 			if err := adminServer.Start(ctx); err != nil {
 				slog.ErrorContext(ctx, "Admin server error", "error", err)
@@ -181,26 +181,26 @@ func main() {
 func applyFlagOverrides(cfg *config.Config) {
 	// If policy-chains-file is provided, switch to file mode
 	if *policyChainsFile != "" {
-		cfg.ConfigMode.Mode = "file"
-		cfg.FileConfig.Path = *policyChainsFile
-		cfg.XDS.Enabled = false
+		cfg.PolicyEngine.ConfigMode.Mode = "file"
+		cfg.PolicyEngine.FileConfig.Path = *policyChainsFile
+		cfg.PolicyEngine.XDS.Enabled = false
 	}
 
 	// Override xDS server address if provided
 	if *xdsServerAddr != "" {
-		cfg.XDS.ServerAddress = *xdsServerAddr
+		cfg.PolicyEngine.XDS.ServerAddress = *xdsServerAddr
 	}
 
 	// Override xDS node ID if provided
 	if *xdsNodeID != "" {
-		cfg.XDS.NodeID = *xdsNodeID
+		cfg.PolicyEngine.XDS.NodeID = *xdsNodeID
 	}
 }
 
 // setupLogger creates a logger based on configuration
 func setupLogger(cfg *config.Config) *slog.Logger {
 	var level slog.Level
-	switch cfg.Logging.Level {
+	switch cfg.PolicyEngine.Logging.Level {
 	case "debug":
 		level = slog.LevelDebug
 	case "info":
@@ -216,7 +216,7 @@ func setupLogger(cfg *config.Config) *slog.Logger {
 	opts := &slog.HandlerOptions{Level: level}
 
 	var handler slog.Handler
-	if cfg.Logging.Format == "json" {
+	if cfg.PolicyEngine.Logging.Format == "json" {
 		handler = slog.NewJSONHandler(os.Stdout, opts)
 	} else {
 		handler = slog.NewTextHandler(os.Stdout, opts)
@@ -228,22 +228,22 @@ func setupLogger(cfg *config.Config) *slog.Logger {
 // initializeXDSClient initializes and starts the xDS client
 func initializeXDSClient(ctx context.Context, cfg *config.Config, k *kernel.Kernel, reg *registry.PolicyRegistry) (*xdsclient.Client, error) {
 	slog.InfoContext(ctx, "Initializing xDS client",
-		"server", cfg.XDS.ServerAddress,
-		"node_id", cfg.XDS.NodeID,
-		"cluster", cfg.XDS.Cluster)
+		"server", cfg.PolicyEngine.XDS.ServerAddress,
+		"node_id", cfg.PolicyEngine.XDS.NodeID,
+		"cluster", cfg.PolicyEngine.XDS.Cluster)
 
 	xdsConfig := &xdsclient.Config{
-		ServerAddress:         cfg.XDS.ServerAddress,
-		NodeID:                cfg.XDS.NodeID,
-		Cluster:               cfg.XDS.Cluster,
-		ConnectTimeout:        cfg.XDS.ConnectTimeout,
-		RequestTimeout:        cfg.XDS.RequestTimeout,
-		InitialReconnectDelay: cfg.XDS.InitialReconnectDelay,
-		MaxReconnectDelay:     cfg.XDS.MaxReconnectDelay,
-		TLSEnabled:            cfg.XDS.TLS.Enabled,
-		TLSCertPath:           cfg.XDS.TLS.CertPath,
-		TLSKeyPath:            cfg.XDS.TLS.KeyPath,
-		TLSCAPath:             cfg.XDS.TLS.CAPath,
+		ServerAddress:         cfg.PolicyEngine.XDS.ServerAddress,
+		NodeID:                cfg.PolicyEngine.XDS.NodeID,
+		Cluster:               cfg.PolicyEngine.XDS.Cluster,
+		ConnectTimeout:        cfg.PolicyEngine.XDS.ConnectTimeout,
+		RequestTimeout:        cfg.PolicyEngine.XDS.RequestTimeout,
+		InitialReconnectDelay: cfg.PolicyEngine.XDS.InitialReconnectDelay,
+		MaxReconnectDelay:     cfg.PolicyEngine.XDS.MaxReconnectDelay,
+		TLSEnabled:            cfg.PolicyEngine.XDS.TLS.Enabled,
+		TLSCertPath:           cfg.PolicyEngine.XDS.TLS.CertPath,
+		TLSKeyPath:            cfg.PolicyEngine.XDS.TLS.KeyPath,
+		TLSCAPath:             cfg.PolicyEngine.XDS.TLS.CAPath,
 	}
 
 	client, err := xdsclient.NewClient(xdsConfig, k, reg)
@@ -260,10 +260,10 @@ func initializeXDSClient(ctx context.Context, cfg *config.Config, k *kernel.Kern
 
 // initializeFileConfig loads policy chains from a static YAML file
 func initializeFileConfig(ctx context.Context, cfg *config.Config, k *kernel.Kernel, reg *registry.PolicyRegistry) error {
-	slog.InfoContext(ctx, "Loading file-based configuration", "path", cfg.FileConfig.Path)
+	slog.InfoContext(ctx, "Loading file-based configuration", "path", cfg.PolicyEngine.FileConfig.Path)
 
 	configLoader := kernel.NewConfigLoader(k, reg)
-	if err := configLoader.LoadFromFile(cfg.FileConfig.Path); err != nil {
+	if err := configLoader.LoadFromFile(cfg.PolicyEngine.FileConfig.Path); err != nil {
 		return fmt.Errorf("failed to load configuration from file: %w", err)
 	}
 
