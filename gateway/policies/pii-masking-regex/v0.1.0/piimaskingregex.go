@@ -90,9 +90,11 @@ func parseParams(params map[string]interface{}, requirePIIEntities bool) (PIIMas
 			}
 		case []interface{}:
 			piiEntitiesArray = make([]map[string]interface{}, 0, len(v))
-			for _, item := range v {
+			for idx, item := range v {
 				if itemMap, ok := item.(map[string]interface{}); ok {
 					piiEntitiesArray = append(piiEntitiesArray, itemMap)
+				} else {
+					return result, fmt.Errorf("'piiEntities[%d]' must be an object", idx)
 				}
 			}
 		default:
@@ -107,6 +109,10 @@ func parseParams(params map[string]interface{}, requirePIIEntities bool) (PIIMas
 				return result, fmt.Errorf("'piiEntities[%d].piiEntity' is required and must be a non-empty string", i)
 			}
 
+			if !regexp.MustCompile(`^[A-Z_]+$`).MatchString(piiEntity) {
+				return result, fmt.Errorf("'piiEntities[%d].piiEntity' must match ^[A-Z_]+$", i)
+			}
+
 			piiRegex, ok := entityConfig["piiRegex"].(string)
 			if !ok || piiRegex == "" {
 				return result, fmt.Errorf("'piiEntities[%d].piiRegex' is required and must be a non-empty string", i)
@@ -117,6 +123,9 @@ func parseParams(params map[string]interface{}, requirePIIEntities bool) (PIIMas
 				return result, fmt.Errorf("'piiEntities[%d].piiRegex' is invalid: %w", i, err)
 			}
 
+			if _, exists := piiEntities[piiEntity]; exists {
+				return result, fmt.Errorf("duplicate piiEntity: %q", piiEntity)
+			}
 			piiEntities[piiEntity] = compiledPattern
 		}
 
