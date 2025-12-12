@@ -32,6 +32,22 @@ type AzureContentSafetyContentModerationPolicy struct {
 	// Static configuration from initParams
 	endpoint string
 	apiKey   string
+
+	// Dynamic configuration from params
+	hasRequestParams  bool
+	hasResponseParams bool
+	requestParams     AzureContentSafetyPolicyParams
+	responseParams    AzureContentSafetyPolicyParams
+}
+
+type AzureContentSafetyPolicyParams struct {
+	JsonPath           string
+	PassthroughOnError bool
+	ShowAssessment     bool
+	HateCategory       int
+	SexualCategory     int
+	SelfHarmCategory   int
+	ViolenceCategory   int
 }
 
 // NewPolicy creates a new AzureContentSafetyContentModerationPolicy instance
@@ -50,7 +66,116 @@ func NewPolicy(
 		apiKey:   getStringParam(initParams, "azureContentSafetyKey"),
 	}
 
+	// Extract and parse request parameters if present
+	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {
+		requestParams, err := parseRequestResponseParams(requestParamsRaw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid request parameters: %w", err)
+		}
+		policy.hasRequestParams = true
+		policy.requestParams = requestParams
+	}
+
+	// Extract and parse response parameters if present
+	if responseParamsRaw, ok := params["response"].(map[string]interface{}); ok {
+		responseParams, err := parseRequestResponseParams(responseParamsRaw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid response parameters: %w", err)
+		}
+		policy.hasResponseParams = true
+		policy.responseParams = responseParams
+	}
+
+	// At least one of request or response must be present
+	if !policy.hasRequestParams && !policy.hasResponseParams {
+		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
+	}
+
 	return policy, nil
+}
+
+// parseRequestResponseParams parses and validates request/response parameters from map to struct
+func parseRequestResponseParams(params map[string]interface{}) (AzureContentSafetyPolicyParams, error) {
+	var result AzureContentSafetyPolicyParams
+
+	// Initialize category thresholds to -1 (disabled by default)
+	result.HateCategory = -1
+	result.SexualCategory = -1
+	result.SelfHarmCategory = -1
+	result.ViolenceCategory = -1
+
+	// Extract optional jsonPath parameter
+	if jsonPathRaw, ok := params["jsonPath"]; ok {
+		if jsonPath, ok := jsonPathRaw.(string); ok {
+			result.JsonPath = jsonPath
+		} else {
+			return result, fmt.Errorf("'jsonPath' must be a string")
+		}
+	}
+
+	// Extract optional passthroughOnError parameter
+	if passthroughOnErrorRaw, ok := params["passthroughOnError"]; ok {
+		if passthroughOnError, ok := passthroughOnErrorRaw.(bool); ok {
+			result.PassthroughOnError = passthroughOnError
+		} else {
+			return result, fmt.Errorf("'passthroughOnError' must be a boolean")
+		}
+	}
+
+	// Extract optional showAssessment parameter
+	if showAssessmentRaw, ok := params["showAssessment"]; ok {
+		if showAssessment, ok := showAssessmentRaw.(bool); ok {
+			result.ShowAssessment = showAssessment
+		} else {
+			return result, fmt.Errorf("'showAssessment' must be a boolean")
+		}
+	}
+
+	// Extract optional category thresholds
+	categories := []struct {
+		name  string
+		value *int
+	}{
+		{"hateCategory", &result.HateCategory},
+		{"sexualCategory", &result.SexualCategory},
+		{"selfHarmCategory", &result.SelfHarmCategory},
+		{"violenceCategory", &result.ViolenceCategory},
+	}
+
+	for _, cat := range categories {
+		if catRaw, ok := params[cat.name]; ok {
+			catValue, err := extractInt(catRaw)
+			if err != nil {
+				return result, fmt.Errorf("'%s' must be a number: %w", cat.name, err)
+			}
+			if catValue < -1 || catValue > 7 {
+				return result, fmt.Errorf("'%s' must be between -1 and 7", cat.name)
+			}
+			*cat.value = catValue
+		}
+	}
+
+	return result, nil
+}
+
+// extractInt safely extracts an integer from various types
+func extractInt(value interface{}) (int, error) {
+	switch v := value.(type) {
+	case int:
+		return v, nil
+	case int64:
+		return int(v), nil
+	case float64:
+		return int(v), nil
+	case string:
+		parsed, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return 0, err
+		}
+		return int(parsed), nil
+	default:
+		return 0, fmt.Errorf("cannot convert %T to int", value)
+	}
 }
 
 // getStringParam safely extracts a string parameter
@@ -106,104 +231,33 @@ func (p *AzureContentSafetyContentModerationPolicy) Mode() policy.ProcessingMode
 
 // OnRequest validates request body content
 func (p *AzureContentSafetyContentModerationPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	var requestParams map[string]interface{}
-	if reqParams, ok := params["request"].(map[string]interface{}); ok {
-		requestParams = reqParams
-	} else {
+	if !p.hasRequestParams {
 		return policy.UpstreamRequestModifications{}
-	}
-
-	// Validate request-specific parameters
-	if err := p.validateRequestResponseParams(requestParams); err != nil {
-		return p.buildErrorResponse("Parameter validation failed", err, false, false, nil).(policy.RequestAction)
 	}
 
 	var content []byte
 	if ctx.Body != nil {
 		content = ctx.Body.Content
 	}
-	return p.validatePayload(content, requestParams, false).(policy.RequestAction)
+	return p.validatePayload(content, p.requestParams, false).(policy.RequestAction)
 }
 
 // OnResponse validates response body content
 func (p *AzureContentSafetyContentModerationPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	var responseParams map[string]interface{}
-	if respParams, ok := params["response"].(map[string]interface{}); ok {
-		responseParams = respParams
-	} else {
+	if !p.hasResponseParams {
 		return policy.UpstreamResponseModifications{}
-	}
-
-	// Validate response-specific parameters
-	if err := p.validateRequestResponseParams(responseParams); err != nil {
-		return p.buildErrorResponse("Parameter validation failed", err, true, false, nil).(policy.ResponseAction)
 	}
 
 	var content []byte
 	if ctx.ResponseBody != nil {
 		content = ctx.ResponseBody.Content
 	}
-	return p.validatePayload(content, responseParams, true).(policy.ResponseAction)
-}
-
-// validateRequestResponseParams validates request/response specific parameters
-func (p *AzureContentSafetyContentModerationPolicy) validateRequestResponseParams(params map[string]interface{}) error {
-	// Validate optional parameters
-	if jsonPathRaw, ok := params["jsonPath"]; ok {
-		_, ok := jsonPathRaw.(string)
-		if !ok {
-			return fmt.Errorf("'jsonPath' must be a string")
-		}
-	}
-
-	if passthroughOnErrorRaw, ok := params["passthroughOnError"]; ok {
-		_, ok := passthroughOnErrorRaw.(bool)
-		if !ok {
-			return fmt.Errorf("'passthroughOnError' must be a boolean")
-		}
-	}
-
-	if showAssessmentRaw, ok := params["showAssessment"]; ok {
-		_, ok := showAssessmentRaw.(bool)
-		if !ok {
-			return fmt.Errorf("'showAssessment' must be a boolean")
-		}
-	}
-
-	// Validate category thresholds (optional, -1 to 7)
-	categories := []string{"hateCategory", "sexualCategory", "selfHarmCategory", "violenceCategory"}
-	for _, catName := range categories {
-		if catRaw, ok := params[catName]; ok {
-			cat, ok := catRaw.(float64)
-			if !ok {
-				if catInt, ok := catRaw.(int); ok {
-					cat = float64(catInt)
-				} else if catStr, ok := catRaw.(string); ok {
-					var err error
-					cat, err = strconv.ParseFloat(catStr, 64)
-					if err != nil {
-						return fmt.Errorf("'%s' must be a number", catName)
-					}
-				} else {
-					return fmt.Errorf("'%s' must be a number", catName)
-				}
-			}
-			if cat < -1 || cat > 7 {
-				return fmt.Errorf("'%s' must be between -1 and 7", catName)
-			}
-		}
-	}
-
-	return nil
+	return p.validatePayload(content, p.responseParams, true).(policy.ResponseAction)
 }
 
 // validatePayload validates payload against Azure Content Safety
-func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []byte, params map[string]interface{}, isResponse bool) interface{} {
-	jsonPath, _ := params["jsonPath"].(string)
-	passthroughOnError, _ := params["passthroughOnError"].(bool)
-	showAssessment, _ := params["showAssessment"].(bool)
-
-	// Build category thresholds from params (dynamic configuration)
+func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []byte, params AzureContentSafetyPolicyParams, isResponse bool) interface{} {
+	// Build category thresholds from params
 	categoryMap := p.buildCategoryMap(params)
 	categories := p.getValidCategories(categoryMap)
 
@@ -223,15 +277,15 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 	}
 
 	// Extract value using JSONPath
-	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, jsonPath)
+	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, params.JsonPath)
 	if err != nil {
-		if passthroughOnError {
+		if params.PassthroughOnError {
 			if isResponse {
 				return policy.UpstreamResponseModifications{}
 			}
 			return policy.UpstreamRequestModifications{}
 		}
-		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, showAssessment, nil)
+		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment, nil)
 	}
 
 	// Clean and trim
@@ -241,13 +295,13 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 	// Call Azure Content Safety API
 	categoriesAnalysis, err := p.callAzureContentSafetyAPI(p.endpoint, p.apiKey, extractedValue, categories)
 	if err != nil {
-		if passthroughOnError {
+		if params.PassthroughOnError {
 			if isResponse {
 				return policy.UpstreamResponseModifications{}
 			}
 			return policy.UpstreamRequestModifications{}
 		}
-		return p.buildErrorResponse("Error calling Azure Content Safety API", err, isResponse, showAssessment, nil)
+		return p.buildErrorResponse("Error calling Azure Content Safety API", err, isResponse, params.ShowAssessment, nil)
 	}
 
 	// Check for violations
@@ -259,7 +313,7 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 
 		if threshold >= 0 && severity >= threshold {
 			// Violation detected
-			return p.buildErrorResponse("Violation of Azure content safety content moderation detected", nil, isResponse, showAssessment, categoriesAnalysis)
+			return p.buildErrorResponse("Violation of Azure content safety content moderation detected", nil, isResponse, params.ShowAssessment, categoriesAnalysis)
 		}
 	}
 
@@ -271,47 +325,13 @@ func (p *AzureContentSafetyContentModerationPolicy) validatePayload(payload []by
 }
 
 // buildCategoryMap builds category threshold map from parameters
-func (p *AzureContentSafetyContentModerationPolicy) buildCategoryMap(params map[string]interface{}) map[string]int {
-	categoryMap := map[string]int{
-		"Hate":     -1,
-		"Sexual":   -1,
-		"SelfHarm": -1,
-		"Violence": -1,
+func (p *AzureContentSafetyContentModerationPolicy) buildCategoryMap(params AzureContentSafetyPolicyParams) map[string]int {
+	return map[string]int{
+		"Hate":     params.HateCategory,
+		"Sexual":   params.SexualCategory,
+		"SelfHarm": params.SelfHarmCategory,
+		"Violence": params.ViolenceCategory,
 	}
-
-	if hateRaw, ok := params["hateCategory"]; ok {
-		if hateFloat, ok := hateRaw.(float64); ok {
-			categoryMap["Hate"] = int(hateFloat)
-		} else if hateInt, ok := hateRaw.(int); ok {
-			categoryMap["Hate"] = hateInt
-		}
-	}
-
-	if sexualRaw, ok := params["sexualCategory"]; ok {
-		if sexualFloat, ok := sexualRaw.(float64); ok {
-			categoryMap["Sexual"] = int(sexualFloat)
-		} else if sexualInt, ok := sexualRaw.(int); ok {
-			categoryMap["Sexual"] = sexualInt
-		}
-	}
-
-	if selfHarmRaw, ok := params["selfHarmCategory"]; ok {
-		if selfHarmFloat, ok := selfHarmRaw.(float64); ok {
-			categoryMap["SelfHarm"] = int(selfHarmFloat)
-		} else if selfHarmInt, ok := selfHarmRaw.(int); ok {
-			categoryMap["SelfHarm"] = selfHarmInt
-		}
-	}
-
-	if violenceRaw, ok := params["violenceCategory"]; ok {
-		if violenceFloat, ok := violenceRaw.(float64); ok {
-			categoryMap["Violence"] = int(violenceFloat)
-		} else if violenceInt, ok := violenceRaw.(int); ok {
-			categoryMap["Violence"] = violenceInt
-		}
-	}
-
-	return categoryMap
 }
 
 // getValidCategories returns list of valid categories (threshold between 0-7)

@@ -15,7 +15,19 @@ const (
 )
 
 // JSONSchemaGuardrailPolicy implements JSON schema validation
-type JSONSchemaGuardrailPolicy struct{}
+type JSONSchemaGuardrailPolicy struct {
+	hasRequestParams  bool
+	hasResponseParams bool
+	requestParams     JSONSchemaGuardrailPolicyParams
+	responseParams    JSONSchemaGuardrailPolicyParams
+}
+
+type JSONSchemaGuardrailPolicyParams struct {
+	Schema         string
+	JsonPath       string
+	Invert         bool
+	ShowAssessment bool
+}
 
 // NewPolicy creates a new JSONSchemaGuardrailPolicy instance
 func NewPolicy(
@@ -23,7 +35,88 @@ func NewPolicy(
 	initParams map[string]interface{},
 	params map[string]interface{},
 ) (policy.Policy, error) {
-	return &JSONSchemaGuardrailPolicy{}, nil
+	policy := &JSONSchemaGuardrailPolicy{}
+
+	// Extract and parse request parameters if present
+	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {
+		requestParams, err := parseParams(requestParamsRaw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid request parameters: %w", err)
+		}
+		policy.hasRequestParams = true
+		policy.requestParams = requestParams
+	}
+
+	// Extract and parse response parameters if present
+	if responseParamsRaw, ok := params["response"].(map[string]interface{}); ok {
+		responseParams, err := parseParams(responseParamsRaw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid response parameters: %w", err)
+		}
+		policy.hasResponseParams = true
+		policy.responseParams = responseParams
+	}
+
+	// At least one of request or response must be present
+	if !policy.hasRequestParams && !policy.hasResponseParams {
+		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
+	}
+
+	return policy, nil
+}
+
+// parseParams parses and validates parameters from map to struct
+func parseParams(params map[string]interface{}) (JSONSchemaGuardrailPolicyParams, error) {
+	var result JSONSchemaGuardrailPolicyParams
+
+	// Validate and extract schema parameter (required)
+	schemaRaw, ok := params["schema"]
+	if !ok {
+		return result, fmt.Errorf("'schema' parameter is required")
+	}
+	schema, ok := schemaRaw.(string)
+	if !ok {
+		return result, fmt.Errorf("'schema' must be a string")
+	}
+	if schema == "" {
+		return result, fmt.Errorf("'schema' cannot be empty")
+	}
+
+	// Validate schema is valid JSON
+	var schemaJSON interface{}
+	if err := json.Unmarshal([]byte(schema), &schemaJSON); err != nil {
+		return result, fmt.Errorf("'schema' must be valid JSON: %v", err)
+	}
+	result.Schema = schema
+
+	// Extract optional jsonPath parameter
+	if jsonPathRaw, ok := params["jsonPath"]; ok {
+		if jsonPath, ok := jsonPathRaw.(string); ok {
+			result.JsonPath = jsonPath
+		} else {
+			return result, fmt.Errorf("'jsonPath' must be a string")
+		}
+	}
+
+	// Extract optional invert parameter
+	if invertRaw, ok := params["invert"]; ok {
+		if invert, ok := invertRaw.(bool); ok {
+			result.Invert = invert
+		} else {
+			return result, fmt.Errorf("'invert' must be a boolean")
+		}
+	}
+
+	// Extract optional showAssessment parameter
+	if showAssessmentRaw, ok := params["showAssessment"]; ok {
+		if showAssessment, ok := showAssessmentRaw.(bool); ok {
+			result.ShowAssessment = showAssessment
+		} else {
+			return result, fmt.Errorf("'showAssessment' must be a boolean")
+		}
+	}
+
+	return result, nil
 }
 
 // Mode returns the processing mode for this policy
@@ -38,108 +131,41 @@ func (p *JSONSchemaGuardrailPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest validates request body against JSON schema
 func (p *JSONSchemaGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	var requestParams map[string]interface{}
-	if reqParams, ok := params["request"].(map[string]interface{}); ok {
-		requestParams = reqParams
-	} else {
+	if !p.hasRequestParams {
 		return policy.UpstreamRequestModifications{}
-	}
-
-	// Validate parameters
-	if err := p.validateParams(requestParams); err != nil {
-		return p.buildErrorResponse("Parameter validation failed", err, false, false, nil).(policy.RequestAction)
 	}
 
 	content := []byte{}
 	if ctx.Body != nil {
 		content = ctx.Body.Content
 	}
-	return p.validatePayload(content, requestParams, false).(policy.RequestAction)
+	return p.validatePayload(content, p.requestParams, false).(policy.RequestAction)
 }
 
 // OnResponse validates response body against JSON schema
 func (p *JSONSchemaGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	var responseParams map[string]interface{}
-	if respParams, ok := params["response"].(map[string]interface{}); ok {
-		responseParams = respParams
-	} else {
+	if !p.hasResponseParams {
 		return policy.UpstreamResponseModifications{}
-	}
-
-	// Validate parameters
-	if err := p.validateParams(responseParams); err != nil {
-		return p.buildErrorResponse("Parameter validation failed", err, true, false, nil).(policy.ResponseAction)
 	}
 
 	content := []byte{}
 	if ctx.ResponseBody != nil {
 		content = ctx.ResponseBody.Content
 	}
-	return p.validatePayload(content, responseParams, true).(policy.ResponseAction)
-}
-
-// validateParams validates the actual policy parameters
-func (p *JSONSchemaGuardrailPolicy) validateParams(params map[string]interface{}) error {
-	// Validate schema parameter (required)
-	schemaRaw, ok := params["schema"]
-	if !ok {
-		return fmt.Errorf("'schema' parameter is required")
-	}
-	schema, ok := schemaRaw.(string)
-	if !ok {
-		return fmt.Errorf("'schema' must be a string")
-	}
-	if schema == "" {
-		return fmt.Errorf("'schema' cannot be empty")
-	}
-
-	// Validate schema is valid JSON
-	var schemaJSON interface{}
-	if err := json.Unmarshal([]byte(schema), &schemaJSON); err != nil {
-		return fmt.Errorf("'schema' must be valid JSON: %v", err)
-	}
-
-	// Validate optional parameters
-	if jsonPathRaw, ok := params["jsonPath"]; ok {
-		_, ok := jsonPathRaw.(string)
-		if !ok {
-			return fmt.Errorf("'jsonPath' must be a string")
-		}
-	}
-
-	if invertRaw, ok := params["invert"]; ok {
-		_, ok := invertRaw.(bool)
-		if !ok {
-			return fmt.Errorf("'invert' must be a boolean")
-		}
-	}
-
-	if showAssessmentRaw, ok := params["showAssessment"]; ok {
-		_, ok := showAssessmentRaw.(bool)
-		if !ok {
-			return fmt.Errorf("'showAssessment' must be a boolean")
-		}
-	}
-
-	return nil
+	return p.validatePayload(content, p.responseParams, true).(policy.ResponseAction)
 }
 
 // validatePayload validates payload against JSON schema
-func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params map[string]interface{}, isResponse bool) interface{} {
-	schemaRaw, _ := params["schema"].(string)
-	jsonPath, _ := params["jsonPath"].(string)
-	invert, _ := params["invert"].(bool)
-	showAssessment, _ := params["showAssessment"].(bool)
-
+func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params JSONSchemaGuardrailPolicyParams, isResponse bool) interface{} {
 	// Parse schema
-	schemaLoader := gojsonschema.NewStringLoader(schemaRaw)
+	schemaLoader := gojsonschema.NewStringLoader(params.Schema)
 
 	// Extract value using JSONPath if specified
 	var documentLoader gojsonschema.JSONLoader
-	if jsonPath != "" {
-		extractedValue, err := extractValueFromJSONPathForSchema(payload, jsonPath)
+	if params.JsonPath != "" {
+		extractedValue, err := extractValueFromJSONPathForSchema(payload, params.JsonPath)
 		if err != nil {
-			return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, showAssessment, nil)
+			return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment, nil)
 		}
 		documentLoader = gojsonschema.NewBytesLoader(extractedValue)
 	} else {
@@ -149,12 +175,12 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params map[s
 	// Validate against schema
 	result, err := gojsonschema.Validate(schemaLoader, documentLoader)
 	if err != nil {
-		return p.buildErrorResponse("Error validating schema", err, isResponse, showAssessment, nil)
+		return p.buildErrorResponse("Error validating schema", err, isResponse, params.ShowAssessment, nil)
 	}
 
 	// Apply inversion logic
 	var validationPassed bool
-	if invert {
+	if params.Invert {
 		validationPassed = !result.Valid() // Inverted: pass if NOT valid
 	} else {
 		validationPassed = result.Valid() // Normal: pass if valid
@@ -162,12 +188,12 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params map[s
 
 	if !validationPassed {
 		var reason string
-		if invert {
+		if params.Invert {
 			reason = "JSON schema validation passed but invert is enabled"
 		} else {
 			reason = "JSON schema validation failed"
 		}
-		return p.buildErrorResponse(reason, nil, isResponse, showAssessment, result.Errors())
+		return p.buildErrorResponse(reason, nil, isResponse, params.ShowAssessment, result.Errors())
 	}
 
 	if isResponse {

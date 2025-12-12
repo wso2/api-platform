@@ -15,7 +15,19 @@ const (
 )
 
 // RegexGuardrailPolicy implements regex-based content validation
-type RegexGuardrailPolicy struct{}
+type RegexGuardrailPolicy struct {
+	hasRequestParams  bool
+	hasResponseParams bool
+	requestParams     RegexGuardrailPolicyParams
+	responseParams    RegexGuardrailPolicyParams
+}
+
+type RegexGuardrailPolicyParams struct {
+	Regex          string
+	JsonPath       string
+	Invert         bool
+	ShowAssessment bool
+}
 
 // NewPolicy creates a new RegexGuardrailPolicy instance
 func NewPolicy(
@@ -23,7 +35,88 @@ func NewPolicy(
 	initParams map[string]interface{},
 	params map[string]interface{},
 ) (policy.Policy, error) {
-	return &RegexGuardrailPolicy{}, nil
+	policy := &RegexGuardrailPolicy{}
+
+	// Extract and parse request parameters if present
+	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {
+		requestParams, err := parseParams(requestParamsRaw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid request parameters: %w", err)
+		}
+		policy.hasRequestParams = true
+		policy.requestParams = requestParams
+	}
+
+	// Extract and parse response parameters if present
+	if responseParamsRaw, ok := params["response"].(map[string]interface{}); ok {
+		responseParams, err := parseParams(responseParamsRaw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid response parameters: %w", err)
+		}
+		policy.hasResponseParams = true
+		policy.responseParams = responseParams
+	}
+
+	// At least one of request or response must be present
+	if !policy.hasRequestParams && !policy.hasResponseParams {
+		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
+	}
+
+	return policy, nil
+}
+
+// parseParams parses and validates parameters from map to struct
+func parseParams(params map[string]interface{}) (RegexGuardrailPolicyParams, error) {
+	var result RegexGuardrailPolicyParams
+
+	// Validate and extract regex parameter (required)
+	regexRaw, ok := params["regex"]
+	if !ok {
+		return result, fmt.Errorf("'regex' parameter is required")
+	}
+	regexPattern, ok := regexRaw.(string)
+	if !ok {
+		return result, fmt.Errorf("'regex' must be a string")
+	}
+	if regexPattern == "" {
+		return result, fmt.Errorf("'regex' cannot be empty")
+	}
+
+	// Validate regex is compilable
+	_, err := regexp.Compile(regexPattern)
+	if err != nil {
+		return result, fmt.Errorf("invalid regex pattern: %w", err)
+	}
+	result.Regex = regexPattern
+
+	// Extract optional jsonPath parameter
+	if jsonPathRaw, ok := params["jsonPath"]; ok {
+		if jsonPath, ok := jsonPathRaw.(string); ok {
+			result.JsonPath = jsonPath
+		} else {
+			return result, fmt.Errorf("'jsonPath' must be a string")
+		}
+	}
+
+	// Extract optional invert parameter
+	if invertRaw, ok := params["invert"]; ok {
+		if invert, ok := invertRaw.(bool); ok {
+			result.Invert = invert
+		} else {
+			return result, fmt.Errorf("'invert' must be a boolean")
+		}
+	}
+
+	// Extract optional showAssessment parameter
+	if showAssessmentRaw, ok := params["showAssessment"]; ok {
+		if showAssessment, ok := showAssessmentRaw.(bool); ok {
+			result.ShowAssessment = showAssessment
+		} else {
+			return result, fmt.Errorf("'showAssessment' must be a boolean")
+		}
+	}
+
+	return result, nil
 }
 
 // Mode returns the processing mode for this policy
@@ -38,78 +131,55 @@ func (p *RegexGuardrailPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest validates request body against regex pattern
 func (p *RegexGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	// Extract request-specific parameters
-	var requestParams map[string]interface{}
-	if reqParams, ok := params["request"].(map[string]interface{}); ok {
-		requestParams = reqParams
-	} else {
+	if !p.hasRequestParams {
 		return policy.UpstreamRequestModifications{}
-	}
-
-	// Validate parameters
-	if err := p.validateParams(requestParams); err != nil {
-		return p.buildErrorResponse("Parameter validation failed", err, false, false).(policy.RequestAction)
 	}
 
 	var content []byte
 	if ctx.Body != nil {
 		content = ctx.Body.Content
 	}
-	return p.validatePayload(content, requestParams, false).(policy.RequestAction)
+	return p.validatePayload(content, p.requestParams, false).(policy.RequestAction)
 }
 
 // OnResponse validates response body against regex pattern
 func (p *RegexGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	// Extract response-specific parameters
-	var responseParams map[string]interface{}
-	if respParams, ok := params["response"].(map[string]interface{}); ok {
-		responseParams = respParams
-	} else {
+	if !p.hasResponseParams {
 		return policy.UpstreamResponseModifications{}
-	}
-
-	// Validate parameters
-	if err := p.validateParams(responseParams); err != nil {
-		return p.buildErrorResponse("Parameter validation failed", err, true, false).(policy.ResponseAction)
 	}
 
 	var content []byte
 	if ctx.ResponseBody != nil {
 		content = ctx.ResponseBody.Content
 	}
-	return p.validatePayload(content, responseParams, true).(policy.ResponseAction)
+	return p.validatePayload(content, p.responseParams, true).(policy.ResponseAction)
 }
 
 // validatePayload validates payload against regex pattern
-func (p *RegexGuardrailPolicy) validatePayload(payload []byte, params map[string]interface{}, isResponse bool) interface{} {
-	regexPattern, _ := params["regex"].(string)
-	jsonPath, _ := params["jsonPath"].(string)
-	invert, _ := params["invert"].(bool)
-	showAssessment, _ := params["showAssessment"].(bool)
-
+func (p *RegexGuardrailPolicy) validatePayload(payload []byte, params RegexGuardrailPolicyParams, isResponse bool) interface{} {
 	// Extract value using JSONPath
-	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, jsonPath)
+	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, params.JsonPath)
 	if err != nil {
-		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, showAssessment)
+		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment)
 	}
 
 	// Compile regex pattern
-	compiledRegex, err := regexp.Compile(regexPattern)
+	compiledRegex, err := regexp.Compile(params.Regex)
 	if err != nil {
-		return p.buildErrorResponse("Invalid regex pattern", err, isResponse, showAssessment)
+		return p.buildErrorResponse("Invalid regex pattern", err, isResponse, params.ShowAssessment)
 	}
 	matched := compiledRegex.MatchString(extractedValue)
 
 	// Apply inversion logic
 	var validationPassed bool
-	if invert {
+	if params.Invert {
 		validationPassed = !matched // Inverted: pass if NOT matched
 	} else {
 		validationPassed = matched // Normal: pass if matched
 	}
 
 	if !validationPassed {
-		return p.buildErrorResponse("Violated regular expression: "+regexPattern, nil, isResponse, showAssessment)
+		return p.buildErrorResponse("Violated regular expression: "+params.Regex, nil, isResponse, params.ShowAssessment)
 	}
 
 	if isResponse {
@@ -174,54 +244,9 @@ func (p *RegexGuardrailPolicy) buildAssessmentObject(reason string, validationEr
 	} else {
 		assessment["actionReason"] = "Violation of regular expression detected."
 		if showAssessment {
-			assessment["assessments"] = reason
+			assessment["assessments"] = []string{reason}
 		}
 	}
 
 	return assessment
-}
-
-// validateParams validates the actual policy parameters
-func (p *RegexGuardrailPolicy) validateParams(params map[string]interface{}) error {
-	// Validate regex parameter (required)
-	regexRaw, ok := params["regex"]
-	if !ok {
-		return fmt.Errorf("'regex' parameter is required")
-	}
-	regexPattern, ok := regexRaw.(string)
-	if !ok {
-		return fmt.Errorf("'regex' must be a string")
-	}
-	if regexPattern == "" {
-		return fmt.Errorf("'regex' cannot be empty")
-	}
-
-	_, err := regexp.Compile(regexPattern)
-	if err != nil {
-		return fmt.Errorf("invalid regex pattern: %w", err)
-	}
-
-	// Validate optional parameters
-	if jsonPathRaw, ok := params["jsonPath"]; ok {
-		_, ok := jsonPathRaw.(string)
-		if !ok {
-			return fmt.Errorf("'jsonPath' must be a string")
-		}
-	}
-
-	if invertRaw, ok := params["invert"]; ok {
-		_, ok := invertRaw.(bool)
-		if !ok {
-			return fmt.Errorf("'invert' must be a boolean")
-		}
-	}
-
-	if showAssessmentRaw, ok := params["showAssessment"]; ok {
-		_, ok := showAssessmentRaw.(bool)
-		if !ok {
-			return fmt.Errorf("'showAssessment' must be a boolean")
-		}
-	}
-
-	return nil
 }

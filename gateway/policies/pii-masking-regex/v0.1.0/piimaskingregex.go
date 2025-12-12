@@ -20,7 +20,18 @@ const (
 var textCleanRegexCompiled = regexp.MustCompile(TextCleanRegex)
 
 // PIIMaskingRegexPolicy implements regex-based PII masking
-type PIIMaskingRegexPolicy struct{}
+type PIIMaskingRegexPolicy struct {
+	hasRequestParams  bool
+	hasResponseParams bool
+	requestParams     PIIMaskingRegexPolicyParams
+	responseParams    PIIMaskingRegexPolicyParams
+}
+
+type PIIMaskingRegexPolicyParams struct {
+	PIIEntities map[string]*regexp.Regexp
+	JsonPath    string
+	RedactPII   bool
+}
 
 // NewPolicy creates a new PIIMaskingRegexPolicy instance
 func NewPolicy(
@@ -28,7 +39,112 @@ func NewPolicy(
 	initParams map[string]interface{},
 	params map[string]interface{},
 ) (policy.Policy, error) {
-	return &PIIMaskingRegexPolicy{}, nil
+	policy := &PIIMaskingRegexPolicy{}
+
+	// Extract and parse request parameters if present
+	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {
+		requestParams, err := parseParams(requestParamsRaw, true) // true = required for request
+		if err != nil {
+			return nil, fmt.Errorf("invalid request parameters: %w", err)
+		}
+		policy.hasRequestParams = true
+		policy.requestParams = requestParams
+	}
+
+	// Extract and parse response parameters if present
+	if responseParamsRaw, ok := params["response"].(map[string]interface{}); ok {
+		responseParams, err := parseParams(responseParamsRaw, false) // false = optional for response
+		if err != nil {
+			return nil, fmt.Errorf("invalid response parameters: %w", err)
+		}
+		policy.hasResponseParams = true
+		policy.responseParams = responseParams
+	}
+
+	// At least one of request or response must be present
+	if !policy.hasRequestParams && !policy.hasResponseParams {
+		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
+	}
+
+	return policy, nil
+}
+
+// parseParams parses and validates parameters from map to struct
+// requirePIIEntities: true for request params (required), false for response params (optional)
+func parseParams(params map[string]interface{}, requirePIIEntities bool) (PIIMaskingRegexPolicyParams, error) {
+	var result PIIMaskingRegexPolicyParams
+
+	// Validate and extract piiEntities parameter
+	piiEntitiesRaw, ok := params["piiEntities"]
+	if !ok && requirePIIEntities {
+		return result, fmt.Errorf("'piiEntities' parameter is required")
+	}
+	if ok {
+		// Parse PII entities
+		var piiEntitiesArray []map[string]interface{}
+		switch v := piiEntitiesRaw.(type) {
+		case string:
+			if err := json.Unmarshal([]byte(v), &piiEntitiesArray); err != nil {
+				return result, fmt.Errorf("error unmarshaling PII entities: %w", err)
+			}
+		case []interface{}:
+			piiEntitiesArray = make([]map[string]interface{}, 0, len(v))
+			for _, item := range v {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					piiEntitiesArray = append(piiEntitiesArray, itemMap)
+				}
+			}
+		default:
+			return result, fmt.Errorf("'piiEntities' must be an array or JSON string")
+		}
+
+		// Validate each PII entity
+		piiEntities := make(map[string]*regexp.Regexp)
+		for i, entityConfig := range piiEntitiesArray {
+			piiEntity, ok := entityConfig["piiEntity"].(string)
+			if !ok || piiEntity == "" {
+				return result, fmt.Errorf("'piiEntities[%d].piiEntity' is required and must be a non-empty string", i)
+			}
+
+			piiRegex, ok := entityConfig["piiRegex"].(string)
+			if !ok || piiRegex == "" {
+				return result, fmt.Errorf("'piiEntities[%d].piiRegex' is required and must be a non-empty string", i)
+			}
+
+			compiledPattern, err := regexp.Compile(piiRegex)
+			if err != nil {
+				return result, fmt.Errorf("'piiEntities[%d].piiRegex' is invalid: %w", i, err)
+			}
+
+			piiEntities[piiEntity] = compiledPattern
+		}
+
+		if len(piiEntities) == 0 {
+			return result, fmt.Errorf("'piiEntities' cannot be empty")
+		}
+
+		result.PIIEntities = piiEntities
+	}
+
+	// Extract optional jsonPath parameter
+	if jsonPathRaw, ok := params["jsonPath"]; ok {
+		if jsonPath, ok := jsonPathRaw.(string); ok {
+			result.JsonPath = jsonPath
+		} else {
+			return result, fmt.Errorf("'jsonPath' must be a string")
+		}
+	}
+
+	// Extract optional redactPII parameter
+	if redactPIIRaw, ok := params["redactPII"]; ok {
+		if redactPII, ok := redactPIIRaw.(bool); ok {
+			result.RedactPII = redactPII
+		} else {
+			return result, fmt.Errorf("'redactPII' must be a boolean")
+		}
+	}
+
+	return result, nil
 }
 
 // Mode returns the processing mode for this policy
@@ -43,29 +159,11 @@ func (p *PIIMaskingRegexPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest masks PII in request body
 func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	// Extract request-specific parameters
-	var requestParams map[string]interface{}
-	if reqParams, ok := params["request"].(map[string]interface{}); ok {
-		requestParams = reqParams
-	} else {
+	if !p.hasRequestParams {
 		return policy.UpstreamRequestModifications{}
 	}
 
-	// Validate parameters
-	if err := p.validateParams(requestParams); err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: %v", err)).(policy.RequestAction)
-	}
-
-	jsonPath, _ := requestParams["jsonPath"].(string)
-	redactPII, _ := requestParams["redactPII"].(bool)
-
-	// Parse PII entities
-	piiEntities, err := p.parsePIIEntities(requestParams)
-	if err != nil {
-		return p.buildErrorResponse(fmt.Sprintf("error parsing PII entities: %v", err)).(policy.RequestAction)
-	}
-
-	if len(piiEntities) == 0 {
+	if len(p.requestParams.PIIEntities) == 0 {
 		// No PII entities configured, pass through
 		return policy.UpstreamRequestModifications{}
 	}
@@ -76,7 +174,7 @@ func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map
 	payload := ctx.Body.Content
 
 	// Extract value using JSONPath
-	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, jsonPath)
+	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, p.requestParams.JsonPath)
 	if err != nil {
 		return p.buildErrorResponse(fmt.Sprintf("error extracting value from JSONPath: %v", err)).(policy.RequestAction)
 	}
@@ -86,12 +184,12 @@ func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map
 	extractedValue = strings.TrimSpace(extractedValue)
 
 	var modifiedContent string
-	if redactPII {
+	if p.requestParams.RedactPII {
 		// Redaction mode: replace with *****
-		modifiedContent = p.redactPIIFromContent(extractedValue, piiEntities)
+		modifiedContent = p.redactPIIFromContent(extractedValue, p.requestParams.PIIEntities)
 	} else {
 		// Masking mode: replace with placeholders and store mappings
-		modifiedContent, err = p.maskPIIFromContent(extractedValue, piiEntities, ctx.Metadata)
+		modifiedContent, err = p.maskPIIFromContent(extractedValue, p.requestParams.PIIEntities, ctx.Metadata)
 		if err != nil {
 			return p.buildErrorResponse(fmt.Sprintf("error masking PII: %v", err)).(policy.RequestAction)
 		}
@@ -99,7 +197,7 @@ func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map
 
 	// If content was modified, update the payload
 	if modifiedContent != "" && modifiedContent != extractedValue {
-		modifiedPayload := p.updatePayloadWithMaskedContent(payload, extractedValue, modifiedContent, jsonPath)
+		modifiedPayload := p.updatePayloadWithMaskedContent(payload, extractedValue, modifiedContent, p.requestParams.JsonPath)
 		return policy.UpstreamRequestModifications{
 			Body: modifiedPayload,
 		}
@@ -110,26 +208,12 @@ func (p *PIIMaskingRegexPolicy) OnRequest(ctx *policy.RequestContext, params map
 
 // OnResponse restores PII in response body (if redactPII is false)
 func (p *PIIMaskingRegexPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	// Extract response-specific parameters
-	var responseParams map[string]interface{}
-	if respParams, ok := params["response"].(map[string]interface{}); ok {
-		responseParams = respParams
-	} else {
+	if !p.hasResponseParams {
 		return policy.UpstreamResponseModifications{}
 	}
 
-	// Validate parameters (only redactPII is used in response)
-	if redactPIIRaw, ok := responseParams["redactPII"]; ok {
-		_, ok := redactPIIRaw.(bool)
-		if !ok {
-			return p.buildErrorResponse(fmt.Sprintf("parameter validation failed: 'redactPII' must be a boolean")).(policy.ResponseAction)
-		}
-	}
-
-	redactPII, _ := responseParams["redactPII"].(bool)
-
 	// If redactPII is true, no restoration needed
-	if redactPII {
+	if p.responseParams.RedactPII {
 		return policy.UpstreamResponseModifications{}
 	}
 
@@ -158,124 +242,6 @@ func (p *PIIMaskingRegexPolicy) OnResponse(ctx *policy.ResponseContext, params m
 	}
 
 	return policy.UpstreamResponseModifications{}
-}
-
-// validateParams validates the actual policy parameters
-func (p *PIIMaskingRegexPolicy) validateParams(params map[string]interface{}) error {
-	// Validate piiEntities parameter (required)
-	piiEntitiesRaw, ok := params["piiEntities"]
-	if !ok {
-		return fmt.Errorf("'piiEntities' parameter is required")
-	}
-	piiEntitiesArray, ok := piiEntitiesRaw.([]interface{})
-	if !ok {
-		return fmt.Errorf("'piiEntities' must be an array")
-	}
-	if len(piiEntitiesArray) == 0 {
-		return fmt.Errorf("'piiEntities' cannot be empty")
-	}
-
-	// Validate each PII entity in the array
-	for i, entityRaw := range piiEntitiesArray {
-		entity, ok := entityRaw.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("'piiEntities[%d]' must be an object", i)
-		}
-
-		// Validate piiEntity field
-		piiEntityRaw, ok := entity["piiEntity"]
-		if !ok {
-			return fmt.Errorf("'piiEntities[%d].piiEntity' is required", i)
-		}
-		piiEntity, ok := piiEntityRaw.(string)
-		if !ok {
-			return fmt.Errorf("'piiEntities[%d].piiEntity' must be a string", i)
-		}
-		if piiEntity == "" {
-			return fmt.Errorf("'piiEntities[%d].piiEntity' cannot be empty", i)
-		}
-
-		// Validate piiRegex field
-		piiRegexRaw, ok := entity["piiRegex"]
-		if !ok {
-			return fmt.Errorf("'piiEntities[%d].piiRegex' is required", i)
-		}
-		piiRegex, ok := piiRegexRaw.(string)
-		if !ok {
-			return fmt.Errorf("'piiEntities[%d].piiRegex' must be a string", i)
-		}
-		if piiRegex == "" {
-			return fmt.Errorf("'piiEntities[%d].piiRegex' cannot be empty", i)
-		}
-
-		// Validate regex is compilable
-		_, err := regexp.Compile(piiRegex)
-		if err != nil {
-			return fmt.Errorf("'piiEntities[%d].piiRegex' is invalid: %v", i, err)
-		}
-	}
-
-	// Validate optional parameters
-	if jsonPathRaw, ok := params["jsonPath"]; ok {
-		_, ok := jsonPathRaw.(string)
-		if !ok {
-			return fmt.Errorf("'jsonPath' must be a string")
-		}
-	}
-
-	if redactPIIRaw, ok := params["redactPII"]; ok {
-		_, ok := redactPIIRaw.(bool)
-		if !ok {
-			return fmt.Errorf("'redactPII' must be a boolean")
-		}
-	}
-
-	return nil
-}
-
-// parsePIIEntities parses PII entities from parameters
-func (p *PIIMaskingRegexPolicy) parsePIIEntities(params map[string]interface{}) (map[string]*regexp.Regexp, error) {
-	piiEntitiesRaw, ok := params["piiEntities"]
-	if !ok {
-		return make(map[string]*regexp.Regexp), nil
-	}
-
-	// Handle JSON string format
-	var piiEntitiesArray []map[string]interface{}
-	switch v := piiEntitiesRaw.(type) {
-	case string:
-		if err := json.Unmarshal([]byte(v), &piiEntitiesArray); err != nil {
-			return nil, fmt.Errorf("error unmarshaling PII entities: %w", err)
-		}
-	case []interface{}:
-		piiEntitiesArray = make([]map[string]interface{}, 0, len(v))
-		for _, item := range v {
-			if itemMap, ok := item.(map[string]interface{}); ok {
-				piiEntitiesArray = append(piiEntitiesArray, itemMap)
-			}
-		}
-	default:
-		return nil, fmt.Errorf("invalid PII entities format")
-	}
-
-	piiEntities := make(map[string]*regexp.Regexp)
-	for _, entityConfig := range piiEntitiesArray {
-		piiEntity, _ := entityConfig["piiEntity"].(string)
-		piiRegex, _ := entityConfig["piiRegex"].(string)
-
-		if piiEntity == "" || piiRegex == "" {
-			continue
-		}
-
-		compiledPattern, err := regexp.Compile(piiRegex)
-		if err != nil {
-			return nil, fmt.Errorf("error compiling regex for PII entity '%s': %w", piiEntity, err)
-		}
-
-		piiEntities[piiEntity] = compiledPattern
-	}
-
-	return piiEntities, nil
 }
 
 // maskPIIFromContent masks PII from content using regex patterns

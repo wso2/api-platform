@@ -30,7 +30,19 @@ var (
 )
 
 // URLGuardrailPolicy implements URL validation guardrail
-type URLGuardrailPolicy struct{}
+type URLGuardrailPolicy struct {
+	hasRequestParams  bool
+	hasResponseParams bool
+	requestParams     URLGuardrailPolicyParams
+	responseParams    URLGuardrailPolicyParams
+}
+
+type URLGuardrailPolicyParams struct {
+	JsonPath       string
+	OnlyDNS        bool
+	Timeout        int
+	ShowAssessment bool
+}
 
 // NewPolicy creates a new URLGuardrailPolicy instance
 func NewPolicy(
@@ -38,7 +50,102 @@ func NewPolicy(
 	initParams map[string]interface{},
 	params map[string]interface{},
 ) (policy.Policy, error) {
-	return &URLGuardrailPolicy{}, nil
+	policy := &URLGuardrailPolicy{}
+
+	// Extract and parse request parameters if present
+	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {
+		requestParams, err := parseParams(requestParamsRaw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid request parameters: %w", err)
+		}
+		policy.hasRequestParams = true
+		policy.requestParams = requestParams
+	}
+
+	// Extract and parse response parameters if present
+	if responseParamsRaw, ok := params["response"].(map[string]interface{}); ok {
+		responseParams, err := parseParams(responseParamsRaw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid response parameters: %w", err)
+		}
+		policy.hasResponseParams = true
+		policy.responseParams = responseParams
+	}
+
+	// At least one of request or response must be present
+	if !policy.hasRequestParams && !policy.hasResponseParams {
+		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
+	}
+
+	return policy, nil
+}
+
+// parseParams parses and validates parameters from map to struct
+func parseParams(params map[string]interface{}) (URLGuardrailPolicyParams, error) {
+	var result URLGuardrailPolicyParams
+
+	// Extract optional jsonPath parameter
+	if jsonPathRaw, ok := params["jsonPath"]; ok {
+		if jsonPath, ok := jsonPathRaw.(string); ok {
+			result.JsonPath = jsonPath
+		} else {
+			return result, fmt.Errorf("'jsonPath' must be a string")
+		}
+	}
+
+	// Extract optional onlyDNS parameter
+	if onlyDNSRaw, ok := params["onlyDNS"]; ok {
+		if onlyDNS, ok := onlyDNSRaw.(bool); ok {
+			result.OnlyDNS = onlyDNS
+		} else {
+			return result, fmt.Errorf("'onlyDNS' must be a boolean")
+		}
+	}
+
+	// Extract optional timeout parameter
+	if timeoutRaw, ok := params["timeout"]; ok {
+		timeout, err := extractInt(timeoutRaw)
+		if err != nil {
+			return result, fmt.Errorf("'timeout' must be a number: %w", err)
+		}
+		if timeout < 0 {
+			return result, fmt.Errorf("'timeout' cannot be negative")
+		}
+		result.Timeout = timeout
+	} else {
+		result.Timeout = DefaultTimeout
+	}
+
+	// Extract optional showAssessment parameter
+	if showAssessmentRaw, ok := params["showAssessment"]; ok {
+		if showAssessment, ok := showAssessmentRaw.(bool); ok {
+			result.ShowAssessment = showAssessment
+		} else {
+			return result, fmt.Errorf("'showAssessment' must be a boolean")
+		}
+	}
+
+	return result, nil
+}
+
+// extractInt safely extracts an integer from various types
+func extractInt(value interface{}) (int, error) {
+	switch v := value.(type) {
+	case int:
+		return v, nil
+	case int64:
+		return int(v), nil
+	case float64:
+		return int(v), nil
+	case string:
+		parsed, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return 0, err
+		}
+		return int(parsed), nil
+	default:
+		return 0, fmt.Errorf("cannot convert %T to int", value)
+	}
 }
 
 // Mode returns the processing mode for this policy
@@ -53,116 +160,36 @@ func (p *URLGuardrailPolicy) Mode() policy.ProcessingMode {
 
 // OnRequest validates URLs in request body
 func (p *URLGuardrailPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	var requestParams map[string]interface{}
-	if reqParams, ok := params["request"].(map[string]interface{}); ok {
-		requestParams = reqParams
-	} else {
+	if !p.hasRequestParams {
 		return policy.UpstreamRequestModifications{}
-	}
-
-	// Validate parameters
-	if err := p.validateParams(requestParams); err != nil {
-		return p.buildErrorResponse("Parameter validation failed", err, false, false, []string{}).(policy.RequestAction)
 	}
 
 	var content []byte
 	if ctx.Body != nil {
 		content = ctx.Body.Content
 	}
-	return p.validatePayload(content, requestParams, false).(policy.RequestAction)
+	return p.validatePayload(content, p.requestParams, false).(policy.RequestAction)
 }
 
 // OnResponse validates URLs in response body
 func (p *URLGuardrailPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	var responseParams map[string]interface{}
-	if respParams, ok := params["response"].(map[string]interface{}); ok {
-		responseParams = respParams
-	} else {
+	if !p.hasResponseParams {
 		return policy.UpstreamResponseModifications{}
-	}
-
-	// Validate parameters
-	if err := p.validateParams(responseParams); err != nil {
-		return p.buildErrorResponse("Parameter validation failed", err, true, false, []string{}).(policy.ResponseAction)
 	}
 
 	var content []byte
 	if ctx.ResponseBody != nil {
 		content = ctx.ResponseBody.Content
 	}
-	return p.validatePayload(content, responseParams, true).(policy.ResponseAction)
-}
-
-// validateParams validates the actual policy parameters
-func (p *URLGuardrailPolicy) validateParams(params map[string]interface{}) error {
-	// Validate optional parameters
-	if jsonPathRaw, ok := params["jsonPath"]; ok {
-		_, ok := jsonPathRaw.(string)
-		if !ok {
-			return fmt.Errorf("'jsonPath' must be a string")
-		}
-	}
-
-	if onlyDNSRaw, ok := params["onlyDNS"]; ok {
-		_, ok := onlyDNSRaw.(bool)
-		if !ok {
-			return fmt.Errorf("'onlyDNS' must be a boolean")
-		}
-	}
-
-	if timeoutRaw, ok := params["timeout"]; ok {
-		timeout, ok := timeoutRaw.(float64)
-		if !ok {
-			if timeoutInt, ok := timeoutRaw.(int); ok {
-				timeout = float64(timeoutInt)
-			} else if timeoutStr, ok := timeoutRaw.(string); ok {
-				var err error
-				timeout, err = strconv.ParseFloat(timeoutStr, 64)
-				if err != nil {
-					return fmt.Errorf("'timeout' must be a number")
-				}
-			} else {
-				return fmt.Errorf("'timeout' must be a number")
-			}
-		}
-		if timeout < 0 {
-			return fmt.Errorf("'timeout' cannot be negative")
-		}
-	}
-
-	if showAssessmentRaw, ok := params["showAssessment"]; ok {
-		_, ok := showAssessmentRaw.(bool)
-		if !ok {
-			return fmt.Errorf("'showAssessment' must be a boolean")
-		}
-	}
-
-	return nil
+	return p.validatePayload(content, p.responseParams, true).(policy.ResponseAction)
 }
 
 // validatePayload validates URLs in payload
-func (p *URLGuardrailPolicy) validatePayload(payload []byte, params map[string]interface{}, isResponse bool) interface{} {
-	jsonPath, _ := params["jsonPath"].(string)
-	onlyDNS, _ := params["onlyDNS"].(bool)
-	showAssessment, _ := params["showAssessment"].(bool)
-
-	timeout := DefaultTimeout
-	if timeoutRaw, ok := params["timeout"]; ok {
-		if timeoutFloat, ok := timeoutRaw.(float64); ok {
-			timeout = int(timeoutFloat)
-		} else if timeoutInt, ok := timeoutRaw.(int); ok {
-			timeout = timeoutInt
-		} else if timeoutStr, ok := timeoutRaw.(string); ok {
-			if parsed, err := strconv.ParseFloat(timeoutStr, 64); err == nil {
-				timeout = int(parsed)
-			}
-		}
-	}
-
+func (p *URLGuardrailPolicy) validatePayload(payload []byte, params URLGuardrailPolicyParams, isResponse bool) interface{} {
 	// Extract value using JSONPath
-	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, jsonPath)
+	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, params.JsonPath)
 	if err != nil {
-		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, showAssessment, []string{})
+		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment, []string{})
 	}
 
 	// Clean and trim
@@ -175,10 +202,10 @@ func (p *URLGuardrailPolicy) validatePayload(payload []byte, params map[string]i
 
 	for _, urlStr := range urls {
 		var isValid bool
-		if onlyDNS {
-			isValid = p.checkDNS(urlStr, timeout)
+		if params.OnlyDNS {
+			isValid = p.checkDNS(urlStr, params.Timeout)
 		} else {
-			isValid = p.checkURL(urlStr, timeout)
+			isValid = p.checkURL(urlStr, params.Timeout)
 		}
 
 		if !isValid {
@@ -187,7 +214,7 @@ func (p *URLGuardrailPolicy) validatePayload(payload []byte, params map[string]i
 	}
 
 	if len(invalidURLs) > 0 {
-		return p.buildErrorResponse("Violation of url validity detected", nil, isResponse, showAssessment, invalidURLs)
+		return p.buildErrorResponse("Violation of url validity detected", nil, isResponse, params.ShowAssessment, invalidURLs)
 	}
 
 	if isResponse {
