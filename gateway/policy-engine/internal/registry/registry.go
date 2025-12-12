@@ -96,7 +96,11 @@ func (r *PolicyRegistry) CreateInstance(
 
 	// Resolve $config() references in initParams
 	if r.ConfigResolver != nil {
-		initParams = r.ConfigResolver.ResolveMap(initParams)
+		var err error
+		initParams, err = r.ConfigResolver.ResolveMap(initParams)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to resolve config for policy %s: %w", key, err)
+		}
 	}
 
 	// Merge resolved initParams with runtime params (params override initParams)

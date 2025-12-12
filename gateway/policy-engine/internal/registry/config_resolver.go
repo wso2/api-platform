@@ -43,22 +43,23 @@ var configRefPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
 //   - Multiple expressions: "${config.host}:${config.port}" -> "localhost:8080"
 //
 // If the value is not a string or contains no ${...} patterns, returns unchanged
-func (r *ConfigResolver) ResolveValue(value interface{}) interface{} {
+// Returns an error if any config reference fails to resolve
+func (r *ConfigResolver) ResolveValue(value interface{}) (interface{}, error) {
 	// If no config loaded, return value as-is
 	if r == nil || r.config == nil {
-		return value
+		return value, nil
 	}
 
 	// Only process string values
 	strValue, ok := value.(string)
 	if !ok {
-		return value
+		return value, nil
 	}
 
 	// Find all ${...} patterns in the string
 	matches := configRefPattern.FindAllStringSubmatch(strValue, -1)
 	if matches == nil {
-		return value // No config references found
+		return value, nil // No config references found
 	}
 
 	// Check if the entire string is a single ${...} expression
@@ -75,12 +76,12 @@ func (r *ConfigResolver) ResolveValue(value interface{}) interface{} {
 
 			resolved, err := r.evaluateCEL(celExpr)
 			if err != nil {
-				slog.Warn("Failed to resolve config reference, keeping as-is",
+				slog.Error("Failed to resolve config reference",
 					"reference", strValue,
 					"celExpression", celExpr,
 					"error", err,
 					"phase", "runtime")
-				return value
+				return nil, fmt.Errorf("config not resolved: failed to evaluate %q: %w", strValue, err)
 			}
 
 			slog.Debug("Config reference resolved",
@@ -89,7 +90,7 @@ func (r *ConfigResolver) ResolveValue(value interface{}) interface{} {
 				"resolvedValue", resolved,
 				"phase", "runtime")
 
-			return resolved
+			return resolved, nil
 		}
 	}
 
@@ -114,12 +115,12 @@ func (r *ConfigResolver) ResolveValue(value interface{}) interface{} {
 		// Evaluate the CEL expression
 		resolved, err := r.evaluateCEL(celExpr)
 		if err != nil {
-			slog.Warn("Failed to resolve config reference in template, keeping as-is",
+			slog.Error("Failed to resolve config reference in template",
 				"placeholder", placeholder,
 				"celExpression", celExpr,
 				"error", err,
 				"phase", "runtime")
-			continue // Keep the placeholder in the string
+			return nil, fmt.Errorf("config not resolved: failed to evaluate %q in template %q: %w", placeholder, strValue, err)
 		}
 
 		// Convert resolved value to string for substitution
@@ -143,7 +144,7 @@ func (r *ConfigResolver) ResolveValue(value interface{}) interface{} {
 		"resolved", result,
 		"phase", "runtime")
 
-	return result
+	return result, nil
 }
 
 // evaluateCEL evaluates a CEL expression with the config as context
@@ -194,20 +195,26 @@ func celValueToGo(val ref.Val) interface{} {
 }
 
 // ResolveMap resolves all $config(...) references in a map recursively
-func (r *ConfigResolver) ResolveMap(m map[string]interface{}) map[string]interface{} {
+// Returns an error if any config reference fails to resolve
+func (r *ConfigResolver) ResolveMap(m map[string]interface{}) (map[string]interface{}, error) {
 	if r == nil || r.config == nil {
-		return m // No config, return as-is
+		return m, nil // No config, return as-is
 	}
 
 	result := make(map[string]interface{})
 	for key, value := range m {
-		result[key] = r.resolveValueRecursive(value)
+		resolved, err := r.resolveValueRecursive(value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve config for key %q: %w", key, err)
+		}
+		result[key] = resolved
 	}
-	return result
+	return result, nil
 }
 
 // resolveValueRecursive resolves $config references recursively in nested structures
-func (r *ConfigResolver) resolveValueRecursive(value interface{}) interface{} {
+// Returns an error if any config reference fails to resolve
+func (r *ConfigResolver) resolveValueRecursive(value interface{}) (interface{}, error) {
 	switch v := value.(type) {
 	case string:
 		return r.ResolveValue(v)
@@ -216,10 +223,14 @@ func (r *ConfigResolver) resolveValueRecursive(value interface{}) interface{} {
 	case []interface{}:
 		result := make([]interface{}, len(v))
 		for i, item := range v {
-			result[i] = r.resolveValueRecursive(item)
+			resolved, err := r.resolveValueRecursive(item)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve config at array index %d: %w", i, err)
+			}
+			result[i] = resolved
 		}
-		return result
+		return result, nil
 	default:
-		return value
+		return value, nil
 	}
 }

@@ -19,9 +19,10 @@ func TestConfigResolver_ResolveValue(t *testing.T) {
 	resolver := NewConfigResolver(config)
 
 	tests := []struct {
-		name     string
-		input    interface{}
-		expected interface{}
+		name      string
+		input     interface{}
+		expected  interface{}
+		expectErr bool
 	}{
 		{
 			name:     "resolve config reference - dot notation",
@@ -54,12 +55,12 @@ func TestConfigResolver_ResolveValue(t *testing.T) {
 			expected: 401,
 		},
 		{
-			name:     "invalid config reference unchanged",
-			input:    "${config.nonexistent.path}",
-			expected: "${config.nonexistent.path}",
+			name:      "invalid config reference returns error",
+			input:     "${config.nonexistent.path}",
+			expectErr: true,
 		},
 		{
-			name:     "malformed reference unchanged",
+			name:     "malformed reference unchanged (no ${} pattern match)",
 			input:    "${config.incomplete",
 			expected: "${config.incomplete",
 		},
@@ -67,7 +68,17 @@ func TestConfigResolver_ResolveValue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resolver.ResolveValue(tt.input)
+			got, err := resolver.ResolveValue(tt.input)
+			if tt.expectErr {
+				if err == nil {
+					t.Errorf("ResolveValue() expected error but got none")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("ResolveValue() unexpected error: %v", err)
+				return
+			}
 			if !reflect.DeepEqual(got, tt.expected) {
 				t.Errorf("ResolveValue() = %v (%T), want %v (%T)", got, got, tt.expected, tt.expected)
 			}
@@ -99,7 +110,11 @@ func TestConfigResolver_ResolveMap(t *testing.T) {
 		"realm":             "Restricted",
 	}
 
-	got := resolver.ResolveMap(input)
+	got, err := resolver.ResolveMap(input)
+	if err != nil {
+		t.Errorf("ResolveMap() unexpected error: %v", err)
+		return
+	}
 
 	if !reflect.DeepEqual(got, expected) {
 		t.Errorf("ResolveMap() = %v, want %v", got, expected)
@@ -125,7 +140,11 @@ func TestConfigResolver_ResolveNestedStructures(t *testing.T) {
 		},
 	}
 
-	got := resolver.ResolveMap(input)
+	got, err := resolver.ResolveMap(input)
+	if err != nil {
+		t.Errorf("ResolveMap() unexpected error: %v", err)
+		return
+	}
 
 	// Check nested map resolution
 	nestedMap := got["nested"].(map[string]interface{})
@@ -149,8 +168,13 @@ func TestConfigResolver_NilConfig(t *testing.T) {
 	resolver := NewConfigResolver(nil)
 
 	input := "${config.some.path}"
-	got := resolver.ResolveValue(input)
+	got, err := resolver.ResolveValue(input)
+	if err != nil {
+		t.Errorf("ResolveValue() unexpected error: %v", err)
+		return
+	}
 
+	// With nil config, should return input unchanged
 	if got != input {
 		t.Errorf("Nil config should return input unchanged: got %v, want %v", got, input)
 	}
@@ -199,7 +223,11 @@ func TestConfigResolver_CELComplexExpressions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resolver.ResolveValue(tt.input)
+			got, err := resolver.ResolveValue(tt.input)
+			if err != nil {
+				t.Errorf("ResolveValue() unexpected error: %v", err)
+				return
+			}
 			if !reflect.DeepEqual(got, tt.expected) {
 				t.Errorf("ResolveValue() = %v (%T), want %v (%T)", got, got, tt.expected, tt.expected)
 			}
@@ -245,7 +273,11 @@ func TestConfigResolver_CELArrayAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resolver.ResolveValue(tt.input)
+			got, err := resolver.ResolveValue(tt.input)
+			if err != nil {
+				t.Errorf("ResolveValue() unexpected error: %v", err)
+				return
+			}
 			if !reflect.DeepEqual(got, tt.expected) {
 				t.Errorf("ResolveValue() = %v (%T), want %v (%T)", got, got, tt.expected, tt.expected)
 			}
@@ -263,31 +295,46 @@ func TestConfigResolver_CELInvalidReference(t *testing.T) {
 	resolver := NewConfigResolver(config)
 
 	tests := []struct {
-		name  string
-		input string
+		name      string
+		input     string
+		expectErr bool
 	}{
 		{
-			name:  "CEL non-existent path",
-			input: "${config.nonexistent.path}",
+			name:      "CEL non-existent path",
+			input:     "${config.nonexistent.path}",
+			expectErr: true,
 		},
 		{
-			name:  "CEL malformed expression - unclosed bracket",
-			input: "${config.jwtauth[}",
+			name:      "CEL malformed expression - unclosed bracket",
+			input:     "${config.jwtauth[}",
+			expectErr: true,
 		},
 		{
-			name:  "CEL malformed expression - missing closing brace",
-			input: "${config.jwtauth.allowedalgorithms",
+			name:      "CEL malformed expression - missing closing brace",
+			input:     "${config.jwtauth.allowedalgorithms",
+			expectErr: false, // Doesn't match pattern, returns unchanged
 		},
 		{
-			name:  "not a config reference",
-			input: "plain string value",
+			name:      "not a config reference",
+			input:     "plain string value",
+			expectErr: false, // Plain string, returns unchanged
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resolver.ResolveValue(tt.input)
-			// Should return original value on error
+			got, err := resolver.ResolveValue(tt.input)
+			if tt.expectErr {
+				if err == nil {
+					t.Errorf("ResolveValue() expected error but got none")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("ResolveValue() unexpected error: %v", err)
+				return
+			}
+			// Should return original value when no pattern match or plain string
 			if got != tt.input {
 				t.Errorf("Invalid CEL reference should return original: got %v, want %v", got, tt.input)
 			}
@@ -349,7 +396,11 @@ func TestConfigResolver_TemplateSubstitution(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resolver.ResolveValue(tt.input)
+			got, err := resolver.ResolveValue(tt.input)
+			if err != nil {
+				t.Errorf("ResolveValue() unexpected error: %v", err)
+				return
+			}
 			if got != tt.expected {
 				t.Errorf("ResolveValue() = %v, want %v", got, tt.expected)
 			}
@@ -408,7 +459,11 @@ func TestConfigResolver_SingleExpressionPreservesType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resolver.ResolveValue(tt.input)
+			got, err := resolver.ResolveValue(tt.input)
+			if err != nil {
+				t.Errorf("ResolveValue() unexpected error: %v", err)
+				return
+			}
 			if !reflect.DeepEqual(got, tt.expected) {
 				t.Errorf("ResolveValue() = %v (%T), want %v (%T)", got, got, tt.expected, tt.expected)
 			}
@@ -432,7 +487,11 @@ func TestConfigResolver_ObjectAndArrayTypes(t *testing.T) {
 	resolver := NewConfigResolver(config)
 
 	t.Run("object type preserved", func(t *testing.T) {
-		result := resolver.ResolveValue("${config.database}")
+		result, err := resolver.ResolveValue("${config.database}")
+		if err != nil {
+			t.Errorf("ResolveValue() unexpected error: %v", err)
+			return
+		}
 		resultMap, ok := result.(map[string]interface{})
 		if !ok {
 			t.Fatalf("Expected map[string]interface{}, got %T", result)
@@ -447,7 +506,11 @@ func TestConfigResolver_ObjectAndArrayTypes(t *testing.T) {
 	})
 
 	t.Run("array of strings type preserved", func(t *testing.T) {
-		result := resolver.ResolveValue("${config.allowedMethods}")
+		result, err := resolver.ResolveValue("${config.allowedMethods}")
+		if err != nil {
+			t.Errorf("ResolveValue() unexpected error: %v", err)
+			return
+		}
 		resultArray, ok := result.([]interface{})
 		if !ok {
 			t.Fatalf("Expected []interface{}, got %T", result)
@@ -461,7 +524,11 @@ func TestConfigResolver_ObjectAndArrayTypes(t *testing.T) {
 	})
 
 	t.Run("array of objects type preserved", func(t *testing.T) {
-		result := resolver.ResolveValue("${config.nestedArray}")
+		result, err := resolver.ResolveValue("${config.nestedArray}")
+		if err != nil {
+			t.Errorf("ResolveValue() unexpected error: %v", err)
+			return
+		}
 		resultArray, ok := result.([]interface{})
 		if !ok {
 			t.Fatalf("Expected []interface{}, got %T", result)
@@ -489,27 +556,33 @@ func TestConfigResolver_TemplateWithErrors(t *testing.T) {
 	resolver := NewConfigResolver(config)
 
 	tests := []struct {
-		name     string
-		input    string
-		expected string
+		name      string
+		input     string
+		expectErr bool
 	}{
 		{
-			name:     "partial resolution - one valid, one invalid",
-			input:    "Host: ${config.api.host}, Port: ${config.api.port}",
-			expected: "Host: api.example.com, Port: ${config.api.port}",
+			name:      "partial resolution - one valid, one invalid - should error",
+			input:     "Host: ${config.api.host}, Port: ${config.api.port}",
+			expectErr: true,
 		},
 		{
-			name:     "all invalid expressions kept",
-			input:    "${config.invalid.a} and ${config.invalid.b}",
-			expected: "${config.invalid.a} and ${config.invalid.b}",
+			name:      "all invalid expressions should error",
+			input:     "${config.invalid.a} and ${config.invalid.b}",
+			expectErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resolver.ResolveValue(tt.input)
-			if got != tt.expected {
-				t.Errorf("ResolveValue() = %v, want %v", got, tt.expected)
+			_, err := resolver.ResolveValue(tt.input)
+			if tt.expectErr {
+				if err == nil {
+					t.Errorf("ResolveValue() expected error but got none")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("ResolveValue() unexpected error: %v", err)
 			}
 		})
 	}
