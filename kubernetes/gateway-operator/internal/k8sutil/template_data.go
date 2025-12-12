@@ -34,7 +34,7 @@ type GatewayManifestTemplateData struct {
 	// RouterImage is the container image for the router (Envoy)
 	RouterImage string
 
-	// ControlPlaneHost is the host and port of the control plane (e.g., "host.docker.internal:9243")
+	// ControlPlaneHost is the host and port of the control plane (e.g., "host.docker.internal:8443")
 	ControlPlaneHost string
 
 	// ControlPlaneTokenSecret is the secret reference for control plane authentication token
@@ -87,7 +87,7 @@ func NewGatewayManifestTemplateData(gatewayName string) *GatewayManifestTemplate
 		Replicas:          1,
 		GatewayImage:      "wso2/gateway-controller:latest",
 		RouterImage:       "wso2/gateway-router:latest",
-		ControlPlaneHost:  "host.docker.internal:9243",
+		ControlPlaneHost:  "host.docker.internal:8443",
 		LogLevel:          "info",
 		StorageType:       "sqlite",
 		StorageSQLitePath: "/app/data/gateway.db",

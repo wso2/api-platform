@@ -358,7 +358,7 @@ gateway:
             policy: 18001
         controlPlane:
           host: host.docker.internal
-          port: 9243
+          port: 8443
           token:
             value: ""
             secretName: ""

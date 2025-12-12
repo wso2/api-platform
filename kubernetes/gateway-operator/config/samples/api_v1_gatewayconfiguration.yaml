@@ -25,7 +25,7 @@ spec:
         memory: "4Gi"
   
   controlPlane:
-    host: "gateway-control-plane.gateway-operator-system.svc.cluster.local:9243"
+    host: "gateway-control-plane.gateway-operator-system.svc.cluster.local:8443"
     tls:
       enabled: true
   
