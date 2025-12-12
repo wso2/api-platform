@@ -29,10 +29,8 @@ type JSONSchemaGuardrailPolicyParams struct {
 	ShowAssessment bool
 }
 
-// NewPolicy creates a new JSONSchemaGuardrailPolicy instance
-func NewPolicy(
+func GetPolicy(
 	metadata policy.PolicyMetadata,
-	initParams map[string]interface{},
 	params map[string]interface{},
 ) (policy.Policy, error) {
 	p := &JSONSchemaGuardrailPolicy{}

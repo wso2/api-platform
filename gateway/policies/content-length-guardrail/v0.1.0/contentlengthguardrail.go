@@ -35,10 +35,8 @@ type ContentLengthGuardrailPolicyParams struct {
 	ShowAssessment bool
 }
 
-// NewPolicy creates a new ContentLengthGuardrailPolicy instance
-func NewPolicy(
+func GetPolicy(
 	metadata policy.PolicyMetadata,
-	initParams map[string]interface{},
 	params map[string]interface{},
 ) (policy.Policy, error) {
 	p := &ContentLengthGuardrailPolicy{}

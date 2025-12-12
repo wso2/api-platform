@@ -29,10 +29,8 @@ type RegexGuardrailPolicyParams struct {
 	ShowAssessment bool
 }
 
-// NewPolicy creates a new RegexGuardrailPolicy instance
-func NewPolicy(
+func GetPolicy(
 	metadata policy.PolicyMetadata,
-	initParams map[string]interface{},
 	params map[string]interface{},
 ) (policy.Policy, error) {
 	p := &RegexGuardrailPolicy{}
