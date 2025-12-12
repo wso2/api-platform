@@ -245,13 +245,17 @@ func (p *RegexGuardrailPolicy) buildAssessmentObject(reason string, validationEr
 
 	if validationError != nil {
 		assessment["actionReason"] = reason
-		if showAssessment {
-			assessment["assessments"] = []string{validationError.Error()}
-		}
 	} else {
 		assessment["actionReason"] = "Violation of regular expression detected."
-		if showAssessment {
-			assessment["assessments"] = []string{reason}
+	}
+
+	if showAssessment {
+		if validationError != nil {
+			assessment["assessments"] = validationError.Error()
+		} else {
+			var assessmentMessage string
+			assessmentMessage = fmt.Sprintf("Violation of regular expression detected. %s", reason)
+			assessment["assessments"] = assessmentMessage
 		}
 	}
 

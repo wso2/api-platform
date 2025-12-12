@@ -305,7 +305,7 @@ func (p *WordCountGuardrailPolicy) buildAssessmentObject(reason string, validati
 
 	if showAssessment {
 		if validationError != nil {
-			assessment["assessments"] = []string{validationError.Error()}
+			assessment["assessments"] = validationError.Error()
 		} else {
 			var assessmentMessage string
 			if strings.Contains(reason, "excluded range") {

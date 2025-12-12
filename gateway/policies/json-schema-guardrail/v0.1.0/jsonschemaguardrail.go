@@ -284,7 +284,7 @@ func (p *JSONSchemaGuardrailPolicy) buildAssessmentObject(reason string, validat
 
 	if showAssessment {
 		if validationError != nil {
-			assessment["assessments"] = []string{validationError.Error()}
+			assessment["assessments"] = validationError.Error()
 		} else if len(errors) > 0 {
 			errorDetails := make([]map[string]interface{}, 0, len(errors))
 			for _, err := range errors {

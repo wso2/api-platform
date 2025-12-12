@@ -305,7 +305,7 @@ func (p *SentenceCountGuardrailPolicy) buildAssessmentObject(reason string, vali
 
 	if showAssessment {
 		if validationError != nil {
-			assessment["assessments"] = []string{validationError.Error()}
+			assessment["assessments"] = validationError.Error()
 		} else {
 			var assessmentMessage string
 			if strings.Contains(reason, "excluded range") {

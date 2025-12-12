@@ -295,7 +295,7 @@ func (p *ContentLengthGuardrailPolicy) buildAssessmentObject(reason string, vali
 
 	if showAssessment {
 		if validationError != nil {
-			assessment["assessments"] = []string{validationError.Error()}
+			assessment["assessments"] = validationError.Error()
 		} else {
 			var assessmentMessage string
 			if strings.Contains(reason, "excluded range") {
@@ -303,7 +303,7 @@ func (p *ContentLengthGuardrailPolicy) buildAssessmentObject(reason string, vali
 			} else {
 				assessmentMessage = fmt.Sprintf("Violation of content length detected. Expected content length to be between %d and %d bytes.", min, max)
 			}
-			assessment["assessments"] = []string{assessmentMessage}
+			assessment["assessments"] = assessmentMessage
 		}
 	}
 

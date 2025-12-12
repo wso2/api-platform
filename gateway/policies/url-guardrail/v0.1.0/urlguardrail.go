@@ -342,7 +342,7 @@ func (p *URLGuardrailPolicy) buildAssessmentObject(reason string, validationErro
 
 	if showAssessment {
 		if validationError != nil {
-			assessment["assessments"] = []string{validationError.Error()}
+			assessment["assessments"] = validationError.Error()
 		} else if len(invalidURLs) > 0 {
 			assessmentDetails := map[string]interface{}{
 				"message":     "One or more URLs in the payload failed validation.",
