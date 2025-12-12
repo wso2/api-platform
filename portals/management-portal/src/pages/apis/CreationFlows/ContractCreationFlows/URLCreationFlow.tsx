@@ -67,6 +67,7 @@ const URLCreationFlow: React.FC<Props> = ({
       setValidationResult(null);
       setError(null);
       setValidating(false);
+      setMetaHasErrors(false);
     }
   }, [open, resetContractMeta]);
 

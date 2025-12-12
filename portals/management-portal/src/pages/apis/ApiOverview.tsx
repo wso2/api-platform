@@ -64,15 +64,16 @@ const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
     api?.backendServices?.[0]?.endpoints?.[0]?.url ??
     "";
 
-  const handleCopyUrl = (url: string) => {
-    navigator.clipboard
-      ?.writeText(url)
-      .then(() => {
-        setCopiedUrl(url);
-        setTimeout(() => setCopiedUrl(null), 2000);
-      })
-      .catch(() => {});
-  };
+const handleCopyUrl = (url: string) => {
+  navigator.clipboard
+    ?.writeText?.(url)
+    ?.then(() => {
+      setCopiedUrl(url);
+      setTimeout(() => setCopiedUrl(null), 2000);
+    })
+    ?.catch(() => {});
+};
+
 
   return (
     <Box

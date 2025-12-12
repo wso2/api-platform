@@ -98,11 +98,9 @@ const GithubCreationFlow: React.FC<Props> = ({
     }>
   >([]);
 
-  // Create flow state
   const [creating, setCreating] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
 
-  // Reset when closed
   React.useEffect(() => {
     if (!open) {
       setApiDir("/");
@@ -114,6 +112,7 @@ const GithubCreationFlow: React.FC<Props> = ({
       resetValidation?.();
       setCreating(false);
       setCreateError(null);
+      setMetaHasErrors(false);
     }
   }, [open, resetValidation]);
 
@@ -121,7 +120,6 @@ const GithubCreationFlow: React.FC<Props> = ({
 
   const showInitial = (repoUrl ?? "").trim().length === 0;
 
-  // options for branches
   const branchOptions: BranchOption[] = React.useMemo(
     () => branches.map((b) => ({ label: b.name, value: b.name })),
     [branches]

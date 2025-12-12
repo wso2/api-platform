@@ -97,6 +97,13 @@ const CreationMetaData: React.FC<Props> = ({
   const didInitValidateRef = React.useRef(false);
   const debounceMs = 2000;
 
+  const onValidationChangeRef = React.useRef<Props["onValidationChange"]>(
+    onValidationChange
+  );
+  React.useEffect(() => {
+    onValidationChangeRef.current = onValidationChange;
+  }, [onValidationChange]);
+
   React.useEffect(() => {
     if (
       meta.name &&
@@ -339,12 +346,12 @@ const CreationMetaData: React.FC<Props> = ({
   };
 
   React.useEffect(() => {
-    onValidationChange?.({
+    onValidationChangeRef.current?.({
       nameVersionError,
       identifierError,
       hasError: !!nameVersionError || !!identifierError,
     });
-  }, [nameVersionError, identifierError, onValidationChange]);
+  }, [nameVersionError, identifierError]);
 
   return (
     <Stack spacing={2}>
