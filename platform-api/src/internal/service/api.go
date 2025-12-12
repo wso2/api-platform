@@ -1413,21 +1413,21 @@ func (s *APIService) ImportFromOpenAPI(req *dto.ImportOpenAPIRequest, orgId stri
 		file, err := req.Definition.Open()
 		if err != nil {
 			errorList = append(errorList, fmt.Sprintf("failed to open OpenAPI definition file: %s", err.Error()))
-			return nil, fmt.Errorf(strings.Join(errorList, "; "))
+			return nil, errors.New(strings.Join(errorList, "; "))
 		}
 		defer file.Close()
 
 		content, err = io.ReadAll(file)
 		if err != nil {
 			errorList = append(errorList, fmt.Sprintf("failed to read OpenAPI definition file: %s", err.Error()))
-			return nil, fmt.Errorf(strings.Join(errorList, "; "))
+			return nil, errors.New(strings.Join(errorList, "; "))
 		}
 	}
 
 	// If neither URL nor file is provided
 	if len(content) == 0 {
 		errorList = append(errorList, "either URL or definition file must be provided")
-		return nil, fmt.Errorf(strings.Join(errorList, "; "))
+		return nil, errors.New(strings.Join(errorList, "; "))
 	}
 
 	// Validate and parse the OpenAPI definition

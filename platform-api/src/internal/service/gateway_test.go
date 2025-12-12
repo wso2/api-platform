@@ -202,7 +202,7 @@ func TestValidateGatewayInput(t *testing.T) {
 			vhost:             "api.example.com",
 			functionalityType: "invalid-type",
 			wantErr:           true,
-			errContains:       "invalid functionality type",
+			errContains:       "gateway type must be one of: regular, ai, event",
 		},
 		{
 			name:              "valid functionality type - ai",
