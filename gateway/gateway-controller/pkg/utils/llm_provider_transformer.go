@@ -45,11 +45,13 @@ func (t *LLMProviderTransformer) Transform(input any, output *api.APIConfigurati
 	spec.Upstream.Main = api.Upstream{
 		Url: provider.Spec.Upstream.Url,
 	}
-	spec.Vhosts = &struct {
-		Main    string  `json:"main" yaml:"main"`
-		Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-	}{
-		Main: *provider.Spec.Vhost,
+	if provider.Spec.Vhost != nil {
+		spec.Vhosts = &struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: *provider.Spec.Vhost,
+		}
 	}
 
 	// Step 3) Map upstream auth to corresponding api policy

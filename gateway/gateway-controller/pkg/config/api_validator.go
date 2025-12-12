@@ -133,32 +133,78 @@ func (v *APIValidator) validateUpstream(label string, up *api.Upstream) []Valida
 		return errors
 	}
 
-	// Allow reference-based upstreams
+	// Reject invalid union case explicitly
+	if up.Ref != nil && up.Url != nil {
+		errors = append(errors, ValidationError{
+			Field:   "spec.upstream." + label,
+			Message: "Specify exactly one of 'url' or 'ref'",
+		})
+		return errors
+	}
+
+	// Require at least one to be set
+	if up.Ref == nil && up.Url == nil {
+		errors = append(errors, ValidationError{
+			Field:   "spec.upstream." + label,
+			Message: "Must specify either 'url' or 'ref'",
+		})
+		return errors
+	}
+
+	// Validate based on which field is set
+	if up.Url != nil {
+		errors = append(errors, v.validateUpstreamUrl(label, up.Url)...)
+	}
+
 	if up.Ref != nil {
-		ref := strings.TrimSpace(*up.Ref)
-		if ref == "" {
-			errors = append(errors, ValidationError{Field: "spec.upstream." + label + ".ref", Message: "Upstream ref cannot be empty"})
-		}
+		errors = append(errors, v.validateUpstreamRef(label, up.Ref)...)
+	}
+
+	return errors
+}
+
+func (v *APIValidator) validateUpstreamUrl(label string, upUrl *string) []ValidationError {
+	var errors []ValidationError
+
+	if upUrl == nil || strings.TrimSpace(*upUrl) == "" {
+		errors = append(errors, ValidationError{
+			Field:   "spec.upstream." + label + ".url",
+			Message: "Upstream URL is required",
+		})
 		return errors
 	}
 
-	// Validate direct URL-based upstreams
-	if up.Url == nil || strings.TrimSpace(*up.Url) == "" {
-		errors = append(errors, ValidationError{Field: "spec.upstream." + label + ".url", Message: "Upstream URL is required"})
-		return errors
-	}
-
-	parsedURL, err := url.Parse(*up.Url)
+	parsedURL, err := url.Parse(*upUrl)
 	if err != nil {
-		errors = append(errors, ValidationError{Field: "spec.upstream." + label + ".url", Message: fmt.Sprintf("Invalid URL format: %v", err)})
+		errors = append(errors, ValidationError{
+			Field:   "spec.upstream." + label + ".url",
+			Message: fmt.Sprintf("Invalid URL format: %v", err),
+		})
 		return errors
 	}
+
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		errors = append(errors, ValidationError{Field: "spec.upstream." + label + ".url", Message: "Upstream URL must use http or https scheme"})
+		errors = append(errors, ValidationError{
+			Field:   "spec.upstream." + label + ".url",
+			Message: "Upstream URL must use http or https scheme",
+		})
 	}
+
 	if parsedURL.Host == "" {
-		errors = append(errors, ValidationError{Field: "spec.upstream." + label + ".url", Message: "Upstream URL must include a host"})
+		errors = append(errors, ValidationError{
+			Field:   "spec.upstream." + label + ".url",
+			Message: "Upstream URL must include a host",
+		})
 	}
+
+	return errors
+}
+
+func (v *APIValidator) validateUpstreamRef(label string, ref *string) []ValidationError {
+	var errors []ValidationError
+
+	// TODO: Implement upstream reference validation
+
 	return errors
 }
 

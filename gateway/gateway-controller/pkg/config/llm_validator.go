@@ -268,18 +268,18 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
 			})
 		}
 
-		// If type is present, header and value should also be present
-		if auth.Type != "" {
+		// If type is api-key, header and value should also be present
+		if auth.Type == "api-key" {
 			if auth.Header == nil || *auth.Header == "" {
 				errors = append(errors, ValidationError{
 					Field:   fmt.Sprintf("%s.auth.header", fieldPrefix),
-					Message: "Auth header is required when auth type is set",
+					Message: "Auth header is required when api-key auth type is set",
 				})
 			}
 			if auth.Value == nil || *auth.Value == "" {
 				errors = append(errors, ValidationError{
 					Field:   fmt.Sprintf("%s.auth.value", fieldPrefix),
-					Message: "Auth value is required when auth type is set",
+					Message: "Auth value is required when api-key auth type is set",
 				})
 			}
 		}

@@ -139,6 +139,9 @@ func TestMCPTransformer_Transform(t *testing.T) {
 	if apiData.Name != name || apiData.Version != version || apiData.Context != context {
 		t.Fatalf("Transform did not copy basic fields correctly: got %+v", res.Spec)
 	}
+	if apiData.Upstream.Main.Url == nil {
+		t.Fatalf("Transform did not set apiData.Upstream.Main.Url")
+	}
 	if *apiData.Upstream.Main.Url != "http://backend:8080" {
 		t.Fatalf("Transform did not copy upstreams correctly: got %+v", *apiData.Upstream.Main.Url)
 	}
