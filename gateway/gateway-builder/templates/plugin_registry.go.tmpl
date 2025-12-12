@@ -25,7 +25,11 @@ func init() {
 	policyDef_{{ .ImportAlias }} := &policy.PolicyDefinition{
 		Name:           "{{ .Name }}",
 		Version:        "{{ .Version }}",
-		InitParameters: nil,
+		InitParameters: {{ if .InitParameters }}map[string]interface{}{
+			{{- range $key, $value := .InitParameters }}
+			"{{ $key }}": {{ printf "%#v" $value }},
+			{{- end }}
+		}{{ else }}nil{{ end }},
 	}
 	if err := registry.GetRegistry().Register(policyDef_{{ .ImportAlias }}, {{ .ImportAlias }}.NewPolicy); err != nil {
 		slog.ErrorContext(ctx, "Failed to register policy", "policy", "{{ .Name }}", "version", "{{ .Version }}", "error", err)

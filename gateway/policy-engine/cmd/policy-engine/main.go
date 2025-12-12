@@ -67,6 +67,10 @@ func main() {
 	k := kernel.NewKernel()
 	reg := registry.GetRegistry()
 
+	// Set config in registry for $config() resolution
+	reg.SetConfig(cfg.RawConfig)
+	slog.InfoContext(ctx, "Config set in registry for $config() resolution")
+
 	// Initialize CEL evaluator
 	celEvaluator, err := cel.NewCELEvaluator()
 	if err != nil {
