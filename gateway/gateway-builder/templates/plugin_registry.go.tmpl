@@ -25,8 +25,8 @@ func init() {
 	policyDef_{{ .ImportAlias }} := &policy.PolicyDefinition{
 		Name:           "{{ .Name }}",
 		Version:        "{{ .Version }}",
-		InitParameters: {{ if .InitParameters }}map[string]interface{}{
-			{{- range $key, $value := .InitParameters }}
+		SystemParameters: {{ if .SystemParameters }}map[string]interface{}{
+			{{- range $key, $value := .SystemParameters }}
 			"{{ $key }}": {{ printf "%#v" $value }},
 			{{- end }}
 		}{{ else }}nil{{ end }},

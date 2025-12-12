@@ -18,7 +18,7 @@ type Config struct {
 	Logging    LoggingConfig    `mapstructure:"logging"`
 
 	// RawConfig holds the complete raw configuration map including custom fields
-	// This is used for resolving $config() CEL expressions in policy initParameters
+	// This is used for resolving $config() CEL expressions in policy systemParameters
 	RawConfig map[string]interface{} `mapstructure:",remain"`
 }
 

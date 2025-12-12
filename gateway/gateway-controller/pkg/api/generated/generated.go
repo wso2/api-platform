@@ -799,8 +799,8 @@ type PolicyDefinition struct {
 	// Description Human readable description of the policy's purpose
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
-	// InitParameters JSON Schema describing any initialization parameters for this policy. This itself is a JSON Schema document.
-	InitParameters *map[string]interface{} `json:"initParameters,omitempty" yaml:"initParameters,omitempty"`
+	// SystemParameters JSON Schema describing any initialization parameters for this policy. This itself is a JSON Schema document.
+	SystemParameters *map[string]interface{} `json:"systemParameters,omitempty" yaml:"systemParameters,omitempty"`
 
 	// Name Unique policy name
 	Name string `json:"name" yaml:"name"`

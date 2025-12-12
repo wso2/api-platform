@@ -6,7 +6,7 @@ import "log/slog"
 // It processes the "properties" object and extracts either "default" or "wso2/defaultValue"
 // with precedence given to "wso2/defaultValue" when both exist.
 //
-// Input schema format (from initParameters in policy-definition.yaml):
+// Input schema format (from systemParameters in policy-definition.yaml):
 //
 //	{
 //	  "type": "object",

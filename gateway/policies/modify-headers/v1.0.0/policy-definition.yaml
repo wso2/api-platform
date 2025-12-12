@@ -63,7 +63,7 @@ parameters:
         - action
         - name
 
-initParameters: 
+systemParameters: 
   type: object
   properties:
     foo:

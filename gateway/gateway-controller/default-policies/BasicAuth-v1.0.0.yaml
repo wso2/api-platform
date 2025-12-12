@@ -37,6 +37,6 @@ parameters:
   - username
   - password
 
-initParameters:         
+systemParameters:         
   type: object
   properties: {}

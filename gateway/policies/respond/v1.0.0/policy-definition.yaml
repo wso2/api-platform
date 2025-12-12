@@ -41,7 +41,7 @@ parameters:
         - name
         - value
 
-initParameters:
+systemParameters:
   type: object
   properties:
     foo:

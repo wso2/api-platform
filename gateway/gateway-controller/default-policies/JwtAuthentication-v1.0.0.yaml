@@ -46,7 +46,7 @@ parameters:
       type: string
       description: Override for the authorization header scheme prefix (e.g., "Bearer", "JWT"). If specified at user-level, takes precedence over system configuration for this route.
 
-initParameters:          
+systemParameters:          
   type: object
   additionalProperties: false
   properties:

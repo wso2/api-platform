@@ -37,4 +37,4 @@ parameters:
         - json
         - text
 
-initParameters: []
+systemParameters: []
