@@ -1,4 +1,4 @@
-apiVersion: api.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1alpha1
 kind: ComponentType
 metadata:
   name: apiproxy
@@ -73,8 +73,8 @@ spec:
               protocol: TCP
     - id: api-configuration
       template:
-        apiVersion: api.api-platform.wso2.com/v1
-        kind: APIConfiguration
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: RestApi
         metadata:
           name: ${metadata.name}
           namespace: ${metadata.namespace}
@@ -82,7 +82,7 @@ spec:
         spec:
           apiConfiguration:
             version: api-platform.wso2.com/v1
-            kind: http/rest
+            kind: RestApi
             data:
               name: hello
               version: v1
@@ -125,7 +125,7 @@ spec:
               port: 80
 
 ---
-apiVersion: api.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1alpha1
 kind: Component
 metadata:
   name: apiproxycomponent
@@ -147,7 +147,7 @@ spec:
         cpu: "1000m"
         memory: "1Gi"
 ---
-apiVersion: api.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1alpha1
 kind: Workload
 metadata:
   name: apiproxyworkload
@@ -165,7 +165,7 @@ spec:
         - "9090"
 
 ---
-apiVersion: api.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1alpha1
 kind: ComponentDeployment
 metadata:
   name: apiproxycomponentdeployment

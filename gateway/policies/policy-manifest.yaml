@@ -19,3 +19,6 @@ policies:
   - name: JwtAuthentication
     version: v1.0.0
     filePath: ./jwt-auth/v1.0.0
+  - name: JwtAuthentication
+    version: v1.0.1
+    filePath: ./jwt-auth/v1.0.1

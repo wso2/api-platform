@@ -91,7 +91,7 @@ curl -X POST http://localhost:9090/apis \\
   -H "Content-Type: application/yaml" \\
   --data-binary @- <<'EOF'
 version: api-platform.wso2.com/v1
-kind: http/rest
+kind: RestApi
 spec:
   name: PetStore API
   version: v1.0
@@ -110,7 +110,7 @@ EOF
   -H "Content-Type: application/yaml" \\
   --data-binary @- <<'EOF'
 version: api-platform.wso2.com/v1
-kind: http/rest
+kind: RestApi
 spec:
   name: PetStore API
   version: v1.0

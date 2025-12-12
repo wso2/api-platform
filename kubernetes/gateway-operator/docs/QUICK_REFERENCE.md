@@ -150,16 +150,16 @@ metadata:
 
 ```bash
 # Check gateway status
-kubectl get gatewayconfiguration <name> -o yaml
+kubectl get gateway <name> -o yaml
 
 # See selected API count
-kubectl get gatewayconfiguration <name> -o jsonpath='{.status.selectedAPIs}'
+kubectl get gateway <name> -o jsonpath='{.status.selectedAPIs}'
 
 # Check API deployment status
 kubectl get apiconfiguration <name> -n <ns> -o jsonpath='{.status.deployedGateways}'
 
 # List all APIs for a gateway
-kubectl get apiconfigurations --all-namespaces -l gateway=production-gateway
+kubectl get restapis --all-namespaces -l gateway=production-gateway
 ```
 
 ## Decision Tree
@@ -190,13 +190,13 @@ kubectl apply -f gateway.yaml
 kubectl apply -f api.yaml
 
 # List gateways
-kubectl get gatewayconfigurations
+kubectl get gateways
 
 # List APIs
-kubectl get apiconfigurations -A
+kubectl get restapis -A
 
 # Check gateway-API relationship
-kubectl describe gatewayconfiguration <name>
+kubectl describe gateway <name>
 kubectl describe apiconfiguration <name> -n <namespace>
 
 # Label an API for selection

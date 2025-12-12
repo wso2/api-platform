@@ -74,7 +74,7 @@ func GetCredentialsFromImagePullSecret(ctx context.Context, k8sClient client.Cli
 	// Handle generic secret with username/password keys
 	username := string(secret.Data["username"])
 	password := string(secret.Data["password"])
-	
+
 	if username == "" || password == "" {
 		return "", "", fmt.Errorf("username or password is empty in secret")
 	}

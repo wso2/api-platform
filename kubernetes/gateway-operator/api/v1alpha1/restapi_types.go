@@ -14,42 +14,56 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1
+package v1alpha1
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// APIConfig defines model for APIConfig from gateway controller API.
-// This structure represents the API configuration that will be deployed to gateways.
-type APIConfig struct {
-	// Kind API type
-	// +kubebuilder:validation:Enum=http/rest
-	Kind APIConfigurationKind `json:"kind"`
+// RestApiStatus defines the observed state of RestApi
+type RestApiStatus struct {
+	// Conditions represent the latest available observations of the API's state
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// Spec contains the API configuration data
-	Spec APIConfigData `json:"spec"`
+	// Phase represents the current phase of the API (Pending, Deployed, Failed)
+	// +optional
+	Phase APIPhase `json:"phase,omitempty"`
 
-	// Version API specification version
-	// +kubebuilder:validation:Enum=api-platform.wso2.com/v1
-	Version APIConfigurationVersionType `json:"version"`
+	// DeployedGateways is a list of gateways where this API is deployed
+	// +optional
+	DeployedGateways []string `json:"deployedGateways,omitempty"`
+
+	// ObservedGeneration reflects the generation of the most recently observed spec
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
+	// LastUpdateTime is the last time the status was updated
+	// +optional
+	LastUpdateTime *metav1.Time `json:"lastUpdateTime,omitempty"`
 }
 
-// APIConfigurationKind API type
-type APIConfigurationKind string
+//+kubebuilder:object:root=true
+//+kubebuilder:subresource:status
 
-const (
-	// HTTPRest represents HTTP REST API type
-	HTTPRest APIConfigurationKind = "http/rest"
-)
+// RestApi is the Schema for the restapis API
+type RestApi struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-// APIConfigurationVersionType API specification version
-type APIConfigurationVersionType string
+	Spec   APIConfigData `json:"spec,omitempty"`
+	Status RestApiStatus `json:"status,omitempty"`
+}
 
-const (
-	// APIVersion represents the API specification version
-	APIVersion APIConfigurationVersionType = "api-platform.wso2.com/v1"
-)
+//+kubebuilder:object:root=true
+
+// RestApiList contains a list of RestApi
+type RestApiList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []RestApi `json:"items"`
+}
 
 // APIConfigData defines model for APIConfigData.
 type APIConfigData struct {
@@ -147,4 +161,24 @@ type Upstream struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern=`^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$`
 	Url string `json:"url"`
+}
+
+// APIConditionReady is the canonical Ready condition type for RestApi
+const APIConditionReady = "Ready"
+
+// APIPhase represents the lifecycle phase of an RestApi
+// +kubebuilder:validation:Enum=Pending;Deployed;Failed
+type APIPhase string
+
+const (
+	// APIPhasePending indicates the controller is waiting to deploy the API
+	APIPhasePending APIPhase = "Pending"
+	// APIPhaseDeployed indicates the API has been deployed to all target gateways
+	APIPhaseDeployed APIPhase = "Deployed"
+	// APIPhaseFailed indicates the controller failed to deploy the API
+	APIPhaseFailed APIPhase = "Failed"
+)
+
+func init() {
+	SchemeBuilder.Register(&RestApi{}, &RestApiList{})
 }

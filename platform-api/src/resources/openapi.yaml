@@ -1742,8 +1742,8 @@ components:
           type: string
           description: The api creation type to be used. Accepted values are HTTP,
             WS, SOAPTOREST, GRAPHQL, WEBSUB, SSE, WEBHOOK, ASYNC
-          example: HTTP/REST
-          default: HTTP/REST
+          example: RestApi
+          default: RestApi
           enum:
             - HTTP
             - WS

@@ -169,7 +169,7 @@ func main() {
 			derivedCount := 0
 			for _, apiConfig := range loadedAPIs {
 				// Derive policy configuration from API
-				if apiConfig.Configuration.Kind == "http/rest" {
+				if apiConfig.Configuration.Kind == "RestApi" {
 					storedPolicy := derivePolicyFromAPIConfig(apiConfig, &cfg.Router)
 					if storedPolicy != nil {
 						if err := policyStore.Set(storedPolicy); err != nil {

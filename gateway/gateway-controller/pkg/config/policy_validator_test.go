@@ -76,8 +76,8 @@ func TestPolicyValidator_ValidatePolicies_Success(t *testing.T) {
 	}
 	// Create API config with valid policy
 	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
+		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		Kind:    "RestApi",
 		Spec:    specUnion,
 	}
 
@@ -116,8 +116,8 @@ func TestPolicyValidator_PolicyNotFound(t *testing.T) {
 
 	// Create API config with non-existent policy
 	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
+		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		Kind:    "RestApi",
 		Spec:    specUnion,
 	}
 
@@ -180,8 +180,8 @@ func TestPolicyValidator_InvalidParameters(t *testing.T) {
 		},
 	})
 	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
+		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		Kind:    "RestApi",
 		Spec:    specUnion,
 	}
 
@@ -237,8 +237,8 @@ func TestPolicyValidator_OperationLevelPolicies(t *testing.T) {
 		},
 	})
 	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
+		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		Kind:    "RestApi",
 		Spec:    specUnion,
 	}
 
@@ -292,8 +292,8 @@ func TestPolicyValidator_MultipleErrors(t *testing.T) {
 		},
 	})
 	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
+		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		Kind:    "RestApi",
 		Spec:    specUnion,
 	}
 
@@ -348,8 +348,8 @@ func TestPolicyValidator_TypeMismatch(t *testing.T) {
 		},
 	})
 	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
+		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		Kind:    "RestApi",
 		Spec:    specUnion,
 	}
 
@@ -406,8 +406,8 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 		},
 	})
 	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
+		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		Kind:    "RestApi",
 		Spec:    specUnion,
 	}
 

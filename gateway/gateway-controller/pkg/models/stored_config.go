@@ -49,7 +49,7 @@ type StoredConfig struct {
 
 // GetCompositeKey returns the composite key "name:version" for indexing
 func (c *StoredConfig) GetCompositeKey() string {
-	if c.Configuration.Kind == "async/websub" {
+	if c.Configuration.Kind == "WebsubApi" {
 		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
 		if err != nil {
 			return ""
@@ -65,7 +65,7 @@ func (c *StoredConfig) GetCompositeKey() string {
 
 // GetName returns the API name
 func (c *StoredConfig) GetName() string {
-	if c.Configuration.Kind == "async/websub" {
+	if c.Configuration.Kind == "WebsubApi" {
 		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
 		if err != nil {
 			return ""
@@ -81,7 +81,7 @@ func (c *StoredConfig) GetName() string {
 
 // GetVersion returns the API version
 func (c *StoredConfig) GetVersion() string {
-	if c.Configuration.Kind == "async/websub" {
+	if c.Configuration.Kind == "WebsubApi" {
 		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
 		if err != nil {
 			return ""
@@ -97,7 +97,7 @@ func (c *StoredConfig) GetVersion() string {
 
 // GetContext returns the API context path
 func (c *StoredConfig) GetContext() string {
-	if c.Configuration.Kind == "async/websub" {
+	if c.Configuration.Kind == "WebsubApi" {
 		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
 		if err != nil {
 			return ""
@@ -112,7 +112,7 @@ func (c *StoredConfig) GetContext() string {
 }
 
 func (c *StoredConfig) GetPolicies() *[]api.Policy {
-	if c.Configuration.Kind == api.APIConfigurationKindHttprest {
+	if c.Configuration.Kind == api.APIConfigurationKindRestApi {
 		httpData, err := c.Configuration.Spec.AsAPIConfigData()
 		if err != nil {
 			return nil

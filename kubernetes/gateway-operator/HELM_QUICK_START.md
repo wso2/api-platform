@@ -26,12 +26,12 @@ export GATEWAY_HELM_VALUES_FILE_PATH=/path/to/custom-values.yaml
 
 ### Before (Template-based)
 ```
-GatewayConfiguration → Render YAML Template → Apply K8s Manifests
+Gateway → Render YAML Template → Apply K8s Manifests
 ```
 
 ### Now (Helm-based)
 ```
-GatewayConfiguration → Use Chart Values → helm install/upgrade
+Gateway → Use Chart Values → helm install/upgrade
 ```
 
 ## What Changed
@@ -54,15 +54,15 @@ GatewayConfiguration → Use Chart Values → helm install/upgrade
 |------|---------|
 | `internal/helm/client.go` | Helm client wrapper |
 | `internal/config/config.go` | Configuration (line 38-48) |
-| `internal/controller/gatewayconfiguration_controller.go` | Controller logic (line 256+) |
+| `internal/controller/gateway_controller.go` | Controller logic (line 256+) |
 | `../helm/gateway-helm-chart/values.yaml` | Default Helm values |
 
 ## Usage
 
 ### Create Gateway (Default Values)
 ```yaml
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: my-gateway
 spec:
@@ -101,7 +101,7 @@ helm get values my-gateway-gateway -n default
 
 ### Delete Gateway
 ```bash
-kubectl delete gatewayconfiguration my-gateway
+kubectl delete gateway my-gateway
 # Helm release automatically uninstalled
 ```
 
@@ -151,7 +151,7 @@ kubectl apply -f config/samples/
 helm list -A
 
 # Check gateway status
-kubectl get gatewayconfiguration -A
+kubectl get gateway -A
 ```
 
 ## Dependencies

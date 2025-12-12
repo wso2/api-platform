@@ -1,6 +1,6 @@
 # Image URL to use all building/pushing image targets
-VERSION ?= v1.0.0-m4
-IMG ?= gateway-operator:$(VERSION)
+VERSION ?= 0.1.0-SNAPSHOT
+IMG ?= ghcr.io/tharsanan1/api-platform/gateway-operator:$(VERSION)
 ## Default debug image name (can be overridden by setting DEBUG_IMG)
 DEBUG_IMG ?= $(IMG)-debug
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.

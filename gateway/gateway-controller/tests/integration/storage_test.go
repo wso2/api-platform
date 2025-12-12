@@ -76,9 +76,9 @@ func createTestConfig(name, version string) *models.StoredConfig {
 	return &models.StoredConfig{
 		ID: uuid.New().String(),
 		Configuration: api.APIConfiguration{
-			Version: api.ApiPlatformWso2Comv1,
-			Kind:    api.APIConfigurationKindHttprest,
-			Spec:    specUnion,
+			ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.APIConfigurationKindRestApi,
+			Spec:       specUnion,
 		},
 		Status:          models.StatusPending,
 		DeployedVersion: 0,

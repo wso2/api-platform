@@ -1,0 +1,23 @@
+# permissions for end users to view restapis.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: gateway-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: restapi-viewer-role
+rules:
+- apiGroups:
+  - gateway.api-platform.wso2.com
+  resources:
+  - restapis
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - gateway.api-platform.wso2.com
+  resources:
+  - restapis/status
+  verbs:
+  - get

@@ -27,7 +27,7 @@ The Gateway Operator now supports deploying gateways using Helm charts instead o
      - `HelmChartVersion`: Version of the Helm chart
      - `HelmValuesFilePath`: Path to custom values.yaml (optional)
 
-3. **Controller Updates** (`internal/controller/gatewayconfiguration_controller.go`)
+3. **Controller Updates** (`internal/controller/gateway_controller.go`)
    - Modified to support both Helm and template-based deployment
    - Automatic detection based on configuration
    - Helm release lifecycle management (install, upgrade, uninstall)
@@ -84,11 +84,11 @@ You can provide a custom values.yaml file in two ways:
 
 ### Creating a Gateway
 
-Create a `GatewayConfiguration` resource as usual:
+Create a `Gateway` resource as usual:
 
 ```yaml
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: my-gateway
   namespace: default
@@ -119,7 +119,7 @@ The operator will:
 1. Use the Helm chart's default values.yaml (or custom values if configured)
 2. Install/upgrade the Helm release named `my-gateway-gateway`
 3. Monitor the deployment status
-4. Update the GatewayConfiguration status
+4. Update the Gateway status
 
 ### Customizing Deployment
 
@@ -152,7 +152,7 @@ helm list -n default
 ```
 
 **Manual Operations**:
-kubectl delete gatewayconfiguration my-gateway
+kubectl delete gateway my-gateway
 ```
 
 ## Configuration Methods
@@ -160,10 +160,10 @@ kubectl delete gatewayconfiguration my-gateway
 The operator supports multiple ways to configure gateway deployments:
 
 ### 1. Chart Default Values
-Simply create a GatewayConfiguration and let the operator use the chart's default values:
+Simply create a Gateway and let the operator use the chart's default values:
 ```yaml
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: my-gateway
 spec:
@@ -356,13 +356,13 @@ Test Helm deployment:
 make run
 
 # In another terminal, create a gateway
-kubectl apply -f config/samples/gateway_v1_gatewayconfiguration.yaml
+kubectl apply -f config/samples/gateway_v1_gateway.yaml
 
 # Check Helm releases
 helm list -A
 
 # Check gateway status
-kubectl get gatewayconfiguration -A
+kubectl get gateway -A
 ```
 
 ### Custom Values Template
@@ -389,7 +389,7 @@ Potential future improvements:
 
 1. **Remote Chart Repositories**: Support installing charts from Helm repositories
 2. **Chart Hooks**: Leverage Helm hooks for lifecycle management
-3. **Values Override**: Allow users to provide custom values in GatewayConfiguration
+3. **Values Override**: Allow users to provide custom values in Gateway
 4. **Multi-Chart Support**: Support installing multiple charts for complex deployments
 5. **Chart Testing**: Integrate Helm chart testing into CI/CD pipeline
 

@@ -65,7 +65,7 @@ func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 	cs.configs[cfg.ID] = cfg
 	cs.nameVersion[key] = cfg.ID
 
-	if cfg.Configuration.Kind == "async/websub" {
+	if cfg.Configuration.Kind == "WebsubApi" {
 		err := cs.updateTopics(cfg)
 		if err != nil {
 			return err
@@ -98,7 +98,7 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 		cs.nameVersion[newKey] = cfg.ID
 	}
 
-	if cfg.Configuration.Kind == "async/websub" {
+	if cfg.Configuration.Kind == "WebsubApi" {
 		err := cs.updateTopics(cfg)
 		if err != nil {
 			return err
@@ -149,7 +149,7 @@ func (cs *ConfigStore) Delete(id string) error {
 
 	key := cfg.GetCompositeKey()
 
-	if cfg.Configuration.Kind == "async/websub" {
+	if cfg.Configuration.Kind == "WebsubApi" {
 		cs.TopicManager.RemoveAllForConfig(cfg.ID)
 	}
 	delete(cs.nameVersion, key)

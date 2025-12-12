@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1
+package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
@@ -97,8 +97,8 @@ type GatewayInfrastructure struct {
 	Affinity *corev1.Affinity `json:"affinity,omitempty"`
 }
 
-// GatewayConfigurationSpec defines the desired state of GatewayConfiguration
-type GatewayConfigurationSpec struct {
+// GatewaySpec defines the desired state of Gateway
+type GatewaySpec struct {
 	// GatewayClassName is an optional identifier for grouping gateways
 	// This can be used to categorize gateways (e.g., "production", "development")
 	// +optional
@@ -166,10 +166,10 @@ type GatewayStorage struct {
 	ConnectionSecretRef *corev1.SecretKeySelector `json:"connectionSecretRef,omitempty"`
 }
 
-// GatewayConditionReady is the canonical Ready condition type for GatewayConfiguration
+// GatewayConditionReady is the canonical Ready condition type for Gateway
 const GatewayConditionReady = "Ready"
 
-// GatewayPhase represents the lifecycle phase of a GatewayConfiguration
+// GatewayPhase represents the lifecycle phase of a Gateway
 // +kubebuilder:validation:Enum=Reconciling;Ready;Failed;Deleting
 type GatewayPhase string
 
@@ -184,8 +184,8 @@ const (
 	GatewayPhaseDeleting GatewayPhase = "Deleting"
 )
 
-// GatewayConfigurationStatus defines the observed state of GatewayConfiguration
-type GatewayConfigurationStatus struct {
+// GatewayStatus defines the observed state of Gateway
+type GatewayStatus struct {
 	// Conditions represent the latest available observations of the gateway's state
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
@@ -214,24 +214,24 @@ type GatewayConfigurationStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// GatewayConfiguration is the Schema for the gatewayconfigurations API
-type GatewayConfiguration struct {
+// Gateway is the Schema for the gateways API
+type Gateway struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   GatewayConfigurationSpec   `json:"spec,omitempty"`
-	Status GatewayConfigurationStatus `json:"status,omitempty"`
+	Spec   GatewaySpec   `json:"spec,omitempty"`
+	Status GatewayStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// GatewayConfigurationList contains a list of GatewayConfiguration
-type GatewayConfigurationList struct {
+// GatewayList contains a list of Gateway
+type GatewayList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []GatewayConfiguration `json:"items"`
+	Items           []Gateway `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&GatewayConfiguration{}, &GatewayConfigurationList{})
+	SchemeBuilder.Register(&Gateway{}, &GatewayList{})
 }

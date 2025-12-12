@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"sync"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 

@@ -70,7 +70,7 @@ paths:
               $ref: "#/components/schemas/APIConfiguration"
             example:
               version: api-platform.wso2.com/v1
-              kind: http/rest
+              kind: RestApi
               spec:
                 name: PetStore API
                 version: v1.0
@@ -116,7 +116,7 @@ paths:
               $ref: "#/components/schemas/APIConfiguration"
             example:
               version: api-platform.wso2.com/v1
-              kind: http/rest
+              kind: RestApi
               spec:
                 name: PetStore API
                 version: v1.0
@@ -1270,25 +1270,25 @@ components:
     APIConfiguration:
       type: object
       required:
-        - version
+        - apiVersion
         - kind
         - spec
       properties:
-        version:
+        apiVersion:
           type: string
           description: API specification version
           example: api-platform.wso2.com/v1
           enum:
-            - api-platform.wso2.com/v1
+            - gateway.api-platform.wso2.com/v1alpha1
         kind:
           type: string
           description: API type
-          example: http/rest
+          example: RestApi
           enum:
-            - http/rest
-            - async/websub
-            - async/websocket
-            - async/sse
+            - RestApi
+            - WebsubApi
+            - WebsocketApi
+            - SseApi
         spec:
           description: API configuration payload (REST or Async API variants)
           oneOf:
@@ -1297,8 +1297,8 @@ components:
           discriminator:
             propertyName: apiType
             mapping:
-              http/rest: '#/components/schemas/APIConfigData'
-              async/websub: '#/components/schemas/WebhookAPIData'
+              RestApi: '#/components/schemas/APIConfigData'
+              WebsubApi: '#/components/schemas/WebhookAPIData'
 
     APIConfigData:
       type: object
@@ -1320,9 +1320,9 @@ components:
         apiType:
           type: string
           description: API type
-          example: http/rest
+          example: RestApi
           enum:
-            - http/rest
+            - RestApi
         version:
           type: string
           description: Semantic version of the API
@@ -1478,9 +1478,9 @@ components:
         apiType:
           type: string
           description: API type
-          example: async/websub
+          example: WebsubApi
           enum:
-            - async/websub
+            - WebsubApi
         name:
           type: string
           description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)

@@ -23,8 +23,8 @@ Operator Details:
 {{- end }}
 
 Custom Resource Definitions (CRDs) installed:
-  - APIConfiguration (api.api-platform.wso2.com/v1alpha1)
-  - GatewayConfiguration (api.api-platform.wso2.com/v1alpha1)
+  - RestApi (api.api-platform.wso2.com/v1alpha1)
+  - Gateway (api.api-platform.wso2.com/v1alpha1)
 
 Gateway Configuration:
   - Control Plane: {{ .Values.gateway.controlPlaneHost }}
@@ -45,10 +45,10 @@ Next Steps:
 2. Check operator logs:
    $ kubectl logs -f deployment/{{ include "gateway-operator.fullname" . }} -n {{ .Release.Namespace }}
 
-3. Create a GatewayConfiguration to deploy a gateway instance:
+3. Create a Gateway to deploy a gateway instance:
    $ kubectl apply -f - <<EOF
    apiVersion: api.api-platform.wso2.com/v1alpha1
-   kind: GatewayConfiguration
+   kind: Gateway
    metadata:
      name: my-gateway
      namespace: default
@@ -56,10 +56,10 @@ Next Steps:
      # Your gateway configuration here
    EOF
 
-4. Create an APIConfiguration to deploy APIs:
+4. Create an RestApi to deploy APIs:
    $ kubectl apply -f - <<EOF
    apiVersion: api.api-platform.wso2.com/v1alpha1
-   kind: APIConfiguration
+   kind: RestApi
    metadata:
      name: my-api
      namespace: default
@@ -68,7 +68,7 @@ Next Steps:
    EOF
 
 5. Monitor the resources:
-   $ kubectl get gatewayconfiguration -A
+   $ kubectl get gateway -A
    $ kubectl get apiconfiguration -A
 
 For more information:

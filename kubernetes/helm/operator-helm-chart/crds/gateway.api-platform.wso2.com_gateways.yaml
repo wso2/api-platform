@@ -4,21 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.5
-  name: gatewayconfigurations.api.api-platform.wso2.com
+  name: gateways.gateway.api-platform.wso2.com
 spec:
-  group: api.api-platform.wso2.com
+  group: gateway.api-platform.wso2.com
   names:
-    kind: GatewayConfiguration
-    listKind: GatewayConfigurationList
-    plural: gatewayconfigurations
-    singular: gatewayconfiguration
+    kind: Gateway
+    listKind: GatewayList
+    plural: gateways
+    singular: gateway
   scope: Namespaced
   versions:
-  - name: v1
+  - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: GatewayConfiguration is the Schema for the gatewayconfigurations
-          API
+        description: Gateway is the Schema for the gateways API
         properties:
           apiVersion:
             description: |-
@@ -38,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: GatewayConfigurationSpec defines the desired state of GatewayConfiguration
+            description: GatewaySpec defines the desired state of Gateway
             properties:
               apiSelector:
                 description: APISelector defines how this gateway selects which APIs
@@ -1269,8 +1268,7 @@ spec:
             - apiSelector
             type: object
           status:
-            description: GatewayConfigurationStatus defines the observed state of
-              GatewayConfiguration
+            description: GatewayStatus defines the observed state of Gateway
             properties:
               appliedGeneration:
                 description: AppliedGeneration tracks the latest spec generation that

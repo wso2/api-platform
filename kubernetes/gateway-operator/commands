@@ -1,5 +1,5 @@
 kubebuilder init --domain gateway-operator.dev --repo github.com/wso2/api-platform/kubernetes/gateway-operator
 
-kubebuilder create api --group api --version v1 --kind GatewayConfiguration
-kubebuilder create api --group api --version v1 --kind APIConfiguration
+kubebuilder create api --group api --version v1 --kind Gateway
+kubebuilder create api --group api --version v1 --kind RestApi
 

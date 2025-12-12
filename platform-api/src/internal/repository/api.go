@@ -145,7 +145,7 @@ func (r *APIRepo) GetAPIByUUID(apiId string) (*model.API, error) {
 	}
 
 	// Load related configurations
-	if err := r.loadAPIConfigurations(api); err != nil {
+	if err := r.loadRestApis(api); err != nil {
 		return nil, err
 	}
 
@@ -188,7 +188,7 @@ func (r *APIRepo) GetAPIsByProjectID(projectID string) ([]*model.API, error) {
 		}
 
 		// Load related configurations
-		if err := r.loadAPIConfigurations(api); err != nil {
+		if err := r.loadRestApis(api); err != nil {
 			return nil, err
 		}
 
@@ -254,7 +254,7 @@ func (r *APIRepo) GetAPIsByOrganizationID(orgID string, projectID *string) ([]*m
 		}
 
 		// Load related configurations
-		if err := r.loadAPIConfigurations(api); err != nil {
+		if err := r.loadRestApis(api); err != nil {
 			return nil, err
 		}
 
@@ -327,7 +327,7 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 	}
 
 	// Delete existing configurations and re-insert
-	if err := r.deleteAPIConfigurations(tx, api.ID); err != nil {
+	if err := r.deleteRestApis(tx, api.ID); err != nil {
 		return err
 	}
 
@@ -407,7 +407,7 @@ func (r *APIRepo) DeleteAPI(apiId string) error {
 
 // Helper methods for loading configurations
 
-func (r *APIRepo) loadAPIConfigurations(api *model.API) error {
+func (r *APIRepo) loadRestApis(api *model.API) error {
 	// Load MTLS configuration
 	if mtls, err := r.loadMTLSConfig(api.ID); err != nil {
 		return err
@@ -873,7 +873,7 @@ func (r *APIRepo) loadPolicies(operationID int64, flowDirection string) ([]model
 }
 
 // Helper method to delete all API configurations (used in Update)
-func (r *APIRepo) deleteAPIConfigurations(tx *sql.Tx, apiId string) error {
+func (r *APIRepo) deleteRestApis(tx *sql.Tx, apiId string) error {
 	// Delete in reverse order of dependencies
 	queries := []string{
 		`DELETE FROM policies WHERE operation_id IN (SELECT id FROM api_operations WHERE api_uuid = ?)`,

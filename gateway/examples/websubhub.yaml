@@ -17,10 +17,10 @@
 # --------------------------------------------------------------------
 
 version: api-platform.wso2.com/v1
-kind: async/websub
+kind: WebsubApi
 spec:
   name: WebSub-API-New-API
-  apiType: async/websub
+  apiType: WebsubApi
   version: v1.0
   context: /websubnewapi
   servers:

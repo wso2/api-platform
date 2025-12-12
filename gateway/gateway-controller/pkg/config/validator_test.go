@@ -111,8 +111,8 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 				},
 			})
 			config := &api.APIConfiguration{
-				Version: "api-platform.wso2.com/v1",
-				Kind:    "http/rest",
+				ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+				Kind:    "RestApi",
 				Spec:    specUnion,
 			}
 

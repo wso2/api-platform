@@ -21,10 +21,10 @@ func TestDeployAPIConfigurationWebSubKindTopicRegistration(t *testing.T) {
 	service := NewAPIDeploymentService(configStore, db, snapshotManager, validator)
 
 	// Inline YAML config similar to websubhub.yaml
-	yamlConfig := `kind: async/websub
+	yamlConfig := `kind: WebsubApi
 version: api-platform.wso2.com/v1
 spec:
-  apiType: async/websub
+  apiType: WebsubApi
   name: testapi
   context: /test
   version: v1
@@ -67,10 +67,10 @@ func TestDeployAPIConfigurationWebSubKindRevisionDeployment(t *testing.T) {
 	service := NewAPIDeploymentService(configStore, nil, nil, validator)
 
 	// Inline YAML config similar to websubhub.yaml
-	yamlConfig := `kind: async/websub
+	yamlConfig := `kind: WebsubApi
 version: api-platform.wso2.com/v1
 spec:
-  apiType: async/websub
+  apiType: WebsubApi
   name: testapi
   context: /test
   version: v1
@@ -107,10 +107,10 @@ spec:
 	assert.True(t, configStore.TopicManager.IsTopicExist(cfg.ID, "testapi_test_v1_topic2"))
 
 	// Second deployment with topic2 removed -> should deregister topic2
-	yamlConfig2 := `kind: async/websub
+	yamlConfig2 := `kind: WebsubApi
 version: api-platform.wso2.com/v1
 spec:
-  apiType: async/websub
+  apiType: WebsubApi
   name: testapi
   context: /test
   version: v1
@@ -151,10 +151,10 @@ func TestTopicRegistrationForConcurrentAPIConfigs(t *testing.T) {
 	service := NewAPIDeploymentService(configStore, nil, nil, validator)
 
 	// Two different API YAMLs
-	yamlA := `kind: async/websub
+	yamlA := `kind: WebsubApi
 version: api-platform.wso2.com/v1
 spec:
-  apiType: async/websub
+  apiType: WebsubApi
   name: apiA
   context: /a
   version: v1
@@ -166,10 +166,10 @@ spec:
     - path: /t2
 `
 
-	yamlB := `kind: async/websub
+	yamlB := `kind: WebsubApi
 version: api-platform.wso2.com/v1
 spec:
-  apiType: async/websub
+  apiType: WebsubApi
   name: apiB
   context: /b
   version: v1
@@ -253,10 +253,10 @@ func TestTopicDeregistrationOnConfigDeletion(t *testing.T) {
 	service := NewAPIDeploymentService(configStore, nil, nil, validator)
 
 	// Inline YAML config similar to websubhub.yaml
-	yamlConfig := `kind: async/websub
+	yamlConfig := `kind: WebsubApi
 version: api-platform.wso2.com/v1
 spec:
-  apiType: async/websub
+  apiType: WebsubApi
   name: testapi
   context: /test
   version: v1

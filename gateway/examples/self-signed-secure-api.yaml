@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 version: api-platform.wso2.com/v1
-kind: http/rest
+kind: RestApi
 spec:
   name: self-signed-api
   version: v1.0

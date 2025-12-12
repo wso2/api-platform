@@ -44,14 +44,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/selector"
 )
 
-// APIConfigurationReconciler reconciles a APIConfiguration object
-type APIConfigurationReconciler struct {
+// RestApiReconciler reconciles a RestApi object
+type RestApiReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Config *config.OperatorConfig
@@ -62,32 +62,32 @@ const (
 	apiConditionReasonDeploymentSucceeded = "DeploymentSucceeded"
 	apiConditionReasonWaitingForGateway   = "WaitingForGateway"
 
-	apiFinalizerName = "api.api-platform.wso2.com/api-finalizer"
+	apiFinalizerName = "gateway.api-platform.wso2.com/api-finalizer"
 )
 
-//+kubebuilder:rbac:groups=api.api-platform.wso2.com,resources=apiconfigurations,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=api.api-platform.wso2.com,resources=apiconfigurations/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=api.api-platform.wso2.com,resources=apiconfigurations/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=restapis,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=restapis/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=restapis/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
-// the APIConfiguration object against the actual cluster state, and then
+// the RestApi object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.3/pkg/reconcile
-func (r *APIConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *RestApiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	apiConfig := &apiv1.APIConfiguration{}
+	apiConfig := &apiv1.RestApi{}
 	if err := r.Get(ctx, req.NamespacedName, apiConfig); err != nil {
-		log.Error(err, "unable to fetch APIConfiguration")
+		log.Error(err, "unable to fetch RestApi")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	log.Info("Reconciling APIConfiguration",
+	log.Info("Reconciling RestApi",
 		"name", apiConfig.Name,
 		"namespace", apiConfig.Namespace)
 
@@ -112,7 +112,6 @@ func (r *APIConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	var deploymentErrors []string
 	requeueAfter := false
 
-	
 	for _, key := range targetKeys {
 		gateway := availableGateways[key]
 		if err := r.deployAPIToGateway(ctx, apiConfig, gateway); err != nil {
@@ -130,7 +129,6 @@ func (r *APIConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			"gateway", gateway.Name,
 			"namespace", gateway.Namespace)
 	}
-	
 
 	if len(missingGateways) > 0 {
 		requeueAfter = true
@@ -189,7 +187,7 @@ func (r *APIConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		},
 		DeployedGateways: &deployed,
 	}); err != nil {
-		log.Error(err, "failed to update APIConfiguration status")
+		log.Error(err, "failed to update RestApi status")
 		return ctrl.Result{}, err
 	}
 
@@ -201,14 +199,14 @@ func (r *APIConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Req
 }
 
 // deployAPIToGateway sends the API configuration to a specific gateway controller
-func (r *APIConfigurationReconciler) deployAPIToGateway(ctx context.Context, apiConfig *apiv1.APIConfiguration, gateway *registry.GatewayInfo) error {
+func (r *RestApiReconciler) deployAPIToGateway(ctx context.Context, apiConfig *apiv1.RestApi, gateway *registry.GatewayInfo) error {
 	log := log.FromContext(ctx)
 
 	// Marshal the API spec to YAML
 	var apiYAML []byte
 	var err error
-	apiYAML, err = yaml.Marshal(apiConfig.Spec.APIConfiguration)
-	
+	apiYAML, err = yaml.Marshal(apiConfig)
+
 	if err != nil {
 		return fmt.Errorf("failed to marshal API spec to YAML: %w", err)
 	}
@@ -253,7 +251,7 @@ type apiStatusUpdate struct {
 	DeployedGateways *[]string
 }
 
-func (r *APIConfigurationReconciler) updateAPIStatus(ctx context.Context, apiConfig *apiv1.APIConfiguration, update apiStatusUpdate) (bool, error) {
+func (r *RestApiReconciler) updateAPIStatus(ctx context.Context, apiConfig *apiv1.RestApi, update apiStatusUpdate) (bool, error) {
 	base := apiConfig.DeepCopy()
 	originalStatus := base.Status
 	changed := false
@@ -320,17 +318,17 @@ func (r *APIConfigurationReconciler) updateAPIStatus(ctx context.Context, apiCon
 	return true, nil
 }
 
-func (r *APIConfigurationReconciler) enqueueAPIsForGateway(ctx context.Context, obj client.Object) []reconcile.Request {
-	gateway, ok := obj.(*apiv1.GatewayConfiguration)
+func (r *RestApiReconciler) enqueueAPIsForGateway(ctx context.Context, obj client.Object) []reconcile.Request {
+	gateway, ok := obj.(*apiv1.Gateway)
 	if !ok {
 		return nil
 	}
 
 	logger := log.FromContext(ctx)
 
-	apiList := &apiv1.APIConfigurationList{}
+	apiList := &apiv1.RestApiList{}
 	if err := r.List(ctx, apiList); err != nil {
-		logger.Error(err, "failed to list APIConfigurations for gateway event",
+		logger.Error(err, "failed to list RestApis for gateway event",
 			"gateway", gateway.Name,
 			"namespace", gateway.Namespace)
 		return nil
@@ -362,57 +360,27 @@ func (r *APIConfigurationReconciler) enqueueAPIsForGateway(ctx context.Context, 
 	return requests
 }
 
-func (r *APIConfigurationReconciler) apiTargetsGateway(ctx context.Context, api *apiv1.APIConfiguration, gateway *apiv1.GatewayConfiguration, sel *selector.APISelector) (bool, error) {
-	for _, ref := range api.Spec.GatewayRefs {
-		ns := ref.Namespace
-		if ns == "" {
-			ns = api.Namespace
-		}
-		if ref.Name == gateway.Name && ns == gateway.Namespace {
-			return true, nil
-		}
-	}
-
-	if len(api.Spec.GatewayRefs) > 0 {
-		return false, nil
-	}
-
+func (r *RestApiReconciler) apiTargetsGateway(ctx context.Context, api *apiv1.RestApi, gateway *apiv1.Gateway, sel *selector.APISelector) (bool, error) {
 	return sel.IsAPISelectedByGateway(ctx, api, gateway)
 }
 
-func (r *APIConfigurationReconciler) resolveGateways(apiConfig *apiv1.APIConfiguration) (map[string]*registry.GatewayInfo, map[string]struct{}, []string) {
+func (r *RestApiReconciler) resolveGateways(apiConfig *apiv1.RestApi) (map[string]*registry.GatewayInfo, map[string]struct{}, []string) {
 	registryInstance := registry.GetGatewayRegistry()
 	available := make(map[string]*registry.GatewayInfo)
 	expected := make(map[string]struct{})
 	missingSet := make(map[string]struct{})
 
-	if len(apiConfig.Spec.GatewayRefs) > 0 {
-		for _, ref := range apiConfig.Spec.GatewayRefs {
-			ns := ref.Namespace
-			if ns == "" {
-				ns = apiConfig.Namespace
-			}
-			key := namespacedName(ns, ref.Name)
-			expected[key] = struct{}{}
-			if gw, ok := registryInstance.Get(ns, ref.Name); ok {
-				available[key] = gw
-			} else {
-				missingSet[key] = struct{}{}
-			}
-		}
-	} else {
-		matched := registryInstance.FindMatchingGateways(apiConfig.Namespace, apiConfig.Labels)
-		for _, gw := range matched {
-			key := namespacedName(gw.Namespace, gw.Name)
-			expected[key] = struct{}{}
-			available[key] = gw
-		}
+	matched := registryInstance.FindMatchingGateways(apiConfig.Namespace, apiConfig.Labels)
+	for _, gw := range matched {
+		key := namespacedName(gw.Namespace, gw.Name)
+		expected[key] = struct{}{}
+		available[key] = gw
 	}
 
 	return available, expected, setToSortedSlice(missingSet)
 }
 
-func (r *APIConfigurationReconciler) reconcileAPIDeletion(ctx context.Context, apiConfig *apiv1.APIConfiguration) (ctrl.Result, error) {
+func (r *RestApiReconciler) reconcileAPIDeletion(ctx context.Context, apiConfig *apiv1.RestApi) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
 	if !controllerutil.ContainsFinalizer(apiConfig, apiFinalizerName) {
@@ -433,7 +401,7 @@ func (r *APIConfigurationReconciler) reconcileAPIDeletion(ctx context.Context, a
 	return ctrl.Result{}, nil
 }
 
-func (r *APIConfigurationReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig *apiv1.APIConfiguration) error {
+func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig *apiv1.RestApi) error {
 	log := log.FromContext(ctx)
 
 	available, _, missingList := r.resolveGateways(apiConfig)
@@ -488,7 +456,7 @@ func (r *APIConfigurationReconciler) cleanupAPIDeployments(ctx context.Context, 
 	return nil
 }
 
-func (r *APIConfigurationReconciler) deleteAPIFromGateway(ctx context.Context, apiName, apiVersion string, gateway *registry.GatewayInfo) error {
+func (r *RestApiReconciler) deleteAPIFromGateway(ctx context.Context, apiName, apiVersion string, gateway *registry.GatewayInfo) error {
 	log := log.FromContext(ctx)
 
 	endpoint := fmt.Sprintf("%s/apis/%s/%s",
@@ -525,10 +493,10 @@ func (r *APIConfigurationReconciler) deleteAPIFromGateway(ctx context.Context, a
 	}
 }
 
-func extractAPIMetadata(apiConfig *apiv1.APIConfiguration) (string, string) {
-	data := apiConfig.Spec.APIConfiguration.Spec
-	name := strings.TrimSpace(data.Name)
-	version := strings.TrimSpace(data.Version)
+func extractAPIMetadata(apiConfig *apiv1.RestApi) (string, string) {
+	data := apiConfig
+	name := strings.TrimSpace(data.Spec.Name)
+	version := strings.TrimSpace(data.Spec.Version)
 	return name, version
 }
 
@@ -604,14 +572,14 @@ func namespacedName(namespace, name string) string {
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *APIConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *RestApiReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	gatewayPred := predicate.Funcs{
 		CreateFunc: func(event event.CreateEvent) bool {
 			return true
 		},
 		UpdateFunc: func(evt event.UpdateEvent) bool {
-			newGateway, okNew := evt.ObjectNew.(*apiv1.GatewayConfiguration)
-			oldGateway, okOld := evt.ObjectOld.(*apiv1.GatewayConfiguration)
+			newGateway, okNew := evt.ObjectNew.(*apiv1.Gateway)
+			oldGateway, okOld := evt.ObjectOld.(*apiv1.Gateway)
 			if !okNew || !okOld {
 				return true
 			}
@@ -631,8 +599,8 @@ func (r *APIConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&apiv1.APIConfiguration{}).
-		Watches(&apiv1.GatewayConfiguration{},
+		For(&apiv1.RestApi{}).
+		Watches(&apiv1.Gateway{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueAPIsForGateway),
 			builder.WithPredicates(gatewayPred)).
 		Complete(r)

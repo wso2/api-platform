@@ -5,8 +5,8 @@ This Helm chart deploys the API Platform Gateway Operator, a Kubernetes operator
 ## Overview
 
 The Gateway Operator is responsible for:
-- Managing GatewayConfiguration custom resources
-- Managing APIConfiguration custom resources  
+- Managing Gateway custom resources
+- Managing RestApi custom resources  
 - Automatically deploying and configuring gateway instances
 - Reconciling gateway state with desired configuration
 - Integrating with the control plane API
@@ -111,13 +111,13 @@ The operator can deploy gateway instances with default values. These are defined
 
 The chart installs two CRDs:
 
-### 1. GatewayConfiguration
+### 1. Gateway
 
 Defines a gateway instance with all its components (controller, router, policy engine).
 
 ```yaml
 apiVersion: api.api-platform.wso2.com/v1alpha1
-kind: GatewayConfiguration
+kind: Gateway
 metadata:
   name: my-gateway
   namespace: default
@@ -125,13 +125,13 @@ spec:
   # Gateway specification
 ```
 
-### 2. APIConfiguration
+### 2. RestApi
 
 Defines an API that will be deployed to gateway instances.
 
 ```yaml
 apiVersion: api.api-platform.wso2.com/v1alpha1
-kind: APIConfiguration
+kind: RestApi
 metadata:
   name: my-api
   namespace: default
@@ -167,7 +167,7 @@ kubectl logs -f deployment/controller-manager -n api-platform
 ```bash
 kubectl apply -f - <<EOF
 apiVersion: api.api-platform.wso2.com/v1alpha1
-kind: GatewayConfiguration
+kind: Gateway
 metadata:
   name: production-gateway
   namespace: default
@@ -187,7 +187,7 @@ EOF
 ```bash
 kubectl apply -f - <<EOF
 apiVersion: api.api-platform.wso2.com/v1alpha1
-kind: APIConfiguration
+kind: RestApi
 metadata:
   name: petstore-api
   namespace: default
@@ -200,13 +200,13 @@ EOF
 
 ```bash
 # List all gateway configurations
-kubectl get gatewayconfiguration -A
+kubectl get gateway -A
 
 # List all API configurations
 kubectl get apiconfiguration -A
 
 # Describe a specific gateway
-kubectl describe gatewayconfiguration production-gateway
+kubectl describe gateway production-gateway
 ```
 
 ## Advanced Configuration
@@ -328,8 +328,8 @@ helm uninstall apip-operator --namespace api-platform
 **Note:** This will not delete CRDs. To delete CRDs manually:
 
 ```bash
-kubectl delete crd gatewayconfiguration.api.api-platform.wso2.com
-kubectl delete crd apiconfiguration.api.api-platform.wso2.com
+kubectl delete crd gateway.gateway.api-platform.wso2.com
+kubectl delete crd apiconfiguration.gateway.api-platform.wso2.com
 ```
 
 ## Troubleshooting
@@ -355,7 +355,7 @@ kubectl logs deployment/controller-manager -n api-platform | grep -i error
 
 Describe the gateway configuration:
 ```bash
-kubectl describe gatewayconfiguration <name>
+kubectl describe gateway <name>
 ```
 
 ### CRDs Not Installing

@@ -1,0 +1,9 @@
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
+metadata:
+  labels:
+    app.kubernetes.io/name: gateway-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: gateway-sample
+spec:
+  # TODO(user): Add fields here

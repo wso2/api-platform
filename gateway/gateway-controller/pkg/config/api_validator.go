@@ -75,41 +75,40 @@ func (v *APIValidator) Validate(config interface{}) []ValidationError {
 // validateAPIConfiguration performs comprehensive validation on an API configuration
 func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []ValidationError {
 	var errors []ValidationError
-
 	// Validate version
-	if config.Version != "api-platform.wso2.com/v1" {
+	if config.ApiVersion != "gateway.api-platform.wso2.com/v1alpha1" {
 		errors = append(errors, ValidationError{
 			Field:   "version",
-			Message: "Unsupported API version (must be 'api-platform.wso2.com/v1')",
+			Message: fmt.Sprintf("Unsupported API version (must be 'gateway.api-platform.wso2.com/v1alpha1'), provided: %s", config.ApiVersion),
 		})
 	}
 
 	// Validate kind
-	if config.Kind != "http/rest" && config.Kind != "async/websub" {
+	if config.Kind != "RestApi" && config.Kind != "WebsubApi" {
 		errors = append(errors, ValidationError{
 			Field:   "kind",
-			Message: "Unsupported API kind (only 'http/rest' and 'async/websub' are supported)",
+			Message: fmt.Sprintf("Unsupported API kind (only 'RestApi' and 'WebsubApi' are supported), provided: %s", config.Kind),
 		})
 	}
 
 	switch config.Kind {
-	case "http/rest":
+	case "RestApi":
 		spec, err := config.Spec.AsAPIConfigData()
 		if err != nil {
 			errors = append(errors, ValidationError{
 				Field:   "spec",
-				Message: fmt.Sprintf("Invalid spec format for http/rest: %v", err),
+				Message: fmt.Sprintf("Invalid spec format for RestApi: %v", err),
 			})
 		} else {
 			// Validate data section
 			errors = append(errors, v.validateRestData(&spec)...)
 		}
-	case "async/websub":
+	case "WebSub":
 		spec, err := config.Spec.AsWebhookAPIData()
 		if err != nil {
 			errors = append(errors, ValidationError{
 				Field:   "spec",
-				Message: fmt.Sprintf("Invalid spec format for async/websub: %v", err),
+				Message: fmt.Sprintf("Invalid spec format for WebsubApi: %v", err),
 			})
 		} else {
 			// Validate data section
@@ -126,7 +125,7 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 	return errors
 }
 
-// validateRestData validates the data section of the configuration for http/rest kind
+// validateRestData validates the data section of the configuration for RestApi kind
 func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationError {
 	var errors []ValidationError
 
@@ -173,7 +172,7 @@ func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationErr
 	return errors
 }
 
-// validateAsyncData validates the data section of the configuration for http/rest kind
+// validateAsyncData validates the data section of the configuration for RestApi kind
 func (v *APIValidator) validateAsyncData(spec *api.WebhookAPIData) []ValidationError {
 	var errors []ValidationError
 
@@ -350,7 +349,7 @@ func (v *APIValidator) validateContext(context string) []ValidationError {
 }
 
 // validatePathParametersForAsyncAPIs returns true when the path does not contain '{' or '}'.
-// Async/WebSub channel paths do not currently support templated path parameters.
+// WebsubApi channel paths do not currently support templated path parameters.
 func (v *APIValidator) validatePathParametersForAsyncAPIs(path string) bool {
 
 	openCount := strings.Count(path, "{")

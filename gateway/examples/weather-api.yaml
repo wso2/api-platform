@@ -17,7 +17,7 @@
 # --------------------------------------------------------------------
 
 version: api-platform.wso2.com/v1
-kind: http/rest
+kind: RestApi
 spec:
   name: Weather-API
   version: v1.0

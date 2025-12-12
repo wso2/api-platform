@@ -274,7 +274,7 @@ func GenerateMCPConfigFile(url string, toolsResult ToolsResult,
 	resourcesResult ResourcesResult, promptsResult PromptsResult, outputDir string) error {
 	// Build YAML
 	mcp := McpYAML{
-		Version: "ai.api-platform.wso2.com/v1",
+		Version: "ai.api-platform.wso2.com/v1alpha1",
 		Kind:    "mcp",
 	}
 	mcp.Spec.Name = "Generated-MCP"

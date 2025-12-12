@@ -153,7 +153,7 @@ func (t *Translator) TranslateConfigs(
 		var routesList []*route.Route
 		var clusterList []*cluster.Cluster
 		var err error
-		if cfg.Configuration.Kind == api.APIConfigurationKindAsyncwebsub {
+		if cfg.Configuration.Kind == api.APIConfigurationKindWebsubApi {
 			routesList, clusterList, err = t.translateAsyncAPIConfig(cfg)
 			if err != nil {
 				log.Error("Failed to translate config",

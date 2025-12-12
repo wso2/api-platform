@@ -379,9 +379,9 @@ components:
         kind:
           type: string
           description: API type
-          example: http/rest
+          example: RestApi
           enum:
-            - http/rest
+            - RestApi
         spec:
           $ref: '#/components/schemas/APIConfigData'
 

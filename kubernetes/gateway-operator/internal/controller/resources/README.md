@@ -121,8 +121,8 @@ Deploy three gateways in the same namespace:
 ### Gateway 1: Production API Gateway
 
 ```yaml
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: prod-api
   namespace: api-gateway
@@ -150,8 +150,8 @@ Resources created:
 ### Gateway 2: Staging API Gateway
 
 ```yaml
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: staging-api
   namespace: api-gateway
@@ -171,8 +171,8 @@ Resources created:
 ### Gateway 3: Dev API Gateway
 
 ```yaml
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: dev-api
   namespace: api-gateway
@@ -192,8 +192,8 @@ Resources created:
 
 ✅ **Unique Resource Names**: Each gateway gets distinct resource names  
 ✅ **No Naming Conflicts**: Multiple gateways can coexist in the same namespace  
-✅ **Dynamic Configuration**: Template renders based on GatewayConfiguration spec  
-✅ **Owner References**: All resources owned by the GatewayConfiguration  
+✅ **Dynamic Configuration**: Template renders based on Gateway spec  
+✅ **Owner References**: All resources owned by the Gateway  
 ✅ **Consistent Labeling**: All resources labeled with `app.kubernetes.io/name: {{ .GatewayName }}`  
 ✅ **Service Discovery**: Router can find its controller via `{{ .GatewayName }}-gateway-controller`  
 
@@ -292,7 +292,7 @@ echo $GATEWAY_MANIFEST_TEMPLATE_PATH
 
 **Check**: Verify each gateway has a unique name
 ```bash
-kubectl get gatewayconfiguration -A
+kubectl get gateway -A
 ```
 
 **Solution**: Ensure `metadata.name` is unique per namespace
@@ -308,6 +308,6 @@ kubectl logs -n gateway-operator-system deployment/gateway-operator-controller-m
 
 ## See Also
 
-- [GatewayConfiguration CRD Spec](../../docs/GATEWAY_API_SPEC.md)
+- [Gateway CRD Spec](../../docs/GATEWAY_API_SPEC.md)
 - [Quick Reference](../../docs/QUICK_REFERENCE.md)
 - [Example Usage](examples/template_usage.go)

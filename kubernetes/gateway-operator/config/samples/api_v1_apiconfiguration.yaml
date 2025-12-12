@@ -1,86 +1,58 @@
 ---
 # Example 1: API with explicit gateway references (multiple gateways)
-apiVersion: api.api-platform.wso2.com/v1
-kind: APIConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
 metadata:
-  labels:
-    app.kubernetes.io/name: gateway-operator
-    app.kubernetes.io/managed-by: kustomize
   name: api-with-gateway-refs2
 spec:
-  # Explicit references to multiple specific gateways
-  gatewayRefs:
-    # - name: cluster-gateway
-    #   namespace: test
-    - name: cluster-gateway
-      namespace: default
-  
-  apiConfiguration:
-    version: api-platform.wso2.com/v1
-    kind: http/rest
-    spec:
-      name: test-api2
-      version: v1.0
-      context: /test2
-      upstreams:
-        # - url: https://secure-backend:5443/api/v2
-        - url: https://httpbin.org/anything
-      operations:
-        - method: GET
-          path: /info
+  name: test-api2
+  version: v1.0
+  context: /test2
+  upstreams:
+    # - url: https://secure-backend:5443/api/v2
+    - url: https://httpbin.org/anything
+  operations:
+    - method: GET
+      path: /info
 
 
 ---
 # Example 1: API with explicit gateway references (multiple gateways)
-apiVersion: api.api-platform.wso2.com/v1
-kind: APIConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
 metadata:
-  labels:
-    app.kubernetes.io/name: gateway-operator
-    app.kubernetes.io/managed-by: kustomize
   name: api-with-gateway-refs
   namespace: test
 spec:
-  apiConfiguration:
-    version: api-platform.wso2.com/v1
-    kind: http/rest
-    spec:
-      name: test-api
-      version: v1.0
-      context: /test
-      upstreams:
-        # - url: https://secure-backend:5443/api/v2
-        - url: http://httpbin.org/anything
-      operations:
-        - method: GET
-          path: /info
+  name: test-api
+  version: v1.0
+  context: /test
+  upstreams:
+    # - url: https://secure-backend:5443/api/v2
+    - url: http://httpbin.org/anything
+  operations:
+    - method: GET
+      path: /info
 ---
 # Example 1: API with explicit gateway references (multiple gateways)
-apiVersion: api.api-platform.wso2.com/v1
-kind: APIConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
 metadata:
-  labels:
-    app.kubernetes.io/name: gateway-operator
-    app.kubernetes.io/managed-by: kustomize
   name: self-signed-backend
 spec:
-  apiConfiguration:
-    version: api-platform.wso2.com/v1
-    kind: http/rest
-    spec:
-      name: self-signed-api
-      version: v1.0
-      context: /ssa
-      upstreams:
-        - url: https://secure-backend:5443/api/v2
-        # - url: http://httpbin.org/anything
-      operations:
-        - method: GET
-          path: /info
+  name: self-signed-api
+  version: v1.0
+  context: /ssa
+  upstreams:
+    - url: https://secure-backend:5443/api/v2
+    # - url: http://httpbin.org/anything
+  operations:
+    - method: GET
+      path: /info
 # ---
 # # Example 2: API with single gateway reference
-# apiVersion: api.api-platform.wso2.com/v1
-# kind: APIConfiguration
+# apiVersion: gateway.api-platform.wso2.com/v1alpha1
+# kind: RestApi
 # metadata:
 #   labels:
 #     app.kubernetes.io/name: gateway-operator
@@ -97,8 +69,8 @@ spec:
 
 # ---
 # # Example 3: API using label-based selection
-# apiVersion: api.api-platform.wso2.com/v1
-# kind: APIConfiguration
+# apiVersion: gateway.api-platform.wso2.com/v1alpha1
+# kind: RestApi
 # metadata:
 #   labels:
 #     app.kubernetes.io/name: gateway-operator
@@ -119,8 +91,8 @@ spec:
 
 # ---
 # # Example 4: API in specific namespace (for namespaced gateway)
-# apiVersion: api.api-platform.wso2.com/v1
-# kind: APIConfiguration
+# apiVersion: gateway.api-platform.wso2.com/v1alpha1
+# kind: RestApi
 # metadata:
 #   labels:
 #     app.kubernetes.io/name: gateway-operator
@@ -136,8 +108,8 @@ spec:
 
 # ---
 # # Example 5: API that will be picked by cluster-scoped gateway
-# apiVersion: api.api-platform.wso2.com/v1
-# kind: APIConfiguration
+# apiVersion: gateway.api-platform.wso2.com/v1alpha1
+# kind: RestApi
 # metadata:
 #   labels:
 #     app.kubernetes.io/name: gateway-operator

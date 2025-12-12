@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/k8sutil"
@@ -41,7 +41,7 @@ import (
 )
 
 const (
-	gatewayFinalizerName = "api.api-platform.wso2.com/gateway-finalizer"
+	gatewayFinalizerName = "gateway.api-platform.wso2.com/gateway-finalizer"
 
 	conditionReasonReconciling        = "Reconciling"
 	conditionReasonApplySucceeded     = "ApplySucceeded"
@@ -50,29 +50,29 @@ const (
 	conditionReasonDeploymentsPending = "DeploymentsNotReady"
 )
 
-// GatewayConfigurationReconciler reconciles a GatewayConfiguration object
-type GatewayConfigurationReconciler struct {
+// GatewayReconciler reconciles a Gateway object
+type GatewayReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Config *config.OperatorConfig
 }
 
-//+kubebuilder:rbac:groups=api.api-platform.wso2.com,resources=gatewayconfigurations,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=api.api-platform.wso2.com,resources=gatewayconfigurations/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=api.api-platform.wso2.com,resources=gatewayconfigurations/finalizers,verbs=update
+//+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=gateways,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=gateways/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=gateway.api-platform.wso2.com,resources=gateways/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=services;persistentvolumeclaims;configmaps,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
-// the GatewayConfiguration object against the actual cluster state, and then
+// the Gateway object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.3/pkg/reconcile
-func (r *GatewayConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	dockerUsername, dockerPassword, err := r.getDockerHubCredentials(ctx)
 	if err != nil {
@@ -80,14 +80,14 @@ func (r *GatewayConfigurationReconciler) Reconcile(ctx context.Context, req ctrl
 		// You might want to continue without auth for public repos
 		// or return an error if auth is required
 	}
-	// Fetch the GatewayConfiguration instance
-	gatewayConfig := &apiv1.GatewayConfiguration{}
+	// Fetch the Gateway instance
+	gatewayConfig := &apiv1.Gateway{}
 	if err := r.Get(ctx, req.NamespacedName, gatewayConfig); err != nil {
-		log.Error(err, "unable to fetch GatewayConfiguration")
+		log.Error(err, "unable to fetch Gateway")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	log.Info("Reconciling GatewayConfiguration",
+	log.Info("Reconciling Gateway",
 		"name", gatewayConfig.Name,
 		"namespace", gatewayConfig.Namespace)
 
@@ -99,7 +99,7 @@ func (r *GatewayConfigurationReconciler) Reconcile(ctx context.Context, req ctrl
 				Type:    apiv1.GatewayConditionReady,
 				Status:  metav1.ConditionFalse,
 				Reason:  conditionReasonDeleting,
-				Message: "GatewayConfiguration is being deleted",
+				Message: "Gateway is being deleted",
 			},
 		}); err != nil {
 			log.Error(err, "failed to update status during deletion")
@@ -132,7 +132,7 @@ func (r *GatewayConfigurationReconciler) Reconcile(ctx context.Context, req ctrl
 			log.Error(err, "failed to add finalizer")
 			return ctrl.Result{}, err
 		}
-		log.Info("Added finalizer to GatewayConfiguration")
+		log.Info("Added finalizer to Gateway")
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -273,7 +273,7 @@ func (r *GatewayConfigurationReconciler) Reconcile(ctx context.Context, req ctrl
 }
 
 // applyGatewayManifest applies the gateway using Helm only
-func (r *GatewayConfigurationReconciler) applyGatewayManifest(ctx context.Context, owner *apiv1.GatewayConfiguration, dockerUserName, dockerPassword string) error {
+func (r *GatewayReconciler) applyGatewayManifest(ctx context.Context, owner *apiv1.Gateway, dockerUserName, dockerPassword string) error {
 	namespace := owner.Namespace
 	if namespace == "" {
 		namespace = "default"
@@ -282,7 +282,7 @@ func (r *GatewayConfigurationReconciler) applyGatewayManifest(ctx context.Contex
 }
 
 // deployGatewayWithHelm deploys the gateway using Helm chart
-func (r *GatewayConfigurationReconciler) deployGatewayWithHelm(ctx context.Context, owner *apiv1.GatewayConfiguration, namespace, dockerUserName, dockerPassword string) error {
+func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *apiv1.Gateway, namespace, dockerUserName, dockerPassword string) error {
 	log := log.FromContext(ctx)
 
 	log.Info("Deploying gateway using Helm",
@@ -325,8 +325,8 @@ func (r *GatewayConfigurationReconciler) deployGatewayWithHelm(ctx context.Conte
 	return nil
 }
 
-// buildTemplateData creates template data from GatewayConfiguration spec
-func (r *GatewayConfigurationReconciler) buildTemplateData(gatewayConfig *apiv1.GatewayConfiguration) *k8sutil.GatewayManifestTemplateData {
+// buildTemplateData creates template data from Gateway spec
+func (r *GatewayReconciler) buildTemplateData(gatewayConfig *apiv1.Gateway) *k8sutil.GatewayManifestTemplateData {
 	// Start with defaults
 	data := k8sutil.NewGatewayManifestTemplateData(gatewayConfig.Name)
 
@@ -416,7 +416,7 @@ func (r *GatewayConfigurationReconciler) buildTemplateData(gatewayConfig *apiv1.
 }
 
 // registerGateway registers the gateway in the in-memory registry by discovering the actual service
-func (r *GatewayConfigurationReconciler) registerGateway(ctx context.Context, gatewayConfig *apiv1.GatewayConfiguration) error {
+func (r *GatewayReconciler) registerGateway(ctx context.Context, gatewayConfig *apiv1.Gateway) error {
 	log := log.FromContext(ctx)
 
 	namespace := gatewayConfig.Namespace
@@ -483,8 +483,8 @@ func (r *GatewayConfigurationReconciler) registerGateway(ctx context.Context, ga
 	return nil
 }
 
-// countSelectedAPIs returns the number of APIConfigurations that match the gateway selector
-func (r *GatewayConfigurationReconciler) countSelectedAPIs(ctx context.Context, gatewayConfig *apiv1.GatewayConfiguration) (int, error) {
+// countSelectedAPIs returns the number of RestApis that match the gateway selector
+func (r *GatewayReconciler) countSelectedAPIs(ctx context.Context, gatewayConfig *apiv1.Gateway) (int, error) {
 	apiSelector := selector.NewAPISelector(r.Client)
 	apis, err := apiSelector.SelectAPIsForGateway(ctx, gatewayConfig)
 	if err != nil {
@@ -494,7 +494,7 @@ func (r *GatewayConfigurationReconciler) countSelectedAPIs(ctx context.Context, 
 }
 
 // evaluateGatewayReadiness inspects the gateway deployments and reports readiness status
-func (r *GatewayConfigurationReconciler) evaluateGatewayReadiness(ctx context.Context, gatewayConfig *apiv1.GatewayConfiguration) (bool, string, error) {
+func (r *GatewayReconciler) evaluateGatewayReadiness(ctx context.Context, gatewayConfig *apiv1.Gateway) (bool, string, error) {
 	namespace := gatewayConfig.Namespace
 	if namespace == "" {
 		namespace = "default"
@@ -542,8 +542,8 @@ type gatewayStatusUpdate struct {
 	AppliedGeneration *int64
 }
 
-// updateGatewayStatus patches the status of the GatewayConfiguration if it has changes
-func (r *GatewayConfigurationReconciler) updateGatewayStatus(ctx context.Context, gateway *apiv1.GatewayConfiguration, update gatewayStatusUpdate) (bool, error) {
+// updateGatewayStatus patches the status of the Gateway if it has changes
+func (r *GatewayReconciler) updateGatewayStatus(ctx context.Context, gateway *apiv1.Gateway, update gatewayStatusUpdate) (bool, error) {
 	base := gateway.DeepCopy()
 	originalStatus := base.Status
 	changed := false
@@ -613,7 +613,7 @@ func (r *GatewayConfigurationReconciler) updateGatewayStatus(ctx context.Context
 }
 
 // deleteGatewayResources deletes all Kubernetes resources created for the gateway
-func (r *GatewayConfigurationReconciler) deleteGatewayResources(ctx context.Context, owner *apiv1.GatewayConfiguration) error {
+func (r *GatewayReconciler) deleteGatewayResources(ctx context.Context, owner *apiv1.Gateway) error {
 	// Unregister from the gateway registry
 	namespace := owner.Namespace
 	if namespace == "" {
@@ -625,7 +625,7 @@ func (r *GatewayConfigurationReconciler) deleteGatewayResources(ctx context.Cont
 }
 
 // deleteGatewayWithHelm uninstalls the Helm release for the gateway
-func (r *GatewayConfigurationReconciler) deleteGatewayWithHelm(ctx context.Context, owner *apiv1.GatewayConfiguration, namespace string) error {
+func (r *GatewayReconciler) deleteGatewayWithHelm(ctx context.Context, owner *apiv1.Gateway, namespace string) error {
 	log := log.FromContext(ctx)
 
 	releaseName := helm.GetReleaseName(owner.Name)
@@ -654,15 +654,15 @@ func (r *GatewayConfigurationReconciler) deleteGatewayWithHelm(ctx context.Conte
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *GatewayConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&apiv1.GatewayConfiguration{}).
+		For(&apiv1.Gateway{}).
 		Owns(&appsv1.Deployment{}).
 		Complete(r)
 }
 
 // getDockerHubCredentials retrieves Docker Hub credentials from a Kubernetes Secret
-func (r *GatewayConfigurationReconciler) getDockerHubCredentials(ctx context.Context) (string, string, error) {
+func (r *GatewayReconciler) getDockerHubCredentials(ctx context.Context) (string, string, error) {
 	secret := &corev1.Secret{}
 
 	// Use configured secret reference or skip if not configured

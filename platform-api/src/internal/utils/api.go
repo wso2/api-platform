@@ -771,8 +771,8 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 	}
 
 	apiDeployment := dto.APIDeploymentYAML{
-		Kind:    "http/rest",
-		Version: "api-platform.wso2.com/v1",
+		Kind:    "RestApi",
+		Version: "gateway.api-platform.wso2.com/v1alpha1",
 		Spec:    apiYAMLData,
 	}
 

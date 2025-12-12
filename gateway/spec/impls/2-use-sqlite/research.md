@@ -153,7 +153,7 @@ CREATE TABLE api_configs (
     name TEXT NOT NULL,
     version TEXT NOT NULL,
     context TEXT NOT NULL,            -- Extracted for fast queries
-    kind TEXT NOT NULL,                -- 'http/rest', 'graphql', etc.
+    kind TEXT NOT NULL,                -- 'RestApi', 'graphql', etc.
     configuration TEXT NOT NULL,       -- Full JSON
     status TEXT NOT NULL CHECK(status IN ('pending', 'deployed', 'failed')),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

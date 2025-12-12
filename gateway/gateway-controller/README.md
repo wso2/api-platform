@@ -241,7 +241,7 @@ POST /apis
 Content-Type: application/yaml
 
 version: api-platform.wso2.com/v1
-kind: http/rest
+kind: RestApi
 data:
   name: Weather API
   version: v1.0
@@ -295,7 +295,7 @@ PUT /apis/Weather%20API/v1.0
 Content-Type: application/yaml
 
 version: api-platform.wso2.com/v1
-kind: http/rest
+kind: RestApi
 data:
   name: Weather API
   version: v1.0
@@ -336,7 +336,7 @@ The SQLite database contains the following table:
 | `name` | TEXT | API name (indexed for fast lookups) |
 | `version` | TEXT | API version (indexed for fast lookups) |
 | `context` | TEXT | Base path (e.g., "/weather") |
-| `kind` | TEXT | API type ("http/rest", "graphql", etc.) |
+| `kind` | TEXT | API type ("RestApi", "graphql", etc.) |
 | `configuration` | TEXT | Full JSON-serialized API configuration |
 | `status` | TEXT | Deployment status ("pending", "deployed", "failed") |
 | `created_at` | TIMESTAMP | Record creation timestamp |

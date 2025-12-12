@@ -67,7 +67,7 @@ file_config:
 # Logging configuration
 logging:
   # Log level: debug, info, warn, error
-  level: info
+  level: debug
 
   # Log format: json, text
   format: json

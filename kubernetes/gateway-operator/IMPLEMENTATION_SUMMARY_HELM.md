@@ -41,7 +41,7 @@ Environment variables:
 ### 3. Helm Values Template (`internal/controller/resources/gateway-helm-values.yaml.tmpl`)
 
 Created a comprehensive values template that:
-- Maps GatewayConfiguration spec to Helm chart values
+- Maps Gateway spec to Helm chart values
 - Supports image configuration (repository and tag separation)
 - Configures resource limits and requests
 - Sets control plane connection details
@@ -75,7 +75,7 @@ type GatewayHelmValuesData struct {
 
 Includes helper function `ParseImageReference` to split image references into repository and tag components.
 
-### 5. Controller Modifications (`internal/controller/gatewayconfiguration_controller.go`)
+### 5. Controller Modifications (`internal/controller/gateway_controller.go`)
 
 **Reconciliation Flow**:
 ```
@@ -101,7 +101,7 @@ deleteGatewayResources()
 
 New functions:
 - `deployGatewayWithHelm()`: Handles Helm-based deployment
-- `buildHelmValuesData()`: Builds values from GatewayConfiguration
+- `buildHelmValuesData()`: Builds values from Gateway
 - `deleteGatewayWithHelm()`: Uninstalls Helm releases
 - `deployGatewayWithTemplate()`: Legacy template-based deployment
 
@@ -135,7 +135,7 @@ Comprehensive documentation covering:
 ### 1. Backward Compatibility
 - Kept existing template-based deployment as fallback
 - Configuration flag (`UseHelm`) to switch between modes
-- No breaking changes to existing GatewayConfiguration CRD
+- No breaking changes to existing Gateway CRD
 
 ### 2. Release Naming Convention
 - Helm releases named: `{gateway-name}-gateway`
@@ -145,7 +145,7 @@ Comprehensive documentation covering:
 ### 3. Values Template Architecture
 - Separate template file for flexibility
 - Go template syntax for familiarity
-- Supports dynamic configuration from GatewayConfiguration spec
+- Supports dynamic configuration from Gateway spec
 - Can be customized without code changes
 
 ### 4. Error Handling
@@ -164,7 +164,7 @@ Comprehensive documentation covering:
 
 ### Unit Tests
 1. Test `ParseImageReference()` with various image formats
-2. Test Helm values data building from GatewayConfiguration
+2. Test Helm values data building from Gateway
 3. Test template rendering with different configurations
 4. Mock Helm client for controller tests
 
@@ -206,7 +206,7 @@ Comprehensive documentation covering:
    - Automatic version updates
 
 2. **Custom Values Override**
-   - Allow users to provide custom values in GatewayConfiguration
+   - Allow users to provide custom values in Gateway
    - Merge with generated values
 
 3. **Multi-Chart Deployments**
@@ -219,7 +219,7 @@ Comprehensive documentation covering:
 
 5. **Release Rollback**
    - Automatic rollback on failures
-   - Integration with GatewayConfiguration status
+   - Integration with Gateway status
 
 ## Files Created/Modified
 
@@ -231,7 +231,7 @@ Comprehensive documentation covering:
 
 ### Modified Files
 - `internal/config/config.go` - Added Helm configuration
-- `internal/controller/gatewayconfiguration_controller.go` - Added Helm deployment logic
+- `internal/controller/gateway_controller.go` - Added Helm deployment logic
 - `internal/k8sutil/manifest.go` - Added RenderTemplate function
 - `go.mod` - Added Helm dependencies
 
@@ -246,6 +246,6 @@ Comprehensive documentation covering:
 
 1. **Testing**: Run comprehensive tests with Helm deployment enabled
 2. **Documentation**: Update main README with Helm deployment info
-3. **Examples**: Create example GatewayConfiguration resources
+3. **Examples**: Create example Gateway resources
 4. **CI/CD**: Update build pipeline to test Helm deployments
 5. **Helm Chart**: Ensure gateway Helm chart is production-ready

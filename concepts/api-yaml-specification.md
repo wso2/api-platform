@@ -12,7 +12,7 @@ The `api.yaml` format is a declarative specification for defining APIs that can 
 
 ```yaml
 version: api-platform.wso2.com/v1
-kind: http/rest | graphql | grpc | asyncapi
+kind: RestApi | graphql | grpc | asyncapi
 data:
   # API metadata and configuration
 ```
@@ -26,7 +26,7 @@ data:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `version` | string | Yes | API specification version (currently `api-platform.wso2.com/v1`) |
-| `kind` | string | Yes | API type: `http/rest`, `graphql`, `grpc`, `asyncapi` |
+| `kind` | string | Yes | API type: `RestApi`, `graphql`, `grpc`, `asyncapi` |
 | `data` | object | Yes | API configuration and metadata |
 
 ### Data Object Fields
@@ -69,7 +69,7 @@ data:
 
 ```yaml
 version: api-platform.wso2.com/v1
-kind: http/rest
+kind: RestApi
 data:
   name: Weather API
   version: v1.0
@@ -89,7 +89,7 @@ data:
 
 ```yaml
 version: api-platform.wso2.com/v1
-kind: http/rest
+kind: RestApi
 data:
   name: User Management API
   version: v1.0

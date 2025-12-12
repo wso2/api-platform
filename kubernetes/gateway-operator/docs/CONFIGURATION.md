@@ -113,11 +113,11 @@ spec:
 
 ### Apply Gateway Configuration
 
-Once the operator is running with proper configuration, create a `GatewayConfiguration` resource:
+Once the operator is running with proper configuration, create a `Gateway` resource:
 
 ```yaml
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: my-gateway
   namespace: default
@@ -128,14 +128,14 @@ spec:
 Apply it:
 
 ```bash
-kubectl apply -f config/samples/api_v1_gatewayconfiguration.yaml
+kubectl apply -f config/samples/api_v1_gateway.yaml
 ```
 
 The operator will:
 1. Read the configured manifest path from `GATEWAY_MANIFEST_PATH`
 2. Parse the YAML file at that location
 3. Apply all Kubernetes resources defined in the manifest
-4. Set the `GatewayConfiguration` resource as the owner for proper lifecycle management
+4. Set the `Gateway` resource as the owner for proper lifecycle management
 
 ### Custom Manifest Path
 

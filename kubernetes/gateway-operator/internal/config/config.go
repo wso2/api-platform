@@ -99,9 +99,9 @@ type LoggingConfig struct {
 func getDefaults() map[string]interface{} {
 	return map[string]interface{}{
 		"gateway": map[string]interface{}{
-			"helm_chart_name":        "api-platform-gateway",
-			"helm_chart_version":     "0.1.0",
-			"helm_values_file_path":  "",
+			"helm_chart_name":       "api-platform-gateway",
+			"helm_chart_version":    "0.1.0",
+			"helm_values_file_path": "",
 		},
 		"reconciliation": map[string]interface{}{
 			"sync_period":               "10m",

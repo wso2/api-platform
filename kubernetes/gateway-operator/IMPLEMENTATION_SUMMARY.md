@@ -43,7 +43,7 @@ Both controllers updated to:
 - Log configuration on startup
 - Handle resources with proper ownership
 
-**GatewayConfigurationReconciler** now applies the gateway manifest when a `GatewayConfiguration` resource is created.
+**GatewayReconciler** now applies the gateway manifest when a `Gateway` resource is created.
 
 ### 4. Main Entry Point Updates (`cmd/main.go`)
 
@@ -123,9 +123,9 @@ To use this in production:
      value: "internal/controller/resources/api-platform-gateway-k8s-manifests.yaml"
    ```
 
-2. **Create a GatewayConfiguration** resource:
+2. **Create a Gateway** resource:
    ```bash
-   kubectl apply -f config/samples/api_v1_gatewayconfiguration.yaml
+   kubectl apply -f config/samples/api_v1_gateway.yaml
    ```
 
 3. **The operator will automatically**:
@@ -163,7 +163,7 @@ func (r *YourReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 **Modified:**
 - `cmd/main.go` - Added config loading
-- `internal/controller/gatewayconfiguration_controller.go` - Uses manifest applier
+- `internal/controller/gateway_controller.go` - Uses manifest applier
 - `internal/controller/apiconfiguration_controller.go` - Added config field
 
 All code compiles successfully with `go build ./...`

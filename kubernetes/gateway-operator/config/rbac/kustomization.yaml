@@ -14,8 +14,12 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the Project itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- gateway_editor_role.yaml
+- gateway_viewer_role.yaml
+- restapi_editor_role.yaml
+- restapi_viewer_role.yaml
 - apiconfiguration_editor_role.yaml
 - apiconfiguration_viewer_role.yaml
-- gatewayconfiguration_editor_role.yaml
-- gatewayconfiguration_viewer_role.yaml
+- gateway_editor_role.yaml
+- gateway_viewer_role.yaml
 
