@@ -1579,6 +1579,12 @@ components:
       required:
         - name
       properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the project
+          minLength: 36
+          example: "7d7a51fd-daa1-4095-b7ff-98a1aa05cc0f"
         name:
           type: string
           description: Name of the project
