@@ -36,9 +36,9 @@ docker compose up -d
 curl http://localhost:9090/health
 ```
 
-## Deploy an LLM provider configuration
+## Deploy an OpenAI LLM provider configuration
 
-Replace `<openai-apikey>` with your openai API key and run the following command to deploy a sample openai provider.
+The API Platform Gateway currently includes first-class support for the OpenAI LLM provider. Replace `<openai-apikey>` with your openai API key and run the following command to deploy a sample OpenAI LLM provider.
 
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
@@ -50,7 +50,7 @@ spec:
   name: openai-provider
   version: v1.0
   template: openai
-  vhost: openai
+  vhost: api.openai.com
   upstream:
     url: https://api.openai.com/v1
     auth:

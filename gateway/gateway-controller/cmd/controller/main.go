@@ -224,6 +224,16 @@ func main() {
 	}
 	log.Info("Policy definitions loaded", zap.Int("count", len(policyDefinitions)))
 
+	// Load llm provider templates from files
+	templateLoader := utils.NewLLMTemplateLoader(log)
+	templateDir := cfg.LLM.TemplateDefinitionsPath
+	log.Info("Loading llm provider templates from directory", zap.String("directory", templateDir))
+	templateDefinitions, err := templateLoader.LoadTemplatesFromDirectory(templateDir)
+	if err != nil {
+		log.Fatal("Failed to load llm provider templates", zap.Error(err))
+	}
+	log.Info("Default llm provider templates loaded", zap.Int("count", len(templateDefinitions)))
+
 	// Create validator with policy validation support
 	validator := config.NewAPIValidator()
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
@@ -251,7 +261,8 @@ func main() {
 	router.Use(gin.Recovery())
 
 	// Initialize API server with the configured validator
-	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient, policyDefinitions, validator, &cfg.Router)
+	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient,
+		policyDefinitions, templateDefinitions, validator, &cfg.Router)
 
 	// Register API routes (includes certificate management endpoints from OpenAPI spec)
 	api.RegisterHandlers(router, apiServer)
