@@ -667,7 +667,7 @@ func GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, 
 **Contract Requirements**:
 - Function name MUST be `GetPolicy`
 - Signature MUST be `func(PolicyMetadata, map[string]interface{}) (Policy, error)`
-- `params` contains merged static config (from policy definition with resolved $config() references) and runtime parameters (from API configuration)
+- `params` contains merged static config (from policy definition with resolved ${config} references) and runtime parameters (from API configuration)
 - MUST return `policies.Policy` interface
 - MUST return new instance (not singleton unless policy is stateless)
 - Called for each route-policy combination during policy chain building

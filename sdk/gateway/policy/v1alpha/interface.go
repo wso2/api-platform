@@ -38,7 +38,7 @@ type Policy interface {
 // Parameters:
 //   - metadata: Contains route-level metadata (routeName, etc.)
 //   - params: Merged parameters combining static config (from policy definition
-//     with resolved $config() references) and runtime parameters (from API
+//     with resolved ${config} references) and runtime parameters (from API
 //     configuration). Runtime params override static config on key conflicts.
 //
 // Returns:

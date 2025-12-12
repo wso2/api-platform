@@ -14,14 +14,14 @@ import "log/slog"
 //	    "propName": {
 //	      "type": "string",
 //	      "default": "value1",
-//	      "wso2/defaultValue": "$config(Path.To.Config)"
+//	      "wso2/defaultValue": "${configPath.To.Config}"
 //	    }
 //	  }
 //	}
 //
 // Returns: map[string]interface{} with only the default values
 //
-//	{"propName": "$config(Path.To.Config)"}
+//	{"propName": "${config.Path.To.Config}"}
 //
 // TODO: (renuka) handle nested objects
 func ExtractDefaultValues(schema map[string]interface{}) map[string]interface{} {

@@ -194,7 +194,7 @@ func celValueToGo(val ref.Val) interface{} {
 	return val.Value()
 }
 
-// ResolveMap resolves all $config(...) references in a map recursively
+// ResolveMap resolves all ${config} references in a map recursively
 // Returns an error if any config reference fails to resolve
 func (r *ConfigResolver) ResolveMap(m map[string]interface{}) (map[string]interface{}, error) {
 	if r == nil || r.config == nil {
@@ -212,7 +212,7 @@ func (r *ConfigResolver) ResolveMap(m map[string]interface{}) (map[string]interf
 	return result, nil
 }
 
-// resolveValueRecursive resolves $config references recursively in nested structures
+// resolveValueRecursive resolves ${config} references recursively in nested structures
 // Returns an error if any config reference fails to resolve
 func (r *ConfigResolver) resolveValueRecursive(value interface{}) (interface{}, error) {
 	switch v := value.(type) {

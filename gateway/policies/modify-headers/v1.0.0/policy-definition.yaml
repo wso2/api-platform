@@ -63,34 +63,6 @@ parameters:
         - action
         - name
 
-systemParameters: 
+systemParameters:         
   type: object
-  properties:
-    foo:
-      type: array
-      description: Array of header modifications to apply during response phase. At
-        least one of requestHeaders or responseHeaders must be specified.
-      items:
-        type: object
-        properties:
-          action:
-            type: string
-            description: Action to perform on the header
-            enum:
-            - SET
-            - APPEND
-            - DELETE
-          name:
-            type: string
-            description: Header name (case-insensitive)
-            minLength: 1
-            maxLength: 256
-            pattern: "^[a-zA-Z0-9-_]+$"
-          value:
-            type: string
-            description: Header value (required for SET and APPEND, ignored for DELETE)
-            maxLength: 8192
-        required:
-        - action
-        - name
-      "wso2/defaultValue": "$config(JWTAuth.JwksFetchRetryCount)"
+  properties: {}

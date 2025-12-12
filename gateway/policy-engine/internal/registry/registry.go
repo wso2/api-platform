@@ -21,7 +21,7 @@ type PolicyRegistry struct {
 	// Factory creates policy instances with metadata, initParams, and params
 	Factories map[string]policy.PolicyFactory
 
-	// ConfigResolver resolves $config() CEL expressions in systemParameters
+	// ConfigResolver resolves ${config} CEL expressions in systemParameters
 	ConfigResolver *ConfigResolver
 }
 
@@ -94,7 +94,7 @@ func (r *PolicyRegistry) CreateInstance(
 		initParams = make(map[string]interface{})
 	}
 
-	// Resolve $config() references in initParams
+	// Resolve ${config} references in initParams
 	if r.ConfigResolver != nil {
 		var err error
 		initParams, err = r.ConfigResolver.ResolveMap(initParams)
@@ -141,7 +141,7 @@ func (r *PolicyRegistry) Register(def *policy.PolicyDefinition, factory policy.P
 	return nil
 }
 
-// SetConfig sets the configuration for resolving $config() references in systemParameters
+// SetConfig sets the configuration for resolving ${config} references in systemParameters
 // This should be called during startup after loading the config file
 func (r *PolicyRegistry) SetConfig(config map[string]interface{}) {
 	r.ConfigResolver = NewConfigResolver(config)
