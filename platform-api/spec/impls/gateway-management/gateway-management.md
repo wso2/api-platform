@@ -332,7 +332,7 @@ CREATE TABLE gateway_tokens (
 
 **Request** (organization ID from JWT token):
 ```bash
-curl -k -X POST https://localhost:8443/api/v1/gateways \
+curl -k -X POST https://localhost:9243/api/v1/gateways \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...' \
   -H 'Content-Type: application/json' \
   -d '{
@@ -366,7 +366,7 @@ curl -k -X POST https://localhost:8443/api/v1/gateways \
 
 **Request** (filters by organization from JWT token):
 ```bash
-curl -k https://localhost:8443/api/v1/gateways \
+curl -k https://localhost:9243/api/v1/gateways \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 
@@ -413,7 +413,7 @@ curl -k https://localhost:8443/api/v1/gateways \
 ### Get Gateway by ID
 
 ```bash
-curl -k https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999 \
+curl -k https://localhost:9243/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999 \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 
@@ -438,7 +438,7 @@ curl -k https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174
 
 **Get all gateway statuses:**
 ```bash
-curl -k https://localhost:8443/api/v1/status/gateways \
+curl -k https://localhost:9243/api/v1/status/gateways \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 
@@ -470,7 +470,7 @@ curl -k https://localhost:8443/api/v1/status/gateways \
 
 **Get specific gateway status:**
 ```bash
-curl -k https://localhost:8443/api/v1/status/gateways?gatewayId=987e6543-e21b-45d3-a789-426614174999 \
+curl -k https://localhost:9243/api/v1/status/gateways?gatewayId=987e6543-e21b-45d3-a789-426614174999 \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 
@@ -498,7 +498,7 @@ curl -k https://localhost:8443/api/v1/status/gateways?gatewayId=987e6543-e21b-45
 ### Rotate Gateway Token
 
 ```bash
-curl -k -X POST https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
+curl -k -X POST https://localhost:9243/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
   -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...'
 ```
 
@@ -536,7 +536,7 @@ curl -k -X POST https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-4
 
 ```bash
 # Register first gateway
-curl -k -X POST https://localhost:8443/api/v1/gateways \
+curl -k -X POST https://localhost:9243/api/v1/gateways \
   -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{
@@ -545,7 +545,7 @@ curl -k -X POST https://localhost:8443/api/v1/gateways \
   }'
 
 # Attempt duplicate (should return 409 Conflict)
-curl -k -X POST https://localhost:8443/api/v1/gateways \
+curl -k -X POST https://localhost:9243/api/v1/gateways \
   -H 'Authorization: Bearer <token>' \
   -H 'Content-Type: application/json' \
   -d '{
@@ -567,15 +567,15 @@ curl -k -X POST https://localhost:8443/api/v1/gateways \
 
 ```bash
 # Rotate once (2 active tokens: initial + rotation 1)
-curl -k -X POST https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
+curl -k -X POST https://localhost:9243/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
   -H 'Authorization: Bearer <token>' \
 
 # Rotate again (3 active tokens: initial + rotation 1 + rotation 2)
-curl -k -X POST https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
+curl -k -X POST https://localhost:9243/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
   -H 'Authorization: Bearer <token>' \
 
 # Attempt third rotation (should return 400 Bad Request)
-curl -k -X POST https://localhost:8443/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
+curl -k -X POST https://localhost:9243/api/v1/gateways/987e6543-e21b-45d3-a789-426614174999/tokens \
   -H 'Authorization: Bearer <token>' \
 ```
 

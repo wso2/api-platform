@@ -28,7 +28,7 @@ Gateways need real-time notification of API deployments and configuration change
 
 ### Connection Establishment
 
-1. Gateway initiates WebSocket upgrade request to `wss://platform-api:8443/api/internal/v1/ws/gateways/connect`
+1. Gateway initiates WebSocket upgrade request to `wss://platform-api:9243/api/internal/v1/ws/gateways/connect`
 2. Platform validates API key via existing gateway service
 3. Platform enforces rate limiting (10 attempts/minute/IP)
 4. Platform checks maximum connection limit (default 1000)
@@ -223,7 +223,7 @@ export WS_RATE_LIMIT_PER_MINUTE=20
 
 **Register Gateway**:
 ```bash
-curl -k -X POST https://localhost:8443/api/v1/gateways \
+curl -k -X POST https://localhost:9243/api/v1/gateways \
   -H 'Content-Type: application/json' \
   -d '{
     "organizationId": "<org-uuid>",
@@ -245,7 +245,7 @@ curl -k -X POST https://localhost:8443/api/v1/gateways \
 
 **Generate Gateway Token**:
 ```bash
-curl -k -X POST https://localhost:8443/api/v1/gateways/d1aa71bc-8cb5-4294-8a26-fe1273c28632/tokens \
+curl -k -X POST https://localhost:9243/api/v1/gateways/d1aa71bc-8cb5-4294-8a26-fe1273c28632/tokens \
   -H 'Accept: application/json'
 ```
 
@@ -261,7 +261,7 @@ curl -k -X POST https://localhost:8443/api/v1/gateways/d1aa71bc-8cb5-4294-8a26-f
 
 **Connect via WebSocket (using wscat)**:
 ```bash
-wscat -n -c wss://localhost:8443/api/internal/v1/ws/gateways/connect \
+wscat -n -c wss://localhost:9243/api/internal/v1/ws/gateways/connect \
   -H "api-key: guDgqzePBJTMD8iElVH-q4_hc3IWZE87PgBqfzS_qPA"
 ```
 
@@ -275,7 +275,7 @@ Connected (press CTRL+C to quit)
 
 **Deploy API Revision** (with gateway connected):
 ```bash
-curl -k -X POST 'https://localhost:8443/api/v1/apis/<api-uuid>/deploy-revision?revisionId=<revision-uuid>' \
+curl -k -X POST 'https://localhost:9243/api/v1/apis/<api-uuid>/deploy-revision?revisionId=<revision-uuid>' \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json' \
   -d '[{
@@ -299,7 +299,7 @@ curl -k -s -o /dev/null -w "%{http_code}" \
   -H "Upgrade: websocket" \
   -H "Connection: Upgrade" \
   -H "api-key: invalid-key" \
-  "https://localhost:8443/api/internal/v1/ws/gateways/connect"
+  "https://localhost:9243/api/internal/v1/ws/gateways/connect"
 ```
 
 **Expected**: `401`

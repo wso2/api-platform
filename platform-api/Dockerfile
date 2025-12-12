@@ -85,7 +85,7 @@ RUN mkdir -p /app/data && \
     chown -R wso2:appgroup /app
 COPY src/internal/database/schema.sql ./schema.sql
 
-EXPOSE 8443
+EXPOSE 9243
 
 ENV DRIVER=sqlite3
 ENV LOG_LEVEL=INFO
