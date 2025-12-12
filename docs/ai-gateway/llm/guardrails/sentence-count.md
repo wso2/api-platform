@@ -66,12 +66,14 @@ Ensure requests contain between 1 and 10 sentences:
 policies:
   - name: SentenceCountGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        min: 1
-        max: 10
-        jsonPath: "$.messages[0].content"
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            min: 1
+            max: 10
+            jsonPath: "$.messages[0].content"
 ```
 
 ### Example 2: Response Quality Control
@@ -82,13 +84,15 @@ Ensure AI responses are comprehensive (at least 3 sentences) but concise (maximu
 policies:
   - name: SentenceCountGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      response:
-        min: 3
-        max: 50
-        jsonPath: "$.choices[0].message.content"
-        showAssessment: true
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          response:
+            min: 3
+            max: 50
+            jsonPath: "$.choices[0].message.content"
+            showAssessment: true
 ```
 
 ### Example 3: Inverted Logic
@@ -99,13 +103,15 @@ Block requests that are too brief (less than 2 sentences) or too verbose (more t
 policies:
   - name: SentenceCountGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        min: 2
-        max: 20
-        invert: true
-        jsonPath: "$.messages[0].content"
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            min: 2
+            max: 20
+            invert: true
+            jsonPath: "$.messages[0].content"
 ```
 
 ### Example 4: Full Payload Validation
@@ -116,11 +122,13 @@ Validate the entire request body without JSONPath extraction:
 policies:
   - name: SentenceCountGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        min: 1
-        max: 100
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            min: 1
+            max: 100
 ```
 
 ## Use Cases

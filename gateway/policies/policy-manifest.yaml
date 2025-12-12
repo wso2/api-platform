@@ -49,18 +49,8 @@ policies:
   - name: PIIMaskingRegex
     version: v0.1.0
     filePath: ./pii-masking-regex/v0.1.0
-  
-  # AzureContentSafetyContentModeration Policy
-  - name: AzureContentSafetyContentModeration
-    version: v0.1.0
-    filePath: ./azure-content-safety-content-moderation/v0.1.0
 
   # JSONSchemaGuardrail Policy
   - name: JSONSchemaGuardrail
     version: v0.1.0
     filePath: ./json-schema-guardrail/v0.1.0
-  
-  # AWSBedrockGuardrail Policy
-  - name: AWSBedrockGuardrail
-    version: v0.1.0
-    filePath: ./aws-bedrock-guardrail/v0.1.0

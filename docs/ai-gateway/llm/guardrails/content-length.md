@@ -57,11 +57,13 @@ Limit request payloads to between 100 bytes and 1MB:
 policies:
   - name: ContentLengthGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        min: 100
-        max: 1048576
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            min: 100
+            max: 1048576
 ```
 
 ### Example 2: Response Size Control
@@ -72,13 +74,15 @@ Ensure AI responses are substantial (at least 500 bytes) but not excessive (maxi
 policies:
   - name: ContentLengthGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      response:
-        min: 500
-        max: 102400
-        jsonPath: "$.choices[0].message.content"
-        showAssessment: true
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          response:
+            min: 500
+            max: 102400
+            jsonPath: "$.choices[0].message.content"
+            showAssessment: true
 ```
 
 ### Example 3: Field-Specific Validation
@@ -89,12 +93,14 @@ Validate a specific field within the JSON payload:
 policies:
   - name: ContentLengthGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        min: 10
-        max: 1000
-        jsonPath: "$.messages[0].content"
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            min: 10
+            max: 1000
+            jsonPath: "$.messages[0].content"
 ```
 
 ### Example 4: Inverted Logic
@@ -105,12 +111,14 @@ Block requests that are too small (less than 50 bytes) or too large (more than 1
 policies:
   - name: ContentLengthGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        min: 50
-        max: 10485760
-        invert: true
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            min: 50
+            max: 10485760
+            invert: true
 ```
 
 ## Use Cases

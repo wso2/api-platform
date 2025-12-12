@@ -66,19 +66,21 @@ Validate that request contains a user object with required fields:
 policies:
   - name: JSONSchemaGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        schema: |
-          {
-            "type": "object",
-            "properties": {
-              "name": {"type": "string", "minLength": 1},
-              "email": {"type": "string", "format": "email"},
-              "age": {"type": "integer", "minimum": 18}
-            },
-            "required": ["name", "email"]
-          }
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            schema: |
+              {
+                "type": "object",
+                "properties": {
+                  "name": {"type": "string", "minLength": 1},
+                  "email": {"type": "string", "format": "email"},
+                  "age": {"type": "integer", "minimum": 18}
+                },
+                "required": ["name", "email"]
+              }
 ```
 
 ### Example 2: Field-Specific Validation
@@ -89,18 +91,20 @@ Validate a specific field within the JSON payload:
 policies:
   - name: JSONSchemaGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        schema: |
-          {
-            "type": "object",
-            "properties": {
-              "content": {"type": "string", "minLength": 10, "maxLength": 1000}
-            },
-            "required": ["content"]
-          }
-        jsonPath: "$.messages[0]"
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            schema: |
+              {
+                "type": "object",
+                "properties": {
+                  "content": {"type": "string", "minLength": 10, "maxLength": 1000}
+                },
+                "required": ["content"]
+              }
+            jsonPath: "$.messages[0]"
 ```
 
 ### Example 3: Array Validation
@@ -111,26 +115,28 @@ Validate that response contains an array of items with specific structure:
 policies:
   - name: JSONSchemaGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      response:
-        schema: |
-          {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {"type": "string"},
-                "title": {"type": "string", "minLength": 1},
-                "score": {"type": "number", "minimum": 0, "maximum": 100}
-              },
-              "required": ["id", "title"]
-            },
-            "minItems": 1,
-            "maxItems": 100
-          }
-        jsonPath: "$.results"
-        showAssessment: true
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          response:
+            schema: |
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {"type": "string"},
+                    "title": {"type": "string", "minLength": 1},
+                    "score": {"type": "number", "minimum": 0, "maximum": 100}
+                  },
+                  "required": ["id", "title"]
+                },
+                "minItems": 1,
+                "maxItems": 100
+              }
+            jsonPath: "$.results"
+            showAssessment: true
 ```
 
 ### Example 4: Complex Nested Validation
@@ -141,34 +147,36 @@ Validate nested structures with multiple levels:
 policies:
   - name: JSONSchemaGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        schema: |
-          {
-            "type": "object",
-            "properties": {
-              "user": {
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            schema: |
+              {
                 "type": "object",
                 "properties": {
-                  "profile": {
+                  "user": {
                     "type": "object",
                     "properties": {
-                      "firstName": {"type": "string"},
-                      "lastName": {"type": "string"},
-                      "preferences": {
-                        "type": "array",
-                        "items": {"type": "string"}
+                      "profile": {
+                        "type": "object",
+                        "properties": {
+                          "firstName": {"type": "string"},
+                          "lastName": {"type": "string"},
+                          "preferences": {
+                            "type": "array",
+                            "items": {"type": "string"}
+                          }
+                        },
+                        "required": ["firstName", "lastName"]
                       }
                     },
-                    "required": ["firstName", "lastName"]
+                    "required": ["profile"]
                   }
                 },
-                "required": ["profile"]
+                "required": ["user"]
               }
-            },
-            "required": ["user"]
-          }
 ```
 
 ### Example 5: Inverted Logic
@@ -179,18 +187,20 @@ Block requests that match a specific schema pattern:
 policies:
   - name: JSONSchemaGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        schema: |
-          {
-            "type": "object",
-            "properties": {
-              "sensitive": {"type": "boolean"}
-            },
-            "required": ["sensitive"]
-          }
-        invert: true
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            schema: |
+              {
+                "type": "object",
+                "properties": {
+                  "sensitive": {"type": "boolean"}
+                },
+                "required": ["sensitive"]
+              }
+            invert: true
 ```
 
 ## Use Cases

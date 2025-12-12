@@ -74,18 +74,20 @@ Mask email addresses and phone numbers in requests, restore in responses:
 policies:
   - name: PIIMaskingRegex
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        piiEntities:
-          - piiEntity: "EMAIL"
-            piiRegex: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
-          - piiEntity: "PHONE"
-            piiRegex: "\\+?[1-9]\\d{1,14}"
-        jsonPath: "$.messages[0].content"
-        redactPII: false
-      response:
-        redactPII: false
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            piiEntities:
+              - piiEntity: "EMAIL"
+                piiRegex: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+              - piiEntity: "PHONE"
+                piiRegex: "\\+?[1-9]\\d{1,14}"
+            jsonPath: "$.messages[0].content"
+            redactPII: false
+          response:
+            redactPII: false
 ```
 
 ### Example 2: PII Redaction
@@ -96,18 +98,20 @@ Permanently redact credit card numbers and SSNs:
 policies:
   - name: PIIMaskingRegex
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        piiEntities:
-          - piiEntity: "CREDIT_CARD"
-            piiRegex: "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
-          - piiEntity: "SSN"
-            piiRegex: "\\b\\d{3}-\\d{2}-\\d{4}\\b"
-        jsonPath: "$.messages[0].content"
-        redactPII: true
-      response:
-        redactPII: true
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            piiEntities:
+              - piiEntity: "CREDIT_CARD"
+                piiRegex: "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"
+              - piiEntity: "SSN"
+                piiRegex: "\\b\\d{3}-\\d{2}-\\d{4}\\b"
+            jsonPath: "$.messages[0].content"
+            redactPII: true
+          response:
+            redactPII: true
 ```
 
 ### Example 3: Multiple PII Types
@@ -118,22 +122,24 @@ Mask various PII types with different patterns:
 policies:
   - name: PIIMaskingRegex
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        piiEntities:
-          - piiEntity: "EMAIL"
-            piiRegex: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
-          - piiEntity: "PHONE"
-            piiRegex: "\\+?[1-9]\\d{1,14}"
-          - piiEntity: "IP_ADDRESS"
-            piiRegex: "\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b"
-          - piiEntity: "DATE_OF_BIRTH"
-            piiRegex: "\\b\\d{4}-\\d{2}-\\d{2}\\b"
-        jsonPath: "$.messages[0].content"
-        redactPII: false
-      response:
-        redactPII: false
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            piiEntities:
+              - piiEntity: "EMAIL"
+                piiRegex: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+              - piiEntity: "PHONE"
+                piiRegex: "\\+?[1-9]\\d{1,14}"
+              - piiEntity: "IP_ADDRESS"
+                piiRegex: "\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b"
+              - piiEntity: "DATE_OF_BIRTH"
+                piiRegex: "\\b\\d{4}-\\d{2}-\\d{2}\\b"
+            jsonPath: "$.messages[0].content"
+            redactPII: false
+          response:
+            redactPII: false
 ```
 
 ### Example 4: Full Payload Processing
@@ -144,15 +150,17 @@ Process the entire request body without JSONPath extraction:
 policies:
   - name: PIIMaskingRegex
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        piiEntities:
-          - piiEntity: "EMAIL"
-            piiRegex: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
-        redactPII: false
-      response:
-        redactPII: false
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            piiEntities:
+              - piiEntity: "EMAIL"
+                piiRegex: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+            redactPII: false
+          response:
+            redactPII: false
 ```
 
 ## Use Cases

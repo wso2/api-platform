@@ -74,12 +74,14 @@ Validate URLs in request content using HTTP HEAD requests:
 policies:
   - name: URLGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        jsonPath: "$.messages[0].content"
-        onlyDNS: false
-        timeout: 5000
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            jsonPath: "$.messages[0].content"
+            onlyDNS: false
+            timeout: 5000
 ```
 
 ### Example 2: Fast DNS-Only Validation
@@ -90,12 +92,14 @@ Quick validation using DNS resolution only:
 policies:
   - name: URLGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        jsonPath: "$.messages[0].content"
-        onlyDNS: true
-        timeout: 2000
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            jsonPath: "$.messages[0].content"
+            onlyDNS: true
+            timeout: 2000
 ```
 
 ### Example 3: Response URL Validation
@@ -106,13 +110,15 @@ Ensure AI responses contain only valid, reachable URLs:
 policies:
   - name: URLGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      response:
-        jsonPath: "$.choices[0].message.content"
-        onlyDNS: false
-        timeout: 3000
-        showAssessment: true
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          response:
+            jsonPath: "$.choices[0].message.content"
+            onlyDNS: false
+            timeout: 3000
+            showAssessment: true
 ```
 
 ### Example 4: Full Payload Validation
@@ -123,11 +129,13 @@ Validate URLs in the entire request body:
 policies:
   - name: URLGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        onlyDNS: false
-        timeout: 5000
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            onlyDNS: false
+            timeout: 5000
 ```
 
 ## Use Cases

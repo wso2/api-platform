@@ -66,11 +66,13 @@ Ensure user input contains a valid email address:
 policies:
   - name: RegexGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        regex: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
-        jsonPath: "$.messages[0].content"
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            regex: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+            jsonPath: "$.messages[0].content"
 ```
 
 ### Example 2: Block Prohibited Patterns
@@ -81,12 +83,14 @@ Block requests containing password-related content using inverted logic:
 policies:
   - name: RegexGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        regex: "(?i).*password.*"
-        invert: true
-        jsonPath: "$.messages[0].content"
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            regex: "(?i).*password.*"
+            invert: true
+            jsonPath: "$.messages[0].content"
 ```
 
 ### Example 3: Response Format Validation
@@ -97,12 +101,14 @@ Ensure AI responses follow a specific format (e.g., must start with a capital le
 policies:
   - name: RegexGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      response:
-        regex: "^[A-Z].*"
-        jsonPath: "$.choices[0].message.content"
-        showAssessment: true
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          response:
+            regex: "^[A-Z].*"
+            jsonPath: "$.choices[0].message.content"
+            showAssessment: true
 ```
 
 ### Example 4: Phone Number Validation
@@ -113,11 +119,13 @@ Validate phone numbers in a specific format:
 policies:
   - name: RegexGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        regex: "^\\+?[1-9]\\d{1,14}$"
-        jsonPath: "$.phone"
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            regex: "^\\+?[1-9]\\d{1,14}$"
+            jsonPath: "$.phone"
 ```
 
 ### Example 5: Block Admin-Related Content
@@ -128,12 +136,14 @@ Prevent admin-related requests using case-insensitive matching and inverted logi
 policies:
   - name: RegexGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        regex: "(?i).*admin.*"
-        invert: true
-        jsonPath: "$.messages[0].content"
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            regex: "(?i).*admin.*"
+            invert: true
+            jsonPath: "$.messages[0].content"
 ```
 
 ## Use Cases

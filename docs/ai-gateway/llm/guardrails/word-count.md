@@ -57,12 +57,14 @@ Validate that request messages contain between 10 and 500 words:
 policies:
   - name: WordCountGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        min: 10
-        max: 500
-        jsonPath: "$.messages[0].content"
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            min: 10
+            max: 500
+            jsonPath: "$.messages[0].content"
 ```
 
 ### Example 2: Response Quality Control
@@ -73,13 +75,15 @@ Ensure AI responses are comprehensive (at least 50 words) but not excessive (max
 policies:
   - name: WordCountGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      response:
-        min: 50
-        max: 2000
-        jsonPath: "$.choices[0].message.content"
-        showAssessment: true
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          response:
+            min: 50
+            max: 2000
+            jsonPath: "$.choices[0].message.content"
+            showAssessment: true
 ```
 
 ### Example 3: Inverted Logic
@@ -90,13 +94,15 @@ Block requests that are too short (less than 5 words) or too long (more than 100
 policies:
   - name: WordCountGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        min: 5
-        max: 1000
-        invert: true
-        jsonPath: "$.messages[0].content"
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            min: 5
+            max: 1000
+            invert: true
+            jsonPath: "$.messages[0].content"
 ```
 
 ### Example 4: Full Payload Validation
@@ -107,11 +113,13 @@ Validate the entire request body without JSONPath extraction:
 policies:
   - name: WordCountGuardrail
     version: v0.1.0
-    enabled: true
-    params:
-      request:
-        min: 1
-        max: 10000
+    paths:
+      - path: /chat/completions
+        methods: [POST]
+        params:
+          request:
+            min: 1
+            max: 10000
 ```
 
 ## Use Cases

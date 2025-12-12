@@ -35,7 +35,7 @@ func NewPolicy(
 	initParams map[string]interface{},
 	params map[string]interface{},
 ) (policy.Policy, error) {
-	policy := &RegexGuardrailPolicy{}
+	p := &RegexGuardrailPolicy{}
 
 	// Extract and parse request parameters if present
 	if requestParamsRaw, ok := params["request"].(map[string]interface{}); ok {
@@ -43,8 +43,8 @@ func NewPolicy(
 		if err != nil {
 			return nil, fmt.Errorf("invalid request parameters: %w", err)
 		}
-		policy.hasRequestParams = true
-		policy.requestParams = requestParams
+		p.hasRequestParams = true
+		p.requestParams = requestParams
 	}
 
 	// Extract and parse response parameters if present
@@ -53,16 +53,16 @@ func NewPolicy(
 		if err != nil {
 			return nil, fmt.Errorf("invalid response parameters: %w", err)
 		}
-		policy.hasResponseParams = true
-		policy.responseParams = responseParams
+		p.hasResponseParams = true
+		p.responseParams = responseParams
 	}
 
 	// At least one of request or response must be present
-	if !policy.hasRequestParams && !policy.hasResponseParams {
+	if !p.hasRequestParams && !p.hasResponseParams {
 		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
 	}
 
-	return policy, nil
+	return p, nil
 }
 
 // parseParams parses and validates parameters from map to struct
