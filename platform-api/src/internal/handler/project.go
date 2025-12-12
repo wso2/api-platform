@@ -61,7 +61,7 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 		return
 	}
 
-	project, err := h.projectService.CreateProject(req.Name, req.Description, organizationID)
+	project, err := h.projectService.CreateProject(req.Name, req.Description, organizationID, req.Id)
 	if err != nil {
 		if errors.Is(err, constants.ErrProjectExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
@@ -76,6 +76,11 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 		if errors.Is(err, constants.ErrInvalidProjectName) {
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Project name is required"))
+			return
+		}
+		if errors.Is(err, constants.ErrorInvalidProjectUUID) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid project UUID"))
 			return
 		}
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",

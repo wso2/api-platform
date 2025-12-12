@@ -23,6 +23,7 @@ import (
 
 // CreateProjectRequest represents the request body for creating a new project
 type CreateProjectRequest struct {
+	Id          string `json:"id,omitempty" yaml:"id,omitempty"`
 	Name        string `json:"name" yaml:"name" binding:"required"`
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 }
