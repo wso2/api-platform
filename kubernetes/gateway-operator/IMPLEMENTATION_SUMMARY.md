@@ -68,7 +68,7 @@ env:
 - name: GATEWAY_MANIFEST_PATH
   value: "/path/to/manifest.yaml"
 - name: GATEWAY_CONTROLPLANE_HOST
-  value: "gateway:8443"
+  value: "gateway:9243"
 ```
 
 ### Method 2: Command-Line Flags

@@ -53,13 +53,13 @@ services:
       context: ../../platform-api
       dockerfile: Dockerfile
     ports:
-      - "8443:8443"
+      - "9243:9243"
     volumes:
       - platform-api-data:/api-platform/data
     environment:
       - DEFAULT_DEVPORTAL_API_URL=http://devportal:3001
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "--no-check-certificate", "https://localhost:8443/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "--no-check-certificate", "https://localhost:9243/health"]
       interval: 30s
       timeout: 10s
       start_period: 5s

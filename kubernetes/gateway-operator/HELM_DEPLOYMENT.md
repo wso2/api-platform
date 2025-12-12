@@ -109,7 +109,7 @@ spec:
         cpu: "1"
         memory: 512Mi
   controlPlane:
-    host: api-platform-control-plane:8443
+    host: api-platform-control-plane:9243
   storage:
     type: sqlite
     sqlitePath: /app/data/gateway.db
