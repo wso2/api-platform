@@ -29,7 +29,7 @@ unzip ai-gateway-v0.1.0.zip
 
 
 # Start the complete stack
-cd gateway/
+cd ai-gateway-v0.1.0/
 docker compose up -d
 
 # Verify gateway controller is running
