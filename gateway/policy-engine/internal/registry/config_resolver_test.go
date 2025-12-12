@@ -16,7 +16,10 @@ func TestConfigResolver_ResolveValue(t *testing.T) {
 		},
 	}
 
-	resolver := NewConfigResolver(config)
+	resolver, err := NewConfigResolver(config)
+	if err != nil {
+		t.Fatalf("NewConfigResolver() unexpected error: %v", err)
+	}
 
 	tests := []struct {
 		name      string
@@ -94,7 +97,10 @@ func TestConfigResolver_ResolveMap(t *testing.T) {
 		},
 	}
 
-	resolver := NewConfigResolver(config)
+	resolver, err := NewConfigResolver(config)
+	if err != nil {
+		t.Fatalf("NewConfigResolver() unexpected error: %v", err)
+	}
 
 	input := map[string]interface{}{
 		"allowedAlgorithms": "${config.jwtauth.allowedalgorithms}",
@@ -128,7 +134,10 @@ func TestConfigResolver_ResolveNestedStructures(t *testing.T) {
 		},
 	}
 
-	resolver := NewConfigResolver(config)
+	resolver, err := NewConfigResolver(config)
+	if err != nil {
+		t.Fatalf("NewConfigResolver() unexpected error: %v", err)
+	}
 
 	input := map[string]interface{}{
 		"nested": map[string]interface{}{
@@ -165,7 +174,10 @@ func TestConfigResolver_ResolveNestedStructures(t *testing.T) {
 }
 
 func TestConfigResolver_NilConfig(t *testing.T) {
-	resolver := NewConfigResolver(nil)
+	resolver, err := NewConfigResolver(nil)
+	if err != nil {
+		t.Fatalf("NewConfigResolver() unexpected error: %v", err)
+	}
 
 	input := "${config.some.path}"
 	got, err := resolver.ResolveValue(input)
@@ -192,7 +204,10 @@ func TestConfigResolver_CELComplexExpressions(t *testing.T) {
 		},
 	}
 
-	resolver := NewConfigResolver(config)
+	resolver, err := NewConfigResolver(config)
+	if err != nil {
+		t.Fatalf("NewConfigResolver() unexpected error: %v", err)
+	}
 
 	tests := []struct {
 		name     string
@@ -242,7 +257,10 @@ func TestConfigResolver_CELArrayAccess(t *testing.T) {
 		},
 	}
 
-	resolver := NewConfigResolver(config)
+	resolver, err := NewConfigResolver(config)
+	if err != nil {
+		t.Fatalf("NewConfigResolver() unexpected error: %v", err)
+	}
 
 	tests := []struct {
 		name     string
@@ -292,7 +310,10 @@ func TestConfigResolver_CELInvalidReference(t *testing.T) {
 		},
 	}
 
-	resolver := NewConfigResolver(config)
+	resolver, err := NewConfigResolver(config)
+	if err != nil {
+		t.Fatalf("NewConfigResolver() unexpected error: %v", err)
+	}
 
 	tests := []struct {
 		name      string
@@ -355,7 +376,10 @@ func TestConfigResolver_TemplateSubstitution(t *testing.T) {
 		},
 	}
 
-	resolver := NewConfigResolver(config)
+	resolver, err := NewConfigResolver(config)
+	if err != nil {
+		t.Fatalf("NewConfigResolver() unexpected error: %v", err)
+	}
 
 	tests := []struct {
 		name     string
@@ -418,7 +442,10 @@ func TestConfigResolver_SingleExpressionPreservesType(t *testing.T) {
 		"temperature": 98.6,
 	}
 
-	resolver := NewConfigResolver(config)
+	resolver, err := NewConfigResolver(config)
+	if err != nil {
+		t.Fatalf("NewConfigResolver() unexpected error: %v", err)
+	}
 
 	tests := []struct {
 		name     string
@@ -484,7 +511,10 @@ func TestConfigResolver_ObjectAndArrayTypes(t *testing.T) {
 		},
 	}
 
-	resolver := NewConfigResolver(config)
+	resolver, err := NewConfigResolver(config)
+	if err != nil {
+		t.Fatalf("NewConfigResolver() unexpected error: %v", err)
+	}
 
 	t.Run("object type preserved", func(t *testing.T) {
 		result, err := resolver.ResolveValue("${config.database}")
@@ -553,7 +583,10 @@ func TestConfigResolver_TemplateWithErrors(t *testing.T) {
 		},
 	}
 
-	resolver := NewConfigResolver(config)
+	resolver, err := NewConfigResolver(config)
+	if err != nil {
+		t.Fatalf("NewConfigResolver() unexpected error: %v", err)
+	}
 
 	tests := []struct {
 		name      string

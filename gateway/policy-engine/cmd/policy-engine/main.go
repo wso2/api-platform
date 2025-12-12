@@ -68,7 +68,10 @@ func main() {
 	reg := registry.GetRegistry()
 
 	// Set config in registry for ${config} CEL resolution
-	reg.SetConfig(cfg.RawConfig)
+	if err := reg.SetConfig(cfg.RawConfig); err != nil {
+		slog.ErrorContext(ctx, "Failed to set config in registry", "error", err)
+		os.Exit(1)
+	}
 	slog.InfoContext(ctx, "Config set in registry for ${config} CEL resolution")
 
 	// Initialize CEL evaluator

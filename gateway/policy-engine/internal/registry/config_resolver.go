@@ -17,20 +17,20 @@ type ConfigResolver struct {
 }
 
 // NewConfigResolver creates a new config resolver with CEL environment
-func NewConfigResolver(config map[string]interface{}) *ConfigResolver {
+func NewConfigResolver(config map[string]interface{}) (*ConfigResolver, error) {
 	// Create CEL environment with config variable
 	env, err := cel.NewEnv(
 		cel.Variable("config", cel.DynType),
 	)
 	if err != nil {
 		slog.Error("Failed to create CEL environment", "error", err)
-		return &ConfigResolver{config: config}
+		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
 	return &ConfigResolver{
 		config: config,
 		env:    env,
-	}
+	}, nil
 }
 
 // Regular expression to match ${...} pattern anywhere in the string
@@ -178,7 +178,6 @@ func (r *ConfigResolver) evaluateCEL(expression string) (interface{}, error) {
 	return celValueToGo(out), nil
 }
 
-
 // celValueToGo converts a CEL ref.Val to a Go value
 func celValueToGo(val ref.Val) interface{} {
 	if val == nil {
@@ -187,6 +186,9 @@ func celValueToGo(val ref.Val) interface{} {
 
 	// Check for error or unknown value
 	if types.IsError(val) || types.IsUnknown(val) {
+		if types.IsError(val) {
+			slog.Warn("CEL value conversion encountered error value", "value", val)
+		}
 		return nil
 	}
 

@@ -95,12 +95,13 @@ func (r *PolicyRegistry) CreateInstance(
 	}
 
 	// Resolve ${config} references in initParams
-	if r.ConfigResolver != nil {
-		var err error
-		initParams, err = r.ConfigResolver.ResolveMap(initParams)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to resolve config for policy %s: %w", key, err)
-		}
+	if r.ConfigResolver == nil {
+		return nil, nil, fmt.Errorf("policy %s: ConfigResolver is not initialized", key)
+	}
+	var err error
+	initParams, err = r.ConfigResolver.ResolveMap(initParams)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to resolve config for policy %s: %w", key, err)
 	}
 
 	// Merge resolved initParams with runtime params (params override initParams)
@@ -143,8 +144,13 @@ func (r *PolicyRegistry) Register(def *policy.PolicyDefinition, factory policy.P
 
 // SetConfig sets the configuration for resolving ${config} references in systemParameters
 // This should be called during startup after loading the config file
-func (r *PolicyRegistry) SetConfig(config map[string]interface{}) {
-	r.ConfigResolver = NewConfigResolver(config)
+func (r *PolicyRegistry) SetConfig(config map[string]interface{}) error {
+	resolver, err := NewConfigResolver(config)
+	if err != nil {
+		return fmt.Errorf("failed to create config resolver: %w", err)
+	}
+	r.ConfigResolver = resolver
+	return nil
 }
 
 // compositeKey creates a composite key from name and version
