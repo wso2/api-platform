@@ -18,12 +18,13 @@
 package service
 
 import (
-	"github.com/google/uuid"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/model"
 	"platform-api/src/internal/repository"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type ProjectService struct {
@@ -41,7 +42,7 @@ func NewProjectService(projectRepo repository.ProjectRepository, orgRepo reposit
 	}
 }
 
-func (s *ProjectService) CreateProject(name, description, organizationID string) (*dto.Project, error) {
+func (s *ProjectService) CreateProject(name, description, organizationID, id string) (*dto.Project, error) {
 	// Validate project name
 	if name == "" {
 		return nil, constants.ErrInvalidProjectName
@@ -75,6 +76,14 @@ func (s *ProjectService) CreateProject(name, description, organizationID string)
 		Description:    description,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
+	}
+
+	// if project ID is given with the request, generated UUID value will be replaced by it
+	if id != "" {
+		if _, err := uuid.Parse(id); err != nil {
+			return nil, constants.ErrorInvalidProjectUUID
+		}
+		project.ID = id
 	}
 
 	projectModel := s.DtoToModel(project)

@@ -78,6 +78,11 @@ func (h *ProjectHandler) CreateProject(c *gin.Context) {
 				"Project name is required"))
 			return
 		}
+		if errors.Is(err, constants.ErrorInvalidProjectUUID) {
+			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
+				"Invalid project UUID"))
+			return
+		}
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to create project"))
 		return
