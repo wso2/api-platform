@@ -13,7 +13,7 @@ info:
     url: http://www.apache.org/licenses/LICENSE-2.0.html
 
 servers:
-  - url: https://localhost:8443
+  - url: https://localhost:9243
     description: Development server
   - url: https://api-platform.wso2.com
     description: Production server

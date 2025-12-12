@@ -59,7 +59,7 @@ The Management Portal requires the **Platform API** to be running.
 ```bash
 cd platform-api
 docker build -t wso2/platform-api:latest .
-docker run -p 8443:8443 wso2/platform-api:latest
+docker run -p 9243:9243 wso2/platform-api:latest
 ```
 
 ## Option 2: Run Locally
@@ -146,13 +146,13 @@ npm run dev
 ## ✅ Allow Backend HTTPS Certificate in Browser
 
 ```text
-https://localhost:8443/
+https://localhost:9243/
 ```
 
 ## ✅ Create a Default Organization in Platform API
 
 ```bash
-curl --location 'https://localhost:8443/api/v1/organizations' --header 'Content-Type: application/json' --header 'Authorization: Bearer <shared-token>' --data '{
+curl --location 'https://localhost:9243/api/v1/organizations' --header 'Content-Type: application/json' --header 'Authorization: Bearer <shared-token>' --data '{
     "id": "15b2ac94-6217-4f51-90d4-b2b3814b20b4",
     "handle": "acme",
     "name": "ACME Corporation",

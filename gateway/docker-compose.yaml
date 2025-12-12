@@ -29,7 +29,7 @@ services:
       - GATEWAY_STORAGE_SQLITE_PATH=./data/gateway.db
       - GATEWAY_LOGGING_LEVEL=info
       - GATEWAY_CONTROLPLANE_TOKEN=${GATEWAY_CONTROLPLANE_TOKEN:-}
-      - GATEWAY_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-host.docker.internal:8443}
+      - GATEWAY_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-host.docker.internal:9243}
     volumes:
       - controller-data:/app/data
       - ./gateway-controller/config/config.yaml:/app/config/config.yaml:ro

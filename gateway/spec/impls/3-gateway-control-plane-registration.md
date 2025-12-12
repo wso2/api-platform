@@ -27,7 +27,7 @@ Gateway instances deployed across distributed environments need automated regist
 
 1. Gateway loads control plane configuration from environment variables on startup
 2. Validates required `GATEWAY_REGISTRATION_TOKEN` and optional `GATEWAY_CONTROL_PLANE_URL`
-3. Default control plane URL: `wss://localhost:8443/api/internal/v1/ws/gateways/connect`
+3. Default control plane URL: `wss://localhost:9243/api/internal/v1/ws/gateways/connect`
 4. Creates control plane client with configuration
 5. Starts connection in background goroutine (non-blocking)
 6. Gateway main process continues with traffic routing initialization
@@ -163,7 +163,7 @@ Gateway instances deployed across distributed environments need automated regist
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `GATEWAY_REGISTRATION_TOKEN` | string | (required) | Registration token from control plane |
-| `GATEWAY_CONTROL_PLANE_URL` | string | `wss://localhost:8443/api/internal/v1/ws/gateways/connect` | Control plane WebSocket endpoint |
+| `GATEWAY_CONTROL_PLANE_URL` | string | `wss://localhost:9243/api/internal/v1/ws/gateways/connect` | Control plane WebSocket endpoint |
 | `GATEWAY_RECONNECT_INITIAL` | duration | `1s` | Initial reconnection delay |
 | `GATEWAY_RECONNECT_MAX` | duration | `5m` | Maximum reconnection delay |
 
@@ -181,7 +181,7 @@ services:
     image: wso2/api-gateway:latest
     environment:
       - GATEWAY_REGISTRATION_TOKEN=wE7a1WnvvZloxa-TZbL7QhXDjTCIOsyuNg9oKhtX3cU
-      - GATEWAY_CONTROL_PLANE_URL=wss://platform-api:8443/api/internal/v1/ws/gateways/connect
+      - GATEWAY_CONTROL_PLANE_URL=wss://platform-api:9243/api/internal/v1/ws/gateways/connect
       - GATEWAY_RECONNECT_INITIAL=2s
       - GATEWAY_RECONNECT_MAX=10m
     depends_on:

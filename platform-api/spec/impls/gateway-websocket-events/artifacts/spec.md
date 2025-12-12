@@ -142,7 +142,7 @@ As a platform architect, I need the event delivery system to use an abstraction 
 
 ### Functional Requirements
 
-- **FR-001**: The platform MUST provide a WebSocket connection endpoint at `wss://localhost:8443/api/internal/v1/ws/gateways/connect` that gateways can connect to for receiving real-time event notifications
+- **FR-001**: The platform MUST provide a WebSocket connection endpoint at `wss://localhost:9243/api/internal/v1/ws/gateways/connect` that gateways can connect to for receiving real-time event notifications
 - **FR-002**: The platform MUST authenticate gateway connections and reject unauthorized connection attempts with clear error messages
 - **FR-003**: The platform MUST maintain an in-memory registry of all currently connected gateways, indexed by gateway identifier, enabling fast lookup for event delivery (supporting multiple connections per gateway ID for clustering)
 - **FR-004**: When a gateway establishes a connection successfully, the platform MUST store the connection handle associated with the gateway identifier in the connection registry

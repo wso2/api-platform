@@ -203,7 +203,7 @@ func generateSelfSignedCert() (tls.Certificate, error) {
 // Start starts the HTTPS server
 func (s *Server) Start(port string) error {
 	if port == "" {
-		port = ":8443"
+		port = ":9243"
 	}
 
 	var cert tls.Certificate

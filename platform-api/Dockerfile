@@ -59,10 +59,10 @@ ARG USER_GID=$USER_UID
 
 USER $USERNAME
 
-EXPOSE 8443
+EXPOSE 9243
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider --no-check-certificate https://localhost:8443/health || exit 1
+    CMD wget --quiet --tries=1 --spider --no-check-certificate https://localhost:9243/health || exit 1
 
 # Set Gin to release mode
 ENV GIN_MODE=release
