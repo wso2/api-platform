@@ -364,8 +364,8 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig) ([]*route.Rout
 	mainRoutesList := make([]*route.Route, 0)
 
 	// Determine effective vhosts (fallback to global router defaults when not provided)
-	effectiveMainVHost := t.config.Router.VHosts.Main.Default
-	effectiveSandboxVHost := t.config.Router.VHosts.Sandbox.Default
+	effectiveMainVHost := t.config.GatewayController.Router.VHosts.Main.Default
+	effectiveSandboxVHost := t.config.GatewayController.Router.VHosts.Sandbox.Default
 	if apiData.Vhosts != nil {
 		if strings.TrimSpace(apiData.Vhosts.Main) != "" {
 			effectiveMainVHost = apiData.Vhosts.Main
@@ -1050,7 +1050,7 @@ func (t *Translator) createSDSCluster() *cluster.Cluster {
 		xdsHost = envHost
 	}
 
-	xdsPort := t.config.Server.XDSPort
+	xdsPort := t.config.GatewayController.Server.XDSPort
 	if xdsPort == 0 {
 		xdsPort = 18000 // Default xDS port
 	}

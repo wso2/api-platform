@@ -1,9 +1,11 @@
 package registry
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strings"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -48,6 +50,13 @@ func (r *ConfigResolver) ResolveValue(value interface{}) (interface{}, error) {
 	// If no config loaded, return value as-is
 	if r == nil || r.config == nil {
 		return value, nil
+	}
+
+	configJSON, err := json.MarshalIndent(r.config, "", "  ")
+	if err != nil {
+		slog.Debug("Failed to marshal config to JSON", "error", err)
+	} else {
+		slog.Debug("ConfigResolver loaded config:\n" + string(configJSON))
 	}
 
 	// Only process string values
@@ -152,6 +161,10 @@ func (r *ConfigResolver) evaluateCEL(expression string) (interface{}, error) {
 	if r.env == nil {
 		return nil, fmt.Errorf("CEL environment not initialized")
 	}
+
+	// Lowercase the expression to match Viper's key normalization
+	// Viper converts all YAML keys to lowercase, so we need to match that
+	expression = strings.ToLower(expression)
 
 	// Parse the CEL expression
 	ast, issues := r.env.Compile(expression)

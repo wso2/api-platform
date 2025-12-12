@@ -48,8 +48,8 @@ func main() {
 
 	// Initialize logger with config
 	log, err := logger.NewLogger(logger.Config{
-		Level:  cfg.Logging.Level,
-		Format: cfg.Logging.Format,
+		Level:  cfg.GatewayController.Logging.Level,
+		Format: cfg.GatewayController.Logging.Format,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
@@ -62,24 +62,24 @@ func main() {
 		zap.String("git_commit", GitCommit),
 		zap.String("build_date", BuildDate),
 		zap.String("config_file", *configPath),
-		zap.String("storage_type", cfg.Storage.Type),
-		zap.Bool("access_logs_enabled", cfg.Router.AccessLogs.Enabled),
-		zap.String("control_plane_host", cfg.ControlPlane.Host),
-		zap.Bool("control_plane_token_configured", cfg.ControlPlane.Token != ""),
+		zap.String("storage_type", cfg.GatewayController.Storage.Type),
+		zap.Bool("access_logs_enabled", cfg.GatewayController.Router.AccessLogs.Enabled),
+		zap.String("control_plane_host", cfg.GatewayController.ControlPlane.Host),
+		zap.Bool("control_plane_token_configured", cfg.GatewayController.ControlPlane.Token != ""),
 	)
 
 	// Initialize storage based on type
 	var db storage.Storage
 	if cfg.IsPersistentMode() {
-		switch cfg.Storage.Type {
+		switch cfg.GatewayController.Storage.Type {
 		case "sqlite":
-			log.Info("Initializing SQLite storage", zap.String("path", cfg.Storage.SQLite.Path))
-			db, err = storage.NewSQLiteStorage(cfg.Storage.SQLite.Path, log)
+			log.Info("Initializing SQLite storage", zap.String("path", cfg.GatewayController.Storage.SQLite.Path))
+			db, err = storage.NewSQLiteStorage(cfg.GatewayController.Storage.SQLite.Path, log)
 			if err != nil {
 				// Check for database locked error and provide clear guidance
 				if err.Error() == "database is locked" || err.Error() == "failed to open database: database is locked" {
 					log.Fatal("Database is locked by another process",
-						zap.String("database_path", cfg.Storage.SQLite.Path),
+						zap.String("database_path", cfg.GatewayController.Storage.SQLite.Path),
 						zap.String("troubleshooting", "Check if another gateway-controller instance is running or remove stale WAL files"))
 				}
 				log.Fatal("Failed to initialize SQLite database", zap.Error(err))
@@ -88,7 +88,7 @@ func main() {
 		case "postgres":
 			log.Fatal("PostgreSQL storage not yet implemented")
 		default:
-			log.Fatal("Unknown storage type", zap.String("type", cfg.Storage.Type))
+			log.Fatal("Unknown storage type", zap.String("type", cfg.GatewayController.Storage.Type))
 		}
 	} else {
 		log.Info("Running in memory-only mode (no persistent storage)")
@@ -110,7 +110,7 @@ func main() {
 	}
 
 	// Initialize xDS snapshot manager with router config
-	snapshotManager := xds.NewSnapshotManager(configStore, log, &cfg.Router, db, cfg)
+	snapshotManager := xds.NewSnapshotManager(configStore, log, &cfg.GatewayController.Router, db, cfg)
 
 	// Initialize SDS secret manager if custom certificates are configured
 	var sdsSecretManager *xds.SDSSecretManager
@@ -142,7 +142,7 @@ func main() {
 	cancel()
 
 	// Start xDS gRPC server with SDS support
-	xdsServer := xds.NewServer(snapshotManager, sdsSecretManager, cfg.Server.XDSPort, log)
+	xdsServer := xds.NewServer(snapshotManager, sdsSecretManager, cfg.GatewayController.Server.XDSPort, log)
 	go func() {
 		if err := xdsServer.Start(); err != nil {
 			log.Fatal("xDS server failed", zap.Error(err))
@@ -152,8 +152,8 @@ func main() {
 	// Initialize policy store and start policy xDS server if enabled
 	var policyXDSServer *policyxds.Server
 	var policyManager *policyxds.PolicyManager
-	if cfg.PolicyServer.Enabled {
-		log.Info("Initializing Policy xDS server", zap.Int("port", cfg.PolicyServer.Port))
+	if cfg.GatewayController.PolicyServer.Enabled {
+		log.Info("Initializing Policy xDS server", zap.Int("port", cfg.GatewayController.PolicyServer.Port))
 
 		// Initialize policy store
 		policyStore := storage.NewPolicyStore()
@@ -171,7 +171,7 @@ func main() {
 			for _, apiConfig := range loadedAPIs {
 				// Derive policy configuration from API
 				if apiConfig.Configuration.Kind == api.Httprest {
-					storedPolicy := derivePolicyFromAPIConfig(apiConfig, &cfg.Router)
+					storedPolicy := derivePolicyFromAPIConfig(apiConfig, &cfg.GatewayController.Router)
 					if storedPolicy != nil {
 						if err := policyStore.Set(storedPolicy); err != nil {
 							log.Warn("Failed to load policy from API",
@@ -198,13 +198,13 @@ func main() {
 
 		// Start policy xDS server in a separate goroutine
 		var serverOpts []policyxds.ServerOption
-		if cfg.PolicyServer.TLS.Enabled {
+		if cfg.GatewayController.PolicyServer.TLS.Enabled {
 			serverOpts = append(serverOpts, policyxds.WithTLS(
-				cfg.PolicyServer.TLS.CertFile,
-				cfg.PolicyServer.TLS.KeyFile,
+				cfg.GatewayController.PolicyServer.TLS.CertFile,
+				cfg.GatewayController.PolicyServer.TLS.KeyFile,
 			))
 		}
-		policyXDSServer = policyxds.NewServer(policySnapshotManager, cfg.PolicyServer.Port, log, serverOpts...)
+		policyXDSServer = policyxds.NewServer(policySnapshotManager, cfg.GatewayController.PolicyServer.Port, log, serverOpts...)
 		go func() {
 			if err := policyXDSServer.Start(); err != nil {
 				log.Fatal("Policy xDS server failed", zap.Error(err))
@@ -216,7 +216,7 @@ func main() {
 
 	// Load policy definitions from files (must be done before creating validator)
 	policyLoader := utils.NewPolicyLoader(log)
-	policyDir := cfg.Policies.DefinitionsPath
+	policyDir := cfg.GatewayController.Policies.DefinitionsPath
 	log.Info("Loading policy definitions from directory", zap.String("directory", policyDir))
 	policyDefinitions, err := policyLoader.LoadPoliciesFromDirectory(policyDir)
 	if err != nil {
@@ -226,7 +226,7 @@ func main() {
 
 	// Load llm provider templates from files
 	templateLoader := utils.NewLLMTemplateLoader(log)
-	templateDir := cfg.LLM.TemplateDefinitionsPath
+	templateDir := cfg.GatewayController.LLM.TemplateDefinitionsPath
 	log.Info("Loading llm provider templates from directory", zap.String("directory", templateDir))
 	templateDefinitions, err := templateLoader.LoadTemplatesFromDirectory(templateDir)
 	if err != nil {
@@ -240,7 +240,7 @@ func main() {
 	validator.SetPolicyValidator(policyValidator)
 
 	// Initialize and start control plane client with dependencies for API creation
-	cpClient := controlplane.NewClient(cfg.ControlPlane, log, configStore, db, snapshotManager, validator, &cfg.Router)
+	cpClient := controlplane.NewClient(cfg.GatewayController.ControlPlane, log, configStore, db, snapshotManager, validator, &cfg.GatewayController.Router)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", zap.Error(err))
 		// Don't fail startup - gateway can run in degraded mode without control plane
@@ -262,17 +262,17 @@ func main() {
 
 	// Initialize API server with the configured validator
 	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient,
-		policyDefinitions, templateDefinitions, validator, &cfg.Router)
+		policyDefinitions, validator, &cfg.GatewayController.Router)
 
 	// Register API routes (includes certificate management endpoints from OpenAPI spec)
 	api.RegisterHandlers(router, apiServer)
 
 	// Start REST API server
-	log.Info("Starting REST API server", zap.Int("port", cfg.Server.APIPort))
+	log.Info("Starting REST API server", zap.Int("port", cfg.GatewayController.Server.APIPort))
 
 	// Setup graceful shutdown
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Server.APIPort),
+		Addr:    fmt.Sprintf(":%d", cfg.GatewayController.Server.APIPort),
 		Handler: router,
 	}
 
@@ -291,7 +291,7 @@ func main() {
 	log.Info("Shutting down Gateway-Controller")
 
 	// Graceful shutdown with timeout
-	ctx, cancel = context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
+	ctx, cancel = context.WithTimeout(context.Background(), cfg.GatewayController.Server.ShutdownTimeout)
 	defer cancel()
 
 	// Stop control plane client first
