@@ -30,9 +30,14 @@ import (
 
 // newTestAPIServer creates a minimal APIServer instance for testing
 func newTestAPIServer() *APIServer {
+	vhosts := &config.VHostsConfig{
+		Main:    config.VHostEntry{Default: "localhost"},
+		Sandbox: config.VHostEntry{Default: "sandbox-*"},
+	}
 	return &APIServer{
 		routerConfig: &config.RouterConfig{
 			GatewayHost: "localhost",
+			VHosts:      *vhosts,
 		},
 	}
 }

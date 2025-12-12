@@ -1180,11 +1180,30 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 				}
 			}
 
-			routeKey := xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, s.routerConfig.GatewayHost)
-			routes = append(routes, policyenginev1.PolicyChain{
-				RouteKey: routeKey,
-				Policies: finalPolicies,
-			})
+			// Determine effective vhosts (fallback to global router defaults when not provided)
+			effectiveMainVHost := s.routerConfig.VHosts.Main.Default
+			effectiveSandboxVHost := s.routerConfig.VHosts.Sandbox.Default
+			if apiData.Vhosts != nil {
+				if strings.TrimSpace(apiData.Vhosts.Main) != "" {
+					effectiveMainVHost = apiData.Vhosts.Main
+				}
+				if apiData.Vhosts.Sandbox != nil && strings.TrimSpace(*apiData.Vhosts.Sandbox) != "" {
+					effectiveSandboxVHost = *apiData.Vhosts.Sandbox
+				}
+			}
+
+			vhosts := []string{effectiveMainVHost}
+			if apiData.Upstream.Sandbox != nil && apiData.Upstream.Sandbox.Url != nil &&
+				strings.TrimSpace(*apiData.Upstream.Sandbox.Url) != "" {
+				vhosts = append(vhosts, effectiveSandboxVHost)
+			}
+
+			for _, vhost := range vhosts {
+				routes = append(routes, policyenginev1.PolicyChain{
+					RouteKey: xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, vhost),
+					Policies: finalPolicies,
+				})
+			}
 		}
 	}
 
