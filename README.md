@@ -62,7 +62,7 @@ docker compose up
 ### 3. Create a Default Organization
 
 ```bash
-curl -k --location 'https://localhost:8443/api/v1/organizations' \
+curl -k --location 'https://localhost:9243/api/v1/organizations' \
   --header 'Content-Type: application/json' \
   --header 'Authorization: Bearer <shared-token>' \
   --data '{
@@ -75,7 +75,7 @@ curl -k --location 'https://localhost:8443/api/v1/organizations' \
 
 ### 4. Accept the Self-Signed Certificate
 
-Open https://localhost:8443 in your browser and accept the self-signed certificate.
+Open https://localhost:9243 in your browser and accept the self-signed certificate.
 
 ### 5. Open the Management Portal
 

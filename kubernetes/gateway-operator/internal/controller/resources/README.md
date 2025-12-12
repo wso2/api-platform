@@ -205,7 +205,7 @@ Resources created:
 | `.Replicas` | int32 | `3` | Number of replicas |
 | `.GatewayImage` | string | `"wso2/gateway-controller:latest"` | Controller image |
 | `.RouterImage` | string | `"wso2/gateway-router:latest"` | Router image |
-| `.ControlPlaneHost` | string | `"cp.example.com:8443"` | Control plane endpoint |
+| `.ControlPlaneHost` | string | `"cp.example.com:9243"` | Control plane endpoint |
 | `.ControlPlaneTokenSecret` | object | See below | Token secret reference |
 | `.LogLevel` | string | `"info"` | Logging level |
 | `.StorageType` | string | `"sqlite"` | Storage backend type |

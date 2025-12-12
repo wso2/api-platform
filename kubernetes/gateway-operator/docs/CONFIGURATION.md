@@ -46,7 +46,7 @@ spec:
         - name: GATEWAY_MANIFEST_PATH
           value: "internal/controller/resources/api-platform-gateway-k8s-manifests.yaml"
         - name: GATEWAY_CONTROLPLANE_HOST
-          value: "gateway-control-plane:8443"
+          value: "gateway-control-plane:9243"
         - name: GATEWAY_CONTROLPLANE_TOKEN
           valueFrom:
             secretKeyRef:
@@ -96,7 +96,7 @@ spec:
 | Environment Variable | Flag | Default | Description |
 |---------------------|------|---------|-------------|
 | `GATEWAY_MANIFEST_PATH` | `--gateway-manifest-path` | `internal/controller/resources/api-platform-gateway-k8s-manifests.yaml` | Path to gateway Kubernetes manifest file |
-| `GATEWAY_CONTROLPLANE_HOST` | - | `host.docker.internal:8443` | Gateway control plane host address |
+| `GATEWAY_CONTROLPLANE_HOST` | - | `host.docker.internal:9243` | Gateway control plane host address |
 | `GATEWAY_CONTROLPLANE_TOKEN` | - | `""` | Authentication token for control plane |
 | `GATEWAY_STORAGE_TYPE` | - | `sqlite` | Storage backend type |
 | `GATEWAY_STORAGE_SQLITE_PATH` | - | `./data/gateway.db` | SQLite database file path |
@@ -252,7 +252,7 @@ View loaded configuration in logs:
 ```
 INFO Loaded operator configuration {
     "manifestPath": "/path/to/manifest.yaml",
-    "controlPlaneHost": "gateway:8443",
+    "controlPlaneHost": "gateway:9243",
     "storageType": "sqlite"
 }
 ```

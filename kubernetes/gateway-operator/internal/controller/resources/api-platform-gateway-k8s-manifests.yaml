@@ -86,7 +86,7 @@ spec:
       containers:
         - env:
             - name: GATEWAY_CONTROLPLANE_HOST
-              value: host.docker.internal:8443
+              value: host.docker.internal:9243
             - name: GATEWAY_CONTROLPLANE_TOKEN
             - name: GATEWAY_LOGGING_LEVEL
               value: info

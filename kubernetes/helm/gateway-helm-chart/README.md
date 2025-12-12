@@ -18,7 +18,7 @@ Install with custom control plane configuration:
 ```bash
 helm install gateway ./gateway-helm-chart \
   --set gateway.controller.controlPlane.host="host.docker.internal" \
-  --set gateway.controller.controlPlane.port=8443 \
+  --set gateway.controller.controlPlane.port=9243 \
   --set gateway.controller.controlPlane.token.value="your-token-here"
 ```
 
@@ -28,7 +28,7 @@ kubectl create namespace api-gateway
 helm install gateway ./gateway-helm-chart \
   --namespace api-gateway \
   --set gateway.controller.controlPlane.host="platform.example.com" \
-  --set gateway.controller.controlPlane.port=8443
+  --set gateway.controller.controlPlane.port=9243
 ```
 
 Install with custom values file:
