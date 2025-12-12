@@ -22,9 +22,9 @@ spec:
       name: test-api2
       version: v1.0
       context: /test2
-      upstreams:
-        # - url: https://secure-backend:5443/api/v2
-        - url: https://httpbin.org/anything
+      upstream:
+        main:
+          url: https://httpbin.org/anything
       operations:
         - method: GET
           path: /info
@@ -48,9 +48,9 @@ spec:
       name: test-api
       version: v1.0
       context: /test
-      upstreams:
-        # - url: https://secure-backend:5443/api/v2
-        - url: http://httpbin.org/anything
+      upstream:
+        main:
+          url: http://httpbin.org/anything
       operations:
         - method: GET
           path: /info
@@ -71,9 +71,9 @@ spec:
       name: self-signed-api
       version: v1.0
       context: /ssa
-      upstreams:
-        - url: https://secure-backend:5443/api/v2
-        # - url: http://httpbin.org/anything
+      upstream:
+        main:
+          url: https://secure-backend:5443/api/v2
       operations:
         - method: GET
           path: /info
