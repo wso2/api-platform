@@ -71,8 +71,9 @@ spec:
   name: Weather-API
   version: v1.0
   context: /weather/$version
-  upstreams:
-    - url: http://sample-backend:5000/api/v2
+  upstream:
+    main:
+      url: http://sample-backend:5000/api/v2
   operations:
     - method: GET
       path: /{country_code}/{city}
