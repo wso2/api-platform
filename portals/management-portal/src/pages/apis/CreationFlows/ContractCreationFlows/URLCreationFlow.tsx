@@ -19,7 +19,6 @@ import {
   isValidMajorMinorVersion,
 } from "../../../../helpers/openApiHelpers";
 
-/* ---------- Types ---------- */
 type Props = {
   open: boolean;
   selectedProjectId: string;
@@ -32,8 +31,6 @@ type Props = {
 };
 
 type Step = "url" | "details";
-
-/* ---------- component ---------- */
 
 const URLCreationFlow: React.FC<Props> = ({
   open,
@@ -54,6 +51,7 @@ const URLCreationFlow: React.FC<Props> = ({
     useCreateComponentBuildpackContext();
   const { validateOpenApiUrl } = useOpenApiValidation();
   const abortControllerRef = React.useRef<AbortController | null>(null);
+  const [metaHasErrors, setMetaHasErrors] = React.useState(false);
 
   React.useEffect(() => {
     return () => {
@@ -299,7 +297,11 @@ const URLCreationFlow: React.FC<Props> = ({
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 6 }}>
             {/* <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}> */}
-            <CreationMetaData scope="contract" title="API Details" />
+            <CreationMetaData
+              scope="contract"
+              title="API Details"
+              onValidationChange={({ hasError }) => setMetaHasErrors(hasError)}
+            />
             <Stack
               direction="row"
               spacing={1}
@@ -317,6 +319,7 @@ const URLCreationFlow: React.FC<Props> = ({
                 variant="contained"
                 disabled={
                   creating ||
+                  metaHasErrors ||
                   !(contractMeta?.name || "").trim() ||
                   !(contractMeta?.context || "").trim() ||
                   !isValidMajorMinorVersion(

@@ -5,19 +5,30 @@ import { Button } from "../../../../components/src/components/Button";
 import { IconButton } from "../../../../components/src/components/IconButton";
 import Delete from "../../../../components/src/Icons/generated/Delete";
 import CreationMetaData from "../CreationMetaData";
+import { useCreateComponentBuildpackContext } from "../../../../context/CreateComponentBuildpackContext";
 import {
-  useCreateComponentBuildpackContext,
-} from "../../../../context/CreateComponentBuildpackContext";
-import { useOpenApiValidation, type OpenApiValidationResponse } from "../../../../hooks/validation";
+  useOpenApiValidation,
+  type OpenApiValidationResponse,
+} from "../../../../hooks/validation";
 import { ApiOperationsList } from "../../../../components/src/components/Common/ApiOperationsList";
 import type { ImportOpenApiRequest, ApiSummary } from "../../../../hooks/apis";
-import { defaultServiceName, firstServerUrl, deriveContext, mapOperations, formatVersionToMajorMinor, isValidMajorMinorVersion } from "../../../../helpers/openApiHelpers";
+import {
+  defaultServiceName,
+  firstServerUrl,
+  deriveContext,
+  mapOperations,
+  formatVersionToMajorMinor,
+  isValidMajorMinorVersion,
+} from "../../../../helpers/openApiHelpers";
 
 /* ---------- Types ---------- */
 type Props = {
   open: boolean;
   selectedProjectId: string;
-  importOpenApi: (payload: ImportOpenApiRequest, opts?: { signal?: AbortSignal }) => Promise<ApiSummary>;
+  importOpenApi: (
+    payload: ImportOpenApiRequest,
+    opts?: { signal?: AbortSignal }
+  ) => Promise<ApiSummary>;
   refreshApis: (projectId?: string) => Promise<ApiSummary[]>;
   onClose: () => void;
 };
@@ -25,17 +36,26 @@ type Props = {
 type Step = "upload" | "details";
 
 /* ---------- component ---------- */
-const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOpenApi, refreshApis, onClose }) => {
+const UploadCreationFlow: React.FC<Props> = ({
+  open,
+  selectedProjectId,
+  importOpenApi,
+  refreshApis,
+  onClose,
+}) => {
   const [step, setStep] = React.useState<Step>("upload");
   const [uploadedFile, setUploadedFile] = React.useState<File | null>(null);
-  const [validationResult, setValidationResult] = React.useState<OpenApiValidationResponse | null>(null);
+  const [validationResult, setValidationResult] =
+    React.useState<OpenApiValidationResponse | null>(null);
   const [fileName, setFileName] = React.useState<string>("");
   const [error, setError] = React.useState<string | null>(null);
   const [validating, setValidating] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
 
-  const { contractMeta, setContractMeta, resetContractMeta } = useCreateComponentBuildpackContext();
+  const { contractMeta, setContractMeta, resetContractMeta } =
+    useCreateComponentBuildpackContext();
   const { validateOpenApiFile } = useOpenApiValidation();
+  const [metaHasErrors, setMetaHasErrors] = React.useState(false);
 
   // Always-mounted input + stable id/label wiring
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -63,26 +83,29 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
     }
   }, [open, resetContractMeta]);
 
-  const autoFill = React.useCallback((api: any) => {
-    const title = api?.name?.trim() || api?.displayName?.trim() || "";
-    const version = formatVersionToMajorMinor(api?.version);
-    const description = api?.description || "";
-    const targetUrl = firstServerUrl(api);
+  const autoFill = React.useCallback(
+    (api: any) => {
+      const title = api?.name?.trim() || api?.displayName?.trim() || "";
+      const version = formatVersionToMajorMinor(api?.version);
+      const description = api?.description || "";
+      const targetUrl = firstServerUrl(api);
 
-    setContractMeta((prev: any) => ({
-      ...prev,
-      name: title || prev?.name || "Sample API",
-      version,
-      description,
-      context: deriveContext(api),
-      target: prev?.target || targetUrl || "",
-    }));
-  }, [setContractMeta]);
+      setContractMeta((prev: any) => ({
+        ...prev,
+        name: title || prev?.name || "Sample API",
+        version,
+        description,
+        context: deriveContext(api),
+        target: prev?.target || targetUrl || "",
+      }));
+    },
+    [setContractMeta]
+  );
 
   const handleFiles = React.useCallback(
-    async (files: FileList | null) => {  
+    async (files: FileList | null) => {
       if (!files || !files[0]) return;
-      if (validating) return;   
+      if (validating) return;
       const file = files[0];
 
       abortControllerRef.current?.abort();
@@ -97,17 +120,20 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
         setUploadedFile(file);
         setFileName(file.name);
 
-        const result = await validateOpenApiFile(file, { signal: abortController.signal });
+        const result = await validateOpenApiFile(file, {
+          signal: abortController.signal,
+        });
         setValidationResult(result);
 
         if (result.isAPIDefinitionValid) {
           autoFill(result.api);
         } else {
-          const errorMsg = result.errors?.join(", ") || "Invalid OpenAPI definition";
+          const errorMsg =
+            result.errors?.join(", ") || "Invalid OpenAPI definition";
           setError(errorMsg);
         }
       } catch (e: any) {
-        if (e.name === 'AbortError') return;
+        if (e.name === "AbortError") return;
         setError(e?.message || "Failed to validate OpenAPI definition");
         setValidationResult(null);
       } finally {
@@ -171,17 +197,16 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
     setError(null);
 
     const serviceName = defaultServiceName(name);
-    const backendServices =
-      target
-        ? [
-            {
-              name: serviceName,
-              isDefault: true,
-              retries: 2,
-              endpoints: [{ url: target, description: "Primary backend" }],
-            },
-          ]
-        : [];
+    const backendServices = target
+      ? [
+          {
+            name: serviceName,
+            isDefault: true,
+            retries: 2,
+            endpoints: [{ url: target, description: "Primary backend" }],
+          },
+        ]
+      : [];
 
     try {
       await importOpenApi({
@@ -238,7 +263,11 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
               htmlFor={inputId}
               onDragOver={(e) => e.preventDefault()}
               onDrop={onDrop}
-              sx={{ display: "block", cursor: validating ? "not-allowed" : "pointer", opacity: validating ? 0.6 : 1 }}
+              sx={{
+                display: "block",
+                cursor: validating ? "not-allowed" : "pointer",
+                opacity: validating ? 0.6 : 1,
+              }}
             >
               <Paper
                 variant="outlined"
@@ -268,7 +297,11 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
                         <Typography color="#aeacacff">
                           Drag &amp; drop your file or click to upload
                         </Typography>
-                        <Button component="label" startIcon={<UploadRoundedIcon />} htmlFor={inputId}>
+                        <Button
+                          component="label"
+                          startIcon={<UploadRoundedIcon />}
+                          htmlFor={inputId}
+                        >
                           Upload
                         </Button>
                       </>
@@ -290,7 +323,8 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
                           setValidationResult(null);
                           setFileName("");
                           setError(null);
-                          if (fileInputRef.current) fileInputRef.current.value = "";
+                          if (fileInputRef.current)
+                            fileInputRef.current.value = "";
                           setFileKey((k) => k + 1);
                         }}
                       >
@@ -308,7 +342,11 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
             </Box>
 
             <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
-              <Button variant="outlined" onClick={finishAndClose} sx={{ textTransform: "none" }}>
+              <Button
+                variant="outlined"
+                onClick={finishAndClose}
+                sx={{ textTransform: "none" }}
+              >
                 Cancel
               </Button>
               <Button
@@ -329,7 +367,10 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }}>
-            <ApiOperationsList title="Fetched OAS Definition" operations={previewOps} />
+            <ApiOperationsList
+              title="Fetched OAS Definition"
+              operations={previewOps}
+            />
           </Grid>
         </Grid>
       )}
@@ -338,19 +379,37 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
         <Box>
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 6 }}>
-              <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-                <CreationMetaData scope="contract" title="API Details" />
-                <Stack direction="row" spacing={1} justifyContent="flex-end" sx={{ mt: 3 }}>
-                  <Button variant="outlined" onClick={() => setStep("upload")} sx={{ textTransform: "none" }}>
+              {/* <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}> */}
+                <CreationMetaData
+                  scope="contract"
+                  title="API Details"
+                  onValidationChange={({ hasError }) =>
+                    setMetaHasErrors(hasError)
+                  }
+                />
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  justifyContent="flex-start"
+                  sx={{ mt: 3 }}
+                >
+                  <Button
+                    variant="outlined"
+                    onClick={() => setStep("upload")}
+                    sx={{ textTransform: "none" }}
+                  >
                     Back
                   </Button>
                   <Button
                     variant="contained"
                     disabled={
                       creating ||
+                      metaHasErrors ||
                       !(contractMeta?.name || "").trim() ||
                       !(contractMeta?.context || "").trim() ||
-                      !isValidMajorMinorVersion((contractMeta?.version || "").trim())
+                      !isValidMajorMinorVersion(
+                        (contractMeta?.version || "").trim()
+                      )
                     }
                     onClick={onCreate}
                     sx={{ textTransform: "none" }}
@@ -364,11 +423,14 @@ const UploadCreationFlow: React.FC<Props> = ({ open, selectedProjectId, importOp
                     {error}
                   </Alert>
                 )}
-              </Paper>
+              {/* </Paper> */}
             </Grid>
 
             <Grid size={{ xs: 12, md: 6 }}>
-              <ApiOperationsList title="Fetched OAS Definition" operations={previewOps} />
+              <ApiOperationsList
+                title="Fetched OAS Definition"
+                operations={previewOps}
+              />
             </Grid>
           </Grid>
         </Box>

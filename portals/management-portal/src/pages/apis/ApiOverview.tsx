@@ -51,11 +51,13 @@ const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
 
   const isDeployed = gateway.isDeployed === true;
   const vhost = gateway.vhost || "";
-  
+
   // Construct URLs
-  const httpUrl = vhost && api ? `http://${vhost}:8080${api.context}/${api.version}` : null;
-  const httpsUrl = vhost && api ? `https://${vhost}:5443${api.context}/${api.version}` : null;
-  
+  const httpUrl =
+    vhost && api ? `http://${vhost}:8080${api.context}/${api.version}` : null;
+  const httpsUrl =
+    vhost && api ? `https://${vhost}:5443${api.context}/${api.version}` : null;
+
   // Get upstream URL (first default backend endpoint)
   const upstreamUrl =
     api?.backendServices?.find((s) => s.isDefault)?.endpoints?.[0]?.url ??
@@ -63,10 +65,13 @@ const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
     "";
 
   const handleCopyUrl = (url: string) => {
-    navigator.clipboard?.writeText(url).then(() => {
-      setCopiedUrl(url);
-      setTimeout(() => setCopiedUrl(null), 2000);
-    }).catch(() => {});
+    navigator.clipboard
+      ?.writeText(url)
+      .then(() => {
+        setCopiedUrl(url);
+        setTimeout(() => setCopiedUrl(null), 2000);
+      })
+      .catch(() => {});
   };
 
   return (
@@ -87,7 +92,10 @@ const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
           gap: 2,
           cursor: "pointer",
           "&:hover": {
-            bgcolor: (t) => t.palette.mode === "dark" ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
+            bgcolor: (t) =>
+              t.palette.mode === "dark"
+                ? "rgba(255,255,255,0.03)"
+                : "rgba(0,0,0,0.02)",
           },
         }}
         onClick={() => setExpanded(!expanded)}
@@ -100,12 +108,22 @@ const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
             variant={isDeployed ? "filled" : "outlined"}
             sx={{ minWidth: 85 }}
           />
-          
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 250 }}>
-            <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary" }}>
+
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+              minWidth: 250,
+            }}
+          >
+            <Typography
+              variant="caption"
+              sx={{ fontWeight: 600, color: "text.secondary" }}
+            >
               Gateway:
             </Typography>
-            
+
             <Typography variant="body1" sx={{ fontWeight: 600 }}>
               {gateway.name}
             </Typography>
@@ -141,7 +159,9 @@ const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
                 {httpsUrl}
               </Typography>
             </Tooltip>
-            <Tooltip title={copiedUrl === httpsUrl ? "Copied!" : "Copy HTTPS URL"}>
+            <Tooltip
+              title={copiedUrl === httpsUrl ? "Copied!" : "Copy HTTPS URL"}
+            >
               <IconButton
                 size="small"
                 onClick={(e) => {
@@ -169,12 +189,30 @@ const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
       </Box>
 
       <Collapse in={expanded}>
-        <Box sx={{ px: 2, pb: 2, pt: 1, bgcolor: (t) => t.palette.mode === "dark" ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.01)" }}>
+        <Box
+          sx={{
+            px: 2,
+            pb: 2,
+            pt: 1,
+            bgcolor: (t) =>
+              t.palette.mode === "dark"
+                ? "rgba(255,255,255,0.02)"
+                : "rgba(0,0,0,0.01)",
+          }}
+        >
           <Stack spacing={1.5}>
             {/* Main URLs header + HTTP/HTTPS rows (prefix label + url + copy) */}
             {(httpUrl || httpsUrl) && (
               <Box>
-                <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", mb: 0.5, display: "block" }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    fontWeight: 600,
+                    color: "text.secondary",
+                    mb: 0.5,
+                    display: "block",
+                  }}
+                >
                   Main URLs
                 </Typography>
 
@@ -186,12 +224,22 @@ const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
                         alignItems: "center",
                         gap: 1,
                         p: 1.25,
-                        bgcolor: (t) => (t.palette.mode === "dark" ? "rgba(255,255,255,0.03)" : "#F9FAFB"),
+                        bgcolor: (t) =>
+                          t.palette.mode === "dark"
+                            ? "rgba(255,255,255,0.03)"
+                            : "#F9FAFB",
                         borderRadius: 1,
                         border: (t) => `1px solid ${t.palette.divider}`,
                       }}
                     >
-                      <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", minWidth: 90 }}>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontWeight: 600,
+                          color: "text.secondary",
+                          minWidth: 90,
+                        }}
+                      >
                         HTTP URL
                       </Typography>
 
@@ -211,8 +259,15 @@ const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
                         </Typography>
                       </Tooltip>
 
-                      <Tooltip title={copiedUrl === httpUrl ? "Copied!" : "Copy HTTP URL"}>
-                        <IconButton size="small" onClick={() => handleCopyUrl(httpUrl)}>
+                      <Tooltip
+                        title={
+                          copiedUrl === httpUrl ? "Copied!" : "Copy HTTP URL"
+                        }
+                      >
+                        <IconButton
+                          size="small"
+                          onClick={() => handleCopyUrl(httpUrl)}
+                        >
                           <ContentCopyIcon sx={{ fontSize: 16 }} />
                         </IconButton>
                       </Tooltip>
@@ -228,12 +283,22 @@ const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
                         alignItems: "center",
                         gap: 1,
                         p: 1.25,
-                        bgcolor: (t) => (t.palette.mode === "dark" ? "rgba(255,255,255,0.03)" : "#F9FAFB"),
+                        bgcolor: (t) =>
+                          t.palette.mode === "dark"
+                            ? "rgba(255,255,255,0.03)"
+                            : "#F9FAFB",
                         borderRadius: 1,
                         border: (t) => `1px solid ${t.palette.divider}`,
                       }}
                     >
-                      <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", minWidth: 90 }}>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontWeight: 600,
+                          color: "text.secondary",
+                          minWidth: 90,
+                        }}
+                      >
                         HTTPS URL
                       </Typography>
 
@@ -253,8 +318,15 @@ const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
                         </Typography>
                       </Tooltip>
 
-                      <Tooltip title={copiedUrl === httpsUrl ? "Copied!" : "Copy HTTPS URL"}>
-                        <IconButton size="small" onClick={() => handleCopyUrl(httpsUrl)}>
+                      <Tooltip
+                        title={
+                          copiedUrl === httpsUrl ? "Copied!" : "Copy HTTPS URL"
+                        }
+                      >
+                        <IconButton
+                          size="small"
+                          onClick={() => handleCopyUrl(httpsUrl)}
+                        >
                           <ContentCopyIcon sx={{ fontSize: 16 }} />
                         </IconButton>
                       </Tooltip>
@@ -267,10 +339,20 @@ const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
             {upstreamUrl && (
               <>
                 <Box sx={{ px: 2 }}>
-                  <Divider sx={{ my: 1, borderColor: (t) => t.palette.divider }} />
+                  <Divider
+                    sx={{ my: 1, borderColor: (t) => t.palette.divider }}
+                  />
                 </Box>
                 <Box>
-                  <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", mb: 0.5, display: "block" }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontWeight: 600,
+                      color: "text.secondary",
+                      mb: 0.5,
+                      display: "block",
+                    }}
+                  >
                     Upstream URL
                   </Typography>
                   <Box
@@ -279,7 +361,10 @@ const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
                       alignItems: "center",
                       gap: 1,
                       p: 1.5,
-                      bgcolor: (t) => t.palette.mode === "dark" ? "rgba(255,255,255,0.05)" : "#F9FAFB",
+                      bgcolor: (t) =>
+                        t.palette.mode === "dark"
+                          ? "rgba(255,255,255,0.05)"
+                          : "#F9FAFB",
                       borderRadius: 1,
                       border: (t) => `1px solid ${t.palette.divider}`,
                     }}
@@ -299,8 +384,17 @@ const GatewayListItem: React.FC<GatewayListItemProps> = ({ gateway, api }) => {
                         {upstreamUrl}
                       </Typography>
                     </Tooltip>
-                    <Tooltip title={copiedUrl === upstreamUrl ? "Copied!" : "Copy Upstream URL"}>
-                      <IconButton size="small" onClick={() => handleCopyUrl(upstreamUrl)}>
+                    <Tooltip
+                      title={
+                        copiedUrl === upstreamUrl
+                          ? "Copied!"
+                          : "Copy Upstream URL"
+                      }
+                    >
+                      <IconButton
+                        size="small"
+                        onClick={() => handleCopyUrl(upstreamUrl)}
+                      >
                         <ContentCopyIcon sx={{ fontSize: 16 }} />
                       </IconButton>
                     </Tooltip>
@@ -329,20 +423,23 @@ const ApiOverviewContent: React.FC = () => {
   }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { apis, fetchApiById, fetchGatewaysForApi, loading, selectApi } = useApisContext();
+  const { apis, fetchApiById, fetchGatewaysForApi, loading, selectApi } =
+    useApisContext();
 
   const [apiId, setApiId] = React.useState<string | null>(
     searchParams.get("apiId") ?? legacyApiId ?? null
   );
   const [api, setApi] = React.useState<ApiSummary | null>(null);
-  const [associatedGateways, setAssociatedGateways] = React.useState<ApiGatewaySummary[]>([]);
+  const [associatedGateways, setAssociatedGateways] = React.useState<
+    ApiGatewaySummary[]
+  >([]);
   const [gatewaysLoading, setGatewaysLoading] = React.useState(false);
   const [detailsLoading, setDetailsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const sortedGateways = React.useMemo(() => {
-    return [...associatedGateways].sort((a, b) =>
-      +(b.isDeployed === true) - +(a.isDeployed === true)
+    return [...associatedGateways].sort(
+      (a, b) => +(b.isDeployed === true) - +(a.isDeployed === true)
     );
   }, [associatedGateways]);
 
@@ -470,6 +567,12 @@ const ApiOverviewContent: React.FC = () => {
     return `${day} day${day > 1 ? "s" : ""} ago`;
   };
 
+  const initials = (name: string) => {
+    const letters = name.replace(/[^A-Za-z]/g, "");
+    if (!letters) return "API";
+    return (letters[0] + (letters[1] || "")).toUpperCase();
+  };
+
   const ProtocolBadge = ({ label }: { label: string }) => (
     <Chip
       label={label}
@@ -501,7 +604,6 @@ const ApiOverviewContent: React.FC = () => {
       navigate("/apis");
     }
   }, [navigate, orgHandle, projectHandle]);
-
 
   if (loading || detailsLoading) {
     return (
@@ -572,7 +674,7 @@ const ApiOverviewContent: React.FC = () => {
                 lineHeight: 1,
               }}
             >
-              {api.displayName || api.name}
+              {initials(api.name)}
             </Typography>
           </Box>
 
@@ -708,7 +810,11 @@ const ApiOverviewContent: React.FC = () => {
           p: 2.25,
         }}
       >
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+        >
           <Typography
             variant="subtitle1"
             sx={{ fontWeight: 600, color: "text.primary" }}
@@ -756,7 +862,12 @@ const ApiOverviewContent: React.FC = () => {
         <Box sx={{ mt: 2, mb: 2, height: 1, bgcolor: "divider" }} />
 
         {gatewaysLoading ? (
-          <Box display="flex" alignItems="center" justifyContent="center" py={4}>
+          <Box
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            py={4}
+          >
             <CircularProgress size={24} />
           </Box>
         ) : associatedGateways.length === 0 ? (
@@ -892,8 +1003,6 @@ const ApiOverviewContent: React.FC = () => {
   );
 };
 
-const ApiOverview: React.FC = () => (
-  <ApiOverviewContent />
-);
+const ApiOverview: React.FC = () => <ApiOverviewContent />;
 
 export default ApiOverview;

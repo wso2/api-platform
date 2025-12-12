@@ -12,9 +12,7 @@ import { Button } from "../../../components/src/components/Button";
 import { Card } from "../../../components/src/components/Card";
 import { TextInput } from "../../../components/src/components/TextInput";
 
-import {
-  useCreateComponentBuildpackContext,
-} from "../../../context/CreateComponentBuildpackContext";
+import { useCreateComponentBuildpackContext } from "../../../context/CreateComponentBuildpackContext";
 import { type CreateApiPayload } from "../../../hooks/apis";
 import CreationMetaData from "./CreationMetaData";
 
@@ -46,14 +44,12 @@ const EndPointCreationFlow: React.FC<Props> = ({
     endpointUrl: "",
   });
 
-  const {
-    endpointMeta,
-    setEndpointMeta,
-    resetEndpointMeta,
-  } = useCreateComponentBuildpackContext();
+  const { endpointMeta, setEndpointMeta, resetEndpointMeta } =
+    useCreateComponentBuildpackContext();
 
   const [wizardError, setWizardError] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
+  const [metaHasErrors, setMetaHasErrors] = React.useState(false);
 
   // Reset this flow's slice when opened
   React.useEffect(() => {
@@ -110,13 +106,26 @@ const EndPointCreationFlow: React.FC<Props> = ({
       }
       setWizardStep(next);
     },
-    [inferNameFromEndpoint, endpointMeta, setEndpointMeta, wizardState.endpointUrl]
+    [
+      inferNameFromEndpoint,
+      endpointMeta,
+      setEndpointMeta,
+      wizardState.endpointUrl,
+    ]
   );
 
   const handleCreate = React.useCallback(async () => {
     const endpointUrl = wizardState.endpointUrl.trim();
-    const displayName = (endpointMeta?.displayName || endpointMeta?.name || "").trim();
-    const identifier = (endpointMeta?.identifier || endpointMeta?.name || "").trim();
+    const displayName = (
+      endpointMeta?.displayName ||
+      endpointMeta?.name ||
+      ""
+    ).trim();
+    const identifier = (
+      endpointMeta?.identifier ||
+      endpointMeta?.name ||
+      ""
+    ).trim();
     const context = (endpointMeta?.context || "").trim();
     const version = (endpointMeta?.version || "").trim() || "1.0.0";
 
@@ -162,7 +171,14 @@ const EndPointCreationFlow: React.FC<Props> = ({
     } finally {
       setCreating(false);
     }
-  }, [createApi, endpointMeta, onClose, resetEndpointMeta, selectedProjectId, wizardState.endpointUrl]);
+  }, [
+    createApi,
+    endpointMeta,
+    onClose,
+    resetEndpointMeta,
+    selectedProjectId,
+    wizardState.endpointUrl,
+  ]);
 
   if (!open) return null;
 
@@ -202,7 +218,11 @@ const EndPointCreationFlow: React.FC<Props> = ({
           </Stack>
         ) : (
           <Stack spacing={2}>
-            <CreationMetaData scope="endpoint" title="API Details" />
+            <CreationMetaData
+              scope="endpoint"
+              title="API Details"
+              onValidationChange={({ hasError }) => setMetaHasErrors(hasError)}
+            />
             <Box sx={{ mt: 1 }}>
               <Typography variant="body2" color="text.secondary">
                 The endpoint URL will be added as the default backend of this
@@ -239,6 +259,7 @@ const EndPointCreationFlow: React.FC<Props> = ({
               onClick={handleCreate}
               disabled={
                 creating ||
+                metaHasErrors ||
                 !(endpointMeta?.name || "").trim() ||
                 !(endpointMeta?.context || "").trim() ||
                 !(endpointMeta?.version || "").trim()
