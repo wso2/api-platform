@@ -9,7 +9,7 @@ data:
   GATEWAY_MANIFEST_PATH: "internal/controller/resources/api-platform-gateway-k8s-manifests.yaml"
   
   # Gateway control plane configuration
-  GATEWAY_CONTROLPLANE_HOST: "host.docker.internal:9243"
+  GATEWAY_CONTROLPLANE_HOST: "host.docker.internal:8443"
   GATEWAY_CONTROLPLANE_TOKEN: ""
   
   # Storage configuration

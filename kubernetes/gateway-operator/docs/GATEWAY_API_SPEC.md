@@ -142,7 +142,7 @@ spec:
   
   # Control plane configuration
   controlPlane:
-    host: "control-plane.gateway-operator-system:9243"
+    host: "control-plane.gateway-operator-system:8443"
     tokenSecretRef:
       name: gateway-credentials
       key: token
