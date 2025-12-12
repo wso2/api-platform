@@ -221,6 +221,16 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 					zap.String("policy_id", storedPolicy.ID),
 					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
 			}
+		} else if result.IsUpdate {
+			// API was updated and no longer has policies, remove the existing policy configuration
+			policyID := result.StoredConfig.ID + "-policies"
+			if err := s.policyManager.RemovePolicy(policyID); err != nil {
+				// Log at debug level since policy may not exist if API never had policies
+				log.Debug("No policy configuration to remove", zap.String("policy_id", policyID))
+			} else {
+				log.Info("Derived policy configuration removed (API no longer has policies)",
+					zap.String("policy_id", policyID))
+			}
 		}
 	}
 }
@@ -515,6 +525,16 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 				log.Info("Derived policy configuration updated",
 					zap.String("policy_id", storedPolicy.ID),
 					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
+			}
+		} else {
+			// API no longer has policies, remove the existing policy configuration
+			policyID := existing.ID + "-policies"
+			if err := s.policyManager.RemovePolicy(policyID); err != nil {
+				// Log at debug level since policy may not exist if API never had policies
+				log.Debug("No policy configuration to remove", zap.String("policy_id", policyID))
+			} else {
+				log.Info("Derived policy configuration removed (API no longer has policies)",
+					zap.String("policy_id", policyID))
 			}
 		}
 	}
@@ -1002,6 +1022,16 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, name string, version strin
 				log.Info("Derived policy configuration updated",
 					zap.String("policy_id", storedPolicy.ID),
 					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
+			}
+		} else {
+			// LLM provider no longer has policies, remove the existing policy configuration
+			policyID := updated.ID + "-policies"
+			if err := s.policyManager.RemovePolicy(policyID); err != nil {
+				// Log at debug level since policy may not exist if LLM provider never had policies
+				log.Debug("No policy configuration to remove", zap.String("policy_id", policyID))
+			} else {
+				log.Info("Derived policy configuration removed (LLM provider no longer has policies)",
+					zap.String("policy_id", policyID))
 			}
 		}
 	}
@@ -1538,6 +1568,16 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, name string, version string) 
 				log.Info("Derived policy configuration updated",
 					zap.String("policy_id", storedPolicy.ID),
 					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
+			}
+		} else {
+			// MCP proxy no longer has policies, remove the existing policy configuration
+			policyID := existing.ID + "-policies"
+			if err := s.policyManager.RemovePolicy(policyID); err != nil {
+				// Log at debug level since policy may not exist if MCP proxy never had policies
+				log.Debug("No policy configuration to remove", zap.String("policy_id", policyID))
+			} else {
+				log.Info("Derived policy configuration removed (MCP proxy no longer has policies)",
+					zap.String("policy_id", policyID))
 			}
 		}
 	}

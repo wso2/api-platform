@@ -72,15 +72,40 @@ type APIConfigData struct {
 	// +optional
 	Policies []Policy `json:"policies,omitempty"`
 
-	// Upstreams List of backend service URLs
+	// Upstream API-level upstream configuration
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinItems=1
-	Upstreams []Upstream `json:"upstreams"`
+	Upstream UpstreamConfig `json:"upstream"`
 
 	// Version Semantic version of the API
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern=`^v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`
 	Version string `json:"version"`
+
+	// Vhosts Custom virtual hosts/domains for the API
+	// +optional
+	Vhosts *VhostConfig `json:"vhosts,omitempty"`
+}
+
+// UpstreamConfig defines the upstream backend configuration for the API
+type UpstreamConfig struct {
+	// Main Upstream backend configuration for production traffic
+	// +kubebuilder:validation:Required
+	Main Upstream `json:"main"`
+
+	// Sandbox Upstream backend configuration for sandbox/testing traffic
+	// +optional
+	Sandbox *Upstream `json:"sandbox,omitempty"`
+}
+
+// VhostConfig defines custom virtual hosts/domains for the API
+type VhostConfig struct {
+	// Main Custom virtual host/domain for production traffic
+	// +kubebuilder:validation:Required
+	Main string `json:"main"`
+
+	// Sandbox Custom virtual host/domain for sandbox traffic
+	// +optional
+	Sandbox *string `json:"sandbox,omitempty"`
 }
 
 // Operation defines model for Operation.
