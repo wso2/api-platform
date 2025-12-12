@@ -48,6 +48,11 @@ policies:
   # Directory containing policy definitions
   definitions_path: ./default-policies
 
+# LLM Provider Templates configuration
+llm:
+  # Directory containing LLM provider template definitions
+  template_definitions_path: ./default-llm-provider-templates
+
 # Router (Envoy) configuration
 router:
   # Gateway host for incoming requests

@@ -39,6 +39,7 @@ type Config struct {
 	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
 	PolicyServer PolicyServerConfig `koanf:"policyserver"`
 	Policies     PoliciesConfig     `koanf:"policies"`
+	LLM          LLMConfig          `koanf:"llm"`
 }
 
 // ServerConfig holds server-related configuration
@@ -65,6 +66,10 @@ type PolicyServerTLS struct {
 // PoliciesConfig holds policy-related configuration
 type PoliciesConfig struct {
 	DefinitionsPath string `koanf:"definitions_path"` // Directory containing policy definitions
+}
+
+type LLMConfig struct {
+	TemplateDefinitionsPath string `koanf:"template_definitions_path"`
 }
 
 // StorageConfig holds storage-related configuration
@@ -279,6 +284,9 @@ func defaultConfig() *Config {
 		},
 		Policies: PoliciesConfig{
 			DefinitionsPath: "./default-policies",
+		},
+		LLM: LLMConfig{
+			TemplateDefinitionsPath: "./default-llm-provider-templates",
 		},
 		Storage: StorageConfig{
 			Type: "memory",

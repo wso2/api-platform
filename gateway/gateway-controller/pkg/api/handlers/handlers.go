@@ -73,6 +73,7 @@ func NewAPIServer(
 	logger *zap.Logger,
 	controlPlaneClient controlplane.ControlPlaneClient,
 	policyDefinitions map[string]api.PolicyDefinition,
+	templateDefinitions map[string]*api.LLMProviderTemplate,
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
 ) *APIServer {
@@ -88,7 +89,7 @@ func NewAPIServer(
 		logger:               logger,
 		deploymentService:    deploymentService,
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
-		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, deploymentService),
+		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, templateDefinitions, deploymentService),
 		controlPlaneClient:   controlPlaneClient,
 		routerConfig:         routerConfig,
 		httpClient:           &http.Client{Timeout: 10 * time.Second},

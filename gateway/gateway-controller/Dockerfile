@@ -71,6 +71,9 @@ COPY config/config.yaml /app/config/config.yaml
 # Copy policy definitions
 COPY default-policies /app/default-policies
 
+# Copy default llm provider templates
+COPY default-llm-provider-templates /app/default-llm-provider-templates
+
 # Create data directory for SQLite database
 RUN mkdir -p /app/data
 
