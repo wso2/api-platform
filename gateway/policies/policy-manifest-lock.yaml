@@ -58,3 +58,8 @@ policies:
   - name: McpAuthentication
     version: v0.1.0
     filePath: ./mcp-auth/v0.1.0
+
+  # API Key Authentication Policy
+  - name: APIKeyAuthentication
+    version: v1.0.0
+    filePath: ./api-key-auth/v1.0.0
