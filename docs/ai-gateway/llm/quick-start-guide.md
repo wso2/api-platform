@@ -50,13 +50,12 @@ spec:
   name: openai-provider
   version: v1.0
   template: openai
-  vhost: api.openai.com
   upstream:
     url: https://api.openai.com/v1
     auth:
       type: api-key
       header: Authorization
-      value: <openai-apikey>
+      value: Bearer <openai-apikey>
   accessControl:
     mode: deny_all
     exceptions:
