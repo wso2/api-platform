@@ -40,6 +40,24 @@ func GetRegistry() *PolicyRegistry {
 	return globalRegistry
 }
 
+// mergeParams merges initParams (resolved) with runtime params
+// Runtime params override init params when keys conflict
+func mergeParams(initParams, params map[string]interface{}) map[string]interface{} {
+	merged := make(map[string]interface{}, len(initParams)+len(params))
+
+	// Copy initParams first
+	for k, v := range initParams {
+		merged[k] = v
+	}
+
+	// Override with runtime params
+	for k, v := range params {
+		merged[k] = v
+	}
+
+	return merged
+}
+
 // GetDefinition retrieves a policy definition by name and version
 func (r *PolicyRegistry) GetDefinition(name, version string) (*policy.PolicyDefinition, error) {
 	key := compositeKey(name, version)
@@ -80,8 +98,11 @@ func (r *PolicyRegistry) CreateInstance(
 		initParams = r.ConfigResolver.ResolveMap(initParams)
 	}
 
-	// Call factory to create instance
-	instance, err := factory(metadata, initParams, params)
+	// Merge resolved initParams with runtime params (params override initParams)
+	mergedParams := mergeParams(initParams, params)
+
+	// Call factory to create instance with merged params
+	instance, err := factory(metadata, mergedParams)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create policy instance %s: %w", key, err)
 	}

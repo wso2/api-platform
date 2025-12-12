@@ -43,4 +43,11 @@ parameters:
 
 initParameters:
   type: object
-  properties: {}
+  properties:
+    foo:
+      type: integer
+      description: HTTP status code for the response. Defaults to 200 if not specified.
+      minimum: 100
+      maximum: 599
+      default: 200
+      "wso2/defaultValue": "$config(JWTAuth.JwksFetchRetryCount)"
