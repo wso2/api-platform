@@ -48,10 +48,10 @@ Ensure `docker` and `docker compose` commands are available.
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway-v0.0.1/gateway-v0.0.1.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway-v0.1.0/gateway-v0.1.0.zip
 
 # Unzip the downloaded distribution.
-unzip gateway-v0.0.1.zip
+unzip gateway-v0.1.0.zip
 
 
 # Start the complete stack
@@ -150,7 +150,7 @@ data:
   name: Weather API
   version: v1.0
   context: /weather
-  upstreams:
+  upstream:
     - url: https://api.weather.com/api/v2
   operations:
     - method: GET
@@ -204,13 +204,11 @@ For complete configuration options, see [Gateway-Controller Configuration](gatew
 
 ## Documentation
 
-- [Gateway-Controller README](gateway-controller/README.md) - Detailed controller documentation
-- [Router README](router/README.md) - Envoy configuration details
-- [API Specification](gateway-controller/api/openapi.yaml) - OpenAPI 3.0 spec
-- [Quickstart Guide](../specs/001-gateway-has-two/quickstart.md) - Step-by-step guide
-- [Data Model](../specs/001-gateway-has-two/data-model.md) - Configuration structure
-- [Implementation Plan](../specs/001-gateway-has-two/plan.md) - Architecture and design decisions
+- [Gateway Controller README](../../gateway/gateway-controller/README.md) - Detailed controller documentation
+- [Router README](../../gateway/router/README.md) - Envoy configuration details
+- [Gateway Controller API Specification](../../gateway/gateway-controller/api/openapi.yaml) - OpenAPI 3.0 spec
+- [Quickstart Guide](quick-start-guide.md) - Step-by-step guide
 
 ## Examples
 
-See [examples/](examples/) directory for sample API configurations.
+See [examples/](../../gateway/examples/) directory for sample API configurations.
