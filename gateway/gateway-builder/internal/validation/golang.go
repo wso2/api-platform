@@ -73,10 +73,10 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 					"hasReceiver", hasReceiver,
 					"phase", "validation")
 
-				// Check for NewPolicy factory function
-				if methodName == "NewPolicy" {
+				// Check for GetPolicy factory function
+				if methodName == "GetPolicy" {
 					hasNewPolicy = true
-					slog.Debug("Found NewPolicy factory function", "phase", "validation")
+					slog.Debug("Found GetPolicy factory function", "phase", "validation")
 				}
 
 				// Check for interface methods
@@ -139,7 +139,7 @@ func ValidateGoInterface(policy *types.DiscoveredPolicy) []types.ValidationError
 			PolicyName:    policy.Name,
 			PolicyVersion: policy.Version,
 			FilePath:      policy.Path,
-			Message:       "missing required NewPolicy() factory function",
+			Message:       "missing required GetPolicy() factory function",
 		})
 	}
 

@@ -1,7 +1,7 @@
 package policyv1alpha
 
-// PolicyMetadata contains metadata passed to NewPolicy for instance creation
-// This will be passed to the NewPolicy factory function to provide context about policy
+// PolicyMetadata contains metadata passed to GetPolicy for instance creation
+// This will be passed to the GetPolicy factory function to provide context about policy
 type PolicyMetadata struct {
 	// RouteName is the unique identifier for the route this policy is attached to
 	RouteName string
@@ -28,27 +28,27 @@ type Policy interface {
 }
 
 // PolicyFactory is the function signature for creating policy instances
-// Policy implementations must export a NewPolicy function with this signature:
+// Policy implementations must export a GetPolicy function with this signature:
 //
-//	func NewPolicy(
+//	func GetPolicy(
 //	    metadata PolicyMetadata,
-//	    initParams map[string]interface{},
 //	    params map[string]interface{},
 //	) (Policy, error)
 //
 // Parameters:
 //   - metadata: Contains route-level metadata (routeName, etc.)
-//   - initParams: Static policy configuration from policy definition
-//   - params: Dynamic user parameters from API configuration
+//   - params: Merged parameters combining static config (from policy definition
+//     with resolved $config() references) and runtime parameters (from API
+//     configuration). Runtime params override static config on key conflicts.
 //
 // Returns:
 //   - Policy instance (can be singleton, cached, or per-route)
 //   - Error if initialization/validation fails
 //
 // The policy should perform all initialization, validation, and preprocessing
-// in NewPolicy. This includes parsing configuration, caching expensive operations,
+// in GetPolicy. This includes parsing configuration, caching expensive operations,
 // and setting up any required state.
-type PolicyFactory func(metadata PolicyMetadata, initParams map[string]interface{}, params map[string]interface{}) (Policy, error)
+type PolicyFactory func(metadata PolicyMetadata, params map[string]interface{}) (Policy, error)
 
 // ProcessingMode declares a policy's processing requirements for each phase
 // Used by the kernel to optimize execution (skip unnecessary phases, buffer strategically)

@@ -31,7 +31,7 @@ func init() {
 			{{- end }}
 		}{{ else }}nil{{ end }},
 	}
-	if err := registry.GetRegistry().Register(policyDef_{{ .ImportAlias }}, {{ .ImportAlias }}.NewPolicy); err != nil {
+	if err := registry.GetRegistry().Register(policyDef_{{ .ImportAlias }}, {{ .ImportAlias }}.GetPolicy); err != nil {
 		slog.ErrorContext(ctx, "Failed to register policy", "policy", "{{ .Name }}", "version", "{{ .Version }}", "error", err)
 	} else {
 		slog.InfoContext(ctx, "Registered policy", "policy", "{{ .Name }}", "version", "{{ .Version }}")
