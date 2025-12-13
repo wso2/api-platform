@@ -33,7 +33,6 @@ import (
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 
-	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
 
@@ -104,8 +103,30 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 		}
 	}
 
-	// Generate UUID for the API
-	apiId := uuid.New().String()
+	// Handle the API handle (user-facing identifier)
+	var handle string
+	if req.ID != "" {
+		// Validate user-provided handle
+		if err := utils.ValidateHandle(req.ID); err != nil {
+			return nil, err
+		}
+		// Check if handle already exists in the organization
+		handleExists, err := s.apiRepo.CheckAPIExistsByHandleInOrganization(req.ID, orgId)
+		if err != nil {
+			return nil, err
+		}
+		if handleExists {
+			return nil, constants.ErrHandleExists
+		}
+		handle = req.ID
+	} else {
+		// Generate handle from API name with collision detection
+		var err error
+		handle, err = utils.GenerateHandle(req.Name, s.HandleExistsCheck(orgId))
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// Set default values if not provided
 	if req.DisplayName == "" {
@@ -129,9 +150,9 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 		req.Operations = defaultOperations
 	}
 
-	// Create API DTO
+	// Create API DTO - ID field holds the handle (user-facing identifier)
 	api := &dto.API{
-		ID:               apiId,
+		ID:               handle,
 		Name:             req.Name,
 		DisplayName:      req.DisplayName,
 		Description:      req.Description,
@@ -167,15 +188,18 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 	}
 
 	apiModel := s.apiUtil.DTOToModel(api)
-	// Create API in repository
+	// Create API in repository (UUID is generated internally by CreateAPI)
 	if err := s.apiRepo.CreateAPI(apiModel); err != nil {
 		return nil, fmt.Errorf("failed to create api: %w", err)
 	}
 
+	// Get the generated UUID from the model (set by CreateAPI)
+	apiUUID := apiModel.ID
+
 	api.CreatedAt = apiModel.CreatedAt
 	api.UpdatedAt = apiModel.UpdatedAt
 
-	// Associate backend services with the API
+	// Associate backend services with the API (use internal UUID)
 	for i, backendServiceUUID := range backendServiceIdList {
 		isDefault := i == 0 // First backend service is default
 		if len(req.BackendServices) > 0 && i < len(req.BackendServices) {
@@ -183,15 +207,15 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 			isDefault = req.BackendServices[i].IsDefault
 		}
 
-		if err := s.upstreamService.AssociateBackendServiceWithAPI(apiId, backendServiceUUID, isDefault); err != nil {
+		if err := s.upstreamService.AssociateBackendServiceWithAPI(apiUUID, backendServiceUUID, isDefault); err != nil {
 			return nil, fmt.Errorf("failed to associate backend service with API: %w", err)
 		}
 	}
 
-	// Automatically create DevPortal association for default DevPortal
-	if err := s.createDefaultDevPortalAssociation(apiId, orgId); err != nil {
+	// Automatically create DevPortal association for default DevPortal (use internal UUID)
+	if err := s.createDefaultDevPortalAssociation(apiUUID, orgId); err != nil {
 		// Log error but don't fail API creation if default DevPortal association fails
-		log.Printf("[APIService] Failed to create default DevPortal association for API %s: %v", apiId, err)
+		log.Printf("[APIService] Failed to create default DevPortal association for API %s: %v", apiUUID, err)
 	}
 
 	return api, nil
@@ -216,6 +240,46 @@ func (s *APIService) GetAPIByUUID(apiId, orgId string) (*dto.API, error) {
 
 	api := s.apiUtil.ModelToDTO(apiModel)
 	return api, nil
+}
+
+// GetAPIByHandle retrieves an API by its handle
+func (s *APIService) GetAPIByHandle(handle, orgId string) (*dto.API, error) {
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetAPIByUUID(apiUUID, orgId)
+}
+
+// HandleExistsCheck returns a function that checks if an API handle exists in the organization.
+// This is designed to be used with utils.GenerateHandle for handle generation with collision detection.
+func (s *APIService) HandleExistsCheck(orgId string) func(string) bool {
+	return func(handle string) bool {
+		exists, err := s.apiRepo.CheckAPIExistsByHandleInOrganization(handle, orgId)
+		if err != nil {
+			// On error, assume it exists to be safe (will trigger retry)
+			return true
+		}
+		return exists
+	}
+}
+
+// getAPIUUIDByHandle retrieves the internal UUID for an API by its handle.
+// This is a lightweight operation that only fetches minimal metadata.
+func (s *APIService) getAPIUUIDByHandle(handle, orgId string) (string, error) {
+	if handle == "" {
+		return "", errors.New("API handle is required")
+	}
+
+	metadata, err := s.apiRepo.GetAPIMetadataByHandle(handle, orgId)
+	if err != nil {
+		return "", err
+	}
+	if metadata == nil {
+		return "", constants.ErrAPINotFound
+	}
+
+	return metadata.ID, nil
 }
 
 // GetAPIsByOrganization retrieves all APIs for an organization with optional project filter
@@ -265,107 +329,16 @@ func (s *APIService) UpdateAPI(apiId string, req *UpdateAPIRequest, orgId string
 		return nil, constants.ErrAPINotFound
 	}
 
-	existingAPI := s.apiUtil.ModelToDTO(existingAPIModel)
-
-	// Validate update request
-	if err := s.validateUpdateAPIRequest(req); err != nil {
+	// Apply updates using shared helper
+	existingAPI, err := s.applyAPIUpdates(existingAPIModel, req, orgId)
+	if err != nil {
 		return nil, err
-	}
-
-	// Update fields (only allow certain fields to be updated)
-	if req.DisplayName != nil {
-		existingAPI.DisplayName = *req.DisplayName
-	}
-	if req.Description != nil {
-		existingAPI.Description = *req.Description
-	}
-	if req.Provider != nil {
-		existingAPI.Provider = *req.Provider
-	}
-	if req.LifeCycleStatus != nil {
-		existingAPI.LifeCycleStatus = *req.LifeCycleStatus
-	}
-	if req.HasThumbnail != nil {
-		existingAPI.HasThumbnail = *req.HasThumbnail
-	}
-	if req.IsDefaultVersion != nil {
-		existingAPI.IsDefaultVersion = *req.IsDefaultVersion
-	}
-	if req.IsRevision != nil {
-		existingAPI.IsRevision = *req.IsRevision
-	}
-	if req.RevisionedAPIID != nil {
-		existingAPI.RevisionedAPIID = *req.RevisionedAPIID
-	}
-	if req.RevisionID != nil {
-		existingAPI.RevisionID = *req.RevisionID
-	}
-	if req.Type != nil {
-		existingAPI.Type = *req.Type
-	}
-	if req.Transport != nil {
-		existingAPI.Transport = *req.Transport
-	}
-	if req.MTLS != nil {
-		existingAPI.MTLS = req.MTLS
-	}
-	if req.Security != nil {
-		existingAPI.Security = req.Security
-	}
-	if req.CORS != nil {
-		existingAPI.CORS = req.CORS
-	}
-	if req.BackendServices != nil {
-		// Process backend services: check if they exist, create or update them
-		var backendServiceUUIDs []string
-		for _, backendService := range *req.BackendServices {
-			backendServiceUUID, err := s.upstreamService.UpsertBackendService(&backendService, orgId)
-			if err != nil {
-				return nil, fmt.Errorf("failed to process backend service '%s': %w", backendService.Name, err)
-			}
-			backendServiceUUIDs = append(backendServiceUUIDs, backendServiceUUID)
-		}
-
-		// Remove existing associations and add new ones
-		// First, get existing associations to remove them
-		existingBackendServices, err := s.upstreamService.GetBackendServicesByAPIID(apiId)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get existing backend services: %w", err)
-		}
-
-		// Remove existing associations
-		for _, existingService := range existingBackendServices {
-			if err := s.upstreamService.DisassociateBackendServiceFromAPI(apiId, existingService.ID); err != nil {
-				return nil, fmt.Errorf("failed to remove existing backend service association: %w", err)
-			}
-		}
-
-		// Add new associations
-		for i, backendServiceUUID := range backendServiceUUIDs {
-			isDefault := i == 0 // First backend service is default
-			if len(*req.BackendServices) > 0 && i < len(*req.BackendServices) {
-				// Check if isDefault was explicitly set in the request
-				isDefault = (*req.BackendServices)[i].IsDefault
-			}
-
-			if err := s.upstreamService.AssociateBackendServiceWithAPI(apiId, backendServiceUUID, isDefault); err != nil {
-				return nil, fmt.Errorf("failed to associate backend service with API: %w", err)
-			}
-		}
-
-		existingAPI.BackendServices = *req.BackendServices
-	}
-	if req.APIRateLimiting != nil {
-		existingAPI.APIRateLimiting = req.APIRateLimiting
-	}
-	if req.Operations != nil {
-		existingAPI.Operations = *req.Operations
 	}
 
 	// Update API in repository
 	updatedAPIModel := s.apiUtil.DTOToModel(existingAPI)
 	if err := s.apiRepo.UpdateAPI(updatedAPIModel); err != nil {
-		return nil, fmt.Errorf("failed to update api: %w", err)
+		return nil, err
 	}
 
 	return existingAPI, nil
@@ -395,6 +368,82 @@ func (s *APIService) DeleteAPI(apiId, orgId string) error {
 	}
 
 	return nil
+}
+
+// UpdateAPIByHandle updates an existing API identified by handle
+func (s *APIService) UpdateAPIByHandle(handle string, req *UpdateAPIRequest, orgId string) (*dto.API, error) {
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
+	if err != nil {
+		return nil, err
+	}
+	return s.UpdateAPI(apiUUID, req, orgId)
+}
+
+// DeleteAPIByHandle deletes an API identified by handle
+func (s *APIService) DeleteAPIByHandle(handle, orgId string) error {
+	// Get API UUID by handle
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
+	if err != nil {
+		return err
+	}
+
+	// Delete API using existing UUID-based method
+	return s.DeleteAPI(apiUUID, orgId)
+}
+
+// AddGatewaysToAPIByHandle associates multiple gateways with an API identified by handle
+func (s *APIService) AddGatewaysToAPIByHandle(handle string, gatewayIds []string, orgId string) (*dto.APIGatewayListResponse, error) {
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
+	if err != nil {
+		return nil, err
+	}
+	return s.AddGatewaysToAPI(apiUUID, gatewayIds, orgId)
+}
+
+// GetAPIGatewaysByHandle retrieves all gateways associated with an API identified by handle
+func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string) (*dto.APIGatewayListResponse, error) {
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetAPIGateways(apiUUID, orgId)
+}
+
+// DeployAPIRevisionByHandle deploys an API revision identified by handle
+func (s *APIService) DeployAPIRevisionByHandle(handle string, revisionID string,
+	deploymentRequests []dto.APIRevisionDeployment, orgId string) ([]*dto.APIRevisionDeployment, error) {
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
+	if err != nil {
+		return nil, err
+	}
+	return s.DeployAPIRevision(apiUUID, revisionID, deploymentRequests, orgId)
+}
+
+// PublishAPIToDevPortalByHandle publishes an API identified by handle to a DevPortal
+func (s *APIService) PublishAPIToDevPortalByHandle(handle string, req *dto.PublishToDevPortalRequest, orgID string) error {
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgID)
+	if err != nil {
+		return err
+	}
+	return s.PublishAPIToDevPortal(apiUUID, req, orgID)
+}
+
+// UnpublishAPIFromDevPortalByHandle unpublishes an API identified by handle from a DevPortal
+func (s *APIService) UnpublishAPIFromDevPortalByHandle(handle, devPortalUUID, orgID string) error {
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgID)
+	if err != nil {
+		return err
+	}
+	return s.UnpublishAPIFromDevPortal(apiUUID, devPortalUUID, orgID)
+}
+
+// GetAPIPublicationsByHandle retrieves all DevPortals associated with an API identified by handle
+func (s *APIService) GetAPIPublicationsByHandle(handle, orgID string) (*dto.APIDevPortalListResponse, error) {
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgID)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetAPIPublications(apiUUID, orgID)
 }
 
 // UpdateAPILifecycleStatus updates only the lifecycle status of an API
@@ -802,6 +851,113 @@ func (s *APIService) validateCreateAPIRequest(req *CreateAPIRequest) error {
 	return nil
 }
 
+// applyAPIUpdates applies update request fields to an existing API model and handles backend services
+func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *UpdateAPIRequest, orgId string) (*dto.API, error) {
+	// Validate update request
+	if err := s.validateUpdateAPIRequest(req); err != nil {
+		return nil, err
+	}
+
+	existingAPI := s.apiUtil.ModelToDTO(existingAPIModel)
+
+	// Update fields (only allow certain fields to be updated)
+	if req.DisplayName != nil {
+		existingAPI.DisplayName = *req.DisplayName
+	}
+	if req.Description != nil {
+		existingAPI.Description = *req.Description
+	}
+	if req.Provider != nil {
+		existingAPI.Provider = *req.Provider
+	}
+	if req.LifeCycleStatus != nil {
+		existingAPI.LifeCycleStatus = *req.LifeCycleStatus
+	}
+	if req.HasThumbnail != nil {
+		existingAPI.HasThumbnail = *req.HasThumbnail
+	}
+	if req.IsDefaultVersion != nil {
+		existingAPI.IsDefaultVersion = *req.IsDefaultVersion
+	}
+	if req.IsRevision != nil {
+		existingAPI.IsRevision = *req.IsRevision
+	}
+	if req.RevisionedAPIID != nil {
+		existingAPI.RevisionedAPIID = *req.RevisionedAPIID
+	}
+	if req.RevisionID != nil {
+		existingAPI.RevisionID = *req.RevisionID
+	}
+	if req.Type != nil {
+		existingAPI.Type = *req.Type
+	}
+	if req.Transport != nil {
+		existingAPI.Transport = *req.Transport
+	}
+	if req.MTLS != nil {
+		existingAPI.MTLS = req.MTLS
+	}
+	if req.Security != nil {
+		existingAPI.Security = req.Security
+	}
+	if req.CORS != nil {
+		existingAPI.CORS = req.CORS
+	}
+	if req.BackendServices != nil {
+		if err := s.updateAPIBackendServices(existingAPIModel.ID, req.BackendServices, orgId); err != nil {
+			return nil, err
+		}
+		existingAPI.BackendServices = *req.BackendServices
+	}
+	if req.APIRateLimiting != nil {
+		existingAPI.APIRateLimiting = req.APIRateLimiting
+	}
+	if req.Operations != nil {
+		existingAPI.Operations = *req.Operations
+	}
+
+	return existingAPI, nil
+}
+
+// updateAPIBackendServices handles backend service updates for an API
+func (s *APIService) updateAPIBackendServices(apiUUID string, backendServices *[]dto.BackendService, orgId string) error {
+	// Process backend services: check if they exist, create or update them
+	var backendServiceUUIDs []string
+	for _, backendService := range *backendServices {
+		backendServiceUUID, err := s.upstreamService.UpsertBackendService(&backendService, orgId)
+		if err != nil {
+			return fmt.Errorf("failed to process backend service '%s': %w", backendService.Name, err)
+		}
+		backendServiceUUIDs = append(backendServiceUUIDs, backendServiceUUID)
+	}
+
+	// Remove existing associations
+	existingBackendServices, err := s.upstreamService.GetBackendServicesByAPIID(apiUUID)
+	if err != nil {
+		return fmt.Errorf("failed to get existing backend services: %w", err)
+	}
+
+	for _, existingService := range existingBackendServices {
+		if err := s.upstreamService.DisassociateBackendServiceFromAPI(apiUUID, existingService.ID); err != nil {
+			return fmt.Errorf("failed to remove existing backend service association: %w", err)
+		}
+	}
+
+	// Add new associations
+	for i, backendServiceUUID := range backendServiceUUIDs {
+		isDefault := i == 0
+		if len(*backendServices) > 0 && i < len(*backendServices) {
+			isDefault = (*backendServices)[i].IsDefault
+		}
+
+		if err := s.upstreamService.AssociateBackendServiceWithAPI(apiUUID, backendServiceUUID, isDefault); err != nil {
+			return fmt.Errorf("failed to associate backend service with API: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // validateUpdateAPIRequest checks the validity of the update API request
 func (s *APIService) validateUpdateAPIRequest(req *UpdateAPIRequest) error {
 	// Validate lifecycle status if provided
@@ -861,6 +1017,7 @@ func (s *APIService) isValidVHost(vhost string) bool {
 
 // CreateAPIRequest represents the request to create a new API
 type CreateAPIRequest struct {
+	ID               string                  `json:"id,omitempty"`
 	Name             string                  `json:"name"`
 	DisplayName      string                  `json:"displayName,omitempty"`
 	Description      string                  `json:"description,omitempty"`

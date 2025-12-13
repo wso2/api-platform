@@ -26,6 +26,8 @@ import (
 
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
+
+	"github.com/google/uuid"
 )
 
 // APIRepo implements APIRepository
@@ -50,6 +52,8 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 	}
 	defer tx.Rollback()
 
+	// Always generate a new UUID for the API
+	api.ID = uuid.New().String()
 	api.CreatedAt = time.Now()
 	api.UpdatedAt = time.Now()
 
@@ -58,15 +62,15 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 
 	// Insert main API record
 	apiQuery := `
-		INSERT INTO apis (uuid, name, display_name, description, context, version, provider, 
-			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision, 
+		INSERT INTO apis (uuid, handle, name, display_name, description, context, version, provider,
+			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	securityEnabled := api.Security != nil && api.Security.Enabled
 
-	_, err = tx.Exec(apiQuery, api.ID, api.Name, api.DisplayName, api.Description,
+	_, err = tx.Exec(apiQuery, api.ID, api.Handle, api.Name, api.DisplayName, api.Description,
 		api.Context, api.Version, api.Provider, api.ProjectID, api.OrganizationID, api.LifeCycleStatus,
 		api.HasThumbnail, api.IsDefaultVersion, api.IsRevision, api.RevisionedAPIID,
 		api.RevisionID, api.Type, string(transportJSON), securityEnabled, api.CreatedAt, api.UpdatedAt)
@@ -117,7 +121,7 @@ func (r *APIRepo) GetAPIByUUID(apiId string) (*model.API, error) {
 	api := &model.API{}
 
 	query := `
-		SELECT uuid, name, display_name, description, context, version, provider,
+		SELECT uuid, handle, name, display_name, description, context, version, provider,
 			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
 		FROM apis WHERE uuid = ?
@@ -126,7 +130,7 @@ func (r *APIRepo) GetAPIByUUID(apiId string) (*model.API, error) {
 	var transportJSON string
 	var securityEnabled bool
 	err := r.db.QueryRow(query, apiId).Scan(
-		&api.ID, &api.Name, &api.DisplayName, &api.Description, &api.Context,
+		&api.ID, &api.Handle, &api.Name, &api.DisplayName, &api.Description, &api.Context,
 		&api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID, &api.LifeCycleStatus,
 		&api.HasThumbnail, &api.IsDefaultVersion, &api.IsRevision,
 		&api.RevisionedAPIID, &api.RevisionID, &api.Type, &transportJSON,
@@ -152,10 +156,29 @@ func (r *APIRepo) GetAPIByUUID(apiId string) (*model.API, error) {
 	return api, nil
 }
 
+// GetAPIMetadataByHandle retrieves minimal API information by handle and organization ID
+func (r *APIRepo) GetAPIMetadataByHandle(handle, orgId string) (*model.APIMetadata, error) {
+	metadata := &model.APIMetadata{}
+
+	query := `SELECT uuid, handle, name, context, organization_uuid FROM apis WHERE handle = ? AND organization_uuid = ?`
+
+	err := r.db.QueryRow(query, handle, orgId).Scan(
+		&metadata.ID, &metadata.Handle, &metadata.Name, &metadata.Context, &metadata.OrganizationID)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return metadata, nil
+}
+
 // GetAPIsByProjectID retrieves all APIs for a project
 func (r *APIRepo) GetAPIsByProjectID(projectID string) ([]*model.API, error) {
 	query := `
-		SELECT uuid, name, display_name, description, context, version, provider,
+		SELECT uuid, handle, name, display_name, description, context, version, provider,
 			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
 		FROM apis WHERE project_uuid = ? ORDER BY created_at DESC
@@ -173,7 +196,7 @@ func (r *APIRepo) GetAPIsByProjectID(projectID string) ([]*model.API, error) {
 		var transportJSON string
 		var securityEnabled bool
 
-		err := rows.Scan(&api.ID, &api.Name, &api.DisplayName, &api.Description,
+		err := rows.Scan(&api.ID, &api.Handle, &api.Name, &api.DisplayName, &api.Description,
 			&api.Context, &api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID,
 			&api.LifeCycleStatus, &api.HasThumbnail, &api.IsDefaultVersion,
 			&api.IsRevision, &api.RevisionedAPIID, &api.RevisionID, &api.Type,
@@ -206,7 +229,7 @@ func (r *APIRepo) GetAPIsByOrganizationID(orgID string, projectID *string) ([]*m
 	if projectID != nil && *projectID != "" {
 		// Filter by specific project within the organization
 		query = `
-			SELECT uuid, name, display_name, description, context, version, provider,
+			SELECT uuid, handle, name, display_name, description, context, version, provider,
 				project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 				revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
 			FROM apis
@@ -217,7 +240,7 @@ func (r *APIRepo) GetAPIsByOrganizationID(orgID string, projectID *string) ([]*m
 	} else {
 		// Get all APIs for the organization
 		query = `
-			SELECT uuid, name, display_name, description, context, version, provider,
+			SELECT uuid, handle, name, display_name, description, context, version, provider,
 				project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 				revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
 			FROM apis
@@ -239,7 +262,7 @@ func (r *APIRepo) GetAPIsByOrganizationID(orgID string, projectID *string) ([]*m
 		var transportJSON string
 		var securityEnabled bool
 
-		err := rows.Scan(&api.ID, &api.Name, &api.DisplayName, &api.Description,
+		err := rows.Scan(&api.ID, &api.Handle, &api.Name, &api.DisplayName, &api.Description,
 			&api.Context, &api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID,
 			&api.LifeCycleStatus, &api.HasThumbnail, &api.IsDefaultVersion,
 			&api.IsRevision, &api.RevisionedAPIID, &api.RevisionID, &api.Type,
@@ -403,6 +426,22 @@ func (r *APIRepo) DeleteAPI(apiId string) error {
 	}
 
 	return tx.Commit()
+}
+
+// CheckAPIExistsByHandleInOrganization checks if an API with the given handle exists within a specific organization
+func (r *APIRepo) CheckAPIExistsByHandleInOrganization(handle, orgId string) (bool, error) {
+	query := `
+		SELECT COUNT(*) FROM apis
+		WHERE handle = ? AND organization_uuid = ?
+	`
+
+	var count int
+	err := r.db.QueryRow(query, handle, orgId).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
 }
 
 // Helper methods for loading configurations

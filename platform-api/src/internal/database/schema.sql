@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS projects (
 -- APIs table
 CREATE TABLE IF NOT EXISTS apis (
     uuid VARCHAR(40) PRIMARY KEY,
+    handle VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     display_name VARCHAR(255),
     description VARCHAR(1023),
@@ -62,7 +63,8 @@ CREATE TABLE IF NOT EXISTS apis (
     FOREIGN KEY (project_uuid) REFERENCES projects(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     UNIQUE(name, organization_uuid),
-    UNIQUE(context, organization_uuid)
+    UNIQUE(context, organization_uuid),
+    UNIQUE(handle, organization_uuid)
 );
 
 -- API MTLS Configuration table

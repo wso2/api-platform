@@ -40,13 +40,16 @@ import (
 type APIUtil struct{}
 
 // Mapping functions
+// DTOToModel converts a DTO API to a Model API
+// Note: DTO.ID maps to Model.Handle (user-facing identifier)
+// The internal Model.ID (UUID) should be set separately by the caller
 func (u *APIUtil) DTOToModel(dto *dto.API) *model.API {
 	if dto == nil {
 		return nil
 	}
 
 	return &model.API{
-		ID:               dto.ID,
+		Handle:           dto.ID, // DTO.ID is the handle (user-facing identifier)
 		Name:             dto.Name,
 		DisplayName:      dto.DisplayName,
 		Description:      dto.Description,
@@ -72,13 +75,16 @@ func (u *APIUtil) DTOToModel(dto *dto.API) *model.API {
 	}
 }
 
+// ModelToDTO converts a Model API to a DTO API
+// Note: Model.Handle maps to DTO.ID (user-facing identifier)
+// The internal Model.ID (UUID) is not exposed in the DTO
 func (u *APIUtil) ModelToDTO(model *model.API) *dto.API {
 	if model == nil {
 		return nil
 	}
 
 	return &dto.API{
-		ID:               model.ID,
+		ID:               model.Handle, // Model.Handle is exposed as DTO.ID
 		Name:             model.Name,
 		DisplayName:      model.DisplayName,
 		Description:      model.Description,

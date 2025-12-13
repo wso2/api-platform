@@ -47,6 +47,7 @@ type ProjectRepository interface {
 type APIRepository interface {
 	CreateAPI(api *model.API) error
 	GetAPIByUUID(apiId string) (*model.API, error)
+	GetAPIMetadataByHandle(handle, orgId string) (*model.APIMetadata, error)
 	GetAPIsByProjectID(projectID string) ([]*model.API, error)
 	GetAPIsByOrganizationID(orgID string, projectID *string) ([]*model.API, error)
 	GetAPIsByGatewayID(gatewayID, organizationID string) ([]*model.API, error)
@@ -66,6 +67,7 @@ type APIRepository interface {
 	// API name validation methods
 	CheckAPIExistsByIdentifierInOrganization(identifier, orgId string) (bool, error)
 	CheckAPIExistsByNameAndVersionInOrganization(name, version, orgId string) (bool, error)
+	CheckAPIExistsByHandleInOrganization(handle, orgId string) (bool, error)
 }
 
 // BackendServiceRepository defines the interface for backend service data operations

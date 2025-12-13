@@ -130,7 +130,7 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 	c.JSON(http.StatusCreated, api)
 }
 
-// GetAPI handles GET /api/v1/apis/:apiId and retrieves an API by its ID
+// GetAPI handles GET /api/v1/apis/:apiId and retrieves an API by its handle
 func (h *APIHandler) GetAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -146,7 +146,7 @@ func (h *APIHandler) GetAPI(c *gin.Context) {
 		return
 	}
 
-	api, err := h.apiService.GetAPIByUUID(apiId, orgId)
+	api, err := h.apiService.GetAPIByHandle(apiId, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -202,7 +202,7 @@ func (h *APIHandler) ListAPIs(c *gin.Context) {
 	})
 }
 
-// UpdateAPI updates an existing API
+// UpdateAPI updates an existing API identified by handle
 func (h *APIHandler) UpdateAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -225,7 +225,7 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 		return
 	}
 
-	api, err := h.apiService.UpdateAPI(apiId, &req, orgId)
+	api, err := h.apiService.UpdateAPIByHandle(apiId, &req, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -255,7 +255,7 @@ func (h *APIHandler) UpdateAPI(c *gin.Context) {
 	c.JSON(http.StatusOK, api)
 }
 
-// DeleteAPI handles DELETE /api/v1/apis/:apiId and deletes an API by its ID
+// DeleteAPI handles DELETE /api/v1/apis/:apiId and deletes an API by its handle
 func (h *APIHandler) DeleteAPI(c *gin.Context) {
 	orgId, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
@@ -271,7 +271,7 @@ func (h *APIHandler) DeleteAPI(c *gin.Context) {
 		return
 	}
 
-	err := h.apiService.DeleteAPI(apiId, orgId)
+	err := h.apiService.DeleteAPIByHandle(apiId, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -320,7 +320,7 @@ func (h *APIHandler) AddGatewaysToAPI(c *gin.Context) {
 		gatewayIds[i] = gw.GatewayID
 	}
 
-	gateways, err := h.apiService.AddGatewaysToAPI(apiId, gatewayIds, orgId)
+	gateways, err := h.apiService.AddGatewaysToAPIByHandle(apiId, gatewayIds, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -356,7 +356,7 @@ func (h *APIHandler) GetAPIGateways(c *gin.Context) {
 		return
 	}
 
-	gateways, err := h.apiService.GetAPIGateways(apiId, orgId)
+	gateways, err := h.apiService.GetAPIGatewaysByHandle(apiId, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -406,7 +406,7 @@ func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
 	}
 
 	// Call service to deploy the API
-	deployments, err := h.apiService.DeployAPIRevision(apiId, revisionID, deploymentRequests, orgId)
+	deployments, err := h.apiService.DeployAPIRevisionByHandle(apiId, revisionID, deploymentRequests, orgId)
 	if err != nil {
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
@@ -416,6 +416,8 @@ func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
 		if errors.Is(err, constants.ErrInvalidAPIDeployment) {
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Invalid API deployment configuration"))
+			log.Printf("[ERROR] Failed to deploy API revision: apiUUID=%s revisionID=%s error=%v",
+				apiId, revisionID, err)
 			return
 		}
 		log.Printf("[ERROR] Failed to deploy API revision: apiUUID=%s revisionID=%s error=%v",
@@ -458,7 +460,7 @@ func (h *APIHandler) PublishToDevPortal(c *gin.Context) {
 	}
 
 	// Publish API to DevPortal through service layer
-	err := h.apiService.PublishAPIToDevPortal(apiID, &req, orgID)
+	err := h.apiService.PublishAPIToDevPortalByHandle(apiID, &req, orgID)
 	if err != nil {
 		status, errorResp := utils.GetErrorResponse(err)
 		c.JSON(status, errorResp)
@@ -506,7 +508,7 @@ func (h *APIHandler) UnpublishFromDevPortal(c *gin.Context) {
 	}
 
 	// Unpublish API from DevPortal through service layer
-	err := h.apiService.UnpublishAPIFromDevPortal(apiID, req.DevPortalUUID, orgID)
+	err := h.apiService.UnpublishAPIFromDevPortalByHandle(apiID, req.DevPortalUUID, orgID)
 	if err != nil {
 		status, errorResp := utils.GetErrorResponse(err)
 		c.JSON(status, errorResp)
@@ -544,7 +546,7 @@ func (h *APIHandler) GetAPIPublications(c *gin.Context) {
 		return
 	}
 	// Get publications through service layer
-	response, err := h.apiService.GetAPIPublications(apiID, orgID)
+	response, err := h.apiService.GetAPIPublicationsByHandle(apiID, orgID)
 	if err != nil {
 		// Handle specific errors
 		if errors.Is(err, constants.ErrAPINotFound) {
