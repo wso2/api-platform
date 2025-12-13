@@ -1,0 +1,66 @@
+name: Platform API Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.1.0)'
+        required: true
+        type: string
+
+env:
+  DOCKER_REGISTRY: ghcr.io/wso2/api-platform
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set version
+        run: |
+          VERSION=${{ inputs.version }}
+          make version-set COMPONENT=platform-api VERSION_ARG=${VERSION}
+          make update-images COMPONENT=platform-api VERSION_ARG=${VERSION}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          install: true
+          driver: docker-container
+
+
+      - name: Run tests
+        run: make test-platform-api
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+
+      - name: Build and push multi arch Docker images
+        run: make build-and-push-platform-api-multiarch VERSION_ARG=${{ inputs.version }}
+
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "Release platform-api version ${{ inputs.version }}"
+          git tag -a platform-api-v${{ inputs.version }} -m "Platform API ${{ inputs.version }}"
+          git push origin platform-api-v${{ inputs.version }}
+
+
+      # - name: Set to next dev version
+      #   run: |
+      #     make version-bump-next-dev COMPONENT=platform-api
+      #     make update-images COMPONENT=platform-api VERSION_ARG=$(cat platform-api/VERSION)
+      #     git commit -am "Bump platform-api to next dev version"
+      #     git push origin main

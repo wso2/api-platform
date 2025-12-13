@@ -47,7 +47,9 @@ help: ## Show this help message
 	@echo 'Build Targets:'
 	@echo '  make build-gateway                    - Build all gateway Docker images'
 	@echo '  make build-and-push-gateway-multiarch - Build and push all gateway images for multiple architectures'
+	@echo '  make build-and-push-platform-api-multiarch VERSION=X - Build and push platform-api images for multiple architectures'
 	@echo '  make test-gateway                     - Run gateway tests'
+	@echo '  make test-platform-api                - Run platform-api tests'
 	@echo ''
 	@echo 'Push Targets:'
 	@echo '  make push-gateway                     - Push gateway images to registry'
@@ -139,11 +141,22 @@ build-and-push-gateway-multiarch: ## Build and push all gateway Docker images fo
 	$(MAKE) -C gateway build-and-push-multiarch
 	@echo "Successfully built and pushed all multi-arch gateway components"
 
+.PHONY: build-and-push-platform-api-multiarch
+build-and-push-platform-api-multiarch: ## Build and push platform-api Docker image for multiple architectures (amd64, arm64)
+	@echo "Building and pushing multi-arch platform-api ($(PLATFORM_API_VERSION))..."
+	$(MAKE) -C platform-api build-and-push-multiarch VERSION=$(PLATFORM_API_VERSION)
+	@echo "Successfully built and pushed multi-arch platform-api"
+
 # Test Targets
 .PHONY: test-gateway
 test-gateway: ## Run gateway tests
 	@echo "Running gateway tests..."
 	$(MAKE) -C gateway test
+
+.PHONY: test-platform-api
+test-platform-api: ## Run platform-api tests
+	@echo "Running platform-api tests..."
+	$(MAKE) -C platform-api test
 
 # Push Targets
 .PHONY: push-gateway
