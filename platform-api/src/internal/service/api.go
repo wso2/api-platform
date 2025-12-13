@@ -188,12 +188,13 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 	}
 
 	apiModel := s.apiUtil.DTOToModel(api)
-	// Set the internal UUID on the model (separate from handle)
-	apiModel.ID = apiUUID
-	// Create API in repository
+	// Create API in repository (UUID is generated internally by CreateAPI)
 	if err := s.apiRepo.CreateAPI(apiModel); err != nil {
 		return nil, fmt.Errorf("failed to create api: %w", err)
 	}
+
+	// Get the generated UUID from the model (set by CreateAPI)
+	apiUUID := apiModel.ID
 
 	api.CreatedAt = apiModel.CreatedAt
 	api.UpdatedAt = apiModel.UpdatedAt
