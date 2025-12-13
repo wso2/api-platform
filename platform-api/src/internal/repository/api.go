@@ -408,73 +408,19 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 
 // UpdateAPIByHandle modifies an existing API identified by handle and organization ID
 func (r *APIRepo) UpdateAPIByHandle(handle, orgId string, api *model.API) error {
-	tx, err := r.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	api.UpdatedAt = time.Now()
-
-	// Convert transport slice to JSON
-	transportJSON, _ := json.Marshal(api.Transport)
-	securityEnabled := api.Security != nil && api.Security.Enabled
-
-	// Update main API record
-	query := `
-		UPDATE apis SET display_name = ?, description = ?,
-			provider = ?, lifecycle_status = ?, has_thumbnail = ?,
-			is_default_version = ?, is_revision = ?, revisioned_api_id = ?,
-			revision_id = ?, type = ?, transport = ?, security_enabled = ?, updated_at = ?
-		WHERE handle = ? AND organization_uuid = ?
-	`
-	_, err = tx.Exec(query, api.DisplayName, api.Description,
-		api.Provider, api.LifeCycleStatus,
-		api.HasThumbnail, api.IsDefaultVersion, api.IsRevision,
-		api.RevisionedAPIID, api.RevisionID, api.Type, string(transportJSON),
-		securityEnabled, api.UpdatedAt, handle, orgId)
-	if err != nil {
-		return err
-	}
-
-	// Delete existing configurations and re-insert
-	if err := r.deleteAPIConfigurations(tx, api.ID); err != nil {
-		return err
-	}
-
-	// Re-insert configurations
-	if api.MTLS != nil {
-		if err := r.insertMTLSConfig(tx, api.ID, api.MTLS); err != nil {
+	// Get the API UUID by handle if not already set
+	if api.ID == "" {
+		existingAPI, err := r.GetAPIByHandle(handle, orgId)
+		if err != nil {
 			return err
 		}
-	}
-
-	if api.Security != nil {
-		if err := r.insertSecurityConfig(tx, api.ID, api.Security); err != nil {
-			return err
+		if existingAPI == nil {
+			return fmt.Errorf("API with handle %s not found", handle)
 		}
+		api.ID = existingAPI.ID
 	}
 
-	if api.CORS != nil {
-		if err := r.insertCORSConfig(tx, api.ID, api.CORS); err != nil {
-			return err
-		}
-	}
-
-	if api.APIRateLimiting != nil {
-		if err := r.insertRateLimitingConfig(tx, api.ID, api.APIRateLimiting); err != nil {
-			return err
-		}
-	}
-
-	// Re-insert operations
-	for _, operation := range api.Operations {
-		if err := r.insertOperation(tx, api.ID, api.OrganizationID, &operation); err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit()
+	return r.UpdateAPI(api)
 }
 
 // DeleteAPI removes an API and all its configurations

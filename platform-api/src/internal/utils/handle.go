@@ -96,7 +96,7 @@ func GenerateHandle(source string, existsCheck func(string) bool) (string, error
 	}
 
 	// Handle exists, try with random suffix
-	for i := 0; i < maxRetries; i++ {
+	for range maxRetries {
 		suffix := generateRandomSuffix()
 		candidateHandle := handle
 
@@ -104,6 +104,9 @@ func GenerateHandle(source string, existsCheck func(string) bool) (string, error
 		maxBaseLength := handleMaxLength - suffixLength - 1 // -1 for the hyphen
 		if len(candidateHandle) > maxBaseLength {
 			candidateHandle = candidateHandle[:maxBaseLength]
+
+			// Avoid creating consecutive hyphens after truncation.
+			candidateHandle = strings.TrimRight(candidateHandle, "-")
 		}
 
 		candidateHandle = candidateHandle + "-" + suffix
