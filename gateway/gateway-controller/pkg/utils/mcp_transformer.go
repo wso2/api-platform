@@ -29,6 +29,10 @@ import (
 type MCPTransformer struct {
 }
 
+func NewMCPTransformer() *MCPTransformer {
+	return &MCPTransformer{}
+}
+
 // protocolVersionComparator compares two MCP protocol version strings in YYYY-MM-DD format
 // Returns true if current is equal to or newer than base
 func protocolVersionComparator(base, current string) bool {
@@ -107,6 +111,7 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 		Url: mcpConfig.Spec.Upstream.Url,
 	}
 
+	var polices []api.Policy
 	// Set upstream auth if present
 	upstream := mcpConfig.Spec.Upstream
 	if upstream.Auth != nil {
@@ -117,8 +122,14 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 		pol := api.Policy{
 			Name:    constants.MODFIFY_HEADERS_POLICY_NAME,
 			Version: constants.MODIFY_HEADERS_POLICY_VERSION, Params: &params}
-		apiData.Policies = &[]api.Policy{pol}
+		polices = append(polices, pol)
 	}
+
+	// Process policies
+	if mcpConfig.Spec.Policies != nil && len(*mcpConfig.Spec.Policies) > 0 {
+		polices = append(polices, *mcpConfig.Spec.Policies...)
+	}
+	apiData.Policies = &polices
 
 	var specUnion api.APIConfiguration_Spec
 	if err := specUnion.FromAPIConfigData(apiData); err != nil {

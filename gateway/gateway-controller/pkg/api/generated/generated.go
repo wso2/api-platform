@@ -760,6 +760,8 @@ type MCPProxyConfigData struct {
 	// Context MCP Proxy context path
 	Context string `json:"context" yaml:"context"`
 
+	// Policies List of MCP Proxy level policies applied
+	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 	// DisplayName Human-readable MCP Proxy display name
 	DisplayName string         `json:"displayName" yaml:"displayName"`
 	Prompts     *[]MCPPrompt   `json:"prompts,omitempty" yaml:"prompts,omitempty"`

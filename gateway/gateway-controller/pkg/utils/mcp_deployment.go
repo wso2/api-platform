@@ -50,7 +50,7 @@ type MCPDeploymentService struct {
 	db              storage.Storage
 	snapshotManager *xds.SnapshotManager
 	parser          *config.Parser
-	validator       config.Validator
+	validator       *config.MCPValidator
 	transformer     Transformer
 }
 
@@ -66,7 +66,7 @@ func NewMCPDeploymentService(
 		snapshotManager: snapshotManager,
 		parser:          config.NewParser(),
 		validator:       config.NewMCPValidator(),
-		transformer:     &MCPTransformer{},
+		transformer:     NewMCPTransformer(),
 	}
 }
 
@@ -280,4 +280,71 @@ func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	*newConfig = *existing
 
 	return true, nil // Successfully updated existing config
+}
+
+// ListMCPProxies returns all stored MCP proxy configurations
+func (s *MCPDeploymentService) ListMCPProxies() []*models.StoredConfig {
+	return s.store.GetAllByKind(string(api.Mcp))
+}
+
+// ListMCPProxies returns all stored MCP proxy configurations
+func (s *MCPDeploymentService) ListMCPProxyByNameAndVersion(name, version string) (*models.StoredConfig, error) {
+	cfg := s.store.GetByKindNameAndVersion(string(api.Mcp), name, version)
+	if cfg == nil {
+		return nil, fmt.Errorf("MCP proxy configuration with name '%s' and version '%s' not found", name, version)
+	}
+	return cfg, nil
+}
+
+// CreateMCPProxy is a convenience wrapper around DeployMCPConfiguration for creating MCP proxies
+func (s *MCPDeploymentService) CreateMCPProxy(params MCPDeploymentParams) (*models.StoredConfig, error) {
+	res, err := s.DeployMCPConfiguration(params)
+	if err != nil {
+		return nil, err
+	}
+	return res.StoredConfig, nil
+}
+
+// UpdateMCPProxy updates an existing MCP proxy identified by name+version using DeployMCPConfiguration
+func (s *MCPDeploymentService) UpdateMCPProxy(name, version string, params MCPDeploymentParams) (*models.StoredConfig, error) {
+	existing, err := s.ListMCPProxyByNameAndVersion(name, version)
+	if err != nil || existing == nil {
+		return nil, fmt.Errorf("MCP proxy configuration with name '%s' and version '%s' not found", name, version)
+	}
+
+	// Ensure Deploy uses existing ID so it performs an update
+	params.ID = existing.ID
+	res, err := s.DeployMCPConfiguration(params)
+	if err != nil {
+		return nil, err
+	}
+	return res.StoredConfig, nil
+}
+
+// DeleteMCPProxy deletes an MCP proxy by name+version using store/db and updates snapshot
+func (s *MCPDeploymentService) DeleteMCPProxy(name, version, correlationID string, logger *zap.Logger) (*models.StoredConfig, error) {
+	cfg := s.store.GetByKindNameAndVersion(string(api.Mcp), name, version)
+	if cfg == nil {
+		return cfg, fmt.Errorf("MCP proxy configuration with name '%s' and version '%s' not found", name, version)
+	}
+
+	if s.db != nil {
+		if err := s.db.DeleteConfig(cfg.ID); err != nil {
+			return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
+		}
+	}
+	if err := s.store.Delete(cfg.ID); err != nil {
+		return cfg, fmt.Errorf("failed to delete configuration from memory store: %w", err)
+	}
+
+	// Update xDS snapshot asynchronously
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
+			logger.Error("Failed to update xDS snapshot", zap.Error(err))
+		}
+	}()
+
+	return cfg, nil
 }
