@@ -33,7 +33,6 @@ import (
 	"platform-api/src/internal/repository"
 	"platform-api/src/internal/utils"
 
-	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
 
@@ -103,9 +102,6 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 			return nil, constants.ErrAPIAlreadyExists
 		}
 	}
-
-	// Generate internal UUID for the API (used for DB foreign keys)
-	apiUUID := uuid.New().String()
 
 	// Handle the API handle (user-facing identifier)
 	var handle string
