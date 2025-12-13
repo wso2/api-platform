@@ -26,6 +26,8 @@ import (
 
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
+
+	"github.com/google/uuid"
 )
 
 // APIRepo implements APIRepository
@@ -50,6 +52,8 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 	}
 	defer tx.Rollback()
 
+	// Always generate a new UUID for the API
+	api.ID = uuid.New().String()
 	api.CreatedAt = time.Now()
 	api.UpdatedAt = time.Now()
 
