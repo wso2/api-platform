@@ -103,6 +103,23 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 		Operations: addMCPSpecificOperations(mcpConfig),
 	}
 
+	apiData.Upstream.Main = api.Upstream{
+		Url: mcpConfig.Spec.Upstream.Url,
+	}
+
+	// Set upstream auth if present
+	upstream := mcpConfig.Spec.Upstream
+	if upstream.Auth != nil {
+		params, err := GetParamsOfPolicy(constants.MODIFY_HEADERS_POLICY_PARAMS, *upstream.Auth.Header, *upstream.Auth.Value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
+		}
+		pol := api.Policy{
+			Name:    constants.MODFIFY_HEADERS_POLICY_NAME,
+			Version: constants.MODIFY_HEADERS_POLICY_VERSION, Params: &params}
+		apiData.Policies = &[]api.Policy{pol}
+	}
+
 	var specUnion api.APIConfiguration_Spec
 	if err := specUnion.FromAPIConfigData(apiData); err != nil {
 		return nil, err

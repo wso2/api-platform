@@ -552,7 +552,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/APICreateResponse"
+                $ref: "#/components/schemas/MCPProxyCreateResponse"
         "400":
           description: Invalid configuration (validation failed)
           content:
@@ -711,7 +711,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/APIUpdateResponse"
+                $ref: "#/components/schemas/MCPProxyUpdateResponse"
         "400":
           description: Invalid configuration (validation failed)
           content:
@@ -1390,17 +1390,6 @@ components:
           items:
             $ref: "#/components/schemas/Operation"
 
-    MCPUpstream:
-      type: object
-      required:
-        - url
-      properties:
-        url:
-          type: string
-          format: uri
-          description: Backend service URL (may include path prefix like /api/v2)
-          example: https://api.weather.com/api/v2
-
     Upstream:
       type: object
       oneOf:
@@ -1856,7 +1845,7 @@ components:
         - displayName
         - version
         - context
-        - upstreams
+        - upstream
       properties:
         displayName:
           type: string
@@ -1877,12 +1866,11 @@ components:
           type: string
           description: MCP specification version
           example: 2025-06-18
-        upstreams:
-          type: array
-          description: List of backend service URLs
-          minItems: 1
-          items:
-            $ref: "#/components/schemas/MCPUpstream"
+        upstream:
+          description: The backend MCP server url and auth configurations
+          allOf:
+            - $ref: "#/components/schemas/Upstream"
+            - $ref: "#/components/schemas/UpstreamAuth"
         tools:
           type: array
           items:
@@ -1978,6 +1966,42 @@ components:
               title:
                 type: string
                 description: Optional human-readable title of the argument
+    
+    MCPProxyCreateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: MCP proxy created successfully
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        created_at:
+          type: string
+          format: date-time
+          example: 2025-12-12T10:30:00Z
+
+    MCPProxyUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: MCP proxy updated successfully
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        updated_at:
+          type: string
+          format: date-time
+          example: 2025-12-12T11:45:00Z
 
     MCPProxyListItem:
       type: object

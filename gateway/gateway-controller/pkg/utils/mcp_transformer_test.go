@@ -111,23 +111,24 @@ func TestMCPTransformer_Transform(t *testing.T) {
 	name := "petstore"
 	version := "1.0.0"
 	context := "/petstore"
-	upstreams := []api.MCPUpstream{{
-		Url: "http://backend:8080",
-	}}
+	url := "http://backend:8080"
+	upstream := api.MCPProxyConfigData_Upstream{
+		Url: &url,
+	}
 	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
 	in := &api.MCPProxyConfiguration{
 		Spec: api.MCPProxyConfigData{
 			DisplayName: name,
 			Version:     version,
 			Context:     context,
-			Upstreams:   upstreams,
+			Upstream:    upstream,
 			SpecVersion: &latest,
 		},
 	}
 	var out api.APIConfiguration
 	tr := &MCPTransformer{}
 	res, err := tr.Transform(in, &out)
-	if res == nil {
+	if err != nil {
 		t.Fatalf("Transform returned nil")
 	}
 

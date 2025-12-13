@@ -131,6 +131,12 @@ const (
 	MCPDetailResponseMcpMetadataStatusPending  MCPDetailResponseMcpMetadataStatus = "pending"
 )
 
+// Defines values for MCPProxyConfigDataUpstreamAuthType.
+const (
+	MCPProxyConfigDataUpstreamAuthTypeApiKey MCPProxyConfigDataUpstreamAuthType = "api-key"
+	MCPProxyConfigDataUpstreamAuthTypeBearer MCPProxyConfigDataUpstreamAuthType = "bearer"
+)
+
 // Defines values for MCPProxyConfigurationKind.
 const (
 	Mcp MCPProxyConfigurationKind = "mcp"
@@ -179,8 +185,8 @@ const (
 
 // Defines values for UpstreamAuthAuthType.
 const (
-	UpstreamAuthAuthTypeApiKey UpstreamAuthAuthType = "api-key"
-	UpstreamAuthAuthTypeBearer UpstreamAuthAuthType = "bearer"
+	ApiKey UpstreamAuthAuthType = "api-key"
+	Bearer UpstreamAuthAuthType = "bearer"
 )
 
 // Defines values for ListAPIsParamsStatus.
@@ -763,11 +769,36 @@ type MCPProxyConfigData struct {
 	SpecVersion *string    `json:"specVersion,omitempty" yaml:"specVersion,omitempty"`
 	Tools       *[]MCPTool `json:"tools,omitempty" yaml:"tools,omitempty"`
 
-	// Upstreams List of backend service URLs
-	Upstreams []MCPUpstream `json:"upstreams" yaml:"upstreams"`
+	// Upstream The backend MCP server url and auth configurations
+	Upstream MCPProxyConfigData_Upstream `json:"upstream" yaml:"upstream"`
 
 	// Version MCP Proxy version
 	Version string `json:"version" yaml:"version"`
+}
+
+// MCPProxyConfigDataUpstreamAuthType defines model for MCPProxyConfigData.Upstream.Auth.Type.
+type MCPProxyConfigDataUpstreamAuthType string
+
+// MCPProxyConfigDataUpstream0 defines model for .
+type MCPProxyConfigDataUpstream0 = interface{}
+
+// MCPProxyConfigDataUpstream1 defines model for .
+type MCPProxyConfigDataUpstream1 = interface{}
+
+// MCPProxyConfigData_Upstream defines model for MCPProxyConfigData.Upstream.
+type MCPProxyConfigData_Upstream struct {
+	Auth *struct {
+		Header *string                            `json:"header,omitempty" yaml:"header,omitempty"`
+		Type   MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+		Value  *string                            `json:"value,omitempty" yaml:"value,omitempty"`
+	} `json:"auth,omitempty" yaml:"auth,omitempty"`
+
+	// Ref Reference to a predefined upstreamDefinition
+	Ref *string `json:"ref,omitempty" yaml:"ref,omitempty"`
+
+	// Url Direct backend URL to route traffic to
+	Url   *string `json:"url,omitempty" yaml:"url,omitempty"`
+	union json.RawMessage
 }
 
 // MCPProxyConfiguration defines model for MCPProxyConfiguration.
@@ -787,6 +818,14 @@ type MCPProxyConfigurationKind string
 // MCPProxyConfigurationVersion MCP Proxy specification version
 type MCPProxyConfigurationVersion string
 
+// MCPProxyCreateResponse defines model for MCPProxyCreateResponse.
+type MCPProxyCreateResponse struct {
+	CreatedAt *time.Time          `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string             `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string             `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
 // MCPProxyListItem defines model for MCPProxyListItem.
 type MCPProxyListItem struct {
 	Context     *string                 `json:"context,omitempty" yaml:"context,omitempty"`
@@ -801,6 +840,14 @@ type MCPProxyListItem struct {
 
 // MCPProxyListItemStatus defines model for MCPProxyListItem.Status.
 type MCPProxyListItemStatus string
+
+// MCPProxyUpdateResponse defines model for MCPProxyUpdateResponse.
+type MCPProxyUpdateResponse struct {
+	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string             `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string             `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time          `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+}
 
 // MCPResource defines model for MCPResource.
 type MCPResource struct {
@@ -839,12 +886,6 @@ type MCPTool struct {
 
 	// Title Optional human-readable name of the tool for display purposes.
 	Title *string `json:"title,omitempty" yaml:"title,omitempty"`
-}
-
-// MCPUpstream defines model for MCPUpstream.
-type MCPUpstream struct {
-	// Url Backend service URL (may include path prefix like /api/v2)
-	Url string `json:"url" yaml:"url"`
 }
 
 // Metadata defines model for Metadata.
@@ -1256,6 +1297,130 @@ func (t LLMProviderConfigData_Upstream) MarshalJSON() ([]byte, error) {
 }
 
 func (t *LLMProviderConfigData_Upstream) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["auth"]; found {
+		err = json.Unmarshal(raw, &t.Auth)
+		if err != nil {
+			return fmt.Errorf("error reading 'auth': %w", err)
+		}
+	}
+
+	if raw, found := object["ref"]; found {
+		err = json.Unmarshal(raw, &t.Ref)
+		if err != nil {
+			return fmt.Errorf("error reading 'ref': %w", err)
+		}
+	}
+
+	if raw, found := object["url"]; found {
+		err = json.Unmarshal(raw, &t.Url)
+		if err != nil {
+			return fmt.Errorf("error reading 'url': %w", err)
+		}
+	}
+
+	return err
+}
+
+// AsMCPProxyConfigDataUpstream0 returns the union data inside the MCPProxyConfigData_Upstream as a MCPProxyConfigDataUpstream0
+func (t MCPProxyConfigData_Upstream) AsMCPProxyConfigDataUpstream0() (MCPProxyConfigDataUpstream0, error) {
+	var body MCPProxyConfigDataUpstream0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMCPProxyConfigDataUpstream0 overwrites any union data inside the MCPProxyConfigData_Upstream as the provided MCPProxyConfigDataUpstream0
+func (t *MCPProxyConfigData_Upstream) FromMCPProxyConfigDataUpstream0(v MCPProxyConfigDataUpstream0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMCPProxyConfigDataUpstream0 performs a merge with any union data inside the MCPProxyConfigData_Upstream, using the provided MCPProxyConfigDataUpstream0
+func (t *MCPProxyConfigData_Upstream) MergeMCPProxyConfigDataUpstream0(v MCPProxyConfigDataUpstream0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMCPProxyConfigDataUpstream1 returns the union data inside the MCPProxyConfigData_Upstream as a MCPProxyConfigDataUpstream1
+func (t MCPProxyConfigData_Upstream) AsMCPProxyConfigDataUpstream1() (MCPProxyConfigDataUpstream1, error) {
+	var body MCPProxyConfigDataUpstream1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMCPProxyConfigDataUpstream1 overwrites any union data inside the MCPProxyConfigData_Upstream as the provided MCPProxyConfigDataUpstream1
+func (t *MCPProxyConfigData_Upstream) FromMCPProxyConfigDataUpstream1(v MCPProxyConfigDataUpstream1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMCPProxyConfigDataUpstream1 performs a merge with any union data inside the MCPProxyConfigData_Upstream, using the provided MCPProxyConfigDataUpstream1
+func (t *MCPProxyConfigData_Upstream) MergeMCPProxyConfigDataUpstream1(v MCPProxyConfigDataUpstream1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MCPProxyConfigData_Upstream) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.Auth != nil {
+		object["auth"], err = json.Marshal(t.Auth)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'auth': %w", err)
+		}
+	}
+
+	if t.Ref != nil {
+		object["ref"], err = json.Marshal(t.Ref)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'ref': %w", err)
+		}
+	}
+
+	if t.Url != nil {
+		object["url"], err = json.Marshal(t.Url)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'url': %w", err)
+		}
+	}
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *MCPProxyConfigData_Upstream) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	if err != nil {
 		return err

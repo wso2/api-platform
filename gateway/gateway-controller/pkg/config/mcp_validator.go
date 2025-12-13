@@ -135,7 +135,7 @@ func (v *MCPValidator) validateSpec(spec *api.MCPProxyConfigData) []ValidationEr
 	errors = append(errors, v.validateContext(spec.Context)...)
 
 	// Validate upstream
-	errors = append(errors, v.validateUpstream(spec.Upstreams)...)
+	errors = append(errors, v.validateUpstream("spec.upstream", &spec.Upstream)...)
 
 	return errors
 }
@@ -177,50 +177,83 @@ func (v *MCPValidator) validateContext(context string) []ValidationError {
 }
 
 // validateUpstream validates the upstream configuration
-func (v *MCPValidator) validateUpstream(upstreams []api.MCPUpstream) []ValidationError {
+func (v *MCPValidator) validateUpstream(fieldPrefix string, upstream *api.MCPProxyConfigData_Upstream) []ValidationError {
 	var errors []ValidationError
 
-	if len(upstreams) == 0 {
+	if upstream == nil {
 		errors = append(errors, ValidationError{
-			Field:   "spec.upstreams",
-			Message: "At least one upstream URL is required",
+			Field:   fieldPrefix,
+			Message: "Upstream is required",
 		})
 		return errors
 	}
 
-	for i, up := range upstreams {
-		if up.Url == "" {
+	if upstream.Url == nil || *upstream.Url == "" {
+		errors = append(errors, ValidationError{
+			Field:   fmt.Sprintf("%s.url", fieldPrefix),
+			Message: "Upstream URL is required",
+		})
+		return errors
+	}
+
+	// Validate URL format
+	parsedURL, err := url.Parse(*upstream.Url)
+	if err != nil {
+		errors = append(errors, ValidationError{
+			Field:   fmt.Sprintf("%s.url", fieldPrefix),
+			Message: fmt.Sprintf("Invalid URL format: %v", err),
+		})
+		return errors
+	}
+
+	// Ensure scheme is http or https
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		errors = append(errors, ValidationError{
+			Field:   fmt.Sprintf("%s.url", fieldPrefix),
+			Message: "Upstream URL must use http or https scheme",
+		})
+	}
+
+	// Ensure host is present
+	if parsedURL.Host == "" {
+		errors = append(errors, ValidationError{
+			Field:   fmt.Sprintf("%s.url", fieldPrefix),
+			Message: "Upstream URL must include a host",
+		})
+	}
+
+	// Validate auth if present
+	if upstream.Auth != nil {
+		auth := upstream.Auth
+		// Validate 'type'
+		if auth.Type == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.upstreams[%d].url", i),
-				Message: "Upstream URL is required",
+				Field:   fmt.Sprintf("%s.auth.type", fieldPrefix),
+				Message: "Auth type is required",
 			})
-			continue
 		}
 
-		// Validate URL format
-		parsedURL, err := url.Parse(up.Url)
-		if err != nil {
+		if auth.Header == nil || *auth.Header == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.upstreams[%d].url", i),
-				Message: fmt.Sprintf("Invalid URL format: %v", err),
+				Field:   fmt.Sprintf("%s.auth.header", fieldPrefix),
+				Message: "Auth header is required",
 			})
-			continue
 		}
-
-		// Ensure scheme is http or https
-		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		if auth.Value == nil || *auth.Value == "" {
 			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.upstreams[%d].url", i),
-				Message: "Upstream URL must use http or https scheme",
+				Field:   fmt.Sprintf("%s.auth.value", fieldPrefix),
+				Message: "Auth value is required",
 			})
 		}
 
-		// Ensure host is present
-		if parsedURL.Host == "" {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("spec.upstreams[%d].url", i),
-				Message: "Upstream URL must include a host",
-			})
+		if auth.Type == api.MCPProxyConfigDataUpstreamAuthTypeApiKey {
+			// For Bearer token, value should start with "Bearer or "bearer "
+			if !strings.HasPrefix(*auth.Value, "Bearer ") && !strings.HasPrefix(*auth.Value, "bearer ") {
+				errors = append(errors, ValidationError{
+					Field:   fmt.Sprintf("%s.auth.value", fieldPrefix),
+					Message: "Bearer token value must start with 'Bearer ' or 'bearer '",
+				})
+			}
 		}
 	}
 
