@@ -48,13 +48,12 @@ type APIRepository interface {
 	CreateAPI(api *model.API) error
 	GetAPIByUUID(apiId string) (*model.API, error)
 	GetAPIByHandle(handle, orgId string) (*model.API, error)
+	GetAPIMetadataByHandle(handle, orgId string) (*model.APIMetadata, error)
 	GetAPIsByProjectID(projectID string) ([]*model.API, error)
 	GetAPIsByOrganizationID(orgID string, projectID *string) ([]*model.API, error)
 	GetAPIsByGatewayID(gatewayID, organizationID string) ([]*model.API, error)
 	UpdateAPI(api *model.API) error
-	UpdateAPIByHandle(handle, orgId string, api *model.API) error
 	DeleteAPI(apiId string) error
-	DeleteAPIByHandle(handle, orgId string) error
 	CreateDeployment(deployment *model.APIDeployment) error
 	GetDeploymentsByAPIUUID(apiId string) ([]*model.APIDeployment, error)
 

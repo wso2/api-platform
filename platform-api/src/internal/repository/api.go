@@ -196,6 +196,25 @@ func (r *APIRepo) GetAPIByHandle(handle, orgId string) (*model.API, error) {
 	return api, nil
 }
 
+// GetAPIMetadataByHandle retrieves minimal API information by handle and organization ID
+func (r *APIRepo) GetAPIMetadataByHandle(handle, orgId string) (*model.APIMetadata, error) {
+	metadata := &model.APIMetadata{}
+
+	query := `SELECT uuid, handle, name, context, organization_uuid FROM apis WHERE handle = ? AND organization_uuid = ?`
+
+	err := r.db.QueryRow(query, handle, orgId).Scan(
+		&metadata.ID, &metadata.Handle, &metadata.Name, &metadata.Context, &metadata.OrganizationID)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return metadata, nil
+}
+
 // GetAPIsByProjectID retrieves all APIs for a project
 func (r *APIRepo) GetAPIsByProjectID(projectID string) ([]*model.API, error) {
 	query := `
@@ -410,23 +429,6 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 	return tx.Commit()
 }
 
-// UpdateAPIByHandle modifies an existing API identified by handle and organization ID
-func (r *APIRepo) UpdateAPIByHandle(handle, orgId string, api *model.API) error {
-	// Get the API UUID by handle if not already set
-	if api.ID == "" {
-		existingAPI, err := r.GetAPIByHandle(handle, orgId)
-		if err != nil {
-			return err
-		}
-		if existingAPI == nil {
-			return fmt.Errorf("API with handle %s not found", handle)
-		}
-		api.ID = existingAPI.ID
-	}
-
-	return r.UpdateAPI(api)
-}
-
 // DeleteAPI removes an API and all its configurations
 func (r *APIRepo) DeleteAPI(apiId string) error {
 	// Start transaction for atomicity
@@ -464,21 +466,6 @@ func (r *APIRepo) DeleteAPI(apiId string) error {
 	}
 
 	return tx.Commit()
-}
-
-// DeleteAPIByHandle removes an API and all its configurations by handle and organization ID
-func (r *APIRepo) DeleteAPIByHandle(handle, orgId string) error {
-	// First get the API UUID by handle
-	api, err := r.GetAPIByHandle(handle, orgId)
-	if err != nil {
-		return err
-	}
-	if api == nil {
-		return fmt.Errorf("API with handle %s not found", handle)
-	}
-
-	// Use the existing DeleteAPI method with the UUID
-	return r.DeleteAPI(api.ID)
 }
 
 // CheckAPIExistsByHandleInOrganization checks if an API with the given handle exists within a specific organization

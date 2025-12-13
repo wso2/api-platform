@@ -56,6 +56,15 @@ func (API) TableName() string {
 	return "apis"
 }
 
+// APIMetadata contains minimal API information for handle-to-UUID resolution
+type APIMetadata struct {
+	ID             string `json:"id" db:"uuid"`
+	Handle         string `json:"handle" db:"handle"`
+	Name           string `json:"name" db:"name"`
+	Context        string `json:"context" db:"context"`
+	OrganizationID string `json:"organizationId" db:"organization_uuid"`
+}
+
 // MTLSConfig represents mutual TLS configuration
 type MTLSConfig struct {
 	Enabled                    bool   `json:"enabled,omitempty"`

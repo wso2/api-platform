@@ -276,6 +276,24 @@ func (s *APIService) HandleExistsCheck(orgId string) func(string) bool {
 	}
 }
 
+// getAPIUUIDByHandle retrieves the internal UUID for an API by its handle.
+// This is a lightweight operation that only fetches minimal metadata.
+func (s *APIService) getAPIUUIDByHandle(handle, orgId string) (string, error) {
+	if handle == "" {
+		return "", errors.New("API handle is required")
+	}
+
+	metadata, err := s.apiRepo.GetAPIMetadataByHandle(handle, orgId)
+	if err != nil {
+		return "", err
+	}
+	if metadata == nil {
+		return "", constants.ErrAPINotFound
+	}
+
+	return metadata.ID, nil
+}
+
 // GetAPIsByOrganization retrieves all APIs for an organization with optional project filter
 func (s *APIService) GetAPIsByOrganization(orgId string, projectID *string) ([]*dto.API, error) {
 	// If project ID is provided, validate that it belongs to the organization
@@ -370,7 +388,7 @@ func (s *APIService) UpdateAPIByHandle(handle string, req *UpdateAPIRequest, org
 		return nil, errors.New("API handle is required")
 	}
 
-	// Get existing API by handle
+	// Get existing API by handle (need full model for applyAPIUpdates)
 	existingAPIModel, err := s.apiRepo.GetAPIByHandle(handle, orgId)
 	if err != nil {
 		return nil, err
@@ -385,10 +403,10 @@ func (s *APIService) UpdateAPIByHandle(handle string, req *UpdateAPIRequest, org
 		return nil, err
 	}
 
-	// Update API in repository using handle
+	// Update API in repository using UUID
 	updatedAPIModel := s.apiUtil.DTOToModel(existingAPI)
 	updatedAPIModel.ID = existingAPIModel.ID // Preserve the internal UUID
-	if err := s.apiRepo.UpdateAPIByHandle(handle, orgId, updatedAPIModel); err != nil {
+	if err := s.apiRepo.UpdateAPI(updatedAPIModel); err != nil {
 		return nil, err
 	}
 
@@ -397,116 +415,69 @@ func (s *APIService) UpdateAPIByHandle(handle string, req *UpdateAPIRequest, org
 
 // DeleteAPIByHandle deletes an API identified by handle
 func (s *APIService) DeleteAPIByHandle(handle, orgId string) error {
-	if handle == "" {
-		return errors.New("API handle is required")
-	}
-
-	// Check if API exists
-	api, err := s.apiRepo.GetAPIByHandle(handle, orgId)
+	// Get API UUID by handle
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
 	if err != nil {
 		return err
 	}
-	if api == nil {
-		return constants.ErrAPINotFound
-	}
 
-	// Delete API from repository
-	if err := s.apiRepo.DeleteAPIByHandle(handle, orgId); err != nil {
-		return fmt.Errorf("failed to delete api: %w", err)
-	}
-
-	return nil
+	// Delete API using existing UUID-based method
+	return s.DeleteAPI(apiUUID, orgId)
 }
 
 // AddGatewaysToAPIByHandle associates multiple gateways with an API identified by handle
 func (s *APIService) AddGatewaysToAPIByHandle(handle string, gatewayIds []string, orgId string) (*dto.APIGatewayListResponse, error) {
-	// Get API by handle to get internal UUID
-	apiModel, err := s.apiRepo.GetAPIByHandle(handle, orgId)
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
 	if err != nil {
 		return nil, err
 	}
-	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
-	}
-
-	// Use internal UUID for the operation
-	return s.AddGatewaysToAPI(apiModel.ID, gatewayIds, orgId)
+	return s.AddGatewaysToAPI(apiUUID, gatewayIds, orgId)
 }
 
 // GetAPIGatewaysByHandle retrieves all gateways associated with an API identified by handle
 func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string) (*dto.APIGatewayListResponse, error) {
-	// Get API by handle to get internal UUID
-	apiModel, err := s.apiRepo.GetAPIByHandle(handle, orgId)
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
 	if err != nil {
 		return nil, err
 	}
-	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
-	}
-
-	// Use internal UUID for the operation
-	return s.GetAPIGateways(apiModel.ID, orgId)
+	return s.GetAPIGateways(apiUUID, orgId)
 }
 
 // DeployAPIRevisionByHandle deploys an API revision identified by handle
 func (s *APIService) DeployAPIRevisionByHandle(handle string, revisionID string,
 	deploymentRequests []dto.APIRevisionDeployment, orgId string) ([]*dto.APIRevisionDeployment, error) {
-	// Get API by handle to get internal UUID
-	apiModel, err := s.apiRepo.GetAPIByHandle(handle, orgId)
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
 	if err != nil {
 		return nil, err
 	}
-	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
-	}
-
-	// Use internal UUID for the operation
-	return s.DeployAPIRevision(apiModel.ID, revisionID, deploymentRequests, orgId)
+	return s.DeployAPIRevision(apiUUID, revisionID, deploymentRequests, orgId)
 }
 
 // PublishAPIToDevPortalByHandle publishes an API identified by handle to a DevPortal
 func (s *APIService) PublishAPIToDevPortalByHandle(handle string, req *dto.PublishToDevPortalRequest, orgID string) error {
-	// Get API by handle to get internal UUID
-	apiModel, err := s.apiRepo.GetAPIByHandle(handle, orgID)
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgID)
 	if err != nil {
 		return err
 	}
-	if apiModel == nil {
-		return constants.ErrAPINotFound
-	}
-
-	// Use internal UUID for the operation
-	return s.PublishAPIToDevPortal(apiModel.ID, req, orgID)
+	return s.PublishAPIToDevPortal(apiUUID, req, orgID)
 }
 
 // UnpublishAPIFromDevPortalByHandle unpublishes an API identified by handle from a DevPortal
 func (s *APIService) UnpublishAPIFromDevPortalByHandle(handle, devPortalUUID, orgID string) error {
-	// Get API by handle to get internal UUID
-	apiModel, err := s.apiRepo.GetAPIByHandle(handle, orgID)
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgID)
 	if err != nil {
 		return err
 	}
-	if apiModel == nil {
-		return constants.ErrAPINotFound
-	}
-
-	// Use internal UUID for the operation
-	return s.UnpublishAPIFromDevPortal(apiModel.ID, devPortalUUID, orgID)
+	return s.UnpublishAPIFromDevPortal(apiUUID, devPortalUUID, orgID)
 }
 
 // GetAPIPublicationsByHandle retrieves all DevPortals associated with an API identified by handle
 func (s *APIService) GetAPIPublicationsByHandle(handle, orgID string) (*dto.APIDevPortalListResponse, error) {
-	// Get API by handle to get internal UUID
-	apiModel, err := s.apiRepo.GetAPIByHandle(handle, orgID)
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgID)
 	if err != nil {
 		return nil, err
 	}
-	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
-	}
-
-	// Use internal UUID for the operation
-	return s.GetAPIPublications(apiModel.ID, orgID)
+	return s.GetAPIPublications(apiUUID, orgID)
 }
 
 // UpdateAPILifecycleStatus updates only the lifecycle status of an API
