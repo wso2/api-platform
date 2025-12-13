@@ -1490,7 +1490,7 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Deploy MCP configuration using the utility service
-	result, err := s.mcpDeploymentService.DeployMCPConfiguration(utils.MCPDeploymentParams{
+	cfg, err := s.mcpDeploymentService.CreateMCPProxy(utils.MCPDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		ID:            "", // Empty to generate new UUID
@@ -1517,15 +1517,29 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 	// Set up a callback to notify platform API after successful deployment
 	// This is specific to direct API creation via gateway endpoint
 	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() {
-		go s.waitForDeploymentAndNotify(result.StoredConfig.ID, correlationID, log)
+		go s.waitForDeploymentAndNotify(cfg.ID, correlationID, log)
+	}
+
+	// Build and add policy config derived from API configuration if policies are present
+	if s.policyManager != nil {
+		storedPolicy := s.buildStoredPolicyFromAPI(cfg)
+		if storedPolicy != nil {
+			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
+				log.Error("Failed to add derived policy configuration", zap.Error(err))
+			} else {
+				log.Info("Derived policy configuration added",
+					zap.String("policy_id", storedPolicy.ID),
+					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
+			}
+		}
 	}
 
 	// Return success response (id is the handle)
 	c.JSON(http.StatusCreated, api.APICreateResponse{
 		Status:    stringPtr("success"),
-		Message:   stringPtr("MCP configuration created successfully"),
+		Message:   stringPtr("MCP proxy configuration created successfully"),
 		Id:        stringPtr(result.StoredConfig.GetHandle()),
-		CreatedAt: timePtr(result.StoredConfig.CreatedAt),
+		CreatedAt: timePtr(cfg.CreatedAt),
 	})
 }
 
@@ -1579,14 +1593,14 @@ func (s *APIServer) GetMCPProxyByNameVersion(c *gin.Context, name string, versio
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg, err := s.store.GetByNameVersion(name, version)
+	cfg, err := s.mcpDeploymentService.ListMCPProxyByNameAndVersion(name, version)
 	if err != nil {
 		log.Warn("MCP proxy configuration not found",
 			zap.String("name", name),
 			zap.String("version", version))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("MCP proxy configuration with name '%s' and version '%s' not found", name, version),
+			Message: err.Error(),
 		})
 		return
 	}
@@ -1689,67 +1703,17 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 		return
 	}
 
-	// Parse configuration
-	contentType := c.GetHeader("Content-Type")
-	var mcpConfig api.MCPProxyConfiguration
-	err = s.parser.Parse(body, contentType, &mcpConfig)
-	if err != nil {
-		log.Error("Failed to parse configuration", zap.Error(err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to parse configuration",
-		})
-		return
-	}
+	// Get correlation ID
+	correlationID := middleware.GetCorrelationID(c)
 
-	// Validate that the handle in the YAML matches the path parameter
-	if mcpConfig.Metadata != nil && mcpConfig.Metadata.Name != "" {
-		if mcpConfig.Metadata.Name != handle {
-			log.Warn("Handle mismatch between path and YAML metadata",
-				zap.String("path_handle", handle),
-				zap.String("yaml_handle", mcpConfig.Metadata.Name))
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
-				Status:  "error",
-				Message: fmt.Sprintf("Handle mismatch: path has '%s' but YAML metadata.name has '%s'", handle, mcpConfig.Metadata.Name),
-			})
-			return
-		}
-	}
+	// Delegate to service update wrapper
+	updated, err := s.mcpDeploymentService.UpdateMCPProxy(name, version, utils.MCPDeploymentParams{
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
 
-	mcpValidator := config.NewMCPValidator()
-	// Validate configuration
-	validationErrors := mcpValidator.Validate(&mcpConfig)
-	if len(validationErrors) > 0 {
-		log.Warn("Configuration validation failed",
-			zap.String("displayName", mcpConfig.Spec.DisplayName),
-			zap.Int("num_errors", len(validationErrors)))
-
-		errors := make([]api.ValidationError, len(validationErrors))
-		for i, e := range validationErrors {
-			errors[i] = api.ValidationError{
-				Field:   stringPtr(e.Field),
-				Message: stringPtr(e.Message),
-			}
-		}
-
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: "Configuration validation failed",
-			Errors:  &errors,
-		})
-		return
-	}
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
-	// Check if config exists
-	existing, err := s.db.GetConfigByHandle(handle)
 	if err != nil {
 		log.Warn("MCP configuration not found",
 			zap.String("handle", handle))
@@ -1858,7 +1822,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 
 	// Rebuild and update derived policy configuration
 	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(existing)
+		storedPolicy := s.buildStoredPolicyFromAPI(updated)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
 				log.Error("Failed to update derived policy configuration", zap.Error(err))
@@ -1869,7 +1833,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 			}
 		} else {
 			// MCP proxy no longer has policies, remove the existing policy configuration
-			policyID := existing.ID + "-policies"
+			policyID := updated.ID + "-policies"
 			if err := s.policyManager.RemovePolicy(policyID); err != nil {
 				// Log at debug level since policy may not exist if MCP proxy never had policies
 				log.Debug("No policy configuration to remove", zap.String("policy_id", policyID))

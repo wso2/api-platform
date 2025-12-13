@@ -1871,6 +1871,11 @@ components:
           allOf:
             - $ref: "#/components/schemas/Upstream"
             - $ref: "#/components/schemas/UpstreamAuth"
+        policies:
+          type: array
+          description: List of MCP Proxy level policies applied
+          items:
+            $ref: "#/components/schemas/Policy"
         tools:
           type: array
           items:
