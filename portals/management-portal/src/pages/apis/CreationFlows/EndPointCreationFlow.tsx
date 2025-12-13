@@ -16,6 +16,25 @@ import { useCreateComponentBuildpackContext } from "../../../context/CreateCompo
 import { type CreateApiPayload } from "../../../hooks/apis";
 import CreationMetaData from "./CreationMetaData";
 
+const slugify = (val: string) =>
+  (val || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .trim();
+
+const majorFromVersion = (v: string) => {
+  const m = (v || "").trim().match(/\d+/);
+  return m?.[0] ?? "";
+};
+
+const buildIdentifierFromNameAndVersion = (name: string, version: string) => {
+  const base = slugify(name);
+  const major = majorFromVersion(version);
+  return major ? `${base}-v${major}` : base;
+};
+
 type EndpointWizardStep = "endpoint" | "details";
 
 type EndpointCreationState = {
@@ -51,13 +70,13 @@ const EndPointCreationFlow: React.FC<Props> = ({
   const [creating, setCreating] = React.useState(false);
   const [metaHasErrors, setMetaHasErrors] = React.useState(false);
 
-  // Reset this flow's slice when opened
   React.useEffect(() => {
     if (open) {
       resetEndpointMeta();
       setWizardStep("endpoint");
       setWizardState({ endpointUrl: "" });
       setWizardError(null);
+      setMetaHasErrors(false);
     }
   }, [open, resetEndpointMeta]);
 
@@ -87,31 +106,46 @@ const EndPointCreationFlow: React.FC<Props> = ({
   const handleStepChange = React.useCallback(
     (next: EndpointWizardStep) => {
       if (next === "details") {
-        const inferred = inferNameFromEndpoint(wizardState.endpointUrl);
-        const needsName = !(endpointMeta?.name || "").trim();
-        const needsContext = !(endpointMeta?.context || "").trim();
+        const inferredDisplayName = inferNameFromEndpoint(
+          wizardState.endpointUrl
+        );
+
         setEndpointMeta((prev: any) => {
           const base = prev || {};
           const nextMeta = { ...base };
-          if (needsName) nextMeta.name = inferred;
-          if (needsContext && !base?.contextEdited) {
-            const slug = inferred
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, "-")
-              .replace(/^-+|-+$/g, "");
+
+          const hasName = !!(base?.name || "").trim();
+          const hasDisplayName = !!(base?.displayName || "").trim();
+          const hasContext = !!(base?.context || "").trim();
+          const hasVersion = !!(base?.version || "").trim();
+
+          const version = hasVersion ? base.version : "1.0.0";
+
+          if (!hasDisplayName) nextMeta.displayName = inferredDisplayName;
+          if (!hasName) nextMeta.name = inferredDisplayName;
+
+          if (!hasContext && !base?.contextEdited) {
+            const slug = slugify(inferredDisplayName);
             nextMeta.context = slug ? `/${slug}` : "";
           }
+
+          if (!hasVersion) nextMeta.version = version;
+
+          if (!base?.identifierEdited) {
+            nextMeta.identifier = buildIdentifierFromNameAndVersion(
+              inferredDisplayName,
+              version
+            );
+            nextMeta.identifierEdited = false;
+          }
+
           return nextMeta;
         });
       }
+
       setWizardStep(next);
     },
-    [
-      inferNameFromEndpoint,
-      endpointMeta,
-      setEndpointMeta,
-      wizardState.endpointUrl,
-    ]
+    [inferNameFromEndpoint, setEndpointMeta, wizardState.endpointUrl]
   );
 
   const handleCreate = React.useCallback(async () => {
@@ -121,11 +155,8 @@ const EndPointCreationFlow: React.FC<Props> = ({
       endpointMeta?.name ||
       ""
     ).trim();
-    const identifier = (
-      endpointMeta?.identifier ||
-      endpointMeta?.name ||
-      ""
-    ).trim();
+
+    const identifier = (endpointMeta?.identifier || "").trim();
     const context = (endpointMeta?.context || "").trim();
     const version = (endpointMeta?.version || "").trim() || "1.0.0";
 
@@ -137,11 +168,12 @@ const EndPointCreationFlow: React.FC<Props> = ({
     try {
       setWizardError(null);
       setCreating(true);
+
       const uniqueBackendName = `default-backend-${Date.now().toString(
         36
       )}${Math.random().toString(36).slice(2, 8)}`;
 
-      await createApi({
+      const payload: CreateApiPayload = {
         name: identifier,
         displayName,
         context: context.startsWith("/") ? context : `/${context}`,
@@ -158,9 +190,10 @@ const EndPointCreationFlow: React.FC<Props> = ({
             retries: 0,
           },
         ],
-      });
+      };
 
-      // fresh state for the next time it's opened
+      await createApi(payload);
+
       resetEndpointMeta();
       setWizardState({ endpointUrl: "" });
       onClose();
@@ -260,7 +293,8 @@ const EndPointCreationFlow: React.FC<Props> = ({
               disabled={
                 creating ||
                 metaHasErrors ||
-                !(endpointMeta?.name || "").trim() ||
+                !(endpointMeta?.displayName || endpointMeta?.name || "").trim() ||
+                !(endpointMeta?.identifier || "").trim() ||
                 !(endpointMeta?.context || "").trim() ||
                 !(endpointMeta?.version || "").trim()
               }

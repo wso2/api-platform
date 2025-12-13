@@ -50,6 +50,25 @@ const spin = keyframes`
   100% { transform: rotate(360deg); }
 `;
 
+const slugify = (val: string) =>
+  (val || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .trim();
+
+const majorFromVersion = (v: string) => {
+  const m = (v || "").trim().match(/\d+/);
+  return m?.[0] ?? "";
+};
+
+const buildIdentifierFromNameAndVersion = (name: string, version: string) => {
+  const base = slugify(name);
+  const major = majorFromVersion(version);
+  return major ? `${base}-v${major}` : base;
+};
+
 const GithubCreationFlow: React.FC<Props> = ({
   open,
   onClose,
@@ -258,9 +277,7 @@ const GithubCreationFlow: React.FC<Props> = ({
   }, [apiDir, content, findNodeByPath, nodeHasConfigYaml]);
 
   const onNext = async () => {
-    if (!repoUrl.trim() || !selectedBranch || !apiDir || !isDirValid) {
-      return;
-    }
+    if (!repoUrl.trim() || !selectedBranch || !apiDir || !isDirValid) return;
 
     try {
       const path = apiDir === "/" ? "/" : normalizePath(apiDir);
@@ -272,20 +289,33 @@ const GithubCreationFlow: React.FC<Props> = ({
       });
 
       const api = (res as any)?.api;
+
       if (api) {
         const target =
           api["backend-services"]?.[0]?.endpoints?.[0]?.url?.trim() || "";
-        // Prefill Meta
-        setContractMeta((prev: any) => ({
-          ...prev,
-          name: api.name || prev?.name || "",
-          context: api.context || prev?.context || "",
-          version: formatVersionToMajorMinor(
-            api.version ?? prev?.version ?? "1.0.0"
-          ),
-          description: api.description || prev?.description || "",
-          target: target || prev?.target || "",
-        }));
+
+        const displayName = (api.name || "").trim();
+        const version = formatVersionToMajorMinor(api.version ?? "1.0.0");
+        const identifier = buildIdentifierFromNameAndVersion(
+          displayName,
+          version
+        );
+
+        setContractMeta((prev: any) => {
+          const base = prev || {};
+          return {
+            ...base,
+            displayName: displayName || base.displayName || "",
+            name: identifier || base.name || "",
+            identifier,
+            identifierEdited: false,
+            context: api.context || base.context || "",
+            version: version || base.version || "1.0.0",
+            description: api.description || base.description || "",
+            target: target || base.target || "",
+          };
+        });
+
         setValidatedOps(Array.isArray(api.operations) ? api.operations : []);
       } else {
         setValidatedOps([]);
@@ -300,14 +330,16 @@ const GithubCreationFlow: React.FC<Props> = ({
 
   const onCreate = async () => {
     setCreateError(null);
-    const name = (contractMeta?.name || "").trim();
+
+    const displayName = (contractMeta?.displayName || "").trim();
+    const identifier = (contractMeta?.identifier || "").trim();
     const context = (contractMeta?.context || "").trim();
     const version = (contractMeta?.version || "").trim();
     const description = (contractMeta?.description || "").trim() || undefined;
     const target = (contractMeta?.target || "").trim();
 
-    if (!name || !context || !version) {
-      setCreateError("Please complete Name, Context, and Version.");
+    if (!displayName || !identifier || !context || !version) {
+      setCreateError("Please complete Name, Identifier, Context, and Version.");
       return;
     }
     if (!repoUrl?.trim() || !selectedBranch) {
@@ -324,14 +356,15 @@ const GithubCreationFlow: React.FC<Props> = ({
       setCreateError("Project is required (missing projectId).");
       return;
     }
+
     const payload = {
       repoUrl: repoUrl.trim(),
       provider: "github" as const,
       branch: selectedBranch,
       path: apiDir === "/" ? "/" : normalizePath(apiDir),
       api: {
-        name,
-        displayName: name,
+        name: identifier,
+        displayName,
         description,
         context: context.startsWith("/") ? context : `/${context}`,
         version,
@@ -357,7 +390,10 @@ const GithubCreationFlow: React.FC<Props> = ({
         console.warn("Failed to refresh API list after import:", rErr);
       }
       try {
-        showNotification(`API "${name}" created successfully!`, "success");
+        showNotification(
+          `API "${displayName}" created successfully!`,
+          "success"
+        );
       } catch (nErr) {
         console.warn("Failed to show notification:", nErr);
       }
@@ -377,7 +413,8 @@ const GithubCreationFlow: React.FC<Props> = ({
     !!repoUrl?.trim() &&
     !!selectedBranch &&
     !!isDirValid &&
-    !!(contractMeta?.name || "").trim() &&
+    !!(contractMeta?.displayName || "").trim() &&
+    !!(contractMeta?.identifier || "").trim() &&
     !!(contractMeta?.context || "").trim() &&
     isValidMajorMinorVersion((contractMeta?.version || "").trim());
 
@@ -396,7 +433,6 @@ const GithubCreationFlow: React.FC<Props> = ({
                   testId=""
                   size="medium"
                 />
-
                 <Stack
                   direction="row"
                   justifyContent="space-between"
@@ -500,6 +536,7 @@ const GithubCreationFlow: React.FC<Props> = ({
               }
             />
           </Grid>
+
           <Grid size={{ xs: 12 }}>
             <Grid container spacing={2} alignItems="flex-end">
               <Grid size={{ xs: 12, md: 6 }}>
@@ -525,6 +562,7 @@ const GithubCreationFlow: React.FC<Props> = ({
                 </Button>
               </Grid>
             </Grid>
+
             {!!dirError && (
               <Typography variant="caption" color="error" sx={{ mt: 0.5 }}>
                 {dirError}
@@ -564,6 +602,7 @@ const GithubCreationFlow: React.FC<Props> = ({
                 {validating ? "Validating…" : "Next"}
               </Button>
             </Stack>
+
             {!!validateError && (
               <Typography variant="caption" color="error" sx={{ mt: 1 }}>
                 {validateError}
@@ -597,45 +636,39 @@ const GithubCreationFlow: React.FC<Props> = ({
           )}
 
           <Grid size={{ xs: 12, md: 6 }}>
-            {/* <Card testId=""> */}
-              {/* <CardContent sx={{ p: 3 }}> */}
-                <CreationMetaData
-                  scope="contract"
-                  title="API Details"
-                  onValidationChange={({ hasError }) =>
-                    setMetaHasErrors(hasError)
-                  }
-                />
+            <CreationMetaData
+              scope="contract"
+              title="API Details"
+              onValidationChange={({ hasError }) => setMetaHasErrors(hasError)}
+            />
 
-                {!!createError && (
-                  <Alert severity="error" sx={{ mt: 2 }}>
-                    {createError}
-                  </Alert>
-                )}
+            {!!createError && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {createError}
+              </Alert>
+            )}
 
-                <Stack
-                  direction="row"
-                  spacing={1}
-                  justifyContent="flex-start"
-                  sx={{ mt: 3 }}
-                >
-                  <Button
-                    variant="outlined"
-                    onClick={() => setStep("form")}
-                    disabled={creating}
-                  >
-                    Back
-                  </Button>
-                  <Button
-                    variant="contained"
-                    onClick={onCreate}
-                    disabled={!canCreate || metaHasErrors || creating}
-                  >
-                    {creating ? "Creating..." : "Create"}
-                  </Button>
-                </Stack>
-              {/* </CardContent> */}
-            {/* </Card> */}
+            <Stack
+              direction="row"
+              spacing={1}
+              justifyContent="flex-start"
+              sx={{ mt: 3 }}
+            >
+              <Button
+                variant="outlined"
+                onClick={() => setStep("form")}
+                disabled={creating}
+              >
+                Back
+              </Button>
+              <Button
+                variant="contained"
+                onClick={onCreate}
+                disabled={!canCreate || metaHasErrors || creating}
+              >
+                {creating ? "Creating..." : "Create"}
+              </Button>
+            </Stack>
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }}>
@@ -646,6 +679,7 @@ const GithubCreationFlow: React.FC<Props> = ({
           </Grid>
         </Grid>
       )}
+
       <ApiDirectoryModal
         open={dirModalOpen}
         currentPath={apiDir}

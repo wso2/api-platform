@@ -21,7 +21,25 @@ import {
   isValidMajorMinorVersion,
 } from "../../../../helpers/openApiHelpers";
 
-/* ---------- Types ---------- */
+const slugify = (val: string) =>
+  (val || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .trim();
+
+const majorFromVersion = (v: string) => {
+  const m = (v || "").trim().match(/\d+/);
+  return m?.[0] ?? "";
+};
+
+const buildIdentifierFromNameAndVersion = (name: string, version: string) => {
+  const base = slugify(name);
+  const major = majorFromVersion(version);
+  return major ? `${base}-v${major}` : base;
+};
+
 type Props = {
   open: boolean;
   selectedProjectId: string;
@@ -35,7 +53,6 @@ type Props = {
 
 type Step = "upload" | "details";
 
-/* ---------- component ---------- */
 const UploadCreationFlow: React.FC<Props> = ({
   open,
   selectedProjectId,
@@ -57,7 +74,6 @@ const UploadCreationFlow: React.FC<Props> = ({
   const { validateOpenApiFile } = useOpenApiValidation();
   const [metaHasErrors, setMetaHasErrors] = React.useState(false);
 
-  // Always-mounted input + stable id/label wiring
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const inputId = React.useId();
   const [fileKey, setFileKey] = React.useState(0);
@@ -78,6 +94,7 @@ const UploadCreationFlow: React.FC<Props> = ({
       setFileName("");
       setError(null);
       setValidating(false);
+      setMetaHasErrors(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
       setFileKey((k) => k + 1);
     }
@@ -90,13 +107,23 @@ const UploadCreationFlow: React.FC<Props> = ({
       const description = api?.description || "";
       const targetUrl = firstServerUrl(api);
 
-      setContractMeta((prev: any) => ({
-        ...prev,
-        name: title || prev?.name || "Sample API",
+      const identifier = buildIdentifierFromNameAndVersion(title, version);
+
+      const nextMeta = {
+        name: title || "Sample API",
+        displayName: title || "Sample API",
         version,
         description,
         context: deriveContext(api),
-        target: prev?.target || targetUrl || "",
+        target: targetUrl || "",
+        identifier,
+        identifierEdited: false,
+      };
+
+      setContractMeta((prev: any) => ({
+        ...prev,
+        ...nextMeta,
+        target: prev?.target || nextMeta.target || "",
       }));
     },
     [setContractMeta]
@@ -106,6 +133,7 @@ const UploadCreationFlow: React.FC<Props> = ({
     async (files: FileList | null) => {
       if (!files || !files[0]) return;
       if (validating) return;
+
       const file = files[0];
 
       abortControllerRef.current?.abort();
@@ -123,6 +151,7 @@ const UploadCreationFlow: React.FC<Props> = ({
         const result = await validateOpenApiFile(file, {
           signal: abortController.signal,
         });
+
         setValidationResult(result);
 
         if (result.isAPIDefinitionValid) {
@@ -169,14 +198,29 @@ const UploadCreationFlow: React.FC<Props> = ({
   }, [validationResult]);
 
   const onCreate = async () => {
-    const name = (contractMeta?.name || "").trim();
+    const displayName = (
+      contractMeta?.displayName ||
+      contractMeta?.name ||
+      ""
+    ).trim();
+
     const context = (contractMeta?.context || "").trim();
     const version = (contractMeta?.version || "").trim();
     const description = (contractMeta?.description || "").trim() || undefined;
     const target = (contractMeta?.target || "").trim();
 
-    if (!name || !context || !version) {
+    // ✅ this is the important fix:
+    // send name as identifier (with -v{major}), not the display name
+    const identifier =
+      (contractMeta as any)?.identifier?.trim() ||
+      buildIdentifierFromNameAndVersion(displayName, version);
+
+    if (!displayName || !context || !version) {
       setError("Please complete all required fields.");
+      return;
+    }
+    if (!identifier) {
+      setError("Identifier is required.");
       return;
     }
     if (target) {
@@ -187,7 +231,6 @@ const UploadCreationFlow: React.FC<Props> = ({
         return;
       }
     }
-
     if (!validationResult?.isAPIDefinitionValid || !uploadedFile) {
       setError("Please upload a valid OpenAPI definition.");
       return;
@@ -196,7 +239,7 @@ const UploadCreationFlow: React.FC<Props> = ({
     setCreating(true);
     setError(null);
 
-    const serviceName = defaultServiceName(name);
+    const serviceName = defaultServiceName(displayName);
     const backendServices = target
       ? [
           {
@@ -208,19 +251,22 @@ const UploadCreationFlow: React.FC<Props> = ({
         ]
       : [];
 
+    const payload: ImportOpenApiRequest = {
+      api: {
+        name: identifier, // ✅ now: dilan-api-v1
+        displayName, // ✅ now: Dilan API
+        context,
+        version,
+        projectId: selectedProjectId,
+        target,
+        description,
+        backendServices,
+      } as any,
+      definition: uploadedFile,
+    };
+
     try {
-      await importOpenApi({
-        api: {
-          name,
-          context,
-          version,
-          projectId: selectedProjectId,
-          target,
-          description,
-          backendServices,
-        },
-        definition: uploadedFile,
-      });
+      await importOpenApi(payload);
     } catch (e: any) {
       setError(e?.message || "Failed to create API");
       setCreating(false);
@@ -240,7 +286,6 @@ const UploadCreationFlow: React.FC<Props> = ({
 
   return (
     <Box>
-      {/* Hidden, always-mounted input controlled by labels */}
       <input
         id={inputId}
         ref={fileInputRef}
@@ -379,51 +424,48 @@ const UploadCreationFlow: React.FC<Props> = ({
         <Box>
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, md: 6 }}>
-              {/* <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}> */}
-                <CreationMetaData
-                  scope="contract"
-                  title="API Details"
-                  onValidationChange={({ hasError }) =>
-                    setMetaHasErrors(hasError)
-                  }
-                />
-                <Stack
-                  direction="row"
-                  spacing={1}
-                  justifyContent="flex-start"
-                  sx={{ mt: 3 }}
-                >
-                  <Button
-                    variant="outlined"
-                    onClick={() => setStep("upload")}
-                    sx={{ textTransform: "none" }}
-                  >
-                    Back
-                  </Button>
-                  <Button
-                    variant="contained"
-                    disabled={
-                      creating ||
-                      metaHasErrors ||
-                      !(contractMeta?.name || "").trim() ||
-                      !(contractMeta?.context || "").trim() ||
-                      !isValidMajorMinorVersion(
-                        (contractMeta?.version || "").trim()
-                      )
-                    }
-                    onClick={onCreate}
-                    sx={{ textTransform: "none" }}
-                  >
-                    {creating ? "Creating..." : "Create"}
-                  </Button>
-                </Stack>
+              <CreationMetaData
+                scope="contract"
+                title="API Details"
+                onValidationChange={({ hasError }) => setMetaHasErrors(hasError)}
+              />
 
-                {error && (
-                  <Alert severity="error" sx={{ mt: 2 }}>
-                    {error}
-                  </Alert>
-                )}
-              {/* </Paper> */}
+              <Stack
+                direction="row"
+                spacing={1}
+                justifyContent="flex-start"
+                sx={{ mt: 3 }}
+              >
+                <Button
+                  variant="outlined"
+                  onClick={() => setStep("upload")}
+                  sx={{ textTransform: "none" }}
+                >
+                  Back
+                </Button>
+                <Button
+                  variant="contained"
+                  disabled={
+                    creating ||
+                    metaHasErrors ||
+                    !(contractMeta?.name || "").trim() ||
+                    !(contractMeta?.context || "").trim() ||
+                    !isValidMajorMinorVersion(
+                      (contractMeta?.version || "").trim()
+                    )
+                  }
+                  onClick={onCreate}
+                  sx={{ textTransform: "none" }}
+                >
+                  {creating ? "Creating..." : "Create"}
+                </Button>
+              </Stack>
+
+              {error && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {error}
+                </Alert>
+              )}
             </Grid>
 
             <Grid size={{ xs: 12, md: 6 }}>

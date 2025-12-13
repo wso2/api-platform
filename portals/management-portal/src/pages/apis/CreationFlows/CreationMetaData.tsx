@@ -13,14 +13,23 @@ import Edit from "../../../components/src/Icons/generated/Edit";
 import { useGithubProjectValidationContext } from "../../../context/validationContext";
 
 const slugify = (val: string) =>
-  val
+  (val || "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .trim();
 
-const buildIdentifierFromName = (name: string) => slugify(name);
+const majorFromVersion = (v: string) => {
+  const m = (v || "").trim().match(/\d+/);
+  return m?.[0] ?? "";
+};
+
+const buildIdentifierFromNameAndVersion = (name: string, version: string) => {
+  const base = slugify(name);
+  const major = majorFromVersion(version);
+  return major ? `${base}-v${major}` : base;
+};
 
 type Scope = "contract" | "endpoint";
 
@@ -95,7 +104,6 @@ const CreationMetaData: React.FC<Props> = ({
   } | null>(null);
 
   const lastCheckedIdentifierRef = React.useRef<string | null>(null);
-
   const nameVersionTimerRef = React.useRef<number | null>(null);
   const identifierTimerRef = React.useRef<number | null>(null);
 
@@ -107,20 +115,6 @@ const CreationMetaData: React.FC<Props> = ({
   React.useEffect(() => {
     onValidationChangeRef.current = onValidationChange;
   }, [onValidationChange]);
-
-  React.useEffect(() => {
-    if (
-      meta.name &&
-      !meta.identifier &&
-      !meta.identifierEdited &&
-      !isIdentifierEditing
-    ) {
-      change({
-        identifier: buildIdentifierFromName(meta.name),
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const handleContextChange = (v: string) => {
     change({ context: v, contextEdited: true });
@@ -138,20 +132,9 @@ const CreationMetaData: React.FC<Props> = ({
     change({ identifierEdited: true });
   };
 
-  const versionMajor = React.useMemo(() => {
-    const v = (meta.version || "").trim();
-    const m = v.match(/\d+/);
-    return m?.[0] ?? "";
-  }, [meta.version]);
-
   const identifierDisplayValue = React.useMemo(() => {
-    const base = (meta.identifier ?? "").trim();
-    if (!base) return "";
-    if (meta.identifierEdited) return base;
-    if (!versionMajor) return base;
-    if (/-v\d+$/i.test(base)) return base;
-    return `${base}-v${versionMajor}`;
-  }, [meta.identifier, meta.identifierEdited, versionMajor]);
+    return (meta.identifier ?? "").trim();
+  }, [meta.identifier]);
 
   const identifierToValidate = React.useMemo(() => {
     return identifierDisplayValue.trim();
@@ -205,7 +188,6 @@ const CreationMetaData: React.FC<Props> = ({
         }
       } catch (e) {
         lastCheckedNameVersionRef.current = null;
-
         const msg =
           e instanceof Error
             ? e.message
@@ -330,8 +312,8 @@ const CreationMetaData: React.FC<Props> = ({
   }, []);
 
   const handleNameChange = (v: string) => {
-    const slug = slugify(v);
     const trimmed = v.trim();
+    const slug = slugify(v);
 
     const nextPatch: Partial<ProxyMetadata> & {
       identifier?: string;
@@ -344,8 +326,12 @@ const CreationMetaData: React.FC<Props> = ({
     if (!meta.contextEdited) {
       nextPatch.context = slug ? `/${slug}` : "";
     }
+
     if (!meta.identifierEdited && !isIdentifierEditing) {
-      nextPatch.identifier = buildIdentifierFromName(v);
+      nextPatch.identifier = buildIdentifierFromNameAndVersion(
+        v,
+        meta.version || ""
+      );
     }
 
     setNameVersionError(null);
@@ -370,6 +356,28 @@ const CreationMetaData: React.FC<Props> = ({
     identifierError,
     nameVersionValidating,
     identifierValidating,
+  ]);
+
+  React.useEffect(() => {
+    if (meta.identifierEdited || isIdentifierEditing) return;
+
+    const nameForId = (meta.displayName || meta.name || "").trim();
+    const verForId = (meta.version || "").trim();
+
+    if (!nameForId || !verForId) return;
+
+    const expected = buildIdentifierFromNameAndVersion(nameForId, verForId);
+
+    if ((meta.identifier || "").trim() !== expected) {
+      change({ identifier: expected });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    meta.displayName,
+    meta.name,
+    meta.version,
+    meta.identifierEdited,
+    isIdentifierEditing,
   ]);
 
   return (
@@ -414,7 +422,6 @@ const CreationMetaData: React.FC<Props> = ({
               variant="link"
               onClick={handleIdentifierEditClick}
               disabled={!!readOnlyFields?.["identifier"]}
-              style={{ marginBottom: 4 }}
               aria-label="Edit identifier"
             />
           </Stack>
@@ -425,7 +432,16 @@ const CreationMetaData: React.FC<Props> = ({
             value={meta.version}
             onChange={(v: string) => {
               setNameVersionError(null);
-              change({ version: v });
+
+              const shouldAuto = !meta.identifierEdited && !isIdentifierEditing;
+              const nextIdentifier = shouldAuto
+                ? buildIdentifierFromNameAndVersion(
+                    meta.displayName || meta.name || "",
+                    v
+                  )
+                : meta.identifier;
+
+              change({ version: v, identifier: nextIdentifier });
 
               scheduleNameVersionValidation({ version: v });
               setIdentifierError(null);
