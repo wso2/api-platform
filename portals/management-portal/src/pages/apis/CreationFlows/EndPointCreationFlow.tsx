@@ -12,7 +12,10 @@ import { Button } from "../../../components/src/components/Button";
 import { Card } from "../../../components/src/components/Card";
 import { TextInput } from "../../../components/src/components/TextInput";
 
-import { useCreateComponentBuildpackContext } from "../../../context/CreateComponentBuildpackContext";
+import {
+  useCreateComponentBuildpackContext,
+  type ProxyMetadata,
+} from "../../../context/CreateComponentBuildpackContext";
 import { type CreateApiPayload } from "../../../hooks/apis";
 import CreationMetaData from "./CreationMetaData";
 
@@ -48,6 +51,11 @@ type Props = {
   selectedProjectId: string;
   createApi: CreateApiFn;
   onClose: () => void;
+};
+
+type EndpointMeta = ProxyMetadata & {
+  identifier?: string;
+  identifierEdited?: boolean;
 };
 
 const EndPointCreationFlow: React.FC<Props> = ({
@@ -110,28 +118,29 @@ const EndPointCreationFlow: React.FC<Props> = ({
           wizardState.endpointUrl
         );
 
-        setEndpointMeta((prev: any) => {
-          const base = prev || {};
-          const nextMeta = { ...base };
+        setEndpointMeta((prev) => {
+          const base: EndpointMeta =
+            (prev as EndpointMeta) || ({} as EndpointMeta);
+          const nextMeta: EndpointMeta = { ...base };
 
-          const hasName = !!(base?.name || "").trim();
-          const hasDisplayName = !!(base?.displayName || "").trim();
-          const hasContext = !!(base?.context || "").trim();
-          const hasVersion = !!(base?.version || "").trim();
+          const hasName = !!(base.name || "").trim();
+          const hasDisplayName = !!(base.displayName || "").trim();
+          const hasContext = !!(base.context || "").trim();
+          const hasVersion = !!(base.version || "").trim();
 
           const version = hasVersion ? base.version : "1.0.0";
 
           if (!hasDisplayName) nextMeta.displayName = inferredDisplayName;
           if (!hasName) nextMeta.name = inferredDisplayName;
 
-          if (!hasContext && !base?.contextEdited) {
+          if (!hasContext && !base.contextEdited) {
             const slug = slugify(inferredDisplayName);
             nextMeta.context = slug ? `/${slug}` : "";
           }
 
           if (!hasVersion) nextMeta.version = version;
 
-          if (!base?.identifierEdited) {
+          if (!base.identifierEdited) {
             nextMeta.identifier = buildIdentifierFromNameAndVersion(
               inferredDisplayName,
               version
@@ -139,7 +148,7 @@ const EndPointCreationFlow: React.FC<Props> = ({
             nextMeta.identifierEdited = false;
           }
 
-          return nextMeta;
+          return nextMeta as any; // <-- if your context setter expects ProxyMetadata only, see note below
         });
       }
 
@@ -150,15 +159,13 @@ const EndPointCreationFlow: React.FC<Props> = ({
 
   const handleCreate = React.useCallback(async () => {
     const endpointUrl = wizardState.endpointUrl.trim();
-    const displayName = (
-      endpointMeta?.displayName ||
-      endpointMeta?.name ||
-      ""
-    ).trim();
 
-    const identifier = (endpointMeta?.identifier || "").trim();
-    const context = (endpointMeta?.context || "").trim();
-    const version = (endpointMeta?.version || "").trim() || "1.0.0";
+    const meta = endpointMeta as EndpointMeta | undefined;
+
+    const displayName = (meta?.displayName || meta?.name || "").trim();
+    const identifier = (meta?.identifier || "").trim();
+    const context = (meta?.context || "").trim();
+    const version = (meta?.version || "").trim() || "1.0.0";
 
     if (!endpointUrl || !displayName || !identifier || !context) {
       setWizardError("Please complete all required fields.");
@@ -178,7 +185,7 @@ const EndPointCreationFlow: React.FC<Props> = ({
         displayName,
         context: context.startsWith("/") ? context : `/${context}`,
         version,
-        description: endpointMeta?.description?.trim() || undefined,
+        description: meta?.description?.trim() || undefined,
         projectId: selectedProjectId,
         backendServices: [
           {
@@ -293,10 +300,20 @@ const EndPointCreationFlow: React.FC<Props> = ({
               disabled={
                 creating ||
                 metaHasErrors ||
-                !(endpointMeta?.displayName || endpointMeta?.name || "").trim() ||
-                !(endpointMeta?.identifier || "").trim() ||
-                !(endpointMeta?.context || "").trim() ||
-                !(endpointMeta?.version || "").trim()
+                !(
+                  (endpointMeta as EndpointMeta | undefined)?.displayName ||
+                  (endpointMeta as EndpointMeta | undefined)?.name ||
+                  ""
+                ).trim() ||
+                !(
+                  (endpointMeta as EndpointMeta | undefined)?.identifier || ""
+                ).trim() ||
+                !(
+                  (endpointMeta as EndpointMeta | undefined)?.context || ""
+                ).trim() ||
+                !(
+                  (endpointMeta as EndpointMeta | undefined)?.version || ""
+                ).trim()
               }
               sx={{ textTransform: "none" }}
             >

@@ -209,10 +209,8 @@ const UploadCreationFlow: React.FC<Props> = ({
     const description = (contractMeta?.description || "").trim() || undefined;
     const target = (contractMeta?.target || "").trim();
 
-    // ✅ this is the important fix:
-    // send name as identifier (with -v{major}), not the display name
     const identifier =
-      (contractMeta as any)?.identifier?.trim() ||
+      ((contractMeta as any)?.identifier || "").trim() ||
       buildIdentifierFromNameAndVersion(displayName, version);
 
     if (!displayName || !context || !version) {
@@ -253,15 +251,15 @@ const UploadCreationFlow: React.FC<Props> = ({
 
     const payload: ImportOpenApiRequest = {
       api: {
-        name: identifier, // ✅ now: dilan-api-v1
-        displayName, // ✅ now: Dilan API
+        name: identifier,
+        displayName,
         context,
         version,
         projectId: selectedProjectId,
         target,
         description,
         backendServices,
-      } as any,
+      },
       definition: uploadedFile,
     };
 
@@ -427,7 +425,9 @@ const UploadCreationFlow: React.FC<Props> = ({
               <CreationMetaData
                 scope="contract"
                 title="API Details"
-                onValidationChange={({ hasError }) => setMetaHasErrors(hasError)}
+                onValidationChange={({ hasError }) =>
+                  setMetaHasErrors(hasError)
+                }
               />
 
               <Stack

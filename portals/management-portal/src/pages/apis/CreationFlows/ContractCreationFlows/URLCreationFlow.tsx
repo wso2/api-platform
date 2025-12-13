@@ -177,6 +177,7 @@ const URLCreationFlow: React.FC<Props> = ({
       contractMeta?.name ||
       ""
     ).trim();
+
     const context = (contractMeta?.context || "").trim();
     const version = (contractMeta?.version || "").trim();
     const description = (contractMeta?.description || "").trim() || undefined;
@@ -232,7 +233,7 @@ const URLCreationFlow: React.FC<Props> = ({
         target,
         description,
         backendServices,
-      } as any,
+      },
       url: specUrl.trim(),
     };
 
@@ -357,6 +358,7 @@ const URLCreationFlow: React.FC<Props> = ({
                 variant="outlined"
                 onClick={() => setStep("url")}
                 sx={{ textTransform: "none" }}
+                disabled={creating}
               >
                 Back
               </Button>
@@ -366,16 +368,10 @@ const URLCreationFlow: React.FC<Props> = ({
                 disabled={
                   creating ||
                   metaHasErrors ||
-                  !(
-                    contractMeta?.displayName ||
-                    contractMeta?.name ||
-                    ""
-                  ).trim() ||
+                  !(contractMeta?.displayName || contractMeta?.name || "").trim() ||
                   !(contractMeta as any)?.identifier?.trim() ||
                   !(contractMeta?.context || "").trim() ||
-                  !isValidMajorMinorVersion(
-                    (contractMeta?.version || "").trim()
-                  )
+                  !isValidMajorMinorVersion((contractMeta?.version || "").trim())
                 }
                 onClick={onCreate}
                 sx={{ textTransform: "none" }}
