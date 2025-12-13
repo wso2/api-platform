@@ -19,7 +19,25 @@ import {
   isValidMajorMinorVersion,
 } from "../../../../helpers/openApiHelpers";
 
-/* ---------- Types ---------- */
+const slugify = (val: string) =>
+  (val || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .trim();
+
+const majorFromVersion = (v: string) => {
+  const m = (v || "").trim().match(/\d+/);
+  return m?.[0] ?? "";
+};
+
+const buildIdentifierFromNameAndVersion = (name: string, version: string) => {
+  const base = slugify(name);
+  const major = majorFromVersion(version);
+  return major ? `${base}-v${major}` : base;
+};
+
 type Props = {
   open: boolean;
   selectedProjectId: string;
@@ -32,8 +50,6 @@ type Props = {
 };
 
 type Step = "url" | "details";
-
-/* ---------- component ---------- */
 
 const URLCreationFlow: React.FC<Props> = ({
   open,
@@ -54,6 +70,7 @@ const URLCreationFlow: React.FC<Props> = ({
     useCreateComponentBuildpackContext();
   const { validateOpenApiUrl } = useOpenApiValidation();
   const abortControllerRef = React.useRef<AbortController | null>(null);
+  const [metaHasErrors, setMetaHasErrors] = React.useState(false);
 
   React.useEffect(() => {
     return () => {
@@ -69,6 +86,7 @@ const URLCreationFlow: React.FC<Props> = ({
       setValidationResult(null);
       setError(null);
       setValidating(false);
+      setMetaHasErrors(false);
     }
   }, [open, resetContractMeta]);
 
@@ -79,13 +97,23 @@ const URLCreationFlow: React.FC<Props> = ({
       const description = api?.description || "";
       const targetUrl = firstServerUrl(api);
 
-      setContractMeta((prev: any) => ({
-        ...prev,
-        name: title || prev?.name || "Sample API",
+      const identifier = buildIdentifierFromNameAndVersion(title, version);
+
+      const nextMeta = {
+        name: title || "Sample API",
+        displayName: title || "Sample API",
         version,
         description,
         context: deriveContext(api),
-        target: prev?.target || targetUrl || "",
+        target: targetUrl || "",
+        identifier,
+        identifierEdited: false,
+      };
+
+      setContractMeta((prev: any) => ({
+        ...prev,
+        ...nextMeta,
+        target: prev?.target || nextMeta.target || "",
       }));
     },
     [setContractMeta]
@@ -106,6 +134,7 @@ const URLCreationFlow: React.FC<Props> = ({
       const result = await validateOpenApiUrl(specUrl.trim(), {
         signal: abortController.signal,
       });
+
       setValidationResult(result);
 
       if (result.isAPIDefinitionValid) {
@@ -143,14 +172,27 @@ const URLCreationFlow: React.FC<Props> = ({
   }, [validationResult]);
 
   const onCreate = async () => {
-    const name = (contractMeta?.name || "").trim();
+    const displayName = (
+      contractMeta?.displayName ||
+      contractMeta?.name ||
+      ""
+    ).trim();
+
     const context = (contractMeta?.context || "").trim();
     const version = (contractMeta?.version || "").trim();
     const description = (contractMeta?.description || "").trim() || undefined;
     const target = (contractMeta?.target || "").trim();
 
-    if (!name || !context || !version) {
+    const identifier =
+      (contractMeta as any)?.identifier?.trim() ||
+      buildIdentifierFromNameAndVersion(displayName, version);
+
+    if (!displayName || !context || !version) {
       setError("Please complete all required fields.");
+      return;
+    }
+    if (!identifier) {
+      setError("Identifier is required.");
       return;
     }
     if (target) {
@@ -161,7 +203,6 @@ const URLCreationFlow: React.FC<Props> = ({
         return;
       }
     }
-
     if (!validationResult?.isAPIDefinitionValid) {
       setError("Please fetch and validate the OpenAPI definition first.");
       return;
@@ -170,7 +211,7 @@ const URLCreationFlow: React.FC<Props> = ({
     setCreating(true);
     setError(null);
 
-    const serviceName = defaultServiceName(name);
+    const serviceName = defaultServiceName(displayName);
     const backendServices = target
       ? [
           {
@@ -182,19 +223,22 @@ const URLCreationFlow: React.FC<Props> = ({
         ]
       : [];
 
+    const payload: ImportOpenApiRequest = {
+      api: {
+        name: identifier,
+        displayName,
+        context,
+        version,
+        projectId: selectedProjectId,
+        target,
+        description,
+        backendServices,
+      },
+      url: specUrl.trim(),
+    };
+
     try {
-      await importOpenApi({
-        api: {
-          name,
-          context,
-          version,
-          projectId: selectedProjectId,
-          target,
-          description,
-          backendServices,
-        },
-        url: specUrl.trim(),
-      });
+      await importOpenApi(payload);
     } catch (e: any) {
       setError(e?.message || "Failed to create API");
       setCreating(false);
@@ -298,8 +342,12 @@ const URLCreationFlow: React.FC<Props> = ({
       {step === "details" && (
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 6 }}>
-            {/* <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}> */}
-            <CreationMetaData scope="contract" title="API Details" />
+            <CreationMetaData
+              scope="contract"
+              title="API Details"
+              onValidationChange={({ hasError }) => setMetaHasErrors(hasError)}
+            />
+
             <Stack
               direction="row"
               spacing={1}
@@ -310,18 +358,20 @@ const URLCreationFlow: React.FC<Props> = ({
                 variant="outlined"
                 onClick={() => setStep("url")}
                 sx={{ textTransform: "none" }}
+                disabled={creating}
               >
                 Back
               </Button>
+
               <Button
                 variant="contained"
                 disabled={
                   creating ||
-                  !(contractMeta?.name || "").trim() ||
+                  metaHasErrors ||
+                  !(contractMeta?.displayName || contractMeta?.name || "").trim() ||
+                  !(contractMeta as any)?.identifier?.trim() ||
                   !(contractMeta?.context || "").trim() ||
-                  !isValidMajorMinorVersion(
-                    (contractMeta?.version || "").trim()
-                  )
+                  !isValidMajorMinorVersion((contractMeta?.version || "").trim())
                 }
                 onClick={onCreate}
                 sx={{ textTransform: "none" }}
@@ -335,7 +385,6 @@ const URLCreationFlow: React.FC<Props> = ({
                 {error}
               </Alert>
             )}
-            {/* </Paper> */}
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }}>
