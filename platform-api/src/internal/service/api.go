@@ -247,20 +247,11 @@ func (s *APIService) GetAPIByUUID(apiId, orgId string) (*dto.API, error) {
 
 // GetAPIByHandle retrieves an API by its handle
 func (s *APIService) GetAPIByHandle(handle, orgId string) (*dto.API, error) {
-	if handle == "" {
-		return nil, errors.New("API handle is required")
-	}
-
-	apiModel, err := s.apiRepo.GetAPIByHandle(handle, orgId)
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get api: %w", err)
+		return nil, err
 	}
-	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
-	}
-
-	api := s.apiUtil.ModelToDTO(apiModel)
-	return api, nil
+	return s.GetAPIByUUID(apiUUID, orgId)
 }
 
 // HandleExistsCheck returns a function that checks if an API handle exists in the organization.
@@ -384,33 +375,11 @@ func (s *APIService) DeleteAPI(apiId, orgId string) error {
 
 // UpdateAPIByHandle updates an existing API identified by handle
 func (s *APIService) UpdateAPIByHandle(handle string, req *UpdateAPIRequest, orgId string) (*dto.API, error) {
-	if handle == "" {
-		return nil, errors.New("API handle is required")
-	}
-
-	// Get existing API by handle (need full model for applyAPIUpdates)
-	existingAPIModel, err := s.apiRepo.GetAPIByHandle(handle, orgId)
+	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
 	if err != nil {
 		return nil, err
 	}
-	if existingAPIModel == nil {
-		return nil, constants.ErrAPINotFound
-	}
-
-	// Apply updates using shared helper
-	existingAPI, err := s.applyAPIUpdates(existingAPIModel, req, orgId)
-	if err != nil {
-		return nil, err
-	}
-
-	// Update API in repository using UUID
-	updatedAPIModel := s.apiUtil.DTOToModel(existingAPI)
-	updatedAPIModel.ID = existingAPIModel.ID // Preserve the internal UUID
-	if err := s.apiRepo.UpdateAPI(updatedAPIModel); err != nil {
-		return nil, err
-	}
-
-	return existingAPI, nil
+	return s.UpdateAPI(apiUUID, req, orgId)
 }
 
 // DeleteAPIByHandle deletes an API identified by handle

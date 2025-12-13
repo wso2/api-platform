@@ -47,7 +47,6 @@ type ProjectRepository interface {
 type APIRepository interface {
 	CreateAPI(api *model.API) error
 	GetAPIByUUID(apiId string) (*model.API, error)
-	GetAPIByHandle(handle, orgId string) (*model.API, error)
 	GetAPIMetadataByHandle(handle, orgId string) (*model.APIMetadata, error)
 	GetAPIsByProjectID(projectID string) ([]*model.API, error)
 	GetAPIsByOrganizationID(orgID string, projectID *string) ([]*model.API, error)

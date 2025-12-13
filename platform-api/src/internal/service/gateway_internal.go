@@ -129,8 +129,8 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 	}
 	projectID := project.ID
 
-	// Check if API already exists
-	existingAPI, err := s.apiRepo.GetAPIByHandle(apiHandle, orgID)
+	// Check if API already exists by getting metadata
+	existingAPIMetadata, err := s.apiRepo.GetAPIMetadataByHandle(apiHandle, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing API: %w", err)
 	}
@@ -138,7 +138,7 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 	apiCreated := false
 	apiUUID := ""
 	now := time.Now()
-	if existingAPI == nil {
+	if existingAPIMetadata == nil {
 		// Create backend services from upstream configurations
 		var backendServiceUUIDs []string
 		for _, upstream := range notification.Configuration.Spec.Upstreams {
@@ -190,13 +190,8 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 			return nil, fmt.Errorf("failed to create API: %w", err)
 		}
 
-		// Retrieve the existing API or newly created API to get its ID
-		existingAPI, err = s.apiRepo.GetAPIByHandle(apiHandle, orgID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check existing API: %w", err)
-		}
-
-		apiUUID = existingAPI.ID
+		// CreateAPI sets the UUID on the model
+		apiUUID = newAPI.ID
 
 		// Associate backend services with the API
 		for i, backendServiceUUID := range backendServiceUUIDs {
@@ -209,10 +204,10 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 		apiCreated = true
 	} else {
 		// Validate that existing API belongs to the same organization
-		if existingAPI.OrganizationID != orgID {
+		if existingAPIMetadata.OrganizationID != orgID {
 			return nil, constants.ErrAPINotFound
 		}
-		apiUUID = existingAPI.ID
+		apiUUID = existingAPIMetadata.ID
 	}
 
 	// Check if deployment already exists

@@ -156,46 +156,6 @@ func (r *APIRepo) GetAPIByUUID(apiId string) (*model.API, error) {
 	return api, nil
 }
 
-// GetAPIByHandle retrieves an API by handle and organization ID with all its configurations
-func (r *APIRepo) GetAPIByHandle(handle, orgId string) (*model.API, error) {
-	api := &model.API{}
-
-	query := `
-		SELECT uuid, handle, name, display_name, description, context, version, provider,
-			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
-			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
-		FROM apis WHERE handle = ? AND organization_uuid = ?
-	`
-
-	var transportJSON string
-	var securityEnabled bool
-	err := r.db.QueryRow(query, handle, orgId).Scan(
-		&api.ID, &api.Handle, &api.Name, &api.DisplayName, &api.Description, &api.Context,
-		&api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID, &api.LifeCycleStatus,
-		&api.HasThumbnail, &api.IsDefaultVersion, &api.IsRevision,
-		&api.RevisionedAPIID, &api.RevisionID, &api.Type, &transportJSON,
-		&securityEnabled, &api.CreatedAt, &api.UpdatedAt)
-
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	// Parse transport JSON
-	if transportJSON != "" {
-		json.Unmarshal([]byte(transportJSON), &api.Transport)
-	}
-
-	// Load related configurations
-	if err := r.loadAPIConfigurations(api); err != nil {
-		return nil, err
-	}
-
-	return api, nil
-}
-
 // GetAPIMetadataByHandle retrieves minimal API information by handle and organization ID
 func (r *APIRepo) GetAPIMetadataByHandle(handle, orgId string) (*model.APIMetadata, error) {
 	metadata := &model.APIMetadata{}
