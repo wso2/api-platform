@@ -498,7 +498,7 @@ func (s *GatewayService) GetGatewayArtifacts(gatewayID, orgID, artifactType stri
 	}
 
 	// Get all APIs deployed to this gateway
-	apis, err := s.apiRepo.GetDeployedAPIsByGatewayID(gatewayID, orgID)
+	apis, err := s.apiRepo.GetDeployedAPIsByGatewayUUID(gatewayID, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -516,13 +516,13 @@ func (s *GatewayService) GetGatewayArtifacts(gatewayID, orgID, artifactType stri
 		subType := apiUtil.GetAPISubType(api.Type)
 
 		artifact := dto.GatewayArtifact{
-			ID:          api.ID,
-			Name:        api.Name,
-			DisplayName: api.DisplayName,
-			Type:        "API",
-			SubType:     subType,
-			CreatedAt:   api.CreatedAt,
-			UpdatedAt:   api.UpdatedAt,
+			ID:        api.ID,
+			Handle:    api.Handle,
+			Name:      api.Name,
+			Type:      "API",
+			SubType:   subType,
+			CreatedAt: api.CreatedAt,
+			UpdatedAt: api.UpdatedAt,
 		}
 		allArtifacts = append(allArtifacts, artifact)
 	}

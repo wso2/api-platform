@@ -196,7 +196,7 @@ func (s *ProjectService) DeleteProject(projectId, orgId string) error {
 	}
 
 	// check if there are any APIs associated with the project
-	apis, err := s.apiRepo.GetAPIsByProjectID(projectId)
+	apis, err := s.apiRepo.GetAPIsByProjectUUID(projectId, orgId)
 	if err != nil {
 		return err
 	}

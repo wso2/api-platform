@@ -73,7 +73,7 @@ func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.Proj
 }
 
 // CreateAPI creates a new API with validation and business logic
-func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, error) {
+func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API, error) {
 	// Validate request
 	if err := s.validateCreateAPIRequest(req); err != nil {
 		return nil, err
@@ -87,20 +87,8 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 	if project == nil {
 		return nil, constants.ErrProjectNotFound
 	}
-	if project.OrganizationID != orgId {
+	if project.OrganizationID != orgUUID {
 		return nil, constants.ErrProjectNotFound
-	}
-
-	// Check if API already exists in the project
-	existingAPIs, err := s.apiRepo.GetAPIsByProjectID(req.ProjectID)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, api := range existingAPIs {
-		if api.Name == req.Name {
-			return nil, constants.ErrAPIAlreadyExists
-		}
 	}
 
 	// Handle the API handle (user-facing identifier)
@@ -111,7 +99,7 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 			return nil, err
 		}
 		// Check if handle already exists in the organization
-		handleExists, err := s.apiRepo.CheckAPIExistsByHandleInOrganization(req.ID, orgId)
+		handleExists, err := s.apiRepo.CheckAPIExistsByHandleInOrganization(req.ID, orgUUID)
 		if err != nil {
 			return nil, err
 		}
@@ -122,16 +110,21 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 	} else {
 		// Generate handle from API name with collision detection
 		var err error
-		handle, err = utils.GenerateHandle(req.Name, s.HandleExistsCheck(orgId))
+		handle, err = utils.GenerateHandle(req.Name, s.HandleExistsCheck(orgUUID))
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	// Set default values if not provided
-	if req.DisplayName == "" {
-		req.DisplayName = req.Name
+	nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgUUID)
+	if err != nil {
+		return nil, err
 	}
+	if nameVersionExists {
+		return nil, constants.ErrAPINameVersionAlreadyExists
+	}
+
+	// Set default values if not provided
 	if req.Provider == "" {
 		req.Provider = "admin" // Default provider
 	}
@@ -154,13 +147,12 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 	api := &dto.API{
 		ID:               handle,
 		Name:             req.Name,
-		DisplayName:      req.DisplayName,
 		Description:      req.Description,
 		Context:          req.Context,
 		Version:          req.Version,
 		Provider:         req.Provider,
 		ProjectID:        req.ProjectID,
-		OrganizationID:   orgId,
+		OrganizationID:   orgUUID,
 		LifeCycleStatus:  req.LifeCycleStatus,
 		HasThumbnail:     req.HasThumbnail,
 		IsDefaultVersion: req.IsDefaultVersion,
@@ -180,7 +172,7 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 	// Process backend services: check if they exist, create or update them
 	var backendServiceIdList []string
 	for _, backendService := range req.BackendServices {
-		backendServiceId, err := s.upstreamService.UpsertBackendService(&backendService, orgId)
+		backendServiceId, err := s.upstreamService.UpsertBackendService(&backendService, orgUUID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to process backend service '%s': %w", backendService.Name, err)
 		}
@@ -213,7 +205,7 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 	}
 
 	// Automatically create DevPortal association for default DevPortal (use internal UUID)
-	if err := s.createDefaultDevPortalAssociation(apiUUID, orgId); err != nil {
+	if err := s.createDefaultDevPortalAssociation(apiUUID, orgUUID); err != nil {
 		// Log error but don't fail API creation if default DevPortal association fails
 		log.Printf("[APIService] Failed to create default DevPortal association for API %s: %v", apiUUID, err)
 	}
@@ -222,19 +214,19 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgId string) (*dto.API, e
 }
 
 // GetAPIByUUID retrieves an API by its ID
-func (s *APIService) GetAPIByUUID(apiId, orgId string) (*dto.API, error) {
-	if apiId == "" {
+func (s *APIService) GetAPIByUUID(apiUUID, orgUUID string) (*dto.API, error) {
+	if apiUUID == "" {
 		return nil, errors.New("API id is required")
 	}
 
-	apiModel, err := s.apiRepo.GetAPIByUUID(apiId)
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get api: %w", err)
 	}
 	if apiModel == nil {
 		return nil, constants.ErrAPINotFound
 	}
-	if apiModel.OrganizationID != orgId {
+	if apiModel.OrganizationID != orgUUID {
 		return nil, constants.ErrAPINotFound
 	}
 
@@ -253,9 +245,9 @@ func (s *APIService) GetAPIByHandle(handle, orgId string) (*dto.API, error) {
 
 // HandleExistsCheck returns a function that checks if an API handle exists in the organization.
 // This is designed to be used with utils.GenerateHandle for handle generation with collision detection.
-func (s *APIService) HandleExistsCheck(orgId string) func(string) bool {
+func (s *APIService) HandleExistsCheck(orgUUID string) func(string) bool {
 	return func(handle string) bool {
-		exists, err := s.apiRepo.CheckAPIExistsByHandleInOrganization(handle, orgId)
+		exists, err := s.apiRepo.CheckAPIExistsByHandleInOrganization(handle, orgUUID)
 		if err != nil {
 			// On error, assume it exists to be safe (will trigger retry)
 			return true
@@ -266,12 +258,12 @@ func (s *APIService) HandleExistsCheck(orgId string) func(string) bool {
 
 // getAPIUUIDByHandle retrieves the internal UUID for an API by its handle.
 // This is a lightweight operation that only fetches minimal metadata.
-func (s *APIService) getAPIUUIDByHandle(handle, orgId string) (string, error) {
+func (s *APIService) getAPIUUIDByHandle(handle, orgUUID string) (string, error) {
 	if handle == "" {
 		return "", errors.New("API handle is required")
 	}
 
-	metadata, err := s.apiRepo.GetAPIMetadataByHandle(handle, orgId)
+	metadata, err := s.apiRepo.GetAPIMetadataByHandle(handle, orgUUID)
 	if err != nil {
 		return "", err
 	}
@@ -283,22 +275,22 @@ func (s *APIService) getAPIUUIDByHandle(handle, orgId string) (string, error) {
 }
 
 // GetAPIsByOrganization retrieves all APIs for an organization with optional project filter
-func (s *APIService) GetAPIsByOrganization(orgId string, projectID *string) ([]*dto.API, error) {
+func (s *APIService) GetAPIsByOrganization(orgUUID string, projectUUID *string) ([]*dto.API, error) {
 	// If project ID is provided, validate that it belongs to the organization
-	if projectID != nil && *projectID != "" {
-		project, err := s.projectRepo.GetProjectByUUID(*projectID)
+	if projectUUID != nil && *projectUUID != "" {
+		project, err := s.projectRepo.GetProjectByUUID(*projectUUID)
 		if err != nil {
 			return nil, err
 		}
 		if project == nil {
 			return nil, constants.ErrProjectNotFound
 		}
-		if project.OrganizationID != orgId {
+		if project.OrganizationID != orgUUID {
 			return nil, constants.ErrProjectNotFound
 		}
 	}
 
-	apiModels, err := s.apiRepo.GetAPIsByOrganizationID(orgId, projectID)
+	apiModels, err := s.apiRepo.GetAPIsByOrganizationUUID(orgUUID, projectUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get apis: %w", err)
 	}
@@ -312,25 +304,25 @@ func (s *APIService) GetAPIsByOrganization(orgId string, projectID *string) ([]*
 }
 
 // UpdateAPI updates an existing API
-func (s *APIService) UpdateAPI(apiId string, req *UpdateAPIRequest, orgId string) (*dto.API, error) {
-	if apiId == "" {
+func (s *APIService) UpdateAPI(apiUUID string, req *UpdateAPIRequest, orgUUID string) (*dto.API, error) {
+	if apiUUID == "" {
 		return nil, errors.New("API id is required")
 	}
 
 	// Get existing API
-	existingAPIModel, err := s.apiRepo.GetAPIByUUID(apiId)
+	existingAPIModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 	if existingAPIModel == nil {
 		return nil, constants.ErrAPINotFound
 	}
-	if existingAPIModel.OrganizationID != orgId {
+	if existingAPIModel.OrganizationID != orgUUID {
 		return nil, constants.ErrAPINotFound
 	}
 
 	// Apply updates using shared helper
-	existingAPI, err := s.applyAPIUpdates(existingAPIModel, req, orgId)
+	existingAPI, err := s.applyAPIUpdates(existingAPIModel, req, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -345,25 +337,25 @@ func (s *APIService) UpdateAPI(apiId string, req *UpdateAPIRequest, orgId string
 }
 
 // DeleteAPI deletes an API
-func (s *APIService) DeleteAPI(apiId, orgId string) error {
-	if apiId == "" {
+func (s *APIService) DeleteAPI(apiUUID, orgUUID string) error {
+	if apiUUID == "" {
 		return errors.New("API id is required")
 	}
 
 	// Check if API exists
-	api, err := s.apiRepo.GetAPIByUUID(apiId)
+	api, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
 	if err != nil {
 		return err
 	}
 	if api == nil {
 		return constants.ErrAPINotFound
 	}
-	if api.OrganizationID != orgId {
+	if api.OrganizationID != orgUUID {
 		return constants.ErrAPINotFound
 	}
 
 	// Delete API from repository
-	if err := s.apiRepo.DeleteAPI(apiId); err != nil {
+	if err := s.apiRepo.DeleteAPI(apiUUID, orgUUID); err != nil {
 		return fmt.Errorf("failed to delete api: %w", err)
 	}
 
@@ -447,8 +439,8 @@ func (s *APIService) GetAPIPublicationsByHandle(handle, orgID string) (*dto.APID
 }
 
 // UpdateAPILifecycleStatus updates only the lifecycle status of an API
-func (s *APIService) UpdateAPILifecycleStatus(apiId string, status string) (*dto.API, error) {
-	if apiId == "" {
+func (s *APIService) UpdateAPILifecycleStatus(apiUUID string, status string) (*dto.API, error) {
+	if apiUUID == "" {
 		return nil, errors.New("API id is required")
 	}
 	if status == "" {
@@ -461,7 +453,8 @@ func (s *APIService) UpdateAPILifecycleStatus(apiId string, status string) (*dto
 	}
 
 	// Get existing API
-	apiModel, err := s.apiRepo.GetAPIByUUID(apiId)
+	orgUUID := "" // TODO - pass orgId to this method
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -483,26 +476,26 @@ func (s *APIService) UpdateAPILifecycleStatus(apiId string, status string) (*dto
 }
 
 // DeployAPIRevision deploys an API revision and generates deployment YAML
-func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
-	deploymentRequests []dto.APIRevisionDeployment, orgId string) ([]*dto.APIRevisionDeployment, error) {
-	if apiId == "" {
+func (s *APIService) DeployAPIRevision(apiUUID string, revisionID string,
+	deploymentRequests []dto.APIRevisionDeployment, orgUUID string) ([]*dto.APIRevisionDeployment, error) {
+	if apiUUID == "" {
 		return nil, errors.New("api id is required")
 	}
 
 	// Get the API from database
-	apiModel, err := s.apiRepo.GetAPIByUUID(apiId)
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 	if apiModel == nil {
 		return nil, constants.ErrAPINotFound
 	}
-	if apiModel.OrganizationID != orgId {
+	if apiModel.OrganizationID != orgUUID {
 		return nil, constants.ErrAPINotFound
 	}
 
 	// Get existing associations to check which gateways need association
-	existingAssociations, err := s.apiRepo.GetAPIAssociations(apiId, constants.AssociationTypeGateway, orgId)
+	existingAssociations, err := s.apiRepo.GetAPIAssociations(apiUUID, constants.AssociationTypeGateway, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing API-gateway associations: %w", err)
 	}
@@ -519,18 +512,18 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 
 	for _, deploymentReq := range deploymentRequests {
 		// Validate deployment request
-		if err := s.validateDeploymentRequest(&deploymentReq, apiModel, orgId); err != nil {
+		if err := s.validateDeploymentRequest(&deploymentReq, apiModel, orgUUID); err != nil {
 			return nil, fmt.Errorf("invalid api deployment: %w", err)
 		}
 
 		// If gateway is not associated with the API, create the association
 		if !existingGatewayIds[deploymentReq.GatewayID] {
-			log.Printf("[INFO] Creating API-gateway association: apiId=%s gatewayId=%s",
-				apiId, deploymentReq.GatewayID)
+			log.Printf("[INFO] Creating API-gateway association: apiUUID=%s gatewayId=%s",
+				apiUUID, deploymentReq.GatewayID)
 
 			association := &model.APIAssociation{
-				ApiID:           apiId,
-				OrganizationID:  orgId,
+				ApiID:           apiUUID,
+				OrganizationID:  orgUUID,
 				ResourceID:      deploymentReq.GatewayID,
 				AssociationType: constants.AssociationTypeGateway,
 				CreatedAt:       time.Now(),
@@ -544,8 +537,8 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 
 			// Add to the map to avoid duplicate creation in the same request
 			existingGatewayIds[deploymentReq.GatewayID] = true
-			log.Printf("[INFO] Created API-gateway association: apiId=%s gatewayId=%s associationId=%d",
-				apiId, deploymentReq.GatewayID, association.ID)
+			log.Printf("[INFO] Created API-gateway association: apiUUID=%s gatewayId=%s associationId=%d",
+				apiUUID, deploymentReq.GatewayID, association.ID)
 		}
 
 		deployment := &dto.APIRevisionDeployment{
@@ -562,22 +555,22 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 
 		// Create deployment record in the database
 		deploymentRecord := &model.APIDeployment{
-			ApiID:          apiId,
-			OrganizationID: orgId,
+			ApiID:          apiUUID,
+			OrganizationID: orgUUID,
 			GatewayID:      deployment.GatewayID,
 		}
 
 		if err := s.apiRepo.CreateDeployment(deploymentRecord); err != nil {
-			log.Printf("[ERROR] Failed to create deployment record: apiId=%s gatewayID=%s error=%v",
-				apiId, deployment.GatewayID, err)
+			log.Printf("[ERROR] Failed to create deployment record: apiUUID=%s gatewayID=%s error=%v",
+				apiUUID, deployment.GatewayID, err)
 		} else {
-			log.Printf("[INFO] Created deployment record: apiId=%s gatewayID=%s deploymentId=%d",
-				apiId, deployment.GatewayID, deploymentRecord.ID)
+			log.Printf("[INFO] Created deployment record: apiUUID=%s gatewayID=%s deploymentId=%d",
+				apiUUID, deployment.GatewayID, deploymentRecord.ID)
 		}
 
 		// Send deployment event to gateway via WebSocket
 		deploymentEvent := &model.APIDeploymentEvent{
-			ApiId:       apiId,
+			ApiId:       apiUUID,
 			RevisionID:  revisionID,
 			Vhost:       deployment.VHost,
 			Environment: "production", // Default environment
@@ -586,8 +579,8 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 		// Broadcast deployment event to target gateway
 		if s.gatewayEventsService != nil {
 			if err := s.gatewayEventsService.BroadcastDeploymentEvent(deployment.GatewayID, deploymentEvent); err != nil {
-				log.Printf("[WARN] Failed to broadcast deployment event: apiId=%s gatewayID=%s error=%v",
-					apiId, deployment.GatewayID, err)
+				log.Printf("[WARN] Failed to broadcast deployment event: apiUUID=%s gatewayID=%s error=%v",
+					apiUUID, deployment.GatewayID, err)
 				// Continue execution - event delivery failure doesn't fail the deployment
 			}
 		}
@@ -597,16 +590,16 @@ func (s *APIService) DeployAPIRevision(apiId string, revisionID string,
 }
 
 // AddGatewaysToAPI associates multiple gateways with an API
-func (s *APIService) AddGatewaysToAPI(apiId string, gatewayIds []string, orgId string) (*dto.APIGatewayListResponse, error) {
+func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUUID string) (*dto.APIGatewayListResponse, error) {
 	// Validate that the API exists and belongs to the organization
-	apiModel, err := s.apiRepo.GetAPIByUUID(apiId)
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 	if apiModel == nil {
 		return nil, constants.ErrAPINotFound
 	}
-	if apiModel.OrganizationID != orgId {
+	if apiModel.OrganizationID != orgUUID {
 		return nil, constants.ErrAPINotFound
 	}
 
@@ -620,14 +613,14 @@ func (s *APIService) AddGatewaysToAPI(apiId string, gatewayIds []string, orgId s
 		if gateway == nil {
 			return nil, constants.ErrGatewayNotFound
 		}
-		if gateway.OrganizationID != orgId {
+		if gateway.OrganizationID != orgUUID {
 			return nil, constants.ErrGatewayNotFound
 		}
 		validGateways = append(validGateways, gateway)
 	}
 
 	// Get existing associations to determine which are new vs existing
-	existingAssociations, err := s.apiRepo.GetAPIAssociations(apiId, constants.AssociationTypeGateway, orgId)
+	existingAssociations, err := s.apiRepo.GetAPIAssociations(apiUUID, constants.AssociationTypeGateway, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -641,35 +634,19 @@ func (s *APIService) AddGatewaysToAPI(apiId string, gatewayIds []string, orgId s
 	for _, gateway := range validGateways {
 		if existingGatewayIds[gateway.ID] {
 			// Update existing association timestamp
-			if err := s.apiRepo.UpdateAPIAssociation(apiId, gateway.ID, constants.AssociationTypeGateway, orgId); err != nil {
+			if err := s.apiRepo.UpdateAPIAssociation(apiUUID, gateway.ID, constants.AssociationTypeGateway, orgUUID); err != nil {
 				return nil, err
 			}
 		} else {
 			// Create new association
 			association := &model.APIAssociation{
-				ApiID:           apiId,
-				OrganizationID:  orgId,
+				ApiID:           apiUUID,
+				OrganizationID:  orgUUID,
 				ResourceID:      gateway.ID,
 				AssociationType: constants.AssociationTypeGateway,
 				CreatedAt:       time.Now(),
 				UpdatedAt:       time.Now(),
 			}
-
-			// Check for duplicate API context + version before creating new association
-			existingAPIs, err := s.apiRepo.GetAPIsByGatewayID(gateway.ID, orgId)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get existing gateway APIs: %w", err)
-			}
-
-			// Check for duplicate context + version combination
-			for _, existingAPI := range existingAPIs {
-				if existingAPI.Context == apiModel.Context && existingAPI.Version == apiModel.Version {
-					log.Printf("WARNING: API with context '%s' and version '%s' already exists in gateway '%s'.",
-						apiModel.Context, apiModel.Version, gateway.Name)
-					break
-				}
-			}
-
 			if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
 				return nil, err
 			}
@@ -678,7 +655,7 @@ func (s *APIService) AddGatewaysToAPI(apiId string, gatewayIds []string, orgId s
 	}
 
 	// Return all gateways currently associated with the API including deployment details
-	gatewayDetails, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
+	gatewayDetails, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -704,21 +681,21 @@ func (s *APIService) AddGatewaysToAPI(apiId string, gatewayIds []string, orgId s
 }
 
 // GetAPIGateways retrieves all gateways associated with an API including deployment details
-func (s *APIService) GetAPIGateways(apiId, orgId string) (*dto.APIGatewayListResponse, error) {
+func (s *APIService) GetAPIGateways(apiUUID, orgUUID string) (*dto.APIGatewayListResponse, error) {
 	// Validate that the API exists and belongs to the organization
-	apiModel, err := s.apiRepo.GetAPIByUUID(apiId)
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 	if apiModel == nil {
 		return nil, constants.ErrAPINotFound
 	}
-	if apiModel.OrganizationID != orgId {
+	if apiModel.OrganizationID != orgUUID {
 		return nil, constants.ErrAPINotFound
 	}
 
 	// Get all gateways associated with this API including deployment details
-	gatewayDetails, err := s.apiRepo.GetAPIGatewaysWithDetails(apiId, orgId)
+	gatewayDetails, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -744,7 +721,7 @@ func (s *APIService) GetAPIGateways(apiId, orgId string) (*dto.APIGatewayListRes
 }
 
 // validateDeploymentRequest validates the deployment request
-func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, api *model.API, orgId string) error {
+func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, api *model.API, orgUUID string) error {
 	if req.GatewayID == "" {
 		return errors.New("gateway Id is required")
 	}
@@ -759,28 +736,8 @@ func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, a
 	if gateway == nil {
 		return fmt.Errorf("failed to get gateway: %w", err)
 	}
-	if gateway.OrganizationID != orgId {
+	if gateway.OrganizationID != orgUUID {
 		return fmt.Errorf("failed to get gateway: %w", err)
-	}
-
-	// Get all APIs currently deployed to this gateway
-	existingAPIs, err := s.apiRepo.GetDeployedAPIsByGatewayID(req.GatewayID, orgId)
-	if err != nil {
-		return fmt.Errorf("failed to get deployed APIs for gateway: %w", err)
-	}
-
-	// Check for duplicate context+version combination
-	for _, existingAPI := range existingAPIs {
-		// Skip checking against the same API (in case of redeployment)
-		if existingAPI.ID == api.ID {
-			continue
-		}
-
-		// Check if context and version match
-		if existingAPI.Context == api.Context && existingAPI.Version == api.Version {
-			return fmt.Errorf("an API with the same context '%s' and version '%s' is already deployed"+
-				" in the gateway '%s'", api.Context, api.Version, gateway.ID)
-		}
 	}
 
 	// Validate that the API has at least one backend service attached
@@ -849,11 +806,6 @@ func (s *APIService) validateCreateAPIRequest(req *CreateAPIRequest) error {
 		return errors.New("project id is required")
 	}
 
-	// Validate API name format
-	if !s.isValidAPIName(req.Name) {
-		return constants.ErrInvalidAPIName
-	}
-
 	// Validate context format
 	if !s.isValidContext(req.Context) {
 		return constants.ErrInvalidAPIContext
@@ -896,9 +848,6 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *UpdateAPI
 	existingAPI := s.apiUtil.ModelToDTO(existingAPIModel)
 
 	// Update fields (only allow certain fields to be updated)
-	if req.DisplayName != nil {
-		existingAPI.DisplayName = *req.DisplayName
-	}
 	if req.Description != nil {
 		existingAPI.Description = *req.Description
 	}
@@ -1019,18 +968,14 @@ func (s *APIService) validateUpdateAPIRequest(req *UpdateAPIRequest) error {
 
 // Helper validation methods
 
-func (s *APIService) isValidAPIName(name string) bool {
-	// API name should not contain special characters except spaces and hyphens
-	pattern := `^[^~!@#;:%^*()+={}|\\<>"'',&$\[\]\/]*$`
-	matched, _ := regexp.MatchString(pattern, name)
-	return matched && len(name) > 0
-}
-
 func (s *APIService) isValidContext(context string) bool {
-	// Context should be URL-friendly, no spaces or special characters
-	pattern := `^\/?[a-zA-Z0-9_/-]+$`
+	// Context can be empty, root path (/), or follow pattern: /name, /name1/name2, /name/1.0.0, /name/v1.2.3
+	if context == "" {
+		return true // Empty context is valid
+	}
+	pattern := `^\/(?:[a-zA-Z0-9_-]+(?:\/(?:[a-zA-Z0-9_-]+|v?\d+(?:\.\d+)?(?:\.\d+)?))*)?\/?$`
 	matched, _ := regexp.MatchString(pattern, context)
-	return matched && len(context) > 0 && len(context) <= 232
+	return matched && len(context) <= 232
 }
 
 func (s *APIService) isValidVersion(version string) bool {
@@ -1160,7 +1105,7 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 }
 
 // ImportAPIProject imports an API project from a Git repository
-func (s *APIService) ImportAPIProject(req *dto.ImportAPIProjectRequest, orgId string, gitService GitService) (*dto.API, error) {
+func (s *APIService) ImportAPIProject(req *dto.ImportAPIProjectRequest, orgUUID string, gitService GitService) (*dto.API, error) {
 	// 1. Validate if there is a .api-platform directory with config.yaml
 	config, err := gitService.ValidateAPIProject(req.RepoURL, req.Branch, req.Path)
 	if err != nil {
@@ -1197,7 +1142,7 @@ func (s *APIService) ImportAPIProject(req *dto.ImportAPIProjectRequest, orgId st
 	// 7. Create API using the existing CreateAPI flow
 	createReq := &CreateAPIRequest{
 		Name:             apiData.Name,
-		DisplayName:      apiData.DisplayName,
+		DisplayName:      apiData.Name,
 		Description:      apiData.Description,
 		Context:          apiData.Context,
 		Version:          apiData.Version,
@@ -1219,19 +1164,16 @@ func (s *APIService) ImportAPIProject(req *dto.ImportAPIProjectRequest, orgId st
 		Operations:       apiData.Operations,
 	}
 
-	return s.CreateAPI(createReq, orgId)
+	return s.CreateAPI(createReq, orgUUID)
 }
 
 // mergeAPIData merges WSO2 artifact data with user-provided API data (user data takes precedence)
-func (s *APIService) mergeAPIData(artifact *dto.APIYAMLData2, userAPIData *dto.API) *dto.API {
-	apiDTO := s.apiUtil.APIYAMLData2ToDTO(artifact)
+func (s *APIService) mergeAPIData(artifact *dto.APIYAMLData, userAPIData *dto.API) *dto.API {
+	apiDTO := s.apiUtil.APIYAMLDataToDTO(artifact)
 
 	// Overwrite with user-provided data (if not empty)
 	if userAPIData.Name != "" {
 		apiDTO.Name = userAPIData.Name
-	}
-	if userAPIData.DisplayName != "" {
-		apiDTO.DisplayName = userAPIData.DisplayName
 	}
 	if userAPIData.Description != "" {
 		apiDTO.Description = userAPIData.Description
@@ -1376,21 +1318,21 @@ func (s *APIService) UnpublishAPIFromDevPortal(apiID, devPortalUUID, orgID strin
 
 // GetAPIPublications retrieves all DevPortals associated with an API including publication details
 // This mirrors the GetAPIGateways implementation for consistency
-func (s *APIService) GetAPIPublications(apiID, orgID string) (*dto.APIDevPortalListResponse, error) {
+func (s *APIService) GetAPIPublications(apiUUID, orgUUID string) (*dto.APIDevPortalListResponse, error) {
 	// Validate that the API exists and belongs to the organization
-	apiModel, err := s.apiRepo.GetAPIByUUID(apiID)
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
 	if apiModel == nil {
 		return nil, constants.ErrAPINotFound
 	}
-	if apiModel.OrganizationID != orgID {
+	if apiModel.OrganizationID != orgUUID {
 		return nil, constants.ErrAPINotFound
 	}
 
 	// Get all DevPortals associated with this API including publication details
-	devPortalDetails, err := s.publicationRepo.GetAPIDevPortalsWithDetails(apiID, orgID)
+	devPortalDetails, err := s.publicationRepo.GetAPIDevPortalsWithDetails(apiUUID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get API-DevPortal associations: %w", err)
 	}
@@ -1637,7 +1579,7 @@ func (s *APIService) ImportFromOpenAPI(req *dto.ImportOpenAPIRequest, orgId stri
 	// Create API using existing CreateAPI logic
 	createReq := &CreateAPIRequest{
 		Name:            mergedAPI.Name,
-		DisplayName:     mergedAPI.DisplayName,
+		DisplayName:     mergedAPI.Name,
 		Description:     mergedAPI.Description,
 		Context:         mergedAPI.Context,
 		Version:         mergedAPI.Version,
@@ -1659,14 +1601,14 @@ func (s *APIService) ImportFromOpenAPI(req *dto.ImportOpenAPIRequest, orgId stri
 }
 
 // ValidateAPI validates if an API with the given identifier or name+version combination exists within an organization
-func (s *APIService) ValidateAPI(req *dto.APIValidationRequest, orgId string) (*dto.APIValidationResponse, error) {
+func (s *APIService) ValidateAPI(req *dto.APIValidationRequest, orgUUID string) (*dto.APIValidationResponse, error) {
 	// Validate request - either identifier OR both name and version must be provided
 	if req.Identifier == "" && (req.Name == "" || req.Version == "") {
 		return nil, errors.New("either 'identifier' or both 'name' and 'version' parameters are required")
 	}
 
 	// Check if organization exists
-	organization, err := s.orgRepo.GetOrganizationByUUID(orgId)
+	organization, err := s.orgRepo.GetOrganizationByUUID(orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -1680,7 +1622,7 @@ func (s *APIService) ValidateAPI(req *dto.APIValidationRequest, orgId string) (*
 	// Check existence based on the provided parameters
 	if req.Identifier != "" {
 		// Validate by identifier
-		exists, err = s.apiRepo.CheckAPIExistsByIdentifierInOrganization(req.Identifier, orgId)
+		exists, err = s.apiRepo.CheckAPIExistsByHandleInOrganization(req.Identifier, orgUUID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check API existence by identifier: %w", err)
 		}
@@ -1692,7 +1634,7 @@ func (s *APIService) ValidateAPI(req *dto.APIValidationRequest, orgId string) (*
 		}
 	} else {
 		// Validate by name and version
-		exists, err = s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgId)
+		exists, err = s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgUUID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check API existence by name and version: %w", err)
 		}

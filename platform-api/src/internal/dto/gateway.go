@@ -121,13 +121,13 @@ type APIGatewayListResponse struct {
 
 // GatewayArtifact represents an artifact (API, MCP, API Product) deployed to a gateway
 type GatewayArtifact struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	DisplayName string    `json:"displayName,omitempty"`
-	Type        string    `json:"type"`              // "API", "MCP", "API_PRODUCT"
-	SubType     string    `json:"subType,omitempty"` // For APIs: "REST", "ASYNC", "GQL"
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID        string    `json:"id"`
+	Handle    string    `json:"handle"`
+	Name      string    `json:"name,omitempty"`
+	Type      string    `json:"type"`              // "API", "MCP", "API_PRODUCT"
+	SubType   string    `json:"subType,omitempty"` // For APIs: "REST", "ASYNC", "GQL"
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // GatewayArtifactListResponse represents a paginated list of artifacts deployed to a gateway
