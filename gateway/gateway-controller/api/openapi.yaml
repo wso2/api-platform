@@ -1777,7 +1777,6 @@ components:
         - context
         - upstream
         - operations
-        # - kind
       properties:
         displayName:
           type: string
@@ -1973,19 +1972,12 @@ components:
     WebhookAPIData:
       type: object
       required:
-        # - kind
         - name
         - version
         - context
         - servers
         - channels
       properties:
-        # kind:
-        #   type: string
-        #   description: API type
-        #   example: async/websub
-        #   enum:
-        #     - async/websub
         name:
           type: string
           description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
