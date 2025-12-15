@@ -16,8 +16,8 @@
 # under the License.
 # --------------------------------------------------------------------
 
-version: api-platform.wso2.com/v1
-kind: http/rest
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
 metadata:
   name: weather-api-v1.0
 spec:
