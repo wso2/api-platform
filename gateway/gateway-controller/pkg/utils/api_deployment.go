@@ -135,6 +135,24 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		apiID = generateUUID()
 	}
 
+	var handle string
+	if apiConfig.Metadata != nil {
+		handle = apiConfig.Metadata.Name
+	}
+
+	if s.store != nil {
+		if _, err := s.store.GetByNameVersion(apiName, apiVersion); err == nil {
+			return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, apiName, apiVersion)
+		}
+		if handle != "" {
+			for _, c := range s.store.GetAll() {
+				if c.GetHandle() == handle {
+					return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
+				}
+			}
+		}
+	}
+
 	// Create stored configuration
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
@@ -322,13 +340,7 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		if err := s.db.SaveConfig(storedCfg); err != nil {
 			// Check if it's a conflict (API already exists)
 			if storage.IsConflictError(err) {
-				logger.Info("API configuration already exists in database, updating instead",
-					zap.String("api_id", storedCfg.ID),
-					zap.String("name", storedCfg.GetName()),
-					zap.String("version", storedCfg.GetVersion()))
-
-				// Try to update instead
-				return s.updateExistingConfig(storedCfg, logger)
+				return false, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, storedCfg.GetName(), storedCfg.GetVersion())
 			} else {
 				return false, fmt.Errorf("failed to save config to database: %w", err)
 			}
@@ -339,13 +351,10 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 	if err := s.store.Add(storedCfg); err != nil {
 		// Check if it's a conflict (API already exists)
 		if storage.IsConflictError(err) {
-			logger.Info("API configuration already exists in memory, updating instead",
-				zap.String("api_id", storedCfg.ID),
-				zap.String("name", storedCfg.GetName()),
-				zap.String("version", storedCfg.GetVersion()))
-
-			// Try to update instead
-			return s.updateExistingConfig(storedCfg, logger)
+			if s.db != nil {
+				_ = s.db.DeleteConfig(storedCfg.ID)
+			}
+			return false, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, storedCfg.GetName(), storedCfg.GetVersion())
 		} else {
 			// Rollback database write (only if persistent mode)
 			if s.db != nil {
@@ -356,53 +365,6 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 	}
 
 	return false, nil // Successfully created new config
-}
-
-// updateExistingConfig updates an existing API configuration
-func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConfig, logger *zap.Logger) (bool, error) {
-	// Get existing config
-	existing, err := s.store.GetByNameVersion(newConfig.GetName(), newConfig.GetVersion())
-	if err != nil {
-		return false, fmt.Errorf("failed to get existing config: %w", err)
-	}
-
-	// Backup original state for potential rollback
-	original := *existing
-
-	// Update the existing configuration
-	now := time.Now()
-	existing.Configuration = newConfig.Configuration
-	existing.Status = models.StatusPending
-	existing.UpdatedAt = now
-	existing.DeployedAt = nil
-	existing.DeployedVersion = 0
-
-	// Update database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.UpdateConfig(existing); err != nil {
-			return false, fmt.Errorf("failed to update config in database: %w", err)
-		}
-	}
-
-	// Update in-memory store
-	if err := s.store.Update(existing); err != nil {
-		// Rollback DB to original state since memory update failed
-		if s.db != nil {
-			if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
-				logger.Error("Failed to rollback DB after memory update failure",
-					zap.Error(rbErr),
-					zap.String("id", original.ID),
-					zap.String("name", original.GetName()),
-					zap.String("version", original.GetVersion()))
-			}
-		}
-		return false, fmt.Errorf("failed to update config in memory store: %w", err)
-	}
-
-	// Update the newConfig to reflect the changes
-	*newConfig = *existing
-
-	return true, nil // Successfully updated existing config
 }
 
 // RegisterTopicWithHub registers a topic with the WebSubHub

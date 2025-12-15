@@ -79,6 +79,14 @@ func (c *StoredConfig) GetName() string {
 	return configData.Name
 }
 
+// GetHandle returns the API handle from metadata.name
+func (c *StoredConfig) GetHandle() string {
+	if c.Configuration.Metadata != nil {
+		return c.Configuration.Metadata.Name
+	}
+	return ""
+}
+
 // GetVersion returns the API version
 func (c *StoredConfig) GetVersion() string {
 	if c.Configuration.Kind == api.Asyncwebsub {

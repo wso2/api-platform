@@ -18,6 +18,8 @@
 
 version: api-platform.wso2.com/v1
 kind: http/rest
+metadata:
+  name: weather-api-v1.0
 spec:
   name: Weather-API
   version: v1.0
