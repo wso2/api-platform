@@ -9,14 +9,14 @@ import (
 // ExtractNameVersion returns the name and version from an API configuration
 // Supports both HTTP REST APIs and async/websub kinds.
 func ExtractNameVersion(cfg api.APIConfiguration) (string, string, error) {
-	if cfg.Kind == api.APIConfigurationKindHttprest {
+	if cfg.Kind == api.Httprest {
 		d, err := cfg.Spec.AsAPIConfigData()
 		if err != nil {
 			return "", "", fmt.Errorf("failed to parse http/rest api config data: %w", err)
 		}
 		return d.Name, d.Version, nil
 	}
-	if cfg.Kind == api.APIConfigurationKindAsyncwebsub {
+	if cfg.Kind == api.Asyncwebsub {
 		d, err := cfg.Spec.AsWebhookAPIData()
 		if err != nil {
 			return "", "", fmt.Errorf("failed to parse async/websub api config data: %w", err)
