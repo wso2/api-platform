@@ -1667,10 +1667,6 @@ components:
           pattern: '(^[^~!@#;:%^*()+={}|\\<>"'',&$\[\]\/]*$)'
           type: string
           example: PizzaShackAPI
-        displayName:
-          description: Human-friendly name shown in UI. Length limited to DB column size
-          type: string
-          example: Pizza Shack API
         description:
           maxLength: 32766
           type: string
@@ -2837,17 +2833,12 @@ components:
       properties:
         id:
           type: string
-          format: uuid
-          description: Unique identifier for the artifact
-          example: "123e4567-e89b-12d3-a456-426614174000"
+          description: Handle of the artifact
+          example: "inventory-api"
         name:
           type: string
           description: Name of the artifact
-          example: "inventory-api"
-        displayName:
-          type: string
-          description: Display name of the artifact
-          example: "Inventory Management API"
+          example: "Inventory API"
         type:
           type: string
           enum: ["API", "MCP", "API_PRODUCT"]
@@ -3414,8 +3405,8 @@ components:
             Required fields within the JSON: name, context, version, projectId.
           example: |
             {
+              "id": "petstore-api-1"
               "name": "PetStore API",
-              "displayName": "PetStore API v3",
               "description": "This is a sample Pet Store Server",
               "context": "/petstore",
               "version": "1.0.0",
@@ -3460,7 +3451,6 @@ components:
               description: Details for the validated API project
               required:
                 - name
-                - displayName
                 - description
                 - context
                 - version

@@ -54,7 +54,7 @@ func NewGatewayInternalAPIService(apiRepo repository.APIRepository, gatewayRepo 
 // GetAPIsByOrganization retrieves all APIs for a specific organization (used by gateways)
 func (s *GatewayInternalAPIService) GetAPIsByOrganization(orgID string) (map[string]string, error) {
 	// Get all APIs for the organization
-	apis, err := s.apiRepo.GetAPIsByOrganizationID(orgID, nil)
+	apis, err := s.apiRepo.GetAPIsByOrganizationUUID(orgID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve APIs: %w", err)
 	}
@@ -73,7 +73,7 @@ func (s *GatewayInternalAPIService) GetAPIsByOrganization(orgID string) (map[str
 
 // GetAPIByUUID retrieves an API by its ID
 func (s *GatewayInternalAPIService) GetAPIByUUID(apiId, orgId string) (map[string]string, error) {
-	apiModel, err := s.apiRepo.GetAPIByUUID(apiId)
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiId, orgId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get api: %w", err)
 	}
@@ -168,7 +168,6 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 		newAPI := &model.API{
 			Handle:           apiHandle, // Use provided apiID as handle
 			Name:             notification.Configuration.Spec.Name,
-			DisplayName:      notification.Configuration.Spec.Name,
 			Context:          notification.Configuration.Spec.Context,
 			Version:          notification.Configuration.Spec.Version,
 			ProjectID:        projectID,
@@ -211,7 +210,7 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 	}
 
 	// Check if deployment already exists
-	existingDeployments, err := s.apiRepo.GetDeploymentsByAPIUUID(apiUUID)
+	existingDeployments, err := s.apiRepo.GetDeploymentsByAPIUUID(apiUUID, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing deployments: %w", err)
 	}
@@ -248,7 +247,6 @@ func (s *GatewayInternalAPIService) CreateGatewayAPIDeployment(apiHandle, orgID,
 			CreatedAt:       now,
 			UpdatedAt:       now,
 		}
-
 		if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
 			return nil, fmt.Errorf("failed to create API-gateway association: %w", err)
 		}

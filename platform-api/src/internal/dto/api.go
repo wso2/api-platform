@@ -25,7 +25,6 @@ import (
 type API struct {
 	ID               string              `json:"id,omitempty" yaml:"id,omitempty"`
 	Name             string              `json:"name" yaml:"name"`
-	DisplayName      string              `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 	Description      string              `json:"description,omitempty" yaml:"description,omitempty"`
 	Context          string              `json:"context" yaml:"context"`
 	Version          string              `json:"version" yaml:"version"`
@@ -181,44 +180,21 @@ type APIRevisionDeployment struct {
 
 // APIDeploymentYAML represents the API deployment YAML structure
 type APIDeploymentYAML struct {
-	Kind    string       `yaml:"kind" binding:"required"`
-	Version string       `yaml:"version" binding:"required"`
-	Spec    APIYAMLData2 `yaml:"spec" binding:"required"`
+	Kind    string      `yaml:"kind" binding:"required"`
+	Version string      `yaml:"version" binding:"required"`
+	Spec    APIYAMLData `yaml:"spec" binding:"required"`
 }
 
-// APIYAMLData2 represents a basic spec section of the API deployment YAML
-type APIYAMLData2 struct {
+// APIYAMLData represents a basic spec section of the API deployment YAML
+type APIYAMLData struct {
 	Id          string             `yaml:"id"`
 	Name        string             `yaml:"name"`
-	DisplayName string             `yaml:"displayName,omitempty"`
 	Version     string             `yaml:"version"`
 	Description string             `yaml:"description,omitempty"`
 	Context     string             `yaml:"context"`
 	Provider    string             `yaml:"provider,omitempty"`
 	Upstreams   []BackendEndpoint  `yaml:"upstreams,omitempty"`
 	Operations  []OperationRequest `yaml:"operations,omitempty"`
-}
-
-// APIYAMLData represents the spec section of the API deployment YAML
-type APIYAMLData struct {
-	Id              string              `yaml:"id"`
-	Name            string              `yaml:"name"`
-	DisplayName     string              `yaml:"displayName,omitempty"`
-	Version         string              `yaml:"version"`
-	Description     string              `yaml:"description,omitempty"`
-	Context         string              `yaml:"context"`
-	Provider        string              `yaml:"provider,omitempty"`
-	CreatedTime     string              `yaml:"createdTime,omitempty"`
-	LastUpdatedTime string              `yaml:"lastUpdatedTime,omitempty"`
-	LifeCycleStatus string              `yaml:"lifeCycleStatus,omitempty"`
-	Type            string              `yaml:"type,omitempty"`
-	Transport       []string            `yaml:"transport,omitempty"`
-	MTLS            *MTLSConfig         `yaml:"mtls,omitempty"`
-	Security        *SecurityConfig     `yaml:"security,omitempty"`
-	CORS            *CORSConfig         `yaml:"cors,omitempty"`
-	BackendServices []BackendService    `yaml:"backend-services,omitempty"`
-	APIRateLimiting *RateLimitingConfig `yaml:"api-rate-limiting,omitempty"`
-	Operations      []Operation         `yaml:"operations,omitempty"`
 }
 
 // APIListResponse represents a paginated list of APIs (constitution-compliant)

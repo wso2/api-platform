@@ -46,28 +46,28 @@ type ProjectRepository interface {
 // APIRepository defines the interface for API data operations
 type APIRepository interface {
 	CreateAPI(api *model.API) error
-	GetAPIByUUID(apiId string) (*model.API, error)
-	GetAPIMetadataByHandle(handle, orgId string) (*model.APIMetadata, error)
-	GetAPIsByProjectID(projectID string) ([]*model.API, error)
-	GetAPIsByOrganizationID(orgID string, projectID *string) ([]*model.API, error)
-	GetAPIsByGatewayID(gatewayID, organizationID string) ([]*model.API, error)
+	GetAPIByUUID(apiUUID, orgUUID string) (*model.API, error)
+	GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMetadata, error)
+	GetAPIsByProjectUUID(projectUUID, orgUUID string) ([]*model.API, error)
+	GetAPIsByOrganizationUUID(orgUUID string, projectUUID *string) ([]*model.API, error)
+	GetAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error)
+	GetDeployedAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error)
 	UpdateAPI(api *model.API) error
-	DeleteAPI(apiId string) error
+	DeleteAPI(apiUUID, orgUUID string) error
 	CreateDeployment(deployment *model.APIDeployment) error
-	GetDeploymentsByAPIUUID(apiId string) ([]*model.APIDeployment, error)
+	GetDeploymentsByAPIUUID(apiUUID, orgUUID string) ([]*model.APIDeployment, error)
 
 	// API-Gateway association methods
-	GetAPIGatewaysWithDetails(apiId, organizationId string) ([]*model.APIGatewayWithDetails, error)
+	GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error)
 
 	// Unified API association methods (supports both gateways and dev portals)
 	CreateAPIAssociation(association *model.APIAssociation) error
-	GetAPIAssociations(apiId, associationType, orgId string) ([]*model.APIAssociation, error)
-	UpdateAPIAssociation(apiId, resourceId, associationType, orgId string) error
+	GetAPIAssociations(apiUUID, associationType, orgUUID string) ([]*model.APIAssociation, error)
+	UpdateAPIAssociation(apiUUID, resourceId, associationType, orgUUID string) error
 
 	// API name validation methods
-	CheckAPIExistsByIdentifierInOrganization(identifier, orgId string) (bool, error)
-	CheckAPIExistsByNameAndVersionInOrganization(name, version, orgId string) (bool, error)
-	CheckAPIExistsByHandleInOrganization(handle, orgId string) (bool, error)
+	CheckAPIExistsByHandleInOrganization(handle, orgUUID string) (bool, error)
+	CheckAPIExistsByNameAndVersionInOrganization(name, version, orgUUID string) (bool, error)
 }
 
 // BackendServiceRepository defines the interface for backend service data operations

@@ -82,6 +82,16 @@ func (h *APIHandler) CreateAPI(c *gin.Context) {
 
 	api, err := h.apiService.CreateAPI(&req, orgId)
 	if err != nil {
+		if errors.Is(err, constants.ErrHandleExists) {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"API handle already exists"))
+			return
+		}
+		if errors.Is(err, constants.ErrAPINameVersionAlreadyExists) {
+			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
+				"API with same name and version already exists in the organization"))
+			return
+		}
 		if errors.Is(err, constants.ErrAPIAlreadyExists) {
 			c.JSON(http.StatusConflict, utils.NewErrorResponse(409, "Conflict",
 				"API already exists in the project"))
@@ -413,7 +423,7 @@ func (h *APIHandler) DeployAPIRevision(c *gin.Context) {
 				"API not found"))
 			return
 		}
-		if errors.Is(err, constants.ErrInvalidAPIDeployment) {
+		if strings.Contains(err.Error(), "invalid api deployment") {
 			c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
 				"Invalid API deployment configuration"))
 			log.Printf("[ERROR] Failed to deploy API revision: apiUUID=%s revisionID=%s error=%v",
