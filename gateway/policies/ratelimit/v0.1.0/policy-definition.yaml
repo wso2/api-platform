@@ -1,11 +1,13 @@
 name: RateLimit
 version: v0.1.0
 description: |
-  GCRA-based rate limiting policy supporting multiple concurrent limits, flexible key extraction,
-  and both in-memory and Redis backends. Supports fail-open behavior for Redis failures and
-  provides comprehensive rate limit headers (X-RateLimit-*, IETF RateLimit, and Retry-After).
+  GCRA-based rate limiting policy supporting multiple concurrent limits, weighted rate limiting,
+  flexible key extraction, and both in-memory and Redis backends. Supports fail-open behavior
+  for Redis failures and provides comprehensive rate limit headers (X-RateLimit-*, IETF RateLimit,
+  and Retry-After).
 
   Key features:
+  - Weighted rate limiting via cost parameter (different operations consume different quota amounts)
   - Multiple concurrent limits (e.g., 10/second AND 1000/hour)
   - Array-based key extraction with sensible defaults (route name)
   - Dual backends: in-memory (single instance) or Redis (distributed)
@@ -47,6 +49,17 @@ parameters:
               If omitted, defaults to the limit value (no burst beyond normal rate).
             minimum: 1
             maximum: 1000000000
+
+    cost:
+      type: integer
+      description: |
+        Number of tokens this operation consumes per request (weighted rate limiting).
+        Use this to assign different costs to different operations. For example, simple
+        queries might cost 1 token while expensive analytics operations cost 10 tokens.
+        If omitted, defaults to 1.
+      minimum: 1
+      maximum: 1000000
+      default: 1
 
     keyExtraction:
       type: array

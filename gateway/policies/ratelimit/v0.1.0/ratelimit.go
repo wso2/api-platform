@@ -223,10 +223,19 @@ func (p *RateLimitPolicy) OnRequest(
 	// 1. Extract rate limit key
 	key := p.extractRateLimitKey(ctx)
 
-	// 2. Check rate limit
-	result, err := p.limiter.Allow(context.Background(), key)
+	// 2. Extract cost parameter (defaults to 1 for backwards compatibility)
+	cost := int64(1)
+	if costVal, ok := params["cost"].(float64); ok {
+		cost = int64(costVal)
+		if cost < 1 {
+			cost = 1 // Ensure minimum cost of 1
+		}
+	}
 
-	// 3. Handle errors (Redis failures, etc.)
+	// 3. Check rate limit with cost (weighted rate limiting)
+	result, err := p.limiter.AllowN(context.Background(), key, cost)
+
+	// 4. Handle errors (Redis failures, etc.)
 	if err != nil {
 		if p.backend == "redis" && p.redisFailOpen {
 			// Fail open: allow request through on Redis errors
@@ -238,7 +247,7 @@ func (p *RateLimitPolicy) OnRequest(
 		return p.buildRateLimitResponse(nil)
 	}
 
-	// 4. Check if allowed
+	// 5. Check if allowed
 	if result.Allowed {
 		// Request allowed - add informational headers and continue
 		headers := p.buildRateLimitHeaders(result, false)
@@ -247,7 +256,7 @@ func (p *RateLimitPolicy) OnRequest(
 		}
 	}
 
-	// 5. Request denied - return 429 with headers
+	// 6. Request denied - return 429 with headers
 	return p.buildRateLimitResponse(result)
 }
 
