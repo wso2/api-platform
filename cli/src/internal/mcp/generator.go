@@ -103,10 +103,10 @@ type McpYAML struct {
 		Version     string `yaml:"version"`
 		Context     string `yaml:"context"`
 		SpecVersion string `yaml:"specVersion"`
-		Upstreams   []struct {
+		Upstream    struct {
 			URL string `yaml:"url"`
-		} `yaml:"upstreams"`
-		Policies  []string   `yaml:"policies"`
+		} `yaml:"upstream"`
+		Policies  []any      `yaml:"policies"`
 		Tools     []Tool     `yaml:"tools"`
 		Resources []Resource `yaml:"resources"`
 		Prompts   []Prompt   `yaml:"prompts"`
@@ -380,10 +380,10 @@ func generateMCPConfigFile(url string, toolsResult ToolsResult,
 	mcp.Spec.Version = "v1.0"
 	mcp.Spec.Context = "/generated"
 	mcp.Spec.SpecVersion = ProtocolVersion
-	mcp.Spec.Upstreams = []struct {
+	mcp.Spec.Upstream = struct {
 		URL string `yaml:"url"`
-	}{{URL: strings.TrimSuffix(url, "/mcp")}}
-	mcp.Spec.Policies = []string{}
+	}{URL: strings.TrimSuffix(url, "/mcp")}
+	mcp.Spec.Policies = []any{}
 	mcp.Spec.Tools = toolsResult.Result.Tools
 	mcp.Spec.Resources = resourcesResult.Result.Resources
 	mcp.Spec.Prompts = promptsResult.Result.Prompts
