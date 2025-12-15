@@ -2526,6 +2526,43 @@ components:
           type: string
           example: success
 
+    ConfigDumpAPIItem:
+      type: object
+      description: API item in config dump response
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        configuration:
+          $ref: "#/components/schemas/APIConfiguration"
+        metadata:
+          $ref: "#/components/schemas/ConfigDumpAPIMetadata"
+
+    ConfigDumpAPIMetadata:
+      type: object
+      description: Metadata for API in config dump
+      properties:
+        status:
+          type: string
+          enum:
+            - pending
+            - deployed
+            - failed
+          example: deployed
+        created_at:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+        updated_at:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+        deployed_at:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:05Z
+
     ConfigDumpResponse:
       type: object
       properties:
@@ -2541,36 +2578,7 @@ components:
           type: array
           description: All deployed API configurations
           items:
-            type: object
-            properties:
-              id:
-                type: string
-                format: uuid
-                example: 550e8400-e29b-41d4-a716-446655440000
-              configuration:
-                $ref: "#/components/schemas/APIConfiguration"
-              metadata:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    enum:
-                      - pending
-                      - deployed
-                      - failed
-                    example: deployed
-                  created_at:
-                    type: string
-                    format: date-time
-                    example: 2025-10-11T10:30:00Z
-                  updated_at:
-                    type: string
-                    format: date-time
-                    example: 2025-10-11T10:30:00Z
-                  deployed_at:
-                    type: string
-                    format: date-time
-                    example: 2025-10-11T10:30:05Z
+            $ref: "#/components/schemas/ConfigDumpAPIItem"
         policies:
           type: array
           description: All loaded policy definitions
