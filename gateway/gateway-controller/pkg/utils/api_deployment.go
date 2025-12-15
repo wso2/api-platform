@@ -340,7 +340,13 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		if err := s.db.SaveConfig(storedCfg); err != nil {
 			// Check if it's a conflict (API already exists)
 			if storage.IsConflictError(err) {
-				return false, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, storedCfg.GetName(), storedCfg.GetVersion())
+				logger.Info("API configuration already exists in database, updating instead",
+					zap.String("api_id", storedCfg.ID),
+					zap.String("name", storedCfg.GetName()),
+					zap.String("version", storedCfg.GetVersion()))
+
+				// Try to update instead
+				return s.updateExistingConfig(storedCfg, logger)
 			} else {
 				return false, fmt.Errorf("failed to save config to database: %w", err)
 			}
@@ -351,10 +357,13 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 	if err := s.store.Add(storedCfg); err != nil {
 		// Check if it's a conflict (API already exists)
 		if storage.IsConflictError(err) {
-			if s.db != nil {
-				_ = s.db.DeleteConfig(storedCfg.ID)
-			}
-			return false, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, storedCfg.GetName(), storedCfg.GetVersion())
+			logger.Info("API configuration already exists in memory, updating instead",
+				zap.String("api_id", storedCfg.ID),
+				zap.String("name", storedCfg.GetName()),
+				zap.String("version", storedCfg.GetVersion()))
+
+			// Try to update instead
+			return s.updateExistingConfig(storedCfg, logger)
 		} else {
 			// Rollback database write (only if persistent mode)
 			if s.db != nil {
