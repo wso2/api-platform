@@ -758,7 +758,7 @@ type MCPPrompt struct {
 // MCPProxyConfigData defines model for MCPProxyConfigData.
 type MCPProxyConfigData struct {
 	// Context MCP Proxy context path
-	Context string `json:"context" yaml:"context"`
+	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
 
 	// Policies List of MCP Proxy level policies applied
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
@@ -776,6 +776,9 @@ type MCPProxyConfigData struct {
 
 	// Version MCP Proxy version
 	Version string `json:"version" yaml:"version"`
+
+	// Vhost Virtual host name used for routing. Supports standard domain names, subdomains, or wildcard domains. Must follow RFC-compliant hostname rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
+	Vhost *string `json:"vhost,omitempty" yaml:"vhost,omitempty"`
 }
 
 // MCPProxyConfigDataUpstreamAuthType defines model for MCPProxyConfigData.Upstream.Auth.Type.

@@ -120,7 +120,7 @@ func TestMCPTransformer_Transform(t *testing.T) {
 		Spec: api.MCPProxyConfigData{
 			DisplayName: name,
 			Version:     version,
-			Context:     context,
+			Context:     &context,
 			Upstream:    upstream,
 			SpecVersion: &latest,
 		},

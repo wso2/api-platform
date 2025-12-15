@@ -106,6 +106,9 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 		},
 		Operations: addMCPSpecificOperations(mcpConfig),
 	}
+	if mcpConfig.Spec.Context != nil {
+		apiData.Context = *mcpConfig.Spec.Context
+	}
 
 	apiData.Upstream.Main = api.Upstream{
 		Url: mcpConfig.Spec.Upstream.Url,
@@ -123,6 +126,17 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 			Name:    constants.MODFIFY_HEADERS_POLICY_NAME,
 			Version: constants.MODIFY_HEADERS_POLICY_VERSION, Params: &params}
 		polices = append(polices, pol)
+	}
+
+	// Set vhost if present
+	if mcpConfig.Spec.Vhost != nil {
+		v := struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: *mcpConfig.Spec.Vhost,
+		}
+		apiData.Vhosts = &v
 	}
 
 	// Process policies
