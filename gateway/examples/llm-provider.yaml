@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: wso2-openai-provider

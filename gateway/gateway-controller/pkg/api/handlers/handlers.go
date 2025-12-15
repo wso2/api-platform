@@ -88,10 +88,11 @@ func NewAPIServer(
 		logger:               logger,
 		deploymentService:    deploymentService,
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
-		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, templateDefinitions, deploymentService),
-		controlPlaneClient:   controlPlaneClient,
-		routerConfig:         routerConfig,
-		httpClient:           &http.Client{Timeout: 10 * time.Second},
+		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, templateDefinitions,
+			deploymentService, routerConfig),
+		controlPlaneClient: controlPlaneClient,
+		routerConfig:       routerConfig,
+		httpClient:         &http.Client{Timeout: 10 * time.Second},
 	}
 
 	// Register status update callback
@@ -902,7 +903,7 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	}
 
 	log.Info("LLM provider template created successfully",
-		zap.String("id", storedTemplate.ID),
+		zap.String("uuid", storedTemplate.ID),
 		zap.String("handle", storedTemplate.GetHandle()))
 
 	c.JSON(http.StatusCreated, api.LLMProviderTemplateCreateResponse{
@@ -916,15 +917,15 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 // ListLLMProviderTemplates implements ServerInterface.ListLLMProviderTemplates
 // (GET /llm-providers/templates)
 func (s *APIServer) ListLLMProviderTemplates(c *gin.Context, params api.ListLLMProviderTemplatesParams) {
-	templates := s.llmDeploymentService.ListLLMProviderTemplates(params.Name)
+	templates := s.llmDeploymentService.ListLLMProviderTemplates(params.DisplayName)
 
 	items := make([]api.LLMProviderTemplateListItem, len(templates))
 	for i, tmpl := range templates {
 		items[i] = api.LLMProviderTemplateListItem{
-			Id:        stringPtr(tmpl.GetHandle()),
-			Name:      stringPtr(tmpl.Configuration.Spec.DisplayName),
-			CreatedAt: timePtr(tmpl.CreatedAt),
-			UpdatedAt: timePtr(tmpl.UpdatedAt),
+			Id:          stringPtr(tmpl.GetHandle()),
+			DisplayName: stringPtr(tmpl.Configuration.Spec.DisplayName),
+			CreatedAt:   timePtr(tmpl.CreatedAt),
+			UpdatedAt:   timePtr(tmpl.UpdatedAt),
 		}
 	}
 
@@ -942,7 +943,7 @@ func (s *APIServer) GetLLMProviderTemplateById(c *gin.Context, id string) {
 
 	template, err := s.llmDeploymentService.GetLLMProviderTemplateByHandle(id)
 	if err != nil {
-		log.Warn("LLM provider template not found", zap.String("id", id))
+		log.Warn("LLM provider template not found", zap.String("handle", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Template with id '%s' not found", id),
@@ -997,7 +998,7 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 	}
 
 	log.Info("LLM provider template updated successfully",
-		zap.String("id", updated.ID),
+		zap.String("uuid", updated.ID),
 		zap.String("handle", updated.GetHandle()))
 
 	c.JSON(http.StatusOK, api.LLMProviderTemplateUpdateResponse{
@@ -1015,7 +1016,7 @@ func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 
 	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(id)
 	if err != nil {
-		log.Warn("LLM provider template not found for deletion", zap.String("id", id))
+		log.Warn("LLM provider template not found for deletion", zap.String("handle", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
 			Message: fmt.Sprintf("Template with id '%s' not found", id),
@@ -1024,13 +1025,13 @@ func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 	}
 
 	log.Info("LLM provider template deleted successfully",
-		zap.String("id", deleted.ID),
-		zap.String("id", id))
+		zap.String("uuid", deleted.ID),
+		zap.String("handle", deleted.GetHandle()))
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "LLM provider template deleted successfully",
-		"id":      id,
+		"id":      deleted.GetHandle(),
 	})
 }
 
@@ -1048,19 +1049,21 @@ func (s *APIServer) ListLLMProviders(c *gin.Context, params api.ListLLMProviders
 		var prov api.LLMProviderConfiguration
 		j, _ := json.Marshal(cfg.SourceConfiguration)
 		if err := json.Unmarshal(j, &prov); err != nil {
-			log.Error("Failed to unmarshal stored LLM provider configuration", zap.String("id", cfg.ID), zap.Error(err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to get stored LLM provider configuration"})
+			log.Error("Failed to unmarshal stored LLM provider configuration",
+				zap.String("uuid", cfg.ID), zap.Error(err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{Status: "error",
+				Message: "Failed to get stored LLM provider configuration"})
 			return
 		}
 
 		items[i] = api.LLMProviderListItem{
-			Id:        stringPtr(prov.Metadata.Name),
-			Name:      stringPtr(prov.Spec.DisplayName),
-			Version:   stringPtr(prov.Spec.Version),
-			Template:  stringPtr(prov.Spec.Template),
-			Status:    &status,
-			CreatedAt: timePtr(cfg.CreatedAt),
-			UpdatedAt: timePtr(cfg.UpdatedAt),
+			Id:          stringPtr(prov.Metadata.Name),
+			DisplayName: stringPtr(prov.Spec.DisplayName),
+			Version:     stringPtr(prov.Spec.Version),
+			Template:    stringPtr(prov.Spec.Template),
+			Status:      &status,
+			CreatedAt:   timePtr(cfg.CreatedAt),
+			UpdatedAt:   timePtr(cfg.UpdatedAt),
 		}
 	}
 
@@ -1105,7 +1108,7 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 	}
 
 	log.Info("LLM provider created successfully",
-		zap.String("id", stored.ID),
+		zap.String("uuid", stored.ID),
 		zap.String("handle", stored.GetHandle()))
 
 	c.JSON(http.StatusCreated, api.LLMProviderCreateResponse{
@@ -1136,15 +1139,15 @@ func (s *APIServer) GetLLMProviderById(c *gin.Context, id string) {
 	cfg := s.store.GetByKindAndHandle(string(api.LlmProvider), id)
 	if cfg == nil {
 		log.Warn("LLM provider configuration not found",
-			zap.String("id", id))
+			zap.String("handle", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("LLM provider configuration with id '%s' not found", id),
+			Message: fmt.Sprintf("LLM provider configuration with handle '%s' not found", id),
 		})
 		return
 	}
 
-	// Build response similar to GetAPIByNameVersion
+	// Build response
 	providerDetail := gin.H{
 		"configuration": cfg.SourceConfiguration,
 		"metadata": gin.H{
@@ -1197,7 +1200,7 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 	}
 
 	c.JSON(http.StatusOK, api.LLMProviderUpdateResponse{
-		Id:        stringPtr(id),
+		Id:        stringPtr(updated.GetHandle()),
 		Message:   stringPtr("LLM provider updated successfully"),
 		Status:    stringPtr("success"),
 		UpdatedAt: timePtr(updated.UpdatedAt),
@@ -1236,7 +1239,7 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, id string) {
 
 	cfg, err := s.llmDeploymentService.DeleteLLMProvider(id, correlationID, log)
 	if err != nil {
-		log.Warn("Failed to delete LLM provider configuration", zap.String("id", id))
+		log.Warn("Failed to delete LLM provider configuration", zap.String("handle", id))
 		// Check if it's a not found error
 		if strings.Contains(err.Error(), "not found") {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{
@@ -1255,7 +1258,244 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, id string) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "LLM provider deleted successfully",
-		"id":      id,
+		"id":      cfg.GetHandle(),
+	})
+
+	// Remove derived policy configuration
+	if s.policyManager != nil {
+		policyID := cfg.ID + "-policies"
+		if err := s.policyManager.RemovePolicy(policyID); err != nil {
+			log.Warn("Failed to remove derived policy configuration", zap.Error(err), zap.String("policy_id", policyID))
+		} else {
+			log.Info("Derived policy configuration removed", zap.String("policy_id", policyID))
+		}
+	}
+}
+
+// ListLLMProxies implements ServerInterface.ListLLMProxies
+// (GET /llm-proxies)
+func (s *APIServer) ListLLMProxies(c *gin.Context, params api.ListLLMProxiesParams) {
+	log := middleware.GetLogger(c, s.logger)
+	configs := s.llmDeploymentService.ListLLMProxies(params)
+
+	items := make([]api.LLMProxyListItem, len(configs))
+	for i, cfg := range configs {
+		status := api.LLMProxyListItemStatus(cfg.Status)
+
+		// Convert SourceConfiguration to LLMProxyConfiguration
+		var proxy api.LLMProxyConfiguration
+		j, _ := json.Marshal(cfg.SourceConfiguration)
+		if err := json.Unmarshal(j, &proxy); err != nil {
+			log.Error("Failed to unmarshal stored LLM proxy configuration", zap.String("uuid", cfg.ID),
+				zap.Error(err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status: "error", Message: "Failed to get stored LLM proxy configuration"})
+			return
+		}
+
+		items[i] = api.LLMProxyListItem{
+			Id:          stringPtr(proxy.Metadata.Name),
+			DisplayName: stringPtr(proxy.Spec.DisplayName),
+			Version:     stringPtr(proxy.Spec.Version),
+			Provider:    stringPtr(proxy.Spec.Provider),
+			Status:      &status,
+			CreatedAt:   timePtr(cfg.CreatedAt),
+			UpdatedAt:   timePtr(cfg.UpdatedAt),
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "success", "count": len(items), "proxies": items})
+}
+
+// CreateLLMProxy implements ServerInterface.CreateLLMProxy
+// (POST /llm-proxies)
+func (s *APIServer) CreateLLMProxy(c *gin.Context) {
+	log := middleware.GetLogger(c, s.logger)
+
+	// Read request body
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Error("Failed to read request body", zap.Error(err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Delegate to service which parses/validates/transforms and persists
+	stored, err := s.llmDeploymentService.CreateLLMProxy(utils.LLMDeploymentParams{
+		Data:        body,
+		ContentType: c.GetHeader("Content-Type"),
+		Logger:      log,
+	})
+	if err != nil {
+		log.Error("Failed to create LLM proxy", zap.Error(err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		return
+	}
+
+	// Set up a callback to notify platform API after successful deployment
+	// This is specific to direct API creation via gateway endpoint
+	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() {
+		go s.waitForDeploymentAndNotify(stored.ID, correlationID, log)
+	}
+
+	log.Info("LLM proxy created successfully",
+		zap.String("uuid", stored.ID),
+		zap.String("handle", stored.GetHandle()))
+
+	c.JSON(http.StatusCreated, api.LLMProxyCreateResponse{
+		Status:  stringPtr("success"),
+		Message: stringPtr("LLM proxy created successfully"),
+		Id:      stringPtr(stored.GetHandle()), CreatedAt: timePtr(stored.CreatedAt)})
+
+	// Build and add policy config derived from API configuration if policies are present
+	if s.policyManager != nil {
+		storedPolicy := s.buildStoredPolicyFromAPI(stored)
+		if storedPolicy != nil {
+			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
+				log.Error("Failed to add derived policy configuration", zap.Error(err))
+			} else {
+				log.Info("Derived policy configuration added",
+					zap.String("policy_id", storedPolicy.ID),
+					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
+			}
+		}
+	}
+}
+
+// GetLLMProxyById implements ServerInterface.GetLLMProxyById
+// (GET /llm-proxies/{id})
+func (s *APIServer) GetLLMProxyById(c *gin.Context, id string) {
+	log := middleware.GetLogger(c, s.logger)
+
+	cfg := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	if cfg == nil {
+		log.Warn("LLM proxy configuration not found",
+			zap.String("handle", id))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("LLM proxy configuration with handle '%s' not found", id),
+		})
+		return
+	}
+
+	// Build response
+	proxyDetail := gin.H{
+		"configuration": cfg.SourceConfiguration,
+		"metadata": gin.H{
+			"status":     string(cfg.Status),
+			"created_at": cfg.CreatedAt.Format(time.RFC3339),
+			"updated_at": cfg.UpdatedAt.Format(time.RFC3339),
+		},
+	}
+
+	if cfg.DeployedAt != nil {
+		proxyDetail["metadata"].(gin.H)["deployed_at"] = cfg.DeployedAt.Format(time.RFC3339)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"proxy":  proxyDetail,
+	})
+}
+
+// UpdateLLMProxy implements ServerInterface.UpdateLLMProxy
+// (PUT /llm-proxies/{id})
+func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
+	log := middleware.GetLogger(c, s.logger)
+
+	// Read request body
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		log.Error("Failed to read request body", zap.Error(err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to read request body",
+		})
+		return
+	}
+
+	// Get correlation ID
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Delegate to service update wrapper
+	updated, err := s.llmDeploymentService.UpdateLLMProxy(id, utils.LLMDeploymentParams{
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
+	if err != nil {
+		log.Error("Failed to update LLM proxy configuration", zap.Error(err))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{Status: "error", Message: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, api.LLMProxyUpdateResponse{
+		Id:        stringPtr(updated.GetHandle()),
+		Message:   stringPtr("LLM proxy updated successfully"),
+		Status:    stringPtr("success"),
+		UpdatedAt: timePtr(updated.UpdatedAt),
+	})
+
+	// Rebuild and update derived policy configuration
+	if s.policyManager != nil {
+		storedPolicy := s.buildStoredPolicyFromAPI(updated)
+		if storedPolicy != nil {
+			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
+				log.Error("Failed to update derived policy configuration", zap.Error(err))
+			} else {
+				log.Info("Derived policy configuration updated",
+					zap.String("policy_id", storedPolicy.ID),
+					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
+			}
+		} else {
+			// LLM proxy no longer has policies, remove the existing policy configuration
+			policyID := updated.ID + "-policies"
+			if err := s.policyManager.RemovePolicy(policyID); err != nil {
+				// Log at debug level since policy may not exist if LLM provider never had policies
+				log.Debug("No policy configuration to remove", zap.String("policy_id", policyID))
+			} else {
+				log.Info("Derived policy configuration removed (LLM provider no longer has policies)",
+					zap.String("policy_id", policyID))
+			}
+		}
+	}
+}
+
+// DeleteLLMProxy implements ServerInterface.DeleteLLMProxy
+// (DELETE /llm-proxies/{id})
+func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
+	log := middleware.GetLogger(c, s.logger)
+	correlationID := middleware.GetCorrelationID(c)
+
+	cfg, err := s.llmDeploymentService.DeleteLLMProxy(id, correlationID, log)
+	if err != nil {
+		log.Warn("Failed to delete LLM proxy configuration", zap.String("handle", id), zap.Error(err))
+		// Check if it's a not found error
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "LLM proxy deleted successfully",
+		"id":      cfg.GetHandle(),
 	})
 
 	// Remove derived policy configuration

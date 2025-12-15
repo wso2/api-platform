@@ -682,7 +682,7 @@ func (s *SQLiteStorage) SaveLLMProviderTemplate(template *models.StoredLLMProvid
 	}
 
 	s.logger.Info("LLM provider template saved",
-		zap.String("id", template.ID),
+		zap.String("uuid", template.ID),
 		zap.String("handle", handle))
 
 	return nil
@@ -730,11 +730,11 @@ func (s *SQLiteStorage) UpdateLLMProviderTemplate(template *models.StoredLLMProv
 	}
 
 	if rows == 0 {
-		return fmt.Errorf("%w: id=%s", ErrNotFound, template.ID)
+		return fmt.Errorf("%w: uuid=%s", ErrNotFound, template.ID)
 	}
 
 	s.logger.Info("LLM provider template updated",
-		zap.String("id", template.ID),
+		zap.String("uuid", template.ID),
 		zap.String("handle", handle))
 
 	return nil
@@ -755,10 +755,10 @@ func (s *SQLiteStorage) DeleteLLMProviderTemplate(id string) error {
 	}
 
 	if rows == 0 {
-		return fmt.Errorf("%w: id=%s", ErrNotFound, id)
+		return fmt.Errorf("%w: uuid=%s", ErrNotFound, id)
 	}
 
-	s.logger.Info("LLM provider template deleted", zap.String("id", id))
+	s.logger.Info("LLM provider template deleted", zap.String("uuid", id))
 
 	return nil
 }
@@ -783,7 +783,7 @@ func (s *SQLiteStorage) GetLLMProviderTemplate(id string) (*models.StoredLLMProv
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("%w: id=%s", ErrNotFound, id)
+			return nil, fmt.Errorf("%w: uuid=%s", ErrNotFound, id)
 		}
 		return nil, fmt.Errorf("failed to query template: %w", err)
 	}

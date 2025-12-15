@@ -44,10 +44,12 @@ The API Platform Gateway currently includes first-class support for the OpenAI L
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
-version: ai.api-platform.wso2.com/v1
-kind: llm/provider
-spec:
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProvider
+metadata:
   name: openai-provider
+spec:
+  displayName: OpenAI Provider
   version: v1.0
   template: openai
   upstream:

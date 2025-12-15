@@ -19,24 +19,24 @@
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 metadata:
-  name: openai
+  name: gemini
 spec:
-  displayName: OpenAI
+  displayName: Gemini
   promptTokens:
     location: payload
-    identifier: $.usage.inputTokens
+    identifier: $.usageMetadata.promptTokenCount
   completionTokens:
     location: payload
-    identifier: $.usage.outputTokens
+    identifier: $.usageMetadata.candidatesTokenCount
   totalTokens:
     location: payload
-    identifier: $.usage.totalTokens
+    identifier: $.usageMetadata.totalTokenCount
   remainingTokens:
     location: header
     identifier: x-ratelimit-remaining-tokens
   requestModel:
-    location: payload
-    identifier: $.model
+    location: pathParams
+    identifier: (?<=models/)[a-zA-Z0-9.\-]+
   responseModel:
     location: payload
-    identifier: $.model
+    identifier: $.modelVersion

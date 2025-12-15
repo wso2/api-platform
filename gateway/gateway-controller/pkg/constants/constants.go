@@ -45,6 +45,9 @@ const (
 	SchemeHTTP  = "http"
 	SchemeHTTPS = "https"
 
+	// Localhost
+	LocalhostIP = "127.0.0.1"
+
 	// Transport Socket Configuration
 	EnvoyTLSTransportSocket = "envoy.transport_sockets.tls"
 	DefaultCertificateKey   = "default"
@@ -93,16 +96,17 @@ const (
 	WILD_CARD = "*"
 
 	// LLM Transformer constants
-	UPSTREAM_AUTH_APIKEY_POLICY_NAME                = "ModifyHeaders"
-	UPSTREAM_AUTH_APIKEY_POLICY_VERSION             = "v1.0.0"
-	UPSTREAM_AUTH_APIKEY_POLICY_REQUEST_HEADERS_KEY = "requestHeaders"
-	UPSTREAM_AUTH_APIKEY_POLICY_HEADER_ACTION_KEY   = "action"
-	UPSTREAM_AUTH_APIKEY_POLICY_HEADER_ACTION       = "SET"
-	UPSTREAM_AUTH_APIKEY_POLICY_HEADER_NAME         = "name"
-	UPSTREAM_AUTH_APIKEY_POLICY_HEADER_VALUE        = "value"
-	UPSTREAM_AUTH_APIKEY_POLICY_PARAMS              = "requestHeaders:\n" +
+	UPSTREAM_AUTH_APIKEY_POLICY_NAME    = "ModifyHeaders"
+	UPSTREAM_AUTH_APIKEY_POLICY_VERSION = "v1.0.0"
+	UPSTREAM_AUTH_APIKEY_POLICY_PARAMS  = "requestHeaders:\n" +
 		"  - action: SET\n" +
 		"    name: %s\n" +
+		"    value: %s\n"
+	PROXY_HOST__HEADER_POLICY_NAME    = "ModifyHeaders"
+	PROXY_HOST__HEADER_POLICY_VERSION = "v1.0.0"
+	PROXY_HOST__HEADER_POLICY_PARAMS  = "requestHeaders:\n" +
+		"  - action: SET\n" +
+		"    name: Host\n" +
 		"    value: %s\n"
 
 	ACCESS_CONTROL_DENY_POLICY_NAME    = "Respond"
@@ -121,3 +125,12 @@ const (
 		"    name: %s\n" +
 		"    value: %s\n"
 )
+
+var WILDCARD_HTTP_METHODS = []string{
+	"GET",
+	"POST",
+	"PUT",
+	"PATCH",
+	"DELETE",
+	"OPTIONS",
+}

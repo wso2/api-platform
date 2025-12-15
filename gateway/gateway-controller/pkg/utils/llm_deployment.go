@@ -51,12 +51,13 @@ type LLMDeploymentService struct {
 	parser              *config.Parser
 	validator           *config.LLMValidator
 	transformer         Transformer
+	routerConfig        *config.RouterConfig
 }
 
 // NewLLMDeploymentService initializes the service
 func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 	snapshotManager *xds.SnapshotManager, templateDefinitions map[string]*api.LLMProviderTemplate,
-	deploymentService *APIDeploymentService) *LLMDeploymentService {
+	deploymentService *APIDeploymentService, routerConfig *config.RouterConfig) *LLMDeploymentService {
 	service := &LLMDeploymentService{
 		store:               store,
 		db:                  db,
@@ -65,7 +66,7 @@ func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
 		deploymentService:   deploymentService,
 		parser:              config.NewParser(),
 		validator:           config.NewLLMValidator(),
-		transformer:         NewLLMProviderTransformer(store),
+		transformer:         NewLLMProviderTransformer(store, routerConfig),
 	}
 
 	// Initialize OOB templates
@@ -91,8 +92,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	if len(validationErrors) > 0 {
 		errs := make([]string, 0, len(validationErrors))
 		params.Logger.Warn("LLM provider validation failed",
-			zap.String("displayName", providerConfig.Spec.DisplayName),
-			zap.String("version", providerConfig.Spec.Version),
+			zap.String("handle", providerConfig.Metadata.Name),
 			zap.Int("num_errors", len(validationErrors)))
 		for i, e := range validationErrors {
 			params.Logger.Warn("Validation error", zap.String("field", e.Field), zap.String("message", e.Message))
@@ -129,17 +129,110 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 
 	// Save or update
 	isUpdate, err := s.deploymentService.saveOrUpdateConfig(storedCfg, params.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save or update LLM provider configuration: %w", err)
+	}
+
 	// Log success
 	if isUpdate {
 		params.Logger.Info("LLM provider configuration updated",
-			zap.String("api_id", apiID),
-			zap.String("displayName", storedCfg.GetDisplayName()),
+			zap.String("api_uuid", apiID),
+			zap.String("handle", storedCfg.GetHandle()),
+			zap.String("display_name", storedCfg.GetDisplayName()),
 			zap.String("version", storedCfg.GetVersion()),
 			zap.String("correlation_id", params.CorrelationID))
 	} else {
 		params.Logger.Info("LLM provider configuration created",
-			zap.String("api_id", apiID),
-			zap.String("displayName", storedCfg.GetDisplayName()),
+			zap.String("api_uuid", apiID),
+			zap.String("handle", storedCfg.GetHandle()),
+			zap.String("display_name", storedCfg.GetDisplayName()),
+			zap.String("version", storedCfg.GetVersion()),
+			zap.String("correlation_id", params.CorrelationID))
+	}
+
+	// Update xDS snapshot asynchronously
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
+			params.Logger.Error("Failed to update xDS snapshot",
+				zap.Error(err),
+				zap.String("api_uuid", apiID),
+				zap.String("correlation_id", params.CorrelationID))
+		}
+	}()
+
+	return &APIDeploymentResult{StoredConfig: storedCfg, IsUpdate: isUpdate}, nil
+}
+
+// DeployLLMProxyConfiguration parses, validates, transforms and persists the provider, then triggers xDS
+func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentParams) (*APIDeploymentResult, error) {
+	var proxyConfig api.LLMProxyConfiguration
+	var apiConfig api.APIConfiguration
+
+	// Parse configuration
+	if err := s.parser.Parse(params.Data, params.ContentType, &proxyConfig); err != nil {
+		return nil, fmt.Errorf("failed to parse proxy configuration: %w", err)
+	}
+
+	// Validate
+	validationErrors := s.validator.Validate(&proxyConfig)
+	if len(validationErrors) > 0 {
+		errs := make([]string, 0, len(validationErrors))
+		params.Logger.Warn("LLM proxy validation failed",
+			zap.String("handle", proxyConfig.Metadata.Name),
+			zap.Int("num_errors", len(validationErrors)))
+		for i, e := range validationErrors {
+			params.Logger.Warn("Validation error", zap.String("field", e.Field), zap.String("message", e.Message))
+			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
+		}
+		return nil, fmt.Errorf("proxy validation failed with %d error(s): %s", len(validationErrors), strings.Join(errs, "; "))
+	}
+
+	// Transform to APIConfiguration
+	_, err := s.transformer.Transform(&proxyConfig, &apiConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to transform LLM proxy to API configuration: %w", err)
+	}
+
+	// Generate API ID if not provided
+	apiID := params.ID
+	if apiID == "" {
+		apiID = generateUUID()
+	}
+
+	// Create stored configuration
+	now := time.Now()
+	storedCfg := &models.StoredConfig{
+		ID:                  apiID,
+		Kind:                string(api.LlmProxy),
+		Configuration:       apiConfig,
+		SourceConfiguration: proxyConfig,
+		Status:              models.StatusPending,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+		DeployedAt:          nil,
+		DeployedVersion:     0,
+	}
+
+	// Save or update
+	isUpdate, err := s.deploymentService.saveOrUpdateConfig(storedCfg, params.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save or update LLM proxy configuration: %w", err)
+	}
+	// Log success
+	if isUpdate {
+		params.Logger.Info("LLM proxy configuration updated",
+			zap.String("api_uuid", apiID),
+			zap.String("handle", storedCfg.GetHandle()),
+			zap.String("display_name", storedCfg.GetDisplayName()),
+			zap.String("version", storedCfg.GetVersion()),
+			zap.String("correlation_id", params.CorrelationID))
+	} else {
+		params.Logger.Info("LLM proxy configuration created",
+			zap.String("api_uuid", apiID),
+			zap.String("handle", storedCfg.GetHandle()),
+			zap.String("display_name", storedCfg.GetDisplayName()),
 			zap.String("version", storedCfg.GetVersion()),
 			zap.String("correlation_id", params.CorrelationID))
 	}
@@ -409,7 +502,7 @@ func (s *LLMDeploymentService) ListLLMProviders(params api.ListLLMProvidersParam
 	configs := s.store.GetAllByKind(string(api.LlmProvider))
 
 	// If no filters are provided, return all configs
-	if params.Name == nil && params.Version == nil &&
+	if params.DisplayName == nil && params.Version == nil &&
 		params.Context == nil && params.Status == nil && params.Vhost == nil {
 		return configs
 	}
@@ -428,47 +521,46 @@ func (s *LLMDeploymentService) ListLLMProviders(params api.ListLLMProvidersParam
 }
 
 // matchesFilters checks if a config matches all provided filter criteria
-func matchesFilters(config *models.StoredConfig, params api.ListLLMProvidersParams) bool {
+func matchesFilters(config *models.StoredConfig, params any) bool {
 	apiCfg, err := config.Configuration.Spec.AsAPIConfigData()
-
 	if err != nil {
 		return false
 	}
 
+	var name, version, cnt, vhost, status *string
+
+	switch p := params.(type) {
+	case api.ListLLMProvidersParams:
+		name, version, cnt, status, vhost = p.DisplayName, p.Version, p.Context, (*string)(p.Status), p.Vhost
+	case api.ListLLMProxiesParams:
+		name, version, cnt, status, vhost = p.DisplayName, p.Version, p.Context, (*string)(p.Status), p.Vhost
+	default:
+		return false
+	}
+
 	// Check DisplayName filter
-	if params.Name != nil {
-		if apiCfg.DisplayName != *params.Name {
-			return false
-		}
+	if name != nil && apiCfg.DisplayName != *name {
+		return false
 	}
 
 	// Check Version filter
-	if params.Version != nil {
-		if apiCfg.Version != *params.Version {
-			return false
-		}
+	if version != nil && apiCfg.Version != *version {
+		return false
 	}
 
 	// Check Context filter
-	if params.Context != nil {
-		if apiCfg.Context != *params.Context {
-			return false
-		}
+	if cnt != nil && apiCfg.Context != *cnt {
+		return false
 	}
 
 	// Check Status filter
-	if params.Status != nil {
-		if string(config.Status) != string(*params.Status) {
-			return false
-		}
+	if status != nil && string(config.Status) != string(*status) {
+		return false
 	}
 
 	// Check Vhost filter
-	if params.Vhost != nil {
-		if apiCfg.Vhosts == nil {
-			return false
-		}
-		if apiCfg.Vhosts.Main != *params.Vhost {
+	if vhost != nil {
+		if apiCfg.Vhosts == nil || apiCfg.Vhosts.Main != *vhost {
 			return false
 		}
 	}
@@ -497,6 +589,80 @@ func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
 	cfg := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
 	if cfg == nil {
 		return cfg, fmt.Errorf("LLM provider configuration with handle '%s' not found", handle)
+	}
+	if s.db != nil {
+		if err := s.db.DeleteConfig(cfg.ID); err != nil {
+			return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
+		}
+	}
+	if err := s.store.Delete(cfg.ID); err != nil {
+		return cfg, fmt.Errorf("failed to delete configuration from memory store: %w", err)
+	}
+
+	// Update xDS snapshot asynchronously
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
+			logger.Error("Failed to update xDS snapshot", zap.Error(err))
+		}
+	}()
+
+	return cfg, nil
+}
+
+// ListLLMProxies returns all stored LLM proxy configurations
+func (s *LLMDeploymentService) ListLLMProxies(params api.ListLLMProxiesParams) []*models.StoredConfig {
+	configs := s.store.GetAllByKind(string(api.LlmProxy))
+
+	// If no filters are provided, return all configs
+	if params.DisplayName == nil && params.Version == nil &&
+		params.Context == nil && params.Status == nil && params.Vhost == nil {
+		return configs
+	}
+
+	// Filter configs based on provided parameters
+	filtered := make([]*models.StoredConfig, 0, len(configs))
+
+	for _, cfg := range configs {
+		if !matchesFilters(cfg, params) {
+			continue
+		}
+		filtered = append(filtered, cfg)
+	}
+
+	return filtered
+}
+
+// CreateLLMProxy is a convenience wrapper around DeployLLMProxyConfiguration for creating proxies
+func (s *LLMDeploymentService) CreateLLMProxy(params LLMDeploymentParams) (*models.StoredConfig, error) {
+	res, err := s.DeployLLMProxyConfiguration(params)
+	if err != nil {
+		return nil, err
+	}
+	return res.StoredConfig, nil
+}
+
+// UpdateLLMProxy updates an existing provider identified by name+version using DeployLLMProxyConfiguration
+func (s *LLMDeploymentService) UpdateLLMProxy(id string, params LLMDeploymentParams) (*models.StoredConfig, error) {
+	existing := s.store.GetByKindAndHandle(string(api.LlmProxy), id)
+	if existing == nil {
+		return nil, fmt.Errorf("LLM proxy configuration with handle '%s' not found", id)
+	}
+	// Ensure Deploy uses existing ID so it performs an update
+	params.ID = existing.ID
+	res, err := s.DeployLLMProxyConfiguration(params)
+	if err != nil {
+		return nil, err
+	}
+	return res.StoredConfig, nil
+}
+
+// DeleteLLMProxy deletes by name+version using store/db and updates snapshot
+func (s *LLMDeploymentService) DeleteLLMProxy(handle, correlationID string, logger *zap.Logger) (*models.StoredConfig, error) {
+	cfg := s.store.GetByKindAndHandle(string(api.LlmProxy), handle)
+	if cfg == nil {
+		return cfg, fmt.Errorf("LLM proxy configuration with handle '%s' not found", handle)
 	}
 	if s.db != nil {
 		if err := s.db.DeleteConfig(cfg.ID); err != nil {

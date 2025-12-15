@@ -16,70 +16,81 @@
 # under the License.
 # --------------------------------------------------------------------
 
-version: ai.api-platform.wso2.com/v1
-kind: llm/proxy
-data:
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProxy
+metadata:
   name: wso2con-assistant
+spec:
+  displayName: WSO2 Con Assistant
   version: v1.0
   context: /assistant
-  upstream:
-    name: wso2-openai-provider
-    version: v1.0
+  provider: wso2-openai-provider
   policies:
-    semanticPromptGuard:
-      - path: /chat/completions
-        methods: [ POST ]
-        params:
-          embeddingService:
-            type: string
-            value: wso2-claude-provider
-          embedding-resource-path:
-            type: string
-            value: /v1/embeddings
-          embedding-model:
-            type: string
-            value: text-embedding-ada-002
-          similarity-threshold:
-            type: integer
-            value: 80
-          prompts:
-            type: string
-            value: |
-              [
-              "You are a helpful assistant that provides information about WSO2 products and services.",
-              "Answer the questions based on the WSO2 documentation and resources.",
-              "If you don't know the answer, just say that you don't know. Don't try to make up an answer."
-              ]
-      - path: /completions
-        methods: [ POST ]
-        params:
-          embeddingService:
-            type: string
-            value: wso2-claude-provider
-          embedding-resource-path:
-            type: string
-            value: /v1/embeddings
-          embedding-model:
-            type: string
-            value: text-embedding-ada-002
-          similarity-threshold:
-            type: integer
-            value: 80
-          prompts:
-            type: string
-            value: |
-              [
-              "You are a helpful assistant that provides information about WSO2 products and services.",
-              "Answer the questions based on the WSO2 documentation and resources.",
-              "If you don't know the answer, just say that you don't know. Don't try to make up an answer."
-              ]
-    modelRouting:
-      - path: /chat/completions
-        methods: [ POST ]
-        params:
-          model:
-            type: string
-            value: mistral-small-latest
-          endpoint:
-            type: string
-            value: https://api.mistral.ai/v1
+    - name: semanticPromptGuard
+      version: v1.0.0
+      paths:
+        - path: /chat/completions
+          methods: [ POST ]
+          params:
+            embeddingService:
+              type: string
+              value: wso2-claude-provider
+            embedding-resource-path:
+              type: string
+              value: /v1/embeddings
+            embedding-model:
+              type: string
+              value: text-embedding-ada-002
+            similarity-threshold:
+              type: integer
+              value: 80
+            prompts:
+              type: string
+              value: |
+                [
+                "You are a helpful assistant that provides information about WSO2 products and services.",
+                "Answer the questions based on the WSO2 documentation and resources.",
+                "If you don't know the answer, just say that you don't know. Don't try to make up an answer."
+                ]
+    - name: multiModelRouting
+      version: v1.0.0
+      paths:
+        - path: /chat/completions
+          methods: [ POST ]
+          params:
+            models:
+              - gpt-5.1
+              - gpt-4.5
+    - name: multiProviderRouting
+      version: v1.0.0
+      paths:
+        - path: /chat/completions
+          methods: [ POST ]
+          params:
+            providers:
+              - name: wso2-claude-provider
+                version: v1.0
+                auth:
+                  type: api-key
+                  header: Authorization
+                  value: Bearer <openai_apikey>
+              - name: wso2-azure-provider
+                version: v1.0
+    - name: oAuth
+      version: v1.0.0
+      paths:
+        - path: /
+          methods: [ "*" ]
+          params:
+            token-url:
+              type: string
+              value: https://example.com/oauth2/token
+            client-id:
+              type: string
+              value: your-client-id
+            client-secret:
+              type: string
+              value: your-client-secret
+            scopes:
+              type: string
+              value: read write
