@@ -95,13 +95,13 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	var apiVersion string
 
 	switch apiConfig.Kind {
-	case api.Httprest:
+	case api.RestApi:
 		apiData, err := apiConfig.Spec.AsAPIConfigData()
 		fmt.Println("APIData: ", apiData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse REST API data: %w", err)
 		}
-		apiName = apiData.Name
+		apiName = apiData.DisplayName
 		apiVersion = apiData.Version
 	case api.Asyncwebsub:
 		webhookData, err := apiConfig.Spec.AsWebhookAPIData()
@@ -135,10 +135,8 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		apiID = generateUUID()
 	}
 
-	var handle string
-	if apiConfig.Metadata != nil {
-		handle = apiConfig.Metadata.Name
-	}
+	handle := apiConfig.Metadata.Name
+	
 
 	if s.store != nil {
 		if _, err := s.store.GetByNameVersion(apiName, apiVersion); err == nil {

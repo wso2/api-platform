@@ -377,7 +377,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig) ([]*route.Rout
 
 	for _, op := range apiData.Operations {
 		// Use mainClusterName by default; path rewrite based on main upstream path
-		r := t.createRoute(apiData.Name, apiData.Version, apiData.Context, string(op.Method), op.Path,
+		r := t.createRoute(apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
 			mainClusterName, parsedMainURL.Path, effectiveMainVHost)
 		mainRoutesList = append(mainRoutesList, r)
 	}
@@ -396,7 +396,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig) ([]*route.Rout
 		sbRoutesList := make([]*route.Route, 0)
 		for _, op := range apiData.Operations {
 			// Use sbClusterName for sandbox upstream path
-			r := t.createRoute(apiData.Name, apiData.Version, apiData.Context, string(op.Method), op.Path,
+			r := t.createRoute(apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
 				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost)
 			sbRoutesList = append(sbRoutesList, r)
 		}

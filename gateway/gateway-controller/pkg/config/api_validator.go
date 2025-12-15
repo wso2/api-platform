@@ -77,7 +77,7 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 	var errors []ValidationError
 
 	// Validate version
-	if config.Version != "api-platform.wso2.com/v1" {
+	if config.ApiVersion != api.GatewayApiPlatformWso2Comv1alpha1 {
 		errors = append(errors, ValidationError{
 			Field:   "version",
 			Message: "Unsupported API version (must be 'api-platform.wso2.com/v1')",
@@ -85,20 +85,20 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 	}
 
 	// Validate kind
-	if config.Kind != api.Httprest && config.Kind != api.Asyncwebsub {
+	if config.Kind != api.RestApi && config.Kind != api.Asyncwebsub {
 		errors = append(errors, ValidationError{
 			Field:   "kind",
-			Message: "Unsupported API kind (only 'http/rest' and 'async/websub' are supported)",
+			Message: "Unsupported API kind (only 'RestApi' and 'async/websub' are supported)",
 		})
 	}
 
 	switch config.Kind {
-	case api.Httprest:
+	case api.RestApi:
 		spec, err := config.Spec.AsAPIConfigData()
 		if err != nil {
 			errors = append(errors, ValidationError{
 				Field:   "spec",
-				Message: fmt.Sprintf("Invalid spec format for http/rest: %v", err),
+				Message: fmt.Sprintf("Invalid spec format for RestApi: %v", err),
 			})
 		} else {
 			// Validate data section
@@ -208,25 +208,25 @@ func (v *APIValidator) validateUpstreamRef(label string, ref *string) []Validati
 	return errors
 }
 
-// validateRestData validates the data section of the configuration for http/rest kind
+// validateRestData validates the data section of the configuration for RestApi kind
 func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationError {
 	var errors []ValidationError
 
 	// Validate name
-	if spec.Name == "" {
+	if spec.DisplayName == "" {
 		errors = append(errors, ValidationError{
-			Field:   "spec.name",
-			Message: "API name is required",
+			Field:   "spec.displayName",
+			Message: "API display name is required",
 		})
-	} else if len(spec.Name) > 100 {
+	} else if len(spec.DisplayName) > 100 {
 		errors = append(errors, ValidationError{
-			Field:   "spec.name",
-			Message: "API name must be 1-100 characters",
+			Field:   "spec.displayName",
+			Message: "API display name must be 1-100 characters",
 		})
-	} else if !v.urlFriendlyNameRegex.MatchString(spec.Name) {
+	} else if !v.urlFriendlyNameRegex.MatchString(spec.DisplayName) {
 		errors = append(errors, ValidationError{
-			Field:   "spec.name",
-			Message: "API name must be URL-friendly (only letters, numbers, spaces, hyphens, underscores, and dots allowed)",
+			Field:   "spec.displayName",
+			Message: "API display name must be URL-friendly (only letters, numbers, spaces, hyphens, underscores, and dots allowed)",
 		})
 	}
 
@@ -258,7 +258,7 @@ func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationErr
 	return errors
 }
 
-// validateAsyncData validates the data section of the configuration for http/rest kind
+// validateAsyncData validates the data section of the configuration for RestApi kind
 func (v *APIValidator) validateAsyncData(spec *api.WebhookAPIData) []ValidationError {
 	var errors []ValidationError
 

@@ -69,8 +69,8 @@ paths:
             schema:
               $ref: "#/components/schemas/APIConfiguration"
             example:
-              version: api-platform.wso2.com/v1
-              kind: http/rest
+              version: gateway.api-platform.wso2.com/v1alpha1
+              kind: RestApi
               spec:
                 name: PetStore API
                 version: v1.0
@@ -115,8 +115,8 @@ paths:
             schema:
               $ref: "#/components/schemas/APIConfiguration"
             example:
-              version: api-platform.wso2.com/v1
-              kind: http/rest
+              version: gateway.api-platform.wso2.com/v1alpha1
+              kind: RestApi
               spec:
                 name: PetStore API
                 version: v1.0
@@ -1228,22 +1228,23 @@ components:
     APIConfiguration:
       type: object
       required:
-        - version
+        - apiVersion
+        - metadata
         - kind
         - spec
       properties:
-        version:
+        apiVersion:
           type: string
           description: API specification version
-          example: api-platform.wso2.com/v1
+          example: gateway.api-platform.wso2.com/v1alpha1
           enum:
-            - api-platform.wso2.com/v1
+            - gateway.api-platform.wso2.com/v1alpha1
         kind:
           type: string
           description: API type
-          example: http/rest
+          example: RestApi
           enum:
-            - http/rest
+            - RestApi
             - async/websub
             - async/websocket
             - async/sse
@@ -1268,14 +1269,14 @@ components:
     APIConfigData:
       type: object
       required:
-        - name
+        - displayName
         - version
         - context
         - upstream
         - operations
         # - kind
       properties:
-        name:
+        displayName:
           type: string
           description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
           minLength: 1
@@ -1285,9 +1286,9 @@ components:
         # kind:
         #   type: string
         #   description: API type
-        #   example: http/rest
+        #   example: RestApi
         #   enum:
-        #     - http/rest
+        #     - RestApi
         version:
           type: string
           description: Semantic version of the API

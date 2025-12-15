@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -245,10 +246,10 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 // (GET /apis)
 func (s *APIServer) ListAPIs(c *gin.Context) {
 	if c.Query("name") != "" || c.Query("version") != "" || c.Query("context") != "" || c.Query("status") != "" {
-		s.SearchDeployments(c, string(api.Httprest))
+		s.SearchDeployments(c, string(api.RestApi))
 		return
 	}
-	configs := s.store.GetAllByKind(string(api.Httprest))
+	configs := s.store.GetAllByKind(string(api.RestApi))
 
 	items := make([]api.APIListItem, 0, len(configs))
 	for _, cfg := range configs {
@@ -436,9 +437,9 @@ func (s *APIServer) GetAPIByHandle(c *gin.Context, handle string) {
 		return
 	}
 
-	if cfg.Kind != string(api.Httprest) && cfg.Kind != string(api.Asyncwebsub) {
+	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.Asyncwebsub) {
 		log.Warn("Configuration kind mismatch",
-			zap.String("expected", "http/rest or async/websub"),
+			zap.String("expected", "RestApi or async/websub"),
 			zap.String("actual", cfg.Kind),
 			zap.String("handle", handle))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
@@ -499,7 +500,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, handle string) {
 	}
 
 	// Validate that the handle in the YAML matches the path parameter
-	if apiConfig.Metadata != nil && apiConfig.Metadata.Name != "" {
+	if apiConfig.Metadata.Name != "" {
 		if apiConfig.Metadata.Name != handle {
 			log.Warn("Handle mismatch between path and YAML metadata",
 				zap.String("path_handle", handle),
@@ -1366,7 +1367,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 				Policies: finalPolicies,
 			})
 		}
-	case api.Httprest:
+	case api.RestApi:
 		// Build routes with merged policies
 		apiData, err := apiCfg.Spec.AsAPIConfigData()
 		if err != nil {
@@ -2053,7 +2054,7 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 	// Build API list with metadata using the exact generated types
 	apisSlice := make([]struct {
 		Configuration *api.APIConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-		Id            *string               `json:"id,omitempty" yaml:"id,omitempty"`
+		Id            *openapi_types.UUID   `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata      *struct {
 			CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 			DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
@@ -2085,7 +2086,7 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 
 		item := struct {
 			Configuration *api.APIConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-			Id            *string               `json:"id,omitempty" yaml:"id,omitempty"`
+			Id            *openapi_types.UUID   `json:"id,omitempty" yaml:"id,omitempty"`
 			Metadata      *struct {
 				CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 				DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
@@ -2094,7 +2095,7 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 			} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 		}{
 			Configuration: &cfg.Configuration,
-			Id:            stringPtr(configHandle),
+			Id:            convertHandleToUUID(configHandle),
 			Metadata: &struct {
 				CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 				DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`

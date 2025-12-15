@@ -60,7 +60,7 @@ func (c *StoredConfig) GetCompositeKey() string {
 	if err != nil {
 		return ""
 	}
-	return fmt.Sprintf("%s:%s", configData.Name, configData.Version)
+	return fmt.Sprintf("%s:%s", configData.DisplayName, configData.Version)
 }
 
 // GetName returns the API name
@@ -76,15 +76,12 @@ func (c *StoredConfig) GetName() string {
 	if err != nil {
 		return ""
 	}
-	return configData.Name
+	return configData.DisplayName
 }
 
 // GetHandle returns the API handle from metadata.name
 func (c *StoredConfig) GetHandle() string {
-	if c.Configuration.Metadata != nil {
-		return c.Configuration.Metadata.Name
-	}
-	return ""
+	return c.Configuration.Metadata.Name
 }
 
 // GetVersion returns the API version
@@ -120,7 +117,7 @@ func (c *StoredConfig) GetContext() string {
 }
 
 func (c *StoredConfig) GetPolicies() *[]api.Policy {
-	if c.Configuration.Kind == api.Httprest {
+	if c.Configuration.Kind == api.RestApi {
 		httpData, err := c.Configuration.Spec.AsAPIConfigData()
 		if err != nil {
 			return nil

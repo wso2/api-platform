@@ -60,7 +60,7 @@ func setupTestDB(t *testing.T) (storage.Storage, string, func()) {
 func createTestConfig(name, version string) *models.StoredConfig {
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		Name:    name,
+		DisplayName:    name,
 		Version: version,
 		Context: "/" + name,
 		Upstream: struct {
@@ -81,9 +81,9 @@ func createTestConfig(name, version string) *models.StoredConfig {
 	return &models.StoredConfig{
 		ID: uuid.New().String(),
 		Configuration: api.APIConfiguration{
-			Version:  api.ApiPlatformWso2Comv1,
-			Kind:     api.Httprest,
-			Metadata: &api.Metadata{Name: name + "-" + version},
+			ApiVersion:  api.GatewayApiPlatformWso2Comv1alpha1,
+			Kind:     api.RestApi,
+			Metadata: api.Metadata{Name: name + "-" + version},
 			Spec:     specUnion,
 		},
 		Status:          models.StatusPending,

@@ -149,7 +149,7 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 	}
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		Name:    "test-api",
+		DisplayName:    "test-api",
 		Version: "v1.0",
 		Context: "/test",
 		Upstream: struct {
@@ -173,9 +173,9 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 			// Build a minimal StoredAPIConfig
 			cfg := &models.StoredConfig{
 				Configuration: api.APIConfiguration{
-					Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
-					Kind:    api.APIConfigurationKind(api.Httprest),
-					Spec:    specUnion,
+					ApiVersion: api.APIConfigurationApiVersion(api.GatewayApiPlatformWso2Comv1alpha1),
+					Kind:       api.APIConfigurationKind(api.RestApi),
+					Spec:       specUnion,
 				},
 			}
 
@@ -258,7 +258,7 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		Name:    "test-api",
+		DisplayName:    "test-api",
 		Version: "v1.0",
 		Context: "/test",
 		Upstream: struct {
@@ -301,8 +301,8 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 
 	cfg := &models.StoredConfig{
 		Configuration: api.APIConfiguration{
-			Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
-			Kind:    api.APIConfigurationKind(api.Httprest),
+			ApiVersion: api.APIConfigurationApiVersion(api.GatewayApiPlatformWso2Comv1alpha1),
+			Kind:    api.APIConfigurationKind(api.RestApi),
 			Spec:    specUnion,
 		},
 	}
@@ -402,7 +402,7 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		Name:    "test-api",
+		DisplayName:    "test-api",
 		Version: "v1.0",
 		Context: "/test",
 		Upstream: struct {
@@ -425,9 +425,9 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 
 	cfg := &models.StoredConfig{
 		Configuration: api.APIConfiguration{
-			Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
-			Kind:    api.Httprest,
-			Spec:    specUnion,
+			ApiVersion: api.APIConfigurationApiVersion(api.GatewayApiPlatformWso2Comv1alpha1),
+			Kind:       api.APIConfigurationKind(api.RestApi),
+			Spec:       specUnion,
 		},
 	}
 

@@ -114,10 +114,8 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 	}
 	apiConfig = *apiConfigPtr
 
-	var handle string
-	if apiConfig.Metadata != nil {
-		handle = apiConfig.Metadata.Name
-	}
+	handle := apiConfig.Metadata.Name
+	
 
 	name, version, err := ExtractNameVersion(apiConfig)
 	if err != nil {
