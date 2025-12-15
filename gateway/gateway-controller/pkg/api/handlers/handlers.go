@@ -243,8 +243,8 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 
 // ListAPIs implements ServerInterface.ListAPIs
 // (GET /apis)
-func (s *APIServer) ListAPIs(c *gin.Context) {
-	if c.Query("name") != "" || c.Query("version") != "" || c.Query("context") != "" || c.Query("status") != "" {
+func (s *APIServer) ListAPIs(c *gin.Context, params api.ListAPIsParams) {
+	if (params.Name != nil && *params.Name != "") || (params.Version != nil && *params.Version != "") || (params.Context != nil && *params.Context != "") || (params.Status != nil && *params.Status != "") {
 		s.SearchDeployments(c, string(api.RestApi))
 		return
 	}
@@ -392,7 +392,7 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 	}
 
 	apiDetail := gin.H{
-		"id":            cfg.ID,
+		"id":            cfg.GetHandle(),
 		"configuration": cfg.Configuration,
 		"metadata": gin.H{
 			"status":     string(cfg.Status),
@@ -413,9 +413,10 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 
 // GetAPIByHandle implements ServerInterface.GetAPIByHandle
 // (GET /apis/{handle})
-func (s *APIServer) GetAPIByHandle(c *gin.Context, handle string) {
+func (s *APIServer) GetAPIByHandle(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
+	handle := id
 
 	if s.db == nil {
 		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
@@ -470,9 +471,10 @@ func (s *APIServer) GetAPIByHandle(c *gin.Context, handle string) {
 
 // UpdateAPI implements ServerInterface.UpdateAPI
 // (PUT /apis/{handle})
-func (s *APIServer) UpdateAPI(c *gin.Context, handle string) {
+func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
+	handle := id
 
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
@@ -732,9 +734,11 @@ func (s *APIServer) UpdateAPI(c *gin.Context, handle string) {
 
 // DeleteAPI implements ServerInterface.DeleteAPI
 // (DELETE /apis/{handle})
-func (s *APIServer) DeleteAPI(c *gin.Context, handle string) {
+func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
+
+	handle := id
 
 	if s.db == nil {
 		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
@@ -1539,8 +1543,8 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 
 // ListMCPProxies implements ServerInterface.ListMCPProxies
 // (GET /mcp-proxies)
-func (s *APIServer) ListMCPProxies(c *gin.Context) {
-	if c.Query("name") != "" || c.Query("version") != "" || c.Query("context") != "" || c.Query("status") != "" {
+func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesParams) {
+	if (params.Name != nil && *params.Name != "") || (params.Version != nil && *params.Version != "") || (params.Context != nil && *params.Context != "") || (params.Status != nil && *params.Status != "") {
 		s.SearchDeployments(c, string(api.Mcp))
 		return
 	}
@@ -1602,7 +1606,7 @@ func (s *APIServer) GetMCPProxyByNameVersion(c *gin.Context, name string, versio
 	mcpDetail := gin.H{
 		"status": "success",
 		"mcp": gin.H{
-			"id":            cfg.ID,
+			"id":            cfg.GetHandle(),
 			"configuration": cfg.SourceConfiguration,
 			"metadata": gin.H{
 				"status":     string(cfg.Status),
@@ -1620,9 +1624,11 @@ func (s *APIServer) GetMCPProxyByNameVersion(c *gin.Context, name string, versio
 
 // GetMCPProxyByHandle implements ServerInterface.GetMCPProxyByHandle
 // (GET /mcp-proxies/{handle})
-func (s *APIServer) GetMCPProxyByHandle(c *gin.Context, handle string) {
+func (s *APIServer) GetMCPProxyByHandle(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
+
+	handle := id
 
 	if s.db == nil {
 		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
@@ -1678,9 +1684,11 @@ func (s *APIServer) GetMCPProxyByHandle(c *gin.Context, handle string) {
 
 // UpdateMCPProxy implements ServerInterface.UpdateMCPProxy
 // (PUT /mcp-proxies/{handle})
-func (s *APIServer) UpdateMCPProxy(c *gin.Context, handle string) {
+func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
+
+	handle := id
 
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
@@ -1887,9 +1895,11 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, handle string) {
 
 // DeleteMCPProxy implements ServerInterface.DeleteMCPProxy
 // (DELETE /mcp-proxies/{handle})
-func (s *APIServer) DeleteMCPProxy(c *gin.Context, handle string) {
+func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
+
+	handle := id
 
 	if s.db == nil {
 		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
