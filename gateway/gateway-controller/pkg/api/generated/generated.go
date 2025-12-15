@@ -825,10 +825,12 @@ type MCPProxyConfigurationVersion string
 
 // MCPProxyCreateResponse defines model for MCPProxyCreateResponse.
 type MCPProxyCreateResponse struct {
-	CreatedAt *time.Time          `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string             `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string             `json:"status,omitempty" yaml:"status,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+
+	// Id Unique handle (metadata.name) for the created MCP proxy configuration
+	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
+	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
+	Status  *string `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // MCPProxyListItem defines model for MCPProxyListItem.
@@ -848,10 +850,11 @@ type MCPProxyListItemStatus string
 
 // MCPProxyUpdateResponse defines model for MCPProxyUpdateResponse.
 type MCPProxyUpdateResponse struct {
-	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string             `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string             `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time          `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	// Id Unique handle (metadata.name) for the created MCP proxy configuration
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
 }
 
 // MCPResource defines model for MCPResource.
