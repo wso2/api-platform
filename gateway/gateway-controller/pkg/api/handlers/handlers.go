@@ -1569,15 +1569,18 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 			})
 			return
 		}
-		items[i] = api.MCPProxyListItem{
+		li := api.MCPProxyListItem{
 			Id:          stringPtr(cfg.GetHandle()),
 			DisplayName: stringPtr(mcp.Spec.DisplayName),
 			Version:     stringPtr(mcp.Spec.Version),
-			Context:     stringPtr(mcp.Spec.Context),
 			Status:      &status,
 			CreatedAt:   timePtr(cfg.CreatedAt),
 			UpdatedAt:   timePtr(cfg.UpdatedAt),
 		}
+		if mcp.Spec.Context != nil {
+			li.Context = mcp.Spec.Context
+		}
+		items[i] = li
 	}
 
 	c.JSON(http.StatusOK, gin.H{

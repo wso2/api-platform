@@ -132,7 +132,7 @@ func (v *MCPValidator) validateSpec(spec *api.MCPProxyConfigData) []ValidationEr
 	}
 
 	// Validate context
-	errors = append(errors, v.validateContext(spec.Context)...)
+	errors = append(errors, v.validateContextAndVhost(spec.Context, spec.Vhost)...)
 
 	// Validate upstream
 	errors = append(errors, v.validateUpstream("spec.upstream", &spec.Upstream)...)
@@ -141,36 +141,37 @@ func (v *MCPValidator) validateSpec(spec *api.MCPProxyConfigData) []ValidationEr
 }
 
 // validateContext validates the context path
-func (v *MCPValidator) validateContext(context string) []ValidationError {
+func (v *MCPValidator) validateContextAndVhost(context, vhost *string) []ValidationError {
 	var errors []ValidationError
 
-	if context == "" {
-		errors = append(errors, ValidationError{
-			Field:   "spec.context",
-			Message: "Context is required",
-		})
-		return errors
-	}
+	if context != nil && *context != "" {
+		if !strings.HasPrefix(*context, "/") {
+			errors = append(errors, ValidationError{
+				Field:   "spec.context",
+				Message: "Context must start with /",
+			})
+		}
 
-	if !strings.HasPrefix(context, "/") {
-		errors = append(errors, ValidationError{
-			Field:   "spec.context",
-			Message: "Context must start with /",
-		})
-	}
+		if strings.HasSuffix(*context, "/") && *context != "/" {
+			errors = append(errors, ValidationError{
+				Field:   "spec.context",
+				Message: "Context cannot end with / (except for root context)",
+			})
+		}
 
-	if strings.HasSuffix(context, "/") && context != "/" {
-		errors = append(errors, ValidationError{
-			Field:   "spec.context",
-			Message: "Context cannot end with / (except for root context)",
-		})
-	}
-
-	if len(context) > 200 {
-		errors = append(errors, ValidationError{
-			Field:   "spec.context",
-			Message: "Context must be 1-200 characters",
-		})
+		if len(*context) > 200 {
+			errors = append(errors, ValidationError{
+				Field:   "spec.context",
+				Message: "Context must be 1-200 characters",
+			})
+		}
+	} else {
+		if vhost == nil || *vhost == "" {
+			errors = append(errors, ValidationError{
+				Field:   "spec.vhost",
+				Message: "Vhost is required when context is not specified",
+			})
+		}
 	}
 
 	return errors

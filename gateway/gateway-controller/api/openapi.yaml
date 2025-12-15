@@ -1844,7 +1844,6 @@ components:
       required:
         - displayName
         - version
-        - context
         - upstream
       properties:
         displayName:
@@ -1866,6 +1865,16 @@ components:
           type: string
           description: MCP specification version
           example: 2025-06-18
+        vhost:
+          type: string
+          description: >
+            Virtual host name used for routing. Supports standard domain names,
+            subdomains, or wildcard domains. Must follow RFC-compliant hostname
+            rules. Wildcards are only allowed in the left-most label (e.g., *.example.com).
+          pattern: '^(\*\.|[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
+          minLength: 1
+          maxLength: 253
+          example: "mcp1.example.com"
         upstream:
           description: The backend MCP server url and auth configurations
           allOf:
