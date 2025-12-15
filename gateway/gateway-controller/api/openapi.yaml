@@ -1992,8 +1992,8 @@ components:
           example: MCP proxy created successfully
         id:
           type: string
-          format: uuid
-          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Unique handle (metadata.name) for the created MCP proxy configuration
+          example: some-mcp-v1.0
         created_at:
           type: string
           format: date-time
@@ -2010,8 +2010,8 @@ components:
           example: MCP proxy updated successfully
         id:
           type: string
-          format: uuid
-          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Unique handle (metadata.name) for the created MCP proxy configuration
+          example: some-mcp-v1.0
         updated_at:
           type: string
           format: date-time

@@ -71,7 +71,7 @@ func NewMCPDeploymentService(
 }
 
 // DeployMCPConfiguration handles the complete MCP configuration deployment process
-func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams) (*APIDeploymentResult, error) {
+func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams, update bool) (*APIDeploymentResult, error) {
 	var mcpConfig api.MCPProxyConfiguration
 	var apiConfig api.APIConfiguration
 	// Parse configuration
@@ -121,16 +121,18 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		return nil, err
 	}
 
-	if s.store != nil {
-		if name != "" && version != "" {
-			if _, err := s.store.GetByNameVersion(name, version); err == nil {
-				return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, name, version)
+	if !update {
+		if s.store != nil {
+			if name != "" && version != "" {
+				if _, err := s.store.GetByNameVersion(name, version); err == nil {
+					return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, name, version)
+				}
 			}
-		}
-		if handle != "" {
-			for _, c := range s.store.GetAll() {
-				if c.GetHandle() == handle {
-					return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
+			if handle != "" {
+				for _, c := range s.store.GetAll() {
+					if c.GetHandle() == handle {
+						return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
+					}
 				}
 			}
 		}
@@ -296,9 +298,22 @@ func (s *MCPDeploymentService) ListMCPProxyByNameAndVersion(name, version string
 	return cfg, nil
 }
 
+// ListMCPProxyByHandle returns an MCP proxy configuration by its handle (metadata.name)
+func (s *MCPDeploymentService) GetMCPProxyByHandle(handle string) (*models.StoredConfig, error) {
+	if s.db == nil {
+		return nil, storage.ErrDatabaseUnavailable
+	}
+
+	cfg, err := s.db.GetConfigByHandle(handle)
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 // CreateMCPProxy is a convenience wrapper around DeployMCPConfiguration for creating MCP proxies
 func (s *MCPDeploymentService) CreateMCPProxy(params MCPDeploymentParams) (*models.StoredConfig, error) {
-	res, err := s.DeployMCPConfiguration(params)
+	res, err := s.DeployMCPConfiguration(params, false)
 	if err != nil {
 		return nil, err
 	}
@@ -306,15 +321,23 @@ func (s *MCPDeploymentService) CreateMCPProxy(params MCPDeploymentParams) (*mode
 }
 
 // UpdateMCPProxy updates an existing MCP proxy identified by name+version using DeployMCPConfiguration
-func (s *MCPDeploymentService) UpdateMCPProxy(name, version string, params MCPDeploymentParams) (*models.StoredConfig, error) {
-	existing, err := s.ListMCPProxyByNameAndVersion(name, version)
+func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymentParams, logger *zap.Logger) (*models.StoredConfig, error) {
+	existing, err := s.GetMCPProxyByHandle(handle)
 	if err != nil || existing == nil {
-		return nil, fmt.Errorf("MCP proxy configuration with name '%s' and version '%s' not found", name, version)
+		return nil, fmt.Errorf("MCP proxy configuration with handle '%s' not found", handle)
+	}
+
+	if existing.Kind != string(api.Mcp) {
+		logger.Warn("Configuration kind mismatch",
+			zap.String("expected", string(api.Mcp)),
+			zap.String("actual", existing.Kind),
+			zap.String("handle", handle))
+		return nil, fmt.Errorf("configuration kind mismatch: expected '%s', got '%s' for handle '%s'", string(api.Mcp), existing.Kind, handle)
 	}
 
 	// Ensure Deploy uses existing ID so it performs an update
 	params.ID = existing.ID
-	res, err := s.DeployMCPConfiguration(params)
+	res, err := s.DeployMCPConfiguration(params, true)
 	if err != nil {
 		return nil, err
 	}

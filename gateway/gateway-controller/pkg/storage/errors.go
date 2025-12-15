@@ -30,6 +30,9 @@ var (
 
 	// ErrDatabaseLocked is returned when the database is locked (SQLite specific)
 	ErrDatabaseLocked = errors.New("database is locked")
+
+	// ErrDatabaseUnavailable is returned when the database storage is unavailable
+	ErrDatabaseUnavailable = errors.New("database storage is unavailable")
 )
 
 // IsConflictError checks if an error is a conflict error
@@ -42,4 +45,8 @@ func IsConflictError(err error) bool {
 // IsNotFoundError checks if an error is a not found error
 func IsNotFoundError(err error) bool {
 	return errors.Is(err, ErrNotFound)
+}
+
+func IsDatabaseUnavailableError(err error) bool {
+	return errors.Is(err, ErrDatabaseUnavailable)
 }
