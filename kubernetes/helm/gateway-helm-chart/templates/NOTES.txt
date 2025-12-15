@@ -63,8 +63,8 @@ To access the Router:
 Policy Engine has been deployed:
   - Service: {{ include "gateway-operator.fullname" . }}-policy-engine
   - Ext Proc Port: {{ .Values.gateway.policyEngine.service.ports.ext }}
-  {{- if .Values.gateway.policyEngine.config.admin.enabled }}
-  - Admin Port: {{ default 9002 .Values.gateway.policyEngine.config.admin.port }}
+  {{- if .Values.gateway.config.policy_engine.admin.enabled }}
+  - Admin Port: {{ default 9002 .Values.gateway.config.policy_engine.admin.port }}
   {{- end }}
 {{- end }}
 
