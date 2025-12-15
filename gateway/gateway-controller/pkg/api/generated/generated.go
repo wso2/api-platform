@@ -247,17 +247,17 @@ type APIConfigurationVersion string
 type APICreateResponse struct {
 	CreatedAt *time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 
-	// Id Unique identifier for the created API configuration
-	Id      *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Message *string             `json:"message,omitempty" yaml:"message,omitempty"`
-	Status  *string             `json:"status,omitempty" yaml:"status,omitempty"`
+	// Id Unique handle (metadata.name) for the created API configuration
+	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
+	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
+	Status  *string `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // APIDetailResponse defines model for APIDetailResponse.
 type APIDetailResponse struct {
 	Api *struct {
-		Configuration *APIConfiguration   `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-		Id            *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+		Configuration *APIConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+		Id            *string           `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata      *struct {
 			CreatedAt  *time.Time                          `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 			DeployedAt *time.Time                          `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
@@ -287,10 +287,10 @@ type APIListItemStatus string
 
 // APIUpdateResponse defines model for APIUpdateResponse.
 type APIUpdateResponse struct {
-	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string             `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string             `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time          `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
 }
 
 // CertificateListResponse defines model for CertificateListResponse.
@@ -671,7 +671,7 @@ type LLMProviderUpdateResponse struct {
 type MCPDetailResponse struct {
 	Mcp *struct {
 		Configuration *MCPProxyConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-		Id            *openapi_types.UUID    `json:"id,omitempty" yaml:"id,omitempty"`
+		Id            *string                `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata      *struct {
 			CreatedAt  *time.Time                          `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 			DeployedAt *time.Time                          `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`

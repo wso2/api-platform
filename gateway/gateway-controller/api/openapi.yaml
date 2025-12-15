@@ -1682,9 +1682,8 @@ components:
           example: API configuration created successfully
         id:
           type: string
-          format: uuid
-          description: Unique identifier for the created API configuration
-          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Unique handle (metadata.name) for the created API configuration
+          example: weather-api-v1.0
         created_at:
           type: string
           format: date-time
@@ -1700,8 +1699,7 @@ components:
           example: API configuration updated successfully
         id:
           type: string
-          format: uuid
-          example: 550e8400-e29b-41d4-a716-446655440000
+          example: weather-api-v1.0
         updated_at:
           type: string
           format: date-time
@@ -1749,8 +1747,8 @@ components:
           properties:
             id:
               type: string
-              format: uuid
-              example: 550e8400-e29b-41d4-a716-446655440000
+              description: Unique handle (metadata.name) for the API configuration
+              example: weather-api-v1.0
             configuration:
               $ref: "#/components/schemas/APIConfiguration"
             metadata:
@@ -1974,8 +1972,8 @@ components:
           properties:
             id:
               type: string
-              format: uuid
-              example: 550e8400-e29b-41d4-a716-446655440000
+              description: Unique handle (metadata.name) for the MCP configuration
+              example: mcp-proxy-1-v1.0
             configuration:
               $ref: "#/components/schemas/MCPProxyConfiguration"
             metadata:
