@@ -31,7 +31,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -209,12 +208,11 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 		go s.waitForDeploymentAndNotify(result.StoredConfig.ID, correlationID, log)
 	}
 
-	// Return success response
-	id, _ := uuidToOpenAPIUUID(result.StoredConfig.ID)
+	// Return success response (id is the handle)
 	c.JSON(http.StatusCreated, api.APICreateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("API configuration created successfully"),
-		Id:        id,
+		Id:        stringPtr(result.StoredConfig.GetHandle()),
 		CreatedAt: timePtr(result.StoredConfig.CreatedAt),
 	})
 
@@ -314,9 +312,9 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"count":  len(items),
-		"apis":   items,
+		"status":      "success",
+		"count":       len(items),
+		"deployments": items,
 	})
 }
 
@@ -624,12 +622,11 @@ func (s *APIServer) UpdateAPI(c *gin.Context, handle string) {
 		zap.String("id", existing.ID),
 		zap.String("handle", handle))
 
-	// Return success response
-	updateId, _ := uuidToOpenAPIUUID(existing.ID)
+	// Return success response (id is the handle)
 	c.JSON(http.StatusOK, api.APIUpdateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("API configuration updated successfully"),
-		Id:        updateId,
+		Id:        stringPtr(existing.GetHandle()),
 		UpdatedAt: timePtr(existing.UpdatedAt),
 	})
 
@@ -1448,12 +1445,11 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 		go s.waitForDeploymentAndNotify(result.StoredConfig.ID, correlationID, log)
 	}
 
-	// Return success response
-	id, _ := uuidToOpenAPIUUID(result.StoredConfig.ID)
+	// Return success response (id is the handle)
 	c.JSON(http.StatusCreated, api.APICreateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("MCP configuration created successfully"),
-		Id:        id,
+		Id:        stringPtr(result.StoredConfig.GetHandle()),
 		CreatedAt: timePtr(result.StoredConfig.CreatedAt),
 	})
 }
@@ -1753,12 +1749,11 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, handle string) {
 		zap.String("id", existing.ID),
 		zap.String("handle", handle))
 
-	// Return success response
-	updateId, _ := uuidToOpenAPIUUID(existing.ID)
+	// Return success response (id is the handle)
 	c.JSON(http.StatusOK, api.APIUpdateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("MCP configuration updated successfully"),
-		Id:        updateId,
+		Id:        stringPtr(existing.GetHandle()),
 		UpdatedAt: timePtr(existing.UpdatedAt),
 	})
 
@@ -1947,7 +1942,7 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 	// Build API list with metadata using the exact generated types
 	apisSlice := make([]struct {
 		Configuration *api.APIConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-		Id            *openapi_types.UUID   `json:"id,omitempty" yaml:"id,omitempty"`
+		Id            *string               `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata      *struct {
 			CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 			DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
@@ -1957,9 +1952,10 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 	}, 0, len(allConfigs))
 
 	for _, cfg := range allConfigs {
-		configUUID, err := uuidToOpenAPIUUID(cfg.ID)
-		if err != nil {
-			log.Warn("Failed to parse config ID as UUID", zap.String("id", cfg.ID), zap.Error(err))
+		// Use handle (metadata.name) as the id in the dump
+		configHandle := cfg.GetHandle()
+		if configHandle == "" {
+			log.Warn("Config missing handle, skipping in dump", zap.String("id", cfg.ID))
 			continue
 		}
 
@@ -1978,7 +1974,7 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 
 		item := struct {
 			Configuration *api.APIConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-			Id            *openapi_types.UUID   `json:"id,omitempty" yaml:"id,omitempty"`
+			Id            *string               `json:"id,omitempty" yaml:"id,omitempty"`
 			Metadata      *struct {
 				CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 				DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
@@ -1987,7 +1983,7 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 			} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 		}{
 			Configuration: &cfg.Configuration,
-			Id:            configUUID,
+			Id:            stringPtr(configHandle),
 			Metadata: &struct {
 				CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 				DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`

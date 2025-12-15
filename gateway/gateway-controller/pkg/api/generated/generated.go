@@ -399,7 +399,7 @@ type ConfigDumpResponse struct {
 	// Apis All deployed API configurations
 	Apis *[]struct {
 		Configuration *APIConfiguration   `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-		Id            *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+		Id            *string              `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata      *struct {
 			CreatedAt  *time.Time                            `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 			DeployedAt *time.Time                            `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
