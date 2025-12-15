@@ -173,9 +173,16 @@ func (s *SQLiteStorage) initSchema() error {
 		}
 
 		if version == 4 {
+			// Begin transaction for migration
+			tx, err := s.db.Begin()
+			if err != nil {
+				return fmt.Errorf("failed to begin migration transaction: %w", err)
+			}
+			defer tx.Rollback()
+
 			// SQLite doesn't support adding NOT NULL columns directly
 			// Have to recreate the table
-			if _, err := s.db.Exec(`
+			if _, err := tx.Exec(`
 				CREATE TABLE deployments_new (
 					id TEXT PRIMARY KEY,
 					name TEXT NOT NULL,
@@ -193,34 +200,39 @@ func (s *SQLiteStorage) initSchema() error {
 			`); err != nil {
 				return fmt.Errorf("failed to create deployments_new table: %w", err)
 			}
-			if _, err := s.db.Exec(`
+			if _, err := tx.Exec(`
 				INSERT INTO deployments_new 
 				SELECT id, name, version, context, kind, name || '-' || version AS handle, status, created_at, updated_at, deployed_at, deployed_version 
 				FROM deployments;
 			`); err != nil {
 				return fmt.Errorf("failed to copy data to deployments_new: %w", err)
 			}
-			if _, err := s.db.Exec(`DROP TABLE deployments;`); err != nil {
+			if _, err := tx.Exec(`DROP TABLE deployments;`); err != nil {
 				return fmt.Errorf("failed to drop old deployments table: %w", err)
 			}
-			if _, err := s.db.Exec(`ALTER TABLE deployments_new RENAME TO deployments;`); err != nil {
+			if _, err := tx.Exec(`ALTER TABLE deployments_new RENAME TO deployments;`); err != nil {
 				return fmt.Errorf("failed to rename deployments_new to deployments: %w", err)
 			}
-			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_name_version ON deployments(name, version);`); err != nil {
+			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_name_version ON deployments(name, version);`); err != nil {
 				return fmt.Errorf("failed to recreate idx_name_version: %w", err)
 			}
-			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_status ON deployments(status);`); err != nil {
+			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_status ON deployments(status);`); err != nil {
 				return fmt.Errorf("failed to recreate idx_status: %w", err)
 			}
-			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_context ON deployments(context);`); err != nil {
+			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_context ON deployments(context);`); err != nil {
 				return fmt.Errorf("failed to recreate idx_context: %w", err)
 			}
-			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_kind ON deployments(kind);`); err != nil {
+			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_kind ON deployments(kind);`); err != nil {
 				return fmt.Errorf("failed to recreate idx_kind: %w", err)
 			}
-			if _, err := s.db.Exec("PRAGMA user_version = 4"); err != nil {
+			if _, err := tx.Exec("PRAGMA user_version = 4"); err != nil {
 				return fmt.Errorf("failed to set schema version to 4: %w", err)
 			}
+
+			if err := tx.Commit(); err != nil {
+				return fmt.Errorf("failed to commit migration: %w", err)
+			}
+
 			s.logger.Info("Schema migrated to version 4 (handle column with NOT NULL UNIQUE constraint)")
 			version = 5
 		}
@@ -1196,7 +1208,8 @@ func isUniqueConstraintError(err error) bool {
 	// SQLite error code 19 is CONSTRAINT error
 	// Error message contains "UNIQUE constraint failed"
 	return err != nil && (err.Error() == "UNIQUE constraint failed: deployments.name, deployments.version" ||
-		err.Error() == "UNIQUE constraint failed: deployments.id")
+		err.Error() == "UNIQUE constraint failed: deployments.id" ||
+		err.Error() == "UNIQUE constraint failed: deployments.handle")
 }
 
 // isCertificateUniqueConstraintError checks if the error is a UNIQUE constraint violation for certificates

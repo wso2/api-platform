@@ -367,53 +367,6 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 	return false, nil // Successfully created new config
 }
 
-// updateExistingConfig updates an existing API configuration
-func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConfig, logger *zap.Logger) (bool, error) {
-	// Get existing config
-	existing, err := s.store.GetByNameVersion(newConfig.GetName(), newConfig.GetVersion())
-	if err != nil {
-		return false, fmt.Errorf("failed to get existing config: %w", err)
-	}
-
-	// Backup original state for potential rollback
-	original := *existing
-
-	// Update the existing configuration
-	now := time.Now()
-	existing.Configuration = newConfig.Configuration
-	existing.Status = models.StatusPending
-	existing.UpdatedAt = now
-	existing.DeployedAt = nil
-	existing.DeployedVersion = 0
-
-	// Update database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.UpdateConfig(existing); err != nil {
-			return false, fmt.Errorf("failed to update config in database: %w", err)
-		}
-	}
-
-	// Update in-memory store
-	if err := s.store.Update(existing); err != nil {
-		// Rollback DB to original state since memory update failed
-		if s.db != nil {
-			if rbErr := s.db.UpdateConfig(&original); rbErr != nil {
-				logger.Error("Failed to rollback DB after memory update failure",
-					zap.Error(rbErr),
-					zap.String("id", original.ID),
-					zap.String("name", original.GetName()),
-					zap.String("version", original.GetVersion()))
-			}
-		}
-		return false, fmt.Errorf("failed to update config in memory store: %w", err)
-	}
-
-	// Update the newConfig to reflect the changes
-	*newConfig = *existing
-
-	return true, nil // Successfully updated existing config
-}
-
 // RegisterTopicWithHub registers a topic with the WebSubHub
 func (s *APIDeploymentService) RegisterTopicWithHub(httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *zap.Logger) error {
 	return s.sendTopicRequestToHub(httpClient, topic, "register", webSubHubHost, webSubPort, logger)

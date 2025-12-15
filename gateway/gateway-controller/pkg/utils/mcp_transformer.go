@@ -109,10 +109,15 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 	}
 	output.Spec = specUnion
 
+	// Copy metadata from MCP config to API config
+	// Ensure metadata is always set to prevent nil pointer dereference in downstream code
 	if mcpConfig.Metadata != nil {
 		output.Metadata = &api.Metadata{
 			Name: mcpConfig.Metadata.Name,
 		}
+	} else {
+		// Create empty metadata if not present to prevent nil pointer issues
+		output.Metadata = &api.Metadata{}
 	}
 	return output, nil
 }
