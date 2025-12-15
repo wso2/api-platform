@@ -31,7 +31,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -2051,17 +2050,8 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 	// Get all APIs
 	allConfigs := s.store.GetAll()
 
-	// Build API list with metadata using the exact generated types
-	apisSlice := make([]struct {
-		Configuration *api.APIConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-		Id            *openapi_types.UUID   `json:"id,omitempty" yaml:"id,omitempty"`
-		Metadata      *struct {
-			CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-			DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
-			Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
-			UpdatedAt  *time.Time                                `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
-		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	}, 0, len(allConfigs))
+	// Build API list with metadata using the generated types
+	apisSlice := make([]api.ConfigDumpAPIItem, 0, len(allConfigs))
 
 	for _, cfg := range allConfigs {
 		// Use handle (metadata.name) as the id in the dump
@@ -2072,36 +2062,22 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 		}
 
 		// Convert status to the correct type
-		var status api.ConfigDumpResponseApisMetadataStatus
+		var status api.ConfigDumpAPIMetadataStatus
 		switch cfg.Status {
 		case models.StatusDeployed:
-			status = api.ConfigDumpResponseApisMetadataStatusDeployed
+			status = api.ConfigDumpAPIMetadataStatusDeployed
 		case models.StatusFailed:
-			status = api.ConfigDumpResponseApisMetadataStatusFailed
+			status = api.ConfigDumpAPIMetadataStatusFailed
 		case models.StatusPending:
-			status = api.ConfigDumpResponseApisMetadataStatusPending
+			status = api.ConfigDumpAPIMetadataStatusPending
 		default:
-			status = api.ConfigDumpResponseApisMetadataStatusPending
+			status = api.ConfigDumpAPIMetadataStatusPending
 		}
 
-		item := struct {
-			Configuration *api.APIConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-			Id            *openapi_types.UUID   `json:"id,omitempty" yaml:"id,omitempty"`
-			Metadata      *struct {
-				CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-				DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
-				Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
-				UpdatedAt  *time.Time                                `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
-			} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-		}{
+		item := api.ConfigDumpAPIItem{
 			Configuration: &cfg.Configuration,
 			Id:            convertHandleToUUID(configHandle),
-			Metadata: &struct {
-				CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-				DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
-				Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
-				UpdatedAt  *time.Time                                `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
-			}{
+			Metadata: &api.ConfigDumpAPIMetadata{
 				CreatedAt:  &cfg.CreatedAt,
 				UpdatedAt:  &cfg.UpdatedAt,
 				DeployedAt: cfg.DeployedAt,
