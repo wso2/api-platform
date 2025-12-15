@@ -108,5 +108,11 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 		return nil, err
 	}
 	output.Spec = specUnion
+
+	if mcpConfig.Metadata != nil {
+		output.Metadata = &api.Metadata{
+			Name: mcpConfig.Metadata.Name,
+		}
+	}
 	return output, nil
 }
