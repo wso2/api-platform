@@ -33,19 +33,19 @@ type APIDeploymentNotification struct {
 
 // APIConfiguration represents the API configuration
 type APIConfiguration struct {
-	Version string        `json:"version" binding:"required"`
-	Kind    string        `json:"kind" binding:"required"`
-	Spec    APIConfigData `json:"spec" binding:"required"`
+	Version string        `json:"version" yaml:"version" binding:"required"`
+	Kind    string        `json:"kind" yaml:"kind" binding:"required"`
+	Spec    APIConfigData `json:"spec" yaml:"spec" binding:"required"`
 }
 
 // APIConfigData represents the detailed API configuration
 type APIConfigData struct {
-	Name        string           `json:"name" binding:"required"`
-	Version     string           `json:"version" binding:"required"`
-	Context     string           `json:"context" binding:"required"`
-	ProjectName string           `json:"projectName,omitempty"`
-	Upstreams   []Upstream       `json:"upstreams" binding:"required"`
-	Operations  []BasicOperation `json:"operations" binding:"required"`
+	Name        string           `json:"name" yaml:"name" binding:"required"`
+	Version     string           `json:"version" yaml:"version" binding:"required"`
+	Context     string           `json:"context" yaml:"context" binding:"required"`
+	ProjectName string           `json:"projectName,omitempty" yaml:"projectName,omitempty"`
+	Upstreams   []Upstream       `json:"upstreams" yaml:"upstream" binding:"required"`
+	Operations  []BasicOperation `json:"operations" yaml:"operations" binding:"required"`
 }
 
 // Upstream represents backend service configuration

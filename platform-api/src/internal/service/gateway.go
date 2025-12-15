@@ -516,8 +516,7 @@ func (s *GatewayService) GetGatewayArtifacts(gatewayID, orgID, artifactType stri
 		subType := apiUtil.GetAPISubType(api.Type)
 
 		artifact := dto.GatewayArtifact{
-			ID:        api.ID,
-			Handle:    api.Handle,
+			ID:        api.Handle,
 			Name:      api.Name,
 			Type:      "API",
 			SubType:   subType,

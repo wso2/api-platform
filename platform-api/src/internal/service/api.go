@@ -75,7 +75,7 @@ func NewAPIService(apiRepo repository.APIRepository, projectRepo repository.Proj
 // CreateAPI creates a new API with validation and business logic
 func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API, error) {
 	// Validate request
-	if err := s.validateCreateAPIRequest(req); err != nil {
+	if err := s.validateCreateAPIRequest(req, orgUUID); err != nil {
 		return nil, err
 	}
 
@@ -94,18 +94,6 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API,
 	// Handle the API handle (user-facing identifier)
 	var handle string
 	if req.ID != "" {
-		// Validate user-provided handle
-		if err := utils.ValidateHandle(req.ID); err != nil {
-			return nil, err
-		}
-		// Check if handle already exists in the organization
-		handleExists, err := s.apiRepo.CheckAPIExistsByHandleInOrganization(req.ID, orgUUID)
-		if err != nil {
-			return nil, err
-		}
-		if handleExists {
-			return nil, constants.ErrHandleExists
-		}
 		handle = req.ID
 	} else {
 		// Generate handle from API name with collision detection
@@ -114,14 +102,6 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API,
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgUUID)
-	if err != nil {
-		return nil, err
-	}
-	if nameVersionExists {
-		return nil, constants.ErrAPINameVersionAlreadyExists
 	}
 
 	// Set default values if not provided
@@ -329,6 +309,7 @@ func (s *APIService) UpdateAPI(apiUUID string, req *UpdateAPIRequest, orgUUID st
 
 	// Update API in repository
 	updatedAPIModel := s.apiUtil.DTOToModel(existingAPI)
+	updatedAPIModel.ID = apiUUID // Ensure UUID remains unchanged
 	if err := s.apiRepo.UpdateAPI(updatedAPIModel); err != nil {
 		return nil, err
 	}
@@ -436,43 +417,6 @@ func (s *APIService) GetAPIPublicationsByHandle(handle, orgID string) (*dto.APID
 		return nil, err
 	}
 	return s.GetAPIPublications(apiUUID, orgID)
-}
-
-// UpdateAPILifecycleStatus updates only the lifecycle status of an API
-func (s *APIService) UpdateAPILifecycleStatus(apiUUID string, status string) (*dto.API, error) {
-	if apiUUID == "" {
-		return nil, errors.New("API id is required")
-	}
-	if status == "" {
-		return nil, errors.New("status is required")
-	}
-
-	// Validate lifecycle status
-	if !constants.ValidLifecycleStates[status] {
-		return nil, constants.ErrInvalidLifecycleState
-	}
-
-	// Get existing API
-	orgUUID := "" // TODO - pass orgId to this method
-	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
-	if err != nil {
-		return nil, err
-	}
-	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
-	}
-
-	// Update lifecycle status
-	apiModel.LifeCycleStatus = status
-	apiModel.UpdatedAt = time.Now()
-
-	// Update API in repository
-	if err := s.apiRepo.UpdateAPI(apiModel); err != nil {
-		return nil, fmt.Errorf("failed to update api lifecycle status: %w", err)
-	}
-
-	api := s.apiUtil.ModelToDTO(apiModel)
-	return api, nil
 }
 
 // DeployAPIRevision deploys an API revision and generates deployment YAML
@@ -792,28 +736,40 @@ func (s *APIService) createDefaultDevPortalAssociation(apiId, orgId string) erro
 // Validation methods
 
 // validateCreateAPIRequest checks the validity of the create API request
-func (s *APIService) validateCreateAPIRequest(req *CreateAPIRequest) error {
+func (s *APIService) validateCreateAPIRequest(req *CreateAPIRequest, orgUUID string) error {
+	if req.ID != "" {
+		// Validate user-provided handle
+		if err := utils.ValidateHandle(req.ID); err != nil {
+			return err
+		}
+		// Check if handle already exists in the organization
+		handleExists, err := s.apiRepo.CheckAPIExistsByHandleInOrganization(req.ID, orgUUID)
+		if err != nil {
+			return err
+		}
+		if handleExists {
+			return constants.ErrHandleExists
+		}
+	}
 	if req.Name == "" {
 		return constants.ErrInvalidAPIName
 	}
-	if req.Context == "" {
+	if !s.isValidContext(req.Context) {
 		return constants.ErrInvalidAPIContext
 	}
-	if req.Version == "" {
+	if !s.isValidVersion(req.Version) {
 		return constants.ErrInvalidAPIVersion
 	}
 	if req.ProjectID == "" {
 		return errors.New("project id is required")
 	}
 
-	// Validate context format
-	if !s.isValidContext(req.Context) {
-		return constants.ErrInvalidAPIContext
+	nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgUUID)
+	if err != nil {
+		return err
 	}
-
-	// Validate version format
-	if !s.isValidVersion(req.Version) {
-		return constants.ErrInvalidAPIVersion
+	if nameVersionExists {
+		return constants.ErrAPINameVersionAlreadyExists
 	}
 
 	// Validate lifecycle status if provided
@@ -841,13 +797,19 @@ func (s *APIService) validateCreateAPIRequest(req *CreateAPIRequest) error {
 // applyAPIUpdates applies update request fields to an existing API model and handles backend services
 func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *UpdateAPIRequest, orgId string) (*dto.API, error) {
 	// Validate update request
-	if err := s.validateUpdateAPIRequest(req); err != nil {
+	if err := s.validateUpdateAPIRequest(existingAPIModel, req, orgId); err != nil {
 		return nil, err
 	}
 
 	existingAPI := s.apiUtil.ModelToDTO(existingAPIModel)
 
 	// Update fields (only allow certain fields to be updated)
+	if req.ID != nil {
+		existingAPI.ID = *req.ID
+	}
+	if req.Name != nil {
+		existingAPI.Name = *req.Name
+	}
 	if req.Description != nil {
 		existingAPI.Description = *req.Description
 	}
@@ -943,7 +905,34 @@ func (s *APIService) updateAPIBackendServices(apiUUID string, backendServices *[
 }
 
 // validateUpdateAPIRequest checks the validity of the update API request
-func (s *APIService) validateUpdateAPIRequest(req *UpdateAPIRequest) error {
+func (s *APIService) validateUpdateAPIRequest(existingAPIModel *model.API, req *UpdateAPIRequest, orgUUID string) error {
+	// Handle the API handle (user-facing identifier)
+	if req.ID != nil {
+		// Validate user-provided handle
+		if err := utils.ValidateHandle(*req.ID); err != nil {
+			return err
+		}
+		// Check if handle already exists in the organization
+		handleExists, err := s.apiRepo.CheckAPIExistsByHandleInOrganization(*req.ID, orgUUID)
+		if err != nil {
+			return err
+		}
+		if handleExists {
+			return constants.ErrHandleExists
+		}
+	}
+
+	if req.Name != nil {
+		nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(*req.Name,
+			existingAPIModel.Version, orgUUID)
+		if err != nil {
+			return err
+		}
+		if nameVersionExists {
+			return constants.ErrAPINameVersionAlreadyExists
+		}
+	}
+
 	// Validate lifecycle status if provided
 	if req.LifeCycleStatus != nil && !constants.ValidLifecycleStates[*req.LifeCycleStatus] {
 		return constants.ErrInvalidLifecycleState
@@ -969,10 +958,7 @@ func (s *APIService) validateUpdateAPIRequest(req *UpdateAPIRequest) error {
 // Helper validation methods
 
 func (s *APIService) isValidContext(context string) bool {
-	// Context can be empty, root path (/), or follow pattern: /name, /name1/name2, /name/1.0.0, /name/v1.2.3
-	if context == "" {
-		return true // Empty context is valid
-	}
+	// Context can be root path (/), or follow pattern: /name, /name1/name2, /name/1.0.0, /name/v1.2.3
 	pattern := `^\/(?:[a-zA-Z0-9_-]+(?:\/(?:[a-zA-Z0-9_-]+|v?\d+(?:\.\d+)?(?:\.\d+)?))*)?\/?$`
 	matched, _ := regexp.MatchString(pattern, context)
 	return matched && len(context) <= 232
@@ -980,6 +966,9 @@ func (s *APIService) isValidContext(context string) bool {
 
 func (s *APIService) isValidVersion(version string) bool {
 	// Version should follow semantic versioning or simple version format
+	if version == "" {
+		return false
+	}
 	pattern := `^[^~!@#;:%^*()+={}|\\<>"'',&/$\[\]\s+\/]+$`
 	matched, _ := regexp.MatchString(pattern, version)
 	return matched && len(version) > 0 && len(version) <= 30
@@ -999,7 +988,6 @@ func (s *APIService) isValidVHost(vhost string) bool {
 type CreateAPIRequest struct {
 	ID               string                  `json:"id,omitempty"`
 	Name             string                  `json:"name"`
-	DisplayName      string                  `json:"displayName,omitempty"`
 	Description      string                  `json:"description,omitempty"`
 	Context          string                  `json:"context"`
 	Version          string                  `json:"version"`
@@ -1023,7 +1011,8 @@ type CreateAPIRequest struct {
 
 // UpdateAPIRequest represents the request to update an API
 type UpdateAPIRequest struct {
-	DisplayName      *string                 `json:"displayName,omitempty"`
+	ID               *string                 `json:"id,omitempty"`
+	Name             *string                 `json:"name,omitempty"`
 	Description      *string                 `json:"description,omitempty"`
 	Provider         *string                 `json:"provider,omitempty"`
 	LifeCycleStatus  *string                 `json:"lifeCycleStatus,omitempty"`
@@ -1141,8 +1130,8 @@ func (s *APIService) ImportAPIProject(req *dto.ImportAPIProjectRequest, orgUUID 
 
 	// 7. Create API using the existing CreateAPI flow
 	createReq := &CreateAPIRequest{
+		ID:               apiData.ID,
 		Name:             apiData.Name,
-		DisplayName:      apiData.Name,
 		Description:      apiData.Description,
 		Context:          apiData.Context,
 		Version:          apiData.Version,
@@ -1172,6 +1161,9 @@ func (s *APIService) mergeAPIData(artifact *dto.APIYAMLData, userAPIData *dto.AP
 	apiDTO := s.apiUtil.APIYAMLDataToDTO(artifact)
 
 	// Overwrite with user-provided data (if not empty)
+	if userAPIData.ID != "" {
+		apiDTO.ID = userAPIData.ID
+	}
 	if userAPIData.Name != "" {
 		apiDTO.Name = userAPIData.Name
 	}
@@ -1578,8 +1570,8 @@ func (s *APIService) ImportFromOpenAPI(req *dto.ImportOpenAPIRequest, orgId stri
 
 	// Create API using existing CreateAPI logic
 	createReq := &CreateAPIRequest{
+		ID:              mergedAPI.ID,
 		Name:            mergedAPI.Name,
-		DisplayName:     mergedAPI.Name,
 		Description:     mergedAPI.Description,
 		Context:         mergedAPI.Context,
 		Version:         mergedAPI.Version,

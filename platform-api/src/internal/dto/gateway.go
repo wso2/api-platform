@@ -122,7 +122,6 @@ type APIGatewayListResponse struct {
 // GatewayArtifact represents an artifact (API, MCP, API Product) deployed to a gateway
 type GatewayArtifact struct {
 	ID        string    `json:"id"`
-	Handle    string    `json:"handle"`
 	Name      string    `json:"name,omitempty"`
 	Type      string    `json:"type"`              // "API", "MCP", "API_PRODUCT"
 	SubType   string    `json:"subType,omitempty"` // For APIs: "REST", "ASYNC", "GQL"

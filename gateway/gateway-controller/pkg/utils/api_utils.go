@@ -267,17 +267,19 @@ func (s *APIUtilsService) NotifyAPIDeployment(apiID string, apiConfig *models.St
 	}
 	defer resp.Body.Close()
 
-	// Check response status
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		s.logger.Error("API deployment notification failed",
-			zap.String("api_id", apiID),
-			zap.Int("status_code", resp.StatusCode))
-	}
-
 	// Read response body for error details
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check response status
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		s.logger.Error("API deployment notification failed",
+			zap.String("api_id", apiID),
+			zap.Int("status_code", resp.StatusCode),
+			zap.String("response", string(bodyBytes)))
+		return fmt.Errorf("deployment notification for api %s failed with status %d", apiID, resp.StatusCode)
 	}
 
 	s.logger.Info("Successfully sent API deployment notification",

@@ -1136,7 +1136,6 @@ func (u *APIUtil) APIYAMLDataToDTO(yamlData *dto.APIYAMLData) *dto.API {
 
 	// Create and populate API DTO with available fields
 	api := &dto.API{
-		ID:              yamlData.Id,
 		Name:            yamlData.Name,
 		Description:     yamlData.Description,
 		Context:         yamlData.Context,
