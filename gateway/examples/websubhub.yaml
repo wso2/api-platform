@@ -16,11 +16,12 @@
 # under the License.
 # --------------------------------------------------------------------
 
-version: api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: async/websub
+metadata:
+  name: websub-api-v1.0
 spec:
   name: WebSub-API-New-API
-  apiType: async/websub
   version: v1.0
   context: /websubnewapi
   servers:

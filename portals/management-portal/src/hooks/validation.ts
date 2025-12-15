@@ -30,7 +30,7 @@ export type GithubProjectValidationResponse =
   | GithubProjectValidationOK
   | GithubProjectValidationErr;
 
-  export type OpenApiValidationOK = {
+export type OpenApiValidationOK = {
   isAPIDefinitionValid: true;
   api: Record<string, unknown>;
 };
@@ -43,6 +43,23 @@ export type OpenApiValidationErr = {
 export type OpenApiValidationResponse =
   | OpenApiValidationOK
   | OpenApiValidationErr;
+
+/** NEW: Uniqueness validation (name+version / identifier) */
+
+export type ApiValidateError = {
+  code: string;
+  message: string;
+};
+
+export type ApiUniquenessValidationResponse = {
+  valid: boolean;
+  error: ApiValidateError | null;
+};
+
+export type ApiNameVersionValidationRequest = {
+  name: string;
+  version: string;
+};
 
 /** ----- Helpers ----- */
 
@@ -99,8 +116,7 @@ export const useGithubProjectValidation = () => {
         );
       }
 
-      const data = (await res.json()) as GithubProjectValidationResponse;
-      return data;
+      return (await res.json()) as GithubProjectValidationResponse;
     },
     []
   );
@@ -121,9 +137,7 @@ export const useOpenApiValidation = () => {
 
       const res = await fetch(`${baseUrl}/api/v1/validate/open-api`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
         signal: opts?.signal,
       });
@@ -134,8 +148,7 @@ export const useOpenApiValidation = () => {
         );
       }
 
-      const data = (await res.json()) as OpenApiValidationResponse;
-      return data;
+      return (await res.json()) as OpenApiValidationResponse;
     },
     []
   );
@@ -152,9 +165,7 @@ export const useOpenApiValidation = () => {
 
       const res = await fetch(`${baseUrl}/api/v1/validate/open-api`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
         signal: opts?.signal,
       });
@@ -165,11 +176,66 @@ export const useOpenApiValidation = () => {
         );
       }
 
-      const data = (await res.json()) as OpenApiValidationResponse;
-      return data;
+      return (await res.json()) as OpenApiValidationResponse;
     },
     []
   );
 
   return { validateOpenApiUrl, validateOpenApiFile };
+};
+
+/** NEW: API uniqueness validation hook */
+export const useApiUniquenessValidation = () => {
+  /** GET: /api/v1/apis/validate?name=...&version=... */
+  const validateApiNameVersion = useCallback(
+    async (
+      payload: ApiNameVersionValidationRequest,
+      opts?: { signal?: AbortSignal }
+    ): Promise<ApiUniquenessValidationResponse> => {
+      const qs = new URLSearchParams({
+        name: payload.name,
+        version: payload.version,
+      }).toString();
+
+      const res = await authedFetch(`/api/v1/apis/validate?${qs}`, {
+        method: "GET",
+        signal: opts?.signal,
+      });
+
+      if (!res.ok) {
+        throw new Error(
+          `Failed to validate API name & version: ${await parseError(res)}`
+        );
+      }
+
+      return (await res.json()) as ApiUniquenessValidationResponse;
+    },
+    []
+  );
+
+  /** GET: /api/v1/apis/validate?identifier=... */
+  const validateApiIdentifier = useCallback(
+    async (
+      identifier: string,
+      opts?: { signal?: AbortSignal }
+    ): Promise<ApiUniquenessValidationResponse> => {
+      const qs = new URLSearchParams({ identifier }).toString();
+
+      const res = await authedFetch(`/api/v1/apis/validate?${qs}`, {
+        method: "GET",
+        signal: opts?.signal,
+      });
+
+      if (!res.ok) {
+        throw new Error(
+          `Failed to validate API identifier: ${await parseError(res)}`
+        );
+      }
+
+      return (await res.json()) as ApiUniquenessValidationResponse;
+    },
+    []
+  );
+
+  return { validateApiNameVersion, validateApiIdentifier };
 };

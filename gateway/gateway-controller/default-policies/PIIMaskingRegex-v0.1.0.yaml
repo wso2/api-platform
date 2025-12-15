@@ -1,0 +1,48 @@
+name: PIIMaskingRegex
+version: v0.1.0
+description: |
+  Masks or redacts Personally Identifiable Information (PII) from request/response bodies using regex patterns.
+  Supports two modes: masking (replaces with placeholders that can be restored in responses) and redaction (replaces with *****).
+  When masking mode is used, PII is masked in requests and automatically restored in responses.
+  Supports separate configuration for request and response phases.
+
+parameters:
+  type: object
+  properties:
+    piiEntities:
+      type: array
+      description: |
+        Array of PII entity configurations, each containing:
+        - piiEntity: Name/type of the PII entity (e.g., "EMAIL", "PHONE", "SSN")
+        - piiRegex: Regular expression pattern to match the PII entity
+      items:
+        type: object
+        properties:
+          piiEntity:
+            type: string
+            description: Name/type of the PII entity
+          piiRegex:
+            type: string
+            description: Regular expression pattern to match the PII entity
+        required:
+        - piiEntity
+        - piiRegex
+    jsonPath:
+      type: string
+      description: |
+        JSONPath expression to extract a specific value from JSON payload.
+        If empty, processes the entire payload as a string.
+        Examples: "$.message", "$.data.content", "$.items[0].text"
+      default: ""
+    redactPII:
+      type: boolean
+      description: |
+        If true, redacts PII by replacing with "*****" (permanent, cannot be restored).
+        If false (default), masks PII with placeholders that can be restored in responses.
+      default: false
+  required:
+  - piiEntities
+
+systemParameters:         
+  type: object
+  properties: {}

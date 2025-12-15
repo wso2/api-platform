@@ -48,14 +48,14 @@ Ensure `docker` and `docker compose` commands are available.
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway-v0.0.1/gateway-v0.0.1.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway-v0.1.0/gateway-v0.1.0.zip
 
 # Unzip the downloaded distribution.
-unzip gateway-v0.0.1.zip
+unzip gateway-v0.1.0.zip
 
 
 # Start the complete stack
-cd gateway/
+cd gateway-v0.1.0/
 docker compose up -d
 
 # Verify gateway controller is running
@@ -66,12 +66,12 @@ curl -X POST http://localhost:9090/apis \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
 version: api-platform.wso2.com/v1
-kind: http/rest
+kind: RestApi
 spec:
   name: Weather-API
   version: v1.0
   context: /weather/$version
-  upstreams:
+  upstream:
     - url: http://sample-backend:5000/api/v2
   operations:
     - method: GET
@@ -95,7 +95,7 @@ EOF
 
 # Test routing through the gateway
 curl http://localhost:8080/weather/v1.0/us/seattle
-curl https://localhost:5443/weather/v1.0/us/seattle -k
+curl https://localhost:8443/weather/v1.0/us/seattle -k
 ```
 
 ### Stopping the Gateway
@@ -113,7 +113,6 @@ This stops the containers but preserves the `controller-data` volume. When you r
 docker compose down -v
 ```
 This stops containers and removes the `controller-data` volume. Next startup will be a clean slate with no persisted APIs or configuration.
-
 ### Building from Source
 
 #### Gateway-Controller
@@ -144,7 +143,7 @@ User → Gateway-Controller (REST API)
 
 ```yaml
 version: api-platform.wso2.com/v1
-kind: http/rest
+kind: RestApi
 data:
   name: Weather API
   version: v1.0

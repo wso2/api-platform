@@ -11,9 +11,13 @@ import (
 // CountLettersPolicy counts occurrences of specified letters in the response body
 type CountLettersPolicy struct{}
 
-// NewPolicy creates a new CountLettersPolicy instance
-func NewPolicy() policy.Policy {
-	return &CountLettersPolicy{}
+var ins = &CountLettersPolicy{}
+
+func GetPolicy(
+	metadata policy.PolicyMetadata,
+	params map[string]interface{},
+) (policy.Policy, error) {
+	return ins, nil
 }
 
 // Mode returns the processing mode for this policy

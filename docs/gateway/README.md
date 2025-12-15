@@ -13,7 +13,7 @@ A complete API gateway system consisting of Gateway-Controller (xDS control plan
 ### Router
 - **Purpose**: Envoy Proxy-based data plane that routes HTTP traffic to backend services
 - **Technology**: Envoy Proxy 1.35.3
-- **Port**: 8080 (HTTP traffic)
+- **Ports**: 8080 (HTTP traffic), 8443 (HTTPS traffic)
 - **Admin Port**: 9901 (Envoy admin interface)
 
 ### Policy Engine
@@ -48,14 +48,14 @@ Ensure `docker` and `docker compose` commands are available.
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway-v0.0.1/gateway-v0.0.1.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway-v0.1.0/gateway-v0.1.0.zip
 
 # Unzip the downloaded distribution.
-unzip gateway-v0.0.1.zip
+unzip gateway-v0.1.0.zip
 
 
 # Start the complete stack
-cd gateway/
+cd gateway-v0.1.0/
 docker compose up -d
 
 # Verify gateway controller is running
@@ -71,8 +71,9 @@ spec:
   name: Weather-API
   version: v1.0
   context: /weather/$version
-  upstreams:
-    - url: http://sample-backend:5000/api/v2
+  upstream:
+    main:
+      url: http://sample-backend:5000/api/v2
   operations:
     - method: GET
       path: /{country_code}/{city}
@@ -95,7 +96,7 @@ EOF
 
 # Test routing through the gateway
 curl http://localhost:8080/weather/v1.0/us/seattle
-curl https://localhost:5443/weather/v1.0/us/seattle -k
+curl https://localhost:8443/weather/v1.0/us/seattle -k
 ```
 
 ### Stopping the Gateway
@@ -149,7 +150,7 @@ data:
   name: Weather API
   version: v1.0
   context: /weather
-  upstreams:
+  upstream:
     - url: https://api.weather.com/api/v2
   operations:
     - method: GET
@@ -203,13 +204,11 @@ For complete configuration options, see [Gateway-Controller Configuration](gatew
 
 ## Documentation
 
-- [Gateway-Controller README](gateway-controller/README.md) - Detailed controller documentation
-- [Router README](router/README.md) - Envoy configuration details
-- [API Specification](gateway-controller/api/openapi.yaml) - OpenAPI 3.0 spec
-- [Quickstart Guide](../specs/001-gateway-has-two/quickstart.md) - Step-by-step guide
-- [Data Model](../specs/001-gateway-has-two/data-model.md) - Configuration structure
-- [Implementation Plan](../specs/001-gateway-has-two/plan.md) - Architecture and design decisions
+- [Gateway Controller README](../../gateway/gateway-controller/README.md) - Detailed controller documentation
+- [Router README](../../gateway/router/README.md) - Envoy configuration details
+- [Gateway Controller API Specification](../../gateway/gateway-controller/api/openapi.yaml) - OpenAPI 3.0 spec
+- [Quickstart Guide](quick-start-guide.md) - Step-by-step guide
 
 ## Examples
 
-See [examples/](examples/) directory for sample API configurations.
+See [examples/](../../gateway/examples/) directory for sample API configurations.

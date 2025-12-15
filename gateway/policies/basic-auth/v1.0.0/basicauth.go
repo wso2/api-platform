@@ -18,9 +18,13 @@ const (
 // BasicAuthPolicy implements HTTP Basic Authentication
 type BasicAuthPolicy struct{}
 
-// NewPolicy creates a new BasicAuthPolicy instance
-func NewPolicy() policy.Policy {
-	return &BasicAuthPolicy{}
+var ins = &BasicAuthPolicy{}
+
+func GetPolicy(
+	metadata policy.PolicyMetadata,
+	params map[string]interface{},
+) (policy.Policy, error) {
+	return ins, nil
 }
 
 // Mode returns the processing mode for this policy

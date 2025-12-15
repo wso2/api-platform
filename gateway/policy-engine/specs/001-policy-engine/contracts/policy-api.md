@@ -654,21 +654,23 @@ Action: UpstreamResponseModifications{
 Every policy module MUST export a factory function for registration:
 
 ```go
-// NewPolicy creates a new instance of the policy
+// GetPolicy creates a new instance of the policy
 // Called by generated plugin_registry.go during initialization
 // MUST return a Policy interface implementation
-func NewPolicy() policies.Policy {
+func GetPolicy(metadata PolicyMetadata, params map[string]interface{}) (Policy, error) {
     return &JWTPolicy{
         jwksCache: NewJWKSCache(),
-    }
+    }, nil
 }
 ```
 
 **Contract Requirements**:
-- Function name MUST be `NewPolicy`
+- Function name MUST be `GetPolicy`
+- Signature MUST be `func(PolicyMetadata, map[string]interface{}) (Policy, error)`
+- `params` contains merged static config (from policy definition with resolved ${config} references) and runtime parameters (from API configuration)
 - MUST return `policies.Policy` interface
 - MUST return new instance (not singleton unless policy is stateless)
-- Called once at startup during policy registration
+- Called for each route-policy combination during policy chain building
 
 ---
 

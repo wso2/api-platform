@@ -43,27 +43,37 @@ type LLMDeploymentParams struct {
 
 // LLMDeploymentService encapsulates validate+transform+persist+deploy for LLM Providers
 type LLMDeploymentService struct {
-	store             *storage.ConfigStore
-	db                storage.Storage
-	snapshotManager   *xds.SnapshotManager
-	deploymentService *APIDeploymentService
-	parser            *config.Parser
-	validator         *config.LLMValidator
-	transformer       Transformer
+	store               *storage.ConfigStore
+	db                  storage.Storage
+	snapshotManager     *xds.SnapshotManager
+	templateDefinitions map[string]*api.LLMProviderTemplate
+	deploymentService   *APIDeploymentService
+	parser              *config.Parser
+	validator           *config.LLMValidator
+	transformer         Transformer
 }
 
 // NewLLMDeploymentService initializes the service
 func NewLLMDeploymentService(store *storage.ConfigStore, db storage.Storage,
-	snapshotManager *xds.SnapshotManager, deploymentService *APIDeploymentService) *LLMDeploymentService {
-	return &LLMDeploymentService{
-		store:             store,
-		db:                db,
-		snapshotManager:   snapshotManager,
-		deploymentService: deploymentService,
-		parser:            config.NewParser(),
-		validator:         config.NewLLMValidator(),
-		transformer:       NewLLMProviderTransformer(store),
+	snapshotManager *xds.SnapshotManager, templateDefinitions map[string]*api.LLMProviderTemplate,
+	deploymentService *APIDeploymentService) *LLMDeploymentService {
+	service := &LLMDeploymentService{
+		store:               store,
+		db:                  db,
+		snapshotManager:     snapshotManager,
+		templateDefinitions: templateDefinitions,
+		deploymentService:   deploymentService,
+		parser:              config.NewParser(),
+		validator:           config.NewLLMValidator(),
+		transformer:         NewLLMProviderTransformer(store),
 	}
+
+	// Initialize OOB templates
+	if err := service.InitializeOOBTemplates(templateDefinitions); err != nil {
+		zap.L().Error("Failed to initialize out-of-the-box LLM provider templates", zap.Error(err))
+	}
+
+	return service
 }
 
 // DeployLLMProviderConfiguration parses, validates, transforms and persists the provider, then triggers xDS
@@ -119,10 +129,6 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 
 	// Save or update
 	isUpdate, err := s.deploymentService.saveOrUpdateConfig(storedCfg, params.Logger)
-	if err != nil {
-		return nil, err
-	}
-
 	// Log success
 	if isUpdate {
 		params.Logger.Info("LLM provider configuration updated",
@@ -212,6 +218,107 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 		return nil, fmt.Errorf("failed to add template to memory store: %w", err)
 	}
 	return stored, nil
+}
+
+// InitializeOOBTemplates persists OOB templates to database and memory store
+func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[string]*api.LLMProviderTemplate) error {
+	if len(templateDefinitions) == 0 {
+		return nil
+	}
+
+	var allErrors []string
+
+	for name, tmpl := range templateDefinitions {
+		// Validate the template configuration
+		validationErrors := s.validator.Validate(tmpl)
+		if len(validationErrors) > 0 {
+			errs := make([]string, 0, len(validationErrors))
+			for _, ve := range validationErrors {
+				errs = append(errs, fmt.Sprintf("%s: %s", ve.Field, ve.Message))
+			}
+			allErrors = append(allErrors, fmt.Sprintf(
+				"template '%s' validation failed: %s",
+				name,
+				strings.Join(errs, "; "),
+			))
+			continue
+		}
+
+		// Check if template already exists
+		existing, err := s.store.GetTemplateByName(name)
+		if err == nil && existing != nil {
+			// ---------------------------
+			// UPDATE existing template
+			// ---------------------------
+
+			updated := &models.StoredLLMProviderTemplate{
+				ID:            existing.ID,
+				Configuration: *tmpl,
+				CreatedAt:     existing.CreatedAt,
+				UpdatedAt:     time.Now(),
+			}
+
+			// Update DB
+			if s.db != nil {
+				if err := s.db.UpdateLLMProviderTemplate(updated); err != nil {
+					allErrors = append(allErrors,
+						fmt.Sprintf("failed to update template '%s' in database: %v", name, err))
+					continue
+				}
+			}
+
+			// Update memory store
+			if err := s.store.UpdateTemplate(updated); err != nil {
+				allErrors = append(allErrors,
+					fmt.Sprintf("failed to update template '%s' in memory store: %v", name, err))
+				continue
+			}
+
+			continue
+		}
+
+		// ---------------------------
+		// CREATE new template
+		// ---------------------------
+
+		stored := &models.StoredLLMProviderTemplate{
+			ID:            generateUUID(),
+			Configuration: *tmpl,
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
+		}
+
+		// persist to DB if available
+		if s.db != nil {
+			if sqlite, ok := s.db.(*storage.SQLiteStorage); ok {
+				if err := sqlite.SaveLLMProviderTemplate(stored); err != nil {
+					if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
+						continue
+					}
+					allErrors = append(allErrors, fmt.Sprintf("failed to save template '%s' to database: %v",
+						name, err))
+					continue
+				}
+			}
+		}
+
+		// add to memory store
+		if err := s.store.AddTemplate(stored); err != nil {
+			if strings.Contains(err.Error(), "already exists") {
+				continue
+			}
+			allErrors = append(allErrors, fmt.Sprintf("failed to add template '%s' to memory store: %v",
+				name, err))
+			continue
+		}
+	}
+
+	if len(allErrors) > 0 {
+		return fmt.Errorf("failed to initialize %d template(s): %s", len(allErrors),
+			strings.Join(allErrors, "; "))
+	}
+
+	return nil
 }
 
 // UpdateLLMProviderTemplate validates and updates existing template by name

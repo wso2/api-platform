@@ -10,6 +10,15 @@ import (
 // HeaderAction represents the action to perform on a header
 type HeaderAction string
 
+var ins = &ModifyHeadersPolicy{}
+
+func GetPolicy(
+	metadata policy.PolicyMetadata,
+	params map[string]interface{},
+) (policy.Policy, error) {
+	return ins, nil
+}
+
 const (
 	ActionSet    HeaderAction = "SET"
 	ActionAppend HeaderAction = "APPEND"
@@ -25,11 +34,6 @@ type HeaderModification struct {
 
 // ModifyHeadersPolicy implements comprehensive header manipulation for both request and response
 type ModifyHeadersPolicy struct{}
-
-// NewPolicy creates a new ModifyHeadersPolicy instance
-func NewPolicy() policy.Policy {
-	return &ModifyHeadersPolicy{}
-}
 
 // Mode returns the processing mode for this policy
 func (p *ModifyHeadersPolicy) Mode() policy.ProcessingMode {

@@ -197,7 +197,7 @@ This project uses a multi-component structure:
 - [x] T085 [US1] Implement SetHeaderPolicy.ExecuteRequest(ctx, config) for DELETE action in policies/set-header/v1.0.0/setheader.go
 - [x] T086 [US1] Implement SetHeaderPolicy.ExecuteRequest(ctx, config) for APPEND action in policies/set-header/v1.0.0/setheader.go
 - [x] T087 [US1] Implement SetHeaderPolicy.ExecuteResponse(ctx, config) for response headers in policies/set-header/v1.0.0/setheader.go
-- [x] T088 [US1] Implement NewPolicy() factory function in policies/set-header/v1.0.0/setheader.go
+- [x] T088 [US1] Implement GetPolicy() factory function in policies/set-header/v1.0.0/setheader.go
 - [x] T089 [P] [US1] Create README.md for SetHeader policy in policies/set-header/v1.0.0/README.md
 
 ### US1: Main Entry Point
@@ -251,7 +251,7 @@ This project uses a multi-component structure:
 - [ ] T113 [US2] Implement JWTPolicy.ExecuteRequest(ctx, config) returning ImmediateResponse on failure in policies/jwt-validation/v1.0.0/jwt.go
 - [ ] T114 [US2] Implement JWTPolicy.ExecuteRequest(ctx, config) storing user info in metadata on success in policies/jwt-validation/v1.0.0/jwt.go
 - [ ] T115 [US2] Implement claim extraction and header injection in policies/jwt-validation/v1.0.0/jwt.go
-- [ ] T116 [US2] Implement NewPolicy() factory function in policies/jwt-validation/v1.0.0/jwt.go
+- [ ] T116 [US2] Implement GetPolicy() factory function in policies/jwt-validation/v1.0.0/jwt.go
 - [ ] T117 [P] [US2] Create README.md for JWT policy in policies/jwt-validation/v1.0.0/README.md
 
 ### US2: Short-Circuit Verification
@@ -423,7 +423,7 @@ This project uses a multi-component structure:
 - [x] T198 [US5] Implement APIKeyPolicy.ExecuteRequest(ctx, config) with key validation in policies/api-key-validation/v1.0.0/apikey.go
 - [x] T199 [US5] Implement ImmediateResponse on invalid key in policies/api-key-validation/v1.0.0/apikey.go
 - [x] T200 [US5] Implement metadata storage on valid key in policies/api-key-validation/v1.0.0/apikey.go
-- [x] T201 [US5] Implement NewPolicy() factory function in policies/api-key-validation/v1.0.0/apikey.go
+- [x] T201 [US5] Implement GetPolicy() factory function in policies/api-key-validation/v1.0.0/apikey.go
 - [x] T202 [P] [US5] Create README.md for API Key policy in policies/api-key-validation/v1.0.0/README.md
 
 **Checkpoint**: At this point, User Story 5 should be fully functional - developers can create custom policies and use the Builder to compile custom binaries
@@ -460,7 +460,7 @@ This project uses a multi-component structure:
 - [ ] T212 [P] [US6] Create go.mod for request transformation in policies/request-transformation/v1.0.0/go.mod
 - [ ] T213 [US6] Implement RequestTransformPolicy struct in policies/request-transformation/v1.0.0/transform.go
 - [ ] T214 [US6] Implement body transformation logic (e.g., JSON field manipulation) in policies/request-transformation/v1.0.0/transform.go
-- [ ] T215 [US6] Implement NewPolicy() factory function in policies/request-transformation/v1.0.0/transform.go
+- [ ] T215 [US6] Implement GetPolicy() factory function in policies/request-transformation/v1.0.0/transform.go
 
 ### US6: Configuration for Testing
 
@@ -501,7 +501,7 @@ This project uses a multi-component structure:
 - [ ] T230 [US7] Implement rate limit check with ImmediateResponse(429) in policies/rate-limiting/v1.0.0/ratelimit.go
 - [ ] T231 [US7] Implement Retry-After header in rate limit response in policies/rate-limiting/v1.0.0/ratelimit.go
 - [ ] T232 [US7] Implement thread-safe token bucket access in policies/rate-limiting/v1.0.0/ratelimit.go
-- [ ] T233 [US7] Implement NewPolicy() factory function in policies/rate-limiting/v1.0.0/ratelimit.go
+- [ ] T233 [US7] Implement GetPolicy() factory function in policies/rate-limiting/v1.0.0/ratelimit.go
 - [ ] T234 [P] [US7] Create README.md for rate limiting policy in policies/rate-limiting/v1.0.0/README.md
 
 ### US7: Response Phase Policy Using Request Metadata - Security Headers (OPTIONAL Reference Implementation)
@@ -515,7 +515,7 @@ This project uses a multi-component structure:
 - [ ] T239 [US7] Implement standard security headers (X-Content-Type-Options, X-Frame-Options, X-XSS-Protection) in policies/security-headers/v1.0.0/headers.go
 - [ ] T240 [US7] Implement authenticated user header from metadata in policies/security-headers/v1.0.0/headers.go
 - [ ] T241 [US7] Implement ExecuteResponse() reading metadata from request phase in policies/security-headers/v1.0.0/headers.go
-- [ ] T242 [US7] Implement NewPolicy() factory function in policies/security-headers/v1.0.0/headers.go
+- [ ] T242 [US7] Implement GetPolicy() factory function in policies/security-headers/v1.0.0/headers.go
 - [ ] T243 [P] [US7] Create README.md for security headers policy in policies/security-headers/v1.0.0/README.md
 
 ### US7: Configuration Demonstrating Metadata Flow

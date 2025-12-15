@@ -307,11 +307,15 @@ func (ec *PolicyExecutionContext) processResponseBody(
 }
 
 // buildRequestContext converts Envoy headers to RequestContext
-func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHeaders) {
+func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHeaders, routeMetadata RouteMetadata) {
 	// Create shared context that will persist across request/response phases
 	sharedCtx := &policy.SharedContext{
-		RequestID: ec.requestID,
-		Metadata:  make(map[string]interface{}),
+		RequestID:     ec.requestID,
+		APIName:       routeMetadata.APIName,
+		APIVersion:    routeMetadata.APIVersion,
+		APIContext:    routeMetadata.Context,
+		OperationPath: routeMetadata.OperationPath,
+		Metadata:      make(map[string]interface{}),
 	}
 
 	// Create headers map for internal manipulation

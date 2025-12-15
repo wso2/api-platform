@@ -1,0 +1,77 @@
+name: JSONSchemaGuardrail
+version: v0.1.0
+description: |
+  Validates request or response body content against a JSON Schema.
+  Supports JSONPath extraction to validate specific fields within JSON payloads.
+  Can be configured with inverted logic to pass when schema validation fails.
+  Supports separate configuration for request and response phases.
+
+parameters:
+  type: object
+  properties:
+    request:
+      type: object
+      description: Configuration for request phase validation
+      properties:
+        schema:
+          type: string
+          description: |
+            JSON Schema as a string (must be valid JSON).
+            Supports all JSON Schema draft 7 features including types, properties, required fields, constraints, etc.
+            Example: '{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer","minimum":18}},"required":["name","age"]}'
+        jsonPath:
+          type: string
+          description: |
+            JSONPath expression to extract a specific value from JSON payload for validation.
+            If empty, validates the entire payload against the schema.
+            Examples: "$.data", "$.userInfo", "$.items[0]"
+          default: ""
+        invert:
+          type: boolean
+          description: |
+            If true, validation passes when schema validation FAILS (inverted logic).
+            If false (default), validation passes when schema validation succeeds.
+          default: false
+        showAssessment:
+          type: boolean
+          description: |
+            If true, includes detailed validation error information in error responses.
+            If false, returns minimal error information.
+          default: false
+      required:
+      - schema
+    response:
+      type: object
+      description: Configuration for response phase validation
+      properties:
+        schema:
+          type: string
+          description: |
+            JSON Schema as a string (must be valid JSON).
+            Supports all JSON Schema draft 7 features including types, properties, required fields, constraints, etc.
+            Example: '{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer","minimum":18}},"required":["name","age"]}'
+        jsonPath:
+          type: string
+          description: |
+            JSONPath expression to extract a specific value from JSON payload for validation.
+            If empty, validates the entire payload against the schema.
+            Examples: "$.data", "$.userInfo", "$.items[0]"
+          default: ""
+        invert:
+          type: boolean
+          description: |
+            If true, validation passes when schema validation FAILS (inverted logic).
+            If false (default), validation passes when schema validation succeeds.
+          default: false
+        showAssessment:
+          type: boolean
+          description: |
+            If true, includes detailed validation error information in error responses.
+            If false, returns minimal error information.
+          default: false
+      required:
+      - schema
+
+systemParameters:         
+  type: object
+  properties: {}

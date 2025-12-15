@@ -25,14 +25,14 @@ services:
       - "18000:18000" # xDS gRPC
       - "18001:18001"
     environment:
-      - GATEWAY_STORAGE_TYPE=sqlite
-      - GATEWAY_STORAGE_SQLITE_PATH=./data/gateway.db
-      - GATEWAY_LOGGING_LEVEL=info
-      - GATEWAY_CONTROLPLANE_TOKEN=${GATEWAY_CONTROLPLANE_TOKEN:-}
-      - GATEWAY_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-host.docker.internal:8443}
+      - GATEWAY_GATEWAY__CONTROLLER_STORAGE_TYPE=sqlite
+      - GATEWAY_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
+      - GATEWAY_GATEWAY__CONTROLLER_LOGGING_LEVEL=info
+      - GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
+      - GATEWAY_GATEWAY__CONTROLLER_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-host.docker.internal:8443}
     volumes:
       - controller-data:/app/data
-      - ./gateway-controller/config/config.yaml:/app/config/config.yaml:ro
+      - ./configs/config.yaml:/app/config/config.yaml:ro
       - ./gateway-controller/certificates:/app/certificates  # Read-write for dynamic certificate management
       - ./gateway-controller/listener-certs:/app/listener-certs:ro  # Read-only for HTTPS listener certificates
     extra_hosts:
@@ -47,7 +47,7 @@ services:
     ports:
       - "9002:9002"   # Admin API
     volumes:
-      - ./policy-engine/configs/config.yaml:/app/configs/config.yaml:ro
+      - ./configs/config.yaml:/app/configs/config.yaml:ro
     networks:
       - gateway-network
 

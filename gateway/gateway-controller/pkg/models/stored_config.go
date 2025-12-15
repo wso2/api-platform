@@ -49,7 +49,7 @@ type StoredConfig struct {
 
 // GetCompositeKey returns the composite key "name:version" for indexing
 func (c *StoredConfig) GetCompositeKey() string {
-	if c.Configuration.Kind == "async/websub" {
+	if c.Configuration.Kind == api.Asyncwebsub {
 		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
 		if err != nil {
 			return ""
@@ -60,12 +60,12 @@ func (c *StoredConfig) GetCompositeKey() string {
 	if err != nil {
 		return ""
 	}
-	return fmt.Sprintf("%s:%s", configData.Name, configData.Version)
+	return fmt.Sprintf("%s:%s", configData.DisplayName, configData.Version)
 }
 
 // GetName returns the API name
 func (c *StoredConfig) GetName() string {
-	if c.Configuration.Kind == "async/websub" {
+	if c.Configuration.Kind == api.Asyncwebsub {
 		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
 		if err != nil {
 			return ""
@@ -76,12 +76,17 @@ func (c *StoredConfig) GetName() string {
 	if err != nil {
 		return ""
 	}
-	return configData.Name
+	return configData.DisplayName
+}
+
+// GetHandle returns the API handle from metadata.name
+func (c *StoredConfig) GetHandle() string {
+	return c.Configuration.Metadata.Name
 }
 
 // GetVersion returns the API version
 func (c *StoredConfig) GetVersion() string {
-	if c.Configuration.Kind == "async/websub" {
+	if c.Configuration.Kind == api.Asyncwebsub {
 		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
 		if err != nil {
 			return ""
@@ -97,7 +102,7 @@ func (c *StoredConfig) GetVersion() string {
 
 // GetContext returns the API context path
 func (c *StoredConfig) GetContext() string {
-	if c.Configuration.Kind == "async/websub" {
+	if c.Configuration.Kind == api.Asyncwebsub {
 		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
 		if err != nil {
 			return ""
@@ -112,7 +117,7 @@ func (c *StoredConfig) GetContext() string {
 }
 
 func (c *StoredConfig) GetPolicies() *[]api.Policy {
-	if c.Configuration.Kind == api.APIConfigurationKindHttprest {
+	if c.Configuration.Kind == api.RestApi {
 		httpData, err := c.Configuration.Spec.AsAPIConfigData()
 		if err != nil {
 			return nil

@@ -1,6 +1,8 @@
 package kernel
 
 import (
+	"fmt"
+
 	"github.com/policy-engine/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
@@ -27,11 +29,21 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 
 	// Build policy list and compute body requirements
 	for _, spec := range policySpecs {
-		// Get policy implementation
-		impl, err := reg.GetImplementation(spec.Name, spec.Version)
-		if err != nil {
-			return nil, err
+		// Create metadata with route information
+		metadata := policy.PolicyMetadata{
+			RouteName: routeKey,
 		}
+
+		// Create instance using factory with metadata and params
+		// CreateInstance returns the policy and merged params (initParams + runtime params)
+		impl, mergedParams, err := reg.CreateInstance(spec.Name, spec.Version, metadata, spec.Parameters.Raw)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create policy instance %s:%s for route %s: %w",
+				spec.Name, spec.Version, routeKey, err)
+		}
+
+		// Update spec with merged params so OnRequest/OnResponse receive merged values
+		spec.Parameters.Raw = mergedParams
 
 		// Add to policy list
 		chain.Policies = append(chain.Policies, impl)

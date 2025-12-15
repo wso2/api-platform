@@ -15,26 +15,24 @@
 # specific language governing permissions and limitations
 # under the License.
 # --------------------------------------------------------------------
-version: api-platform.wso2.com/v1
-kind: http/rest
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: self-signed-secure-api-v1.0
 spec:
-  name: self-signed-api
+  displayName: self-signed-api
   version: v1.0
   context: /ssa
-  upstreams:
-    - url: https://secure-backend:5443/api/v2
-    # - url: http://httpbin.org/anything
+  upstream:
+    main:
+      url: https://secure-backend:5443/api/v2
+      # url: http://httpbin.org/anything
   policies:
     - name: JwtAuthentication
-      version: v1.0.0
+      version: v0.1.0
       params:
-        keyManagers:
-          - name: WSO2KeyManager
-            issuer: https://localhost:9443/oauth2/token
-            jwks:
-              remote:
-                uri: https://api.asgardeo.io/t/testorgforsecurity/oauth2/jwks
-                skipTlsVerify: false
+        issuers:
+          - WSO2KeyManager1
   operations:
     - method: GET
       path: /info

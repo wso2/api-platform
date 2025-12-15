@@ -49,11 +49,16 @@ func TestPolicyValidator_ValidatePolicies_Success(t *testing.T) {
 
 	specUnion := api.APIConfiguration_Spec{}
 	if err := specUnion.FromAPIConfigData(api.APIConfigData{
-		Name:    "Test API",
+		DisplayName:    "Test API",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Policies: &[]api.Policy{
 			{
@@ -76,8 +81,8 @@ func TestPolicyValidator_ValidatePolicies_Success(t *testing.T) {
 	}
 	// Create API config with valid policy
 	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
+		ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+		Kind:    api.RestApi,
 		Spec:    specUnion,
 	}
 
@@ -94,11 +99,16 @@ func TestPolicyValidator_PolicyNotFound(t *testing.T) {
 
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		Name:    "Test API",
+		DisplayName:    "Test API",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Policies: &[]api.Policy{
 			{
@@ -116,8 +126,8 @@ func TestPolicyValidator_PolicyNotFound(t *testing.T) {
 
 	// Create API config with non-existent policy
 	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
+		ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+		Kind:    api.RestApi,
 		Spec:    specUnion,
 	}
 
@@ -156,11 +166,16 @@ func TestPolicyValidator_InvalidParameters(t *testing.T) {
 	// Create API config with invalid params (missing required field)
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		Name:    "Test API",
+		DisplayName:    "Test API",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Policies: &[]api.Policy{
 			{
@@ -180,8 +195,8 @@ func TestPolicyValidator_InvalidParameters(t *testing.T) {
 		},
 	})
 	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
+		ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+		Kind:    api.RestApi,
 		Spec:    specUnion,
 	}
 
@@ -214,11 +229,16 @@ func TestPolicyValidator_OperationLevelPolicies(t *testing.T) {
 	// Create API config with operation-level policy
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		Name:    "Test API",
+		DisplayName:    "Test API",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Operations: []api.Operation{
 			{
@@ -237,8 +257,8 @@ func TestPolicyValidator_OperationLevelPolicies(t *testing.T) {
 		},
 	})
 	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
+		ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+		Kind:    api.RestApi,
 		Spec:    specUnion,
 	}
 
@@ -262,11 +282,16 @@ func TestPolicyValidator_MultipleErrors(t *testing.T) {
 	// Create API config with multiple invalid policies
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		Name:    "Test API",
+		DisplayName:    "Test API",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Policies: &[]api.Policy{
 			{
@@ -292,8 +317,8 @@ func TestPolicyValidator_MultipleErrors(t *testing.T) {
 		},
 	})
 	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
+		ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+		Kind:    api.RestApi,
 		Spec:    specUnion,
 	}
 
@@ -325,11 +350,16 @@ func TestPolicyValidator_TypeMismatch(t *testing.T) {
 	// Create API config with wrong type (string instead of integer)
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		Name:    "Test API",
+		DisplayName:    "Test API",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Policies: &[]api.Policy{
 			{
@@ -348,8 +378,8 @@ func TestPolicyValidator_TypeMismatch(t *testing.T) {
 		},
 	})
 	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
+		ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+		Kind:    api.RestApi,
 		Spec:    specUnion,
 	}
 
@@ -385,11 +415,16 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 	// Test case 1: Policy with nil params (should fail validation for required field)
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		Name:    "Test API",
+		DisplayName:    "Test API",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Policies: &[]api.Policy{
 			{
@@ -406,8 +441,8 @@ func TestPolicyValidator_MissingRequiredParams(t *testing.T) {
 		},
 	})
 	apiConfig := &api.APIConfiguration{
-		Version: "api-platform.wso2.com/v1",
-		Kind:    "http/rest",
+		ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+		Kind:    api.RestApi,
 		Spec:    specUnion,
 	}
 

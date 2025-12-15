@@ -231,8 +231,8 @@ import (
 
 type CustomAuthPolicy struct{}
 
-func NewPolicy() policies.Policy {
-    return &CustomAuthPolicy{}
+func GetPolicy(metadata policy.PolicyMetadata, params map[string]interface{}) (policy.Policy, error) {
+    return &CustomAuthPolicy{}, nil
 }
 
 func (p *CustomAuthPolicy) Name() string {

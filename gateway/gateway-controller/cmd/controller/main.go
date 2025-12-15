@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -47,8 +48,8 @@ func main() {
 
 	// Initialize logger with config
 	log, err := logger.NewLogger(logger.Config{
-		Level:  cfg.Logging.Level,
-		Format: cfg.Logging.Format,
+		Level:  cfg.GatewayController.Logging.Level,
+		Format: cfg.GatewayController.Logging.Format,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
@@ -61,24 +62,24 @@ func main() {
 		zap.String("git_commit", GitCommit),
 		zap.String("build_date", BuildDate),
 		zap.String("config_file", *configPath),
-		zap.String("storage_type", cfg.Storage.Type),
-		zap.Bool("access_logs_enabled", cfg.Router.AccessLogs.Enabled),
-		zap.String("control_plane_host", cfg.ControlPlane.Host),
-		zap.Bool("control_plane_token_configured", cfg.ControlPlane.Token != ""),
+		zap.String("storage_type", cfg.GatewayController.Storage.Type),
+		zap.Bool("access_logs_enabled", cfg.GatewayController.Router.AccessLogs.Enabled),
+		zap.String("control_plane_host", cfg.GatewayController.ControlPlane.Host),
+		zap.Bool("control_plane_token_configured", cfg.GatewayController.ControlPlane.Token != ""),
 	)
 
 	// Initialize storage based on type
 	var db storage.Storage
 	if cfg.IsPersistentMode() {
-		switch cfg.Storage.Type {
+		switch cfg.GatewayController.Storage.Type {
 		case "sqlite":
-			log.Info("Initializing SQLite storage", zap.String("path", cfg.Storage.SQLite.Path))
-			db, err = storage.NewSQLiteStorage(cfg.Storage.SQLite.Path, log)
+			log.Info("Initializing SQLite storage", zap.String("path", cfg.GatewayController.Storage.SQLite.Path))
+			db, err = storage.NewSQLiteStorage(cfg.GatewayController.Storage.SQLite.Path, log)
 			if err != nil {
 				// Check for database locked error and provide clear guidance
 				if err.Error() == "database is locked" || err.Error() == "failed to open database: database is locked" {
 					log.Fatal("Database is locked by another process",
-						zap.String("database_path", cfg.Storage.SQLite.Path),
+						zap.String("database_path", cfg.GatewayController.Storage.SQLite.Path),
 						zap.String("troubleshooting", "Check if another gateway-controller instance is running or remove stale WAL files"))
 				}
 				log.Fatal("Failed to initialize SQLite database", zap.Error(err))
@@ -87,7 +88,7 @@ func main() {
 		case "postgres":
 			log.Fatal("PostgreSQL storage not yet implemented")
 		default:
-			log.Fatal("Unknown storage type", zap.String("type", cfg.Storage.Type))
+			log.Fatal("Unknown storage type", zap.String("type", cfg.GatewayController.Storage.Type))
 		}
 	} else {
 		log.Info("Running in memory-only mode (no persistent storage)")
@@ -109,7 +110,7 @@ func main() {
 	}
 
 	// Initialize xDS snapshot manager with router config
-	snapshotManager := xds.NewSnapshotManager(configStore, log, &cfg.Router, db, cfg)
+	snapshotManager := xds.NewSnapshotManager(configStore, log, &cfg.GatewayController.Router, db, cfg)
 
 	// Initialize SDS secret manager if custom certificates are configured
 	var sdsSecretManager *xds.SDSSecretManager
@@ -141,7 +142,7 @@ func main() {
 	cancel()
 
 	// Start xDS gRPC server with SDS support
-	xdsServer := xds.NewServer(snapshotManager, sdsSecretManager, cfg.Server.XDSPort, log)
+	xdsServer := xds.NewServer(snapshotManager, sdsSecretManager, cfg.GatewayController.Server.XDSPort, log)
 	go func() {
 		if err := xdsServer.Start(); err != nil {
 			log.Fatal("xDS server failed", zap.Error(err))
@@ -151,8 +152,8 @@ func main() {
 	// Initialize policy store and start policy xDS server if enabled
 	var policyXDSServer *policyxds.Server
 	var policyManager *policyxds.PolicyManager
-	if cfg.PolicyServer.Enabled {
-		log.Info("Initializing Policy xDS server", zap.Int("port", cfg.PolicyServer.Port))
+	if cfg.GatewayController.PolicyServer.Enabled {
+		log.Info("Initializing Policy xDS server", zap.Int("port", cfg.GatewayController.PolicyServer.Port))
 
 		// Initialize policy store
 		policyStore := storage.NewPolicyStore()
@@ -169,8 +170,8 @@ func main() {
 			derivedCount := 0
 			for _, apiConfig := range loadedAPIs {
 				// Derive policy configuration from API
-				if apiConfig.Configuration.Kind == "http/rest" {
-					storedPolicy := derivePolicyFromAPIConfig(apiConfig, &cfg.Router)
+				if apiConfig.Configuration.Kind == api.RestApi {
+					storedPolicy := derivePolicyFromAPIConfig(apiConfig, &cfg.GatewayController.Router)
 					if storedPolicy != nil {
 						if err := policyStore.Set(storedPolicy); err != nil {
 							log.Warn("Failed to load policy from API",
@@ -197,13 +198,13 @@ func main() {
 
 		// Start policy xDS server in a separate goroutine
 		var serverOpts []policyxds.ServerOption
-		if cfg.PolicyServer.TLS.Enabled {
+		if cfg.GatewayController.PolicyServer.TLS.Enabled {
 			serverOpts = append(serverOpts, policyxds.WithTLS(
-				cfg.PolicyServer.TLS.CertFile,
-				cfg.PolicyServer.TLS.KeyFile,
+				cfg.GatewayController.PolicyServer.TLS.CertFile,
+				cfg.GatewayController.PolicyServer.TLS.KeyFile,
 			))
 		}
-		policyXDSServer = policyxds.NewServer(policySnapshotManager, cfg.PolicyServer.Port, log, serverOpts...)
+		policyXDSServer = policyxds.NewServer(policySnapshotManager, cfg.GatewayController.PolicyServer.Port, log, serverOpts...)
 		go func() {
 			if err := policyXDSServer.Start(); err != nil {
 				log.Fatal("Policy xDS server failed", zap.Error(err))
@@ -215,7 +216,7 @@ func main() {
 
 	// Load policy definitions from files (must be done before creating validator)
 	policyLoader := utils.NewPolicyLoader(log)
-	policyDir := cfg.Policies.DefinitionsPath
+	policyDir := cfg.GatewayController.Policies.DefinitionsPath
 	log.Info("Loading policy definitions from directory", zap.String("directory", policyDir))
 	policyDefinitions, err := policyLoader.LoadPoliciesFromDirectory(policyDir)
 	if err != nil {
@@ -223,13 +224,23 @@ func main() {
 	}
 	log.Info("Policy definitions loaded", zap.Int("count", len(policyDefinitions)))
 
+	// Load llm provider templates from files
+	templateLoader := utils.NewLLMTemplateLoader(log)
+	templateDir := cfg.GatewayController.LLM.TemplateDefinitionsPath
+	log.Info("Loading llm provider templates from directory", zap.String("directory", templateDir))
+	templateDefinitions, err := templateLoader.LoadTemplatesFromDirectory(templateDir)
+	if err != nil {
+		log.Fatal("Failed to load llm provider templates", zap.Error(err))
+	}
+	log.Info("Default llm provider templates loaded", zap.Int("count", len(templateDefinitions)))
+
 	// Create validator with policy validation support
 	validator := config.NewAPIValidator()
 	policyValidator := config.NewPolicyValidator(policyDefinitions)
 	validator.SetPolicyValidator(policyValidator)
 
 	// Initialize and start control plane client with dependencies for API creation
-	cpClient := controlplane.NewClient(cfg.ControlPlane, log, configStore, db, snapshotManager, validator, &cfg.Router)
+	cpClient := controlplane.NewClient(cfg.GatewayController.ControlPlane, log, configStore, db, snapshotManager, validator, &cfg.GatewayController.Router)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", zap.Error(err))
 		// Don't fail startup - gateway can run in degraded mode without control plane
@@ -250,17 +261,18 @@ func main() {
 	router.Use(gin.Recovery())
 
 	// Initialize API server with the configured validator
-	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient, policyDefinitions, validator, &cfg.Router)
+	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient,
+		policyDefinitions, templateDefinitions, validator, &cfg.GatewayController.Router)
 
 	// Register API routes (includes certificate management endpoints from OpenAPI spec)
 	api.RegisterHandlers(router, apiServer)
 
 	// Start REST API server
-	log.Info("Starting REST API server", zap.Int("port", cfg.Server.APIPort))
+	log.Info("Starting REST API server", zap.Int("port", cfg.GatewayController.Server.APIPort))
 
 	// Setup graceful shutdown
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Server.APIPort),
+		Addr:    fmt.Sprintf(":%d", cfg.GatewayController.Server.APIPort),
 		Handler: router,
 	}
 
@@ -279,7 +291,7 @@ func main() {
 	log.Info("Shutting down Gateway-Controller")
 
 	// Graceful shutdown with timeout
-	ctx, cancel = context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
+	ctx, cancel = context.WithTimeout(context.Background(), cfg.GatewayController.Server.ShutdownTimeout)
 	defer cancel()
 
 	// Stop control plane client first
@@ -349,11 +361,30 @@ func derivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 			}
 		}
 
-		routeKey := xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, routerConfig.GatewayHost)
-		routes = append(routes, policyenginev1.PolicyChain{
-			RouteKey: routeKey,
-			Policies: finalPolicies,
-		})
+		// Determine effective vhosts (fallback to global router defaults when not provided)
+		effectiveMainVHost := routerConfig.VHosts.Main.Default
+		effectiveSandboxVHost := routerConfig.VHosts.Sandbox.Default
+		if apiData.Vhosts != nil {
+			if strings.TrimSpace(apiData.Vhosts.Main) != "" {
+				effectiveMainVHost = apiData.Vhosts.Main
+			}
+			if apiData.Vhosts.Sandbox != nil && strings.TrimSpace(*apiData.Vhosts.Sandbox) != "" {
+				effectiveSandboxVHost = *apiData.Vhosts.Sandbox
+			}
+		}
+
+		vhosts := []string{effectiveMainVHost}
+		if apiData.Upstream.Sandbox != nil && apiData.Upstream.Sandbox.Url != nil &&
+			strings.TrimSpace(*apiData.Upstream.Sandbox.Url) != "" {
+			vhosts = append(vhosts, effectiveSandboxVHost)
+		}
+
+		for _, vhost := range vhosts {
+			routes = append(routes, policyenginev1.PolicyChain{
+				RouteKey: xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, vhost),
+				Policies: finalPolicies,
+			})
+		}
 	}
 
 	// If there are no policies at all, return nil
@@ -374,7 +405,7 @@ func derivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 				CreatedAt:       now,
 				UpdatedAt:       now,
 				ResourceVersion: 0,
-				APIName:         apiData.Name,
+				APIName:         apiData.DisplayName,
 				Version:         apiData.Version,
 				Context:         apiData.Context,
 			},

@@ -1,187 +1,311 @@
-Introduce **JwtAuthentication Policy (v1.0.0)** featuring:
-- JWKS signature verification (RSA algorithms)
-- Token validation (expiration, audience, scopes, custom claims)
-- JWKS caching with TTL and retry logic
-- Claim-to-header mapping for downstream services
-- Configurable error responses (401/403)
+# JWT Authentication
 
-## Configuration Schema
+## Overview
 
-```yaml
-name: JwtAuthentication
-version: v1.0.0
-description: |
-  Validates JWT access tokens using one or more JWKS providers (key managers).
-  System-level configuration holds key manager endpoints and fetch behavior.
-  User-level configuration holds per-route assertions (selected issuers, audiences, scopes, claims and mappings).
+The JWT Authentication policy validates JWT (JSON Web Token) access tokens using one or more JWKS (JSON Web Key Set) providers. This policy is essential for securing APIs by verifying the authenticity and validity of bearer tokens before allowing access to protected resources.
 
-parameters:
-  user:
-    type: object
-    additionalProperties: false
-    properties:
-      issuers:
-        type: array
-        description: >-
-          List of issuer names (referencing entries in `system.keyManagers`) to use
-          for validating tokens for this route. If omitted, runtime will try to
-          match token `iss` claim to available key managers or try all providers.
-        items:
-          type: string
+## Features
 
-      audiences:
-        type: array
-        description: List of acceptable audience values; token must contain at least one.
-        items:
-          type: string
+- Validates JWT tokens using multiple key managers (JWKS providers)
+- Supports both remote JWKS endpoints and local certificates
+- Configurable issuer, audience, and scope validation
+- Supports custom claim validation and claim-to-header mappings
+- Configurable cache TTL for JWKS responses
+- Multiple allowed signing algorithms (RS256, ES256, etc.)
+- Clock skew tolerance (leeway) for exp/nbf claims
+- Customizable error responses
 
-      requiredScopes:
-        type: array
-        description: List of scopes that must be present in the token (space-delimited 'scope' claim or array 'scp').
-        items:
-          type: string
+## Configuration
 
-      requiredClaims:
-        type: object
-        description: Map of claimName -> expectedValue. Runtime may support equality or regex-based matching.
-        additionalProperties:
-          type: string
+The JWT Authentication policy uses a two-level configuration model:
 
-      claimMappings:
-        type: object
-        description: Map claimName -> downstream header or context key to expose for downstream services.
-        additionalProperties:
-          type: string
+- **System Parameters**: Configured by the administrator in `config.yaml` under `policy_configurations.JWTAuth_v010`
+- **User Parameters**: Configured per-API/route in the API definition YAML
 
-      authHeaderPrefix:
-        type: string
-        description: Override for the authorization header scheme prefix (e.g., "Bearer", "JWT"). If specified at user-level, takes precedence over system configuration for this route.
-          
-  system:
-    type: object
-    additionalProperties: false
-    properties:
-      keyManagers:
-        type: array
-        description: >-
-          List of key manager (JWKS provider) definitions. Each entry must include
-          a unique `name` used to reference this provider from `user.issuers`, and
-          a `uri` pointing to the JWKS endpoint. Optionally include an `issuer`
-          value to associate tokens from that issuer with this provider.
-        items:
-          type: object
-          additionalProperties: false
-          required: ["name", "uri"]
-          properties:
-            name:
-              type: string
-              description: Unique name for this key manager/provider (used in `user.issuers`).
-            uri:
-              type: string
-              format: uri
-              description: JWKS endpoint URL (e.g., https://idp.example/.well-known/jwks.json).
-            issuer:
-              type: string
-              description: Optional issuer (iss) value associated with keys from this provider.
-        "wso2/defaultValue": "$config(JWTAuth.KeyManagers)"
+### System Parameters (config.yaml)
 
-      jwksCacheTtl:
-        type: string
-        description: Duration string for JWKS caching (e.g., "5m"). If omitted a default is used.
-        "wso2/defaultValue": "$config(JWTAuth.JwksCacheTtl)"
+These parameters are set by the administrator and apply globally to all JWT authentication policies:
 
-      jwksFetchTimeout:
-        type: string
-        description: Timeout for HTTP fetch of JWKS, e.g., "5s".
-        "wso2/defaultValue": "$config(JWTAuth.JwksFetchTimeout)"
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `KeyManagers` | array | Yes | - | List of key manager definitions with JWKS endpoints or local certificates. |
+| `JwksCacheTtl` | string | No | `"5m"` | Duration for caching JWKS responses (e.g., "5m", "1h"). |
+| `JwksFetchTimeout` | string | No | `"5s"` | Timeout for HTTP fetch of JWKS. |
+| `JwksFetchRetryCount` | integer | No | `3` | Number of retries for JWKS fetch on transient failures. |
+| `JwksFetchRetryInterval` | string | No | `"2s"` | Interval between JWKS fetch retries. |
+| `AllowedAlgorithms` | array | No | `["RS256", "ES256"]` | Allowed JWT signing algorithms. |
+| `Leeway` | string | No | `"30s"` | Clock skew allowance for exp/nbf checks. |
+| `AuthHeaderScheme` | string | No | `"Bearer"` | Expected scheme prefix in the authorization header. |
+| `HeaderName` | string | No | `"Authorization"` | Header name to extract token from. |
+| `OnFailureStatusCode` | integer | No | `401` | HTTP status code to return on authentication failure. |
+| `ErrorMessageFormat` | string | No | `"json"` | Format of error response: "json", "plain", or "minimal". |
+| `ErrorMessage` | string | No | `"Authentication failed."` | Custom error message for authentication failures. |
+| `ValidateIssuer` | boolean | No | `true` | Whether to validate the token's issuer claim against configured key managers. |
 
-      jwksFetchRetryCount:
-        type: integer
-        description: Number of retries for JWKS fetch on transient failures.
-        "wso2/defaultValue": "$config(JWTAuth.JwksFetchRetryCount)"
+#### Key Manager Configuration
 
-      jwksFetchRetryInterval:
-        type: string
-        description: Interval between JWKS fetch retries, e.g., "2s".
-        "wso2/defaultValue": "$config(JWTAuth.JwksFetchRetryInterval)"
+Each key manager in the `KeyManagers` array supports the following structure:
 
-      allowedAlgorithms:
-        type: array
-        description: Allowed JWT signing algorithms (e.g., ["RS256","ES256"]).
-        items:
-          type: string
-        "wso2/defaultValue": "$config(JWTAuth.AllowedAlgorithms)"
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | Unique name for this key manager (used in user-level `issuers` configuration). |
+| `issuer` | string | No | Issuer (iss) value associated with keys from this provider. |
+| `jwks.remote.uri` | string | Conditional | JWKS endpoint URL. Required if using remote JWKS. |
+| `jwks.remote.certificatePath` | string | No | Path to CA certificate file for validating self-signed JWKS endpoints. |
+| `jwks.remote.skipTlsVerify` | boolean | No | If true, skip TLS certificate verification. Use with caution. |
+| `jwks.local.inline` | string | Conditional | Inline PEM-encoded certificate or public key. |
+| `jwks.local.certificatePath` | string | Conditional | Path to certificate or public key file. |
 
-      leeway:
-        type: string
-        description: Clock skew allowance for exp/nbf checks, e.g., "30s".
-        "wso2/defaultValue": "$config(JWTAuth.Leeway)"
+> **Note**: Either `jwks.remote` or `jwks.local` must be specified, but not both.
 
-      authHeaderScheme:
-        type: string
-        description: Expected scheme prefix in the authorization header (e.g., "Bearer"). If set, runtime enforces the scheme; if omitted, runtime may accept raw header values or strip known schemes.
-        default: Bearer
-        "wso2/defaultValue": "$config(JWTAuth.AuthHeaderScheme)"
+### User Parameters (API Definition)
 
-      headerName:
-        type: string
-        description: Header name to extract token from (default "Authorization").
-        default: Authorization
-        "wso2/defaultValue": "$config(JWTAuth.HeaderName)"
+These parameters are configured per-API/route by the API developer:
 
-      onFailureStatusCode:
-        type: integer
-        description: HTTP status code to return on authentication failure (401 for Unauthorized, 403 for Forbidden).
-        default: 401
-        "wso2/defaultValue": "$config(JWTAuth.OnFailureStatusCode)"
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `issuers` | array | No | - | List of issuer names (referencing entries in system `KeyManagers`) to use for validating tokens. If omitted, runtime tries to match token `iss` claim to available key managers. |
+| `audiences` | array | No | - | List of acceptable audience values; token must contain at least one. |
+| `requiredScopes` | array | No | - | List of scopes that must be present in the token. |
+| `requiredClaims` | object | No | - | Map of claimName → expectedValue for custom claim validation. |
+| `claimMappings` | object | No | - | Map of claimName → downstream header name to expose claims for downstream services. |
+| `authHeaderPrefix` | string | No | - | Override for the authorization header scheme prefix. Takes precedence over system configuration. |
 
-      errorMessageFormat:
-        type: string
-        description: Format of error response on JWT validation failure. Supported values are "json" (structured error), "plain" (plain text), or "minimal" (minimal response).
-        default: json
-        "wso2/defaultValue": "$config(JWTAuth.ErrorMessageFormat)"
+## System Configuration Example
 
-    required: ["keyManagers"]
-
-
-```
-
-## Example System Configuration
+Add the following to your `gateway/configs/config.yaml` file under `policy_configurations`:
 
 ```yaml
-JWTAuth:
-    keyManagers:
-    - uri: https://auth0.example.com/.well-known/jwks.json
-      issuer: https://auth0.example.com/
-    - uri: https://okta.example.com/oauth2/default/.well-known/jwks.json
-      issuer: https://okta.example.com/
-
-    jwksCacheTtl: 5m
-    jwksFetchTimeout: 5s
-    jwksFetchRetryCount: 3
-    jwksFetchRetryInterval: 2s
-    allowedAlgorithms: [RS256, ES256]
-    leeway: 30s
-    onFailureStatusCode: 401
-    errorMessageFormat: json
+policy_configurations: 
+  JWTAuth_v010:
+    KeyManagers:
+    - name: PrimaryIDP
+      issuer: https://idp.example.com/oauth2/token
+      jwks:
+        remote:
+          uri: https://idp.example.com/oauth2/jwks
+          skipTlsVerify: false
+    - name: SecondaryIDP
+      issuer: https://auth.example.org/oauth2/token
+      jwks:
+        remote:
+          uri: https://auth.example.org/oauth2/jwks
+          skipTlsVerify: false
+    JwksCacheTtl: "5m"
+    JwksFetchTimeout: "5s"
+    JwksFetchRetryCount: 3
+    JwksFetchRetryInterval: "2s"
+    AllowedAlgorithms:
+      - RS256
+      - ES256
+    Leeway: "30s"
+    AuthHeaderScheme: Bearer
+    HeaderName: Authorization
+    OnFailureStatusCode: 401
+    ErrorMessageFormat: json
+    ErrorMessage: "Authentication failed."
+    ValidateIssuer: true
 ```
 
-## Example API/Per-Route Configuration
+
+## API Definition Examples
+
+### Example 1: Basic JWT Authentication
+
+Apply JWT authentication to an API using a specific key manager:
 
 ```yaml
-# Route-specific JWT validation
-name: JwtAuthentication
-version: v1.0.0
-params:
-    issuers: ["https://auth0.example.com/"]
-    audiences: [api-service]
-    requiredScopes: [read:users, write:posts]
-    requiredClaims:
-        org_id: "acme-corp"
-        environment: "production"
-    claimMappings:
-        sub: x-user-id
-        org_id: x-org-id
-        aud: x-audience
-    authHeaderPrefix: Bearer
+version: api-platform.wso2.com/v1
+kind: http/rest
+spec:
+  name: my-secure-api
+  version: v1.0
+  context: /api
+  upstream:
+    main:
+      url: https://backend-service:8080/api
+  policies:
+    - name: JwtAuthentication
+      version: v0.1.0
+      params:
+        issuers:
+          - PrimaryIDP
+  operations:
+    - method: GET
+      path: /info
+    - method: POST
+      path: /data
 ```
+
+### Example 2: Specific Issuer and Audience Validation
+
+Validate tokens from a specific issuer with audience requirements:
+
+```yaml
+version: api-platform.wso2.com/v1
+kind: http/rest
+spec:
+  name: customer-api
+  version: v1.0
+  context: /customers
+  upstream:
+    main:
+      url: https://customer-service:8080
+  policies:
+    - name: JwtAuthentication
+      version: v0.1.0
+      params:
+        issuers:
+          - PrimaryIDP
+        audiences:
+          - https://api.example.com
+          - my-api-client
+  operations:
+    - method: GET
+      path: /list
+    - method: GET
+      path: /{id}
+    - method: POST
+      path: /create
+```
+
+### Example 3: Scope-Based Access Control
+
+Require specific scopes for API access:
+
+```yaml
+version: api-platform.wso2.com/v1
+kind: http/rest
+spec:
+  name: data-api
+  version: v1.0
+  context: /data
+  upstream:
+    main:
+      url: https://data-service:8080
+  policies:
+    - name: JwtAuthentication
+      version: v0.1.0
+      params:
+        issuers:
+          - PrimaryIDP
+        requiredScopes:
+          - read:data
+          - write:data
+  operations:
+    - method: GET
+      path: /records
+    - method: POST
+      path: /records
+    - method: DELETE
+      path: /records/{id}
+```
+
+### Example 4: Custom Claim Validation
+
+Validate custom claims in the token for admin-only APIs:
+
+```yaml
+version: api-platform.wso2.com/v1
+kind: http/rest
+spec:
+  name: admin-api
+  version: v1.0
+  context: /admin
+  upstream:
+    main:
+      url: https://admin-service:8080
+  policies:
+    - name: JwtAuthentication
+      version: v0.1.0
+      params:
+        issuers:
+          - PrimaryIDP
+        requiredClaims:
+          role: admin
+          department: engineering
+  operations:
+    - method: GET
+      path: /users
+    - method: POST
+      path: /users
+    - method: DELETE
+      path: /users/{id}
+```
+
+### Example 5: Claim Mappings to Headers
+
+Forward claims to downstream services as headers:
+
+```yaml
+version: api-platform.wso2.com/v1
+kind: http/rest
+spec:
+  name: user-api
+  version: v1.0
+  context: /users
+  upstream:
+    main:
+      url: https://user-service:8080
+  policies:
+    - name: JwtAuthentication
+      version: v0.1.0
+      params:
+        issuers:
+          - PrimaryIDP
+        claimMappings:
+          sub: X-User-ID
+          email: X-User-Email
+          role: X-User-Role
+  operations:
+    - method: GET
+      path: /profile
+    - method: PUT
+      path: /profile
+```
+
+### Example 6: Multiple Issuers
+
+Support tokens from multiple identity providers:
+
+```yaml
+version: api-platform.wso2.com/v1
+kind: http/rest
+spec:
+  name: federated-api
+  version: v1.0
+  context: /federated
+  upstream:
+    main:
+      url: https://backend-service:8080
+  policies:
+    - name: JwtAuthentication
+      version: v0.1.0
+      params:
+        issuers:
+          - PrimaryIDP
+          - SecondaryIDP
+        audiences:
+          - https://api.example.com
+  operations:
+    - method: GET
+      path: /resources
+    - method: POST
+      path: /resources
+```
+
+
+## Use Cases
+
+1. **API Security**: Protect APIs by requiring valid JWT tokens from trusted identity providers.
+
+2. **Multi-Tenant Authentication**: Support multiple identity providers (key managers) for different tenants or partners.
+
+3. **Fine-Grained Access Control**: Use scopes and custom claims to implement role-based or attribute-based access control.
+
+4. **Service-to-Service Authentication**: Validate machine-to-machine tokens with specific audience and issuer requirements.
+
+5. **Claim Propagation**: Forward user identity information to backend services via headers for further authorization decisions.
+
+6. **Federation**: Accept tokens from multiple federated identity providers while maintaining consistent security policies.
+

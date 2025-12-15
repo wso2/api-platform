@@ -1,5 +1,5 @@
 # Gateway Builder Image
-FROM --platform=$BUILDPLATFORM golang:1.25.5-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25.5-alpine3.23 AS builder
 ARG TARGETARCH
 
 # Build arguments for version information
@@ -43,7 +43,7 @@ RUN CGO_ENABLED=0 \
     -o /usr/local/bin/gateway-builder \
     ./cmd/builder
 
-FROM golang:1.24-alpine
+FROM golang:1.25.5-alpine3.23
 
 # Install runtime dependencies
 RUN apk add --no-cache \

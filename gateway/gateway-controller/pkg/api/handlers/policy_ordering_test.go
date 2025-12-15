@@ -30,9 +30,14 @@ import (
 
 // newTestAPIServer creates a minimal APIServer instance for testing
 func newTestAPIServer() *APIServer {
+	vhosts := &config.VHostsConfig{
+		Main:    config.VHostEntry{Default: "localhost"},
+		Sandbox: config.VHostEntry{Default: "sandbox-*"},
+	}
 	return &APIServer{
 		routerConfig: &config.RouterConfig{
 			GatewayHost: "localhost",
+			VHosts:      *vhosts,
 		},
 	}
 }
@@ -144,11 +149,16 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 	}
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		Name:    "test-api",
+		DisplayName:    "test-api",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Operations: []api.Operation{
 			{
@@ -163,9 +173,9 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 			// Build a minimal StoredAPIConfig
 			cfg := &models.StoredConfig{
 				Configuration: api.APIConfiguration{
-					Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
-					Kind:    api.APIConfigurationKind("http/rest"),
-					Spec:    specUnion,
+					ApiVersion: api.APIConfigurationApiVersion(api.GatewayApiPlatformWso2Comv1alpha1),
+					Kind:       api.APIConfigurationKind(api.RestApi),
+					Spec:       specUnion,
 				},
 			}
 
@@ -248,11 +258,16 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		Name:    "test-api",
+		DisplayName:    "test-api",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Operations: []api.Operation{
 			{
@@ -286,8 +301,8 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 
 	cfg := &models.StoredConfig{
 		Configuration: api.APIConfiguration{
-			Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
-			Kind:    api.APIConfigurationKind("http/rest"),
+			ApiVersion: api.APIConfigurationApiVersion(api.GatewayApiPlatformWso2Comv1alpha1),
+			Kind:    api.APIConfigurationKind(api.RestApi),
 			Spec:    specUnion,
 		},
 	}
@@ -387,11 +402,16 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		Name:    "test-api",
+		DisplayName:    "test-api",
 		Version: "v1.0",
 		Context: "/test",
-		Upstreams: []api.Upstream{
-			{Url: "http://backend.example.com"},
+		Upstream: struct {
+			Main    api.Upstream  `json:"main" yaml:"main"`
+			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: api.Upstream{
+				Url: func() *string { s := "http://backend.example.com"; return &s }(),
+			},
 		},
 		Operations: []api.Operation{
 			{
@@ -405,9 +425,9 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 
 	cfg := &models.StoredConfig{
 		Configuration: api.APIConfiguration{
-			Version: api.APIConfigurationVersion("api-platform.wso2.com/v1"),
-			Kind:    api.APIConfigurationKind("http/rest"),
-			Spec:    specUnion,
+			ApiVersion: api.APIConfigurationApiVersion(api.GatewayApiPlatformWso2Comv1alpha1),
+			Kind:       api.APIConfigurationKind(api.RestApi),
+			Spec:       specUnion,
 		},
 	}
 

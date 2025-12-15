@@ -32,6 +32,13 @@ import (
 
 // Config holds all configuration for the gateway-controller
 type Config struct {
+	GatewayController GatewayController `koanf:"gateway_controller"`
+	PolicyEngine map[string]interface{}    `koanf:"policy_engine"`
+	PolicyConfigurations map[string]interface{} `koanf:"policy_configurations"`
+}
+
+// GatewayController holds the main configuration sections for the gateway-controller
+type GatewayController struct {
 	Server       ServerConfig       `koanf:"server"`
 	Storage      StorageConfig      `koanf:"storage"`
 	Router       RouterConfig       `koanf:"router"`
@@ -39,6 +46,7 @@ type Config struct {
 	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
 	PolicyServer PolicyServerConfig `koanf:"policyserver"`
 	Policies     PoliciesConfig     `koanf:"policies"`
+	LLM          LLMConfig          `koanf:"llm"`
 }
 
 // ServerConfig holds server-related configuration
@@ -65,6 +73,10 @@ type PolicyServerTLS struct {
 // PoliciesConfig holds policy-related configuration
 type PoliciesConfig struct {
 	DefinitionsPath string `koanf:"definitions_path"` // Directory containing policy definitions
+}
+
+type LLMConfig struct {
+	TemplateDefinitionsPath string `koanf:"template_definitions_path"`
 }
 
 // StorageConfig holds storage-related configuration
@@ -100,6 +112,7 @@ type RouterConfig struct {
 	PolicyEngine  PolicyEngineConfig `koanf:"policy_engine"`
 	DownstreamTLS DownstreamTLS      `koanf:"downstream_tls"`
 	EventGateway  EventGatewayConfig `koanf:"event_gateway"`
+	VHosts        VHostsConfig       `koanf:"vhosts"`
 }
 
 // EventGatewayConfig holds event gateway specific configurations
@@ -141,6 +154,19 @@ type upstreamTimeout struct {
 	RouteTimeoutInSeconds     uint32 `koanf:"route_timeout_in_seconds"`
 	MaxRouteTimeoutInSeconds  uint32 `koanf:"max_route_timeout_in_seconds"`
 	RouteIdleTimeoutInSeconds uint32 `koanf:"route_idle_timeout_in_seconds"`
+}
+
+// VHostsConfig for vhosts configuration
+type VHostsConfig struct {
+	Main    VHostEntry `koanf:"main"`
+	Sandbox VHostEntry `koanf:"sandbox"`
+}
+
+type VHostEntry struct {
+	// Optional explicit domain list for the vhost (examples: "*.wso2.com", "api.example.com").
+	// If empty, the router will rely on the default pattern.
+	Domains []string `koanf:"domains"`
+	Default string   `koanf:"default"`
 }
 
 // PolicyEngineConfig holds policy engine ext_proc filter configuration
@@ -213,17 +239,17 @@ func LoadConfig(configPath string) (*Config, error) {
 		// Custom mappings for control plane variables
 		switch s {
 		case "control_plane_url":
-			return "controlplane.url"
+			return "gateway_controller.controlplane.url"
 		case "registration_token":
-			return "controlplane.token"
+			return "gateway_controller.controlplane.token"
 		case "reconnect_initial":
-			return "controlplane.reconnect_initial"
+			return "gateway_controller.controlplane.reconnect_initial"
 		case "reconnect_max":
-			return "controlplane.reconnect_max"
+			return "gateway_controller.controlplane.reconnect_max"
 		case "polling_interval":
-			return "controlplane.polling_interval"
+			return "gateway_controller.controlplane.polling_interval"
 		case "insecure_skip_verify":
-			return "controlplane.insecure_skip_verify"
+			return "gateway_controller.controlplane.insecure_skip_verify"
 		default:
 			// For other GATEWAY_ prefixed vars, use standard mapping (underscore to dot)
 			// Step 1: Convert double underscore "__" into a temporary placeholder
@@ -254,112 +280,121 @@ func LoadConfig(configPath string) (*Config, error) {
 // defaultConfig returns a Config struct with default configuration values
 func defaultConfig() *Config {
 	return &Config{
-		Server: ServerConfig{
-			APIPort:         9090,
-			XDSPort:         18000,
-			ShutdownTimeout: 15 * time.Second,
-		},
-		PolicyServer: PolicyServerConfig{
-			Enabled: true,
-			Port:    18001,
-		},
-		Policies: PoliciesConfig{
-			DefinitionsPath: "./default-policies",
-		},
-		Storage: StorageConfig{
-			Type: "memory",
-			SQLite: SQLiteConfig{
-				Path: "./data/gateway.db",
+		GatewayController: GatewayController {
+			Server: ServerConfig{
+				APIPort:         9090,
+				XDSPort:         18000,
+				ShutdownTimeout: 15 * time.Second,
 			},
-		},
-		Router: RouterConfig{
-			EventGateway: EventGatewayConfig{
-				Enabled:       true,
-				WebSubHubURL:  "http://host.docker.internal",
-				WebSubHubPort: 9098,
-			},
-			AccessLogs: AccessLogsConfig{
+			PolicyServer: PolicyServerConfig{
 				Enabled: true,
-				Format:  "json",
-				JSONFields: map[string]string{
-					"start_time":            "%START_TIME%",
-					"method":                "%REQ(:METHOD)%",
-					"path":                  "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
-					"protocol":              "%PROTOCOL%",
-					"response_code":         "%RESPONSE_CODE%",
-					"response_flags":        "%RESPONSE_FLAGS%",
-					"response_flags_long":   "%RESPONSE_FLAGS_LONG%",
-					"bytes_received":        "%BYTES_RECEIVED%",
-					"bytes_sent":            "%BYTES_SENT%",
-					"duration":              "%DURATION%",
-					"upstream_service_time": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
-					"x_forwarded_for":       "%REQ(X-FORWARDED-FOR)%",
-					"user_agent":            "%REQ(USER-AGENT)%",
-					"request_id":            "%REQ(X-REQUEST-ID)%",
-					"authority":             "%REQ(:AUTHORITY)%",
-					"upstream_host":         "%UPSTREAM_HOST%",
-					"upstream_cluster":      "%UPSTREAM_CLUSTER%",
+				Port:    18001,
+			},
+			Policies: PoliciesConfig{
+				DefinitionsPath: "./default-policies",
+			},
+			LLM: LLMConfig{
+				TemplateDefinitionsPath: "./default-llm-provider-templates",
+			},
+			Storage: StorageConfig{
+				Type: "memory",
+				SQLite: SQLiteConfig{
+					Path: "./data/gateway.db",
 				},
-				TextFormat: "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" " +
-					"%RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
-					"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
-					"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
 			},
-			ListenerPort: 8080,
-			HTTPSEnabled: false,
-			HTTPSPort:    8443,
-			DownstreamTLS: DownstreamTLS{
-				CertPath:               "./listener-certs/server.crt",
-				KeyPath:                "./listener-certs/server.key",
-				MinimumProtocolVersion: "TLS1_2",
-				MaximumProtocolVersion: "TLS1_3",
-				Ciphers:                "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
-			},
-			GatewayHost: "localhost",
-			Upstream: envoyUpstream{
-				TLS: upstreamTLS{
+			Router: RouterConfig{
+				EventGateway: EventGatewayConfig{
+					Enabled:       true,
+					WebSubHubURL:  "http://host.docker.internal",
+					WebSubHubPort: 9098,
+				},
+				AccessLogs: AccessLogsConfig{
+					Enabled: true,
+					Format:  "json",
+					JSONFields: map[string]string{
+						"start_time":            "%START_TIME%",
+						"method":                "%REQ(:METHOD)%",
+						"path":                  "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
+						"protocol":              "%PROTOCOL%",
+						"response_code":         "%RESPONSE_CODE%",
+						"response_flags":        "%RESPONSE_FLAGS%",
+						"response_flags_long":   "%RESPONSE_FLAGS_LONG%",
+						"bytes_received":        "%BYTES_RECEIVED%",
+						"bytes_sent":            "%BYTES_SENT%",
+						"duration":              "%DURATION%",
+						"upstream_service_time": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
+						"x_forwarded_for":       "%REQ(X-FORWARDED-FOR)%",
+						"user_agent":            "%REQ(USER-AGENT)%",
+						"request_id":            "%REQ(X-REQUEST-ID)%",
+						"authority":             "%REQ(:AUTHORITY)%",
+						"upstream_host":         "%UPSTREAM_HOST%",
+						"upstream_cluster":      "%UPSTREAM_CLUSTER%",
+					},
+					TextFormat: "[%START_TIME%] \"%REQ(:METHOD)% %REQ(X-ENVOY-ORIGINAL-PATH?:PATH)% %PROTOCOL%\" " +
+						"%RESPONSE_CODE% %RESPONSE_FLAGS% %BYTES_RECEIVED% %BYTES_SENT% %DURATION% " +
+						"\"%REQ(X-FORWARDED-FOR)%\" \"%REQ(USER-AGENT)%\" \"%REQ(X-REQUEST-ID)%\" " +
+						"\"%REQ(:AUTHORITY)%\" \"%UPSTREAM_HOST%\"\n",
+				},
+				ListenerPort: 8080,
+				HTTPSEnabled: false,
+				HTTPSPort:    8443,
+				DownstreamTLS: DownstreamTLS{
+					CertPath:               "./listener-certs/server.crt",
+					KeyPath:                "./listener-certs/server.key",
 					MinimumProtocolVersion: "TLS1_2",
 					MaximumProtocolVersion: "TLS1_3",
-					VerifyHostName:         true,
-					DisableSslVerification: false,
+					Ciphers:                "ECDHE-ECDSA-AES128-GCM-SHA256,ECDHE-RSA-AES128-GCM-SHA256,ECDHE-ECDSA-AES128-SHA,ECDHE-RSA-AES128-SHA,AES128-GCM-SHA256,AES128-SHA,ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384,ECDHE-ECDSA-AES256-SHA,ECDHE-RSA-AES256-SHA,AES256-GCM-SHA384,AES256-SHA",
 				},
-				Timeouts: upstreamTimeout{
-					RouteTimeoutInSeconds:     60,
-					MaxRouteTimeoutInSeconds:  60,
-					RouteIdleTimeoutInSeconds: 300,
+				GatewayHost: "localhost",
+				Upstream: envoyUpstream{
+					TLS: upstreamTLS{
+						MinimumProtocolVersion: "TLS1_2",
+						MaximumProtocolVersion: "TLS1_3",
+						VerifyHostName:         true,
+						DisableSslVerification: false,
+					},
+					Timeouts: upstreamTimeout{
+						RouteTimeoutInSeconds:     60,
+						MaxRouteTimeoutInSeconds:  60,
+						RouteIdleTimeoutInSeconds: 300,
+					},
+				},
+				PolicyEngine: PolicyEngineConfig{
+					Enabled:           false,
+					Host:              "localhost",
+					Port:              9001,
+					TimeoutMs:         250,
+					FailureModeAllow:  false,
+					RouteCacheAction:  "RETAIN",
+					AllowModeOverride: true,
+					RequestHeaderMode: "SEND",
+					MessageTimeoutMs:  250,
+					TLS: PolicyEngineTLS{
+						Enabled:    false,
+						CertPath:   "",
+						KeyPath:    "",
+						CAPath:     "",
+						ServerName: "",
+						SkipVerify: false,
+					},
+				},
+				VHosts: VHostsConfig{
+					Main:    VHostEntry{Default: "*"},
+					Sandbox: VHostEntry{Default: "sandbox-*"},
 				},
 			},
-			PolicyEngine: PolicyEngineConfig{
-				Enabled:           false,
-				Host:              "localhost",
-				Port:              9001,
-				TimeoutMs:         250,
-				FailureModeAllow:  false,
-				RouteCacheAction:  "RETAIN",
-				AllowModeOverride: true,
-				RequestHeaderMode: "SEND",
-				MessageTimeoutMs:  250,
-				TLS: PolicyEngineTLS{
-					Enabled:    false,
-					CertPath:   "",
-					KeyPath:    "",
-					CAPath:     "",
-					ServerName: "",
-					SkipVerify: false,
-				},
+			Logging: LoggingConfig{
+				Level:  "info",
+				Format: "json",
 			},
-		},
-		Logging: LoggingConfig{
-			Level:  "info",
-			Format: "json",
-		},
-		ControlPlane: ControlPlaneConfig{
-			Host:               "localhost:8443",
-			Token:              "",
-			ReconnectInitial:   1 * time.Second,
-			ReconnectMax:       5 * time.Minute,
-			PollingInterval:    15 * time.Minute,
-			InsecureSkipVerify: true,
+			ControlPlane: ControlPlaneConfig{
+				Host:               "localhost:8443",
+				Token:              "",
+				ReconnectInitial:   1 * time.Second,
+				ReconnectMax:       5 * time.Minute,
+				PollingInterval:    15 * time.Minute,
+				InsecureSkipVerify: true,
+			},
 		},
 	}
 }
@@ -370,43 +405,43 @@ func (c *Config) Validate() error {
 	validStorageTypes := []string{"sqlite", "postgres", "memory"}
 	isValidType := false
 	for _, t := range validStorageTypes {
-		if c.Storage.Type == t {
+		if c.GatewayController.Storage.Type == t {
 			isValidType = true
 			break
 		}
 	}
 	if !isValidType {
-		return fmt.Errorf("storage.type must be one of: sqlite, postgres, memory, got: %s", c.Storage.Type)
+		return fmt.Errorf("storage.type must be one of: sqlite, postgres, memory, got: %s", c.GatewayController.Storage.Type)
 	}
 
 	// Validate SQLite configuration
-	if c.Storage.Type == "sqlite" && c.Storage.SQLite.Path == "" {
+	if c.GatewayController.Storage.Type == "sqlite" && c.GatewayController.Storage.SQLite.Path == "" {
 		return fmt.Errorf("storage.sqlite.path is required when storage.type is 'sqlite'")
 	}
 
 	// Validate PostgreSQL configuration (future)
-	if c.Storage.Type == "postgres" {
-		if c.Storage.Postgres.Host == "" {
+	if c.GatewayController.Storage.Type == "postgres" {
+		if c.GatewayController.Storage.Postgres.Host == "" {
 			return fmt.Errorf("storage.postgres.host is required when storage.type is 'postgres'")
 		}
-		if c.Storage.Postgres.Database == "" {
+		if c.GatewayController.Storage.Postgres.Database == "" {
 			return fmt.Errorf("storage.postgres.database is required when storage.type is 'postgres'")
 		}
 	}
 
 	// Validate access log format
-	if c.Router.AccessLogs.Format != "json" && c.Router.AccessLogs.Format != "text" {
-		return fmt.Errorf("router.access_logs.format must be either 'json' or 'text', got: %s", c.Router.AccessLogs.Format)
+	if c.GatewayController.Router.AccessLogs.Format != "json" && c.GatewayController.Router.AccessLogs.Format != "text" {
+		return fmt.Errorf("router.access_logs.format must be either 'json' or 'text', got: %s", c.GatewayController.Router.AccessLogs.Format)
 	}
 
 	// Validate access log fields if access logs are enabled
-	if c.Router.AccessLogs.Enabled {
-		if c.Router.AccessLogs.Format == "json" {
-			if len(c.Router.AccessLogs.JSONFields) == 0 {
+	if c.GatewayController.Router.AccessLogs.Enabled {
+		if c.GatewayController.Router.AccessLogs.Format == "json" {
+			if len(c.GatewayController.Router.AccessLogs.JSONFields) == 0 {
 				return fmt.Errorf("router.access_logs.json_fields must be configured when format is 'json'")
 			}
-		} else if c.Router.AccessLogs.Format == "text" {
-			if c.Router.AccessLogs.TextFormat == "" {
+		} else if c.GatewayController.Router.AccessLogs.Format == "text" {
+			if c.GatewayController.Router.AccessLogs.TextFormat == "" {
 				return fmt.Errorf("router.access_logs.text_format must be configured when format is 'text'")
 			}
 		}
@@ -416,37 +451,37 @@ func (c *Config) Validate() error {
 	validLevels := []string{"debug", "info", "warn", "warning", "error"}
 	isValidLevel := false
 	for _, level := range validLevels {
-		if strings.ToLower(c.Logging.Level) == level {
+		if strings.ToLower(c.GatewayController.Logging.Level) == level {
 			isValidLevel = true
 			break
 		}
 	}
 	if !isValidLevel {
-		return fmt.Errorf("logging.level must be one of: debug, info, warn, error, got: %s", c.Logging.Level)
+		return fmt.Errorf("logging.level must be one of: debug, info, warn, error, got: %s", c.GatewayController.Logging.Level)
 	}
 
 	// Validate log format
-	if c.Logging.Format != "json" && c.Logging.Format != "console" {
-		return fmt.Errorf("logging.format must be either 'json' or 'console', got: %s", c.Logging.Format)
+	if c.GatewayController.Logging.Format != "json" && c.GatewayController.Logging.Format != "console" {
+		return fmt.Errorf("logging.format must be either 'json' or 'console', got: %s", c.GatewayController.Logging.Format)
 	}
 
 	// Validate ports
-	if c.Server.APIPort < 1 || c.Server.APIPort > 65535 {
-		return fmt.Errorf("server.api_port must be between 1 and 65535, got: %d", c.Server.APIPort)
+	if c.GatewayController.Server.APIPort < 1 || c.GatewayController.Server.APIPort > 65535 {
+		return fmt.Errorf("server.api_port must be between 1 and 65535, got: %d", c.GatewayController.Server.APIPort)
 	}
 
-	if c.Server.XDSPort < 1 || c.Server.XDSPort > 65535 {
-		return fmt.Errorf("server.xds_port must be between 1 and 65535, got: %d", c.Server.XDSPort)
+	if c.GatewayController.Server.XDSPort < 1 || c.GatewayController.Server.XDSPort > 65535 {
+		return fmt.Errorf("server.xds_port must be between 1 and 65535, got: %d", c.GatewayController.Server.XDSPort)
 	}
 
-	if c.Router.ListenerPort < 1 || c.Router.ListenerPort > 65535 {
-		return fmt.Errorf("router.listener_port must be between 1 and 65535, got: %d", c.Router.ListenerPort)
+	if c.GatewayController.Router.ListenerPort < 1 || c.GatewayController.Router.ListenerPort > 65535 {
+		return fmt.Errorf("router.listener_port must be between 1 and 65535, got: %d", c.GatewayController.Router.ListenerPort)
 	}
 
 	// Validate HTTPS port if HTTPS is enabled
-	if c.Router.HTTPSEnabled {
-		if c.Router.HTTPSPort < 1 || c.Router.HTTPSPort > 65535 {
-			return fmt.Errorf("router.https_port must be between 1 and 65535, got: %d", c.Router.HTTPSPort)
+	if c.GatewayController.Router.HTTPSEnabled {
+		if c.GatewayController.Router.HTTPSPort < 1 || c.GatewayController.Router.HTTPSPort > 65535 {
+			return fmt.Errorf("router.https_port must be between 1 and 65535, got: %d", c.GatewayController.Router.HTTPSPort)
 		}
 	}
 
@@ -470,13 +505,18 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Validate vhost configuration
+	if err := c.validateVHostsConfig(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 // validateControlPlaneConfig validates the control plane configuration
 func (c *Config) validateControlPlaneConfig() error {
 	// Host validation - required if control plane is configured
-	if c.ControlPlane.Host == "" {
+	if c.GatewayController.ControlPlane.Host == "" {
 		return fmt.Errorf("controlplane.host is required")
 	}
 
@@ -484,22 +524,22 @@ func (c *Config) validateControlPlaneConfig() error {
 	// If token is empty, connection will not be established
 
 	// Validate reconnection intervals
-	if c.ControlPlane.ReconnectInitial <= 0 {
-		return fmt.Errorf("controlplane.reconnect_initial must be positive, got: %s", c.ControlPlane.ReconnectInitial)
+	if c.GatewayController.ControlPlane.ReconnectInitial <= 0 {
+		return fmt.Errorf("controlplane.reconnect_initial must be positive, got: %s", c.GatewayController.ControlPlane.ReconnectInitial)
 	}
 
-	if c.ControlPlane.ReconnectMax <= 0 {
-		return fmt.Errorf("controlplane.reconnect_max must be positive, got: %s", c.ControlPlane.ReconnectMax)
+	if c.GatewayController.ControlPlane.ReconnectMax <= 0 {
+		return fmt.Errorf("controlplane.reconnect_max must be positive, got: %s", c.GatewayController.ControlPlane.ReconnectMax)
 	}
 
-	if c.ControlPlane.ReconnectInitial > c.ControlPlane.ReconnectMax {
+	if c.GatewayController.ControlPlane.ReconnectInitial > c.GatewayController.ControlPlane.ReconnectMax {
 		return fmt.Errorf("controlplane.reconnect_initial (%s) must be <= controlplane.reconnect_max (%s)",
-			c.ControlPlane.ReconnectInitial, c.ControlPlane.ReconnectMax)
+			c.GatewayController.ControlPlane.ReconnectInitial, c.GatewayController.ControlPlane.ReconnectMax)
 	}
 
 	// Validate polling interval
-	if c.ControlPlane.PollingInterval <= 0 {
-		return fmt.Errorf("controlplane.polling_interval must be positive, got: %s", c.ControlPlane.PollingInterval)
+	if c.GatewayController.ControlPlane.PollingInterval <= 0 {
+		return fmt.Errorf("controlplane.polling_interval must be positive, got: %s", c.GatewayController.ControlPlane.PollingInterval)
 	}
 
 	return nil
@@ -516,7 +556,7 @@ func (c *Config) validateTLSConfig() error {
 	}
 
 	// Validate minimum TLS version
-	minVersion := c.Router.Upstream.TLS.MinimumProtocolVersion
+	minVersion := c.GatewayController.Router.Upstream.TLS.MinimumProtocolVersion
 	if minVersion == "" {
 		return fmt.Errorf("router.envoy_upstream.tls.minimum_protocol_version is required")
 	}
@@ -534,7 +574,7 @@ func (c *Config) validateTLSConfig() error {
 	}
 
 	// Validate maximum TLS version
-	maxVersion := c.Router.Upstream.TLS.MaximumProtocolVersion
+	maxVersion := c.GatewayController.Router.Upstream.TLS.MaximumProtocolVersion
 	if maxVersion == "" {
 		return fmt.Errorf("router.envoy_upstream.tls.maximum_protocol_version is required")
 	}
@@ -565,7 +605,7 @@ func (c *Config) validateTLSConfig() error {
 	}
 
 	// Validate cipher suites format (basic validation - ensure it's not empty if provided)
-	ciphers := c.Router.Upstream.TLS.Ciphers
+	ciphers := c.GatewayController.Router.Upstream.TLS.Ciphers
 	if ciphers != "" {
 		// Basic validation: ensure ciphers don't contain invalid characters
 		if strings.Contains(ciphers, constants.CipherInvalidChars1) || strings.Contains(ciphers, constants.CipherInvalidChars2) {
@@ -579,12 +619,12 @@ func (c *Config) validateTLSConfig() error {
 	}
 
 	// Validate trusted cert path if SSL verification is enabled
-	if !c.Router.Upstream.TLS.DisableSslVerification && c.Router.Upstream.TLS.TrustedCertPath == "" {
+	if !c.GatewayController.Router.Upstream.TLS.DisableSslVerification && c.GatewayController.Router.Upstream.TLS.TrustedCertPath == "" {
 		return fmt.Errorf("router.envoy_upstream.tls.trusted_cert_path is required when SSL verification is enabled")
 	}
 
 	// Validate downstream TLS configuration if HTTPS is enabled
-	if c.Router.HTTPSEnabled {
+	if c.GatewayController.Router.HTTPSEnabled {
 		if err := c.validateDownstreamTLSConfig(); err != nil {
 			return err
 		}
@@ -604,16 +644,16 @@ func (c *Config) validateDownstreamTLSConfig() error {
 	}
 
 	// Validate certificate and key paths
-	if c.Router.DownstreamTLS.CertPath == "" {
+	if c.GatewayController.Router.DownstreamTLS.CertPath == "" {
 		return fmt.Errorf("router.downstream_tls.cert_path is required when HTTPS is enabled")
 	}
 
-	if c.Router.DownstreamTLS.KeyPath == "" {
+	if c.GatewayController.Router.DownstreamTLS.KeyPath == "" {
 		return fmt.Errorf("router.downstream_tls.key_path is required when HTTPS is enabled")
 	}
 
 	// Validate minimum TLS version
-	minVersion := c.Router.DownstreamTLS.MinimumProtocolVersion
+	minVersion := c.GatewayController.Router.DownstreamTLS.MinimumProtocolVersion
 	if minVersion == "" {
 		return fmt.Errorf("router.downstream_tls.minimum_protocol_version is required")
 	}
@@ -631,7 +671,7 @@ func (c *Config) validateDownstreamTLSConfig() error {
 	}
 
 	// Validate maximum TLS version
-	maxVersion := c.Router.DownstreamTLS.MaximumProtocolVersion
+	maxVersion := c.GatewayController.Router.DownstreamTLS.MaximumProtocolVersion
 	if maxVersion == "" {
 		return fmt.Errorf("router.downstream_tls.maximum_protocol_version is required")
 	}
@@ -662,7 +702,7 @@ func (c *Config) validateDownstreamTLSConfig() error {
 	}
 
 	// Validate cipher suites format
-	ciphers := c.Router.DownstreamTLS.Ciphers
+	ciphers := c.GatewayController.Router.DownstreamTLS.Ciphers
 	if ciphers != "" {
 		// Basic validation: ensure ciphers don't contain invalid characters
 		if strings.Contains(ciphers, constants.CipherInvalidChars1) || strings.Contains(ciphers, constants.CipherInvalidChars2) {
@@ -680,7 +720,7 @@ func (c *Config) validateDownstreamTLSConfig() error {
 
 // validateTimeoutConfig validates the timeout configuration
 func (c *Config) validateTimeoutConfig() error {
-	timeouts := c.Router.Upstream.Timeouts
+	timeouts := c.GatewayController.Router.Upstream.Timeouts
 
 	// Validate route timeout
 	if timeouts.RouteTimeoutInSeconds <= 0 {
@@ -727,7 +767,7 @@ func (c *Config) validateTimeoutConfig() error {
 
 // validatePolicyEngineConfig validates the policy engine configuration
 func (c *Config) validatePolicyEngineConfig() error {
-	policyEngine := c.Router.PolicyEngine
+	policyEngine := c.GatewayController.Router.PolicyEngine
 
 	// If policy engine is disabled, skip validation
 	if !policyEngine.Enabled {
@@ -816,22 +856,58 @@ func (c *Config) validatePolicyEngineConfig() error {
 	return nil
 }
 
+// validateVHostsConfig validates the vhosts configuration
+func (c *Config) validateVHostsConfig() error {
+	if strings.TrimSpace(c.GatewayController.Router.VHosts.Main.Default) == "" {
+		return fmt.Errorf("router.vhosts.main.default must be a non-empty string")
+	}
+	if strings.TrimSpace(c.GatewayController.Router.VHosts.Sandbox.Default) == "" {
+		return fmt.Errorf("router.vhosts.sandbox.default must be a non-empty string")
+	}
+
+	// Validate main.domains (only if not nil)
+	if err := validateDomains("router.vhosts.main.domains", c.GatewayController.Router.VHosts.Main.Domains); err != nil {
+		return err
+	}
+
+	// Validate sandbox.domains (only if not nil)
+	if err := validateDomains("router.vhosts.sandbox.domains", c.GatewayController.Router.VHosts.Sandbox.Domains); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateDomains(field string, domains []string) error {
+	if domains == nil {
+		// nil means "not configured" → valid
+		return nil
+	}
+
+	for i, d := range domains {
+		if strings.TrimSpace(d) == "" {
+			return fmt.Errorf("%s[%d] must be a non-empty string", field, i)
+		}
+	}
+	return nil
+}
+
 // IsPersistentMode returns true if storage type is not memory
 func (c *Config) IsPersistentMode() bool {
-	return c.Storage.Type != "memory"
+	return c.GatewayController.Storage.Type != "memory"
 }
 
 // IsMemoryOnlyMode returns true if storage type is memory
 func (c *Config) IsMemoryOnlyMode() bool {
-	return c.Storage.Type == "memory"
+	return c.GatewayController.Storage.Type == "memory"
 }
 
 // IsAccessLogsEnabled returns true if access logs are enabled
 func (c *Config) IsAccessLogsEnabled() bool {
-	return c.Router.AccessLogs.Enabled
+	return c.GatewayController.Router.AccessLogs.Enabled
 }
 
 // IsPolicyEngineEnabled returns true if policy engine is enabled
 func (c *Config) IsPolicyEngineEnabled() bool {
-	return c.Router.PolicyEngine.Enabled
+	return c.GatewayController.Router.PolicyEngine.Enabled
 }

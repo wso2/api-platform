@@ -111,7 +111,7 @@ func TestMCPTransformer_Transform(t *testing.T) {
 	name := "petstore"
 	version := "1.0.0"
 	context := "/petstore"
-	upstreams := []api.Upstream{{
+	upstreams := []api.MCPUpstream{{
 		Url: "http://backend:8080",
 	}}
 	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
@@ -136,11 +136,14 @@ func TestMCPTransformer_Transform(t *testing.T) {
 		t.Fatalf("Transform produced invalid API config data: %v", err)
 	}
 
-	if apiData.Name != name || apiData.Version != version || apiData.Context != context {
+	if apiData.DisplayName != name || apiData.Version != version || apiData.Context != context {
 		t.Fatalf("Transform did not copy basic fields correctly: got %+v", res.Spec)
 	}
-	if len(apiData.Upstreams) != 1 || apiData.Upstreams[0].Url != "http://backend:8080" {
-		t.Fatalf("Transform did not copy upstreams correctly: got %+v", apiData.Upstreams)
+	if apiData.Upstream.Main.Url == nil {
+		t.Fatalf("Transform did not set apiData.Upstream.Main.Url")
+	}
+	if *apiData.Upstream.Main.Url != "http://backend:8080" {
+		t.Fatalf("Transform did not copy upstreams correctly: got %+v", *apiData.Upstream.Main.Url)
 	}
 	// Should include MCP operations
 	ops := apiData.Operations
@@ -148,10 +151,10 @@ func TestMCPTransformer_Transform(t *testing.T) {
 		t.Fatalf("expected at least 3 MCP operations, got %d", len(ops))
 	}
 	// Ensure kind and version set
-	if res.Kind != api.APIConfigurationKindHttprest {
+	if res.Kind != api.RestApi {
 		t.Fatalf("expected Kind Httprest, got %s", res.Kind)
 	}
-	if res.Version != api.ApiPlatformWso2Comv1 {
-		t.Fatalf("expected Version ApiPlatformWso2Comv1, got %s", res.Version)
+	if res.ApiVersion != api.GatewayApiPlatformWso2Comv1alpha1 {
+		t.Fatalf("expected Version ApiPlatformWso2Comv1, got %s", res.ApiVersion)
 	}
 }

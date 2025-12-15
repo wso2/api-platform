@@ -8,9 +8,13 @@ import (
 // This policy terminates the request processing and returns an immediate response to the client
 type RespondPolicy struct{}
 
-// NewPolicy creates a new RespondPolicy instance
-func NewPolicy() policy.Policy {
-	return &RespondPolicy{}
+var ins = &RespondPolicy{}
+
+func GetPolicy(
+	metadata policy.PolicyMetadata,
+	params map[string]interface{},
+) (policy.Policy, error) {
+	return ins, nil
 }
 
 // Mode returns the processing mode for this policy

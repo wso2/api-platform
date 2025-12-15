@@ -18,6 +18,8 @@
 
 version: ai.api-platform.wso2.com/v1
 kind: mcp
+metadata:
+  name: everything-mcp-v1.0
 spec:
   name: Everything
   version: v1.0

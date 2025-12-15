@@ -13,10 +13,11 @@ import (
 
 // PolicyImport represents a policy import for code generation
 type PolicyImport struct {
-	Name        string
-	Version     string
-	ImportPath  string
-	ImportAlias string
+	Name             string
+	Version          string
+	ImportPath       string
+	ImportAlias      string
+	SystemParameters map[string]interface{} // from policy-definition.yaml
 }
 
 // GeneratePluginRegistry generates the plugin_registry.go file
@@ -39,10 +40,11 @@ func GeneratePluginRegistry(policies []*types.DiscoveredPolicy, srcDir string) (
 			"phase", "generation")
 
 		imports = append(imports, PolicyImport{
-			Name:        policy.Name,
-			Version:     policy.Version,
-			ImportPath:  importPath,
-			ImportAlias: importAlias,
+			Name:             policy.Name,
+			Version:          policy.Version,
+			ImportPath:       importPath,
+			ImportAlias:      importAlias,
+			SystemParameters: policy.SystemParameters,
 		})
 	}
 

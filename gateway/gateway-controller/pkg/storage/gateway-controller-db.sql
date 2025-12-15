@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS deployments (
     name TEXT NOT NULL,
     version TEXT NOT NULL,
     context TEXT NOT NULL,              -- Base path (e.g., "/weather")
-    kind TEXT NOT NULL,                 -- Deployment type: "http/rest", "graphql", "grpc", "asyncapi"
+    kind TEXT NOT NULL,                 -- Deployment type: "RestApi", "graphql", "grpc", "asyncapi"
+    handle TEXT NOT NULL UNIQUE,        -- API handle from metadata.name in YAML (required and must be unique)
 
     -- Deployment status
     status TEXT NOT NULL CHECK(status IN ('pending', 'deployed', 'failed')),

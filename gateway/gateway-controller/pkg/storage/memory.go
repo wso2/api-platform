@@ -24,6 +24,7 @@ import (
 	"sync"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 )
 
 // ConfigStore holds all API configurations in memory for fast access
@@ -65,7 +66,7 @@ func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 	cs.configs[cfg.ID] = cfg
 	cs.nameVersion[key] = cfg.ID
 
-	if cfg.Configuration.Kind == "async/websub" {
+	if cfg.Configuration.Kind == api.Asyncwebsub {
 		err := cs.updateTopics(cfg)
 		if err != nil {
 			return err
@@ -98,7 +99,7 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 		cs.nameVersion[newKey] = cfg.ID
 	}
 
-	if cfg.Configuration.Kind == "async/websub" {
+	if cfg.Configuration.Kind == api.Asyncwebsub {
 		err := cs.updateTopics(cfg)
 		if err != nil {
 			return err
@@ -149,7 +150,7 @@ func (cs *ConfigStore) Delete(id string) error {
 
 	key := cfg.GetCompositeKey()
 
-	if cfg.Configuration.Kind == "async/websub" {
+	if cfg.Configuration.Kind == api.Asyncwebsub {
 		cs.TopicManager.RemoveAllForConfig(cfg.ID)
 	}
 	delete(cs.nameVersion, key)

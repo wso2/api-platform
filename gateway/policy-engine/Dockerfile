@@ -1,7 +1,7 @@
 # Runtime Dockerfile for Policy Engine
 
 # Stage 1: Builder Base - Contains framework source and builder tooling
-FROM --platform=$BUILDPLATFORM golang:1.25.5-alpine AS builder-base
+FROM --platform=$BUILDPLATFORM golang:1.25.5-alpine3.23 AS builder-base
 ARG BUILDARCH
 
 # Build arguments for version information
@@ -73,7 +73,7 @@ RUN /usr/local/bin/gateway-builder \
     -out-dir /workspace/output
 
 # Stage 3: Runtime - Minimal image with compiled binary
-FROM alpine:3.23.0
+FROM alpine:3.22.2
 
 RUN apk --no-cache add ca-certificates
 

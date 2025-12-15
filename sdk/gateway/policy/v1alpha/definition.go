@@ -27,8 +27,8 @@ type PolicyDefinition struct {
 	// Each schema defines name, type, validation rules
 	Parameters map[string]interface{} `yaml:"parameters" json:"parameters"`
 
-	// InitParameters for THIS version
-	InitParameters map[string]interface{} `yaml:"initParameters" json:"initParameters"`
+	// SystemParameters for THIS version
+	SystemParameters map[string]interface{} `yaml:"systemParameters" json:"systemParameters"`
 }
 
 // PolicySpec is a configuration instance specifying how to use a policy

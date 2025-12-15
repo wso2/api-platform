@@ -8,14 +8,24 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Config represents the complete policy engine configuration
 type Config struct {
+	PolicyEngine PolicyEngine `mapstructure:"policy_engine"`
+	GatewayController map[string]interface{} `mapstructure:"gateway_controller"`
+	PolicyConfigurations map[string]interface{} `mapstructure:"policy_configurations"`
+}
+
+// Config represents the complete policy engine configuration
+type PolicyEngine struct {
 	Server     ServerConfig     `mapstructure:"server"`
 	Admin      AdminConfig      `mapstructure:"admin"`
 	ConfigMode ConfigModeConfig `mapstructure:"config_mode"`
 	XDS        XDSConfig        `mapstructure:"xds"`
 	FileConfig FileConfigConfig `mapstructure:"file_config"`
 	Logging    LoggingConfig    `mapstructure:"logging"`
+
+	// RawConfig holds the complete raw configuration map including custom fields
+	// This is used for resolving ${config} CEL expressions in policy systemParameters
+	RawConfig map[string]interface{} `mapstructure:",remain"`
 }
 
 // ServerConfig holds ext_proc server configuration
@@ -130,6 +140,9 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	// Capture complete raw config map for ${config} CEL resolution
+	cfg.PolicyEngine.RawConfig = v.AllSettings()
+
 	// Validate config
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
@@ -141,83 +154,83 @@ func Load(configPath string) (*Config, error) {
 // setDefaults sets default configuration values
 func setDefaults(v *viper.Viper) {
 	// Server defaults
-	v.SetDefault("server.extproc_port", 9001)
+	v.SetDefault("policy_engine.server.extproc_port", 9001)
 
 	// Admin defaults
-	v.SetDefault("admin.enabled", true)
-	v.SetDefault("admin.port", 9002)
-	v.SetDefault("admin.allowed_ips", []string{"127.0.0.1", "::1"})
+	v.SetDefault("policy_engine.admin.enabled", true)
+	v.SetDefault("policy_engine.admin.port", 9002)
+	v.SetDefault("policy_engine.admin.allowed_ips", []string{"127.0.0.1", "::1"})
 
 	// Config mode defaults
-	v.SetDefault("config_mode.mode", "file")
+	v.SetDefault("policy_engine.config_mode.mode", "file")
 
 	// xDS defaults
-	v.SetDefault("xds.enabled", false)
-	v.SetDefault("xds.server_address", "localhost:18000")
-	v.SetDefault("xds.node_id", "policy-engine")
-	v.SetDefault("xds.cluster", "policy-engine-cluster")
-	v.SetDefault("xds.connect_timeout", "10s")
-	v.SetDefault("xds.request_timeout", "5s")
-	v.SetDefault("xds.initial_reconnect_delay", "1s")
-	v.SetDefault("xds.max_reconnect_delay", "60s")
-	v.SetDefault("xds.tls.enabled", false)
+	v.SetDefault("policy_engine.xds.enabled", false)
+	v.SetDefault("policy_engine.xds.server_address", "localhost:18000")
+	v.SetDefault("policy_engine.xds.node_id", "policy-engine")
+	v.SetDefault("policy_engine.xds.cluster", "policy-engine-cluster")
+	v.SetDefault("policy_engine.xds.connect_timeout", "10s")
+	v.SetDefault("policy_engine.xds.request_timeout", "5s")
+	v.SetDefault("policy_engine.xds.initial_reconnect_delay", "1s")
+	v.SetDefault("policy_engine.xds.max_reconnect_delay", "60s")
+	v.SetDefault("policy_engine.xds.tls.enabled", false)
 
 	// File config defaults
-	v.SetDefault("file_config.path", "configs/policy-chains.yaml")
+	v.SetDefault("policy_engine.file_config.path", "configs/policy-chains.yaml")
 
 	// Logging defaults
-	v.SetDefault("logging.level", "info")
-	v.SetDefault("logging.format", "json")
+	v.SetDefault("policy_engine.logging.level", "info")
+	v.SetDefault("policy_engine.logging.format", "json")
 }
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
 	// Validate server config
-	if c.Server.ExtProcPort <= 0 || c.Server.ExtProcPort > 65535 {
-		return fmt.Errorf("invalid extproc_port: %d (must be 1-65535)", c.Server.ExtProcPort)
+	if c.PolicyEngine.Server.ExtProcPort <= 0 || c.PolicyEngine.Server.ExtProcPort > 65535 {
+		return fmt.Errorf("invalid extproc_port: %d (must be 1-65535)", c.PolicyEngine.Server.ExtProcPort)
 	}
 
 	// Validate admin config
-	if c.Admin.Enabled {
-		if c.Admin.Port <= 0 || c.Admin.Port > 65535 {
-			return fmt.Errorf("invalid admin.port: %d (must be 1-65535)", c.Admin.Port)
+	if c.PolicyEngine.Admin.Enabled {
+		if c.PolicyEngine.Admin.Port <= 0 || c.PolicyEngine.Admin.Port > 65535 {
+			return fmt.Errorf("invalid admin.port: %d (must be 1-65535)", c.PolicyEngine.Admin.Port)
 		}
-		if c.Admin.Port == c.Server.ExtProcPort {
+		if c.PolicyEngine.Admin.Port == c.PolicyEngine.Server.ExtProcPort {
 			return fmt.Errorf("admin.port cannot be same as server.extproc_port")
 		}
-		if len(c.Admin.AllowedIPs) == 0 {
+		if len(c.PolicyEngine.Admin.AllowedIPs) == 0 {
 			return fmt.Errorf("admin.allowed_ips cannot be empty when admin is enabled")
 		}
 	}
 
 	// Validate config mode
-	if c.ConfigMode.Mode != "file" && c.ConfigMode.Mode != "xds" {
-		return fmt.Errorf("invalid config_mode.mode: %s (must be 'file' or 'xds')", c.ConfigMode.Mode)
+	if c.PolicyEngine.ConfigMode.Mode != "file" && c.PolicyEngine.ConfigMode.Mode != "xds" {
+		return fmt.Errorf("invalid config_mode.mode: %s (must be 'file' or 'xds')", c.PolicyEngine.ConfigMode.Mode)
 	}
 
 	// Validate based on config mode
-	if c.ConfigMode.Mode == "xds" {
-		if !c.XDS.Enabled {
+	if c.PolicyEngine.ConfigMode.Mode == "xds" {
+		if !c.PolicyEngine.XDS.Enabled {
 			return fmt.Errorf("xds.enabled must be true when config_mode.mode is 'xds'")
 		}
 		if err := c.validateXDSConfig(); err != nil {
 			return err
 		}
-	} else if c.ConfigMode.Mode == "file" {
-		if c.FileConfig.Path == "" {
+	} else if c.PolicyEngine.ConfigMode.Mode == "file" {
+		if c.PolicyEngine.FileConfig.Path == "" {
 			return fmt.Errorf("file_config.path is required when config_mode.mode is 'file'")
 		}
 	}
 
 	// Validate logging
 	validLevels := map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
-	if !validLevels[c.Logging.Level] {
-		return fmt.Errorf("invalid logging.level: %s (must be debug, info, warn, or error)", c.Logging.Level)
+	if !validLevels[c.PolicyEngine.Logging.Level] {
+		return fmt.Errorf("invalid logging.level: %s (must be debug, info, warn, or error)", c.PolicyEngine.Logging.Level)
 	}
 
 	validFormats := map[string]bool{"json": true, "text": true}
-	if !validFormats[c.Logging.Format] {
-		return fmt.Errorf("invalid logging.format: %s (must be json or text)", c.Logging.Format)
+	if !validFormats[c.PolicyEngine.Logging.Format] {
+		return fmt.Errorf("invalid logging.format: %s (must be json or text)", c.PolicyEngine.Logging.Format)
 	}
 
 	return nil
@@ -225,42 +238,42 @@ func (c *Config) Validate() error {
 
 // validateXDSConfig validates xDS configuration
 func (c *Config) validateXDSConfig() error {
-	if c.XDS.ServerAddress == "" {
+	if c.PolicyEngine.XDS.ServerAddress == "" {
 		return fmt.Errorf("xds.server_address is required when xDS is enabled")
 	}
 
-	if c.XDS.NodeID == "" {
+	if c.PolicyEngine.XDS.NodeID == "" {
 		return fmt.Errorf("xds.node_id is required when xDS is enabled")
 	}
 
-	if c.XDS.Cluster == "" {
+	if c.PolicyEngine.XDS.Cluster == "" {
 		return fmt.Errorf("xds.cluster is required when xDS is enabled")
 	}
 
-	if c.XDS.ConnectTimeout <= 0 {
+	if c.PolicyEngine.XDS.ConnectTimeout <= 0 {
 		return fmt.Errorf("xds.connect_timeout must be positive")
 	}
 
-	if c.XDS.RequestTimeout <= 0 {
+	if c.PolicyEngine.XDS.RequestTimeout <= 0 {
 		return fmt.Errorf("xds.request_timeout must be positive")
 	}
 
-	if c.XDS.InitialReconnectDelay <= 0 {
+	if c.PolicyEngine.XDS.InitialReconnectDelay <= 0 {
 		return fmt.Errorf("xds.initial_reconnect_delay must be positive")
 	}
 
-	if c.XDS.MaxReconnectDelay <= 0 {
+	if c.PolicyEngine.XDS.MaxReconnectDelay <= 0 {
 		return fmt.Errorf("xds.max_reconnect_delay must be positive")
 	}
 
-	if c.XDS.TLS.Enabled {
-		if c.XDS.TLS.CertPath == "" {
+	if c.PolicyEngine.XDS.TLS.Enabled {
+		if c.PolicyEngine.XDS.TLS.CertPath == "" {
 			return fmt.Errorf("xds.tls.cert_path is required when TLS is enabled")
 		}
-		if c.XDS.TLS.KeyPath == "" {
+		if c.PolicyEngine.XDS.TLS.KeyPath == "" {
 			return fmt.Errorf("xds.tls.key_path is required when TLS is enabled")
 		}
-		if c.XDS.TLS.CAPath == "" {
+		if c.PolicyEngine.XDS.TLS.CAPath == "" {
 			return fmt.Errorf("xds.tls.ca_path is required when TLS is enabled")
 		}
 	}

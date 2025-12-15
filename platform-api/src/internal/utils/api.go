@@ -40,15 +40,17 @@ import (
 type APIUtil struct{}
 
 // Mapping functions
+// DTOToModel converts a DTO API to a Model API
+// Note: DTO.ID maps to Model.Handle (user-facing identifier)
+// The internal Model.ID (UUID) should be set separately by the caller
 func (u *APIUtil) DTOToModel(dto *dto.API) *model.API {
 	if dto == nil {
 		return nil
 	}
 
 	return &model.API{
-		ID:               dto.ID,
+		Handle:           dto.ID, // DTO.ID is the handle (user-facing identifier)
 		Name:             dto.Name,
-		DisplayName:      dto.DisplayName,
 		Description:      dto.Description,
 		Context:          dto.Context,
 		Version:          dto.Version,
@@ -72,15 +74,17 @@ func (u *APIUtil) DTOToModel(dto *dto.API) *model.API {
 	}
 }
 
+// ModelToDTO converts a Model API to a DTO API
+// Note: Model.Handle maps to DTO.ID (user-facing identifier)
+// The internal Model.ID (UUID) is not exposed in the DTO
 func (u *APIUtil) ModelToDTO(model *model.API) *dto.API {
 	if model == nil {
 		return nil
 	}
 
 	return &dto.API{
-		ID:               model.ID,
+		ID:               model.Handle, // Model.Handle is exposed as DTO.ID
 		Name:             model.Name,
-		DisplayName:      model.DisplayName,
 		Description:      model.Description,
 		Context:          model.Context,
 		Version:          model.Version,
@@ -758,10 +762,9 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 	}
 
 	// Create API deployment YAML structure
-	apiYAMLData := dto.APIYAMLData2{
+	apiYAMLData := dto.APIYAMLData{
 		Id:          api.ID,
 		Name:        api.Name,
-		DisplayName: api.DisplayName,
 		Version:     api.Version,
 		Description: api.Description,
 		Context:     api.Context,
@@ -1072,21 +1075,21 @@ func (u *APIUtil) ConvertAPIYAMLDataToDTO(artifact *dto.APIDeploymentYAML) (*dto
 		return nil, fmt.Errorf("invalid artifact data")
 	}
 
-	return u.APIYAMLData2ToDTO(&artifact.Spec), nil
+	return u.APIYAMLDataToDTO(&artifact.Spec), nil
 }
 
-// APIYAMLData2ToDTO converts APIYAMLData2 to API DTO
+// APIYAMLDataToDTO converts APIYAMLData to API DTO
 //
-// This function maps the fields from APIYAMLData2 (simplified YAML structure)
-// to the complete API DTO structure. Fields that don't exist in APIYAMLData2
+// This function maps the fields from APIYAMLData
+// to the complete API DTO structure. Fields that don't exist in APIYAMLData
 // are left with their zero values and should be populated by the caller.
 //
 // Parameters:
-//   - yamlData: The APIYAMLData2 source data
+//   - yamlData: The APIYAMLData source data
 //
 // Returns:
 //   - *dto.API: Converted API DTO with mapped fields
-func (u *APIUtil) APIYAMLData2ToDTO(yamlData *dto.APIYAMLData2) *dto.API {
+func (u *APIUtil) APIYAMLDataToDTO(yamlData *dto.APIYAMLData) *dto.API {
 	if yamlData == nil {
 		return nil
 	}
@@ -1133,9 +1136,7 @@ func (u *APIUtil) APIYAMLData2ToDTO(yamlData *dto.APIYAMLData2) *dto.API {
 
 	// Create and populate API DTO with available fields
 	api := &dto.API{
-		ID:              yamlData.Id,
 		Name:            yamlData.Name,
-		DisplayName:     yamlData.DisplayName,
 		Description:     yamlData.Description,
 		Context:         yamlData.Context,
 		Version:         yamlData.Version,
@@ -1143,7 +1144,7 @@ func (u *APIUtil) APIYAMLData2ToDTO(yamlData *dto.APIYAMLData2) *dto.API {
 		BackendServices: backendServices,
 		Operations:      operations,
 
-		// Set reasonable defaults for required fields that aren't in APIYAMLData2
+		// Set reasonable defaults for required fields that aren't in APIYAMLData
 		LifeCycleStatus:  "CREATED",
 		Type:             "HTTP",
 		Transport:        []string{"http", "https"},
@@ -1412,7 +1413,6 @@ func (u *APIUtil) parseOpenAPI3Document(document libopenapi.Document) (*dto.API,
 	// Create API DTO directly
 	api := &dto.API{
 		Name:        doc.Info.Title,
-		DisplayName: doc.Info.Title,
 		Description: doc.Info.Description,
 		Version:     doc.Info.Version,
 		Type:        "HTTP",
@@ -1466,7 +1466,6 @@ func (u *APIUtil) parseSwagger2Document(document libopenapi.Document) (*dto.API,
 	// Create API DTO directly
 	api := &dto.API{
 		Name:        doc.Info.Title,
-		DisplayName: doc.Info.Title,
 		Description: doc.Info.Description,
 		Version:     doc.Info.Version,
 		Type:        "HTTP",
@@ -1683,13 +1682,11 @@ func (u *APIUtil) MergeAPIDetails(userAPI *dto.API, extractedAPI *dto.API) *dto.
 	merged.Version = userAPI.Version
 	merged.ProjectID = userAPI.ProjectID
 
-	// Optional fields - use user input if provided, otherwise use extracted values
-	if userAPI.DisplayName != "" {
-		merged.DisplayName = userAPI.DisplayName
+	if userAPI.ID != "" {
+		merged.ID = userAPI.ID
 	} else {
-		merged.DisplayName = extractedAPI.DisplayName
+		merged.ID = extractedAPI.ID
 	}
-
 	if userAPI.Description != "" {
 		merged.Description = userAPI.Description
 	} else {

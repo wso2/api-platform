@@ -138,30 +138,59 @@ spec:
                           - version
                           type: object
                         type: array
-                      upstreams:
-                        description: Upstreams List of backend service URLs
-                        items:
-                          description: Upstream defines model for Upstream.
-                          properties:
-                            url:
-                              description: Url Backend service URL (may include path
-                                prefix like /api/v2)
-                              pattern: ^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$
-                              type: string
-                          required:
-                          - url
-                          type: object
-                        minItems: 1
-                        type: array
+                      upstream:
+                        description: Upstream API-level upstream configuration
+                        properties:
+                          main:
+                            description: Main Upstream backend configuration for production
+                              traffic
+                            properties:
+                              url:
+                                description: Url Backend service URL (may include
+                                  path prefix like /api/v2)
+                                pattern: ^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$
+                                type: string
+                            required:
+                            - url
+                            type: object
+                          sandbox:
+                            description: Sandbox Upstream backend configuration for
+                              sandbox/testing traffic
+                            properties:
+                              url:
+                                description: Url Backend service URL (may include
+                                  path prefix like /api/v2)
+                                pattern: ^https?://[a-zA-Z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+$
+                                type: string
+                            required:
+                            - url
+                            type: object
+                        required:
+                        - main
+                        type: object
                       version:
                         description: Version Semantic version of the API
                         pattern: ^v?([0-9]+)(\.[0-9]+)?(\.[0-9]+)?(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$
                         type: string
+                      vhosts:
+                        description: Vhosts Custom virtual hosts/domains for the API
+                        properties:
+                          main:
+                            description: Main Custom virtual host/domain for production
+                              traffic
+                            type: string
+                          sandbox:
+                            description: Sandbox Custom virtual host/domain for sandbox
+                              traffic
+                            type: string
+                        required:
+                        - main
+                        type: object
                     required:
                     - context
                     - name
                     - operations
-                    - upstreams
+                    - upstream
                     - version
                     type: object
                   version:
