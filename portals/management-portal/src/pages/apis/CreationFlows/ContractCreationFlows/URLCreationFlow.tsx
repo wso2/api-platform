@@ -1,5 +1,13 @@
 import * as React from "react";
-import { Box, Paper, Stack, Typography, Alert, Grid, CircularProgress } from "@mui/material";
+import {
+  Box,
+  Paper,
+  Stack,
+  Typography,
+  Alert,
+  Grid,
+  CircularProgress,
+} from "@mui/material";
 import { Button } from "../../../../components/src/components/Button";
 import { TextInput } from "../../../../components/src/components/TextInput";
 import CreationMetaData from "../CreationMetaData";
@@ -134,6 +142,9 @@ const URLCreationFlow: React.FC<Props> = ({
       return;
     }
 
+    setValidationResult(null);
+    setError(null);
+
     debounceRef.current = window.setTimeout(() => {
       handleFetchAndPreview();
     }, 600);
@@ -245,7 +256,12 @@ const URLCreationFlow: React.FC<Props> = ({
                 testId=""
                 size="medium"
               />
-              <Stack direction="row" spacing={1} sx={{ mt: 1 }} alignItems={"center"}>
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{ mt: 1 }}
+                alignItems={"center"}
+              >
                 <Box>{validating ? <CircularProgress size={16} /> : null}</Box>
                 <Button
                   variant="link"

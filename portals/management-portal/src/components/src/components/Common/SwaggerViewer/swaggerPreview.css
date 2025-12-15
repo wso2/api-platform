@@ -35,6 +35,7 @@
 }
 
 .swagger-ui .scheme-container {
+  display: none !important;
   margin: 0 0 20px;
   padding: 0;
   background: #fff;
@@ -469,27 +470,6 @@
 }
 
 /* Wrapper width */
-.swagger-ui .wrapper {
-  max-width: unset;
-  padding: 0;
-}
-
-.swaggerPreviewRoot .swagger-ui .topbar {
-  display: none;
-}
-
-.swaggerPreviewLoader {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  margin: 40px;
-}
-
-.swagger-ui .scheme-container {
-  display: none !important;
-}
-
 .swagger-ui .wrapper {
   max-width: unset;
   padding: 0;
