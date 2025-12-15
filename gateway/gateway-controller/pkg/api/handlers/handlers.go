@@ -849,7 +849,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, handle string) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "API configuration deleted successfully",
-		"handle":  handle,
+		"id":      handle,
 	})
 
 	// Remove derived policy configuration
@@ -1976,7 +1976,7 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, handle string) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "MCP proxy configuration deleted successfully",
-		"handle":  handle,
+		"id":      handle,
 	})
 }
 

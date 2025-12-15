@@ -81,6 +81,7 @@ CREATE TABLE deployments (
     version TEXT NOT NULL,
     context TEXT NOT NULL,              -- Base path (e.g., "/weather")
     kind TEXT NOT NULL,                  -- API type: "http/rest", "graphql", "grpc", "asyncapi"
+    handle TEXT NOT NULL UNIQUE,        -- API handle from metadata.name in YAML (required and must be unique)
 
     -- Full API configuration as JSON
     configuration TEXT NOT NULL,         -- JSON-serialized APIConfiguration
@@ -126,6 +127,7 @@ CREATE INDEX idx_kind ON deployments(kind);
 | `version` | TEXT | No | (required) | API version extracted from configuration (e.g., "v1.0") |
 | `context` | TEXT | No | (required) | Base path extracted from configuration (e.g., "/weather") |
 | `kind` | TEXT | No | (required) | API type from configuration (e.g., "http/rest", "graphql") |
+| `handle` | TEXT | No | (required) | API handle from metadata.name in YAML (must be unique, e.g., "weather-api-v1.0") |
 | `configuration` | TEXT | No | (required) | Full JSON-serialized APIConfiguration object |
 | `status` | TEXT | No | (required) | Deployment status: "pending", "deployed", or "failed" |
 | `created_at` | TIMESTAMP | No | CURRENT_TIMESTAMP | Record creation timestamp (RFC3339) |

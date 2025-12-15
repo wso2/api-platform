@@ -225,15 +225,15 @@ func (s *SQLiteStorage) initSchema() error {
 			if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_kind ON deployments(kind);`); err != nil {
 				return fmt.Errorf("failed to recreate idx_kind: %w", err)
 			}
-			if _, err := tx.Exec("PRAGMA user_version = 4"); err != nil {
-				return fmt.Errorf("failed to set schema version to 4: %w", err)
+			if _, err := tx.Exec("PRAGMA user_version = 5"); err != nil {
+				return fmt.Errorf("failed to set schema version to 5: %w", err)
 			}
 
 			if err := tx.Commit(); err != nil {
 				return fmt.Errorf("failed to commit migration: %w", err)
 			}
 
-			s.logger.Info("Schema migrated to version 4 (handle column with NOT NULL UNIQUE constraint)")
+			s.logger.Info("Schema migrated to version 5 (handle column with NOT NULL UNIQUE constraint)")
 			version = 5
 		}
 
