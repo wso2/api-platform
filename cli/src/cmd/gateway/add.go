@@ -83,19 +83,19 @@ func runAddCommand() error {
 	// Handle token input: --token, --env-token, or interactive prompt
 	var token string
 
-	// Check if both --token and --env-token are provided
+	// Check if both --token and --token-env are provided
 	if addToken != "" && addEnvToken != "" {
-		return fmt.Errorf("cannot specify both --token and --env-token flags")
+		return fmt.Errorf("cannot specify both --%s and --%s flags", utils.FlagToken, utils.FlagEnvToken)
 	}
 
 	if addToken != "" {
 		// Warn if token was provided via flag (security risk)
-		fmt.Println("\n⚠️  Warning: Providing tokens via --token flag is not recommended")
+		fmt.Printf("\n⚠️  Warning: Providing tokens via --%s flag is not recommended\n", utils.FlagToken)
 		fmt.Println("   Tokens in command-line arguments may be visible in:")
 		fmt.Println("   • Shell history")
 		fmt.Println("   • Process lists")
 		fmt.Println("   • Log files")
-		fmt.Println("   Next time, use --env-token or omit both flags for interactive prompt.")
+		fmt.Printf("   Next time, use --%s or omit both flags for interactive prompt.\n", utils.FlagEnvToken)
 		token = addToken
 	} else if addEnvToken != "" {
 		// Store environment variable reference
