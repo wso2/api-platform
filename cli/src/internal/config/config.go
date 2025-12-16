@@ -152,7 +152,11 @@ func (c *Config) GetGateway(name string) (*Gateway, error) {
 			gateway := c.Gateways[i]
 			// Resolve environment variable if token is present and connection is secure
 			if !gateway.Insecure && gateway.Token != "" {
-				gateway.Token = utils.ResolveEnvVar(gateway.Token)
+				resolvedToken, err := utils.ResolveEnvVar(gateway.Token)
+				if err != nil {
+					return nil, fmt.Errorf("failed to resolve token for gateway '%s': %w", name, err)
+				}
+				gateway.Token = resolvedToken
 			}
 			return &gateway, nil
 		}

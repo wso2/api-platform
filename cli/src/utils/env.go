@@ -19,13 +19,15 @@
 package utils
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 )
 
 // ResolveEnvVar resolves environment variable references in the format ${VAR_NAME}
 // If the input is not an environment variable reference, returns it as-is
-func ResolveEnvVar(value string) string {
+// Returns an error if the environment variable is not set or empty
+func ResolveEnvVar(value string) (string, error) {
 	// Check if value matches ${ENV_VAR_NAME} pattern
 	re := regexp.MustCompile(`^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$`)
 	matches := re.FindStringSubmatch(value)
@@ -33,9 +35,13 @@ func ResolveEnvVar(value string) string {
 	if len(matches) == 2 {
 		// Extract variable name and resolve from environment
 		envVarName := matches[1]
-		return os.Getenv(envVarName)
+		resolved := os.Getenv(envVarName)
+		if resolved == "" {
+			return "", fmt.Errorf("environment variable '%s' is not set or empty", envVarName)
+		}
+		return resolved, nil
 	}
 
 	// Not an env var reference, return as-is
-	return value
+	return value, nil
 }
