@@ -7,7 +7,7 @@
 │                         Kubernetes Cluster                          │
 │                                                                     │
 │  ┌──────────────────────────────────────────────────────────────┐  │
-│  │                   GatewayConfigurations                      │  │
+│  │                   Gateways                      │  │
 │  │                                                              │  │
 │  │  ┌────────────────┐  ┌────────────────┐  ┌───────────────┐ │  │
 │  │  │ Cluster GW     │  │ Namespace GW   │  │ Label-Based   │ │  │
@@ -21,7 +21,7 @@
 │                    └─────────────────────┘                         │
 │                              ↓                                      │
 │  ┌──────────────────────────────────────────────────────────────┐  │
-│  │                    APIConfigurations                         │  │
+│  │                    RestApis                         │  │
 │  │                                                              │  │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │  │
 │  │  │ API-1        │  │ API-2        │  │ API-3        │      │  │
@@ -50,7 +50,7 @@
 │                  API Selection Decision Tree                    │
 └─────────────────────────────────────────────────────────────────┘
 
-                    APIConfiguration Created
+                    RestApi Created
                              │
                              ▼
                 ┏━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -202,7 +202,7 @@ Status: deployedGateways: ["GW-1", "GW-3"]
 │               Status Synchronization                    │
 └─────────────────────────────────────────────────────────┘
 
-GatewayConfiguration                 APIConfiguration
+Gateway                 RestApi
 ┌──────────────────┐                ┌──────────────────┐
 │ status:          │                │ status:          │
 │   phase: Ready   │ ◄────────────► │   phase: Deployed│
@@ -232,39 +232,39 @@ GatewayConfiguration                 APIConfiguration
 │                    Production Environment                     │
 └───────────────────────────────────────────────────────────────┘
 
-├─ prod-gateway (GatewayConfiguration)
+├─ prod-gateway (Gateway)
 │  └─ scope: Namespaced
 │     namespaces: ["production"]
 │     replicas: 3
 │     resources: high
 │
 ├─ production namespace
-│  ├─ api-users (APIConfiguration)
-│  ├─ api-orders (APIConfiguration)
-│  └─ api-payments (APIConfiguration)
+│  ├─ api-users (RestApi)
+│  ├─ api-orders (RestApi)
+│  └─ api-payments (RestApi)
 │     └─ All deployed to prod-gateway
 
 ┌───────────────────────────────────────────────────────────────┐
 │                    Staging Environment                        │
 └───────────────────────────────────────────────────────────────┘
 
-├─ staging-gateway (GatewayConfiguration)
+├─ staging-gateway (Gateway)
 │  └─ scope: Namespaced
 │     namespaces: ["staging"]
 │     replicas: 2
 │     resources: medium
 │
 ├─ staging namespace
-│  ├─ api-users (APIConfiguration)
-│  ├─ api-orders (APIConfiguration)
-│  └─ api-payments (APIConfiguration)
+│  ├─ api-users (RestApi)
+│  ├─ api-orders (RestApi)
+│  └─ api-payments (RestApi)
 │     └─ All deployed to staging-gateway
 
 ┌───────────────────────────────────────────────────────────────┐
 │                  Development Environment                      │
 └───────────────────────────────────────────────────────────────┘
 
-├─ dev-gateway (GatewayConfiguration)
+├─ dev-gateway (Gateway)
 │  └─ scope: LabelSelector
 │     matchLabels: {env: dev}
 │     replicas: 1
@@ -287,7 +287,7 @@ GatewayConfiguration                 APIConfiguration
 └────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────┐         ┌──────────────────────┐
-│ GatewayConfiguration│         │ APIConfiguration     │
+│ Gateway│         │ RestApi     │
 │ Controller          │         │ Controller           │
 │                     │         │                      │
 │ - Watches GW CRDs   │         │ - Watches API CRDs   │

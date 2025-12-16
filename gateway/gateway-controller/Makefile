@@ -28,7 +28,7 @@ LDFLAGS := -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.Bu
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-controller
 
-.PHONY: help generate build test generate-listener-certs push
+.PHONY: help generate build build-local test generate-listener-certs push
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -69,7 +69,7 @@ copy-policy-definitions: ## Copy policy definitions from policy-manifest.yaml
 		fi; \
 	done
 
-build: generate copy-policy-definitions ## Build Docker image
+build: generate copy-policy-definitions ## Build Docker image using buildx
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
@@ -79,6 +79,16 @@ build: generate copy-policy-definitions ## Build Docker image
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
 		--load \
+		.
+
+build-local: generate copy-policy-definitions ## Build Docker image locally (faster, no buildx)
+	@echo "Building Docker image locally ($(IMAGE_NAME):$(VERSION))..."
+	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
+		--build-context sdk=../../sdk \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		-t $(IMAGE_NAME):$(VERSION) \
+		-t $(IMAGE_NAME):latest \
 		.
 
 push: ## Push Docker image to registry

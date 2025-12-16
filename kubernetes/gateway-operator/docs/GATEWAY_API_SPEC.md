@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the design of `GatewayConfiguration` and `APIConfiguration` CRDs, which support flexible API deployment strategies across different scoping mechanisms.
+This document describes the design of `Gateway` and `RestApi` CRDs, which support flexible API deployment strategies across different scoping mechanisms.
 
 ## Design Principles
 
@@ -11,19 +11,19 @@ This document describes the design of `GatewayConfiguration` and `APIConfigurati
 3. **Explicit and Implicit**: Support both explicit gateway references and automatic selection
 4. **Multi-tenancy**: Enable team-based and namespace-based isolation
 
-## GatewayConfiguration Spec
+## Gateway Spec
 
 ### API Selection Strategies
 
-A `GatewayConfiguration` can select APIs using three strategies:
+A `Gateway` can select APIs using three strategies:
 
 #### 1. Cluster-Scoped Gateway
 
 Accepts APIs from **any namespace** in the cluster.
 
 ```yaml
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: cluster-gateway
 spec:
@@ -41,8 +41,8 @@ spec:
 Accepts APIs only from **specific namespaces**.
 
 ```yaml
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: team-gateway
 spec:
@@ -65,8 +65,8 @@ spec:
 Accepts APIs matching **specific label criteria**.
 
 ```yaml
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: platform-gateway
 spec:
@@ -93,8 +93,8 @@ spec:
 ### Full Spec Example
 
 ```yaml
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: production-gateway
   namespace: gateway-system
@@ -162,7 +162,7 @@ spec:
 
 ### Status Fields
 
-The `GatewayConfiguration` status tracks:
+The `Gateway` status tracks:
 
 ```yaml
 status:
@@ -181,7 +181,7 @@ status:
       message: "42 APIs successfully deployed"
 ```
 
-## APIConfiguration Spec
+## RestApi Spec
 
 ### Gateway Selection
 
@@ -190,8 +190,8 @@ An API can specify its gateway(s) in two ways:
 #### 1. Explicit Gateway References
 
 ```yaml
-apiVersion: api.api-platform.wso2.com/v1
-kind: APIConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
 metadata:
   name: my-api
   namespace: prod-apis
@@ -218,8 +218,8 @@ spec:
 #### 2. Implicit Selection (Labels)
 
 ```yaml
-apiVersion: api.api-platform.wso2.com/v1
-kind: APIConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
 metadata:
   name: my-api
   namespace: prod-apis
@@ -310,8 +310,8 @@ status:
 ```yaml
 ---
 # Production gateway - cluster-scoped for prod namespace
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: prod-gateway
 spec:
@@ -323,8 +323,8 @@ spec:
     replicas: 3
 ---
 # Staging gateway - cluster-scoped for staging
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: staging-gateway
 spec:
@@ -336,8 +336,8 @@ spec:
     replicas: 2
 ---
 # Dev gateway - cluster-scoped for all dev namespaces
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: dev-gateway
 spec:
@@ -354,8 +354,8 @@ spec:
 ```yaml
 ---
 # Team Platform gateway
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: platform-gateway
 spec:
@@ -365,8 +365,8 @@ spec:
       team: "platform"
 ---
 # Team Backend gateway
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: backend-gateway
 spec:
@@ -381,8 +381,8 @@ spec:
 ```yaml
 ---
 # Premium tier gateway (high resources)
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: premium-gateway
 spec:
@@ -398,8 +398,8 @@ spec:
         memory: "4Gi"
 ---
 # Standard tier gateway
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: standard-gateway
 spec:
@@ -416,8 +416,8 @@ spec:
 ```yaml
 ---
 # Gateway using complex label matching
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: hybrid-gateway
 spec:
@@ -454,7 +454,7 @@ spec:
 
 1. **Create gateway configurations:**
    ```bash
-   kubectl apply -f config/samples/api_v1_gatewayconfiguration.yaml
+   kubectl apply -f config/samples/api_v1_gateway.yaml
    ```
 
 2. **Label existing APIs** (for label-based selection):
@@ -466,7 +466,7 @@ spec:
 
 4. **Verify selection:**
    ```bash
-   kubectl get gatewayconfiguration production-gateway -o jsonpath='{.status.selectedAPIs}'
+   kubectl get gateway production-gateway -o jsonpath='{.status.selectedAPIs}'
    ```
 
 ## Best Practices
@@ -508,10 +508,10 @@ spec:
 **Debug:**
 ```bash
 # List all gateways
-kubectl get gatewayconfigurations
+kubectl get gateways
 
 # Check gateway status
-kubectl describe gatewayconfiguration <name>
+kubectl describe gateway <name>
 
 # Check API status
 kubectl describe apiconfiguration <name> -n <namespace>

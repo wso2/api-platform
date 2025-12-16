@@ -2,7 +2,7 @@
 
 ## ✅ What Was Implemented
 
-### 1. Enhanced GatewayConfiguration CRD
+### 1. Enhanced Gateway CRD
 
 **Three API Selection Modes:**
 
@@ -25,7 +25,7 @@
 - Storage configuration (SQLite, Postgres, MySQL)
 - Comprehensive status tracking
 
-### 2. Enhanced APIConfiguration CRD
+### 2. Enhanced RestApi CRD
 
 **Gateway Selection Options:**
 
@@ -62,7 +62,7 @@ apis, err := selector.SelectAPIsForGateway(ctx, gateway)
 
 **Location:** `config/samples/`
 
-- `api_v1_gatewayconfiguration.yaml` - 3 example gateways
+- `api_v1_gateway.yaml` - 3 example gateways
   - Cluster-scoped gateway
   - Namespace-scoped gateway
   - Label-based gateway
@@ -92,7 +92,7 @@ apis, err := selector.SelectAPIsForGateway(ctx, gateway)
 
 ## 📋 Spec Design Overview
 
-### GatewayConfiguration Fields
+### Gateway Fields
 
 ```yaml
 spec:
@@ -131,7 +131,7 @@ status:
   lastUpdateTime: timestamp
 ```
 
-### APIConfiguration Fields
+### RestApi Fields
 
 ```yaml
 spec:
@@ -140,7 +140,7 @@ spec:
     namespace: string
   
   apiConfiguration:                     # WSO2 API config
-    # Wrapped APIConfiguration from gateway-controller
+    # Wrapped RestApi from gateway-controller
 
 status:
   phase: string
@@ -191,7 +191,7 @@ Both CRDs have `status` subresources:
 ## 🔄 Selection Logic Flow
 
 ```
-APIConfiguration Created/Updated
+RestApi Created/Updated
          |
          v
 Has explicit gatewayRef?
@@ -264,7 +264,7 @@ make install
 
 ### 3. Create a Gateway
 ```bash
-kubectl apply -f config/samples/api_v1_gatewayconfiguration.yaml
+kubectl apply -f config/samples/api_v1_gateway.yaml
 ```
 
 ### 4. Create APIs
@@ -274,8 +274,8 @@ kubectl apply -f config/samples/api_v1_apiconfiguration.yaml
 
 ### 5. Check Status
 ```bash
-kubectl get gatewayconfigurations
-kubectl get apiconfigurations -A
+kubectl get gateways
+kubectl get restapis -A
 ```
 
 ## 🔍 Validation
@@ -292,9 +292,9 @@ All CRD changes validated:
 ## 📝 Files Modified/Created
 
 **Modified:**
-- `api/v1/gatewayconfiguration_types.go` - Enhanced spec
+- `api/v1/gateway_types.go` - Enhanced spec
 - `api/v1/apiconfiguration_types.go` - Added gatewayRef
-- `config/samples/api_v1_gatewayconfiguration.yaml` - 3 examples
+- `config/samples/api_v1_gateway.yaml` - 3 examples
 - `config/samples/api_v1_apiconfiguration.yaml` - 4 examples
 
 **Created:**
@@ -310,7 +310,7 @@ All CRD changes validated:
 
 ### For Controller Implementation
 
-1. **Update GatewayConfiguration Controller:**
+1. **Update Gateway Controller:**
    ```go
    // Use selector to find APIs
    selector := selector.NewAPISelector(r.Client)
@@ -322,10 +322,10 @@ All CRD changes validated:
    }
    ```
 
-2. **Update APIConfiguration Controller:**
+2. **Update RestApi Controller:**
    ```go
    // Find which gateways should have this API
-   gatewayList := &apiv1.GatewayConfigurationList{}
+   gatewayList := &apiv1.GatewayList{}
    r.Client.List(ctx, gatewayList)
    
    for _, gateway := range gatewayList.Items {
