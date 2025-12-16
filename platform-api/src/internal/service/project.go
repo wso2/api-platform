@@ -64,7 +64,7 @@ func (s *ProjectService) CreateProject(name, description, organizationID, id str
 	}
 
 	for _, existingProject := range existingProjects {
-		if existingProject.Name == name {
+		if existingProject.Name == name || (id != "" && existingProject.ID == id) {
 			return nil, constants.ErrProjectExists
 		}
 	}
@@ -80,10 +80,13 @@ func (s *ProjectService) CreateProject(name, description, organizationID, id str
 
 	// if project ID is given with the request, generated UUID value will be replaced by it
 	if id != "" {
-		if _, err := uuid.Parse(id); err != nil {
-			return nil, constants.ErrorInvalidProjectUUID
+		_, err := s.GetProjectByID(id, organizationID)
+		if err == constants.ErrProjectNotFound {
+			if _, err := uuid.Parse(id); err != nil {
+				return nil, constants.ErrorInvalidProjectUUID
+			}
+			project.ID = id
 		}
-		project.ID = id
 	}
 
 	projectModel := s.DtoToModel(project)
