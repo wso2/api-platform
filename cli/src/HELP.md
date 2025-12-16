@@ -152,6 +152,12 @@ activeGateway: dev
 configVersion: 1.0.0
 ```
 
+**Security Notes:**
+- **Tokens are automatically encrypted** using AES-256-GCM encryption when stored in the config file
+- The encryption key is derived from machine-specific information (hostname + home directory)
+- Tokens are automatically decrypted when the CLI uses them
+- This provides security while maintaining cross-platform compatibility
+
 **Note:** Typically, you would use either `token` for authenticated connections or `insecure` for development environments with self-signed certificates, not both together.
 
 ---

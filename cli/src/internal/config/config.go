@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/wso2/api-platform/cli/utils"
 	"gopkg.in/yaml.v3"
 )
 
@@ -123,6 +124,15 @@ func SaveConfig(config *Config) error {
 
 // AddGateway adds a new gateway to the configuration
 func (c *Config) AddGateway(gateway Gateway) error {
+	// Encrypt token if present
+	if gateway.Token != "" {
+		encryptedToken, err := utils.EncryptToken(gateway.Token)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt token: %w", err)
+		}
+		gateway.Token = encryptedToken
+	}
+
 	// Check if gateway with the same name already exists
 	for i, g := range c.Gateways {
 		if g.Name == gateway.Name {
@@ -143,10 +153,18 @@ func (c *Config) AddGateway(gateway Gateway) error {
 	return nil
 }
 
-// GetGateway returns a gateway by name
+// GetGateway returns a gateway by name with decrypted token
 func (c *Config) GetGateway(name string) (*Gateway, error) {
 	for _, g := range c.Gateways {
 		if g.Name == name {
+			// Decrypt token if present
+			if g.Token != "" {
+				decryptedToken, err := utils.DecryptToken(g.Token)
+				if err != nil {
+					return nil, fmt.Errorf("failed to decrypt token for gateway '%s': %w", name, err)
+				}
+				g.Token = decryptedToken
+			}
 			return &g, nil
 		}
 	}
