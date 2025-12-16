@@ -19,48 +19,64 @@
 package tests
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
 	"testing"
-
-	"github.com/wso2/api-platform/cli/utils"
 )
 
-// TestFlagShortNamesUnique ensures all short flag names are unique
-func TestFlagShortNamesUnique(t *testing.T) {
-	shortFlags := map[string]string{
-		utils.FlagNameShort:     utils.FlagName,
-		utils.FlagServerShort:   utils.FlagServer,
-		utils.FlagTokenShort:    utils.FlagToken,
-		utils.FlagEnvTokenShort: utils.FlagEnvToken,
-		utils.FlagInsecureShort: utils.FlagInsecure,
-		utils.FlagOutputShort:   utils.FlagOutput,
+// parseFlagsFromFile reads the flags.go file and extracts all flag constant values
+func parseFlagsFromFile(t *testing.T) map[string]string {
+	// Read the flags.go file
+	flagsFilePath := filepath.Join("..", "utils", "flags.go")
+	content, err := os.ReadFile(flagsFilePath)
+	if err != nil {
+		t.Fatalf("Failed to read flags.go: %v", err)
 	}
 
-	// Check for duplicates
-	seen := make(map[string]string)
-	for short, long := range shortFlags {
-		if existingLong, exists := seen[short]; exists {
-			t.Errorf("Duplicate short flag '%s' used for both '%s' and '%s'", short, existingLong, long)
+	fileContent := string(content)
+	allFlags := make(map[string]string)
+
+	// Regular expression to match flag constant declarations
+	// Matches patterns like: FlagName = "name" or FlagNameShort = "n"
+	flagPattern := regexp.MustCompile(`(?m)^\s*(Flag\w+)\s*=\s*"([^"]+)"`)
+
+	matches := flagPattern.FindAllStringSubmatch(fileContent, -1)
+	for _, match := range matches {
+		if len(match) == 3 {
+			constantName := match[1]
+			flagValue := match[2]
+			allFlags[constantName] = flagValue
 		}
-		seen[short] = long
 	}
+
+	if len(allFlags) == 0 {
+		t.Fatal("No flag constants found in flags.go - check the file format")
+	}
+
+	return allFlags
 }
 
-// TestFlagLongNamesUnique ensures all long flag names are unique
-func TestFlagLongNamesUnique(t *testing.T) {
-	longFlags := []string{
-		utils.FlagName,
-		utils.FlagServer,
-		utils.FlagToken,
-		utils.FlagEnvToken,
-		utils.FlagInsecure,
-		utils.FlagOutput,
+// TestFlagValuesUnique ensures all flag values are unique across all flags
+func TestFlagValuesUnique(t *testing.T) {
+	allFlags := parseFlagsFromFile(t)
+
+	// Check for duplicate values
+	valueToConst := make(map[string][]string)
+	for constName, value := range allFlags {
+		valueToConst[value] = append(valueToConst[value], constName)
 	}
 
-	seen := make(map[string]bool)
-	for _, flag := range longFlags {
-		if seen[flag] {
-			t.Errorf("Duplicate long flag '%s' found", flag)
+	// Report any duplicates
+	foundDuplicates := false
+	for value, constants := range valueToConst {
+		if len(constants) > 1 {
+			foundDuplicates = true
+			t.Errorf("Duplicate flag value '%s' used in: %v", value, constants)
 		}
-		seen[flag] = true
+	}
+
+	if !foundDuplicates {
+		t.Logf("✓ All %d flag values are unique", len(allFlags))
 	}
 }
