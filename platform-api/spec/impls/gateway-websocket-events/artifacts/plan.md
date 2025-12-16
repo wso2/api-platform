@@ -4,7 +4,7 @@
 
 ## Summary
 
-Implement a WebSocket-based event notification system that enables real-time communication between the platform API and gateway instances. Gateways establish persistent connections to the platform at `wss://localhost:8443/api/internal/v1/ws/gateways/connect`, and the platform broadcasts deployment events (and other event types) to connected gateways. The system uses a transport abstraction layer to allow future protocol changes without modifying business logic, supports multiple connections per gateway ID for clustering scenarios, and handles authentication, connection lifecycle management, and in-memory failure tracking.
+Implement a WebSocket-based event notification system that enables real-time communication between the platform API and gateway instances. Gateways establish persistent connections to the platform at `wss://localhost:9243/api/internal/v1/ws/gateways/connect`, and the platform broadcasts deployment events (and other event types) to connected gateways. The system uses a transport abstraction layer to allow future protocol changes without modifying business logic, supports multiple connections per gateway ID for clustering scenarios, and handles authentication, connection lifecycle management, and in-memory failure tracking.
 
 **Primary Requirement**: Enable real-time API deployment notifications from platform to gateways via persistent WebSocket connections.
 
@@ -245,7 +245,7 @@ See `research.md` for detailed findings, benchmarks, and code examples for each 
 ### API Contracts
 
 **WebSocket Endpoint** (not OpenAPI, documented in README):
-- **URL**: `wss://localhost:8443/api/internal/v1/ws/gateways/connect`
+- **URL**: `wss://localhost:9243/api/internal/v1/ws/gateways/connect`
 - **Protocol**: WebSocket (RFC 6455)
 - **Authentication**: `api-key: <token>` header (token obtained from gateway registration)
 - **Message Format**: JSON text frames

@@ -388,7 +388,7 @@ func defaultConfig() *Config {
 				Format: "json",
 			},
 			ControlPlane: ControlPlaneConfig{
-				Host:               "localhost:8443",
+				Host:               "localhost:9243",
 				Token:              "",
 				ReconnectInitial:   1 * time.Second,
 				ReconnectMax:       5 * time.Minute,

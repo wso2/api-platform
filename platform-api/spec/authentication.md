@@ -137,7 +137,7 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
 ### Example Request
 
 ```bash
-curl -X POST https://localhost:8443/api/v1/projects \
+curl -X POST https://localhost:9243/api/v1/projects \
   -H "Authorization: Bearer <jwt-token>" \
   -H "Content-Type: application/json" \
   -d '{"name": "My Project"}'
