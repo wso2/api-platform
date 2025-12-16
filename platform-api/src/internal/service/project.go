@@ -81,7 +81,9 @@ func (s *ProjectService) CreateProject(name, description, organizationID, id str
 	// if project ID is given with the request, generated UUID value will be replaced by it
 	if id != "" {
 		_, err := s.GetProjectByID(id, organizationID)
-		if err == constants.ErrProjectNotFound {
+		if err != constants.ErrProjectExists {
+			return nil, err
+		} else if err == constants.ErrProjectNotFound {
 			if _, err := uuid.Parse(id); err != nil {
 				return nil, constants.ErrorInvalidProjectUUID
 			}
