@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package utils
+package mcp
 
 import (
 	"bytes"
@@ -33,11 +33,15 @@ import (
 )
 
 const (
-	JsonRpcVersion   = "2.0"
-	ProtocolVersion  = "2025-06-18"
-	ClientName       = "platform-gateway-client"
-	ClientVersion    = "1.0.0"
-	MethodInitialize = "initialize"
+	JsonRpcVersion      = "2.0"
+	ProtocolVersion     = "2025-06-18"
+	ClientName          = "platform-gateway-client"
+	ClientVersion       = "1.0.0"
+	MethodInitialize    = "initialize"
+	MethodInitialized   = "notifications/initialized"
+	MethodToolsList     = "tools/list"
+	MethodPromptsList   = "prompts/list"
+	MethodResourcesList = "resources/list"
 )
 
 type JsonRPCRequest struct {
@@ -136,8 +140,105 @@ type ResourcesResult struct {
 	} `json:"result"`
 }
 
-// PostJSONRPCWithSession sends a JSON-RPC request with mcp-session-id header if provided
-func PostJSONRPCWithSession(url string, req interface{}, sessionID string) ([]byte, error) {
+// Generate generates MCP configuration from the given URL
+func Generate(url string, outputDir string) error {
+	fmt.Printf("Generating MCP configuration for server: %s\n", url)
+
+	// Step 1: initialize
+	fmt.Println("→ Sending initialize...")
+	sessionID, err := initializeMCPServer(url)
+	if err != nil {
+		return fmt.Errorf("failed to initialize MCP server: %w", err)
+	}
+	fmt.Println("---------------------------------------------------")
+
+	// Step 2: notifications/initialized
+	fmt.Println("→ Sending notifications/initialized...")
+	notifyReq := JsonRPCRequest{
+		JSONRPC: JsonRpcVersion,
+		Method:  MethodInitialized,
+	}
+	_, err = postJSONRPCWithSession(url, notifyReq, sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to send notification: %w", err)
+	}
+	fmt.Println("---------------------------------------------------")
+
+	// Step 3: tools/list
+	fmt.Println("→ Sending tools/list...")
+	toolsReq := JsonRPCRequest{
+		JSONRPC: JsonRpcVersion,
+		ID:      2,
+		Method:  MethodToolsList,
+	}
+	toolsResp, err := postJSONRPCWithSession(url, toolsReq, sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to get tools: %w", err)
+	}
+	var toolsResult ToolsResult
+	if err := json.Unmarshal(toolsResp, &toolsResult); err != nil {
+		return fmt.Errorf("failed to parse tools response: %w", err)
+	}
+	if toolsResult.Error != nil {
+		return fmt.Errorf("tools/list request returned an error: %s", toolsResult.Error.Message)
+	}
+	fmt.Printf("→ Available Tools: %d\n", len(toolsResult.Result.Tools))
+	fmt.Println("---------------------------------------------------")
+
+	// Step 4: prompts/list
+	fmt.Println("→ Sending prompts/list...")
+	promptsReq := JsonRPCRequest{
+		JSONRPC: JsonRpcVersion,
+		ID:      3,
+		Method:  MethodPromptsList,
+	}
+	promptsResp, err := postJSONRPCWithSession(url, promptsReq, sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to get prompts: %w", err)
+	}
+	var promptsResult PromptsResult
+	if err := json.Unmarshal(promptsResp, &promptsResult); err != nil {
+		return fmt.Errorf("failed to parse prompts response: %w", err)
+	}
+	if promptsResult.Error != nil {
+		return fmt.Errorf("prompts/list request returned an error: %s", promptsResult.Error.Message)
+	}
+	fmt.Printf("→ Available Prompts: %d\n", len(promptsResult.Result.Prompts))
+	fmt.Println("---------------------------------------------------")
+
+	// Step 5: resources/list
+	fmt.Println("→ Sending resources/list...")
+	resourcesReq := JsonRPCRequest{
+		JSONRPC: JsonRpcVersion,
+		ID:      4,
+		Method:  MethodResourcesList,
+	}
+	resourcesResp, err := postJSONRPCWithSession(url, resourcesReq, sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to get resources: %w", err)
+	}
+	var resourcesResult ResourcesResult
+	if err := json.Unmarshal(resourcesResp, &resourcesResult); err != nil {
+		return fmt.Errorf("failed to parse resources response: %w", err)
+	}
+	if resourcesResult.Error != nil {
+		return fmt.Errorf("resources/list request returned an error: %s", resourcesResult.Error.Message)
+	}
+	fmt.Printf("→ Available Resources: %d\n", len(resourcesResult.Result.Resources))
+	fmt.Println("---------------------------------------------------")
+
+	// Generate MCP configuration file
+	err = generateMCPConfigFile(url, toolsResult, resourcesResult, promptsResult, outputDir)
+	if err != nil {
+		return fmt.Errorf("failed to generate MCP configuration file: %w", err)
+	}
+
+	fmt.Println("MCP generated successfully.")
+	return nil
+}
+
+// postJSONRPCWithSession sends a JSON-RPC request with mcp-session-id header if provided
+func postJSONRPCWithSession(url string, req interface{}, sessionID string) ([]byte, error) {
 	data, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
@@ -177,8 +278,8 @@ func PostJSONRPCWithSession(url string, req interface{}, sessionID string) ([]by
 	return body, nil
 }
 
-// InitializeMCPServer initializes the MCP server and returns the session ID
-func InitializeMCPServer(url string) (string, error) {
+// initializeMCPServer initializes the MCP server and returns the session ID
+func initializeMCPServer(url string) (string, error) {
 	initReq := JsonRPCRequest{
 		JSONRPC: JsonRpcVersion,
 		ID:      1,
@@ -195,16 +296,16 @@ func InitializeMCPServer(url string) (string, error) {
 	}
 	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(data))
 	if err != nil {
-		fmt.Println("ERROR: Failed to create init request:", err)
-		return "", err
+		return "", fmt.Errorf("failed to create init request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json, text/event-stream")
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		fmt.Println("ERROR: Failed to reach MCP server for initialize.")
-		return "", err
+		return "", fmt.Errorf("failed to reach MCP server for initialize: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -224,10 +325,9 @@ func InitializeMCPServer(url string) (string, error) {
 	var initResponse map[string]interface{}
 	if err := json.Unmarshal(body, &initResponse); err == nil {
 		if errObj, hasError := initResponse["error"]; hasError {
-			fmt.Println("ERROR: initialize request returned an error:")
 			if errMap, ok := errObj.(map[string]interface{}); ok {
 				if msg, ok := errMap["message"].(string); ok {
-					fmt.Println(msg)
+					return "", fmt.Errorf("initialize request returned an error: %s", msg)
 				}
 			}
 			return "", fmt.Errorf("initialize request returned an error: %v", errObj)
@@ -241,7 +341,6 @@ func InitializeMCPServer(url string) (string, error) {
 		fmt.Printf("→ Captured Session ID: %s\n", sessionID)
 	}
 	return sessionID, nil
-
 }
 
 func getSessionIDFromResponse(resp *http.Response) string {
@@ -270,7 +369,7 @@ func isEventStream(resp *http.Response) bool {
 }
 
 // generateMCPConfigFile generates the MCP configuration YAML file
-func GenerateMCPConfigFile(url string, toolsResult ToolsResult,
+func generateMCPConfigFile(url string, toolsResult ToolsResult,
 	resourcesResult ResourcesResult, promptsResult PromptsResult, outputDir string) error {
 	// Build YAML
 	mcp := McpYAML{
@@ -293,9 +392,13 @@ func GenerateMCPConfigFile(url string, toolsResult ToolsResult,
 	if err != nil {
 		return err
 	}
-	err = os.WriteFile(filepath.Join(outputDir, "generated-mcp.yaml"), out, 0644)
+
+	outputPath := filepath.Join(outputDir, "generated-mcp.yaml")
+	err = os.WriteFile(outputPath, out, 0644)
 	if err != nil {
 		return err
 	}
+
+	fmt.Printf("→ Generated MCP configuration YAML file: %s\n", outputPath)
 	return nil
 }

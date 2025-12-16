@@ -16,6 +16,23 @@
  * under the License.
  */
 
-package cmd
+package utils
 
-const CliName = "fusionctl"
+import (
+	"fmt"
+	"os"
+)
+
+// LogWarning prints a warning message to stderr
+func LogWarning(message string, err error) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: %s: %v\n", message, err)
+	}
+}
+
+// LogError prints an error message to stderr
+func LogError(message string, err error) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s: %v\n", message, err)
+	}
+}

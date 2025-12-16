@@ -16,28 +16,29 @@
  * under the License.
  */
 
-package cmd
+package mcp
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 )
 
-var (
-	Version   = "dev"
-	BuildTime = "unknown"
+const (
+	McpCmdLiteral = "mcp"
+	McpCmdExample = `# Generate MCP configuration
+apipctl gateway mcp generate --server http://localhost:3001/mcp --output target`
 )
 
-var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Print the version of fusionctl",
-	Long:  "Print the version and build information of fusionctl",
+// McpCmd represents the mcp command
+var McpCmd = &cobra.Command{
+	Use:     McpCmdLiteral,
+	Short:   "MCP related operations",
+	Long:    "Execute MCP (Model Context Protocol) related operations for the WSO2 API Platform Gateway.",
+	Example: McpCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("fusionctl version v%s (built at %s)\n", Version, BuildTime)
+		cmd.Help()
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(versionCmd)
+	McpCmd.AddCommand(generateCmd)
 }
