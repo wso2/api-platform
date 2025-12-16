@@ -68,49 +68,6 @@ paths:
           application/yaml:
             schema:
               $ref: "#/components/schemas/APIConfiguration"
-            example:
-              version: gateway.api-platform.wso2.com/v1alpha1
-              kind: RestApi
-              spec:
-                name: PetStore API
-                version: v1.0
-                context: /petstore
-                upstreams:
-                  - url: http://petstore.swagger.io/v2
-                policies:
-                  - name: apiKeyValidation
-                    version: v1.0.0
-                    executionCondition: "request.metadata[authenticated] != true"
-                    params:
-                      header: X-API-Key
-                      mandatory: true
-                  - name: setHeaders
-                    version: v1.0.0
-                    params:
-                      requestHeaders:
-                        - X-Request-Source: WSO2 API Manager
-                      responseHeaders:
-                        - X-Response-Source: WSO2 API Manager
-                operations:
-                  - method: GET
-                    path: /pet/{petId}
-                    policies:
-                      - name: apiKeyValidation
-                        version: v1.0.0
-                        executionCondition: "request.metadata[authenticated] != true"
-                        params:
-                          header: X-API-Key
-                          mandatory: true
-                  - method: POST
-                    path: /pet
-                  - method: PUT
-                    path: /pet
-                  - method: DELETE
-                    path: /pet/{petId}
-                  - method: GET
-                    path: /store/inventory
-                  - method: POST
-                    path: /store/order
           application/json:
             schema:
               $ref: "#/components/schemas/APIConfiguration"
@@ -191,6 +148,36 @@ paths:
       operationId: listAPIs
       tags:
         - API Management
+      parameters:
+        - name: name
+          in: query
+          required: false
+          description: Filter by API name
+          schema:
+            type: string
+          example: Weather API
+        - name: version
+          in: query
+          required: false
+          description: Filter by API version
+          schema:
+            type: string
+          example: v1.0
+        - name: context
+          in: query
+          required: false
+          description: Filter by API context/path
+          schema:
+            type: string
+          example: /weather
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [pending, deployed, failed]
+          example: pending
       responses:
         "200":
           description: List of API configurations
@@ -216,18 +203,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /apis/{handle}:
+  /apis/{id}:
     get:
-      summary: Get API configuration by handle
-      description: Retrieve the complete configuration for a specific API by its handle (from metadata.name)
-      operationId: getAPIByHandle
+      summary: Get API configuration by id
+      description: |
+        Retrieve the complete configuration for a specific API by its id.
+        The id is a unique string identifier (not a UUID).
+      operationId: getAPIById
       tags:
         - API Management
       parameters:
-        - name: handle
+        - name: id
           in: path
           required: true
-          description: Identifier of the API (metadata.name from YAML)
+          description: |
+            Unique public identifier for the API.
           schema:
             type: string
           example: weather-api-v1.0
@@ -266,10 +256,11 @@ paths:
       tags:
         - API Management
       parameters:
-        - name: handle
+        - name: id
           in: path
           required: true
-          description: Identifier of the API to update (metadata.name from YAML)
+          description: |
+            Unique public identifier of the API to update.
           schema:
             type: string
           example: weather-api-v1.0
@@ -318,10 +309,11 @@ paths:
       tags:
         - API Management
       parameters:
-        - name: handle
+        - name: id
           in: path
           required: true
-          description: Identifier of the API to delete (metadata.name from YAML)
+          description: |
+            Unique public identifier of the API to delete.
           schema:
             type: string
           example: weather-api-v1.0
@@ -341,7 +333,7 @@ paths:
                     example: API configuration deleted successfully
                   id:
                     type: string
-                    example: 550e8400-e29b-41d4-a716-446655440000
+                    example: weather-api-v1.0
         "404":
           description: API configuration not found
           content:
@@ -588,6 +580,36 @@ paths:
       operationId: listMCPProxies
       tags:
         - MCP Proxy Management
+      parameters:
+        - name: name
+          in: query
+          required: false
+          description: Filter by MCP proxy name
+          schema:
+            type: string
+          example: My MCP Proxy
+        - name: version
+          in: query
+          required: false
+          description: Filter by MCP proxy version
+          schema:
+            type: string
+          example: v1.0
+        - name: context
+          in: query
+          required: false
+          description: Filter by MCP proxy context/path
+          schema:
+            type: string
+          example: /everything
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [pending, deployed, failed]
+          example: pending
       responses:
         "200":
           description: List of MCP Proxy configurations
@@ -613,18 +635,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /mcp-proxies/{handle}:
+  /mcp-proxies/{id}:
     get:
-      summary: Get MCP Proxy configuration by handle
-      description: Retrieve the complete configuration for a specific MCP Proxy by its handle (from metadata.name)
-      operationId: getMCPProxyByHandle
+      summary: Get MCP Proxy configuration by id
+      description: |
+        Retrieve the complete configuration for a specific MCP Proxy by its id.
+        The id is a unique string identifier (not a UUID).
+      operationId: getMCPProxyById
       tags:
         - MCP Proxy Management
       parameters:
-        - name: handle
+        - name: id
           in: path
           required: true
-          description: Identifier of the MCP Proxy (metadata.name from YAML)
+          description: |
+            Unique public identifier of the MCP Proxy.
           schema:
             type: string
           example: everything-mcp-v1.0
@@ -663,10 +688,11 @@ paths:
       tags:
         - MCP Proxy Management
       parameters:
-        - name: handle
+        - name: id
           in: path
           required: true
-          description: Identifier of the MCP Proxy to update (metadata.name from YAML)
+          description: |
+            Unique public identifier of the MCP Proxy to update.
           schema:
             type: string
           example: everything-mcp-v1.0
@@ -715,10 +741,11 @@ paths:
       tags:
         - MCP Proxy Management
       parameters:
-        - name: handle
+        - name: id
           in: path
           required: true
-          description: Handle of the MCP Proxy to delete (metadata.name from YAML)
+          description: |
+            Unique public identifier of the MCP Proxy to delete.
           schema:
             type: string
           example: everything-mcp-v1.0
@@ -738,7 +765,7 @@ paths:
                     example: MCP Proxy configuration deleted successfully
                   id:
                     type: string
-                    example: 550e8400-e29b-41d4-a716-446655440000
+                    example: everything-mcp-v1.0
         "404":
           description: MCP Proxy configuration not found
           content:
@@ -1683,7 +1710,7 @@ components:
           example: API configuration created successfully
         id:
           type: string
-          description: Unique handle (metadata.name) for the created API configuration
+          description: Unique id for the created API configuration
           example: weather-api-v1.0
         created_at:
           type: string
@@ -1748,7 +1775,7 @@ components:
           properties:
             id:
               type: string
-              description: Unique handle (metadata.name) for the API configuration
+              description: Unique id for the API configuration
               example: weather-api-v1.0
             configuration:
               $ref: "#/components/schemas/APIConfiguration"
@@ -1973,7 +2000,7 @@ components:
           properties:
             id:
               type: string
-              description: Unique handle (metadata.name) for the MCP configuration
+              description: Unique id for the MCP configuration
               example: mcp-proxy-1-v1.0
             configuration:
               $ref: "#/components/schemas/MCPProxyConfiguration"

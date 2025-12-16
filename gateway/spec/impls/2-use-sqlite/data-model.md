@@ -81,7 +81,7 @@ CREATE TABLE deployments (
     version TEXT NOT NULL,
     context TEXT NOT NULL,              -- Base path (e.g., "/weather")
     kind TEXT NOT NULL,                  -- API type: "RestApi", "graphql", "grpc", "asyncapi"
-    handle TEXT NOT NULL UNIQUE,        -- API handle from metadata.name in YAML (required and must be unique)
+    handle TEXT NOT NULL UNIQUE,        -- API handle (e.g., petstore-v1.0)
 
     -- Full API configuration as JSON
     configuration TEXT NOT NULL,         -- JSON-serialized APIConfiguration
