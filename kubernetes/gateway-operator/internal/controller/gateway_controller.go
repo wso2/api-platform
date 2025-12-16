@@ -736,6 +736,8 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 		Timeout:         300, // 5 minutes
 		Username:        dockerUserName,
 		Password:        dockerPassword,
+		Insecure:        r.Config.Gateway.InsecureRegistry,
+		PlainHTTP:       r.Config.Gateway.PlainHTTP,
 	})
 
 	if err != nil {

@@ -68,12 +68,47 @@ jobs:
           kind load docker-image ${{ env.DOCKER_REGISTRY }}/gateway-router:${{ env.VERSION }} --name ${{ env.KIND_CLUSTER_NAME }}
           kind load docker-image ${{ env.DOCKER_REGISTRY }}/gateway-operator:${{ env.VERSION }} --name ${{ env.KIND_CLUSTER_NAME }}
 
-      - name: Deploy OCI Registry
+      - name: Deploy OCI Registry (HTTP)
         run: |
-          # Deploy a local OCI-compliant registry
+          # Create namespace
           kubectl create namespace registry
-          kubectl create deployment registry --image=registry:2 -n registry
-          kubectl expose deployment registry --port=5000 -n registry
+
+          # Deploy registry without TLS (plain HTTP for testing)
+          cat <<EOF | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: registry
+            namespace: registry
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: registry
+            template:
+              metadata:
+                labels:
+                  app: registry
+              spec:
+                containers:
+                - name: registry
+                  image: registry:2
+                  ports:
+                  - containerPort: 5000
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: registry
+            namespace: registry
+          spec:
+            selector:
+              app: registry
+            ports:
+            - port: 5000
+              targetPort: 5000
+          EOF
+
           kubectl wait --for=condition=available deployment/registry -n registry --timeout=120s
           kubectl wait --for=condition=ready pod -l app=registry -n registry --timeout=120s
 
@@ -82,12 +117,12 @@ jobs:
           cd kubernetes/helm/gateway-helm-chart
           helm package . --version 0.0.0-test
 
-          # Port forward registry to push chart
+          # Port forward registry to push chart (plain HTTP)
           kubectl port-forward svc/registry -n registry 5000:5000 &
           sleep 5
 
-          # Push chart to OCI registry
-          helm push gateway-0.0.0-test.tgz oci://localhost:5000/charts
+          # Push chart to OCI registry (plain HTTP, use insecure flag)
+          helm push gateway-0.0.0-test.tgz oci://localhost:5000/charts --plain-http
 
           # Kill port forward
           pkill -f "kubectl port-forward.*registry" || true
@@ -150,6 +185,7 @@ jobs:
             --set image.pullPolicy=Never \
             --set gateway.helm.chartName=oci://registry.registry.svc.cluster.local:5000/charts/gateway \
             --set gateway.helm.chartVersion=0.0.0-test \
+            --set gateway.helm.plainHTTP=true \
             --wait --timeout 5m
 
           kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=gateway-operator -n operator --timeout=120s

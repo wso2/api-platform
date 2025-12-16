@@ -58,6 +58,14 @@ type GatewayConfig struct {
 	// If not set, the chart's default values.yaml will be used
 	HelmValuesFilePath string `koanf:"helm_values_file_path"`
 
+	// InsecureRegistry allows insecure connections to OCI registries (useful for self-signed certs)
+	// Note: This skips TLS verification but still uses HTTPS
+	InsecureRegistry bool `koanf:"insecure_registry"`
+
+	// PlainHTTP forces the use of plain HTTP (not HTTPS) for OCI registries
+	// Useful for local/test registries without TLS
+	PlainHTTP bool `koanf:"plain_http"`
+
 	// RegistryCredentialsSecret holds the reference to the registry credentials secret
 	RegistryCredentialsSecret *SecretReference `koanf:"registry_credentials_secret"`
 }

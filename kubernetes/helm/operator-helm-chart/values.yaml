@@ -46,6 +46,10 @@ gateway:
     chartName: "oci://ghcr.io/wso2/api-platform/helm-charts/gateway"
     chartVersion: "0.1.0"
     valuesFilePath: "/config/gateway_values.yaml"
+    # Allow insecure connections to OCI registries (skips TLS verification, still uses HTTPS)
+    insecureRegistry: false
+    # Use plain HTTP instead of HTTPS for OCI registries (for local/test registries)
+    plainHTTP: false
   # Gateway chart values that will be used when deploying gateways
   # Users can override these values during helm install/upgrade
   values:

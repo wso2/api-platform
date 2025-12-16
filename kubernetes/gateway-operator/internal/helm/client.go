@@ -40,15 +40,28 @@ type Client struct {
 
 // NewClient creates a new Helm client
 func NewClient() (*Client, error) {
+	return NewClientWithOptions(false)
+}
+
+// NewClientWithOptions creates a new Helm client with custom options
+func NewClientWithOptions(plainHTTP bool) (*Client, error) {
 	settings := cli.New()
 
-	// Create registry client for OCI support
-	registryClient, err := registry.NewClient(
+	// Build registry client options
+	opts := []registry.ClientOption{
 		registry.ClientOptDebug(settings.Debug),
 		registry.ClientOptEnableCache(true),
 		registry.ClientOptWriter(os.Stderr),
 		registry.ClientOptCredentialsFile(settings.RegistryConfig),
-	)
+	}
+
+	// Add PlainHTTP option if requested
+	if plainHTTP {
+		opts = append(opts, registry.ClientOptPlainHTTP())
+	}
+
+	// Create registry client for OCI support
+	registryClient, err := registry.NewClient(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create registry client: %w", err)
 	}
@@ -97,8 +110,11 @@ type InstallOrUpgradeOptions struct {
 	// Password for registry authentication (optional)
 	Password string
 
-	// Insecure allows insecure registry connections (optional)
+	// Insecure allows insecure registry connections (skips TLS verification, still uses HTTPS)
 	Insecure bool
+
+	// PlainHTTP forces plain HTTP instead of HTTPS for OCI registries
+	PlainHTTP bool
 }
 
 // UninstallOptions contains options for uninstalling a Helm release
