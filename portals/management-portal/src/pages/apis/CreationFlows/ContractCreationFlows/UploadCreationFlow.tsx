@@ -10,36 +10,17 @@ import {
   useOpenApiValidation,
   type OpenApiValidationResponse,
 } from "../../../../hooks/validation";
-import { ApiOperationsList } from "../../../../components/src/components/Common/ApiOperationsList";
 import type { ImportOpenApiRequest, ApiSummary } from "../../../../hooks/apis";
 import {
   defaultServiceName,
   firstServerUrl,
   deriveContext,
-  mapOperations,
   formatVersionToMajorMinor,
   isValidMajorMinorVersion,
 } from "../../../../helpers/openApiHelpers";
+import SwaggerPreviewWithSource from "../../../../components/src/components/Common/SwaggerPreviewWithSource";
 
-const slugify = (val: string) =>
-  (val || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .trim();
-
-const majorFromVersion = (v: string) => {
-  const m = (v || "").trim().match(/\d+/);
-  return m?.[0] ?? "";
-};
-
-const buildIdentifierFromNameAndVersion = (name: string, version: string) => {
-  const base = slugify(name);
-  const major = majorFromVersion(version);
-  return major ? `${base}-v${major}` : base;
-};
-
+/* ---------- Types ---------- */
 type Props = {
   open: boolean;
   selectedProjectId: string;
@@ -53,6 +34,7 @@ type Props = {
 
 type Step = "upload" | "details";
 
+/* ---------- component ---------- */
 const UploadCreationFlow: React.FC<Props> = ({
   open,
   selectedProjectId,
@@ -72,8 +54,8 @@ const UploadCreationFlow: React.FC<Props> = ({
   const { contractMeta, setContractMeta, resetContractMeta } =
     useCreateComponentBuildpackContext();
   const { validateOpenApiFile } = useOpenApiValidation();
-  const [metaHasErrors, setMetaHasErrors] = React.useState(false);
 
+  // Always-mounted input + stable id/label wiring
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const inputId = React.useId();
   const [fileKey, setFileKey] = React.useState(0);
@@ -94,7 +76,6 @@ const UploadCreationFlow: React.FC<Props> = ({
       setFileName("");
       setError(null);
       setValidating(false);
-      setMetaHasErrors(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
       setFileKey((k) => k + 1);
     }
@@ -107,23 +88,13 @@ const UploadCreationFlow: React.FC<Props> = ({
       const description = api?.description || "";
       const targetUrl = firstServerUrl(api);
 
-      const identifier = buildIdentifierFromNameAndVersion(title, version);
-
-      const nextMeta = {
-        name: title || "Sample API",
-        displayName: title || "Sample API",
+      setContractMeta((prev: any) => ({
+        ...prev,
+        name: title || prev?.name || "Sample API",
         version,
         description,
         context: deriveContext(api),
-        target: targetUrl || "",
-        identifier,
-        identifierEdited: false,
-      };
-
-      setContractMeta((prev: any) => ({
-        ...prev,
-        ...nextMeta,
-        target: prev?.target || nextMeta.target || "",
+        target: prev?.target || targetUrl || "",
       }));
     },
     [setContractMeta]
@@ -133,7 +104,6 @@ const UploadCreationFlow: React.FC<Props> = ({
     async (files: FileList | null) => {
       if (!files || !files[0]) return;
       if (validating) return;
-
       const file = files[0];
 
       abortControllerRef.current?.abort();
@@ -151,7 +121,6 @@ const UploadCreationFlow: React.FC<Props> = ({
         const result = await validateOpenApiFile(file, {
           signal: abortController.signal,
         });
-
         setValidationResult(result);
 
         if (result.isAPIDefinitionValid) {
@@ -191,34 +160,17 @@ const UploadCreationFlow: React.FC<Props> = ({
     onClose();
   }, [onClose, resetContractMeta]);
 
-  const previewOps = React.useMemo(() => {
-    if (!validationResult?.isAPIDefinitionValid) return [];
-    const api = validationResult.api as any;
-    return mapOperations(api?.operations || [], { withFallbackName: true });
-  }, [validationResult]);
+  const isDefinitionValid = validationResult?.isAPIDefinitionValid ?? false;
 
   const onCreate = async () => {
-    const displayName = (
-      contractMeta?.displayName ||
-      contractMeta?.name ||
-      ""
-    ).trim();
-
+    const name = (contractMeta?.name || "").trim();
     const context = (contractMeta?.context || "").trim();
     const version = (contractMeta?.version || "").trim();
     const description = (contractMeta?.description || "").trim() || undefined;
     const target = (contractMeta?.target || "").trim();
 
-    const identifier =
-      ((contractMeta as any)?.identifier || "").trim() ||
-      buildIdentifierFromNameAndVersion(displayName, version);
-
-    if (!displayName || !context || !version) {
+    if (!name || !context || !version) {
       setError("Please complete all required fields.");
-      return;
-    }
-    if (!identifier) {
-      setError("Identifier is required.");
       return;
     }
     if (target) {
@@ -229,6 +181,7 @@ const UploadCreationFlow: React.FC<Props> = ({
         return;
       }
     }
+
     if (!validationResult?.isAPIDefinitionValid || !uploadedFile) {
       setError("Please upload a valid OpenAPI definition.");
       return;
@@ -237,7 +190,7 @@ const UploadCreationFlow: React.FC<Props> = ({
     setCreating(true);
     setError(null);
 
-    const serviceName = defaultServiceName(displayName);
+    const serviceName = defaultServiceName(name);
     const backendServices = target
       ? [
           {
@@ -249,22 +202,19 @@ const UploadCreationFlow: React.FC<Props> = ({
         ]
       : [];
 
-    const payload: ImportOpenApiRequest = {
-      api: {
-        name: identifier,
-        displayName,
-        context,
-        version,
-        projectId: selectedProjectId,
-        target,
-        description,
-        backendServices,
-      },
-      definition: uploadedFile,
-    };
-
     try {
-      await importOpenApi(payload);
+      await importOpenApi({
+        api: {
+          name,
+          context,
+          version,
+          projectId: selectedProjectId,
+          target,
+          description,
+          backendServices,
+        },
+        definition: uploadedFile,
+      });
     } catch (e: any) {
       setError(e?.message || "Failed to create API");
       setCreating(false);
@@ -408,28 +358,25 @@ const UploadCreationFlow: React.FC<Props> = ({
               </Alert>
             )}
           </Grid>
-
-          <Grid size={{ xs: 12, md: 6 }}>
-            <ApiOperationsList
-              title="Fetched OAS Definition"
-              operations={previewOps}
-            />
-          </Grid>
+          {isDefinitionValid && (
+            <Grid size={{ xs: 12, md: 6 }}>
+              <SwaggerPreviewWithSource
+                title="Fetched OAS Definition"
+                definitionFile={uploadedFile}
+                isValid={isDefinitionValid}
+                isLoading={validating}
+                apiEndpoint={(contractMeta?.target || "").trim() || undefined}
+              />
+            </Grid>
+          )}
         </Grid>
       )}
 
       {step === "details" && (
-        <Box>
-          <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <CreationMetaData
-                scope="contract"
-                title="API Details"
-                onValidationChange={({ hasError }) =>
-                  setMetaHasErrors(hasError)
-                }
-              />
-
+        <Grid container spacing={2}>
+          <Grid size={{ xs: 12, md: 6 }}>
+            {/* <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}> */}
+              <CreationMetaData scope="contract"/>
               <Stack
                 direction="row"
                 spacing={1}
@@ -447,7 +394,6 @@ const UploadCreationFlow: React.FC<Props> = ({
                   variant="contained"
                   disabled={
                     creating ||
-                    metaHasErrors ||
                     !(contractMeta?.name || "").trim() ||
                     !(contractMeta?.context || "").trim() ||
                     !isValidMajorMinorVersion(
@@ -466,16 +412,18 @@ const UploadCreationFlow: React.FC<Props> = ({
                   {error}
                 </Alert>
               )}
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 6 }}>
-              <ApiOperationsList
-                title="Fetched OAS Definition"
-                operations={previewOps}
-              />
-            </Grid>
+            {/* </Paper> */}
           </Grid>
-        </Box>
+
+          {/* <Grid size={{ xs: 12, md: 6 }}>
+            <SwaggerPreviewWithSource
+              title="Fetched OAS Definition"
+              definitionFile={uploadedFile}
+              isValid={isDefinitionValid}
+              apiEndpoint={(contractMeta?.target || "").trim() || undefined}
+            />
+          </Grid> */}
+        </Grid>
       )}
     </Box>
   );
