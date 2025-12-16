@@ -21,7 +21,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -59,6 +58,7 @@ type APIServer struct {
 	deploymentService    *utils.APIDeploymentService
 	mcpDeploymentService *utils.MCPDeploymentService
 	llmDeploymentService *utils.LLMDeploymentService
+	apiKeyService        *utils.APIKeyService
 	controlPlaneClient   controlplane.ControlPlaneClient
 	routerConfig         *config.RouterConfig
 	httpClient           *http.Client
@@ -91,6 +91,7 @@ func NewAPIServer(
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, templateDefinitions,
 			deploymentService, routerConfig),
+		apiKeyService:        utils.NewAPIKeyService(store, db),
 		controlPlaneClient: controlPlaneClient,
 		routerConfig:       routerConfig,
 		httpClient:         &http.Client{Timeout: 10 * time.Second},
@@ -777,35 +778,18 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 		}
 
 		// Delete associated API keys from database
-		apiKeys, err := s.db.GetAPIKeysByAPI(name, version)
+		err := s.db.RemoveAPIKeysAPI(handle)
 		if err != nil {
-			log.Warn("Failed to retrieve API keys for deletion",
-				zap.String("name", name),
-				zap.String("version", version),
+			log.Warn("Failed to remove API keys from database",
+				zap.String("handle", handle),
 				zap.Error(err))
-		} else {
-			for _, apiKey := range apiKeys {
-				if err := s.db.DeleteAPIKey(apiKey.APIKey); err != nil {
-					log.Error("Failed to delete API key from database",
-						zap.String("keyId", apiKey.ID),
-						zap.String("name", name),
-						zap.String("version", version),
-						zap.Error(err))
-				} else {
-					log.Debug("API key deleted from database",
-						zap.String("keyId", apiKey.ID),
-						zap.String("name", name),
-						zap.String("version", version))
-				}
-			}
 		}
 	}
 
 	// Remove API keys from ConfigStore
-	if err := s.store.RemoveAPIKeysByAPI(name, version); err != nil {
+	if err := s.store.RemoveAPIKeysByAPI(handle); err != nil {
 		log.Warn("Failed to remove API keys from ConfigStore",
-			zap.String("name", name),
-			zap.String("version", version),
+			zap.String("handle", handle),
 			zap.Error(err))
 	}
 
@@ -2266,112 +2250,57 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 }
 
 // GenerateAPIKey implements ServerInterface.GenerateAPIKey
-// (POST /apis/{name}/{version}/api-key)
-func (s *APIServer) GenerateAPIKey(c *gin.Context, name string, version string) {
+// (POST /apis/{id}/api-key)
+func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
 
-	// Check if API exists
-	_, err := s.store.GetByNameVersion(name, version)
-	if err != nil {
-		log.Warn("API configuration not found for API Key generation",
-			zap.String("name", name),
-			zap.String("version", version))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("API configuration with name '%s' and version '%s' not found", name, version),
-		})
-		return
-	}
-
-	// Generate new API key
-	apiKey, err := models.GenerateAPIKey(name, version)
-	if err != nil {
-		log.Error("Failed to generate API key",
+	// Parse and validate request body
+	var request api.APIKeyGenerationRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		log.Warn("Invalid request body for API key generation",
 			zap.Error(err),
-			zap.String("name", name),
-			zap.String("version", version))
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			zap.String("handle", handle),
+			zap.String("correlation_id", correlationID))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
-			Message: "Failed to generate API key",
+			Message: fmt.Sprintf("Invalid request body: %v", err),
 		})
 		return
 	}
 
-	// Save API key to database (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.SaveAPIKey(apiKey); err != nil {
-			if errors.Is(err, storage.ErrConflict) {
-				// This should be extremely rare with 32-byte random keys
-				log.Warn("API key collision detected, retrying",
-					zap.String("name", name),
-					zap.String("version", version))
-
-				// Retry once with a new key
-				apiKey, err = models.GenerateAPIKey(name, version)
-				if err != nil {
-					log.Error("Failed to regenerate API key after collision", zap.Error(err))
-					c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-						Status:  "error",
-						Message: "Failed to generate unique API key",
-					})
-					return
-				}
-
-				if err := s.db.SaveAPIKey(apiKey); err != nil {
-					log.Error("Failed to save API key after retry", zap.Error(err))
-					c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-						Status:  "error",
-						Message: "Failed to save API key",
-					})
-					return
-				}
-			} else {
-				log.Error("Failed to save API key to database",
-					zap.Error(err),
-					zap.String("name", name),
-					zap.String("version", version))
-				c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-					Status:  "error",
-					Message: "Failed to save API key",
-				})
-				return
-			}
-		}
+	// Prepare parameters
+	params := utils.APIKeyGenerationParams{
+		Handle:        handle,
+		Request:       request,
+		CorrelationID: correlationID,
+		Logger:        log,
 	}
 
-	// Store the generated API key in the ConfigStore
-	if err := s.store.StoreAPIKey(apiKey); err != nil {
-		log.Error("Failed to store API key in ConfigStore",
-			zap.Error(err),
-			zap.String("name", name),
-			zap.String("version", version))
-		// Rollback database save to maintain consistency
-		if s.db != nil {
-			if delErr := s.db.DeleteAPIKey(apiKey.APIKey); delErr != nil {
-				log.Error("Failed to rollback API key from database", zap.Error(delErr))
-			}
+	result, err := s.apiKeyService.GenerateAPIKey(params)
+	if err != nil {
+		// Check error type to determine appropriate status code
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
 		}
-		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to store API key",
-		})
 		return
 	}
 
-	log.Info("API key generated successfully",
-		zap.String("name", name),
-		zap.String("version", version),
-		zap.String("key_id", apiKey.ID))
+	log.Info("API key generation completed",
+		zap.String("handle", handle),
+		zap.String("key name", result.Response.ApiKey.Name),
+		zap.String("correlation_id", correlationID))
 
-	// Return success response
-	c.JSON(http.StatusCreated, gin.H{
-		"status":     "success",
-		"message":    "API key generated successfully",
-		"name":       apiKey.APIName,
-		"version":    apiKey.APIVersion,
-		"api_key":    apiKey.APIKey,
-		"created_at": apiKey.CreatedAt.Format(time.RFC3339),
-		"expires_at": nil, // No expiration by default
-	})
+	// Return the response using the generated schema
+	c.JSON(http.StatusCreated, result.Response)
 }

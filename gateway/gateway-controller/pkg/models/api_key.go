@@ -19,12 +19,7 @@
 package models
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-	"fmt"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // APIKeyStatus represents the status of an API key
@@ -39,41 +34,14 @@ const (
 // APIKey represents an API key for an API
 type APIKey struct {
 	ID         string       `json:"id" db:"id"`
+	Name       string       `json:"name" db:"name"`
 	APIKey     string       `json:"api_key" db:"api_key"`
-	APIName    string       `json:"api_name" db:"api_name"`
-	APIVersion string       `json:"api_version" db:"api_version"`
+	Handle     string       `json:"handle" db:"handle"`
+	Operations string       `json:"operations" db:"operations"`
 	Status     APIKeyStatus `json:"status" db:"status"`
 	CreatedAt  time.Time    `json:"created_at" db:"created_at"`
 	UpdatedAt  time.Time    `json:"updated_at" db:"updated_at"`
 	ExpiresAt  *time.Time   `json:"expires_at" db:"expires_at"`
-}
-
-// GenerateAPIKey creates a new API key with a random 32-byte value prefixed with "gw_"
-func GenerateAPIKey(apiName, apiVersion string) (*APIKey, error) {
-	// Generate UUID for the record ID
-	id := uuid.New().String()
-
-	// Generate 32 random bytes
-	randomBytes := make([]byte, 32)
-	if _, err := rand.Read(randomBytes); err != nil {
-		return nil, fmt.Errorf("failed to generate random bytes: %w", err)
-	}
-
-	// Encode to hex and prefix with "gw_"
-	apiKey := "gw_" + hex.EncodeToString(randomBytes)
-
-	now := time.Now()
-
-	return &APIKey{
-		ID:         id,
-		APIKey:     apiKey,
-		APIName:    apiName,
-		APIVersion: apiVersion,
-		Status:     APIKeyStatusActive,
-		CreatedAt:  now,
-		UpdatedAt:  now,
-		ExpiresAt:  nil, // No expiration by default
-	}, nil
 }
 
 // IsValid checks if the API key is valid (active and not expired)

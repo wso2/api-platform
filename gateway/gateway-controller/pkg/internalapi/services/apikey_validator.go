@@ -113,9 +113,9 @@ func (v *APIKeyValidator) validateGatewayAPIKey(apiName, apiVersion, apiKey stri
 	}
 
 	// Verify that the API key is associated with the correct API
-	if storedAPIKey.APIName != apiName || storedAPIKey.APIVersion != apiVersion {
-		return false, nil
-	}
+	//if storedAPIKey.APIName != apiName || storedAPIKey.APIVersion != apiVersion {
+	//	return false, nil
+	//}
 
 	// Check if the API key is valid (active and not expired)
 	isValid := storedAPIKey.IsValid()

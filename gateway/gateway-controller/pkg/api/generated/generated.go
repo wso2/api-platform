@@ -41,6 +41,23 @@ const (
 	APIDetailResponseApiMetadataStatusPending  APIDetailResponseApiMetadataStatus = "pending"
 )
 
+// Defines values for APIKeyStatus.
+const (
+	Active  APIKeyStatus = "active"
+	Expired APIKeyStatus = "expired"
+	Revoked APIKeyStatus = "revoked"
+)
+
+// Defines values for APIKeyGenerationRequestExpiresInUnit.
+const (
+	Days    APIKeyGenerationRequestExpiresInUnit = "days"
+	Hours   APIKeyGenerationRequestExpiresInUnit = "hours"
+	Minutes APIKeyGenerationRequestExpiresInUnit = "minutes"
+	Months  APIKeyGenerationRequestExpiresInUnit = "months"
+	Seconds APIKeyGenerationRequestExpiresInUnit = "seconds"
+	Weeks   APIKeyGenerationRequestExpiresInUnit = "weeks"
+)
+
 // Defines values for APIListItemStatus.
 const (
 	APIListItemStatusDeployed APIListItemStatus = "deployed"
@@ -333,6 +350,65 @@ type APIDetailResponse struct {
 
 // APIDetailResponseApiMetadataStatus defines model for APIDetailResponse.Api.Metadata.Status.
 type APIDetailResponseApiMetadataStatus string
+
+// APIKey Details of an API key
+type APIKey struct {
+	// ApiId Unique public identifier of the API that the key is associated with
+	ApiId string `json:"apiId" yaml:"apiId"`
+
+	// ApiKey Generated API key with apip_ prefix
+	ApiKey string `json:"api_key" yaml:"api_key"`
+
+	// CreatedAt Timestamp when the API key was generated
+	CreatedAt time.Time `json:"created_at" yaml:"created_at"`
+
+	// ExpiresAt Expiration timestamp (null if no expiration)
+	ExpiresAt *time.Time `json:"expires_at" yaml:"expires_at"`
+
+	// Name Name of the API key
+	Name string `json:"name" yaml:"name"`
+
+	// Operations List of API operations the key will have access to
+	Operations string `json:"operations" yaml:"operations"`
+
+	// Status Status of the API key
+	Status APIKeyStatus `json:"status" yaml:"status"`
+}
+
+// APIKeyStatus Status of the API key
+type APIKeyStatus string
+
+// APIKeyGenerationRequest defines model for APIKeyGenerationRequest.
+type APIKeyGenerationRequest struct {
+	// ExpiresAt Expiration timestamp (null if no expiration)
+	ExpiresAt *time.Time `json:"expires_at,omitempty" yaml:"expires_at,omitempty"`
+
+	// ExpiresIn Expiration duration for the API key
+	ExpiresIn *struct {
+		// Duration Duration value for expiration
+		Duration int `json:"duration" yaml:"duration"`
+
+		// Unit Time unit for expiration
+		Unit APIKeyGenerationRequestExpiresInUnit `json:"unit" yaml:"unit"`
+	} `json:"expires_in,omitempty" yaml:"expires_in,omitempty"`
+
+	// Name Name of the API key
+	Name *string `json:"name,omitempty" yaml:"name,omitempty"`
+
+	// Operations List of API operations the key will have access to
+	Operations *[]Operation `json:"operations,omitempty" yaml:"operations,omitempty"`
+}
+
+// APIKeyGenerationRequestExpiresInUnit Time unit for expiration
+type APIKeyGenerationRequestExpiresInUnit string
+
+// APIKeyGenerationResponse defines model for APIKeyGenerationResponse.
+type APIKeyGenerationResponse struct {
+	// ApiKey Details of an API key
+	ApiKey  *APIKey `json:"api_key,omitempty" yaml:"api_key,omitempty"`
+	Message string  `json:"message" yaml:"message"`
+	Status  string  `json:"status" yaml:"status"`
+}
 
 // APIListItem defines model for APIListItem.
 type APIListItem struct {
@@ -1278,6 +1354,9 @@ type CreateAPIJSONRequestBody = APIConfiguration
 // UpdateAPIJSONRequestBody defines body for UpdateAPI for application/json ContentType.
 type UpdateAPIJSONRequestBody = APIConfiguration
 
+// GenerateAPIKeyJSONRequestBody defines body for GenerateAPIKey for application/json ContentType.
+type GenerateAPIKeyJSONRequestBody = APIKeyGenerationRequest
+
 // UploadCertificateJSONRequestBody defines body for UploadCertificate for application/json ContentType.
 type UploadCertificateJSONRequestBody = CertificateUploadRequest
 
@@ -1743,8 +1822,8 @@ type ServerInterface interface {
 	// (PUT /apis/{id})
 	UpdateAPI(c *gin.Context, id string)
 	// Generate API key for an API
-	// (POST /apis/{name}/{version}/api-key)
-	GenerateAPIKey(c *gin.Context, name string, version string)
+	// (POST /apis/{id}/api-key)
+	GenerateAPIKey(c *gin.Context, id string)
 	// List all custom certificates
 	// (GET /certificates)
 	ListCertificates(c *gin.Context)
@@ -1948,8 +2027,8 @@ func (siw *ServerInterfaceWrapper) GetAPIById(c *gin.Context) {
 	siw.Handler.GetAPIById(c, id)
 }
 
-// GenerateAPIKey operation middleware
-func (siw *ServerInterfaceWrapper) GenerateAPIKey(c *gin.Context) {
+// UpdateAPI operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAPI(c *gin.Context) {
 
 	var err error
 
@@ -1977,21 +2056,12 @@ func (siw *ServerInterfaceWrapper) GenerateAPIKey(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "version" -------------
-	var version string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -2002,7 +2072,7 @@ func (siw *ServerInterfaceWrapper) GenerateAPIKey(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GenerateAPIKey(c, name, version)
+	siw.Handler.GenerateAPIKey(c, id)
 }
 
 // ListCertificates operation middleware
@@ -2671,7 +2741,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/apis/:id", wrapper.DeleteAPI)
 	router.GET(options.BaseURL+"/apis/:id", wrapper.GetAPIById)
 	router.PUT(options.BaseURL+"/apis/:id", wrapper.UpdateAPI)
-	router.POST(options.BaseURL+"/apis/:name/:version/api-key", wrapper.GenerateAPIKey)
+	router.POST(options.BaseURL+"/apis/:id/api-key", wrapper.GenerateAPIKey)
 	router.GET(options.BaseURL+"/certificates", wrapper.ListCertificates)
 	router.POST(options.BaseURL+"/certificates", wrapper.UploadCertificate)
 	router.POST(options.BaseURL+"/certificates/reload", wrapper.ReloadCertificates)

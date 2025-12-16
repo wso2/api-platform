@@ -176,7 +176,7 @@ paths:
           description: Filter by deployment status
           schema:
             type: string
-            enum: [pending, deployed, failed]
+            enum: [ pending, deployed, failed ]
           example: pending
       responses:
         "200":
@@ -347,81 +347,60 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /apis/{name}/{version}/api-key:
+  /apis/{id}/api-key:
     post:
       summary: Generate API key for an API
       description: |
         Generate a new API key for the specified API. The generated key can be
         used by clients to authenticate requests to the API if API Key validation
         policy is applied. The key is a 32-byte random value encoded in hexadecimal
-        and prefixed with "gw_".
+        and prefixed with "apip_".
       operationId: generateAPIKey
       tags:
         - API Management
       parameters:
-        - name: name
+        - name: id
           in: path
           required: true
-          description: Name of the API to generate the API key for
+          description: |
+            Unique public identifier of the API to generate the key for
           schema:
             type: string
-          example: weather-api
-        - name: version
-          in: path
-          required: true
-          description: Version of the API
-          schema:
-            type: string
-          example: v1.0
+          example: weather-api-v1.0
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyGenerationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyGenerationRequest"
       responses:
         '201':
           description: API key generated successfully
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: success
-                  message:
-                    type: string
-                    example: API key generated successfully
-                  name:
-                    type: string
-                    description: Name of the API
-                    example: weather-api
-                  version:
-                    type: string
-                    description: Version of the API
-                    example: v1.0
-                  api_key:
-                    type: string
-                    description: Generated API key with gw_ prefix
-                    example: "gw_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-                  created_at:
-                    type: string
-                    format: date-time
-                    description: Timestamp when the API key was generated
-                    example: "2025-12-08T10:30:00Z"
-                  expires_at:
-                    type: string
-                    format: date-time
-                    nullable: true
-                    description: Expiration timestamp (null if no expiration)
-                    example: null
-        '404':
+                $ref: "#/components/schemas/APIKeyGenerationResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
           description: API configuration not found
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
           description: Internal server error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: "#/components/schemas/ErrorResponse"
 
   /certificates:
     get:
@@ -684,7 +663,7 @@ paths:
           description: Filter by deployment status
           schema:
             type: string
-            enum: [pending, deployed, failed]
+            enum: [ pending, deployed, failed ]
           example: pending
       responses:
         "200":
@@ -2067,6 +2046,107 @@ components:
           format: date-time
           example: 2025-10-11T11:45:00Z
 
+    APIKeyGenerationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Name of the API key
+          example: my-weather-api-key
+        operations:
+          type: array
+          description: List of API operations the key will have access to
+          items:
+            $ref: '#/components/schemas/Operation'
+        expires_in:
+          type: object
+          description: Expiration duration for the API key
+          properties:
+            unit:
+              type: string
+              description: Time unit for expiration
+              enum:
+                - seconds
+                - minutes
+                - hours
+                - days
+                - weeks
+                - months
+              example: days
+            duration:
+              type: integer
+              description: Duration value for expiration
+              example: 30
+          required:
+            - unit
+            - duration
+        expires_at:
+          type: string
+          format: date-time
+          description: Expiration timestamp (null if no expiration)
+          example: null
+    APIKeyGenerationResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: API key generated successfully
+        api_key:
+          $ref: '#/components/schemas/APIKey'
+      required:
+        - status
+        - message
+    APIKey:
+      type: object
+      description: Details of an API key
+      properties:
+        name:
+          type: string
+          description: Name of the API key
+          example: my-weather-api-key
+        api_key:
+          type: string
+          description: Generated API key with apip_ prefix
+          example: "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+        apiId:
+          type: string
+          description: Unique public identifier of the API that the key is associated with
+          example: weather-api-v1.0
+        operations:
+          type: string
+          description: List of API operations the key will have access to
+          example: "[GET /{country_code}/{city}, POST /data]"
+        status:
+          type: string
+          description: Status of the API key
+          enum:
+            - active
+            - revoked
+            - expired
+          example: active
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the API key was generated
+          example: "2025-12-08T10:30:00Z"
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: Expiration timestamp (null if no expiration)
+          example: null
+      required:
+        - name
+        - api_key
+        - apiId
+        - operations
+        - status
+        - created_at
+        - expires_at
+
     APIListItem:
       type: object
       properties:
@@ -3098,7 +3178,7 @@ components:
           example: Certificate uploaded and SDS updated successfully
         status:
           type: string
-          enum: [success, error]
+          enum: [ success, error ]
           example: success
 
     CertificateListResponse:

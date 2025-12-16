@@ -157,11 +157,17 @@ type Storage interface {
 	// This is used for API key validation during authentication.
 	GetAPIKeyByKey(key string) (*models.APIKey, error)
 
-	// GetAPIKeysByAPI retrieves all API keys for a specific API (name and version).
+	// GetAPIKeysByAPI retrieves all API keys for a specific API.
 	//
 	// Returns an empty slice if no API keys exist for the API.
 	// Used for listing API keys associated with an API.
-	GetAPIKeysByAPI(apiName, apiVersion string) ([]*models.APIKey, error)
+	GetAPIKeysByAPI(handle string) ([]*models.APIKey, error)
+
+	// GetAPIKeysByAPIAndName retrieves an API key by its name within a specific API.
+	//
+	// Returns an error if the API key is not found.
+	// Used for retrieving specific API keys by name.
+	GetAPIKeysByAPIAndName(handle, name string) (*models.APIKey, error)
 
 	// UpdateAPIKey updates an existing API key (e.g., to revoke or expire it).
 	//
@@ -173,6 +179,16 @@ type Storage interface {
 	//
 	// Returns an error if the API key does not exist.
 	DeleteAPIKey(key string) error
+
+	// RemoveAPIKeysAPI removes all API keys for a specific API.
+	//
+	// Returns an error if API key removal fails.
+	RemoveAPIKeysAPI(handle string) error
+
+	// RemoveAPIKeyAPIAndName removes an API key by its API handle and name.
+	//
+	// Returns an error if the API key does not exist.
+	RemoveAPIKeyAPIAndName(handle, name string) error
 
 	// SaveCertificate persists a new certificate.
 	//
