@@ -16,6 +16,6 @@
  * under the License.
  */
 
-package cmd
+package utils
 
-const CliName = "fusionctl"
+const CliName = "apipctl"
