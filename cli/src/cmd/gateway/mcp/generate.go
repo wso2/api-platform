@@ -61,10 +61,10 @@ func init() {
 		cwd = "."
 	}
 
-	generateCmd.Flags().StringVarP(&generateServer, "server", "s", "", "MCP server URL (required)")
-	generateCmd.Flags().StringVarP(&generateOutput, "output", "o", cwd, "Output directory for generated configuration")
+	generateCmd.Flags().StringVarP(&generateServer, utils.FlagServer, utils.FlagServerShort, "", "MCP server URL (required)")
+	generateCmd.Flags().StringVarP(&generateOutput, utils.FlagOutput, utils.FlagOutputShort, cwd, "Output directory for generated configuration")
 
-	generateCmd.MarkFlagRequired("server")
+	generateCmd.MarkFlagRequired(utils.FlagServer)
 }
 
 func runGenerateCommand() error {

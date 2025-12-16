@@ -63,14 +63,14 @@ var addCmd = &cobra.Command{
 }
 
 func init() {
-	addCmd.Flags().StringVarP(&addName, "name", "n", "", "Name of the gateway (required)")
-	addCmd.Flags().StringVarP(&addServer, "server", "s", "", "Server URL of the gateway (required)")
-	addCmd.Flags().StringVarP(&addToken, "token", "t", "", "Authentication token for the gateway")
-	addCmd.Flags().StringVarP(&addEnvToken, "env-token", "e", "", "Environment variable name to read token from")
-	addCmd.Flags().BoolVarP(&addInsecure, "insecure", "i", false, "Allow insecure server connections")
+	addCmd.Flags().StringVarP(&addName, utils.FlagName, utils.FlagNameShort, "", "Name of the gateway (required)")
+	addCmd.Flags().StringVarP(&addServer, utils.FlagServer, utils.FlagServerShort, "", "Server URL of the gateway (required)")
+	addCmd.Flags().StringVarP(&addToken, utils.FlagToken, utils.FlagTokenShort, "", "Authentication token for the gateway")
+	addCmd.Flags().StringVarP(&addEnvToken, utils.FlagEnvToken, utils.FlagEnvTokenShort, "", "Environment variable name to read token from")
+	addCmd.Flags().BoolVarP(&addInsecure, utils.FlagInsecure, utils.FlagInsecureShort, false, "Allow insecure server connections")
 
-	addCmd.MarkFlagRequired("name")
-	addCmd.MarkFlagRequired("server")
+	addCmd.MarkFlagRequired(utils.FlagName)
+	addCmd.MarkFlagRequired(utils.FlagServer)
 }
 
 func runAddCommand() error {
