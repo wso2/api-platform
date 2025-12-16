@@ -114,16 +114,17 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 	ctx.AfterSuite(func() {
 		log.Println("=== Integration Test Suite Cleanup ===")
 
-		// Generate coverage reports before cleanup
+		// Stop containers first - this flushes coverage data to the bind mount
+		if composeManager != nil {
+			composeManager.Cleanup()
+		}
+
+		// Generate coverage reports after containers stop (coverage data is now flushed)
 		if coverageCollector != nil {
 			log.Println("Generating coverage reports...")
 			if err := coverageCollector.MergeAndGenerateReport(); err != nil {
 				log.Printf("Warning: Failed to generate coverage report: %v", err)
 			}
-		}
-
-		if composeManager != nil {
-			composeManager.Cleanup()
 		}
 
 		log.Println("=== Test Suite Complete ===")
