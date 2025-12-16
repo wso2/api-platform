@@ -124,15 +124,6 @@ func SaveConfig(config *Config) error {
 
 // AddGateway adds a new gateway to the configuration
 func (c *Config) AddGateway(gateway Gateway) error {
-	// Encrypt token if present
-	if gateway.Token != "" {
-		encryptedToken, err := utils.EncryptToken(gateway.Token)
-		if err != nil {
-			return fmt.Errorf("failed to encrypt token: %w", err)
-		}
-		gateway.Token = encryptedToken
-	}
-
 	// Check if gateway with the same name already exists
 	for i, g := range c.Gateways {
 		if g.Name == gateway.Name {
@@ -153,19 +144,15 @@ func (c *Config) AddGateway(gateway Gateway) error {
 	return nil
 }
 
-// GetGateway returns a gateway by name with decrypted token
+// GetGateway returns a gateway by name with resolved token
 func (c *Config) GetGateway(name string) (*Gateway, error) {
 	for i := range c.Gateways {
 		if c.Gateways[i].Name == name {
 			// Create a copy to avoid modifying the config
 			gateway := c.Gateways[i]
-			// Decrypt token if present
-			if gateway.Token != "" {
-				decryptedToken, err := utils.DecryptToken(gateway.Token)
-				if err != nil {
-					return nil, fmt.Errorf("failed to decrypt token for gateway '%s': %w", name, err)
-				}
-				gateway.Token = decryptedToken
+			// Resolve environment variable if token is present and connection is secure
+			if !gateway.Insecure && gateway.Token != "" {
+				gateway.Token = utils.ResolveEnvVar(gateway.Token)
 			}
 			return &gateway, nil
 		}

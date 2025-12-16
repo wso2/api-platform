@@ -45,6 +45,7 @@ var (
 	addName     string
 	addServer   string
 	addToken    string
+	addEnvToken string
 	addInsecure bool
 )
 
@@ -65,6 +66,7 @@ func init() {
 	addCmd.Flags().StringVarP(&addName, "name", "n", "", "Name of the gateway (required)")
 	addCmd.Flags().StringVarP(&addServer, "server", "s", "", "Server URL of the gateway (required)")
 	addCmd.Flags().StringVarP(&addToken, "token", "t", "", "Authentication token for the gateway")
+	addCmd.Flags().StringVarP(&addEnvToken, "env-token", "e", "", "Environment variable name to read token from")
 	addCmd.Flags().BoolVarP(&addInsecure, "insecure", "i", false, "Allow insecure server connections")
 
 	addCmd.MarkFlagRequired("name")
@@ -78,17 +80,28 @@ func runAddCommand() error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Prompt for token if not provided via flag
-	token := addToken
-	if token != "" {
+	// Handle token input: --token, --env-token, or interactive prompt
+	var token string
+
+	// Check if both --token and --env-token are provided
+	if addToken != "" && addEnvToken != "" {
+		return fmt.Errorf("cannot specify both --token and --env-token flags")
+	}
+
+	if addToken != "" {
 		// Warn if token was provided via flag (security risk)
 		fmt.Println("\n⚠️  Warning: Providing tokens via --token flag is not recommended")
 		fmt.Println("   Tokens in command-line arguments may be visible in:")
 		fmt.Println("   • Shell history")
 		fmt.Println("   • Process lists")
 		fmt.Println("   • Log files")
-		fmt.Println("   Next time, omit --token to enter it securely via interactive prompt.\n")
+		fmt.Println("   Next time, use --env-token or omit both flags for interactive prompt.")
+		token = addToken
+	} else if addEnvToken != "" {
+		// Store environment variable reference
+		token = fmt.Sprintf("${%s}", addEnvToken)
 	} else if !addInsecure {
+		// Interactive prompt
 		fmt.Println("\nAuthentication token (leave empty for insecure connection):")
 		fmt.Println("  • If provided: connection will use Bearer token authentication")
 		fmt.Println("  • If empty: connection will be marked as insecure (--insecure=true)")
