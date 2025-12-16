@@ -41,6 +41,9 @@ var (
 
 	// assertSteps provides common assertion steps
 	assertSteps *steps.AssertSteps
+
+	// coverageCollector manages coverage data collection
+	coverageCollector *CoverageCollector
 )
 
 // TestFeatures is the main entry point for BDD tests
@@ -65,6 +68,12 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 	ctx.BeforeSuite(func() {
 		log.Println("=== Integration Test Suite Starting ===")
 
+		// Initialize coverage collector (always enabled)
+		coverageCollector = NewCoverageCollector(DefaultCoverageConfig())
+		if err := coverageCollector.Setup(); err != nil {
+			log.Printf("Warning: Failed to setup coverage: %v", err)
+		}
+
 		// Pre-flight checks
 		if err := CheckDockerAvailable(); err != nil {
 			log.Fatalf("Pre-flight check failed: %v", err)
@@ -74,11 +83,9 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 			log.Fatalf("Pre-flight check failed: %v", err)
 		}
 
-		// Get compose file path
+		// Create and start compose manager
 		composeFile := getComposeFilePath()
 		log.Printf("Using compose file: %s", composeFile)
-
-		// Create and start compose manager
 		var err error
 		composeManager, err = NewComposeManager(composeFile)
 		if err != nil {
@@ -106,6 +113,14 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 
 	ctx.AfterSuite(func() {
 		log.Println("=== Integration Test Suite Cleanup ===")
+
+		// Generate coverage reports before cleanup
+		if coverageCollector != nil {
+			log.Println("Generating coverage reports...")
+			if err := coverageCollector.MergeAndGenerateReport(); err != nil {
+				log.Printf("Warning: Failed to generate coverage report: %v", err)
+			}
+		}
 
 		if composeManager != nil {
 			composeManager.Cleanup()

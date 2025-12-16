@@ -17,12 +17,12 @@
 # --------------------------------------------------------------------
 
 # Integration test Docker Compose configuration
-# Simplified version for testing - uses pre-built images
+# Uses coverage-enabled image (build with: make build-coverage-image)
 
 services:
   gateway-controller:
     container_name: it-gateway-controller
-    image: ghcr.io/wso2/api-platform/gateway-controller:0.1.0
+    image: gateway-controller:coverage
     ports:
       - "9090:9090"   # REST API
       - "18000:18000" # xDS gRPC
@@ -31,11 +31,13 @@ services:
       - GATEWAY_STORAGE_TYPE=sqlite
       - GATEWAY_STORAGE_SQLITE_PATH=./data/gateway.db
       - GATEWAY_LOGGING_LEVEL=info
+      - GOCOVERDIR=/coverage
     volumes:
       - controller-data-tests:/app/data
       - ../configs/config.yaml:/app/config/config.yaml:ro
-      - ../gateway-controller/certificates:/app/certificates  # Read-write for dynamic certificate management
-      - ../gateway-controller/listener-certs:/app/listener-certs:ro  # Read-only for HTTPS listener certificates
+      - ../gateway-controller/certificates:/app/certificates
+      - ../gateway-controller/listener-certs:/app/listener-certs:ro
+      - ./coverage/gateway-controller:/coverage
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "http://localhost:9090/health"]
       interval: 5s

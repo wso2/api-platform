@@ -326,3 +326,4 @@ var runTimeCaller = func() (pc uintptr, file string, line int, ok bool) {
 	// Use a fixed path relative to the package
 	return 0, "", 0, false
 }
+
