@@ -26,6 +26,7 @@ BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Docker image configuration
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/platform-api
+PORT ?= 9243
 
 .PHONY: help build test push build-and-push-multiarch
 
@@ -43,6 +44,7 @@ build: ## Build Docker image
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
 	docker buildx build -f Dockerfile \
 		--build-arg VERSION=$(VERSION) \
+		--build-arg PORT=$(PORT) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
 		--load \
@@ -59,6 +61,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--platform linux/amd64,linux/arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		--build-arg PORT=$(PORT) \
 		-t $(IMAGE_NAME):$(VERSION) \
 		--push \
 		.
