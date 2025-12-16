@@ -24,6 +24,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/config"
+	"github.com/wso2/api-platform/cli/utils"
 )
 
 const (
@@ -100,7 +101,11 @@ func runAddCommand() error {
 	}
 
 	// Get config path for display
-	configPath, _ := config.GetConfigPath()
+	configPath, err := config.GetConfigPath()
+	if err != nil {
+		utils.LogWarning("could not determine config path", err)
+		configPath = "(unknown location)"
+	}
 
 	// Print success message
 	fmt.Printf("Gateway in %s added as %s\n", addServer, addName)

@@ -24,6 +24,7 @@ import (
 
 	"github.com/spf13/cobra"
 	mcpgen "github.com/wso2/api-platform/cli/internal/mcp"
+	"github.com/wso2/api-platform/cli/utils"
 )
 
 const (
@@ -56,6 +57,7 @@ var generateCmd = &cobra.Command{
 func init() {
 	cwd, err := os.Getwd()
 	if err != nil {
+		utils.LogWarning("could not determine current working directory, using default", err)
 		cwd = "."
 	}
 
