@@ -29,6 +29,9 @@ type Server struct {
 	LogLevel string `envconfig:"LOG_LEVEL" default:"DEBUG"`
 	//Logger   logging.Logger
 
+	// Server configurations
+	Port string `envconfig:"PORT" default:"9243"`
+
 	// Database configurations
 	Database     Database `envconfig:"DATABASE"`
 	DBSchemaPath string   `envconfig:"DB_SCHEMA_PATH" default:"./internal/database/schema.sql"`

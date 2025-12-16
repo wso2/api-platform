@@ -15,6 +15,9 @@
 # under the License.
 # -----------------------------------------------------------------------
 
+# Global build arguments
+ARG PORT=9243
+
 # Build stage
 FROM --platform=$BUILDPLATFORM golang:1.25.5-bookworm AS builder
 ARG TARGETARCH
@@ -85,12 +88,14 @@ RUN mkdir -p /app/data && \
     chown -R wso2:appgroup /app
 COPY src/internal/database/schema.sql ./schema.sql
 
-EXPOSE 9243
+ARG PORT
+EXPOSE ${PORT}
 
 ENV DRIVER=sqlite3
 ENV LOG_LEVEL=INFO
 ENV DB_SCHEMA_PATH=./schema.sql
 ENV DATABASE_PATH=/app/data/api_platform.db
+ENV PORT=${PORT}
 
 USER $USERNAME
 

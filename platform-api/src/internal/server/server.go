@@ -203,7 +203,7 @@ func generateSelfSignedCert() (tls.Certificate, error) {
 // Start starts the HTTPS server
 func (s *Server) Start(port string) error {
 	if port == "" {
-		port = ":9243"
+		return fmt.Errorf("port cannot be empty")
 	}
 
 	var cert tls.Certificate
@@ -250,13 +250,14 @@ func (s *Server) Start(port string) error {
 		MinVersion:   tls.VersionTLS12,
 	}
 
+	address := fmt.Sprintf(":%s", port)
 	server := &http.Server{
-		Addr:      port,
+		Addr:      address,
 		Handler:   s.router,
 		TLSConfig: tlsConfig,
 	}
 
-	log.Printf("Starting HTTPS server on https://localhost%s", port)
+	log.Printf("Starting HTTPS server on https://localhost:%s", port)
 	log.Println("Note: Using self-signed certificate for development. Browsers will show security warnings.")
 	return server.ListenAndServeTLS("", "")
 }
