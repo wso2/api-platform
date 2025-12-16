@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/cli/internal/config"
@@ -105,7 +106,11 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 
 // Get performs a GET request to the specified path
 func (c *Client) Get(path string) (*http.Response, error) {
-	url := c.gateway.Server + path
+	baseURL := strings.TrimSuffix(c.gateway.Server, "/")
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	url := baseURL + path
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -116,7 +121,11 @@ func (c *Client) Get(path string) (*http.Response, error) {
 
 // Post performs a POST request to the specified path with the given body
 func (c *Client) Post(path string, body io.Reader) (*http.Response, error) {
-	url := c.gateway.Server + path
+	baseURL := strings.TrimSuffix(c.gateway.Server, "/")
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	url := baseURL + path
 	req, err := http.NewRequest("POST", url, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -127,7 +136,11 @@ func (c *Client) Post(path string, body io.Reader) (*http.Response, error) {
 
 // Put performs a PUT request to the specified path with the given body
 func (c *Client) Put(path string, body io.Reader) (*http.Response, error) {
-	url := c.gateway.Server + path
+	baseURL := strings.TrimSuffix(c.gateway.Server, "/")
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	url := baseURL + path
 	req, err := http.NewRequest("PUT", url, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -138,7 +151,11 @@ func (c *Client) Put(path string, body io.Reader) (*http.Response, error) {
 
 // Delete performs a DELETE request to the specified path
 func (c *Client) Delete(path string) (*http.Response, error) {
-	url := c.gateway.Server + path
+	baseURL := strings.TrimSuffix(c.gateway.Server, "/")
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	url := baseURL + path
 	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
