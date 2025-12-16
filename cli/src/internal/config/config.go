@@ -155,17 +155,19 @@ func (c *Config) AddGateway(gateway Gateway) error {
 
 // GetGateway returns a gateway by name with decrypted token
 func (c *Config) GetGateway(name string) (*Gateway, error) {
-	for _, g := range c.Gateways {
-		if g.Name == name {
+	for i := range c.Gateways {
+		if c.Gateways[i].Name == name {
+			// Create a copy to avoid modifying the config
+			gateway := c.Gateways[i]
 			// Decrypt token if present
-			if g.Token != "" {
-				decryptedToken, err := utils.DecryptToken(g.Token)
+			if gateway.Token != "" {
+				decryptedToken, err := utils.DecryptToken(gateway.Token)
 				if err != nil {
 					return nil, fmt.Errorf("failed to decrypt token for gateway '%s': %w", name, err)
 				}
-				g.Token = decryptedToken
+				gateway.Token = decryptedToken
 			}
-			return &g, nil
+			return &gateway, nil
 		}
 	}
 	return nil, fmt.Errorf("gateway '%s' not found", name)
