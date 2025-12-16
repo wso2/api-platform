@@ -43,18 +43,18 @@ jobs:
 
       - name: Build Gateway Controller image
         run: |
-          cd gateway
-          DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }} make build-local-controller
+          cd gateway/gateway-controller
+          DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }} make build-local
 
       - name: Build Policy Engine image
         run: |
-          cd gateway
-          DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }} make build-local-policy-engine
+          cd gateway/policy-engine
+          DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }} make build-local
 
       - name: Build Router image
         run: |
-          cd gateway
-          DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }} make build-local-router
+          cd gateway/router
+          DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }} make build-local
 
       - name: Build Operator image
         run: |
