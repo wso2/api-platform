@@ -19,6 +19,17 @@ gateway:
   # This file will be used as-is without templating
   # Can be overridden with GATEWAY_HELM_VALUES_FILE_PATH environment variable
   helm_values_file_path: "/config/gateway_values.yaml"
+  
+  # Allow insecure connections to OCI registries (skip TLS verification)
+  # Note: This still uses HTTPS but skips certificate validation
+  # Useful for development/testing with self-signed certificates
+  # IMPORTANT: Should be false in production environments
+  insecure_registry: false
+  
+  # Use plain HTTP instead of HTTPS for OCI registries
+  # Useful for local/test registries without TLS support
+  # IMPORTANT: Should be false in production environments  
+  plain_http: false
     
 
 # Reconciliation behavior configuration
