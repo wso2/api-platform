@@ -1,39 +1,21 @@
-package dto
+/*
+ *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
 
-// ELKResponseEvent represents the ELK response event data.
-type ELKResponseEvent struct {
-	APIID                    string                 `json:"apiId"`
-	APIType                  string                 `json:"apiType"`
-	APIName                  string                 `json:"apiName"`
-	APIVersion               string                 `json:"apiVersion"`
-	APICreator               string                 `json:"apiCreation"` // Added
-	APICreatorTenantDomain   string                 `json:"apiCreatorTenantDomain"`
-	APIMethod                string                 `json:"apiMethod"`
-	APIContext               string                 `json:"apiContext"` // Added
-	APIResourceTemplate      string                 `json:"apiResourceTemplate"`
-	OrganizationID           string                 `json:"organizationID"`
-	EnvironmentID            string                 `json:"environmentID"`
-	TargetResponseCode       int                    `json:"targetResponseCode"`
-	ProxyResponseCode        int                    `json:"proxyResponseCode"` // Added
-	ResponseCacheHit         bool                   `json:"responseCacheHit"`
-	Destination              string                 `json:"destination"`
-	CorrelationID            string                 `json:"correlationID"`
-	RegionID                 string                 `json:"regionID"`
-	GatewayType              string                 `json:"gatewayType"`
-	ResponseLatency          int64                  `json:"responseLatency"`
-	BackendLatency           int64                  `json:"backendLatency"`
-	RequestMediationLatency  int64                  `json:"requestMediationLatency"`
-	ResponseMediationLatency int64                  `json:"responseMediationLatency"`
-	KeyType                  string                 `json:"keyType"`
-	ApplicationID            string                 `json:"applicationID"`
-	ApplicationName          string                 `json:"applicationName"`
-	ApplicationOwner         string                 `json:"applicationOwner"`
-	UserAgentHeader          string                 `json:"userAgentHeader"` // Added
-	UserName                 string                 `json:"userName"`        // Added
-	UserIP                   string                 `json:"userIP"`          // Added
-	RequestTimestamp         string                 `json:"requestTimestamp"`
-	Properties               map[string]interface{} `json:"properties"`
-}
+package dto
 
 // DefaultFaultEvent represents the default fault event data.
 type DefaultFaultEvent struct {
@@ -68,33 +50,6 @@ type DefaultFaultEvent struct {
 	APIResourceTemplate      string `json:"apiResourceTemplate"`
 	ResponseMediationLatency int64  `json:"responseMediationLatency"`
 	APIContext               string `json:"apiContext"`
-}
-
-// ELKFaultEvent represents the ELK fault event data.
-type ELKFaultEvent struct {
-	RequestTimestamp       string                 `json:"requestTimestamp"`
-	CorrelationID          string                 `json:"correlationID"`
-	KeyType                string                 `json:"keyType"`
-	ErrorType              string                 `json:"errorType"`
-	ErrorCode              int                    `json:"errorCode"`
-	ErrorMessage           string                 `json:"errorMessage"`
-	APIID                  string                 `json:"apiId"`
-	APIType                string                 `json:"apiType"`
-	APIName                string                 `json:"apiName"`
-	APIVersion             string                 `json:"apiVersion"`
-	APIMethod              string                 `json:"apiMethod"`
-	APICreation            string                 `json:"apiCreation"`
-	APICreatorTenantDomain string                 `json:"apiCreatorTenantDomain"`
-	ApplicationID          string                 `json:"applicationID"`
-	ApplicationName        string                 `json:"applicationName"`
-	ApplicationOwner       string                 `json:"applicationOwner"`
-	RegionID               string                 `json:"regionID"`
-	GatewayType            string                 `json:"gatewayType"`
-	ProxyResponseCode      int                    `json:"proxyResponseCode"`
-	TargetResponseCode     int                    `json:"targetResponseCode"`
-	UserIP                 string                 `json:"userIP"`
-	UserAgentHeader        string                 `json:"userAgentHeader"`
-	Properties             map[string]interface{} `json:"properties"`
 }
 
 // DefaultResponseEvent represents the default response event data.
