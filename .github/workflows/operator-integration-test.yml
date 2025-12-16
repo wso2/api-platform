@@ -1,6 +1,7 @@
 name: Operator Integration Test
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - main
