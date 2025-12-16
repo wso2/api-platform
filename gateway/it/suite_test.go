@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"github.com/cucumber/godog"
+	"github.com/wso2/api-platform/gateway/it/steps"
 )
 
 var (
@@ -34,6 +35,12 @@ var (
 
 	// testState is the global test state shared between steps
 	testState *TestState
+
+	// httpSteps provides common HTTP request steps
+	httpSteps *steps.HTTPSteps
+
+	// assertSteps provides common assertion steps
+	assertSteps *steps.AssertSteps
 )
 
 // TestFeatures is the main entry point for BDD tests
@@ -85,6 +92,15 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 		// Initialize global test state
 		testState = NewTestState()
 
+		// Initialize common step handlers
+		httpSteps = steps.NewHTTPSteps(testState.HTTPClient, map[string]string{
+			"gateway-controller": testState.Config.GatewayControllerURL,
+			"router":             testState.Config.RouterURL,
+			"policy-engine":      testState.Config.PolicyEngineURL,
+			"sample-backend":     testState.Config.SampleBackendURL,
+		})
+		assertSteps = steps.NewAssertSteps(httpSteps)
+
 		log.Println("=== Test Suite Ready ===")
 	})
 
@@ -107,6 +123,9 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		if testState != nil {
 			testState.Reset()
 		}
+		if httpSteps != nil {
+			httpSteps.Reset()
+		}
 		return ctx, nil
 	})
 
@@ -123,6 +142,14 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// Register step definitions
 	if testState != nil {
 		RegisterHealthSteps(ctx, testState)
+	}
+
+	// Register common HTTP and assertion steps
+	if httpSteps != nil {
+		httpSteps.Register(ctx)
+	}
+	if assertSteps != nil {
+		assertSteps.Register(ctx)
 	}
 }
 

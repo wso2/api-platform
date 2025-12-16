@@ -30,7 +30,7 @@ Feature: Gateway Health Check
     And the response should indicate healthy status
 
   Scenario: Router is ready to accept traffic
-    When I send a GET request to the router ready endpoint
+    When I send a GET request to the router ready2 endpoint
     Then the response status code should be 200
 
   Scenario: All gateway services are healthy
