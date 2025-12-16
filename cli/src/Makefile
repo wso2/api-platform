@@ -41,10 +41,10 @@ LDFLAGS=-ldflags "-X github.com/wso2/api-platform/cli/utils.Version=$(VERSION) -
 
 .PHONY: all build clean test deps help install build-all build-macos build-linux build-windows
 
-all: clean build
+all: clean test build
 
-## build: Build the binary for current platform
-build:
+## build: Build the binary for current platform (runs tests first)
+build: test
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
 	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) main.go
@@ -88,7 +88,7 @@ clean:
 ## test: Run tests
 test:
 	@echo "Running tests..."
-	$(GOTEST) -v ./...
+	@$(GOTEST) -v ./tests/... || (echo "Tests failed. Build aborted." && exit 1)
 
 ## deps: Download dependencies
 deps:

@@ -45,6 +45,7 @@ var (
 	addName     string
 	addServer   string
 	addToken    string
+	addEnvToken string
 	addInsecure bool
 )
 
@@ -62,13 +63,14 @@ var addCmd = &cobra.Command{
 }
 
 func init() {
-	addCmd.Flags().StringVarP(&addName, "name", "n", "", "Name of the gateway (required)")
-	addCmd.Flags().StringVarP(&addServer, "server", "s", "", "Server URL of the gateway (required)")
-	addCmd.Flags().StringVarP(&addToken, "token", "t", "", "Authentication token for the gateway")
-	addCmd.Flags().BoolVarP(&addInsecure, "insecure", "i", false, "Allow insecure server connections")
+	utils.AddStringFlag(addCmd, utils.FlagName, &addName, "", "Name of the gateway (required)")
+	utils.AddStringFlag(addCmd, utils.FlagServer, &addServer, "", "Server URL of the gateway (required)")
+	utils.AddStringFlag(addCmd, utils.FlagToken, &addToken, "", "Authentication token for the gateway")
+	utils.AddStringFlag(addCmd, utils.FlagEnvToken, &addEnvToken, "", "Environment variable name to read token from")
+	utils.AddBoolFlag(addCmd, utils.FlagInsecure, &addInsecure, false, "Allow insecure server connections")
 
-	addCmd.MarkFlagRequired("name")
-	addCmd.MarkFlagRequired("server")
+	addCmd.MarkFlagRequired(utils.FlagName)
+	addCmd.MarkFlagRequired(utils.FlagServer)
 }
 
 func runAddCommand() error {
@@ -78,17 +80,28 @@ func runAddCommand() error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Prompt for token if not provided via flag
-	token := addToken
-	if token != "" {
+	// Handle token input: --token, --env-token, or interactive prompt
+	var token string
+
+	// Check if both --token and --token-env are provided
+	if addToken != "" && addEnvToken != "" {
+		return fmt.Errorf("cannot specify both --%s and --%s flags", utils.FlagToken, utils.FlagEnvToken)
+	}
+
+	if addToken != "" {
 		// Warn if token was provided via flag (security risk)
-		fmt.Println("\n⚠️  Warning: Providing tokens via --token flag is not recommended")
+		fmt.Printf("\n⚠️  Warning: Providing tokens via --%s flag is not recommended\n", utils.FlagToken)
 		fmt.Println("   Tokens in command-line arguments may be visible in:")
 		fmt.Println("   • Shell history")
 		fmt.Println("   • Process lists")
 		fmt.Println("   • Log files")
-		fmt.Println("   Next time, omit --token to enter it securely via interactive prompt.\n")
+		fmt.Printf("   Next time, use --%s or omit both flags for interactive prompt.\n", utils.FlagEnvToken)
+		token = addToken
+	} else if addEnvToken != "" {
+		// Store environment variable reference
+		token = fmt.Sprintf("${%s}", addEnvToken)
 	} else if !addInsecure {
+		// Interactive prompt
 		fmt.Println("\nAuthentication token (leave empty for insecure connection):")
 		fmt.Println("  • If provided: connection will use Bearer token authentication")
 		fmt.Println("  • If empty: connection will be marked as insecure (--insecure=true)")
