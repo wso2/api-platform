@@ -19,8 +19,10 @@
 package gateway
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/config"
@@ -76,9 +78,32 @@ func runAddCommand() error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Determine insecure flag: default to true if neither token nor insecure flag is provided
+	// Prompt for token if not provided via flag
+	token := addToken
+	if token != "" {
+		// Warn if token was provided via flag (security risk)
+		fmt.Println("\n⚠️  Warning: Providing tokens via --token flag is not recommended")
+		fmt.Println("   Tokens in command-line arguments may be visible in:")
+		fmt.Println("   • Shell history")
+		fmt.Println("   • Process lists")
+		fmt.Println("   • Log files")
+		fmt.Println("   Next time, omit --token to enter it securely via interactive prompt.\n")
+	} else if !addInsecure {
+		fmt.Println("\nAuthentication token (leave empty for insecure connection):")
+		fmt.Println("  • If provided: connection will use Bearer token authentication")
+		fmt.Println("  • If empty: connection will be marked as insecure (--insecure=true)")
+		fmt.Print("Token: ")
+		reader := bufio.NewReader(os.Stdin)
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read token: %w", err)
+		}
+		token = strings.TrimSpace(input)
+	}
+
+	// Determine insecure flag: default to true if no token provided
 	insecure := addInsecure
-	if addToken == "" && !addInsecure {
+	if token == "" && !addInsecure {
 		insecure = true
 	}
 
@@ -86,7 +111,7 @@ func runAddCommand() error {
 	gateway := config.Gateway{
 		Name:     addName,
 		Server:   addServer,
-		Token:    addToken,
+		Token:    token,
 		Insecure: insecure,
 	}
 

@@ -18,6 +18,8 @@
 
 package utils
 
+// Default values for version information
+// These are overridden at build time via ldflags
 var (
 	Version   = "dev"
 	BuildTime = "unknown"
