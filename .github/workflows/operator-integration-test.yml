@@ -1,0 +1,294 @@
+name: Operator Integration Test
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'gateway/**'
+      - 'kubernetes/**'
+      - '.github/workflows/operator-integration-test.yml'
+
+env:
+  DOCKER_REGISTRY: localhost
+  VERSION: test
+  KIND_CLUSTER_NAME: operator-test
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: ${{ env.KIND_CLUSTER_NAME }}
+          wait: 300s
+
+      - name: Build Gateway Controller image
+        run: |
+          cd gateway
+          DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }} make build-local-controller
+
+      - name: Build Policy Engine image
+        run: |
+          cd gateway
+          DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }} make build-local-policy-engine
+
+      - name: Build Router image
+        run: |
+          cd gateway
+          DOCKER_REGISTRY=${{ env.DOCKER_REGISTRY }} VERSION=${{ env.VERSION }} make build-local-router
+
+      - name: Build Operator image
+        run: |
+          cd kubernetes/gateway-operator
+          IMG=${{ env.DOCKER_REGISTRY }}/gateway-operator:${{ env.VERSION }} make docker-build
+
+      - name: Load images into Kind
+        run: |
+          kind load docker-image ${{ env.DOCKER_REGISTRY }}/gateway-controller:${{ env.VERSION }} --name ${{ env.KIND_CLUSTER_NAME }}
+          kind load docker-image ${{ env.DOCKER_REGISTRY }}/policy-engine:${{ env.VERSION }} --name ${{ env.KIND_CLUSTER_NAME }}
+          kind load docker-image ${{ env.DOCKER_REGISTRY }}/gateway-router:${{ env.VERSION }} --name ${{ env.KIND_CLUSTER_NAME }}
+          kind load docker-image ${{ env.DOCKER_REGISTRY }}/gateway-operator:${{ env.VERSION }} --name ${{ env.KIND_CLUSTER_NAME }}
+
+      - name: Deploy ChartMuseum
+        run: |
+          helm repo add chartmuseum https://chartmuseum.github.io/charts
+          helm install chartmuseum chartmuseum/chartmuseum \
+            --namespace chartmuseum \
+            --create-namespace \
+            --set env.open.DISABLE_API=false \
+            --set env.open.ALLOW_OVERWRITE=true \
+            --set service.type=ClusterIP \
+            --wait --timeout 2m
+
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=chartmuseum -n chartmuseum --timeout=120s
+
+      - name: Package and push Gateway Helm chart to ChartMuseum
+        run: |
+          cd kubernetes/helm/gateway-helm-chart
+          helm package . --version 0.0.0-test
+
+          # Port forward ChartMuseum to push chart
+          kubectl port-forward svc/chartmuseum -n chartmuseum 8080:8080 &
+          sleep 5
+
+          # Push chart to ChartMuseum
+          curl --fail --data-binary "@gateway-0.0.0-test.tgz" http://localhost:8080/api/charts
+
+          # Kill port forward
+          pkill -f "kubectl port-forward.*chartmuseum" || true
+
+      - name: Deploy mock httpbin backend
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: httpbin
+            namespace: default
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: httpbin
+            template:
+              metadata:
+                labels:
+                  app: httpbin
+              spec:
+                containers:
+                - name: httpbin
+                  image: kennethreitz/httpbin:latest
+                  ports:
+                  - containerPort: 80
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: httpbin
+            namespace: default
+          spec:
+            selector:
+              app: httpbin
+            ports:
+            - port: 80
+              targetPort: 80
+          EOF
+
+          kubectl wait --for=condition=ready pod -l app=httpbin --timeout=120s
+
+      - name: Install cert-manager
+        run: |
+          helm upgrade --install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+            --version v1.17.2 \
+            --namespace cert-manager \
+            --create-namespace \
+            --set crds.enabled=true \
+            --wait --timeout 5m
+
+      - name: Install Operator Helm chart
+        run: |
+          helm upgrade --install gateway-operator ./kubernetes/helm/operator-helm-chart \
+            --namespace operator \
+            --create-namespace \
+            --set image.repository=${{ env.DOCKER_REGISTRY }}/gateway-operator \
+            --set image.tag=${{ env.VERSION }} \
+            --set image.pullPolicy=Never \
+            --set gateway.helm.chartName=http://chartmuseum.chartmuseum.svc.cluster.local:8080/charts/gateway \
+            --set gateway.helm.chartVersion=0.0.0-test \
+            --wait --timeout 5m
+
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=gateway-operator -n operator --timeout=120s
+
+      - name: Create test Gateway
+        run: |
+          # Create ConfigMap with gateway values pointing to test images
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: test-gateway-config
+            namespace: default
+          data:
+            values.yaml: |
+              gateway:
+                controller:
+                  image:
+                    repository: ${{ env.DOCKER_REGISTRY }}/gateway-controller
+                    tag: ${{ env.VERSION }}
+                    pullPolicy: Never
+                router:
+                  image:
+                    repository: ${{ env.DOCKER_REGISTRY }}/gateway-router
+                    tag: ${{ env.VERSION }}
+                    pullPolicy: Never
+                policyEngine:
+                  image:
+                    repository: ${{ env.DOCKER_REGISTRY }}/policy-engine
+                    tag: ${{ env.VERSION }}
+                    pullPolicy: Never
+          EOF
+
+          # Create Gateway CR
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          kind: Gateway
+          metadata:
+            name: test-gateway
+            namespace: default
+          spec:
+            gatewayClassName: "test"
+            apiSelector:
+              scope: Cluster
+            configRef:
+              name: test-gateway-config
+          EOF
+
+      - name: Wait for Gateway to be ready
+        run: |
+          echo "Waiting for Gateway to be programmed..."
+          kubectl wait --for=condition=Programmed gateway/test-gateway --timeout=300s
+
+          echo "Gateway status:"
+          kubectl get gateway test-gateway -o yaml
+
+      - name: Create test RestApi
+        run: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          kind: RestApi
+          metadata:
+            name: test-api
+            namespace: default
+          spec:
+            displayName: test-api
+            version: v1.0
+            context: /test
+            upstream:
+              main:
+                url: http://httpbin.default.svc.cluster.local:80
+            operations:
+              - method: GET
+                path: /get
+              - method: POST
+                path: /post
+          EOF
+
+      - name: Wait for API to be programmed
+        run: |
+          echo "Waiting for RestApi to be programmed..."
+          kubectl wait --for=condition=Programmed restapi/test-api --timeout=120s
+
+          echo "RestApi status:"
+          kubectl get restapi test-api -o yaml
+
+      - name: Test API invocation
+        run: |
+          # Port forward the router
+          kubectl port-forward svc/test-gateway-gateway-router 8080:8080 &
+          sleep 10
+
+          echo "Testing API invocation..."
+
+          # Test GET request
+          response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/test/get)
+          echo "GET /test/get returned: $response"
+
+          if [ "$response" != "200" ]; then
+            echo "API test failed with status $response"
+            curl -v http://localhost:8080/test/get || true
+            exit 1
+          fi
+
+          echo "API invocation test passed!"
+
+      - name: Debug on failure - Dump logs
+        if: failure()
+        run: |
+          echo "=== Operator Logs ==="
+          kubectl logs -n operator -l app.kubernetes.io/name=gateway-operator --tail=200 || true
+
+          echo ""
+          echo "=== Gateway Status ==="
+          kubectl describe gateway test-gateway || true
+
+          echo ""
+          echo "=== RestApi Status ==="
+          kubectl describe restapi test-api || true
+
+          echo ""
+          echo "=== Gateway Controller Logs ==="
+          kubectl logs -l app.kubernetes.io/component=controller --tail=200 || true
+
+          echo ""
+          echo "=== Router Logs ==="
+          kubectl logs -l app.kubernetes.io/component=router --tail=200 || true
+
+          echo ""
+          echo "=== Policy Engine Logs ==="
+          kubectl logs -l app.kubernetes.io/component=policy-engine --tail=200 || true
+
+          echo ""
+          echo "=== All Pods ==="
+          kubectl get pods -A
+
+          echo ""
+          echo "=== All Services ==="
+          kubectl get svc -A
