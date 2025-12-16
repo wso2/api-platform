@@ -103,14 +103,15 @@ type PostgresConfig struct {
 
 // RouterConfig holds router (Envoy) related configuration
 type RouterConfig struct {
-	AccessLogs    AccessLogsConfig   `koanf:"access_logs"`
-	ListenerPort  int                `koanf:"listener_port"`
-	HTTPSEnabled  bool               `koanf:"https_enabled"`
-	HTTPSPort     int                `koanf:"https_port"`
-	GatewayHost   string             `koanf:"gateway_host"`
-	Upstream      envoyUpstream      `koanf:"envoy_upstream"`
-	PolicyEngine  PolicyEngineConfig `koanf:"policy_engine"`
-	DownstreamTLS DownstreamTLS      `koanf:"downstream_tls"`
+	AccessLogs    AccessLogsConfig    `koanf:"access_logs"`
+	GRPCAccessLog GRPCAccessLogConfig `koanf:"grpc_access_logs"`
+	ListenerPort  int                 `koanf:"listener_port"`
+	HTTPSEnabled  bool                `koanf:"https_enabled"`
+	HTTPSPort     int                 `koanf:"https_port"`
+	GatewayHost   string              `koanf:"gateway_host"`
+	Upstream      envoyUpstream       `koanf:"envoy_upstream"`
+	PolicyEngine  PolicyEngineConfig  `koanf:"policy_engine"`
+	DownstreamTLS DownstreamTLS       `koanf:"downstream_tls"`
 	EventGateway  EventGatewayConfig `koanf:"event_gateway"`
 	VHosts        VHostsConfig       `koanf:"vhosts"`
 }
@@ -199,6 +200,17 @@ type AccessLogsConfig struct {
 	Format     string            `koanf:"format"`      // "json" or "text"
 	JSONFields map[string]string `koanf:"json_fields"` // JSON log format fields
 	TextFormat string            `koanf:"text_format"` // Text log format template
+}
+
+// GRPCAccessLogConfig holds configuration for gRPC Access Log Service
+type GRPCAccessLogConfig struct {
+	Enabled               bool   `koanf:"enabled"`
+	Host                  string `koanf:"host"`
+	Port                  uint32 `koanf:"port"`
+	LogName               string `koanf:"log_name"`
+	BufferFlushInterval 	int  `koanf:"buffer_flush_interval"`
+	BufferSizeBytes       	int  `koanf:"buffer_size_bytes"`
+	GRPCRequestTimeout  	int  `koanf:"grpc_request_timeout"`
 }
 
 // LoggingConfig holds logging configuration

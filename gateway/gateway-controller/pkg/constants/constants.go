@@ -79,6 +79,9 @@ const (
 	// Policy Engine
 	PolicyEngineClusterName = "api-platform/policy-engine"
 
+	// gRPC Access Log Service
+	GRPCAccessLogClusterName = "apip_als_cluster"
+
 	// MCP related constants
 	MCP_RESOURCE_PATH          = "/mcp"
 	MCP_PRM_RESOURCE_PATH      = "/.well-known/oauth-protected-resource"

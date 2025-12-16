@@ -26,6 +26,8 @@ type PolicyEngine struct {
 	// RawConfig holds the complete raw configuration map including custom fields
 	// This is used for resolving ${config} CEL expressions in policy systemParameters
 	RawConfig map[string]interface{} `mapstructure:",remain"`
+	AccessLogsService AccessLogsServiceConfig `mapstructure:"access_logs_service"`
+	Analytics  AnalyticsConfig  `mapstructure:"analytics"`
 }
 
 // ServerConfig holds ext_proc server configuration
@@ -111,6 +113,31 @@ type LoggingConfig struct {
 
 	// Format can be "json" or "text"
 	Format string `mapstructure:"format"`
+}
+
+// AccessLogsServiceConfig holds access logs service configuration
+type AccessLogsServiceConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	ALSServerPort int `mapstructure:"als_server_port"`
+	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
+	PublicKeyPath string `mapstructure:"public_key_path"`
+	PrivateKeyPath string `mapstructure:"private_key_path"`
+	ALSPlainText bool `mapstructure:"als_plain_text"`
+	ExtProcMaxMessageSize int `mapstructure:"max_message_size"`
+	ExtProcMaxHeaderLimit int `mapstructure:"max_header_limit"`
+}
+
+// AnalyticsConfig holds analytics related configuration
+type AnalyticsConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	Publishers []PublisherConfig `mapstructure:"publishers"`
+}
+
+// PublisherConfig holds analyticspublisher specific configuration
+type PublisherConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	Type string `mapstructure:"type"`
+	Settings map[string]interface{} `mapstructure:"settings"`
 }
 
 // Load loads configuration from a YAML file

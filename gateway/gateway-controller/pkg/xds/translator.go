@@ -28,6 +28,8 @@ import (
 	"time"
 
 	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
+	grpc_accesslogv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/grpc/v3"
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	mutationrules "github.com/envoyproxy/go-control-plane/envoy/config/common/mutation_rules/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -255,6 +257,14 @@ func (t *Translator) TranslateConfigs(
 	if t.routerConfig.PolicyEngine.Enabled {
 		policyEngineCluster := t.createPolicyEngineCluster()
 		clusters = append(clusters, policyEngineCluster)
+	}
+
+	// Add ALS cluster if gRPC access log is enabled
+	t.logger.Sugar().Infof("gRPC access log config: %+v", t.routerConfig.GRPCAccessLog)
+	if t.routerConfig.GRPCAccessLog.Enabled {
+		log.Info("gRPC access log is enabled, creating ALS cluster")
+		alsCluster := t.createALSCluster()
+		clusters = append(clusters, alsCluster)
 	}
 
 	if t.routerConfig.EventGateway.Enabled {
@@ -1049,6 +1059,48 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 	return c
 }
 
+// createALSCluster creates an Envoy cluster for the gRPC access log service
+func (t *Translator) createALSCluster() *cluster.Cluster {
+    grpcConfig := t.routerConfig.GRPCAccessLog
+
+    address := &core.Address{
+        Address: &core.Address_SocketAddress{
+            SocketAddress: &core.SocketAddress{
+                Protocol: core.SocketAddress_TCP,
+                Address:  grpcConfig.Host,
+                PortSpecifier: &core.SocketAddress_PortValue{
+                    PortValue: grpcConfig.Port,
+                },
+            },
+        },
+    }
+
+    lbEndpoint := &endpoint.LbEndpoint{
+        HostIdentifier: &endpoint.LbEndpoint_Endpoint{
+            Endpoint: &endpoint.Endpoint{
+                Address: address,
+            },
+        },
+    }
+
+    localityLbEndpoints := &endpoint.LocalityLbEndpoints{
+        LbEndpoints: []*endpoint.LbEndpoint{lbEndpoint},
+    }
+
+    return &cluster.Cluster{
+        Name:                 constants.GRPCAccessLogClusterName,
+        ConnectTimeout:       durationpb.New(5 * time.Second),
+        ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+        LbPolicy:             cluster.Cluster_ROUND_ROBIN,
+        LoadAssignment: &endpoint.ClusterLoadAssignment{
+            ClusterName: constants.GRPCAccessLogClusterName,
+            Endpoints:   []*endpoint.LocalityLbEndpoints{localityLbEndpoints},
+        },
+        // Enable HTTP/2 for gRPC
+        Http2ProtocolOptions: &core.Http2ProtocolOptions{},
+    }
+}
+
 // createSDSCluster creates an Envoy cluster for the SDS (Secret Discovery Service)
 // This cluster allows Envoy to fetch TLS certificates dynamically via xDS
 func (t *Translator) createSDSCluster() *cluster.Cluster {
@@ -1465,6 +1517,7 @@ func (t *Translator) sanitizeClusterName(hostname, scheme string) string {
 
 // createAccessLogConfig creates access log configuration based on format (JSON or text) to stdout
 func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
+	var accessLogs []*accesslog.AccessLog
 	var fileAccessLog *fileaccesslog.FileAccessLog
 
 	if t.routerConfig.AccessLogs.Format == "json" {
@@ -1514,17 +1567,66 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	}
 
 	// Marshal to Any
-	accessLogAny, err := anypb.New(fileAccessLog)
+	fileAccessLogAny, err := anypb.New(fileAccessLog)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal access log config: %w", err)
 	}
 
-	return []*accesslog.AccessLog{{
+	// Add file access log to slice
+	accessLogs = append(accessLogs, &accesslog.AccessLog{
 		Name: "envoy.access_loggers.file",
 		ConfigType: &accesslog.AccessLog_TypedConfig{
-			TypedConfig: accessLogAny,
+			TypedConfig: fileAccessLogAny,
 		},
-	}}, nil
+	})
+
+	// If gRPC access log is enabled, create the configuration and append to existing access logs
+    if t.routerConfig.GRPCAccessLog.Enabled {
+		t.logger.Info("Creating gRPC access log configuration")
+        grpcAccessLog, err := t.createGRPCAccessLog()
+        if err != nil {
+            t.logger.Warn("Failed to create gRPC access log config, continuing without it", 
+                zap.Error(err))
+        } else {
+            accessLogs = append(accessLogs, grpcAccessLog)
+        }
+    }
+
+    return accessLogs, nil
+}
+
+// createGRPCAccessLog creates a gRPC access log configuration for the gateway controller
+func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
+    grpcConfig := t.routerConfig.GRPCAccessLog
+
+    httpGrpcAccessLog := &grpc_accesslogv3.HttpGrpcAccessLogConfig{
+		CommonConfig: &grpc_accesslogv3.CommonGrpcAccessLogConfig{
+			TransportApiVersion: corev3.ApiVersion_V3,
+			LogName:             grpcConfig.LogName,
+			BufferFlushInterval: durationpb.New(time.Duration(grpcConfig.BufferFlushInterval)),
+			BufferSizeBytes:     wrapperspb.UInt32(uint32(grpcConfig.BufferSizeBytes)),
+			GrpcService: &corev3.GrpcService{
+				TargetSpecifier: &corev3.GrpcService_EnvoyGrpc_{
+					EnvoyGrpc: &corev3.GrpcService_EnvoyGrpc{
+						ClusterName: constants.GRPCAccessLogClusterName,
+					},
+				},
+				Timeout: durationpb.New(time.Duration(grpcConfig.GRPCRequestTimeout)),
+			},
+		},
+	}
+
+    grpcAccessLogAny, err := anypb.New(httpGrpcAccessLog)
+    if err != nil {
+        return nil, fmt.Errorf("failed to marshal gRPC access log config: %w", err)
+    }
+
+    return &accesslog.AccessLog{
+        Name: "envoy.access_loggers.http_grpc",
+        ConfigType: &accesslog.AccessLog_TypedConfig{
+            TypedConfig: grpcAccessLogAny,
+        },
+    }, nil
 }
 
 // convertToInterface converts map[string]string to map[string]interface{} for structpb

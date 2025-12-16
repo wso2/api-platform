@@ -1,0 +1,143 @@
+package publishers
+
+import (
+	"fmt"
+	"log/slog"
+	"sync"
+	"time"
+
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/moesif/moesifapi-go"
+	"github.com/moesif/moesifapi-go/models"
+	"github.com/policy-engine/policy-engine/internal/analytics/dto"
+	"github.com/policy-engine/policy-engine/internal/config"
+
+)
+
+const (
+	anonymous = "anonymous"
+)
+
+// Moesif represents a Moesif publisher.
+type Moesif struct {
+	cfg    *config.PublisherConfig
+	api    moesifapi.API
+	events []*models.EventModel
+	mu     sync.Mutex
+}
+
+// MoesifConfig holds the configs specific for the Moesif publisher.
+type MoesifConfig struct {
+	ApplicationID   string `mapstructure:"application_id" default:""`
+	PublishInterval int    `mapstructure:"publish_interval" default:"5"`
+	EventQueueSize 	int `mapstructure:"event_queue_size" default:"10000"`
+	BatchSize 		int `mapstructure:"batch_size" default:"50"`
+	TimerWakeupSeconds int `mapstructure:"timer_wakeup_seconds" default:"3"`
+}
+
+// NewMoesif creates a new Moesif publisher.
+func NewMoesif(pubCfg *config.PublisherConfig) *Moesif {
+	moesifCfg := &MoesifConfig{}
+
+	err := mapstructure.Decode(pubCfg.Settings, moesifCfg)
+	if err != nil {
+		slog.Error("Error decoding Moesif config", "error", err)
+		return nil
+	}
+	// Moesif Client Configs(Need to be taken from config file)
+	moesifApplicationId, eventQueueSize, batchSize, timerWakeupSeconds := 
+		moesifCfg.ApplicationID, moesifCfg.EventQueueSize, 
+		moesifCfg.BatchSize, 
+		moesifCfg.TimerWakeupSeconds
+
+	apiClient := moesifapi.NewAPI(moesifApplicationId, nil, eventQueueSize, batchSize, timerWakeupSeconds)
+	moesif := &Moesif{
+		cfg:    pubCfg,
+		events: []*models.EventModel{},
+		api:    apiClient,
+		mu:     sync.Mutex{},
+	}
+	go func() {
+		for {
+			time.Sleep(time.Duration(moesifCfg.PublishInterval) * time.Second)
+			moesif.mu.Lock()
+			if len(moesif.events) > 0 {
+				slog.Info(fmt.Sprintf("Publishing %d events to Moesif", len(moesif.events)))
+				err := moesif.api.QueueEvents(moesif.events)
+				if err != nil {
+					slog.Error("Error publishing events to Moesif", "error", err)
+				}
+				moesif.events = []*models.EventModel{}
+			}
+			moesif.mu.Unlock()
+		}
+	}()
+	return moesif
+}
+
+// Publish publishes an event to Moesif.
+func (m *Moesif) Publish(event *dto.Event) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	slog.Info("Preparing event to be published to Moesif")
+	uri := event.API.APIContext + event.Operation.APIResourceTemplate
+	if event.Operation.APIResourceTemplate != "" {
+		uri = event.Operation.APIResourceTemplate
+	}
+
+	req := models.EventRequestModel{
+		Time:       &event.RequestTimestamp,
+		Uri:        uri,
+		Verb:       event.Operation.APIMethod,
+		ApiVersion: &event.API.APIVersion,
+		IpAddress:  &event.UserIP,
+		Headers: map[string]interface{}{ // TODO: Need to populate them dynamically
+			"User-Agent":   event.UserAgentHeader,
+			"Content-Type": "application/json",
+		},
+		Body: nil,
+	}
+	respTime := event.RequestTimestamp
+	if event.Latencies != nil {
+		respTime = event.RequestTimestamp.Add(time.Duration(event.Latencies.ResponseLatency) * time.Millisecond)
+	}
+
+	rspHeaders := map[string]string{ //TODO: Need to populate them dynamically
+		"Vary":          "Accept-Encoding",
+		"Pragma":        "no-cache",
+		"Expires":       "-1",
+		"Content-Type":  "application/json; charset=utf-8",
+		"Cache-Control": "no-cache",
+	}
+
+	rsp := models.EventResponseModel{
+		Time:    &respTime,
+		Status:  event.ProxyResponseCode,
+		Headers: rspHeaders,
+	}
+
+	metadataMap := m.prepareMetadataMap(event.Properties)
+
+	userID := anonymous
+	eventModel := &models.EventModel{
+		Request:  req,
+		Response: rsp,
+		UserId: &userID,
+		Metadata: metadataMap,
+	}
+	m.events = append(m.events, eventModel)
+	slog.Debug(fmt.Sprintf("Event added to the queue. Queue size: %d", len(m.events)))
+	slog.Debug("Events", "events", m.events)
+}
+
+// Map any additional metadata related to the event provided under properties
+func (m *Moesif) prepareMetadataMap(eventProps map[string]interface{}) map[string]interface{} {
+	metadataMap := make(map[string]interface{})
+	if aiMetadata, ok := eventProps["aiMetadata"]; ok {
+		metadataMap["aiMetadata"] = aiMetadata
+	}
+	if aiTokenUsage, ok := eventProps["aiTokenUsage"]; ok {
+		metadataMap["aiTokenUsage"] = aiTokenUsage
+	}
+	return metadataMap
+}

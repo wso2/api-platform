@@ -20,6 +20,7 @@ import (
 	"github.com/policy-engine/policy-engine/internal/kernel"
 	"github.com/policy-engine/policy-engine/internal/pkg/cel"
 	"github.com/policy-engine/policy-engine/internal/registry"
+	"github.com/policy-engine/policy-engine/internal/utils"
 	"github.com/policy-engine/policy-engine/internal/xdsclient"
 )
 
@@ -136,6 +137,14 @@ func main() {
 				slog.ErrorContext(ctx, "Admin server error", "error", err)
 			}
 		}()
+	}
+
+	// Start access log service server if enabled
+	slog.DebugContext(ctx, "Policy engine ALS server config", "config", cfg.PolicyEngine.AccessLogsService)
+	if cfg.PolicyEngine.AccessLogsService.Enabled {
+		// Start the access log service server
+		slog.Info("Stating the ALS gRPC server...")
+		go utils.StartAccessLogServiceServer(cfg)
 	}
 
 	// Setup graceful shutdown
