@@ -62,37 +62,37 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 			name:        "invalid name with slash",
 			apiName:     "Weather/API",
 			shouldError: true,
-			errorMsg:    "API name must be URL-friendly",
+			errorMsg:    "API display name must be URL-friendly",
 		},
 		{
 			name:        "invalid name with question mark",
 			apiName:     "Weather?API",
 			shouldError: true,
-			errorMsg:    "API name must be URL-friendly",
+			errorMsg:    "API display name must be URL-friendly",
 		},
 		{
 			name:        "invalid name with ampersand",
 			apiName:     "Weather&API",
 			shouldError: true,
-			errorMsg:    "API name must be URL-friendly",
+			errorMsg:    "API display name must be URL-friendly",
 		},
 		{
 			name:        "invalid name with hash",
 			apiName:     "Weather#API",
 			shouldError: true,
-			errorMsg:    "API name must be URL-friendly",
+			errorMsg:    "API display name must be URL-friendly",
 		},
 		{
 			name:        "invalid name with percent",
 			apiName:     "Weather%API",
 			shouldError: true,
-			errorMsg:    "API name must be URL-friendly",
+			errorMsg:    "API display name must be URL-friendly",
 		},
 		{
 			name:        "invalid name with brackets",
 			apiName:     "Weather[API]",
 			shouldError: true,
-			errorMsg:    "API name must be URL-friendly",
+			errorMsg:    "API display name must be URL-friendly",
 		},
 	}
 
@@ -126,7 +126,7 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 			// Check if we got errors when we expected them
 			hasNameError := false
 			for _, err := range errors {
-				if err.Field == "spec.name" {
+				if err.Field == "spec.displayName" {
 					hasNameError = true
 					if tt.shouldError && tt.errorMsg != "" {
 						if err.Message[:len(tt.errorMsg)] != tt.errorMsg {
