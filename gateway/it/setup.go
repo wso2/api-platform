@@ -25,6 +25,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"sync"
@@ -33,6 +34,9 @@ import (
 
 	tc "github.com/testcontainers/testcontainers-go/modules/compose"
 )
+
+// execCommandContext is a variable for exec.CommandContext to allow mocking in tests
+var execCommandContext = exec.CommandContext
 
 const (
 	// DefaultStartupTimeout is the maximum time to wait for services to become healthy
@@ -115,6 +119,10 @@ func (cm *ComposeManager) setupSignalHandler() {
 
 	go func() {
 		sig := <-cm.signalChan
+		if sig == nil {
+			// Channel was closed during normal cleanup, not a real signal
+			return
+		}
 		log.Printf("Received signal %v, initiating graceful shutdown...", sig)
 		cm.Cleanup()
 		os.Exit(1)
@@ -259,15 +267,14 @@ func (cm *ComposeManager) Cleanup() {
 
 // CheckDockerAvailable verifies that Docker is running and accessible
 func CheckDockerAvailable() error {
-	// Use testcontainers-go to check Docker connectivity
-	ctx := context.Background()
-	compose, err := tc.NewDockerCompose()
-	if err != nil {
+	// Check Docker by running a simple command
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := execCommandContext(ctx, "docker", "info")
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("Docker is not available. Please ensure Docker is running.\nError: %w", err)
 	}
-
-	// Just creating a compose instance validates Docker is available
-	_ = compose.Down(ctx)
 
 	return nil
 }
