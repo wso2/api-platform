@@ -28,6 +28,7 @@ test-verbose:
 
 # Clean up test artifacts
 clean:
+	docker rm -f $$(docker ps -aq --filter "name=it-") 2>/dev/null || true
 	docker compose -f docker-compose.test.yaml -p gateway-it down -v --remove-orphans 2>/dev/null || true
 	rm -rf coverage/*.out reports/*.json
 
