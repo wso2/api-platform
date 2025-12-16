@@ -206,15 +206,18 @@ paths:
   /apis/{id}:
     get:
       summary: Get API configuration by id
-      description: Retrieve the complete configuration for a specific API by its id
-      operationId: getAPIByHandle
+      description: |
+        Retrieve the complete configuration for a specific API by its id.
+        The id is a unique string identifier (not a UUID).
+      operationId: getAPIById
       tags:
         - API Management
       parameters:
         - name: id
           in: path
           required: true
-          description: Public identifier for the API 
+          description: |
+            Unique public identifier for the API.
           schema:
             type: string
           example: weather-api-v1.0
@@ -256,7 +259,8 @@ paths:
         - name: id
           in: path
           required: true
-          description: Public identifier of the API to update 
+          description: |
+            Unique public identifier of the API to update.
           schema:
             type: string
           example: weather-api-v1.0
@@ -308,7 +312,8 @@ paths:
         - name: id
           in: path
           required: true
-          description: Public identifier of the API to delete 
+          description: |
+            Unique public identifier of the API to delete.
           schema:
             type: string
           example: weather-api-v1.0
@@ -633,15 +638,18 @@ paths:
   /mcp-proxies/{id}:
     get:
       summary: Get MCP Proxy configuration by id
-      description: Retrieve the complete configuration for a specific MCP Proxy by its id
-      operationId: getMCPProxyByHandle
+      description: |
+        Retrieve the complete configuration for a specific MCP Proxy by its id.
+        The id is a unique string identifier (not a UUID).
+      operationId: getMCPProxyById
       tags:
         - MCP Proxy Management
       parameters:
         - name: id
           in: path
           required: true
-          description: Public identifier of the MCP Proxy
+          description: |
+            Unique public identifier of the MCP Proxy.
           schema:
             type: string
           example: everything-mcp-v1.0
@@ -683,7 +691,8 @@ paths:
         - name: id
           in: path
           required: true
-          description: Public identifier of the MCP Proxy to update
+          description: |
+            Unique public identifier of the MCP Proxy to update.
           schema:
             type: string
           example: everything-mcp-v1.0
@@ -735,7 +744,8 @@ paths:
         - name: id
           in: path
           required: true
-          description: Public identifier of the MCP Proxy to delete
+          description: |
+            Unique public identifier of the MCP Proxy to delete.
           schema:
             type: string
           example: everything-mcp-v1.0

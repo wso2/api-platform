@@ -411,9 +411,9 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 	})
 }
 
-// GetAPIByHandle implements ServerInterface.GetAPIByHandle
-// (GET /apis/{handle})
-func (s *APIServer) GetAPIByHandle(c *gin.Context, id string) {
+// GetAPIById implements ServerInterface.GetAPIById
+// (GET /apis/{id})
+func (s *APIServer) GetAPIById(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 	handle := id
@@ -1622,9 +1622,9 @@ func (s *APIServer) GetMCPProxyByNameVersion(c *gin.Context, name string, versio
 	c.JSON(http.StatusOK, mcpDetail)
 }
 
-// GetMCPProxyByHandle implements ServerInterface.GetMCPProxyByHandle
-// (GET /mcp-proxies/{handle})
-func (s *APIServer) GetMCPProxyByHandle(c *gin.Context, id string) {
+// GetMCPProxyById implements ServerInterface.GetMCPProxyById
+// (GET /mcp-proxies/{id})
+func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 
