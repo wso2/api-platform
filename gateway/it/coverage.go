@@ -183,14 +183,12 @@ func (c *CoverageCollector) generateHTMLReport(coverDir, outputPath string) erro
 	if err := c.generateTextReport(coverDir, textFile); err != nil {
 		return err
 	}
-	defer os.Remove(textFile)
 
 	// Rewrite /build/ paths to be relative (works from gateway-controller dir)
 	rewrittenFile := filepath.Join(c.config.OutputDir, "coverage_rewritten.txt")
 	if err := c.rewriteCoveragePaths(textFile, rewrittenFile); err != nil {
 		return err
 	}
-	defer os.Remove(rewrittenFile)
 
 	// Get absolute paths for the command
 	absRewrittenFile, err := filepath.Abs(rewrittenFile)
