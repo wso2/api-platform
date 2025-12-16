@@ -300,7 +300,9 @@ func initializeMCPServer(url string) (string, error) {
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json, text/event-stream")
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return "", fmt.Errorf("failed to reach MCP server for initialize: %w", err)
