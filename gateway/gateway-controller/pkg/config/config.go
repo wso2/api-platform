@@ -32,8 +32,8 @@ import (
 
 // Config holds all configuration for the gateway-controller
 type Config struct {
-	GatewayController GatewayController `koanf:"gateway_controller"`
-	PolicyEngine map[string]interface{}    `koanf:"policy_engine"`
+	GatewayController    GatewayController      `koanf:"gateway_controller"`
+	PolicyEngine         map[string]interface{} `koanf:"policy_engine"`
 	PolicyConfigurations map[string]interface{} `koanf:"policy_configurations"`
 }
 
@@ -47,6 +47,30 @@ type GatewayController struct {
 	PolicyServer PolicyServerConfig `koanf:"policyserver"`
 	Policies     PoliciesConfig     `koanf:"policies"`
 	LLM          LLMConfig          `koanf:"llm"`
+	Auth         AuthConfig         `koanf:"auth"`
+}
+
+// AuthConfig holds authentication related configuration
+type AuthConfig struct {
+	Users []AuthUser `koanf:"users"`
+	IDP   IDPConfig  `koanf:"idp"`
+}
+
+// AuthUser describes a locally configured user
+type AuthUser struct {
+	Username       string   `koanf:"username"`
+	Password       string   `koanf:"password"`        // plain or hashed value depending on PasswordHashed
+	PasswordHashed bool     `koanf:"password_hashed"` // true when Password is a bcrypt hash
+	Roles          []string `koanf:"roles"`
+}
+
+// IDPConfig describes an external identity provider for JWT validation
+type IDPConfig struct {
+	Enabled     bool                `koanf:"enabled"`
+	JWKSURL     string              `koanf:"jwks_url"`
+	Issuer      string              `koanf:"issuer"`
+	RolesClaim  string              `koanf:"roles_claim"`
+	RoleMapping map[string][]string `koanf:"role_mapping"` // local role -> idp roles
 }
 
 // ServerConfig holds server-related configuration
@@ -280,7 +304,7 @@ func LoadConfig(configPath string) (*Config, error) {
 // defaultConfig returns a Config struct with default configuration values
 func defaultConfig() *Config {
 	return &Config{
-		GatewayController: GatewayController {
+		GatewayController: GatewayController{
 			Server: ServerConfig{
 				APIPort:         9090,
 				XDSPort:         18000,
@@ -381,6 +405,16 @@ func defaultConfig() *Config {
 				VHosts: VHostsConfig{
 					Main:    VHostEntry{Default: "*"},
 					Sandbox: VHostEntry{Default: "sandbox-*"},
+				},
+			},
+			Auth: AuthConfig{
+				Users: []AuthUser{},
+				IDP: IDPConfig{
+					Enabled:     false,
+					JWKSURL:     "",
+					Issuer:      "",
+					RolesClaim:  "roles",
+					RoleMapping: map[string][]string{},
 				},
 			},
 			Logging: LoggingConfig{
