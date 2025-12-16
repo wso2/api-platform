@@ -40,6 +40,7 @@ func NewClient(gateway *config.Gateway) *Client {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: gateway.Insecure,
+			MinVersion:         tls.VersionTLS12,
 		},
 	}
 
