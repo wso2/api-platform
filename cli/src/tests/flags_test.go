@@ -23,61 +23,47 @@ import (
 	"path/filepath"
 	"regexp"
 	"testing"
+
+	"github.com/wso2/api-platform/cli/utils"
 )
 
-// parseFlagsFromFile reads the flags.go file and extracts all flag constant values
-func parseFlagsFromFile(t *testing.T) map[string]string {
-	t.Helper()
-	// Read the flags.go file
+// TestFlagValuesUnique ensures all flag values are unique across all flags
+func TestFlagValuesUnique(t *testing.T) {
 	flagsFilePath := filepath.Join("..", "utils", "flags.go")
 	content, err := os.ReadFile(flagsFilePath)
 	if err != nil {
 		t.Fatalf("Failed to read flags.go: %v", err)
 	}
 
-	fileContent := string(content)
-	allFlags := make(map[string]string)
+	constPattern := regexp.MustCompile(`(?m)^\s*Flag\w+\s*=\s*"([^"]+)"`)
+	matches := constPattern.FindAllStringSubmatch(string(content), -1)
 
-	// Regular expression to match flag constant declarations
-	// Matches patterns like: FlagName = "name" or FlagNameShort = "n"
-	flagPattern := regexp.MustCompile(`(?m)^\s*(Flag\w+)\s*=\s*"([^"]+)"`)
-
-	matches := flagPattern.FindAllStringSubmatch(fileContent, -1)
+	allFlagValues := []string{}
 	for _, match := range matches {
-		if len(match) == 3 {
-			constantName := match[1]
-			flagValue := match[2]
-			allFlags[constantName] = flagValue
+		if len(match) == 2 {
+			allFlagValues = append(allFlagValues, match[1])
 		}
 	}
 
-	if len(allFlags) == 0 {
-		t.Fatal("No flag constants found in flags.go - check the file format")
+	for _, short := range utils.GetShortFlags() {
+		allFlagValues = append(allFlagValues, short)
 	}
 
-	return allFlags
-}
+	seen := make(map[string]bool)
+	duplicates := make(map[string]int)
 
-// TestFlagValuesUnique ensures all flag values are unique across all flags
-func TestFlagValuesUnique(t *testing.T) {
-	allFlags := parseFlagsFromFile(t)
-
-	// Check for duplicate values
-	valueToConst := make(map[string][]string)
-	for constName, value := range allFlags {
-		valueToConst[value] = append(valueToConst[value], constName)
-	}
-
-	// Report any duplicates
-	foundDuplicates := false
-	for value, constants := range valueToConst {
-		if len(constants) > 1 {
-			foundDuplicates = true
-			t.Errorf("Duplicate flag value '%s' used in: %v", value, constants)
+	for _, value := range allFlagValues {
+		if seen[value] {
+			duplicates[value]++
 		}
+		seen[value] = true
 	}
 
-	if !foundDuplicates {
-		t.Logf("✓ All %d flag values are unique", len(allFlags))
+	if len(duplicates) > 0 {
+		for value, count := range duplicates {
+			t.Errorf("Duplicate flag value '%s' found %d times", value, count+1)
+		}
+	} else {
+		t.Logf("✓ All %d flag values are unique", len(allFlagValues))
 	}
 }

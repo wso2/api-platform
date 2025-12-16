@@ -63,11 +63,11 @@ var addCmd = &cobra.Command{
 }
 
 func init() {
-	addCmd.Flags().StringVarP(&addName, utils.FlagName, utils.FlagNameShort, "", "Name of the gateway (required)")
-	addCmd.Flags().StringVarP(&addServer, utils.FlagServer, utils.FlagServerShort, "", "Server URL of the gateway (required)")
-	addCmd.Flags().StringVarP(&addToken, utils.FlagToken, utils.FlagTokenShort, "", "Authentication token for the gateway")
-	addCmd.Flags().StringVarP(&addEnvToken, utils.FlagEnvToken, utils.FlagEnvTokenShort, "", "Environment variable name to read token from")
-	addCmd.Flags().BoolVarP(&addInsecure, utils.FlagInsecure, utils.FlagInsecureShort, false, "Allow insecure server connections")
+	utils.AddStringFlag(addCmd, utils.FlagName, &addName, "", "Name of the gateway (required)")
+	utils.AddStringFlag(addCmd, utils.FlagServer, &addServer, "", "Server URL of the gateway (required)")
+	utils.AddStringFlag(addCmd, utils.FlagToken, &addToken, "", "Authentication token for the gateway")
+	utils.AddStringFlag(addCmd, utils.FlagEnvToken, &addEnvToken, "", "Environment variable name to read token from")
+	utils.AddBoolFlag(addCmd, utils.FlagInsecure, &addInsecure, false, "Allow insecure server connections")
 
 	addCmd.MarkFlagRequired(utils.FlagName)
 	addCmd.MarkFlagRequired(utils.FlagServer)

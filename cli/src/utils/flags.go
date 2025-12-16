@@ -18,22 +18,44 @@
 
 package utils
 
+import "github.com/spf13/cobra"
+
 const (
-	FlagName      = "name"
-	FlagNameShort = "n"
-
-	FlagServer      = "server"
-	FlagServerShort = "s"
-
-	FlagToken      = "token"
-	FlagTokenShort = "t"
-
-	FlagEnvToken      = "token-env"
-	FlagEnvTokenShort = "e"
-
-	FlagInsecure      = "insecure"
-	FlagInsecureShort = "i"
-
-	FlagOutput      = "output"
-	FlagOutputShort = "o"
+	FlagName     = "name"
+	FlagServer   = "server"
+	FlagToken    = "token"
+	FlagEnvToken = "token-env"
+	FlagInsecure = "insecure"
+	FlagOutput   = "output"
 )
+
+var shortFlags = map[string]string{
+	FlagName:   "n",
+	FlagServer: "s",
+	FlagToken:  "t",
+	FlagOutput: "o",
+}
+
+func GetShortFlags() []string {
+	values := make([]string, 0, len(shortFlags))
+	for _, v := range shortFlags {
+		values = append(values, v)
+	}
+	return values
+}
+
+func AddStringFlag(cmd *cobra.Command, flagName string, p *string, defaultValue, usage string) {
+	if short, hasShort := shortFlags[flagName]; hasShort {
+		cmd.Flags().StringVarP(p, flagName, short, defaultValue, usage)
+	} else {
+		cmd.Flags().StringVar(p, flagName, defaultValue, usage)
+	}
+}
+
+func AddBoolFlag(cmd *cobra.Command, flagName string, p *bool, defaultValue bool, usage string) {
+	if short, hasShort := shortFlags[flagName]; hasShort {
+		cmd.Flags().BoolVarP(p, flagName, short, defaultValue, usage)
+	} else {
+		cmd.Flags().BoolVar(p, flagName, defaultValue, usage)
+	}
+}
