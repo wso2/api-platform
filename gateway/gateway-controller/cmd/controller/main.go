@@ -258,6 +258,8 @@ func main() {
 	router.Use(middleware.CorrelationIDMiddleware(log))
 	router.Use(middleware.ErrorHandlingMiddleware(log))
 	router.Use(middleware.LoggingMiddleware(log))
+	// Authentication middleware: verifies configured local users (basic auth)
+	router.Use(middleware.AuthMiddleware(cfg, log))
 	router.Use(gin.Recovery())
 
 	// Initialize API server with the configured validator
