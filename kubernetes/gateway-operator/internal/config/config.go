@@ -84,6 +84,15 @@ type ReconciliationConfig struct {
 
 	// MaxConcurrentReconciles is the maximum number of concurrent reconciles
 	MaxConcurrentReconciles int `koanf:"max_concurrent_reconciles"`
+
+	// MaxRetryAttempts is the maximum number of retry attempts for gateway operations
+	MaxRetryAttempts int `koanf:"max_retry_attempts"`
+
+	// MaxBackoffDuration is the maximum duration for exponential backoff
+	MaxBackoffDuration time.Duration `koanf:"max_backoff_duration"`
+
+	// InitialBackoff is the initial backoff duration used when retrying
+	InitialBackoff time.Duration `koanf:"initial_backoff"`
 }
 
 // LoggingConfig holds logging configuration
@@ -99,13 +108,16 @@ type LoggingConfig struct {
 func getDefaults() map[string]interface{} {
 	return map[string]interface{}{
 		"gateway": map[string]interface{}{
-			"helm_chart_name":        "api-platform-gateway",
-			"helm_chart_version":     "0.1.0",
-			"helm_values_file_path":  "",
+			"helm_chart_name":       "api-platform-gateway",
+			"helm_chart_version":    "0.1.0",
+			"helm_values_file_path": "",
 		},
 		"reconciliation": map[string]interface{}{
 			"sync_period":               "10m",
 			"max_concurrent_reconciles": 1,
+			"max_retry_attempts":        10,
+			"max_backoff_duration":      "60s",
+			"initial_backoff":           "1s",
 		},
 		"logging": map[string]interface{}{
 			"level":       "info",
@@ -197,6 +209,23 @@ func (c *OperatorConfig) Validate() error {
 	// Validate reconciliation config
 	if c.Reconciliation.MaxConcurrentReconciles < 1 {
 		return fmt.Errorf("max concurrent reconciles must be at least 1")
+	}
+
+	// Validate retry/backoff config
+	if c.Reconciliation.MaxRetryAttempts < 1 {
+		return fmt.Errorf("max retry attempts must be at least 1")
+	}
+
+	if c.Reconciliation.InitialBackoff <= 0 {
+		return fmt.Errorf("initial backoff must be a positive duration")
+	}
+
+	if c.Reconciliation.MaxBackoffDuration <= 0 {
+		return fmt.Errorf("max backoff duration must be a positive duration")
+	}
+
+	if c.Reconciliation.MaxBackoffDuration < c.Reconciliation.InitialBackoff {
+		return fmt.Errorf("max backoff duration must be greater than or equal to initial backoff")
 	}
 
 	return nil

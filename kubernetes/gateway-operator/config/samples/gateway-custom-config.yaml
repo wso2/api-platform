@@ -1,0 +1,83 @@
+---
+# ConfigMap containing custom Helm values
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-custom-config
+  namespace: default
+data:
+  values.yaml: |
+    # Custom Helm values for the gateway
+    replicaCount: 2
+
+    image:
+      repository: wso2/api-platform-gateway
+      tag: "latest"
+      pullPolicy: IfNotPresent
+
+    service:
+      type: LoadBalancer
+      port: 9090
+
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+
+    controlPlane:
+      host: "https://control-plane.example.com"
+
+    storage:
+      type: postgres
+      host: postgres.default.svc.cluster.local
+      port: 5432
+      database: gateway_db
+
+---
+# Gateway using the custom ConfigMap
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
+metadata:
+  name: custom-gateway
+  namespace: default
+spec:
+  gatewayClassName: production
+
+  apiSelector:
+    scope: LabelSelector
+    matchLabels:
+      environment: production
+      team: platform
+
+  # Reference the ConfigMap for custom Helm values
+  configRef:
+    name: gateway-custom-config
+
+  infrastructure:
+    replicas: 2
+
+  controlPlane:
+    host: "https://control-plane.example.com"
+
+  storage:
+    type: postgres
+
+---
+# Gateway using default configuration (no ConfigRef)
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
+metadata:
+  name: default-gateway
+  namespace: default
+spec:
+  gatewayClassName: development
+
+  apiSelector:
+    scope: Cluster
+
+  # No configRef specified - will use operator's default mounted configuration
+  infrastructure:
+    replicas: 1

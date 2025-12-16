@@ -18,7 +18,7 @@ Successfully refactored the Helm deployment implementation to **remove template 
    - Updated default: Empty string (uses chart's default values.yaml)
    - Updated env var: `GATEWAY_HELM_VALUES_TEMPLATE_PATH` → `GATEWAY_HELM_VALUES_FILE_PATH`
 
-2. **Controller** (`internal/controller/gatewayconfiguration_controller.go`):
+2. **Controller** (`internal/controller/gateway_controller.go`):
    - Removed template rendering logic
    - Simplified deployment to use `ValuesFilePath` instead of `ValuesYAML`
    - Direct file path to Helm client
@@ -77,8 +77,8 @@ env:
 
 ### Basic Gateway (Default Values)
 ```yaml
-apiVersion: api.api-platform.wso2.com/v1
-kind: GatewayConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Gateway
 metadata:
   name: my-gateway
 spec:
@@ -165,7 +165,7 @@ spec:
 
 ### Modified Files
 - ✏️ `internal/config/config.go` - Simplified configuration
-- ✏️ `internal/controller/gatewayconfiguration_controller.go` - Removed template logic
+- ✏️ `internal/controller/gateway_controller.go` - Removed template logic
 - ✏️ `internal/k8sutil/manifest.go` - Removed RenderTemplate function
 - ✏️ `HELM_DEPLOYMENT.md` - Updated documentation
 - ✏️ `HELM_QUICK_START.md` - Updated quick start guide

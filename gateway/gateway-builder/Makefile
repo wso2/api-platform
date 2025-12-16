@@ -38,7 +38,8 @@ help: ## Show this help message
 	@echo 'Gateway Builder Build System (Version: $(VERSION))'
 	@echo ''
 	@echo 'Build Targets:'
-	@echo '  make build                     - Build Docker image'
+	@echo '  make build                     - Build Docker image using buildx'
+	@echo '  make build-local               - Build Docker image locally (faster)'
 	@echo '  make push                      - Push Docker image to registry'
 	@echo '  make build-and-push-multiarch  - Build and push multi-arch Docker image'
 	@echo ''
@@ -54,7 +55,7 @@ help: ## Show this help message
 
 # Build Targets
 .PHONY: build
-build: ## Build Docker image
+build: ## Build Docker image using buildx
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
 	@docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \
@@ -64,6 +65,18 @@ build: ## Build Docker image
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
 		--load \
+		.
+
+.PHONY: build-local
+build-local: ## Build Docker image locally (faster, no buildx)
+	@echo "Building Docker image locally ($(IMAGE_NAME):$(VERSION))..."
+	@DOCKER_BUILDKIT=1 docker build -f Dockerfile \
+		--build-context sdk=../../sdk \
+		--build-context policy-engine=../policy-engine \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		-t $(IMAGE_NAME):$(VERSION) \
+		-t $(IMAGE_NAME):latest \
 		.
 
 .PHONY: push

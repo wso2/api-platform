@@ -23,20 +23,23 @@ gateway:
 
 # Reconciliation behavior configuration
 reconciliation:
-  # Enable automatic reconciliation of gateway resources
-  # Can be overridden with RECONCILIATION_ENABLED environment variable
-  enabled: true
-  
-  # Interval between reconciliation checks (in seconds)
-  # Can be overridden with RECONCILIATION_INTERVAL environment variable
-  interval: 300
+  # Minimum interval between reconciliation runs (duration string)
+  # Example: "10m" for 10 minutes, or "300s" for 5 minutes
+  # Can be overridden with env vars prefixed with GATEWAY_ (see docs)
+  sync_period: "5m"
+
+  # Max concurrent reconciles (must be >= 1)
+  max_concurrent_reconciles: 1
+
+  # Retry/backoff settings for deployments
+  max_retry_attempts: 10
+  initial_backoff: "1s"
+  max_backoff_duration: "60s"
 
 # Logging configuration
 logging:
   # Log level (debug, info, warn, error)
   # Can be overridden with LOG_LEVEL environment variable
   level: "info"
-  
-  # Log format (json, console)
-  # Can be overridden with LOG_FORMAT environment variable
-  format: "json"
+  # Enable development mode (boolean). Replaces the previous `format` field.
+  development: true

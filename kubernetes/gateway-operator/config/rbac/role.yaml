@@ -19,35 +19,6 @@ rules:
   - update
   - watch
 - apiGroups:
-  - api.api-platform.wso2.com
-  resources:
-  - apiconfigurations
-  - gatewayconfigurations
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - api.api-platform.wso2.com
-  resources:
-  - apiconfigurations/finalizers
-  - gatewayconfigurations/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - api.api-platform.wso2.com
-  resources:
-  - apiconfigurations/status
-  - gatewayconfigurations/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
   - apps
   resources:
   - deployments
@@ -59,3 +30,32 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - gateway.api-platform.wso2.com
+  resources:
+  - gateways
+  - restapis
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - gateway.api-platform.wso2.com
+  resources:
+  - gateways/finalizers
+  - restapis/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - gateway.api-platform.wso2.com
+  resources:
+  - gateways/status
+  - restapis/status
+  verbs:
+  - get
+  - patch
+  - update

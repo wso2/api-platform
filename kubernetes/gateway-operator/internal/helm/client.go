@@ -41,7 +41,7 @@ type Client struct {
 // NewClient creates a new Helm client
 func NewClient() (*Client, error) {
 	settings := cli.New()
-	
+
 	// Create registry client for OCI support
 	registryClient, err := registry.NewClient(
 		registry.ClientOptDebug(settings.Debug),
@@ -170,7 +170,7 @@ func (c *Client) install(ctx context.Context, actionConfig *action.Configuration
 		if err != nil {
 			return fmt.Errorf("failed to extract registry host: %w", err)
 		}
-		
+
 		if err := c.registryClient.Login(
 			registryHost,
 			registry.LoginOptBasicAuth(opts.Username, opts.Password),
@@ -230,7 +230,7 @@ func (c *Client) upgrade(ctx context.Context, actionConfig *action.Configuration
 		if err != nil {
 			return fmt.Errorf("failed to extract registry host: %w", err)
 		}
-		
+
 		if err := c.registryClient.Login(
 			registryHost,
 			registry.LoginOptBasicAuth(opts.Username, opts.Password),
@@ -364,7 +364,7 @@ func (c *Client) parseValues(opts InstallOrUpgradeOptions) (map[string]interface
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert values from file: %w", err)
 		}
-		
+
 		if convertedMap, ok := converted.(map[string]interface{}); ok {
 			values = convertedMap
 		}
@@ -413,7 +413,7 @@ func convertToStringMap(input interface{}) (interface{}, error) {
 			result[keyStr] = converted
 		}
 		return result, nil
-	
+
 	case map[string]interface{}:
 		// Already the correct type, but recurse into values
 		result := make(map[string]interface{})
@@ -425,7 +425,7 @@ func convertToStringMap(input interface{}) (interface{}, error) {
 			result[k] = converted
 		}
 		return result, nil
-	
+
 	case []interface{}:
 		// Handle slices recursively
 		result := make([]interface{}, len(value))
@@ -437,7 +437,7 @@ func convertToStringMap(input interface{}) (interface{}, error) {
 			result[i] = converted
 		}
 		return result, nil
-	
+
 	default:
 		// Primitive types (string, int, bool, etc.) are returned as-is
 		return value, nil
@@ -451,18 +451,18 @@ func extractRegistryHost(chartRef string) (string, error) {
 	if len(chartRef) > 6 && chartRef[:6] == "oci://" {
 		chartRef = chartRef[6:]
 	}
-	
+
 	// Find the first slash to get the hostname
 	for i, c := range chartRef {
 		if c == '/' {
 			return chartRef[:i], nil
 		}
 	}
-	
+
 	// If no slash found, the entire string is the host
 	if chartRef != "" {
 		return chartRef, nil
 	}
-	
+
 	return "", fmt.Errorf("invalid chart reference: %s", chartRef)
 }

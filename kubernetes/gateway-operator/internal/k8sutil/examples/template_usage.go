@@ -19,22 +19,22 @@ package examples
 import (
 	"context"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/k8sutil"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Example: How to use the templated manifest applier in a GatewayConfiguration controller
+// Example: How to use the templated manifest applier in a Gateway controller
 
 func ApplyGatewayInfrastructure(
 	ctx context.Context,
 	client client.Client,
 	scheme *runtime.Scheme,
-	gatewayConfig *apiv1.GatewayConfiguration,
+	gatewayConfig *apiv1.Gateway,
 	templatePath string,
 ) error {
-	// Create template data from the GatewayConfiguration spec
+	// Create template data from the Gateway spec
 	data := k8sutil.NewGatewayManifestTemplateData(gatewayConfig.Name)
 
 	// Populate from spec
@@ -126,15 +126,15 @@ func ApplyGatewayInfrastructure(
 		scheme,
 		templatePath,
 		gatewayConfig.Namespace,
-		gatewayConfig, // Set the GatewayConfiguration as the owner
+		gatewayConfig, // Set the Gateway as the owner
 		data,
 	)
 }
 
 // Example usage in reconciler:
 //
-// func (r *GatewayConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-//     gatewayConfig := &apiv1.GatewayConfiguration{}
+// func (r *GatewayReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+//     gatewayConfig := &apiv1.Gateway{}
 //     if err := r.Get(ctx, req.NamespacedName, gatewayConfig); err != nil {
 //         return ctrl.Result{}, client.IgnoreNotFound(err)
 //     }

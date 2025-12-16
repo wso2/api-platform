@@ -19,7 +19,7 @@ package selector
 import (
 	"context"
 
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -39,7 +39,7 @@ func NewAPISelector(client client.Client) *APISelector {
 }
 
 // SelectAPIsForGateway returns all APIs that should be deployed to the given gateway
-func (s *APISelector) SelectAPIsForGateway(ctx context.Context, gateway *apiv1.GatewayConfiguration) ([]apiv1.APIConfiguration, error) {
+func (s *APISelector) SelectAPIsForGateway(ctx context.Context, gateway *apiv1.Gateway) ([]apiv1.RestApi, error) {
 	switch gateway.Spec.APISelector.Scope {
 	case apiv1.ClusterScope:
 		return s.selectClusterScopedAPIs(ctx, gateway)
@@ -54,8 +54,8 @@ func (s *APISelector) SelectAPIsForGateway(ctx context.Context, gateway *apiv1.G
 }
 
 // selectClusterScopedAPIs selects all APIs from all namespaces
-func (s *APISelector) selectClusterScopedAPIs(ctx context.Context, gateway *apiv1.GatewayConfiguration) ([]apiv1.APIConfiguration, error) {
-	apiList := &apiv1.APIConfigurationList{}
+func (s *APISelector) selectClusterScopedAPIs(ctx context.Context, gateway *apiv1.Gateway) ([]apiv1.RestApi, error) {
+	apiList := &apiv1.RestApiList{}
 
 	// List all APIs across all namespaces
 	if err := s.client.List(ctx, apiList); err != nil {
@@ -63,12 +63,12 @@ func (s *APISelector) selectClusterScopedAPIs(ctx context.Context, gateway *apiv
 	}
 
 	// Filter APIs that explicitly reference this gateway or have no gateway reference
-	return s.filterAPIsForGateway(apiList.Items, gateway), nil
+	return apiList.Items, nil
 }
 
 // selectNamespacedAPIs selects APIs from specific namespaces
-func (s *APISelector) selectNamespacedAPIs(ctx context.Context, gateway *apiv1.GatewayConfiguration) ([]apiv1.APIConfiguration, error) {
-	var allAPIs []apiv1.APIConfiguration
+func (s *APISelector) selectNamespacedAPIs(ctx context.Context, gateway *apiv1.Gateway) ([]apiv1.RestApi, error) {
+	var allAPIs []apiv1.RestApi
 
 	// If no namespaces specified, use gateway's own namespace
 	namespaces := gateway.Spec.APISelector.Namespaces
@@ -78,7 +78,7 @@ func (s *APISelector) selectNamespacedAPIs(ctx context.Context, gateway *apiv1.G
 
 	// List APIs from each specified namespace
 	for _, ns := range namespaces {
-		apiList := &apiv1.APIConfigurationList{}
+		apiList := &apiv1.RestApiList{}
 		if err := s.client.List(ctx, apiList, client.InNamespace(ns)); err != nil {
 			return nil, err
 		}
@@ -86,11 +86,11 @@ func (s *APISelector) selectNamespacedAPIs(ctx context.Context, gateway *apiv1.G
 	}
 
 	// Filter APIs that explicitly reference this gateway or have no gateway reference
-	return s.filterAPIsForGateway(allAPIs, gateway), nil
+	return allAPIs, nil
 }
 
 // selectLabelBasedAPIs selects APIs based on label selectors
-func (s *APISelector) selectLabelBasedAPIs(ctx context.Context, gateway *apiv1.GatewayConfiguration) ([]apiv1.APIConfiguration, error) {
+func (s *APISelector) selectLabelBasedAPIs(ctx context.Context, gateway *apiv1.Gateway) ([]apiv1.RestApi, error) {
 	// Build label selector from matchLabels and matchExpressions
 	selector := labels.NewSelector()
 
@@ -127,7 +127,7 @@ func (s *APISelector) selectLabelBasedAPIs(ctx context.Context, gateway *apiv1.G
 	}
 
 	// List APIs with label selector
-	apiList := &apiv1.APIConfigurationList{}
+	apiList := &apiv1.RestApiList{}
 	listOpts := &client.ListOptions{
 		LabelSelector: selector,
 	}
@@ -137,53 +137,11 @@ func (s *APISelector) selectLabelBasedAPIs(ctx context.Context, gateway *apiv1.G
 	}
 
 	// Filter APIs that explicitly reference this gateway or have no gateway reference
-	return s.filterAPIsForGateway(apiList.Items, gateway), nil
-}
-
-// filterAPIsForGateway filters APIs that should be deployed to this gateway
-func (s *APISelector) filterAPIsForGateway(apis []apiv1.APIConfiguration, gateway *apiv1.GatewayConfiguration) []apiv1.APIConfiguration {
-	var filtered []apiv1.APIConfiguration
-
-	for _, api := range apis {
-		// If API has explicit gateway references
-		if len(api.Spec.GatewayRefs) > 0 {
-			// Check if this gateway is in the list of references
-			for _, ref := range api.Spec.GatewayRefs {
-				refNamespace := ref.Namespace
-				if refNamespace == "" {
-					refNamespace = api.Namespace
-				}
-
-				if ref.Name == gateway.Name && refNamespace == gateway.Namespace {
-					filtered = append(filtered, api)
-					break // Found a match, no need to check other refs
-				}
-			}
-		} else {
-			// No explicit references, so include it (gateway selector already filtered it)
-			filtered = append(filtered, api)
-		}
-	}
-
-	return filtered
+	return apiList.Items, nil
 }
 
 // IsAPISelectedByGateway checks if a specific API is selected by a gateway
-func (s *APISelector) IsAPISelectedByGateway(ctx context.Context, api *apiv1.APIConfiguration, gateway *apiv1.GatewayConfiguration) (bool, error) {
-	// If API has explicit gateway references, check them
-	if len(api.Spec.GatewayRefs) > 0 {
-		for _, ref := range api.Spec.GatewayRefs {
-			refNamespace := ref.Namespace
-			if refNamespace == "" {
-				refNamespace = api.Namespace
-			}
-			if ref.Name == gateway.Name && refNamespace == gateway.Namespace {
-				return true, nil
-			}
-		}
-		// API has explicit refs but this gateway is not in the list
-		return false, nil
-	}
+func (s *APISelector) IsAPISelectedByGateway(ctx context.Context, api *apiv1.RestApi, gateway *apiv1.Gateway) (bool, error) {
 
 	// Otherwise check based on gateway's selector
 	switch gateway.Spec.APISelector.Scope {
