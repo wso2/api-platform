@@ -27,6 +27,7 @@ import (
 
 // parseFlagsFromFile reads the flags.go file and extracts all flag constant values
 func parseFlagsFromFile(t *testing.T) map[string]string {
+	t.Helper()
 	// Read the flags.go file
 	flagsFilePath := filepath.Join("..", "utils", "flags.go")
 	content, err := os.ReadFile(flagsFilePath)
