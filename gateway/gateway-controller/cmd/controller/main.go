@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	internalapihandler "github.com/wso2/api-platform/gateway/gateway-controller/pkg/internalapi/handlers"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,7 +19,6 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
-	internalapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/internalapi/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
@@ -281,10 +279,6 @@ func main() {
 
 	// Register API routes (includes certificate management endpoints from OpenAPI spec)
 	api.RegisterHandlers(router, apiServer)
-
-	// Initialize and register internal API server
-	internalAPIServer := internalapihandler.NewInternalAPIServer(configStore, db, log)
-	internalapi.RegisterHandlers(router, internalAPIServer)
 
 	// Start REST API server
 	log.Info("Starting REST API server", zap.Int("port", cfg.GatewayController.Server.APIPort))

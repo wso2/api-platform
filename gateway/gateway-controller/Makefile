@@ -39,9 +39,6 @@ help: ## Show this help message
 generate: ## Generate API server code from OpenAPI spec
 	@echo "Generating API server code from OpenAPI spec..."
 	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen.yaml api/openapi.yaml
-	@echo "Generating internal API server code from OpenAPI spec..."
-	@go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.5.1 --config=oapi-codegen-internal-api.yaml api/gateway-controller-internal-api.yaml
-
 test: ## Run unit and integration tests
 	@echo "Running tests..."
 	@go test -v ./... -cover
