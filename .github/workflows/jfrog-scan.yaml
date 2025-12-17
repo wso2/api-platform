@@ -1,0 +1,19 @@
+name: Jfrog Scan
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 20 * * *"
+jobs:
+  scan-images:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+            JF_URL: ${{ secrets.JF_URL }}
+            JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+      - name: Scan Policy Engine
+        shell: sh
+        run: |
+          docker pull ghcr.io/wso2/api-platform/gateway-controller:latest
+          jf docker scan ghcr.io/wso2/api-platform/gateway-controller:latest
