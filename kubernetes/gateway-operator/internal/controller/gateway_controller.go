@@ -714,8 +714,8 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 		"release_name", helm.GetReleaseName(owner.Name),
 	)
 
-	// Create Helm client
-	helmClient, err := helm.NewClient()
+	// Create Helm client with plainHTTP option for OCI registries
+	helmClient, err := helm.NewClientWithOptions(r.Config.Gateway.PlainHTTP)
 	if err != nil {
 		return fmt.Errorf("failed to create Helm client: %w", err)
 	}
@@ -1000,8 +1000,8 @@ func (r *GatewayReconciler) deleteGatewayWithHelm(ctx context.Context, owner *ap
 	releaseName := helm.GetReleaseName(owner.Name)
 	log.Info("Uninstalling Helm release", "release", releaseName, "namespace", namespace)
 
-	// Create Helm client
-	helmClient, err := helm.NewClient()
+	// Create Helm client with plainHTTP option for OCI registries
+	helmClient, err := helm.NewClientWithOptions(r.Config.Gateway.PlainHTTP)
 	if err != nil {
 		return fmt.Errorf("failed to create Helm client: %w", err)
 	}
