@@ -9,9 +9,7 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/google/uuid"
-	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/policy-engine/policy-engine/internal/constants"
 	"github.com/policy-engine/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
@@ -162,8 +160,8 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 		return ec.handlePolicyError(ctx, err, "request_headers"), nil
 	}
 
-	// Translate execution result to ext_proc response
-	return TranslateRequestActions(execResult, ec.policyChain, ec), nil
+	// Translate execution result to ext_proc response (includes analytics metadata)
+	return TranslateRequestHeadersActions(execResult, ec.policyChain, ec)
 }
 
 // processRequestBody processes request body phase
@@ -190,52 +188,8 @@ func (ec *PolicyExecutionContext) processRequestBody(
 			return ec.handlePolicyError(ctx, err, "request_body"), nil
 		}
 
-		// Check if policies short-circuited with immediate response
-		if execResult.ShortCircuited && execResult.FinalAction != nil {
-			if immediateResp, ok := execResult.FinalAction.(policy.ImmediateResponse); ok {
-				return &extprocv3.ProcessingResponse{
-					Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-						ImmediateResponse: &extprocv3.ImmediateResponse{
-							Status: &typev3.HttpStatus{
-								Code: typev3.StatusCode(immediateResp.StatusCode),
-							},
-							Headers: buildHeaderValueOptions(immediateResp.Headers),
-							Body:    immediateResp.Body,
-						},
-					},
-				}, nil
-			}
-		}
-
-		// Normal case: translate modifications to body response
-		mutations := buildRequestMutations(execResult)
-		return &extprocv3.ProcessingResponse{
-			Response: &extprocv3.ProcessingResponse_RequestBody{
-				RequestBody: &extprocv3.BodyResponse{
-					Response: &extprocv3.CommonResponse{
-						HeaderMutation: mutations.HeaderMutation,
-						BodyMutation:   mutations.BodyMutation,
-					},
-				},
-			},
-			DynamicMetadata: &structpb.Struct{
-				Fields: map[string]*structpb.Value{
-					constants.ExtProcFilterName: {
-						Kind: &structpb.Value_StructValue{
-							StructValue: &structpb.Struct{
-								Fields: map[string]*structpb.Value{
-									"analytics_data": {
-										Kind: &structpb.Value_StructValue{
-											StructValue: &structpb.Struct{},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		}, nil
+		// Translate execution result to ext_proc response (includes analytics metadata and short-circuit handling)
+		return TranslateRequestBodyActions(execResult, ec.policyChain, ec)
 	}
 	// If policies don't require body, just allow it through unmodified
 	return &extprocv3.ProcessingResponse{
@@ -274,8 +228,8 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 		return ec.handlePolicyError(ctx, err, "response_headers"), nil
 	}
 
-	// Translate execution result to ext_proc response
-	return TranslateResponseActions(execResult), nil
+	// Translate execution result to ext_proc response (includes analytics metadata)
+	return TranslateResponseHeadersActions(execResult, ec)
 }
 
 // processResponseBody processes response body phase
@@ -302,18 +256,8 @@ func (ec *PolicyExecutionContext) processResponseBody(
 			return ec.handlePolicyError(ctx, err, "response_body"), nil
 		}
 
-		// Normal case: translate modifications to body response
-		mutations := buildResponseMutations(execResult)
-		return &extprocv3.ProcessingResponse{
-			Response: &extprocv3.ProcessingResponse_ResponseBody{
-				ResponseBody: &extprocv3.BodyResponse{
-					Response: &extprocv3.CommonResponse{
-						HeaderMutation: mutations.HeaderMutation,
-						BodyMutation:   mutations.BodyMutation,
-					},
-				},
-			},
-		}, nil
+		// Translate execution result to ext_proc response (includes analytics metadata)
+		return TranslateResponseBodyActions(execResult, ec)
 	}
 
 	// If policies don't require body, just allow it through unmodified
