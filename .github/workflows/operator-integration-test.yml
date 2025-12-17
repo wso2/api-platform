@@ -823,6 +823,7 @@ jobs:
       - name: Test API invocation
         run: |
           # Port forward the router
+          sleep 10
           kubectl port-forward svc/test-gateway-gateway-router 8080:8080 &
           sleep 10
 
