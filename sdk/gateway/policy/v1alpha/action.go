@@ -43,11 +43,12 @@ func (i ImmediateResponse) StopExecution() bool {
 
 // UpstreamResponseModifications - modify response from upstream
 type UpstreamResponseModifications struct {
-	SetHeaders    map[string]string   // Set or replace headers
-	RemoveHeaders []string            // Headers to remove
-	AppendHeaders map[string][]string // Headers to append
-	Body          []byte              // nil = no change, []byte{} = clear
-	StatusCode    *int                // nil = no change
+	SetHeaders        map[string]string   // Set or replace headers
+	RemoveHeaders     []string            // Headers to remove
+	AppendHeaders     map[string][]string // Headers to append
+	Body              []byte              // nil = no change, []byte{} = clear
+	StatusCode        *int                // nil = no change
+	AnalyticsMetadata map[string]any      // Custom analytics metadata (key-value pairs)
 }
 
 func (u UpstreamResponseModifications) isResponseAction() {}
