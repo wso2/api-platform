@@ -42,4 +42,5 @@ var APICmd = &cobra.Command{
 func init() {
 	// Register subcommands
 	APICmd.AddCommand(listCmd)
+	APICmd.AddCommand(getCmd)
 }

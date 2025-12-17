@@ -31,14 +31,18 @@ const (
 	FlagInsecure    = "insecure"
 	FlagOutput      = "output"
 	FlagFile        = "file"
+	FlagFormat      = "format"
+	FlagVersion     = "version"
+	FlagID          = "id"
 )
 
 var shortFlags = map[string]string{
-	FlagName:   "n",
-	FlagServer: "s",
-	FlagToken:  "t",
-	FlagOutput: "o",
-	FlagFile:   "f",
+	FlagName:    "n",
+	FlagServer:  "s",
+	FlagToken:   "t",
+	FlagOutput:  "o",
+	FlagFile:    "f",
+	FlagVersion: "v",
 }
 
 func GetShortFlags() []string {
