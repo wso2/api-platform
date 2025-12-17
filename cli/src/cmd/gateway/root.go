@@ -47,6 +47,7 @@ func init() {
 	// Register subcommands
 	GatewayCmd.AddCommand(addCmd)
 	GatewayCmd.AddCommand(listCmd)
+	GatewayCmd.AddCommand(removeCmd)
 	GatewayCmd.AddCommand(useCmd)
 	GatewayCmd.AddCommand(currentCmd)
 	GatewayCmd.AddCommand(mcp.McpCmd)

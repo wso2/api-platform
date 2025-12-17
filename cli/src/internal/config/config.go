@@ -180,3 +180,29 @@ func (c *Config) SetActiveGateway(name string) error {
 	c.ActiveGateway = name
 	return nil
 }
+
+// RemoveGateway removes a gateway by name
+func (c *Config) RemoveGateway(name string) error {
+	// Find the gateway
+	index := -1
+	for i, gw := range c.Gateways {
+		if gw.Name == name {
+			index = i
+			break
+		}
+	}
+
+	if index == -1 {
+		return fmt.Errorf("gateway '%s' not found", name)
+	}
+
+	// Remove the gateway
+	c.Gateways = append(c.Gateways[:index], c.Gateways[index+1:]...)
+
+	// Clear active gateway if it was the one removed
+	if c.ActiveGateway == name {
+		c.ActiveGateway = ""
+	}
+
+	return nil
+}
