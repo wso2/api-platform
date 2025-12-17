@@ -195,6 +195,10 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 
 	properties := logEntry.GetCommonProperties()
 	if properties != nil && properties.TimeToLastUpstreamRxByte != nil && properties.TimeToFirstUpstreamTxByte != nil && properties.TimeToLastDownstreamTxByte != nil {
+		requestStartTimestamp := 
+			(properties.StartTime.Seconds * 1000) +
+			(int64(properties.StartTime.Nanos) / 1_000_000)
+		
 		backendResponseRecvTimestamp :=
 			(properties.TimeToLastUpstreamRxByte.Seconds * 1000) +
 				(int64(properties.TimeToLastUpstreamRxByte.Nanos) / 1_000_000)
@@ -210,8 +214,8 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		// Prepare Latencies
 		latencies := dto.Latencies{}
 		latencies.BackendLatency = backendResponseRecvTimestamp - backendRequestSendTimestamp
-		latencies.RequestMediationLatency = backendRequestSendTimestamp
-		latencies.ResponseLatency = downstreamResponseSendTimestamp
+		latencies.RequestMediationLatency = backendRequestSendTimestamp - requestStartTimestamp
+		latencies.ResponseLatency = downstreamResponseSendTimestamp - requestStartTimestamp
 		latencies.ResponseMediationLatency = downstreamResponseSendTimestamp - backendResponseRecvTimestamp
 		event.Latencies = &latencies
 	}

@@ -87,6 +87,7 @@ func StartAccessLogServiceServer(cfg *config.Config) {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.PolicyEngine.AccessLogsService.ALSServerPort))
 	if err != nil {
 		slog.Error(fmt.Sprintf("Failed to listen on port: %d", cfg.PolicyEngine.AccessLogsService.ALSServerPort))
+		panic(err)
 	}
 	slog.Info("Starting to serve access log service server")
 	if err := server.Serve(listener); err != nil {
