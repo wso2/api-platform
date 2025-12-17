@@ -51,5 +51,6 @@ func init() {
 	GatewayCmd.AddCommand(useCmd)
 	GatewayCmd.AddCommand(currentCmd)
 	GatewayCmd.AddCommand(healthCmd)
+	GatewayCmd.AddCommand(applyCmd)
 	GatewayCmd.AddCommand(mcp.McpCmd)
 }

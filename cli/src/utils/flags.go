@@ -30,6 +30,7 @@ const (
 	FlagPasswordEnv = "password-env"
 	FlagInsecure    = "insecure"
 	FlagOutput      = "output"
+	FlagFile        = "file"
 )
 
 var shortFlags = map[string]string{
@@ -37,6 +38,7 @@ var shortFlags = map[string]string{
 	FlagServer: "s",
 	FlagToken:  "t",
 	FlagOutput: "o",
+	FlagFile:   "f",
 }
 
 func GetShortFlags() []string {

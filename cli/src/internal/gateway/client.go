@@ -138,6 +138,22 @@ func (c *Client) Post(path string, body io.Reader) (*http.Response, error) {
 	return c.Do(req)
 }
 
+// PostYAML performs a POST request with YAML content
+func (c *Client) PostYAML(path string, body io.Reader) (*http.Response, error) {
+	baseURL := strings.TrimSuffix(c.gateway.Server, "/")
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	url := baseURL + path
+	req, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-yaml")
+
+	return c.Do(req)
+}
+
 // Put performs a PUT request to the specified path with the given body
 func (c *Client) Put(path string, body io.Reader) (*http.Response, error) {
 	baseURL := strings.TrimSuffix(c.gateway.Server, "/")
@@ -149,6 +165,22 @@ func (c *Client) Put(path string, body io.Reader) (*http.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+
+	return c.Do(req)
+}
+
+// PutYAML performs a PUT request with YAML content
+func (c *Client) PutYAML(path string, body io.Reader) (*http.Response, error) {
+	baseURL := strings.TrimSuffix(c.gateway.Server, "/")
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	url := baseURL + path
+	req, err := http.NewRequest("PUT", url, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-yaml")
 
 	return c.Do(req)
 }
