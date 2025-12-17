@@ -1,0 +1,193 @@
+name: McpAuthentication
+version: v0.1.0
+description: |
+  This policy is used to secure traffic to Model Context Protocol server as defined in the specification 
+  (https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization). The Gateway acts as the 
+  resource server and protects the MCP resources by validating the access tokens presented in the requests.
+  This uses the JwtAuthentication policy underneath to validate the access tokens.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    issuers:
+      type: array
+      description: >-
+        List of issuer names (referencing entries in `system.keyManagers`).
+        This list will be sent as the authorization servers in the protected resource
+        metadata response. If omitted, all configured key managers will be used. The
+        selection will be based on the MCP client Implementation.
+        Furthermore, this list will also be used for validating tokens. If omitted, 
+        runtime will try to match token `iss` claim to available key managers or try all providers.
+      items:
+        type: string
+
+    requiredScopes:
+      type: array
+      description: >-
+        List of scopes that should be included in the token generated through MCP auth flow.
+        List of scopes that must be present in the token (space-delimited 'scope' claim or array 'scp').
+      items:
+        type: string
+
+    audiences:
+      type: array
+      description: List of acceptable audience values; token must contain at least one.
+      items:
+        type: string
+
+    requiredClaims:
+      type: object
+      description: Map of claimName -> expectedValue. Runtime may support equality or regex-based matching.
+      additionalProperties:
+        type: string
+
+    claimMappings:
+      type: object
+      description: Map claimName -> downstream header or context key to expose for downstream services.
+      additionalProperties:
+        type: string
+
+systemParameters:          
+  type: object
+  additionalProperties: false
+  properties:
+    keyManagers:
+      type: array
+      description: >-
+        List of key manager definitions. Each entry must include a unique `name` 
+        and either `jwks` (for remote JWKS or local certificates) configuration.
+      items:
+        type: object
+        additionalProperties: false
+        required: ["name"]
+        properties:
+          name:
+            type: string
+            description: Unique name for this key manager/provider (used in `user.issuers`).
+          issuer:
+            type: string
+            description: Optional issuer (iss) value associated with keys from this provider.
+          jwks:
+            type: object
+            description: JWKS configuration supporting both remote endpoints and local certificates. Either 'remote' or 'local' must be specified, but not both.
+            additionalProperties: false
+            oneOf:
+              - required: ["remote"]
+                not:
+                  required: ["local"]
+              - required: ["local"]
+                not:
+                  required: ["remote"]
+            properties:
+              remote:
+                type: object
+                description: Remote JWKS endpoint configuration. The 'uri' field is required.
+                additionalProperties: false
+                required: ["uri"]
+                properties:
+                  uri:
+                    type: string
+                    format: uri
+                    description: JWKS endpoint URL (e.g., https://idp.example/.well-known/jwks.json).
+                  certificatePath:
+                    type: string
+                    description: Optional path to CA certificate file for validating self-signed JWKS endpoints (e.g., /etc/certs/ca.pem).
+                  skipTlsVerify:
+                    type: boolean
+                    default: false
+                    description: If true, skip TLS certificate verification for the JWKS endpoint. Use with caution, only for testing or trusted internal endpoints.
+              local:
+                type: object
+                description: Local certificate configuration for signature verification. Either 'inline' or 'certificatePath' must be provided, but not both.
+                additionalProperties: false
+                oneOf:
+                  - required: ["inline"]
+                    not:
+                      required: ["certificatePath"]
+                  - required: ["certificatePath"]
+                    not:
+                      required: ["inline"]
+                properties:
+                  inline:
+                    type: string
+                    description: Inline PEM-encoded certificate or public key for signature verification.
+                  certificatePath:
+                    type: string
+                    description: Path to certificate or public key file (e.g., /etc/certs/public.pem).
+      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v010.keymanagers}"
+
+    jwksCacheTtl:
+      type: string
+      description: Duration string for JWKS caching (e.g., "5m"). If omitted a default is used.
+      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v010.jwkscachettl}"
+
+    jwksFetchTimeout:
+      type: string
+      description: Timeout for HTTP fetch of JWKS, e.g., "5s".
+      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v010.jwksfetchtimeout}"
+
+    jwksFetchRetryCount:
+      type: integer
+      description: Number of retries for JWKS fetch on transient failures.
+      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v010.jwksfetchretrycount}"
+
+    jwksFetchRetryInterval:
+      type: string
+      description: Interval between JWKS fetch retries, e.g., "2s".
+      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v010.jwksfetchretryinterval}"
+
+    allowedAlgorithms:
+      type: array
+      description: Allowed JWT signing algorithms (e.g., ["RS256","ES256"]).
+      items:
+        type: string
+      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v010.allowedalgorithms}"
+
+    leeway:
+      type: string
+      description: Clock skew allowance for exp/nbf checks, e.g., "30s".
+      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v010.leeway}"
+
+    authHeaderScheme:
+      type: string
+      description: Expected scheme prefix in the authorization header (e.g., "Bearer"). If set, runtime enforces the scheme; if omitted, runtime may accept raw header values or strip known schemes.
+      default: Bearer
+      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v010.authheaderscheme}"
+
+    headerName:
+      type: string
+      description: Header name to extract token from (default "Authorization").
+      default: Authorization
+      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v010.headername}"
+
+    onFailureStatusCode:
+      type: integer
+      description: HTTP status code to return on authentication failure (401 for Unauthorized, 403 for Forbidden).
+      default: 401
+      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v010.onfailurestatuscode}"
+
+    errorMessageFormat:
+      type: string
+      description: Format of error response on JWT validation failure. Supported values are "json" (structured error), "plain" (plain text), or "minimal" (minimal response).
+      default: json
+      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v010.errormessageformat}"
+    
+    errorMessage:
+      type: string
+      description: Custom error message to include in the response body on authentication failure.
+      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v010.errormessage}"
+
+    validateIssuer:
+      type: boolean
+      description: Whether to validate the token's issuer claim against configured key managers.
+      "wso2/defaultValue": "${config.policy_configurations.jwtauth_v010.validateissuer}"
+    
+    gatewayHost:
+      type: string
+      description: The host of the gateway to be included in the protected metadata URL and response.
+      example: "mcp1.api-platform.com"
+      "wso2/defaultValue": "${config.policy_configurations.mcpauth_v010.gatewayhost}"
+
+
+  required: ["keyManagers"]
