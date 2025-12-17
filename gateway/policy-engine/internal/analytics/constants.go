@@ -173,8 +173,8 @@ const (
 	AiProviderName = "ai:providername"
 	// AiProviderAPIVersion is the key for the AI provider API version.
 	AiProviderAPIVersion = "ai:providerversion"
-	//anonymousValye is the value for anonymous
-	anonymousValye = "anonymous"
+	//anonymousValue is the value for anonymous
+	anonymousValue = "anonymous"
 	// Unknown is the default value used for unassigned properties.
 	Unknown = "UNKNOWN"
 )

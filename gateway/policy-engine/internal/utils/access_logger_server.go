@@ -50,7 +50,6 @@ func newAccessLogServiceServer(cfg *config.Config) *AccessLogServiceServer {
 // StreamAccessLogs streams access logs to the server.
 func (s *AccessLogServiceServer) StreamAccessLogs(stream v3.AccessLogService_StreamAccessLogsServer) error {
 	for {
-		slog.Debug("Received a stream of access logs")
 		in, err := stream.Recv()
 		if err == io.EOF {
 			return nil
@@ -58,8 +57,12 @@ func (s *AccessLogServiceServer) StreamAccessLogs(stream v3.AccessLogService_Str
 		if err != nil {
 			return err
 		}
-		for _, logEntry := range in.GetHttpLogs().LogEntry {
-			s.analytics.Process(logEntry)
+		httpLogs := in.GetHttpLogs()
+		if httpLogs != nil {
+			slog.Debug("Received a stream of access logs", "count", len(httpLogs.LogEntry))
+			for _, logEntry := range httpLogs.LogEntry {
+				s.analytics.Process(logEntry)
+			}
 		}
 	}
 }
@@ -70,7 +73,7 @@ func StartAccessLogServiceServer(cfg *config.Config) {
 	accessLogServiceServer := newAccessLogServiceServer(cfg)
 
 	kaParams := keepalive.ServerParameters{
-		Time:    time.Duration(cfg.PolicyEngine.AccessLogsService.ShutdownTimeout) * time.Hour, // Ping the client if it is idle for 2 hours
+		Time:    2 * time.Hour, // Ping the client if it is idle for 2 hours
 		Timeout: 20 * time.Second,
 	}
 	server, err := CreateGRPCServer(cfg.PolicyEngine.AccessLogsService.PublicKeyPath,
@@ -92,5 +95,6 @@ func StartAccessLogServiceServer(cfg *config.Config) {
 	slog.Info("Starting to serve access log service server")
 	if err := server.Serve(listener); err != nil {
 		slog.Error("Failed to serve access log service server", "error", err)
+		panic(err)
 	}
 }

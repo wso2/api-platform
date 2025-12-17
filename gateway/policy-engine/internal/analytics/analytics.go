@@ -109,11 +109,14 @@ func NewAnalytics(cfg *config.Config) *Analytics {
 func (c *Analytics) Process(event *v3.HTTPAccessLogEntry) {
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Error("panic occurred:", "error", r, "Recovered from panic in Process method")
+			slog.Error("panic occurred",
+				"error", r,
+				"context", "Recovered from panic in Process method",
+			)
 		}
 	}()
 	if c.isInvalid(event) {
-		slog.Error("Invalid event received from the access log service", nil)
+		slog.Error("Invalid event received from the access log service")
 		return
 	}
 
@@ -125,7 +128,7 @@ func (c *Analytics) Process(event *v3.HTTPAccessLogEntry) {
 
 }
 
-// GetEventCategory returns the event category.
+// isInvalid checks if the log entry is invalid.
 func (c *Analytics) isInvalid(logEntry *v3.HTTPAccessLogEntry) bool {
 	return logEntry.GetResponse() == nil
 }
@@ -168,19 +171,26 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	extendedAPI.APIContext = keyValuePairsFromMetadata[APIContextKey]
 	extendedAPI.EnvironmentID = keyValuePairsFromMetadata[APIEnvironmentKey]
 
+	request := logEntry.GetRequest()
+	response := logEntry.GetResponse()
+	
 	// Prepare operation
 	operation := dto.Operation{}
 	// operation.APIResourceTemplate = keyValuePairsFromMetadata[APIResourceTemplateKey]
-	operation.APIResourceTemplate = logEntry.GetRequest().GetOriginalPath()
-	operation.APIMethod = logEntry.Request.GetRequestMethod().String()
+	if request != nil {
+		operation.APIResourceTemplate = logEntry.GetRequest().GetOriginalPath()
+		operation.APIMethod = logEntry.Request.GetRequestMethod().String()
+	}
 
 	// Prepare target
 	target := dto.Target{}
 	target.ResponseCacheHit = false
-	target.TargetResponseCode = int(logEntry.GetResponse().GetResponseCode().Value)
-	// target.Destination = keyValuePairsFromMetadata[DestinationKey]
-	target.Destination = logEntry.GetRequest().GetAuthority() + logEntry.GetRequest().GetPath()
-	target.ResponseCodeDetail = logEntry.GetResponse().GetResponseCodeDetails()
+	if response != nil {
+		target.TargetResponseCode = int(logEntry.GetResponse().GetResponseCode().Value)
+		// target.Destination = keyValuePairsFromMetadata[DestinationKey]
+		target.Destination = logEntry.GetRequest().GetAuthority() + logEntry.GetRequest().GetPath()
+		target.ResponseCodeDetail = logEntry.GetResponse().GetResponseCodeDetails()
+	}
 
 	// Prepare Application
 	application := &dto.Application{}
@@ -195,9 +205,6 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 
 	properties := logEntry.GetCommonProperties()
 	if properties != nil && properties.TimeToLastUpstreamRxByte != nil && properties.TimeToFirstUpstreamTxByte != nil && properties.TimeToLastDownstreamTxByte != nil {
-		requestStartTimestamp := 
-			(properties.StartTime.Seconds * 1000) +
-			(int64(properties.StartTime.Nanos) / 1_000_000)
 		
 		backendResponseRecvTimestamp :=
 			(properties.TimeToLastUpstreamRxByte.Seconds * 1000) +
@@ -214,8 +221,8 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		// Prepare Latencies
 		latencies := dto.Latencies{}
 		latencies.BackendLatency = backendResponseRecvTimestamp - backendRequestSendTimestamp
-		latencies.RequestMediationLatency = backendRequestSendTimestamp - requestStartTimestamp
-		latencies.ResponseLatency = downstreamResponseSendTimestamp - requestStartTimestamp
+		latencies.RequestMediationLatency = backendRequestSendTimestamp
+		latencies.ResponseLatency = downstreamResponseSendTimestamp
 		latencies.ResponseMediationLatency = downstreamResponseSendTimestamp - backendResponseRecvTimestamp
 		event.Latencies = &latencies
 	}
@@ -291,23 +298,25 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	event.Properties["userName"] = userName
 	event.Properties["commonName"] = "N/A"
 	event.Properties["apiContext"] = extendedAPI.APIContext
-	if contentTypeHeader := logEntry.Response.GetResponseHeaders()["content-type"]; contentTypeHeader != "" {
-		event.Properties["responseContentType"] = contentTypeHeader
+	if logEntry.Response != nil {
+		if contentTypeHeader := logEntry.Response.GetResponseHeaders()["content-type"]; contentTypeHeader != "" {
+			event.Properties["responseContentType"] = contentTypeHeader
+		} else {
+			event.Properties["responseContentType"] = Unknown
+		}
+			event.Properties["responseSize"] = logEntry.Response.ResponseBodyBytes
 	} else {
 		event.Properties["responseContentType"] = Unknown
-	}
-	if logEntry.Response != nil {
-		event.Properties["responseSize"] = logEntry.Response.ResponseBodyBytes
-	}
+	}	
 	
 	return event
 }
 
 func (c *Analytics) getAnonymousApp() *dto.Application {
 	application := &dto.Application{}
-	application.ApplicationID = anonymousValye
-	application.ApplicationName = anonymousValye
-	application.KeyType = anonymousValye
-	application.ApplicationOwner = anonymousValye
+	application.ApplicationID = anonymousValue
+	application.ApplicationName = anonymousValue
+	application.KeyType = anonymousValue
+	application.ApplicationOwner = anonymousValue
 	return application
 }
