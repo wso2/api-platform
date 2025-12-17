@@ -140,8 +140,8 @@ func main() {
 	}
 
 	// Start access log service server if enabled
-	slog.DebugContext(ctx, "Policy engine ALS server config", "config", cfg.PolicyEngine.AccessLogsService)
-	if cfg.PolicyEngine.AccessLogsService.Enabled {
+	slog.DebugContext(ctx, "Policy engine ALS server config", "config", cfg.Analytics.AccessLogsServiceCfg)
+	if cfg.Analytics.Enabled {
 		// Start the access log service server
 		slog.Info("Stating the ALS gRPC server...")
 		go utils.StartAccessLogServiceServer(cfg)

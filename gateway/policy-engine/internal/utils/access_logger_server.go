@@ -76,10 +76,10 @@ func StartAccessLogServiceServer(cfg *config.Config) {
 		Time:    2 * time.Hour, // Ping the client if it is idle for 2 hours
 		Timeout: 20 * time.Second,
 	}
-	server, err := CreateGRPCServer(cfg.PolicyEngine.AccessLogsService.PublicKeyPath,
-		cfg.PolicyEngine.AccessLogsService.PrivateKeyPath, cfg.PolicyEngine.AccessLogsService.ALSPlainText,
-		grpc.MaxRecvMsgSize(cfg.PolicyEngine.AccessLogsService.ExtProcMaxMessageSize),
-		grpc.MaxHeaderListSize(uint32(cfg.PolicyEngine.AccessLogsService.ExtProcMaxHeaderLimit)),
+	server, err := CreateGRPCServer(cfg.Analytics.AccessLogsServiceCfg.PublicKeyPath,
+		cfg.Analytics.AccessLogsServiceCfg.PrivateKeyPath, cfg.Analytics.AccessLogsServiceCfg.ALSPlainText,
+		grpc.MaxRecvMsgSize(cfg.Analytics.AccessLogsServiceCfg.ExtProcMaxMessageSize),
+		grpc.MaxHeaderListSize(uint32(cfg.Analytics.AccessLogsServiceCfg.ExtProcMaxHeaderLimit)),
 		grpc.KeepaliveParams(kaParams))
 	if err != nil {
 		panic(err)
@@ -87,9 +87,9 @@ func StartAccessLogServiceServer(cfg *config.Config) {
 
 	v3.RegisterAccessLogServiceServer(server, accessLogServiceServer)
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.PolicyEngine.AccessLogsService.ALSServerPort))
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Analytics.AccessLogsServiceCfg.ALSServerPort))
 	if err != nil {
-		slog.Error(fmt.Sprintf("Failed to listen on port: %d", cfg.PolicyEngine.AccessLogsService.ALSServerPort))
+		slog.Error(fmt.Sprintf("Failed to listen on port: %d", cfg.Analytics.AccessLogsServiceCfg.ALSServerPort))
 		panic(err)
 	}
 	slog.Info("Starting to serve access log service server")

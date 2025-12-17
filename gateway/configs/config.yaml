@@ -51,22 +51,6 @@ gateway_controller:
   router:
     # Gateway host for incoming requests
     gateway_host: "*"
-
-    # gRPC Access Log Service configuration
-    grpc_access_logs:
-      enabled: true
-      
-      # ALS Server endpoint (typically gateway-controller itself)
-      host: policy-engine
-      port: 18090  # New port for ALS gRPC server
-      
-      # Log name identifier
-      log_name: "envoy_access_log"
-      
-      # Buffer settings
-      buffer_flush_interval: 1000000000 # milliseconds
-      buffer_size_bytes: 16384
-      grpc_request_timeout: 20000000000 # milliseconds
     
     # Access logs configuration
     access_logs:
@@ -278,7 +262,43 @@ policy_engine:
 
     # Log format: json, text
     format: json
-  
+
+policy_configurations: {}
+
+analytics:
+  enabled: true
+  # Publishers specific configuration
+  publishers:
+    - type: moesif
+      enabled: true
+      settings: 
+        # Moesif application ID
+        application_id: <MOESIF_APPLICATION_ID>
+        # Publish interval in seconds
+        publish_interval: 5
+        # Max number of events held in memory before dropping
+        event_queue_size: 10000
+        # Max number of events in a batch
+        batch_size: 50
+        # Time interval in seconds to wake up the timer
+        timer_wakeup_seconds: 3
+
+  # gRPC Access Log Service configuration for router(Envoy)
+  grpc_access_logs:
+    enabled: true
+    
+    # ALS Server endpoint (typically gateway-controller itself)
+    host: policy-engine
+    port: 18090  # New port for ALS gRPC server
+    
+    # Log name identifier
+    log_name: "envoy_access_log"
+    
+    # Buffer settings
+    buffer_flush_interval: 1000000000 # milliseconds
+    buffer_size_bytes: 16384
+    grpc_request_timeout: 20000000000 # milliseconds
+
   # ALS server related configuration
   access_logs_service:
     enabled: true
@@ -301,24 +321,3 @@ policy_engine:
 
     # max header limit for the ALS server
     max_header_limit: 8192
-  
-  # Analytics configuration
-  analytics:
-    enabled: true
-    # Publishers specific configuration
-    publishers:
-      - type: moesif
-        enabled: true
-        settings: 
-          # Moesif application ID
-          application_id: <MOESIF_APPLICATION_ID>
-          # Publish interval in seconds
-          publish_interval: 5
-          # Max number of events held in memory before dropping
-          event_queue_size: 10000
-          # Max number of events in a batch
-          batch_size: 50
-          # Time interval in seconds to wake up the timer
-          timer_wakeup_seconds: 3
-
-policy_configurations: {}

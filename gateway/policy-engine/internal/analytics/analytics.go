@@ -81,7 +81,7 @@ type Analytics struct {
 
 // NewAnalytics creates a new instance of Analytics.
 func NewAnalytics(cfg *config.Config) *Analytics {
-	analyticsCfg := cfg.PolicyEngine.Analytics
+	analyticsCfg := cfg.Analytics
 	publishers := make([]analytics_publisher.Publisher, 0)
 	if analyticsCfg.Enabled {
 		for _, publisherConfig := range analyticsCfg.Publishers {

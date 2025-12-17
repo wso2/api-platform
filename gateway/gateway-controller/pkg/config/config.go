@@ -35,6 +35,15 @@ type Config struct {
 	GatewayController GatewayController `koanf:"gateway_controller"`
 	PolicyEngine map[string]interface{}    `koanf:"policy_engine"`
 	PolicyConfigurations map[string]interface{} `koanf:"policy_configurations"`
+	Analytics AnalyticsConfig `koanf:"analytics"`
+}
+
+// AnalyticsConfig holds analytics configuration
+type AnalyticsConfig struct {
+	Enabled bool `koanf:"enabled"`
+	Publishers []map[string]interface{} `koanf:"publishers"`
+	GRPCAccessLogCfg GRPCAccessLogConfig `koanf:"grpc_access_logs"`
+	AccessLogsServiceCfg map[string]interface{} `koanf:"access_logs_service"`
 }
 
 // GatewayController holds the main configuration sections for the gateway-controller
@@ -104,7 +113,6 @@ type PostgresConfig struct {
 // RouterConfig holds router (Envoy) related configuration
 type RouterConfig struct {
 	AccessLogs    AccessLogsConfig    `koanf:"access_logs"`
-	GRPCAccessLog GRPCAccessLogConfig `koanf:"grpc_access_logs"`
 	ListenerPort  int                 `koanf:"listener_port"`
 	HTTPSEnabled  bool                `koanf:"https_enabled"`
 	HTTPSPort     int                 `koanf:"https_port"`
@@ -408,6 +416,29 @@ func defaultConfig() *Config {
 				InsecureSkipVerify: true,
 			},
 		},
+		Analytics: AnalyticsConfig{
+			Enabled: false,
+			Publishers: make([]map[string]interface{}, 0),
+			GRPCAccessLogCfg: GRPCAccessLogConfig{
+				Enabled: false,
+				Host: "policy-engine",
+				Port: 0,
+				LogName: "envoy_access_log",
+				BufferFlushInterval: 1000000000,
+				BufferSizeBytes: 16384,
+				GRPCRequestTimeout: 20000000000,
+			},
+			AccessLogsServiceCfg: map[string]interface{}{
+				"enabled": false,
+				"als_server_port": 18090,
+				"shutdown_timeout": 600,
+				"public_key_path": "",
+				"private_key_path": "",
+				"als_plain_text": true,
+				"max_message_size": 1000000000,
+				"max_header_limit": 8192,
+			},
+		},
 	}
 }
 
@@ -519,6 +550,10 @@ func (c *Config) Validate() error {
 
 	// Validate vhost configuration
 	if err := c.validateVHostsConfig(); err != nil {
+		return err
+	}
+
+	if err := c.validateAnalyticsConfig(); err != nil {
 		return err
 	}
 
@@ -900,6 +935,36 @@ func validateDomains(field string, domains []string) error {
 		if strings.TrimSpace(d) == "" {
 			return fmt.Errorf("%s[%d] must be a non-empty string", field, i)
 		}
+	}
+	return nil
+}
+
+// validateAnalyticsConfig validates the analytics configuration
+func (c *Config) validateAnalyticsConfig() error {
+	// Validate analytics configuration
+	if c.Analytics.Enabled {
+		// Validate gRPC access log configuration	
+		grpcAccessLogCfg := c.Analytics.GRPCAccessLogCfg
+		if grpcAccessLogCfg.Enabled {
+			if grpcAccessLogCfg.Port <= 0 || grpcAccessLogCfg.Port > 65535 {
+				return fmt.Errorf("analytics.grpc_access_logs.port must be between 1 and 65535, got %d", grpcAccessLogCfg.Port)
+			}
+			if grpcAccessLogCfg.Host == "" {
+				return fmt.Errorf("analytics.grpc_access_logs.host is required when analytics.grpc_access_logs.enabled is true")
+			}
+			if grpcAccessLogCfg.LogName == "" {
+				return fmt.Errorf("analytics.grpc_access_logs.log_name is required when analytics.grpc_access_logs.enabled is true")
+			}
+			if grpcAccessLogCfg.BufferFlushInterval <= 0 || grpcAccessLogCfg.BufferSizeBytes <= 0 || grpcAccessLogCfg.GRPCRequestTimeout <= 0 {
+				return fmt.Errorf(
+					"invalid gRPC access log configuration: bufferFlushInterval=%d, bufferSizeBytes=%d, grpcRequestTimeout=%d (all must be > 0)",
+					grpcAccessLogCfg.BufferFlushInterval,
+					grpcAccessLogCfg.BufferSizeBytes,
+					grpcAccessLogCfg.GRPCRequestTimeout,
+				)
+			}
+		}
+
 	}
 	return nil
 }

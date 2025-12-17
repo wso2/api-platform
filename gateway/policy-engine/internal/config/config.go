@@ -12,6 +12,22 @@ type Config struct {
 	PolicyEngine PolicyEngine `mapstructure:"policy_engine"`
 	GatewayController map[string]interface{} `mapstructure:"gateway_controller"`
 	PolicyConfigurations map[string]interface{} `mapstructure:"policy_configurations"`
+	Analytics AnalyticsConfig `mapstructure:"analytics"`
+}
+
+// AnalyticsConfig holds analytics configuration
+type AnalyticsConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	Publishers []PublisherConfig `mapstructure:"publishers"`
+	GRPCAccessLogCfg map[string]interface{} `mapstructure:"grpc_access_logs"`
+	AccessLogsServiceCfg AccessLogsServiceConfig `mapstructure:"access_logs_service"`
+}
+
+// PublisherConfig holds publisher configuration
+type PublisherConfig struct {
+	Enabled bool `mapstructure:"enabled"`
+	Type string `mapstructure:"type"`
+	Settings map[string]interface{} `mapstructure:"settings"`
 }
 
 // Config represents the complete policy engine configuration
@@ -26,8 +42,6 @@ type PolicyEngine struct {
 	// RawConfig holds the complete raw configuration map including custom fields
 	// This is used for resolving ${config} CEL expressions in policy systemParameters
 	RawConfig map[string]interface{} `mapstructure:",remain"`
-	AccessLogsService AccessLogsServiceConfig `mapstructure:"access_logs_service"`
-	Analytics  AnalyticsConfig  `mapstructure:"analytics"`
 }
 
 // ServerConfig holds ext_proc server configuration
@@ -127,19 +141,6 @@ type AccessLogsServiceConfig struct {
 	ExtProcMaxHeaderLimit int `mapstructure:"max_header_limit"`
 }
 
-// AnalyticsConfig holds analytics related configuration
-type AnalyticsConfig struct {
-	Enabled bool `mapstructure:"enabled"`
-	Publishers []PublisherConfig `mapstructure:"publishers"`
-}
-
-// PublisherConfig holds analyticspublisher specific configuration
-type PublisherConfig struct {
-	Enabled bool `mapstructure:"enabled"`
-	Type string `mapstructure:"type"`
-	Settings map[string]interface{} `mapstructure:"settings"`
-}
-
 // Load loads configuration from a YAML file
 func Load(configPath string) (*Config, error) {
 	v := viper.New()
@@ -208,6 +209,29 @@ func setDefaults(v *viper.Viper) {
 	// Logging defaults
 	v.SetDefault("policy_engine.logging.level", "info")
 	v.SetDefault("policy_engine.logging.format", "json")
+
+	// Analytics defaults
+	v.SetDefault("analytics.enabled", false)
+	v.SetDefault("analytics.publishers", make([]PublisherConfig, 0))
+	v.SetDefault("analytics.grpc_access_logs", map[string]interface{}{
+		"enabled": false,
+		"host": "policy-engine",
+		"port": 18090,
+		"log_name": "envoy_access_log",
+		"buffer_flush_interval": 1000000000,
+		"buffer_size_bytes": 16384,
+		"grpc_request_timeout": 20000000000,
+	})
+	v.SetDefault("analytics.access_logs_service", map[string]interface{}{
+		"enabled": false,
+		"als_server_port": 18090,
+		"shutdown_timeout": 600,
+		"public_key_path": "",
+		"private_key_path": "",
+		"als_plain_text": true,
+		"max_message_size": 1000000000,
+		"max_header_limit": 8192,
+	})
 }
 
 // Validate validates the configuration
@@ -260,6 +284,12 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid logging.format: %s (must be json or text)", c.PolicyEngine.Logging.Format)
 	}
 
+	if c.Analytics.Enabled {
+		if err := c.validateAnalyticsConfig(); err != nil {
+			return fmt.Errorf("analytics configuration validation failed: %v", err)
+		}
+	}
+
 	return nil
 }
 
@@ -305,5 +335,68 @@ func (c *Config) validateXDSConfig() error {
 		}
 	}
 
+	return nil
+}
+
+// validateAnalyticsConfig validates the analytics configuration
+func (c *Config) validateAnalyticsConfig() error {
+	// Validate analytics configuration
+	if c.Analytics.Enabled {
+		// Validate ALS server config (policy-engine side)
+		als := c.Analytics.AccessLogsServiceCfg
+		if als.Enabled {
+			if als.ALSServerPort <= 0 || als.ALSServerPort > 65535 {
+				return fmt.Errorf("analytics.access_logs_service.als_server_port must be between 1 and 65535, got %d", als.ALSServerPort)
+			}
+			if als.ShutdownTimeout <= 0 {
+				return fmt.Errorf("analytics.access_logs_service.shutdown_timeout must be positive, got %s", als.ShutdownTimeout)
+			}
+			if als.ExtProcMaxMessageSize <= 0 {
+				return fmt.Errorf("analytics.access_logs_service.max_message_size must be positive, got %d", als.ExtProcMaxMessageSize)
+			}
+			if als.ExtProcMaxHeaderLimit <= 0 {
+				return fmt.Errorf("analytics.access_logs_service.max_header_limit must be positive, got %d", als.ExtProcMaxHeaderLimit)
+			}
+		}
+
+		// Validate publishers
+		for i, pub := range c.Analytics.Publishers {
+			if !pub.Enabled {
+				continue
+			}
+			if pub.Type == "" {
+				return fmt.Errorf("analytics.publishers[%d].type is required when enabled", i)
+			}
+
+			switch pub.Type {
+			case "moesif":
+				if pub.Settings == nil {
+					return fmt.Errorf("analytics.publishers[%d].settings is required for type 'moesif'", i)
+				}
+				rawAppID, ok := pub.Settings["application_id"]
+				appID, okStr := rawAppID.(string)
+				if !ok || !okStr || appID == "" {
+					return fmt.Errorf("analytics.publishers[%d].settings.application_id is required and must be a non-empty string for type 'moesif'", i)
+				}
+
+				if rawInterval, ok := pub.Settings["publish_interval"]; ok {
+					switch v := rawInterval.(type) {
+					case int:
+						if v <= 0 {
+							return fmt.Errorf("analytics.publishers[%d].settings.publish_interval must be > 0 seconds, got %d", i, v)
+						}
+					case int64:
+						if v <= 0 {
+							return fmt.Errorf("analytics.publishers[%d].settings.publish_interval must be > 0 seconds, got %d", i, v)
+						}
+					default:
+						return fmt.Errorf("analytics.publishers[%d].settings.publish_interval must be an integer (seconds) when set", i)
+					}
+				}
+			default:
+				return fmt.Errorf("unknown publisher type: %s", pub.Type)
+			}
+		}
+	}
 	return nil
 }

@@ -260,8 +260,8 @@ func (t *Translator) TranslateConfigs(
 	}
 
 	// Add ALS cluster if gRPC access log is enabled
-	t.logger.Sugar().Infof("gRPC access log config: %+v", t.routerConfig.GRPCAccessLog)
-	if t.routerConfig.GRPCAccessLog.Enabled {
+	t.logger.Sugar().Debugf("gRPC access log config: %+v", t.config.Analytics.GRPCAccessLogCfg)
+	if t.config.Analytics.GRPCAccessLogCfg.Enabled {
 		log.Info("gRPC access log is enabled, creating ALS cluster")
 		alsCluster := t.createALSCluster()
 		clusters = append(clusters, alsCluster)
@@ -1061,7 +1061,7 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 
 // createALSCluster creates an Envoy cluster for the gRPC access log service
 func (t *Translator) createALSCluster() *cluster.Cluster {
-    grpcConfig := t.routerConfig.GRPCAccessLog
+    grpcConfig := t.config.Analytics.GRPCAccessLogCfg
 
     address := &core.Address{
         Address: &core.Address_SocketAddress{
@@ -1581,7 +1581,7 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	})
 
 	// If gRPC access log is enabled, create the configuration and append to existing access logs
-    if t.routerConfig.GRPCAccessLog.Enabled {
+    if t.config.Analytics.GRPCAccessLogCfg.Enabled {
 		t.logger.Info("Creating gRPC access log configuration")
         grpcAccessLog, err := t.createGRPCAccessLog()
         if err != nil {
@@ -1597,7 +1597,7 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 
 // createGRPCAccessLog creates a gRPC access log configuration for the gateway controller
 func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
-    grpcConfig := t.routerConfig.GRPCAccessLog
+    grpcConfig := t.config.Analytics.GRPCAccessLogCfg
 
     httpGrpcAccessLog := &grpc_accesslogv3.HttpGrpcAccessLogConfig{
 		CommonConfig: &grpc_accesslogv3.CommonGrpcAccessLogConfig{
