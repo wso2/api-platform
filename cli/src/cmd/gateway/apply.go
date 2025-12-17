@@ -34,9 +34,12 @@ import (
 
 const (
 	ApplyCmdLiteral = "apply"
-	ApplyCmdExample = `# Apply a resource from a file
+	ApplyCmdExample = `# Apply a resource from a YAML file
 apipctl gateway apply --file petstore-api.yaml
-apipctl gateway apply -f petstore-api.yaml`
+apipctl gateway apply -f petstore-api.yaml
+
+# Apply a resource from a JSON file
+apipctl gateway apply --file petstore-api.json`
 )
 
 var (
@@ -46,7 +49,7 @@ var (
 var applyCmd = &cobra.Command{
 	Use:     ApplyCmdLiteral,
 	Short:   "Apply a resource to the gateway",
-	Long:    "Create or update a gateway resource (API, MCP proxy, etc.) from a YAML file.",
+	Long:    "Create or update a gateway resource (API, MCP proxy, etc.) from a YAML or JSON file.",
 	Example: ApplyCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runApplyCommand(); err != nil {
@@ -77,6 +80,12 @@ func runApplyCommand() error {
 	fileContent, err := os.ReadFile(applyFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)
+	}
+
+	// Detect if the content is JSON and convert to YAML if needed
+	fileContent, err = convertJSONToYAMLIfNeeded(fileContent)
+	if err != nil {
+		return fmt.Errorf("failed to process file content: %w", err)
 	}
 
 	// Parse the YAML to extract kind and metadata.name
@@ -222,4 +231,32 @@ func resourceExists(client *gateway.Client, handler gateway.ResourceHandler, han
 	// Any other status code is an error
 	body, _ := io.ReadAll(resp.Body)
 	return false, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(body))
+}
+
+// convertJSONToYAMLIfNeeded detects if the content is JSON and converts it to YAML
+func convertJSONToYAMLIfNeeded(content []byte) ([]byte, error) {
+	trimmed := bytes.TrimSpace(content)
+	if len(trimmed) == 0 {
+		return content, nil
+	}
+
+	// Check if it starts with '{' or '[', indicating JSON
+	if trimmed[0] != '{' && trimmed[0] != '[' {
+		// Not JSON, assume it's YAML
+		return content, nil
+	}
+
+	var jsonData interface{}
+	if err := json.Unmarshal(content, &jsonData); err != nil {
+		// If JSON parsing fails, assume it's YAML
+		return content, nil
+	}
+
+	// Convert JSON to YAML
+	yamlData, err := yaml.Marshal(jsonData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert JSON to YAML: %w", err)
+	}
+
+	return yamlData, nil
 }
