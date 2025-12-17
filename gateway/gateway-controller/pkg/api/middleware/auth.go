@@ -28,16 +28,43 @@ import (
 const (
 	AuthUserKey  = "auth_user"
 	AuthRolesKey = "auth_roles"
+	// AuthScopesKey may be set by IDP middleware to pass OAuth/OIDC scopes
+	// granted for the current request. If present, authorization will validate
+	// these scopes directly against resource required scopes.
+	AuthScopesKey = "auth_scopes"
+	// AuthSkipKey is set to true in the context when the request matches the
+	// auth whitelist and should bypass both authentication and authorization.
+	AuthSkipKey = "auth_skip"
 )
 
-// AuthMiddleware verifies credentials against locally configured users in config.
-// It currently supports plain-text passwords and bcrypt-hashed passwords (when
-// `password_hashed` is true).
+// AuthMiddleware verifies credentials and prepares authentication context.
 func AuthMiddleware(cfg *config.Config, logger *zap.Logger) gin.HandlerFunc {
 	// Choose middleware implementation. In future this can select IDP middleware.
 	basic := BasicAuthMiddleware(cfg, logger)
 
+	// Resources which do not require authentication. Keys should be defined as
+	// "METHOD /path". Populate as needed.
+	var authWhitelist = map[string]struct{}{
+		"GET /health": {},
+	}
+
 	return func(c *gin.Context) {
+		// Determine request resource key (prefer full path)
+		resourcePath := c.FullPath()
+		logger.Info("Processing authentication request", zap.String("resource path", resourcePath))
+		if resourcePath == "" {
+			resourcePath = c.Request.URL.Path
+			logger.Info("Processing authentication request", zap.String("resource path", resourcePath))
+		}
+		methodKey := c.Request.Method + " " + resourcePath
+
+		// If resource is whitelisted, mark skip and continue without auth
+		if _, ok := authWhitelist[methodKey]; ok {
+			c.Set(AuthSkipKey, true)
+			c.Next()
+			return
+		}
+
 		// For now, use basic auth. If IDP gets implemented, select based on cfg.
 		basic(c)
 	}
