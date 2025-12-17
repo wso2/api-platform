@@ -34,6 +34,7 @@ const (
 	FlagFormat      = "format"
 	FlagVersion     = "version"
 	FlagID          = "id"
+	FlagConfirm     = "confirm"
 )
 
 var shortFlags = map[string]string{

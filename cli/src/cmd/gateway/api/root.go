@@ -43,4 +43,5 @@ func init() {
 	// Register subcommands
 	APICmd.AddCommand(listCmd)
 	APICmd.AddCommand(getCmd)
+	APICmd.AddCommand(deleteCmd)
 }
