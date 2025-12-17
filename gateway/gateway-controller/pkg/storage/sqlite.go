@@ -153,14 +153,14 @@ func (s *SQLiteStorage) initSchema() error {
 			// Add llm_provider_templates table
 			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS llm_provider_templates (
 				id TEXT PRIMARY KEY,
-				name TEXT NOT NULL UNIQUE,
+				handle TEXT NOT NULL UNIQUE,
 				configuration TEXT NOT NULL,
 				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 			);`); err != nil {
 				return fmt.Errorf("failed to migrate schema to version 4: %w", err)
 			}
-			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_template_name ON llm_provider_templates(name);`); err != nil {
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_template_handle ON llm_provider_templates(handle);`); err != nil {
 				return fmt.Errorf("failed to create llm_provider_templates index: %w", err)
 			}
 			if _, err := s.db.Exec("PRAGMA user_version = 4"); err != nil {
@@ -675,7 +675,7 @@ func (s *SQLiteStorage) SaveLLMProviderTemplate(template *models.StoredLLMProvid
 
 	if err != nil {
 		// Check for unique constraint violation
-		if isUniqueConstraintError(err) || (err != nil && err.Error() == "UNIQUE constraint failed: llm_provider_templates.handle") {
+		if err.Error() == "UNIQUE constraint failed: llm_provider_templates.handle" {
 			return fmt.Errorf("%w: template with handle '%s' already exists", ErrConflict, handle)
 		}
 		return fmt.Errorf("failed to insert template: %w", err)
@@ -784,39 +784,6 @@ func (s *SQLiteStorage) GetLLMProviderTemplate(id string) (*models.StoredLLMProv
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("%w: id=%s", ErrNotFound, id)
-		}
-		return nil, fmt.Errorf("failed to query template: %w", err)
-	}
-
-	// Deserialize JSON configuration
-	if err := json.Unmarshal([]byte(configJSON), &template.Configuration); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal template configuration: %w", err)
-	}
-
-	return &template, nil
-}
-
-// GetLLMProviderTemplateByName retrieves an LLM provider template by name
-func (s *SQLiteStorage) GetLLMProviderTemplateByName(name string) (*models.StoredLLMProviderTemplate, error) {
-	query := `
-		SELECT id, configuration, created_at, updated_at
-		FROM llm_provider_templates
-		WHERE name = ?
-	`
-
-	var template models.StoredLLMProviderTemplate
-	var configJSON string
-
-	err := s.db.QueryRow(query, name).Scan(
-		&template.ID,
-		&configJSON,
-		&template.CreatedAt,
-		&template.UpdatedAt,
-	)
-
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("%w: name=%s", ErrNotFound, name)
 		}
 		return nil, fmt.Errorf("failed to query template: %w", err)
 	}
