@@ -1775,64 +1775,26 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
 	handle := id
+	// Get correlation ID from context
+	correlationID := middleware.GetCorrelationID(c)
 
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
-	// Check if config exists
-	cfg, err := s.db.GetConfigByHandle(handle)
+	cfg, err := s.mcpDeploymentService.DeleteMCPProxy(handle, correlationID, log)
 	if err != nil {
-		log.Warn("MCP proxy configuration not found",
-			zap.String("handle", handle))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("MCP proxy configuration with handle '%s' not found", handle),
-		})
-		return
-	}
-
-	// Ensure existing config is of kind MCP
-	if cfg.Kind != string(api.Mcp) {
-		log.Warn("Configuration kind mismatch",
-			zap.String("expected", string(api.Mcp)),
-			zap.String("actual", cfg.Kind),
-			zap.String("handle", handle))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("Configuration with handle '%s' is not of kind MCP", handle),
-		})
-		return
-	}
-
-	// Delete from database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.DeleteConfig(cfg.ID); err != nil {
-			log.Error("Failed to delete config from database", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+		log.Warn("Failed to delete MCP proxy configuration", zap.String("handle", handle), zap.Error(err))
+		// Check if it's a not found error
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
 				Status:  "error",
-				Message: "Failed to delete configuration",
+				Message: err.Error(),
 			})
 			return
 		}
-	}
-
-	// Delete from in-memory store
-	if err := s.store.Delete(cfg.ID); err != nil {
-		log.Error("Failed to delete config from memory store", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
-			Message: "Failed to delete configuration",
+			Message: err.Error(),
 		})
 		return
 	}
-
-	// Get correlation ID from context
-	correlationID := middleware.GetCorrelationID(c)
 
 	// Update xDS snapshot asynchronously
 	go func() {

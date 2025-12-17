@@ -71,71 +71,13 @@ func NewMCPDeploymentService(
 }
 
 // DeployMCPConfiguration handles the complete MCP configuration deployment process
-func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams, update bool) (*APIDeploymentResult, error) {
-	var mcpConfig api.MCPProxyConfiguration
-	var apiConfig api.APIConfiguration
-	// Parse configuration
-	err := s.parser.Parse(params.Data, params.ContentType, &mcpConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse configuration: %w", err)
-	}
-
-	// Validate configuration
-	validationErrors := s.validator.Validate(&mcpConfig)
-	if len(validationErrors) > 0 {
-		errors := make([]string, 0, len(validationErrors))
-		params.Logger.Warn("Configuration validation failed",
-			zap.String("api_id", params.ID),
-			zap.String("displayName", mcpConfig.Spec.DisplayName),
-			zap.Int("num_errors", len(validationErrors)))
-
-		for i, e := range validationErrors {
-			params.Logger.Warn("Validation error",
-				zap.String("field", e.Field),
-				zap.String("message", e.Message))
-			errors = append(errors, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
-		}
-
-		combinedMsg := strings.Join(errors, "; ")
-
-		return nil, fmt.Errorf("configuration validation failed with %d error(s): %s", len(validationErrors), combinedMsg)
-	}
+func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams,
+	apiConfig *api.APIConfiguration, mcpConfig *api.MCPProxyConfiguration) (*APIDeploymentResult, error) {
 
 	// Generate API ID if not provided
 	apiID := params.ID
 	if apiID == "" {
 		apiID = generateUUID()
-	}
-
-	// Transform to API configuration
-	apiConfigPtr, err := s.transformer.Transform(&mcpConfig, &apiConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to transform MCP configuration to API configuration")
-	}
-	apiConfig = *apiConfigPtr
-
-	handle := apiConfig.Metadata.Name
-
-	name, version, err := ExtractNameVersion(apiConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	if !update {
-		if s.store != nil {
-			if name != "" && version != "" {
-				if _, err := s.store.GetByNameVersion(name, version); err == nil {
-					return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, name, version)
-				}
-			}
-			if handle != "" {
-				for _, c := range s.store.GetAll() {
-					if c.GetHandle() == handle {
-						return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
-					}
-				}
-			}
-		}
 	}
 
 	// Create stored configuration
@@ -148,8 +90,8 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		UpdatedAt:           now,
 		DeployedAt:          nil,
 		DeployedVersion:     0,
-		Configuration:       apiConfig,
-		SourceConfiguration: mcpConfig,
+		Configuration:       *apiConfig,
+		SourceConfiguration: *mcpConfig,
 	}
 
 	// Try to save/update the configuration
@@ -284,6 +226,45 @@ func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	return true, nil // Successfully updated existing config
 }
 
+func (s *MCPDeploymentService) parseValidateAndTransform(params MCPDeploymentParams) (*api.MCPProxyConfiguration, *api.APIConfiguration, error) {
+	var mcpConfig api.MCPProxyConfiguration
+	var apiConfig api.APIConfiguration
+	// Parse configuration
+	err := s.parser.Parse(params.Data, params.ContentType, &mcpConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse configuration: %w", err)
+	}
+
+	// Validate configuration
+	validationErrors := s.validator.Validate(&mcpConfig)
+	if len(validationErrors) > 0 {
+		errors := make([]string, 0, len(validationErrors))
+		params.Logger.Warn("Configuration validation failed",
+			zap.String("api_id", params.ID),
+			zap.String("name", mcpConfig.Spec.Name),
+			zap.Int("num_errors", len(validationErrors)))
+
+		for i, e := range validationErrors {
+			params.Logger.Warn("Validation error",
+				zap.String("field", e.Field),
+				zap.String("message", e.Message))
+			errors = append(errors, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
+		}
+
+		combinedMsg := strings.Join(errors, "; ")
+
+		return nil, nil, fmt.Errorf("configuration validation failed with %d error(s): %s", len(validationErrors), combinedMsg)
+	}
+
+	// Transform to API configuration
+	apiConfigPtr, err := s.transformer.Transform(&mcpConfig, &apiConfig)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to transform MCP configuration to API configuration")
+	}
+	apiConfig = *apiConfigPtr
+	return &mcpConfig, &apiConfig, nil
+}
+
 // ListMCPProxies returns all stored MCP proxy configurations
 func (s *MCPDeploymentService) ListMCPProxies() []*models.StoredConfig {
 	return s.store.GetAllByKind(string(api.Mcp))
@@ -313,14 +294,41 @@ func (s *MCPDeploymentService) GetMCPProxyByHandle(handle string) (*models.Store
 
 // CreateMCPProxy is a convenience wrapper around DeployMCPConfiguration for creating MCP proxies
 func (s *MCPDeploymentService) CreateMCPProxy(params MCPDeploymentParams) (*models.StoredConfig, error) {
-	res, err := s.DeployMCPConfiguration(params, false)
+	mcpConfig, apiConfig, err := s.parseValidateAndTransform(params)
+	if err != nil {
+		return nil, err
+	}
+
+	handle := mcpConfig.Metadata.Name
+
+	name, version, err := ExtractNameVersion(*apiConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.store != nil {
+		if name != "" && version != "" {
+			if _, err := s.store.GetByNameVersion(name, version); err == nil {
+				return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, name, version)
+			}
+		}
+		if handle != "" {
+			for _, c := range s.store.GetAll() {
+				if c.GetHandle() == handle {
+					return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
+				}
+			}
+		}
+	}
+
+	res, err := s.DeployMCPConfiguration(params, apiConfig, mcpConfig)
 	if err != nil {
 		return nil, err
 	}
 	return res.StoredConfig, nil
 }
 
-// UpdateMCPProxy updates an existing MCP proxy identified by name+version using DeployMCPConfiguration
+// UpdateMCPProxy updates an existing MCP proxy identified by its handle
 func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymentParams, logger *zap.Logger) (*models.StoredConfig, error) {
 	existing, err := s.GetMCPProxyByHandle(handle)
 	if err != nil || existing == nil {
@@ -337,27 +345,53 @@ func (s *MCPDeploymentService) UpdateMCPProxy(handle string, params MCPDeploymen
 
 	// Ensure Deploy uses existing ID so it performs an update
 	params.ID = existing.ID
-	res, err := s.DeployMCPConfiguration(params, true)
+	mcpConfig, apiConfig, err := s.parseValidateAndTransform(params)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := s.DeployMCPConfiguration(params, apiConfig, mcpConfig)
 	if err != nil {
 		return nil, err
 	}
 	return res.StoredConfig, nil
 }
 
-// DeleteMCPProxy deletes an MCP proxy by name+version using store/db and updates snapshot
-func (s *MCPDeploymentService) DeleteMCPProxy(name, version, correlationID string, logger *zap.Logger) (*models.StoredConfig, error) {
-	cfg := s.store.GetByKindNameAndVersion(string(api.Mcp), name, version)
-	if cfg == nil {
-		return cfg, fmt.Errorf("MCP proxy configuration with name '%s' and version '%s' not found", name, version)
+// DeleteMCPProxy deletes an MCP proxy by handle using store/db and updates snapshot
+func (s *MCPDeploymentService) DeleteMCPProxy(handle, correlationID string, logger *zap.Logger) (*models.StoredConfig, error) {
+	if s.db == nil {
+		return nil, storage.ErrDatabaseUnavailable
 	}
 
+	// Check if config exists
+	cfg, err := s.db.GetConfigByHandle(handle)
+	if err != nil {
+		logger.Warn("MCP proxy configuration not found",
+			zap.String("handle", handle))
+		return nil, fmt.Errorf("MCP proxy configuration with handle '%s' not found", handle)
+	}
+
+	// Ensure existing config is of kind MCP
+	if cfg.Kind != string(api.Mcp) {
+		logger.Warn("Configuration kind mismatch",
+			zap.String("expected", string(api.Mcp)),
+			zap.String("actual", cfg.Kind),
+			zap.String("handle", handle))
+		return nil, fmt.Errorf("configuration kind mismatch: expected '%s', got '%s' for handle '%s'", string(api.Mcp), cfg.Kind, handle)
+	}
+
+	// Delete from database first (only if persistent mode)
 	if s.db != nil {
 		if err := s.db.DeleteConfig(cfg.ID); err != nil {
-			return cfg, fmt.Errorf("failed to delete configuration from database: %w", err)
+			logger.Error("Failed to delete config from database", zap.Error(err))
+			return nil, fmt.Errorf("failed to delete configuration from database: %w", err)
 		}
 	}
+
+	// Delete from in-memory store
 	if err := s.store.Delete(cfg.ID); err != nil {
-		return cfg, fmt.Errorf("failed to delete configuration from memory store: %w", err)
+		logger.Error("Failed to delete config from memory store", zap.Error(err))
+		return nil, fmt.Errorf("failed to delete configuration from memory store: %w", err)
 	}
 
 	// Update xDS snapshot asynchronously
