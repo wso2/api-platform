@@ -27,12 +27,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// BasicAuth represents basic authentication credentials
+type BasicAuth struct {
+	Username string `yaml:"username"`
+	Password string `yaml:"password"` // Can be plaintext or ${ENV_VAR} format
+}
+
 // Gateway represents a gateway configuration
 type Gateway struct {
-	Name     string `yaml:"name"`
-	Server   string `yaml:"server"`
-	Token    string `yaml:"token,omitempty"`
-	Insecure bool   `yaml:"insecure,omitempty"`
+	Name      string     `yaml:"name"`
+	Server    string     `yaml:"server"`
+	Token     string     `yaml:"token,omitempty"`     // Bearer token (can be ${ENV_VAR})
+	BasicAuth *BasicAuth `yaml:"basicAuth,omitempty"` // Basic auth credentials
+	Insecure  bool       `yaml:"insecure,omitempty"`  // No authentication
 }
 
 // Config represents the apipctl configuration
@@ -144,20 +151,35 @@ func (c *Config) AddGateway(gateway Gateway) error {
 	return nil
 }
 
-// GetGateway returns a gateway by name with resolved token
+// GetGateway returns a gateway by name with resolved credentials
 func (c *Config) GetGateway(name string) (*Gateway, error) {
 	for i := range c.Gateways {
 		if c.Gateways[i].Name == name {
 			// Create a copy to avoid modifying the config
 			gateway := c.Gateways[i]
-			// Resolve environment variable if token is present and connection is secure
-			if !gateway.Insecure && gateway.Token != "" {
+
+			// Resolve environment variables for token
+			if gateway.Token != "" {
 				resolvedToken, err := utils.ResolveEnvVar(gateway.Token)
 				if err != nil {
 					return nil, fmt.Errorf("failed to resolve token for gateway '%s': %w", name, err)
 				}
 				gateway.Token = resolvedToken
 			}
+
+			// Resolve environment variables for basic auth password
+			if gateway.BasicAuth != nil {
+				resolvedPassword, err := utils.ResolveEnvVar(gateway.BasicAuth.Password)
+				if err != nil {
+					return nil, fmt.Errorf("failed to resolve password for gateway '%s': %w", name, err)
+				}
+				// Create a copy of BasicAuth to avoid modifying the original
+				gateway.BasicAuth = &BasicAuth{
+					Username: gateway.BasicAuth.Username,
+					Password: resolvedPassword,
+				}
+			}
+
 			return &gateway, nil
 		}
 	}

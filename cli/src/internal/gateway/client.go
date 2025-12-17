@@ -88,8 +88,12 @@ func NewClientForActive() (*Client, error) {
 
 // Do executes an HTTP request with the gateway's authentication and settings
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
-	// Add authentication token if present
-	if c.gateway.Token != "" {
+	// Add authentication
+	if c.gateway.BasicAuth != nil {
+		// Basic authentication
+		req.SetBasicAuth(c.gateway.BasicAuth.Username, c.gateway.BasicAuth.Password)
+	} else if c.gateway.Token != "" {
+		// Bearer token authentication
 		req.Header.Set("Authorization", "Bearer "+c.gateway.Token)
 	}
 

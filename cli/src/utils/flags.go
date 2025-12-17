@@ -21,12 +21,15 @@ package utils
 import "github.com/spf13/cobra"
 
 const (
-	FlagName     = "name"
-	FlagServer   = "server"
-	FlagToken    = "token"
-	FlagEnvToken = "token-env"
-	FlagInsecure = "insecure"
-	FlagOutput   = "output"
+	FlagName        = "name"
+	FlagServer      = "server"
+	FlagToken       = "token"
+	FlagEnvToken    = "token-env"
+	FlagUsername    = "username"
+	FlagPassword    = "password"
+	FlagPasswordEnv = "password-env"
+	FlagInsecure    = "insecure"
+	FlagOutput      = "output"
 )
 
 var shortFlags = map[string]string{
