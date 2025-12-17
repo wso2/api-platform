@@ -153,13 +153,11 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 		return
 	}
 
-	// Generate request ID
-	requestID := s.generateRequestID()
-
 	// Create execution context for this request-response lifecycle
-	*execCtx = newPolicyExecutionContext(s, requestID, routeMetadata.RouteName, chain)
+	*execCtx = newPolicyExecutionContext(s, routeMetadata.RouteName, chain)
 
 	// Build request context from Envoy headers with route metadata
+	// Request ID will be extracted from x-request-id header or generated if not present
 	(*execCtx).buildRequestContext(req.GetRequestHeaders(), routeMetadata)
 }
 

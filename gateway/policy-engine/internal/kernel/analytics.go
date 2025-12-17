@@ -40,9 +40,6 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 		if sharedCtx.OperationPath != "" {
 			metadata["operation_path"] = sharedCtx.OperationPath
 		}
-		if sharedCtx.RequestID != "" {
-			metadata["request_id"] = sharedCtx.RequestID
-		}
 
 		if len(metadata) > 0 {
 			metadataVal, err := structpb.NewValue(metadata)

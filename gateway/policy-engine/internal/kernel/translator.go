@@ -25,7 +25,13 @@ type Mutations struct {
 }
 
 // translateRequestActionsCore is the shared implementation for request translation
-func translateRequestActionsCore(result *executor.RequestExecutionResult, execCtx *PolicyExecutionContext) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, analyticsData map[string]any, immediateResp *extprocv3.ProcessingResponse, err error) {
+func translateRequestActionsCore(result *executor.RequestExecutionResult, execCtx *PolicyExecutionContext) (
+	headerMutation *extprocv3.HeaderMutation,
+	bodyMutation *extprocv3.BodyMutation,
+	analyticsData map[string]any,
+	immediateResp *extprocv3.ProcessingResponse,
+	err error) {
+
 	// Check for short-circuit with immediate response
 	if result.ShortCircuited && result.FinalAction != nil {
 		if immResp, ok := result.FinalAction.(policy.ImmediateResponse); ok {
@@ -42,13 +48,11 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 			}
 
 			// Handle analytics metadata for immediate response
-			if len(immResp.AnalyticsMetadata) > 0 {
-				analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, nil)
-				if err != nil {
-					return nil, nil, nil, nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
-				}
-				response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
+			if err != nil {
+				return nil, nil, nil, nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
 			}
+			response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
 			return nil, nil, nil, response, nil
 		}
 	}
@@ -131,14 +135,12 @@ func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, cha
 		ModeOverride: execCtx.getModeOverride(),
 	}
 
-	// Add analytics metadata if present
-	if len(analyticsData) > 0 {
-		analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
-		}
-		response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+	// Add analytics metadata
+	analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
 
 	return response, nil
 }
@@ -166,20 +168,23 @@ func TranslateRequestBodyActions(result *executor.RequestExecutionResult, chain 
 		ModeOverride: execCtx.getModeOverride(),
 	}
 
-	// Add analytics metadata if present
-	if len(analyticsData) > 0 {
-		analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
-		}
-		response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+	// Add analytics metadata
+	analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
 
 	return response, nil
 }
 
 // translateResponseActionsCore is the shared implementation for response translation
-func translateResponseActionsCore(result *executor.ResponseExecutionResult, execCtx *PolicyExecutionContext) (headerMutation *extprocv3.HeaderMutation, bodyMutation *extprocv3.BodyMutation, analyticsData map[string]any, err error) {
+func translateResponseActionsCore(result *executor.ResponseExecutionResult, execCtx *PolicyExecutionContext) (
+	headerMutation *extprocv3.HeaderMutation,
+	bodyMutation *extprocv3.BodyMutation,
+	analyticsData map[string]any,
+	err error) {
+
 	headerMutation = &extprocv3.HeaderMutation{}
 	analyticsData = make(map[string]any)
 
@@ -237,14 +242,12 @@ func TranslateResponseHeadersActions(result *executor.ResponseExecutionResult, e
 		},
 	}
 
-	// Add analytics metadata if present
-	if len(analyticsData) > 0 {
-		analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
-		}
-		response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+	// Add analytics metadata
+	analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 	}
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
 
 	return response, nil
 }
