@@ -92,7 +92,7 @@ const (
 
 // Defines values for LLMProviderConfigurationKind.
 const (
-	Llmprovider LLMProviderConfigurationKind = "llm/provider"
+	LlmProvider LLMProviderConfigurationKind = "LlmProvider"
 )
 
 // Defines values for LLMProviderConfigurationVersion.
@@ -116,7 +116,7 @@ const (
 
 // Defines values for LLMProviderTemplateKind.
 const (
-	LlmproviderTemplate LLMProviderTemplateKind = "llm/provider-template"
+	LlmProviderTemplate LLMProviderTemplateKind = "LlmProviderTemplate"
 )
 
 // Defines values for LLMProviderTemplateVersion.
@@ -190,11 +190,18 @@ const (
 	ListAPIsParamsStatusPending  ListAPIsParamsStatus = "pending"
 )
 
+// Defines values for ListLLMProvidersParamsStatus.
+const (
+	ListLLMProvidersParamsStatusDeployed ListLLMProvidersParamsStatus = "deployed"
+	ListLLMProvidersParamsStatusFailed   ListLLMProvidersParamsStatus = "failed"
+	ListLLMProvidersParamsStatusPending  ListLLMProvidersParamsStatus = "pending"
+)
+
 // Defines values for ListMCPProxiesParamsStatus.
 const (
-	Deployed ListMCPProxiesParamsStatus = "deployed"
-	Failed   ListMCPProxiesParamsStatus = "failed"
-	Pending  ListMCPProxiesParamsStatus = "pending"
+	ListMCPProxiesParamsStatusDeployed ListMCPProxiesParamsStatus = "deployed"
+	ListMCPProxiesParamsStatusFailed   ListMCPProxiesParamsStatus = "failed"
+	ListMCPProxiesParamsStatusPending  ListMCPProxiesParamsStatus = "pending"
 )
 
 // APIConfigData defines model for APIConfigData.
@@ -521,8 +528,8 @@ type LLMProviderConfigData struct {
 	// Context Base path for all API routes (must start with /, no trailing slash)
 	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
 
-	// Name Human-readable LLM Provider name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
-	Name string `json:"name" yaml:"name"`
+	// DisplayName Human-readable LLM Provider name
+	DisplayName string `json:"displayName" yaml:"displayName"`
 
 	// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
 	Policies *[]LLMPolicy `json:"policies,omitempty" yaml:"policies,omitempty"`
@@ -566,8 +573,9 @@ type LLMProviderConfigData_Upstream struct {
 // LLMProviderConfiguration defines model for LLMProviderConfiguration.
 type LLMProviderConfiguration struct {
 	// Kind Provider kind
-	Kind LLMProviderConfigurationKind `json:"kind" yaml:"kind"`
-	Spec LLMProviderConfigData        `json:"spec" yaml:"spec"`
+	Kind     LLMProviderConfigurationKind `json:"kind" yaml:"kind"`
+	Metadata Metadata                     `json:"metadata" yaml:"metadata"`
+	Spec     LLMProviderConfigData        `json:"spec" yaml:"spec"`
 
 	// Version Provider specification version
 	Version LLMProviderConfigurationVersion `json:"version" yaml:"version"`
@@ -581,10 +589,10 @@ type LLMProviderConfigurationVersion string
 
 // LLMProviderCreateResponse defines model for LLMProviderCreateResponse.
 type LLMProviderCreateResponse struct {
-	CreatedAt *time.Time          `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string             `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string             `json:"status,omitempty" yaml:"status,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // LLMProviderDetailResponse defines model for LLMProviderDetailResponse.
@@ -592,7 +600,7 @@ type LLMProviderDetailResponse struct {
 	Provider *struct {
 		Configuration    *LLMProviderConfiguration                          `json:"configuration,omitempty" yaml:"configuration,omitempty"`
 		DeploymentStatus *LLMProviderDetailResponseProviderDeploymentStatus `json:"deployment_status,omitempty" yaml:"deployment_status,omitempty"`
-		Id               *openapi_types.UUID                                `json:"id,omitempty" yaml:"id,omitempty"`
+		Id               *string                                            `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata         *struct {
 			CreatedAt  *time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 			DeployedAt *time.Time `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
@@ -608,7 +616,7 @@ type LLMProviderDetailResponseProviderDeploymentStatus string
 // LLMProviderListItem defines model for LLMProviderListItem.
 type LLMProviderListItem struct {
 	CreatedAt *time.Time                 `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-	Id        *openapi_types.UUID        `json:"id,omitempty" yaml:"id,omitempty"`
+	Id        *string                    `json:"id,omitempty" yaml:"id,omitempty"`
 	Name      *string                    `json:"name,omitempty" yaml:"name,omitempty"`
 	Status    *LLMProviderListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
 	Template  *string                    `json:"template,omitempty" yaml:"template,omitempty"`
@@ -622,8 +630,9 @@ type LLMProviderListItemStatus string
 // LLMProviderTemplate defines model for LLMProviderTemplate.
 type LLMProviderTemplate struct {
 	// Kind Template kind
-	Kind LLMProviderTemplateKind `json:"kind" yaml:"kind"`
-	Spec LLMProviderTemplateData `json:"spec" yaml:"spec"`
+	Kind     LLMProviderTemplateKind `json:"kind" yaml:"kind"`
+	Metadata Metadata                `json:"metadata" yaml:"metadata"`
+	Spec     LLMProviderTemplateData `json:"spec" yaml:"spec"`
 
 	// Version Template specification version
 	Version LLMProviderTemplateVersion `json:"version" yaml:"version"`
@@ -637,21 +646,23 @@ type LLMProviderTemplateVersion string
 
 // LLMProviderTemplateCreateResponse defines model for LLMProviderTemplateCreateResponse.
 type LLMProviderTemplateCreateResponse struct {
-	CreatedAt *time.Time          `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string             `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string             `json:"status,omitempty" yaml:"status,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // LLMProviderTemplateData defines model for LLMProviderTemplateData.
 type LLMProviderTemplateData struct {
 	CompletionTokens *ExtractionIdentifier `json:"completionTokens,omitempty" yaml:"completionTokens,omitempty"`
 
-	// Name Unique name for the provider template
-	Name         string                `json:"name" yaml:"name"`
-	PromptTokens *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
-	RequestModel *ExtractionIdentifier `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
-	TotalTokens  *ExtractionIdentifier `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
+	// DisplayName Human-readable LLM Template name
+	DisplayName     string                `json:"displayName" yaml:"displayName"`
+	PromptTokens    *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+	RemainingTokens *ExtractionIdentifier `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
+	RequestModel    *ExtractionIdentifier `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
+	ResponseModel   *ExtractionIdentifier `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
+	TotalTokens     *ExtractionIdentifier `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
 }
 
 // LLMProviderTemplateDetailResponse defines model for LLMProviderTemplateDetailResponse.
@@ -659,7 +670,7 @@ type LLMProviderTemplateDetailResponse struct {
 	Status   *string `json:"status,omitempty" yaml:"status,omitempty"`
 	Template *struct {
 		Configuration *LLMProviderTemplate `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-		Id            *openapi_types.UUID  `json:"id,omitempty" yaml:"id,omitempty"`
+		Id            *string              `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata      *struct {
 			CreatedAt *time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 			UpdatedAt *time.Time `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
@@ -669,26 +680,26 @@ type LLMProviderTemplateDetailResponse struct {
 
 // LLMProviderTemplateListItem defines model for LLMProviderTemplateListItem.
 type LLMProviderTemplateListItem struct {
-	CreatedAt *time.Time          `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Name      *string             `json:"name,omitempty" yaml:"name,omitempty"`
-	UpdatedAt *time.Time          `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Name      *string    `json:"name,omitempty" yaml:"name,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
 }
 
 // LLMProviderTemplateUpdateResponse defines model for LLMProviderTemplateUpdateResponse.
 type LLMProviderTemplateUpdateResponse struct {
-	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string             `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string             `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time          `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
 }
 
 // LLMProviderUpdateResponse defines model for LLMProviderUpdateResponse.
 type LLMProviderUpdateResponse struct {
-	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string             `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string             `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time          `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
 }
 
 // MCPDetailResponse defines model for MCPDetailResponse.
@@ -1020,6 +1031,33 @@ type ListAPIsParams struct {
 
 // ListAPIsParamsStatus defines parameters for ListAPIs.
 type ListAPIsParamsStatus string
+
+// ListLLMProviderTemplatesParams defines parameters for ListLLMProviderTemplates.
+type ListLLMProviderTemplatesParams struct {
+	// Name Filter by template name
+	Name *string `form:"name,omitempty" json:"name,omitempty" yaml:"name,omitempty"`
+}
+
+// ListLLMProvidersParams defines parameters for ListLLMProviders.
+type ListLLMProvidersParams struct {
+	// Name Filter by LLM provider name
+	Name *string `form:"name,omitempty" json:"name,omitempty" yaml:"name,omitempty"`
+
+	// Version Filter by LLM provider version
+	Version *string `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
+
+	// Context Filter by LLM provider context/path
+	Context *string `form:"context,omitempty" json:"context,omitempty" yaml:"context,omitempty"`
+
+	// Status Filter by deployment status
+	Status *ListLLMProvidersParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+
+	// Vhost Filter by LLM provider vhost
+	Vhost *string `form:"vhost,omitempty" json:"vhost,omitempty" yaml:"vhost,omitempty"`
+}
+
+// ListLLMProvidersParamsStatus defines parameters for ListLLMProviders.
+type ListLLMProvidersParamsStatus string
 
 // ListMCPProxiesParams defines parameters for ListMCPProxies.
 type ListMCPProxiesParams struct {
@@ -1399,34 +1437,34 @@ type ServerInterface interface {
 	HealthCheck(c *gin.Context)
 	// List all LLM provider templates
 	// (GET /llm-provider-templates)
-	ListLLMProviderTemplates(c *gin.Context)
+	ListLLMProviderTemplates(c *gin.Context, params ListLLMProviderTemplatesParams)
 	// Create a new LLM provider template
 	// (POST /llm-provider-templates)
 	CreateLLMProviderTemplate(c *gin.Context)
 	// Delete an LLM provider template
-	// (DELETE /llm-provider-templates/{name})
-	DeleteLLMProviderTemplate(c *gin.Context, name string)
-	// Get LLM provider template by name
-	// (GET /llm-provider-templates/{name})
-	GetLLMProviderTemplateByName(c *gin.Context, name string)
+	// (DELETE /llm-provider-templates/{id})
+	DeleteLLMProviderTemplate(c *gin.Context, id string)
+	// Get LLM provider template by id
+	// (GET /llm-provider-templates/{id})
+	GetLLMProviderTemplateById(c *gin.Context, id string)
 	// Update an existing LLM provider template
-	// (PUT /llm-provider-templates/{name})
-	UpdateLLMProviderTemplate(c *gin.Context, name string)
+	// (PUT /llm-provider-templates/{id})
+	UpdateLLMProviderTemplate(c *gin.Context, id string)
 	// List all LLM providers
 	// (GET /llm-providers)
-	ListLLMProviders(c *gin.Context)
+	ListLLMProviders(c *gin.Context, params ListLLMProvidersParams)
 	// Create a new LLM provider
 	// (POST /llm-providers)
 	CreateLLMProvider(c *gin.Context)
 	// Delete an LLM provider
-	// (DELETE /llm-providers/{name}/{version})
-	DeleteLLMProvider(c *gin.Context, name string, version string)
-	// Get LLM provider by name and version
-	// (GET /llm-providers/{name}/{version})
-	GetLLMProviderByNameVersion(c *gin.Context, name string, version string)
+	// (DELETE /llm-providers/{id})
+	DeleteLLMProvider(c *gin.Context, id string)
+	// Get LLM provider by identifier
+	// (GET /llm-providers/{id})
+	GetLLMProviderById(c *gin.Context, id string)
 	// Update an existing LLM provider
-	// (PUT /llm-providers/{name}/{version})
-	UpdateLLMProvider(c *gin.Context, name string, version string)
+	// (PUT /llm-providers/{id})
+	UpdateLLMProvider(c *gin.Context, id string)
 	// List all MCP Proxy configurations
 	// (GET /mcp-proxies)
 	ListMCPProxies(c *gin.Context, params ListMCPProxiesParams)
@@ -1683,6 +1721,19 @@ func (siw *ServerInterfaceWrapper) HealthCheck(c *gin.Context) {
 // ListLLMProviderTemplates operation middleware
 func (siw *ServerInterfaceWrapper) ListLLMProviderTemplates(c *gin.Context) {
 
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListLLMProviderTemplatesParams
+
+	// ------------- Optional query parameter "name" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "name", c.Request.URL.Query(), &params.Name)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -1690,7 +1741,7 @@ func (siw *ServerInterfaceWrapper) ListLLMProviderTemplates(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListLLMProviderTemplates(c)
+	siw.Handler.ListLLMProviderTemplates(c, params)
 }
 
 // CreateLLMProviderTemplate operation middleware
@@ -1711,12 +1762,12 @@ func (siw *ServerInterfaceWrapper) DeleteLLMProviderTemplate(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1727,20 +1778,20 @@ func (siw *ServerInterfaceWrapper) DeleteLLMProviderTemplate(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.DeleteLLMProviderTemplate(c, name)
+	siw.Handler.DeleteLLMProviderTemplate(c, id)
 }
 
-// GetLLMProviderTemplateByName operation middleware
-func (siw *ServerInterfaceWrapper) GetLLMProviderTemplateByName(c *gin.Context) {
+// GetLLMProviderTemplateById operation middleware
+func (siw *ServerInterfaceWrapper) GetLLMProviderTemplateById(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1751,7 +1802,7 @@ func (siw *ServerInterfaceWrapper) GetLLMProviderTemplateByName(c *gin.Context) 
 		}
 	}
 
-	siw.Handler.GetLLMProviderTemplateByName(c, name)
+	siw.Handler.GetLLMProviderTemplateById(c, id)
 }
 
 // UpdateLLMProviderTemplate operation middleware
@@ -1759,12 +1810,12 @@ func (siw *ServerInterfaceWrapper) UpdateLLMProviderTemplate(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1775,11 +1826,56 @@ func (siw *ServerInterfaceWrapper) UpdateLLMProviderTemplate(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.UpdateLLMProviderTemplate(c, name)
+	siw.Handler.UpdateLLMProviderTemplate(c, id)
 }
 
 // ListLLMProviders operation middleware
 func (siw *ServerInterfaceWrapper) ListLLMProviders(c *gin.Context) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListLLMProvidersParams
+
+	// ------------- Optional query parameter "name" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "name", c.Request.URL.Query(), &params.Name)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "version", c.Request.URL.Query(), &params.Version)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "context" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "context", c.Request.URL.Query(), &params.Context)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter context: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", c.Request.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter status: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "vhost" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "vhost", c.Request.URL.Query(), &params.Vhost)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter vhost: %w", err), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -1788,7 +1884,7 @@ func (siw *ServerInterfaceWrapper) ListLLMProviders(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListLLMProviders(c)
+	siw.Handler.ListLLMProviders(c, params)
 }
 
 // CreateLLMProvider operation middleware
@@ -1809,21 +1905,12 @@ func (siw *ServerInterfaceWrapper) DeleteLLMProvider(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "version" -------------
-	var version string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1834,29 +1921,20 @@ func (siw *ServerInterfaceWrapper) DeleteLLMProvider(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.DeleteLLMProvider(c, name, version)
+	siw.Handler.DeleteLLMProvider(c, id)
 }
 
-// GetLLMProviderByNameVersion operation middleware
-func (siw *ServerInterfaceWrapper) GetLLMProviderByNameVersion(c *gin.Context) {
+// GetLLMProviderById operation middleware
+func (siw *ServerInterfaceWrapper) GetLLMProviderById(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "version" -------------
-	var version string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1867,7 +1945,7 @@ func (siw *ServerInterfaceWrapper) GetLLMProviderByNameVersion(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetLLMProviderByNameVersion(c, name, version)
+	siw.Handler.GetLLMProviderById(c, id)
 }
 
 // UpdateLLMProvider operation middleware
@@ -1875,21 +1953,12 @@ func (siw *ServerInterfaceWrapper) UpdateLLMProvider(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "version" -------------
-	var version string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1900,7 +1969,7 @@ func (siw *ServerInterfaceWrapper) UpdateLLMProvider(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.UpdateLLMProvider(c, name, version)
+	siw.Handler.UpdateLLMProvider(c, id)
 }
 
 // ListMCPProxies operation middleware
@@ -2091,14 +2160,14 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/health", wrapper.HealthCheck)
 	router.GET(options.BaseURL+"/llm-provider-templates", wrapper.ListLLMProviderTemplates)
 	router.POST(options.BaseURL+"/llm-provider-templates", wrapper.CreateLLMProviderTemplate)
-	router.DELETE(options.BaseURL+"/llm-provider-templates/:name", wrapper.DeleteLLMProviderTemplate)
-	router.GET(options.BaseURL+"/llm-provider-templates/:name", wrapper.GetLLMProviderTemplateByName)
-	router.PUT(options.BaseURL+"/llm-provider-templates/:name", wrapper.UpdateLLMProviderTemplate)
+	router.DELETE(options.BaseURL+"/llm-provider-templates/:id", wrapper.DeleteLLMProviderTemplate)
+	router.GET(options.BaseURL+"/llm-provider-templates/:id", wrapper.GetLLMProviderTemplateById)
+	router.PUT(options.BaseURL+"/llm-provider-templates/:id", wrapper.UpdateLLMProviderTemplate)
 	router.GET(options.BaseURL+"/llm-providers", wrapper.ListLLMProviders)
 	router.POST(options.BaseURL+"/llm-providers", wrapper.CreateLLMProvider)
-	router.DELETE(options.BaseURL+"/llm-providers/:name/:version", wrapper.DeleteLLMProvider)
-	router.GET(options.BaseURL+"/llm-providers/:name/:version", wrapper.GetLLMProviderByNameVersion)
-	router.PUT(options.BaseURL+"/llm-providers/:name/:version", wrapper.UpdateLLMProvider)
+	router.DELETE(options.BaseURL+"/llm-providers/:id", wrapper.DeleteLLMProvider)
+	router.GET(options.BaseURL+"/llm-providers/:id", wrapper.GetLLMProviderById)
+	router.PUT(options.BaseURL+"/llm-providers/:id", wrapper.UpdateLLMProvider)
 	router.GET(options.BaseURL+"/mcp-proxies", wrapper.ListMCPProxies)
 	router.POST(options.BaseURL+"/mcp-proxies", wrapper.CreateMCPProxy)
 	router.DELETE(options.BaseURL+"/mcp-proxies/:id", wrapper.DeleteMCPProxy)
@@ -2110,150 +2179,151 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"9zS2HJDNVdMA6vbi9v8FAAD//9SBwdjo6gAA",
+	"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",
+	"rQpKGw5I56qovnV/df8/AQAA//9aZ6E03esAAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

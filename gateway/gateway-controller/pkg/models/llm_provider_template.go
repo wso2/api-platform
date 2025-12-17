@@ -32,7 +32,7 @@ type StoredLLMProviderTemplate struct {
 	UpdatedAt     time.Time               `json:"updated_at"`
 }
 
-// GetName returns the template name
-func (t *StoredLLMProviderTemplate) GetName() string {
-	return t.Configuration.Spec.Name
+// GetHandle returns the template handle
+func (t *StoredLLMProviderTemplate) GetHandle() string {
+	return t.Configuration.Metadata.Name
 }

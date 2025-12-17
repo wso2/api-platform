@@ -868,7 +868,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 }
 
 // CreateLLMProviderTemplate implements ServerInterface.CreateLLMProviderTemplate
-// (POST /llm-providers/templates)
+// (POST /llm-provider-templates)
 func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	log := middleware.GetLogger(c, s.logger)
 
@@ -900,29 +900,26 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 
 	log.Info("LLM provider template created successfully",
 		zap.String("id", storedTemplate.ID),
-		zap.String("name", storedTemplate.GetName()))
-
-	id, _ := uuidToOpenAPIUUID(storedTemplate.ID)
+		zap.String("handle", storedTemplate.GetHandle()))
 
 	c.JSON(http.StatusCreated, api.LLMProviderTemplateCreateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("LLM provider template created successfully"),
-		Id:        id,
+		Id:        stringPtr(storedTemplate.GetHandle()),
 		CreatedAt: timePtr(storedTemplate.CreatedAt),
 	})
 }
 
 // ListLLMProviderTemplates implements ServerInterface.ListLLMProviderTemplates
 // (GET /llm-providers/templates)
-func (s *APIServer) ListLLMProviderTemplates(c *gin.Context) {
-	templates := s.llmDeploymentService.ListLLMProviderTemplates()
+func (s *APIServer) ListLLMProviderTemplates(c *gin.Context, params api.ListLLMProviderTemplatesParams) {
+	templates := s.llmDeploymentService.ListLLMProviderTemplates(params.Name)
 
 	items := make([]api.LLMProviderTemplateListItem, len(templates))
 	for i, tmpl := range templates {
-		id, _ := uuidToOpenAPIUUID(tmpl.ID)
 		items[i] = api.LLMProviderTemplateListItem{
-			Id:        id,
-			Name:      stringPtr(tmpl.GetName()),
+			Id:        stringPtr(tmpl.GetHandle()),
+			Name:      stringPtr(tmpl.Configuration.Spec.DisplayName),
 			CreatedAt: timePtr(tmpl.CreatedAt),
 			UpdatedAt: timePtr(tmpl.UpdatedAt),
 		}
@@ -935,22 +932,20 @@ func (s *APIServer) ListLLMProviderTemplates(c *gin.Context) {
 	})
 }
 
-// GetLLMProviderTemplateByName implements ServerInterface.GetLLMProviderTemplateByName
-// (GET /llm-providers/templates/{name})
-func (s *APIServer) GetLLMProviderTemplateByName(c *gin.Context, name string) {
+// GetLLMProviderTemplateById implements ServerInterface.GetLLMProviderTemplateById
+// (GET /llm-provider-templates/{id})
+func (s *APIServer) GetLLMProviderTemplateById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	template, err := s.llmDeploymentService.GetLLMProviderTemplateByName(name)
+	template, err := s.llmDeploymentService.GetLLMProviderTemplateByHandle(id)
 	if err != nil {
-		log.Warn("LLM provider template not found", zap.String("name", name))
+		log.Warn("LLM provider template not found", zap.String("id", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("Template with name '%s' not found", name),
+			Message: fmt.Sprintf("Template with id '%s' not found", id),
 		})
 		return
 	}
-
-	id, _ := uuidToOpenAPIUUID(template.ID)
 
 	// Return response with a simple JSON structure similar to GetAPIByNameVersion
 	tmplDetail := gin.H{
@@ -969,8 +964,8 @@ func (s *APIServer) GetLLMProviderTemplateByName(c *gin.Context, name string) {
 }
 
 // UpdateLLMProviderTemplate implements ServerInterface.UpdateLLMProviderTemplate
-// (PUT /llm-providers/templates/{name})
-func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, name string) {
+// (PUT /llm-provider-templates/{id})
+func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
 	// Read request body
@@ -984,7 +979,7 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, name string) {
 		return
 	}
 
-	updated, err := s.llmDeploymentService.UpdateLLMProviderTemplate(name, utils.LLMTemplateParams{
+	updated, err := s.llmDeploymentService.UpdateLLMProviderTemplate(id, utils.LLMTemplateParams{
 		Spec:        body,
 		ContentType: c.GetHeader("Content-Type"),
 		Logger:      log,
@@ -1000,52 +995,50 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, name string) {
 
 	log.Info("LLM provider template updated successfully",
 		zap.String("id", updated.ID),
-		zap.String("name", updated.GetName()))
+		zap.String("handle", updated.GetHandle()))
 
-	id, _ := uuidToOpenAPIUUID(updated.ID)
 	c.JSON(http.StatusOK, api.LLMProviderTemplateUpdateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("LLM provider template updated successfully"),
-		Id:        id,
+		Id:        stringPtr(updated.GetHandle()),
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
 }
 
 // DeleteLLMProviderTemplate implements ServerInterface.DeleteLLMProviderTemplate
-// (DELETE /llm-providers/templates/{name})
-func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, name string) {
+// (DELETE /llm-provider-templates/{id})
+func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(name)
+	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(id)
 	if err != nil {
-		log.Warn("LLM provider template not found for deletion", zap.String("name", name))
+		log.Warn("LLM provider template not found for deletion", zap.String("id", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("Template with name '%s' not found", name),
+			Message: fmt.Sprintf("Template with id '%s' not found", id),
 		})
 		return
 	}
 
 	log.Info("LLM provider template deleted successfully",
 		zap.String("id", deleted.ID),
-		zap.String("name", name))
+		zap.String("id", id))
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "LLM provider template deleted successfully",
-		"id":      deleted.ID,
+		"id":      id,
 	})
 }
 
 // ListLLMProviders implements ServerInterface.ListLLMProviders
 // (GET /llm-providers)
-func (s *APIServer) ListLLMProviders(c *gin.Context) {
+func (s *APIServer) ListLLMProviders(c *gin.Context, params api.ListLLMProvidersParams) {
 	log := middleware.GetLogger(c, s.logger)
-	configs := s.llmDeploymentService.ListLLMProviders()
+	configs := s.llmDeploymentService.ListLLMProviders(params)
 
 	items := make([]api.LLMProviderListItem, len(configs))
 	for i, cfg := range configs {
-		id, _ := uuidToOpenAPIUUID(cfg.ID)
 		status := api.LLMProviderListItemStatus(cfg.Status)
 
 		// Convert SourceConfiguration to LLMProviderConfiguration
@@ -1058,8 +1051,8 @@ func (s *APIServer) ListLLMProviders(c *gin.Context) {
 		}
 
 		items[i] = api.LLMProviderListItem{
-			Id:        id,
-			Name:      stringPtr(prov.Spec.Name),
+			Id:        stringPtr(prov.Metadata.Name),
+			Name:      stringPtr(prov.Spec.DisplayName),
 			Version:   stringPtr(prov.Spec.Version),
 			Template:  stringPtr(prov.Spec.Template),
 			Status:    &status,
@@ -1110,13 +1103,12 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 
 	log.Info("LLM provider created successfully",
 		zap.String("id", stored.ID),
-		zap.String("name", stored.GetName()))
+		zap.String("handle", stored.GetHandle()))
 
-	id, _ := uuidToOpenAPIUUID(stored.ID)
 	c.JSON(http.StatusCreated, api.LLMProviderCreateResponse{
 		Status:  stringPtr("success"),
 		Message: stringPtr("LLM provider created successfully"),
-		Id:      id, CreatedAt: timePtr(stored.CreatedAt)})
+		Id:      stringPtr(stored.GetHandle()), CreatedAt: timePtr(stored.CreatedAt)})
 
 	// Build and add policy config derived from API configuration if policies are present
 	if s.policyManager != nil {
@@ -1133,26 +1125,24 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 	}
 }
 
-// GetLLMProviderByNameVersion implements ServerInterface.GetLLMProviderByNameVersion
-// (GET /llm-providers/{name}/{version})
-func (s *APIServer) GetLLMProviderByNameVersion(c *gin.Context, name string, version string) {
+// GetLLMProviderById implements ServerInterface.GetLLMProviderById
+// (GET /llm-providers/{id})
+func (s *APIServer) GetLLMProviderById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg := s.store.GetByKindNameAndVersion(string(api.Llmprovider), name, version)
+	cfg := s.store.GetByKindAndHandle(string(api.LlmProvider), id)
 	if cfg == nil {
 		log.Warn("LLM provider configuration not found",
-			zap.String("name", name),
-			zap.String("version", version))
+			zap.String("id", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("LLM provider configuration with name '%s' and version '%s' not found", name, version),
+			Message: fmt.Sprintf("LLM provider configuration with id '%s' not found", id),
 		})
 		return
 	}
 
 	// Build response similar to GetAPIByNameVersion
 	providerDetail := gin.H{
-		"id":            cfg.ID,
 		"configuration": cfg.SourceConfiguration,
 		"metadata": gin.H{
 			"status":     string(cfg.Status),
@@ -1172,8 +1162,8 @@ func (s *APIServer) GetLLMProviderByNameVersion(c *gin.Context, name string, ver
 }
 
 // UpdateLLMProvider implements ServerInterface.UpdateLLMProvider
-// (PUT /llm-providers/{name}/{version})
-func (s *APIServer) UpdateLLMProvider(c *gin.Context, name string, version string) {
+// (PUT /llm-providers/{id})
+func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
 	// Read request body
@@ -1191,7 +1181,7 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, name string, version strin
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service update wrapper
-	updated, err := s.llmDeploymentService.UpdateLLMProvider(name, version, utils.LLMDeploymentParams{
+	updated, err := s.llmDeploymentService.UpdateLLMProvider(id, utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		CorrelationID: correlationID,
@@ -1203,9 +1193,8 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, name string, version strin
 		return
 	}
 
-	id, _ := uuidToOpenAPIUUID(updated.ID)
 	c.JSON(http.StatusOK, api.LLMProviderUpdateResponse{
-		Id:        id,
+		Id:        stringPtr(id),
 		Message:   stringPtr("LLM provider updated successfully"),
 		Status:    stringPtr("success"),
 		UpdatedAt: timePtr(updated.UpdatedAt),
@@ -1237,14 +1226,14 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, name string, version strin
 }
 
 // DeleteLLMProvider implements ServerInterface.DeleteLLMProvider
-// (DELETE /llm-providers/{name}/{version})
-func (s *APIServer) DeleteLLMProvider(c *gin.Context, name string, version string) {
+// (DELETE /llm-providers/{id})
+func (s *APIServer) DeleteLLMProvider(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 	correlationID := middleware.GetCorrelationID(c)
 
-	cfg, err := s.llmDeploymentService.DeleteLLMProvider(name, version, correlationID, log)
+	cfg, err := s.llmDeploymentService.DeleteLLMProvider(id, correlationID, log)
 	if err != nil {
-		log.Warn("Failed to delete LLM provider configuration", zap.String("name", name), zap.String("version", version), zap.Error(err))
+		log.Warn("Failed to delete LLM provider configuration", zap.String("id", id))
 		// Check if it's a not found error
 		if strings.Contains(err.Error(), "not found") {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{
@@ -1263,8 +1252,7 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, name string, version strin
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "LLM provider deleted successfully",
-		"name":    name,
-		"version": version,
+		"id":      id,
 	})
 
 	// Remove derived policy configuration

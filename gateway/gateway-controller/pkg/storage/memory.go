@@ -23,8 +23,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
 // ConfigStore holds all API configurations in memory for fast access
@@ -36,19 +36,19 @@ type ConfigStore struct {
 	TopicManager *TopicManager
 
 	// LLM Provider Templates
-	templates        map[string]*models.StoredLLMProviderTemplate // Key: template ID
-	templateIdByName map[string]string
+	templates          map[string]*models.StoredLLMProviderTemplate // Key: template ID
+	templateIdByHandle map[string]string
 }
 
 // NewConfigStore creates a new in-memory config store
 func NewConfigStore() *ConfigStore {
 	return &ConfigStore{
-		configs:          make(map[string]*models.StoredConfig),
-		nameVersion:      make(map[string]string),
-		snapVersion:      0,
-		TopicManager:     NewTopicManager(),
-		templates:        make(map[string]*models.StoredLLMProviderTemplate),
-		templateIdByName: make(map[string]string),
+		configs:            make(map[string]*models.StoredConfig),
+		nameVersion:        make(map[string]string),
+		snapVersion:        0,
+		TopicManager:       NewTopicManager(),
+		templates:          make(map[string]*models.StoredLLMProviderTemplate),
+		templateIdByHandle: make(map[string]string),
 	}
 }
 
@@ -231,6 +231,23 @@ func (cs *ConfigStore) GetByKindNameAndVersion(kind string, name string, version
 	return nil
 }
 
+// GetByKindAndHandle returns a configuration of a specific kind, and handle
+func (cs *ConfigStore) GetByKindAndHandle(kind string, handle string) *models.StoredConfig {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	for _, cfg := range cs.configs {
+		if cfg.Kind != kind {
+			continue
+		}
+		sc := cfg
+		if sc.GetHandle() == handle {
+			return sc
+		}
+	}
+	return nil
+}
+
 // IncrementSnapshotVersion atomically increments and returns the next snapshot version
 func (cs *ConfigStore) IncrementSnapshotVersion() int64 {
 	cs.mu.Lock()
@@ -267,10 +284,10 @@ func (cs *ConfigStore) AddTemplate(template *models.StoredLLMProviderTemplate) e
 
 	// Normalize inputs
 	id := strings.TrimSpace(template.ID)
-	name := strings.TrimSpace(template.GetName())
+	handle := strings.TrimSpace(template.GetHandle())
 
-	if id == "" || name == "" {
-		return fmt.Errorf("template ID and name is required")
+	if id == "" || handle == "" {
+		return fmt.Errorf("template ID and handle is required")
 	}
 
 	// Enforce unique immutable ID: cannot add if ID already exists
@@ -279,13 +296,13 @@ func (cs *ConfigStore) AddTemplate(template *models.StoredLLMProviderTemplate) e
 	}
 
 	// Enforce unique name: cannot add if name already mapped to a different ID
-	if _, exists := cs.templateIdByName[name]; exists {
-		return fmt.Errorf("template with name '%s' already exists", name)
+	if _, exists := cs.templateIdByHandle[handle]; exists {
+		return fmt.Errorf("template with handle '%s' already exists", handle)
 	}
 
 	// Store
 	cs.templates[id] = template
-	cs.templateIdByName[name] = id
+	cs.templateIdByHandle[handle] = id
 	return nil
 }
 
@@ -296,10 +313,10 @@ func (cs *ConfigStore) UpdateTemplate(template *models.StoredLLMProviderTemplate
 
 	// Normalize inputs
 	id := strings.TrimSpace(template.ID)
-	newName := strings.TrimSpace(template.GetName())
+	newHandle := strings.TrimSpace(template.GetHandle())
 
-	if id == "" || newName == "" {
-		return fmt.Errorf("template ID and name is required")
+	if id == "" || newHandle == "" {
+		return fmt.Errorf("template ID and handle is required")
 	}
 
 	// Require existing template by ID (ID is immutable)
@@ -308,22 +325,22 @@ func (cs *ConfigStore) UpdateTemplate(template *models.StoredLLMProviderTemplate
 		return fmt.Errorf("template with ID '%s' not found", id)
 	}
 
-	oldName := strings.TrimSpace(existing.GetName())
+	oldName := strings.TrimSpace(existing.GetHandle())
 
 	// If name is changing, ensure no collision with another template
-	if newName != oldName {
-		if mappedID, exists := cs.templateIdByName[newName]; exists && mappedID != id {
-			return fmt.Errorf("template with given name '%s' already exists", newName)
+	if newHandle != oldName {
+		if mappedID, exists := cs.templateIdByHandle[newHandle]; exists && mappedID != id {
+			return fmt.Errorf("template with given handle '%s' already exists", newHandle)
 		}
-		// Remove old name mapping if it points to this ID
-		if mappedID, ok := cs.templateIdByName[oldName]; ok && mappedID == id {
-			delete(cs.templateIdByName, oldName)
+		// Remove old handle mapping if it points to this ID
+		if mappedID, ok := cs.templateIdByHandle[oldName]; ok && mappedID == id {
+			delete(cs.templateIdByHandle, oldName)
 		}
 	}
 
 	// Update stored template and refresh name mapping
 	cs.templates[id] = template
-	cs.templateIdByName[newName] = id
+	cs.templateIdByHandle[newHandle] = id
 	return nil
 }
 
@@ -338,7 +355,7 @@ func (cs *ConfigStore) DeleteTemplate(id string) error {
 	}
 
 	delete(cs.templates, id)
-	delete(cs.templateIdByName, template.GetName())
+	delete(cs.templateIdByHandle, template.GetHandle())
 	return nil
 }
 
@@ -355,14 +372,14 @@ func (cs *ConfigStore) GetTemplate(id string) (*models.StoredLLMProviderTemplate
 	return template, nil
 }
 
-// GetTemplateByName retrieves an LLM provider template by name
-func (cs *ConfigStore) GetTemplateByName(name string) (*models.StoredLLMProviderTemplate, error) {
+// GetTemplateByHandle retrieves an LLM provider template by handle identifier
+func (cs *ConfigStore) GetTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
-	templateId, exists := cs.templateIdByName[name]
+	templateId, exists := cs.templateIdByHandle[handle]
 	if !exists {
-		return nil, fmt.Errorf("template with name '%s' not found", name)
+		return nil, fmt.Errorf("template with handle '%s' not found", handle)
 	}
 
 	return cs.templates[templateId], nil

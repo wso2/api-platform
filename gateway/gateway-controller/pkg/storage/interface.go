@@ -139,13 +139,6 @@ type Storage interface {
 	// This is the fastest lookup method (O(1) for most databases).
 	GetLLMProviderTemplate(id string) (*models.StoredLLMProviderTemplate, error)
 
-	// GetLLMProviderTemplateByName retrieves an LLM provider template by name.
-	//
-	// Returns an error if the template is not found.
-	// This is the most common lookup method for template operations.
-	// Implementations should index name for fast lookups.
-	GetLLMProviderTemplateByName(name string) (*models.StoredLLMProviderTemplate, error)
-
 	// GetAllLLMProviderTemplates retrieves all LLM provider templates.
 	//
 	// Returns an empty slice if no templates exist.
