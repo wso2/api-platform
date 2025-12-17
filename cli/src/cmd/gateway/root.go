@@ -46,5 +46,6 @@ var GatewayCmd = &cobra.Command{
 func init() {
 	// Register subcommands
 	GatewayCmd.AddCommand(addCmd)
+	GatewayCmd.AddCommand(listCmd)
 	GatewayCmd.AddCommand(mcp.McpCmd)
 }
