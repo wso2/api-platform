@@ -676,7 +676,7 @@ func (s *SQLiteStorage) SaveLLMProviderTemplate(template *models.StoredLLMProvid
 	if err != nil {
 		// Check for unique constraint violation
 		if isUniqueConstraintError(err) || (err != nil && err.Error() == "UNIQUE constraint failed: llm_provider_templates.handle") {
-			return fmt.Errorf("%w: template with name '%s' already exists", ErrConflict, handle)
+			return fmt.Errorf("%w: template with handle '%s' already exists", ErrConflict, handle)
 		}
 		return fmt.Errorf("failed to insert template: %w", err)
 	}

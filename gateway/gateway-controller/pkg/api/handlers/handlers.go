@@ -1015,14 +1015,14 @@ func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, handle string) {
 		log.Warn("LLM provider template not found for deletion", zap.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("Template with name '%s' not found", handle),
+			Message: fmt.Sprintf("Template with handle '%s' not found", handle),
 		})
 		return
 	}
 
 	log.Info("LLM provider template deleted successfully",
 		zap.String("id", deleted.ID),
-		zap.String("name", handle))
+		zap.String("handle", handle))
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",

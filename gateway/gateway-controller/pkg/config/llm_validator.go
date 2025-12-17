@@ -229,7 +229,7 @@ func (v *LLMValidator) validateLLMProvider(provider *api.LLMProviderConfiguratio
 	if provider.Kind != api.LlmProvider {
 		errors = append(errors, ValidationError{
 			Field:   "kind",
-			Message: "Kind must be 'LlmProvider",
+			Message: "Kind must be 'LlmProvider'",
 		})
 	}
 
@@ -286,7 +286,7 @@ func (v *LLMValidator) validateProviderSpec(spec *api.LLMProviderConfigData) []V
 	if spec.Version != "" && !v.versionRegex.MatchString(spec.Version) {
 		errors = append(errors, ValidationError{
 			Field:   "spec.version",
-			Message: "Provider version is required",
+			Message: "Provider version format is invalid (expected vX.Y.Z)",
 		})
 	}
 

@@ -465,6 +465,9 @@ func matchesFilters(config *models.StoredConfig, params api.ListLLMProvidersPara
 
 	// Check Vhost filter
 	if params.Vhost != nil {
+		if apiCfg.Vhosts == nil {
+			return false
+		}
 		if apiCfg.Vhosts.Main != *params.Vhost {
 			return false
 		}
@@ -477,7 +480,7 @@ func matchesFilters(config *models.StoredConfig, params api.ListLLMProvidersPara
 func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploymentParams) (*models.StoredConfig, error) {
 	existing := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
 	if existing == nil {
-		return nil, fmt.Errorf("LLM provider configuration with handle '%s'", handle)
+		return nil, fmt.Errorf("LLM provider configuration with handle '%s' not found", handle)
 	}
 	// Ensure Deploy uses existing ID so it performs an update
 	params.ID = existing.ID
