@@ -641,7 +641,7 @@ func LoadLLMProviderTemplatesFromDatabase(storage Storage, cache *ConfigStore) e
 
 	for _, template := range templates {
 		if err := cache.AddTemplate(template); err != nil {
-			return fmt.Errorf("failed to load llm provider template %s into cache: %w", template.GetName(), err)
+			return fmt.Errorf("failed to load llm provider template %s into cache: %w", template.GetHandle(), err)
 		}
 	}
 
@@ -656,18 +656,18 @@ func (s *SQLiteStorage) SaveLLMProviderTemplate(template *models.StoredLLMProvid
 		return fmt.Errorf("failed to marshal template configuration: %w", err)
 	}
 
-	name := template.GetName()
+	handle := template.GetHandle()
 
 	query := `
 		INSERT INTO llm_provider_templates (
-			id, name, configuration, created_at, updated_at
+			id, handle, configuration, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?)
 	`
 
 	now := time.Now()
 	_, err = s.db.Exec(query,
 		template.ID,
-		name,
+		handle,
 		string(configJSON),
 		now,
 		now,
@@ -675,15 +675,15 @@ func (s *SQLiteStorage) SaveLLMProviderTemplate(template *models.StoredLLMProvid
 
 	if err != nil {
 		// Check for unique constraint violation
-		if isUniqueConstraintError(err) || (err != nil && err.Error() == "UNIQUE constraint failed: llm_provider_templates.name") {
-			return fmt.Errorf("%w: template with name '%s' already exists", ErrConflict, name)
+		if isUniqueConstraintError(err) || (err != nil && err.Error() == "UNIQUE constraint failed: llm_provider_templates.handle") {
+			return fmt.Errorf("%w: template with name '%s' already exists", ErrConflict, handle)
 		}
 		return fmt.Errorf("failed to insert template: %w", err)
 	}
 
 	s.logger.Info("LLM provider template saved",
 		zap.String("id", template.ID),
-		zap.String("name", name))
+		zap.String("handle", handle))
 
 	return nil
 }
@@ -705,16 +705,16 @@ func (s *SQLiteStorage) UpdateLLMProviderTemplate(template *models.StoredLLMProv
 		return fmt.Errorf("failed to marshal template configuration: %w", err)
 	}
 
-	name := template.GetName()
+	handle := template.GetHandle()
 
 	query := `
 		UPDATE llm_provider_templates
-		SET name = ?, configuration = ?, updated_at = ?
+		SET handle = ?, configuration = ?, updated_at = ?
 		WHERE id = ?
 	`
 
 	result, err := s.db.Exec(query,
-		name,
+		handle,
 		string(configJSON),
 		time.Now(),
 		template.ID,
@@ -735,7 +735,7 @@ func (s *SQLiteStorage) UpdateLLMProviderTemplate(template *models.StoredLLMProv
 
 	s.logger.Info("LLM provider template updated",
 		zap.String("id", template.ID),
-		zap.String("name", name))
+		zap.String("handle", handle))
 
 	return nil
 }

@@ -81,14 +81,14 @@ func (tl *LLMTemplateLoader) LoadTemplatesFromDirectory(dirPath string) (map[str
 		}
 
 		// Check for duplicates
-		templateName := template.Spec.Name
-		if _, exists := templates[templateName]; exists {
-			return fmt.Errorf("duplicate template name: %s", templateName)
+		templateHanlde := template.Metadata.Name
+		if _, exists := templates[templateHanlde]; exists {
+			return fmt.Errorf("duplicate template handle: %s", templateHanlde)
 		}
 
-		templates[templateName] = template
+		templates[templateHanlde] = template
 		tl.logger.Info("Loaded LLM provider template",
-			zap.String("name", templateName),
+			zap.String("handle", templateHanlde),
 			zap.String("version", string(template.Version)),
 			zap.String("file", path))
 
@@ -141,7 +141,7 @@ func (tl *LLMTemplateLoader) loadTemplateFile(filePath string) (*api.LLMProvider
 
 		tl.logger.Debug("Parsed template from YAML",
 			zap.String("file", filePath),
-			zap.String("name", templateConfig.Spec.Name),
+			zap.String("handle", templateConfig.Metadata.Name),
 			zap.String("version", string(templateConfig.Version)))
 	}
 

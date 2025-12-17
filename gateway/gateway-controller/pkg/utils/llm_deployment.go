@@ -91,7 +91,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	if len(validationErrors) > 0 {
 		errs := make([]string, 0, len(validationErrors))
 		params.Logger.Warn("LLM provider validation failed",
-			zap.String("name", providerConfig.Spec.Name),
+			zap.String("displayName", providerConfig.Spec.DisplayName),
 			zap.String("version", providerConfig.Spec.Version),
 			zap.Int("num_errors", len(validationErrors)))
 		for i, e := range validationErrors {
@@ -117,7 +117,7 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	now := time.Now()
 	storedCfg := &models.StoredConfig{
 		ID:                  apiID,
-		Kind:                string(api.Llmprovider),
+		Kind:                string(api.LlmProvider),
 		Configuration:       apiConfig,
 		SourceConfiguration: providerConfig,
 		Status:              models.StatusPending,
@@ -176,7 +176,7 @@ func (s *LLMDeploymentService) parseAndValidateLLMTemplate(params LLMTemplatePar
 	if len(validationErrors) > 0 {
 		errs := make([]string, 0, len(validationErrors))
 		if params.Logger != nil {
-			params.Logger.Warn("Template validation failed", zap.String("name", tmpl.Spec.Name), zap.Int("error_count", len(validationErrors)))
+			params.Logger.Warn("Template validation failed", zap.String("handle", tmpl.Metadata.Name), zap.Int("error_count", len(validationErrors)))
 		}
 		for i, e := range validationErrors {
 			if params.Logger != nil {
@@ -207,7 +207,7 @@ func (s *LLMDeploymentService) CreateLLMProviderTemplate(params LLMTemplateParam
 		if sqlite, ok := s.db.(*storage.SQLiteStorage); ok {
 			if err := sqlite.SaveLLMProviderTemplate(stored); err != nil {
 				if storage.IsConflictError(err) || strings.Contains(err.Error(), "already exists") {
-					return nil, fmt.Errorf("template with name '%s' already exists", tmpl.Spec.Name)
+					return nil, fmt.Errorf("template with handle '%s' already exists", tmpl.Metadata.Name)
 				}
 				return nil, fmt.Errorf("failed to save template to database: %w", err)
 			}
@@ -228,7 +228,7 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 
 	var allErrors []string
 
-	for name, tmpl := range templateDefinitions {
+	for _, tmpl := range templateDefinitions {
 		// Validate the template configuration
 		validationErrors := s.validator.Validate(tmpl)
 		if len(validationErrors) > 0 {
@@ -238,14 +238,14 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 			}
 			allErrors = append(allErrors, fmt.Sprintf(
 				"template '%s' validation failed: %s",
-				name,
+				tmpl.Metadata.Name,
 				strings.Join(errs, "; "),
 			))
 			continue
 		}
 
 		// Check if template already exists
-		existing, err := s.store.GetTemplateByName(name)
+		existing, err := s.store.GetTemplateByHandle(tmpl.Metadata.Name)
 		if err == nil && existing != nil {
 			// ---------------------------
 			// UPDATE existing template
@@ -262,7 +262,7 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 			if s.db != nil {
 				if err := s.db.UpdateLLMProviderTemplate(updated); err != nil {
 					allErrors = append(allErrors,
-						fmt.Sprintf("failed to update template '%s' in database: %v", name, err))
+						fmt.Sprintf("failed to update template '%s' in database: %v", tmpl.Metadata.Name, err))
 					continue
 				}
 			}
@@ -270,7 +270,7 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 			// Update memory store
 			if err := s.store.UpdateTemplate(updated); err != nil {
 				allErrors = append(allErrors,
-					fmt.Sprintf("failed to update template '%s' in memory store: %v", name, err))
+					fmt.Sprintf("failed to update template '%s' in memory store: %v", tmpl.Metadata.Name, err))
 				continue
 			}
 
@@ -296,7 +296,7 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 						continue
 					}
 					allErrors = append(allErrors, fmt.Sprintf("failed to save template '%s' to database: %v",
-						name, err))
+						tmpl.Metadata.Name, err))
 					continue
 				}
 			}
@@ -308,7 +308,7 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 				continue
 			}
 			allErrors = append(allErrors, fmt.Sprintf("failed to add template '%s' to memory store: %v",
-				name, err))
+				tmpl.Metadata.Name, err))
 			continue
 		}
 	}
@@ -321,11 +321,11 @@ func (s *LLMDeploymentService) InitializeOOBTemplates(templateDefinitions map[st
 	return nil
 }
 
-// UpdateLLMProviderTemplate validates and updates existing template by name
-func (s *LLMDeploymentService) UpdateLLMProviderTemplate(name string, params LLMTemplateParams) (*models.StoredLLMProviderTemplate, error) {
-	existing, err := s.store.GetTemplateByName(name)
+// UpdateLLMProviderTemplate validates and updates existing template by handle
+func (s *LLMDeploymentService) UpdateLLMProviderTemplate(handle string, params LLMTemplateParams) (*models.StoredLLMProviderTemplate, error) {
+	existing, err := s.store.GetTemplateByHandle(handle)
 	if err != nil {
-		return nil, fmt.Errorf("template with name '%s' not found", name)
+		return nil, fmt.Errorf("template with handle '%s' not found", handle)
 	}
 
 	tmpl, err := s.parseAndValidateLLMTemplate(params)
@@ -351,10 +351,10 @@ func (s *LLMDeploymentService) UpdateLLMProviderTemplate(name string, params LLM
 }
 
 // DeleteLLMProviderTemplate deletes a template by name
-func (s *LLMDeploymentService) DeleteLLMProviderTemplate(name string) (*models.StoredLLMProviderTemplate, error) {
-	tmpl, err := s.store.GetTemplateByName(name)
+func (s *LLMDeploymentService) DeleteLLMProviderTemplate(handle string) (*models.StoredLLMProviderTemplate, error) {
+	tmpl, err := s.store.GetTemplateByHandle(handle)
 	if err != nil {
-		return nil, fmt.Errorf("template with name '%s' not found", name)
+		return nil, fmt.Errorf("template with handle '%s' not found", handle)
 	}
 	if s.db != nil {
 		if sqlite, ok := s.db.(*storage.SQLiteStorage); ok {
@@ -369,19 +369,30 @@ func (s *LLMDeploymentService) DeleteLLMProviderTemplate(name string) (*models.S
 	return tmpl, nil
 }
 
-// ListLLMProviderTemplates returns all templates
-func (s *LLMDeploymentService) ListLLMProviderTemplates() []*models.StoredLLMProviderTemplate {
-	return s.store.GetAllTemplates()
+// ListLLMProviderTemplates retrieves all LLM provider templates, optionally filtered by display name.
+// If displayName is nil or empty, all templates are returned.
+func (s *LLMDeploymentService) ListLLMProviderTemplates(displayName *string) []*models.StoredLLMProviderTemplate {
+	templates := s.store.GetAllTemplates()
+
+	// Return all templates if no filter is specified
+	if displayName == nil || *displayName == "" {
+		return templates
+	}
+
+	// Filter templates by display name
+	filtered := make([]*models.StoredLLMProviderTemplate, 0, len(templates))
+	for _, template := range templates {
+		if template.Configuration.Spec.DisplayName == *displayName {
+			filtered = append(filtered, template)
+		}
+	}
+
+	return filtered
 }
 
-// GetLLMProviderTemplateByName returns template by name
-func (s *LLMDeploymentService) GetLLMProviderTemplateByName(name string) (*models.StoredLLMProviderTemplate, error) {
-	return s.store.GetTemplateByName(name)
-}
-
-// ListLLMProviders returns all stored LLM provider configurations
-func (s *LLMDeploymentService) ListLLMProviders() []*models.StoredConfig {
-	return s.store.GetAllByKind(string(api.Llmprovider))
+// GetLLMProviderTemplateByHandle returns template by handle
+func (s *LLMDeploymentService) GetLLMProviderTemplateByHandle(handle string) (*models.StoredLLMProviderTemplate, error) {
+	return s.store.GetTemplateByHandle(handle)
 }
 
 // CreateLLMProvider is a convenience wrapper around DeployLLMProviderConfiguration for creating providers
@@ -393,11 +404,80 @@ func (s *LLMDeploymentService) CreateLLMProvider(params LLMDeploymentParams) (*m
 	return res.StoredConfig, nil
 }
 
+// ListLLMProviders returns all stored LLM provider configurations with optional filtering
+func (s *LLMDeploymentService) ListLLMProviders(params api.ListLLMProvidersParams) []*models.StoredConfig {
+	configs := s.store.GetAllByKind(string(api.LlmProvider))
+
+	// If no filters are provided, return all configs
+	if params.DisplayName == nil && params.Version == nil &&
+		params.Context == nil && params.Status == nil && params.Vhost == nil {
+		return configs
+	}
+
+	// Filter configs based on provided parameters
+	filtered := make([]*models.StoredConfig, 0, len(configs))
+
+	for _, cfg := range configs {
+		if !matchesFilters(cfg, params) {
+			continue
+		}
+		filtered = append(filtered, cfg)
+	}
+
+	return filtered
+}
+
+// matchesFilters checks if a config matches all provided filter criteria
+func matchesFilters(config *models.StoredConfig, params api.ListLLMProvidersParams) bool {
+	apiCfg, err := config.Configuration.Spec.AsAPIConfigData()
+
+	if err != nil {
+		return false
+	}
+
+	// Check DisplayName filter
+	if params.DisplayName != nil {
+		if apiCfg.DisplayName != *params.DisplayName {
+			return false
+		}
+	}
+
+	// Check Version filter
+	if params.Version != nil {
+		if apiCfg.Version != *params.Version {
+			return false
+		}
+	}
+
+	// Check Context filter
+	if params.Context != nil {
+		if apiCfg.Context != *params.Context {
+			return false
+		}
+	}
+
+	// Check Status filter
+	if params.Status != nil {
+		if string(config.Status) != string(*params.Status) {
+			return false
+		}
+	}
+
+	// Check Vhost filter
+	if params.Vhost != nil {
+		if apiCfg.Vhosts.Main != *params.Vhost {
+			return false
+		}
+	}
+
+	return true
+}
+
 // UpdateLLMProvider updates an existing provider identified by name+version using DeployLLMProviderConfiguration
-func (s *LLMDeploymentService) UpdateLLMProvider(name, version string, params LLMDeploymentParams) (*models.StoredConfig, error) {
-	existing := s.store.GetByKindNameAndVersion(string(api.Llmprovider), name, version)
+func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploymentParams) (*models.StoredConfig, error) {
+	existing := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
 	if existing == nil {
-		return nil, fmt.Errorf("LLM provider configuration with name '%s' and version '%s' not found", name, version)
+		return nil, fmt.Errorf("LLM provider configuration with handle '%s'", handle)
 	}
 	// Ensure Deploy uses existing ID so it performs an update
 	params.ID = existing.ID
@@ -409,10 +489,11 @@ func (s *LLMDeploymentService) UpdateLLMProvider(name, version string, params LL
 }
 
 // DeleteLLMProvider deletes by name+version using store/db and updates snapshot
-func (s *LLMDeploymentService) DeleteLLMProvider(name, version, correlationID string, logger *zap.Logger) (*models.StoredConfig, error) {
-	cfg := s.store.GetByKindNameAndVersion(string(api.Llmprovider), name, version)
+func (s *LLMDeploymentService) DeleteLLMProvider(handle, correlationID string,
+	logger *zap.Logger) (*models.StoredConfig, error) {
+	cfg := s.store.GetByKindAndHandle(string(api.LlmProvider), handle)
 	if cfg == nil {
-		return cfg, fmt.Errorf("LLM provider configuration with name '%s' and version '%s' not found", name, version)
+		return cfg, fmt.Errorf("LLM provider configuration with handle '%s' not found", handle)
 	}
 	if s.db != nil {
 		if err := s.db.DeleteConfig(cfg.ID); err != nil {
