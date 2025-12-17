@@ -18,6 +18,12 @@
 
 package gateway
 
+import (
+	"fmt"
+
+	"github.com/wso2/api-platform/cli/utils"
+)
+
 // ResourceKind represents the type of gateway resource
 const (
 	ResourceKindRestAPI = "RestApi"
@@ -47,30 +53,30 @@ type ResourceHandler interface {
 type RestAPIHandler struct{}
 
 func (h *RestAPIHandler) GetEndpoint(handle string) string {
-	return "/apis/" + handle
+	return fmt.Sprintf(utils.GatewayAPIByIDPath, handle)
 }
 
 func (h *RestAPIHandler) CreateEndpoint() string {
-	return "/apis"
+	return utils.GatewayAPIsPath
 }
 
 func (h *RestAPIHandler) UpdateEndpoint(handle string) string {
-	return "/apis/" + handle
+	return fmt.Sprintf(utils.GatewayAPIByIDPath, handle)
 }
 
 // MCPHandler handles mcp kind resources
 type MCPHandler struct{}
 
 func (h *MCPHandler) GetEndpoint(handle string) string {
-	return "/mcp-proxies/" + handle
+	return fmt.Sprintf(utils.GatewayMCPProxyByIDPath, handle)
 }
 
 func (h *MCPHandler) CreateEndpoint() string {
-	return "/mcp-proxies"
+	return utils.GatewayMCPProxiesPath
 }
 
 func (h *MCPHandler) UpdateEndpoint(handle string) string {
-	return "/mcp-proxies/" + handle
+	return fmt.Sprintf(utils.GatewayMCPProxyByIDPath, handle)
 }
 
 // GetResourceHandler returns the appropriate handler for a resource kind

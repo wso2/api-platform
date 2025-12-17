@@ -26,6 +26,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/gateway"
+	"github.com/wso2/api-platform/cli/utils"
 )
 
 const (
@@ -73,9 +74,9 @@ func runListCommand() error {
 	}
 
 	// Call the /mcp-proxies endpoint
-	resp, err := client.Get("/mcp-proxies")
+	resp, err := client.Get(utils.GatewayMCPProxiesPath)
 	if err != nil {
-		return fmt.Errorf("failed to call /mcp-proxies endpoint: %w", err)
+		return fmt.Errorf("failed to call %s endpoint: %w", utils.GatewayMCPProxiesPath, err)
 	}
 	defer resp.Body.Close()
 

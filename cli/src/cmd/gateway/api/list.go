@@ -26,6 +26,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/gateway"
+	"github.com/wso2/api-platform/cli/utils"
 )
 
 const (
@@ -73,9 +74,9 @@ func runListCommand() error {
 	}
 
 	// Call the /apis endpoint
-	resp, err := client.Get("/apis")
+	resp, err := client.Get(utils.GatewayAPIsPath)
 	if err != nil {
-		return fmt.Errorf("failed to call /apis endpoint: %w", err)
+		return fmt.Errorf("failed to call %s endpoint: %w", utils.GatewayAPIsPath, err)
 	}
 	defer resp.Body.Close()
 

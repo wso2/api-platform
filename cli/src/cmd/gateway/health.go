@@ -26,6 +26,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/gateway"
+	"github.com/wso2/api-platform/cli/utils"
 )
 
 const (
@@ -55,7 +56,7 @@ func runHealthCommand() error {
 	}
 
 	// Call the health endpoint
-	resp, err := client.Get("/health")
+	resp, err := client.Get(utils.GatewayHealthPath)
 	if err != nil {
 		return fmt.Errorf("failed to call health endpoint: %w", err)
 	}

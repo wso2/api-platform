@@ -125,9 +125,9 @@ func runGetCommand() error {
 }
 
 func getMCPByID(client *gateway.Client, id string) (map[string]interface{}, error) {
-	resp, err := client.Get("/mcp-proxies/" + url.PathEscape(id))
+	resp, err := client.Get(fmt.Sprintf(utils.GatewayMCPProxyByIDPath, url.PathEscape(id)))
 	if err != nil {
-		return nil, fmt.Errorf("failed to call /mcp-proxies/%s endpoint: %w", id, err)
+		return nil, fmt.Errorf("failed to call %s endpoint: %w", fmt.Sprintf(utils.GatewayMCPProxyByIDPath, id), err)
 	}
 	defer resp.Body.Close()
 
@@ -158,9 +158,9 @@ func getMCPByNameAndVersion(client *gateway.Client, name, version string) (map[s
 	query.Set("name", name)
 	query.Set("version", version)
 
-	resp, err := client.Get("/mcp-proxies?" + query.Encode())
+	resp, err := client.Get(utils.GatewayMCPProxiesPath + "?" + query.Encode())
 	if err != nil {
-		return nil, fmt.Errorf("failed to call /mcp-proxies endpoint: %w", err)
+		return nil, fmt.Errorf("failed to call %s endpoint: %w", utils.GatewayMCPProxiesPath, err)
 	}
 	defer resp.Body.Close()
 

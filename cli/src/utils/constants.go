@@ -19,3 +19,12 @@
 package utils
 
 const CliName = "apipctl"
+
+// Gateway REST API Endpoints
+const (
+	GatewayHealthPath       = "/health"
+	GatewayAPIsPath         = "/apis"
+	GatewayAPIByIDPath      = "/apis/%s"
+	GatewayMCPProxiesPath   = "/mcp-proxies"
+	GatewayMCPProxyByIDPath = "/mcp-proxies/%s"
+)

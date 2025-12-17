@@ -125,9 +125,9 @@ func runGetCommand() error {
 }
 
 func getAPIByID(client *gateway.Client, id string) (map[string]interface{}, error) {
-	resp, err := client.Get("/apis/" + url.PathEscape(id))
+	resp, err := client.Get(fmt.Sprintf(utils.GatewayAPIByIDPath, url.PathEscape(id)))
 	if err != nil {
-		return nil, fmt.Errorf("failed to call /apis/%s endpoint: %w", id, err)
+		return nil, fmt.Errorf("failed to call %s endpoint: %w", fmt.Sprintf(utils.GatewayAPIByIDPath, id), err)
 	}
 	defer resp.Body.Close()
 
@@ -158,9 +158,9 @@ func getAPIByNameAndVersion(client *gateway.Client, name, version string) (map[s
 	query.Set("name", name)
 	query.Set("version", version)
 
-	resp, err := client.Get("/apis?" + query.Encode())
+	resp, err := client.Get(utils.GatewayAPIsPath + "?" + query.Encode())
 	if err != nil {
-		return nil, fmt.Errorf("failed to call /apis endpoint: %w", err)
+		return nil, fmt.Errorf("failed to call %s endpoint: %w", utils.GatewayAPIsPath, err)
 	}
 	defer resp.Body.Close()
 

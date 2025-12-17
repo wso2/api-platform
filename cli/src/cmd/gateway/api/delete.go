@@ -74,7 +74,7 @@ func runDeleteCommand() error {
 	}
 
 	// Call the DELETE endpoint
-	resp, err := client.Delete("/apis/" + url.PathEscape(deleteAPIID))
+	resp, err := client.Delete(fmt.Sprintf(utils.GatewayAPIByIDPath, url.PathEscape(deleteAPIID)))
 	if err != nil {
 		return fmt.Errorf("failed to delete API: %w", err)
 	}

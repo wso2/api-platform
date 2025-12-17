@@ -74,7 +74,7 @@ func runDeleteCommand() error {
 	}
 
 	// Call the DELETE endpoint
-	resp, err := client.Delete("/mcp-proxies/" + url.PathEscape(deleteMCPID))
+	resp, err := client.Delete(fmt.Sprintf(utils.GatewayMCPProxyByIDPath, url.PathEscape(deleteMCPID)))
 	if err != nil {
 		return fmt.Errorf("failed to delete MCP: %w", err)
 	}
