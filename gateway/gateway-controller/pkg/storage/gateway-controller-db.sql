@@ -89,8 +89,8 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     -- Primary identifier (UUID)
     id TEXT PRIMARY KEY,
 
-    -- Template name (must be unique)
-    name TEXT NOT NULL UNIQUE,
+    -- Template handle (must be unique)
+    handle TEXT NOT NULL UNIQUE,
 
     -- Full template configuration as JSON
     configuration TEXT NOT NULL,
@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
 );
 
 -- Index for fast name lookups
-CREATE INDEX IF NOT EXISTS idx_template_name ON llm_provider_templates(name);
+CREATE INDEX IF NOT EXISTS idx_template_handle ON llm_provider_templates(handle);
 
 -- Set schema version to 4
 PRAGMA user_version = 4;
