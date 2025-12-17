@@ -60,6 +60,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	// Build final action by resolving conflicting header operations
 	headerOps := make(map[string][]*headerOp)
 	analyticsData = make(map[string]any)
+	headerMutation = &extprocv3.HeaderMutation{}
 
 	// Collect all operations in order
 	for _, policyResult := range result.Results {
@@ -107,8 +108,9 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		}
 	}
 
-	// Build HeaderMutation with conflict resolution
-	headerMutation = buildHeaderMutationFromOps(headerOps)
+	// Build HeaderMutation with conflict resolution and merge with existing mutations
+	mergeHeaderMutations(headerMutation, headerOps)
+
 	return headerMutation, bodyMutation, analyticsData, nil, nil
 }
 
@@ -185,10 +187,12 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 	analyticsData map[string]any,
 	err error) {
 
-	headerMutation = &extprocv3.HeaderMutation{}
+	// Build final action by resolving conflicting header operations
+	headerOps := make(map[string][]*headerOp)
 	analyticsData = make(map[string]any)
+	headerMutation = &extprocv3.HeaderMutation{}
 
-	// Accumulate modifications from all executed policies
+	// Collect all operations in order
 	for _, policyResult := range result.Results {
 		if policyResult.Skipped || policyResult.Error != nil {
 			continue
@@ -196,8 +200,22 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 
 		if policyResult.Action != nil {
 			if mods, ok := policyResult.Action.(policy.UpstreamResponseModifications); ok {
-				// Build response mutations
-				applyResponseModifications(headerMutation, &mods)
+				// Collect SetHeader operations
+				for key, value := range mods.SetHeaders {
+					headerOps[key] = append(headerOps[key], &headerOp{opType: "set", value: value})
+				}
+
+				// Collect AppendHeader operations
+				for key, values := range mods.AppendHeaders {
+					for _, value := range values {
+						headerOps[key] = append(headerOps[key], &headerOp{opType: "append", value: value})
+					}
+				}
+
+				// Collect RemoveHeader operations
+				for _, key := range mods.RemoveHeaders {
+					headerOps[key] = append(headerOps[key], &headerOp{opType: "remove", value: ""})
+				}
 
 				// Handle body modifications (last one wins)
 				if mods.Body != nil {
@@ -219,6 +237,9 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 			}
 		}
 	}
+
+	// Build HeaderMutation with conflict resolution and merge with existing mutations
+	mergeHeaderMutations(headerMutation, headerOps)
 
 	return headerMutation, bodyMutation, analyticsData, nil
 }
@@ -364,48 +385,18 @@ func buildHeaderMutationFromOps(headerOps map[string][]*headerOp) *extprocv3.Hea
 	return headerMutation
 }
 
-// applyResponseModifications applies response modifications to header mutation
-func applyResponseModifications(mutation *extprocv3.HeaderMutation, mods *policy.UpstreamResponseModifications) {
-	// Set/Replace headers
-	if len(mods.SetHeaders) > 0 {
-		if mutation.SetHeaders == nil {
-			mutation.SetHeaders = make([]*corev3.HeaderValueOption, 0, len(mods.SetHeaders))
-		}
-		for key, value := range mods.SetHeaders {
-			mutation.SetHeaders = append(mutation.SetHeaders, &corev3.HeaderValueOption{
-				Header: &corev3.HeaderValue{
-					Key:      key,
-					RawValue: []byte(value),
-				},
-				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
-			})
-		}
+// mergeHeaderMutations builds HeaderMutation from operations and merges with existing mutations
+func mergeHeaderMutations(headerMutation *extprocv3.HeaderMutation, headerOps map[string][]*headerOp) {
+	opsMutation := buildHeaderMutationFromOps(headerOps)
+
+	// Merge SetHeaders from ops-based mutation
+	if len(opsMutation.SetHeaders) > 0 {
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, opsMutation.SetHeaders...)
 	}
 
-	// Append headers
-	if len(mods.AppendHeaders) > 0 {
-		if mutation.SetHeaders == nil {
-			mutation.SetHeaders = make([]*corev3.HeaderValueOption, 0)
-		}
-		for key, values := range mods.AppendHeaders {
-			for _, value := range values {
-				mutation.SetHeaders = append(mutation.SetHeaders, &corev3.HeaderValueOption{
-					Header: &corev3.HeaderValue{
-						Key:      key,
-						RawValue: []byte(value),
-					},
-					AppendAction: corev3.HeaderValueOption_APPEND_IF_EXISTS_OR_ADD,
-				})
-			}
-		}
-	}
-
-	// Remove headers
-	if len(mods.RemoveHeaders) > 0 {
-		if mutation.RemoveHeaders == nil {
-			mutation.RemoveHeaders = make([]string, 0, len(mods.RemoveHeaders))
-		}
-		mutation.RemoveHeaders = append(mutation.RemoveHeaders, mods.RemoveHeaders...)
+	// Merge RemoveHeaders from ops-based mutation
+	if len(opsMutation.RemoveHeaders) > 0 {
+		headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, opsMutation.RemoveHeaders...)
 	}
 }
 
