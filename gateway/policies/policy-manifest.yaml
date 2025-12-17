@@ -54,3 +54,7 @@ policies:
   - name: JSONSchemaGuardrail
     version: v0.1.0
     filePath: ./json-schema-guardrail/v0.1.0
+
+  - name: McpAuthentication
+    version: v0.1.0
+    filePath: ./mcp-auth/v0.1.0
