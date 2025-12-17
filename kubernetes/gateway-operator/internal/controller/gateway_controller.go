@@ -41,7 +41,6 @@ import (
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
-	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/k8sutil"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/selector"
 )
@@ -769,96 +768,6 @@ func (r *GatewayReconciler) getConfigMapValues(ctx context.Context, configMapNam
 	}
 
 	return valuesYAML, nil
-}
-
-// buildTemplateData creates template data from Gateway spec
-func (r *GatewayReconciler) buildTemplateData(gatewayConfig *apiv1.Gateway) *k8sutil.GatewayManifestTemplateData {
-	// Start with defaults
-	data := k8sutil.NewGatewayManifestTemplateData(gatewayConfig.Name)
-
-	// Populate from spec
-	if gatewayConfig.Spec.Infrastructure != nil {
-		infra := gatewayConfig.Spec.Infrastructure
-
-		if infra.Replicas != nil {
-			data.Replicas = *infra.Replicas
-		}
-
-		if infra.Image != "" {
-			data.GatewayImage = infra.Image
-		}
-
-		if infra.RouterImage != "" {
-			data.RouterImage = infra.RouterImage
-		}
-
-		if infra.Resources != nil {
-			data.Resources = &k8sutil.ResourceRequirements{}
-
-			if infra.Resources.Requests != nil {
-				data.Resources.Requests = &k8sutil.ResourceList{}
-				if cpu := infra.Resources.Requests.Cpu(); cpu != nil {
-					data.Resources.Requests.CPU = cpu.String()
-				}
-				if mem := infra.Resources.Requests.Memory(); mem != nil {
-					data.Resources.Requests.Memory = mem.String()
-				}
-			}
-
-			if infra.Resources.Limits != nil {
-				data.Resources.Limits = &k8sutil.ResourceList{}
-				if cpu := infra.Resources.Limits.Cpu(); cpu != nil {
-					data.Resources.Limits.CPU = cpu.String()
-				}
-				if mem := infra.Resources.Limits.Memory(); mem != nil {
-					data.Resources.Limits.Memory = mem.String()
-				}
-			}
-		}
-
-		if infra.NodeSelector != nil {
-			data.NodeSelector = infra.NodeSelector
-		}
-
-		if infra.Tolerations != nil {
-			data.Tolerations = infra.Tolerations
-		}
-
-		if infra.Affinity != nil {
-			data.Affinity = infra.Affinity
-		}
-	}
-
-	// Populate control plane configuration
-	if gatewayConfig.Spec.ControlPlane != nil {
-		cp := gatewayConfig.Spec.ControlPlane
-
-		if cp.Host != "" {
-			data.ControlPlaneHost = cp.Host
-		}
-
-		if cp.TokenSecretRef != nil {
-			data.ControlPlaneTokenSecret = &k8sutil.SecretReference{
-				Name: cp.TokenSecretRef.Name,
-				Key:  cp.TokenSecretRef.Key,
-			}
-		}
-	}
-
-	// Populate storage configuration
-	if gatewayConfig.Spec.Storage != nil {
-		storage := gatewayConfig.Spec.Storage
-
-		if storage.Type != "" {
-			data.StorageType = storage.Type
-		}
-
-		if storage.SQLitePath != "" {
-			data.StorageSQLitePath = storage.SQLitePath
-		}
-	}
-
-	return data
 }
 
 // registerGateway registers the gateway in the in-memory registry by discovering the actual service
