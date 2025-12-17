@@ -162,7 +162,7 @@ func (t *Translator) TranslateConfigs(
 			if err != nil {
 				log.Error("Failed to translate config",
 					zap.String("id", cfg.ID),
-					zap.String("name", cfg.GetName()),
+					zap.String("displayName", cfg.GetDisplayName()),
 					zap.Error(err))
 				continue
 			}
@@ -171,7 +171,7 @@ func (t *Translator) TranslateConfigs(
 			if err != nil {
 				log.Error("Failed to translate config",
 					zap.String("id", cfg.ID),
-					zap.String("name", cfg.GetName()),
+					zap.String("displayName", cfg.GetDisplayName()),
 					zap.Error(err))
 				continue
 			}
