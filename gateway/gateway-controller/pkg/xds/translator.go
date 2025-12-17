@@ -734,12 +734,20 @@ func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost)
 // createRoute creates a route for an operation
 func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clusterName,
 	upstreamPath string, vhost string) *route.Route {
-	// Build the full path using the utility function
-	fullPath := ConstructFullPath(context, apiVersion, path)
+	// Resolve version placeholder in context
+	context = strings.ReplaceAll(context, "$version", apiVersion)
+
+	// Build the full path, handling root context "/" to avoid duplication
+	var fullPath string
+	if context == "/" {
+		fullPath = path
+	} else {
+		fullPath = context + path
+	}
 
 	// Generate unique route name using the helper function
 	// Format: HttpMethod|RoutePath|Vhost (e.g., "GET|/weather/v1.0/us/seattle|localhost")
-	routeName := GenerateRouteName(method, context, apiVersion, path, vhost)
+	routeName := GenerateRouteName(method, context, "", path, vhost)
 
 	// Check if path is a wildcard catch-all (e.g., /v1/*)
 	isWildcardPath := strings.HasSuffix(path, "/*")
@@ -807,6 +815,7 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 	}
 
 	// Attach dynamic metadata for downstream correlation (policies, logging, tracing)
+	// TODO: (renuka) Include API ID as well
 	metaMap := map[string]interface{}{
 		"route_name":  routeName,
 		"api_name":    apiName,
@@ -847,6 +856,7 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 	// For wildcard routes, construct the regex to match everything after the prefix
 	var contextWithVersion string
 	if isWildcardPath {
+		// TODO: (renuka) Can't understand this code. Check with Nimsara.
 		// Remove the /* from the end before constructing the context
 		pathWithoutWildcard := strings.TrimSuffix(path, "/*")
 		contextWithVersion = ConstructFullPath(context, apiVersion, pathWithoutWildcard)
@@ -1451,14 +1461,6 @@ func (t *Translator) sanitizeClusterName(hostname, scheme string) string {
 	name = strings.ReplaceAll(name, ":", "_")
 	// Include scheme to differentiate HTTP and HTTPS clusters for the same host
 	return "cluster_" + scheme + "_" + name
-}
-
-// sanitizeName creates a valid name from an API name
-func (t *Translator) sanitizeName(name string) string {
-	name = strings.ToLower(name)
-	name = strings.ReplaceAll(name, " ", "_")
-	name = strings.ReplaceAll(name, "-", "_")
-	return name
 }
 
 // createAccessLogConfig creates access log configuration based on format (JSON or text) to stdout
