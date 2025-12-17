@@ -528,7 +528,7 @@ jobs:
                   image:
                     repository: localhost/gateway-controller
                     tag: test
-                    pullPolicy: Always
+                    pullPolicy: Never
                   imagePullSecrets: []
                   service:
                     type: ClusterIP
@@ -659,7 +659,7 @@ jobs:
                   image:
                     repository: localhost/gateway-router
                     tag: "test"
-                    pullPolicy: Always
+                    pullPolicy: Never
                   imagePullSecrets: []
                   service:
                     type: ClusterIP
@@ -716,7 +716,7 @@ jobs:
                   image:
                     repository: localhost/policy-engine
                     tag: "test"
-                    pullPolicy: Always
+                    pullPolicy: Never
                   imagePullSecrets: []
                   service:
                     type: ClusterIP
@@ -855,9 +855,13 @@ jobs:
           kubectl describe restapi test-api || true
 
           echo ""
+          echo "=== All Pods Description ==="
+          kubectl describe pods --all-namespaces || true
+
+          echo ""
           echo "=== Gateway Controller Logs ==="
           kubectl logs -l app.kubernetes.io/component=controller --tail=200 || true
-
+          
           echo ""
           echo "=== Router Logs ==="
           kubectl logs -l app.kubernetes.io/component=router --tail=200 || true
