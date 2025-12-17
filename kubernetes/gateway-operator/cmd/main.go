@@ -35,7 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
-	gatewayapiplatformwso2comv1alpha1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/controller"
 	//+kubebuilder:scaffold:imports
@@ -50,7 +49,6 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(apiv1.AddToScheme(scheme))
-	utilruntime.Must(gatewayapiplatformwso2comv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
