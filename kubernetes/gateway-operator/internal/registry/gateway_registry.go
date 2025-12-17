@@ -91,11 +91,9 @@ func (r *GatewayRegistry) FindMatchingGateways(apiNamespace string, apiLabels ma
 
 	var matching []*GatewayInfo
 	if len(r.gateways) == 0 {
-		fmt.Println("No gateways registered in the registry")
 		return matching
 	}
 	for _, gateway := range r.gateways {
-		fmt.Printf("Checking gateway: %s/%s with selector: %+v\n", gateway.Namespace, gateway.Name, gateway.APISelector)
 		if r.gatewayMatchesAPI(gateway, apiNamespace, apiLabels) {
 			matching = append(matching, gateway)
 		}

@@ -4,8 +4,6 @@
 resources:
 - bases/gateway.api-platform.wso2.com_gateways.yaml
 - bases/gateway.api-platform.wso2.com_restapis.yaml
-- bases/gateway.api-platform.wso2.com_restapis.yaml
-- bases/gateway.api-platform.wso2.com_gateways.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:

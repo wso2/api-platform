@@ -6,10 +6,10 @@ nameOverride: ""
 fullnameOverride: ""
 
 image:
-  # repository: ghcr.io/tharsanan1/api-platform/gateway-operator
+  # repository: ghcr.io/wso2/api-platform/gateway-operator
   # For local registry: host.docker.internal:5000/gateway-operator
-  repository: ghcr.io/tharsanan1/api-platform/gateway-operator
-  tag: "0.1.0-SNAPSHOT"
+  repository: ghcr.io/wso2/api-platform/gateway-operator
+  tag: "0.1.0"
   pullPolicy: Always  # Uses locally loaded image from nerdctl load
 
 serviceAccount:
