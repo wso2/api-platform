@@ -121,7 +121,7 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		cfg.DeployedVersion = version
 		log.Info("Configuration deployed successfully",
 			zap.String("id", configID),
-			zap.String("name", cfg.GetName()),
+			zap.String("displayName", cfg.GetDisplayName()),
 			zap.Int64("version", version))
 	} else {
 		cfg.Status = models.StatusFailed
@@ -129,7 +129,7 @@ func (s *APIServer) handleStatusUpdate(configID string, success bool, version in
 		cfg.DeployedVersion = 0
 		log.Error("Configuration deployment failed",
 			zap.String("id", configID),
-			zap.String("name", cfg.GetName()),
+			zap.String("displayName", cfg.GetDisplayName()),
 			zap.String("kind", cfg.Kind))
 	}
 
@@ -244,7 +244,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 // ListAPIs implements ServerInterface.ListAPIs
 // (GET /apis)
 func (s *APIServer) ListAPIs(c *gin.Context, params api.ListAPIsParams) {
-	if (params.Name != nil && *params.Name != "") || (params.Version != nil && *params.Version != "") || (params.Context != nil && *params.Context != "") || (params.Status != nil && *params.Status != "") {
+	if (params.DisplayName != nil && *params.DisplayName != "") || (params.Version != nil && *params.Version != "") || (params.Context != nil && *params.Context != "") || (params.Status != nil && *params.Status != "") {
 		s.SearchDeployments(c, string(api.RestApi))
 		return
 	}
@@ -254,13 +254,13 @@ func (s *APIServer) ListAPIs(c *gin.Context, params api.ListAPIsParams) {
 	for _, cfg := range configs {
 		status := string(cfg.Status)
 		items = append(items, api.APIListItem{
-			Id:        stringPtr(cfg.GetHandle()),
-			Name:      stringPtr(cfg.GetName()),
-			Version:   stringPtr(cfg.GetVersion()),
-			Context:   stringPtr(cfg.GetContext()),
-			Status:    (*api.APIListItemStatus)(&status),
-			CreatedAt: timePtr(cfg.CreatedAt),
-			UpdatedAt: timePtr(cfg.UpdatedAt),
+			Id:          stringPtr(cfg.GetHandle()),
+			DisplayName: stringPtr(cfg.GetDisplayName()),
+			Version:     stringPtr(cfg.GetVersion()),
+			Context:     stringPtr(cfg.GetContext()),
+			Status:      (*api.APIListItemStatus)(&status),
+			CreatedAt:   timePtr(cfg.CreatedAt),
+			UpdatedAt:   timePtr(cfg.UpdatedAt),
 		})
 	}
 
@@ -272,7 +272,7 @@ func (s *APIServer) ListAPIs(c *gin.Context, params api.ListAPIsParams) {
 }
 
 func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
-	filterKeys := []string{"name", "version", "context", "status"}
+	filterKeys := []string{"displayName", "version", "context", "status"}
 	filters := make(map[string]string)
 	for _, k := range filterKeys {
 		if v := c.Query(k); v != "" {
@@ -295,7 +295,7 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 		// Return MCP proxy format
 		mcpItems := make([]api.MCPProxyListItem, 0)
 		for _, cfg := range configs {
-			if v, ok := filters["name"]; ok && cfg.GetName() != v {
+			if v, ok := filters["displayName"]; ok && cfg.GetDisplayName() != v {
 				continue
 			}
 			if v, ok := filters["version"]; ok && cfg.GetVersion() != v {
@@ -316,18 +316,18 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 			if err != nil {
 				s.logger.Error("Failed to unmarshal stored MCP configuration",
 					zap.String("id", cfg.ID),
-					zap.String("name", cfg.GetName()))
+					zap.String("displayName", cfg.GetDisplayName()))
 				continue
 			}
 
 			mcpItems = append(mcpItems, api.MCPProxyListItem{
-				Id:        stringPtr(cfg.GetHandle()),
-				Name:      stringPtr(mcp.Spec.Name),
-				Version:   stringPtr(mcp.Spec.Version),
-				Context:   stringPtr(mcp.Spec.Context),
-				Status:    &status,
-				CreatedAt: timePtr(cfg.CreatedAt),
-				UpdatedAt: timePtr(cfg.UpdatedAt),
+				Id:          stringPtr(cfg.GetHandle()),
+				DisplayName: stringPtr(mcp.Spec.DisplayName),
+				Version:     stringPtr(mcp.Spec.Version),
+				Context:     stringPtr(mcp.Spec.Context),
+				Status:      &status,
+				CreatedAt:   timePtr(cfg.CreatedAt),
+				UpdatedAt:   timePtr(cfg.UpdatedAt),
 			})
 		}
 
@@ -340,7 +340,7 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 		// Return API format
 		apiItems := make([]api.APIListItem, 0)
 		for _, cfg := range configs {
-			if v, ok := filters["name"]; ok && cfg.GetName() != v {
+			if v, ok := filters["displayName"]; ok && cfg.GetDisplayName() != v {
 				continue
 			}
 			if v, ok := filters["version"]; ok && cfg.GetVersion() != v {
@@ -355,13 +355,13 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 
 			status := string(cfg.Status)
 			apiItems = append(apiItems, api.APIListItem{
-				Id:        stringPtr(cfg.GetHandle()),
-				Name:      stringPtr(cfg.GetName()),
-				Version:   stringPtr(cfg.GetVersion()),
-				Context:   stringPtr(cfg.GetContext()),
-				Status:    (*api.APIListItemStatus)(&status),
-				CreatedAt: timePtr(cfg.CreatedAt),
-				UpdatedAt: timePtr(cfg.UpdatedAt),
+				Id:          stringPtr(cfg.GetHandle()),
+				DisplayName: stringPtr(cfg.GetDisplayName()),
+				Version:     stringPtr(cfg.GetVersion()),
+				Context:     stringPtr(cfg.GetContext()),
+				Status:      (*api.APIListItemStatus)(&status),
+				CreatedAt:   timePtr(cfg.CreatedAt),
+				UpdatedAt:   timePtr(cfg.UpdatedAt),
 			})
 		}
 
@@ -1442,7 +1442,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 				CreatedAt:       now,
 				UpdatedAt:       now,
 				ResourceVersion: 0,
-				APIName:         cfg.GetName(),
+				APIName:         cfg.GetDisplayName(),
 				Version:         cfg.GetVersion(),
 				Context:         cfg.GetContext(),
 			},
@@ -1532,7 +1532,7 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 // ListMCPProxies implements ServerInterface.ListMCPProxies
 // (GET /mcp-proxies)
 func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesParams) {
-	if (params.Name != nil && *params.Name != "") || (params.Version != nil && *params.Version != "") || (params.Context != nil && *params.Context != "") || (params.Status != nil && *params.Status != "") {
+	if (params.DisplayName != nil && *params.DisplayName != "") || (params.Version != nil && *params.Version != "") || (params.Context != nil && *params.Context != "") || (params.Status != nil && *params.Status != "") {
 		s.SearchDeployments(c, string(api.Mcp))
 		return
 	}
@@ -1548,7 +1548,7 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 		if err != nil {
 			s.logger.Error("Failed to unmarshal stored MCP configuration",
 				zap.String("id", cfg.ID),
-				zap.String("name", cfg.GetName()))
+				zap.String("displayName", cfg.GetDisplayName()))
 			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 				Status:  "error",
 				Message: "Failed to get stored MCP configuration",
@@ -1556,13 +1556,13 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 			return
 		}
 		items[i] = api.MCPProxyListItem{
-			Id:        stringPtr(cfg.GetHandle()),
-			Name:      stringPtr(mcp.Spec.Name),
-			Version:   stringPtr(mcp.Spec.Version),
-			Context:   stringPtr(mcp.Spec.Context),
-			Status:    &status,
-			CreatedAt: timePtr(cfg.CreatedAt),
-			UpdatedAt: timePtr(cfg.UpdatedAt),
+			Id:          stringPtr(cfg.GetHandle()),
+			DisplayName: stringPtr(mcp.Spec.DisplayName),
+			Version:     stringPtr(mcp.Spec.Version),
+			Context:     stringPtr(mcp.Spec.Context),
+			Status:      &status,
+			CreatedAt:   timePtr(cfg.CreatedAt),
+			UpdatedAt:   timePtr(cfg.UpdatedAt),
 		}
 	}
 
@@ -1721,7 +1721,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	validationErrors := mcpValidator.Validate(&mcpConfig)
 	if len(validationErrors) > 0 {
 		log.Warn("Configuration validation failed",
-			zap.String("name", mcpConfig.Spec.Name),
+			zap.String("displayName", mcpConfig.Spec.DisplayName),
 			zap.Int("num_errors", len(validationErrors)))
 
 		errors := make([]api.ValidationError, len(validationErrors))
@@ -1813,9 +1813,9 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 	if err := s.store.Update(existing); err != nil {
 		// Log conflict errors at info level, other errors at error level
 		if storage.IsConflictError(err) {
-			log.Info("MCP configuration name/version already exists",
+			log.Info("MCP configuration displayName/version already exists",
 				zap.String("id", existing.ID),
-				zap.String("name", existing.GetName()),
+				zap.String("displayName", existing.GetDisplayName()),
 				zap.String("version", existing.GetVersion()))
 			c.JSON(http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
@@ -2011,7 +2011,7 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 				// // API successfully deployed, notify platform API
 				log.Info("API deployed successfully, notifying platform API",
 					zap.String("config_id", configID),
-					zap.String("name", cfg.GetName()))
+					zap.String("displayName", cfg.GetDisplayName()))
 
 				// Extract API ID from stored config (use config ID as API ID)
 				apiID := configID
@@ -2032,7 +2032,7 @@ func (s *APIServer) waitForDeploymentAndNotify(configID string, correlationID st
 			} else if cfg.Status == models.StatusFailed {
 				log.Warn("API deployment failed, skipping platform API notification",
 					zap.String("config_id", configID),
-					zap.String("name", cfg.GetName()))
+					zap.String("displayName", cfg.GetDisplayName()))
 				return
 			}
 			// Continue waiting if status is still pending

@@ -149,10 +149,10 @@ paths:
       tags:
         - API Management
       parameters:
-        - name: name
+        - name: displayName
           in: query
           required: false
-          description: Filter by API name
+          description: Filter by API display name
           schema:
             type: string
           example: Weather API
@@ -581,10 +581,10 @@ paths:
       tags:
         - MCP Proxy Management
       parameters:
-        - name: name
+        - name: displayName
           in: query
           required: false
-          description: Filter by MCP proxy name
+          description: Filter by MCP proxy display name
           schema:
             type: string
           example: My MCP Proxy
@@ -1763,7 +1763,7 @@ components:
         id:
           type: string
           example: weather-api-v1.0
-        name:
+        displayName:
           type: string
           example: weather-api
         version:
@@ -1853,14 +1853,14 @@ components:
     MCPProxyConfigData:
       type: object
       required:
-        - name
+        - displayName
         - version
         - context
         - upstreams
       properties:
-        name:
+        displayName:
           type: string
-          description: Human-readable MCP Proxy name
+          description: Human-readable MCP Proxy display name
           minLength: 1
           maxLength: 100
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
@@ -1985,7 +1985,7 @@ components:
         id:
           type: string
           example: mcp-proxy-1-v1.0
-        name:
+        displayName:
           type: string
           example: mcp-proxy-1
         version:

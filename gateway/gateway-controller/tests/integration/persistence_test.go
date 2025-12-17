@@ -198,7 +198,7 @@ func TestLoadFromDatabaseWithMultipleRestarts(t *testing.T) {
 		// Verify configs are correct
 		for _, cfg := range allConfigs {
 			assert.NotEmpty(t, cfg.ID)
-			assert.NotEmpty(t, cfg.GetName())
+			assert.NotEmpty(t, cfg.GetDisplayName())
 			assert.NotEmpty(t, cfg.GetVersion())
 		}
 
@@ -251,7 +251,7 @@ func TestZeroDataLoss(t *testing.T) {
 	for _, cfgAfter := range configsAfter {
 		cfgBefore, exists := beforeMap[cfgAfter.ID]
 		assert.True(t, exists, "Configuration should exist in both before and after")
-		assert.Equal(t, cfgBefore.GetName(), cfgAfter.GetName())
+		assert.Equal(t, cfgBefore.GetDisplayName(), cfgAfter.GetDisplayName())
 		assert.Equal(t, cfgBefore.GetVersion(), cfgAfter.GetVersion())
 		assert.Equal(t, cfgBefore.Status, cfgAfter.Status)
 	}

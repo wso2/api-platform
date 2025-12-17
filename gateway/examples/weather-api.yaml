@@ -21,7 +21,7 @@ kind: RestApi
 metadata:
   name: weather-api-v1.0
 spec:
-  name: Weather-API
+  displayName: Weather-API
   version: v1.0
   context: /weather/$version
   upstream:

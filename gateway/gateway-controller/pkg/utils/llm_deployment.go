@@ -133,13 +133,13 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 	if isUpdate {
 		params.Logger.Info("LLM provider configuration updated",
 			zap.String("api_id", apiID),
-			zap.String("name", storedCfg.GetName()),
+			zap.String("displayName", storedCfg.GetDisplayName()),
 			zap.String("version", storedCfg.GetVersion()),
 			zap.String("correlation_id", params.CorrelationID))
 	} else {
 		params.Logger.Info("LLM provider configuration created",
 			zap.String("api_id", apiID),
-			zap.String("name", storedCfg.GetName()),
+			zap.String("displayName", storedCfg.GetDisplayName()),
 			zap.String("version", storedCfg.GetVersion()),
 			zap.String("correlation_id", params.CorrelationID))
 	}

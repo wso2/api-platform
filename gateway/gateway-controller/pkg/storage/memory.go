@@ -59,8 +59,8 @@ func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 
 	key := cfg.GetCompositeKey()
 	if existingID, exists := cs.nameVersion[key]; exists {
-		return fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists (ID: %s)",
-			ErrConflict, cfg.GetName(), cfg.GetVersion(), existingID)
+		return fmt.Errorf("%w: configuration with displayName '%s' and version '%s' already exists (ID: %s)",
+			ErrConflict, cfg.GetDisplayName(), cfg.GetVersion(), existingID)
 	}
 
 	cs.configs[cfg.ID] = cfg
@@ -92,8 +92,8 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 	if oldKey != newKey {
 		// Check if new name:version combination already exists
 		if existingID, exists := cs.nameVersion[newKey]; exists && existingID != cfg.ID {
-			return fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists (ID: %s)",
-				ErrConflict, cfg.GetName(), cfg.GetVersion(), existingID)
+			return fmt.Errorf("%w: configuration with displayName '%s' and version '%s' already exists (ID: %s)",
+				ErrConflict, cfg.GetDisplayName(), cfg.GetVersion(), existingID)
 		}
 		delete(cs.nameVersion, oldKey)
 		cs.nameVersion[newKey] = cfg.ID
@@ -224,7 +224,7 @@ func (cs *ConfigStore) GetByKindNameAndVersion(kind string, name string, version
 			continue
 		}
 		sc := cfg
-		if sc.GetName() == name && sc.GetVersion() == version {
+		if sc.GetDisplayName() == name && sc.GetVersion() == version {
 			return sc
 		}
 	}

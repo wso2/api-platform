@@ -86,7 +86,7 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 		errors := make([]string, 0, len(validationErrors))
 		params.Logger.Warn("Configuration validation failed",
 			zap.String("api_id", params.ID),
-			zap.String("name", mcpConfig.Spec.Name),
+			zap.String("displayName", mcpConfig.Spec.DisplayName),
 			zap.Int("num_errors", len(validationErrors)))
 
 		for i, e := range validationErrors {
@@ -115,7 +115,6 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 	apiConfig = *apiConfigPtr
 
 	handle := apiConfig.Metadata.Name
-	
 
 	name, version, err := ExtractNameVersion(apiConfig)
 	if err != nil {
@@ -161,13 +160,13 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 	if isUpdate {
 		params.Logger.Info("MCP configuration updated",
 			zap.String("api_id", apiID),
-			zap.String("name", mcpConfig.Spec.Name),
+			zap.String("displayName", mcpConfig.Spec.DisplayName),
 			zap.String("version", mcpConfig.Spec.Version),
 			zap.String("correlation_id", params.CorrelationID))
 	} else {
 		params.Logger.Info("MCP configuration created",
 			zap.String("api_id", apiID),
-			zap.String("name", mcpConfig.Spec.Name),
+			zap.String("displayName", mcpConfig.Spec.DisplayName),
 			zap.String("version", mcpConfig.Spec.Version),
 			zap.String("correlation_id", params.CorrelationID))
 	}
@@ -200,7 +199,7 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 			if storage.IsConflictError(err) {
 				logger.Info("MCP configuration already exists in database, updating instead",
 					zap.String("id", storedCfg.ID),
-					zap.String("name", storedCfg.GetName()),
+					zap.String("displayName", storedCfg.GetDisplayName()),
 					zap.String("version", storedCfg.GetVersion()))
 
 				// Try to update instead
@@ -217,7 +216,7 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		if storage.IsConflictError(err) {
 			logger.Info("MCP configuration already exists in memory, updating instead",
 				zap.String("id", storedCfg.ID),
-				zap.String("name", storedCfg.GetName()),
+				zap.String("displayName", storedCfg.GetDisplayName()),
 				zap.String("version", storedCfg.GetVersion()))
 
 			// Try to update instead
@@ -238,7 +237,7 @@ func (s *MCPDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConfig,
 	logger *zap.Logger) (bool, error) {
 	// Get existing config
-	existing, err := s.store.GetByNameVersion(newConfig.GetName(), newConfig.GetVersion())
+	existing, err := s.store.GetByNameVersion(newConfig.GetDisplayName(), newConfig.GetVersion())
 	if err != nil {
 		return false, fmt.Errorf("failed to get existing config: %w", err)
 	}
@@ -270,7 +269,7 @@ func (s *MCPDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 				logger.Error("Failed to rollback DB after memory update failure",
 					zap.Error(rbErr),
 					zap.String("id", original.ID),
-					zap.String("name", original.GetName()),
+					zap.String("displayName", original.GetDisplayName()),
 					zap.String("version", original.GetVersion()))
 			}
 		}

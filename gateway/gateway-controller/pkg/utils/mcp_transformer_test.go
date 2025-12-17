@@ -117,7 +117,7 @@ func TestMCPTransformer_Transform(t *testing.T) {
 	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
 	in := &api.MCPProxyConfiguration{
 		Spec: api.MCPProxyConfigData{
-			Name:        name,
+			DisplayName: name,
 			Version:     version,
 			Context:     context,
 			Upstreams:   upstreams,
