@@ -1577,6 +1577,11 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 		MutationRules: &mutationrules.HeaderMutationRules{
 			AllowAllRouting: wrapperspb.Bool(true),
 		},
+		MetadataOptions: &extproc.MetadataOptions{
+			ReceivingNamespaces: &extproc.MetadataOptions_MetadataNamespaces{
+				Untyped: []string{constants.ExtProcFilterName},
+			},
+		},
 	}
 
 	// Marshal to Any

@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
 
+	"github.com/policy-engine/policy-engine/internal/constants"
 	"github.com/policy-engine/policy-engine/internal/executor"
 )
 
@@ -195,7 +196,7 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 		return metadata
 	}
 
-	extProcAttrs, ok := req.Attributes["envoy.filters.http.ext_proc"]
+	extProcAttrs, ok := req.Attributes[constants.ExtProcFilter]
 	if !ok || extProcAttrs.Fields == nil {
 		return metadata
 	}
