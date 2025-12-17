@@ -24,10 +24,11 @@ spec:
         {{- with $deployment.podLabels }}
 {{ toYaml . | indent 8 }}
         {{- end }}
-      {{- if $deployment.podAnnotations }}
       annotations:
-        {{- toYaml $deployment.podAnnotations | nindent 8 }}
-      {{- end }}
+        checksum/config: {{ include (print $.Template.BasePath "/gateway/gateway-config.yaml") . | sha256sum }}
+        {{- with $deployment.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "gateway-operator.serviceAccountName" . }}
       {{- $globalPullSecrets := default (list) .Values.imagePullSecrets }}
@@ -142,7 +143,7 @@ spec:
           {{- end }}
         - name: controller-config
           configMap:
-            name: {{ include "gateway-operator.fullname" . }}-controller-config
+            name: {{ include "gateway-operator.fullname" . }}-config
             items:
               - key: config.yaml
                 path: config.yaml
@@ -156,9 +157,9 @@ spec:
             {{- end }}
             items:
               - key: {{ if eq $controller.tls.certificateProvider "cert-manager" }}tls.crt{{ else }}{{ $controller.tls.secret.certKey }}{{ end }}
-                path: server.crt
+                path: default-listener.crt
               - key: {{ if eq $controller.tls.certificateProvider "cert-manager" }}tls.key{{ else }}{{ $controller.tls.secret.keyKey }}{{ end }}
-                path: server.key
+                path: default-listener.key
         {{- end }}
         {{- if $controller.upstreamCerts.enabled }}
         {{- if $controller.upstreamCerts.secretName }}

@@ -32,8 +32,8 @@ func main() {
 		log.Fatal("Failed to create server:", err)
 	}
 
-	log.Println("Starting HTTPS server on port 8443...")
-	if err := srv.Start(":8443"); err != nil {
+	log.Printf("Starting HTTPS server on port %s...", cfg.Port)
+	if err := srv.Start(cfg.Port); err != nil {
 		log.Fatal("Failed to start HTTPS server:", err)
 	}
 }

@@ -114,6 +114,29 @@ func (s *MCPDeploymentService) DeployMCPConfiguration(params MCPDeploymentParams
 	}
 	apiConfig = *apiConfigPtr
 
+	handle := apiConfig.Metadata.Name
+	
+
+	name, version, err := ExtractNameVersion(apiConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.store != nil {
+		if name != "" && version != "" {
+			if _, err := s.store.GetByNameVersion(name, version); err == nil {
+				return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, name, version)
+			}
+		}
+		if handle != "" {
+			for _, c := range s.store.GetAll() {
+				if c.GetHandle() == handle {
+					return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
+				}
+			}
+		}
+	}
+
 	// Create stored configuration
 	now := time.Now()
 	storedCfg := &models.StoredConfig{

@@ -62,37 +62,37 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 			name:        "invalid name with slash",
 			apiName:     "Weather/API",
 			shouldError: true,
-			errorMsg:    "API name must be URL-friendly",
+			errorMsg:    "API display name must be URL-friendly",
 		},
 		{
 			name:        "invalid name with question mark",
 			apiName:     "Weather?API",
 			shouldError: true,
-			errorMsg:    "API name must be URL-friendly",
+			errorMsg:    "API display name must be URL-friendly",
 		},
 		{
 			name:        "invalid name with ampersand",
 			apiName:     "Weather&API",
 			shouldError: true,
-			errorMsg:    "API name must be URL-friendly",
+			errorMsg:    "API display name must be URL-friendly",
 		},
 		{
 			name:        "invalid name with hash",
 			apiName:     "Weather#API",
 			shouldError: true,
-			errorMsg:    "API name must be URL-friendly",
+			errorMsg:    "API display name must be URL-friendly",
 		},
 		{
 			name:        "invalid name with percent",
 			apiName:     "Weather%API",
 			shouldError: true,
-			errorMsg:    "API name must be URL-friendly",
+			errorMsg:    "API display name must be URL-friendly",
 		},
 		{
 			name:        "invalid name with brackets",
 			apiName:     "Weather[API]",
 			shouldError: true,
-			errorMsg:    "API name must be URL-friendly",
+			errorMsg:    "API display name must be URL-friendly",
 		},
 	}
 
@@ -100,7 +100,7 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			specUnion := api.APIConfiguration_Spec{}
 			specUnion.FromAPIConfigData(api.APIConfigData{
-				Name:    tt.apiName,
+				DisplayName:    tt.apiName,
 				Version: "v1.0",
 				Context: "/test",
 				Upstream: struct {
@@ -116,8 +116,8 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 				},
 			})
 			config := &api.APIConfiguration{
-				Version: "api-platform.wso2.com/v1",
-				Kind:    "http/rest",
+				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+				Kind:    api.RestApi,
 				Spec:    specUnion,
 			}
 
@@ -126,7 +126,7 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 			// Check if we got errors when we expected them
 			hasNameError := false
 			for _, err := range errors {
-				if err.Field == "spec.name" {
+				if err.Field == "spec.displayName" {
 					hasNameError = true
 					if tt.shouldError && tt.errorMsg != "" {
 						if err.Message[:len(tt.errorMsg)] != tt.errorMsg {

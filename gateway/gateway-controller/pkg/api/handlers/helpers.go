@@ -44,6 +44,16 @@ func uuidToOpenAPIUUID(id string) (*openapi_types.UUID, error) {
 	return &openapiUUID, nil
 }
 
+// convertHandleToUUID converts a handle string to an OpenAPI UUID pointer
+// Returns nil if the conversion fails (should not happen in normal operation)
+func convertHandleToUUID(handle string) *openapi_types.UUID {
+	uuid, err := uuidToOpenAPIUUID(handle)
+	if err != nil {
+		return nil
+	}
+	return uuid
+}
+
 func statusPtr(s string) *string {
 	return &s
 }

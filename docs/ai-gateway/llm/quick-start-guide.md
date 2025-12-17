@@ -22,14 +22,14 @@ docker compose version
 Replace ${version} with the actual release version of the API Platform Gateway.
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway-${version}/gateway-${version}.zip
+wget https://github.com/wso2/api-platform/releases/download/ai-gateway-v0.1.0/ai-gateway-v0.1.0.zip
 
 # Unzip the downloaded distribution.
-unzip gateway-${version}.zip
+unzip ai-gateway-v0.1.0.zip
 
 
 # Start the complete stack
-cd gateway/
+cd ai-gateway-v0.1.0/
 docker compose up -d
 
 # Verify gateway controller is running
@@ -50,13 +50,12 @@ spec:
   name: openai-provider
   version: v1.0
   template: openai
-  vhost: api.openai.com
   upstream:
     url: https://api.openai.com/v1
     auth:
       type: api-key
       header: Authorization
-      value: <openai-apikey>
+      value: Bearer <openai-apikey>
   accessControl:
     mode: deny_all
     exceptions:

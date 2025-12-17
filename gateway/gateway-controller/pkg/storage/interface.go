@@ -93,6 +93,13 @@ type Storage interface {
 	// Implementations should index (name, version) for fast lookups.
 	GetConfigByNameVersion(name, version string) (*models.StoredConfig, error)
 
+	// GetConfigByHandle retrieves an API configuration by handle.
+	//
+	// Returns an error if the configuration is not found.
+	// The handle is the metadata.name from the API YAML configuration.
+	// This is the recommended lookup method for REST API endpoints.
+	GetConfigByHandle(handle string) (*models.StoredConfig, error)
+
 	// GetAllConfigs retrieves all API configurations.
 	//
 	// Returns an empty slice if no configurations exist.
@@ -131,13 +138,6 @@ type Storage interface {
 	// Returns an error if the template is not found.
 	// This is the fastest lookup method (O(1) for most databases).
 	GetLLMProviderTemplate(id string) (*models.StoredLLMProviderTemplate, error)
-
-	// GetLLMProviderTemplateByName retrieves an LLM provider template by name.
-	//
-	// Returns an error if the template is not found.
-	// This is the most common lookup method for template operations.
-	// Implementations should index name for fast lookups.
-	GetLLMProviderTemplateByName(name string) (*models.StoredLLMProviderTemplate, error)
 
 	// GetAllLLMProviderTemplates retrieves all LLM provider templates.
 	//

@@ -23,20 +23,57 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/wso2/api-platform/cli/cmd/gateway"
+	"github.com/wso2/api-platform/cli/utils"
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "fusionctl",
-	Short: "fusionctl is a cli tool to interact with the WSO2 API Platform",
-	Long:  "fusionctl is a cli tool to interact with the WSO2 API Platform",
+	Use:   "apipctl",
+	Short: "apipctl is a CLI tool to interact with the WSO2 API Platform",
+	Long: `apipctl - WSO2 API Platform CLI
+
+A command-line tool for managing and interacting with the WSO2 API Platform.
+
+USAGE:
+  apipctl [command] [subcommand] [flags]
+
+FLAG SHORTCUTS:
+  All flags support shorthand notation using their first letter:
+  --name → -n, --server → -s, --token → -t, --output → -o, --insecure → -i
+
+EXAMPLES:
+  # Add a gateway
+  apipctl gateway add -n dev -s http://localhost:9090
+
+  # Generate MCP configuration  
+  apipctl gateway mcp generate -s http://localhost:3001/mcp -o target
+
+  # Show version
+  apipctl version
+
+For detailed documentation, see: src/HELP.md`,
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
 }
 
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print the version of apipctl",
+	Long:  "Print the version and build information of apipctl",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("apipctl version v%s (built at %s)\n", utils.Version, utils.BuildTime)
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(gateway.GatewayCmd)
+	rootCmd.AddCommand(versionCmd)
+}
+
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Oops. An error occurred while executing %s: %v\n", CliName, err)
+		fmt.Fprintf(os.Stderr, "Oops. An error occurred while executing %s: %v\n", utils.CliName, err)
 		os.Exit(1)
 	}
 }

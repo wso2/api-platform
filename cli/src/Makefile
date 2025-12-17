@@ -16,10 +16,10 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Makefile for fusionctl CLI
+# Makefile for apipctl CLI
 
 # Binary name
-BINARY_NAME=fusionctl
+BINARY_NAME=apipctl
 
 # Go parameters
 GOCMD=go
@@ -37,14 +37,14 @@ VERSION?=0.0.1
 BUILD_TIME=$(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 # Linker flags
-LDFLAGS=-ldflags "-X github.com/wso2/api-platform/cli/cmd.Version=$(VERSION) -X github.com/wso2/api-platform/cli/cmd.BuildTime=$(BUILD_TIME)"
+LDFLAGS=-ldflags "-X github.com/wso2/api-platform/cli/utils.Version=$(VERSION) -X github.com/wso2/api-platform/cli/utils.BuildTime=$(BUILD_TIME)"
 
 .PHONY: all build clean test deps help install build-all build-macos build-linux build-windows
 
-all: clean build
+all: clean test build
 
-## build: Build the binary for current platform
-build:
+## build: Build the binary for current platform (runs tests first)
+build: test
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
 	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) main.go
@@ -88,7 +88,7 @@ clean:
 ## test: Run tests
 test:
 	@echo "Running tests..."
-	$(GOTEST) -v ./...
+	@$(GOTEST) -v ./tests/... || (echo "Tests failed. Build aborted." && exit 1)
 
 ## deps: Download dependencies
 deps:

@@ -16,17 +16,24 @@
  * under the License.
  */
 
-package cmd
+package gateway
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/spf13/cobra"
+	"github.com/wso2/api-platform/cli/cmd/gateway/mcp"
+)
 
 const (
 	GatewayCmdLiteral = "gateway"
-	GatewayCmdExample = `# Add new API in the gateway` + "\n" + CliName + ` ` + GatewayCmdLiteral + ` add api [flags]` + "\n\n" +
-		`# Generate MCP configuration` + "\n" + CliName + ` ` + GatewayCmdLiteral + ` ` + GenCmdLiteral + ` mcp [flags]`
+	GatewayCmdExample = `# Add a new gateway
+apipctl gateway add --name dev --server http://localhost:9090
+
+# Generate MCP configuration
+apipctl gateway mcp generate --server http://localhost:3001/mcp --output target`
 )
 
-var gatewayCmd = &cobra.Command{
+// GatewayCmd represents the gateway command
+var GatewayCmd = &cobra.Command{
 	Use:     GatewayCmdLiteral,
 	Short:   "Execute API Platform Gateway operations",
 	Long:    "This command allows you to execute various operations related to the WSO2 API Platform Gateway.",
@@ -37,5 +44,7 @@ var gatewayCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(gatewayCmd)
+	// Register subcommands
+	GatewayCmd.AddCommand(addCmd)
+	GatewayCmd.AddCommand(mcp.McpCmd)
 }

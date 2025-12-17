@@ -16,27 +16,11 @@
  * under the License.
  */
 
-package cmd
+package utils
 
-import (
-	"github.com/spf13/cobra"
+// Default values for version information
+// These are overridden at build time via ldflags
+var (
+	Version   = "dev"
+	BuildTime = "unknown"
 )
-
-const GenCmdLiteral = "generate"
-const GenCmdExample = `# Generate MCP configuration` + "\n" +
-	CliName + ` ` + GatewayCmdLiteral + ` ` + GenCmdLiteral + ` mcp`
-
-var genCmd = &cobra.Command{
-	Use:     GenCmdLiteral,
-	Aliases: []string{"gen"},
-	Short:   "Generate configuration",
-	Long:    "Generate a configuration which can be deployed in the WSO2 API Platform Gateway",
-	Example: GenCmdExample,
-	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Help()
-	},
-}
-
-func init() {
-	gatewayCmd.AddCommand(genCmd)
-}

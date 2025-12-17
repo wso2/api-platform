@@ -75,6 +75,7 @@ export type ImportOpenApiRequest = {
     context: string;
     version: string;
     projectId: string;
+    displayName?: string;
     target?: string;
     description?: string;
     backendServices?: ApiBackendService[];

@@ -13,16 +13,16 @@ import { Button } from "../../../../components/src/components/Button";
 import { TextInput } from "../../../../components/src/components/TextInput";
 import { Card, CardContent } from "../../../../components/src/components/Card";
 import { Select as AppSelect } from "../../../../components/src/components/Select";
-import ArrowRightLong from "../../../../components/src/Icons/generated/ArrowRightLong";
 import ApiDirectoryModal from "./ApiDirectoryModal";
 import Refresh from "../../../../components/src/Icons/generated/Refresh";
 import { IconButton } from "../../../../components/src/components/IconButton";
 import Edit from "../../../../components/src/Icons/generated/Edit";
 import CreationMetaData from "../CreationMetaData";
-import { isValidMajorMinorVersion, formatVersionToMajorMinor } from "../../../../helpers/openApiHelpers";
+import {
+  isValidMajorMinorVersion,
+  formatVersionToMajorMinor,
+} from "../../../../helpers/openApiHelpers";
 import type { ApiSummary } from "../../../../hooks/apis";
-
-// Contexts
 import { useGithubAPICreationContext } from "../../../../context/GithubAPICreationContext";
 import { useCreateComponentBuildpackContext } from "../../../../context/CreateComponentBuildpackContext";
 import { useGithubProjectValidationContext } from "../../../../context/validationContext";
@@ -31,18 +31,16 @@ import { ApiOperationsList } from "../../../../components/src/components/Common/
 import { useGithubAPICreation } from "../../../../hooks/GithubAPICreation";
 import { useNotifications } from "../../../../context/NotificationContext";
 
-/* ---------- Types ---------- */
 type Props = {
   open: boolean;
   onClose: () => void;
-  selectedProjectId?: string; // must be provided to enable Create
+  selectedProjectId?: string;
   refreshApis: (projectId?: string) => Promise<ApiSummary[]>;
 };
 
 type BranchOption = { label: string; value: string };
 type Step = "form" | "details";
 
-/* ---------- Utils ---------- */
 const isLikelyGithubRepo = (url: string) =>
   /^https:\/\/github\.com\/[^\/\s]+\/[^\/\s#]+$/i.test(url.trim());
 
@@ -78,11 +76,8 @@ const GithubCreationFlow: React.FC<Props> = ({
     reset: resetValidation,
   } = useGithubProjectValidationContext();
 
-  // 👇 We will read meta (name, context, version, target, description) for the POST
   const { contractMeta, setContractMeta } =
     useCreateComponentBuildpackContext();
-
-  // 👇 POST /api/v1/import/api-project
   const { importApiProject } = useGithubAPICreation();
   const { showNotification } = useNotifications();
 
@@ -101,11 +96,9 @@ const GithubCreationFlow: React.FC<Props> = ({
     }>
   >([]);
 
-  // Create flow state
   const [creating, setCreating] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
 
-  // Reset when closed
   React.useEffect(() => {
     if (!open) {
       setApiDir("/");
@@ -124,7 +117,6 @@ const GithubCreationFlow: React.FC<Props> = ({
 
   const showInitial = (repoUrl ?? "").trim().length === 0;
 
-  // options for branches
   const branchOptions: BranchOption[] = React.useMemo(
     () => branches.map((b) => ({ label: b.name, value: b.name })),
     [branches]
@@ -136,7 +128,6 @@ const GithubCreationFlow: React.FC<Props> = ({
     [selectedBranch]
   );
 
-  // Debounced fetch-branches on repoUrl change
   React.useEffect(() => {
     if (!repoUrl || !isLikelyGithubRepo(repoUrl)) return;
     const t = setTimeout(() => {
@@ -146,7 +137,6 @@ const GithubCreationFlow: React.FC<Props> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repoUrl]);
 
-  // Auto-select default branch (or first) once branches are available
   React.useEffect(() => {
     if (!branches.length || selectedBranch) return;
     const def =
@@ -155,7 +145,6 @@ const GithubCreationFlow: React.FC<Props> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branches, selectedBranch]);
 
-  // Fetch content when branch changes and clear selections
   React.useEffect(() => {
     if (!selectedBranch) return;
     setApiDir("/");
@@ -202,7 +191,6 @@ const GithubCreationFlow: React.FC<Props> = ({
     setSelectedBranch(opt ? opt.value : null);
   };
 
-  // ----- Local directory validation for config.yaml presence -----
   const normalizePath = (p: string) =>
     p.replace(/^\/+/, "").replace(/\/+$/, "");
 
@@ -249,7 +237,9 @@ const GithubCreationFlow: React.FC<Props> = ({
         }
       }
       setIsDirValid(found);
-      setDirError(found ? null : 'Selected directory must contain a "config.yaml".');
+      setDirError(
+        found ? null : 'Selected directory must contain a "config.yaml".'
+      );
       return;
     }
 
@@ -264,14 +254,8 @@ const GithubCreationFlow: React.FC<Props> = ({
     setDirError(ok ? null : 'Selected directory must contain a "config.yaml".');
   }, [apiDir, content, findNodeByPath, nodeHasConfigYaml]);
 
-  // ----- Validate on Next, prefill meta, move to details -----
   const onNext = async () => {
-    if (
-      !repoUrl.trim() ||
-      !selectedBranch ||
-      !apiDir ||
-      !isDirValid
-    ) {
+    if (!repoUrl.trim() || !selectedBranch || !apiDir || !isDirValid) {
       return;
     }
 
@@ -288,12 +272,13 @@ const GithubCreationFlow: React.FC<Props> = ({
       if (api) {
         const target =
           api["backend-services"]?.[0]?.endpoints?.[0]?.url?.trim() || "";
-        // Prefill Meta
         setContractMeta((prev: any) => ({
           ...prev,
           name: api.name || prev?.name || "",
           context: api.context || prev?.context || "",
-          version: formatVersionToMajorMinor(api.version ?? prev?.version ?? "1.0.0"),
+          version: formatVersionToMajorMinor(
+            api.version ?? prev?.version ?? "1.0.0"
+          ),
           description: api.description || prev?.description || "",
           target: target || prev?.target || "",
         }));
@@ -309,11 +294,8 @@ const GithubCreationFlow: React.FC<Props> = ({
     }
   };
 
-  // ----- Create: POST /api/v1/import/api-project -----
   const onCreate = async () => {
     setCreateError(null);
-
-    // Guard required fields
     const name = (contractMeta?.name || "").trim();
     const context = (contractMeta?.context || "").trim();
     const version = (contractMeta?.version || "").trim();
@@ -339,15 +321,14 @@ const GithubCreationFlow: React.FC<Props> = ({
       return;
     }
 
-    // build payload
     const payload = {
       repoUrl: repoUrl.trim(),
       provider: "github" as const,
       branch: selectedBranch,
-      path: apiDir === "/" ? "/" : normalizePath(apiDir), // e.g., "/" or "apis/test-api"
+      path: apiDir === "/" ? "/" : normalizePath(apiDir),
       api: {
         name,
-        displayName: name, // or customize if you prefer a separate display name
+        displayName: name,
         description,
         context: context.startsWith("/") ? context : `/${context}`,
         version,
@@ -399,45 +380,38 @@ const GithubCreationFlow: React.FC<Props> = ({
 
   return (
     <Box>
-      {/* ------------ Initial card ------------ */}
       {showInitial && step === "form" && (
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 6 }}>
             <Card testId="github-creation-card">
               <CardContent sx={{ p: 3 }}>
+                <Typography variant="h5" sx={{ mb: 2 }}>
+                  Public Repository URL
+                </Typography>
                 <TextInput
-                  label="Public Repository URL"
+                  label=""
                   placeholder="https://github.com/thivindu/api-platform-demo"
                   value={repoUrl}
                   onChange={onRepoChange}
                   testId=""
                   size="medium"
                 />
-
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  sx={{ mt: 2 }}
-                >
+                <Box display="flex" alignItems="flex-start" mt={1}>
                   <Button
-                    variant="text"
+                    variant="link"
                     onClick={setSampleRepo}
-                    endIcon={<ArrowRightLong fontSize="small" />}
+                    // endIcon={<ArrowRightLong fontSize="small" />}
                   >
                     Try with Sample URL
                   </Button>
-                </Stack>
+                </Box>
               </CardContent>
             </Card>
           </Grid>
         </Grid>
       )}
-
-      {/* ------------ Form (URL/Branch/Dir) ------------ */}
       {!showInitial && step === "form" && (
         <Grid container spacing={2}>
-          {/* Row 1: URL | Branch */}
           <Grid size={{ xs: 12, md: 4 }} sx={{ mt: 1 }}>
             <TextInput
               label="Public Repository URL"
@@ -519,8 +493,6 @@ const GithubCreationFlow: React.FC<Props> = ({
               }
             />
           </Grid>
-
-          {/* Row 2: API directory | Edit */}
           <Grid size={{ xs: 12 }}>
             <Grid container spacing={2} alignItems="flex-end">
               <Grid size={{ xs: 12, md: 6 }}>
@@ -552,8 +524,6 @@ const GithubCreationFlow: React.FC<Props> = ({
               </Typography>
             )}
           </Grid>
-
-          {/* Actions row */}
           <Grid size={{ xs: 12 }}>
             <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
               <Button
@@ -594,11 +564,8 @@ const GithubCreationFlow: React.FC<Props> = ({
           </Grid>
         </Grid>
       )}
-
-      {/* ------------ Details ------------ */}
       {step === "details" && (
         <Grid container spacing={2}>
-          {/* Validation banner */}
           {validationResult && validationResult.isAPIProjectValid === false && (
             <Grid size={{ xs: 12 }}>
               <Alert severity="error" sx={{ mb: 1.5 }}>
@@ -619,42 +586,34 @@ const GithubCreationFlow: React.FC<Props> = ({
               </Alert>
             </Grid>
           )}
-
           <Grid size={{ xs: 12, md: 6 }}>
-            <Card testId="">
-              <CardContent sx={{ p: 3 }}>
-                <CreationMetaData scope="contract" title="API Details" />
-
-                {!!createError && (
-                  <Alert severity="error" sx={{ mt: 2 }}>
-                    {createError}
-                  </Alert>
-                )}
-                
-
-                <Stack
-                  direction="row"
-                  spacing={1}
-                  justifyContent="flex-end"
-                  sx={{ mt: 3 }}
-                >
-                  <Button
-                    variant="outlined"
-                    onClick={() => setStep("form")}
-                    disabled={creating}
-                  >
-                    Back
-                  </Button>
-                  <Button
-                    variant="contained"
-                    onClick={onCreate}
-                    disabled={!canCreate || creating}
-                  >
-                    {creating ? "Creating..." : "Create"}
-                  </Button>
-                </Stack>
-              </CardContent>
-            </Card>
+            <CreationMetaData scope="contract" />
+            {!!createError && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {createError}
+              </Alert>
+            )}
+            <Stack
+              direction="row"
+              spacing={1}
+              justifyContent="flex-start"
+              sx={{ mt: 3 }}
+            >
+              <Button
+                variant="outlined"
+                onClick={() => setStep("form")}
+                disabled={creating}
+              >
+                Back
+              </Button>
+              <Button
+                variant="contained"
+                onClick={onCreate}
+                disabled={!canCreate || creating}
+              >
+                {creating ? "Creating..." : "Create"}
+              </Button>
+            </Stack>
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }}>
@@ -665,8 +624,6 @@ const GithubCreationFlow: React.FC<Props> = ({
           </Grid>
         </Grid>
       )}
-
-      {/* Directory picker modal */}
       <ApiDirectoryModal
         open={dirModalOpen}
         currentPath={apiDir}

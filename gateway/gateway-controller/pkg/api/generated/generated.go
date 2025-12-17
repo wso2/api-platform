@@ -21,17 +21,17 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for APIConfigurationApiVersion.
+const (
+	GatewayApiPlatformWso2Comv1alpha1 APIConfigurationApiVersion = "gateway.api-platform.wso2.com/v1alpha1"
+)
+
 // Defines values for APIConfigurationKind.
 const (
 	Asyncsse       APIConfigurationKind = "async/sse"
 	Asyncwebsocket APIConfigurationKind = "async/websocket"
 	Asyncwebsub    APIConfigurationKind = "async/websub"
-	Httprest       APIConfigurationKind = "http/rest"
-)
-
-// Defines values for APIConfigurationVersion.
-const (
-	ApiPlatformWso2Comv1 APIConfigurationVersion = "api-platform.wso2.com/v1"
+	RestApi        APIConfigurationKind = "RestApi"
 )
 
 // Defines values for APIDetailResponseApiMetadataStatus.
@@ -54,11 +54,11 @@ const (
 	Success CertificateResponseStatus = "success"
 )
 
-// Defines values for ConfigDumpResponseApisMetadataStatus.
+// Defines values for ConfigDumpAPIMetadataStatus.
 const (
-	ConfigDumpResponseApisMetadataStatusDeployed ConfigDumpResponseApisMetadataStatus = "deployed"
-	ConfigDumpResponseApisMetadataStatusFailed   ConfigDumpResponseApisMetadataStatus = "failed"
-	ConfigDumpResponseApisMetadataStatusPending  ConfigDumpResponseApisMetadataStatus = "pending"
+	ConfigDumpAPIMetadataStatusDeployed ConfigDumpAPIMetadataStatus = "deployed"
+	ConfigDumpAPIMetadataStatusFailed   ConfigDumpAPIMetadataStatus = "failed"
+	ConfigDumpAPIMetadataStatusPending  ConfigDumpAPIMetadataStatus = "pending"
 )
 
 // Defines values for ExtractionIdentifierLocation.
@@ -92,7 +92,7 @@ const (
 
 // Defines values for LLMProviderConfigurationKind.
 const (
-	Llmprovider LLMProviderConfigurationKind = "llm/provider"
+	LlmProvider LLMProviderConfigurationKind = "LlmProvider"
 )
 
 // Defines values for LLMProviderConfigurationVersion.
@@ -116,7 +116,7 @@ const (
 
 // Defines values for LLMProviderTemplateKind.
 const (
-	LlmproviderTemplate LLMProviderTemplateKind = "llm/provider-template"
+	LlmProviderTemplate LLMProviderTemplateKind = "LlmProviderTemplate"
 )
 
 // Defines values for LLMProviderTemplateVersion.
@@ -143,9 +143,9 @@ const (
 
 // Defines values for MCPProxyListItemStatus.
 const (
-	Deployed MCPProxyListItemStatus = "deployed"
-	Failed   MCPProxyListItemStatus = "failed"
-	Pending  MCPProxyListItemStatus = "pending"
+	MCPProxyListItemStatusDeployed MCPProxyListItemStatus = "deployed"
+	MCPProxyListItemStatusFailed   MCPProxyListItemStatus = "failed"
+	MCPProxyListItemStatusPending  MCPProxyListItemStatus = "pending"
 )
 
 // Defines values for OperationMethod.
@@ -183,13 +183,34 @@ const (
 	UpstreamAuthAuthTypeBearer UpstreamAuthAuthType = "bearer"
 )
 
+// Defines values for ListAPIsParamsStatus.
+const (
+	ListAPIsParamsStatusDeployed ListAPIsParamsStatus = "deployed"
+	ListAPIsParamsStatusFailed   ListAPIsParamsStatus = "failed"
+	ListAPIsParamsStatusPending  ListAPIsParamsStatus = "pending"
+)
+
+// Defines values for ListLLMProvidersParamsStatus.
+const (
+	ListLLMProvidersParamsStatusDeployed ListLLMProvidersParamsStatus = "deployed"
+	ListLLMProvidersParamsStatusFailed   ListLLMProvidersParamsStatus = "failed"
+	ListLLMProvidersParamsStatusPending  ListLLMProvidersParamsStatus = "pending"
+)
+
+// Defines values for ListMCPProxiesParamsStatus.
+const (
+	ListMCPProxiesParamsStatusDeployed ListMCPProxiesParamsStatus = "deployed"
+	ListMCPProxiesParamsStatusFailed   ListMCPProxiesParamsStatus = "failed"
+	ListMCPProxiesParamsStatusPending  ListMCPProxiesParamsStatus = "pending"
+)
+
 // APIConfigData defines model for APIConfigData.
 type APIConfigData struct {
 	// Context Base path for all API routes (must start with /, no trailing slash)
 	Context string `json:"context" yaml:"context"`
 
-	// Name Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
-	Name string `json:"name" yaml:"name"`
+	// DisplayName Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+	DisplayName string `json:"displayName" yaml:"displayName"`
 
 	// Operations List of HTTP operations/routes
 	Operations []Operation `json:"operations" yaml:"operations"`
@@ -221,15 +242,19 @@ type APIConfigData struct {
 
 // APIConfiguration defines model for APIConfiguration.
 type APIConfiguration struct {
+	// ApiVersion API specification version
+	ApiVersion APIConfigurationApiVersion `json:"apiVersion" yaml:"apiVersion"`
+
 	// Kind API type
-	Kind APIConfigurationKind `json:"kind" yaml:"kind"`
+	Kind     APIConfigurationKind `json:"kind" yaml:"kind"`
+	Metadata Metadata             `json:"metadata" yaml:"metadata"`
 
 	// Spec API configuration payload (REST or Async API variants)
 	Spec APIConfiguration_Spec `json:"spec" yaml:"spec"`
-
-	// Version API specification version
-	Version APIConfigurationVersion `json:"version" yaml:"version"`
 }
+
+// APIConfigurationApiVersion API specification version
+type APIConfigurationApiVersion string
 
 // APIConfigurationKind API type
 type APIConfigurationKind string
@@ -239,25 +264,24 @@ type APIConfiguration_Spec struct {
 	union json.RawMessage
 }
 
-// APIConfigurationVersion API specification version
-type APIConfigurationVersion string
-
 // APICreateResponse defines model for APICreateResponse.
 type APICreateResponse struct {
 	CreatedAt *time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 
-	// Id Unique identifier for the created API configuration
-	Id      *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Message *string             `json:"message,omitempty" yaml:"message,omitempty"`
-	Status  *string             `json:"status,omitempty" yaml:"status,omitempty"`
+	// Id Unique id for the created API configuration
+	Id      *string `json:"id,omitempty" yaml:"id,omitempty"`
+	Message *string `json:"message,omitempty" yaml:"message,omitempty"`
+	Status  *string `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // APIDetailResponse defines model for APIDetailResponse.
 type APIDetailResponse struct {
 	Api *struct {
-		Configuration *APIConfiguration   `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-		Id            *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-		Metadata      *struct {
+		Configuration *APIConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+
+		// Id Unique id for the API configuration
+		Id       *string `json:"id,omitempty" yaml:"id,omitempty"`
+		Metadata *struct {
 			CreatedAt  *time.Time                          `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 			DeployedAt *time.Time                          `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
 			Status     *APIDetailResponseApiMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
@@ -272,13 +296,13 @@ type APIDetailResponseApiMetadataStatus string
 
 // APIListItem defines model for APIListItem.
 type APIListItem struct {
-	Context   *string             `json:"context,omitempty" yaml:"context,omitempty"`
-	CreatedAt *time.Time          `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Name      *string             `json:"name,omitempty" yaml:"name,omitempty"`
-	Status    *APIListItemStatus  `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time          `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
-	Version   *string             `json:"version,omitempty" yaml:"version,omitempty"`
+	Context   *string            `json:"context,omitempty" yaml:"context,omitempty"`
+	CreatedAt *time.Time         `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	Id        *string            `json:"id,omitempty" yaml:"id,omitempty"`
+	Name      *string            `json:"name,omitempty" yaml:"name,omitempty"`
+	Status    *APIListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time         `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	Version   *string            `json:"version,omitempty" yaml:"version,omitempty"`
 }
 
 // APIListItemStatus defines model for APIListItem.Status.
@@ -286,10 +310,10 @@ type APIListItemStatus string
 
 // APIUpdateResponse defines model for APIUpdateResponse.
 type APIUpdateResponse struct {
-	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string             `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string             `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time          `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
 }
 
 // CertificateListResponse defines model for CertificateListResponse.
@@ -393,19 +417,30 @@ type ChannelMessage struct {
 	Summary *string `json:"summary,omitempty" yaml:"summary,omitempty"`
 }
 
+// ConfigDumpAPIItem API item in config dump response
+type ConfigDumpAPIItem struct {
+	Configuration *APIConfiguration   `json:"configuration,omitempty" yaml:"configuration,omitempty"`
+	Id            *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Metadata Metadata for API in config dump
+	Metadata *ConfigDumpAPIMetadata `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+}
+
+// ConfigDumpAPIMetadata Metadata for API in config dump
+type ConfigDumpAPIMetadata struct {
+	CreatedAt  *time.Time                   `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	DeployedAt *time.Time                   `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
+	Status     *ConfigDumpAPIMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt  *time.Time                   `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+}
+
+// ConfigDumpAPIMetadataStatus defines model for ConfigDumpAPIMetadata.Status.
+type ConfigDumpAPIMetadataStatus string
+
 // ConfigDumpResponse defines model for ConfigDumpResponse.
 type ConfigDumpResponse struct {
 	// Apis All deployed API configurations
-	Apis *[]struct {
-		Configuration *APIConfiguration   `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-		Id            *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-		Metadata      *struct {
-			CreatedAt  *time.Time                            `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-			DeployedAt *time.Time                            `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
-			Status     *ConfigDumpResponseApisMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
-			UpdatedAt  *time.Time                            `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
-		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	} `json:"apis,omitempty" yaml:"apis,omitempty"`
+	Apis *[]ConfigDumpAPIItem `json:"apis,omitempty" yaml:"apis,omitempty"`
 
 	// Certificates All registered certificates
 	Certificates *[]CertificateResponse `json:"certificates,omitempty" yaml:"certificates,omitempty"`
@@ -432,9 +467,6 @@ type ConfigDumpResponse struct {
 	// Timestamp Timestamp when the config dump was generated
 	Timestamp *time.Time `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
 }
-
-// ConfigDumpResponseApisMetadataStatus defines model for ConfigDumpResponse.Apis.Metadata.Status.
-type ConfigDumpResponseApisMetadataStatus string
 
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
@@ -496,8 +528,8 @@ type LLMProviderConfigData struct {
 	// Context Base path for all API routes (must start with /, no trailing slash)
 	Context *string `json:"context,omitempty" yaml:"context,omitempty"`
 
-	// Name Human-readable LLM Provider name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
-	Name string `json:"name" yaml:"name"`
+	// DisplayName Human-readable LLM Provider name
+	DisplayName string `json:"displayName" yaml:"displayName"`
 
 	// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
 	Policies *[]LLMPolicy `json:"policies,omitempty" yaml:"policies,omitempty"`
@@ -541,8 +573,9 @@ type LLMProviderConfigData_Upstream struct {
 // LLMProviderConfiguration defines model for LLMProviderConfiguration.
 type LLMProviderConfiguration struct {
 	// Kind Provider kind
-	Kind LLMProviderConfigurationKind `json:"kind" yaml:"kind"`
-	Spec LLMProviderConfigData        `json:"spec" yaml:"spec"`
+	Kind     LLMProviderConfigurationKind `json:"kind" yaml:"kind"`
+	Metadata Metadata                     `json:"metadata" yaml:"metadata"`
+	Spec     LLMProviderConfigData        `json:"spec" yaml:"spec"`
 
 	// Version Provider specification version
 	Version LLMProviderConfigurationVersion `json:"version" yaml:"version"`
@@ -556,10 +589,10 @@ type LLMProviderConfigurationVersion string
 
 // LLMProviderCreateResponse defines model for LLMProviderCreateResponse.
 type LLMProviderCreateResponse struct {
-	CreatedAt *time.Time          `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string             `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string             `json:"status,omitempty" yaml:"status,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // LLMProviderDetailResponse defines model for LLMProviderDetailResponse.
@@ -567,7 +600,7 @@ type LLMProviderDetailResponse struct {
 	Provider *struct {
 		Configuration    *LLMProviderConfiguration                          `json:"configuration,omitempty" yaml:"configuration,omitempty"`
 		DeploymentStatus *LLMProviderDetailResponseProviderDeploymentStatus `json:"deployment_status,omitempty" yaml:"deployment_status,omitempty"`
-		Id               *openapi_types.UUID                                `json:"id,omitempty" yaml:"id,omitempty"`
+		Id               *string                                            `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata         *struct {
 			CreatedAt  *time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 			DeployedAt *time.Time `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
@@ -583,7 +616,7 @@ type LLMProviderDetailResponseProviderDeploymentStatus string
 // LLMProviderListItem defines model for LLMProviderListItem.
 type LLMProviderListItem struct {
 	CreatedAt *time.Time                 `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-	Id        *openapi_types.UUID        `json:"id,omitempty" yaml:"id,omitempty"`
+	Id        *string                    `json:"id,omitempty" yaml:"id,omitempty"`
 	Name      *string                    `json:"name,omitempty" yaml:"name,omitempty"`
 	Status    *LLMProviderListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
 	Template  *string                    `json:"template,omitempty" yaml:"template,omitempty"`
@@ -597,8 +630,9 @@ type LLMProviderListItemStatus string
 // LLMProviderTemplate defines model for LLMProviderTemplate.
 type LLMProviderTemplate struct {
 	// Kind Template kind
-	Kind LLMProviderTemplateKind `json:"kind" yaml:"kind"`
-	Spec LLMProviderTemplateData `json:"spec" yaml:"spec"`
+	Kind     LLMProviderTemplateKind `json:"kind" yaml:"kind"`
+	Metadata Metadata                `json:"metadata" yaml:"metadata"`
+	Spec     LLMProviderTemplateData `json:"spec" yaml:"spec"`
 
 	// Version Template specification version
 	Version LLMProviderTemplateVersion `json:"version" yaml:"version"`
@@ -612,21 +646,23 @@ type LLMProviderTemplateVersion string
 
 // LLMProviderTemplateCreateResponse defines model for LLMProviderTemplateCreateResponse.
 type LLMProviderTemplateCreateResponse struct {
-	CreatedAt *time.Time          `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string             `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string             `json:"status,omitempty" yaml:"status,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 // LLMProviderTemplateData defines model for LLMProviderTemplateData.
 type LLMProviderTemplateData struct {
 	CompletionTokens *ExtractionIdentifier `json:"completionTokens,omitempty" yaml:"completionTokens,omitempty"`
 
-	// Name Unique name for the provider template
-	Name         string                `json:"name" yaml:"name"`
-	PromptTokens *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
-	RequestModel *ExtractionIdentifier `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
-	TotalTokens  *ExtractionIdentifier `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
+	// DisplayName Human-readable LLM Template name
+	DisplayName     string                `json:"displayName" yaml:"displayName"`
+	PromptTokens    *ExtractionIdentifier `json:"promptTokens,omitempty" yaml:"promptTokens,omitempty"`
+	RemainingTokens *ExtractionIdentifier `json:"remainingTokens,omitempty" yaml:"remainingTokens,omitempty"`
+	RequestModel    *ExtractionIdentifier `json:"requestModel,omitempty" yaml:"requestModel,omitempty"`
+	ResponseModel   *ExtractionIdentifier `json:"responseModel,omitempty" yaml:"responseModel,omitempty"`
+	TotalTokens     *ExtractionIdentifier `json:"totalTokens,omitempty" yaml:"totalTokens,omitempty"`
 }
 
 // LLMProviderTemplateDetailResponse defines model for LLMProviderTemplateDetailResponse.
@@ -634,7 +670,7 @@ type LLMProviderTemplateDetailResponse struct {
 	Status   *string `json:"status,omitempty" yaml:"status,omitempty"`
 	Template *struct {
 		Configuration *LLMProviderTemplate `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-		Id            *openapi_types.UUID  `json:"id,omitempty" yaml:"id,omitempty"`
+		Id            *string              `json:"id,omitempty" yaml:"id,omitempty"`
 		Metadata      *struct {
 			CreatedAt *time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 			UpdatedAt *time.Time `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
@@ -644,34 +680,36 @@ type LLMProviderTemplateDetailResponse struct {
 
 // LLMProviderTemplateListItem defines model for LLMProviderTemplateListItem.
 type LLMProviderTemplateListItem struct {
-	CreatedAt *time.Time          `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Name      *string             `json:"name,omitempty" yaml:"name,omitempty"`
-	UpdatedAt *time.Time          `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Name      *string    `json:"name,omitempty" yaml:"name,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
 }
 
 // LLMProviderTemplateUpdateResponse defines model for LLMProviderTemplateUpdateResponse.
 type LLMProviderTemplateUpdateResponse struct {
-	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string             `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string             `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time          `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
 }
 
 // LLMProviderUpdateResponse defines model for LLMProviderUpdateResponse.
 type LLMProviderUpdateResponse struct {
-	Id        *openapi_types.UUID `json:"id,omitempty" yaml:"id,omitempty"`
-	Message   *string             `json:"message,omitempty" yaml:"message,omitempty"`
-	Status    *string             `json:"status,omitempty" yaml:"status,omitempty"`
-	UpdatedAt *time.Time          `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
+	Id        *string    `json:"id,omitempty" yaml:"id,omitempty"`
+	Message   *string    `json:"message,omitempty" yaml:"message,omitempty"`
+	Status    *string    `json:"status,omitempty" yaml:"status,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
 }
 
 // MCPDetailResponse defines model for MCPDetailResponse.
 type MCPDetailResponse struct {
 	Mcp *struct {
 		Configuration *MCPProxyConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-		Id            *openapi_types.UUID    `json:"id,omitempty" yaml:"id,omitempty"`
-		Metadata      *struct {
+
+		// Id Unique id for the MCP configuration
+		Id       *string `json:"id,omitempty" yaml:"id,omitempty"`
+		Metadata *struct {
 			CreatedAt  *time.Time                          `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 			DeployedAt *time.Time                          `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
 			Status     *MCPDetailResponseMcpMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
@@ -735,8 +773,9 @@ type MCPProxyConfigData struct {
 // MCPProxyConfiguration defines model for MCPProxyConfiguration.
 type MCPProxyConfiguration struct {
 	// Kind MCP Proxy type
-	Kind MCPProxyConfigurationKind `json:"kind" yaml:"kind"`
-	Spec MCPProxyConfigData        `json:"spec" yaml:"spec"`
+	Kind     MCPProxyConfigurationKind `json:"kind" yaml:"kind"`
+	Metadata *Metadata                 `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Spec     MCPProxyConfigData        `json:"spec" yaml:"spec"`
 
 	// Version MCP Proxy specification version
 	Version MCPProxyConfigurationVersion `json:"version" yaml:"version"`
@@ -752,7 +791,7 @@ type MCPProxyConfigurationVersion string
 type MCPProxyListItem struct {
 	Context     *string                 `json:"context,omitempty" yaml:"context,omitempty"`
 	CreatedAt   *time.Time              `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-	Id          *openapi_types.UUID     `json:"id,omitempty" yaml:"id,omitempty"`
+	Id          *string                 `json:"id,omitempty" yaml:"id,omitempty"`
 	Name        *string                 `json:"name,omitempty" yaml:"name,omitempty"`
 	SpecVersion *string                 `json:"specVersion,omitempty" yaml:"specVersion,omitempty"`
 	Status      *MCPProxyListItemStatus `json:"status,omitempty" yaml:"status,omitempty"`
@@ -806,6 +845,12 @@ type MCPTool struct {
 type MCPUpstream struct {
 	// Url Backend service URL (may include path prefix like /api/v2)
 	Url string `json:"url" yaml:"url"`
+}
+
+// Metadata defines model for Metadata.
+type Metadata struct {
+	// Name Unique handle for the resource
+	Name string `json:"name" yaml:"name"`
 }
 
 // Operation defines model for Operation.
@@ -968,6 +1013,69 @@ type WebhookAPIData struct {
 	// Version Semantic version of the API
 	Version string `json:"version" yaml:"version"`
 }
+
+// ListAPIsParams defines parameters for ListAPIs.
+type ListAPIsParams struct {
+	// Name Filter by API name
+	Name *string `form:"name,omitempty" json:"name,omitempty" yaml:"name,omitempty"`
+
+	// Version Filter by API version
+	Version *string `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
+
+	// Context Filter by API context/path
+	Context *string `form:"context,omitempty" json:"context,omitempty" yaml:"context,omitempty"`
+
+	// Status Filter by deployment status
+	Status *ListAPIsParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// ListAPIsParamsStatus defines parameters for ListAPIs.
+type ListAPIsParamsStatus string
+
+// ListLLMProviderTemplatesParams defines parameters for ListLLMProviderTemplates.
+type ListLLMProviderTemplatesParams struct {
+	// Name Filter by template name
+	Name *string `form:"name,omitempty" json:"name,omitempty" yaml:"name,omitempty"`
+}
+
+// ListLLMProvidersParams defines parameters for ListLLMProviders.
+type ListLLMProvidersParams struct {
+	// Name Filter by LLM provider name
+	Name *string `form:"name,omitempty" json:"name,omitempty" yaml:"name,omitempty"`
+
+	// Version Filter by LLM provider version
+	Version *string `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
+
+	// Context Filter by LLM provider context/path
+	Context *string `form:"context,omitempty" json:"context,omitempty" yaml:"context,omitempty"`
+
+	// Status Filter by deployment status
+	Status *ListLLMProvidersParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+
+	// Vhost Filter by LLM provider vhost
+	Vhost *string `form:"vhost,omitempty" json:"vhost,omitempty" yaml:"vhost,omitempty"`
+}
+
+// ListLLMProvidersParamsStatus defines parameters for ListLLMProviders.
+type ListLLMProvidersParamsStatus string
+
+// ListMCPProxiesParams defines parameters for ListMCPProxies.
+type ListMCPProxiesParams struct {
+	// Name Filter by MCP proxy name
+	Name *string `form:"name,omitempty" json:"name,omitempty" yaml:"name,omitempty"`
+
+	// Version Filter by MCP proxy version
+	Version *string `form:"version,omitempty" json:"version,omitempty" yaml:"version,omitempty"`
+
+	// Context Filter by MCP proxy context/path
+	Context *string `form:"context,omitempty" json:"context,omitempty" yaml:"context,omitempty"`
+
+	// Status Filter by deployment status
+	Status *ListMCPProxiesParamsStatus `form:"status,omitempty" json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+// ListMCPProxiesParamsStatus defines parameters for ListMCPProxies.
+type ListMCPProxiesParamsStatus string
 
 // CreateAPIJSONRequestBody defines body for CreateAPI for application/json ContentType.
 type CreateAPIJSONRequestBody = APIConfiguration
@@ -1296,19 +1404,19 @@ func (t *Upstream) UnmarshalJSON(b []byte) error {
 type ServerInterface interface {
 	// List all API configurations
 	// (GET /apis)
-	ListAPIs(c *gin.Context)
+	ListAPIs(c *gin.Context, params ListAPIsParams)
 	// Create a new API configuration
 	// (POST /apis)
 	CreateAPI(c *gin.Context)
 	// Delete an API configuration
-	// (DELETE /apis/{name}/{version})
-	DeleteAPI(c *gin.Context, name string, version string)
-	// Get API configuration by name and version
-	// (GET /apis/{name}/{version})
-	GetAPIByNameVersion(c *gin.Context, name string, version string)
+	// (DELETE /apis/{id})
+	DeleteAPI(c *gin.Context, id string)
+	// Get API configuration by id
+	// (GET /apis/{id})
+	GetAPIById(c *gin.Context, id string)
 	// Update an existing API configuration
-	// (PUT /apis/{name}/{version})
-	UpdateAPI(c *gin.Context, name string, version string)
+	// (PUT /apis/{id})
+	UpdateAPI(c *gin.Context, id string)
 	// List all custom certificates
 	// (GET /certificates)
 	ListCertificates(c *gin.Context)
@@ -1329,49 +1437,49 @@ type ServerInterface interface {
 	HealthCheck(c *gin.Context)
 	// List all LLM provider templates
 	// (GET /llm-provider-templates)
-	ListLLMProviderTemplates(c *gin.Context)
+	ListLLMProviderTemplates(c *gin.Context, params ListLLMProviderTemplatesParams)
 	// Create a new LLM provider template
 	// (POST /llm-provider-templates)
 	CreateLLMProviderTemplate(c *gin.Context)
 	// Delete an LLM provider template
-	// (DELETE /llm-provider-templates/{name})
-	DeleteLLMProviderTemplate(c *gin.Context, name string)
-	// Get LLM provider template by name
-	// (GET /llm-provider-templates/{name})
-	GetLLMProviderTemplateByName(c *gin.Context, name string)
+	// (DELETE /llm-provider-templates/{id})
+	DeleteLLMProviderTemplate(c *gin.Context, id string)
+	// Get LLM provider template by id
+	// (GET /llm-provider-templates/{id})
+	GetLLMProviderTemplateById(c *gin.Context, id string)
 	// Update an existing LLM provider template
-	// (PUT /llm-provider-templates/{name})
-	UpdateLLMProviderTemplate(c *gin.Context, name string)
+	// (PUT /llm-provider-templates/{id})
+	UpdateLLMProviderTemplate(c *gin.Context, id string)
 	// List all LLM providers
 	// (GET /llm-providers)
-	ListLLMProviders(c *gin.Context)
+	ListLLMProviders(c *gin.Context, params ListLLMProvidersParams)
 	// Create a new LLM provider
 	// (POST /llm-providers)
 	CreateLLMProvider(c *gin.Context)
 	// Delete an LLM provider
-	// (DELETE /llm-providers/{name}/{version})
-	DeleteLLMProvider(c *gin.Context, name string, version string)
-	// Get LLM provider by name and version
-	// (GET /llm-providers/{name}/{version})
-	GetLLMProviderByNameVersion(c *gin.Context, name string, version string)
+	// (DELETE /llm-providers/{id})
+	DeleteLLMProvider(c *gin.Context, id string)
+	// Get LLM provider by identifier
+	// (GET /llm-providers/{id})
+	GetLLMProviderById(c *gin.Context, id string)
 	// Update an existing LLM provider
-	// (PUT /llm-providers/{name}/{version})
-	UpdateLLMProvider(c *gin.Context, name string, version string)
+	// (PUT /llm-providers/{id})
+	UpdateLLMProvider(c *gin.Context, id string)
 	// List all MCP Proxy configurations
 	// (GET /mcp-proxies)
-	ListMCPProxies(c *gin.Context)
+	ListMCPProxies(c *gin.Context, params ListMCPProxiesParams)
 	// Create a new MCP Proxy configuration
 	// (POST /mcp-proxies)
 	CreateMCPProxy(c *gin.Context)
 	// Delete an MCP Proxy configuration
-	// (DELETE /mcp-proxies/{name}/{version})
-	DeleteMCPProxy(c *gin.Context, name string, version string)
-	// Get MCP Proxy configuration by name and version
-	// (GET /mcp-proxies/{name}/{version})
-	GetMCPProxyByNameVersion(c *gin.Context, name string, version string)
+	// (DELETE /mcp-proxies/{id})
+	DeleteMCPProxy(c *gin.Context, id string)
+	// Get MCP Proxy configuration by id
+	// (GET /mcp-proxies/{id})
+	GetMCPProxyById(c *gin.Context, id string)
 	// Update an existing MCP Proxy configuration
-	// (PUT /mcp-proxies/{name}/{version})
-	UpdateMCPProxy(c *gin.Context, name string, version string)
+	// (PUT /mcp-proxies/{id})
+	UpdateMCPProxy(c *gin.Context, id string)
 	// List all registered policy definitions
 	// (GET /policies)
 	ListPolicies(c *gin.Context)
@@ -1389,6 +1497,43 @@ type MiddlewareFunc func(c *gin.Context)
 // ListAPIs operation middleware
 func (siw *ServerInterfaceWrapper) ListAPIs(c *gin.Context) {
 
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAPIsParams
+
+	// ------------- Optional query parameter "name" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "name", c.Request.URL.Query(), &params.Name)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "version", c.Request.URL.Query(), &params.Version)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "context" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "context", c.Request.URL.Query(), &params.Context)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter context: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", c.Request.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter status: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -1396,7 +1541,7 @@ func (siw *ServerInterfaceWrapper) ListAPIs(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListAPIs(c)
+	siw.Handler.ListAPIs(c, params)
 }
 
 // CreateAPI operation middleware
@@ -1417,21 +1562,12 @@ func (siw *ServerInterfaceWrapper) DeleteAPI(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "version" -------------
-	var version string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1442,29 +1578,20 @@ func (siw *ServerInterfaceWrapper) DeleteAPI(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.DeleteAPI(c, name, version)
+	siw.Handler.DeleteAPI(c, id)
 }
 
-// GetAPIByNameVersion operation middleware
-func (siw *ServerInterfaceWrapper) GetAPIByNameVersion(c *gin.Context) {
+// GetAPIById operation middleware
+func (siw *ServerInterfaceWrapper) GetAPIById(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "version" -------------
-	var version string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1475,7 +1602,7 @@ func (siw *ServerInterfaceWrapper) GetAPIByNameVersion(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetAPIByNameVersion(c, name, version)
+	siw.Handler.GetAPIById(c, id)
 }
 
 // UpdateAPI operation middleware
@@ -1483,21 +1610,12 @@ func (siw *ServerInterfaceWrapper) UpdateAPI(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "version" -------------
-	var version string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1508,7 +1626,7 @@ func (siw *ServerInterfaceWrapper) UpdateAPI(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.UpdateAPI(c, name, version)
+	siw.Handler.UpdateAPI(c, id)
 }
 
 // ListCertificates operation middleware
@@ -1603,6 +1721,19 @@ func (siw *ServerInterfaceWrapper) HealthCheck(c *gin.Context) {
 // ListLLMProviderTemplates operation middleware
 func (siw *ServerInterfaceWrapper) ListLLMProviderTemplates(c *gin.Context) {
 
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListLLMProviderTemplatesParams
+
+	// ------------- Optional query parameter "name" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "name", c.Request.URL.Query(), &params.Name)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -1610,7 +1741,7 @@ func (siw *ServerInterfaceWrapper) ListLLMProviderTemplates(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListLLMProviderTemplates(c)
+	siw.Handler.ListLLMProviderTemplates(c, params)
 }
 
 // CreateLLMProviderTemplate operation middleware
@@ -1631,12 +1762,12 @@ func (siw *ServerInterfaceWrapper) DeleteLLMProviderTemplate(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1647,20 +1778,20 @@ func (siw *ServerInterfaceWrapper) DeleteLLMProviderTemplate(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.DeleteLLMProviderTemplate(c, name)
+	siw.Handler.DeleteLLMProviderTemplate(c, id)
 }
 
-// GetLLMProviderTemplateByName operation middleware
-func (siw *ServerInterfaceWrapper) GetLLMProviderTemplateByName(c *gin.Context) {
+// GetLLMProviderTemplateById operation middleware
+func (siw *ServerInterfaceWrapper) GetLLMProviderTemplateById(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1671,7 +1802,7 @@ func (siw *ServerInterfaceWrapper) GetLLMProviderTemplateByName(c *gin.Context) 
 		}
 	}
 
-	siw.Handler.GetLLMProviderTemplateByName(c, name)
+	siw.Handler.GetLLMProviderTemplateById(c, id)
 }
 
 // UpdateLLMProviderTemplate operation middleware
@@ -1679,12 +1810,12 @@ func (siw *ServerInterfaceWrapper) UpdateLLMProviderTemplate(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1695,11 +1826,56 @@ func (siw *ServerInterfaceWrapper) UpdateLLMProviderTemplate(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.UpdateLLMProviderTemplate(c, name)
+	siw.Handler.UpdateLLMProviderTemplate(c, id)
 }
 
 // ListLLMProviders operation middleware
 func (siw *ServerInterfaceWrapper) ListLLMProviders(c *gin.Context) {
+
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListLLMProvidersParams
+
+	// ------------- Optional query parameter "name" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "name", c.Request.URL.Query(), &params.Name)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "version", c.Request.URL.Query(), &params.Version)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "context" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "context", c.Request.URL.Query(), &params.Context)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter context: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", c.Request.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter status: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "vhost" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "vhost", c.Request.URL.Query(), &params.Vhost)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter vhost: %w", err), http.StatusBadRequest)
+		return
+	}
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -1708,7 +1884,7 @@ func (siw *ServerInterfaceWrapper) ListLLMProviders(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListLLMProviders(c)
+	siw.Handler.ListLLMProviders(c, params)
 }
 
 // CreateLLMProvider operation middleware
@@ -1729,21 +1905,12 @@ func (siw *ServerInterfaceWrapper) DeleteLLMProvider(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "version" -------------
-	var version string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1754,29 +1921,20 @@ func (siw *ServerInterfaceWrapper) DeleteLLMProvider(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.DeleteLLMProvider(c, name, version)
+	siw.Handler.DeleteLLMProvider(c, id)
 }
 
-// GetLLMProviderByNameVersion operation middleware
-func (siw *ServerInterfaceWrapper) GetLLMProviderByNameVersion(c *gin.Context) {
+// GetLLMProviderById operation middleware
+func (siw *ServerInterfaceWrapper) GetLLMProviderById(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "version" -------------
-	var version string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1787,7 +1945,7 @@ func (siw *ServerInterfaceWrapper) GetLLMProviderByNameVersion(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetLLMProviderByNameVersion(c, name, version)
+	siw.Handler.GetLLMProviderById(c, id)
 }
 
 // UpdateLLMProvider operation middleware
@@ -1795,21 +1953,12 @@ func (siw *ServerInterfaceWrapper) UpdateLLMProvider(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "version" -------------
-	var version string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1820,12 +1969,49 @@ func (siw *ServerInterfaceWrapper) UpdateLLMProvider(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.UpdateLLMProvider(c, name, version)
+	siw.Handler.UpdateLLMProvider(c, id)
 }
 
 // ListMCPProxies operation middleware
 func (siw *ServerInterfaceWrapper) ListMCPProxies(c *gin.Context) {
 
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListMCPProxiesParams
+
+	// ------------- Optional query parameter "name" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "name", c.Request.URL.Query(), &params.Name)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "version" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "version", c.Request.URL.Query(), &params.Version)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "context" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "context", c.Request.URL.Query(), &params.Context)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter context: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", c.Request.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter status: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -1833,7 +2019,7 @@ func (siw *ServerInterfaceWrapper) ListMCPProxies(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListMCPProxies(c)
+	siw.Handler.ListMCPProxies(c, params)
 }
 
 // CreateMCPProxy operation middleware
@@ -1854,21 +2040,12 @@ func (siw *ServerInterfaceWrapper) DeleteMCPProxy(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "version" -------------
-	var version string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1879,29 +2056,20 @@ func (siw *ServerInterfaceWrapper) DeleteMCPProxy(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.DeleteMCPProxy(c, name, version)
+	siw.Handler.DeleteMCPProxy(c, id)
 }
 
-// GetMCPProxyByNameVersion operation middleware
-func (siw *ServerInterfaceWrapper) GetMCPProxyByNameVersion(c *gin.Context) {
+// GetMCPProxyById operation middleware
+func (siw *ServerInterfaceWrapper) GetMCPProxyById(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "version" -------------
-	var version string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1912,7 +2080,7 @@ func (siw *ServerInterfaceWrapper) GetMCPProxyByNameVersion(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetMCPProxyByNameVersion(c, name, version)
+	siw.Handler.GetMCPProxyById(c, id)
 }
 
 // UpdateMCPProxy operation middleware
@@ -1920,21 +2088,12 @@ func (siw *ServerInterfaceWrapper) UpdateMCPProxy(c *gin.Context) {
 
 	var err error
 
-	// ------------- Path parameter "name" -------------
-	var name string
+	// ------------- Path parameter "id" -------------
+	var id string
 
-	err = runtime.BindStyledParameterWithOptions("simple", "name", c.Param("name"), &name, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter name: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Path parameter "version" -------------
-	var version string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "version", c.Param("version"), &version, runtime.BindStyledParameterOptions{Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter version: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1945,7 +2104,7 @@ func (siw *ServerInterfaceWrapper) UpdateMCPProxy(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.UpdateMCPProxy(c, name, version)
+	siw.Handler.UpdateMCPProxy(c, id)
 }
 
 // ListPolicies operation middleware
@@ -1990,9 +2149,9 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 
 	router.GET(options.BaseURL+"/apis", wrapper.ListAPIs)
 	router.POST(options.BaseURL+"/apis", wrapper.CreateAPI)
-	router.DELETE(options.BaseURL+"/apis/:name/:version", wrapper.DeleteAPI)
-	router.GET(options.BaseURL+"/apis/:name/:version", wrapper.GetAPIByNameVersion)
-	router.PUT(options.BaseURL+"/apis/:name/:version", wrapper.UpdateAPI)
+	router.DELETE(options.BaseURL+"/apis/:id", wrapper.DeleteAPI)
+	router.GET(options.BaseURL+"/apis/:id", wrapper.GetAPIById)
+	router.PUT(options.BaseURL+"/apis/:id", wrapper.UpdateAPI)
 	router.GET(options.BaseURL+"/certificates", wrapper.ListCertificates)
 	router.POST(options.BaseURL+"/certificates", wrapper.UploadCertificate)
 	router.POST(options.BaseURL+"/certificates/reload", wrapper.ReloadCertificates)
@@ -2001,166 +2160,170 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/health", wrapper.HealthCheck)
 	router.GET(options.BaseURL+"/llm-provider-templates", wrapper.ListLLMProviderTemplates)
 	router.POST(options.BaseURL+"/llm-provider-templates", wrapper.CreateLLMProviderTemplate)
-	router.DELETE(options.BaseURL+"/llm-provider-templates/:name", wrapper.DeleteLLMProviderTemplate)
-	router.GET(options.BaseURL+"/llm-provider-templates/:name", wrapper.GetLLMProviderTemplateByName)
-	router.PUT(options.BaseURL+"/llm-provider-templates/:name", wrapper.UpdateLLMProviderTemplate)
+	router.DELETE(options.BaseURL+"/llm-provider-templates/:id", wrapper.DeleteLLMProviderTemplate)
+	router.GET(options.BaseURL+"/llm-provider-templates/:id", wrapper.GetLLMProviderTemplateById)
+	router.PUT(options.BaseURL+"/llm-provider-templates/:id", wrapper.UpdateLLMProviderTemplate)
 	router.GET(options.BaseURL+"/llm-providers", wrapper.ListLLMProviders)
 	router.POST(options.BaseURL+"/llm-providers", wrapper.CreateLLMProvider)
-	router.DELETE(options.BaseURL+"/llm-providers/:name/:version", wrapper.DeleteLLMProvider)
-	router.GET(options.BaseURL+"/llm-providers/:name/:version", wrapper.GetLLMProviderByNameVersion)
-	router.PUT(options.BaseURL+"/llm-providers/:name/:version", wrapper.UpdateLLMProvider)
+	router.DELETE(options.BaseURL+"/llm-providers/:id", wrapper.DeleteLLMProvider)
+	router.GET(options.BaseURL+"/llm-providers/:id", wrapper.GetLLMProviderById)
+	router.PUT(options.BaseURL+"/llm-providers/:id", wrapper.UpdateLLMProvider)
 	router.GET(options.BaseURL+"/mcp-proxies", wrapper.ListMCPProxies)
 	router.POST(options.BaseURL+"/mcp-proxies", wrapper.CreateMCPProxy)
-	router.DELETE(options.BaseURL+"/mcp-proxies/:name/:version", wrapper.DeleteMCPProxy)
-	router.GET(options.BaseURL+"/mcp-proxies/:name/:version", wrapper.GetMCPProxyByNameVersion)
-	router.PUT(options.BaseURL+"/mcp-proxies/:name/:version", wrapper.UpdateMCPProxy)
+	router.DELETE(options.BaseURL+"/mcp-proxies/:id", wrapper.DeleteMCPProxy)
+	router.GET(options.BaseURL+"/mcp-proxies/:id", wrapper.GetMCPProxyById)
+	router.PUT(options.BaseURL+"/mcp-proxies/:id", wrapper.UpdateMCPProxy)
 	router.GET(options.BaseURL+"/policies", wrapper.ListPolicies)
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"zlVRLunu8u5/AgAA//9te8P6POsAAA==",
+	"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",
+	"rQpKGw5I56qovnV/df8/AQAA//9aZ6E03esAAA==",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

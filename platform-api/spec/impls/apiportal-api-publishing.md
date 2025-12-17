@@ -31,7 +31,7 @@ Environment variables in `config/config.go`:
 
 **Request**:
 ```bash
-curl --location --request POST 'https://localhost:8443/api/v1/apis/1f01c9b2-440b-4cfe-bf48-f8f168062df4/api-portals/publish' \
+curl --location --request POST 'https://localhost:9243/api/v1/apis/1f01c9b2-440b-4cfe-bf48-f8f168062df4/api-portals/publish' \
 --header 'Authorization: Bearer <token>'
 ```
 
@@ -60,7 +60,7 @@ curl --location --request POST 'https://localhost:8443/api/v1/apis/1f01c9b2-440b
 
 **Request**:
 ```bash
-curl --location --request POST 'https://localhost:8443/api/v1/apis/1f01c9b2-440b-4cfe-bf48-f8f168062df4/api-portals/unpublish' \
+curl --location --request POST 'https://localhost:9243/api/v1/apis/1f01c9b2-440b-4cfe-bf48-f8f168062df4/api-portals/unpublish' \
 --header 'Authorization: Bearer <token>' 
 ```
 

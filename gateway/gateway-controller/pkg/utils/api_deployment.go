@@ -95,13 +95,13 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	var apiVersion string
 
 	switch apiConfig.Kind {
-	case api.Httprest:
+	case api.RestApi:
 		apiData, err := apiConfig.Spec.AsAPIConfigData()
 		fmt.Println("APIData: ", apiData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse REST API data: %w", err)
 		}
-		apiName = apiData.Name
+		apiName = apiData.DisplayName
 		apiVersion = apiData.Version
 	case api.Asyncwebsub:
 		webhookData, err := apiConfig.Spec.AsWebhookAPIData()
@@ -133,6 +133,22 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	apiID := params.APIID
 	if apiID == "" {
 		apiID = generateUUID()
+	}
+
+	handle := apiConfig.Metadata.Name
+	
+
+	if s.store != nil {
+		if _, err := s.store.GetByNameVersion(apiName, apiVersion); err == nil {
+			return nil, fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", storage.ErrConflict, apiName, apiVersion)
+		}
+		if handle != "" {
+			for _, c := range s.store.GetAll() {
+				if c.GetHandle() == handle {
+					return nil, fmt.Errorf("%w: configuration with handle '%s' already exists", storage.ErrConflict, handle)
+				}
+			}
+		}
 	}
 
 	// Create stored configuration

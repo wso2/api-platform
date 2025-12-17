@@ -26,6 +26,8 @@ import (
 
 	"platform-api/src/internal/database"
 	"platform-api/src/internal/model"
+
+	"github.com/google/uuid"
 )
 
 // APIRepo implements APIRepository
@@ -50,6 +52,8 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 	}
 	defer tx.Rollback()
 
+	// Always generate a new UUID for the API
+	api.ID = uuid.New().String()
 	api.CreatedAt = time.Now()
 	api.UpdatedAt = time.Now()
 
@@ -58,15 +62,15 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 
 	// Insert main API record
 	apiQuery := `
-		INSERT INTO apis (uuid, name, display_name, description, context, version, provider, 
-			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision, 
+		INSERT INTO apis (uuid, handle, name, description, context, version, provider,
+			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	securityEnabled := api.Security != nil && api.Security.Enabled
 
-	_, err = tx.Exec(apiQuery, api.ID, api.Name, api.DisplayName, api.Description,
+	_, err = tx.Exec(apiQuery, api.ID, api.Handle, api.Name, api.Description,
 		api.Context, api.Version, api.Provider, api.ProjectID, api.OrganizationID, api.LifeCycleStatus,
 		api.HasThumbnail, api.IsDefaultVersion, api.IsRevision, api.RevisionedAPIID,
 		api.RevisionID, api.Type, string(transportJSON), securityEnabled, api.CreatedAt, api.UpdatedAt)
@@ -112,21 +116,21 @@ func (r *APIRepo) CreateAPI(api *model.API) error {
 	return tx.Commit()
 }
 
-// GetAPIByUUID retrieves an API by ID with all its configurations
-func (r *APIRepo) GetAPIByUUID(apiId string) (*model.API, error) {
+// GetAPIByUUID retrieves an API by UUID with all its configurations
+func (r *APIRepo) GetAPIByUUID(apiUUID, orgUUID string) (*model.API, error) {
 	api := &model.API{}
 
 	query := `
-		SELECT uuid, name, display_name, description, context, version, provider,
+		SELECT uuid, handle, name, description, context, version, provider,
 			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
-		FROM apis WHERE uuid = ?
+		FROM apis WHERE uuid = ? and organization_uuid = ?
 	`
 
 	var transportJSON string
 	var securityEnabled bool
-	err := r.db.QueryRow(query, apiId).Scan(
-		&api.ID, &api.Name, &api.DisplayName, &api.Description, &api.Context,
+	err := r.db.QueryRow(query, apiUUID, orgUUID).Scan(
+		&api.ID, &api.Handle, &api.Name, &api.Description, &api.Context,
 		&api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID, &api.LifeCycleStatus,
 		&api.HasThumbnail, &api.IsDefaultVersion, &api.IsRevision,
 		&api.RevisionedAPIID, &api.RevisionID, &api.Type, &transportJSON,
@@ -152,16 +156,35 @@ func (r *APIRepo) GetAPIByUUID(apiId string) (*model.API, error) {
 	return api, nil
 }
 
-// GetAPIsByProjectID retrieves all APIs for a project
-func (r *APIRepo) GetAPIsByProjectID(projectID string) ([]*model.API, error) {
+// GetAPIMetadataByHandle retrieves minimal API information by handle and organization ID
+func (r *APIRepo) GetAPIMetadataByHandle(handle, orgUUID string) (*model.APIMetadata, error) {
+	metadata := &model.APIMetadata{}
+
+	query := `SELECT uuid, handle, name, context, organization_uuid FROM apis WHERE handle = ? AND organization_uuid = ?`
+
+	err := r.db.QueryRow(query, handle, orgUUID).Scan(
+		&metadata.ID, &metadata.Handle, &metadata.Name, &metadata.Context, &metadata.OrganizationID)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return metadata, nil
+}
+
+// GetAPIsByProjectUUID retrieves all APIs for a project
+func (r *APIRepo) GetAPIsByProjectUUID(projectUUID, orgUUID string) ([]*model.API, error) {
 	query := `
-		SELECT uuid, name, display_name, description, context, version, provider,
+		SELECT uuid, handle, name, description, context, version, provider,
 			project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 			revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
-		FROM apis WHERE project_uuid = ? ORDER BY created_at DESC
+		FROM apis WHERE project_uuid = ? AND organization_uuid = ? ORDER BY created_at DESC
 	`
 
-	rows, err := r.db.Query(query, projectID)
+	rows, err := r.db.Query(query, projectUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +196,7 @@ func (r *APIRepo) GetAPIsByProjectID(projectID string) ([]*model.API, error) {
 		var transportJSON string
 		var securityEnabled bool
 
-		err := rows.Scan(&api.ID, &api.Name, &api.DisplayName, &api.Description,
+		err := rows.Scan(&api.ID, &api.Handle, &api.Name, &api.Description,
 			&api.Context, &api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID,
 			&api.LifeCycleStatus, &api.HasThumbnail, &api.IsDefaultVersion,
 			&api.IsRevision, &api.RevisionedAPIID, &api.RevisionID, &api.Type,
@@ -198,33 +221,33 @@ func (r *APIRepo) GetAPIsByProjectID(projectID string) ([]*model.API, error) {
 	return apis, rows.Err()
 }
 
-// GetAPIsByOrganizationID retrieves all APIs for an organization with optional project filter
-func (r *APIRepo) GetAPIsByOrganizationID(orgID string, projectID *string) ([]*model.API, error) {
+// GetAPIsByOrganizationUUID retrieves all APIs for an organization with optional project filter
+func (r *APIRepo) GetAPIsByOrganizationUUID(orgUUID string, projectUUID *string) ([]*model.API, error) {
 	var query string
 	var args []interface{}
 
-	if projectID != nil && *projectID != "" {
+	if projectUUID != nil && *projectUUID != "" {
 		// Filter by specific project within the organization
 		query = `
-			SELECT uuid, name, display_name, description, context, version, provider,
+			SELECT uuid, handle, name, description, context, version, provider,
 				project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 				revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
 			FROM apis
 			WHERE organization_uuid = ? AND project_uuid = ?
 			ORDER BY created_at DESC
 		`
-		args = []interface{}{orgID, *projectID}
+		args = []interface{}{orgUUID, *projectUUID}
 	} else {
 		// Get all APIs for the organization
 		query = `
-			SELECT uuid, name, display_name, description, context, version, provider,
+			SELECT uuid, handle, name, description, context, version, provider,
 				project_uuid, organization_uuid, lifecycle_status, has_thumbnail, is_default_version, is_revision,
 				revisioned_api_id, revision_id, type, transport, security_enabled, created_at, updated_at
 			FROM apis
 			WHERE organization_uuid = ?
 			ORDER BY created_at DESC
 		`
-		args = []interface{}{orgID}
+		args = []interface{}{orgUUID}
 	}
 
 	rows, err := r.db.Query(query, args...)
@@ -239,7 +262,7 @@ func (r *APIRepo) GetAPIsByOrganizationID(orgID string, projectID *string) ([]*m
 		var transportJSON string
 		var securityEnabled bool
 
-		err := rows.Scan(&api.ID, &api.Name, &api.DisplayName, &api.Description,
+		err := rows.Scan(&api.ID, &api.Handle, &api.Name, &api.Description,
 			&api.Context, &api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID,
 			&api.LifeCycleStatus, &api.HasThumbnail, &api.IsDefaultVersion,
 			&api.IsRevision, &api.RevisionedAPIID, &api.RevisionID, &api.Type,
@@ -264,17 +287,18 @@ func (r *APIRepo) GetAPIsByOrganizationID(orgID string, projectID *string) ([]*m
 	return apis, rows.Err()
 }
 
-// GetAPIsByGatewayID retrieves all APIs deployed to a specific gateway
-func (r *APIRepo) GetAPIsByGatewayID(gatewayID, organizationID string) ([]*model.API, error) {
+// GetDeployedAPIsByGatewayUUID retrieves all APIs deployed to a specific gateway
+func (r *APIRepo) GetDeployedAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error) {
 	query := `
-		SELECT a.uuid, a.name, a.display_name, a.type, a.created_at, a.updated_at
+		SELECT a.uuid, a.name, a.description, a.context, a.version, a.provider,
+		       a.project_uuid, a.organization_uuid, a.type, a.created_at, a.updated_at
 		FROM apis a
 		INNER JOIN api_deployments ad ON a.uuid = ad.api_uuid
 		WHERE ad.gateway_uuid = ? AND a.organization_uuid = ?
 		ORDER BY a.created_at DESC
 	`
 
-	rows, err := r.db.Query(query, gatewayID, organizationID)
+	rows, err := r.db.Query(query, gatewayUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -283,11 +307,43 @@ func (r *APIRepo) GetAPIsByGatewayID(gatewayID, organizationID string) ([]*model
 	var apis []*model.API
 	for rows.Next() {
 		api := &model.API{}
-		err := rows.Scan(
-			&api.ID, &api.Name, &api.DisplayName, &api.Type, &api.CreatedAt, &api.UpdatedAt,
-		)
+		err := rows.Scan(&api.ID, &api.Name, &api.Description,
+			&api.Context, &api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID,
+			&api.Type, &api.CreatedAt, &api.UpdatedAt)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan API row: %w", err)
+		}
+		apis = append(apis, api)
+	}
+
+	return apis, nil
+}
+
+// GetAPIsByGatewayUUID retrieves all APIs associated with a specific gateway
+func (r *APIRepo) GetAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error) {
+	query := `
+		SELECT a.uuid, a.name, a.description, a.context, a.version, a.provider,
+			a.project_uuid, a.organization_uuid, a.type, a.created_at, a.updated_at
+		FROM apis a
+		INNER JOIN api_associations aa ON a.uuid = aa.api_uuid
+		WHERE aa.resource_uuid = ? AND aa.association_type = 'gateway' AND a.organization_uuid = ?
+		ORDER BY a.created_at DESC
+	`
+
+	rows, err := r.db.Query(query, gatewayUUID, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query APIs associated with gateway: %w", err)
+	}
+	defer rows.Close()
+
+	var apis []*model.API
+	for rows.Next() {
+		api := &model.API{}
+		err := rows.Scan(&api.ID, &api.Name, &api.Description,
+			&api.Context, &api.Version, &api.Provider, &api.ProjectID, &api.OrganizationID,
+			&api.Type, &api.CreatedAt, &api.UpdatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan API row: %w", err)
 		}
 		apis = append(apis, api)
 	}
@@ -311,13 +367,13 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 
 	// Update main API record
 	query := `
-		UPDATE apis SET display_name = ?, description = ?,
+		UPDATE apis SET description = ?,
 			provider = ?, lifecycle_status = ?, has_thumbnail = ?,
 			is_default_version = ?, is_revision = ?, revisioned_api_id = ?,
 			revision_id = ?, type = ?, transport = ?, security_enabled = ?, updated_at = ?
 		WHERE uuid = ?
 	`
-	_, err = tx.Exec(query, api.DisplayName, api.Description,
+	_, err = tx.Exec(query, api.Description,
 		api.Provider, api.LifeCycleStatus,
 		api.HasThumbnail, api.IsDefaultVersion, api.IsRevision,
 		api.RevisionedAPIID, api.RevisionID, api.Type, string(transportJSON),
@@ -367,7 +423,7 @@ func (r *APIRepo) UpdateAPI(api *model.API) error {
 }
 
 // DeleteAPI removes an API and all its configurations
-func (r *APIRepo) DeleteAPI(apiId string) error {
+func (r *APIRepo) DeleteAPI(apiUUID, orgUUID string) error {
 	// Start transaction for atomicity
 	tx, err := r.db.Begin()
 	if err != nil {
@@ -397,12 +453,28 @@ func (r *APIRepo) DeleteAPI(apiId string) error {
 
 	// Execute all delete statements
 	for _, query := range deleteQueries {
-		if _, err := tx.Exec(query, apiId); err != nil {
+		if _, err := tx.Exec(query, apiUUID); err != nil {
 			return err
 		}
 	}
 
 	return tx.Commit()
+}
+
+// CheckAPIExistsByHandleInOrganization checks if an API with the given handle exists within a specific organization
+func (r *APIRepo) CheckAPIExistsByHandleInOrganization(handle, orgUUID string) (bool, error) {
+	query := `
+		SELECT COUNT(*) FROM apis
+		WHERE handle = ? AND organization_uuid = ?
+	`
+
+	var count int
+	err := r.db.QueryRow(query, handle, orgUUID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
 }
 
 // Helper methods for loading configurations
@@ -921,15 +993,15 @@ func (r *APIRepo) CreateDeployment(deployment *model.APIDeployment) error {
 }
 
 // GetDeploymentsByAPIUUID retrieves all deployment records for an API
-func (r *APIRepo) GetDeploymentsByAPIUUID(apiId string) ([]*model.APIDeployment, error) {
+func (r *APIRepo) GetDeploymentsByAPIUUID(apiUUID, orgUUID string) ([]*model.APIDeployment, error) {
 	query := `
 		SELECT id, api_uuid, organization_uuid, gateway_uuid, created_at
 		FROM api_deployments
-		WHERE api_uuid = ?
+		WHERE api_uuid = ? AND organization_uuid = ?
 		ORDER BY created_at DESC
 	`
 
-	rows, err := r.db.Query(query, apiId)
+	rows, err := r.db.Query(query, apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -972,24 +1044,24 @@ func (r *APIRepo) CreateAPIAssociation(association *model.APIAssociation) error 
 }
 
 // UpdateAPIAssociation updates the updated_at timestamp for an existing API resource association
-func (r *APIRepo) UpdateAPIAssociation(apiId, resourceId, associationType, orgId string) error {
+func (r *APIRepo) UpdateAPIAssociation(apiUUID, resourceId, associationType, orgUUID string) error {
 	query := `
 		UPDATE api_associations 
 		SET updated_at = ?
 		WHERE api_uuid = ? AND resource_uuid = ? AND association_type = ? AND organization_uuid = ?
 	`
-	_, err := r.db.Exec(query, time.Now(), apiId, resourceId, associationType, orgId)
+	_, err := r.db.Exec(query, time.Now(), apiUUID, resourceId, associationType, orgUUID)
 	return err
 }
 
 // GetAPIAssociations retrieves all resource associations for an API of a specific type
-func (r *APIRepo) GetAPIAssociations(apiId, associationType, orgId string) ([]*model.APIAssociation, error) {
+func (r *APIRepo) GetAPIAssociations(apiUUID, associationType, orgUUID string) ([]*model.APIAssociation, error) {
 	query := `
 		SELECT id, api_uuid, organization_uuid, resource_uuid, association_type, created_at, updated_at
 		FROM api_associations
 		WHERE api_uuid = ? AND association_type = ? AND organization_uuid = ?
 	`
-	rows, err := r.db.Query(query, apiId, associationType, orgId)
+	rows, err := r.db.Query(query, apiUUID, associationType, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -1010,7 +1082,7 @@ func (r *APIRepo) GetAPIAssociations(apiId, associationType, orgId string) ([]*m
 }
 
 // GetAPIGatewaysWithDetails retrieves all gateways associated with an API including deployment details
-func (r *APIRepo) GetAPIGatewaysWithDetails(apiId, organizationId string) ([]*model.APIGatewayWithDetails, error) {
+func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error) {
 	query := `
 		SELECT 
 			g.uuid as id,
@@ -1035,7 +1107,7 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiId, organizationId string) ([]*mo
 		ORDER BY aa.created_at DESC
 	`
 
-	rows, err := r.db.Query(query, apiId, apiId, organizationId)
+	rows, err := r.db.Query(query, apiUUID, apiUUID, orgUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -1078,31 +1150,15 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiId, organizationId string) ([]*mo
 	return gateways, rows.Err()
 }
 
-// CheckAPIExistsByIdentifierInOrganization checks if an API with the given identifier exists within a specific organization
-func (r *APIRepo) CheckAPIExistsByIdentifierInOrganization(identifier, orgId string) (bool, error) {
-	query := `
-		SELECT COUNT(*) FROM apis 
-		WHERE name = ? AND organization_uuid = ?
-	`
-
-	var count int
-	err := r.db.QueryRow(query, identifier, orgId).Scan(&count)
-	if err != nil {
-		return false, err
-	}
-
-	return count > 0, nil
-}
-
 // CheckAPIExistsByNameAndVersionInOrganization checks if an API with the given name and version exists within a specific organization
-func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, orgId string) (bool, error) {
+func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, orgUUID string) (bool, error) {
 	query := `
 		SELECT COUNT(*) FROM apis 
-		WHERE display_name = ? AND version = ? AND organization_uuid = ?
+		WHERE name = ? AND version = ? AND organization_uuid = ?
 	`
 
 	var count int
-	err := r.db.QueryRow(query, name, version, orgId).Scan(&count)
+	err := r.db.QueryRow(query, name, version, orgUUID).Scan(&count)
 	if err != nil {
 		return false, err
 	}

@@ -20,6 +20,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
@@ -30,8 +31,8 @@ import (
 type LLMValidator struct {
 	// versionRegex matches semantic version patterns
 	versionRegex *regexp.Regexp
-	// urlFriendlyNameRegex matches URL-safe characters for API names
-	urlFriendlyNameRegex *regexp.Regexp
+	// metadataNameRegex matches URL-safe characters for Metadata.Name
+	metadataNameRegex *regexp.Regexp
 	// specRegex matches valid LLM specification versions
 	specRegex *regexp.Regexp
 }
@@ -39,17 +40,17 @@ type LLMValidator struct {
 // NewLLMValidator creates a new LLM configuration validator
 func NewLLMValidator() *LLMValidator {
 	return &LLMValidator{
-		versionRegex:         regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
-		urlFriendlyNameRegex: regexp.MustCompile(`^[a-zA-Z0-9._-]+$`),
-		specRegex:            regexp.MustCompile(`^ai\.api-platform\.wso2\.com/v?(\d+)(\.\d+)?(\.\d+)?$`),
+		versionRegex:      regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
+		metadataNameRegex: regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`),
+		specRegex:         regexp.MustCompile(`^ai\.api-platform\.wso2\.com/v?(\d+)(\.\d+)?(\.\d+)?$`),
 	}
 }
 
 // Validate performs comprehensive validation on a configuration
 // It uses type switching to handle different LLM configuration types:
-// - LLMProviderTemplate (for /llm-providers/templates)
+// - LLMProviderTemplate (for /llm-provider-templates)
 // - LLMProvider (for /llm-providers)
-// - LLMProxy (for /llm-proxies) - future implementation
+// - LLMProxy (for /llm-proxies)
 func (v *LLMValidator) Validate(config interface{}) []ValidationError {
 	// Type switch to handle different LLM configuration types
 	switch cfg := config.(type) {
@@ -78,6 +79,14 @@ func (v *LLMValidator) Validate(config interface{}) []ValidationError {
 func (v *LLMValidator) validateLLMProviderTemplate(template *api.LLMProviderTemplate) []ValidationError {
 	var errors []ValidationError
 
+	// Check if template is nil
+	if template == nil {
+		return []ValidationError{{
+			Field:   "template",
+			Message: "Template cannot be nil",
+		}}
+	}
+
 	// Validate version
 	if !v.specRegex.MatchString(string(template.Version)) {
 		errors = append(errors, ValidationError{
@@ -87,46 +96,86 @@ func (v *LLMValidator) validateLLMProviderTemplate(template *api.LLMProviderTemp
 	}
 
 	// Validate kind
-	if template.Kind != "llm/provider-template" {
+	if template.Kind != api.LlmProviderTemplate {
 		errors = append(errors, ValidationError{
 			Field:   "kind",
-			Message: "Kind must be 'llm/provider-template'",
+			Message: "Kind must be 'LlmProviderTemplate'",
 		})
 	}
 
-	// Validate data section
-	errors = append(errors, v.validateTemplateData(&template.Spec)...)
+	// Validate Metadata.Name
+	if template.Metadata.Name == "" {
+		errors = append(errors, ValidationError{
+			Field:   "metadata.name",
+			Message: "metadata.name is required",
+		})
+	} else if len(template.Metadata.Name) > 253 {
+		errors = append(errors, ValidationError{
+			Field:   "metadata.name",
+			Message: "metadata.name must not exceed 253 characters",
+		})
+	} else if !v.metadataNameRegex.MatchString(template.Metadata.Name) {
+		errors = append(errors, ValidationError{
+			Field:   "metadata.name",
+			Message: "metadata.name must consist of lowercase alphanumeric characters, hyphens, or dots, and must start and end with an alphanumeric character",
+		})
+	}
+
+	// Validate spec section
+	errors = append(errors, v.validateTemplateSpec(&template.Spec)...)
 
 	return errors
 }
 
-// validateTemplateData validates the data section of an LLM provider template
-func (v *LLMValidator) validateTemplateData(data *api.LLMProviderTemplateData) []ValidationError {
+// validateTemplateSpec validates the spec section of an LLM provider template
+func (v *LLMValidator) validateTemplateSpec(spec *api.LLMProviderTemplateData) []ValidationError {
 	var errors []ValidationError
 
-	// Validate name
-	if !v.urlFriendlyNameRegex.MatchString(data.Name) {
+	// Check if spec is nil
+	if spec == nil {
+		return []ValidationError{{
+			Field:   "spec",
+			Message: "Template spec cannot be nil",
+		}}
+	}
+
+	// Validate display name
+	if spec.DisplayName == "" {
 		errors = append(errors, ValidationError{
-			Field:   "spec.name",
-			Message: "Template name must contain only letters, numbers, hyphens, underscores, and dots",
+			Field:   "spec.displayName",
+			Message: "spec.displayName is required",
+		})
+	} else if len(spec.DisplayName) > 253 {
+		errors = append(errors, ValidationError{
+			Field:   "spec.displayName",
+			Message: "spec.displayName must not exceed 253 characters",
 		})
 	}
 
 	// Validate token identifiers if present
-	if data.PromptTokens != nil {
-		errors = append(errors, v.validateExtractionIdentifier("spec.promptTokens", data.PromptTokens)...)
+	if spec.PromptTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier("spec.promptTokens", spec.PromptTokens)...)
 	}
 
-	if data.CompletionTokens != nil {
-		errors = append(errors, v.validateExtractionIdentifier("spec.completionTokens", data.CompletionTokens)...)
+	if spec.CompletionTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier("spec.completionTokens", spec.CompletionTokens)...)
 	}
 
-	if data.TotalTokens != nil {
-		errors = append(errors, v.validateExtractionIdentifier("spec.totalTokens", data.TotalTokens)...)
+	if spec.TotalTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier("spec.totalTokens", spec.TotalTokens)...)
 	}
 
-	if data.RequestModel != nil {
-		errors = append(errors, v.validateExtractionIdentifier("spec.requestModel", data.RequestModel)...)
+	if spec.RequestModel != nil {
+		errors = append(errors, v.validateExtractionIdentifier("spec.requestModel", spec.RequestModel)...)
+	}
+
+	if spec.ResponseModel != nil {
+		errors = append(errors, v.validateExtractionIdentifier("spec.responseModel", spec.ResponseModel)...)
+	}
+
+	if spec.RemainingTokens != nil {
+		errors = append(errors, v.validateExtractionIdentifier("spec.remainingTokens",
+			spec.RemainingTokens)...)
 	}
 
 	return errors
@@ -138,10 +187,11 @@ func (v *LLMValidator) validateExtractionIdentifier(
 	identifier *api.ExtractionIdentifier) []ValidationError {
 	var errors []ValidationError
 
-	if identifier.Location != "payload" && identifier.Location != "header" {
+	// Only 'payload', 'header' and 'queryParam' locations are supported
+	if identifier.Location != "payload" && identifier.Location != "header" && identifier.Location != "queryParam" {
 		errors = append(errors, ValidationError{
 			Field:   fmt.Sprintf("%s.location", fieldPrefix),
-			Message: "Location must be either 'payload' or 'header'",
+			Message: "Location must be 'payload' or 'header' or 'queryParam'",
 		})
 	}
 
@@ -159,6 +209,14 @@ func (v *LLMValidator) validateExtractionIdentifier(
 func (v *LLMValidator) validateLLMProvider(provider *api.LLMProviderConfiguration) []ValidationError {
 	var errors []ValidationError
 
+	// Check if provider is nil
+	if provider == nil {
+		return []ValidationError{{
+			Field:   "provider",
+			Message: "provider cannot be nil",
+		}}
+	}
+
 	// Validate version
 	if !v.specRegex.MatchString(string(provider.Version)) {
 		errors = append(errors, ValidationError{
@@ -168,49 +226,72 @@ func (v *LLMValidator) validateLLMProvider(provider *api.LLMProviderConfiguratio
 	}
 
 	// Validate kind
-	if provider.Kind != "llm/provider" {
+	if provider.Kind != api.LlmProvider {
 		errors = append(errors, ValidationError{
 			Field:   "kind",
-			Message: "Kind must be 'llm/provider'",
+			Message: "Kind must be 'LlmProvider'",
 		})
 	}
 
-	// Validate data section
-	errors = append(errors, v.validateProviderData(&provider.Spec)...)
+	// Validate Metadata.Name
+	if provider.Metadata.Name == "" {
+		errors = append(errors, ValidationError{
+			Field:   "metadata.name",
+			Message: "metadata.name is required",
+		})
+	} else if len(provider.Metadata.Name) > 253 {
+		errors = append(errors, ValidationError{
+			Field:   "metadata.name",
+			Message: "metadata.name must not exceed 253 characters",
+		})
+	} else if !v.metadataNameRegex.MatchString(provider.Metadata.Name) {
+		errors = append(errors, ValidationError{
+			Field:   "metadata.name",
+			Message: "metadata.name must consist of lowercase alphanumeric characters, hyphens, or dots, and must start and end with an alphanumeric character",
+		})
+	}
+
+	// Validate spec section
+	errors = append(errors, v.validateProviderSpec(&provider.Spec)...)
 
 	return errors
 }
 
-// validateProviderData validates the data section of an LLM provider
-func (v *LLMValidator) validateProviderData(data *api.LLMProviderConfigData) []ValidationError {
+// validateProviderSpec validates the data section of an LLM provider
+func (v *LLMValidator) validateProviderSpec(spec *api.LLMProviderConfigData) []ValidationError {
 	var errors []ValidationError
 
 	// Check if data is nil
-	if data == nil {
+	if spec == nil {
 		return []ValidationError{{
 			Field:   "spec",
-			Message: "Provider data is required",
+			Message: "Provider spec is required",
 		}}
 	}
 
-	// Validate name
-	if !v.urlFriendlyNameRegex.MatchString(data.Name) {
+	// Validate display name
+	if spec.DisplayName == "" {
 		errors = append(errors, ValidationError{
-			Field:   "spec.name",
-			Message: "Provider name must contain only letters, numbers, hyphens, underscores, and dots",
+			Field:   "spec.displayName",
+			Message: "spec.displayName is required",
+		})
+	} else if len(spec.DisplayName) > 253 {
+		errors = append(errors, ValidationError{
+			Field:   "spec.displayName",
+			Message: "spec.displayName must not exceed 253 characters",
 		})
 	}
 
-	// Validate version
-	if data.Version == "" {
+	// Spec version is not mandatory, but if provided, validate format
+	if spec.Version != "" && !v.versionRegex.MatchString(spec.Version) {
 		errors = append(errors, ValidationError{
 			Field:   "spec.version",
-			Message: "Provider version is required",
+			Message: "Provider version format is invalid (expected vX.Y.Z)",
 		})
 	}
 
 	// Validate template reference
-	if data.Template == "" {
+	if spec.Template == "" {
 		errors = append(errors, ValidationError{
 			Field:   "spec.template",
 			Message: "Template reference is required",
@@ -218,10 +299,10 @@ func (v *LLMValidator) validateProviderData(data *api.LLMProviderConfigData) []V
 	}
 
 	// Validate upstreams
-	errors = append(errors, v.validateUpstreamWithAuth(fmt.Sprintf("spec.upstream"), &data.Upstream)...)
+	errors = append(errors, v.validateUpstreamWithAuth(fmt.Sprintf("spec.upstream"), &spec.Upstream)...)
 
 	// Validate access control
-	errors = append(errors, v.validateAccessControl("spec.accessControl", &data.AccessControl)...)
+	errors = append(errors, v.validateAccessControl("spec.accessControl", &spec.AccessControl)...)
 
 	return errors
 }
@@ -245,11 +326,24 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
 			Field:   fmt.Sprintf("%s.url", fieldPrefix),
 			Message: "Upstream URL is required",
 		})
-	} else if !regexp.MustCompile(`^https?://`).MatchString(*upstream.Url) {
-		errors = append(errors, ValidationError{
-			Field:   fmt.Sprintf("%s.url", fieldPrefix),
-			Message: "Upstream URL must start with http:// or https://",
-		})
+	} else {
+		parsedURL, err := url.Parse(*upstream.Url)
+		if err != nil {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s.url", fieldPrefix),
+				Message: fmt.Sprintf("Upstream URL is malformed: %v", err),
+			})
+		} else if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s.url", fieldPrefix),
+				Message: "Upstream URL must use http or https scheme",
+			})
+		} else if parsedURL.Host == "" {
+			errors = append(errors, ValidationError{
+				Field:   fmt.Sprintf("%s.url", fieldPrefix),
+				Message: "Upstream URL must include a host",
+			})
+		}
 	}
 
 	// Validate auth if present

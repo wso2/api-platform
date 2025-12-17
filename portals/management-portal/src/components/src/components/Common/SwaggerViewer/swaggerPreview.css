@@ -1,0 +1,476 @@
+/* Keep swagger topbar hidden (like your MUI sx) */
+.swaggerPreviewRoot .swagger-ui .topbar {
+  display: none;
+}
+
+/* Layout wrapper */
+.swaggerPreviewRoot {
+  padding: 0;
+}
+
+.swaggerPreviewLoader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 40px;
+}
+
+/* --- From your SCSS (flattened to CSS) --- */
+
+.swagger-ui .info {
+  margin: 18px 0 0 0;
+}
+
+.swagger-ui .info .title {
+  font-size: 17px;
+  margin: 0;
+  font-family: sans-serif;
+  color: #3b4151;
+  text-transform: capitalize;
+}
+
+.swagger-ui .info span {
+  visibility: hidden;
+}
+
+.swagger-ui .scheme-container {
+  display: none !important;
+  margin: 0 0 20px;
+  padding: 0;
+  background: #fff;
+  box-shadow: none;
+}
+
+/* Hide tags block like before */
+.swagger-ui .opblock-tag {
+  display: none;
+}
+
+.swagger-ui .opblock {
+  margin: 15px 0 15px;
+  border: 1px solid #000;
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.swagger-ui .opblock .opblock-summary-path {
+  flex-shrink: 0;
+  max-width: calc(100% - 5rem);
+}
+
+.swagger-ui .opblock-summary-control:focus {
+  outline: none;
+}
+
+.swagger-ui .copy-to-clipboard:active {
+  visibility: hidden !important;
+  background: none !important;
+}
+
+/* Swagger select input */
+.swagger-ui select {
+  min-width: 200px !important;
+  height: 32px !important;
+  border-radius: 5px !important;
+  background: linear-gradient(180deg, #ffff 0%, #f5f5f9 100%) !important;
+  box-shadow: inset 0 0 0 1px #dee0e7,
+    0 1px 2px -1px rgba(0, 0, 0, 0.08) !important;
+  border: none !important;
+  padding-top: 0px !important;
+  padding-bottom: 0px !important;
+  font-size: 12px;
+  color: #222228;
+  font-family: Gilmer;
+  font-weight: normal;
+  font-stretch: normal;
+  font-style: normal;
+  letter-spacing: normal;
+}
+
+.swagger-ui select:focus {
+  outline: none;
+}
+
+.swagger-ui .servers {
+  position: relative;
+}
+
+.swagger-ui .servers select {
+  width: 100%;
+}
+
+.swagger-ui .servers::after {
+  height: 32px;
+  width: 32px;
+  content: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 10l5 5 5-5z"/></svg>');
+  padding: 8px 8px;
+  top: 0;
+  position: absolute;
+  right: 0;
+  pointer-events: none;
+}
+
+.swagger-ui .content-type-wrapper {
+  position: relative;
+}
+
+.swagger-ui .content-type-wrapper::after {
+  content: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 10l5 5 5-5z"/></svg>');
+  height: 32px;
+  width: 32px;
+  padding: 8px;
+  top: 0;
+  position: absolute;
+  right: 0;
+  pointer-events: none;
+}
+
+.swagger-ui .copy-to-clipboard {
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.swagger-ui .copy-to-clipboard button {
+  height: 25px !important;
+  background-size: cover !important;
+  background: url(/src/components/ChoreoSystem/Images/Various/CopyIcon.svg);
+}
+
+.swagger-ui .copy-to-clipboard button:hover {
+  opacity: 0.8;
+}
+
+.swagger-ui .curl-command .copy-to-clipboard {
+  top: 30px;
+  right: 10px;
+  width: 20px;
+  height: 20px;
+}
+
+/* Buttons */
+.swagger-ui .btn {
+  height: 32px;
+  font-size: 13px;
+  box-shadow: none;
+  font-weight: 400;
+  border-radius: 16px;
+  padding-right: 16px;
+  text-transform: initial;
+  background-color: #ffff;
+}
+
+.swagger-ui .btn:hover {
+  box-shadow: 0 2px 4px 0 rgb(0 0 0 / 7%);
+  background-color: #ffff;
+}
+
+.swagger-ui .btn.execute {
+  height: 32px;
+  width: 90px;
+  border-radius: 5px !important;
+  background: #1a4c6d;
+  color: #ffffff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1) inset;
+  border: none;
+  font-size: 11px;
+  font-family: Gilmer;
+  padding: 10px 16px;
+}
+
+.swagger-ui .btn.btn-clear {
+  height: 32px;
+  width: 90px;
+  border-radius: 5px !important;
+  color: #40404b;
+  background-color: rgba(255, 255, 255, 0);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+  border: none;
+  font-size: 11px;
+  font-family: Gilmer;
+  padding: 10px 16px;
+}
+
+.swagger-ui .opblock-body .btn-group {
+  padding: 16px;
+  text-align: end;
+}
+
+.swagger-ui .opblock-body .btn-group .btn:first-child {
+  margin-right: 8px;
+}
+
+.swagger-ui .btn.execute:hover {
+  border-color: #36b475;
+}
+
+.swagger-ui .try-out__btn {
+  color: #40404b;
+  border: none;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1) inset;
+  font-size: 11px;
+  font-family: Gilmer;
+}
+
+.swagger-ui .try-out__btn:hover {
+  background: rgba(255, 255, 255, 0);
+  border: 1px solid rgba(230, 231, 236, 0.4);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1) inset;
+}
+
+.swagger-ui .try-out__btn.cancel {
+  border-radius: 5px;
+  font-size: 11px;
+  font-family: Gilmer;
+  color: #ff6060;
+  border: 1px solid #f8c2c2;
+  box-shadow: none;
+}
+
+.swagger-ui .try-out__btn.cancel:hover {
+  border-color: #ff6060;
+}
+
+/* Section header */
+.swagger-ui .opblock .opblock-section-header {
+  background: #ffffff;
+  height: 50px;
+  border-bottom: 1px solid #edeef1;
+  box-shadow: none;
+  padding: 8px 16px;
+}
+
+.swagger-ui .opblock .opblock-section-header h4 {
+  font-size: 13px;
+  color: #1d2028;
+  font-family: Gilmer;
+  font-weight: 500;
+  font-stretch: normal;
+  letter-spacing: normal;
+  line-height: 1.08;
+}
+
+/* Summary path/desc */
+.swagger-ui .opblock .opblock-summary-path {
+  color: #222228;
+  font-size: 13px;
+  font-weight: normal;
+  line-height: 1.85;
+  font-family: Gilmer;
+  max-height: 68px;
+  overflow: auto;
+  text-overflow: ellipsis;
+}
+
+.swagger-ui .opblock .opblock-summary-description {
+  color: #8d91a3;
+  font-size: 13px;
+  font-weight: normal;
+  line-height: 1.85;
+  font-family: Gilmer;
+  max-height: 68px;
+  overflow: auto;
+  text-overflow: ellipsis;
+}
+
+.swagger-ui .opblock .opblock-summary-method {
+  width: 64px;
+  border-radius: 4px;
+  font-size: 11px;
+  height: 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Method-specific coloring (flattened) */
+.swagger-ui .opblock.opblock-get {
+  border-color: #c1e4fc;
+  background: #ffffff;
+}
+
+.swagger-ui .opblock.opblock-get .opblock-summary {
+  border-color: #c1e4fc;
+  border-bottom: none;
+  background: #f4faff;
+  padding: 6px 8px;
+}
+
+.swagger-ui .opblock.opblock-get .opblock-summary button {
+  background: none;
+}
+
+.swagger-ui .opblock.opblock-get .opblock-summary-method {
+  background: #0095ff;
+  font-family: Gilmer;
+}
+
+.swagger-ui .opblock.opblock-get .opblock-section-header {
+  border-top: 1px solid #c1e4fc;
+}
+
+/* POST */
+.swagger-ui .opblock.opblock-post {
+  border-color: #cdf1df;
+  background: #ffffff;
+}
+
+.swagger-ui .opblock.opblock-post .opblock-summary {
+  border-color: #cdf1df;
+  border-bottom: none;
+  background: #f5fff7;
+  padding: 6px 8px;
+}
+
+.swagger-ui .opblock.opblock-post .opblock-summary button {
+  background: none;
+}
+
+.swagger-ui .opblock.opblock-post .opblock-summary-method {
+  background: #36b475;
+  font-family: Gilmer;
+}
+
+.swagger-ui .opblock.opblock-post .opblock-section-header {
+  border-top: 1px solid #cdf1df;
+}
+
+/* PUT */
+.swagger-ui .opblock.opblock-put {
+  border-color: #fee6c8;
+  background: #ffffff;
+}
+
+.swagger-ui .opblock.opblock-put .opblock-summary {
+  border-color: #fee6c8;
+  border-bottom: none;
+  background: #fffbf6;
+  padding: 6px 8px;
+}
+
+.swagger-ui .opblock.opblock-put .opblock-summary button {
+  background: none;
+}
+
+.swagger-ui .opblock.opblock-put .opblock-summary-method {
+  background: #ff9d52;
+  font-family: Gilmer;
+}
+
+.swagger-ui .opblock.opblock-put .opblock-section-header {
+  border-top: 1px solid #fee6c8;
+}
+
+/* DELETE */
+.swagger-ui .opblock.opblock-delete {
+  border-color: rgba(248, 194, 194, 0.69);
+  background: #ffffff;
+}
+
+.swagger-ui .opblock.opblock-delete .opblock-summary {
+  border-color: rgba(248, 194, 194, 0.69);
+  border-bottom: none;
+  background: rgba(252, 237, 237, 0.5);
+  padding: 6px 8px;
+}
+
+.swagger-ui .opblock.opblock-delete .opblock-summary button {
+  background: none;
+}
+
+.swagger-ui .opblock.opblock-delete .opblock-summary-method {
+  background: #fe523c;
+  font-family: Gilmer;
+}
+
+.swagger-ui .opblock.opblock-delete .opblock-section-header {
+  border-top: 1px solid rgba(248, 194, 194, 0.69);
+}
+
+/* PATCH */
+.swagger-ui .opblock.opblock-patch {
+  border-color: rgba(1, 206, 181, 0.28);
+  background: #ffffff;
+}
+
+.swagger-ui .opblock.opblock-patch .opblock-summary {
+  border-color: rgba(1, 206, 181, 0.28);
+  border-bottom: none;
+  background: rgba(1, 206, 181, 0.08);
+  padding: 6px 8px;
+}
+
+.swagger-ui .opblock.opblock-patch .opblock-summary button {
+  background: none;
+}
+
+.swagger-ui .opblock.opblock-patch .opblock-summary-method {
+  background: #01ceb5;
+  font-family: Gilmer;
+}
+
+.swagger-ui .opblock.opblock-patch .opblock-section-header {
+  border-top: 1px solid rgba(1, 206, 181, 0.28);
+}
+
+/* OPTIONS */
+.swagger-ui .opblock.opblock-options {
+  border-color: rgba(5, 102, 200, 0.2);
+  background: #ffffff;
+}
+
+.swagger-ui .opblock.opblock-options .opblock-summary {
+  border-color: rgba(5, 102, 200, 0.2);
+  border-bottom: none;
+  background: rgba(5, 102, 200, 0.07);
+  padding: 6px 8px;
+}
+
+.swagger-ui .opblock.opblock-options .opblock-summary button {
+  background: none;
+}
+
+.swagger-ui .opblock.opblock-options .opblock-summary-method {
+  background: #0566c8;
+  font-family: Gilmer;
+}
+
+.swagger-ui .opblock.opblock-options .opblock-section-header {
+  border-top: 1px solid rgba(5, 102, 200, 0.2);
+}
+
+/* HEAD */
+.swagger-ui .opblock.opblock-head {
+  border-color: rgba(123, 85, 213, 0.18);
+  background: #ffffff;
+}
+
+.swagger-ui .opblock.opblock-head .opblock-summary {
+  border-color: rgba(123, 85, 213, 0.18);
+  border-bottom: none;
+  background: rgba(123, 85, 213, 0.08);
+  padding: 6px 8px;
+}
+
+.swagger-ui .opblock.opblock-head .opblock-summary button {
+  background: none;
+}
+
+.swagger-ui .opblock.opblock-head .opblock-summary-method {
+  background: #7b55d5;
+  font-family: Gilmer;
+}
+
+.swagger-ui .opblock.opblock-head .opblock-section-header {
+  border-top: 1px solid rgba(123, 85, 213, 0.18);
+}
+
+/* Wrapper width */
+.swagger-ui .wrapper {
+  max-width: unset;
+  padding: 0;
+}

@@ -31,7 +31,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	openapi_types "github.com/oapi-codegen/runtime/types"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -189,10 +188,17 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 
 	if err != nil {
 		log.Error("Failed to deploy API configuration", zap.Error(err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: err.Error(),
-		})
+		if storage.IsConflictError(err) {
+			c.JSON(http.StatusConflict, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		}
 		return
 	}
 
@@ -202,12 +208,11 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 		go s.waitForDeploymentAndNotify(result.StoredConfig.ID, correlationID, log)
 	}
 
-	// Return success response
-	id, _ := uuidToOpenAPIUUID(result.StoredConfig.ID)
+	// Return success response (id is the handle)
 	c.JSON(http.StatusCreated, api.APICreateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("API configuration created successfully"),
-		Id:        id,
+		Id:        stringPtr(result.StoredConfig.GetHandle()),
 		CreatedAt: timePtr(result.StoredConfig.CreatedAt),
 	})
 
@@ -238,15 +243,18 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 
 // ListAPIs implements ServerInterface.ListAPIs
 // (GET /apis)
-func (s *APIServer) ListAPIs(c *gin.Context) {
-	configs := s.store.GetAllByKind(string(api.Httprest))
+func (s *APIServer) ListAPIs(c *gin.Context, params api.ListAPIsParams) {
+	if (params.Name != nil && *params.Name != "") || (params.Version != nil && *params.Version != "") || (params.Context != nil && *params.Context != "") || (params.Status != nil && *params.Status != "") {
+		s.SearchDeployments(c, string(api.RestApi))
+		return
+	}
+	configs := s.store.GetAllByKind(string(api.RestApi))
 
 	items := make([]api.APIListItem, 0, len(configs))
 	for _, cfg := range configs {
-		id, _ := uuidToOpenAPIUUID(cfg.ID)
 		status := string(cfg.Status)
 		items = append(items, api.APIListItem{
-			Id:        id,
+			Id:        stringPtr(cfg.GetHandle()),
 			Name:      stringPtr(cfg.GetName()),
 			Version:   stringPtr(cfg.GetVersion()),
 			Context:   stringPtr(cfg.GetContext()),
@@ -261,6 +269,108 @@ func (s *APIServer) ListAPIs(c *gin.Context) {
 		"count":  len(items),
 		"apis":   items,
 	})
+}
+
+func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
+	filterKeys := []string{"name", "version", "context", "status"}
+	filters := make(map[string]string)
+	for _, k := range filterKeys {
+		if v := c.Query(k); v != "" {
+			filters[k] = v
+		}
+	}
+
+	if s.store == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"count":  0,
+		})
+		return
+	}
+
+	configs := s.store.GetAllByKind(kind)
+
+	// Filter based on kind to return appropriate response format
+	if kind == string(api.Mcp) {
+		// Return MCP proxy format
+		mcpItems := make([]api.MCPProxyListItem, 0)
+		for _, cfg := range configs {
+			if v, ok := filters["name"]; ok && cfg.GetName() != v {
+				continue
+			}
+			if v, ok := filters["version"]; ok && cfg.GetVersion() != v {
+				continue
+			}
+			if v, ok := filters["context"]; ok && cfg.GetContext() != v {
+				continue
+			}
+			if v, ok := filters["status"]; ok && string(cfg.Status) != v {
+				continue
+			}
+
+			status := api.MCPProxyListItemStatus(cfg.Status)
+			// Convert SourceConfiguration to MCPProxyConfiguration to get spec fields
+			var mcp api.MCPProxyConfiguration
+			j, _ := json.Marshal(cfg.SourceConfiguration)
+			err := json.Unmarshal(j, &mcp)
+			if err != nil {
+				s.logger.Error("Failed to unmarshal stored MCP configuration",
+					zap.String("id", cfg.ID),
+					zap.String("name", cfg.GetName()))
+				continue
+			}
+
+			mcpItems = append(mcpItems, api.MCPProxyListItem{
+				Id:        stringPtr(cfg.GetHandle()),
+				Name:      stringPtr(mcp.Spec.Name),
+				Version:   stringPtr(mcp.Spec.Version),
+				Context:   stringPtr(mcp.Spec.Context),
+				Status:    &status,
+				CreatedAt: timePtr(cfg.CreatedAt),
+				UpdatedAt: timePtr(cfg.UpdatedAt),
+			})
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":      "success",
+			"count":       len(mcpItems),
+			"mcp_proxies": mcpItems,
+		})
+	} else {
+		// Return API format
+		apiItems := make([]api.APIListItem, 0)
+		for _, cfg := range configs {
+			if v, ok := filters["name"]; ok && cfg.GetName() != v {
+				continue
+			}
+			if v, ok := filters["version"]; ok && cfg.GetVersion() != v {
+				continue
+			}
+			if v, ok := filters["context"]; ok && cfg.GetContext() != v {
+				continue
+			}
+			if v, ok := filters["status"]; ok && string(cfg.Status) != v {
+				continue
+			}
+
+			status := string(cfg.Status)
+			apiItems = append(apiItems, api.APIListItem{
+				Id:        stringPtr(cfg.GetHandle()),
+				Name:      stringPtr(cfg.GetName()),
+				Version:   stringPtr(cfg.GetVersion()),
+				Context:   stringPtr(cfg.GetContext()),
+				Status:    (*api.APIListItemStatus)(&status),
+				CreatedAt: timePtr(cfg.CreatedAt),
+				UpdatedAt: timePtr(cfg.UpdatedAt),
+			})
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "success",
+			"count":  len(apiItems),
+			"apis":   apiItems,
+		})
+	}
 }
 
 // GetAPIByNameVersion implements ServerInterface.GetAPIByNameVersion
@@ -282,7 +392,65 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 	}
 
 	apiDetail := gin.H{
-		"id":            cfg.ID,
+		"id":            cfg.GetHandle(),
+		"configuration": cfg.Configuration,
+		"metadata": gin.H{
+			"status":     string(cfg.Status),
+			"created_at": cfg.CreatedAt.Format(time.RFC3339),
+			"updated_at": cfg.UpdatedAt.Format(time.RFC3339),
+		},
+	}
+
+	if cfg.DeployedAt != nil {
+		apiDetail["metadata"].(gin.H)["deployed_at"] = cfg.DeployedAt.Format(time.RFC3339)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"api":    apiDetail,
+	})
+}
+
+// GetAPIById implements ServerInterface.GetAPIById
+// (GET /apis/{id})
+func (s *APIServer) GetAPIById(c *gin.Context, id string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return
+	}
+
+	cfg, err := s.db.GetConfigByHandle(handle)
+	if err != nil {
+		log.Warn("API configuration not found",
+			zap.String("handle", handle))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("API configuration with handle '%s' not found", handle),
+		})
+		return
+	}
+
+	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.Asyncwebsub) {
+		log.Warn("Configuration kind mismatch",
+			zap.String("expected", "RestApi or async/websub"),
+			zap.String("actual", cfg.Kind),
+			zap.String("handle", handle))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Configuration with handle '%s' is not an API", handle),
+		})
+		return
+	}
+
+	apiDetail := gin.H{
+		"id":            cfg.GetHandle(),
 		"configuration": cfg.Configuration,
 		"metadata": gin.H{
 			"status":     string(cfg.Status),
@@ -302,10 +470,11 @@ func (s *APIServer) GetAPIByNameVersion(c *gin.Context, name string, version str
 }
 
 // UpdateAPI implements ServerInterface.UpdateAPI
-// (PUT /apis/{name}/{version})
-func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
+// (PUT /apis/{handle})
+func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
+	handle := id
 
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
@@ -331,11 +500,25 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 		return
 	}
 
+	// Validate that the handle in the YAML matches the path parameter
+	if apiConfig.Metadata.Name != "" {
+		if apiConfig.Metadata.Name != handle {
+			log.Warn("Handle mismatch between path and YAML metadata",
+				zap.String("path_handle", handle),
+				zap.String("yaml_handle", apiConfig.Metadata.Name))
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("Handle mismatch: path has '%s' but YAML metadata.name has '%s'", handle, apiConfig.Metadata.Name),
+			})
+			return
+		}
+	}
+
 	// Validate configuration
 	validationErrors := s.validator.Validate(&apiConfig)
 	if len(validationErrors) > 0 {
 		log.Warn("Configuration validation failed",
-			zap.String("name", name),
+			zap.String("handle", handle),
 			zap.Int("num_errors", len(validationErrors)))
 
 		errors := make([]api.ValidationError, len(validationErrors))
@@ -354,15 +537,22 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 		return
 	}
 
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return
+	}
+
 	// Check if config exists
-	existing, err := s.store.GetByNameVersion(name, version)
+	existing, err := s.db.GetConfigByHandle(handle)
 	if err != nil {
 		log.Warn("API configuration not found",
-			zap.String("name", name),
-			zap.String("version", version))
+			zap.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("API configuration with name '%s' and version '%s' not found", name, version),
+			Message: fmt.Sprintf("API configuration with handle '%s' not found", handle),
 		})
 		return
 	}
@@ -475,17 +665,20 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 	if err := s.store.Update(existing); err != nil {
 		// Log conflict errors at info level, other errors at error level
 		if storage.IsConflictError(err) {
-			log.Info("API configuration name/version already exists",
+			log.Info("API configuration handle already exists",
 				zap.String("id", existing.ID),
-				zap.String("name", name),
-				zap.String("version", version))
+				zap.String("handle", handle))
+			c.JSON(http.StatusConflict, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
 		} else {
 			log.Error("Failed to update config in memory store", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to update configuration in memory store",
+			})
 		}
-		c.JSON(http.StatusConflict, api.ErrorResponse{
-			Status:  "error",
-			Message: err.Error(),
-		})
 		return
 	}
 
@@ -504,15 +697,13 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 
 	log.Info("API configuration updated",
 		zap.String("id", existing.ID),
-		zap.String("name", name),
-		zap.String("version", version))
+		zap.String("handle", handle))
 
-	// Return success response
-	updateId, _ := uuidToOpenAPIUUID(existing.ID)
+	// Return success response (id is the handle)
 	c.JSON(http.StatusOK, api.APIUpdateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("API configuration updated successfully"),
-		Id:        updateId,
+		Id:        stringPtr(existing.GetHandle()),
 		UpdatedAt: timePtr(existing.UpdatedAt),
 	})
 
@@ -542,20 +733,29 @@ func (s *APIServer) UpdateAPI(c *gin.Context, name string, version string) {
 }
 
 // DeleteAPI implements ServerInterface.DeleteAPI
-// (DELETE /apis/{name}/{version})
-func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
+// (DELETE /apis/{handle})
+func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 
+	handle := id
+
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return
+	}
+
 	// Check if config exists
-	cfg, err := s.store.GetByNameVersion(name, version)
+	cfg, err := s.db.GetConfigByHandle(handle)
 	if err != nil {
 		log.Warn("API configuration not found",
-			zap.String("name", name),
-			zap.String("version", version))
+			zap.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("API configuration with name '%s' and version '%s' not found", name, version),
+			Message: fmt.Sprintf("API configuration with handle '%s' not found", handle),
 		})
 		return
 	}
@@ -648,14 +848,12 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 
 	log.Info("API configuration deleted",
 		zap.String("id", cfg.ID),
-		zap.String("name", name),
-		zap.String("version", version))
+		zap.String("handle", handle))
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "API configuration deleted successfully",
-		"name":    name,
-		"version": version,
+		"id":      handle,
 	})
 
 	// Remove derived policy configuration
@@ -670,7 +868,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, name string, version string) {
 }
 
 // CreateLLMProviderTemplate implements ServerInterface.CreateLLMProviderTemplate
-// (POST /llm-providers/templates)
+// (POST /llm-provider-templates)
 func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 	log := middleware.GetLogger(c, s.logger)
 
@@ -702,29 +900,26 @@ func (s *APIServer) CreateLLMProviderTemplate(c *gin.Context) {
 
 	log.Info("LLM provider template created successfully",
 		zap.String("id", storedTemplate.ID),
-		zap.String("name", storedTemplate.GetName()))
-
-	id, _ := uuidToOpenAPIUUID(storedTemplate.ID)
+		zap.String("handle", storedTemplate.GetHandle()))
 
 	c.JSON(http.StatusCreated, api.LLMProviderTemplateCreateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("LLM provider template created successfully"),
-		Id:        id,
+		Id:        stringPtr(storedTemplate.GetHandle()),
 		CreatedAt: timePtr(storedTemplate.CreatedAt),
 	})
 }
 
 // ListLLMProviderTemplates implements ServerInterface.ListLLMProviderTemplates
 // (GET /llm-providers/templates)
-func (s *APIServer) ListLLMProviderTemplates(c *gin.Context) {
-	templates := s.llmDeploymentService.ListLLMProviderTemplates()
+func (s *APIServer) ListLLMProviderTemplates(c *gin.Context, params api.ListLLMProviderTemplatesParams) {
+	templates := s.llmDeploymentService.ListLLMProviderTemplates(params.Name)
 
 	items := make([]api.LLMProviderTemplateListItem, len(templates))
 	for i, tmpl := range templates {
-		id, _ := uuidToOpenAPIUUID(tmpl.ID)
 		items[i] = api.LLMProviderTemplateListItem{
-			Id:        id,
-			Name:      stringPtr(tmpl.GetName()),
+			Id:        stringPtr(tmpl.GetHandle()),
+			Name:      stringPtr(tmpl.Configuration.Spec.DisplayName),
 			CreatedAt: timePtr(tmpl.CreatedAt),
 			UpdatedAt: timePtr(tmpl.UpdatedAt),
 		}
@@ -737,22 +932,20 @@ func (s *APIServer) ListLLMProviderTemplates(c *gin.Context) {
 	})
 }
 
-// GetLLMProviderTemplateByName implements ServerInterface.GetLLMProviderTemplateByName
-// (GET /llm-providers/templates/{name})
-func (s *APIServer) GetLLMProviderTemplateByName(c *gin.Context, name string) {
+// GetLLMProviderTemplateById implements ServerInterface.GetLLMProviderTemplateById
+// (GET /llm-provider-templates/{id})
+func (s *APIServer) GetLLMProviderTemplateById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	template, err := s.llmDeploymentService.GetLLMProviderTemplateByName(name)
+	template, err := s.llmDeploymentService.GetLLMProviderTemplateByHandle(id)
 	if err != nil {
-		log.Warn("LLM provider template not found", zap.String("name", name))
+		log.Warn("LLM provider template not found", zap.String("id", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("Template with name '%s' not found", name),
+			Message: fmt.Sprintf("Template with id '%s' not found", id),
 		})
 		return
 	}
-
-	id, _ := uuidToOpenAPIUUID(template.ID)
 
 	// Return response with a simple JSON structure similar to GetAPIByNameVersion
 	tmplDetail := gin.H{
@@ -771,8 +964,8 @@ func (s *APIServer) GetLLMProviderTemplateByName(c *gin.Context, name string) {
 }
 
 // UpdateLLMProviderTemplate implements ServerInterface.UpdateLLMProviderTemplate
-// (PUT /llm-providers/templates/{name})
-func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, name string) {
+// (PUT /llm-provider-templates/{id})
+func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
 	// Read request body
@@ -786,7 +979,7 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, name string) {
 		return
 	}
 
-	updated, err := s.llmDeploymentService.UpdateLLMProviderTemplate(name, utils.LLMTemplateParams{
+	updated, err := s.llmDeploymentService.UpdateLLMProviderTemplate(id, utils.LLMTemplateParams{
 		Spec:        body,
 		ContentType: c.GetHeader("Content-Type"),
 		Logger:      log,
@@ -802,52 +995,50 @@ func (s *APIServer) UpdateLLMProviderTemplate(c *gin.Context, name string) {
 
 	log.Info("LLM provider template updated successfully",
 		zap.String("id", updated.ID),
-		zap.String("name", updated.GetName()))
+		zap.String("handle", updated.GetHandle()))
 
-	id, _ := uuidToOpenAPIUUID(updated.ID)
 	c.JSON(http.StatusOK, api.LLMProviderTemplateUpdateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("LLM provider template updated successfully"),
-		Id:        id,
+		Id:        stringPtr(updated.GetHandle()),
 		UpdatedAt: timePtr(updated.UpdatedAt),
 	})
 }
 
 // DeleteLLMProviderTemplate implements ServerInterface.DeleteLLMProviderTemplate
-// (DELETE /llm-providers/templates/{name})
-func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, name string) {
+// (DELETE /llm-provider-templates/{id})
+func (s *APIServer) DeleteLLMProviderTemplate(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(name)
+	deleted, err := s.llmDeploymentService.DeleteLLMProviderTemplate(id)
 	if err != nil {
-		log.Warn("LLM provider template not found for deletion", zap.String("name", name))
+		log.Warn("LLM provider template not found for deletion", zap.String("id", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("Template with name '%s' not found", name),
+			Message: fmt.Sprintf("Template with id '%s' not found", id),
 		})
 		return
 	}
 
 	log.Info("LLM provider template deleted successfully",
 		zap.String("id", deleted.ID),
-		zap.String("name", name))
+		zap.String("id", id))
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "LLM provider template deleted successfully",
-		"id":      deleted.ID,
+		"id":      id,
 	})
 }
 
 // ListLLMProviders implements ServerInterface.ListLLMProviders
 // (GET /llm-providers)
-func (s *APIServer) ListLLMProviders(c *gin.Context) {
+func (s *APIServer) ListLLMProviders(c *gin.Context, params api.ListLLMProvidersParams) {
 	log := middleware.GetLogger(c, s.logger)
-	configs := s.llmDeploymentService.ListLLMProviders()
+	configs := s.llmDeploymentService.ListLLMProviders(params)
 
 	items := make([]api.LLMProviderListItem, len(configs))
 	for i, cfg := range configs {
-		id, _ := uuidToOpenAPIUUID(cfg.ID)
 		status := api.LLMProviderListItemStatus(cfg.Status)
 
 		// Convert SourceConfiguration to LLMProviderConfiguration
@@ -860,8 +1051,8 @@ func (s *APIServer) ListLLMProviders(c *gin.Context) {
 		}
 
 		items[i] = api.LLMProviderListItem{
-			Id:        id,
-			Name:      stringPtr(prov.Spec.Name),
+			Id:        stringPtr(prov.Metadata.Name),
+			Name:      stringPtr(prov.Spec.DisplayName),
 			Version:   stringPtr(prov.Spec.Version),
 			Template:  stringPtr(prov.Spec.Template),
 			Status:    &status,
@@ -912,13 +1103,12 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 
 	log.Info("LLM provider created successfully",
 		zap.String("id", stored.ID),
-		zap.String("name", stored.GetName()))
+		zap.String("handle", stored.GetHandle()))
 
-	id, _ := uuidToOpenAPIUUID(stored.ID)
 	c.JSON(http.StatusCreated, api.LLMProviderCreateResponse{
 		Status:  stringPtr("success"),
 		Message: stringPtr("LLM provider created successfully"),
-		Id:      id, CreatedAt: timePtr(stored.CreatedAt)})
+		Id:      stringPtr(stored.GetHandle()), CreatedAt: timePtr(stored.CreatedAt)})
 
 	// Build and add policy config derived from API configuration if policies are present
 	if s.policyManager != nil {
@@ -935,26 +1125,24 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 	}
 }
 
-// GetLLMProviderByNameVersion implements ServerInterface.GetLLMProviderByNameVersion
-// (GET /llm-providers/{name}/{version})
-func (s *APIServer) GetLLMProviderByNameVersion(c *gin.Context, name string, version string) {
+// GetLLMProviderById implements ServerInterface.GetLLMProviderById
+// (GET /llm-providers/{id})
+func (s *APIServer) GetLLMProviderById(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
-	cfg := s.store.GetByKindNameAndVersion(string(api.Llmprovider), name, version)
+	cfg := s.store.GetByKindAndHandle(string(api.LlmProvider), id)
 	if cfg == nil {
 		log.Warn("LLM provider configuration not found",
-			zap.String("name", name),
-			zap.String("version", version))
+			zap.String("id", id))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("LLM provider configuration with name '%s' and version '%s' not found", name, version),
+			Message: fmt.Sprintf("LLM provider configuration with id '%s' not found", id),
 		})
 		return
 	}
 
 	// Build response similar to GetAPIByNameVersion
 	providerDetail := gin.H{
-		"id":            cfg.ID,
 		"configuration": cfg.SourceConfiguration,
 		"metadata": gin.H{
 			"status":     string(cfg.Status),
@@ -974,8 +1162,8 @@ func (s *APIServer) GetLLMProviderByNameVersion(c *gin.Context, name string, ver
 }
 
 // UpdateLLMProvider implements ServerInterface.UpdateLLMProvider
-// (PUT /llm-providers/{name}/{version})
-func (s *APIServer) UpdateLLMProvider(c *gin.Context, name string, version string) {
+// (PUT /llm-providers/{id})
+func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 
 	// Read request body
@@ -993,7 +1181,7 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, name string, version strin
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Delegate to service update wrapper
-	updated, err := s.llmDeploymentService.UpdateLLMProvider(name, version, utils.LLMDeploymentParams{
+	updated, err := s.llmDeploymentService.UpdateLLMProvider(id, utils.LLMDeploymentParams{
 		Data:          body,
 		ContentType:   c.GetHeader("Content-Type"),
 		CorrelationID: correlationID,
@@ -1005,9 +1193,8 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, name string, version strin
 		return
 	}
 
-	id, _ := uuidToOpenAPIUUID(updated.ID)
 	c.JSON(http.StatusOK, api.LLMProviderUpdateResponse{
-		Id:        id,
+		Id:        stringPtr(id),
 		Message:   stringPtr("LLM provider updated successfully"),
 		Status:    stringPtr("success"),
 		UpdatedAt: timePtr(updated.UpdatedAt),
@@ -1039,14 +1226,14 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, name string, version strin
 }
 
 // DeleteLLMProvider implements ServerInterface.DeleteLLMProvider
-// (DELETE /llm-providers/{name}/{version})
-func (s *APIServer) DeleteLLMProvider(c *gin.Context, name string, version string) {
+// (DELETE /llm-providers/{id})
+func (s *APIServer) DeleteLLMProvider(c *gin.Context, id string) {
 	log := middleware.GetLogger(c, s.logger)
 	correlationID := middleware.GetCorrelationID(c)
 
-	cfg, err := s.llmDeploymentService.DeleteLLMProvider(name, version, correlationID, log)
+	cfg, err := s.llmDeploymentService.DeleteLLMProvider(id, correlationID, log)
 	if err != nil {
-		log.Warn("Failed to delete LLM provider configuration", zap.String("name", name), zap.String("version", version), zap.Error(err))
+		log.Warn("Failed to delete LLM provider configuration", zap.String("id", id))
 		// Check if it's a not found error
 		if strings.Contains(err.Error(), "not found") {
 			c.JSON(http.StatusNotFound, api.ErrorResponse{
@@ -1065,8 +1252,7 @@ func (s *APIServer) DeleteLLMProvider(c *gin.Context, name string, version strin
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "LLM provider deleted successfully",
-		"name":    name,
-		"version": version,
+		"id":      id,
 	})
 
 	// Remove derived policy configuration
@@ -1172,7 +1358,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 				Policies: finalPolicies,
 			})
 		}
-	case api.Httprest:
+	case api.RestApi:
 		// Build routes with merged policies
 		apiData, err := apiCfg.Spec.AsAPIConfigData()
 		if err != nil {
@@ -1314,10 +1500,17 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 
 	if err != nil {
 		log.Error("Failed to deploy MCP proxy configuration", zap.Error(err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: err.Error(),
-		})
+		if storage.IsConflictError(err) {
+			c.JSON(http.StatusConflict, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else {
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		}
 		return
 	}
 
@@ -1327,24 +1520,26 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 		go s.waitForDeploymentAndNotify(result.StoredConfig.ID, correlationID, log)
 	}
 
-	// Return success response
-	id, _ := uuidToOpenAPIUUID(result.StoredConfig.ID)
+	// Return success response (id is the handle)
 	c.JSON(http.StatusCreated, api.APICreateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("MCP configuration created successfully"),
-		Id:        id,
+		Id:        stringPtr(result.StoredConfig.GetHandle()),
 		CreatedAt: timePtr(result.StoredConfig.CreatedAt),
 	})
 }
 
 // ListMCPProxies implements ServerInterface.ListMCPProxies
 // (GET /mcp-proxies)
-func (s *APIServer) ListMCPProxies(c *gin.Context) {
+func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesParams) {
+	if (params.Name != nil && *params.Name != "") || (params.Version != nil && *params.Version != "") || (params.Context != nil && *params.Context != "") || (params.Status != nil && *params.Status != "") {
+		s.SearchDeployments(c, string(api.Mcp))
+		return
+	}
 	configs := s.store.GetAllByKind(string(api.Mcp))
 
 	items := make([]api.MCPProxyListItem, len(configs))
 	for i, cfg := range configs {
-		id, _ := uuidToOpenAPIUUID(cfg.ID)
 		status := api.MCPProxyListItemStatus(cfg.Status)
 		// Convert SourceConfiguration to MCPProxyConfiguration
 		var mcp api.MCPProxyConfiguration
@@ -1361,7 +1556,7 @@ func (s *APIServer) ListMCPProxies(c *gin.Context) {
 			return
 		}
 		items[i] = api.MCPProxyListItem{
-			Id:        id,
+			Id:        stringPtr(cfg.GetHandle()),
 			Name:      stringPtr(mcp.Spec.Name),
 			Version:   stringPtr(mcp.Spec.Version),
 			Context:   stringPtr(mcp.Spec.Context),
@@ -1399,7 +1594,7 @@ func (s *APIServer) GetMCPProxyByNameVersion(c *gin.Context, name string, versio
 	mcpDetail := gin.H{
 		"status": "success",
 		"mcp": gin.H{
-			"id":            cfg.ID,
+			"id":            cfg.GetHandle(),
 			"configuration": cfg.SourceConfiguration,
 			"metadata": gin.H{
 				"status":     string(cfg.Status),
@@ -1415,11 +1610,73 @@ func (s *APIServer) GetMCPProxyByNameVersion(c *gin.Context, name string, versio
 	c.JSON(http.StatusOK, mcpDetail)
 }
 
-// UpdateMCPProxy implements ServerInterface.UpdateMCPProxy
-// (PUT /mcp-proxies/{name}/{version})
-func (s *APIServer) UpdateMCPProxy(c *gin.Context, name string, version string) {
+// GetMCPProxyById implements ServerInterface.GetMCPProxyById
+// (GET /mcp-proxies/{id})
+func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
+
+	handle := id
+
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return
+	}
+
+	cfg, err := s.db.GetConfigByHandle(handle)
+	if err != nil {
+		log.Warn("MCP proxy configuration not found",
+			zap.String("handle", handle))
+		c.JSON(http.StatusNotFound, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("MCP proxy configuration with handle '%s' not found", handle),
+		})
+		return
+	}
+
+	// Check deployment kind is MCP
+	if cfg.Kind != string(api.Mcp) {
+		log.Warn("Configuration kind mismatch",
+			zap.String("expected", string(api.Mcp)),
+			zap.String("actual", cfg.Kind),
+			zap.String("handle", handle))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Configuration with handle '%s' is not of kind MCP", handle),
+		})
+		return
+	}
+
+	mcpDetail := gin.H{
+		"id":            cfg.GetHandle(),
+		"configuration": cfg.SourceConfiguration,
+		"metadata": gin.H{
+			"status":     string(cfg.Status),
+			"created_at": cfg.CreatedAt.Format(time.RFC3339),
+			"updated_at": cfg.UpdatedAt.Format(time.RFC3339),
+		},
+	}
+
+	if cfg.DeployedAt != nil {
+		mcpDetail["metadata"].(gin.H)["deployed_at"] = cfg.DeployedAt.Format(time.RFC3339)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"mcp":    mcpDetail,
+	})
+}
+
+// UpdateMCPProxy implements ServerInterface.UpdateMCPProxy
+// (PUT /mcp-proxies/{handle})
+func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+
+	handle := id
 
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
@@ -1443,6 +1700,20 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, name string, version string) 
 			Message: "Failed to parse configuration",
 		})
 		return
+	}
+
+	// Validate that the handle in the YAML matches the path parameter
+	if mcpConfig.Metadata != nil && mcpConfig.Metadata.Name != "" {
+		if mcpConfig.Metadata.Name != handle {
+			log.Warn("Handle mismatch between path and YAML metadata",
+				zap.String("path_handle", handle),
+				zap.String("yaml_handle", mcpConfig.Metadata.Name))
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: fmt.Sprintf("Handle mismatch: path has '%s' but YAML metadata.name has '%s'", handle, mcpConfig.Metadata.Name),
+			})
+			return
+		}
 	}
 
 	mcpValidator := config.NewMCPValidator()
@@ -1469,15 +1740,22 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, name string, version string) 
 		return
 	}
 
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return
+	}
+
 	// Check if config exists
-	existing, err := s.store.GetByNameVersion(name, version)
+	existing, err := s.db.GetConfigByHandle(handle)
 	if err != nil {
 		log.Warn("MCP configuration not found",
-			zap.String("name", name),
-			zap.String("version", version))
+			zap.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("MCP configuration with name '%s' and version '%s' not found", name, version),
+			Message: fmt.Sprintf("MCP configuration with handle '%s' not found", handle),
 		})
 		return
 	}
@@ -1487,11 +1765,10 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, name string, version string) 
 		log.Warn("Configuration kind mismatch",
 			zap.String("expected", string(api.Mcp)),
 			zap.String("actual", existing.Kind),
-			zap.String("name", name),
-			zap.String("version", version))
+			zap.String("handle", handle))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("Configuration with name '%s' and version '%s' is not of kind MCP", name, version),
+			Message: fmt.Sprintf("Configuration with handle '%s' is not of kind MCP", handle),
 		})
 		return
 	}
@@ -1502,8 +1779,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, name string, version string) 
 	transformedAPIConfig, err := transformer.Transform(&mcpConfig, &apiConfig)
 	if transformedAPIConfig == nil {
 		log.Error("Failed to transform MCP configuration to API configuration",
-			zap.String("name", name),
-			zap.String("version", version))
+			zap.String("handle", handle))
 		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to transform MCP configuration",
@@ -1541,13 +1817,17 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, name string, version string) 
 				zap.String("id", existing.ID),
 				zap.String("name", existing.GetName()),
 				zap.String("version", existing.GetVersion()))
+			c.JSON(http.StatusConflict, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
 		} else {
 			log.Error("Failed to update config in memory store", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to update configuration in memory store",
+			})
 		}
-		c.JSON(http.StatusConflict, api.ErrorResponse{
-			Status:  "error",
-			Message: err.Error(),
-		})
 		return
 	}
 
@@ -1566,15 +1846,13 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, name string, version string) 
 
 	log.Info("MCP configuration updated",
 		zap.String("id", existing.ID),
-		zap.String("name", existing.GetName()),
-		zap.String("version", existing.GetVersion()))
+		zap.String("handle", handle))
 
-	// Return success response
-	updateId, _ := uuidToOpenAPIUUID(existing.ID)
+	// Return success response (id is the handle)
 	c.JSON(http.StatusOK, api.APIUpdateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("MCP configuration updated successfully"),
-		Id:        updateId,
+		Id:        stringPtr(existing.GetHandle()),
 		UpdatedAt: timePtr(existing.UpdatedAt),
 	})
 
@@ -1604,20 +1882,29 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, name string, version string) 
 }
 
 // DeleteMCPProxy implements ServerInterface.DeleteMCPProxy
-// (DELETE /mcp-proxies/{name}/{version})
-func (s *APIServer) DeleteMCPProxy(c *gin.Context, name string, version string) {
+// (DELETE /mcp-proxies/{handle})
+func (s *APIServer) DeleteMCPProxy(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 
+	handle := id
+
+	if s.db == nil {
+		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+			Status:  "error",
+			Message: "Database storage not available",
+		})
+		return
+	}
+
 	// Check if config exists
-	cfg, err := s.store.GetByNameVersion(name, version)
+	cfg, err := s.db.GetConfigByHandle(handle)
 	if err != nil {
 		log.Warn("MCP proxy configuration not found",
-			zap.String("name", name),
-			zap.String("version", version))
+			zap.String("handle", handle))
 		c.JSON(http.StatusNotFound, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("MCP proxy configuration with name '%s' and version '%s' not found", name, version),
+			Message: fmt.Sprintf("MCP proxy configuration with handle '%s' not found", handle),
 		})
 		return
 	}
@@ -1627,11 +1914,10 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, name string, version string) 
 		log.Warn("Configuration kind mismatch",
 			zap.String("expected", string(api.Mcp)),
 			zap.String("actual", cfg.Kind),
-			zap.String("name", name),
-			zap.String("version", version))
+			zap.String("handle", handle))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
-			Message: fmt.Sprintf("Configuration with name '%s' and version '%s' is not of kind MCP", name, version),
+			Message: fmt.Sprintf("Configuration with handle '%s' is not of kind MCP", handle),
 		})
 		return
 	}
@@ -1683,14 +1969,12 @@ func (s *APIServer) DeleteMCPProxy(c *gin.Context, name string, version string) 
 
 	log.Info("MCP proxy configuration deleted",
 		zap.String("id", cfg.ID),
-		zap.String("name", cfg.GetName()),
-		zap.String("version", cfg.GetVersion()))
+		zap.String("handle", handle))
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "MCP proxy configuration deleted successfully",
-		"name":    name,
-		"version": version,
+		"id":      handle,
 	})
 }
 
@@ -1764,56 +2048,34 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 	// Get all APIs
 	allConfigs := s.store.GetAll()
 
-	// Build API list with metadata using the exact generated types
-	apisSlice := make([]struct {
-		Configuration *api.APIConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-		Id            *openapi_types.UUID   `json:"id,omitempty" yaml:"id,omitempty"`
-		Metadata      *struct {
-			CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-			DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
-			Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
-			UpdatedAt  *time.Time                                `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
-		} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-	}, 0, len(allConfigs))
+	// Build API list with metadata using the generated types
+	apisSlice := make([]api.ConfigDumpAPIItem, 0, len(allConfigs))
 
 	for _, cfg := range allConfigs {
-		configUUID, err := uuidToOpenAPIUUID(cfg.ID)
-		if err != nil {
-			log.Warn("Failed to parse config ID as UUID", zap.String("id", cfg.ID), zap.Error(err))
+		// Use handle (metadata.name) as the id in the dump
+		configHandle := cfg.GetHandle()
+		if configHandle == "" {
+			log.Warn("Config missing handle, skipping in dump", zap.String("id", cfg.ID))
 			continue
 		}
 
 		// Convert status to the correct type
-		var status api.ConfigDumpResponseApisMetadataStatus
+		var status api.ConfigDumpAPIMetadataStatus
 		switch cfg.Status {
 		case models.StatusDeployed:
-			status = api.ConfigDumpResponseApisMetadataStatusDeployed
+			status = api.ConfigDumpAPIMetadataStatusDeployed
 		case models.StatusFailed:
-			status = api.ConfigDumpResponseApisMetadataStatusFailed
+			status = api.ConfigDumpAPIMetadataStatusFailed
 		case models.StatusPending:
-			status = api.ConfigDumpResponseApisMetadataStatusPending
+			status = api.ConfigDumpAPIMetadataStatusPending
 		default:
-			status = api.ConfigDumpResponseApisMetadataStatusPending
+			status = api.ConfigDumpAPIMetadataStatusPending
 		}
 
-		item := struct {
-			Configuration *api.APIConfiguration `json:"configuration,omitempty" yaml:"configuration,omitempty"`
-			Id            *openapi_types.UUID   `json:"id,omitempty" yaml:"id,omitempty"`
-			Metadata      *struct {
-				CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-				DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
-				Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
-				UpdatedAt  *time.Time                                `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
-			} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
-		}{
+		item := api.ConfigDumpAPIItem{
 			Configuration: &cfg.Configuration,
-			Id:            configUUID,
-			Metadata: &struct {
-				CreatedAt  *time.Time                                `json:"created_at,omitempty" yaml:"created_at,omitempty"`
-				DeployedAt *time.Time                                `json:"deployed_at,omitempty" yaml:"deployed_at,omitempty"`
-				Status     *api.ConfigDumpResponseApisMetadataStatus `json:"status,omitempty" yaml:"status,omitempty"`
-				UpdatedAt  *time.Time                                `json:"updated_at,omitempty" yaml:"updated_at,omitempty"`
-			}{
+			Id:            convertHandleToUUID(configHandle),
+			Metadata: &api.ConfigDumpAPIMetadata{
 				CreatedAt:  &cfg.CreatedAt,
 				UpdatedAt:  &cfg.UpdatedAt,
 				DeployedAt: cfg.DeployedAt,

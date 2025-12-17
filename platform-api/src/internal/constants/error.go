@@ -20,12 +20,17 @@ package constants
 import "errors"
 
 var (
-	ErrHandleExists          = errors.New("handle already exists")
-	ErrOrganizationExists    = errors.New("organization already exists with the given UUID")
-	ErrInvalidHandle         = errors.New("invalid handle format")
-	ErrOrganizationNotFound  = errors.New("organization not found")
-	ErrMultipleOrganizations = errors.New("multiple organizations found")
-	ErrInvalidInput          = errors.New("invalid input parameters")
+	ErrHandleExists           = errors.New("handle already exists")
+	ErrHandleEmpty            = errors.New("handle cannot be empty")
+	ErrHandleTooShort         = errors.New("handle must be at least 3 characters")
+	ErrHandleTooLong          = errors.New("handle must be at most 63 characters")
+	ErrInvalidHandle          = errors.New("handle must be lowercase alphanumeric with hyphens only (no consecutive hyphens, cannot start or end with hyphen)")
+	ErrHandleGenerationFailed = errors.New("failed to generate unique handle after maximum retries")
+	ErrHandleSourceEmpty      = errors.New("source string cannot be empty for handle generation")
+	ErrOrganizationExists     = errors.New("organization already exists with the given UUID")
+	ErrOrganizationNotFound   = errors.New("organization not found")
+	ErrMultipleOrganizations  = errors.New("multiple organizations found")
+	ErrInvalidInput           = errors.New("invalid input parameters")
 )
 
 var (
@@ -38,16 +43,18 @@ var (
 )
 
 var (
-	ErrAPINotFound           = errors.New("api not found")
-	ErrAPIAlreadyExists      = errors.New("api already exists in project")
-	ErrInvalidAPIContext     = errors.New("invalid api context format")
-	ErrInvalidAPIVersion     = errors.New("invalid api version format")
-	ErrInvalidAPIName        = errors.New("invalid api name format")
-	ErrInvalidLifecycleState = errors.New("invalid lifecycle state")
-	ErrInvalidAPIType        = errors.New("invalid api type")
-	ErrInvalidTransport      = errors.New("invalid transport protocol")
-	ErrInvalidAPIDeployment  = errors.New("invalid api deployment")
-	ErrGatewayNotAssociated  = errors.New("api is not associated with gateway")
+	ErrAPINotFound                 = errors.New("api not found")
+	ErrAPIAlreadyExists            = errors.New("api already exists in project")
+	ErrAPINameVersionAlreadyExists = errors.New("api with same name and version already exists")
+	ErrInvalidAPIContext           = errors.New("invalid api context format")
+	ErrInvalidAPIVersion           = errors.New("invalid api version format")
+	ErrInvalidAPIName              = errors.New("invalid api name format")
+	ErrInvalidLifecycleState       = errors.New("invalid lifecycle state")
+	ErrInvalidAPIType              = errors.New("invalid api type")
+	ErrInvalidTransport            = errors.New("invalid transport protocol")
+	ErrInvalidAPIDeployment        = errors.New("invalid api deployment")
+	ErrGatewayNotAssociated        = errors.New("api is not associated with gateway")
+	ErrAPIContextVersionConflict   = errors.New("api with same context and version already deployed in gateway")
 )
 
 var (

@@ -28,7 +28,7 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
 
 servers:
-  - url: https://localhost:8443/api/v1
+  - url: https://localhost:9243/api/v1
     description: Development server (HTTPS)
   - url: https://api.platform.com/api/v1
     description: Production server
@@ -1660,18 +1660,13 @@ components:
       properties:
         id:
           type: string
-          description: Unique identifier for the api artifact
-          readOnly: true
-          example: 01234567-0123-0123-0123-012345678901
+          description: Unique handle/identifier for the API. Can be provided during creation or auto-generated.
+          example: my-api-handle
         name:
           minLength: 1
           pattern: '(^[^~!@#;:%^*()+={}|\\<>"'',&$\[\]\/]*$)'
           type: string
           example: PizzaShackAPI
-        displayName:
-          description: Human-friendly name shown in UI. Length limited to DB column size
-          type: string
-          example: Pizza Shack API
         description:
           maxLength: 32766
           type: string
@@ -2838,17 +2833,12 @@ components:
       properties:
         id:
           type: string
-          format: uuid
-          description: Unique identifier for the artifact
-          example: "123e4567-e89b-12d3-a456-426614174000"
+          description: Handle of the artifact
+          example: "inventory-api"
         name:
           type: string
           description: Name of the artifact
-          example: "inventory-api"
-        displayName:
-          type: string
-          description: Display name of the artifact
-          example: "Inventory Management API"
+          example: "Inventory API"
         type:
           type: string
           enum: ["API", "MCP", "API_PRODUCT"]
@@ -3415,8 +3405,8 @@ components:
             Required fields within the JSON: name, context, version, projectId.
           example: |
             {
+              "id": "petstore-api-1"
               "name": "PetStore API",
-              "displayName": "PetStore API v3",
               "description": "This is a sample Pet Store Server",
               "context": "/petstore",
               "version": "1.0.0",
@@ -3461,7 +3451,6 @@ components:
               description: Details for the validated API project
               required:
                 - name
-                - displayName
                 - description
                 - context
                 - version
@@ -3638,12 +3627,11 @@ components:
       name: apiId
       in: path
       description: |
-        **API ID** consisting of the **UUID** of the API.
+        **API ID** consisting of the **handle** (unique identifier) of the API.
       required: true
       schema:
         type: string
-        format: uuid
-        example: ivbda7385-chs529-63bf-8bd2-7437690
+        example: my-api-handle
 
     revisionId-Q:
       name: revisionId

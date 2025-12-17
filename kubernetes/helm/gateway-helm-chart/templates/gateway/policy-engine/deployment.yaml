@@ -1,5 +1,6 @@
 {{- $policy := .Values.gateway.policyEngine -}}
 {{- $deployment := $policy.deployment -}}
+{{- $config := .Values.gateway.config -}}
 {{- if $deployment.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -24,10 +25,11 @@ spec:
         {{- with $deployment.podLabels }}
 {{ toYaml . | indent 8 }}
         {{- end }}
-      {{- if $deployment.podAnnotations }}
       annotations:
-        {{- toYaml $deployment.podAnnotations | nindent 8 }}
-      {{- end }}
+        checksum/config: {{ include (print $.Template.BasePath "/gateway/gateway-config.yaml") . | sha256sum }}
+        {{- with $deployment.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "gateway-operator.serviceAccountName" . }}
       {{- $globalPullSecrets := default (list) .Values.imagePullSecrets }}
@@ -76,9 +78,9 @@ spec:
             - name: ext
               containerPort: {{ $policy.service.ports.ext }}
               protocol: TCP
-            {{- if $policy.config.admin.enabled }}
+            {{- if $config.policy_engine.admin.enabled }}
             - name: admin
-              containerPort: {{ default 9002 $policy.config.admin.port }}
+              containerPort: {{ default 9002 $config.policy_engine.admin.port }}
               protocol: TCP
             {{- end }}
           livenessProbe:
@@ -87,16 +89,12 @@ spec:
             {{- toYaml $deployment.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml ($deployment.resources | default dict) | nindent 12 }}
-          {{- if $policy.config.enabled }}
           volumeMounts:
-            - name: policy-engine-config
+            - name: gateway-config
               mountPath: /configs/config.yaml
               subPath: config.yaml
-          {{- end }}
-      {{- if $policy.config.enabled }}
       volumes:
-        - name: policy-engine-config
+        - name: gateway-config
           configMap:
-            name: {{ include "gateway-operator.fullname" . }}-policy-engine-config
-      {{- end }}
+            name: {{ include "gateway-operator.fullname" . }}-config
 {{- end }}

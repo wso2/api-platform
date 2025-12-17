@@ -17,9 +17,11 @@
 # --------------------------------------------------------------------
 
 version: ai.api-platform.wso2.com/v1
-kind: llm/provider
-spec:
+kind: LlmProvider
+metadata:
   name: wso2-openai-provider
+spec:
+  displayName: WSO2 OpenAI Provider
   version: v1.0
   template: openai
   vhost: api.openai.local

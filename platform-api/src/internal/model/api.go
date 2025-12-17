@@ -24,8 +24,8 @@ import (
 // API represents an API entity in the platform
 type API struct {
 	ID               string              `json:"id" db:"uuid"`
+	Handle           string              `json:"handle" db:"handle"`
 	Name             string              `json:"name" db:"name"`
-	DisplayName      string              `json:"displayName,omitempty" db:"display_name"`
 	Description      string              `json:"description,omitempty" db:"description"`
 	Context          string              `json:"context" db:"context"`
 	Version          string              `json:"version" db:"version"`
@@ -53,6 +53,15 @@ type API struct {
 // TableName returns the table name for the API model
 func (API) TableName() string {
 	return "apis"
+}
+
+// APIMetadata contains minimal API information for handle-to-UUID resolution
+type APIMetadata struct {
+	ID             string `json:"id" db:"uuid"`
+	Handle         string `json:"handle" db:"handle"`
+	Name           string `json:"name" db:"name"`
+	Context        string `json:"context" db:"context"`
+	OrganizationID string `json:"organizationId" db:"organization_uuid"`
 }
 
 // MTLSConfig represents mutual TLS configuration

@@ -132,6 +132,7 @@ func TestSchemaInitialization(t *testing.T) {
 			"version":          "TEXT",
 			"context":          "TEXT",
 			"kind":             "TEXT",
+			"handle":           "TEXT",
 			"status":           "TEXT",
 			"created_at":       "TIMESTAMP",
 			"updated_at":       "TIMESTAMP",

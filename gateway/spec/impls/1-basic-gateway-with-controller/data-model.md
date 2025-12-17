@@ -25,7 +25,7 @@ The API Configuration represents a complete REST API definition provided by user
 
 ```yaml
 version: api-platform.wso2.com/v1
-kind: http/rest
+kind: RestApi
 data:
   name: string              # Human-readable API name
   version: string           # Semantic version (e.g., v1.0, v2.1)
@@ -41,7 +41,7 @@ data:
 
 ```yaml
 version: api-platform.wso2.com/v1
-kind: http/rest
+kind: RestApi
 data:
   name: Weather API
   version: v1.0
@@ -100,8 +100,8 @@ type Operation struct {
 
 | Field | Constraint | Error if Violated |
 |-------|-----------|-------------------|
-| `version` | Must equal "api-platform.wso2.com/v1" | "Unsupported API version" |
-| `kind` | Must equal "http/rest" | "Unsupported API kind (only http/rest supported)" |
+| `version` | Must equal "gateway.api-platform.wso2.com/v1alpha1" | "Unsupported API version" |
+| `kind` | Must equal "RestApi" | "Unsupported API kind (only RestApi supported)" |
 | `spec.name` | Non-empty string, 1-100 characters | "API name is required and must be 1-100 characters" |
 | `spec.version` | Non-empty string, matches semantic version pattern (e.g., v1.0) | "API version is required and must follow format vX.Y" |
 | `spec.context` | Must start with `/`, no trailing slash, 1-200 characters | "Context must start with / and cannot end with /" |

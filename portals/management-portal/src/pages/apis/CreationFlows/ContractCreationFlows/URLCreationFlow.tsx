@@ -1,5 +1,13 @@
 import * as React from "react";
-import { Box, Paper, Stack, Typography, Alert, Grid } from "@mui/material";
+import {
+  Box,
+  Paper,
+  Stack,
+  Typography,
+  Alert,
+  Grid,
+  CircularProgress,
+} from "@mui/material";
 import { Button } from "../../../../components/src/components/Button";
 import { TextInput } from "../../../../components/src/components/TextInput";
 import CreationMetaData from "../CreationMetaData";
@@ -8,18 +16,16 @@ import {
   useOpenApiValidation,
   type OpenApiValidationResponse,
 } from "../../../../hooks/validation";
-import { ApiOperationsList } from "../../../../components/src/components/Common/ApiOperationsList";
 import type { ImportOpenApiRequest, ApiSummary } from "../../../../hooks/apis";
 import {
   defaultServiceName,
   firstServerUrl,
   deriveContext,
-  mapOperations,
   formatVersionToMajorMinor,
   isValidMajorMinorVersion,
 } from "../../../../helpers/openApiHelpers";
+import SwaggerPreviewWithSource from "../../../../components/src/components/Common/SwaggerPreviewWithSource";
 
-/* ---------- Types ---------- */
 type Props = {
   open: boolean;
   selectedProjectId: string;
@@ -32,8 +38,6 @@ type Props = {
 };
 
 type Step = "url" | "details";
-
-/* ---------- component ---------- */
 
 const URLCreationFlow: React.FC<Props> = ({
   open,
@@ -54,6 +58,7 @@ const URLCreationFlow: React.FC<Props> = ({
     useCreateComponentBuildpackContext();
   const { validateOpenApiUrl } = useOpenApiValidation();
   const abortControllerRef = React.useRef<AbortController | null>(null);
+  const debounceRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     return () => {
@@ -110,7 +115,6 @@ const URLCreationFlow: React.FC<Props> = ({
 
       if (result.isAPIDefinitionValid) {
         autoFill(result.api);
-        setStep("details");
       } else {
         const errorMsg =
           result.errors?.join(", ") || "Invalid OpenAPI definition";
@@ -125,6 +129,31 @@ const URLCreationFlow: React.FC<Props> = ({
     }
   }, [specUrl, autoFill, validateOpenApiUrl]);
 
+  React.useEffect(() => {
+    const url = specUrl.trim();
+
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    abortControllerRef.current?.abort();
+
+    if (!url) {
+      setValidationResult(null);
+      setError(null);
+      setValidating(false);
+      return;
+    }
+
+    setValidationResult(null);
+    setError(null);
+
+    debounceRef.current = window.setTimeout(() => {
+      handleFetchAndPreview();
+    }, 600);
+
+    return () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    };
+  }, [specUrl, handleFetchAndPreview]);
+
   const finishAndClose = React.useCallback(() => {
     abortControllerRef.current?.abort();
     resetContractMeta();
@@ -136,11 +165,7 @@ const URLCreationFlow: React.FC<Props> = ({
     onClose();
   }, [onClose, resetContractMeta]);
 
-  const previewOps = React.useMemo(() => {
-    if (!validationResult?.isAPIDefinitionValid) return [];
-    const api = validationResult.api as any;
-    return mapOperations(api?.operations || [], { withFallbackName: true });
-  }, [validationResult]);
+  const isDefinitionValid = validationResult?.isAPIDefinitionValid ?? false;
 
   const onCreate = async () => {
     const name = (contractMeta?.name || "").trim();
@@ -220,8 +245,8 @@ const URLCreationFlow: React.FC<Props> = ({
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 6 }}>
             <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Public Specification URL
+              <Typography variant="h5" sx={{ mb: 2 }}>
+                URL for API Contract
               </Typography>
               <TextInput
                 label=""
@@ -231,25 +256,30 @@ const URLCreationFlow: React.FC<Props> = ({
                 testId=""
                 size="medium"
               />
-
-              <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+              <Stack
+                direction="row"
+                spacing={1}
+                sx={{ mt: 1 }}
+                alignItems={"center"}
+              >
+                <Box>{validating ? <CircularProgress size={16} /> : null}</Box>
                 <Button
-                  variant="text"
+                  variant="link"
                   onClick={() =>
                     setSpecUrl("https://petstore.swagger.io/v2/swagger.json")
                   }
                   disabled={validating}
                 >
-                  Try with Sample URL
+                  {validating ? "Validating..." : "Try with Sample URL"}
                 </Button>
                 <Box flex={1} />
-                <Button
+                {/* <Button
                   variant="outlined"
                   onClick={handleFetchAndPreview}
                   disabled={!specUrl.trim() || validating}
                 >
                   {validating ? "Validating..." : "Fetch & Preview"}
-                </Button>
+                </Button> */}
               </Stack>
 
               {error && (
@@ -267,31 +297,27 @@ const URLCreationFlow: React.FC<Props> = ({
               >
                 Cancel
               </Button>
+              <Button
+                variant="contained"
+                disabled={!validationResult?.isAPIDefinitionValid || validating}
+                onClick={() => setStep("details")}
+                sx={{ textTransform: "none" }}
+              >
+                Next
+              </Button>
             </Stack>
           </Grid>
-
-          <Grid size={{ xs: 12, md: 6 }}>
-            {validating ? (
-              <Paper
-                variant="outlined"
-                sx={{ p: 3, borderRadius: 2, color: "text.secondary" }}
-              >
-                <Typography variant="body2">
-                  Validating OpenAPI definition...
-                </Typography>
-              </Paper>
-            ) : (
-              <Paper
-                variant="outlined"
-                sx={{ p: 3, borderRadius: 2, color: "text.secondary" }}
-              >
-                <Typography variant="body2">
-                  Enter a direct URL to an OpenAPI/Swagger document (YAML or
-                  JSON). We'll fetch and preview it here.
-                </Typography>
-              </Paper>
-            )}
-          </Grid>
+          {isDefinitionValid && (
+            <Grid size={{ xs: 12, md: 6 }}>
+              <SwaggerPreviewWithSource
+                title="Fetched OAS Definition"
+                definitionUrl={specUrl}
+                isValid={isDefinitionValid}
+                isLoading={validating}
+                apiEndpoint={(contractMeta?.target || "").trim() || undefined}
+              />
+            </Grid>
+          )}
         </Grid>
       )}
 
@@ -299,7 +325,7 @@ const URLCreationFlow: React.FC<Props> = ({
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 6 }}>
             {/* <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}> */}
-            <CreationMetaData scope="contract" title="API Details" />
+            <CreationMetaData scope="contract" />
             <Stack
               direction="row"
               spacing={1}
@@ -337,13 +363,16 @@ const URLCreationFlow: React.FC<Props> = ({
             )}
             {/* </Paper> */}
           </Grid>
-
+          {/* 
           <Grid size={{ xs: 12, md: 6 }}>
-            <ApiOperationsList
+            <SwaggerPreviewWithSource
               title="Fetched OAS Definition"
-              operations={previewOps}
+              definitionUrl={specUrl}
+              isValid={isDefinitionValid}
+              isLoading={validating}
+              apiEndpoint={(contractMeta?.target || "").trim() || undefined}
             />
-          </Grid>
+          </Grid> */}
         </Grid>
       )}
     </Box>

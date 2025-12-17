@@ -153,14 +153,14 @@ func (s *SQLiteStorage) initSchema() error {
 			// Add llm_provider_templates table
 			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS llm_provider_templates (
 				id TEXT PRIMARY KEY,
-				name TEXT NOT NULL UNIQUE,
+				handle TEXT NOT NULL UNIQUE,
 				configuration TEXT NOT NULL,
 				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 			);`); err != nil {
 				return fmt.Errorf("failed to migrate schema to version 4: %w", err)
 			}
-			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_template_name ON llm_provider_templates(name);`); err != nil {
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_template_handle ON llm_provider_templates(handle);`); err != nil {
 				return fmt.Errorf("failed to create llm_provider_templates index: %w", err)
 			}
 			if _, err := s.db.Exec("PRAGMA user_version = 4"); err != nil {
@@ -184,12 +184,17 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredConfig) error {
 	name := cfg.GetName()
 	version := cfg.GetVersion()
 	context := cfg.GetContext()
+	handle := cfg.GetHandle()
+
+	if handle == "" {
+		return fmt.Errorf("handle (metadata.name) is required and cannot be empty")
+	}
 
 	query := `
 		INSERT INTO deployments (
-			id, name, version, context, kind,
+			id, name, version, context, kind, handle,
 			status, created_at, updated_at, deployed_version
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	stmt, err := s.db.Prepare(query)
@@ -205,6 +210,7 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredConfig) error {
 		version,
 		context,
 		cfg.Kind,
+		handle,
 		cfg.Status,
 		now,
 		now,
@@ -247,10 +253,15 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
 	name := cfg.GetName()
 	version := cfg.GetVersion()
 	context := cfg.GetContext()
+	handle := cfg.GetHandle()
+
+	if handle == "" {
+		return fmt.Errorf("handle (metadata.name) is required and cannot be empty")
+	}
 
 	query := `
 		UPDATE deployments
-		SET name = ?, version = ?, context = ?, kind = ?,
+		SET name = ?, version = ?, context = ?, kind = ?, handle = ?,
 			status = ?, updated_at = ?,
 			deployed_version = ?
 		WHERE id = ?
@@ -267,6 +278,7 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
 		version,
 		context,
 		cfg.Kind,
+		handle,
 		cfg.Status,
 		time.Now(),
 		cfg.DeployedVersion,
@@ -406,6 +418,60 @@ func (s *SQLiteStorage) GetConfigByNameVersion(name, version string) (*models.St
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("%w: name=%s, version=%s", ErrNotFound, name, version)
+		}
+		return nil, fmt.Errorf("failed to query configuration: %w", err)
+	}
+
+	// Parse deployed_at (nullable field)
+	if deployedAt.Valid {
+		cfg.DeployedAt = &deployedAt.Time
+	}
+
+	// Deserialize JSON configuration
+	if configJSON != "" {
+		if err := json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal configuration: %w", err)
+		}
+	}
+	if sourceConfigJSON != "" {
+		if err := json.Unmarshal([]byte(sourceConfigJSON), &cfg.SourceConfiguration); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal source configuration: %w", err)
+		}
+	}
+
+	return &cfg, nil
+}
+
+// GetConfigByHandle retrieves a deployment configuration by handle (metadata.name)
+func (s *SQLiteStorage) GetConfigByHandle(handle string) (*models.StoredConfig, error) {
+	query := `
+		SELECT d.id, d.kind, dc.configuration, dc.source_configuration, d.status, d.created_at, d.updated_at,
+			   d.deployed_at, d.deployed_version
+		FROM deployments d
+		LEFT JOIN deployment_configs dc ON d.id = dc.id
+		WHERE d.handle = ?
+	`
+
+	var cfg models.StoredConfig
+	var configJSON string
+	var sourceConfigJSON string
+	var deployedAt sql.NullTime
+
+	err := s.db.QueryRow(query, handle).Scan(
+		&cfg.ID,
+		&cfg.Kind,
+		&configJSON,
+		&sourceConfigJSON,
+		&cfg.Status,
+		&cfg.CreatedAt,
+		&cfg.UpdatedAt,
+		&deployedAt,
+		&cfg.DeployedVersion,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: handle=%s", ErrNotFound, handle)
 		}
 		return nil, fmt.Errorf("failed to query configuration: %w", err)
 	}
@@ -575,7 +641,7 @@ func LoadLLMProviderTemplatesFromDatabase(storage Storage, cache *ConfigStore) e
 
 	for _, template := range templates {
 		if err := cache.AddTemplate(template); err != nil {
-			return fmt.Errorf("failed to load llm provider template %s into cache: %w", template.GetName(), err)
+			return fmt.Errorf("failed to load llm provider template %s into cache: %w", template.GetHandle(), err)
 		}
 	}
 
@@ -590,18 +656,18 @@ func (s *SQLiteStorage) SaveLLMProviderTemplate(template *models.StoredLLMProvid
 		return fmt.Errorf("failed to marshal template configuration: %w", err)
 	}
 
-	name := template.GetName()
+	handle := template.GetHandle()
 
 	query := `
 		INSERT INTO llm_provider_templates (
-			id, name, configuration, created_at, updated_at
+			id, handle, configuration, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?)
 	`
 
 	now := time.Now()
 	_, err = s.db.Exec(query,
 		template.ID,
-		name,
+		handle,
 		string(configJSON),
 		now,
 		now,
@@ -609,15 +675,15 @@ func (s *SQLiteStorage) SaveLLMProviderTemplate(template *models.StoredLLMProvid
 
 	if err != nil {
 		// Check for unique constraint violation
-		if isUniqueConstraintError(err) || (err != nil && err.Error() == "UNIQUE constraint failed: llm_provider_templates.name") {
-			return fmt.Errorf("%w: template with name '%s' already exists", ErrConflict, name)
+		if err.Error() == "UNIQUE constraint failed: llm_provider_templates.handle" {
+			return fmt.Errorf("%w: template with handle '%s' already exists", ErrConflict, handle)
 		}
 		return fmt.Errorf("failed to insert template: %w", err)
 	}
 
 	s.logger.Info("LLM provider template saved",
 		zap.String("id", template.ID),
-		zap.String("name", name))
+		zap.String("handle", handle))
 
 	return nil
 }
@@ -639,16 +705,16 @@ func (s *SQLiteStorage) UpdateLLMProviderTemplate(template *models.StoredLLMProv
 		return fmt.Errorf("failed to marshal template configuration: %w", err)
 	}
 
-	name := template.GetName()
+	handle := template.GetHandle()
 
 	query := `
 		UPDATE llm_provider_templates
-		SET name = ?, configuration = ?, updated_at = ?
+		SET handle = ?, configuration = ?, updated_at = ?
 		WHERE id = ?
 	`
 
 	result, err := s.db.Exec(query,
-		name,
+		handle,
 		string(configJSON),
 		time.Now(),
 		template.ID,
@@ -669,7 +735,7 @@ func (s *SQLiteStorage) UpdateLLMProviderTemplate(template *models.StoredLLMProv
 
 	s.logger.Info("LLM provider template updated",
 		zap.String("id", template.ID),
-		zap.String("name", name))
+		zap.String("handle", handle))
 
 	return nil
 }
@@ -718,39 +784,6 @@ func (s *SQLiteStorage) GetLLMProviderTemplate(id string) (*models.StoredLLMProv
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("%w: id=%s", ErrNotFound, id)
-		}
-		return nil, fmt.Errorf("failed to query template: %w", err)
-	}
-
-	// Deserialize JSON configuration
-	if err := json.Unmarshal([]byte(configJSON), &template.Configuration); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal template configuration: %w", err)
-	}
-
-	return &template, nil
-}
-
-// GetLLMProviderTemplateByName retrieves an LLM provider template by name
-func (s *SQLiteStorage) GetLLMProviderTemplateByName(name string) (*models.StoredLLMProviderTemplate, error) {
-	query := `
-		SELECT id, configuration, created_at, updated_at
-		FROM llm_provider_templates
-		WHERE name = ?
-	`
-
-	var template models.StoredLLMProviderTemplate
-	var configJSON string
-
-	err := s.db.QueryRow(query, name).Scan(
-		&template.ID,
-		&configJSON,
-		&template.CreatedAt,
-		&template.UpdatedAt,
-	)
-
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("%w: name=%s", ErrNotFound, name)
 		}
 		return nil, fmt.Errorf("failed to query template: %w", err)
 	}
@@ -1077,7 +1110,8 @@ func isUniqueConstraintError(err error) bool {
 	// SQLite error code 19 is CONSTRAINT error
 	// Error message contains "UNIQUE constraint failed"
 	return err != nil && (err.Error() == "UNIQUE constraint failed: deployments.name, deployments.version" ||
-		err.Error() == "UNIQUE constraint failed: deployments.id")
+		err.Error() == "UNIQUE constraint failed: deployments.id" ||
+		err.Error() == "UNIQUE constraint failed: deployments.handle")
 }
 
 // isCertificateUniqueConstraintError checks if the error is a UNIQUE constraint violation for certificates

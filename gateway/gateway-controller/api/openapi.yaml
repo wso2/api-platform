@@ -68,55 +68,12 @@ paths:
           application/yaml:
             schema:
               $ref: "#/components/schemas/APIConfiguration"
-            example:
-              version: api-platform.wso2.com/v1
-              kind: http/rest
-              spec:
-                name: PetStore API
-                version: v1.0
-                context: /petstore
-                upstreams:
-                  - url: http://petstore.swagger.io/v2
-                policies:
-                  - name: apiKeyValidation
-                    version: v1.0.0
-                    executionCondition: "request.metadata[authenticated] != true"
-                    params:
-                      header: X-API-Key
-                      mandatory: true
-                  - name: setHeaders
-                    version: v1.0.0
-                    params:
-                      requestHeaders:
-                        - X-Request-Source: WSO2 API Manager
-                      responseHeaders:
-                        - X-Response-Source: WSO2 API Manager
-                operations:
-                  - method: GET
-                    path: /pet/{petId}
-                    policies:
-                      - name: apiKeyValidation
-                        version: v1.0.0
-                        executionCondition: "request.metadata[authenticated] != true"
-                        params:
-                          header: X-API-Key
-                          mandatory: true
-                  - method: POST
-                    path: /pet
-                  - method: PUT
-                    path: /pet
-                  - method: DELETE
-                    path: /pet/{petId}
-                  - method: GET
-                    path: /store/inventory
-                  - method: POST
-                    path: /store/order
           application/json:
             schema:
               $ref: "#/components/schemas/APIConfiguration"
             example:
-              version: api-platform.wso2.com/v1
-              kind: http/rest
+              version: gateway.api-platform.wso2.com/v1alpha1
+              kind: RestApi
               spec:
                 name: PetStore API
                 version: v1.0
@@ -191,6 +148,36 @@ paths:
       operationId: listAPIs
       tags:
         - API Management
+      parameters:
+        - name: name
+          in: query
+          required: false
+          description: Filter by API name
+          schema:
+            type: string
+          example: Weather API
+        - name: version
+          in: query
+          required: false
+          description: Filter by API version
+          schema:
+            type: string
+          example: v1.0
+        - name: context
+          in: query
+          required: false
+          description: Filter by API context/path
+          schema:
+            type: string
+          example: /weather
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [pending, deployed, failed]
+          example: pending
       responses:
         "200":
           description: List of API configurations
@@ -216,28 +203,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /apis/{name}/{version}:
+  /apis/{id}:
     get:
-      summary: Get API configuration by name and version
-      description: Retrieve the complete configuration for a specific API by its name and version
-      operationId: getAPIByNameVersion
+      summary: Get API configuration by id
+      description: |
+        Retrieve the complete configuration for a specific API by its id.
+        The id is a unique string identifier (not a UUID).
+      operationId: getAPIById
       tags:
         - API Management
       parameters:
-        - name: name
+        - name: id
           in: path
           required: true
-          description: Name of the API
+          description: |
+            Unique public identifier for the API.
           schema:
             type: string
-          example: weather-api
-        - name: version
-          in: path
-          required: true
-          description: Version of the API
-          schema:
-            type: string
-          example: v1.0
+          example: weather-api-v1.0
       responses:
         "200":
           description: API configuration details
@@ -273,20 +256,14 @@ paths:
       tags:
         - API Management
       parameters:
-        - name: name
+        - name: id
           in: path
           required: true
-          description: Name of the API to update
+          description: |
+            Unique public identifier of the API to update.
           schema:
             type: string
-          example: weather-api
-        - name: version
-          in: path
-          required: true
-          description: Version of the API to update
-          schema:
-            type: string
-          example: v1.0
+          example: weather-api-v1.0
       requestBody:
         required: true
         content:
@@ -332,20 +309,14 @@ paths:
       tags:
         - API Management
       parameters:
-        - name: name
+        - name: id
           in: path
           required: true
-          description: Name of the API to delete
+          description: |
+            Unique public identifier of the API to delete.
           schema:
             type: string
-          example: weather-api
-        - name: version
-          in: path
-          required: true
-          description: Version of the API to delete
-          schema:
-            type: string
-          example: v1.0
+          example: weather-api-v1.0
       responses:
         "200":
           description: API configuration deleted successfully
@@ -362,7 +333,7 @@ paths:
                     example: API configuration deleted successfully
                   id:
                     type: string
-                    example: 550e8400-e29b-41d4-a716-446655440000
+                    example: weather-api-v1.0
         "404":
           description: API configuration not found
           content:
@@ -609,6 +580,36 @@ paths:
       operationId: listMCPProxies
       tags:
         - MCP Proxy Management
+      parameters:
+        - name: name
+          in: query
+          required: false
+          description: Filter by MCP proxy name
+          schema:
+            type: string
+          example: My MCP Proxy
+        - name: version
+          in: query
+          required: false
+          description: Filter by MCP proxy version
+          schema:
+            type: string
+          example: v1.0
+        - name: context
+          in: query
+          required: false
+          description: Filter by MCP proxy context/path
+          schema:
+            type: string
+          example: /everything
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [pending, deployed, failed]
+          example: pending
       responses:
         "200":
           description: List of MCP Proxy configurations
@@ -634,28 +635,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /mcp-proxies/{name}/{version}:
+  /mcp-proxies/{id}:
     get:
-      summary: Get MCP Proxy configuration by name and version
-      description: Retrieve the complete configuration for a specific MCP Proxy by its name and version
-      operationId: getMCPProxyByNameVersion
+      summary: Get MCP Proxy configuration by id
+      description: |
+        Retrieve the complete configuration for a specific MCP Proxy by its id.
+        The id is a unique string identifier (not a UUID).
+      operationId: getMCPProxyById
       tags:
         - MCP Proxy Management
       parameters:
-        - name: name
+        - name: id
           in: path
           required: true
-          description: Name of the MCP Proxy
+          description: |
+            Unique public identifier of the MCP Proxy.
           schema:
             type: string
-          example: mcp-proxy-1
-        - name: version
-          in: path
-          required: true
-          description: Version of the MCP Proxy
-          schema:
-            type: string
-          example: v1.0
+          example: everything-mcp-v1.0
       responses:
         "200":
           description: MCP Proxy configuration details
@@ -691,20 +688,14 @@ paths:
       tags:
         - MCP Proxy Management
       parameters:
-        - name: name
+        - name: id
           in: path
           required: true
-          description: Name of the MCP Proxy to update
+          description: |
+            Unique public identifier of the MCP Proxy to update.
           schema:
             type: string
-          example: mcp-proxy-1
-        - name: version
-          in: path
-          required: true
-          description: Version of the MCP Proxy to update
-          schema:
-            type: string
-          example: v1.0
+          example: everything-mcp-v1.0
       requestBody:
         required: true
         content:
@@ -750,20 +741,14 @@ paths:
       tags:
         - MCP Proxy Management
       parameters:
-        - name: name
+        - name: id
           in: path
           required: true
-          description: Name of the MCP Proxy to delete
+          description: |
+            Unique public identifier of the MCP Proxy to delete.
           schema:
             type: string
-          example: mcp-proxy-1
-        - name: version
-          in: path
-          required: true
-          description: Version of the MCP Proxy to delete
-          schema:
-            type: string
-          example: v1.0
+          example: everything-mcp-v1.0
       responses:
         "200":
           description: MCP Proxy configuration deleted successfully
@@ -780,7 +765,7 @@ paths:
                     example: MCP Proxy configuration deleted successfully
                   id:
                     type: string
-                    example: 550e8400-e29b-41d4-a716-446655440000
+                    example: everything-mcp-v1.0
         "404":
           description: MCP Proxy configuration not found
           content:
@@ -849,6 +834,14 @@ paths:
       operationId: listLLMProviderTemplates
       tags:
         - LLM Provider Management
+      parameters:
+        - name: name
+          in: query
+          required: false
+          description: Filter by template name
+          schema:
+            type: string
+          example: OpenAI
       responses:
         '200':
           description: List of LLM provider templates
@@ -874,18 +867,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /llm-provider-templates/{name}:
+  /llm-provider-templates/{id}:
     get:
-      summary: Get LLM provider template by name
+      summary: Get LLM provider template by id
       description: Retrieve the complete configuration for a specific LLM provider template
-      operationId: getLLMProviderTemplateByName
+      operationId: getLLMProviderTemplateById
       tags:
         - LLM Provider Management
       parameters:
-        - name: name
+        - name: id
           in: path
           required: true
-          description: Name of the LLM provider template
+          description: Unique public identifier for the LLM provider template
           schema:
             type: string
           example: openai
@@ -920,10 +913,10 @@ paths:
       tags:
         - LLM Provider Management
       parameters:
-        - name: name
+        - name: id
           in: path
           required: true
-          description: Name of the template to update
+          description: Identifier of the template to update
           schema:
             type: string
           example: openai
@@ -970,10 +963,10 @@ paths:
       tags:
         - LLM Provider Management
       parameters:
-        - name: name
+        - name: id
           in: path
           required: true
-          description: Name of the template to delete
+          description: Identifier of the template to delete
           schema:
             type: string
           example: openai
@@ -1059,6 +1052,43 @@ paths:
       operationId: listLLMProviders
       tags:
         - LLM Provider Management
+      parameters:
+        - name: name
+          in: query
+          required: false
+          description: Filter by LLM provider name
+          schema:
+            type: string
+          example: OpenAI Provider
+        - name: version
+          in: query
+          required: false
+          description: Filter by LLM provider version
+          schema:
+            type: string
+          example: v1.0
+        - name: context
+          in: query
+          required: false
+          description: Filter by LLM provider context/path
+          schema:
+            type: string
+          example: /openai
+        - name: status
+          in: query
+          required: false
+          description: Filter by deployment status
+          schema:
+            type: string
+            enum: [ pending, deployed, failed ]
+          example: pending
+        - name: vhost
+          in: query
+          required: false
+          description: Filter by LLM provider vhost
+          schema:
+            type: string
+          example: api.openai.com
       responses:
         '200':
           description: List of LLM providers
@@ -1084,28 +1114,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /llm-providers/{name}/{version}:
+  /llm-providers/{id}:
     get:
-      summary: Get LLM provider by name and version
+      summary: Get LLM provider by identifier
       description: Retrieve the complete configuration for a specific LLM provider
-      operationId: getLLMProviderByNameVersion
+      operationId: getLLMProviderById
       tags:
         - LLM Provider Management
       parameters:
-        - name: name
+        - name: id
           in: path
           required: true
-          description: Name of the LLM provider
+          description: Handle of the LLM provider
           schema:
             type: string
           example: wso2-openai-provider
-        - name: version
-          in: path
-          required: true
-          description: Version of the LLM provider
-          schema:
-            type: string
-          example: v1.0
       responses:
         '200':
           description: LLM provider details
@@ -1136,20 +1159,13 @@ paths:
       tags:
         - LLM Provider Management
       parameters:
-        - name: name
+        - name: id
           in: path
           required: true
-          description: Name of the LLM provider
+          description: Handle of the LLM provider
           schema:
             type: string
           example: wso2-openai-provider
-        - name: version
-          in: path
-          required: true
-          description: Version of the LLM provider
-          schema:
-            type: string
-          example: v1.0
       requestBody:
         required: true
         description: Updated LLM provider configuration
@@ -1193,20 +1209,13 @@ paths:
       tags:
         - LLM Provider Management
       parameters:
-        - name: name
+        - name: id
           in: path
           required: true
-          description: Name of the LLM provider
+          description: Handle of the LLM provider
           schema:
             type: string
           example: wso2-openai-provider
-        - name: version
-          in: path
-          required: true
-          description: Version of the LLM provider
-          schema:
-            type: string
-          example: v1.0
       responses:
         '200':
           description: LLM provider deleted successfully
@@ -1223,7 +1232,7 @@ paths:
                     example: LLM provider deleted successfully
                   id:
                     type: string
-                    example: 550e8400-e29b-41d4-a716-446655440000
+                    example: wso2-openai
         '404':
           description: LLM provider not found
           content:
@@ -1270,42 +1279,55 @@ components:
     APIConfiguration:
       type: object
       required:
-        - version
+        - apiVersion
+        - metadata
         - kind
         - spec
       properties:
-        version:
+        apiVersion:
           type: string
           description: API specification version
-          example: api-platform.wso2.com/v1
+          example: gateway.api-platform.wso2.com/v1alpha1
           enum:
-            - api-platform.wso2.com/v1
+            - gateway.api-platform.wso2.com/v1alpha1
         kind:
           type: string
           description: API type
-          example: http/rest
+          example: RestApi
           enum:
-            - http/rest
+            - RestApi
             - async/websub
             - async/websocket
             - async/sse
+        metadata:
+          $ref: "#/components/schemas/Metadata"
         spec:
           description: API configuration payload (REST or Async API variants)
           anyOf:
             - $ref: '#/components/schemas/APIConfigData'
             - $ref: '#/components/schemas/WebhookAPIData'
 
-    APIConfigData:
+    Metadata:
       type: object
       required:
         - name
+      properties:
+        name:
+          type: string
+          description: Unique handle for the resource
+          example: weather-api-v1.0
+
+    APIConfigData:
+      type: object
+      required:
+        - displayName
         - version
         - context
         - upstream
         - operations
         # - kind
       properties:
-        name:
+        displayName:
           type: string
           description: Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
           minLength: 1
@@ -1315,9 +1337,9 @@ components:
         # kind:
         #   type: string
         #   description: API type
-        #   example: http/rest
+        #   example: RestApi
         #   enum:
-        #     - http/rest
+        #     - RestApi
         version:
           type: string
           description: Semantic version of the API
@@ -1712,9 +1734,8 @@ components:
           example: API configuration created successfully
         id:
           type: string
-          format: uuid
-          description: Unique identifier for the created API configuration
-          example: 550e8400-e29b-41d4-a716-446655440000
+          description: Unique id for the created API configuration
+          example: weather-api-v1.0
         created_at:
           type: string
           format: date-time
@@ -1730,8 +1751,7 @@ components:
           example: API configuration updated successfully
         id:
           type: string
-          format: uuid
-          example: 550e8400-e29b-41d4-a716-446655440000
+          example: weather-api-v1.0
         updated_at:
           type: string
           format: date-time
@@ -1742,8 +1762,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
-          example: 550e8400-e29b-41d4-a716-446655440000
+          example: weather-api-v1.0
         name:
           type: string
           example: weather-api
@@ -1780,8 +1799,8 @@ components:
           properties:
             id:
               type: string
-              format: uuid
-              example: 550e8400-e29b-41d4-a716-446655440000
+              description: Unique id for the API configuration
+              example: weather-api-v1.0
             configuration:
               $ref: "#/components/schemas/APIConfiguration"
             metadata:
@@ -1826,6 +1845,8 @@ components:
           example: mcp
           enum:
             - mcp
+        metadata:
+          $ref: "#/components/schemas/Metadata"
         spec:
           $ref: "#/components/schemas/MCPProxyConfigData"
 
@@ -1963,8 +1984,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
-          example: 550e8400-e29b-41d4-a716-446655440000
+          example: mcp-proxy-1-v1.0
         name:
           type: string
           example: mcp-proxy-1
@@ -2004,8 +2024,8 @@ components:
           properties:
             id:
               type: string
-              format: uuid
-              example: 550e8400-e29b-41d4-a716-446655440000
+              description: Unique id for the MCP configuration
+              example: mcp-proxy-1-v1.0
             configuration:
               $ref: "#/components/schemas/MCPProxyConfiguration"
             metadata:
@@ -2067,6 +2087,7 @@ components:
       required:
         - version
         - kind
+        - metadata
         - spec
       properties:
         version:
@@ -2078,28 +2099,36 @@ components:
         kind:
           type: string
           description: Template kind
-          example: llm/provider-template
+          example: LlmProviderTemplate
           enum:
-            - llm/provider-template
+            - LlmProviderTemplate
+        metadata:
+          $ref: "#/components/schemas/Metadata"
         spec:
           $ref: '#/components/schemas/LLMProviderTemplateData'
 
     LLMProviderTemplateData:
       type: object
       required:
-        - name
+        - displayName
       properties:
-        name:
+        displayName:
           type: string
-          description: Unique name for the provider template
-          example: openai
+          description: Human-readable LLM Template name
+          minLength: 1
+          maxLength: 253
+          example: OpenAI
         promptTokens:
           $ref: '#/components/schemas/ExtractionIdentifier'
         completionTokens:
           $ref: '#/components/schemas/ExtractionIdentifier'
         totalTokens:
           $ref: '#/components/schemas/ExtractionIdentifier'
+        remainingTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
         requestModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        responseModel:
           $ref: '#/components/schemas/ExtractionIdentifier'
 
     ExtractionIdentifier:
@@ -2131,8 +2160,7 @@ components:
           example: LLM provider template created successfully
         id:
           type: string
-          format: uuid
-          example: 550e8400-e29b-41d4-a716-446655440000
+          example: openai
         created_at:
           type: string
           format: date-time
@@ -2149,8 +2177,7 @@ components:
           example: LLM provider template updated successfully
         id:
           type: string
-          format: uuid
-          example: 550e8400-e29b-41d4-a716-446655440000
+          example: openai
         updated_at:
           type: string
           format: date-time
@@ -2161,11 +2188,10 @@ components:
       properties:
         id:
           type: string
-          format: uuid
-          example: 550e8400-e29b-41d4-a716-446655440000
+          example: openai
         name:
           type: string
-          example: openai
+          example: OpenAI
         created_at:
           type: string
           format: date-time
@@ -2186,8 +2212,7 @@ components:
           properties:
             id:
               type: string
-              format: uuid
-              example: 550e8400-e29b-41d4-a716-446655440000
+              example: openai
             configuration:
               $ref: '#/components/schemas/LLMProviderTemplate'
             metadata:
@@ -2213,8 +2238,7 @@ components:
           example: LLM provider created successfully
         id:
           type: string
-          format: uuid
-          example: 550e8400-e29b-41d4-a716-446655440000
+          example: openai
         created_at:
           type: string
           format: date-time
@@ -2231,8 +2255,7 @@ components:
           example: LLM provider updated successfully
         id:
           type: string
-          format: uuid
-          example: 550e8400-e29b-41d4-a716-446655440000
+          example: openai
         updated_at:
           type: string
           format: date-time
@@ -2243,8 +2266,7 @@ components:
       properties:
         id:
           type: string
-          format: uuid
-          example: 550e8400-e29b-41d4-a716-446655440000
+          example: openai-provider
         name:
           type: string
           example: wso2-openai-provider
@@ -2281,8 +2303,7 @@ components:
           properties:
             id:
               type: string
-              format: uuid
-              example: 550e8400-e29b-41d4-a716-446655440000
+              example: wso2-openai
             configuration:
               $ref: '#/components/schemas/LLMProviderConfiguration'
             deployment_status:
@@ -2313,6 +2334,7 @@ components:
       required:
         - version
         - kind
+        - metadata
         - spec
       properties:
         version:
@@ -2324,28 +2346,30 @@ components:
         kind:
           type: string
           description: Provider kind
-          example: llm/provider
+          example: LlmProvider
           enum:
-            - llm/provider
+            - LlmProvider
+        metadata:
+          $ref: "#/components/schemas/Metadata"
         spec:
           $ref: '#/components/schemas/LLMProviderConfigData'
 
     LLMProviderConfigData:
       type: object
       required:
-        - name
+        - displayName
         - version
         - template
         - upstream
         - accessControl
       properties:
-        name:
+        displayName:
           type: string
-          description: Human-readable LLM Provider name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          description: Human-readable LLM Provider name
           minLength: 1
           maxLength: 100
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
-          example: wso2-openai-provider
+          example: WSO2 OpenAI Provider
         version:
           type: string
           description: Semantic version of the LLM Provider
@@ -2557,6 +2581,43 @@ components:
           type: string
           example: success
 
+    ConfigDumpAPIItem:
+      type: object
+      description: API item in config dump response
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        configuration:
+          $ref: "#/components/schemas/APIConfiguration"
+        metadata:
+          $ref: "#/components/schemas/ConfigDumpAPIMetadata"
+
+    ConfigDumpAPIMetadata:
+      type: object
+      description: Metadata for API in config dump
+      properties:
+        status:
+          type: string
+          enum:
+            - pending
+            - deployed
+            - failed
+          example: deployed
+        created_at:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+        updated_at:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:00Z
+        deployed_at:
+          type: string
+          format: date-time
+          example: 2025-10-11T10:30:05Z
+
     ConfigDumpResponse:
       type: object
       properties:
@@ -2572,36 +2633,7 @@ components:
           type: array
           description: All deployed API configurations
           items:
-            type: object
-            properties:
-              id:
-                type: string
-                format: uuid
-                example: 550e8400-e29b-41d4-a716-446655440000
-              configuration:
-                $ref: "#/components/schemas/APIConfiguration"
-              metadata:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    enum:
-                      - pending
-                      - deployed
-                      - failed
-                    example: deployed
-                  created_at:
-                    type: string
-                    format: date-time
-                    example: 2025-10-11T10:30:00Z
-                  updated_at:
-                    type: string
-                    format: date-time
-                    example: 2025-10-11T10:30:00Z
-                  deployed_at:
-                    type: string
-                    format: date-time
-                    example: 2025-10-11T10:30:05Z
+            $ref: "#/components/schemas/ConfigDumpAPIItem"
         policies:
           type: array
           description: All loaded policy definitions
