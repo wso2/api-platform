@@ -260,6 +260,8 @@ func main() {
 	router.Use(middleware.LoggingMiddleware(log))
 	// Authentication middleware: verifies configured local users (basic auth)
 	router.Use(middleware.AuthMiddleware(cfg, log))
+	// Authorization middleware: enforces resource -> allowed roles mapping (mapping stored in middleware)
+	router.Use(middleware.AuthorizationMiddleware(log))
 	router.Use(gin.Recovery())
 
 	// Initialize API server with the configured validator
