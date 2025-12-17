@@ -2,6 +2,7 @@ package kernel
 
 import (
 	"fmt"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
@@ -61,6 +62,8 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	headerOps := make(map[string][]*headerOp)
 	analyticsData = make(map[string]any)
 	headerMutation = &extprocv3.HeaderMutation{}
+	var finalBodyLength int
+	bodyModified := false
 
 	// Collect all operations in order
 	for _, policyResult := range result.Results {
@@ -72,19 +75,19 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 			if mods, ok := policyResult.Action.(policy.UpstreamRequestModifications); ok {
 				// Collect SetHeader operations
 				for key, value := range mods.SetHeaders {
-					headerOps[key] = append(headerOps[key], &headerOp{opType: "set", value: value})
+					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "set", value: value})
 				}
 
 				// Collect AppendHeader operations
 				for key, values := range mods.AppendHeaders {
 					for _, value := range values {
-						headerOps[key] = append(headerOps[key], &headerOp{opType: "append", value: value})
+						headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "append", value: value})
 					}
 				}
 
 				// Collect RemoveHeader operations
 				for _, key := range mods.RemoveHeaders {
-					headerOps[key] = append(headerOps[key], &headerOp{opType: "remove", value: ""})
+					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "remove", value: ""})
 				}
 
 				// Handle body modifications (last one wins)
@@ -94,8 +97,8 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 							Body: mods.Body,
 						},
 					}
-					// Update Content-Length header to match new body size
-					setContentLengthHeader(headerMutation, len(mods.Body))
+					finalBodyLength = len(mods.Body)
+					bodyModified = true
 				}
 
 				// Collect analytics metadata from policies
@@ -108,8 +111,18 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		}
 	}
 
+	// Remove any content-length headers from policy operations if we're managing it ourselves
+	if bodyModified {
+		delete(headerOps, "content-length")
+	}
+
 	// Build HeaderMutation with conflict resolution and merge with existing mutations
 	mergeHeaderMutations(headerMutation, headerOps)
+
+	// Set Content-Length header once after all policies have been processed
+	if bodyModified {
+		setContentLengthHeader(headerMutation, finalBodyLength)
+	}
 
 	return headerMutation, bodyMutation, analyticsData, nil, nil
 }
@@ -191,6 +204,8 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 	headerOps := make(map[string][]*headerOp)
 	analyticsData = make(map[string]any)
 	headerMutation = &extprocv3.HeaderMutation{}
+	var finalBodyLength int
+	bodyModified := false
 
 	// Collect all operations in order
 	for _, policyResult := range result.Results {
@@ -202,19 +217,19 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 			if mods, ok := policyResult.Action.(policy.UpstreamResponseModifications); ok {
 				// Collect SetHeader operations
 				for key, value := range mods.SetHeaders {
-					headerOps[key] = append(headerOps[key], &headerOp{opType: "set", value: value})
+					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "set", value: value})
 				}
 
 				// Collect AppendHeader operations
 				for key, values := range mods.AppendHeaders {
 					for _, value := range values {
-						headerOps[key] = append(headerOps[key], &headerOp{opType: "append", value: value})
+						headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "append", value: value})
 					}
 				}
 
 				// Collect RemoveHeader operations
 				for _, key := range mods.RemoveHeaders {
-					headerOps[key] = append(headerOps[key], &headerOp{opType: "remove", value: ""})
+					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "remove", value: ""})
 				}
 
 				// Handle body modifications (last one wins)
@@ -224,8 +239,8 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 							Body: mods.Body,
 						},
 					}
-					// Update Content-Length header to match new body size
-					setContentLengthHeader(headerMutation, len(mods.Body))
+					finalBodyLength = len(mods.Body)
+					bodyModified = true
 				}
 
 				// Collect analytics metadata from policies
@@ -238,8 +253,18 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 		}
 	}
 
+	// Remove any content-length headers from policy operations if we're managing it ourselves
+	if bodyModified {
+		delete(headerOps, "content-length")
+	}
+
 	// Build HeaderMutation with conflict resolution and merge with existing mutations
 	mergeHeaderMutations(headerMutation, headerOps)
+
+	// Set Content-Length header once after all policies have been processed
+	if bodyModified {
+		setContentLengthHeader(headerMutation, finalBodyLength)
+	}
 
 	return headerMutation, bodyMutation, analyticsData, nil
 }
@@ -413,7 +438,7 @@ func buildHeaderValueOptions(headers map[string]string) *extprocv3.HeaderMutatio
 	for key, value := range headers {
 		mutation.SetHeaders = append(mutation.SetHeaders, &corev3.HeaderValueOption{
 			Header: &corev3.HeaderValue{
-				Key:      key,
+				Key:      strings.ToLower(key),
 				RawValue: []byte(value),
 			},
 			AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
