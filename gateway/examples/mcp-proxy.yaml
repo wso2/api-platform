@@ -21,7 +21,7 @@ kind: mcp
 metadata:
   name: everything-mcp-v1.0
 spec:
-  name: Everything
+  displayName: Everything
   version: v1.0
   context: /everything
   specVersion: "2025-06-18"

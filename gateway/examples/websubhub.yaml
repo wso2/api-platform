@@ -21,7 +21,7 @@ kind: async/websub
 metadata:
   name: websub-api-v1.0
 spec:
-  name: WebSub-API-New-API
+  displayName: WebSub-API-New-API
   version: v1.0
   context: /websubnewapi
   servers:
