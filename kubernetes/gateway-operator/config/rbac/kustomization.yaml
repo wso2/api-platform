@@ -18,8 +18,6 @@ resources:
 - gateway_viewer_role.yaml
 - restapi_editor_role.yaml
 - restapi_viewer_role.yaml
-- apiconfiguration_editor_role.yaml
-- apiconfiguration_viewer_role.yaml
 - gateway_editor_role.yaml
 - gateway_viewer_role.yaml
 
