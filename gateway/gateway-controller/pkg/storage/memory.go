@@ -92,7 +92,7 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 	if oldKey != newKey {
 		// Check if new name:version combination already exists
 		if existingID, exists := cs.nameVersion[newKey]; exists && existingID != cfg.ID {
-			return fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists (ID: %s)",
+			return fmt.Errorf("%w: configuration with displayName '%s' and version '%s' already exists (ID: %s)",
 				ErrConflict, cfg.GetDisplayName(), cfg.GetVersion(), existingID)
 		}
 		delete(cs.nameVersion, oldKey)
