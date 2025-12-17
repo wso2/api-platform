@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS deployments (
     id TEXT PRIMARY KEY,
 
     -- Extracted fields for fast querying
-    name TEXT NOT NULL,
+    display_name TEXT NOT NULL,
     version TEXT NOT NULL,
     context TEXT NOT NULL,              -- Base path (e.g., "/weather")
     kind TEXT NOT NULL,                 -- Deployment type: "RestApi", "graphql", "grpc", "asyncapi"
@@ -25,13 +25,13 @@ CREATE TABLE IF NOT EXISTS deployments (
     -- Version tracking for xDS snapshots
     deployed_version INTEGER NOT NULL DEFAULT 0,
 
-    -- Composite unique constraint (API name + version must be unique)
-    UNIQUE(name, version)
+    -- Composite unique constraint (API display_name + version must be unique)
+    UNIQUE(display_name, version)
 );
 
 -- Indexes for fast lookups
--- Composite index for name+version lookups (most common query)
-CREATE INDEX IF NOT EXISTS idx_name_version ON deployments(name, version);
+-- Composite index for display_name+version lookups (most common query)
+CREATE INDEX IF NOT EXISTS idx_name_version ON deployments(display_name, version);
 
 -- Filter by deployment status (translator queries pending configs)
 CREATE INDEX IF NOT EXISTS idx_status ON deployments(status);

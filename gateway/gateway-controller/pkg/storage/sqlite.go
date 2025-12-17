@@ -181,7 +181,7 @@ func (s *SQLiteStorage) initSchema() error {
 // SaveConfig persists a new deployment configuration
 func (s *SQLiteStorage) SaveConfig(cfg *models.StoredConfig) error {
 	// Extract fields for indexed columns
-	name := cfg.GetName()
+	displayName := cfg.GetDisplayName()
 	version := cfg.GetVersion()
 	context := cfg.GetContext()
 	handle := cfg.GetHandle()
@@ -192,7 +192,7 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredConfig) error {
 
 	query := `
 		INSERT INTO deployments (
-			id, name, version, context, kind, handle,
+			id, display_name, version, context, kind, handle,
 			status, created_at, updated_at, deployed_version
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
@@ -206,7 +206,7 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredConfig) error {
 	now := time.Now()
 	_, err = stmt.Exec(
 		cfg.ID,
-		name,
+		displayName,
 		version,
 		context,
 		cfg.Kind,
@@ -220,7 +220,7 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredConfig) error {
 	if err != nil {
 		// Check for unique constraint violation
 		if isUniqueConstraintError(err) {
-			return fmt.Errorf("%w: configuration with name '%s' and version '%s' already exists", ErrConflict, name, version)
+			return fmt.Errorf("%w: configuration with displayName '%s' and version '%s' already exists", ErrConflict, displayName, version)
 		}
 		return fmt.Errorf("failed to insert configuration: %w", err)
 	}
@@ -232,7 +232,7 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredConfig) error {
 
 	s.logger.Info("Configuration saved",
 		zap.String("id", cfg.ID),
-		zap.String("name", name),
+		zap.String("displayName", displayName),
 		zap.String("version", version))
 
 	return nil
@@ -250,7 +250,7 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
 	}
 
 	// Extract fields for indexed columns
-	name := cfg.GetName()
+	displayName := cfg.GetDisplayName()
 	version := cfg.GetVersion()
 	context := cfg.GetContext()
 	handle := cfg.GetHandle()
@@ -261,7 +261,7 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
 
 	query := `
 		UPDATE deployments
-		SET name = ?, version = ?, context = ?, kind = ?, handle = ?,
+		SET display_name = ?, version = ?, context = ?, kind = ?, handle = ?,
 			status = ?, updated_at = ?,
 			deployed_version = ?
 		WHERE id = ?
@@ -274,7 +274,7 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
 	defer stmt.Close()
 
 	result, err := stmt.Exec(
-		name,
+		displayName,
 		version,
 		context,
 		cfg.Kind,
@@ -305,7 +305,7 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
 
 	s.logger.Info("Configuration updated",
 		zap.String("id", cfg.ID),
-		zap.String("name", name),
+		zap.String("displayName", displayName),
 		zap.String("version", version))
 
 	return nil
@@ -388,14 +388,14 @@ func (s *SQLiteStorage) GetConfig(id string) (*models.StoredConfig, error) {
 	return &cfg, nil
 }
 
-// GetConfigByNameVersion retrieves an deployment configuration by name and version
+// GetConfigByNameVersion retrieves an deployment configuration by displayName and version
 func (s *SQLiteStorage) GetConfigByNameVersion(name, version string) (*models.StoredConfig, error) {
 	query := `
 		SELECT d.id, d.kind, dc.configuration, dc.source_configuration, d.status, d.created_at, d.updated_at,
 			   d.deployed_at, d.deployed_version
 		FROM deployments d
 		LEFT JOIN deployment_configs dc ON d.id = dc.id
-		WHERE d.name = ? AND d.version = ?
+		WHERE d.display_name = ? AND d.version = ?
 	`
 
 	var cfg models.StoredConfig

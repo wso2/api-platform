@@ -47,7 +47,7 @@ type StoredConfig struct {
 	DeployedVersion     int64                `json:"deployed_version"`
 }
 
-// GetCompositeKey returns the composite key "name:version" for indexing
+// GetCompositeKey returns the composite key "displayName:version" for indexing
 func (c *StoredConfig) GetCompositeKey() string {
 	if c.Configuration.Kind == api.Asyncwebsub {
 		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
@@ -63,8 +63,8 @@ func (c *StoredConfig) GetCompositeKey() string {
 	return fmt.Sprintf("%s:%s", configData.DisplayName, configData.Version)
 }
 
-// GetName returns the API name
-func (c *StoredConfig) GetName() string {
+// GetDisplayName returns the API display name
+func (c *StoredConfig) GetDisplayName() string {
 	if c.Configuration.Kind == api.Asyncwebsub {
 		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
 		if err != nil {
