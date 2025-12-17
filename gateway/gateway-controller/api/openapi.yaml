@@ -2063,6 +2063,7 @@ components:
       required:
         - version
         - kind
+        - metadata
         - spec
       properties:
         version:
@@ -2074,28 +2075,36 @@ components:
         kind:
           type: string
           description: Template kind
-          example: llm/provider-template
+          example: LlmProviderTemplate
           enum:
-            - llm/provider-template
+            - LlmProviderTemplate
+        metadata:
+          $ref: "#/components/schemas/Metadata"
         spec:
           $ref: '#/components/schemas/LLMProviderTemplateData'
 
     LLMProviderTemplateData:
       type: object
       required:
-        - name
+        - displayName
       properties:
-        name:
+        displayName:
           type: string
-          description: Unique name for the provider template
-          example: openai
+          description: Human-readable LLM Template name
+          minLength: 1
+          maxLength: 253
+          example: OpenAI
         promptTokens:
           $ref: '#/components/schemas/ExtractionIdentifier'
         completionTokens:
           $ref: '#/components/schemas/ExtractionIdentifier'
         totalTokens:
           $ref: '#/components/schemas/ExtractionIdentifier'
+        remainingTokens:
+          $ref: '#/components/schemas/ExtractionIdentifier'
         requestModel:
+          $ref: '#/components/schemas/ExtractionIdentifier'
+        responseModel:
           $ref: '#/components/schemas/ExtractionIdentifier'
 
     ExtractionIdentifier:
@@ -2309,6 +2318,7 @@ components:
       required:
         - version
         - kind
+        - metadata
         - spec
       properties:
         version:
@@ -2320,28 +2330,30 @@ components:
         kind:
           type: string
           description: Provider kind
-          example: llm/provider
+          example: LlmProvider
           enum:
-            - llm/provider
+            - LlmProvider
+        metadata:
+          $ref: "#/components/schemas/Metadata"
         spec:
           $ref: '#/components/schemas/LLMProviderConfigData'
 
     LLMProviderConfigData:
       type: object
       required:
-        - name
+        - displayName
         - version
         - template
         - upstream
         - accessControl
       properties:
-        name:
+        displayName:
           type: string
-          description: Human-readable LLM Provider name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+          description: Human-readable LLM Provider name
           minLength: 1
           maxLength: 100
           pattern: '^[a-zA-Z0-9\-_\. ]+$'
-          example: wso2-openai-provider
+          example: WSO2 OpenAI Provider
         version:
           type: string
           description: Semantic version of the LLM Provider
