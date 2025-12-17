@@ -65,14 +65,17 @@ curl http://localhost:9090/health
 curl -X POST http://localhost:9090/apis \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
-version: api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: RestApi
+metadata:
+  name: weather-api-v1.0
 spec:
-  name: Weather-API
+  displayName: Weather-API
   version: v1.0
   context: /weather/$version
   upstream:
-    - url: http://sample-backend:5000/api/v2
+    main:
+      url: http://sample-backend:5000/api/v2
   operations:
     - method: GET
       path: /{country_code}/{city}
