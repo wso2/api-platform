@@ -63,7 +63,7 @@ func runCurrentCommand() error {
 	if gateway.Insecure {
 		securityStatus = "insecure"
 	}
-	fmt.Printf("Current gateway: %s (%s)\n", gateway.Server, securityStatus)
+	fmt.Printf("Current gateway: %s - %s (%s)\n", gateway.Name, gateway.Server, securityStatus)
 
 	return nil
 }
