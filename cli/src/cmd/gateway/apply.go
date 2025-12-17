@@ -83,7 +83,7 @@ func runApplyCommand() error {
 	}
 
 	// Detect if the content is JSON and convert to YAML if needed
-	fileContent, err = convertJSONToYAMLIfNeeded(fileContent)
+	fileContent, err = utils.ConvertJSONToYAMLIfNeeded(fileContent)
 	if err != nil {
 		return fmt.Errorf("failed to process file content: %w", err)
 	}
@@ -231,32 +231,4 @@ func resourceExists(client *gateway.Client, handler gateway.ResourceHandler, han
 	// Any other status code is an error
 	body, _ := io.ReadAll(resp.Body)
 	return false, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(body))
-}
-
-// convertJSONToYAMLIfNeeded detects if the content is JSON and converts it to YAML
-func convertJSONToYAMLIfNeeded(content []byte) ([]byte, error) {
-	trimmed := bytes.TrimSpace(content)
-	if len(trimmed) == 0 {
-		return content, nil
-	}
-
-	// Check if it starts with '{' or '[', indicating JSON
-	if trimmed[0] != '{' && trimmed[0] != '[' {
-		// Not JSON, assume it's YAML
-		return content, nil
-	}
-
-	var jsonData interface{}
-	if err := json.Unmarshal(content, &jsonData); err != nil {
-		// If JSON parsing fails, assume it's YAML
-		return content, nil
-	}
-
-	// Convert JSON to YAML
-	yamlData, err := yaml.Marshal(jsonData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert JSON to YAML: %w", err)
-	}
-
-	return yamlData, nil
 }
