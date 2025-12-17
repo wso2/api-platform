@@ -44,10 +44,19 @@ var (
 
 	// coverageCollector manages coverage data collection
 	coverageCollector *CoverageCollector
+
+	// testReporter manages test report generation
+	testReporter *TestReporter
 )
 
 // TestFeatures is the main entry point for BDD tests
 func TestFeatures(t *testing.T) {
+	// Initialize test reporter
+	testReporter = NewTestReporter(DefaultReporterConfig())
+	if err := testReporter.Setup(); err != nil {
+		log.Printf("Warning: Failed to setup test reporter: %v", err)
+	}
+
 	suite := godog.TestSuite{
 		TestSuiteInitializer: InitializeTestSuite,
 		ScenarioInitializer:  InitializeScenario,
@@ -58,7 +67,8 @@ func TestFeatures(t *testing.T) {
 		},
 	}
 
-	if suite.Run() != 0 {
+	exitCode := suite.Run()
+	if exitCode != 0 {
 		t.Fatal("non-zero status returned, failed to run feature tests")
 	}
 }
@@ -127,6 +137,14 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 			}
 		}
 
+		// Generate test reports
+		if testReporter != nil {
+			log.Println("Generating test reports...")
+			if err := testReporter.GenerateReport(); err != nil {
+				log.Printf("Warning: Failed to generate test report: %v", err)
+			}
+		}
+
 		log.Println("=== Test Suite Complete ===")
 	})
 }
@@ -142,6 +160,10 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		if httpSteps != nil {
 			httpSteps.Reset()
 		}
+		// Record scenario start for reporting
+		if testReporter != nil {
+			testReporter.StartScenario(sc)
+		}
 		return ctx, nil
 	})
 
@@ -151,6 +173,10 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 			log.Printf("Scenario failed: %s - Error: %v", sc.Name, err)
 		} else {
 			log.Printf("Scenario passed: %s", sc.Name)
+		}
+		// Record scenario result for reporting
+		if testReporter != nil {
+			testReporter.EndScenario(sc, err)
 		}
 		return ctx, nil
 	})
