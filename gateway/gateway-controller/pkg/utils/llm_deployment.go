@@ -409,7 +409,7 @@ func (s *LLMDeploymentService) ListLLMProviders(params api.ListLLMProvidersParam
 	configs := s.store.GetAllByKind(string(api.LlmProvider))
 
 	// If no filters are provided, return all configs
-	if params.DisplayName == nil && params.Version == nil &&
+	if params.Name == nil && params.Version == nil &&
 		params.Context == nil && params.Status == nil && params.Vhost == nil {
 		return configs
 	}
@@ -436,8 +436,8 @@ func matchesFilters(config *models.StoredConfig, params api.ListLLMProvidersPara
 	}
 
 	// Check DisplayName filter
-	if params.DisplayName != nil {
-		if apiCfg.DisplayName != *params.DisplayName {
+	if params.Name != nil {
+		if apiCfg.DisplayName != *params.Name {
 			return false
 		}
 	}

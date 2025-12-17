@@ -835,10 +835,10 @@ paths:
       tags:
         - LLM Provider Management
       parameters:
-        - name: displayName
+        - name: name
           in: query
           required: false
-          description: Filter by template display name
+          description: Filter by template name
           schema:
             type: string
           example: OpenAI
@@ -867,15 +867,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /llm-provider-templates/{handle}:
+  /llm-provider-templates/{id}:
     get:
-      summary: Get LLM provider template by handle
+      summary: Get LLM provider template by id
       description: Retrieve the complete configuration for a specific LLM provider template
-      operationId: getLLMProviderTemplateByHandle
+      operationId: getLLMProviderTemplateById
       tags:
         - LLM Provider Management
       parameters:
-        - name: handle
+        - name: id
           in: path
           required: true
           description: Unique public identifier for the LLM provider template
@@ -913,10 +913,10 @@ paths:
       tags:
         - LLM Provider Management
       parameters:
-        - name: handle
+        - name: id
           in: path
           required: true
-          description: Name of the template to update
+          description: Identifier of the template to update
           schema:
             type: string
           example: openai
@@ -963,10 +963,10 @@ paths:
       tags:
         - LLM Provider Management
       parameters:
-        - name: handle
+        - name: id
           in: path
           required: true
-          description: Name of the template to delete
+          description: Identifier of the template to delete
           schema:
             type: string
           example: openai
@@ -1053,10 +1053,10 @@ paths:
       tags:
         - LLM Provider Management
       parameters:
-        - name: displayName
+        - name: name
           in: query
           required: false
-          description: Filter by LLM provider display name
+          description: Filter by LLM provider name
           schema:
             type: string
           example: OpenAI Provider
@@ -1114,15 +1114,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /llm-providers/{handle}:
+  /llm-providers/{id}:
     get:
-      summary: Get LLM provider by handle
+      summary: Get LLM provider by identifier
       description: Retrieve the complete configuration for a specific LLM provider
-      operationId: getLLMProviderByHandle
+      operationId: getLLMProviderById
       tags:
         - LLM Provider Management
       parameters:
-        - name: handle
+        - name: id
           in: path
           required: true
           description: Handle of the LLM provider
@@ -1159,7 +1159,7 @@ paths:
       tags:
         - LLM Provider Management
       parameters:
-        - name: handle
+        - name: id
           in: path
           required: true
           description: Handle of the LLM provider
@@ -1209,7 +1209,7 @@ paths:
       tags:
         - LLM Provider Management
       parameters:
-        - name: handle
+        - name: id
           in: path
           required: true
           description: Handle of the LLM provider
@@ -1230,7 +1230,7 @@ paths:
                   message:
                     type: string
                     example: LLM provider deleted successfully
-                  handle:
+                  id:
                     type: string
                     example: wso2-openai
         '404':
@@ -2158,7 +2158,7 @@ components:
         message:
           type: string
           example: LLM provider template created successfully
-        handle:
+        id:
           type: string
           example: openai
         created_at:
@@ -2175,7 +2175,7 @@ components:
         message:
           type: string
           example: LLM provider template updated successfully
-        handle:
+        id:
           type: string
           example: openai
         updated_at:
@@ -2186,10 +2186,10 @@ components:
     LLMProviderTemplateListItem:
       type: object
       properties:
-        handle:
+        id:
           type: string
           example: openai
-        displayName:
+        name:
           type: string
           example: OpenAI
         created_at:
@@ -2210,7 +2210,7 @@ components:
         template:
           type: object
           properties:
-            handle:
+            id:
               type: string
               example: openai
             configuration:
@@ -2236,7 +2236,7 @@ components:
         message:
           type: string
           example: LLM provider created successfully
-        handle:
+        id:
           type: string
           example: openai
         created_at:
@@ -2253,7 +2253,7 @@ components:
         message:
           type: string
           example: LLM provider updated successfully
-        handle:
+        id:
           type: string
           example: openai
         updated_at:
@@ -2264,10 +2264,10 @@ components:
     LLMProviderListItem:
       type: object
       properties:
-        handle:
+        id:
           type: string
           example: openai-provider
-        displayName:
+        name:
           type: string
           example: wso2-openai-provider
         version:
@@ -2301,7 +2301,7 @@ components:
         provider:
           type: object
           properties:
-            handle:
+            id:
               type: string
               example: wso2-openai
             configuration:
