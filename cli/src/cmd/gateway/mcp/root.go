@@ -24,14 +24,17 @@ import (
 
 const (
 	McpCmdLiteral = "mcp"
-	McpCmdExample = `# Generate MCP configuration
+	McpCmdExample = `# List all MCPs
+apipctl gateway mcp list
+
+# Generate MCP configuration
 apipctl gateway mcp generate --server http://localhost:3001/mcp --output target`
 )
 
 // McpCmd represents the mcp command
 var McpCmd = &cobra.Command{
 	Use:     McpCmdLiteral,
-	Short:   "MCP related operations",
+	Short:   "Manage MCPs on the gateway",
 	Long:    "Execute MCP (Model Context Protocol) related operations for the WSO2 API Platform Gateway.",
 	Example: McpCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -40,5 +43,8 @@ var McpCmd = &cobra.Command{
 }
 
 func init() {
+	McpCmd.AddCommand(listCmd)
+	McpCmd.AddCommand(getCmd)
+	McpCmd.AddCommand(deleteCmd)
 	McpCmd.AddCommand(generateCmd)
 }
