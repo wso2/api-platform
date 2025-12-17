@@ -60,9 +60,9 @@ func setupTestDB(t *testing.T) (storage.Storage, string, func()) {
 func createTestConfig(name, version string) *models.StoredConfig {
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName:    name,
-		Version: version,
-		Context: "/" + name,
+		DisplayName: name,
+		Version:     version,
+		Context:     "/" + name,
 		Upstream: struct {
 			Main    api.Upstream  `json:"main" yaml:"main"`
 			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
@@ -81,10 +81,10 @@ func createTestConfig(name, version string) *models.StoredConfig {
 	return &models.StoredConfig{
 		ID: uuid.New().String(),
 		Configuration: api.APIConfiguration{
-			ApiVersion:  api.GatewayApiPlatformWso2Comv1alpha1,
-			Kind:     api.RestApi,
-			Metadata: api.Metadata{Name: name + "-" + version},
-			Spec:     specUnion,
+			ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
+			Kind:       api.RestApi,
+			Metadata:   api.Metadata{Name: name + "-" + version},
+			Spec:       specUnion,
 		},
 		Status:          models.StatusPending,
 		DeployedVersion: 0,
@@ -111,7 +111,7 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 		retrieved, err := db.GetConfig(cfg.ID)
 		assert.NoError(t, err, "GetConfig should succeed")
 		assert.Equal(t, cfg.ID, retrieved.ID)
-		assert.Equal(t, cfg.GetName(), retrieved.GetName())
+		assert.Equal(t, cfg.GetDisplayName(), retrieved.GetDisplayName())
 		assert.Equal(t, cfg.GetVersion(), retrieved.GetVersion())
 	})
 
@@ -124,7 +124,7 @@ func TestSQLiteStorage_CRUD(t *testing.T) {
 		retrieved, err := db.GetConfigByNameVersion("TestAPI3", "v1.0")
 		assert.NoError(t, err, "GetConfigByNameVersion should succeed")
 		assert.Equal(t, cfg.ID, retrieved.ID)
-		assert.Equal(t, "TestAPI3", retrieved.GetName())
+		assert.Equal(t, "TestAPI3", retrieved.GetDisplayName())
 		assert.Equal(t, "v1.0", retrieved.GetVersion())
 	})
 
