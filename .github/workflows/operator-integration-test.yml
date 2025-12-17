@@ -785,7 +785,7 @@ jobs:
       - name: Wait for Gateway to be ready
         run: |
           echo "Waiting for Gateway to be programmed..."
-          kubectl wait --for=condition=Programmed gateway/test-gateway --timeout=300s
+          kubectl wait --for=condition=Programmed gateway/test-gateway --timeout=180s
 
           echo "Gateway status:"
           kubectl get gateway test-gateway -o yaml
