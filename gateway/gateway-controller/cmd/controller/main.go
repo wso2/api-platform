@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/wso2/api-platform/common/authenticators"
+	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
@@ -259,9 +261,19 @@ func main() {
 	router.Use(middleware.ErrorHandlingMiddleware(log))
 	router.Use(middleware.LoggingMiddleware(log))
 	// Authentication middleware: verifies configured local users (basic auth)
-	router.Use(middleware.AuthMiddleware(cfg, log))
-	// Authorization middleware: enforces resource -> allowed roles mapping (mapping stored in middleware)
-	router.Use(middleware.AuthorizationMiddleware(log))
+	users := make([]commonmodels.User, len(cfg.GatewayController.Auth.Users))
+	for i, authUser := range cfg.GatewayController.Auth.Users {
+		users[i] = commonmodels.User{
+			Username:       authUser.Username,
+			Password:       authUser.Password,
+			PasswordHashed: authUser.PasswordHashed,
+		}
+	}
+	basicAuth := commonmodels.BasicAuth{Enabled: true, Users: users}
+	idpAuth := commonmodels.IDPConfig{IssuerURL: cfg.GatewayController.Auth.IDP.Issuer, JWKSUrl: cfg.GatewayController.Auth.IDP.JWKSURL, ScopeClaim: cfg.GatewayController.Auth.IDP.RolesClaim, PermissionMapping: &cfg.GatewayController.Auth.IDP.RoleMapping}
+	authConfig := commonmodels.AuthConfig{BasicAuth: &basicAuth, JWTConfig: &idpAuth}
+	router.Use(authenticators.AuthMiddleware(authConfig))
+	router.Use(authenticators.AuthorizationMiddleware(authConfig))
 	router.Use(gin.Recovery())
 
 	// Initialize API server with the configured validator

@@ -26,7 +26,7 @@ type BasicAuth struct {
 
 // User represents a user in the system
 type User struct {
-	UserID         string   `json:"user_id"`
+	Username       string   `json:"username"`
 	Password       string   `json:"password"`
 	PasswordHashed bool     `json:"password_hashed"`
 	Roles          []string `json:"roles"`
