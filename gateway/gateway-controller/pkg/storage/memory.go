@@ -233,6 +233,10 @@ func (cs *ConfigStore) GetByHandle(handle string) (*models.StoredConfig, error) 
 	if !exists {
 		return nil, fmt.Errorf("configuration with handle '%s' not found", handle)
 	}
+
+	if cfg.GetHandle() != handle {
+		return nil, fmt.Errorf("configuration with handle '%s' not found", handle)
+	}
 	return cfg, nil
 }
 
@@ -450,6 +454,15 @@ func (cs *ConfigStore) GetAllTemplates() []*models.StoredLLMProviderTemplate {
 func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
 	if apiKey == nil {
 		return fmt.Errorf("API key cannot be nil")
+	}
+	if strings.TrimSpace(apiKey.Name) == "" {
+		return fmt.Errorf("API key name cannot be empty")
+	}
+	if strings.TrimSpace(apiKey.APIKey) == "" {
+		return fmt.Errorf("API key value cannot be empty")
+	}
+	if strings.TrimSpace(apiKey.Handle) == "" {
+		return fmt.Errorf("API handle cannot be empty")
 	}
 
 	cs.mu.Lock()

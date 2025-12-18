@@ -146,6 +146,26 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 		return nil, fmt.Errorf("failed to store API key in ConfigStore: %w", err)
 	}
 
+	apiConfig, err := config.Configuration.Spec.AsAPIConfigData()
+	if err != nil {
+		logger.Error("Failed to parse API configuration data",
+			zap.Error(err),
+			zap.String("handle", params.Handle),
+			zap.String("correlation_id", params.CorrelationID))
+		return nil, fmt.Errorf("failed to parse API configuration data: %w", err)
+	}
+
+	apiName := apiConfig.DisplayName
+	apiVersion := apiConfig.Version
+	logger.Info("Storing API key in policy engine",
+		zap.String("handle", params.Handle),
+		zap.String("name", apiKey.Name),
+		zap.String("api_name", apiName),
+		zap.String("api_version", apiVersion),
+		zap.String("correlation_id", params.CorrelationID))
+	// TODO - Send the API key to the policy engine
+	// StoreAPIKey(apiName, apiVersion string, apiKey *APIKey)
+
 	// Build response following the generated schema
 	result.Response = s.buildAPIKeyResponse(apiKey)
 
@@ -211,6 +231,8 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 		expiry := now.Add(duration)
 		expiresAt = &expiry
 	}
+
+	// TODO - Add created_by field once user management is implemented. this is the user who generated the api key
 
 	return &models.APIKey{
 		ID:         id,

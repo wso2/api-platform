@@ -18,53 +18,24 @@
 package apikey
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
+	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
-
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
 const (
 	// Metadata keys for context storage
 	MetadataKeyAuthSuccess = "auth.success"
 	MetadataKeyAuthMethod  = "auth.method"
-
-	// Gateway controller configuration
-	DefaultGatewayControllerBaseURL = "http://gateway-controller:9090/api/internal/v1"
-	DefaultHTTPTimeout              = 5 * time.Second
 )
-
-// ApiKeyValidationRequest represents the request payload for API key validation
-type ApiKeyValidationRequest struct {
-	ApiKey string `json:"apiKey"`
-}
-
-// ApiKeyValidationResponse represents the response from API key validation
-type ApiKeyValidationResponse struct {
-	IsValid bool `json:"isValid"`
-}
-
-// ErrorResponse represents an error response from the gateway controller
-type ErrorResponse struct {
-	Error   string `json:"error,omitempty"`
-	Message string `json:"message,omitempty"`
-}
 
 // APIKeyPolicy implements API Key Authentication
 type APIKeyPolicy struct {
-	httpClient *http.Client
 }
 
-var ins = &APIKeyPolicy{
-	httpClient: &http.Client{
-		Timeout: DefaultHTTPTimeout,
-	},
-}
+var ins = &APIKeyPolicy{}
 
 func GetPolicy(
 	metadata policy.PolicyMetadata,
@@ -107,7 +78,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 
 	if location == "header" {
 		// Check header (case-insensitive)
-		if headerValues := ctx.Headers.Get(strings.ToLower(keyName)); len(headerValues) > 0 {
+		if headerValues := ctx.Headers.Get(http.CanonicalHeaderKey(keyName)); len(headerValues) > 0 {
 			providedKey = headerValues[0]
 		}
 	} else if location == "query" {
@@ -131,13 +102,18 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 
 	apiName := ctx.APIName
 	apiVersion := ctx.APIVersion
+	apiOperation := ctx.OperationPath
+	operationMethod := ctx.Method
 
-	if apiName == "" || apiVersion == "" {
-		return p.handleAuthFailure(ctx, "API name or version not found")
+	if apiName == "" || apiVersion == "" || apiOperation == "" || operationMethod == "" {
+		return p.handleAuthFailure(ctx, "missing API details for validation")
 	}
 
 	// API key was provided - validate it using external validation
-	isValid := p.validateAPIKey(apiName, apiVersion, providedKey)
+	isValid, err := p.validateAPIKey(apiName, apiVersion, apiOperation, operationMethod, providedKey)
+	if err != nil {
+		return p.handleAuthFailure(ctx, "error validating API key")
+	}
 	if !isValid {
 		return p.handleAuthFailure(ctx, "invalid API key")
 	}
@@ -182,19 +158,13 @@ func (p *APIKeyPolicy) handleAuthFailure(ctx *policy.RequestContext, reason stri
 }
 
 // validateAPIKey validates the provided API key against external store/service
-func (p *APIKeyPolicy) validateAPIKey(apiName, apiVersion, apiKey string) bool {
-	prefix := extractAPIKeyPrefix(apiKey)
-
-	switch prefix {
-	case "gw":
-		return p.validateGatewayAPIKey(apiName, apiVersion, apiKey)
-	case "mgt":
-		return p.validateManagementPortalAPIKey(apiName, apiVersion, apiKey)
-	case "dev":
-		return p.validateDevPortalAPIKey(apiName, apiVersion, apiKey)
-	default:
-		return false
+func (p *APIKeyPolicy) validateAPIKey(apiName, apiVersion, apiOperation, operationMethod, apiKey string) (bool, error) {
+	// TODO - call the sdk validate api key method to validate the api key
+	isValid, err := policy.ValidateAPIKey(apiName, apiVersion, apiOperation, operationMethod, apiKey)
+	if err != nil {
+		return false, fmt.Errorf("failed to validate API key via the policy engine")
 	}
+	return isValid, nil
 }
 
 // extractQueryParam extracts the first value of the given query parameter from the request path
@@ -236,118 +206,4 @@ func stripPrefix(value, prefix string) string {
 
 	// No matching prefix found, return empty string
 	return ""
-}
-
-// extractAPIKeyPrefix extracts the prefix from an API key (everything before the first underscore)
-func extractAPIKeyPrefix(apiKey string) string {
-	parts := strings.SplitN(apiKey, "_", 2)
-	if len(parts) >= 2 {
-		return strings.ToLower(parts[0])
-	}
-	return ""
-}
-
-// validateGatewayAPIKey validates API keys with "gw_" prefix against the gateway controller database
-func (p *APIKeyPolicy) validateGatewayAPIKey(apiName, apiVersion, apiKey string) bool {
-	// Get gateway controller base URL from environment or use default
-	baseURL := getGatewayControllerBaseURL()
-
-	// Construct the URL path according to the internal API spec
-	endpoint := fmt.Sprintf("/apis/%s/%s/validate-apikey",
-		url.PathEscape(apiName),
-		url.PathEscape(apiVersion))
-
-	requestURL := baseURL + endpoint
-
-	// Create request payload
-	req := ApiKeyValidationRequest{
-		ApiKey: apiKey,
-	}
-
-	payload, err := json.Marshal(req)
-	if err != nil {
-		// Log error and return false for validation failure
-		return false
-	}
-
-	// Create HTTP request
-	httpReq, err := http.NewRequest("POST", requestURL, bytes.NewBuffer(payload))
-	if err != nil {
-		return false
-	}
-
-	// Set headers
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "application/json")
-
-	// Make the request using the policy's HTTP client
-	resp, err := p.httpClient.Do(httpReq)
-	if err != nil {
-		// Network error or timeout - treat as validation failure
-		return false
-	}
-	defer resp.Body.Close()
-
-	// Handle different response status codes
-	switch resp.StatusCode {
-	case http.StatusOK:
-		// Parse successful response
-		var validationResp ApiKeyValidationResponse
-		if err := json.NewDecoder(resp.Body).Decode(&validationResp); err != nil {
-			return false
-		}
-		return validationResp.IsValid
-
-	case http.StatusBadRequest:
-		// Bad request - invalid API key format
-		return false
-
-	case http.StatusNotFound:
-		// API not found - treat as validation failure
-		return false
-
-	case http.StatusInternalServerError:
-		// Internal server error - treat as validation failure
-		return false
-
-	default:
-		// Unexpected status code - treat as validation failure
-		return false
-	}
-}
-
-// getGatewayControllerBaseURL returns the gateway controller base URL
-// This can be overridden via environment variables or configuration
-func getGatewayControllerBaseURL() string {
-	// In a real implementation, this could check environment variables:
-	// if baseURL := os.Getenv("GATEWAY_CONTROLLER_BASE_URL"); baseURL != "" {
-	//     return baseURL
-	// }
-	return DefaultGatewayControllerBaseURL
-}
-
-// validateManagementPortalAPIKey validates API keys with "mgt_" prefix against the management portal
-func (p *APIKeyPolicy) validateManagementPortalAPIKey(apiName, apiVersion, apiKey string) bool {
-	// TODO: Implement management portal API key validation
-	// This should make an HTTP request to the management portal's API key validation endpoint
-	// Example implementation:
-	// 1. Use p.httpClient to make HTTP request
-	// 2. Make POST request to management portal: POST /api/v1/validate-key
-	// 3. Send payload: {"apiName": apiName, "apiVersion": apiVersion, "apiKey": apiKey}
-	// 4. Parse response and return validation result
-
-	return false
-}
-
-// validateDevPortalAPIKey validates API keys with "dev_" prefix against the developer portal
-func (p *APIKeyPolicy) validateDevPortalAPIKey(apiName, apiVersion, apiKey string) bool {
-	// TODO: Implement developer portal API key validation
-	// This should make an HTTP request to the developer portal's API key validation endpoint
-	// Example implementation:
-	// 1. Use p.httpClient to make HTTP request
-	// 2. Make POST request to developer portal: POST /api/v1/validate-key
-	// 3. Send payload: {"apiName": apiName, "apiVersion": apiVersion, "apiKey": apiKey}
-	// 4. Parse response and return validation result
-
-	return false
 }
