@@ -125,6 +125,10 @@ CREATE TABLE IF NOT EXISTS api_keys (
     
     -- Timestamps
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    -- User who generated the API key
+    created_by TEXT NOT NULL DEFAULT 'system',
+
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP NULL,  -- NULL means no expiration
     
@@ -140,6 +144,7 @@ CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);
 CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(handle);
 CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_keys(status);
 CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);
+CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);
 
 -- Set schema version to 5
 PRAGMA user_version = 5;

@@ -182,6 +182,7 @@ func (s *SQLiteStorage) initSchema() error {
 				operations TEXT NOT NULL DEFAULT '*',
 				status TEXT NOT NULL CHECK(status IN ('active', 'revoked', 'expired')) DEFAULT 'active',
 				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				created_by TEXT NOT NULL DEFAULT 'system',
 				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				expires_at TIMESTAMP NULL,
 				FOREIGN KEY (handle) REFERENCES deployments(handle) ON DELETE CASCADE,
@@ -200,6 +201,9 @@ func (s *SQLiteStorage) initSchema() error {
 			}
 			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);`); err != nil {
 				return fmt.Errorf("failed to create api_keys expiry index: %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);`); err != nil {
+				return fmt.Errorf("failed to create api_keys created_by index: %w", err)
 			}
 			if _, err := s.db.Exec("PRAGMA user_version = 5"); err != nil {
 				return fmt.Errorf("failed to set schema version to 5: %w", err)
@@ -1077,8 +1081,8 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 		insertQuery := `
 			INSERT INTO api_keys (
 				id, name, api_key, handle, operations, status,
-				created_at, updated_at, expires_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				created_at, created_by, updated_at, expires_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
 
 		_, err := tx.Exec(insertQuery,
@@ -1089,6 +1093,7 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 			apiKey.Operations,
 			apiKey.Status,
 			apiKey.CreatedAt,
+			apiKey.CreatedBy,
 			apiKey.UpdatedAt,
 			apiKey.ExpiresAt,
 		)
@@ -1105,12 +1110,13 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 		s.logger.Info("API key inserted successfully",
 			zap.String("id", apiKey.ID),
 			zap.String("name", apiKey.Name),
-			zap.String("handle", apiKey.Handle))
+			zap.String("handle", apiKey.Handle),
+			zap.String("created_by", apiKey.CreatedBy))
 	} else {
 		// Existing record found, update it with new API key data
 		updateQuery := `
 			UPDATE api_keys 
-			SET api_key = ?, operations = ?, status = ?, updated_at = ?, expires_at = ?
+			SET api_key = ?, operations = ?, status = ?, created_by = ?, updated_at = ?, expires_at = ?
 			WHERE handle = ? AND name = ?
 		`
 
@@ -1118,6 +1124,7 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 			apiKey.APIKey,
 			apiKey.Operations,
 			apiKey.Status,
+			apiKey.CreatedBy,
 			apiKey.UpdatedAt,
 			apiKey.ExpiresAt,
 			apiKey.Handle,
@@ -1136,7 +1143,8 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 		s.logger.Info("API key updated successfully",
 			zap.String("existing_id", existingID),
 			zap.String("name", apiKey.Name),
-			zap.String("handle", apiKey.Handle))
+			zap.String("handle", apiKey.Handle),
+			zap.String("created_by", apiKey.CreatedBy))
 	}
 
 	// Commit the transaction
@@ -1151,7 +1159,7 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 func (s *SQLiteStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	query := `
 		SELECT id, name, api_key, handle, operations, status,
-		       created_at, updated_at, expires_at
+		       created_at, created_by, updated_at, expires_at
 		FROM api_keys
 		WHERE api_key = ?
 	`
@@ -1167,6 +1175,7 @@ func (s *SQLiteStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 		&apiKey.Operations,
 		&apiKey.Status,
 		&apiKey.CreatedAt,
+		&apiKey.CreatedBy,
 		&apiKey.UpdatedAt,
 		&expiresAt,
 	)
@@ -1190,7 +1199,7 @@ func (s *SQLiteStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 func (s *SQLiteStorage) GetAPIKeysByAPI(handle string) ([]*models.APIKey, error) {
 	query := `
 		SELECT id, name, api_key, handle, operations, status,
-		       created_at, updated_at, expires_at
+		       created_at, created_by, updated_at, expires_at
 		FROM api_keys
 		WHERE handle = ?
 		ORDER BY created_at DESC
@@ -1216,6 +1225,7 @@ func (s *SQLiteStorage) GetAPIKeysByAPI(handle string) ([]*models.APIKey, error)
 			&apiKey.Operations,
 			&apiKey.Status,
 			&apiKey.CreatedAt,
+			&apiKey.CreatedBy,
 			&apiKey.UpdatedAt,
 			&expiresAt,
 		)
@@ -1243,7 +1253,7 @@ func (s *SQLiteStorage) GetAPIKeysByAPI(handle string) ([]*models.APIKey, error)
 func (s *SQLiteStorage) GetAPIKeysByAPIAndName(handle, name string) (*models.APIKey, error) {
 	query := `
 		SELECT id, name, api_key, handle, operations, status,
-		       created_at, updated_at, expires_at
+		       created_at, created_by, updated_at, expires_at
 		FROM api_keys
 		WHERE handle = ? AND name = ?
 		LIMIT 1
@@ -1260,6 +1270,7 @@ func (s *SQLiteStorage) GetAPIKeysByAPIAndName(handle, name string) (*models.API
 		&apiKey.Operations,
 		&apiKey.Status,
 		&apiKey.CreatedAt,
+		&apiKey.CreatedBy,
 		&apiKey.UpdatedAt,
 		&expiresAt,
 	)

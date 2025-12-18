@@ -2132,6 +2132,10 @@ components:
           format: date-time
           description: Timestamp when the API key was generated
           example: "2025-12-08T10:30:00Z"
+        created_by:
+          type: string
+          description: Identifier of the user who generated the API key
+          example: api_consumer
         expires_at:
           type: string
           format: date-time
@@ -2145,6 +2149,7 @@ components:
         - operations
         - status
         - created_at
+        - created_by
         - expires_at
 
     APIListItem:

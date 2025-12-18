@@ -2257,6 +2257,14 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 	handle := id
 	correlationID := middleware.GetCorrelationID(c)
 
+	// TODO - Do user validation and get user info
+	user := "api_consumer" // Placeholder for user identification
+
+	log.Debug("Starting API key generation",
+		zap.String("handle", handle),
+		zap.String("user", user),
+		zap.String("correlation_id", correlationID))
+
 	// Parse and validate request body
 	var request api.APIKeyGenerationRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -2275,6 +2283,7 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 	params := utils.APIKeyGenerationParams{
 		Handle:        handle,
 		Request:       request,
+		User:          user,
 		CorrelationID: correlationID,
 		Logger:        log,
 	}
@@ -2299,6 +2308,7 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 	log.Info("API key generation completed",
 		zap.String("handle", handle),
 		zap.String("key name", result.Response.ApiKey.Name),
+		zap.String("user", user),
 		zap.String("correlation_id", correlationID))
 
 	// Return the response using the generated schema

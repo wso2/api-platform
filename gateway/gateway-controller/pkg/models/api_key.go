@@ -40,6 +40,7 @@ type APIKey struct {
 	Operations string       `json:"operations" db:"operations"`
 	Status     APIKeyStatus `json:"status" db:"status"`
 	CreatedAt  time.Time    `json:"created_at" db:"created_at"`
+	CreatedBy  string       `json:"created_by" db:"created_by"`
 	UpdatedAt  time.Time    `json:"updated_at" db:"updated_at"`
 	ExpiresAt  *time.Time   `json:"expires_at" db:"expires_at"`
 }

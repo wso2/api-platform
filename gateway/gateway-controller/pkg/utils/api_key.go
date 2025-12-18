@@ -38,6 +38,7 @@ import (
 type APIKeyGenerationParams struct {
 	Handle        string                      // API handle/ID
 	Request       api.APIKeyGenerationRequest // Request body with API key generation details
+	User          string                      // User who initiated the request
 	CorrelationID string                      // Correlation ID for tracking
 	Logger        *zap.Logger                 // Logger instance
 }
@@ -78,7 +79,7 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 	}
 
 	// Generate the API key from request
-	apiKey, err := s.generateAPIKeyFromRequest(params.Handle, &params.Request, config)
+	apiKey, err := s.generateAPIKeyFromRequest(params.Handle, &params.Request, params.User, config)
 	if err != nil {
 		logger.Error("Failed to generate API key",
 			zap.Error(err),
@@ -101,7 +102,7 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 					zap.String("correlation_id", params.CorrelationID))
 
 				// Generate a new key
-				apiKey, err = s.generateAPIKeyFromRequest(params.Handle, &params.Request, config)
+				apiKey, err = s.generateAPIKeyFromRequest(params.Handle, &params.Request, params.User, config)
 				if err != nil {
 					logger.Error("Failed to regenerate API key after collision",
 						zap.Error(err),
@@ -162,7 +163,9 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 		zap.String("name", apiKey.Name),
 		zap.String("api_name", apiName),
 		zap.String("api_version", apiVersion),
+		zap.String("user", params.User),
 		zap.String("correlation_id", params.CorrelationID))
+
 	// TODO - Send the API key to the policy engine
 	// StoreAPIKey(apiName, apiVersion string, apiKey *APIKey)
 
@@ -172,6 +175,7 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 	logger.Info("API key generated successfully",
 		zap.String("handle", params.Handle),
 		zap.String("name", apiKey.Name),
+		zap.String("user", params.User),
 		zap.Bool("is_retry", result.IsRetry),
 		zap.String("correlation_id", params.CorrelationID))
 
@@ -179,7 +183,8 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 }
 
 // generateAPIKeyFromRequest creates a new API key based on the APIKeyGenerationRequest
-func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.APIKeyGenerationRequest, config *models.StoredConfig) (*models.APIKey, error) {
+func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.APIKeyGenerationRequest, user string,
+	config *models.StoredConfig) (*models.APIKey, error) {
 	// Generate UUID for the record ID
 	id := uuid.New().String()
 
@@ -232,7 +237,9 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 		expiresAt = &expiry
 	}
 
-	// TODO - Add created_by field once user management is implemented. this is the user who generated the api key
+	if user == "" {
+		user = "system"
+	}
 
 	return &models.APIKey{
 		ID:         id,
@@ -242,6 +249,7 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 		Operations: operations,
 		Status:     models.APIKeyStatusActive,
 		CreatedAt:  now,
+		CreatedBy:  user,
 		UpdatedAt:  now,
 		ExpiresAt:  expiresAt,
 	}, nil
@@ -290,6 +298,7 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey) api.APIKeyGenera
 			Operations: key.Operations,
 			Status:     api.APIKeyStatus(key.Status),
 			CreatedAt:  key.CreatedAt,
+			CreatedBy:  key.CreatedBy,
 			ExpiresAt:  key.ExpiresAt,
 		},
 	}
