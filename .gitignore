@@ -107,5 +107,6 @@ bin/
 *.pprof
 *__debug_bin*
 
-# CLI test logs
+# CLI test logs and output
 cli/src/tests/logs/
+cli/src/tests/target/

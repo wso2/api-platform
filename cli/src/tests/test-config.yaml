@@ -7,8 +7,14 @@ tests:
     description: Verify all CLI flags have unique values
     enabled: true
   
-  - name: TestGatewayBuildCommand
+  - name: Cmd-GatewayBuild
     description: Test gateway build command with policy manifest
+    enabled: true
+    # Set to false to skip this test during development
+    # enabled: false
+  
+  - name: Cmd-GatewayMcpGenerate
+    description: Test gateway MCP generate command with Docker container
     enabled: true
     # Set to false to skip this test during development
     # enabled: false

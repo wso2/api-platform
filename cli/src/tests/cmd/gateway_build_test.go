@@ -40,7 +40,7 @@ type TestEntry struct {
 
 func isTestEnabled(testName string) bool {
 	// Load test config
-	configPath := filepath.Join("test-config.yaml")
+	configPath := filepath.Join("..", "test-config.yaml")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		// If config doesn't exist, all tests are enabled by default
@@ -63,14 +63,14 @@ func isTestEnabled(testName string) bool {
 	return true
 }
 
-func TestGatewayBuildCommand(t *testing.T) {
-	if !isTestEnabled("TestGatewayBuildCommand") {
+func TestCmdGatewayBuild(t *testing.T) {
+	if !isTestEnabled("Cmd-GatewayBuild") {
 		t.Skip("Test disabled in test-config.yaml")
 		return
 	}
 
 	// Get the binary path
-	binaryPath := filepath.Join("..", "build", "apipctl")
+	binaryPath := filepath.Join("..", "..", "build", "apipctl")
 
 	// Check if binary exists
 	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
@@ -78,7 +78,7 @@ func TestGatewayBuildCommand(t *testing.T) {
 	}
 
 	// Get the test manifest path
-	manifestPath := filepath.Join("resources", "test-policy-manifest.yaml")
+	manifestPath := filepath.Join("..", "resources", "test-policy-manifest.yaml")
 	absManifestPath, err := filepath.Abs(manifestPath)
 	if err != nil {
 		t.Fatalf("Failed to get absolute path for manifest: %v", err)

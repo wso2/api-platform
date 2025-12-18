@@ -434,6 +434,11 @@ func generateMCPConfigFile(url string, toolsResult ToolsResult,
 		return err
 	}
 
+	// Create output directory if it doesn't exist
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
 	outputPath := filepath.Join(outputDir, "generated-mcp.yaml")
 	err = os.WriteFile(outputPath, out, 0644)
 	if err != nil {
