@@ -1827,6 +1827,9 @@ type ServerInterface interface {
 	// Generate API key for an API
 	// (POST /apis/{id}/api-key)
 	GenerateAPIKey(c *gin.Context, id string)
+	// Revoke an API key
+	// (DELETE /apis/{id}/api-key/{apiKey})
+	RevokeAPIKey(c *gin.Context, id string, apiKey string)
 	// List all custom certificates
 	// (GET /certificates)
 	ListCertificates(c *gin.Context)
@@ -2076,6 +2079,39 @@ func (siw *ServerInterfaceWrapper) GenerateAPIKey(c *gin.Context) {
 	}
 
 	siw.Handler.GenerateAPIKey(c, id)
+}
+
+// RevokeAPIKey operation middleware
+func (siw *ServerInterfaceWrapper) RevokeAPIKey(c *gin.Context) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "apiKey" -------------
+	var apiKey string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "apiKey", c.Param("apiKey"), &apiKey, runtime.BindStyledParameterOptions{Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter apiKey: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.RevokeAPIKey(c, id, apiKey)
 }
 
 // ListCertificates operation middleware
@@ -2745,6 +2781,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/apis/:id", wrapper.GetAPIById)
 	router.PUT(options.BaseURL+"/apis/:id", wrapper.UpdateAPI)
 	router.POST(options.BaseURL+"/apis/:id/api-key", wrapper.GenerateAPIKey)
+	router.DELETE(options.BaseURL+"/apis/:id/api-key/:apiKey", wrapper.RevokeAPIKey)
 	router.GET(options.BaseURL+"/certificates", wrapper.ListCertificates)
 	router.POST(options.BaseURL+"/certificates", wrapper.UploadCertificate)
 	router.POST(options.BaseURL+"/certificates/reload", wrapper.ReloadCertificates)

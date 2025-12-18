@@ -2314,3 +2314,76 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 	// Return the response using the generated schema
 	c.JSON(http.StatusCreated, result.Response)
 }
+
+// RevokeAPIKey implements ServerInterface.RevokeAPIKey
+// (DELETE /apis/{id}/api-key/{apiKey})
+func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKey string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	// TODO - Do user validation and get user info
+	user := "api_consumer" // Placeholder for user identification
+
+	log.Debug("Starting API key revocation",
+		zap.String("handle", handle),
+		zap.String("user", user),
+		zap.String("correlation_id", correlationID))
+
+	// Parse and validate
+	if strings.TrimSpace(id) == "" {
+		log.Warn("API handle is required for revocation",
+			zap.String("correlation_id", correlationID))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "API handle is required for revocation",
+		})
+		return
+	}
+	if strings.TrimSpace(apiKey) == "" {
+		log.Warn("API key is required for revocation",
+			zap.String("handle", handle),
+			zap.String("correlation_id", correlationID))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "API key is required for revocation",
+		})
+		return
+	}
+
+	// Prepare parameters
+	params := utils.APIKeyRevocationParams{
+		Handle:        handle,
+		APIKey:        apiKey,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	err := s.apiKeyService.RevokeAPIKey(params)
+	if err != nil {
+		// Check error type to determine appropriate status code
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		}
+		return
+	}
+
+	log.Info("API key revoked successfully",
+		zap.String("handle", handle),
+		zap.String("key", apiKey),
+		zap.String("user", user),
+		zap.String("correlation_id", correlationID))
+
+	// Return the response using the generated schema
+	c.JSON(http.StatusNoContent, nil)
+}

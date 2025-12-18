@@ -402,6 +402,53 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /apis/{id}/api-key/{apiKey}:
+    delete:
+      summary: Revoke an API key
+      description: |
+        Revoke a previously generated API key for the specified API. Once revoked,
+        the key can no longer be used to authenticate requests.
+      operationId: revokeAPIKey
+      tags:
+        - API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API to generate the key for
+          schema:
+            type: string
+          example: weather-api-v1.0
+        - name: apiKey
+          in: path
+          required: true
+          description: The API key to revoke
+          schema:
+            type: string
+          example: apip_4f3c2e1d5a6b7c8d9e0f1a2b3c4d5e6f
+      responses:
+        '204':
+          description: API key revoked successfully
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: API configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /certificates:
     get:
       summary: List all custom certificates

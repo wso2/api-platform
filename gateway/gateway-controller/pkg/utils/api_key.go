@@ -49,6 +49,15 @@ type APIKeyGenerationResult struct {
 	IsRetry  bool                         // Whether this was a retry due to collision
 }
 
+// APIKeyRevocationParams contains parameters for API key revocation operations
+type APIKeyRevocationParams struct {
+	Handle        string      // API handle/ID
+	APIKey        string      // APi key to be revoked
+	User          string      // User who initiated the request
+	CorrelationID string      // Correlation ID for tracking
+	Logger        *zap.Logger // Logger instance
+}
+
 // APIKeyService provides utilities for API configuration deployment
 type APIKeyService struct {
 	store *storage.ConfigStore
@@ -170,7 +179,7 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 		zap.String("correlation_id", params.CorrelationID))
 
 	// TODO - Send the API key to the policy engine
-	// StoreAPIKey(apiName, apiVersion string, apiKey *APIKey)
+	// err := StoreAPIKey(apiName, apiVersion string, apiKey *APIKey, params.CorrelationID string)
 
 	// Build response following the generated schema
 	result.Response = s.buildAPIKeyResponse(apiKey)
@@ -183,6 +192,145 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 		zap.String("correlation_id", params.CorrelationID))
 
 	return result, nil
+}
+
+// RevokeAPIKey handles the API key revocation process
+func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) error {
+	logger := params.Logger
+
+	// Validate that API exists
+	config, err := s.store.GetByHandle(params.Handle)
+	if err != nil {
+		logger.Warn("API configuration not found for API key revocation",
+			zap.String("handle", params.Handle),
+			zap.String("correlation_id", params.CorrelationID))
+		return fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+	}
+
+	// Get the API key by its value
+	apiKey, err := s.store.GetAPIKeyByKey(params.APIKey)
+	if err != nil {
+		logger.Debug("API key not found for revocation",
+			zap.String("handle", params.Handle),
+			zap.String("correlation_id", params.CorrelationID))
+		//return nil
+	}
+
+	// For security reasons, perform all validations but don't return errors
+	// This prevents information leakage about API key details
+	if apiKey != nil {
+		// Check if the API key belongs to the specified API
+		if apiKey.Handle != params.Handle {
+			logger.Debug("API key does not belong to the specified API",
+				zap.String("expected_handle", params.Handle),
+				zap.String("actual_handle", apiKey.Handle),
+				zap.String("correlation_id", params.CorrelationID))
+			return fmt.Errorf("API key revocation failed for API: '%s'", params.Handle)
+		}
+
+		// Check if the user revoking the key is the same as the one who created it
+		if apiKey.CreatedBy != params.User {
+			logger.Debug("User attempting to revoke API key is not the creator",
+				zap.String("handle", params.Handle),
+				zap.String("creator", apiKey.CreatedBy),
+				zap.String("requesting_user", params.User),
+				zap.String("correlation_id", params.CorrelationID))
+			return fmt.Errorf("API key revocation failed for API: '%s'", params.Handle)
+		}
+
+		// Check if the API key is already revoked
+		if apiKey.Status == models.APIKeyStatusRevoked {
+			logger.Debug("API key is already revoked",
+				zap.String("handle", params.Handle),
+				zap.String("correlation_id", params.CorrelationID))
+			return nil
+		}
+
+		// At this point, all validations passed, proceed with actual revocation
+		// Set status to revoked and update timestamp
+		apiKey.Status = models.APIKeyStatusRevoked
+		apiKey.UpdatedAt = time.Now()
+
+		// Update the API key status in the database (if persistent mode)
+		if s.db != nil {
+			if err := s.db.UpdateAPIKey(apiKey); err != nil {
+				logger.Error("Failed to update API key status in database",
+					zap.Error(err),
+					zap.String("handle", params.Handle),
+					zap.String("correlation_id", params.CorrelationID))
+				return fmt.Errorf("failed to revoke API key: %w", err)
+			}
+		}
+
+		// Remove the API key from memory store
+		if err := s.store.RemoveAPIKey(params.APIKey); err != nil {
+			logger.Error("Failed to remove API key from memory store",
+				zap.Error(err),
+				zap.String("handle", params.Handle),
+				zap.String("correlation_id", params.CorrelationID))
+
+			// Try to rollback database update if memory removal fails
+			if s.db != nil {
+				apiKey.Status = models.APIKeyStatusActive // Rollback status
+				if rollbackErr := s.db.UpdateAPIKey(apiKey); rollbackErr != nil {
+					logger.Error("Failed to rollback API key status in database",
+						zap.Error(rollbackErr),
+						zap.String("correlation_id", params.CorrelationID))
+				}
+			}
+			return fmt.Errorf("failed to revoke API key: %w", err)
+		}
+	}
+
+	// Remove the API key from database (complete removal)
+	// Note: This is cleanup only - the revocation is already complete
+	if s.db != nil {
+		if err := s.db.DeleteAPIKey(params.APIKey); err != nil {
+			logger.Warn("Failed to remove API key from database, but revocation was successful",
+				zap.Error(err),
+				zap.String("handle", params.Handle),
+				zap.String("correlation_id", params.CorrelationID))
+			// Don't return error - revocation was already successful
+			// The key is marked as revoked in DB and removed from memory
+		}
+	}
+
+	// remove the api key from the policy engine
+	apiConfig, err := config.Configuration.Spec.AsAPIConfigData()
+	if err != nil {
+		logger.Error("Failed to parse API configuration data",
+			zap.Error(err),
+			zap.String("handle", params.Handle),
+			zap.String("correlation_id", params.CorrelationID))
+		return fmt.Errorf("failed to revoke API key: %w", err)
+	}
+
+	apiName := apiConfig.DisplayName
+	apiVersion := apiConfig.Version
+	logger.Info("Removing API key from policy engine",
+		zap.String("handle", params.Handle),
+		zap.String("api key", s.maskAPIKey(params.APIKey)),
+		zap.String("api_name", apiName),
+		zap.String("api_version", apiVersion),
+		zap.String("user", params.User),
+		zap.String("correlation_id", params.CorrelationID))
+
+	// TODO - Send the API key revocation to the policy engine
+	// err := RevokeAPIKey(apiName, apiVersion, params.APIKey, params.CorrelationID string)
+	// if err != nil {
+	//     logger.Error("Failed to remove api key from policy engine",
+	//         zap.Error(err),
+	//         zap.String("correlation_id", params.CorrelationID))
+	//     return fmt.Errorf("failed to revoke API key: %w", err)
+	// }
+
+	logger.Info("API key revoked successfully",
+		zap.String("handle", params.Handle),
+		zap.String("api key", s.maskAPIKey(params.APIKey)),
+		zap.String("user", params.User),
+		zap.String("correlation_id", params.CorrelationID))
+
+	return nil
 }
 
 // generateAPIKeyFromRequest creates a new API key based on the APIKeyGenerationRequest
@@ -321,4 +469,12 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey) api.APIKeyGenera
 			ExpiresAt:  expiresAt,
 		},
 	}
+}
+
+// maskAPIKey masks an API key for secure logging, showing first 8 and last 4 characters
+func (s *APIKeyService) maskAPIKey(apiKey string) string {
+	if len(apiKey) <= 12 {
+		return "****"
+	}
+	return apiKey[:8] + "****" + apiKey[len(apiKey)-4:]
 }

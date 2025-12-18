@@ -190,8 +190,8 @@ func (aks *APIkeyStore) ValidateAPIKey(apiName, apiVersion, apiOperation, operat
 	return false, nil
 }
 
-// RevokeAPIKey revokes a specific API key by name for a given API
-func (aks *APIkeyStore) RevokeAPIKey(apiName, apiVersion, apiKeyName string) error {
+// RevokeAPIKey revokes a specific API key by API key value
+func (aks *APIkeyStore) RevokeAPIKey(apiName, apiVersion, apiKeyValue string) error {
 	aks.mu.Lock()
 	defer aks.mu.Unlock()
 
@@ -200,29 +200,33 @@ func (aks *APIkeyStore) RevokeAPIKey(apiName, apiVersion, apiKeyName string) err
 	// Get API keys for the handleKey
 	apiKeys, exists := aks.apiKeysByAPI[handleKey]
 	if !exists {
-		return ErrNotFound
+		// If the API doesn't exist in our store, we treat revocation as successful
+		// since the key is effectively "not active" anyway
+		return nil
 	}
 
-	// Find the API key with the matching name
+	// Find the API key with the matching key value
 	var targetAPIKey *APIKey
 	var targetIndex = -1
 
 	for i, apiKey := range apiKeys {
-		if apiKey.Name == apiKeyName {
+		if apiKey.APIKey == apiKeyValue {
 			targetAPIKey = apiKey
 			targetIndex = i
 			break
 		}
 	}
 
+	// If the API key doesn't exist, treat revocation as successful (idempotent operation)
 	if targetAPIKey == nil {
-		return ErrNotFound
+		return nil
 	}
 
+	// Set status to revoked
 	targetAPIKey.Status = Revoked
 
 	// Remove from main apiKeys map
-	delete(aks.apiKeys, targetAPIKey.APIKey)
+	delete(aks.apiKeys, apiKeyValue)
 
 	// Remove from apiKeysByAPI slice
 	aks.apiKeysByAPI[handleKey] = append(apiKeys[:targetIndex], apiKeys[targetIndex+1:]...)
