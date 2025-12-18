@@ -21,7 +21,7 @@ package utils
 import "github.com/spf13/cobra"
 
 const (
-	FlagName                   = "name"
+	FlagName                   = "display-name"
 	FlagServer                 = "server"
 	FlagToken                  = "token"
 	FlagEnvToken               = "token-env"
