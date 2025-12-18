@@ -47,13 +47,6 @@ func ValidatePolicyManifest(manifest *PolicyManifest) error {
 		return fmt.Errorf("'version' field is required")
 	}
 
-	// Validate versionResolution if provided
-	if manifest.VersionResolution != "" {
-		if !isValidVersionResolution(manifest.VersionResolution) {
-			return fmt.Errorf("invalid root level 'versionResolution': %s (must be 'exact', 'minor', or 'major')", manifest.VersionResolution)
-		}
-	}
-
 	// Validate policies array
 	if manifest.Policies == nil || len(manifest.Policies) == 0 {
 		return fmt.Errorf("'policies' array is required and must not be empty")
@@ -81,13 +74,6 @@ func validatePolicy(policy *Policy, index int) error {
 		return fmt.Errorf("policy[%d] (%s): 'version' field is required", index, policy.Name)
 	}
 
-	// Validate versionResolution if provided
-	if policy.VersionResolution != "" {
-		if !isValidVersionResolution(policy.VersionResolution) {
-			return fmt.Errorf("policy[%d] (%s): invalid 'versionResolution': %s (must be 'exact', 'minor', or 'major')", index, policy.Name, policy.VersionResolution)
-		}
-	}
-
 	// Validate filePath if provided (check if file exists)
 	if policy.FilePath != "" {
 		if _, err := os.Stat(policy.FilePath); os.IsNotExist(err) {
@@ -96,17 +82,6 @@ func validatePolicy(policy *Policy, index int) error {
 	}
 
 	return nil
-}
-
-// isValidVersionResolution checks if the version resolution is valid
-func isValidVersionResolution(resolution string) bool {
-	validResolutions := []string{"exact", "minor", "major"}
-	for _, valid := range validResolutions {
-		if resolution == valid {
-			return true
-		}
-	}
-	return false
 }
 
 // LoadPolicyManifest loads and validates a policy-manifest file
