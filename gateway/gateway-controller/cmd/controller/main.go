@@ -357,6 +357,7 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 			Username:       authUser.Username,
 			Password:       authUser.Password,
 			PasswordHashed: authUser.PasswordHashed,
+			Roles:          authUser.Roles,
 		}
 	}
 	basicAuth := commonmodels.BasicAuth{Enabled: true, Users: users}
