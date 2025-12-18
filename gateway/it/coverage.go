@@ -266,8 +266,8 @@ type CoverageReport struct {
 
 // PackageCoverage represents coverage for a single package
 type PackageCoverage struct {
-	Package    string  `json:"package"`
-	Coverage   float64 `json:"coverage"`
+	Package  string  `json:"package"`
+	Coverage float64 `json:"coverage"`
 }
 
 // logCoveragePercentage calculates and logs the coverage percentage
@@ -380,31 +380,31 @@ func (c *CoverageCollector) printCoverageTable(report *CoverageReport) {
 	}
 
 	fmt.Println()
-	fmt.Println("╔════════════════════════════════════════════════════════════════════════════╗")
-	fmt.Println("║                        CODE COVERAGE SUMMARY                              ║")
-	fmt.Println("╠════════════════════════════════════════════════════════════════════════════╣")
+	fmt.Println("╔══════════════════════════════════════════════════════════════════════════╗")
+	fmt.Println("║                       CODE COVERAGE SUMMARY                              ║")
+	fmt.Println("╠══════════════════════════════════════════════════════════════════════════╣")
 
 	// Package coverage table
-	fmt.Println("║  PACKAGES                                                                  ║")
-	fmt.Println("╠────────────────────────────────────────────────────────────────┬───────────╣")
-	fmt.Println("║  Package                                                       │ Coverage  ║")
-	fmt.Println("╠────────────────────────────────────────────────────────────────┼───────────╣")
+	fmt.Println("║  PACKAGES                                                                ║")
+	fmt.Println("╠──────────────────────────────────────────────────────────────┬───────────╣")
+	fmt.Println("║  Package                                                     │ Coverage  ║")
+	fmt.Println("╠──────────────────────────────────────────────────────────────┼───────────╣")
 
 	for _, p := range report.Packages {
-		pkg := truncateCoverageString(p.Package, 62)
-		fmt.Printf("║  %-62s │ %7.1f%%  ║\n", pkg, p.Coverage)
+		pkg := truncateCoverageString(p.Package, 60)
+		fmt.Printf("║ %-60s │ %7.1f%%  ║\n", pkg, p.Coverage)
 	}
 
-	fmt.Println("╠════════════════════════════════════════════════════════════════════════════╣")
+	fmt.Println("╠══════════════════════════════════════════════════════════════════════════╣")
 
 	// Summary
-	fmt.Println("║  SUMMARY                                                                   ║")
-	fmt.Println("╠───────────────────────────────────┬────────────────────────────────────────╣")
-	fmt.Println("║  Metric                           │ Value                                  ║")
-	fmt.Println("╠───────────────────────────────────┼────────────────────────────────────────╣")
-	fmt.Printf("║  Total Packages                   │ %38d  ║\n", report.TotalPackages)
-	fmt.Printf("║  Total Coverage                   │ %36.1f%%  ║\n", report.TotalCoverage)
-	fmt.Println("╚════════════════════════════════════════════════════════════════════════════╝")
+	fmt.Println("║  SUMMARY                                                                 ║")
+	fmt.Println("╠─────────────────────────────────┬────────────────────────────────────────╣")
+	fmt.Println("║  Metric                         │ Value                                  ║")
+	fmt.Println("╠─────────────────────────────────┼────────────────────────────────────────╣")
+	fmt.Printf("║  Total Packages                 │ %38d ║\n", report.TotalPackages)
+	fmt.Printf("║  Total Coverage                 │ %37.1f%% ║\n", report.TotalCoverage)
+	fmt.Println("╚══════════════════════════════════════════════════════════════════════════╝")
 	fmt.Println()
 }
 
