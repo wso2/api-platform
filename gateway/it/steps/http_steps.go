@@ -25,6 +25,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/cucumber/godog"
 )
@@ -66,6 +67,9 @@ func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 	// Service-specific shortcuts
 	ctx.Step(`^I send a GET request to the "([^"]*)" service at "([^"]*)"$`, h.iSendGETToService)
 	ctx.Step(`^I send a POST request to the "([^"]*)" service at "([^"]*)" with body:$`, h.iSendPOSTToServiceWithBody)
+
+	// Utility steps
+	ctx.Step(`^I wait for (\d+) seconds$`, h.iWaitForSeconds)
 }
 
 // Reset clears state between scenarios
@@ -74,6 +78,16 @@ func (h *HTTPSteps) Reset() {
 	h.lastResponse = nil
 	h.lastBody = nil
 	h.headers = make(map[string]string)
+}
+
+// SetHeader sets a header for subsequent requests
+func (h *HTTPSteps) SetHeader(name, value string) {
+	h.headers[name] = value
+}
+
+// SendPOSTToService sends a POST request to a named service with body
+func (h *HTTPSteps) SendPOSTToService(serviceName, path string, body *godog.DocString) error {
+	return h.iSendPOSTToServiceWithBody(serviceName, path, body)
 }
 
 // LastResponse returns the last HTTP response
@@ -156,6 +170,12 @@ func (h *HTTPSteps) iSendPOSTToServiceWithBody(serviceName, path string, body *g
 	}
 	url := baseURL + path
 	return h.sendRequest(http.MethodPost, url, []byte(body.Content))
+}
+
+// iWaitForSeconds waits for the specified number of seconds
+func (h *HTTPSteps) iWaitForSeconds(seconds int) error {
+	time.Sleep(time.Duration(seconds) * time.Second)
+	return nil
 }
 
 // sendRequest is a helper to send HTTP requests
