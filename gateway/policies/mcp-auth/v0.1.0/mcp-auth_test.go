@@ -85,7 +85,7 @@ func TestOnRequest_WellKnown_Success(t *testing.T) {
 		t.Fatalf("Failed to unmarshal body: %v", err)
 	}
 
-	expectedResource := "http://localhost/mcp"
+	expectedResource := "http://localhost:8080/mcp"
 	if metadata.Resource != expectedResource {
 		t.Errorf("Expected resource '%s', got '%s'", expectedResource, metadata.Resource)
 	}
@@ -154,6 +154,124 @@ func TestOnRequest_WellKnown_FilteredIssuers(t *testing.T) {
 	}
 }
 
+func TestOnRequest_WellKnown_WithVhost(t *testing.T) {
+	p := &McpAuthPolicy{}
+	ctx := createMockRequestContext(map[string][]string{
+		McpSessionHeader: {"session-456"},
+	})
+	ctx.Method = "GET"
+	ctx.Path = "/.well-known/oauth-protected-resource"
+	ctx.Scheme = "https"
+	ctx.Authority = "localhost:8443"
+	ctx.Vhost = "api.example.com"
+
+	params := map[string]any{
+		"keyManagers": []any{
+			map[string]any{
+				"name":   "km1",
+				"issuer": "https://issuer1.com",
+			},
+		},
+	}
+
+	action := p.OnRequest(ctx, params)
+
+	resp, ok := action.(policy.ImmediateResponse)
+	if !ok {
+		t.Fatalf("Expected ImmediateResponse, got %T", action)
+	}
+
+	if resp.StatusCode != 200 {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	var metadata ProtectedResourceMetadata
+	if err := json.Unmarshal(resp.Body, &metadata); err != nil {
+		t.Fatalf("Failed to unmarshal body: %v", err)
+	}
+
+	// Should use vhost (api.example.com) with port from authority (8443)
+	expectedResource := "https://api.example.com:8443/mcp"
+	if metadata.Resource != expectedResource {
+		t.Errorf("Expected resource '%s', got '%s'", expectedResource, metadata.Resource)
+	}
+}
+
+func TestOnRequest_WellKnown_WithVhost_StandardPort(t *testing.T) {
+	p := &McpAuthPolicy{}
+	ctx := createMockRequestContext(nil)
+	ctx.Method = "GET"
+	ctx.Path = "/.well-known/oauth-protected-resource"
+	ctx.Scheme = "https"
+	ctx.Authority = "api.example.com:443"
+	ctx.Vhost = "api.example.com"
+
+	params := map[string]any{
+		"keyManagers": []any{
+			map[string]any{
+				"name":   "km1",
+				"issuer": "https://issuer1.com",
+			},
+		},
+	}
+
+	action := p.OnRequest(ctx, params)
+
+	resp, ok := action.(policy.ImmediateResponse)
+	if !ok {
+		t.Fatalf("Expected ImmediateResponse, got %T", action)
+	}
+
+	var metadata ProtectedResourceMetadata
+	if err := json.Unmarshal(resp.Body, &metadata); err != nil {
+		t.Fatalf("Failed to unmarshal body: %v", err)
+	}
+
+	// Should use vhost without port since 443 is standard for https
+	expectedResource := "https://api.example.com/mcp"
+	if metadata.Resource != expectedResource {
+		t.Errorf("Expected resource '%s', got '%s'", expectedResource, metadata.Resource)
+	}
+}
+
+func TestOnRequest_WellKnown_WithVhost_AndAPIContext(t *testing.T) {
+	p := &McpAuthPolicy{}
+	ctx := createMockRequestContext(nil)
+	ctx.Method = "GET"
+	ctx.Path = "/.well-known/oauth-protected-resource"
+	ctx.Scheme = "https"
+	ctx.Authority = "localhost:8443"
+	ctx.Vhost = "api.example.com"
+	ctx.APIContext = "/v1/myapi"
+
+	params := map[string]any{
+		"keyManagers": []any{
+			map[string]any{
+				"name":   "km1",
+				"issuer": "https://issuer1.com",
+			},
+		},
+	}
+
+	action := p.OnRequest(ctx, params)
+
+	resp, ok := action.(policy.ImmediateResponse)
+	if !ok {
+		t.Fatalf("Expected ImmediateResponse, got %T", action)
+	}
+
+	var metadata ProtectedResourceMetadata
+	if err := json.Unmarshal(resp.Body, &metadata); err != nil {
+		t.Fatalf("Failed to unmarshal body: %v", err)
+	}
+
+	// Should include API context in the resource path
+	expectedResource := "https://api.example.com:8443/v1/myapi/mcp"
+	if metadata.Resource != expectedResource {
+		t.Errorf("Expected resource '%s', got '%s'", expectedResource, metadata.Resource)
+	}
+}
+
 func TestOnRequest_Delegation_Failure(t *testing.T) {
 	p := &McpAuthPolicy{}
 	ctx := createMockRequestContext(map[string][]string{
@@ -187,9 +305,7 @@ func TestOnRequest_Delegation_Failure(t *testing.T) {
 		t.Error("Expected WWW-Authenticate header")
 	}
 
-	// Expected: Bearer resource_metadata="http://gateway.com/.well-known/oauth-protected-resource"
-	// Note: VHost is present, so it uses VHost.
-	expectedPrefix := `Bearer resource_metadata="http://gateway.com/.well-known/oauth-protected-resource"`
+	expectedPrefix := `Bearer resource_metadata="http://gateway.com:8080/.well-known/oauth-protected-resource"`
 	if !strings.HasPrefix(authHeader, expectedPrefix) {
 		t.Errorf("Unexpected WWW-Authenticate header: %s", authHeader)
 	}
@@ -209,5 +325,6 @@ func createMockRequestContext(headers map[string][]string) *policy.RequestContex
 		Body:    nil,
 		Path:    "/api/test",
 		Method:  "GET",
+		Scheme:  "http",
 	}
 }

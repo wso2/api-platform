@@ -26,7 +26,7 @@ These parameters are set by the administrator and apply globally to all MCP auth
 | Parameter | Type | Required | Path | Description |
 |-----------|------|----------|----------|-------------|
 | `keyManagers` | array | Yes | JwtAuth_v010 | List of key manager definitions. Each entry must include a unique `name` and either `jwks` (for remote JWKS or local certificates) configuration. |
-| `gatewayHost` | string | No | McpAuth_v010 | The outward facing gateway host name which will be used when deriving the protected resource metadata related values in headers and body. The gateway will fall back to this if there are no vhosts defined in the MCP proxy configuration.
+| `gatewayHost` | string | No | McpAuth_v010 | The outward facing gateway host name which will be used when deriving the values related to protected resource metadata in headers and body. The gateway will fall back to this if there are no vhosts defined in the MCP proxy configuration. |
 
 #### Key Manager Configuration
 

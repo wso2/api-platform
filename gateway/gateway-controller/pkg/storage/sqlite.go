@@ -1109,7 +1109,7 @@ func (s *SQLiteStorage) updateDeploymentConfigs(cfg *models.StoredConfig) (bool,
 func isUniqueConstraintError(err error) bool {
 	// SQLite error code 19 is CONSTRAINT error
 	// Error message contains "UNIQUE constraint failed"
-	return err != nil && (err.Error() == "UNIQUE constraint failed: deployments.name, deployments.version" ||
+	return err != nil && (err.Error() == "UNIQUE constraint failed: deployments.display_name, deployments.version" ||
 		err.Error() == "UNIQUE constraint failed: deployments.id" ||
 		err.Error() == "UNIQUE constraint failed: deployments.handle")
 }

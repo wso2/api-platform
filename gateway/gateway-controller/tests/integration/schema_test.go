@@ -128,7 +128,7 @@ func TestSchemaInitialization(t *testing.T) {
 		// Verify expected columns exist
 		expectedColumns := map[string]string{
 			"id":               "TEXT",
-			"name":             "TEXT",
+			"display_name":     "TEXT",
 			"version":          "TEXT",
 			"context":          "TEXT",
 			"kind":             "TEXT",

@@ -129,7 +129,7 @@ func TestMCPTransformer_Transform(t *testing.T) {
 	tr := &MCPTransformer{}
 	res, err := tr.Transform(in, &out)
 	if err != nil {
-		t.Fatalf("Transform returned nil")
+		t.Fatalf("Transform returned an error: %v", err)
 	}
 
 	apiData, err := res.Spec.AsAPIConfigData()
