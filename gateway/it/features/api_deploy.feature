@@ -1,0 +1,52 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+Feature: API Deployment and Invocation
+  As an API developer
+  I want to deploy an API configuration and invoke it
+  So that I can verify the gateway routes requests correctly
+
+  Background:
+    Given the gateway services are running
+
+  Scenario: Deploy a simple HTTP API and invoke it successfully
+    When I deploy this API configuration:
+      """
+      version: api-platform.wso2.com/v1
+      kind: http/rest
+      spec:
+        name: Weather-API
+        version: v1.0
+        context: /weather/$version
+        upstream:
+          main:
+            url: http://sample-backend:5000/api/v2
+        operations:
+          - method: GET
+            path: /{country_code}/{city}
+          - method: GET
+            path: /alerts/active
+      """
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    And I wait for 2 seconds
+    When I send a GET request to "http://localhost:8080/weather/v1.0/us/seattle"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the response body should contain "/api/v2/us/seattle"

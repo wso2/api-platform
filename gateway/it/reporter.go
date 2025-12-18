@@ -255,7 +255,7 @@ func (r *TestReporter) printSummaryTable(report *TestReport) {
 	fmt.Println("╠────────────────────────────────────────────────────┼────────┼────────────╣")
 
 	for _, s := range report.Scenarios {
-		name := truncateString(s.Name, 50)
+		name := truncateString(s.Name, 49)
 		status := formatStatus(s.Status)
 		duration := formatDuration(parseDuration(s.Duration))
 		fmt.Printf("║  %-49s │ %-6s │ %10s ║\n", name, status, duration)
