@@ -184,6 +184,7 @@ type RouteMetadata struct {
 	APIVersion    string
 	Context       string
 	OperationPath string
+	Vhost         string
 }
 
 // extractRouteMetadata extracts the route metadata from Envoy metadata
@@ -227,6 +228,9 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 					}
 					if operationPath, ok := routeStruct.Fields["path"]; ok {
 						metadata.OperationPath = operationPath.GetStringValue()
+					}
+					if vhostValue, ok := routeStruct.Fields["vhost"]; ok {
+						metadata.Vhost = vhostValue.GetStringValue()
 					}
 				}
 			}

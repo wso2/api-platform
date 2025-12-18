@@ -823,6 +823,7 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 		"api_context": context,
 		"path":        path,
 		"method":      method,
+		"vhost":       vhost,
 	}
 	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
 		r.Metadata = &core.Metadata{FilterMetadata: map[string]*structpb.Struct{
