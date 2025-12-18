@@ -66,7 +66,7 @@ func (b *BasicAuthenticator) Authenticate(c *gin.Context) (*AuthResult, error) {
 	password := parts[1]
 
 	// If auth is not configured or no users are defined, skip auth
-	if len(b.authConfig.BasicAuth.Users) == 0 {
+	if b.authConfig.BasicAuth == nil || len(b.authConfig.BasicAuth.Users) == 0 {
 		return nil, errors.New("no users configured for basic authentication")
 	}
 
@@ -89,7 +89,11 @@ func (b *BasicAuthenticator) Authenticate(c *gin.Context) (*AuthResult, error) {
 			return nil, ErrAuthenticationFailed
 		}
 	} else {
-		if matched.Password != password {
+		// Use constant-time comparison for plaintext passwords
+		stored := []byte(matched.Password)
+		incoming := []byte(password)
+		if len(stored) != len(incoming) ||
+			subtle.ConstantTimeCompare(stored, incoming) != 1 {
 			return nil, ErrAuthenticationFailed
 		}
 	}
