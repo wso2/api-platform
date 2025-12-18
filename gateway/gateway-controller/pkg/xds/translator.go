@@ -261,7 +261,7 @@ func (t *Translator) TranslateConfigs(
 
 	// Add ALS cluster if gRPC access log is enabled
 	t.logger.Sugar().Debugf("gRPC access log config: %+v", t.config.Analytics.GRPCAccessLogCfg)
-	if t.config.Analytics.GRPCAccessLogCfg.Enabled {
+	if t.config.Analytics.Enabled {
 		log.Info("gRPC access log is enabled, creating ALS cluster")
 		alsCluster := t.createALSCluster()
 		clusters = append(clusters, alsCluster)
@@ -1069,7 +1069,7 @@ func (t *Translator) createALSCluster() *cluster.Cluster {
                 Protocol: core.SocketAddress_TCP,
                 Address:  grpcConfig.Host,
                 PortSpecifier: &core.SocketAddress_PortValue{
-                    PortValue: grpcConfig.Port,
+                    PortValue: uint32(t.config.Analytics.AccessLogsServiceCfg["als_server_port"].(int)),
                 },
             },
         },
@@ -1581,7 +1581,7 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	})
 
 	// If gRPC access log is enabled, create the configuration and append to existing access logs
-    if t.config.Analytics.GRPCAccessLogCfg.Enabled {
+    if t.config.Analytics.Enabled {
 		t.logger.Info("Creating gRPC access log configuration")
         grpcAccessLog, err := t.createGRPCAccessLog()
         if err != nil {

@@ -285,25 +285,20 @@ analytics:
 
   # gRPC Access Log Service configuration for router(Envoy)
   grpc_access_logs:
-    enabled: true
-    
-    # ALS Server endpoint (typically gateway-controller itself)
+    # ALS Server hostname
     host: policy-engine
-    port: 18090  # New port for ALS gRPC server
     
     # Log name identifier
     log_name: "envoy_access_log"
     
     # Buffer settings
-    buffer_flush_interval: 1000000000 # milliseconds
+    buffer_flush_interval: 1000000000 # nanoseconds
     buffer_size_bytes: 16384
-    grpc_request_timeout: 20000000000 # milliseconds
+    grpc_request_timeout: 20000000000 # nanoseconds
 
   # ALS server related configuration
   access_logs_service:
-    enabled: true
-
-    # grpc server port for the ALS server
+    # ALS Server gRPC  port
     als_server_port: 18090
 
     # shutdown timeout for the ALS server

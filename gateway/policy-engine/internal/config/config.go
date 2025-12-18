@@ -131,7 +131,6 @@ type LoggingConfig struct {
 
 // AccessLogsServiceConfig holds access logs service configuration
 type AccessLogsServiceConfig struct {
-	Enabled bool `mapstructure:"enabled"`
 	ALSServerPort int `mapstructure:"als_server_port"`
 	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
 	PublicKeyPath string `mapstructure:"public_key_path"`
@@ -214,7 +213,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("analytics.enabled", false)
 	v.SetDefault("analytics.publishers", make([]PublisherConfig, 0))
 	v.SetDefault("analytics.grpc_access_logs", map[string]interface{}{
-		"enabled": false,
 		"host": "policy-engine",
 		"port": 18090,
 		"log_name": "envoy_access_log",
@@ -223,7 +221,6 @@ func setDefaults(v *viper.Viper) {
 		"grpc_request_timeout": 20000000000,
 	})
 	v.SetDefault("analytics.access_logs_service", map[string]interface{}{
-		"enabled": false,
 		"als_server_port": 18090,
 		"shutdown_timeout": 600,
 		"public_key_path": "",
@@ -344,20 +341,19 @@ func (c *Config) validateAnalyticsConfig() error {
 	if c.Analytics.Enabled {
 		// Validate ALS server config (policy-engine side)
 		als := c.Analytics.AccessLogsServiceCfg
-		if als.Enabled {
-			if als.ALSServerPort <= 0 || als.ALSServerPort > 65535 {
-				return fmt.Errorf("analytics.access_logs_service.als_server_port must be between 1 and 65535, got %d", als.ALSServerPort)
-			}
-			if als.ShutdownTimeout <= 0 {
-				return fmt.Errorf("analytics.access_logs_service.shutdown_timeout must be positive, got %s", als.ShutdownTimeout)
-			}
-			if als.ExtProcMaxMessageSize <= 0 {
-				return fmt.Errorf("analytics.access_logs_service.max_message_size must be positive, got %d", als.ExtProcMaxMessageSize)
-			}
-			if als.ExtProcMaxHeaderLimit <= 0 {
-				return fmt.Errorf("analytics.access_logs_service.max_header_limit must be positive, got %d", als.ExtProcMaxHeaderLimit)
-			}
+		
+		if als.ALSServerPort <= 0 || als.ALSServerPort > 65535 {
+			return fmt.Errorf("analytics.access_logs_service.als_server_port must be between 1 and 65535, got %d", als.ALSServerPort)
 		}
+		if als.ShutdownTimeout <= 0 {
+			return fmt.Errorf("analytics.access_logs_service.shutdown_timeout must be positive, got %s", als.ShutdownTimeout)
+		}
+		if als.ExtProcMaxMessageSize <= 0 {
+			return fmt.Errorf("analytics.access_logs_service.max_message_size must be positive, got %d", als.ExtProcMaxMessageSize)
+		}
+		if als.ExtProcMaxHeaderLimit <= 0 {
+			return fmt.Errorf("analytics.access_logs_service.max_header_limit must be positive, got %d", als.ExtProcMaxHeaderLimit)
+		}	
 
 		// Validate publishers
 		for i, pub := range c.Analytics.Publishers {

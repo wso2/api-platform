@@ -212,9 +212,7 @@ type AccessLogsConfig struct {
 
 // GRPCAccessLogConfig holds configuration for gRPC Access Log Service
 type GRPCAccessLogConfig struct {
-	Enabled               bool   `koanf:"enabled"`
 	Host                  string `koanf:"host"`
-	Port                  uint32 `koanf:"port"`
 	LogName               string `koanf:"log_name"`
 	BufferFlushInterval 	int  `koanf:"buffer_flush_interval"`
 	BufferSizeBytes       	int  `koanf:"buffer_size_bytes"`
@@ -420,9 +418,7 @@ func defaultConfig() *Config {
 			Enabled: false,
 			Publishers: make([]map[string]interface{}, 0),
 			GRPCAccessLogCfg: GRPCAccessLogConfig{
-				Enabled: false,
 				Host: "policy-engine",
-				Port: 0,
 				LogName: "envoy_access_log",
 				BufferFlushInterval: 1000000000,
 				BufferSizeBytes: 16384,
@@ -945,25 +941,25 @@ func (c *Config) validateAnalyticsConfig() error {
 	if c.Analytics.Enabled {
 		// Validate gRPC access log configuration	
 		grpcAccessLogCfg := c.Analytics.GRPCAccessLogCfg
-		if grpcAccessLogCfg.Enabled {
-			if grpcAccessLogCfg.Port <= 0 || grpcAccessLogCfg.Port > 65535 {
-				return fmt.Errorf("analytics.grpc_access_logs.port must be between 1 and 65535, got %d", grpcAccessLogCfg.Port)
-			}
-			if grpcAccessLogCfg.Host == "" {
-				return fmt.Errorf("analytics.grpc_access_logs.host is required when analytics.grpc_access_logs.enabled is true")
-			}
-			if grpcAccessLogCfg.LogName == "" {
-				return fmt.Errorf("analytics.grpc_access_logs.log_name is required when analytics.grpc_access_logs.enabled is true")
-			}
-			if grpcAccessLogCfg.BufferFlushInterval <= 0 || grpcAccessLogCfg.BufferSizeBytes <= 0 || grpcAccessLogCfg.GRPCRequestTimeout <= 0 {
-				return fmt.Errorf(
-					"invalid gRPC access log configuration: bufferFlushInterval=%d, bufferSizeBytes=%d, grpcRequestTimeout=%d (all must be > 0)",
-					grpcAccessLogCfg.BufferFlushInterval,
-					grpcAccessLogCfg.BufferSizeBytes,
-					grpcAccessLogCfg.GRPCRequestTimeout,
-				)
-			}
+		
+		alsServerPort := c.Analytics.AccessLogsServiceCfg["als_server_port"].(int)
+		if alsServerPort <= 0 || alsServerPort > 65535 {
+			return fmt.Errorf("analytics.access_logs_service.als_server_port must be between 1 and 65535, got %d", alsServerPort)
 		}
+		if grpcAccessLogCfg.Host == "" {
+			return fmt.Errorf("analytics.grpc_access_logs.host is required when analytics.grpc_access_logs.enabled is true")
+		}
+		if grpcAccessLogCfg.LogName == "" {
+			return fmt.Errorf("analytics.grpc_access_logs.log_name is required when analytics.grpc_access_logs.enabled is true")
+		}
+		if grpcAccessLogCfg.BufferFlushInterval <= 0 || grpcAccessLogCfg.BufferSizeBytes <= 0 || grpcAccessLogCfg.GRPCRequestTimeout <= 0 {
+			return fmt.Errorf(
+				"invalid gRPC access log configuration: bufferFlushInterval=%d, bufferSizeBytes=%d, grpcRequestTimeout=%d (all must be > 0)",
+				grpcAccessLogCfg.BufferFlushInterval,
+				grpcAccessLogCfg.BufferSizeBytes,
+				grpcAccessLogCfg.GRPCRequestTimeout,
+			)
+		}	
 
 	}
 	return nil
