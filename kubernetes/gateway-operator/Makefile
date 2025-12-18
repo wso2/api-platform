@@ -1,5 +1,5 @@
 # Image URL to use all building/pushing image targets
-VERSION ?= v1.0.0-m4
+VERSION ?= 0.1.0-SNAPSHOT
 IMG ?= gateway-operator:$(VERSION)
 ## Default debug image name (can be overridden by setting DEBUG_IMG)
 DEBUG_IMG ?= $(IMG)-debug

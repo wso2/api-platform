@@ -1,86 +1,69 @@
 ---
 # Example 1: API with explicit gateway references (multiple gateways)
-apiVersion: api.api-platform.wso2.com/v1
-kind: APIConfiguration
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
 metadata:
-  labels:
-    app.kubernetes.io/name: gateway-operator
-    app.kubernetes.io/managed-by: kustomize
-  name: api-with-gateway-refs2
-spec:
-  # Explicit references to multiple specific gateways
-  gatewayRefs:
-    # - name: cluster-gateway
-    #   namespace: test
-    - name: cluster-gateway
-      namespace: default
-  
-  apiConfiguration:
-    version: api-platform.wso2.com/v1
-    kind: http/rest
-    spec:
-      name: test-api2
-      version: v1.0
-      context: /test2
-      upstream:
-        main:
-          url: https://httpbin.org/anything
-      operations:
-        - method: GET
-          path: /info
-
-
----
-# Example 1: API with explicit gateway references (multiple gateways)
-apiVersion: api.api-platform.wso2.com/v1
-kind: APIConfiguration
-metadata:
-  labels:
-    app.kubernetes.io/name: gateway-operator
-    app.kubernetes.io/managed-by: kustomize
   name: api-with-gateway-refs
-  namespace: test
-spec:
-  apiConfiguration:
-    version: api-platform.wso2.com/v1
-    kind: http/rest
-    spec:
-      name: test-api
-      version: v1.0
-      context: /test
-      upstream:
-        main:
-          url: http://httpbin.org/anything
-      operations:
-        - method: GET
-          path: /info
----
-# Example 1: API with explicit gateway references (multiple gateways)
-apiVersion: api.api-platform.wso2.com/v1
-kind: APIConfiguration
-metadata:
   labels:
-    app.kubernetes.io/name: gateway-operator
-    app.kubernetes.io/managed-by: kustomize
-  name: self-signed-backend
+    environment: "production"
+    team: "platform"
+    tier: "stable"
 spec:
-  apiConfiguration:
-    version: api-platform.wso2.com/v1
-    kind: http/rest
-    spec:
-      name: self-signed-api
-      version: v1.0
-      context: /ssa
-      upstream:
-        main:
-          url: https://secure-backend:5443/api/v2
-      operations:
-        - method: GET
-          path: /info
+  displayName: test-api
+  version: v1.0
+  context: /test
+  upstream:
+    main:
+      url: https://secure-backend:5443/api/v2
+  operations:
+    - method: GET
+      path: /info
+    - method: POST
+      path: /submit
+    - method: GET
+      path: /helloworld
+    - method: GET
+      path: /heyhelloworld
+
+
+# ---
+# # Example 1: API with explicit gateway references (multiple gateways)
+# apiVersion: gateway.api-platform.wso2.com/v1alpha1
+# kind: RestApi
+# metadata:
+#   name: api-with-gateway-refs
+#   namespace: test
+# spec:
+#   displayName: test-api
+#   version: v1.0
+#   context: /test
+#   upstream:
+#     main:
+#       url: https://secure-backend:5443/api/v2
+#   operations:
+#     - method: GET
+#       path: /info
+# ---
+# # Example 1: API with explicit gateway references (multiple gateways)
+# apiVersion: gateway.api-platform.wso2.com/v1alpha1
+# kind: RestApi
+# metadata:
+#   name: self-signed-backend
+# spec:
+#   displayName: self-signed-api
+#   version: v1.0
+#   context: /ssa
+#   upstream:
+#     main:
+#       url: https://secure-backend:5443/api/v2
+#       # url: http://httpbin.org/anything
+#   operations:
+#     - method: GET
+#       path: /info
 # ---
 # # Example 2: API with single gateway reference
-# apiVersion: api.api-platform.wso2.com/v1
-# kind: APIConfiguration
+# apiVersion: gateway.api-platform.wso2.com/v1alpha1
+# kind: RestApi
 # metadata:
 #   labels:
 #     app.kubernetes.io/name: gateway-operator
@@ -97,8 +80,8 @@ spec:
 
 # ---
 # # Example 3: API using label-based selection
-# apiVersion: api.api-platform.wso2.com/v1
-# kind: APIConfiguration
+# apiVersion: gateway.api-platform.wso2.com/v1alpha1
+# kind: RestApi
 # metadata:
 #   labels:
 #     app.kubernetes.io/name: gateway-operator
@@ -119,8 +102,8 @@ spec:
 
 # ---
 # # Example 4: API in specific namespace (for namespaced gateway)
-# apiVersion: api.api-platform.wso2.com/v1
-# kind: APIConfiguration
+# apiVersion: gateway.api-platform.wso2.com/v1alpha1
+# kind: RestApi
 # metadata:
 #   labels:
 #     app.kubernetes.io/name: gateway-operator
@@ -136,8 +119,8 @@ spec:
 
 # ---
 # # Example 5: API that will be picked by cluster-scoped gateway
-# apiVersion: api.api-platform.wso2.com/v1
-# kind: APIConfiguration
+# apiVersion: gateway.api-platform.wso2.com/v1alpha1
+# kind: RestApi
 # metadata:
 #   labels:
 #     app.kubernetes.io/name: gateway-operator

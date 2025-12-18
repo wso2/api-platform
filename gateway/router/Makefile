@@ -25,7 +25,7 @@ VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-router
 
-.PHONY: help build push clean build-and-push-multiarch
+.PHONY: help build build-local push clean build-and-push-multiarch
 
 help: ## Show this help message
 	@echo 'Gateway Router Build (Version: $(VERSION))'
@@ -41,6 +41,8 @@ build: ## Build Router Docker image
 		-t $(IMAGE_NAME):latest \
 		.
 	@echo "Docker image built successfully: $(IMAGE_NAME):$(VERSION)"
+
+build-local: build ## Build Router Docker image locally (alias for build)
 
 push: ## Push Docker image to registry
 	@echo "Pushing Docker images..."

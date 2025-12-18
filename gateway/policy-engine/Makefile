@@ -22,7 +22,7 @@ GOMOD := $(GOCMD) mod
 # Binary name
 BINARY_NAME := policy-engine
 
-.PHONY: all build test clean docker-clean help push \
+.PHONY: all build build-local test clean docker-clean help push \
 	run stop tidy lint logs ps restart rebuild dev-build dev-run check-deps \
 	build-sample-setheader test-integration test-envoy clean-all version build-and-push-multiarch
 
@@ -34,7 +34,8 @@ help:
 	@echo "Envoy Policy Engine - Build Targets (Version: $(VERSION))"
 	@echo ""
 	@echo "Build Targets:"
-	@echo "  make build                - Build the Policy Engine Docker image"
+	@echo "  make build                - Build the Policy Engine Docker image using buildx"
+	@echo "  make build-local          - Build the Policy Engine Docker image locally (faster)"
 	@echo ""
 	@echo "Multi-arch Build and Push Targets:"
 	@echo "  make build-and-push-multiarch - Build and push image for multiple architectures (amd64, arm64)"
@@ -60,7 +61,7 @@ help:
 	@echo "  make ps                   - Show running services"
 	@echo ""
 
-## build: Build the Policy Engine Docker image
+## build: Build the Policy Engine Docker image using buildx
 build:
 	@echo "Building Policy Engine image: $(RUNTIME_TAG)"
 	docker buildx build -f Dockerfile \
@@ -73,6 +74,21 @@ build:
 		-t $(RUNTIME_TAG) \
 		-t $(RUNTIME_IMAGE):latest \
 		--load \
+		.
+	@echo "Image built successfully: $(RUNTIME_TAG)"
+
+## build-local: Build the Policy Engine Docker image locally (faster, no buildx)
+build-local:
+	@echo "Building Policy Engine image locally: $(RUNTIME_TAG)"
+	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
+		--build-context sdk=../../sdk \
+		--build-context gateway-builder=../gateway-builder \
+		--build-context policy-engine=. \
+		--build-context policies=../policies \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		-t $(RUNTIME_TAG) \
+		-t $(RUNTIME_IMAGE):latest \
 		.
 	@echo "Image built successfully: $(RUNTIME_TAG)"
 

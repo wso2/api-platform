@@ -2,7 +2,7 @@
 # This file is used to track the info used to scaffold your project
 # and allow the plugins properly work.
 # More info: https://book.kubebuilder.io/reference/project-config.html
-domain: api.api-platform.wso2.com
+domain: gateway.api-platform.wso2.com
 layout:
 - go.kubebuilder.io/v4
 projectName: gateway-operator
@@ -12,18 +12,15 @@ resources:
     crdVersion: v1
     namespaced: true
   controller: true
-  domain: api.api-platform.wso2.com
-  group: api
-  kind: GatewayConfiguration
-  path: github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1
-  version: v1
+  domain: gateway.api-platform.wso2.com
+  kind: RestApi
+  path: github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1
+  version: v1alpha1
 - api:
     crdVersion: v1
     namespaced: true
-  controller: true
-  domain: api.api-platform.wso2.com
-  group: api
-  kind: APIConfiguration
-  path: github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1
-  version: v1
+  domain: gateway.api-platform.wso2.com
+  kind: Gateway
+  path: github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1
+  version: v1alpha1
 version: "3"

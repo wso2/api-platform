@@ -1,5 +1,5 @@
 ---
-apiVersion: api.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1alpha1
 kind: ComponentType
 metadata:
   name: apiproxy
@@ -41,8 +41,8 @@ spec:
                   image: nginx:latest 
     - id: api-configuration
       template:
-        apiVersion: api.api-platform.wso2.com/v1
-        kind: APIConfiguration
+        apiVersion: gateway.api-platform.wso2.com/v1alpha1
+        kind: RestApi
         metadata:
           name: ${metadata.name}
           namespace: ${metadata.namespace}
@@ -50,7 +50,7 @@ spec:
         spec:
           apiConfiguration:
             version: api-platform.wso2.com/v1
-            kind: http/rest
+            kind: RestApi
             data:
               name: ${parameters.apiName}
               version: ${parameters.apiVersion}

@@ -25,9 +25,9 @@ rules:
   - update
   - watch
 - apiGroups:
-  - api.api-platform.wso2.com
+  - gateway.api-platform.wso2.com
   resources:
-  - apiconfigurations
+  - restapis
   verbs:
   - create
   - delete
@@ -37,23 +37,23 @@ rules:
   - update
   - watch
 - apiGroups:
-  - api.api-platform.wso2.com
+  - gateway.api-platform.wso2.com
   resources:
-  - apiconfigurations/finalizers
+  - restapis/finalizers
   verbs:
   - update
 - apiGroups:
-  - api.api-platform.wso2.com
+  - gateway.api-platform.wso2.com
   resources:
-  - apiconfigurations/status
+  - restapis/status
   verbs:
   - get
   - patch
   - update
 - apiGroups:
-  - api.api-platform.wso2.com
+  - gateway.api-platform.wso2.com
   resources:
-  - gatewayconfigurations
+  - gateways
   verbs:
   - create
   - delete
@@ -63,15 +63,15 @@ rules:
   - update
   - watch
 - apiGroups:
-  - api.api-platform.wso2.com
+  - gateway.api-platform.wso2.com
   resources:
-  - gatewayconfigurations/finalizers
+  - gateways/finalizers
   verbs:
   - update
 - apiGroups:
-  - api.api-platform.wso2.com
+  - gateway.api-platform.wso2.com
   resources:
-  - gatewayconfigurations/status
+  - gateways/status
   verbs:
   - get
   - patch

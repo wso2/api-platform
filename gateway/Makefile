@@ -39,7 +39,8 @@ help: ## Show this help message
 	@echo 'Gateway Build System (Version: $(VERSION))'
 	@echo ''
 	@echo 'Build Targets:'
-	@echo '  make build                                      - Build all gateway component Docker images'
+	@echo '  make build                                      - Build all gateway component Docker images (buildx)'
+	@echo '  make build-local                                - Build all gateway component Docker images locally (faster)'
 	@echo '  make build-controller                           - Build gateway-controller Docker image'
 	@echo '  make build-gateway-builder                      - Build gateway-builder Docker image'
 	@echo '  make build-policy-engine                        - Build policy-engine Docker images'
@@ -64,25 +65,48 @@ help: ## Show this help message
 .PHONY: build
 build: build-controller build-gateway-builder build-policy-engine build-router ## Build all gateway components
 
+.PHONY: build-local
+build-local: build-local-controller build-local-gateway-builder build-local-policy-engine build-local-router ## Build all gateway components locally (faster)
+
 .PHONY: build-controller
 build-controller: ## Build gateway-controller Docker image
 	@echo "Building controller Docker image ($(VERSION))..."
 	$(MAKE) -C gateway-controller build VERSION=$(VERSION)
+
+.PHONY: build-local-controller
+build-local-controller: ## Build gateway-controller Docker image locally (faster)
+	@echo "Building controller Docker image locally ($(VERSION))..."
+	$(MAKE) -C gateway-controller build-local VERSION=$(VERSION)
 
 .PHONY: build-gateway-builder
 build-gateway-builder: ## Build gateway-builder Docker image
 	@echo "Building gateway-builder Docker image ($(VERSION))..."
 	$(MAKE) -C gateway-builder build VERSION=$(VERSION)
 
+.PHONY: build-local-gateway-builder
+build-local-gateway-builder: ## Build gateway-builder Docker image locally (faster)
+	@echo "Building gateway-builder Docker image locally ($(VERSION))..."
+	$(MAKE) -C gateway-builder build-local VERSION=$(VERSION)
+
 .PHONY: build-policy-engine
 build-policy-engine: ## Build policy-engine Docker images
 	@echo "Building policy-engine images ($(VERSION))..."
 	$(MAKE) -C policy-engine build VERSION=$(VERSION)
 
+.PHONY: build-local-policy-engine
+build-local-policy-engine: ## Build policy-engine Docker images locally (faster)
+	@echo "Building policy-engine images locally ($(VERSION))..."
+	$(MAKE) -C policy-engine build-local VERSION=$(VERSION)
+
 .PHONY: build-router
 build-router: ## Build router Docker image
 	@echo "Building router Docker image ($(VERSION))..."
 	$(MAKE) -C router build VERSION=$(VERSION)
+
+.PHONY: build-local-router
+build-local-router: ## Build router Docker image locally (faster)
+	@echo "Building router Docker image locally ($(VERSION))..."
+	$(MAKE) -C router build-local VERSION=$(VERSION)
 
 # Multi-arch Build and Push Targets
 .PHONY: build-and-push-multiarch

@@ -40,16 +40,16 @@ helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gat
 
 ---
 
-## 3. Apply GatewayConfiguration (Bootstrap Gateway Components)
+## 3. Apply Gateway (Bootstrap Gateway Components)
 
 ```sh
-curl -X GET "https://raw.githubusercontent.com/wso2/api-platform/refs/heads/main/kubernetes/gateway-operator/config/samples/api_v1_gatewayconfiguration.yaml" \
-  -o /tmp/api_v1_gatewayconfiguration.yaml
+curl -X GET "https://raw.githubusercontent.com/wso2/api-platform/refs/heads/main/kubernetes/gateway-operator/config/samples/api_v1_gateway.yaml" \
+  -o /tmp/api_v1_gateway.yaml
 
-gatewayconfig_path="/tmp/api_v1_gatewayconfiguration.yaml"
+gatewayconfig_path="/tmp/api_v1_gateway.yaml"
 
 kubectl apply -f $gatewayconfig_path
-kubectl get gatewayconfiguration -n default -o json | jq '.items[0].status'
+kubectl get gateway -n default -o json | jq '.items[0].status'
 ```
 
 ---
