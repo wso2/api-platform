@@ -74,16 +74,16 @@ type TestSummary struct {
 
 // ScenarioResult represents a single scenario's execution result
 type ScenarioResult struct {
-	ID          string        `json:"id"`
-	Name        string        `json:"name"`
-	URI         string        `json:"uri"`
-	Tags        []string      `json:"tags,omitempty"`
-	Status      string        `json:"status"`
-	Duration    string        `json:"duration"`
-	Error       string        `json:"error,omitempty"`
-	ErrorDetail *ErrorDetail  `json:"errorDetail,omitempty"`
-	StartTime   time.Time     `json:"startTime"`
-	EndTime     time.Time     `json:"endTime"`
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`
+	URI         string       `json:"uri"`
+	Tags        []string     `json:"tags,omitempty"`
+	Status      string       `json:"status"`
+	Duration    string       `json:"duration"`
+	Error       string       `json:"error,omitempty"`
+	ErrorDetail *ErrorDetail `json:"errorDetail,omitempty"`
+	StartTime   time.Time    `json:"startTime"`
+	EndTime     time.Time    `json:"endTime"`
 }
 
 // ErrorDetail contains detailed error information for failed scenarios
@@ -241,53 +241,53 @@ func (r *TestReporter) GenerateReport() error {
 // printSummaryTable prints a formatted summary table to stdout
 func (r *TestReporter) printSummaryTable(report *TestReport) {
 	fmt.Println()
-	fmt.Println("╔════════════════════════════════════════════════════════════════════════════╗")
-	fmt.Println("║                        TEST RESULTS SUMMARY                               ║")
-	fmt.Println("╠════════════════════════════════════════════════════════════════════════════╣")
-	fmt.Printf("║  Suite: %-66s  ║\n", report.Name)
-	fmt.Printf("║  Duration: %-63s  ║\n", formatDuration(parseDuration(report.Duration)))
-	fmt.Println("╠════════════════════════════════════════════════════════════════════════════╣")
+	fmt.Println("╔══════════════════════════════════════════════════════════════════════════╗")
+	fmt.Println("║                       TEST RESULTS SUMMARY                               ║")
+	fmt.Println("╠══════════════════════════════════════════════════════════════════════════╣")
+	fmt.Printf("║  Suite: %-64s ║\n", report.Name)
+	fmt.Printf("║  Duration: %-61s ║\n", formatDuration(parseDuration(report.Duration)))
+	fmt.Println("╠══════════════════════════════════════════════════════════════════════════╣")
 
 	// Scenario results table
-	fmt.Println("║  SCENARIOS                                                                 ║")
-	fmt.Println("╠──────────────────────────────────────────────────────┬────────┬────────────╣")
-	fmt.Println("║  Name                                                │ Status │  Duration  ║")
-	fmt.Println("╠──────────────────────────────────────────────────────┼────────┼────────────╣")
+	fmt.Println("║  SCENARIOS                                                               ║")
+	fmt.Println("╠────────────────────────────────────────────────────┬────────┬────────────╣")
+	fmt.Println("║  Name                                              │ Status │  Duration  ║")
+	fmt.Println("╠────────────────────────────────────────────────────┼────────┼────────────╣")
 
 	for _, s := range report.Scenarios {
-		name := truncateString(s.Name, 52)
+		name := truncateString(s.Name, 50)
 		status := formatStatus(s.Status)
 		duration := formatDuration(parseDuration(s.Duration))
-		fmt.Printf("║  %-52s │ %-6s │ %10s ║\n", name, status, duration)
+		fmt.Printf("║  %-49s │ %-6s │ %10s ║\n", name, status, duration)
 
 		// Print error if failed
 		if s.Status == "failed" && s.Error != "" {
-			errMsg := truncateString(s.Error, 70)
-			fmt.Printf("║    └─ Error: %-61s  ║\n", errMsg)
+			errMsg := truncateString(s.Error, 68)
+			fmt.Printf("║    └─ Error: %-59s ║\n", errMsg)
 		}
 	}
 
-	fmt.Println("╠════════════════════════════════════════════════════════════════════════════╣")
+	fmt.Println("╠══════════════════════════════════════════════════════════════════════════╣")
 
 	// Summary statistics
-	fmt.Println("║  SUMMARY                                                                   ║")
-	fmt.Println("╠─────────────┬─────────────┬─────────────┬─────────────┬───────────────────╣")
-	fmt.Println("║    Total    │   Passed    │   Failed    │   Skipped   │      Result       ║")
-	fmt.Println("╠─────────────┼─────────────┼─────────────┼─────────────┼───────────────────╣")
+	fmt.Println("║  SUMMARY                                                                 ║")
+	fmt.Println("╠─────────────┬────────────┬────────────┬────────────┬─────────────────────╣")
+	fmt.Println("║    Total    │   Passed   │   Failed   │  Skipped   │       Result        ║")
+	fmt.Println("╠─────────────┼────────────┼────────────┼────────────┼─────────────────────╣")
 
 	result := "PASS"
 	if report.Summary.Failed > 0 {
 		result = "FAIL"
 	}
 
-	fmt.Printf("║     %3d     │     %3d     │     %3d     │     %3d     │       %-4s        ║\n",
+	fmt.Printf("║     %3d     │     %3d    │     %3d    │     %3d    │        %-4s         ║\n",
 		report.Summary.Total,
 		report.Summary.Passed,
 		report.Summary.Failed,
 		report.Summary.Skipped,
 		result)
 
-	fmt.Println("╚════════════════════════════════════════════════════════════════════════════╝")
+	fmt.Println("╚══════════════════════════════════════════════════════════════════════════╝")
 	fmt.Println()
 }
 
