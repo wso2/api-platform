@@ -16,11 +16,10 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/oapi-codegen/runtime v1.1.2
 	github.com/stretchr/testify v1.11.1
-	github.com/wso2/api-platform/common v0.0.0-00010101000000-000000000000
+	github.com/wso2/api-platform/common v1.0.0
 	github.com/wso2/api-platform/sdk v1.0.0
 	github.com/xeipuuv/gojsonschema v1.2.0
-	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.42.0
+	go.uber.org/zap v1.27.1
 	google.golang.org/grpc v1.67.1
 	google.golang.org/protobuf v1.36.9
 	gopkg.in/yaml.v3 v3.0.1
@@ -77,6 +76,7 @@ require (
 	go.uber.org/multierr v1.10.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.3 // indirect
 	golang.org/x/arch v0.20.0 // indirect
+	golang.org/x/crypto v0.42.0 // indirect
 	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect

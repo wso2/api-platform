@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/models"
+	"go.uber.org/zap"
 	"golang.org/x/crypto/argon2"
 	bcrypt "golang.org/x/crypto/bcrypt"
 )
@@ -16,12 +17,14 @@ import (
 // BasicAuthenticator implements HTTP Basic Authentication
 type BasicAuthenticator struct {
 	authConfig models.AuthConfig
+	logger     *zap.Logger
 }
 
 // NewBasicAuthenticator creates a new BasicAuthenticator
-func NewBasicAuthenticator(authConfig models.AuthConfig) *BasicAuthenticator {
+func NewBasicAuthenticator(authConfig models.AuthConfig, logger *zap.Logger) *BasicAuthenticator {
 	return &BasicAuthenticator{
 		authConfig: authConfig,
+		logger:     logger,
 	}
 }
 
@@ -54,7 +57,7 @@ func (b *BasicAuthenticator) Authenticate(c *gin.Context) (*AuthResult, error) {
 	var matched *models.User
 	for i := range b.authConfig.BasicAuth.Users {
 		u := &b.authConfig.BasicAuth.Users[i]
-		if strings.EqualFold(u.UserID, username) {
+		if strings.EqualFold(u.Username, username) {
 			matched = u
 			break
 		}
@@ -76,7 +79,7 @@ func (b *BasicAuthenticator) Authenticate(c *gin.Context) (*AuthResult, error) {
 
 	return &AuthResult{
 		Success: true,
-		UserID:  matched.UserID,
+		UserID:  matched.Username,
 		Roles:   matched.Roles,
 	}, nil
 }
