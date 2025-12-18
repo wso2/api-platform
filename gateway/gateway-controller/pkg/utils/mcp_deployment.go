@@ -259,7 +259,7 @@ func (s *MCPDeploymentService) parseValidateAndTransform(params MCPDeploymentPar
 	// Transform to API configuration
 	apiConfigPtr, err := s.transformer.Transform(&mcpConfig, &apiConfig)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to transform MCP configuration to API configuration")
+		return nil, nil, fmt.Errorf("failed to transform MCP configuration to API configuration: %w", err)
 	}
 	apiConfig = *apiConfigPtr
 	return &mcpConfig, &apiConfig, nil
@@ -270,16 +270,7 @@ func (s *MCPDeploymentService) ListMCPProxies() []*models.StoredConfig {
 	return s.store.GetAllByKind(string(api.Mcp))
 }
 
-// ListMCPProxies returns all stored MCP proxy configurations
-func (s *MCPDeploymentService) ListMCPProxyByNameAndVersion(name, version string) (*models.StoredConfig, error) {
-	cfg := s.store.GetByKindNameAndVersion(string(api.Mcp), name, version)
-	if cfg == nil {
-		return nil, fmt.Errorf("MCP proxy configuration with name '%s' and version '%s' not found", name, version)
-	}
-	return cfg, nil
-}
-
-// ListMCPProxyByHandle returns an MCP proxy configuration by its handle (metadata.name)
+// GetMCPProxyByHandle returns an MCP proxy configuration by its handle (metadata.name)
 func (s *MCPDeploymentService) GetMCPProxyByHandle(handle string) (*models.StoredConfig, error) {
 	if s.db == nil {
 		return nil, storage.ErrDatabaseUnavailable

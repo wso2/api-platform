@@ -1593,43 +1593,6 @@ func (s *APIServer) ListMCPProxies(c *gin.Context, params api.ListMCPProxiesPara
 	})
 }
 
-// GetMCPProxyByNameVersion implements ServerInterface.GetMCPProxyByNameVersion
-// (GET /mcp-proxies/{name}/{version})
-func (s *APIServer) GetMCPProxyByNameVersion(c *gin.Context, name string, version string) {
-	// Get correlation-aware logger from context
-	log := middleware.GetLogger(c, s.logger)
-
-	cfg, err := s.mcpDeploymentService.ListMCPProxyByNameAndVersion(name, version)
-	if err != nil {
-		log.Warn("MCP proxy configuration not found",
-			zap.String("name", name),
-			zap.String("version", version))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
-			Status:  "error",
-			Message: err.Error(),
-		})
-		return
-	}
-
-	mcpDetail := gin.H{
-		"status": "success",
-		"mcp": gin.H{
-			"id":            cfg.GetHandle(),
-			"configuration": cfg.SourceConfiguration,
-			"metadata": gin.H{
-				"status":     string(cfg.Status),
-				"created_at": cfg.CreatedAt.Format(time.RFC3339),
-				"updated_at": cfg.UpdatedAt.Format(time.RFC3339),
-			},
-		},
-	}
-	if cfg.DeployedAt != nil {
-		mcpDetail["mcp"].(gin.H)["metadata"].(gin.H)["deployed_at"] = cfg.DeployedAt.Format(time.RFC3339)
-	}
-
-	c.JSON(http.StatusOK, mcpDetail)
-}
-
 // GetMCPProxyById implements ServerInterface.GetMCPProxyById
 // (GET /mcp-proxies/{id})
 func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {

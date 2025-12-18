@@ -20,16 +20,25 @@ package utils
 
 import (
 	"fmt"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
+
+// escapeParam escapes special characters in a parameter value to prevent
+// format string injection and YAML injection attacks
+func escapeParam(param string) string {
+	// Escape % to prevent format string injection in fmt.Sprintf
+	escaped := strings.ReplaceAll(param, "%", "%%")
+	return escaped
+}
 
 // GetParamsOfPolicy renders a policy definition template with given parameters
 // and unmarshals it into a map[string]any
 func GetParamsOfPolicy(policyDef string, params ...string) (map[string]any, error) {
 	args := make([]any, len(params))
 	for i, v := range params {
-		args[i] = v
+		args[i] = escapeParam(v)
 	}
 	rendered := fmt.Sprintf(policyDef, args...)
 

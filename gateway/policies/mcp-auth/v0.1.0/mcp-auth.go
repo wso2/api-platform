@@ -256,7 +256,8 @@ func generateWwwAuthenticateHeader(ctx *policy.RequestContext, params map[string
 		var errResp map[string]any
 		if err := json.Unmarshal(ir.Body, &errResp); err == nil {
 			if errDesc, ok := errResp["message"].(string); ok {
-				headerValue += ", error=\"invalid_token\", error_description=\"" + errDesc + "\""
+				escapedDesc := strings.ReplaceAll(errDesc, "\"", "'")
+				headerValue += ", error=\"invalid_token\", error_description=\"" + escapedDesc + "\""
 			}
 		}
 	}
@@ -266,12 +267,14 @@ func generateWwwAuthenticateHeader(ctx *policy.RequestContext, params map[string
 // parseAuthority extracts host and port from an authority string (e.g., "example.com:8080")
 func parseAuthority(authority string) (host string, port int) {
 	if authority == "" {
-		return "", 0
+		return "", -1
 	}
 	hostPort := strings.SplitN(authority, ":", 2)
 	host = hostPort[0]
 	if len(hostPort) > 1 {
 		port, _ = strconv.Atoi(hostPort[1])
+	} else {
+		port = -1
 	}
 	return host, port
 }

@@ -101,7 +101,7 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 		Url: mcpConfig.Spec.Upstream.Url,
 	}
 
-	var polices []api.Policy
+	var policies []api.Policy
 	// Set upstream auth if present
 	upstream := mcpConfig.Spec.Upstream
 	if upstream.Auth != nil {
@@ -110,9 +110,9 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 			return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
 		}
 		pol := api.Policy{
-			Name:    constants.MODFIFY_HEADERS_POLICY_NAME,
+			Name:    constants.MODIFY_HEADERS_POLICY_NAME,
 			Version: constants.MODIFY_HEADERS_POLICY_VERSION, Params: &params}
-		polices = append(polices, pol)
+		policies = append(policies, pol)
 	}
 
 	// Set vhost if present
@@ -128,9 +128,9 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 
 	// Process policies
 	if mcpConfig.Spec.Policies != nil && len(*mcpConfig.Spec.Policies) > 0 {
-		polices = append(polices, *mcpConfig.Spec.Policies...)
+		policies = append(policies, *mcpConfig.Spec.Policies...)
 	}
-	apiData.Policies = &polices
+	apiData.Policies = &policies
 
 	var specUnion api.APIConfiguration_Spec
 	if err := specUnion.FromAPIConfigData(apiData); err != nil {
