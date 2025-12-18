@@ -416,7 +416,7 @@ paths:
           in: path
           required: true
           description: |
-            Unique public identifier of the API to generate the key for
+            Unique public identifier of the API to revoke the key for
           schema:
             type: string
           example: weather-api-v1.0
