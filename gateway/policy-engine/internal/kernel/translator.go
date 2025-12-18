@@ -2,9 +2,9 @@ package kernel
 
 import (
 	"fmt"
+	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	extprocconfigv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 
@@ -13,86 +13,201 @@ import (
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
-// TranslateRequestActions converts policy execution result to ext_proc response
-// T065: TranslateRequestActions for UpstreamRequestModifications
-// T066: TranslateRequestActions for ImmediateResponse
-// The execCtx parameter is optional - if provided, uses its computed mode override
-func TranslateRequestActions(result *executor.RequestExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) *extprocv3.ProcessingResponse {
+// headerOp represents a single header operation (set, append, or remove)
+type headerOp struct {
+	opType string // "set", "append", or "remove"
+	value  string // for set and append operations
+}
+
+// Mutations holds header and body mutations for request/response processing
+type Mutations struct {
+	HeaderMutation *extprocv3.HeaderMutation
+	BodyMutation   *extprocv3.BodyMutation
+}
+
+// translateRequestActionsCore is the shared implementation for request translation
+func translateRequestActionsCore(result *executor.RequestExecutionResult, execCtx *PolicyExecutionContext) (
+	headerMutation *extprocv3.HeaderMutation,
+	bodyMutation *extprocv3.BodyMutation,
+	analyticsData map[string]any,
+	immediateResp *extprocv3.ProcessingResponse,
+	err error) {
+
+	// Check for short-circuit with immediate response
 	if result.ShortCircuited && result.FinalAction != nil {
-		// Short-circuited with ImmediateResponse
-		if immediateResp, ok := result.FinalAction.(policy.ImmediateResponse); ok {
-			// T066: Handle ImmediateResponse
-			return &extprocv3.ProcessingResponse{
+		if immResp, ok := result.FinalAction.(policy.ImmediateResponse); ok {
+			response := &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 					ImmediateResponse: &extprocv3.ImmediateResponse{
 						Status: &typev3.HttpStatus{
-							Code: typev3.StatusCode(immediateResp.StatusCode),
+							Code: typev3.StatusCode(immResp.StatusCode),
 						},
-						Headers: buildHeaderValueOptions(immediateResp.Headers),
-						Body:    immediateResp.Body,
+						Headers: buildHeaderValueOptions(immResp.Headers),
+						Body:    immResp.Body,
 					},
 				},
 			}
+
+			// Handle analytics metadata for immediate response
+			analyticsStruct, err := buildAnalyticsStruct(immResp.AnalyticsMetadata, execCtx)
+			if err != nil {
+				return nil, nil, nil, nil, fmt.Errorf("failed to build analytics metadata for immediate response: %w", err)
+			}
+			response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+			return nil, nil, nil, response, nil
 		}
 	}
 
-	// Normal case: apply accumulated modifications
-	// T065: Handle UpstreamRequestModifications
-	headerMutation := &extprocv3.HeaderMutation{}
-	var bodyMutation *extprocv3.BodyMutation
+	// Build final action by resolving conflicting header operations
+	headerOps := make(map[string][]*headerOp)
+	analyticsData = make(map[string]any)
+	headerMutation = &extprocv3.HeaderMutation{}
+	var finalBodyLength int
+	bodyModified := false
 
-	// Accumulate modifications from all executed policies
+	// Collect all operations in order
 	for _, policyResult := range result.Results {
-		if policyResult.Skipped || policyResult.Error != nil {
+		if policyResult.Skipped {
 			continue
 		}
 
 		if policyResult.Action != nil {
 			if mods, ok := policyResult.Action.(policy.UpstreamRequestModifications); ok {
-				// T068: Build header mutations
-				applyRequestModifications(headerMutation, &mods)
+				// Collect SetHeader operations
+				for key, value := range mods.SetHeaders {
+					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "set", value: value})
+				}
 
-				// Handle body modifications if present
+				// Collect AppendHeader operations
+				for key, values := range mods.AppendHeaders {
+					for _, value := range values {
+						headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "append", value: value})
+					}
+				}
+
+				// Collect RemoveHeader operations
+				for _, key := range mods.RemoveHeaders {
+					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "remove", value: ""})
+				}
+
+				// Handle body modifications (last one wins)
 				if mods.Body != nil {
 					bodyMutation = &extprocv3.BodyMutation{
 						Mutation: &extprocv3.BodyMutation_Body{
 							Body: mods.Body,
 						},
 					}
+					finalBodyLength = len(mods.Body)
+					bodyModified = true
+				}
+
+				// Collect analytics metadata from policies
+				if mods.AnalyticsMetadata != nil {
+					for key, value := range mods.AnalyticsMetadata {
+						analyticsData[key] = value
+					}
 				}
 			}
 		}
 	}
 
-	// T070: Implement mode override configuration
-	// Determine if we need to override body processing mode
-	modeOverride := execCtx.getModeOverride()
+	// Remove any content-length headers from policy operations if we're managing it ourselves
+	if bodyModified {
+		delete(headerOps, "content-length")
+	}
 
-	return &extprocv3.ProcessingResponse{
+	// Build HeaderMutation with conflict resolution and merge with existing mutations
+	mergeHeaderMutations(headerMutation, headerOps)
+
+	// Set Content-Length header once after all policies have been processed
+	if bodyModified {
+		setContentLengthHeader(headerMutation, finalBodyLength)
+	}
+
+	return headerMutation, bodyMutation, analyticsData, nil, nil
+}
+
+// TranslateRequestHeadersActions converts request headers execution result to ext_proc response
+func TranslateRequestHeadersActions(result *executor.RequestExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
+	headerMutation, bodyMutation, analyticsData, immediateResp, err := translateRequestActionsCore(result, execCtx)
+	if err != nil {
+		return nil, err
+	}
+	if immediateResp != nil {
+		return immediateResp, nil
+	}
+
+	// Build ProcessingResponse for request headers
+	response := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{
 				Response: &extprocv3.CommonResponse{
 					HeaderMutation: headerMutation,
 					BodyMutation:   bodyMutation,
-					// Set mode override based on chain requirements
-					// This tells Envoy whether to buffer body or not
-					// T070: mode override implementation
-					// If chain doesn't need request body, use SKIP mode
-					// If chain needs request body, use BUFFERED mode
 				},
 			},
 		},
-		ModeOverride: modeOverride,
+		ModeOverride: execCtx.getModeOverride(),
 	}
+
+	// Add analytics metadata
+	analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
+	}
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+
+	return response, nil
 }
 
-// TranslateResponseActions converts response policy execution result to ext_proc response
-// T067: TranslateResponseActions for UpstreamResponseModifications
-func TranslateResponseActions(result *executor.ResponseExecutionResult) *extprocv3.ProcessingResponse {
-	headerMutation := &extprocv3.HeaderMutation{}
-	var bodyMutation *extprocv3.BodyMutation
+// TranslateRequestBodyActions converts request body execution result to ext_proc response
+func TranslateRequestBodyActions(result *executor.RequestExecutionResult, chain *registry.PolicyChain, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
+	headerMutation, bodyMutation, analyticsData, immediateResp, err := translateRequestActionsCore(result, execCtx)
+	if err != nil {
+		return nil, err
+	}
+	if immediateResp != nil {
+		return immediateResp, nil
+	}
 
-	// Accumulate modifications from all executed policies
+	// Build ProcessingResponse for request body
+	response := &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestBody{
+			RequestBody: &extprocv3.BodyResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation: headerMutation,
+					BodyMutation:   bodyMutation,
+				},
+			},
+		},
+		ModeOverride: execCtx.getModeOverride(),
+	}
+
+	// Add analytics metadata
+	analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
+	}
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+
+	return response, nil
+}
+
+// translateResponseActionsCore is the shared implementation for response translation
+func translateResponseActionsCore(result *executor.ResponseExecutionResult, execCtx *PolicyExecutionContext) (
+	headerMutation *extprocv3.HeaderMutation,
+	bodyMutation *extprocv3.BodyMutation,
+	analyticsData map[string]any,
+	err error) {
+
+	// Build final action by resolving conflicting header operations
+	headerOps := make(map[string][]*headerOp)
+	analyticsData = make(map[string]any)
+	headerMutation = &extprocv3.HeaderMutation{}
+	var finalBodyLength int
+	bodyModified := false
+
+	// Collect all operations in order
 	for _, policyResult := range result.Results {
 		if policyResult.Skipped || policyResult.Error != nil {
 			continue
@@ -100,22 +215,69 @@ func TranslateResponseActions(result *executor.ResponseExecutionResult) *extproc
 
 		if policyResult.Action != nil {
 			if mods, ok := policyResult.Action.(policy.UpstreamResponseModifications); ok {
-				// T069: Build response mutations
-				applyResponseModifications(headerMutation, &mods)
+				// Collect SetHeader operations
+				for key, value := range mods.SetHeaders {
+					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "set", value: value})
+				}
 
-				// Handle body modifications if present
+				// Collect AppendHeader operations
+				for key, values := range mods.AppendHeaders {
+					for _, value := range values {
+						headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "append", value: value})
+					}
+				}
+
+				// Collect RemoveHeader operations
+				for _, key := range mods.RemoveHeaders {
+					headerOps[strings.ToLower(key)] = append(headerOps[strings.ToLower(key)], &headerOp{opType: "remove", value: ""})
+				}
+
+				// Handle body modifications (last one wins)
 				if mods.Body != nil {
 					bodyMutation = &extprocv3.BodyMutation{
 						Mutation: &extprocv3.BodyMutation_Body{
 							Body: mods.Body,
 						},
 					}
+					finalBodyLength = len(mods.Body)
+					bodyModified = true
+				}
+
+				// Collect analytics metadata from policies
+				if mods.AnalyticsMetadata != nil {
+					for key, value := range mods.AnalyticsMetadata {
+						analyticsData[key] = value
+					}
 				}
 			}
 		}
 	}
 
-	return &extprocv3.ProcessingResponse{
+	// Remove any content-length headers from policy operations if we're managing it ourselves
+	if bodyModified {
+		delete(headerOps, "content-length")
+	}
+
+	// Build HeaderMutation with conflict resolution and merge with existing mutations
+	mergeHeaderMutations(headerMutation, headerOps)
+
+	// Set Content-Length header once after all policies have been processed
+	if bodyModified {
+		setContentLengthHeader(headerMutation, finalBodyLength)
+	}
+
+	return headerMutation, bodyMutation, analyticsData, nil
+}
+
+// TranslateResponseHeadersActions converts response headers execution result to ext_proc response
+func TranslateResponseHeadersActions(result *executor.ResponseExecutionResult, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
+	headerMutation, bodyMutation, analyticsData, err := translateResponseActionsCore(result, execCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build ProcessingResponse for response headers
+	response := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 			ResponseHeaders: &extprocv3.HeadersResponse{
 				Response: &extprocv3.CommonResponse{
@@ -125,97 +287,141 @@ func TranslateResponseActions(result *executor.ResponseExecutionResult) *extproc
 			},
 		},
 	}
+
+	// Add analytics metadata
+	analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
+	}
+	response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+
+	return response, nil
 }
 
-// applyRequestModifications applies request modifications to header mutation
-// T068: buildHeaderMutations helper implementation
-func applyRequestModifications(mutation *extprocv3.HeaderMutation, mods *policy.UpstreamRequestModifications) {
-	// Set/Replace headers
-	if len(mods.SetHeaders) > 0 {
-		if mutation.SetHeaders == nil {
-			mutation.SetHeaders = make([]*corev3.HeaderValueOption, 0, len(mods.SetHeaders))
+// TranslateResponseBodyActions converts response body execution result to ext_proc response
+func TranslateResponseBodyActions(result *executor.ResponseExecutionResult, execCtx *PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
+	headerMutation, bodyMutation, analyticsData, err := translateResponseActionsCore(result, execCtx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build ProcessingResponse for response body
+	response := &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ResponseBody{
+			ResponseBody: &extprocv3.BodyResponse{
+				Response: &extprocv3.CommonResponse{
+					HeaderMutation: headerMutation,
+					BodyMutation:   bodyMutation,
+				},
+			},
+		},
+	}
+
+	// Add analytics metadata if present
+	if len(analyticsData) > 0 {
+		analyticsStruct, err := buildAnalyticsStruct(analyticsData, execCtx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build analytics metadata: %w", err)
 		}
-		for key, value := range mods.SetHeaders {
-			mutation.SetHeaders = append(mutation.SetHeaders, &corev3.HeaderValueOption{
+		response.DynamicMetadata = buildDynamicMetadata(analyticsStruct)
+	}
+
+	return response, nil
+}
+
+// buildHeaderMutationFromOps builds HeaderMutation from header operations with conflict resolution
+// Rules:
+// - If last operation is Remove: only send Remove
+// - If last operation is Set: only send that Set
+// - If last operation is Append: send last Set (if any) + all subsequent Appends
+func buildHeaderMutationFromOps(headerOps map[string][]*headerOp) *extprocv3.HeaderMutation {
+	headerMutation := &extprocv3.HeaderMutation{}
+
+	for key, ops := range headerOps {
+		if len(ops) == 0 {
+			continue
+		}
+
+		// Check the last operation for this header
+		lastOp := ops[len(ops)-1]
+
+		if lastOp.opType == "remove" {
+			// If last operation is remove, only send remove (ignore all previous operations)
+			if headerMutation.RemoveHeaders == nil {
+				headerMutation.RemoveHeaders = make([]string, 0)
+			}
+			headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, key)
+		} else if lastOp.opType == "set" {
+			// If last operation is set, only send that set (ignore all previous operations)
+			if headerMutation.SetHeaders == nil {
+				headerMutation.SetHeaders = make([]*corev3.HeaderValueOption, 0)
+			}
+			headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
 				Header: &corev3.HeaderValue{
 					Key:      key,
-					RawValue: []byte(value),
+					RawValue: []byte(lastOp.value),
 				},
 				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
 			})
-		}
-	}
+		} else if lastOp.opType == "append" {
+			// If last operation is append, find the last set or remove
+			lastBreakIdx := -1
+			lastBreakType := ""
+			for i := len(ops) - 1; i >= 0; i-- {
+				if ops[i].opType == "set" || ops[i].opType == "remove" {
+					lastBreakIdx = i
+					lastBreakType = ops[i].opType
+					break
+				}
+			}
 
-	// Append headers
-	if len(mods.AppendHeaders) > 0 {
-		if mutation.SetHeaders == nil {
-			mutation.SetHeaders = make([]*corev3.HeaderValueOption, 0)
-		}
-		for key, values := range mods.AppendHeaders {
-			for _, value := range values {
-				mutation.SetHeaders = append(mutation.SetHeaders, &corev3.HeaderValueOption{
+			if headerMutation.SetHeaders == nil {
+				headerMutation.SetHeaders = make([]*corev3.HeaderValueOption, 0)
+			}
+
+			// If last break is a Set, send it with OVERWRITE
+			if lastBreakType == "set" {
+				headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
 					Header: &corev3.HeaderValue{
 						Key:      key,
-						RawValue: []byte(value),
+						RawValue: []byte(ops[lastBreakIdx].value),
 					},
-					AppendAction: corev3.HeaderValueOption_APPEND_IF_EXISTS_OR_ADD,
+					AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
 				})
+			}
+			// If last break is a Remove, we discard it (don't send Remove)
+
+			// Send all appends after the last break (or all appends if no break found)
+			startIdx := lastBreakIdx + 1
+			for i := startIdx; i < len(ops); i++ {
+				if ops[i].opType == "append" {
+					headerMutation.SetHeaders = append(headerMutation.SetHeaders, &corev3.HeaderValueOption{
+						Header: &corev3.HeaderValue{
+							Key:      key,
+							RawValue: []byte(ops[i].value),
+						},
+						AppendAction: corev3.HeaderValueOption_APPEND_IF_EXISTS_OR_ADD,
+					})
+				}
 			}
 		}
 	}
 
-	// Remove headers
-	if len(mods.RemoveHeaders) > 0 {
-		if mutation.RemoveHeaders == nil {
-			mutation.RemoveHeaders = make([]string, 0, len(mods.RemoveHeaders))
-		}
-		mutation.RemoveHeaders = append(mutation.RemoveHeaders, mods.RemoveHeaders...)
-	}
+	return headerMutation
 }
 
-// applyResponseModifications applies response modifications to header mutation
-// T069: buildResponseMutations helper implementation
-func applyResponseModifications(mutation *extprocv3.HeaderMutation, mods *policy.UpstreamResponseModifications) {
-	// Set/Replace headers
-	if len(mods.SetHeaders) > 0 {
-		if mutation.SetHeaders == nil {
-			mutation.SetHeaders = make([]*corev3.HeaderValueOption, 0, len(mods.SetHeaders))
-		}
-		for key, value := range mods.SetHeaders {
-			mutation.SetHeaders = append(mutation.SetHeaders, &corev3.HeaderValueOption{
-				Header: &corev3.HeaderValue{
-					Key:      key,
-					RawValue: []byte(value),
-				},
-				AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
-			})
-		}
+// mergeHeaderMutations builds HeaderMutation from operations and merges with existing mutations
+func mergeHeaderMutations(headerMutation *extprocv3.HeaderMutation, headerOps map[string][]*headerOp) {
+	opsMutation := buildHeaderMutationFromOps(headerOps)
+
+	// Merge SetHeaders from ops-based mutation
+	if len(opsMutation.SetHeaders) > 0 {
+		headerMutation.SetHeaders = append(headerMutation.SetHeaders, opsMutation.SetHeaders...)
 	}
 
-	// Append headers
-	if len(mods.AppendHeaders) > 0 {
-		if mutation.SetHeaders == nil {
-			mutation.SetHeaders = make([]*corev3.HeaderValueOption, 0)
-		}
-		for key, values := range mods.AppendHeaders {
-			for _, value := range values {
-				mutation.SetHeaders = append(mutation.SetHeaders, &corev3.HeaderValueOption{
-					Header: &corev3.HeaderValue{
-						Key:      key,
-						RawValue: []byte(value),
-					},
-					AppendAction: corev3.HeaderValueOption_APPEND_IF_EXISTS_OR_ADD,
-				})
-			}
-		}
-	}
-
-	// Remove headers
-	if len(mods.RemoveHeaders) > 0 {
-		if mutation.RemoveHeaders == nil {
-			mutation.RemoveHeaders = make([]string, 0, len(mods.RemoveHeaders))
-		}
-		mutation.RemoveHeaders = append(mutation.RemoveHeaders, mods.RemoveHeaders...)
+	// Merge RemoveHeaders from ops-based mutation
+	if len(opsMutation.RemoveHeaders) > 0 {
+		headerMutation.RemoveHeaders = append(headerMutation.RemoveHeaders, opsMutation.RemoveHeaders...)
 	}
 }
 
@@ -232,7 +438,7 @@ func buildHeaderValueOptions(headers map[string]string) *extprocv3.HeaderMutatio
 	for key, value := range headers {
 		mutation.SetHeaders = append(mutation.SetHeaders, &corev3.HeaderValueOption{
 			Header: &corev3.HeaderValue{
-				Key:      key,
+				Key:      strings.ToLower(key),
 				RawValue: []byte(value),
 			},
 			AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
@@ -240,74 +446,6 @@ func buildHeaderValueOptions(headers map[string]string) *extprocv3.HeaderMutatio
 	}
 
 	return mutation
-}
-
-// buildRequestMutations extracts header and body mutations from request execution result
-func buildRequestMutations(result *executor.RequestExecutionResult) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation) {
-	headerMutation := &extprocv3.HeaderMutation{}
-	var bodyMutation *extprocv3.BodyMutation
-
-	// Accumulate modifications from all executed policies
-	for _, policyResult := range result.Results {
-		if policyResult.Skipped || policyResult.Error != nil {
-			continue
-		}
-
-		if policyResult.Action != nil {
-			if mods, ok := policyResult.Action.(policy.UpstreamRequestModifications); ok {
-				// Build header mutations
-				applyRequestModifications(headerMutation, &mods)
-
-				// Handle body modifications if present
-				// mods.Body is []byte from the action
-				if mods.Body != nil {
-					bodyMutation = &extprocv3.BodyMutation{
-						Mutation: &extprocv3.BodyMutation_Body{
-							Body: mods.Body,
-						},
-					}
-					// Update Content-Length header to match new body size
-					setContentLengthHeader(headerMutation, len(mods.Body))
-				}
-			}
-		}
-	}
-
-	return headerMutation, bodyMutation
-}
-
-// buildResponseMutations extracts header and body mutations from response execution result
-func buildResponseMutations(result *executor.ResponseExecutionResult) (*extprocv3.HeaderMutation, *extprocv3.BodyMutation) {
-	headerMutation := &extprocv3.HeaderMutation{}
-	var bodyMutation *extprocv3.BodyMutation
-
-	// Accumulate modifications from all executed policies
-	for _, policyResult := range result.Results {
-		if policyResult.Skipped || policyResult.Error != nil {
-			continue
-		}
-
-		if policyResult.Action != nil {
-			if mods, ok := policyResult.Action.(policy.UpstreamResponseModifications); ok {
-				// Build header mutations
-				applyResponseModifications(headerMutation, &mods)
-
-				// Handle body modifications if present
-				// mods.Body is []byte from the action
-				if mods.Body != nil {
-					bodyMutation = &extprocv3.BodyMutation{
-						Mutation: &extprocv3.BodyMutation_Body{
-							Body: mods.Body,
-						},
-					}
-					// Update Content-Length header to match new body size
-					setContentLengthHeader(headerMutation, len(mods.Body))
-				}
-			}
-		}
-	}
-
-	return headerMutation, bodyMutation
 }
 
 // setContentLengthHeader sets the Content-Length header to match the body size
@@ -323,38 +461,4 @@ func setContentLengthHeader(mutation *extprocv3.HeaderMutation, bodyLength int) 
 		},
 		AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
 	})
-}
-
-// determineModeOverride determines body processing mode based on chain requirements
-// T070: mode override configuration implementation
-func determineModeOverride(chain *registry.PolicyChain, isRequest bool) *extprocconfigv3.ProcessingMode {
-	if isRequest && !chain.RequiresRequestBody {
-		// Chain doesn't need request body - use NONE mode for performance
-		return &extprocconfigv3.ProcessingMode{
-			RequestBodyMode: extprocconfigv3.ProcessingMode_NONE,
-		}
-	}
-
-	if isRequest && chain.RequiresRequestBody {
-		// Chain needs request body - use BUFFERED mode
-		return &extprocconfigv3.ProcessingMode{
-			RequestBodyMode: extprocconfigv3.ProcessingMode_BUFFERED,
-		}
-	}
-
-	if !isRequest && !chain.RequiresResponseBody {
-		// Chain doesn't need response body - use NONE mode
-		return &extprocconfigv3.ProcessingMode{
-			ResponseBodyMode: extprocconfigv3.ProcessingMode_NONE,
-		}
-	}
-
-	if !isRequest && chain.RequiresResponseBody {
-		// Chain needs response body - use BUFFERED mode
-		return &extprocconfigv3.ProcessingMode{
-			ResponseBodyMode: extprocconfigv3.ProcessingMode_BUFFERED,
-		}
-	}
-
-	return nil
 }

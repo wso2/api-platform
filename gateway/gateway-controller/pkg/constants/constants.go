@@ -65,7 +65,7 @@ const (
 	TLSVersionOrderTLS13 = 3
 
 	// External Processor (ext_proc) Filter
-	ExtProcFilterName                    = "envoy.filters.http.ext_proc"
+	ExtProcFilterName                    = "api_platform.policy_engine.envoy.filters.http.ext_proc"
 	ExtProcConfigType                    = "type.googleapis.com/envoy.extensions.filters.http.ext_proc.v3.ExternalProcessor"
 	ExtProcRouteCacheActionDefault       = "DEFAULT"
 	ExtProcRouteCacheActionRetain        = "RETAIN"

@@ -40,13 +40,11 @@ type PolicyExecutionContext struct {
 // newPolicyExecutionContext creates a new execution context for a request
 func newPolicyExecutionContext(
 	server *ExternalProcessorServer,
-	requestID string,
 	routeKey string,
 	chain *registry.PolicyChain,
 ) *PolicyExecutionContext {
 	return &PolicyExecutionContext{
 		server:      server,
-		requestID:   requestID,
 		routeKey:    routeKey,
 		policyChain: chain,
 	}
@@ -160,8 +158,8 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 		return ec.handlePolicyError(ctx, err, "request_headers"), nil
 	}
 
-	// Translate execution result to ext_proc response
-	return TranslateRequestActions(execResult, ec.policyChain, ec), nil
+	// Translate execution result to ext_proc response (includes analytics metadata)
+	return TranslateRequestHeadersActions(execResult, ec.policyChain, ec)
 }
 
 // processRequestBody processes request body phase
@@ -188,37 +186,9 @@ func (ec *PolicyExecutionContext) processRequestBody(
 			return ec.handlePolicyError(ctx, err, "request_body"), nil
 		}
 
-		// Check if policies short-circuited with immediate response
-		if execResult.ShortCircuited && execResult.FinalAction != nil {
-			if immediateResp, ok := execResult.FinalAction.(policy.ImmediateResponse); ok {
-				return &extprocv3.ProcessingResponse{
-					Response: &extprocv3.ProcessingResponse_ImmediateResponse{
-						ImmediateResponse: &extprocv3.ImmediateResponse{
-							Status: &typev3.HttpStatus{
-								Code: typev3.StatusCode(immediateResp.StatusCode),
-							},
-							Headers: buildHeaderValueOptions(immediateResp.Headers),
-							Body:    immediateResp.Body,
-						},
-					},
-				}, nil
-			}
-		}
-
-		// Normal case: translate modifications to body response
-		headerMutation, bodyMutation := buildRequestMutations(execResult)
-		return &extprocv3.ProcessingResponse{
-			Response: &extprocv3.ProcessingResponse_RequestBody{
-				RequestBody: &extprocv3.BodyResponse{
-					Response: &extprocv3.CommonResponse{
-						HeaderMutation: headerMutation,
-						BodyMutation:   bodyMutation,
-					},
-				},
-			},
-		}, nil
+		// Translate execution result to ext_proc response (includes analytics metadata and short-circuit handling)
+		return TranslateRequestBodyActions(execResult, ec.policyChain, ec)
 	}
-
 	// If policies don't require body, just allow it through unmodified
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestBody{
@@ -256,8 +226,8 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 		return ec.handlePolicyError(ctx, err, "response_headers"), nil
 	}
 
-	// Translate execution result to ext_proc response
-	return TranslateResponseActions(execResult), nil
+	// Translate execution result to ext_proc response (includes analytics metadata)
+	return TranslateResponseHeadersActions(execResult, ec)
 }
 
 // processResponseBody processes response body phase
@@ -284,18 +254,8 @@ func (ec *PolicyExecutionContext) processResponseBody(
 			return ec.handlePolicyError(ctx, err, "response_body"), nil
 		}
 
-		// Normal case: translate modifications to body response
-		headerMutation, bodyMutation := buildResponseMutations(execResult)
-		return &extprocv3.ProcessingResponse{
-			Response: &extprocv3.ProcessingResponse_ResponseBody{
-				ResponseBody: &extprocv3.BodyResponse{
-					Response: &extprocv3.CommonResponse{
-						HeaderMutation: headerMutation,
-						BodyMutation:   bodyMutation,
-					},
-				},
-			},
-		}, nil
+		// Translate execution result to ext_proc response (includes analytics metadata)
+		return TranslateResponseBodyActions(execResult, ec)
 	}
 
 	// If policies don't require body, just allow it through unmodified
@@ -308,9 +268,45 @@ func (ec *PolicyExecutionContext) processResponseBody(
 
 // buildRequestContext converts Envoy headers to RequestContext
 func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHeaders, routeMetadata RouteMetadata) {
+	// Create headers map for internal manipulation
+	headersMap := make(map[string][]string)
+
+	// Variables to store pseudo-headers and request ID
+	var path, method, authority, scheme, requestID string
+
+	// Extract headers, pseudo-headers, and request ID in a single loop
+	if headers.Headers != nil {
+		for _, header := range headers.Headers.GetHeaders() {
+			key := header.Key
+			value := string(header.RawValue)
+			headersMap[key] = append(headersMap[key], value)
+
+			// Extract pseudo-headers and request ID
+			switch key {
+			case ":path":
+				path = value
+			case ":method":
+				method = value
+			case ":authority":
+				authority = value
+			case ":scheme":
+				scheme = value
+			case "x-request-id":
+				if requestID == "" { // Take first occurrence
+					requestID = value
+				}
+			}
+		}
+	}
+
+	// Generate request ID if not present in headers
+	if requestID == "" {
+		requestID = uuid.New().String()
+	}
+
 	// Create shared context that will persist across request/response phases
 	sharedCtx := &policy.SharedContext{
-		RequestID:     ec.requestID,
+		RequestID:     requestID,
 		APIName:       routeMetadata.APIName,
 		APIVersion:    routeMetadata.APIVersion,
 		APIContext:    routeMetadata.Context,
@@ -318,37 +314,18 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 		Metadata:      make(map[string]interface{}),
 	}
 
-	// Create headers map for internal manipulation
-	headersMap := make(map[string][]string)
-
-	// Extract headers
-	if headers.Headers != nil {
-		for _, header := range headers.Headers.GetHeaders() {
-			key := header.Key
-			value := string(header.RawValue)
-			headersMap[key] = append(headersMap[key], value)
-		}
-	}
-
-	// Build context with Headers wrapper
+	// Build context with Headers wrapper and pseudo-headers
 	ctx := &policy.RequestContext{
 		SharedContext: sharedCtx,
 		Headers:       policy.NewHeaders(headersMap),
+		Path:          path,
+		Method:        method,
+		Authority:     authority,
+		Scheme:        scheme,
 	}
 
-	// Extract path and method from pseudo-headers
-	if headers.Headers != nil {
-		for _, header := range headers.Headers.GetHeaders() {
-			key := header.Key
-			value := string(header.RawValue)
-
-			if key == ":path" {
-				ctx.Path = value
-			} else if key == ":method" {
-				ctx.Method = value
-			}
-		}
-	}
+	// Set request ID in execution context from SharedContext
+	ec.requestID = requestID
 
 	// Initialize Body with EndOfStream from headers (for requests without body)
 	// This will be overwritten if processRequestBody is called

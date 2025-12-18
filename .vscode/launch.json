@@ -23,12 +23,12 @@
                 "${workspaceFolder}/gateway/gateway-controller/config/config.yaml",
             ],
             "env": {
-                "GATEWAY_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
-                "GATEWAY_CONTROLPLANE_TOKEN": "",
-                "GATEWAY_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",
-                "GATEWAY_ROUTER_DOWNSTREAM__TLS_KEY__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.key",
-                "GATEWAY_ROUTER_POLICY__ENGINE_HOST": "host.docker.internal",
-                "GATEWAY_POLICIES_DEFINITIONS__PATH": "${workspaceFolder}/gateway/gateway-controller/policies",
+                "GATEWAY_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH": "${workspaceFolder}/gateway/gateway-controller/data/gateway.db",
+                "GATEWAY_GATEWAY__CONTROLLER_CONTROLPLANE_TOKEN": "",
+                "GATEWAY_GATEWAY__CONTROLLER_ROUTER_DOWNSTREAM__TLS_CERT__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.crt",
+                "GATEWAY_GATEWAY__CONTROLLER_ROUTER_DOWNSTREAM__TLS_KEY__PATH": "${workspaceFolder}/gateway/gateway-controller/listener-certs/default-listener.key",
+                "GATEWAY_GATEWAY__CONTROLLER_ROUTER_POLICY__ENGINE_HOST": "host.docker.internal",
+                "GATEWAY_GATEWAY__CONTROLLER_POLICIES_DEFINITIONS__PATH": "${workspaceFolder}/gateway/gateway-controller/default-policies",
             }
         },
         {
@@ -55,13 +55,6 @@
                 "-xds-server", "localhost:18001",
                 "-xds-node-id", "node-1",
             ],
-            "env": {
-                "REDIS_SOCKET_TYPE": "tcp",
-                "REDIS_URL": "localhost:6379",
-                "LOG_LEVEL": "WARN",
-                "DISABLE_STATS": "true",
-                "LOG_FORMAT": "json",
-            },
         },
         {
             "name": "Policy Engine - File",
@@ -73,13 +66,6 @@
                 "-config", "${workspaceFolder}/gateway/policy-engine/configs/config.yaml",
                 "-policy-chains-file", "${workspaceFolder}/gateway/policy-engine/configs/policy-chains.yaml",
             ],
-            "env": {
-                "REDIS_SOCKET_TYPE": "tcp",
-                "REDIS_URL": "localhost:6379",
-                "LOG_LEVEL": "WARN",
-                "DISABLE_STATS": "true",
-                "LOG_FORMAT": "json",
-            },
         },
     ]
 }

@@ -13,7 +13,6 @@ type RequestPolicyResult struct {
 	PolicyName    string
 	PolicyVersion string
 	Action        policy.RequestAction
-	Error         error
 	ExecutionTime time.Duration
 	Skipped       bool // true if condition evaluated to false
 }

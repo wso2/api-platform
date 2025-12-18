@@ -54,20 +54,12 @@ type RequestContext struct {
 	// Current request headers (read-only for policies)
 	// Policies use Get(), Has(), Iterate() methods for read-only access
 	// Kernel updates via UnsafeInternalValues()
-	Headers *Headers
-
-	// Current request body (mutable)
-	// nil if no body or body not required
-	// Updated in-place by body-modifying policies
-	Body *Body
-
-	// Current request path (mutable)
-	// Can be modified by routing policies
-	Path string
-
-	// Current request method (mutable)
-	// Can be modified by transformation policies
-	Method string
+	Headers   *Headers
+	Body      *Body
+	Path      string
+	Method    string
+	Authority string
+	Scheme    string
 }
 
 // ResponseContext is context for response phase containing request and response state
