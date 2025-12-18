@@ -86,6 +86,8 @@ func (v *MCPValidator) validateMCPConfiguration(config *api.MCPProxyConfiguratio
 		})
 	}
 
+	errors = append(errors, ValidateMetadata(&config.Metadata)...)
+
 	// Validate data section
 	errors = append(errors, v.validateSpec(&config.Spec)...)
 
