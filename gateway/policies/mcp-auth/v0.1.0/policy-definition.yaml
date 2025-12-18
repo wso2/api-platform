@@ -186,7 +186,8 @@ systemParameters:
     gatewayHost:
       type: string
       description: The host of the gateway to be included in the protected metadata URL and response.
-      example: "mcp1.api-platform.com"
+      example: mcp1.api-platform.com
+      default: localhost
       "wso2/defaultValue": "${config.policy_configurations.mcpauth_v010.gatewayhost}"
 
 

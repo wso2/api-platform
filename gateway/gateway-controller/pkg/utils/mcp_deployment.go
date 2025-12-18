@@ -241,7 +241,7 @@ func (s *MCPDeploymentService) parseValidateAndTransform(params MCPDeploymentPar
 		errors := make([]string, 0, len(validationErrors))
 		params.Logger.Warn("Configuration validation failed",
 			zap.String("api_id", params.ID),
-			zap.String("name", mcpConfig.Spec.Name),
+			zap.String("name", mcpConfig.Spec.DisplayName),
 			zap.Int("num_errors", len(validationErrors)))
 
 		for i, e := range validationErrors {
