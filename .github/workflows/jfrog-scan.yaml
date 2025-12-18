@@ -17,3 +17,18 @@ jobs:
         run: |
           docker pull ghcr.io/wso2/api-platform/gateway-controller:latest
           jf docker scan ghcr.io/wso2/api-platform/gateway-controller:latest
+      - name: Scan Gateway Router
+        shell: sh
+        run: |
+          docker pull ghcr.io/wso2/api-platform/gateway-router:latest
+          jf docker scan ghcr.io/wso2/api-platform/gateway-router:latest
+      - name: Scan Gateway Builder
+        shell: sh
+        run: |
+          docker pull ghcr.io/wso2/api-platform/gateway-builder:latest
+          jf docker scan ghcr.io/wso2/api-platform/gateway-builder:latest
+      - name: Scan Gateway Operator
+        shell: sh
+        run: |
+          docker pull ghcr.io/wso2/api-platform/gateway-operator:0.0.1
+          jf docker scan ghcr.io/wso2/api-platform/gateway-operator:0.0.1
