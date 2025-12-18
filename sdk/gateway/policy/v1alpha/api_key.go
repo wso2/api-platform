@@ -49,6 +49,12 @@ var (
 	ErrConflict = errors.New("API key already exists")
 )
 
+// Singleton instance
+var (
+	instance *APIkeyStore
+	once     sync.Once
+)
+
 // APIkeyStore holds all API keys in memory for fast access
 type APIkeyStore struct {
 	mu sync.RWMutex // Protects concurrent access
@@ -63,6 +69,14 @@ func NewAPIkeyStore() *APIkeyStore {
 		apiKeys:      make(map[string]*APIKey),
 		apiKeysByAPI: make(map[string][]*APIKey),
 	}
+}
+
+// GetAPIkeyStoreInstance provides a shared instance of APIkeyStore
+func GetAPIkeyStoreInstance() *APIkeyStore {
+	once.Do(func() {
+		instance = NewAPIkeyStore()
+	})
+	return instance
 }
 
 // StoreAPIKey stores an API key in the in-memory cache
