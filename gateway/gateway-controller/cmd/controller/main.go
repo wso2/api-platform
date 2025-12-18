@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/wso2/api-platform/common/authenticators"
+	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
@@ -258,10 +260,9 @@ func main() {
 	router.Use(middleware.CorrelationIDMiddleware(log))
 	router.Use(middleware.ErrorHandlingMiddleware(log))
 	router.Use(middleware.LoggingMiddleware(log))
-	// Authentication middleware: verifies configured local users (basic auth)
-	router.Use(middleware.AuthMiddleware(cfg, log))
-	// Authorization middleware: enforces resource -> allowed roles mapping (mapping stored in middleware)
-	router.Use(middleware.AuthorizationMiddleware(log))
+	authConfig := generateAuthConfig(cfg)
+	router.Use(authenticators.AuthMiddleware(authConfig, log))
+	router.Use(authenticators.AuthorizationMiddleware(authConfig, log))
 	router.Use(gin.Recovery())
 
 	// Initialize API server with the configured validator
@@ -313,6 +314,63 @@ func main() {
 	}
 
 	log.Info("Gateway-Controller stopped")
+}
+
+func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
+	var DefaultResourceRoles = map[string][]string{
+		"POST /apis":       {"admin", "developer"},
+		"GET /apis":        {"admin", "developer"},
+		"GET /apis/:id":    {"admin", "developer"},
+		"PUT /apis/:id":    {"admin", "developer"},
+		"DELETE /apis/:id": {"admin", "developer"},
+
+		"GET /certificates":         {"admin", "developer"},
+		"POST /certificates":        {"admin", "developer"},
+		"DELETE /certificates/:id":  {"admin"},
+		"POST /certificates/reload": {"admin"},
+
+		"GET /policies": {"admin", "developer"},
+
+		"POST /mcp-proxies":       {"admin", "developer"},
+		"GET /mcp-proxies":        {"admin", "developer"},
+		"GET /mcp-proxies/:id":    {"admin", "developer"},
+		"PUT /mcp-proxies/:id":    {"admin", "developer"},
+		"DELETE /mcp-proxies/:id": {"admin", "developer"},
+
+		"POST /llm-provider-templates":         {"admin"},
+		"GET /llm-provider-templates":          {"admin"},
+		"GET /llm-provider-templates/:name":    {"admin"},
+		"PUT /llm-provider-templates/:name":    {"admin"},
+		"DELETE /llm-provider-templates/:name": {"admin"},
+
+		"POST /llm-providers":                  {"admin"},
+		"GET /llm-providers":                   {"admin", "developer"},
+		"GET /llm-providers/:name/:version":    {"admin", "developer"},
+		"PUT /llm-providers/:name/:version":    {"admin"},
+		"DELETE /llm-providers/:name/:version": {"admin"},
+
+		"GET /config_dump": {"admin"},
+	}
+	users := make([]commonmodels.User, len(config.GatewayController.Auth.Users))
+	for i, authUser := range config.GatewayController.Auth.Users {
+		users[i] = commonmodels.User{
+			Username:       authUser.Username,
+			Password:       authUser.Password,
+			PasswordHashed: authUser.PasswordHashed,
+		}
+	}
+	basicAuth := commonmodels.BasicAuth{Enabled: true, Users: users}
+	idpAuth := commonmodels.IDPConfig{IssuerURL: config.GatewayController.Auth.IDP.Issuer,
+		JWKSUrl:           config.GatewayController.Auth.IDP.JWKSURL,
+		ScopeClaim:        config.GatewayController.Auth.IDP.RolesClaim,
+		PermissionMapping: &config.GatewayController.Auth.IDP.RoleMapping,
+	}
+	authConfig := commonmodels.AuthConfig{BasicAuth: &basicAuth,
+		JWTConfig:     &idpAuth,
+		ResourceRoles: DefaultResourceRoles,
+		SkipPaths:     []string{"/health"},
+	}
+	return authConfig
 }
 
 // derivePolicyFromAPIConfig derives a policy configuration from an API configuration

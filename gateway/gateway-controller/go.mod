@@ -16,9 +16,10 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/oapi-codegen/runtime v1.1.2
 	github.com/stretchr/testify v1.11.1
+	github.com/wso2/api-platform/common v1.0.0
 	github.com/wso2/api-platform/sdk v1.0.0
 	github.com/xeipuuv/gojsonschema v1.2.0
-	go.uber.org/zap v1.27.0
+	go.uber.org/zap v1.27.1
 	google.golang.org/grpc v1.67.1
 	google.golang.org/protobuf v1.36.9
 	gopkg.in/yaml.v3 v3.0.1
@@ -26,6 +27,7 @@ require (
 
 require (
 	cel.dev/expr v0.16.0 // indirect
+	github.com/MicahParks/keyfunc/v2 v2.1.0 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bytedance/sonic v1.14.0 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
@@ -45,6 +47,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
@@ -86,3 +89,5 @@ require (
 )
 
 replace github.com/wso2/api-platform/sdk => ../../sdk
+
+replace github.com/wso2/api-platform/common => ../../common
