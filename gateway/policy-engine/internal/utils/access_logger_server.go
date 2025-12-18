@@ -68,7 +68,7 @@ func (s *AccessLogServiceServer) StreamAccessLogs(stream v3.AccessLogService_Str
 }
 
 // StartAccessLogServiceServer starts the Access Log Service Server.
-func StartAccessLogServiceServer(cfg *config.Config) {
+func StartAccessLogServiceServer(cfg *config.Config) *grpc.Server {
 	// Create a new instance of the Access Log Service Server
 	accessLogServiceServer := newAccessLogServiceServer(cfg)
 
@@ -92,9 +92,12 @@ func StartAccessLogServiceServer(cfg *config.Config) {
 		slog.Error(fmt.Sprintf("Failed to listen on port: %d", cfg.Analytics.AccessLogsServiceCfg.ALSServerPort))
 		panic(err)
 	}
-	slog.Info("Starting to serve access log service server")
-	if err := server.Serve(listener); err != nil {
-		slog.Error("Failed to serve access log service server", "error", err)
-		panic(err)
-	}
+	go func() {
+        slog.Info("Starting to serve access log service server", "port", cfg.Analytics.AccessLogsServiceCfg.ALSServerPort)
+        if err := server.Serve(listener); err != nil {
+            slog.Error("ALS server exited", "error", err)
+        }
+    }()
+
+    return server
 }

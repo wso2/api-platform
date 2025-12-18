@@ -140,11 +140,12 @@ func main() {
 	}
 
 	// Start access log service server if enabled
+	var alsServer *grpc.Server
 	slog.DebugContext(ctx, "Policy engine ALS server config", "config", cfg.Analytics.AccessLogsServiceCfg)
 	if cfg.Analytics.Enabled {
 		// Start the access log service server
-		slog.Info("Stating the ALS gRPC server...")
-		go utils.StartAccessLogServiceServer(cfg)
+		slog.Info("Starting the ALS gRPC server...")
+		alsServer = utils.StartAccessLogServiceServer(cfg)
 	}
 
 	// Setup graceful shutdown
@@ -180,6 +181,11 @@ func main() {
 		slog.InfoContext(ctx, "Stopping xDS client")
 		xdsClient.Stop()
 		xdsClient.Wait()
+	}
+
+	if alsServer != nil {
+		slog.InfoContext(ctx, "Stopping ALS gRPC server")
+		alsServer.GracefulStop()
 	}
 
 	grpcServer.GracefulStop()

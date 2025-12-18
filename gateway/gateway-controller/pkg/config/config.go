@@ -941,16 +941,23 @@ func (c *Config) validateAnalyticsConfig() error {
 	if c.Analytics.Enabled {
 		// Validate gRPC access log configuration	
 		grpcAccessLogCfg := c.Analytics.GRPCAccessLogCfg
-		
-		alsServerPort := c.Analytics.AccessLogsServiceCfg["als_server_port"].(int)
+		var alsServerPort int
+		switch v := c.Analytics.AccessLogsServiceCfg["als_server_port"].(type) {
+		case int:
+			alsServerPort = v
+		case float64:
+			alsServerPort = int(v)
+		default:
+			return fmt.Errorf("analytics.access_logs_service.als_server_port must be an integer between 1 and 65535")
+		}
 		if alsServerPort <= 0 || alsServerPort > 65535 {
-			return fmt.Errorf("analytics.access_logs_service.als_server_port must be between 1 and 65535, got %d", alsServerPort)
+			return fmt.Errorf("analytics.access_logs_service.als_server_port must be an integer between 1 and 65535, got %d", alsServerPort)
 		}
 		if grpcAccessLogCfg.Host == "" {
-			return fmt.Errorf("analytics.grpc_access_logs.host is required when analytics.grpc_access_logs.enabled is true")
+			return fmt.Errorf("analytics.grpc_access_logs.host is required when analytics.enabled is true")
 		}
 		if grpcAccessLogCfg.LogName == "" {
-			return fmt.Errorf("analytics.grpc_access_logs.log_name is required when analytics.grpc_access_logs.enabled is true")
+			return fmt.Errorf("analytics.grpc_access_logs.log_name is required when analytics.enabled is true")
 		}
 		if grpcAccessLogCfg.BufferFlushInterval <= 0 || grpcAccessLogCfg.BufferSizeBytes <= 0 || grpcAccessLogCfg.GRPCRequestTimeout <= 0 {
 			return fmt.Errorf(

@@ -88,7 +88,10 @@ func CreateGRPCServer(publicKeyPath, privateKeyPath string, plainText bool, opts
 			return nil, fmt.Errorf("failed to load TLS credentials: %v", err)
 		}
 
-		creds := credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{cert}})
+		creds := credentials.NewTLS(&tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion: tls.VersionTLS13,
+		})
 
 		// Append TLS credentials to the options
 		opts = append(opts, grpc.Creds(creds))
