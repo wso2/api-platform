@@ -60,6 +60,7 @@ type RequestContext struct {
 	Method    string
 	Authority string
 	Scheme    string
+	Vhost     string
 }
 
 // ResponseContext is context for response phase containing request and response state
