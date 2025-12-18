@@ -96,9 +96,12 @@ type Prompt struct {
 }
 
 type McpYAML struct {
-	Version string `yaml:"version"`
-	Kind    string `yaml:"kind"`
-	Spec    struct {
+	Version  string `yaml:"version"`
+	Kind     string `yaml:"kind"`
+	Metadata struct {
+		Name string `yaml:"name"`
+	} `yaml:"metadata"`
+	Spec struct {
 		Name        string `yaml:"name"`
 		Version     string `yaml:"version"`
 		Context     string `yaml:"context"`
@@ -375,6 +378,9 @@ func generateMCPConfigFile(url string, toolsResult ToolsResult,
 	mcp := McpYAML{
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "mcp",
+		Metadata: struct {
+			Name string `yaml:"name"`
+		}{Name: "Generated-MCP-v1.0"},
 	}
 	mcp.Spec.Name = "Generated-MCP"
 	mcp.Spec.Version = "v1.0"

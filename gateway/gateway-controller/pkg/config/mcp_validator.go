@@ -251,7 +251,8 @@ func (v *MCPValidator) validateUpstream(fieldPrefix string, upstream *api.MCPPro
 
 		if auth.Type == api.MCPProxyConfigDataUpstreamAuthTypeBearer {
 			// For Bearer token, value should start with "Bearer or "bearer "
-			if !strings.HasPrefix(*auth.Value, "Bearer ") && !strings.HasPrefix(*auth.Value, "bearer ") {
+			if auth.Value != nil &&
+				!strings.HasPrefix(*auth.Value, "Bearer ") && !strings.HasPrefix(*auth.Value, "bearer ") {
 				errors = append(errors, ValidationError{
 					Field:   fmt.Sprintf("%s.auth.value", fieldPrefix),
 					Message: "Bearer token value must start with 'Bearer ' or 'bearer '",
