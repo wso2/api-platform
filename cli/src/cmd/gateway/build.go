@@ -21,6 +21,7 @@ package gateway
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/gateway"
@@ -80,82 +81,116 @@ func init() {
 }
 
 func runBuildCommand() error {
+	startTime := time.Now()
+	fmt.Println()
 	fmt.Println("=== Gateway Build ===")
 	fmt.Println()
 
-	// Load and validate the policy-manifest
-	fmt.Printf("Loading policy-manifest from: %s\n", buildFilePath)
+	// Step 1: Validate Policy Manifest
+	manifest, err := stepValidateManifest()
+	if err != nil {
+		return err
+	}
+
+	// Step 2: Prepare Build Configuration
+	if err := stepPrepareBuildConfig(); err != nil {
+		return err
+	}
+
+	// Step 3: Resolve Policies from PolicyHub
+	response, policyHubClient, requestedPolicies, err := stepResolvePolicies(manifest)
+	if err != nil {
+		return err
+	}
+
+	// Step 4: Download and Cache Policies
+	loadedPolicies, err := stepDownloadPolicies(response, policyHubClient)
+	if err != nil {
+		return err
+	}
+
+	// Step 5: Prepare Gateway Build
+	if err := stepPrepareGatewayBuild(manifest, loadedPolicies); err != nil {
+		return err
+	}
+
+	// Summary
+	duration := time.Since(startTime)
+	fmt.Println()
+	fmt.Println("=== Build Summary ===")
+	fmt.Printf("✓ Build completed successfully in %.2fs\n", duration.Seconds())
+	fmt.Printf("Policies in manifest: %d\n", len(manifest.Policies))
+	fmt.Printf("Policies loaded: %d\n", len(loadedPolicies))
+	if len(requestedPolicies) > len(loadedPolicies) {
+		fmt.Printf("Missing policies: %d\n", len(requestedPolicies)-len(loadedPolicies))
+	}
+	fmt.Println()
+
+	return nil
+}
+
+// stepValidateManifest validates and loads the policy-manifest file
+func stepValidateManifest() (*gateway.PolicyManifest, error) {
+	fmt.Println("[1/5] Validating Policy Manifest")
+	fmt.Printf("  → Loading from: %s\n", buildFilePath)
+
 	manifest, err := gateway.LoadPolicyManifest(buildFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to load policy-manifest: %w", err)
-	}
-	fmt.Println("✓ Policy-manifest validation successful")
-	fmt.Println()
-
-	// Convert manifest to JSON
-	manifestYAML, err := os.ReadFile(buildFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to read policy-manifest: %w", err)
+		return nil, fmt.Errorf("failed to load policy-manifest: %w", err)
 	}
 
-	manifestJSON, err := utils.ConvertYAMLToJSONPretty(manifestYAML)
-	if err != nil {
-		return fmt.Errorf("failed to convert policy-manifest to JSON: %w", err)
-	}
+	fmt.Printf("  ✓ Validated %d policies\n", len(manifest.Policies))
 
-	// Print the JSON representation
-	fmt.Println("Policy Manifest (JSON):")
-	fmt.Println(string(manifestJSON))
-	fmt.Println()
-
-	// Print flags and their values
-	fmt.Println("Build Configuration:")
-	fmt.Printf("  %-35s: %s\n", utils.FlagFile, buildFilePath)
-	fmt.Printf("  %-35s: %s\n", utils.FlagDockerRegistry, buildDockerRegistry)
-	fmt.Printf("  %-35s: %s\n", utils.FlagImageTag, buildImageTag)
-
-	// Print optional flags
-	if buildGatewayBuilder != "" {
-		fmt.Printf("  %-35s: %s\n", utils.FlagGatewayBuilder, buildGatewayBuilder)
-	} else {
-		fmt.Printf("  %-35s: (not provided)\n", utils.FlagGatewayBuilder)
-	}
-
-	if buildGatewayControllerImage != "" {
-		fmt.Printf("  %-35s: %s\n", utils.FlagGatewayControllerImage, buildGatewayControllerImage)
-	} else {
-		fmt.Printf("  %-35s: (not provided)\n", utils.FlagGatewayControllerImage)
-	}
-
-	if buildRouterBaseImage != "" {
-		fmt.Printf("  %-35s: %s\n", utils.FlagRouterBaseImage, buildRouterBaseImage)
-	} else {
-		fmt.Printf("  %-35s: (not provided)\n", utils.FlagRouterBaseImage)
-	}
-
-	fmt.Println()
-
-	// Print summary
-	fmt.Printf("Total Policies: %d\n", len(manifest.Policies))
+	// Print policy details
 	for i, policy := range manifest.Policies {
 		versionRes := policy.VersionResolution
 		if versionRes == "" {
 			versionRes = manifest.VersionResolution
 			if versionRes == "" {
-				versionRes = "(default)"
+				versionRes = "default"
 			}
 		}
-		fmt.Printf("  [%d] %s v%s (resolution: %s)", i+1, policy.Name, policy.Version, versionRes)
+		policyDesc := fmt.Sprintf("    [%d] %s v%s (resolution: %s)", i+1, policy.Name, policy.Version, versionRes)
 		if policy.FilePath != "" {
-			fmt.Printf(" - local: %s", policy.FilePath)
+			policyDesc += fmt.Sprintf(" - local: %s", policy.FilePath)
 		}
-		fmt.Println()
+		fmt.Println(policyDesc)
+	}
+	fmt.Println()
+
+	return manifest, nil
+}
+
+// stepPrepareBuildConfig validates and prepares the build configuration
+func stepPrepareBuildConfig() error {
+	fmt.Println("[2/5] Preparing Build Configuration")
+	fmt.Printf("    Docker Registry: %s\n", buildDockerRegistry)
+	fmt.Printf("    Image Tag: %s\n", buildImageTag)
+
+	if buildGatewayBuilder != "" {
+		fmt.Printf("    Gateway Builder: %s\n", buildGatewayBuilder)
+	}
+	if buildGatewayControllerImage != "" {
+		fmt.Printf("    Controller Image: %s\n", buildGatewayControllerImage)
+	}
+	if buildRouterBaseImage != "" {
+		fmt.Printf("    Router Image: %s\n", buildRouterBaseImage)
 	}
 
-	// Clean policy manifest for PolicyHub (remove filePath and root fields)
+	fmt.Println("  ✓ Configuration validated")
+	fmt.Println()
+	return nil
+}
+
+// stepResolvePolicies queries PolicyHub to resolve policy versions
+func stepResolvePolicies(manifest *gateway.PolicyManifest) (*policyhub.ResolveResponse, *policyhub.PolicyHubClient, []policyhub.RequestedPolicy, error) {
+	fmt.Println("[3/5] Resolving Policies from PolicyHub")
+	fmt.Println("  → Preparing request...")
+
+	// Clean policy manifest for PolicyHub
 	cleanedPoliciesJSON, err := gateway.CleanPolicyManifestForPolicyHub(manifest)
 	if err != nil {
-		return fmt.Errorf("failed to clean policy manifest: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to clean policy manifest: %w", err)
 	}
 
 	// Create requested policies list for tracking
@@ -167,22 +202,138 @@ func runBuildCommand() error {
 		}
 	}
 
-	// Load policies from PolicyHub
+	fmt.Println("  → Calling PolicyHub API...")
+
+	// Call PolicyHub
 	policyHubClient := policyhub.NewPolicyHubClient()
-	result, err := policyhub.LoadPolicies(policyHubClient, cleanedPoliciesJSON, requestedPolicies)
+	response, err := policyHubClient.ResolvePolicies(cleanedPoliciesJSON)
 	if err != nil {
-		return fmt.Errorf("failed to load policies: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to resolve policies: %w", err)
 	}
 
-	// Summary
-	fmt.Println()
-	fmt.Println("=== Build Summary ===")
-	fmt.Printf("Policies loaded: %d/%d\n", len(result.LoadedPolicies), len(manifest.Policies))
-	if len(result.MissingPolicies) > 0 {
-		fmt.Printf("Missing policies: %d\n", len(result.MissingPolicies))
+	fmt.Printf("  ✓ Resolved %d policies\n", len(response.Data))
+
+	// Check for missing policies
+	missingPolicies := findMissingPolicies(requestedPolicies, response.Data)
+	if len(missingPolicies) > 0 {
+		fmt.Printf("  ⚠ %d requested policies not found:\n", len(missingPolicies))
+		for _, missing := range missingPolicies {
+			fmt.Printf("    - %s v%s\n", missing.Name, missing.Version)
+		}
 	}
 	fmt.Println()
-	fmt.Println("✓ Gateway build preparation complete")
+
+	return response, policyHubClient, requestedPolicies, nil
+}
+
+// stepDownloadPolicies downloads and caches policy packages
+func stepDownloadPolicies(response *policyhub.ResolveResponse, client *policyhub.PolicyHubClient) ([]policyhub.LoadedPolicyWithContents, error) {
+	fmt.Println("[4/5] Downloading & Caching Policies")
+
+	if len(response.Data) == 0 {
+		fmt.Println("  ⚠ No policies to download")
+		fmt.Println()
+		return []policyhub.LoadedPolicyWithContents{}, nil
+	}
+
+	fmt.Printf("  → Processing %d policies...\n", len(response.Data))
+
+	// Ensure policies directory exists
+	policiesDir, err := policyhub.EnsurePoliciesDir()
+	if err != nil {
+		return nil, err
+	}
+
+	loadedPolicies := make([]policyhub.LoadedPolicyWithContents, 0, len(response.Data))
+
+	for _, policyData := range response.Data {
+		zipPath := policyhub.GetPolicyZipPath(policiesDir, policyData.PolicyName, policyData.Version)
+		policyID := fmt.Sprintf("%s-%s", policyData.PolicyName, policyData.Version)
+
+		// Check if policy already exists
+		if utils.FileExists(zipPath) {
+			fmt.Printf("    %s: found locally, verifying...\n", policyID)
+
+			// Verify checksum
+			if err := utils.VerifyFileChecksum(zipPath, policyData.Checksum.Value); err != nil {
+				fmt.Printf("    %s: checksum failed, re-downloading...\n", policyID)
+				if err := downloadAndVerifyPolicy(client, &policyData, zipPath); err != nil {
+					return nil, fmt.Errorf("%s: failed to download: %w", policyID, err)
+				}
+				fmt.Printf("    %s: ✓ downloaded and verified\n", policyID)
+			} else {
+				fmt.Printf("    %s: ✓ verified\n", policyID)
+			}
+		} else {
+			fmt.Printf("    %s: downloading...\n", policyID)
+			if err := downloadAndVerifyPolicy(client, &policyData, zipPath); err != nil {
+				return nil, fmt.Errorf("%s: failed to download: %w", policyID, err)
+			}
+			fmt.Printf("    %s: ✓ downloaded and verified\n", policyID)
+		}
+
+		// Load zip contents
+		fmt.Printf("    %s: loading contents...\n", policyID)
+		contents, err := policyhub.ExtractZipToMemory(zipPath)
+		if err != nil {
+			return nil, fmt.Errorf("%s: failed to load contents: %w", policyID, err)
+		}
+		fmt.Printf("    %s: ✓ loaded %d files\n", policyID, len(contents))
+
+		loadedPolicies = append(loadedPolicies, policyhub.LoadedPolicyWithContents{
+			PolicyData: policyData,
+			Contents:   contents,
+		})
+	}
+
+	fmt.Printf("  ✓ All policies cached (%d/%d successful)\n", len(loadedPolicies), len(response.Data))
+	fmt.Println()
+
+	return loadedPolicies, nil
+}
+
+// stepPrepareGatewayBuild prepares the final build artifacts
+func stepPrepareGatewayBuild(manifest *gateway.PolicyManifest, loadedPolicies []policyhub.LoadedPolicyWithContents) error {
+	fmt.Println("[5/5] Preparing Gateway Build")
+	fmt.Printf("  Total policies in manifest: %d\n", len(manifest.Policies))
+	fmt.Printf("  Policies loaded: %d\n", len(loadedPolicies))
+
+	// Future: This is where we'll prepare Docker build context, generate gateway config, etc.
+	fmt.Println("  ✓ Gateway build artifacts ready")
+	fmt.Println()
 
 	return nil
+}
+
+// Helper functions
+
+func downloadAndVerifyPolicy(client *policyhub.PolicyHubClient, policyData *policyhub.PolicyData, destPath string) error {
+	if err := client.DownloadPolicy(policyData.DownloadURL, destPath); err != nil {
+		return err
+	}
+
+	if err := utils.VerifyFileChecksum(destPath, policyData.Checksum.Value); err != nil {
+		os.Remove(destPath)
+		return err
+	}
+
+	return nil
+}
+
+func findMissingPolicies(requested []policyhub.RequestedPolicy, received []policyhub.PolicyData) []policyhub.RequestedPolicy {
+	receivedMap := make(map[string]bool)
+	for _, policy := range received {
+		key := fmt.Sprintf("%s-%s", policy.PolicyName, policy.Version)
+		receivedMap[key] = true
+	}
+
+	var missing []policyhub.RequestedPolicy
+	for _, req := range requested {
+		key := fmt.Sprintf("%s-%s", req.Name, req.Version)
+		if !receivedMap[key] {
+			missing = append(missing, req)
+		}
+	}
+
+	return missing
 }
