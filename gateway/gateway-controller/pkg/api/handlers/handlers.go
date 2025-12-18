@@ -329,7 +329,7 @@ func (s *APIServer) SearchDeployments(c *gin.Context, kind string) {
 				UpdatedAt:   timePtr(cfg.UpdatedAt),
 			}
 			if mcp.Spec.Context != nil {
-				li.Context = stringPtr(*mcp.Spec.Context)
+				li.Context = mcp.Spec.Context
 			}
 			mcpItems = append(mcpItems, li)
 		}
@@ -1517,6 +1517,14 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 		return
 	}
 
+	// Return success response (id is the handle)
+	c.JSON(http.StatusCreated, api.MCPProxyCreateResponse{
+		Status:    stringPtr("success"),
+		Message:   stringPtr("MCP proxy configuration created successfully"),
+		Id:        stringPtr(cfg.GetHandle()),
+		CreatedAt: timePtr(cfg.CreatedAt),
+	})
+
 	// Set up a callback to notify platform API after successful deployment
 	// This is specific to direct API creation via gateway endpoint
 	if s.controlPlaneClient != nil && s.controlPlaneClient.IsConnected() {
@@ -1536,14 +1544,6 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 			}
 		}
 	}
-
-	// Return success response (id is the handle)
-	c.JSON(http.StatusCreated, api.MCPProxyCreateResponse{
-		Status:    stringPtr("success"),
-		Message:   stringPtr("MCP proxy configuration created successfully"),
-		Id:        stringPtr(cfg.GetHandle()),
-		CreatedAt: timePtr(cfg.CreatedAt),
-	})
 }
 
 // ListMCPProxies implements ServerInterface.ListMCPProxies
@@ -1609,7 +1609,8 @@ func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 				Message: "Database storage not available",
 			})
 			return
-		} else {
+		}
+		if strings.Contains(err.Error(), "not found") {
 			log.Warn("MCP proxy configuration not found",
 				zap.String("handle", handle))
 			c.JSON(http.StatusNotFound, api.ErrorResponse{
@@ -1618,6 +1619,15 @@ func (s *APIServer) GetMCPProxyById(c *gin.Context, id string) {
 			})
 			return
 		}
+
+		log.Error("Failed to retrieve MCP proxy configuration",
+			zap.String("handle", handle),
+			zap.Error(err))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Failed to retrieve MCP proxy configuration",
+		})
+		return
 
 	}
 

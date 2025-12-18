@@ -16,7 +16,7 @@ The MCP Authentication policy is designed to secure traffic to Model Context Pro
 
 The MCP Authentication policy uses a two-level configuration model:
 
-- **System Parameters**: Configured by the administrator in `config.yaml` under `policy_configurations.McpAuth_v010` or `policy_configurations.JwtAuth_v010`depending on the parameter.
+- **System Parameters**: Configured by the administrator in `config.yaml` under `policy_configurations.McpAuth_v010` or `policy_configurations.JwtAuth_v010` depending on the parameter.
 - **User Parameters**: Configured per MCP proxy in the configuration yaml.
 
 ### System Parameters (config.yaml)
