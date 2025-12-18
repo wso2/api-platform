@@ -24,6 +24,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/gateway"
+	"github.com/wso2/api-platform/cli/internal/policyhub"
 	"github.com/wso2/api-platform/cli/utils"
 )
 
@@ -150,11 +151,38 @@ func runBuildCommand() error {
 		}
 		fmt.Println()
 	}
-	fmt.Println()
 
-	// Placeholder for PolicyHub call
-	fmt.Println("=== Call PolicyHub ===")
-	fmt.Println("(This will be implemented in the next phase)")
+	// Clean policy manifest for PolicyHub (remove filePath and root fields)
+	cleanedPoliciesJSON, err := gateway.CleanPolicyManifestForPolicyHub(manifest)
+	if err != nil {
+		return fmt.Errorf("failed to clean policy manifest: %w", err)
+	}
+
+	// Create requested policies list for tracking
+	requestedPolicies := make([]policyhub.RequestedPolicy, len(manifest.Policies))
+	for i, policy := range manifest.Policies {
+		requestedPolicies[i] = policyhub.RequestedPolicy{
+			Name:    policy.Name,
+			Version: policy.Version,
+		}
+	}
+
+	// Load policies from PolicyHub
+	policyHubClient := policyhub.NewPolicyHubClient()
+	result, err := policyhub.LoadPolicies(policyHubClient, cleanedPoliciesJSON, requestedPolicies)
+	if err != nil {
+		return fmt.Errorf("failed to load policies: %w", err)
+	}
+
+	// Summary
+	fmt.Println()
+	fmt.Println("=== Build Summary ===")
+	fmt.Printf("Policies loaded: %d/%d\n", len(result.LoadedPolicies), len(manifest.Policies))
+	if len(result.MissingPolicies) > 0 {
+		fmt.Printf("Missing policies: %d\n", len(result.MissingPolicies))
+	}
+	fmt.Println()
+	fmt.Println("✓ Gateway build preparation complete")
 
 	return nil
 }

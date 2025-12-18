@@ -20,11 +20,24 @@ package utils
 
 const CliName = "apipctl"
 
+// APIPCTL Configuration
+const (
+	ConfigPath   = ".apipctl/config.yaml"
+	PoliciesPath = ".apipctl/policies"
+)
+
 // Gateway REST API Endpoints
+// Relative Paths for using gateway server URL
 const (
 	GatewayHealthPath       = "/health"
 	GatewayAPIsPath         = "/apis"
 	GatewayAPIByIDPath      = "/apis/%s"
 	GatewayMCPProxiesPath   = "/mcp-proxies"
 	GatewayMCPProxyByIDPath = "/mcp-proxies/%s"
+)
+
+// PolicyHub REST API
+const (
+	PolicyHubBaseURL     = "https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/v1.0"
+	PolicyHubResolvePath = "/policies/resolve"
 )

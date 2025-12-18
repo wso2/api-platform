@@ -46,14 +46,7 @@ type Gateway struct {
 type Config struct {
 	Gateways      []Gateway `yaml:"gateways,omitempty"`
 	ActiveGateway string    `yaml:"activeGateway,omitempty"`
-	ConfigVersion string    `yaml:"configVersion"`
 }
-
-const (
-	ConfigDirName  = ".apipctl"
-	ConfigFileName = "config.yaml"
-	ConfigVersion  = "1.0.0"
-)
 
 // GetConfigPath returns the path to the configuration file
 func GetConfigPath() (string, error) {
@@ -61,7 +54,7 @@ func GetConfigPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to get user home directory: %w", err)
 	}
-	return filepath.Join(homeDir, ConfigDirName, ConfigFileName), nil
+	return filepath.Join(homeDir, utils.ConfigPath), nil
 }
 
 // LoadConfig loads the configuration from the config file
@@ -81,8 +74,7 @@ func LoadConfig() (*Config, error) {
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		// Create a new default config
 		config := &Config{
-			ConfigVersion: ConfigVersion,
-			Gateways:      []Gateway{},
+			Gateways: []Gateway{},
 		}
 		if err := SaveConfig(config); err != nil {
 			return nil, err
