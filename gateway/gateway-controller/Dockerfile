@@ -25,6 +25,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy SDK (needed for go.mod replace directive)
 COPY --from=sdk . /sdk
 
+# Copy common (needed for go.mod replace directive)
+COPY --from=common . /common
+
 # Copy go mod files
 COPY go.mod go.sum ./
 RUN go mod download

@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	commonerrors "github.com/wso2/api-platform/common/errors"
 	"github.com/wso2/api-platform/common/models"
+	"go.uber.org/zap"
 )
 
 var (
@@ -13,28 +14,23 @@ var (
 )
 
 // AuthorizationMiddleware enforces resource->roles mapping stored in this package.
-func AuthorizationMiddleware(config models.AuthConfig) gin.HandlerFunc {
+func AuthorizationMiddleware(config models.AuthConfig, logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		       // Skip authorization if authentication was skipped
-		       if v, ok := c.Get("auth_skipped"); ok {
-			       if skipped, ok2 := v.(bool); ok2 && skipped {
-				       c.Next()
-				       return
-			       }
-		       }
+		// Skip authorization if authentication was skipped
+		if v, ok := c.Get("auth_skipped"); ok {
+			if skipped, ok2 := v.(bool); ok2 && skipped {
+				c.Next()
+				return
+			}
+		}
 
 		// Use config.ResourceRoles if provided, else fallback to DefaultResourceRoles
 		resourceRoles := config.ResourceRoles
-		if resourceRoles == nil || len(resourceRoles) == 0 {
+		logger.Sugar().Infof("Resource roles %v", resourceRoles)
+		if len(resourceRoles) == 0 {
+			c.Next()
 			return
 		}
-
-		// If no mapping configured, reject all requests to be safe
-		if resourceRoles == nil || len(resourceRoles) == 0 {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": commonerrors.ErrForbidden.Error()})
-			return
-		}
-
 		// Retrieve user roles from context (set by auth middleware)
 		var userRoles []string
 		if v, ok := c.Get(AuthRolesKey); ok {
@@ -42,11 +38,7 @@ func AuthorizationMiddleware(config models.AuthConfig) gin.HandlerFunc {
 				userRoles = ur
 			}
 		}
-
-		if len(userRoles) == 0 {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": commonerrors.ErrForbidden.Error()})
-			return
-		}
+		logger.Sugar().Infof("User roles %v", userRoles)
 
 		// Determine resource key
 		resourcePath := c.FullPath()
@@ -57,7 +49,7 @@ func AuthorizationMiddleware(config models.AuthConfig) gin.HandlerFunc {
 
 		// Try METHOD + path first
 		methodKey := c.Request.Method + " " + resourcePath
-
+		logger.Sugar().Infof("method key %v", methodKey)
 		allowed, found := resourceRoles[methodKey]
 		if !found {
 			// Resource not defined -> reject
