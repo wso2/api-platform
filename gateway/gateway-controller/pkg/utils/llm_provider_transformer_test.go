@@ -45,7 +45,7 @@ func setupTestTransformer(t *testing.T) (*LLMProviderTransformer, *storage.Confi
 			Version: "ai.api-platform.wso2.com/v1",
 			Kind:    "llm/provider-template",
 			Spec: api.LLMProviderTemplateData{
-				Name: "openai",
+				DisplayName: "openai",
 				PromptTokens: &api.ExtractionIdentifier{
 					Location:   api.Payload,
 					Identifier: "$.usage.prompt_tokens",
@@ -84,9 +84,10 @@ func TestTransform_MinimalProvider(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "minimal-provider",
-			Version:  "v1.0",
-			Template: "openai",
+
+			DisplayName: "minimal-provider",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
@@ -124,7 +125,8 @@ func TestTransform_FullProvider(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "full-provider",
+
+			DisplayName: "full-provider",
 			Version:  "v1.0",
 			Context:  stringPtr("/openai"),
 			Vhost:    stringPtr("api.openai.com"),
@@ -205,7 +207,8 @@ func TestTransform_NonExistentTemplate(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "nonexistent-template",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -236,7 +239,8 @@ func TestTransform_DefaultContext(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Context:  nil, // No context provided
@@ -279,7 +283,8 @@ func TestTransform_CustomContext(t *testing.T) {
 				Version: "ai.api-platform.wso2.com/v1",
 				Kind:    "llm/provider",
 				Spec: api.LLMProviderConfigData{
-					Name:     "test",
+
+					DisplayName: "test",
 					Version:  "v1.0",
 					Template: "openai",
 					Context:  stringPtr(tt.context),
@@ -316,7 +321,8 @@ func TestTransform_NoVhost(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Vhost:    nil,
@@ -347,7 +353,8 @@ func TestTransform_WithVhost(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Vhost:    stringPtr("api.mycompany.com"),
@@ -384,7 +391,8 @@ func TestTransform_NoAuth(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -418,7 +426,8 @@ func TestTransform_ApiKeyAuth(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -468,7 +477,8 @@ func TestTransform_UnsupportedAuthType(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -507,7 +517,8 @@ func TestTransform_AllowAll_NoExceptions(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -548,7 +559,8 @@ func TestTransform_AllowAll_WithSingleException(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -623,7 +635,8 @@ func TestTransform_AllowAll_WithMultipleExceptions(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -683,7 +696,8 @@ func TestTransform_DenyAll_NoExceptions(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -722,7 +736,8 @@ func TestTransform_DenyAll_WithSingleException(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -776,7 +791,8 @@ func TestTransform_DenyAll_WithMultipleExceptions(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -821,7 +837,8 @@ func TestTransform_InvalidAccessControlMode(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -874,7 +891,8 @@ func TestTransform_WithSinglePolicy(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -959,7 +977,8 @@ func TestTransform_WithMultiplePoliciesSameRoute(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -1044,7 +1063,8 @@ func TestTransform_PolicyOnDifferentRoutes(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -1114,7 +1134,8 @@ func TestTransform_PolicyOnWildcardMethod(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -1182,7 +1203,8 @@ func TestTransform_PolicyOnNonExistentRoute(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -1232,7 +1254,8 @@ func TestTransform_AuthWithAllowAll(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -1349,7 +1372,8 @@ func TestTransform_EmptyExceptionsArray(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -1394,7 +1418,8 @@ func TestTransform_DuplicateExceptionPaths(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
@@ -1461,7 +1486,8 @@ func TestTransform_AllowAllWithPolicies(t *testing.T) {
 		Version: "ai.api-platform.wso2.com/v1",
 		Kind:    "llm/provider",
 		Spec: api.LLMProviderConfigData{
-			Name:     "test",
+
+			DisplayName: "test",
 			Version:  "v1.0",
 			Template: "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{

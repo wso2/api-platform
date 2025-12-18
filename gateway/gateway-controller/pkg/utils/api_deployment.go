@@ -136,7 +136,6 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	}
 
 	handle := apiConfig.Metadata.Name
-	
 
 	if s.store != nil {
 		if _, err := s.store.GetByNameVersion(apiName, apiVersion); err == nil {
@@ -340,7 +339,7 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 			if storage.IsConflictError(err) {
 				logger.Info("API configuration already exists in database, updating instead",
 					zap.String("api_id", storedCfg.ID),
-					zap.String("name", storedCfg.GetName()),
+					zap.String("displayName", storedCfg.GetDisplayName()),
 					zap.String("version", storedCfg.GetVersion()))
 
 				// Try to update instead
@@ -357,7 +356,7 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 		if storage.IsConflictError(err) {
 			logger.Info("API configuration already exists in memory, updating instead",
 				zap.String("api_id", storedCfg.ID),
-				zap.String("name", storedCfg.GetName()),
+				zap.String("displayName", storedCfg.GetDisplayName()),
 				zap.String("version", storedCfg.GetVersion()))
 
 			// Try to update instead
@@ -377,7 +376,7 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 // updateExistingConfig updates an existing API configuration
 func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConfig, logger *zap.Logger) (bool, error) {
 	// Get existing config
-	existing, err := s.store.GetByNameVersion(newConfig.GetName(), newConfig.GetVersion())
+	existing, err := s.store.GetByNameVersion(newConfig.GetDisplayName(), newConfig.GetVersion())
 	if err != nil {
 		return false, fmt.Errorf("failed to get existing config: %w", err)
 	}
@@ -408,7 +407,7 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 				logger.Error("Failed to rollback DB after memory update failure",
 					zap.Error(rbErr),
 					zap.String("id", original.ID),
-					zap.String("name", original.GetName()),
+					zap.String("displayName", original.GetDisplayName()),
 					zap.String("version", original.GetVersion()))
 			}
 		}

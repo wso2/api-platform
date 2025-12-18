@@ -21,7 +21,7 @@ kind: RestApi
 metadata:
   name: petstore-api-v1.0
 spec:
-  name: PetStore API test
+  displayName: PetStore API test
   version: v1.0
   context: /petstoretest
   upstream:

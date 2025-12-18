@@ -96,21 +96,21 @@ func (v *MCPValidator) validateMCPConfiguration(config *api.MCPProxyConfiguratio
 func (v *MCPValidator) validateSpec(spec *api.MCPProxyConfigData) []ValidationError {
 	var errors []ValidationError
 
-	// Validate name
-	if spec.Name == "" {
+	// Validate displayName
+	if spec.DisplayName == "" {
 		errors = append(errors, ValidationError{
-			Field:   "spec.name",
-			Message: "MCP proxy name is required",
+			Field:   "spec.displayName",
+			Message: "MCP proxy displayName is required",
 		})
-	} else if len(spec.Name) > 100 {
+	} else if len(spec.DisplayName) > 100 {
 		errors = append(errors, ValidationError{
-			Field:   "spec.name",
-			Message: "MCP proxy name must be 1-100 characters",
+			Field:   "spec.displayName",
+			Message: "MCP proxy displayName must be 1-100 characters",
 		})
-	} else if !v.urlFriendlyNameRegex.MatchString(spec.Name) {
+	} else if !v.urlFriendlyNameRegex.MatchString(spec.DisplayName) {
 		errors = append(errors, ValidationError{
-			Field:   "spec.name",
-			Message: "MCP proxy name must be URL-friendly (only letters, numbers, spaces, hyphens, underscores, and dots allowed)",
+			Field:   "spec.displayName",
+			Message: "MCP proxy displayName must be URL-friendly (only letters, numbers, spaces, hyphens, underscores, and dots allowed)",
 		})
 	}
 
