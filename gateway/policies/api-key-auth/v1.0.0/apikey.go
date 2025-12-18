@@ -18,6 +18,7 @@
 package apikey
 
 import (
+	"encoding/json"
 	"fmt"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	"log/slog"
@@ -71,7 +72,8 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 			"keyName", keyName,
 			"ok", ok,
 		)
-		return p.handleAuthFailure(ctx, "missing or invalid 'key' configuration")
+		return p.handleAuthFailure(ctx, 401, "json", "Valid API key required",
+			"missing or invalid 'key' configuration")
 	}
 
 	location, ok := params["in"].(string)
@@ -80,7 +82,8 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 			"location", location,
 			"ok", ok,
 		)
-		return p.handleAuthFailure(ctx, "missing or invalid 'in' configuration")
+		return p.handleAuthFailure(ctx, 401, "json", "Valid API key required",
+			"missing or invalid 'in' configuration")
 	}
 
 	var valuePrefix string
@@ -125,7 +128,8 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 			"location", location,
 			"keyName", keyName,
 		)
-		return p.handleAuthFailure(ctx, "missing API key")
+		return p.handleAuthFailure(ctx, 401, "json", "Valid API key required",
+			"missing API key")
 	}
 
 	// Strip prefix if configured
@@ -141,7 +145,8 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 		// If after stripping prefix, the key is empty, treat as missing
 		if providedKey == "" {
 			slog.Debug("API Key Auth Policy: API key became empty after prefix removal")
-			return p.handleAuthFailure(ctx, "missing API key")
+			return p.handleAuthFailure(ctx, 401, "json", "Valid API key required",
+				"missing API key")
 		}
 	}
 
@@ -157,7 +162,8 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 			"apiOperation", apiOperation,
 			"operationMethod", operationMethod,
 		)
-		return p.handleAuthFailure(ctx, "missing API details for validation")
+		return p.handleAuthFailure(ctx, 401, "json", "Valid API key required",
+			"missing API details for validation")
 	}
 
 	slog.Debug("API Key Auth Policy: Starting validation",
@@ -174,11 +180,13 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 		slog.Debug("API Key Auth Policy: Validation error",
 			"error", err,
 		)
-		return p.handleAuthFailure(ctx, "error validating API key")
+		return p.handleAuthFailure(ctx, 401, "json", "Valid API key required",
+			"error validating API key")
 	}
 	if !isValid {
 		slog.Debug("API Key Auth Policy: Invalid API key")
-		return p.handleAuthFailure(ctx, "invalid API key")
+		return p.handleAuthFailure(ctx, 401, "json", "Valid API key required",
+			"invalid API key")
 	}
 
 	// Authentication successful
@@ -214,8 +222,12 @@ func (p *APIKeyPolicy) OnResponse(_ctx *policy.ResponseContext, _params map[stri
 }
 
 // handleAuthFailure handles authentication failure
-func (p *APIKeyPolicy) handleAuthFailure(ctx *policy.RequestContext, reason string) policy.RequestAction {
+func (p *APIKeyPolicy) handleAuthFailure(ctx *policy.RequestContext, statusCode int, errorFormat, errorMessage,
+	reason string) policy.RequestAction {
 	slog.Debug("API Key Auth Policy: handleAuthFailure called",
+		"statusCode", statusCode,
+		"errorFormat", errorFormat,
+		"errorMessage", errorMessage,
 		"reason", reason,
 		"apiName", ctx.APIName,
 		"apiVersion", ctx.APIVersion,
@@ -227,12 +239,6 @@ func (p *APIKeyPolicy) handleAuthFailure(ctx *policy.RequestContext, reason stri
 	ctx.Metadata[MetadataKeyAuthSuccess] = false
 	ctx.Metadata[MetadataKeyAuthMethod] = "api-key"
 
-	// Default error response configuration
-	statusCode := 401
-	errorFormat := "json"
-	errorMessage := "Valid API key required"
-
-	// Return 401 Unauthorized response
 	headers := map[string]string{
 		"content-type": "application/json",
 	}
@@ -240,10 +246,15 @@ func (p *APIKeyPolicy) handleAuthFailure(ctx *policy.RequestContext, reason stri
 	var body string
 	switch errorFormat {
 	case "plain":
-		body = fmt.Sprintf("%s - %s", errorMessage, reason)
+		body = errorMessage
 		headers["content-type"] = "text/plain"
 	default: // json
-		body = fmt.Sprintf(`{"error": "Unauthorized", "message": "%s - %s"}`, errorMessage, reason)
+		errResponse := map[string]interface{}{
+			"error":   "Unauthorized",
+			"message": errorMessage,
+		}
+		bodyBytes, _ := json.Marshal(errResponse)
+		body = string(bodyBytes)
 	}
 
 	slog.Debug("API Key Auth Policy: Returning immediate response",
