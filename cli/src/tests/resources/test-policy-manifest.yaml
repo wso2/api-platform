@@ -1,0 +1,11 @@
+version: 1.0.0
+versionResolution: patch
+
+policies:
+  - name: rate-limit
+    version: 1.5.0
+    versionResolution: exact
+  
+  - name: jwt-auth
+    version: 1.0.0
+    versionResolution: minor

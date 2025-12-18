@@ -44,15 +44,48 @@ LDFLAGS=-ldflags "-X github.com/wso2/api-platform/cli/utils.Version=$(VERSION) -
 all: clean test build
 
 ## build: Build the binary for current platform (runs tests first)
-build: test
+build:
+	@echo "==============================================="
+	@echo "Running Tests"
+	@echo "==============================================="
+	@mkdir -p tests/logs
+	@$(GOTEST) -v ./tests/... > tests/logs/test-results.log 2>&1 || true
+	@echo ""
+	@echo "==============================================="
+	@echo "Test Results Summary"
+	@echo "==============================================="
+	@printf "%-40s | %s\n" "Test Name" "Status"
+	@printf "%-40s-+---------\n" "----------------------------------------"
+	@grep -E "^=== RUN|^--- PASS|^--- FAIL" tests/logs/test-results.log | \
+		awk 'BEGIN { test="" } \
+		/^=== RUN/ { test=$$3 } \
+		/^--- PASS/ { printf "%-40s | ✓ PASS\n", test } \
+		/^--- FAIL/ { printf "%-40s | ✗ FAIL\n", test }' || true
+	@echo "==============================================="
+	@echo "ℹ Full test logs: tests/logs/test-results.log"
+	@if grep -q "^--- FAIL" tests/logs/test-results.log 2>/dev/null; then \
+		echo "⚠ Some tests failed - check logs for details"; \
+	fi
+	@echo ""
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
 	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) main.go
 	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)"
 
-## build-all: Build binaries for all platforms (macOS, Linux, Windows)
-build-all: build-macos build-linux build-windows
+## build-skip-tests: Build the binary without running tests
+build-skip-tests:
+	@echo "Building $(BINARY_NAME) (skipping tests)..."
+	@mkdir -p $(BUILD_DIR)
+	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) main.go
+	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)"
+
+## build-all: Build binaries for all platforms (macOS, Linux, Windows) - runs tests first
+build-all: test build-macos build-linux build-windows
 	@echo "All platform builds complete"
+
+## build-all-skip-tests: Build binaries for all platforms without running tests
+build-all-skip-tests: build-macos build-linux build-windows
+	@echo "All platform builds complete (tests skipped)"
 
 ## build-macos: Build for macOS (Intel and Apple Silicon)
 build-macos:

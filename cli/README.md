@@ -42,17 +42,64 @@ Quick command reference:
 ```bash
 cd src
 
-# Build for your OS
+# Build for your OS (runs ALL tests first, shows summary table)
+# Tests always run to completion - build continues even if tests fail
 make build
 
+# Build without running tests (faster for development)
+make build-skip-tests
+
 # Build for all platforms (Linux, MacOS, Windows - amd64 & arm64)
+# Runs tests first
 make build-all
 
-# Run tests
+# Build all platforms without running tests
+make build-all-skip-tests
+
+# Run tests only
 make test
 
 # Clean build artifacts
 make clean
+```
+
+**Note:** `make build` and `make build-all` run all tests to completion and display a summary table:
+```
+===============================================
+Test Results Summary
+===============================================
+Test Name                                | Status
+-----------------------------------------+---------
+TestFlagValuesUnique                     | ✓ PASS
+TestGatewayBuildCommand                  | ✓ PASS
+===============================================
+ℹ Full test logs: tests/logs/test-results.log
+```
+
+Detailed logs are always saved to `tests/logs/test-results.log` for debugging.
+
+### Testing
+
+The CLI includes automated tests that can be configured via `tests/test-config.yaml`:
+
+```bash
+# Run all tests
+make test
+
+# Configure tests
+# Edit tests/test-config.yaml to enable/disable specific tests
+# Set 'enabled: false' to skip a test
+
+# Test resources
+# Test manifests and files are located in tests/resources/
+```
+
+**Test Configuration Example:**
+```yaml
+tests:
+  - name: TestGatewayBuildCommand
+    description: Test gateway build command with policy manifest
+    enabled: true  # Set to false to skip this test
 ```
 
 ### Project Structure

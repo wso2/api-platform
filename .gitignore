@@ -106,3 +106,6 @@ bin/
 *.prof
 *.pprof
 *__debug_bin*
+
+# CLI test logs
+cli/src/tests/logs/
