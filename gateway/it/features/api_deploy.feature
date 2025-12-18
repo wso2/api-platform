@@ -27,10 +27,12 @@ Feature: API Deployment and Invocation
   Scenario: Deploy a simple HTTP API and invoke it successfully
     When I deploy this API configuration:
       """
-      version: api-platform.wso2.com/v1
-      kind: http/rest
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: weather-api-v1.0
       spec:
-        name: Weather-API
+        displayName: Weather-API
         version: v1.0
         context: /weather/$version
         upstream:
@@ -40,6 +42,8 @@ Feature: API Deployment and Invocation
           - method: GET
             path: /{country_code}/{city}
           - method: GET
+            path: /alerts/active
+          - method: POST
             path: /alerts/active
       """
     Then the response should be successful

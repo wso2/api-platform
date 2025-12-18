@@ -49,7 +49,7 @@ services:
 
   policy-engine:
     container_name: it-policy-engine
-    image: ghcr.io/wso2/api-platform/policy-engine:0.1.0
+    image: ghcr.io/wso2/api-platform/policy-engine:0.1.0-SNAPSHOT
     command: ["-xds-server", "it-gateway-controller:18001"]
     ports:
       - "9002:9002"   # Admin API
@@ -63,7 +63,7 @@ services:
 
   router:
     container_name: it-router
-    image: ghcr.io/wso2/api-platform/gateway-router:0.1.0
+    image: ghcr.io/wso2/api-platform/gateway-router:0.1.0-SNAPSHOT
     ports:
       - "8080:8080"   # HTTP traffic
       - "8443:8443"   # HTTPS traffic
