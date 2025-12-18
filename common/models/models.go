@@ -13,6 +13,10 @@ type AuthConfig struct {
 
 	// Allow either basic or bearer (if true), require both (if false and both configured)
 	AllowEither bool
+
+	// ResourceRoles holds the mapping of resource -> allowed local roles.
+	// Keys may be either "METHOD /path" (preferred) or just "/path".
+	ResourceRoles map[string][]string `json:"resource_roles"`
 }
 
 type BasicAuth struct {

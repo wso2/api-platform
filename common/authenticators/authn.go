@@ -17,12 +17,13 @@ var (
 func AuthMiddleware(config models.AuthConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Skip authentication for specified paths
-		for _, path := range config.SkipPaths {
-			if strings.HasPrefix(c.Request.URL.Path, path) {
-				c.Next()
-				return
-			}
-		}
+		       for _, path := range config.SkipPaths {
+			       if strings.HasPrefix(c.Request.URL.Path, path) {
+				       c.Set("auth_skipped", true)
+				       c.Next()
+				       return
+			       }
+		       }
 
 		// Initialize authenticators
 		authenticators := []Authenticator{}
@@ -55,7 +56,7 @@ func AuthMiddleware(config models.AuthConfig) gin.HandlerFunc {
 		}
 
 		// Authenticate
-		result, err := selectedAuth.Authenticate(*c)
+			   result, err := selectedAuth.Authenticate(c)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": "authentication failed",
