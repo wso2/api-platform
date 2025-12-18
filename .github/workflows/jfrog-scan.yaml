@@ -15,6 +15,11 @@ jobs:
       - name: Scan Policy Engine
         shell: sh
         run: |
+          docker pull ghcr.io/wso2/api-platform/policy-engine:latest
+          jf docker scan ghcr.io/wso2/api-platform/policy-engine:latest
+      - name: Scan Gateway Controller
+        shell: sh
+        run: |
           docker pull ghcr.io/wso2/api-platform/gateway-controller:latest
           jf docker scan ghcr.io/wso2/api-platform/gateway-controller:latest
       - name: Scan Gateway Router
@@ -32,3 +37,4 @@ jobs:
         run: |
           docker pull ghcr.io/wso2/api-platform/gateway-operator:0.0.1
           jf docker scan ghcr.io/wso2/api-platform/gateway-operator:0.0.1
+    
