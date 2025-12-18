@@ -2,141 +2,78 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
-// Authorization is driven by resource->required scopes (resourceScopes)
-// and role->scopes (roleScopes). The middleware validates that the request
-// either carries scopes (AuthScopesKey) or a role (AuthRolesKey) that maps
-// to scopes which satisfy the resource's required scopes.
+// resourceRoles holds the mapping of resource -> allowed local roles.
+// Keys may be either "METHOD /path" (preferred) or just "/path".
+// Edit this map to define permissions; an undefined resource will be rejected.
+var resourceRoles = map[string][]string{
+	// Controller API resources mapped to default allowed roles.
+	// Most management operations are admin-only by default.
+	"POST /apis":       {"admin"},
+	"GET /apis":        {"admin"},
+	"GET /apis/:id":    {"admin"},
+	"PUT /apis/:id":    {"admin"},
+	"DELETE /apis/:id": {"admin"},
 
-// resourceScopes maps a resource (METHOD path or path) to the required scopes
-// a caller must present (directly as scopes or indirectly via role->scopes).
-var resourceScopes = map[string][]string{
-	// APIs
-	"POST /apis":       {"apis.manage"},
-	"GET /apis":        {"apis.read"},
-	"GET /apis/:id":    {"apis.read"},
-	"PUT /apis/:id":    {"apis.manage"},
-	"DELETE /apis/:id": {"apis.manage"},
+	"GET /certificates":         {"admin"},
+	"POST /certificates":        {"admin"},
+	"DELETE /certificates/:id":  {"admin"},
+	"POST /certificates/reload": {"admin"},
 
-	// Certificates
-	"GET /certificates":         {"certificates.read"},
-	"POST /certificates":        {"certificates.manage"},
-	"DELETE /certificates/:id":  {"certificates.manage"},
-	"POST /certificates/reload": {"certificates.manage"},
+	"GET /policies": {"admin"},
 
-	// Policies
-	"GET /policies": {"policies.read"},
+	"POST /mcp-proxies":       {"admin"},
+	"GET /mcp-proxies":        {"admin"},
+	"GET /mcp-proxies/:id":    {"admin"},
+	"PUT /mcp-proxies/:id":    {"admin"},
+	"DELETE /mcp-proxies/:id": {"admin"},
 
-	// MCP Proxies
-	"POST /mcp-proxies":       {"mcp.manage"},
-	"GET /mcp-proxies":        {"mcp.read"},
-	"GET /mcp-proxies/:id":    {"mcp.read"},
-	"PUT /mcp-proxies/:id":    {"mcp.manage"},
-	"DELETE /mcp-proxies/:id": {"mcp.manage"},
-	// LLM provider templates
-	"POST /llm-provider-templates":         {"llm.templates.manage"},
-	"GET /llm-provider-templates":          {"llm.templates.read"},
-	"GET /llm-provider-templates/:name":    {"llm.templates.read"},
-	"PUT /llm-provider-templates/:name":    {"llm.templates.manage"},
-	"DELETE /llm-provider-templates/:name": {"llm.templates.manage"},
+	"POST /llm-provider-templates":         {"admin"},
+	"GET /llm-provider-templates":          {"admin"},
+	"GET /llm-provider-templates/:name":    {"admin"},
+	"PUT /llm-provider-templates/:name":    {"admin"},
+	"DELETE /llm-provider-templates/:name": {"admin"},
 
-	// LLM providers
-	"POST /llm-providers":                  {"llm.providers.manage"},
-	"GET /llm-providers":                   {"llm.providers.read"},
-	"GET /llm-providers/:name/:version":    {"llm.providers.read"},
-	"PUT /llm-providers/:name/:version":    {"llm.providers.manage"},
-	"DELETE /llm-providers/:name/:version": {"llm.providers.manage"},
+	"POST /llm-providers":                  {"admin"},
+	"GET /llm-providers":                   {"admin"},
+	"GET /llm-providers/:name/:version":    {"admin"},
+	"PUT /llm-providers/:name/:version":    {"admin"},
+	"DELETE /llm-providers/:name/:version": {"admin"},
 
-	// Config dump
-	"GET /config_dump": {"system.config_dump"},
+	"GET /config_dump": {"admin"},
 }
 
-// roleScopes defines which scopes each local role grants. By default admin
-// is granted all controller management scopes. Add or adjust scopes as needed
-// to grant finer-grained permissions to developer/consumer roles.
-var roleScopes = map[string][]string{
-	"admin": {
-		// APIs
-		"apis.manage", "apis.read",
-		// Certificates
-		"certificates.manage", "certificates.read",
-		// Policies
-		"policies.read",
-		// MCP
-		"mcp.manage", "mcp.read",
-		// LLM provider templates
-		"llm.templates.manage", "llm.templates.read",
-		// LLM providers
-		"llm.providers.manage", "llm.providers.read",
-		// Config
-		"system.config_dump",
-	},
-	// Developer: limited management for APIs and read access to related resources.
-	"developer": {
-		"apis.manage", "apis.read",
-		"mcp.read", "mcp.manage",
-		"llm.templates.read", "llm.providers.read",
-		"policies.read",
-	},
-	// Consumer: no default scopes assigned; populate when needed.
-	"consumer": {},
-}
-
-// AuthorizationMiddleware enforces resource->required-scopes mapping and
-// role->scopes expansion stored in this package.
+// AuthorizationMiddleware enforces resource->roles mapping stored in this package.
 func AuthorizationMiddleware(logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// If upstream auth marked this request to skip, honor it
-		if v, ok := c.Get(AuthSkipKey); ok {
-			if skip, ok2 := v.(bool); ok2 && skip {
-				c.Next()
-				return
-			}
+		// Allow unauthenticated health endpoint
+		if strings.HasPrefix(c.Request.URL.Path, "/health") {
+			c.Next()
+			return
 		}
 
-		// If no resource->scopes mapping configured, reject all requests to be safe
-		if resourceScopes == nil || len(resourceScopes) == 0 {
-			logger.Debug("authorization: no resourceScopes configured; rejecting request", zap.String("path", c.Request.URL.Path), zap.String("method", c.Request.Method))
+		// If no mapping configured, reject all requests to be safe
+		if resourceRoles == nil || len(resourceRoles) == 0 {
+			logger.Debug("authorization: no resourceRoles configured; rejecting request", zap.String("path", c.Request.URL.Path), zap.String("method", c.Request.Method))
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
 
-		// Retrieve either explicit scopes or roles from context.
-		// If scopes are present they will be validated directly. Otherwise
-		// roles are expanded into scopes via roleScopes.
-		var providedScopes []string
-		if v, ok := c.Get(AuthScopesKey); ok {
-			if ps, ok2 := v.([]string); ok2 {
-				providedScopes = ps
+		// Retrieve user roles from context (set by auth middleware)
+		var userRoles []string
+		if v, ok := c.Get(AuthRolesKey); ok {
+			if ur, ok2 := v.([]string); ok2 {
+				userRoles = ur
 			}
 		}
 
-		// If no scopes provided, try roles -> scopes expansion
-		if len(providedScopes) == 0 {
-			if v, ok := c.Get(AuthRolesKey); ok {
-				if ur, ok2 := v.([]string); ok2 {
-					// gather scopes from each role
-					scopeSet := make(map[string]struct{})
-					for _, r := range ur {
-						if rs, ok := roleScopes[r]; ok {
-							for _, s := range rs {
-								scopeSet[s] = struct{}{}
-							}
-						}
-					}
-					for s := range scopeSet {
-						providedScopes = append(providedScopes, s)
-					}
-				}
-			}
-		}
-
-		if len(providedScopes) == 0 {
-			logger.Debug("authorization: no scopes or roles found in context; rejecting request", zap.String("path", c.Request.URL.Path))
+		if len(userRoles) == 0 {
+			logger.Debug("authorization: no user roles found in context; rejecting request", zap.String("path", c.Request.URL.Path))
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
@@ -151,33 +88,34 @@ func AuthorizationMiddleware(logger *zap.Logger) gin.HandlerFunc {
 		// Try METHOD + path first
 		methodKey := c.Request.Method + " " + resourcePath
 
-		// Determine required scopes for resource
-		requiredScopes, found := resourceScopes[methodKey]
+		allowed, found := resourceRoles[methodKey]
 		if !found {
-			requiredScopes, found = resourceScopes[resourcePath]
+			// Try path-only key
+			allowed, found = resourceRoles[resourcePath]
 		}
 
 		if !found {
-			logger.Debug("authorization: resource not defined in resourceScopes", zap.String("resource", resourcePath), zap.String("method", c.Request.Method))
+			// Resource not defined -> reject
+			logger.Debug("authorization: resource not defined in resourceRoles", zap.String("resource", resourcePath), zap.String("method", c.Request.Method))
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
 
-		// Validate that all required scopes are present in providedScopes
-		providedSet := make(map[string]struct{}, len(providedScopes))
-		for _, s := range providedScopes {
-			providedSet[s] = struct{}{}
+		// Check for role intersection
+		allowedSet := make(map[string]struct{}, len(allowed))
+		for _, r := range allowed {
+			allowedSet[r] = struct{}{}
 		}
 
-		for _, rs := range requiredScopes {
-			if _, ok := providedSet[rs]; !ok {
-				logger.Debug("authorization: missing required scope for resource", zap.String("required_scope", rs), zap.Strings("provided_scopes", providedScopes))
-				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		for _, ur := range userRoles {
+			if _, ok := allowedSet[ur]; ok {
+				c.Next()
 				return
 			}
 		}
 
-		// All required scopes satisfied
-		c.Next()
+		// No matching role -> forbidden
+		logger.Debug("authorization: user roles do not include allowed roles", zap.Strings("user_roles", userRoles), zap.Strings("allowed_roles", allowed))
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 	}
 }
