@@ -1820,6 +1820,7 @@ components:
       required:
         - version
         - kind
+        - metadata
         - spec
       properties:
         version:

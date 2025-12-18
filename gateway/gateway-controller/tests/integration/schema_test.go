@@ -220,7 +220,7 @@ func TestSchemaInitialization(t *testing.T) {
 		err := rawDB.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='deployments'").Scan(&sql)
 		require.NoError(t, err)
 
-		assert.Contains(t, sql, "UNIQUE(name, version)", "Should have UNIQUE constraint on (name, version)")
+		assert.Contains(t, sql, "UNIQUE(display_name, version)", "Should have UNIQUE constraint on (display_name, version)")
 	})
 
 	// Verify CHECK constraint on status

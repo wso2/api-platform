@@ -18,6 +18,8 @@
 
 package config
 
+import api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+
 // ValidationError represents a field-level validation error
 type ValidationError struct {
 	Field   string `json:"field"`
@@ -29,4 +31,17 @@ type ValidationError struct {
 // Each validator implementation handles different configuration types using type switching
 type Validator interface {
 	Validate(config interface{}) []ValidationError
+}
+
+// ValidateMetadata is a helper function to validate metadata
+// This can be used by validator implementations
+func ValidateMetadata(metadata *api.Metadata) []ValidationError {
+	var errors []ValidationError
+	if metadata == nil || metadata.Name == "" {
+		errors = append(errors, ValidationError{
+			Field:   "metadata.name",
+			Message: "Metadata name is required",
+		})
+	}
+	return errors
 }
