@@ -1,3 +1,20 @@
+/*
+ * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 package authenticators
 
 import (
@@ -116,24 +133,24 @@ func (j *JWTAuthenticator) resolvePermissions(claims jwt.MapClaims) []string {
 	}
 
 	// Try string array
-	if permissionClaimArray, ok := claims[j.config.JWTConfig.ScopeClaim].([]interface{}); ok {
-		permissions := make([]string, 0, len(permissionClaimArray))
+	if permissionClaimArray, ok := claims[j.config.JWTConfig.ScopeClaim].([]any); ok {
+		permissions = make([]string, 0, len(permissionClaimArray))
 		for _, perm := range permissionClaimArray {
 			if permStr, ok := perm.(string); ok {
 				permissions = append(permissions, permStr)
 			}
 		}
 	}
-	j.logger.Sugar().Infof("permissions %v", permissions)
-	j.logger.Sugar().Infof("permission mapping %v", j.config.JWTConfig.PermissionMapping)
+	j.logger.Sugar().Debugf("permissions %v", permissions)
+	j.logger.Sugar().Debugf("permission mapping %v", j.config.JWTConfig.PermissionMapping)
 	if j.config.JWTConfig.PermissionMapping != nil {
 		mappedPermissions := []string{}
 		for _, perm := range permissions {
 			if mappedPerm, ok := (*j.config.JWTConfig.PermissionMapping)[perm]; ok {
-				j.logger.Sugar().Infof("mapped perm %v", mappedPerm)
+				j.logger.Sugar().Debugf("mapped perm %v", mappedPerm)
 				mappedPermissions = append(mappedPermissions, mappedPerm...)
 			} else {
-				j.logger.Sugar().Infof("unmapped perm %v", perm)
+				j.logger.Sugar().Debugf("unmapped perm %v", perm)
 				mappedPermissions = append(mappedPermissions, perm)
 			}
 		}
@@ -155,6 +172,6 @@ func (j *JWTAuthenticator) CanHandle(ctx *gin.Context) bool {
 	}
 	// Determine auth type from header
 	canHandle := strings.HasPrefix(authHeader, "Bearer ")
-	j.logger.Sugar().Infof("can handle token %v", canHandle)
+	j.logger.Sugar().Debugf("can handle token %v", canHandle)
 	return canHandle
 }
