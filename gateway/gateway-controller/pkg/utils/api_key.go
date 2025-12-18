@@ -65,6 +65,9 @@ func NewAPIKeyService(store *storage.ConfigStore, db storage.Storage) *APIKeySer
 
 const APIKeyPrefix = "apip_"
 
+// Default number of days an API key is valid when no expiration is provided
+const DefaultAPIKeyExpiryDays = 90
+
 // GenerateAPIKey handles the complete API key generation process
 func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGenerationResult, error) {
 	logger := params.Logger
@@ -185,6 +188,9 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 // generateAPIKeyFromRequest creates a new API key based on the APIKeyGenerationRequest
 func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.APIKeyGenerationRequest, user string,
 	config *models.StoredConfig) (*models.APIKey, error) {
+	// Prevent unused parameter build error - config may be used in future enhancements
+	_ = config
+
 	// Generate UUID for the record ID
 	id := uuid.New().String()
 
@@ -234,6 +240,10 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 			return nil, fmt.Errorf("unsupported expiration unit: %s", request.ExpiresIn.Unit)
 		}
 		expiry := now.Add(duration)
+		expiresAt = &expiry
+	} else {
+		// No ExpiresAt or ExpiresIn provided: default to 90 days
+		expiry := now.Add(DefaultAPIKeyExpiryDays * 24 * time.Hour)
 		expiresAt = &expiry
 	}
 
@@ -288,6 +298,15 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey) api.APIKeyGenera
 			Message: "API key is nil",
 		}
 	}
+
+	// Map ExpiresAt (which is a *time.Time in models) to the generated API type (time.Time)
+	var expiresAt time.Time
+	if key.ExpiresAt != nil {
+		expiresAt = *key.ExpiresAt
+	} else {
+		expiresAt = time.Time{}
+	}
+
 	return api.APIKeyGenerationResponse{
 		Status:  "success",
 		Message: "API key generated successfully",
@@ -299,7 +318,7 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey) api.APIKeyGenera
 			Status:     api.APIKeyStatus(key.Status),
 			CreatedAt:  key.CreatedAt,
 			CreatedBy:  key.CreatedBy,
-			ExpiresAt:  key.ExpiresAt,
+			ExpiresAt:  expiresAt,
 		},
 	}
 }

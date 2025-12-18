@@ -2083,8 +2083,8 @@ components:
         expires_at:
           type: string
           format: date-time
-          description: Expiration timestamp (null if no expiration)
-          example: null
+          description: Expiration timestamp
+          example: "2026-12-08T10:30:00Z"
     APIKeyGenerationResponse:
       type: object
       properties:
@@ -2139,9 +2139,8 @@ components:
         expires_at:
           type: string
           format: date-time
-          nullable: true
-          description: Expiration timestamp (null if no expiration)
-          example: null
+          description: Expiration timestamp of the API key. Default is 90 days from creation if not specified.
+          example: "2025-12-08T10:30:00Z"
       required:
         - name
         - api_key
