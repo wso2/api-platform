@@ -29,6 +29,10 @@ import (
 type MCPTransformer struct {
 }
 
+func NewMCPTransformer() *MCPTransformer {
+	return &MCPTransformer{}
+}
+
 // protocolVersionComparator compares two MCP protocol version strings in YYYY-MM-DD format
 // Returns true if current is equal to or newer than base
 func protocolVersionComparator(base, current string) bool {
@@ -83,25 +87,50 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 	output.ApiVersion = api.GatewayApiPlatformWso2Comv1alpha1
 	output.Kind = api.RestApi
 
-	if len(mcpConfig.Spec.Upstreams) == 0 {
-		return nil, fmt.Errorf("at least one upstream is required")
-	}
-
 	// Build APIConfigData and set it into the APIConfiguration_Spec union
 	apiData := api.APIConfigData{
 		DisplayName: mcpConfig.Spec.DisplayName,
 		Version:     mcpConfig.Spec.Version,
-		Context:     mcpConfig.Spec.Context,
-		Upstream: struct {
-			Main    api.Upstream  `json:"main" yaml:"main"`
-			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
-		}{
-			Main: api.Upstream{
-				Url: &mcpConfig.Spec.Upstreams[0].Url,
-			},
-		},
-		Operations: addMCPSpecificOperations(mcpConfig),
+		Operations:  addMCPSpecificOperations(mcpConfig),
 	}
+	if mcpConfig.Spec.Context != nil {
+		apiData.Context = *mcpConfig.Spec.Context
+	}
+
+	apiData.Upstream.Main = api.Upstream{
+		Url: mcpConfig.Spec.Upstream.Url,
+	}
+
+	var policies []api.Policy
+	// Set upstream auth if present
+	upstream := mcpConfig.Spec.Upstream
+	if upstream.Auth != nil {
+		params, err := GetParamsOfPolicy(constants.MODIFY_HEADERS_POLICY_PARAMS, *upstream.Auth.Header, *upstream.Auth.Value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build upstream auth params: %w", err)
+		}
+		pol := api.Policy{
+			Name:    constants.MODIFY_HEADERS_POLICY_NAME,
+			Version: constants.MODIFY_HEADERS_POLICY_VERSION, Params: &params}
+		policies = append(policies, pol)
+	}
+
+	// Set vhost if present
+	if mcpConfig.Spec.Vhost != nil {
+		v := struct {
+			Main    string  `json:"main" yaml:"main"`
+			Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+		}{
+			Main: *mcpConfig.Spec.Vhost,
+		}
+		apiData.Vhosts = &v
+	}
+
+	// Process policies
+	if mcpConfig.Spec.Policies != nil && len(*mcpConfig.Spec.Policies) > 0 {
+		policies = append(policies, *mcpConfig.Spec.Policies...)
+	}
+	apiData.Policies = &policies
 
 	var specUnion api.APIConfiguration_Spec
 	if err := specUnion.FromAPIConfigData(apiData); err != nil {
@@ -109,15 +138,9 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 	}
 	output.Spec = specUnion
 
-	// Copy metadata from MCP config to API config
-	// Ensure metadata is always set to prevent nil pointer dereference in downstream code
-	if mcpConfig.Metadata != nil {
-		output.Metadata = api.Metadata{
-			Name: mcpConfig.Metadata.Name,
-		}
-	} else {
-		// Create empty metadata if not present to prevent nil pointer issues
-		output.Metadata = api.Metadata{}
+	output.Metadata = api.Metadata{
+		Name: mcpConfig.Metadata.Name,
 	}
+
 	return output, nil
 }

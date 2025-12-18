@@ -322,6 +322,7 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 		Method:        method,
 		Authority:     authority,
 		Scheme:        scheme,
+		Vhost:         routeMetadata.Vhost,
 	}
 
 	// Set request ID in execution context from SharedContext

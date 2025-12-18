@@ -128,7 +128,7 @@ func TestSchemaInitialization(t *testing.T) {
 		// Verify expected columns exist
 		expectedColumns := map[string]string{
 			"id":               "TEXT",
-			"name":             "TEXT",
+			"display_name":     "TEXT",
 			"version":          "TEXT",
 			"context":          "TEXT",
 			"kind":             "TEXT",
@@ -220,7 +220,7 @@ func TestSchemaInitialization(t *testing.T) {
 		err := rawDB.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='deployments'").Scan(&sql)
 		require.NoError(t, err)
 
-		assert.Contains(t, sql, "UNIQUE(name, version)", "Should have UNIQUE constraint on (name, version)")
+		assert.Contains(t, sql, "UNIQUE(display_name, version)", "Should have UNIQUE constraint on (display_name, version)")
 	})
 
 	// Verify CHECK constraint on status

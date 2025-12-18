@@ -25,47 +25,27 @@ spec:
   version: v1.0
   context: /everything
   specVersion: "2025-06-18"
-  upstreams:
-    - url: http://everything:3001
-  policies:
-    - name: backendSecurity # Needed when the upstream has security
-      params:
-        type: apiKey
-        header: api-key
-        token: 12345678
+  # vhost: "mcp1.api-platform.com"
+  upstream:
+    url: http://everything:3001
+  # policies:
+  #   - name: McpAuthentication
+  #     version: v0.1.0
+  #     params:
+  #       issuers:
+  #         - PrimaryIdp
   tools:
     - name: add
       title: Add two numbers
       description: This tool adds two numbers provided in the input.
       inputSchema: # JSON string or ref
       outputSchema: # JSON string or ref
-      policies:
-        - name: schemaValidation
-          params:
-            schemaType: JSON-RPC # Could be JSON-RPC or MCP
     - name: echo
       title: Echo input
       description: This tool will echo back the input
       inputSchema: # JSON string
       outputSchema: # JSON string
-      policies:
-        - name: jwt
-          params:
-            header: Authorization
-        - name: rateLimit
-          params:
-            limit: 100
-            unit: min
   resources:
     - name: test://static/resource/{even_number}
-      policies:
-        - name: rateLimit
-          params:
-            limit: 10
-            unit: min
   prompts:
     - name: simple_prompt
-      policies:
-        - name: jwt
-          params:
-            header: Authorization

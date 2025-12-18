@@ -110,4 +110,11 @@ const (
 		"headers:\n" +
 		"  - name: Content-Type\n" +
 		"    value: application/json\n"
+
+	MODIFY_HEADERS_POLICY_NAME    = "ModifyHeaders"
+	MODIFY_HEADERS_POLICY_VERSION = "v1.0.0"
+	MODIFY_HEADERS_POLICY_PARAMS  = "requestHeaders:\n" +
+		"  - action: SET\n" +
+		"    name: %s\n" +
+		"    value: %s\n"
 )
