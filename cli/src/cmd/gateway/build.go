@@ -69,8 +69,9 @@ func init() {
 	utils.AddStringFlag(buildCmd, utils.FlagDockerRegistry, &buildDockerRegistry, "", "Docker registry name (required)")
 	utils.AddStringFlag(buildCmd, utils.FlagImageTag, &buildImageTag, "", "Image tag for the gateway build (required)")
 
+	utils.AddStringFlag(buildCmd, utils.FlagGatewayBuilder, &buildGatewayBuilder, "", "Gateway builder name (required)")
+
 	// Optional flags
-	utils.AddStringFlag(buildCmd, utils.FlagGatewayBuilder, &buildGatewayBuilder, "", "Gateway builder name (optional)")
 	utils.AddStringFlag(buildCmd, utils.FlagGatewayControllerImage, &buildGatewayControllerImage, "", "Gateway controller base image (optional)")
 	utils.AddStringFlag(buildCmd, utils.FlagRouterBaseImage, &buildRouterBaseImage, "", "Router base image (optional)")
 
@@ -78,6 +79,7 @@ func init() {
 	buildCmd.MarkFlagRequired(utils.FlagFile)
 	buildCmd.MarkFlagRequired(utils.FlagDockerRegistry)
 	buildCmd.MarkFlagRequired(utils.FlagImageTag)
+	buildCmd.MarkFlagRequired(utils.FlagGatewayBuilder)
 }
 
 func runBuildCommand() error {
@@ -164,12 +166,23 @@ func stepValidateManifest() (*gateway.PolicyManifest, error) {
 // stepPrepareBuildConfig validates and prepares the build configuration
 func stepPrepareBuildConfig() error {
 	fmt.Println("[2/5] Preparing Build Configuration")
+
+	// Validate required flags
+	if buildDockerRegistry == "" {
+		return fmt.Errorf("docker-registry is required")
+	}
+	if buildImageTag == "" {
+		return fmt.Errorf("image-tag is required")
+	}
+	if buildGatewayBuilder == "" {
+		return fmt.Errorf("gateway-builder is required")
+	}
+
+	// Display configuration
 	fmt.Printf("    Docker Registry: %s\n", buildDockerRegistry)
 	fmt.Printf("    Image Tag: %s\n", buildImageTag)
+	fmt.Printf("    Gateway Builder: %s\n", buildGatewayBuilder)
 
-	if buildGatewayBuilder != "" {
-		fmt.Printf("    Gateway Builder: %s\n", buildGatewayBuilder)
-	}
 	if buildGatewayControllerImage != "" {
 		fmt.Printf("    Controller Image: %s\n", buildGatewayControllerImage)
 	}
