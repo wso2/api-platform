@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	jwtauth "github.com/policy-engine/policies/jwtauthentication"
@@ -203,28 +204,43 @@ func (p *McpAuthPolicy) handleAuthFailure(ctx *policy.RequestContext, statusCode
 // generateResourcePath generates the full resource URL for the given resource path
 func generateResourcePath(ctx *policy.RequestContext, params map[string]any, resource string) string {
 	slog.Debug("MCP Auth Policy: Generating resource path for", "resource", resource)
+
+	scheme := ctx.Scheme
+	_, port := parseAuthority(ctx.Authority)
+
+	// Determine the host - prefer vhost, fallback to gatewayHost param
 	var host string
-	httpScheme := "http"
-	port := 8080
-	vhost := ""
-	if vhost != "" {
-		slog.Debug("MCP Auth Policy: Using VHost from context for resource path", "vhost", vhost)
-		host = vhost
+	if ctx.Vhost != "" && !strings.Contains(ctx.Vhost, "*") {
+		host = ctx.Vhost
+		slog.Debug("MCP Auth Policy: Using VHost with port from context", "vhost", host)
 	} else {
-		slog.Debug("MCP Auth Policy: VHost not found in context, using the gateway host from params")
-		gwHost := getStringParam(params, "gatewayHost", "localhost")
-		if gwHost != "" {
-			host = gwHost
+		host = getStringParam(params, "gatewayHost", "localhost")
+		slog.Debug("MCP Auth Policy: VHost not found, using gateway host from params", "host", host)
+	}
+
+	// Determine port if not present in authority
+	if port == -1 {
+		slog.Debug("MCP Auth Policy: No port specified, using default port based on scheme")
+		if scheme == "https" {
+			port = 8443
+		} else {
+			port = 8080
 		}
 	}
-	if port != 80 && port != 443 {
-		host = fmt.Sprintf("%s:%d", host, port)
+
+	// Build host:port, omitting standard ports
+	hostWithPort := host
+	if !isStandardPort(scheme, port) {
+		slog.Debug("MCP Auth Policy: Adding non-standard port to host", "port", port)
+		hostWithPort = fmt.Sprintf("%s:%d", host, port)
 	}
-	context := ctx.APIContext
-	if context != "" {
-		return fmt.Sprintf("%s://%s%s/%s", httpScheme, host, context, resource)
+
+	// Build the full URL path
+	apiContext := ctx.APIContext
+	if apiContext != "" {
+		return fmt.Sprintf("%s://%s%s/%s", scheme, hostWithPort, apiContext, resource)
 	}
-	return fmt.Sprintf("%s://%s/%s", httpScheme, host, resource)
+	return fmt.Sprintf("%s://%s/%s", scheme, hostWithPort, resource)
 }
 
 // generateWwwAuthenticateHeader generates the WWW-Authenticate header value
@@ -245,6 +261,24 @@ func generateWwwAuthenticateHeader(ctx *policy.RequestContext, params map[string
 		}
 	}
 	return headerValue
+}
+
+// parseAuthority extracts host and port from an authority string (e.g., "example.com:8080")
+func parseAuthority(authority string) (host string, port int) {
+	if authority == "" {
+		return "", 0
+	}
+	hostPort := strings.SplitN(authority, ":", 2)
+	host = hostPort[0]
+	if len(hostPort) > 1 {
+		port, _ = strconv.Atoi(hostPort[1])
+	}
+	return host, port
+}
+
+// isStandardPort returns true if the port is the standard port for the given scheme
+func isStandardPort(scheme string, port int) bool {
+	return (scheme == "http" && port == 80) || (scheme == "https" && port == 443)
 }
 
 func getStringParam(params map[string]interface{}, key, defaultValue string) string {
