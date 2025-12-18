@@ -1,0 +1,25 @@
+# Coverage output
+coverage/*
+!coverage/.gitkeep
+
+# Test reports
+reports/*
+!reports/.gitkeep
+
+# Go build artifacts
+*.exe
+*.test
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
