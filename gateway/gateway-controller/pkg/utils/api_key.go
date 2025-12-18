@@ -74,9 +74,6 @@ func NewAPIKeyService(store *storage.ConfigStore, db storage.Storage) *APIKeySer
 
 const APIKeyPrefix = "apip_"
 
-// Default number of days an API key is valid when no expiration is provided
-const DefaultAPIKeyExpiryDays = 90
-
 // GenerateAPIKey handles the complete API key generation process
 func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGenerationResult, error) {
 	logger := params.Logger
@@ -389,10 +386,6 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 		}
 		expiry := now.Add(duration)
 		expiresAt = &expiry
-	} else {
-		// No ExpiresAt or ExpiresIn provided: default to 90 days
-		expiry := now.Add(DefaultAPIKeyExpiryDays * 24 * time.Hour)
-		expiresAt = &expiry
 	}
 
 	if user == "" {
@@ -447,14 +440,6 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey) api.APIKeyGenera
 		}
 	}
 
-	// Map ExpiresAt (which is a *time.Time in models) to the generated API type (time.Time)
-	var expiresAt time.Time
-	if key.ExpiresAt != nil {
-		expiresAt = *key.ExpiresAt
-	} else {
-		expiresAt = time.Time{}
-	}
-
 	return api.APIKeyGenerationResponse{
 		Status:  "success",
 		Message: "API key generated successfully",
@@ -466,7 +451,7 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey) api.APIKeyGenera
 			Status:     api.APIKeyStatus(key.Status),
 			CreatedAt:  key.CreatedAt,
 			CreatedBy:  key.CreatedBy,
-			ExpiresAt:  expiresAt,
+			ExpiresAt:  key.ExpiresAt,
 		},
 	}
 }

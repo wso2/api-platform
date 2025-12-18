@@ -2186,7 +2186,8 @@ components:
         expires_at:
           type: string
           format: date-time
-          description: Expiration timestamp of the API key. Default is 90 days from creation if not specified.
+          nullable: true
+          description: Expiration timestamp (null if no expiration)
           example: "2025-12-08T10:30:00Z"
       required:
         - name

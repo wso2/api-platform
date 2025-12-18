@@ -365,8 +365,8 @@ type APIKey struct {
 	// CreatedBy Identifier of the user who generated the API key
 	CreatedBy string `json:"created_by" yaml:"created_by"`
 
-	// ExpiresAt Expiration timestamp of the API key. Default is 90 days from creation if not specified.
-	ExpiresAt time.Time `json:"expires_at" yaml:"expires_at"`
+	// ExpiresAt Expiration timestamp (null if no expiration)
+	ExpiresAt *time.Time `json:"expires_at" yaml:"expires_at"`
 
 	// Name Name of the API key
 	Name string `json:"name" yaml:"name"`
