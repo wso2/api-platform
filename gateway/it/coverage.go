@@ -20,6 +20,7 @@ package it
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -255,16 +256,237 @@ func (c *CoverageCollector) rewriteCoveragePaths(inputPath, outputPath string) e
 	return nil
 }
 
+// CoverageReport represents the complete coverage report
+type CoverageReport struct {
+	Timestamp     string            `json:"timestamp"`
+	TotalCoverage float64           `json:"totalCoverage"`
+	TotalPackages int               `json:"totalPackages"`
+	Packages      []PackageCoverage `json:"packages"`
+}
+
+// PackageCoverage represents coverage for a single package
+type PackageCoverage struct {
+	Package    string  `json:"package"`
+	Coverage   float64 `json:"coverage"`
+}
+
 // logCoveragePercentage calculates and logs the coverage percentage
 func (c *CoverageCollector) logCoveragePercentage(coverDir string) error {
+	// Get per-package coverage
 	cmd := exec.Command("go", "tool", "covdata", "percent", "-i="+coverDir)
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("go tool covdata percent failed: %w", err)
 	}
 
-	log.Printf("Coverage summary:\n%s", string(output))
+	// Parse coverage output
+	packages := c.parseCoverageOutput(string(output))
+
+	// Get total coverage from the text coverage file
+	textFile := filepath.Join(c.config.OutputDir, "coverage.txt")
+	totalCoverage := c.getTotalCoverage(textFile)
+
+	// Build coverage report
+	report := CoverageReport{
+		Timestamp:     time.Now().Format(time.RFC3339),
+		TotalCoverage: totalCoverage,
+		TotalPackages: len(packages),
+		Packages:      packages,
+	}
+
+	// Write JSON report
+	jsonPath := filepath.Join(c.config.OutputDir, "coverage-report.json")
+	if err := c.writeCoverageJSON(jsonPath, &report); err != nil {
+		return err
+	}
+
+	// Print summary table from JSON
+	c.printCoverageTable(&report)
+
+	log.Printf("Coverage report saved to: %s", jsonPath)
 	return nil
+}
+
+// writeCoverageJSON writes the coverage report as JSON
+func (c *CoverageCollector) writeCoverageJSON(path string, report *CoverageReport) error {
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal coverage report: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("failed to write coverage report: %w", err)
+	}
+
+	return nil
+}
+
+// getTotalCoverage calculates total coverage from the coverage.txt file
+func (c *CoverageCollector) getTotalCoverage(textFile string) float64 {
+	// Get gateway-controller directory (where go.mod is)
+	controllerDir, err := filepath.Abs("../gateway-controller")
+	if err != nil {
+		return 0
+	}
+
+	absTextFile, err := filepath.Abs(textFile)
+	if err != nil {
+		return 0
+	}
+
+	// Rewrite paths for go tool cover
+	rewrittenFile := filepath.Join(c.config.OutputDir, "coverage_total_temp.txt")
+	if err := c.rewriteCoveragePaths(absTextFile, rewrittenFile); err != nil {
+		return 0
+	}
+	defer os.Remove(rewrittenFile)
+
+	absRewrittenFile, err := filepath.Abs(rewrittenFile)
+	if err != nil {
+		return 0
+	}
+
+	// Run go tool cover -func to get total
+	cmd := exec.Command("go", "tool", "cover", "-func="+absRewrittenFile)
+	cmd.Dir = controllerDir
+	output, err := cmd.Output()
+	if err != nil {
+		return 0
+	}
+
+	// Parse the last line which contains total: XX.X%
+	lines := strings.Split(string(output), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(line, "total:") {
+			// Extract percentage from "total:			XX.X%"
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				pctStr := strings.TrimSuffix(parts[len(parts)-1], "%")
+				var pct float64
+				fmt.Sscanf(pctStr, "%f", &pct)
+				return pct
+			}
+		}
+	}
+	return 0
+}
+
+// printCoverageTable prints a formatted coverage summary table to stdout
+func (c *CoverageCollector) printCoverageTable(report *CoverageReport) {
+	if len(report.Packages) == 0 {
+		fmt.Println("No coverage data available")
+		return
+	}
+
+	fmt.Println()
+	fmt.Println("╔════════════════════════════════════════════════════════════════════════════╗")
+	fmt.Println("║                        CODE COVERAGE SUMMARY                              ║")
+	fmt.Println("╠════════════════════════════════════════════════════════════════════════════╣")
+
+	// Package coverage table
+	fmt.Println("║  PACKAGES                                                                  ║")
+	fmt.Println("╠────────────────────────────────────────────────────────────────┬───────────╣")
+	fmt.Println("║  Package                                                       │ Coverage  ║")
+	fmt.Println("╠────────────────────────────────────────────────────────────────┼───────────╣")
+
+	for _, p := range report.Packages {
+		pkg := truncateCoverageString(p.Package, 62)
+		fmt.Printf("║  %-62s │ %7.1f%%  ║\n", pkg, p.Coverage)
+	}
+
+	fmt.Println("╠════════════════════════════════════════════════════════════════════════════╣")
+
+	// Summary
+	fmt.Println("║  SUMMARY                                                                   ║")
+	fmt.Println("╠───────────────────────────────────┬────────────────────────────────────────╣")
+	fmt.Println("║  Metric                           │ Value                                  ║")
+	fmt.Println("╠───────────────────────────────────┼────────────────────────────────────────╣")
+	fmt.Printf("║  Total Packages                   │ %38d  ║\n", report.TotalPackages)
+	fmt.Printf("║  Total Coverage                   │ %36.1f%%  ║\n", report.TotalCoverage)
+	fmt.Println("╚════════════════════════════════════════════════════════════════════════════╝")
+	fmt.Println()
+}
+
+// parseCoverageOutput parses the output from go tool covdata percent
+func (c *CoverageCollector) parseCoverageOutput(output string) []PackageCoverage {
+	var packages []PackageCoverage
+	lines := strings.Split(output, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Format: "package/path\t\tcoverage: XX.X% of statements"
+		// Find the coverage percentage using regex-like parsing
+		coverageIdx := strings.Index(line, "coverage:")
+		if coverageIdx == -1 {
+			// No coverage info (e.g., package with no statements)
+			continue
+		}
+
+		// Extract package name (everything before "coverage:")
+		// Handle case where multiple packages are on same line (pkg without statements + pkg with statements)
+		pkgPart := strings.TrimSpace(line[:coverageIdx])
+
+		// Find the last package path (in case multiple are concatenated)
+		// Look for the last occurrence of "github.com/" or similar package prefix
+		pkg := pkgPart
+		if lastIdx := strings.LastIndex(pkgPart, "github.com/"); lastIdx > 0 {
+			pkg = strings.TrimSpace(pkgPart[lastIdx:])
+		}
+
+		// Extract percentage from "coverage: XX.X% of statements"
+		coverPart := line[coverageIdx:]
+		coverPart = strings.TrimPrefix(coverPart, "coverage:")
+		coverPart = strings.TrimSpace(coverPart)
+		coverPart = strings.TrimSuffix(coverPart, "% of statements")
+		coverPart = strings.TrimSuffix(coverPart, " of statements")
+		coverPart = strings.TrimSuffix(coverPart, "%")
+		coverPart = strings.TrimSpace(coverPart)
+
+		var pct float64
+		fmt.Sscanf(coverPart, "%f", &pct)
+
+		// Shorten package name by removing common prefix
+		pkg = c.shortenPackageName(pkg)
+
+		packages = append(packages, PackageCoverage{
+			Package:  pkg,
+			Coverage: pct,
+		})
+	}
+
+	return packages
+}
+
+// shortenPackageName removes common prefixes to make package names more readable
+func (c *CoverageCollector) shortenPackageName(pkg string) string {
+	// Remove common prefixes
+	prefixes := []string{
+		"github.com/wso2/api-platform/gateway/gateway-controller/",
+		"github.com/wso2/api-platform/gateway/",
+		"github.com/wso2/api-platform/",
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(pkg, prefix) {
+			return strings.TrimPrefix(pkg, prefix)
+		}
+	}
+	return pkg
+}
+
+// truncateCoverageString truncates a string to maxLen and adds ellipsis if needed
+func truncateCoverageString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-3] + "..."
 }
 
 // Cleanup removes temporary coverage files
