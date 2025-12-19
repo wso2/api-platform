@@ -264,3 +264,55 @@ policy_engine:
     format: json
 
 policy_configurations: {}
+
+analytics:
+  enabled: true
+  # Publishers specific configuration
+  publishers:
+    - type: moesif
+      enabled: true
+      settings: 
+        # Moesif application ID
+        application_id: <MOESIF_APPLICATION_ID>
+        # Publish interval in seconds
+        publish_interval: 5
+        # Max number of events held in memory before dropping
+        event_queue_size: 10000
+        # Max number of events in a batch
+        batch_size: 50
+        # Time interval in seconds to wake up the timer
+        timer_wakeup_seconds: 3
+
+  # gRPC Access Log Service configuration for router(Envoy)
+  grpc_access_logs:
+    # ALS Server hostname
+    host: policy-engine
+    
+    # Log name identifier
+    log_name: "envoy_access_log"
+    
+    # Buffer settings
+    buffer_flush_interval: 1000000000 # nanoseconds
+    buffer_size_bytes: 16384
+    grpc_request_timeout: 20000000000 # nanoseconds
+
+  # ALS server related configuration
+  access_logs_service:
+    # ALS Server gRPC  port
+    als_server_port: 18090
+
+    # shutdown timeout for the ALS server
+    shutdown_timeout: 600 #seconds
+
+    # public and private key path for the ALS server
+    public_key_path: ""
+    private_key_path: "" 
+
+    # whether to use plain text for the ALS server
+    als_plain_text: true
+
+    # max message size for the ALS server
+    max_message_size: 1000000000
+
+    # max header limit for the ALS server
+    max_header_limit: 8192

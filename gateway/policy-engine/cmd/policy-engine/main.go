@@ -20,6 +20,7 @@ import (
 	"github.com/policy-engine/policy-engine/internal/kernel"
 	"github.com/policy-engine/policy-engine/internal/pkg/cel"
 	"github.com/policy-engine/policy-engine/internal/registry"
+	"github.com/policy-engine/policy-engine/internal/utils"
 	"github.com/policy-engine/policy-engine/internal/xdsclient"
 )
 
@@ -138,6 +139,15 @@ func main() {
 		}()
 	}
 
+	// Start access log service server if enabled
+	var alsServer *grpc.Server
+	slog.DebugContext(ctx, "Policy engine ALS server config", "config", cfg.Analytics.AccessLogsServiceCfg)
+	if cfg.Analytics.Enabled {
+		// Start the access log service server
+		slog.Info("Starting the ALS gRPC server...")
+		alsServer = utils.StartAccessLogServiceServer(cfg)
+	}
+
 	// Setup graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -171,6 +181,11 @@ func main() {
 		slog.InfoContext(ctx, "Stopping xDS client")
 		xdsClient.Stop()
 		xdsClient.Wait()
+	}
+
+	if alsServer != nil {
+		slog.InfoContext(ctx, "Stopping ALS gRPC server")
+		alsServer.GracefulStop()
 	}
 
 	grpcServer.GracefulStop()
