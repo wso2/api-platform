@@ -28,7 +28,7 @@ jobs:
         run: |
           export RUNTIME_IMAGE=localhost:5000/policy-engine
           export RUNTIME_TAG=$RUNTIME_IMAGE:trivy
-          make -C gateway/policy-engine build-and-push-multiarch \
+          make -C gateway/policy-engine build-and-push-trivy \
           RUNTIME_IMAGE=localhost:5000/policy-engine \
           RUNTIME_TAG=localhost:5000/policy-engine:trivy
 
