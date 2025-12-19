@@ -35,7 +35,7 @@ var (
 func AuthorizationMiddleware(config models.AuthConfig, logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Skip authorization if authentication was skipped
-		if v, ok := c.Get(constants.AuthSkippedKey); ok {
+		if v, ok := c.Get(constants.AuthzSkipKey); ok {
 			if skipped, ok2 := v.(bool); ok2 && skipped {
 				c.Next()
 				return

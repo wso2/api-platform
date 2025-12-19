@@ -205,24 +205,15 @@ gateway_controller:
         password_hashed: false
         roles: ["admin"]
     # IDP (OIDC/JWKS) configuration for validating JWTs (optional)
+    # When enabled, JWT tokens will be validated for authentication.
+    # If roles_claim and role_mapping are not provided, authorization is bypassed and all authenticated calls are allowed.
+    # If roles_claim and role_mapping are provided, authorization happens using the specified claim and mapping.
     idp:
       enabled: false
       # JWKS endpoint used to fetch public keys for JWT validation
       jwks_url: ""
       # Expected issuer value in the JWT `iss` claim
       issuer: ""
-      # Claim path which contains roles (e.g. "roles", "realm_access.roles", etc.)
-      roles_claim: "scope"
-      # Map idp role to local roles. Example maps idp->local-role(s):
-      # role_mapping:
-      #   engineer:
-      #     - "developer"
-      #     - "consumer"
-      #   admin:
-      #     - "developer"
-      #     - "admin"
-      #     - "consumer"
-      role_mapping: 
 
   # Logging configuration
   logging:

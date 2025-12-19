@@ -38,7 +38,7 @@ func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFu
 		// Skip authentication for specified paths
 		for _, path := range config.SkipPaths {
 			if strings.HasPrefix(c.Request.URL.Path, path) {
-				c.Set(constants.AuthSkippedKey, true)
+				c.Set(constants.AuthzSkipKey, true)
 				c.Next()
 				return
 			}

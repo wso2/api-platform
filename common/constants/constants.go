@@ -7,8 +7,8 @@ const (
 	BearerPrefix = "Bearer "
 	// BasicPrefix is the prefix for Basic auth in the Authorization header
 	BasicPrefix = "Basic "
-	// AuthSkippedKey is the context key to indicate if authentication was skipped
-	AuthSkippedKey = "auth_skipped"
+	// AuthzSkipKey is the context key to indicate to skip
+	AuthzSkipKey = "skip_authz"
 	// AuthenticatedKey is the context key to indicate if the user is authenticated
 	AuthenticatedKey = "authenticated"
 	// UserIDKey is the context key for the authenticated user's ID

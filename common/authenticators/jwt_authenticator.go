@@ -137,7 +137,17 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 			return nil, errors.New("invalid audience")
 		}
 	}
-	permissions := j.resolvePermissions(claims)
+
+	// If no role claim is configured, set flag to skip authorization
+	// This allows authentication-only mode where all authenticated users can access resources
+	var permissions []string
+	if j.config.JWTConfig.ScopeClaim == "" {
+		j.logger.Debug("No role claim configured, setting skip_authz flag")
+		ctx.Set(constants.AuthzSkipKey, true)
+		permissions = []string{}
+	} else {
+		permissions = j.resolvePermissions(claims)
+	}
 	subject, err := claims.GetSubject()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get subject: %w", err)
@@ -152,9 +162,6 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 }
 
 func (j *JWTAuthenticator) resolvePermissions(claims jwt.MapClaims) []string {
-	if j.config.JWTConfig.ScopeClaim == "" {
-		return []string{}
-	}
 	var permissions []string
 	// Try string first
 	if permissionClaimValue, ok := claims[j.config.JWTConfig.ScopeClaim].(string); ok {
@@ -171,12 +178,46 @@ func (j *JWTAuthenticator) resolvePermissions(claims jwt.MapClaims) []string {
 	j.logger.Sugar().Debugf("permission mapping %v", j.config.JWTConfig.PermissionMapping)
 	if j.config.JWTConfig.PermissionMapping != nil {
 		mappedPermissions := []string{}
+
+		// Find if there's a wildcard role (role with "*" mapping)
+		var wildcardRole string
+		for role, claimValues := range *j.config.JWTConfig.PermissionMapping {
+			for _, claimValue := range claimValues {
+				if claimValue == "*" {
+					wildcardRole = role
+					break
+				}
+			}
+			if wildcardRole != "" {
+				break
+			}
+		}
+		j.logger.Sugar().Debugf("wildcard role: %v", wildcardRole)
+
 		for _, perm := range permissions {
-			if mappedPerm, ok := (*j.config.JWTConfig.PermissionMapping)[perm]; ok {
-				j.logger.Sugar().Debugf("mapped perm %v", mappedPerm)
-				mappedPermissions = append(mappedPermissions, mappedPerm...)
-			} else {
-				j.logger.Sugar().Debugf("unmapped perm %v", perm)
+			mapped := false
+			// Check each role's claim values to see if this permission matches
+			for role, claimValues := range *j.config.JWTConfig.PermissionMapping {
+				for _, claimValue := range claimValues {
+					if claimValue == "*" {
+						// Skip wildcard entries during specific matching
+						continue
+					}
+					if claimValue == perm {
+						j.logger.Sugar().Debugf("mapped claim value %v to role %v", perm, role)
+						mappedPermissions = append(mappedPermissions, role)
+						mapped = true
+					}
+				}
+			}
+
+			// If no specific mapping found and wildcard role exists, use wildcard
+			if !mapped && wildcardRole != "" {
+				j.logger.Sugar().Debugf("mapped claim value %v to wildcard role %v", perm, wildcardRole)
+				mappedPermissions = append(mappedPermissions, wildcardRole)
+			} else if !mapped {
+				// No mapping and no wildcard, keep original
+				j.logger.Sugar().Debugf("unmapped claim value %v", perm)
 				mappedPermissions = append(mappedPermissions, perm)
 			}
 		}
