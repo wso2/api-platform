@@ -68,7 +68,18 @@ func ProcessHubPolicies(hubPolicies []ManifestPolicy, rootVersionResolution stri
 	}
 
 	if len(resolvedPolicies) == 0 {
-		return nil, fmt.Errorf("no policies were resolved successfully from PolicyHub")
+		// Build detailed error message with requested policies
+		requestedPolicies := make([]string, 0, len(hubPolicies))
+		for _, p := range hubPolicies {
+			versionRes := p.GetVersionResolution(rootVersionResolution)
+			requestedPolicies = append(requestedPolicies, fmt.Sprintf("  - %s %s (resolution: %s)", p.Name, p.Version, versionRes))
+		}
+
+		errMsg := fmt.Sprintf("no policies were resolved successfully from PolicyHub\n\nRequested policies:\n%s\n\nPossible reasons:\n  • Policy names may not exist in PolicyHub\n  • Versions may not be available\n  • Check policy names match exactly (case-sensitive)\n  • PolicyHub URL: %s",
+			join(requestedPolicies, "\n"),
+			utils.PolicyHubBaseURL)
+
+		return nil, fmt.Errorf("%s", errMsg)
 	}
 
 	fmt.Printf("✓ Resolved %d policies from PolicyHub\n\n", len(resolvedPolicies))
@@ -127,15 +138,32 @@ func resolveWithPolicyHub(hubPolicies []ManifestPolicy, rootVersionResolution st
 	}
 	defer resp.Body.Close()
 
+	// Read response body
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read PolicyHub response: %w", err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("PolicyHub returned status %d: %s", resp.StatusCode, string(body))
+		// Build detailed error with response
+		requestedPolicies := make([]string, 0, len(requests))
+		for _, req := range requests {
+			requestedPolicies = append(requestedPolicies, fmt.Sprintf("  - %s %s (resolution: %s)", req.Name, req.Version, req.VersionResolution))
+		}
+
+		errMsg := fmt.Sprintf("PolicyHub returned status %d\n\nRequested policies:\n%s\n\nPolicyHub response:\n%s\n\nURL: %s",
+			resp.StatusCode,
+			join(requestedPolicies, "\n"),
+			string(bodyBytes),
+			url)
+
+		return nil, fmt.Errorf("%s", errMsg)
 	}
 
 	// Parse response
 	var hubResponse PolicyHubResponse
-	if err := json.NewDecoder(resp.Body).Decode(&hubResponse); err != nil {
-		return nil, fmt.Errorf("failed to parse PolicyHub response: %w", err)
+	if err := json.Unmarshal(bodyBytes, &hubResponse); err != nil {
+		return nil, fmt.Errorf("failed to parse PolicyHub response: %w\n\nResponse body:\n%s", err, string(bodyBytes))
 	}
 
 	return hubResponse.Data, nil
@@ -235,4 +263,16 @@ func downloadPolicy(url, destPath string) error {
 	}
 
 	return nil
+}
+
+// join is a helper function to join strings with a separator
+func join(items []string, sep string) string {
+	result := ""
+	for i, item := range items {
+		if i > 0 {
+			result += sep
+		}
+		result += item
+	}
+	return result
 }
