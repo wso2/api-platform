@@ -19,9 +19,9 @@ import (
 )
 
 const (
-	DefaultManifestFile    = "policy-manifest.yaml"
-	DefaultOutputDir       = "output"
-	DefaultPolicyEngineSrc = "policy-engine"
+	DefaultManifestLockFile = "policy-manifest-lock.yaml"
+	DefaultOutputDir        = "output"
+	DefaultPolicyEngineSrc  = "/gateway/policy-engine"
 
 	// Gateway Controller (extends base image)
 	DefaultGatewayControllerBaseImage = "wso2/api-platform/gateway-controller:v1.0.0-m4" // TODO (renuka): check the usage
@@ -41,7 +41,7 @@ var (
 
 func main() {
 	// Parse command-line flags
-	manifestPath := flag.String("manifest", DefaultManifestFile, "Path to policy manifest file")
+	manifestLockPath := flag.String("manifest", DefaultManifestLockFile, "Path to policy manifest lock file")
 	policyEngineSrc := flag.String("policy-engine-src", DefaultPolicyEngineSrc, "Path to policy-engine runtime source directory")
 	outputDir := flag.String("out-dir", DefaultOutputDir, "Output directory for generated Dockerfiles and artifacts")
 
@@ -60,12 +60,12 @@ func main() {
 	initLogger(*logFormat, *logLevel)
 
 	// Resolve paths to absolute paths
-	absManifestPath, err := filepath.Abs(*manifestPath)
+	absManifestLockPath, err := filepath.Abs(*manifestLockPath)
 	if err != nil {
-		slog.Error("Failed to resolve manifest path", "path", *manifestPath, "error", err)
+		slog.Error("Failed to resolve manifest lock path", "path", *manifestLockPath, "error", err)
 		os.Exit(1)
 	}
-	manifestPath = &absManifestPath
+	manifestLockPath = &absManifestLockPath
 
 	absPolicyEngineSrc, err := filepath.Abs(*policyEngineSrc)
 	if err != nil {
@@ -86,14 +86,14 @@ func main() {
 		"git_commit", GitCommit,
 		"build_date", BuildDate,
 		"builder_version", BuilderVersion,
-		"manifest", *manifestPath)
+		"manifest_lock", *manifestLockPath)
 
 	var outManifestPath string
 
 	// Phase 1: Discovery
 	slog.Info("Starting Phase 1: Discovery", "phase", "discovery")
 
-	policies, err := discovery.DiscoverPoliciesFromManifest(*manifestPath, "")
+	policies, err := discovery.DiscoverPoliciesFromManifest(*manifestLockPath, "")
 	if err != nil {
 		errors.FatalError(err)
 	}
@@ -133,7 +133,7 @@ func main() {
 	if version == "" {
 		version = "dev"
 	}
-	gitCommit := os.Getenv("GIT_COMMIT")
+	gitCommit := os.Getenv("GIT_COMMIT") // TODO: (renuka) check this
 	if gitCommit == "" {
 		gitCommit = "unknown"
 	}

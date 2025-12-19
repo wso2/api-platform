@@ -16,21 +16,21 @@ const (
 	SupportedManifestVersion = "v1"
 )
 
-// LoadManifest loads and validates the policy manifest file
-func LoadManifest(manifestPath string) (*types.PolicyManifest, error) {
-	slog.Debug("Reading manifest file", "path", manifestPath, "phase", "discovery")
+// LoadManifest loads and validates the policy manifest lock file
+func LoadManifest(manifestLockPath string) (*types.PolicyManifestLock, error) {
+	slog.Debug("Reading manifest lock file", "path", manifestLockPath, "phase", "discovery")
 
-	// Read manifest file
-	data, err := os.ReadFile(manifestPath)
+	// Read manifest lock file
+	data, err := os.ReadFile(manifestLockPath)
 	if err != nil {
 		return nil, errors.NewDiscoveryError(
-			fmt.Sprintf("failed to read manifest file: %s", manifestPath),
+			fmt.Sprintf("failed to read manifest lock file: %s", manifestLockPath),
 			err,
 		)
 	}
 
 	// Parse YAML
-	var manifest types.PolicyManifest
+	var manifest types.PolicyManifestLock
 	if err := yaml.Unmarshal(data, &manifest); err != nil {
 		return nil, errors.NewDiscoveryError(
 			"failed to parse manifest YAML",
@@ -51,8 +51,8 @@ func LoadManifest(manifestPath string) (*types.PolicyManifest, error) {
 	return &manifest, nil
 }
 
-// validateManifest validates the manifest structure and contents
-func validateManifest(manifest *types.PolicyManifest) error {
+// validateManifest validates the manifest lock structure and contents
+func validateManifest(manifest *types.PolicyManifestLock) error {
 	// Check version
 	if manifest.Version == "" {
 		return errors.NewDiscoveryError("manifest version is required", nil)
@@ -78,7 +78,7 @@ func validateManifest(manifest *types.PolicyManifest) error {
 			"index", i,
 			"name", entry.Name,
 			"version", entry.Version,
-			"filePath", entry.FilePath,
+			"derivedPath", entry.DeriveFilePath(),
 			"phase", "discovery")
 
 		// Check required fields
@@ -92,13 +92,6 @@ func validateManifest(manifest *types.PolicyManifest) error {
 		if entry.Version == "" {
 			return errors.NewDiscoveryError(
 				fmt.Sprintf("policy entry %d (%s): version is required", i, entry.Name),
-				nil,
-			)
-		}
-
-		if entry.FilePath == "" {
-			return errors.NewDiscoveryError(
-				fmt.Sprintf("policy entry %d (%s): filePath is required", i, entry.Name),
 				nil,
 			)
 		}
@@ -118,32 +111,32 @@ func validateManifest(manifest *types.PolicyManifest) error {
 	return nil
 }
 
-// DiscoverPoliciesFromManifest discovers policies declared in a manifest file
-func DiscoverPoliciesFromManifest(manifestPath string, baseDir string) ([]*types.DiscoveredPolicy, error) {
-	// Convert manifestPath to absolute at the start for consistent path handling
-	absManifestPath, err := filepath.Abs(manifestPath)
+// DiscoverPoliciesFromManifest discovers policies declared in a manifest lock file
+func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*types.DiscoveredPolicy, error) {
+	// Convert manifestLockPath to absolute at the start for consistent path handling
+	absManifestLockPath, err := filepath.Abs(manifestLockPath)
 	if err != nil {
 		return nil, errors.NewDiscoveryError(
-			"failed to resolve absolute path for manifest",
+			"failed to resolve absolute path for manifest lock",
 			err,
 		)
 	}
 
-	slog.Debug("Resolved manifest path",
-		"original", manifestPath,
-		"absolute", absManifestPath,
+	slog.Debug("Resolved manifest lock path",
+		"original", manifestLockPath,
+		"absolute", absManifestLockPath,
 		"phase", "discovery")
 
-	// Load manifest
-	manifest, err := LoadManifest(absManifestPath)
+	// Load manifest lock
+	manifest, err := LoadManifest(absManifestLockPath)
 	if err != nil {
 		return nil, err
 	}
 
-	// Set baseDir to manifest's directory if not provided.
+	// Set baseDir to manifest lock's directory if not provided.
 	if baseDir == "" {
-		baseDir = filepath.Dir(absManifestPath)
-		slog.Debug("Using manifest directory as baseDir",
+		baseDir = filepath.Dir(absManifestLockPath)
+		slog.Debug("Using manifest lock directory as baseDir",
 			"baseDir", baseDir,
 			"phase", "discovery")
 	}
@@ -152,18 +145,14 @@ func DiscoverPoliciesFromManifest(manifestPath string, baseDir string) ([]*types
 
 	// Process each manifest entry
 	for _, entry := range manifest.Policies {
-		// Resolve file path (support relative and absolute paths)
-		policyPath := entry.FilePath
-		isAbsolute := filepath.IsAbs(policyPath)
-		if !isAbsolute {
-			// Relative to base directory (now guaranteed absolute)
-			policyPath = filepath.Join(baseDir, entry.FilePath)
-		}
+		// Derive file path from policy name and version (always relative to baseDir)
+		derivedPath := entry.DeriveFilePath()
+		policyPath := filepath.Join(baseDir, derivedPath)
 
 		slog.Debug("Resolving policy path",
 			"policy", entry.Name,
-			"filePath", entry.FilePath,
-			"isAbsolute", isAbsolute,
+			"version", entry.Version,
+			"derivedPath", derivedPath,
 			"resolvedPath", policyPath,
 			"phase", "discovery")
 

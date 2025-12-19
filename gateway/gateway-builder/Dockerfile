@@ -56,8 +56,8 @@ RUN apk add --no-cache \
 COPY --from=builder /usr/local/bin/gateway-builder /usr/local/bin/gateway-builder
 
 # Copy Policy Engine framework source code
-COPY --from=policy-engine . /workspace/gateway/policy-engine
-COPY --from=sdk . /workspace/sdk
+COPY --from=policy-engine . /gateway/policy-engine
+
 # Set working directory
 WORKDIR /workspace
 
