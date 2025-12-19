@@ -30,11 +30,11 @@ import (
 
 const (
 	BuildCmdLiteral = "build"
-	BuildCmdExample = `# Build gateway image with policies
+	BuildCmdExample = `# Build gateway image with policies (uses current directory)
 apipctl gateway image build --image-tag v0.2.0-policy1
 
-# Build with custom manifest and repository
-apipctl gateway image build --image-tag v0.2.0 -f custom-manifest.yaml --image-repository myregistry/gateway
+# Build with custom path containing manifest files
+apipctl gateway image build --image-tag v0.2.0 --path ./my-policies --image-repository myregistry/gateway
 
 # Build in offline mode (uses manifest lock file)
 apipctl gateway image build --image-tag v0.2.0 --offline
@@ -48,7 +48,7 @@ var (
 	imageTag string
 
 	// Optional flags
-	manifestFile             string
+	manifestPath             string
 	imageRepository          string
 	gatewayBuilder           string
 	gatewayControllerBaseImg string
@@ -79,7 +79,7 @@ func init() {
 	buildCmd.MarkFlagRequired("image-tag")
 
 	// Optional flags with defaults
-	buildCmd.Flags().StringVarP(&manifestFile, "file", "f", utils.DefaultManifestFile, "Policy manifest YAML file")
+	buildCmd.Flags().StringVarP(&manifestPath, "path", "p", ".", "Path to directory containing policy manifest files (default: current directory)")
 	buildCmd.Flags().StringVar(&imageRepository, "image-repository", utils.DefaultImageRepository, "Docker image repository")
 	buildCmd.Flags().StringVar(&gatewayBuilder, "gateway-builder", utils.DefaultGatewayBuilder, "Gateway builder image")
 	buildCmd.Flags().StringVar(&gatewayControllerBaseImg, "gateway-controller-base-image", utils.DefaultGatewayControllerImg, "Gateway controller base image (uses builder default if empty)")
@@ -121,9 +121,16 @@ func runOnlineBuild() error {
 
 	// Step 2: Read Policy Manifest
 	fmt.Println("[2/6] Reading Policy Manifest")
-	manifest, err := policy.ParseManifest(manifestFile)
+
+	// Get manifest file path
+	manifestFilePath, err := getManifestFilePath(manifestPath)
 	if err != nil {
-		return fmt.Errorf("failed to parse manifest: %w", err)
+		return err
+	}
+
+	manifest, err := policy.ParseManifest(manifestFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to parse manifest file at '%s': %w\n\nMake sure the file exists and is a valid YAML file", manifestFilePath, err)
 	}
 	fmt.Printf("  ✓ Loaded manifest with %d policies\n\n", len(manifest.Policies))
 
@@ -160,7 +167,7 @@ func runOnlineBuild() error {
 
 	// Step 6: Generate Lock File
 	fmt.Println("[5/6] Generating Manifest Lock File")
-	lockFilePath := getLockFilePath(manifestFile)
+	lockFilePath := filepath.Join(manifestPath, utils.DefaultManifestLockFile)
 	if err := policy.GenerateLockFile(allProcessed, lockFilePath); err != nil {
 		return fmt.Errorf("failed to generate lock file: %w", err)
 	}
@@ -168,15 +175,36 @@ func runOnlineBuild() error {
 
 	// Step 7: Display Summary
 	fmt.Println("[6/6] Build Preparation Complete")
-	displayBuildSummary(manifest, lockFilePath, allProcessed)
+	displayBuildSummary(manifest, manifestFilePath, lockFilePath, allProcessed)
 
 	return nil
 }
 
-// getLockFilePath returns the lock file path based on manifest file path
-func getLockFilePath(manifestPath string) string {
-	dir := filepath.Dir(manifestPath)
-	return filepath.Join(dir, utils.DefaultManifestLockFile)
+// getManifestFilePath returns the full path to the manifest file
+func getManifestFilePath(basePath string) (string, error) {
+	// Check if path exists
+	info, err := os.Stat(basePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("path does not exist: %s\n\nPlease provide a valid directory path using --path flag", basePath)
+		}
+		return "", fmt.Errorf("failed to access path: %w", err)
+	}
+
+	// If it's a directory, look for the manifest file
+	if info.IsDir() {
+		manifestFile := filepath.Join(basePath, utils.DefaultManifestFile)
+		if _, err := os.Stat(manifestFile); err != nil {
+			if os.IsNotExist(err) {
+				return "", fmt.Errorf("manifest file '%s' not found in directory: %s\n\nExpected file: %s\n\nPlease create a %s file or specify a different path", utils.DefaultManifestFile, basePath, manifestFile, utils.DefaultManifestFile)
+			}
+			return "", fmt.Errorf("failed to access manifest file: %w", err)
+		}
+		return manifestFile, nil
+	}
+
+	// If it's a file, that's an error - we expect a directory
+	return "", fmt.Errorf("--path must be a directory, not a file: %s\n\nPlease provide the directory path containing %s", basePath, utils.DefaultManifestFile)
 }
 
 func runOfflineBuild() error {
@@ -187,40 +215,53 @@ func runOfflineBuild() error {
 		}
 	}()
 
-	// Step 2: Read Manifest Lock File
-	fmt.Println("[2/4] Reading Manifest Lock File")
-	lockFilePath := getLockFilePath(manifestFile)
+	// Step 2: Read Manifest and Lock Files
+	fmt.Println("[2/4] Reading Manifest and Lock Files")
 
-	// Check if lock file exists
+	// Get manifest file path
+	manifestFilePath, err := getManifestFilePath(manifestPath)
+	if err != nil {
+		return err
+	}
+
+	// Read manifest file (needed for local policy paths)
+	manifest, err := policy.ParseManifest(manifestFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to parse manifest file at '%s': %w\n\nMake sure the file exists and is a valid YAML file", manifestFilePath, err)
+	}
+
+	// Read lock file
+	lockFilePath := filepath.Join(manifestPath, utils.DefaultManifestLockFile)
 	if _, err := os.Stat(lockFilePath); os.IsNotExist(err) {
-		return fmt.Errorf("policy-manifest-lock.yaml not found at %s. Run without --offline first to generate it.", lockFilePath)
+		return fmt.Errorf("lock file '%s' not found in directory: %s\n\nExpected file: %s\n\nPlease run the build command in ONLINE mode first (without --offline flag) to generate the lock file", utils.DefaultManifestLockFile, manifestPath, lockFilePath)
 	}
 
 	lockFile, err := policy.ParseLockFile(lockFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to parse lock file: %w", err)
+		return fmt.Errorf("failed to parse lock file at '%s': %w\n\nThe lock file may be corrupted. Try regenerating it by running in ONLINE mode (without --offline flag)", lockFilePath, err)
 	}
-	fmt.Printf("  ✓ Loaded lock file with %d policies\n\n", len(lockFile.Policies))
+	fmt.Printf("  ✓ Loaded manifest and lock file with %d policies\n\n", len(lockFile.Policies))
 
 	// Step 3: Verify All Policies
 	fmt.Println("[3/4] Verifying Policies")
-	verified, err := policy.VerifyOfflinePolicies(lockFile)
+	verified, err := policy.VerifyOfflinePolicies(lockFile, manifest)
 	if err != nil {
 		return fmt.Errorf("policy verification failed: %w", err)
 	}
 
 	// Step 4: Display Summary
 	fmt.Println("[4/4] Build Preparation Complete")
-	displayOfflineBuildSummary(lockFilePath, verified)
+	displayOfflineBuildSummary(manifestFilePath, lockFilePath, verified)
 
 	return nil
 }
 
-func displayOfflineBuildSummary(lockFile string, verified []policy.ProcessedPolicy) {
+func displayOfflineBuildSummary(manifestFile, lockFile string, verified []policy.ProcessedPolicy) {
 	fmt.Println("\n=== Build Summary ===")
 
 	fmt.Println("\nConfiguration:")
 	fmt.Printf("  Image Tag:                    %s\n", imageTag)
+	fmt.Printf("  Manifest File:                %s\n", manifestFile)
 	fmt.Printf("  Manifest Lock File:           %s\n", lockFile)
 	fmt.Printf("  Image Repository:             %s\n", imageRepository)
 	fmt.Printf("  Gateway Builder:              %s\n", gatewayBuilder)
@@ -281,12 +322,12 @@ func displayOfflineBuildSummary(lockFile string, verified []policy.ProcessedPoli
 	fmt.Println()
 }
 
-func displayBuildSummary(manifest *policy.PolicyManifest, lockFile string, processed []policy.ProcessedPolicy) {
+func displayBuildSummary(manifest *policy.PolicyManifest, manifestFilePath, lockFile string, processed []policy.ProcessedPolicy) {
 	fmt.Println("\n=== Build Summary ===")
 
 	fmt.Println("\nConfiguration:")
 	fmt.Printf("  Image Tag:                    %s\n", imageTag)
-	fmt.Printf("  Manifest File:                %s\n", manifestFile)
+	fmt.Printf("  Manifest File:                %s\n", manifestFilePath)
 	fmt.Printf("  Lock File:                    %s\n", lockFile)
 	fmt.Printf("  Image Repository:             %s\n", imageRepository)
 	fmt.Printf("  Gateway Builder:              %s\n", gatewayBuilder)

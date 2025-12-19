@@ -82,24 +82,25 @@ func TestCmdGatewayImageBuildLocalPolicies(t *testing.T) {
 		t.Fatalf("Binary not found at %s. Run 'make build' first.", absBinaryPath)
 	}
 
-	// Get the test manifest path
-	manifestPath := filepath.Join("..", "resources", "test-local-policy-manifest.yaml")
-	absManifestPath, err := filepath.Abs(manifestPath)
+	// Get the test resources directory path
+	resourcesDir := filepath.Join("..", "resources")
+	absResourcesDir, err := filepath.Abs(resourcesDir)
 	if err != nil {
-		t.Fatalf("Failed to get absolute path for manifest: %v", err)
+		t.Fatalf("Failed to get absolute path for resources directory: %v", err)
 	}
 
 	// Check if manifest exists
-	if _, err := os.Stat(absManifestPath); os.IsNotExist(err) {
-		t.Fatalf("Test manifest not found at %s", absManifestPath)
+	manifestPath := filepath.Join(absResourcesDir, "test-local-policy-manifest.yaml")
+	if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+		t.Fatalf("Test manifest not found at %s", manifestPath)
 	}
 
-	t.Logf("Testing gateway image build command with local policies: %s", absManifestPath)
+	t.Logf("Testing gateway image build command with local policies in directory: %s", absResourcesDir)
 
 	// Build the command
 	cmd := exec.Command(absBinaryPath,
 		"gateway", "image", "build",
-		"--file", absManifestPath,
+		"--path", absResourcesDir,
 		"--image-tag", "v0.2.0-test",
 		"--image-repository", "test-registry/gateway",
 	)
@@ -190,24 +191,25 @@ func TestCmdGatewayImageBuildHubPolicies(t *testing.T) {
 		t.Fatalf("Binary not found at %s. Run 'make build' first.", absBinaryPath)
 	}
 
-	// Get the test manifest path
-	manifestPath := filepath.Join("..", "resources", "test-policy-manifest.yaml")
-	absManifestPath, err := filepath.Abs(manifestPath)
+	// Get the test resources directory path
+	resourcesDir := filepath.Join("..", "resources")
+	absResourcesDir, err := filepath.Abs(resourcesDir)
 	if err != nil {
-		t.Fatalf("Failed to get absolute path for manifest: %v", err)
+		t.Fatalf("Failed to get absolute path for resources directory: %v", err)
 	}
 
 	// Check if manifest exists
-	if _, err := os.Stat(absManifestPath); os.IsNotExist(err) {
-		t.Fatalf("Test manifest not found at %s", absManifestPath)
+	manifestPath := filepath.Join(absResourcesDir, "test-policy-manifest.yaml")
+	if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+		t.Fatalf("Test manifest not found at %s", manifestPath)
 	}
 
-	t.Logf("Testing gateway image build command with hub policies: %s", absManifestPath)
+	t.Logf("Testing gateway image build command with hub policies in directory: %s", absResourcesDir)
 
 	// Build the command
 	cmd := exec.Command(absBinaryPath,
 		"gateway", "image", "build",
-		"--file", absManifestPath,
+		"--path", absResourcesDir,
 		"--image-tag", "v0.2.0-hub-test",
 	)
 
@@ -285,24 +287,25 @@ func TestCmdGatewayImageBuildMixedPolicies(t *testing.T) {
 		t.Fatalf("Binary not found at %s. Run 'make build' first.", absBinaryPath)
 	}
 
-	// Get the test manifest path
-	manifestPath := filepath.Join("..", "resources", "test-mixed-manifest.yaml")
-	absManifestPath, err := filepath.Abs(manifestPath)
+	// Get the test resources directory path
+	resourcesDir := filepath.Join("..", "resources")
+	absResourcesDir, err := filepath.Abs(resourcesDir)
 	if err != nil {
-		t.Fatalf("Failed to get absolute path for manifest: %v", err)
+		t.Fatalf("Failed to get absolute path for resources directory: %v", err)
 	}
 
 	// Check if manifest exists
-	if _, err := os.Stat(absManifestPath); os.IsNotExist(err) {
-		t.Fatalf("Test manifest not found at %s", absManifestPath)
+	manifestPath := filepath.Join(absResourcesDir, "test-mixed-manifest.yaml")
+	if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+		t.Fatalf("Test manifest not found at %s", manifestPath)
 	}
 
-	t.Logf("Testing gateway image build command with mixed policies: %s", absManifestPath)
+	t.Logf("Testing gateway image build command with mixed policies in directory: %s", absResourcesDir)
 
 	// Build the command
 	cmd := exec.Command(absBinaryPath,
 		"gateway", "image", "build",
-		"--file", absManifestPath,
+		"--path", absResourcesDir,
 		"--image-tag", "v0.2.0-mixed-test",
 	)
 
@@ -369,18 +372,18 @@ func TestCmdGatewayImageBuildOfflineMode(t *testing.T) {
 		t.Fatalf("Binary not found at %s. Run 'make build' first.", absBinaryPath)
 	}
 
-	// Get the test manifest path
-	manifestPath := filepath.Join("..", "resources", "test-local-policy-manifest.yaml")
-	absManifestPath, err := filepath.Abs(manifestPath)
+	// Get the test resources directory path
+	resourcesDir := filepath.Join("..", "resources")
+	absResourcesDir, err := filepath.Abs(resourcesDir)
 	if err != nil {
-		t.Fatalf("Failed to get absolute path for manifest: %v", err)
+		t.Fatalf("Failed to get absolute path for resources directory: %v", err)
 	}
 
 	// First, run online mode to generate lock file
 	t.Logf("Step 1: Running online mode to generate lock file")
 	cmdOnline := exec.Command(absBinaryPath,
 		"gateway", "image", "build",
-		"--file", absManifestPath,
+		"--path", absResourcesDir,
 		"--image-tag", "v0.2.0-offline-test",
 	)
 	cmdOnline.Dir = filepath.Join("..", "..")
@@ -396,8 +399,8 @@ func TestCmdGatewayImageBuildOfflineMode(t *testing.T) {
 		}
 	}
 
-	// Check if lock file was created
-	lockFilePath := filepath.Join("..", "..", "policy-manifest-lock.yaml")
+	// Check if lock file was created in resources directory
+	lockFilePath := filepath.Join(absResourcesDir, "policy-manifest-lock.yaml")
 	if _, err := os.Stat(lockFilePath); os.IsNotExist(err) {
 		t.Skip("Skipping offline mode test - lock file not generated")
 		return
@@ -409,7 +412,7 @@ func TestCmdGatewayImageBuildOfflineMode(t *testing.T) {
 	// Now test offline mode
 	cmd := exec.Command(absBinaryPath,
 		"gateway", "image", "build",
-		"--file", absManifestPath,
+		"--path", absResourcesDir,
 		"--image-tag", "v0.2.0-offline-test",
 		"--offline",
 	)
@@ -500,7 +503,7 @@ func TestCmdGatewayImageBuildHelp(t *testing.T) {
 	expectedPatterns := []string{
 		"Build a WSO2 API Platform Gateway Docker image",
 		"--image-tag",
-		"--file",
+		"--path",
 		"--offline",
 		"--image-repository",
 		"--gateway-builder",

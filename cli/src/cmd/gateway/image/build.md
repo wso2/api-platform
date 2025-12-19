@@ -5,7 +5,7 @@
 ```bash
 apipctl gateway image build \
   --image-tag <image-tag> \
-  [-f <policy-manifest-yaml-file>] \
+  [--path <directory>] \
   [--image-repository <image-repository>] \
   [--gateway-builder <gateway-builder-image>] \
   [--gateway-controller-base-image <gateway-controller-base-image>] \
@@ -21,7 +21,7 @@ apipctl gateway image build \
 - `--image-tag`: Docker image tag for the gateway build
 
 ### Optional Flags & Defaults
-- `-f`: `policy-manifest.yaml` (current directory)
+- `--path` / `-p`: Current directory (`.`) - Directory containing `policy-manifest.yaml` and `policy-manifest-lock.yaml`
 - `--image-repository`: `ghcr.io/wso2/api-platform`
 - `--gateway-builder`: `ghcr.io/wso2/api-platform/gateway-builder:0.2.0`
 - `--gateway-controller-base-image`: Uses default from gateway-builder image
@@ -31,6 +31,11 @@ apipctl gateway image build \
 - `--no-cache`: `false`
 - `--offline`: `false`
 - `--output-dir`: No output (empty)
+
+### Directory Structure Requirements
+The `--path` flag must point to a directory containing:
+- `policy-manifest.yaml` (required in both online and offline modes)
+- `policy-manifest-lock.yaml` (required in offline mode, generated in online mode)
 
 ## Policy Manifest Format
 
@@ -148,7 +153,7 @@ policies:
     - Save to cache
 
 #### Step 7: Generate Lock File
-- Create `policy-manifest-lock.yaml` in same directory as manifest
+- Create `policy-manifest-lock.yaml` in the directory specified by `--path` (defaults to current directory)
 - Include all policies (hub + local) with:
   - Resolved versions
   - SHA-256 checksums
@@ -169,9 +174,10 @@ policies:
 #### Step 1: Pre-flight Checks
 - Check Docker availability
 
-#### Step 2: Read Lock File
-- Load `policy-manifest-lock.yaml` (must exist or fail)
-- Fail with error if not found
+#### Step 2: Read Manifest and Lock Files
+- Read `policy-manifest.yaml` from the directory specified by `--path` (defaults to current directory)
+- Read `policy-manifest-lock.yaml` from the same directory (must exist or fail)
+- Fail with helpful error message if either file is not found
 
 #### Step 3: Verify Hub Policies
 - For each policy with `source: hub`:
@@ -181,32 +187,39 @@ policies:
 
 #### Step 4: Verify Local Policies
 - For each policy with `source: local`:
-  - Search in order:
-    1. Current directory: `./<policy>-v<version>.zip` or `./<policy>/v<version>/`
-    2. Recursively find all `policies/` folders and check in each
+  - Use the `filePath` from the manifest to locate the policy
   - Verify SHA-256 checksum matches lock file
   - Fail if missing or mismatch
 
 #### Step 5: Display Summary
 - Show all flags with values
+- List manifest file location
 - List lock file location
 - List verified policies
 
 ## Error Handling
 
+### Common Errors
+- `--path` directory does not exist → Fail: "The specified path does not exist: <path>"
+- `--path` points to a file → Fail: "The --path flag must point to a directory, not a file: <path>"
+- Manifest file not found in directory → Fail: "policy-manifest.yaml not found in directory: <path>. Please ensure the manifest file exists in this location."
+
 ### Online Mode Errors
 - Docker not available → Fail immediately
-- Manifest file not found → Fail with clear error
+- Manifest file invalid YAML → Fail with clear parsing error
 - PolicyHub unreachable → Fail (cannot resolve versions)
 - Policy download fails → Fail
 - Checksum mismatch → Warn + re-download
 - No policies resolved successfully → Fail
+- Lock file generation fails → Fail with write permission error
 
 ### Offline Mode Errors
 - Docker not available → Fail immediately
-- Lock file not found → Fail: "policy-manifest-lock.yaml not found. Run without --offline first."
+- Lock file not found → Fail: "lock file 'policy-manifest-lock.yaml' not found in directory: <path>. Expected file: <full-path>. Please run the build command in ONLINE mode first (without --offline flag) to generate the lock file"
+- Lock file corrupted → Fail: "failed to parse lock file at '<path>': <error>. The lock file may be corrupted. Try regenerating it by running in ONLINE mode (without --offline flag)"
 - Policy not in cache → Fail: "Policy <name>-v<version> not found in cache. Run without --offline first."
 - Checksum mismatch → Fail: "Checksum mismatch for <policy>. Cache may be corrupted."
+- Local policy file not found → Fail with path where it was expected
 
 ## Utility Functions
 

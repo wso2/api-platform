@@ -27,12 +27,21 @@ import (
 )
 
 // VerifyOfflinePolicies verifies all policies from the lock file in offline mode
-func VerifyOfflinePolicies(lockFile *PolicyLock) ([]ProcessedPolicy, error) {
+func VerifyOfflinePolicies(lockFile *PolicyLock, manifest *PolicyManifest) ([]ProcessedPolicy, error) {
 	if len(lockFile.Policies) == 0 {
 		return nil, fmt.Errorf("lock file contains no policies")
 	}
 
 	fmt.Printf("→ Verifying %d policies from lock file...\n", len(lockFile.Policies))
+
+	// Create a map of local policy file paths from manifest
+	localPolicyPaths := make(map[string]string)
+	for _, manifestPolicy := range manifest.Policies {
+		if manifestPolicy.IsLocal() {
+			key := manifestPolicy.Name + ":" + manifestPolicy.Version
+			localPolicyPaths[key] = manifestPolicy.FilePath
+		}
+	}
 
 	var verified []ProcessedPolicy
 
@@ -47,8 +56,15 @@ func VerifyOfflinePolicies(lockFile *PolicyLock) ([]ProcessedPolicy, error) {
 			}
 			verified = append(verified, processed)
 		} else if lockPolicy.Source == "local" {
-			// Verify local policy from original location
-			processed, err := verifyLocalPolicyOffline(lockPolicy)
+			// Get filePath from manifest
+			key := lockPolicy.Name + ":" + lockPolicy.Version
+			filePath, exists := localPolicyPaths[key]
+			if !exists {
+				return nil, fmt.Errorf("\n  ✗ Local policy %s %s not found in manifest file", lockPolicy.Name, lockPolicy.Version)
+			}
+
+			// Verify local policy from manifest location
+			processed, err := verifyLocalPolicyOffline(lockPolicy, filePath)
 			if err != nil {
 				return nil, err
 			}
@@ -100,44 +116,12 @@ func verifyHubPolicyOffline(lockPolicy LockPolicy) (ProcessedPolicy, error) {
 }
 
 // verifyLocalPolicyOffline verifies a local policy exists and has correct checksum
-func verifyLocalPolicyOffline(lockPolicy LockPolicy) (ProcessedPolicy, error) {
-	var policyPath string
+func verifyLocalPolicyOffline(lockPolicy LockPolicy, filePath string) (ProcessedPolicy, error) {
+	policyPath := filePath
 
-	// If filePath is provided in lock file, try to use it first
-	if lockPolicy.FilePath != "" {
-		// Check if the original path exists
-		if _, err := os.Stat(lockPolicy.FilePath); err == nil {
-			policyPath = lockPolicy.FilePath
-		}
-	}
-
-	// If not found at original path, search in common locations
-	if policyPath == "" {
-		// Get current working directory
-		cwd, err := os.Getwd()
-		if err != nil {
-			return ProcessedPolicy{}, fmt.Errorf("failed to get current directory: %w", err)
-		}
-
-		// Search for the policy in current directory and policies folders
-		searchPaths := []string{cwd}
-
-		// Find all policies folders recursively
-		policiesFolders, err := utils.FindPoliciesFolders(cwd)
-		if err != nil {
-			return ProcessedPolicy{}, fmt.Errorf("failed to search for policies folders: %w", err)
-		}
-		searchPaths = append(searchPaths, policiesFolders...)
-
-		// Try to find the policy
-		foundPath, err := utils.PolicyExists(lockPolicy.Name, lockPolicy.Version, searchPaths)
-		if err != nil {
-			if lockPolicy.FilePath != "" {
-				return ProcessedPolicy{}, fmt.Errorf("\n  ✗ Local policy %s v%s not found at original path (%s) or in common locations.", lockPolicy.Name, lockPolicy.Version, lockPolicy.FilePath)
-			}
-			return ProcessedPolicy{}, fmt.Errorf("\n  ✗ Local policy %s v%s not found. Original path may have been moved or deleted.", lockPolicy.Name, lockPolicy.Version)
-		}
-		policyPath = foundPath
+	// Check if the path exists
+	if _, err := os.Stat(policyPath); os.IsNotExist(err) {
+		return ProcessedPolicy{}, fmt.Errorf("\n  ✗ Local policy %s %s not found at path: %s", lockPolicy.Name, lockPolicy.Version, policyPath)
 	}
 
 	// Check if it's a zip file or directory

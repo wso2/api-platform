@@ -73,19 +73,12 @@ func GenerateLockFile(policies []ProcessedPolicy, outputPath string) error {
 			source = "local"
 		}
 
-		lockPolicy := LockPolicy{
+		lock.Policies = append(lock.Policies, LockPolicy{
 			Name:     p.Name,
 			Version:  p.Version,
 			Checksum: p.Checksum,
 			Source:   source,
-		}
-
-		// Include filePath for local policies
-		if p.IsLocal && p.FilePath != "" {
-			lockPolicy.FilePath = p.FilePath
-		}
-
-		lock.Policies = append(lock.Policies, lockPolicy)
+		})
 	}
 
 	data, err := yaml.Marshal(&lock)
