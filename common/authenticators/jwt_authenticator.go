@@ -159,10 +159,7 @@ func (j *JWTAuthenticator) resolvePermissions(claims jwt.MapClaims) []string {
 	// Try string first
 	if permissionClaimValue, ok := claims[j.config.JWTConfig.ScopeClaim].(string); ok {
 		permissions = strings.Split(permissionClaimValue, " ")
-	}
-
-	// Try string array
-	if permissionClaimArray, ok := claims[j.config.JWTConfig.ScopeClaim].([]any); ok {
+	} else if permissionClaimArray, ok := claims[j.config.JWTConfig.ScopeClaim].([]any); ok {
 		permissions = make([]string, 0, len(permissionClaimArray))
 		for _, perm := range permissionClaimArray {
 			if permStr, ok := perm.(string); ok {

@@ -85,6 +85,7 @@ build-local: generate copy-policy-definitions ## Build Docker image locally (fas
 	@echo "Building Docker image locally ($(IMAGE_NAME):$(VERSION))..."
 	DOCKER_BUILDKIT=1 docker build -f Dockerfile \
 		--build-context sdk=../../sdk \
+		--build-context common=../../common \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME):$(VERSION) \
