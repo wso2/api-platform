@@ -188,7 +188,7 @@ func ToKebabCase(s string) string {
 
 // FormatPolicyFileName creates a standardized policy file name
 func FormatPolicyFileName(policyName, version string) string {
-	return fmt.Sprintf("%s-v%s.zip", ToKebabCase(policyName), version)
+	return fmt.Sprintf("%s-%s.zip", ToKebabCase(policyName), version)
 }
 
 // EnsureDir creates a directory if it doesn't exist
@@ -378,14 +378,8 @@ func CopyPolicyToTempGatewayImageBuild(policyName, policyVersion, sourcePath str
 		return fmt.Errorf("failed to get temp gateway image build directory path: %w", err)
 	}
 
-	// Ensure version has "v" prefix
-	versionWithPrefix := policyVersion
-	if !strings.HasPrefix(policyVersion, "v") {
-		versionWithPrefix = "v" + policyVersion
-	}
-
-	// Create destination directory: .tmp/gateway-image-build/policies/<name>/v<version>
-	destDir := filepath.Join(tempGatewayImageBuildDir, "policies", policyName, versionWithPrefix)
+	// Create destination directory: .tmp/gateway-image-build/policies/<name>/<version>
+	destDir := filepath.Join(tempGatewayImageBuildDir, "policies", policyName, policyVersion)
 	if err := EnsureDir(destDir); err != nil {
 		return fmt.Errorf("failed to create policy directory: %w", err)
 	}

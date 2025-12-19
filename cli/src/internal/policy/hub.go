@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/wso2/api-platform/cli/utils"
 )
@@ -223,9 +224,15 @@ func downloadAndVerifyPolicies(resolvedPolicies []PolicyHubData) ([]ProcessedPol
 			fmt.Printf(" done, verified\n")
 		}
 
+		// Normalize version to include "v" prefix
+		version := policy.Version
+		if !strings.HasPrefix(version, "v") {
+			version = "v" + version
+		}
+
 		processed = append(processed, ProcessedPolicy{
 			Name:      policy.PolicyName,
-			Version:   policy.Version,
+			Version:   version,
 			Checksum:  expectedChecksum,
 			Source:    "hub",
 			LocalPath: cachePath,
