@@ -361,7 +361,7 @@ analytics:
     max_header_limit: 8192
 
 tracing:
-  enabled: true
+  enabled: false
   endpoint: otel-collector:4317
   insecure: true
   service_version: "1.0.0"
