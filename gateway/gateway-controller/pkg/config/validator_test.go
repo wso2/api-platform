@@ -100,9 +100,9 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			specUnion := api.APIConfiguration_Spec{}
 			specUnion.FromAPIConfigData(api.APIConfigData{
-				DisplayName:    tt.apiName,
-				Version: "v1.0",
-				Context: "/test",
+				DisplayName: tt.apiName,
+				Version:     "v1.0",
+				Context:     "/test",
 				Upstream: struct {
 					Main    api.Upstream  `json:"main" yaml:"main"`
 					Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
@@ -116,9 +116,9 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 				},
 			})
 			config := &api.APIConfiguration{
-				ApiVersion: api.GatewayApiPlatformWso2Comv1alpha1,
-				Kind:    api.RestApi,
-				Spec:    specUnion,
+				ApiVersion: api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+				Kind:       api.RestApi,
+				Spec:       specUnion,
 			}
 
 			errors := validator.Validate(config)

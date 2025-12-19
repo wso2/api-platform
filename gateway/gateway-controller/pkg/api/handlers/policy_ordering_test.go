@@ -149,9 +149,9 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 	}
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName:    "test-api",
-		Version: "v1.0",
-		Context: "/test",
+		DisplayName: "test-api",
+		Version:     "v1.0",
+		Context:     "/test",
 		Upstream: struct {
 			Main    api.Upstream  `json:"main" yaml:"main"`
 			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
@@ -173,7 +173,7 @@ func TestPolicyOrderingDeterministic(t *testing.T) {
 			// Build a minimal StoredAPIConfig
 			cfg := &models.StoredConfig{
 				Configuration: api.APIConfiguration{
-					ApiVersion: api.APIConfigurationApiVersion(api.GatewayApiPlatformWso2Comv1alpha1),
+					ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
 					Kind:       api.APIConfigurationKind(api.RestApi),
 					Spec:       specUnion,
 				},
@@ -258,9 +258,9 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName:    "test-api",
-		Version: "v1.0",
-		Context: "/test",
+		DisplayName: "test-api",
+		Version:     "v1.0",
+		Context:     "/test",
 		Upstream: struct {
 			Main    api.Upstream  `json:"main" yaml:"main"`
 			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
@@ -301,9 +301,9 @@ func TestMultipleOperationsIndependentPolicies(t *testing.T) {
 
 	cfg := &models.StoredConfig{
 		Configuration: api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersion(api.GatewayApiPlatformWso2Comv1alpha1),
-			Kind:    api.APIConfigurationKind(api.RestApi),
-			Spec:    specUnion,
+			ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
+			Kind:       api.APIConfigurationKind(api.RestApi),
+			Spec:       specUnion,
 		},
 	}
 
@@ -402,9 +402,9 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 
 	specUnion := api.APIConfiguration_Spec{}
 	specUnion.FromAPIConfigData(api.APIConfigData{
-		DisplayName:    "test-api",
-		Version: "v1.0",
-		Context: "/test",
+		DisplayName: "test-api",
+		Version:     "v1.0",
+		Context:     "/test",
 		Upstream: struct {
 			Main    api.Upstream  `json:"main" yaml:"main"`
 			Sandbox *api.Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
@@ -425,7 +425,7 @@ func TestPolicyOrderingConsistency(t *testing.T) {
 
 	cfg := &models.StoredConfig{
 		Configuration: api.APIConfiguration{
-			ApiVersion: api.APIConfigurationApiVersion(api.GatewayApiPlatformWso2Comv1alpha1),
+			ApiVersion: api.APIConfigurationApiVersion(api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1),
 			Kind:       api.APIConfigurationKind(api.RestApi),
 			Spec:       specUnion,
 		},

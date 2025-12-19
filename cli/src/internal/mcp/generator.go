@@ -409,8 +409,8 @@ func generateMCPConfigFile(url string, toolsResult ToolsResult,
 	}
 
 	mcp := gwmodels.MCPProxyConfiguration{
-		Version: gwmodels.AiApiPlatformWso2Comv1,
-		Kind:    gwmodels.Mcp,
+		ApiVersion: gwmodels.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1,
+		Kind:       gwmodels.Mcp,
 		Metadata: gwmodels.Metadata{
 			Name: "Generated-MCP-v1.0",
 		},

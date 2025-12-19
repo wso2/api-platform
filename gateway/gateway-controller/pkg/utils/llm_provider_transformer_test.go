@@ -105,7 +105,7 @@ func TestTransform_MinimalProvider(t *testing.T) {
 
 	// Verify basic fields
 	assert.Equal(t, api.RestApi, result.Kind)
-	assert.Equal(t, api.GatewayApiPlatformWso2Comv1alpha1, result.ApiVersion)
+	assert.Equal(t, api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1, result.ApiVersion)
 
 	// Extract spec
 	spec, err := result.Spec.AsAPIConfigData()
@@ -127,10 +127,10 @@ func TestTransform_FullProvider(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "full-provider",
-			Version:  "v1.0",
-			Context:  stringPtr("/openai"),
-			Vhost:    stringPtr("api.openai.com"),
-			Template: "openai",
+			Version:     "v1.0",
+			Context:     stringPtr("/openai"),
+			Vhost:       stringPtr("api.openai.com"),
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 				Auth: &struct {
@@ -209,8 +209,8 @@ func TestTransform_NonExistentTemplate(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "nonexistent-template",
+			Version:     "v1.0",
+			Template:    "nonexistent-template",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -241,9 +241,9 @@ func TestTransform_DefaultContext(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
-			Context:  nil, // No context provided
+			Version:     "v1.0",
+			Template:    "openai",
+			Context:     nil, // No context provided
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -285,9 +285,9 @@ func TestTransform_CustomContext(t *testing.T) {
 				Spec: api.LLMProviderConfigData{
 
 					DisplayName: "test",
-					Version:  "v1.0",
-					Template: "openai",
-					Context:  stringPtr(tt.context),
+					Version:     "v1.0",
+					Template:    "openai",
+					Context:     stringPtr(tt.context),
 					Upstream: api.LLMProviderConfigData_Upstream{
 						Url: stringPtr("https://api.example.com"),
 					},
@@ -323,9 +323,9 @@ func TestTransform_NoVhost(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
-			Vhost:    nil,
+			Version:     "v1.0",
+			Template:    "openai",
+			Vhost:       nil,
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -355,9 +355,9 @@ func TestTransform_WithVhost(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
-			Vhost:    stringPtr("api.mycompany.com"),
+			Version:     "v1.0",
+			Template:    "openai",
+			Vhost:       stringPtr("api.mycompany.com"),
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -393,8 +393,8 @@ func TestTransform_NoAuth(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url:  stringPtr("https://api.example.com"),
 				Auth: nil,
@@ -428,8 +428,8 @@ func TestTransform_ApiKeyAuth(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 				Auth: &struct {
@@ -479,8 +479,8 @@ func TestTransform_UnsupportedAuthType(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 				Auth: &struct {
@@ -519,8 +519,8 @@ func TestTransform_AllowAll_NoExceptions(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -561,8 +561,8 @@ func TestTransform_AllowAll_WithSingleException(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -637,8 +637,8 @@ func TestTransform_AllowAll_WithMultipleExceptions(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -698,8 +698,8 @@ func TestTransform_DenyAll_NoExceptions(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -738,8 +738,8 @@ func TestTransform_DenyAll_WithSingleException(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -793,8 +793,8 @@ func TestTransform_DenyAll_WithMultipleExceptions(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -839,8 +839,8 @@ func TestTransform_InvalidAccessControlMode(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -893,8 +893,8 @@ func TestTransform_WithSinglePolicy(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -979,8 +979,8 @@ func TestTransform_WithMultiplePoliciesSameRoute(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -1065,8 +1065,8 @@ func TestTransform_PolicyOnDifferentRoutes(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -1136,8 +1136,8 @@ func TestTransform_PolicyOnWildcardMethod(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -1205,8 +1205,8 @@ func TestTransform_PolicyOnNonExistentRoute(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -1256,8 +1256,8 @@ func TestTransform_AuthWithAllowAll(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 				Auth: &struct {
@@ -1374,8 +1374,8 @@ func TestTransform_EmptyExceptionsArray(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -1420,8 +1420,8 @@ func TestTransform_DuplicateExceptionPaths(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
@@ -1488,8 +1488,8 @@ func TestTransform_AllowAllWithPolicies(t *testing.T) {
 		Spec: api.LLMProviderConfigData{
 
 			DisplayName: "test",
-			Version:  "v1.0",
-			Template: "openai",
+			Version:     "v1.0",
+			Template:    "openai",
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},

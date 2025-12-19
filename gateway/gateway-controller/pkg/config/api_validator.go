@@ -77,7 +77,7 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 	var errors []ValidationError
 
 	// Validate version
-	if config.ApiVersion != api.GatewayApiPlatformWso2Comv1alpha1 {
+	if config.ApiVersion != api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1 {
 		errors = append(errors, ValidationError{
 			Field:   "version",
 			Message: "Unsupported API version (must be 'api-platform.wso2.com/v1')",
