@@ -34,9 +34,11 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	"github.com/go-logr/zapr"
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/controller"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/pkg/logger"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -76,14 +78,30 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
-
-	// Load operator configuration
+	// Load operator configuration first to get logging config
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
+		// Use default logger for config loading failure
+		ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 		setupLog.Error(err, "unable to load configuration")
 		os.Exit(1)
 	}
+
+	// Initialize new Zap logger with config
+	zapLog, err := logger.NewLogger(logger.Config{
+		Level:  cfg.Logging.Level,
+		Format: cfg.Logging.Format,
+	})
+	if err != nil {
+		// Use default logger for logger initialization failure
+		ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+		setupLog.Error(err, "unable to initialize logger")
+		os.Exit(1)
+	}
+	defer zapLog.Sync()
+
+	// Set controller-runtime logger using zapr adapter
+	ctrl.SetLogger(zapr.NewLogger(zapLog))
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -137,6 +155,7 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		cfg,
+		zapLog,
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Gateway")
 		os.Exit(1)
@@ -145,6 +164,7 @@ func main() {
 		mgr.GetClient(),
 		mgr.GetScheme(),
 		cfg,
+		zapLog,
 	).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "RestApi")
 		os.Exit(1)
