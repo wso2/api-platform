@@ -335,8 +335,8 @@ func (c *Config) Validate() error {
 		if c.TracingConfig.MaxExportBatchSize <= 0 {
 			return fmt.Errorf("tracing.max_export_batch_size must be positive")
 		}
-		if c.TracingConfig.SamplingRate < 0.0 || c.TracingConfig.SamplingRate > 1.0 {
-			return fmt.Errorf("tracing.sampling_rate must be between 0.0 and 1.0, got %f", c.TracingConfig.SamplingRate)
+		if c.TracingConfig.SamplingRate <= 0.0 || c.TracingConfig.SamplingRate > 1.0 {
+			return fmt.Errorf("tracing.sampling_rate must be > 0.0 and <= 1.0, got %f", c.TracingConfig.SamplingRate)
 		}
 	}
 

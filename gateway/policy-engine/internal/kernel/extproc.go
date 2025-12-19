@@ -117,7 +117,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		// If no execution context (no policy chain), skip processing
 		if *execCtx == nil {
 			if span.IsRecording() {
-				span.SetAttributes(attribute.String("policy_count", "0"))
+				span.SetAttributes(attribute.Int("policy_count", 0))
 			}
 			return s.skipAllProcessing(), nil
 		}

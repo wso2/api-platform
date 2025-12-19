@@ -92,27 +92,27 @@ type IDPConfig struct {
 // TracingConfig holds OpenTelemetry tracing configuration
 type TracingConfig struct {
 	// Enabled toggles tracing on/off
-	Enabled bool `mapstructure:"enabled"`
+	Enabled bool `koanf:"enabled"`
 
 	// Endpoint is the OTLP gRPC endpoint (host:port)
-	Endpoint string `mapstructure:"endpoint"`
+	Endpoint string `koanf:"endpoint"`
 
 	// Insecure indicates whether to use an insecure connection (no TLS)
-	Insecure bool `mapstructure:"insecure"`
+	Insecure bool `koanf:"insecure"`
 
 	// ServiceVersion is the service version reported to the tracing backend
-	ServiceVersion string `mapstructure:"service_version"`
+	ServiceVersion string `koanf:"service_version"`
 
 	// BatchTimeout is the export batch timeout
-	BatchTimeout time.Duration `mapstructure:"batch_timeout"`
+	BatchTimeout time.Duration `koanf:"batch_timeout"`
 
 	// MaxExportBatchSize is the maximum batch size for exports
-	MaxExportBatchSize int `mapstructure:"max_export_batch_size"`
+	MaxExportBatchSize int `koanf:"max_export_batch_size"`
 
 	// SamplingRate is the ratio of requests to sample (0.0 to 1.0)
 	// 1.0 = sample all requests, 0.1 = sample 10% of requests
 	// If set to 0 or not specified, defaults to 1.0 (sample all)
-	SamplingRate float64 `mapstructure:"sampling_rate"`
+	SamplingRate float64 `koanf:"sampling_rate"`
 }
 
 // ServerConfig holds server-related configuration

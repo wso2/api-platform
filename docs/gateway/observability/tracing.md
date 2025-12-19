@@ -198,8 +198,7 @@ Customize service names for better identification:
 
 ```yaml
 policy_engine:
-  tracing:
-    service_name: policy-engine-prod-us-east-1
+  service_name: policy-engine-prod-us-east-1
 ```
 
 ### Batch Configuration

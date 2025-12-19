@@ -17,7 +17,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
 // InitTracer initializes the OpenTelemetry tracer and returns a shutdown function
@@ -50,6 +50,18 @@ func InitTracer(cfg *config.Config) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Ensure exporter is cleaned up on error paths
+	success := false
+	defer func() {
+		if !success {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := exporter.Shutdown(shutdownCtx); err != nil {
+				slog.ErrorContext(shutdownCtx, "Error shutting down exporter on init failure", "error", err)
+			}
+		}
+	}()
 
 	serviceName := cfg.PolicyEngine.TracingServiceName
 	if serviceName == "" {
@@ -116,6 +128,9 @@ func InitTracer(cfg *config.Config) (func(), error) {
 	))
 
 	slog.InfoContext(ctx, "OpenTelemetry tracer initialized successfully")
+
+	// Mark initialization as successful to prevent cleanup of exporter
+	success = true
 
 	// Return shutdown function
 	return func() {

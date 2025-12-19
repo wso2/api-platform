@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1161,10 +1162,13 @@ func (t *Translator) createOTELCollectorCluster() *cluster.Cluster {
 	host, port := otelEndpoint, uint32(4317)
 	if colonIdx := strings.LastIndex(otelEndpoint, ":"); colonIdx != -1 {
 		host = otelEndpoint[:colonIdx]
-		if parsedPort, err := fmt.Sscanf(otelEndpoint[colonIdx+1:], "%d", &port); err != nil || parsedPort != 1 {
+		portStr := otelEndpoint[colonIdx+1:]
+		if parsedPort, err := strconv.ParseUint(portStr, 10, 16); err != nil {
 			t.logger.Warn("Invalid OTEL collector port, using default 4317",
 				zap.String("endpoint", otelEndpoint))
 			port = 4317
+		} else {
+			port = uint32(parsedPort)
 		}
 	}
 

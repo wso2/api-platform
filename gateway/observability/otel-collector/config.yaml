@@ -37,16 +37,18 @@ exporters:
     sampling_initial: 5
     sampling_thereafter: 200
 
-  otlphttp:
-    endpoint: https://api.moesif.net
-    headers:
-      X-Moesif-Application-Id: Your_Moesif_Application_Id_Here
+  # Uncomment the following to export traces to Moesif
+  # otlphttp:
+  #   endpoint: https://api.moesif.net
+  #   headers:
+  #     X-Moesif-Application-Id: Your_Moesif_Application_Id_Here
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource]
+      # exporters: [otlp, debug] #uncomment this to use moesif
       exporters: [otlp, debug, otlphttp]
 
   telemetry:
