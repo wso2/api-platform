@@ -24,7 +24,7 @@ jobs:
         with:
           driver-opts: network=host
 
-      - name: Build & push to temporary local registry
+      - name: Build & push policy-engine image
         run: |
           export RUNTIME_IMAGE=localhost:5000/policy-engine
           export RUNTIME_TAG=$RUNTIME_IMAGE:trivy
@@ -32,7 +32,7 @@ jobs:
           RUNTIME_IMAGE=localhost:5000/policy-engine \
           RUNTIME_TAG=localhost:5000/policy-engine:trivy
 
-      - name: Trivy scan from temporary local registry
+      - name: Trivy scan policy-engine
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'localhost:5000/policy-engine:trivy'
@@ -40,16 +40,13 @@ jobs:
           ignore-unfixed: true
           vuln-type: 'os,library'
 
-      - name: Build & push to temporary local registry
+      - name: Build & push gateway-controller
         run: |
-          export RUNTIME_IMAGE=localhost:5000/gateway-controller
-          export RUNTIME_TAG=$RUNTIME_IMAGE:trivy
           make -C gateway/gateway-controller build-and-push-multiarch \
-          REGISTRY=localhost:5000 \
-          IMAGE_NAME=gateway-controller \
-          IMAGE_TAG=trivy
+          IMAGE_NAME=localhost:5000/gateway-controller \
+          VERSION=trivy
 
-      - name: Trivy scan from temporary local registry
+      - name: Trivy scan gateway-controller
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'localhost:5000/gateway-controller:trivy'
@@ -57,15 +54,13 @@ jobs:
           ignore-unfixed: true
           vuln-type: 'os,library'
 
-      - name: Build & push to temporary local registry
+      - name: Build & push gateway-controller
         run: |
-          export RUNTIME_IMAGE=localhost:5000/gateway-builder
-          export RUNTIME_TAG=$RUNTIME_IMAGE:trivy
           make -C gateway/gateway-builder build-and-push-multiarch \
-          RUNTIME_IMAGE=localhost:5000/gateway-builder \
-          RUNTIME_TAG=localhost:5000/gateway-builder:trivy
+          IMAGE_NAME=localhost:5000/gateway-controller
+          VERSION=trivy
 
-      - name: Trivy scan from temporary local registry
+      - name: Trivy scan gateway-controller
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'localhost:5000/gateway-builder:trivy'
@@ -73,19 +68,16 @@ jobs:
           ignore-unfixed: true
           vuln-type: 'os,library'
 
-      - name: Build & push to temporary local registry
+      - name: Build & push router
         run: |
-          export RUNTIME_IMAGE=localhost:5000/router
-          export RUNTIME_TAG=$RUNTIME_IMAGE:trivy
           make -C gateway/router build-and-push-multiarch \
-          RUNTIME_IMAGE=localhost:5000/router \
-          RUNTIME_TAG=localhost:5000/router:trivy
+          IMAGE_NAME=localhost:5000/router
+          VERSION=trivy
 
-      - name: Trivy scan from temporary local registry
+      - name: Trivy scan router
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'localhost:5000/router:trivy'
           format: 'table'
           ignore-unfixed: true
           vuln-type: 'os,library'
-          
