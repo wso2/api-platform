@@ -53,3 +53,27 @@ policies:
   - name: APIKeyAuthentication
     version: v0.1.0
     filePath: ./api-key-auth/v0.1.0
+
+  - name: AzureContentSafetyContentModeration
+    version: v0.1.0
+    filePath: ./azure-content-safety-content-moderation/v0.1.0
+
+  - name: AWSBedrockGuardrail
+    version: v0.1.0
+    filePath: ./aws-bedrock-guardrail/v0.1.0
+
+  - name: SemanticCache
+    version: v0.1.0
+    filePath: ./semantic-cache/v0.1.0
+    
+  - name: PromptDecorator
+    version: v0.1.0
+    filePath: ./prompt-decorator/v0.1.0
+
+  - name: PromptTemplate
+    version: v0.1.0
+    filePath: ./prompt-template/v0.1.0
+
+  - name: SemanticPromptGuard
+    version: v0.1.0
+    filePath: ./semantic-prompt-guard/v0.1.0

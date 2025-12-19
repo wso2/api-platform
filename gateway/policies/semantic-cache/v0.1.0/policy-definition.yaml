@@ -1,0 +1,120 @@
+name: SemanticCache
+version: v0.1.0
+description: |
+  Implements semantic caching for LLM responses using vector similarity search.
+  Generates embeddings from request bodies and checks for semantically similar cached responses.
+  If a cache hit is found, returns the cached response immediately without calling the upstream.
+  Stores successful responses in the cache for future lookups.
+  
+  Note: This policy requires embedding providers (OpenAI, Mistral, Azure OpenAI) and vector database providers (Redis, Milvus) to be configured.
+
+parameters:
+  type: object
+  properties:
+    threshold:
+      type: number
+      description: |
+        Similarity threshold for cache hits (0.0 to 1.0)
+        Higher values require more similarity (e.g., 0.9 = 90% similarity)
+      minimum: 0.0
+      maximum: 1.0
+    jsonPath:
+      type: string
+      description: |
+        JSONPath expression to extract text from request body for embedding generation
+        If not specified, uses the entire request body
+        Example: "$.messages[0].content"
+      default: ""
+  required:
+  - threshold
+
+systemParameters:
+  type: object
+  properties:
+    embeddingProvider:
+      type: string
+      description: |
+        Embedding provider type: "OPENAI", "MISTRAL", "AZURE_OPENAI"
+      enum:
+      - OPENAI
+      - MISTRAL
+      - AZURE_OPENAI
+      "wso2/defaultValue": "${config.semanticcache_embedding_provider}"
+    embeddingEndpoint:
+      type: string
+      description: |
+        Endpoint URL for the embedding service (required for OPENAI, MISTRAL, AZURE_OPENAI)
+        For OpenAI: "https://api.openai.com/v1/embeddings"
+        For Mistral: "https://api.mistral.ai/v1/embeddings"
+        For Azure OpenAI: Azure OpenAI endpoint URL
+      minLength: 1
+      "wso2/defaultValue": "${config.semanticcache_embedding_endpoint}"
+    embeddingModel:
+      type: string
+      description: |
+        Embedding model name (required for OPENAI, MISTRAL, AZURE_OPENAI)
+        For OpenAI: "text-embedding-ada-002"
+        For Mistral: "mistral-embed"
+      minLength: 1
+      "wso2/defaultValue": "${config.semanticcache_embedding_model}"
+    embeddingDimension:
+      type: integer
+      description: |
+        Dimension of embedding vectors (required for some vector databases)
+        Common values: 1536 (OpenAI ada-002), 1024 (Mistral), etc.
+      "wso2/defaultValue": "${config.semanticcache_embedding_dimension}"
+    apiKey:
+      type: string
+      description: |
+        API key for the embedding service (required for OPENAI, MISTRAL, AZURE_OPENAI)
+        For Azure OpenAI, this may be the API key or the header name for authentication
+      minLength: 1
+      "wso2/defaultValue": "${config.semanticcache_embedding_api_key}"
+    headerName:
+      type: string
+      description: |
+        Custom header name for API key authentication (for Azure OpenAI or custom setups)
+        If not specified, uses default "Authorization" header
+      "wso2/defaultValue": "${config.semanticcache_embedding_header_name}"
+    vectorStoreProvider:
+      type: string
+      description: |
+        Vector database provider: "REDIS" or "MILVUS"
+      enum:
+      - REDIS
+      - MILVUS
+      "wso2/defaultValue": "${config.semanticcache_vector_store_provider}"
+    dbHost:
+      type: string
+      description: Vector database host (required for Redis/Milvus)
+      minLength: 1
+      "wso2/defaultValue": "${config.semanticcache_vector_store_db_host}"
+    dbPort:
+      type: integer
+      description: Vector database port (required for Redis/Milvus)
+      "wso2/defaultValue": "${config.semanticcache_vector_store_db_port}"
+    username:
+      type: string
+      description: Vector database username (optional)
+      "wso2/defaultValue": "${config.semanticcache_vector_store_username}"
+    password:
+      type: string
+      description: Vector database password (optional)
+      "wso2/defaultValue": "${config.semanticcache_vector_store_password}"
+    database:
+      type: string
+      description: Vector database (optional)
+      "wso2/defaultValue": "${config.semanticcache_vector_store_database}"
+    ttl:
+      type: integer
+      description: Vector database TTL (optional)
+      "wso2/defaultValue": "${config.semanticcache_vector_store_ttl}"
+  required:
+  - embeddingProvider
+  - embeddingEndpoint
+  - embeddingModel
+  - apiKey
+  - vectorStoreProvider
+  - embeddingDimension
+  - dbHost
+  - dbPort
