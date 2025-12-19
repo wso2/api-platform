@@ -182,11 +182,17 @@ func downloadAndVerifyPolicies(resolvedPolicies []PolicyHubData) ([]ProcessedPol
 	var processed []ProcessedPolicy
 
 	for _, policy := range resolvedPolicies {
-		policyFileName := utils.FormatPolicyFileName(policy.PolicyName, policy.Version)
+		// Normalize version to include "v" prefix early for consistent naming
+		version := policy.Version
+		if !strings.HasPrefix(version, "v") {
+			version = "v" + version
+		}
+
+		policyFileName := utils.FormatPolicyFileName(policy.PolicyName, version)
 		cachePath := filepath.Join(cacheDir, policyFileName)
 		expectedChecksum := fmt.Sprintf("sha256:%s", policy.Checksum.Value)
 
-		fmt.Printf("  %s %s: ", policy.PolicyName, policy.Version)
+		fmt.Printf("  %s %s: ", policy.PolicyName, version)
 
 		// Check if policy exists in cache
 		if _, err := os.Stat(cachePath); err == nil {
@@ -222,12 +228,6 @@ func downloadAndVerifyPolicies(resolvedPolicies []PolicyHubData) ([]ProcessedPol
 			}
 
 			fmt.Printf(" done, verified\n")
-		}
-
-		// Normalize version to include "v" prefix
-		version := policy.Version
-		if !strings.HasPrefix(version, "v") {
-			version = "v" + version
 		}
 
 		processed = append(processed, ProcessedPolicy{
