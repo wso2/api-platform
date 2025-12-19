@@ -57,7 +57,7 @@ jobs:
       - name: Build & push gateway-builder
         run: |
           make -C gateway/gateway-builder build-and-push-multiarch \
-          IMAGE_NAME=localhost:5000/gateway-builder
+          IMAGE_NAME=localhost:5000/gateway-builder \
           VERSION=trivy
 
       - name: Trivy scan gateway-builder
@@ -71,7 +71,7 @@ jobs:
       - name: Build & push router
         run: |
           make -C gateway/router build-and-push-multiarch \
-          IMAGE_NAME=localhost:5000/router
+          IMAGE_NAME=localhost:5000/router \
           VERSION=trivy
 
       - name: Trivy scan router
