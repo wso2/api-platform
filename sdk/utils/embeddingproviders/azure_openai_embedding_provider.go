@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"strconv"
 	"time"
-
-	s "github.com/wso2/api-platform/sdk/utils/semanticcache"
 )
 
 // AzureOpenAIEmbeddingProvider implements the EmbeddingProvider interface for Azure OpenAI
@@ -21,15 +19,15 @@ type AzureOpenAIEmbeddingProvider struct {
 }
 
 // Init initializes the Azure OpenAI embedding provider with configuration
-func (a *AzureOpenAIEmbeddingProvider) Init(config s.EmbeddingProviderConfig) error {
-	err := s.ValidateEmbeddingProviderConfigProps(config)
+func (a *AzureOpenAIEmbeddingProvider) Init(config EmbeddingProviderConfig) error {
+	err := ValidateEmbeddingProviderConfigProps(config)
 	if err != nil {
 		return fmt.Errorf("invalid embedding provider config properties: %v", err)
 	}
 	a.azureAPIKey = config.APIKey
 	a.endpointURL = config.EmbeddingEndpoint
 	a.authHeaderName = config.AuthHeaderName
-	timeout := s.DefaultRequestTimeout // Use DefaultRequestTimeout (in seconds)
+	timeout := DefaultRequestTimeout // Use DefaultRequestTimeout (in seconds)
 	if v, err := strconv.Atoi(config.TimeOut); err == nil {
 		timeout = v
 	}
@@ -45,7 +43,7 @@ func (a *AzureOpenAIEmbeddingProvider) GetType() string {
 	return "AZURE_OPENAI"
 }
 
-// GetEmbedding generates an embedding vector for a single input text
+// GetEmbedding generates an embedding vector for a single input text, with strict response checks
 func (a *AzureOpenAIEmbeddingProvider) GetEmbedding(input string) ([]float32, error) {
 	requestBody := map[string]interface{}{
 		"input": input,
@@ -59,7 +57,7 @@ func (a *AzureOpenAIEmbeddingProvider) GetEmbedding(input string) ([]float32, er
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set(a.authHeaderName, a.azureAPIKey) //Header should be "api-key"
+	req.Header.Set(a.authHeaderName, a.azureAPIKey) // Header should be "api-key"
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := a.client.Do(req)
@@ -73,15 +71,37 @@ func (a *AzureOpenAIEmbeddingProvider) GetEmbedding(input string) ([]float32, er
 		return nil, err
 	}
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Azure OpenAI API error: status %d, body: %s", resp.StatusCode, string(respBody))
+	}
+
 	var response map[string]interface{}
 	if err := json.Unmarshal(respBody, &response); err != nil {
 		return nil, err
 	}
-	data := response["data"].([]interface{})[0].(map[string]interface{})
-	embedding := data["embedding"].([]interface{})
-	embeddingResult := make([]float32, len(embedding))
-	for i, value := range embedding {
-		embeddingResult[i] = float32(value.(float64))
+
+	dataArr, ok := response["data"].([]interface{})
+	if !ok || len(dataArr) == 0 {
+		return nil, fmt.Errorf("invalid response structure: data field missing, invalid, or empty")
+	}
+
+	dataMap, ok := dataArr[0].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid response structure: data[0] is not an object")
+	}
+
+	embeddingRaw, ok := dataMap["embedding"].([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid response structure: data[0].embedding field missing or invalid")
+	}
+
+	embeddingResult := make([]float32, len(embeddingRaw))
+	for i, value := range embeddingRaw {
+		floatVal, ok := value.(float64)
+		if !ok {
+			return nil, fmt.Errorf("invalid embedding value at embedding[%d]: not a number", i)
+		}
+		embeddingResult[i] = float32(floatVal)
 	}
 
 	return embeddingResult, nil

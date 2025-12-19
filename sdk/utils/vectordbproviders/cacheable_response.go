@@ -1,4 +1,4 @@
-package semanticcache
+package vectordbproviders
 
 import (
 	"regexp"

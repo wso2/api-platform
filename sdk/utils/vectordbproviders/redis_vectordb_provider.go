@@ -13,7 +13,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	s "github.com/wso2/api-platform/sdk/utils/semanticcache"
 )
 
 const (
@@ -35,8 +34,8 @@ type RedisVectorDBProvider struct {
 }
 
 // Init initializes the Redis vector DB provider with configuration
-func (r *RedisVectorDBProvider) Init(config s.VectorDBProviderConfig) error {
-	err := s.ValidateVectorStoreConfigProps(config)
+func (r *RedisVectorDBProvider) Init(config VectorDBProviderConfig) error {
+	err := ValidateVectorStoreConfigProps(config)
 	if err != nil {
 		fmt.Printf("Invalid vector store config properties: %v", err)
 		return err
@@ -51,15 +50,15 @@ func (r *RedisVectorDBProvider) Init(config s.VectorDBProviderConfig) error {
 		fmt.Printf("Switching to default due to invalid database number: %v", err)
 	}
 
-	embeddingDimension := config.EmbeddingDimention
-	r.indexID = s.VectorIndexPrefix + embeddingDimension
+	embeddingDimension := config.EmbeddingDimension
+	r.indexID = VectorIndexPrefix + embeddingDimension
 	r.dimension, err = strconv.Atoi(embeddingDimension)
 	if err != nil {
 		fmt.Printf("unable to parse and convert the embedding dimension to Int: %v", err)
 		return err
 	}
 
-	r.ttl = s.DefaultTTL
+	r.ttl = DefaultTTL
 	if config.TTL != "" {
 		parsedTTL, err := strconv.Atoi(config.TTL)
 		if err != nil {
@@ -125,8 +124,27 @@ func (r *RedisVectorDBProvider) CreateIndex() error {
 }
 
 // Store stores an embedding in Redis along with the response
-func (r *RedisVectorDBProvider) Store(embeddings []float32, response s.CacheResponse, filter map[string]interface{}) error {
-	ctx := filter["ctx"].(context.Context)
+func (r *RedisVectorDBProvider) Store(embeddings []float32, response CacheResponse, filter map[string]interface{}) error {
+	// Safely retrieve and validate ctx
+	ctxVal, ok := filter["ctx"]
+	if !ok {
+		return errors.New("missing 'ctx' key in filter")
+	}
+	ctx, ok := ctxVal.(context.Context)
+	if !ok {
+		return fmt.Errorf("'ctx' must be of type context.Context, got %T", ctxVal)
+	}
+
+	// Safely retrieve and validate api_id
+	apiIDVal, ok := filter["api_id"]
+	if !ok {
+		return errors.New("missing 'api_id' key in filter")
+	}
+	apiID, ok := apiIDVal.(string)
+	if !ok {
+		return fmt.Errorf("'api_id' must be of type string, got %T", apiIDVal)
+	}
+
 	embeddingBytes := FloatsToBytes(embeddings)
 	responseBytes, err := SerializeObject(response)
 	if err != nil {
@@ -139,7 +157,7 @@ func (r *RedisVectorDBProvider) Store(embeddings []float32, response s.CacheResp
 
 	_, err = r.client.HSet(ctx, redisKey, map[string]any{
 		responseField:  responseBytes,
-		"api_id":       filter["api_id"].(string),
+		"api_id":       apiID,
 		embeddingField: embeddingBytes,
 	}).Result()
 
@@ -160,15 +178,34 @@ func (r *RedisVectorDBProvider) Store(embeddings []float32, response s.CacheResp
 }
 
 // Retrieve retrieves the most similar embedding from Redis
-func (r *RedisVectorDBProvider) Retrieve(embeddings []float32, filter map[string]interface{}) (s.CacheResponse, error) {
-	ctx := filter["ctx"].(context.Context)
-	embeddingBytes := FloatsToBytes(embeddings)
-	apiID := filter["api_id"].(string)
+func (r *RedisVectorDBProvider) Retrieve(embeddings []float32, filter map[string]interface{}) (CacheResponse, error) {
+	// Safely retrieve and validate ctx
+	ctxVal, ok := filter["ctx"]
+	if !ok {
+		return CacheResponse{}, errors.New("missing 'ctx' key in filter")
+	}
+	ctx, ok := ctxVal.(context.Context)
+	if !ok {
+		return CacheResponse{}, fmt.Errorf("'ctx' must be of type context.Context, got %T", ctxVal)
+	}
+
+	// Safely retrieve and validate api_id
+	apiIDVal, ok := filter["api_id"]
+	if !ok {
+		return CacheResponse{}, errors.New("missing 'api_id' key in filter")
+	}
+	apiID, ok := apiIDVal.(string)
+	if !ok {
+		return CacheResponse{}, fmt.Errorf("'api_id' must be of type string, got %T", apiIDVal)
+	}
+
 	if apiID == "" {
 		fmt.Printf("Given API ID: %s", apiID)
 		fmt.Printf("Error: api_id is required in filter")
-		return s.CacheResponse{}, errors.New("api_id is required in filter")
+		return CacheResponse{}, errors.New("api_id is required in filter")
 	}
+
+	embeddingBytes := FloatsToBytes(embeddings)
 
 	knnQuery := fmt.Sprintf(
 		"@api_id:{\"%s\"}=>[KNN $K @%s $vec AS score]",
@@ -193,43 +230,49 @@ func (r *RedisVectorDBProvider) Retrieve(embeddings []float32, filter map[string
 
 	if err != nil {
 		fmt.Printf("Error during FTSearch: %v\n", err)
-		return s.CacheResponse{}, err
+		return CacheResponse{}, err
 	}
 
 	if results.Total == 0 {
 		fmt.Printf("No results found: %v\n", err)
-		return s.CacheResponse{}, errors.New("no results found")
+		return CacheResponse{}, errors.New("no results found")
 	}
 
 	// Take the top‐hit document
 	doc := results.Docs[0]
-	score, err := strconv.ParseFloat(doc.Fields["score"], 64)
+	scoreStr, ok := doc.Fields["score"]
+	if !ok {
+		fmt.Printf("Error: missing 'score' field in document %s", doc.ID)
+		return CacheResponse{}, fmt.Errorf("missing 'score' field in document %s", doc.ID)
+	}
+	score, err := strconv.ParseFloat(scoreStr, 64)
 	if err != nil {
-		fmt.Printf("Invalid doc score found: %s", err)
+		fmt.Printf("Error: failed to parse score '%s' for document %s: %v", scoreStr, doc.ID, err)
+		return CacheResponse{}, fmt.Errorf("invalid score '%s' for document %s: %w", scoreStr, doc.ID, err)
 	}
 
 	thresholdStr, ok := filter["threshold"].(string)
 	if !ok {
-		return s.CacheResponse{}, fmt.Errorf("missing threshold in filter")
+		return CacheResponse{}, fmt.Errorf("missing threshold in filter")
 	}
 	threshold, err := strconv.ParseFloat(thresholdStr, 64)
 	if err != nil {
-		return s.CacheResponse{}, fmt.Errorf("invalid threshold: %w", err)
+		return CacheResponse{}, fmt.Errorf("invalid threshold: %w", err)
 	}
 	fmt.Printf("Match Score: %f | Threshold: %f", score, threshold)
 	if score > threshold {
-		return s.CacheResponse{}, nil
+		return CacheResponse{}, nil
 	}
 
 	// Fetch the serialized response blob from Redis
 	respBytes, err := r.client.HGet(ctx, doc.ID, responseField).Bytes()
 	if err != nil {
-		return s.CacheResponse{}, err
+		return CacheResponse{}, err
 	}
 
-	var resp s.CacheResponse
-	if err := json.Unmarshal(respBytes, &resp); err != nil {
-		return s.CacheResponse{}, err
+	var resp CacheResponse
+	if err := deserializeObject(respBytes, &resp); err != nil {
+		return CacheResponse{}, err
 	}
 
 	return resp, nil

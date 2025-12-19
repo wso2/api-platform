@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"strconv"
 	"time"
-
-	s "github.com/wso2/api-platform/sdk/utils/semanticcache"
 )
 
 // OpenAIEmbeddingProvider implements the EmbeddingProvider interface for OpenAI
@@ -22,8 +20,8 @@ type OpenAIEmbeddingProvider struct {
 }
 
 // Init initializes the OpenAI embedding provider with configuration
-func (o *OpenAIEmbeddingProvider) Init(config s.EmbeddingProviderConfig) error {
-	err := s.ValidateEmbeddingProviderConfigProps(config)
+func (o *OpenAIEmbeddingProvider) Init(config EmbeddingProviderConfig) error {
+	err := ValidateEmbeddingProviderConfigProps(config)
 	if err != nil {
 		return fmt.Errorf("invalid embedding provider config properties: %v", err)
 	}
@@ -31,7 +29,7 @@ func (o *OpenAIEmbeddingProvider) Init(config s.EmbeddingProviderConfig) error {
 	o.endpointURL = config.EmbeddingEndpoint
 	o.model = config.EmbeddingModel
 	o.authHeaderName = config.AuthHeaderName
-	timeout := s.DefaultRequestTimeout // Use DefaultRequestTimeout (in seconds)
+	timeout := DefaultRequestTimeout // Use DefaultRequestTimeout (in seconds)
 	if v, err := strconv.Atoi(config.TimeOut); err == nil {
 		timeout = v
 	}

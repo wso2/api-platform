@@ -32,6 +32,9 @@ type AzureContentSafetyContentModerationPolicy struct {
 	endpoint string
 	apiKey   string
 
+	// HTTP client for connection reuse and pooling
+	client *http.Client
+
 	// Dynamic configuration from params
 	hasRequestParams  bool
 	hasResponseParams bool
@@ -61,6 +64,9 @@ func GetPolicy(
 	p := &AzureContentSafetyContentModerationPolicy{
 		endpoint: getStringParam(params, "azureContentSafetyEndpoint"),
 		apiKey:   getStringParam(params, "azureContentSafetyKey"),
+		client: &http.Client{
+			Timeout: requestTimeout,
+		},
 	}
 
 	// Extract and parse request parameters if present
@@ -383,23 +389,32 @@ func (p *AzureContentSafetyContentModerationPolicy) callAzureContentSafetyAPI(en
 		}
 
 		resp, lastErr = p.makeHTTPRequest("POST", serviceURL, headers, bodyBytes)
-		if lastErr == nil && resp.StatusCode == http.StatusOK {
+		if lastErr != nil {
+			if resp != nil {
+				resp.Body.Close()
+			}
+			continue
+		}
+
+		if resp.StatusCode == http.StatusOK {
 			break
 		}
-		if resp != nil {
-			resp.Body.Close()
+
+		// Read error response body before closing
+		errorBodyBytes, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if attempt == maxRetries-1 {
+			// Last attempt, return error with body content
+			return nil, fmt.Errorf("Azure Content Safety API returned non-200 status code: %d, body: %s", resp.StatusCode, string(errorBodyBytes))
 		}
+		// Not the last attempt, continue retrying
+		resp = nil
 	}
 
 	if lastErr != nil {
 		return nil, fmt.Errorf("failed to call Azure Content Safety API after %d attempts: %w", maxRetries, lastErr)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("Azure Content Safety API returned non-200 status code: %d, body: %s", resp.StatusCode, string(bodyBytes))
-	}
 
 	responseBody := make(map[string]interface{})
 	if err := json.NewDecoder(resp.Body).Decode(&responseBody); err != nil {
@@ -424,10 +439,6 @@ func (p *AzureContentSafetyContentModerationPolicy) callAzureContentSafetyAPI(en
 
 // makeHTTPRequest makes an HTTP request
 func (p *AzureContentSafetyContentModerationPolicy) makeHTTPRequest(method, url string, headers map[string]string, body []byte) (*http.Response, error) {
-	client := &http.Client{
-		Timeout: requestTimeout,
-	}
-
 	req, err := http.NewRequest(method, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -437,7 +448,7 @@ func (p *AzureContentSafetyContentModerationPolicy) makeHTTPRequest(method, url 
 		req.Header.Set(key, value)
 	}
 
-	resp, err := client.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, err
 	}

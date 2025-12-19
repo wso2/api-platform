@@ -12,8 +12,6 @@ import (
 	"github.com/milvus-io/milvus/client/v2/index"
 	"github.com/milvus-io/milvus/client/v2/milvusclient"
 	"github.com/milvus-io/milvus/pkg/v2/common"
-
-	s "github.com/wso2/api-platform/sdk/utils/semanticcache"
 )
 
 // MilvusVectorDBProvider implements the VectorDBProvider interface for Milvus
@@ -26,17 +24,17 @@ type MilvusVectorDBProvider struct {
 }
 
 // Init initializes the Milvus vector DB provider with configuration
-func (m *MilvusVectorDBProvider) Init(config s.VectorDBProviderConfig) error {
-	err := s.ValidateVectorStoreConfigProps(config)
+func (m *MilvusVectorDBProvider) Init(config VectorDBProviderConfig) error {
+	err := ValidateVectorStoreConfigProps(config)
 	if err != nil {
 		return err
 	}
-	embeddingDimension := config.EmbeddingDimention
+	embeddingDimension := config.EmbeddingDimension
 	m.milvusURL = config.DBHost + ":" + strconv.Itoa(config.DBPort)
-	m.collectionName = fmt.Sprintf("%s_%s", s.VectorIndexPrefix, embeddingDimension)
+	m.collectionName = fmt.Sprintf("%s_%s", VectorIndexPrefix, embeddingDimension)
 	m.dimension, _ = strconv.Atoi(embeddingDimension)
 
-	m.ttl = s.DefaultTTL
+	m.ttl = DefaultTTL
 	if config.TTL != "" {
 		parsedTTL, err := strconv.Atoi(config.TTL)
 		if err != nil {
@@ -123,7 +121,7 @@ func (m *MilvusVectorDBProvider) CreateIndex() error {
 }
 
 // Store stores the embeddings and associated response in Milvus
-func (m *MilvusVectorDBProvider) Store(embeddings []float32, response s.CacheResponse, filter map[string]interface{}) error {
+func (m *MilvusVectorDBProvider) Store(embeddings []float32, response CacheResponse, filter map[string]interface{}) error {
 	id := uuid.New().String()
 	ctx := filter["ctx"].(context.Context)
 	responseBytes, err := SerializeObject(response)
@@ -150,15 +148,18 @@ func (m *MilvusVectorDBProvider) Store(embeddings []float32, response s.CacheRes
 }
 
 // Retrieve retrieves the most similar embedding from Milvus
-func (m *MilvusVectorDBProvider) Retrieve(embeddings []float32, filter map[string]interface{}) (s.CacheResponse, error) {
-	ctx := filter["ctx"].(context.Context)
+func (m *MilvusVectorDBProvider) Retrieve(embeddings []float32, filter map[string]interface{}) (CacheResponse, error) {
+	ctx, ok := filter["ctx"].(context.Context)
+	if !ok {
+		return CacheResponse{}, fmt.Errorf("missing or invalid context in filter")
+	}
 	loadTask, err := m.client.LoadCollection(ctx, milvusclient.NewLoadCollectionOption(m.collectionName))
 	if err != nil {
-		return s.CacheResponse{}, fmt.Errorf("failed to load collection: %w", err)
+		return CacheResponse{}, fmt.Errorf("failed to load collection: %w", err)
 	}
 	err = loadTask.Await(ctx)
 	if err != nil {
-		return s.CacheResponse{}, fmt.Errorf("error in fetching the collection: %w", err)
+		return CacheResponse{}, fmt.Errorf("error in fetching the collection: %w", err)
 	}
 
 	resultSets, err := m.client.Search(ctx, milvusclient.NewSearchOption(
@@ -172,13 +173,17 @@ func (m *MilvusVectorDBProvider) Retrieve(embeddings []float32, filter map[strin
 		WithOutputFields(responseField))
 
 	if err != nil {
-		fmt.Println(err.Error())
+		return CacheResponse{}, fmt.Errorf("failed to search in Milvus: %w", err)
 	}
 
+	// Defensive check to avoid index out of range
+	if len(resultSets) == 0 {
+		return CacheResponse{}, nil
+	}
 	// Grab the first result set (we only asked for one vector batch)
 	rs := resultSets[0]
 	if rs.ResultCount == 0 {
-		return s.CacheResponse{}, nil
+		return CacheResponse{}, nil
 	}
 
 	// Raw Milvus distance → similarity score
@@ -188,25 +193,25 @@ func (m *MilvusVectorDBProvider) Retrieve(embeddings []float32, filter map[strin
 	// Check for threshold and comapre with similarity score
 	thrRaw, ok := filter["threshold"].(string)
 	if !ok {
-		return s.CacheResponse{}, fmt.Errorf("missing threshold")
+		return CacheResponse{}, fmt.Errorf("missing threshold")
 	}
 	thr, err := strconv.ParseFloat(thrRaw, 64)
 	if err != nil || thr == 0 {
-		return s.CacheResponse{}, fmt.Errorf("bad threshold value found: %w", err)
+		return CacheResponse{}, fmt.Errorf("bad threshold value found: %w", err)
 	}
 
 	if simScore > thr {
-		return s.CacheResponse{}, nil
+		return CacheResponse{}, nil
 	}
-	var resp s.CacheResponse
+	var resp CacheResponse
 	stringArray := response.GetStringData()
 	if len(stringArray.Data) == 0 {
-		return s.CacheResponse{}, fmt.Errorf("no response data found")
+		return CacheResponse{}, fmt.Errorf("no response data found")
 	}
 	responseBytes := []byte(stringArray.Data[0])
 	err = json.Unmarshal(responseBytes, &resp)
 	if err != nil {
-		return s.CacheResponse{}, fmt.Errorf("failed to unmarshal response: %w", err)
+		return CacheResponse{}, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 	return resp, nil
 }

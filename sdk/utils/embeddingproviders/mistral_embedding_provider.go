@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"strconv"
 	"time"
-
-	s "github.com/wso2/api-platform/sdk/utils/semanticcache"
 )
 
 // MistralEmbeddingProvider implements the EmbeddingProvider interface for Mistral
@@ -23,8 +21,8 @@ type MistralEmbeddingProvider struct {
 }
 
 // Init initializes the Mistral embedding provider with configuration
-func (m *MistralEmbeddingProvider) Init(config s.EmbeddingProviderConfig) error {
-	err := s.ValidateEmbeddingProviderConfigProps(config)
+func (m *MistralEmbeddingProvider) Init(config EmbeddingProviderConfig) error {
+	err := ValidateEmbeddingProviderConfigProps(config)
 	if err != nil {
 		return fmt.Errorf("invalid embedding provider config properties: %v", err)
 	}
@@ -32,7 +30,7 @@ func (m *MistralEmbeddingProvider) Init(config s.EmbeddingProviderConfig) error 
 	m.endpointURL = config.EmbeddingEndpoint
 	m.model = config.EmbeddingModel
 	m.authHeaderName = config.AuthHeaderName
-	timeout := s.DefaultRequestTimeout // Use DefaultRequestTimeout (in seconds)
+	timeout := DefaultRequestTimeout // Use DefaultRequestTimeout (in seconds)
 	if v, err := strconv.Atoi(config.TimeOut); err == nil {
 		timeout = v
 	}
@@ -118,7 +116,6 @@ func (m *MistralEmbeddingProvider) GetEmbeddings(inputs []string) ([][]float32, 
 	req, err := http.NewRequest("POST", m.endpointURL, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
-		return nil, err
 	}
 	req.Header.Set(m.authHeaderName, "Bearer "+m.mistralAPIKey)
 	req.Header.Set("Content-Type", "application/json")
@@ -141,7 +138,6 @@ func (m *MistralEmbeddingProvider) GetEmbeddings(inputs []string) ([][]float32, 
 
 	var response map[string]interface{}
 	if err := json.Unmarshal(respBody, &response); err != nil {
-		return nil, err
 		return nil, err
 	}
 

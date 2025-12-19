@@ -157,6 +157,11 @@ func (p *PromptDecoratorPolicy) OnRequest(ctx *policy.RequestContext, params map
 		content = ctx.Body.Content
 	}
 
+	// Check for empty or nil content before unmarshaling
+	if ctx.Body == nil || len(content) == 0 {
+		return p.buildErrorResponse("Empty request body", nil)
+	}
+
 	// Parse JSON payload
 	var payloadData map[string]interface{}
 	if err := json.Unmarshal(content, &payloadData); err != nil {
@@ -267,18 +272,14 @@ func (p *PromptDecoratorPolicy) createDecorationMessages() ([]map[string]interfa
 	switch dec := decoration.(type) {
 	case []interface{}:
 		// Array of decoration objects (chat prompt decoration mode)
+		// parseParams guarantees valid role/content, so this routine only converts
+		// the already-validated objects into the expected message format
 		decorationMessages := make([]map[string]interface{}, 0, len(dec))
 		for i, item := range dec {
 			if itemMap, ok := item.(map[string]interface{}); ok {
-				role, roleOk := itemMap["role"].(string)
-				content, contentOk := itemMap["content"].(string)
-
-				if !roleOk || role == "" {
-					return nil, fmt.Errorf("decoration[%d].role must be a non-empty string", i)
-				}
-				if !contentOk || content == "" {
-					return nil, fmt.Errorf("decoration[%d].content must be a non-empty string", i)
-				}
+				// Type assertions are safe because parseParams validates role/content are non-empty strings
+				role := itemMap["role"].(string)
+				content := itemMap["content"].(string)
 
 				decorationMessages = append(decorationMessages, map[string]interface{}{
 					"role":    role,

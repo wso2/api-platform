@@ -12,8 +12,8 @@ import (
 
 var (
 	// promptTemplateRegex matches template://<template-name>?<params> patterns
-	// Example: template://translate?from=english&to=spanish
-	promptTemplateRegex = regexp.MustCompile(`template://[a-zA-Z0-9_-]+\?[^\s"']*`)
+	// Example: template://translate?from=english&to=spanish or template://translate
+	promptTemplateRegex = regexp.MustCompile(`template://[a-zA-Z0-9_-]+(?:\?[^\s"']*)?`)
 	// textCleanRegex removes leading and trailing quotes from JSON-escaped strings
 	textCleanRegex = regexp.MustCompile(`^"|"$`)
 )
@@ -132,11 +132,11 @@ func (p *PromptTemplatePolicy) OnRequest(ctx *policy.RequestContext, params map[
 
 	updatedJsonContent := jsonContent
 
-	// Find all template://<template-name>?<params> patterns
+	// Find all template://<template-name>?<params> patterns (query params are optional)
 	matches := promptTemplateRegex.FindAllString(jsonContent, -1)
 	for _, matched := range matches {
 		// Parse the matched string as a URI
-		// Example: template://translate?from=english&to=spanish
+		// Example: template://translate?from=english&to=spanish or template://translate
 		parsedURL, err := url.Parse(matched)
 		if err != nil {
 			// Skip invalid URIs
@@ -149,8 +149,8 @@ func (p *PromptTemplatePolicy) OnRequest(ctx *policy.RequestContext, params map[
 		// Look up template by name
 		templatePrompt, exists := p.params.templates[templateName]
 		if !exists {
-			// Template not found, skip
-			continue
+			// Template not found, return error
+			return p.buildErrorResponse(fmt.Sprintf("Template '%s' not found", templateName), nil)
 		}
 
 		// Parse query parameters
@@ -182,8 +182,8 @@ func (p *PromptTemplatePolicy) OnRequest(ctx *policy.RequestContext, params map[
 		// Escape the resolved prompt for JSON (add quotes and escape special chars)
 		escapedPromptBytes, err := json.Marshal(resolvedPrompt)
 		if err != nil {
-			// If marshaling fails, skip this match
-			continue
+			// If marshaling fails, return error
+			return p.buildErrorResponse("Error marshaling resolved prompt to JSON", err)
 		}
 		escapedPrompt := string(escapedPromptBytes)
 		escapedPrompt = textCleanRegex.ReplaceAllString(escapedPrompt, "")

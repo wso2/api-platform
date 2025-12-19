@@ -30,7 +30,6 @@ import (
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	utils "github.com/wso2/api-platform/sdk/utils"
 	embeddingproviders "github.com/wso2/api-platform/sdk/utils/embeddingproviders"
-	semanticcache "github.com/wso2/api-platform/sdk/utils/semanticcache"
 	vectordbproviders "github.com/wso2/api-platform/sdk/utils/vectordbproviders"
 )
 
@@ -43,15 +42,15 @@ const (
 
 var (
 	// Map of policy instance hash to its providers
-	embeddingProviders   = make(map[string]semanticcache.EmbeddingProvider)
-	vectorStoreProviders = make(map[string]semanticcache.VectorDBProvider)
+	embeddingProviders   = make(map[string]embeddingproviders.EmbeddingProvider)
+	vectorStoreProviders = make(map[string]vectordbproviders.VectorDBProvider)
 
 	// Mutex to protect access to global providers
 	providerMutex sync.RWMutex
 
 	// Map of policy instance hash to its configurations (to detect changes)
-	embeddingConfigs   = make(map[string]semanticcache.EmbeddingProviderConfig)
-	vectorStoreConfigs = make(map[string]semanticcache.VectorDBProviderConfig)
+	embeddingConfigs   = make(map[string]embeddingproviders.EmbeddingProviderConfig)
+	vectorStoreConfigs = make(map[string]vectordbproviders.VectorDBProviderConfig)
 
 	// Map to track if index has been created for each policy instance
 	indexCreated = make(map[string]bool)
@@ -60,10 +59,10 @@ var (
 
 // SemanticCachePolicy implements semantic caching for LLM responses
 type SemanticCachePolicy struct {
-	embeddingConfig     semanticcache.EmbeddingProviderConfig
-	vectorStoreConfig   semanticcache.VectorDBProviderConfig
-	embeddingProvider   semanticcache.EmbeddingProvider
-	vectorStoreProvider semanticcache.VectorDBProvider
+	embeddingConfig     embeddingproviders.EmbeddingProviderConfig
+	vectorStoreConfig   vectordbproviders.VectorDBProviderConfig
+	embeddingProvider   embeddingproviders.EmbeddingProvider
+	vectorStoreProvider vectordbproviders.VectorDBProvider
 	jsonPath            string
 	threshold           float64
 	policyInstanceHash  string
@@ -127,7 +126,7 @@ func parseParams(params map[string]interface{}, p *SemanticCachePolicy) error {
 	}
 
 	// Parse embedding provider config
-	p.embeddingConfig = semanticcache.EmbeddingProviderConfig{
+	p.embeddingConfig = embeddingproviders.EmbeddingProviderConfig{
 		EmbeddingProvider: embeddingProvider,
 	}
 
@@ -157,7 +156,7 @@ func parseParams(params map[string]interface{}, p *SemanticCachePolicy) error {
 	}
 
 	// Parse vector store provider config
-	p.vectorStoreConfig = semanticcache.VectorDBProviderConfig{
+	p.vectorStoreConfig = vectordbproviders.VectorDBProviderConfig{
 		VectorStoreProvider: vectorStoreProvider,
 		Threshold:           fmt.Sprintf("%.2f", threshold),
 	}
@@ -183,7 +182,7 @@ func parseParams(params map[string]interface{}, p *SemanticCachePolicy) error {
 		if err != nil {
 			return fmt.Errorf("'embeddingDimension' must be a number: %w", err)
 		}
-		p.vectorStoreConfig.EmbeddingDimention = strconv.Itoa(dim)
+		p.vectorStoreConfig.EmbeddingDimension = strconv.Itoa(dim)
 	} else {
 		return fmt.Errorf("'embeddingDimension' is required")
 	}
@@ -335,8 +334,8 @@ func (p *SemanticCachePolicy) initializeVectorStoreProvider() error {
 }
 
 // createEmbeddingProvider creates a new embedding provider based on the config
-func createEmbeddingProvider(config semanticcache.EmbeddingProviderConfig) (semanticcache.EmbeddingProvider, error) {
-	var provider semanticcache.EmbeddingProvider
+func createEmbeddingProvider(config embeddingproviders.EmbeddingProviderConfig) (embeddingproviders.EmbeddingProvider, error) {
+	var provider embeddingproviders.EmbeddingProvider
 
 	switch config.EmbeddingProvider {
 	case "OPENAI":
@@ -357,8 +356,8 @@ func createEmbeddingProvider(config semanticcache.EmbeddingProviderConfig) (sema
 }
 
 // createVectorDBProvider creates a new vector DB provider based on the config
-func createVectorDBProvider(config semanticcache.VectorDBProviderConfig) (semanticcache.VectorDBProvider, error) {
-	var provider semanticcache.VectorDBProvider
+func createVectorDBProvider(config vectordbproviders.VectorDBProviderConfig) (vectordbproviders.VectorDBProvider, error) {
+	var provider vectordbproviders.VectorDBProvider
 
 	switch config.VectorStoreProvider {
 	case "REDIS":
@@ -549,7 +548,7 @@ func (p *SemanticCachePolicy) OnResponse(ctx *policy.ResponseContext, params map
 	}
 
 	// Store in cache
-	cacheResponse := semanticcache.CacheResponse{
+	cacheResponse := vectordbproviders.CacheResponse{
 		ResponsePayload:     responseData,
 		RequestHash:         uuid.New().String(),
 		ResponseFetchedTime: time.Now(),
