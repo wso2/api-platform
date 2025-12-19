@@ -54,13 +54,13 @@ jobs:
           ignore-unfixed: true
           vuln-type: 'os,library'
 
-      - name: Build & push gateway-controller
+      - name: Build & push gateway-builder
         run: |
           make -C gateway/gateway-builder build-and-push-multiarch \
-          IMAGE_NAME=localhost:5000/gateway-controller
+          IMAGE_NAME=localhost:5000/gateway-builder
           VERSION=trivy
 
-      - name: Trivy scan gateway-controller
+      - name: Trivy scan gateway-builder
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: 'localhost:5000/gateway-builder:trivy'
