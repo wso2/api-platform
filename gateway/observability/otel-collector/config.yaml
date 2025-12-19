@@ -48,8 +48,8 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource]
-      # exporters: [otlp, debug] #uncomment this to use moesif
-      exporters: [otlp, debug, otlphttp]
+      exporters: [otlp, debug] 
+      # exporters: [otlp, debug, otlphttp] #uncomment this to use moesif
 
   telemetry:
     logs:
