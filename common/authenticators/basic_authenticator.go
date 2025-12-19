@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/argon2"
@@ -47,12 +48,12 @@ func NewBasicAuthenticator(authConfig models.AuthConfig, logger *zap.Logger) *Ba
 
 // Authenticate verifies basic authentication credentials from context
 func (b *BasicAuthenticator) Authenticate(c *gin.Context) (*AuthResult, error) {
-	authHeader := c.GetHeader(string("Authorization"))
+	authHeader := c.GetHeader(constants.AuthorizationHeader)
 	if authHeader == "" {
 		return nil, ErrAuthenticationFailed
 	}
 	// Extract and decode credentials
-	encodedCredentials := strings.TrimPrefix(authHeader, "Basic ")
+	encodedCredentials := strings.TrimPrefix(authHeader, constants.BasicPrefix)
 	decodedBytes, err := base64.StdEncoding.DecodeString(encodedCredentials)
 	if err != nil {
 		return nil, ErrAuthenticationFailed
@@ -113,12 +114,12 @@ func (b *BasicAuthenticator) Name() string {
 // CanHandle checks if credentials in context are BasicCredentials
 func (b *BasicAuthenticator) CanHandle(c *gin.Context) bool {
 
-	authHeader := c.GetHeader(string("Authorization"))
+	authHeader := c.GetHeader(constants.AuthorizationHeader)
 	if authHeader == "" {
 		return false
 	}
 	// Determine auth type from header
-	return strings.HasPrefix(authHeader, "Basic ")
+	return strings.HasPrefix(authHeader, constants.BasicPrefix)
 }
 
 // verifyPassword verifies a password against a stored hash.

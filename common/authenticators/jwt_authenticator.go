@@ -26,6 +26,7 @@ import (
 	"github.com/MicahParks/keyfunc/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
 	"go.uber.org/zap"
 )
@@ -40,43 +41,48 @@ var (
 type JWTAuthenticator struct {
 	config *models.AuthConfig
 	logger *zap.Logger
+	jwks   *keyfunc.JWKS
 }
 
 // NewJWTAuthenticator creates a new JWT authenticator
-func NewJWTAuthenticator(config *models.AuthConfig, logger *zap.Logger) *JWTAuthenticator {
+func NewJWTAuthenticator(config *models.AuthConfig, logger *zap.Logger) (*JWTAuthenticator, error) {
+	var jwks *keyfunc.JWKS
+	if config.JWTConfig != nil {
+		// Get Issuer URL from config
+		if config.JWTConfig.JWKSUrl == "" {
+			return nil, errors.New("JWKS endpoint not configured")
+		}
+
+		// Create JWKS provider
+		tempjwksProvider, err := keyfunc.Get(config.JWTConfig.JWKSUrl, keyfunc.Options{RefreshInterval: 10})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get JWKS: %w", err)
+		}
+		jwks = tempjwksProvider
+	}
 	return &JWTAuthenticator{
 		config: config,
 		logger: logger,
-	}
+		jwks:   jwks,
+	}, nil
 }
 
 // Authenticate verifies JWT token from context
 func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 	// Extract bearer token from Authorization header
-	authHeader := ctx.GetHeader("Authorization")
+	authHeader := ctx.GetHeader(constants.AuthorizationHeader)
 	if authHeader == "" {
 		return nil, errors.New("authorization header missing")
 	}
 
 	// Remove "Bearer " prefix
-	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+	tokenString := strings.TrimPrefix(authHeader, constants.BearerPrefix)
 	if tokenString == authHeader {
 		return nil, errors.New("invalid authorization header format")
 	}
 
-	// Get JWKS URL from config
-	if j.config.JWTConfig.IssuerURL == "" {
-		return nil, errors.New("JWKS endpoint not configured")
-	}
-
-	// Create JWKS provider
-	jwksProvider, err := keyfunc.Get(j.config.JWTConfig.JWKSUrl, keyfunc.Options{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get JWKS: %w", err)
-	}
-
 	claims := jwt.MapClaims{}
-	validatedToken, err := jwt.ParseWithClaims(tokenString, claims, jwksProvider.Keyfunc)
+	validatedToken, err := jwt.ParseWithClaims(tokenString, claims, j.jwks.Keyfunc)
 
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
@@ -166,12 +172,12 @@ func (j *JWTAuthenticator) Name() string {
 
 // CanHandle checks if credentials in context are JWTCredentials
 func (j *JWTAuthenticator) CanHandle(ctx *gin.Context) bool {
-	authHeader := ctx.GetHeader(string("Authorization"))
+	authHeader := ctx.GetHeader(constants.AuthorizationHeader)
 	if authHeader == "" {
 		return false
 	}
 	// Determine auth type from header
-	canHandle := strings.HasPrefix(authHeader, "Bearer ")
+	canHandle := strings.HasPrefix(authHeader, constants.BearerPrefix)
 	j.logger.Sugar().Debugf("can handle token %v", canHandle)
 	return canHandle
 }
