@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/policy-engine/policy-engine/internal/constants"
 	"github.com/policy-engine/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	"go.opentelemetry.io/otel/attribute"
@@ -61,22 +62,22 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 		policyStartTime := time.Now()
 
 		// Create span for individual policy execution - NoOp if tracing disabled
-		_, span := c.tracer.Start(traceCtx, fmt.Sprintf("policy.request.%s", spec.Name),
+		_, span := c.tracer.Start(traceCtx, fmt.Sprintf(constants.SpanPolicyRequestFormat, spec.Name),
 			trace.WithSpanKind(trace.SpanKindInternal))
 
 		// Add policy metadata attributes
 		if span.IsRecording() {
 			span.SetAttributes(
-				attribute.String("policy.name", spec.Name),
-				attribute.String("policy.version", spec.Version),
-				attribute.Bool("policy.enabled", spec.Enabled),
+				attribute.String(constants.AttrPolicyName, spec.Name),
+				attribute.String(constants.AttrPolicyVersion, spec.Version),
+				attribute.Bool(constants.AttrPolicyEnabled, spec.Enabled),
 			)
 		}
 
 		// Check if policy is enabled
 		if !spec.Enabled {
 			if span.IsRecording() {
-				span.SetAttributes(attribute.Bool("policy.skipped", true))
+				span.SetAttributes(attribute.Bool(constants.AttrPolicySkipped, true))
 			}
 			span.End()
 			result.Results = append(result.Results, RequestPolicyResult{
@@ -103,8 +104,8 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 				if !conditionMet {
 					// Condition not met - skip policy
 					if span.IsRecording() {
-						span.SetAttributes(attribute.Bool("policy.skipped", true))
-						span.SetAttributes(attribute.String("skip.reason", "condition_not_met"))
+						span.SetAttributes(attribute.Bool(constants.AttrPolicySkipped, true))
+						span.SetAttributes(attribute.String(constants.AttrSkipReason, constants.AttrSkipReasonConditionNotMet))
 					}
 					span.End()
 					result.Results = append(result.Results, RequestPolicyResult{
@@ -124,7 +125,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 
 		// Add execution time attribute
 		if span.IsRecording() {
-			span.SetAttributes(attribute.Int64("policy.execution_time_ns", executionTime.Nanoseconds()))
+			span.SetAttributes(attribute.Int64(constants.AttrPolicyExecutionTimeNS, executionTime.Nanoseconds()))
 		}
 
 		policyResult := RequestPolicyResult{
@@ -142,7 +143,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 			// Check for short-circuit (T047)
 			if action.StopExecution() {
 				if span.IsRecording() {
-					span.SetAttributes(attribute.Bool("policy.short_circuit", true))
+					span.SetAttributes(attribute.Bool(constants.AttrPolicyShortCircuit, true))
 				}
 				result.ShortCircuited = true
 				result.FinalAction = action
@@ -179,22 +180,22 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 		policyStartTime := time.Now()
 
 		// Create span for individual policy execution - NoOp if tracing disabled
-		_, span := c.tracer.Start(traceCtx, fmt.Sprintf("policy.response.%s", spec.Name),
+		_, span := c.tracer.Start(traceCtx, fmt.Sprintf(constants.SpanPolicyResponseFormat, spec.Name),
 			trace.WithSpanKind(trace.SpanKindInternal))
 
 		// Add policy metadata attributes
 		if span.IsRecording() {
 			span.SetAttributes(
-				attribute.String("policy.name", spec.Name),
-				attribute.String("policy.version", spec.Version),
-				attribute.Bool("policy.enabled", spec.Enabled),
+				attribute.String(constants.AttrPolicyName, spec.Name),
+				attribute.String(constants.AttrPolicyVersion, spec.Version),
+				attribute.Bool(constants.AttrPolicyEnabled, spec.Enabled),
 			)
 		}
 
 		// Check if policy is enabled
 		if !spec.Enabled {
 			if span.IsRecording() {
-				span.SetAttributes(attribute.Bool("policy.skipped", true))
+				span.SetAttributes(attribute.Bool(constants.AttrPolicySkipped, true))
 			}
 			span.End()
 			result.Results = append(result.Results, ResponsePolicyResult{
@@ -221,8 +222,8 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 				if !conditionMet {
 					// Condition not met - skip policy
 					if span.IsRecording() {
-						span.SetAttributes(attribute.Bool("policy.skipped", true))
-						span.SetAttributes(attribute.String("skip.reason", "condition_not_met"))
+						span.SetAttributes(attribute.Bool(constants.AttrPolicySkipped, true))
+						span.SetAttributes(attribute.String(constants.AttrSkipReason, constants.AttrSkipReasonConditionNotMet))
 					}
 					span.End()
 					result.Results = append(result.Results, ResponsePolicyResult{
@@ -242,7 +243,7 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 
 		// Add execution time attribute
 		if span.IsRecording() {
-			span.SetAttributes(attribute.Int64("policy.execution_time_ns", executionTime.Nanoseconds()))
+			span.SetAttributes(attribute.Int64(constants.AttrPolicyExecutionTimeNS, executionTime.Nanoseconds()))
 		}
 
 		policyResult := ResponsePolicyResult{

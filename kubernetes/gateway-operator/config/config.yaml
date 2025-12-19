@@ -53,4 +53,8 @@ logging:
   # Can be overridden with LOG_LEVEL environment variable
   level: "info"
   # Enable development mode (boolean). Replaces the previous `format` field.
+  # Deprecated: Use format instead
   development: true
+  # Log format: "json" or "console"
+  # Default is "console" in development, "json" in production
+  format: "console"
