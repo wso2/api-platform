@@ -58,6 +58,12 @@ help: ## Show this help message
 	@echo '  make test-controller           - Test gateway-controller'
 	@echo '  make test-policy-engine        - Test policy-engine'
 	@echo ''
+	@echo 'Integration Test Targets:'
+	@echo '  make test-integration-all      - Build coverage images and run integration tests'
+	@echo '  make build-coverage            - Build all coverage-instrumented gateway components'
+	@echo '  make build-controller-coverage - Build coverage-instrumented gateway-controller Docker image'
+	@echo '  make test-integration          - Run integration tests'
+	@echo ''
 	@echo 'Clean Targets:'
 	@echo '  make clean                     - Clean all build artifacts'
 
@@ -68,6 +74,9 @@ build: build-controller build-gateway-builder build-policy-engine build-router #
 .PHONY: build-local
 build-local: build-local-controller build-local-gateway-builder build-local-policy-engine build-local-router ## Build all gateway components locally (faster)
 
+.PHONY: build-coverage
+build-coverage: build-controller-coverage build-local-gateway-builder build-local-policy-engine build-local-router ## Build all coverage-instrumented gateway components
+
 .PHONY: build-controller
 build-controller: ## Build gateway-controller Docker image
 	@echo "Building controller Docker image ($(VERSION))..."
@@ -77,6 +86,11 @@ build-controller: ## Build gateway-controller Docker image
 build-local-controller: ## Build gateway-controller Docker image locally (faster)
 	@echo "Building controller Docker image locally ($(VERSION))..."
 	$(MAKE) -C gateway-controller build-local VERSION=$(VERSION)
+
+.PHONY: build-controller-coverage
+build-controller-coverage: ## Build coverage-instrumented gateway-controller Docker image
+	@echo "Building coverage-instrumented controller Docker image ($(VERSION))..."
+	$(MAKE) -C gateway-controller build-coverage-image VERSION=$(VERSION)
 
 .PHONY: build-gateway-builder
 build-gateway-builder: ## Build gateway-builder Docker image
@@ -143,6 +157,13 @@ test-controller: ## Test gateway-controller
 .PHONY: test-policy-engine
 test-policy-engine: ## Test policy-engine
 	$(MAKE) -C policy-engine test
+
+.PHONY: test-integration
+test-integration: ## Run integration tests
+	$(MAKE) -C it test
+
+.PHONY: test-integration-all
+test-integration-all: build-coverage test-integration ## Build coverage images and run integration tests
 
 # Clean Targets
 .PHONY: clean
