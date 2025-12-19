@@ -1,4 +1,4 @@
-name: APIPCTL Build Test
+name: ap Build Test
 
 on:
   push:
@@ -17,7 +17,7 @@ on:
 
 jobs:
   build-test:
-    name: Build and Test APIPCTL
+    name: Build and Test ap
     runs-on: ubuntu-latest
     
     steps:
@@ -53,41 +53,41 @@ jobs:
       - name: Upload darwin-arm64 binary
         uses: actions/upload-artifact@v4
         with:
-          name: apipctl-darwin-arm64
-          path: cli/src/build/apipctl-darwin-arm64
+          name: ap-darwin-arm64
+          path: cli/src/build/ap-darwin-arm64
           retention-days: 7
       
       - name: Upload darwin-amd64 binary
         uses: actions/upload-artifact@v4
         with:
-          name: apipctl-darwin-amd64
-          path: cli/src/build/apipctl-darwin-amd64
+          name: ap-darwin-amd64
+          path: cli/src/build/ap-darwin-amd64
           retention-days: 7
       
       - name: Upload linux-arm64 binary
         uses: actions/upload-artifact@v4
         with:
-          name: apipctl-linux-arm64
-          path: cli/src/build/apipctl-linux-arm64
+          name: ap-linux-arm64
+          path: cli/src/build/ap-linux-arm64
           retention-days: 7
       
       - name: Upload linux-amd64 binary
         uses: actions/upload-artifact@v4
         with:
-          name: apipctl-linux-amd64
-          path: cli/src/build/apipctl-linux-amd64
+          name: ap-linux-amd64
+          path: cli/src/build/ap-linux-amd64
           retention-days: 7
       
       - name: Upload windows-arm64 binary
         uses: actions/upload-artifact@v4
         with:
-          name: apipctl-windows-arm64
-          path: cli/src/build/apipctl-windows-arm64.exe
+          name: ap-windows-arm64
+          path: cli/src/build/ap-windows-arm64.exe
           retention-days: 7
       
       - name: Upload windows-amd64 binary
         uses: actions/upload-artifact@v4
         with:
-          name: apipctl-windows-amd64
-          path: cli/src/build/apipctl-windows-amd64.exe
+          name: ap-windows-amd64
+          path: cli/src/build/ap-windows-amd64.exe
           retention-days: 7

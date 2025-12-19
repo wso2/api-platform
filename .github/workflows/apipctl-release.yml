@@ -1,4 +1,4 @@
-name: APIPCTL Release
+name: ap Release
 
 on:
   workflow_dispatch:
@@ -60,12 +60,12 @@ jobs:
           VERSION: ${{ github.event.inputs.version }}
         run: |
           # Rename binaries to include version
-          mv apipctl-darwin-arm64 apipctl-darwin-arm64-v${VERSION}
-          mv apipctl-darwin-amd64 apipctl-darwin-amd64-v${VERSION}
-          mv apipctl-linux-arm64 apipctl-linux-arm64-v${VERSION}
-          mv apipctl-linux-amd64 apipctl-linux-amd64-v${VERSION}
-          mv apipctl-windows-arm64.exe apipctl-windows-arm64-v${VERSION}.exe
-          mv apipctl-windows-amd64.exe apipctl-windows-amd64-v${VERSION}.exe
+          mv ap-darwin-arm64 ap-darwin-arm64-v${VERSION}
+          mv ap-darwin-amd64 ap-darwin-amd64-v${VERSION}
+          mv ap-linux-arm64 ap-linux-arm64-v${VERSION}
+          mv ap-linux-amd64 ap-linux-amd64-v${VERSION}
+          mv ap-windows-arm64.exe ap-windows-arm64-v${VERSION}.exe
+          mv ap-windows-amd64.exe ap-windows-amd64-v${VERSION}.exe
           
           # List renamed binaries
           echo "Renamed binaries:"
@@ -76,8 +76,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: apipctl-v${{ github.event.inputs.version }}
-          name: APIPCTL v${{ github.event.inputs.version }}
+          tag_name: ap-v${{ github.event.inputs.version }}
+          name: ap v${{ github.event.inputs.version }}
           body: |
             ${{ github.event.inputs.release_notes }}
             
@@ -86,16 +86,16 @@ jobs:
             Choose the appropriate binary for your platform:
             
             ### macOS
-            - **Apple Silicon (M1/M2/M3)**: `apipctl-darwin-arm64-v${{ github.event.inputs.version }}`
-            - **Intel**: `apipctl-darwin-amd64-v${{ github.event.inputs.version }}`
+            - **Apple Silicon (M1/M2/M3)**: `ap-darwin-arm64-v${{ github.event.inputs.version }}`
+            - **Intel**: `ap-darwin-amd64-v${{ github.event.inputs.version }}`
             
             ### Linux
-            - **ARM64**: `apipctl-linux-arm64-v${{ github.event.inputs.version }}`
-            - **AMD64/x86_64**: `apipctl-linux-amd64-v${{ github.event.inputs.version }}`
+            - **ARM64**: `ap-linux-arm64-v${{ github.event.inputs.version }}`
+            - **AMD64/x86_64**: `ap-linux-amd64-v${{ github.event.inputs.version }}`
             
             ### Windows
-            - **ARM64**: `apipctl-windows-arm64-v${{ github.event.inputs.version }}.exe`
-            - **AMD64/x86_64**: `apipctl-windows-amd64-v${{ github.event.inputs.version }}.exe`
+            - **ARM64**: `ap-windows-arm64-v${{ github.event.inputs.version }}.exe`
+            - **AMD64/x86_64**: `ap-windows-amd64-v${{ github.event.inputs.version }}.exe`
             
             ## Installation
             
@@ -103,9 +103,9 @@ jobs:
             ```bash
             # Download the binary for your platform
             # Make it executable
-            chmod +x apipctl-*
+            chmod +x ap-*
             # Move to PATH
-            sudo mv apipctl-* /usr/local/bin/apipctl
+            sudo mv ap-* /usr/local/bin/ap
             ```
             
             ### Windows
@@ -116,9 +116,9 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            cli/src/build/apipctl-darwin-arm64-v${{ github.event.inputs.version }}
-            cli/src/build/apipctl-darwin-amd64-v${{ github.event.inputs.version }}
-            cli/src/build/apipctl-linux-arm64-v${{ github.event.inputs.version }}
-            cli/src/build/apipctl-linux-amd64-v${{ github.event.inputs.version }}
-            cli/src/build/apipctl-windows-arm64-v${{ github.event.inputs.version }}.exe
-            cli/src/build/apipctl-windows-amd64-v${{ github.event.inputs.version }}.exe
+            cli/src/build/ap-darwin-arm64-v${{ github.event.inputs.version }}
+            cli/src/build/ap-darwin-amd64-v${{ github.event.inputs.version }}
+            cli/src/build/ap-linux-arm64-v${{ github.event.inputs.version }}
+            cli/src/build/ap-linux-amd64-v${{ github.event.inputs.version }}
+            cli/src/build/ap-windows-arm64-v${{ github.event.inputs.version }}.exe
+            cli/src/build/ap-windows-amd64-v${{ github.event.inputs.version }}.exe

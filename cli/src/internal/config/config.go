@@ -42,7 +42,7 @@ type Gateway struct {
 	Insecure  bool       `yaml:"insecure,omitempty"`  // No authentication
 }
 
-// Config represents the apipctl configuration
+// Config represents the ap configuration
 type Config struct {
 	Gateways      []Gateway `yaml:"gateways,omitempty"`
 	ActiveGateway string    `yaml:"activeGateway,omitempty"`

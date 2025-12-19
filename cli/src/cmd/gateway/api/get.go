@@ -35,10 +35,10 @@ import (
 const (
 	GetCmdLiteral = "get"
 	GetCmdExample = `# Get API by ID
-apipctl gateway api get --id sample-1 --format yaml
+ap gateway api get --id sample-1 --format yaml
 
 # Get API by name and version
-apipctl gateway api get --name "PetStore API" --version v1.0 --format json`
+ap gateway api get --name "PetStore API" --version v1.0 --format json`
 )
 
 var (

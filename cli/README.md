@@ -1,6 +1,6 @@
-# apipctl - WSO2 API Platform CLI
+# ap - WSO2 API Platform CLI
 
-`apipctl` is a command-line tool for managing and interacting with the WSO2 API Platform.
+`ap` is a command-line tool for managing and interacting with the WSO2 API Platform.
 
 ## Quick Start
 
@@ -10,13 +10,13 @@ cd src
 make build
 
 # Add a gateway
-./build/apipctl gateway add -n dev -s http://localhost:9090
+./build/ap gateway add -n dev -s http://localhost:9090
 
 # Generate MCP configuration
-./build/apipctl gateway mcp generate -s http://localhost:3001/mcp -o target
+./build/ap gateway mcp generate -s http://localhost:3001/mcp -o target
 
 # Show version
-./build/apipctl version
+./build/ap version
 ```
 
 **💡 Tip:** All flags support first-letter shortcuts: `--name` → `-n`, `--server` → `-s`, `--token` → `-t`, etc.
@@ -26,9 +26,9 @@ make build
 For complete usage instructions, examples, and command reference, see **[src/HELP.md](src/HELP.md)**.
 
 Quick command reference:
-- `apipctl gateway add` - Add a gateway configuration
-- `apipctl gateway mcp generate` - Generate MCP configuration
-- `apipctl version` - Show version information
+- `ap gateway add` - Add a gateway configuration
+- `ap gateway mcp generate` - Generate MCP configuration
+- `ap version` - Show version information
 
 ## Development
 
@@ -113,7 +113,7 @@ cli/
     │   ├── root.go       # Root command
     │   └── gateway/      # Gateway subcommands
     ├── internal/         # Internal packages
-    │   ├── config/       # Config management (~/.apipctl/config.yaml)
+    │   ├── config/       # Config management (~/.ap/config.yaml)
     │   ├── gateway/      # Gateway client
     │   └── mcp/          # MCP generator
     ├── utils/            # Shared utilities

@@ -32,10 +32,10 @@ import (
 const (
 	BuildCmdLiteral = "build"
 	BuildCmdExample = `# Build a gateway with policy-manifest
-apipctl gateway build --file policy-manifest.yaml --docker-registry myregistry --image-tag v1.0.0
+ap gateway build --file policy-manifest.yaml --docker-registry myregistry --image-tag v1.0.0
 
 # Build with optional parameters
-apipctl gateway build -f policy-manifest.yaml --docker-registry myregistry --image-tag v1.0.0 \
+ap gateway build -f policy-manifest.yaml --docker-registry myregistry --image-tag v1.0.0 \
   --gateway-builder my-builder \
   --gateway-controller-base-image controller:latest \
   --router-base-image router:latest`

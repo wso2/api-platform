@@ -16,10 +16,10 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Makefile for apipctl CLI
+# Makefile for ap CLI
 
 # Binary name
-BINARY_NAME=apipctl
+BINARY_NAME=ap
 
 # Go parameters
 GOCMD=go

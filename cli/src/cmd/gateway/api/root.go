@@ -25,7 +25,7 @@ import (
 const (
 	APICmdLiteral = "api"
 	APICmdExample = `# List all APIs
-apipctl gateway api list`
+ap gateway api list`
 )
 
 // APICmd represents the api command

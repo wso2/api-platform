@@ -18,14 +18,14 @@
 
 package utils
 
-const CliName = "apipctl"
+const CliName = "ap"
 
-// APIPCTL Configuration
+// WSO2 AP Configuration
 const (
-	ConfigPath        = ".apipctl/config.yaml"
-	CachePath         = ".apipctl/cache"
-	PoliciesCachePath = ".apipctl/cache/policies"
-	TempPath          = ".apipctl/.temp"
+	ConfigPath        = ".wso2ap/config.yaml"
+	CachePath         = ".wso2ap/cache"
+	PoliciesCachePath = ".wso2ap/cache/policies"
+	TempPath          = ".wso2ap/.temp"
 )
 
 // Gateway Image Build Defaults

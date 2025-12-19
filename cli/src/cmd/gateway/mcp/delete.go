@@ -33,7 +33,7 @@ import (
 const (
 	DeleteCmdLiteral = "delete"
 	DeleteCmdExample = `# Delete an MCP by ID
-apipctl gateway mcp delete --id sample-1 --confirm`
+ap gateway mcp delete --id sample-1 --confirm`
 )
 
 var (

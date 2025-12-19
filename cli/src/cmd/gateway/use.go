@@ -30,7 +30,7 @@ import (
 const (
 	UseCmdLiteral = "use"
 	UseCmdExample = `# Set dev as the active gateway
-apipctl gateway use --name dev`
+ap gateway use --name dev`
 )
 
 var useName string

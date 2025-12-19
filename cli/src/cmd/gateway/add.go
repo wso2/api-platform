@@ -32,13 +32,13 @@ import (
 const (
 	AddCmdLiteral = "add"
 	AddCmdExample = `# Add a new gateway
-apipctl gateway add --name dev --server http://localhost:9090
+ap gateway add --name dev --server http://localhost:9090
 
 # Add a gateway with authentication token
-apipctl gateway add --name prod --server https://api.example.com --token <TOKEN>
+ap gateway add --name prod --server https://api.example.com --token <TOKEN>
 
 # Add a gateway with insecure connection (skip TLS verification)
-apipctl gateway add --name local --server https://localhost:9090 --insecure`
+ap gateway add --name local --server https://localhost:9090 --insecure`
 )
 
 var (
@@ -55,7 +55,7 @@ var (
 var addCmd = &cobra.Command{
 	Use:     AddCmdLiteral,
 	Short:   "Add a new gateway",
-	Long:    "Add a new gateway configuration to the apipctl config file.",
+	Long:    "Add a new gateway configuration to the ap config file.",
 	Example: AddCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runAddCommand(); err != nil {

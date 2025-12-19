@@ -28,10 +28,10 @@ import (
 const (
 	GatewayCmdLiteral = "gateway"
 	GatewayCmdExample = `# Add a new gateway
-apipctl gateway add --name dev --server http://localhost:9090
+ap gateway add --name dev --server http://localhost:9090
 
 # Generate MCP configuration
-apipctl gateway mcp generate --server http://localhost:3001/mcp --output target`
+ap gateway mcp generate --server http://localhost:3001/mcp --output target`
 )
 
 // GatewayCmd represents the gateway command

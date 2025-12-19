@@ -30,10 +30,10 @@ import (
 const (
 	GenerateCmdLiteral = "generate"
 	GenerateCmdExample = `# Generate MCP configuration
-apipctl gateway mcp generate --server http://localhost:3001/mcp --output target
+ap gateway mcp generate --server http://localhost:3001/mcp --output target
 
 # Generate MCP configuration with default output directory (current directory)
-apipctl gateway mcp generate --server http://localhost:3001/mcp`
+ap gateway mcp generate --server http://localhost:3001/mcp`
 )
 
 var (

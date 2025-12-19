@@ -29,13 +29,13 @@ import (
 const (
 	ListCmdLiteral = "list"
 	ListCmdExample = `# List all gateways
-apipctl gateway list`
+ap gateway list`
 )
 
 var listCmd = &cobra.Command{
 	Use:     ListCmdLiteral,
 	Short:   "List all gateways",
-	Long:    "List all gateway configurations from the apipctl config file.",
+	Long:    "List all gateway configurations from the ap config file.",
 	Example: ListCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runListCommand(); err != nil {

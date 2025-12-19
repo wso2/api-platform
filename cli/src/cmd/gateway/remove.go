@@ -30,7 +30,7 @@ import (
 const (
 	RemoveCmdLiteral = "remove"
 	RemoveCmdExample = `# Remove a gateway
-apipctl gateway remove --name dev`
+ap gateway remove --name dev`
 )
 
 var removeName string
@@ -38,7 +38,7 @@ var removeName string
 var removeCmd = &cobra.Command{
 	Use:     RemoveCmdLiteral,
 	Short:   "Remove a gateway",
-	Long:    "Remove a gateway configuration from the apipctl config file.",
+	Long:    "Remove a gateway configuration from the ap config file.",
 	Example: RemoveCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runRemoveCommand(); err != nil {
@@ -78,7 +78,7 @@ func runRemoveCommand() error {
 	// Warn if the removed gateway was active
 	if wasActive {
 		fmt.Println("⚠️  Warning: You have removed the current active gateway.")
-		fmt.Println("   Use 'apipctl gateway use --name <name>' to set a new active gateway.")
+		fmt.Println("   Use 'ap gateway use --name <name>' to set a new active gateway.")
 	}
 
 	return nil

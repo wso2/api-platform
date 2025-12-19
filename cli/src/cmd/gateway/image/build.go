@@ -31,19 +31,19 @@ import (
 const (
 	BuildCmdLiteral = "build"
 	BuildCmdExample = `# Build gateway image with policies (uses current directory)
-apipctl gateway image build
+ap gateway image build
 
 # Build with custom name and version
-apipctl gateway image build --name my-gateway --version 1.0.0
+ap gateway image build --name my-gateway --version 1.0.0
 
 # Build with custom path containing manifest files
-apipctl gateway image build --name my-gateway --path ./my-policies --repository myregistry
+ap gateway image build --name my-gateway --path ./my-policies --repository myregistry
 
 # Build in offline mode (uses manifest lock file)
-apipctl gateway image build --name my-gateway --offline
+ap gateway image build --name my-gateway --offline
 
 # Build with platform specification
-apipctl gateway image build --name my-gateway --platform linux/amd64`
+ap gateway image build --name my-gateway --platform linux/amd64`
 )
 
 var (

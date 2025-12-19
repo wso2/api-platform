@@ -3,7 +3,7 @@
 ## Command Structure
 
 ```bash
-apipctl gateway image build \
+ap gateway image build \
   --image-tag <image-tag> \
   [--path <directory>] \
   [--image-repository <image-repository>] \
@@ -84,7 +84,7 @@ policies:
 
 ### Cache Structure
 ```
-~/.apipctl/
+~/.ap/
 ├── cache/
 │   └── policies/
 │       ├── basic-auth-v1.0.0.zip
@@ -118,7 +118,7 @@ policies:
 #### Step 4: Process Local Policies
 - For each local policy:
   - Verify path exists (file or folder)
-  - If folder: zip contents to `.apipctl/.temp/<policy>-v<version>.zip`
+  - If folder: zip contents to `.ap/.temp/<policy>-v<version>.zip`
   - If file: copy to temp location
   - Calculate SHA-256 checksum
 
@@ -142,7 +142,7 @@ policies:
 
 #### Step 6: Download/Verify Hub Policies
 - For each resolved policy:
-  - Check if exists in `~/.apipctl/cache/policies/<policy>-v<version>.zip`
+  - Check if exists in `~/.ap/cache/policies/<policy>-v<version>.zip`
   - If exists:
     - Verify checksum matches
     - If match: skip download
@@ -160,7 +160,7 @@ policies:
   - Source (hub/local)
 
 #### Step 8: Cleanup
-- Remove `.apipctl/.temp/` contents
+- Remove `.ap/.temp/` contents
 - Use defer to ensure cleanup on error
 
 #### Step 9: Display Summary
@@ -181,7 +181,7 @@ policies:
 
 #### Step 3: Verify Hub Policies
 - For each policy with `source: hub`:
-  - Check `~/.apipctl/cache/policies/<policy>-v<version>.zip` exists
+  - Check `~/.ap/cache/policies/<policy>-v<version>.zip` exists
   - Verify SHA-256 checksum matches lock file
   - Fail if missing or mismatch
 

@@ -35,10 +35,10 @@ import (
 const (
 	GetCmdLiteral = "get"
 	GetCmdExample = `# Get MCP by ID
-apipctl gateway mcp get --id sample-1 --format yaml
+ap gateway mcp get --id sample-1 --format yaml
 
 # Get MCP by name and version
-apipctl gateway mcp get --name my-mcp --version v1.0 --format json`
+ap gateway mcp get --name my-mcp --version v1.0 --format json`
 )
 
 var (

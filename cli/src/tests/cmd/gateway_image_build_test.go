@@ -71,7 +71,7 @@ func TestCmdGatewayImageBuildLocalPolicies(t *testing.T) {
 	}
 
 	// Get the binary path
-	binaryPath := filepath.Join("..", "..", "build", "apipctl")
+	binaryPath := filepath.Join("..", "..", "build", "ap")
 	absBinaryPath, err := filepath.Abs(binaryPath)
 	if err != nil {
 		t.Fatalf("Failed to get absolute path for binary: %v", err)
@@ -181,7 +181,7 @@ func TestCmdGatewayImageBuildHubPolicies(t *testing.T) {
 	}
 
 	// Get the binary path
-	binaryPath := filepath.Join("..", "..", "build", "apipctl")
+	binaryPath := filepath.Join("..", "..", "build", "ap")
 	absBinaryPath, err := filepath.Abs(binaryPath)
 	if err != nil {
 		t.Fatalf("Failed to get absolute path for binary: %v", err)
@@ -278,7 +278,7 @@ func TestCmdGatewayImageBuildMixedPolicies(t *testing.T) {
 	}
 
 	// Get the binary path
-	binaryPath := filepath.Join("..", "..", "build", "apipctl")
+	binaryPath := filepath.Join("..", "..", "build", "ap")
 	absBinaryPath, err := filepath.Abs(binaryPath)
 	if err != nil {
 		t.Fatalf("Failed to get absolute path for binary: %v", err)
@@ -364,7 +364,7 @@ func TestCmdGatewayImageBuildOfflineMode(t *testing.T) {
 	}
 
 	// Get the binary path
-	binaryPath := filepath.Join("..", "..", "build", "apipctl")
+	binaryPath := filepath.Join("..", "..", "build", "ap")
 	absBinaryPath, err := filepath.Abs(binaryPath)
 	if err != nil {
 		t.Fatalf("Failed to get absolute path for binary: %v", err)
@@ -480,7 +480,7 @@ func TestCmdGatewayImageBuildHelp(t *testing.T) {
 	}
 
 	// Get the binary path
-	binaryPath := filepath.Join("..", "..", "build", "apipctl")
+	binaryPath := filepath.Join("..", "..", "build", "ap")
 	absBinaryPath, err := filepath.Abs(binaryPath)
 	if err != nil {
 		t.Fatalf("Failed to get absolute path for binary: %v", err)

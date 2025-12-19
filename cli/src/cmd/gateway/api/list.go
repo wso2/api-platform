@@ -32,7 +32,7 @@ import (
 const (
 	ListCmdLiteral = "list"
 	ListCmdExample = `# List all APIs
-apipctl gateway api list`
+ap gateway api list`
 )
 
 var listCmd = &cobra.Command{

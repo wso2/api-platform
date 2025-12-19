@@ -29,7 +29,7 @@ import (
 const (
 	CurrentCmdLiteral = "current"
 	CurrentCmdExample = `# Show the current active gateway
-apipctl gateway current`
+ap gateway current`
 )
 
 var currentCmd = &cobra.Command{

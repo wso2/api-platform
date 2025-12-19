@@ -32,7 +32,7 @@ import (
 const (
 	HealthCmdLiteral = "health"
 	HealthCmdExample = `# Check health of the current gateway
-apipctl gateway health`
+ap gateway health`
 )
 
 var healthCmd = &cobra.Command{

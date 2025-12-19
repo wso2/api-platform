@@ -33,7 +33,7 @@ import (
 const (
 	DeleteCmdLiteral = "delete"
 	DeleteCmdExample = `# Delete an API by ID
-apipctl gateway api delete --id sample-1 --confirm`
+ap gateway api delete --id sample-1 --confirm`
 )
 
 var (

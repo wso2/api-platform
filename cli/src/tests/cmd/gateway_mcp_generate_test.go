@@ -41,7 +41,7 @@ func TestCmdGatewayMcpGenerate(t *testing.T) {
 	}
 
 	// Get the binary path
-	binaryPath := filepath.Join("..", "..", "build", "apipctl")
+	binaryPath := filepath.Join("..", "..", "build", "ap")
 
 	// Check if binary exists
 	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {

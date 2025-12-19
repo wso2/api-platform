@@ -25,10 +25,10 @@ import (
 const (
 	McpCmdLiteral = "mcp"
 	McpCmdExample = `# List all MCPs
-apipctl gateway mcp list
+ap gateway mcp list
 
 # Generate MCP configuration
-apipctl gateway mcp generate --server http://localhost:3001/mcp --output target`
+ap gateway mcp generate --server http://localhost:3001/mcp --output target`
 )
 
 // McpCmd represents the mcp command

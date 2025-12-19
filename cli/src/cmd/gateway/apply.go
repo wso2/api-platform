@@ -35,11 +35,11 @@ import (
 const (
 	ApplyCmdLiteral = "apply"
 	ApplyCmdExample = `# Apply a resource from a YAML file
-apipctl gateway apply --file petstore-api.yaml
-apipctl gateway apply -f petstore-api.yaml
+ap gateway apply --file petstore-api.yaml
+ap gateway apply -f petstore-api.yaml
 
 # Apply a resource from a JSON file
-apipctl gateway apply --file petstore-api.json`
+ap gateway apply --file petstore-api.json`
 )
 
 var (
