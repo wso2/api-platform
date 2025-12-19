@@ -273,7 +273,7 @@ func CheckDockerAvailable() error {
 
 	cmd := execCommandContext(ctx, "docker", "info")
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("Docker is not available. Please ensure Docker is running.\nError: %w", err)
+		return fmt.Errorf("docker is not available. Please ensure Docker is running.\nError: %w", err)
 	}
 
 	return nil
@@ -326,4 +326,3 @@ var runTimeCaller = func() (pc uintptr, file string, line int, ok bool) {
 	// Use a fixed path relative to the package
 	return 0, "", 0, false
 }
-

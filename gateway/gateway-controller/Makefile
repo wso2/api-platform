@@ -28,7 +28,7 @@ LDFLAGS := -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.Bu
 DOCKER_REGISTRY ?= ghcr.io/wso2/api-platform
 IMAGE_NAME := $(DOCKER_REGISTRY)/gateway-controller
 
-.PHONY: help generate build build-local test generate-listener-certs push
+.PHONY: help generate build build-local test generate-listener-certs push build-coverage-image
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -108,6 +108,15 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		-t $(IMAGE_NAME):$(VERSION) \
 		-t $(IMAGE_NAME):latest \
 		--push \
+		.
+
+build-coverage-image: ## Build coverage-instrumented gateway-controller image
+	docker buildx build -f Dockerfile.coverage \
+		--build-context sdk=../../sdk \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		-t $(IMAGE_NAME)-coverage:$(VERSION) \
+		--load \
 		.
 
 generate-listener-certs: ## Generate listener certificates

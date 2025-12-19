@@ -81,9 +81,9 @@ gateway/it/
 | Command | Description |
 |---------|-------------|
 | `make test` | Run integration tests |
-| `make test-all` | Build coverage image + run tests |
+| `make test-all` | Build coverage images + run tests |
 | `make test-verbose` | Run tests with verbose output |
-| `make build-coverage-image` | Build coverage-instrumented gateway-controller |
+| `make build-coverage` | Build coverage-instrumented images |
 | `make clean` | Remove containers, volumes, and artifacts |
 | `make check-docker` | Verify Docker is available |
 | `make coverage-report` | Open coverage HTML report in browser |

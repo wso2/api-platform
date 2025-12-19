@@ -16,23 +16,19 @@
 # under the License.
 # --------------------------------------------------------------------
 
-.PHONY: test test-all test-verbose clean deps check-docker coverage-report build-coverage-image
-
-# Build coverage-instrumented gateway-controller image
-build-coverage-image:
-	cd ../gateway-controller && docker buildx build -f Dockerfile.coverage \
-		--build-context sdk=../../sdk \
-		-t gateway-controller:coverage \
-		--load \
-		.
+.PHONY: test test-all test-verbose clean deps check-docker coverage-report build-coverage
 
 # Run integration tests (always with coverage)
 # Requires: make build-coverage-image (run once before tests)
 test:
 	go test -v ./...
 
+# Build all coverage-instrumented gateway components
+build-coverage:
+	$(MAKE) -C .. build-coverage
+
 # Build and run tests in one command
-test-all: build-coverage-image test
+test-all: build-coverage test
 
 # Run tests with verbose output
 test-verbose:

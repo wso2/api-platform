@@ -22,7 +22,7 @@
 services:
   gateway-controller:
     container_name: it-gateway-controller
-    image: gateway-controller:coverage
+    image: ghcr.io/wso2/api-platform/gateway-controller-coverage:0.1.0-SNAPSHOT
     ports:
       - "9090:9090"   # REST API
       - "18000:18000" # xDS gRPC
