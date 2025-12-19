@@ -51,6 +51,7 @@ type User struct {
 
 // IDPConfig holds identity provider configuration
 type IDPConfig struct {
+	Enabled           bool                 `json:"enabled"`
 	IssuerURL         string               `json:"issuer_url"`
 	JWKSUrl           string               `json:"jwks_url"`
 	ScopeClaim        string               `json:"scope_claim"`

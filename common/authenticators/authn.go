@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
 	"go.uber.org/zap"
 )
@@ -32,12 +33,12 @@ var (
 )
 
 // AuthMiddleware creates a unified authentication middleware supporting both Basic and Bearer auth
-func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) gin.HandlerFunc {
+func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFunc, error) {
 	return func(c *gin.Context) {
 		// Skip authentication for specified paths
 		for _, path := range config.SkipPaths {
 			if strings.HasPrefix(c.Request.URL.Path, path) {
-				c.Set("auth_skipped", true)
+				c.Set(constants.AuthSkippedKey, true)
 				c.Next()
 				return
 			}
@@ -47,13 +48,19 @@ func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) gin.HandlerFun
 		authenticators := []Authenticator{}
 
 		// Add Basic authenticator if configured
-		if config.BasicAuth != nil && len(config.BasicAuth.Users) > 0 {
+		if config.BasicAuth != nil && config.BasicAuth.Enabled && len(config.BasicAuth.Users) > 0 {
 			authenticators = append(authenticators, NewBasicAuthenticator(config, logger))
 		}
 
 		// Add JWT authenticator if configured
-		if config.JWTConfig != nil && config.JWTConfig.IssuerURL != "" {
-			authenticators = append(authenticators, NewJWTAuthenticator(&config, logger))
+		if config.JWTConfig != nil && config.JWTConfig.Enabled && config.JWTConfig.IssuerURL != "" {
+			jwtAuthenticator, err := NewJWTAuthenticator(&config, logger)
+			if err != nil {
+				logger.Sugar().Errorf("JWT Authenticator couldn't initialized %v", err)
+				return
+			} else {
+				authenticators = append(authenticators, jwtAuthenticator)
+			}
 		}
 
 		// Find suitable authenticator
@@ -83,16 +90,16 @@ func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) gin.HandlerFun
 			c.Abort()
 			return
 		}
-		logger.Sugar().Infof("Authentication result %v", result)
-		logger.Sugar().Infof("Authentication roles %v", result.Roles)
+		logger.Sugar().Debugf("Authentication result %v", result)
+		logger.Sugar().Debugf("Authentication roles %v", result.Roles)
 		// Set authentication context
-		c.Set("authenticated", result.Success)
-		c.Set("userID", result.UserID)
-		c.Set("roles", result.Roles)
+		c.Set(constants.AuthenticatedKey, result.Success)
+		c.Set(constants.UserIDKey, result.UserID)
+		c.Set(constants.AuthRolesKey, result.Roles)
 		if result.Claims != nil {
-			c.Set("claims", result.Claims)
+			c.Set(constants.ClaimsKey, result.Claims)
 		}
 
 		c.Next()
-	}
+	}, nil
 }

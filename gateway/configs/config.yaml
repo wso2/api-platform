@@ -201,13 +201,13 @@ gateway_controller:
       roles: ["admin"]
     # IDP (OIDC/JWKS) configuration for validating JWTs (optional)
     idp:
-      enabled: false
+      enabled: true
       # JWKS endpoint used to fetch public keys for JWT validation
-      jwks_url: ""
+      jwks_url: "https://api.asgardeo.io/t/tharindu1st/oauth2/jwks"
       # Expected issuer value in the JWT `iss` claim
-      issuer: ""
+      issuer: "https://api.asgardeo.io/t/tharindu1st/oauth2/token"
       # Claim path which contains roles (e.g. "roles", "realm_access.roles", etc.)
-      roles_claim: "roles"
+      roles_claim: "scope"
       # Map local roles to IDP roles. Example maps local->idp-role(s):
       # role_mapping:
       #   admin:
@@ -215,7 +215,9 @@ gateway_controller:
       #     - "realm_admin"
       #   developer:
       #     - "idp_developer"
-      role_mapping: {}
+      role_mapping: 
+      - read2:
+        - "admin"
 
   # Logging configuration
   logging:
