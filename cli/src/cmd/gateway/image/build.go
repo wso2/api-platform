@@ -142,13 +142,6 @@ func runBuildCommand() error {
 }
 
 func runOnlineBuild() error {
-	// Ensure cleanup happens on exit
-	defer func() {
-		if err := utils.CleanTempDir(); err != nil {
-			fmt.Printf("Warning: Failed to clean temp directory: %v\n", err)
-		}
-	}()
-
 	// Step 2: Read Policy Manifest
 	fmt.Println("[2/6] Reading Policy Manifest")
 
@@ -164,7 +157,8 @@ func runOnlineBuild() error {
 	}
 	fmt.Printf("  ✓ Loaded manifest with %d policies\n\n", len(manifest.Policies))
 
-	// Step 3: Separate local and hub policies
+	// Step 3: Display policy breakdown
+	fmt.Println("[3/7] Categorizing Policies")
 	localPolicies, hubPolicies := policy.SeparatePolicies(manifest)
 	fmt.Printf("  → Local policies: %d\n", len(localPolicies))
 	fmt.Printf("  → Hub policies: %d\n\n", len(hubPolicies))
@@ -172,7 +166,7 @@ func runOnlineBuild() error {
 	var allProcessed []policy.ProcessedPolicy
 
 	// Step 4: Process Local Policies
-	fmt.Println("[3/6] Processing Local Policies")
+	fmt.Println("[4/7] Processing Local Policies")
 	if len(localPolicies) > 0 {
 		processed, err := policy.ProcessLocalPolicies(localPolicies)
 		if err != nil {
@@ -184,7 +178,7 @@ func runOnlineBuild() error {
 	}
 
 	// Step 5: Resolve and Download Hub Policies
-	fmt.Println("[4/6] Resolving Hub Policies from PolicyHub")
+	fmt.Println("[5/7] Resolving Hub Policies from PolicyHub")
 	if len(hubPolicies) > 0 {
 		processed, err := policy.ProcessHubPolicies(hubPolicies, manifest.VersionResolution)
 		if err != nil {
@@ -196,15 +190,32 @@ func runOnlineBuild() error {
 	}
 
 	// Step 6: Generate Lock File
-	fmt.Println("[5/6] Generating Manifest Lock File")
+	fmt.Println("[6/7] Generating Manifest Lock File")
 	lockFilePath := filepath.Join(manifestPath, utils.DefaultManifestLockFile)
 	if err := policy.GenerateLockFile(allProcessed, lockFilePath); err != nil {
 		return fmt.Errorf("failed to generate lock file: %w", err)
 	}
 	fmt.Printf("  ✓ Generated lock file: %s\n\n", lockFilePath)
 
-	// Step 7: Display Summary
-	fmt.Println("[6/6] Build Preparation Complete")
+	// Step 7: Setup Temp Gateway Image Build Directory
+	fmt.Println("[6/7] Setting Up Temp Gateway Image Build Directory")
+	if err := utils.SetupTempGatewayImageBuildDir(lockFilePath); err != nil {
+		return fmt.Errorf("failed to setup temp gateway image build directory: %w", err)
+	}
+
+	// Copy all policies to temp gateway image build directory
+	for _, p := range allProcessed {
+		if err := utils.CopyPolicyToTempGatewayImageBuild(p.Name, p.Version, p.LocalPath); err != nil {
+			return fmt.Errorf("failed to copy policy %s v%s to temp gateway image build directory: %w", p.Name, p.Version, err)
+		}
+	}
+
+	tempGatewayImageBuildDir, _ := utils.GetTempGatewayImageBuildDir()
+	fmt.Printf("  ✓ Temp gateway image build directory ready: %s\n", tempGatewayImageBuildDir)
+	fmt.Printf("  ✓ Copied %d policies\n\n", len(allProcessed))
+
+	// Step 8: Display Summary
+	fmt.Println("[7/7] Build Preparation Complete")
 	displayBuildSummary(manifest, manifestFilePath, lockFilePath, allProcessed)
 
 	return nil
@@ -238,15 +249,8 @@ func getManifestFilePath(basePath string) (string, error) {
 }
 
 func runOfflineBuild() error {
-	// Ensure cleanup happens on exit
-	defer func() {
-		if err := utils.CleanTempDir(); err != nil {
-			fmt.Printf("Warning: Failed to clean temp directory: %v\n", err)
-		}
-	}()
-
 	// Step 2: Read Manifest and Lock Files
-	fmt.Println("[2/4] Reading Manifest and Lock Files")
+	fmt.Println("[2/5] Reading Manifest and Lock Files")
 
 	// Get manifest file path
 	manifestFilePath, err := getManifestFilePath(manifestPath)
@@ -273,14 +277,31 @@ func runOfflineBuild() error {
 	fmt.Printf("  ✓ Loaded manifest and lock file with %d policies\n\n", len(lockFile.Policies))
 
 	// Step 3: Verify All Policies
-	fmt.Println("[3/4] Verifying Policies")
+	fmt.Println("[3/5] Verifying Policies")
 	verified, err := policy.VerifyOfflinePolicies(lockFile, manifest)
 	if err != nil {
 		return fmt.Errorf("policy verification failed: %w", err)
 	}
 
-	// Step 4: Display Summary
-	fmt.Println("[4/4] Build Preparation Complete")
+	// Step 4: Setup Temp Gateway Image Build Directory
+	fmt.Println("[4/5] Setting Up Temp Gateway Image Build Directory")
+	if err := utils.SetupTempGatewayImageBuildDir(lockFilePath); err != nil {
+		return fmt.Errorf("failed to setup temp gateway image build directory: %w", err)
+	}
+
+	// Copy all policies to temp gateway image build directory
+	for _, p := range verified {
+		if err := utils.CopyPolicyToTempGatewayImageBuild(p.Name, p.Version, p.LocalPath); err != nil {
+			return fmt.Errorf("failed to copy policy %s v%s to temp gateway image build directory: %w", p.Name, p.Version, err)
+		}
+	}
+
+	tempGatewayImageBuildDir, _ := utils.GetTempGatewayImageBuildDir()
+	fmt.Printf("  ✓ Temp gateway image build directory ready: %s\n", tempGatewayImageBuildDir)
+	fmt.Printf("  ✓ Copied %d policies\n\n", len(verified))
+
+	// Step 5: Display Summary
+	fmt.Println("[5/5] Build Preparation Complete")
 	displayOfflineBuildSummary(manifestFilePath, lockFilePath, verified)
 
 	return nil

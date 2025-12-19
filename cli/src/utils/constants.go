@@ -25,7 +25,7 @@ const (
 	ConfigPath        = ".wso2ap/config.yaml"
 	CachePath         = ".wso2ap/cache"
 	PoliciesCachePath = ".wso2ap/cache/policies"
-	TempPath          = ".wso2ap/.temp"
+	TempPath          = ".wso2ap/.tmp"
 )
 
 // Gateway Image Build Defaults

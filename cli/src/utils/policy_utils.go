@@ -252,3 +252,238 @@ func GetCacheDir() (string, error) {
 
 	return cacheDir, nil
 }
+
+// Unzip extracts a zip file to a destination directory
+func Unzip(src, dest string) error {
+	r, err := zip.OpenReader(src)
+	if err != nil {
+		return fmt.Errorf("failed to open zip file: %w", err)
+	}
+	defer r.Close()
+
+	if err := EnsureDir(dest); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	for _, f := range r.File {
+		// Construct the full path
+		fpath := filepath.Join(dest, f.Name)
+
+		// Check for ZipSlip vulnerability
+		if !strings.HasPrefix(fpath, filepath.Clean(dest)+string(os.PathSeparator)) {
+			return fmt.Errorf("illegal file path: %s", fpath)
+		}
+
+		if f.FileInfo().IsDir() {
+			// Create directory
+			if err := EnsureDir(fpath); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// Create directory for file
+		if err := EnsureDir(filepath.Dir(fpath)); err != nil {
+			return err
+		}
+
+		// Extract file
+		outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		if err != nil {
+			return fmt.Errorf("failed to create file: %w", err)
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			outFile.Close()
+			return fmt.Errorf("failed to open zip entry: %w", err)
+		}
+
+		_, err = io.Copy(outFile, rc)
+		outFile.Close()
+		rc.Close()
+
+		if err != nil {
+			return fmt.Errorf("failed to extract file: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// GetTempGatewayImageBuildDir returns the path to the temp gateway image build output directory (.wso2ap/.tmp/gateway-image-build)
+func GetTempGatewayImageBuildDir() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get user home directory: %w", err)
+	}
+
+	tempGatewayImageBuildDir := filepath.Join(homeDir, TempPath, "gateway-image-build")
+	return tempGatewayImageBuildDir, nil
+}
+
+// SetupTempGatewayImageBuildDir creates the temp "gateway-image-build" directory structure for the build
+// This includes: output/, policies/<name>/<version>/, and policy-manifest-lock.yaml
+// Location: .wso2ap/.tmp/gateway-image-build
+// If a "gateway-image-build" directory already exists, it will be removed first
+func SetupTempGatewayImageBuildDir(lockFilePath string) error {
+	tempGatewayImageBuildDir, err := GetTempGatewayImageBuildDir()
+	if err != nil {
+		return fmt.Errorf("failed to get temp gateway image build directory path: %w", err)
+	}
+
+	// Remove existing "gateway-image-build" directory if it exists
+	if _, err := os.Stat(tempGatewayImageBuildDir); err == nil {
+		if err := os.RemoveAll(tempGatewayImageBuildDir); err != nil {
+			return fmt.Errorf("failed to remove existing temp gateway image build directory: %w", err)
+		}
+	}
+
+	// Create the temp gateway image build directory structure
+	if err := EnsureDir(tempGatewayImageBuildDir); err != nil {
+		return fmt.Errorf("failed to create temp gateway image build directory: %w", err)
+	}
+
+	// Create output directory
+	outputDir := filepath.Join(tempGatewayImageBuildDir, "output")
+	if err := EnsureDir(outputDir); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	// Create policies directory
+	policiesDir := filepath.Join(tempGatewayImageBuildDir, "policies")
+	if err := EnsureDir(policiesDir); err != nil {
+		return fmt.Errorf("failed to create policies directory: %w", err)
+	}
+
+	// Copy lock file to temp gateway image build directory
+	lockFileContent, err := os.ReadFile(lockFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to read lock file: %w", err)
+	}
+
+	lockPath := filepath.Join(tempGatewayImageBuildDir, "policy-manifest-lock.yaml")
+	if err := os.WriteFile(lockPath, lockFileContent, 0644); err != nil {
+		return fmt.Errorf("failed to write lock file to temp gateway image build directory: %w", err)
+	}
+
+	return nil
+}
+
+// CopyPolicyToTempGatewayImageBuild copies an extracted policy to the temp gateway image build directory structure
+// The policy will be organized as: .wso2ap/.tmp/gateway-image-build/policies/<name>/v<version>/
+func CopyPolicyToTempGatewayImageBuild(policyName, policyVersion, sourcePath string) error {
+	tempGatewayImageBuildDir, err := GetTempGatewayImageBuildDir()
+	if err != nil {
+		return fmt.Errorf("failed to get temp gateway image build directory path: %w", err)
+	}
+
+	// Ensure version has "v" prefix
+	versionWithPrefix := policyVersion
+	if !strings.HasPrefix(policyVersion, "v") {
+		versionWithPrefix = "v" + policyVersion
+	}
+
+	// Create destination directory: .tmp/gateway-image-build/policies/<name>/v<version>
+	destDir := filepath.Join(tempGatewayImageBuildDir, "policies", policyName, versionWithPrefix)
+	if err := EnsureDir(destDir); err != nil {
+		return fmt.Errorf("failed to create policy directory: %w", err)
+	}
+
+	// Check if source is a zip file or directory
+	fileInfo, err := os.Stat(sourcePath)
+	if err != nil {
+		return fmt.Errorf("failed to stat source path: %w", err)
+	}
+
+	if fileInfo.IsDir() {
+		// If source is a directory, copy its contents
+		return copyDir(sourcePath, destDir)
+	}
+
+	// If source is a zip file, extract to a temp location first
+	tempExtractDir, err := os.MkdirTemp("", "policy-extract-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp extract directory: %w", err)
+	}
+	defer os.RemoveAll(tempExtractDir)
+
+	if err := Unzip(sourcePath, tempExtractDir); err != nil {
+		return fmt.Errorf("failed to extract policy: %w", err)
+	}
+
+	// Check if extracted content is in a single version folder
+	entries, err := os.ReadDir(tempExtractDir)
+	if err != nil {
+		return fmt.Errorf("failed to read extracted directory: %w", err)
+	}
+
+	// If there's a single directory that looks like a version folder, use its contents
+	if len(entries) == 1 && entries[0].IsDir() && strings.HasPrefix(entries[0].Name(), "v") {
+		extractedVersionDir := filepath.Join(tempExtractDir, entries[0].Name())
+		return copyDir(extractedVersionDir, destDir)
+	}
+
+	// Otherwise, copy all extracted contents
+	return copyDir(tempExtractDir, destDir)
+}
+
+// copyDir recursively copies a directory
+func copyDir(src, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	if err := EnsureDir(dst); err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			if err := copyDir(srcPath, dstPath); err != nil {
+				return err
+			}
+		} else {
+			if err := copyFile(srcPath, dstPath); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// copyFile copies a single file
+func copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %w", err)
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer destFile.Close()
+
+	if _, err := io.Copy(destFile, sourceFile); err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	// Copy file permissions
+	sourceInfo, err := os.Stat(src)
+	if err != nil {
+		return fmt.Errorf("failed to stat source file: %w", err)
+	}
+
+	if err := os.Chmod(dst, sourceInfo.Mode()); err != nil {
+		return fmt.Errorf("failed to set file permissions: %w", err)
+	}
+
+	return nil
+}
