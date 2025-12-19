@@ -50,8 +50,8 @@ Run the following command to deploy the MCP proxy.
 curl -X POST http://localhost:9090/mcp-proxies \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
-version: ai.api-platform.wso2.com/v1
-kind: mcp
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Mcp
 spec:
   name: Everything
   version: v1.0

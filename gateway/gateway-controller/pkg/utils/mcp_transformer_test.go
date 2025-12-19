@@ -155,7 +155,7 @@ func TestMCPTransformer_Transform(t *testing.T) {
 	if res.Kind != api.RestApi {
 		t.Fatalf("expected Kind Httprest, got %s", res.Kind)
 	}
-	if res.ApiVersion != api.GatewayApiPlatformWso2Comv1alpha1 {
+	if res.ApiVersion != api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1 {
 		t.Fatalf("expected Version ApiPlatformWso2Comv1, got %s", res.ApiVersion)
 	}
 }

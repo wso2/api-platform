@@ -16,8 +16,8 @@
 # under the License.
 # --------------------------------------------------------------------
 
-version: ai.api-platform.wso2.com/v1
-kind: mcp
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Mcp
 metadata:
   name: everything-mcp-v1.0
 spec:

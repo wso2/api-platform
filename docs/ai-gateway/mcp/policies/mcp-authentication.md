@@ -101,8 +101,8 @@ policy_configurations:
 Apply MCP authentication to an API using a specific key manager:
 
 ```yaml
-version: ai.api-platform.wso2.com/v1
-kind: mcp
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Mcp
 metadata:
     name: mcp-server-api-v1.0
 spec:
@@ -128,8 +128,8 @@ spec:
 Require specific scopes and audiences:
 
 ```yaml
-version: ai.api-platform.wso2.com/v1
-kind: mcp
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: Mcp
 metadata:
     name: mcp-server-api-v1.0
 spec:

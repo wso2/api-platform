@@ -84,7 +84,7 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 	if !ok || mcpConfig == nil {
 		return nil, fmt.Errorf("invalid input type: expected *api.MCPProxyConfiguration")
 	}
-	output.ApiVersion = api.GatewayApiPlatformWso2Comv1alpha1
+	output.ApiVersion = api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1
 	output.Kind = api.RestApi
 
 	// Build APIConfigData and set it into the APIConfiguration_Spec union

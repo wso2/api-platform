@@ -1818,23 +1818,23 @@ components:
     MCPProxyConfiguration:
       type: object
       required:
-        - version
+        - apiVersion
         - kind
         - metadata
         - spec
       properties:
-        version:
+        apiVersion:
           type: string
           description: MCP Proxy specification version
-          example: ai.api-platform.wso2.com/v1
+          example: gateway.api-platform.wso2.com/v1alpha1
           enum:
-            - ai.api-platform.wso2.com/v1
+            - gateway.api-platform.wso2.com/v1alpha1
         kind:
           type: string
           description: MCP Proxy type
-          example: mcp
+          example: Mcp
           enum:
-            - mcp
+            - Mcp
         metadata:
           $ref: "#/components/schemas/Metadata"
         spec:

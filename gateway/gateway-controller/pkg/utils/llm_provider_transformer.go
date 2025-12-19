@@ -30,7 +30,7 @@ func (t *LLMProviderTransformer) Transform(input any, output *api.APIConfigurati
 	}
 
 	output.Kind = api.RestApi
-	output.ApiVersion = api.GatewayApiPlatformWso2Comv1alpha1
+	output.ApiVersion = api.APIConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1
 	output.Metadata = provider.Metadata
 
 	spec := api.APIConfigData{}
