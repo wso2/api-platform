@@ -20,6 +20,7 @@ package utils
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 )
 
@@ -28,6 +29,40 @@ func IsDockerAvailable() error {
 	cmd := exec.Command("docker", "version")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("Docker is not available or not running: %w", err)
+	}
+	return nil
+}
+
+// IsDockerBuildxAvailable checks if docker buildx is available
+func IsDockerBuildxAvailable() error {
+	cmd := exec.Command("docker", "buildx", "version")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker buildx is not available: %w", err)
+	}
+	return nil
+}
+
+// RunDockerCommand runs a docker command and logs output to the provided file
+func RunDockerCommand(args []string, logFile *os.File) error {
+	cmd := exec.Command("docker", args...)
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker command failed: %w", err)
+	}
+	return nil
+}
+
+// RunDockerCommandInDir runs a docker command in a specific directory
+func RunDockerCommandInDir(args []string, dir string, logFile *os.File) error {
+	cmd := exec.Command("docker", args...)
+	cmd.Dir = dir
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker command failed: %w", err)
 	}
 	return nil
 }

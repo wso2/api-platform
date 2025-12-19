@@ -398,7 +398,7 @@ func CopyPolicyToTempGatewayImageBuild(policyName, policyVersion, sourcePath str
 
 	if fileInfo.IsDir() {
 		// If source is a directory, copy its contents
-		return copyDir(sourcePath, destDir)
+		return CopyDir(sourcePath, destDir)
 	}
 
 	// If source is a zip file, extract to a temp location first
@@ -421,15 +421,15 @@ func CopyPolicyToTempGatewayImageBuild(policyName, policyVersion, sourcePath str
 	// If there's a single directory that looks like a version folder, use its contents
 	if len(entries) == 1 && entries[0].IsDir() && strings.HasPrefix(entries[0].Name(), "v") {
 		extractedVersionDir := filepath.Join(tempExtractDir, entries[0].Name())
-		return copyDir(extractedVersionDir, destDir)
+		return CopyDir(extractedVersionDir, destDir)
 	}
 
 	// Otherwise, copy all extracted contents
-	return copyDir(tempExtractDir, destDir)
+	return CopyDir(tempExtractDir, destDir)
 }
 
-// copyDir recursively copies a directory
-func copyDir(src, dst string) error {
+// CopyDir recursively copies a directory
+func CopyDir(src, dst string) error {
 	entries, err := os.ReadDir(src)
 	if err != nil {
 		return fmt.Errorf("failed to read directory: %w", err)
@@ -444,7 +444,7 @@ func copyDir(src, dst string) error {
 		dstPath := filepath.Join(dst, entry.Name())
 
 		if entry.IsDir() {
-			if err := copyDir(srcPath, dstPath); err != nil {
+			if err := CopyDir(srcPath, dstPath); err != nil {
 				return err
 			}
 		} else {

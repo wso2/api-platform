@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"github.com/wso2/api-platform/cli/internal/gateway"
 	"github.com/wso2/api-platform/cli/internal/policy"
 	"github.com/wso2/api-platform/cli/utils"
 )
@@ -125,11 +126,19 @@ func runBuildCommand() error {
 	}
 
 	// Step 1: Check Docker availability
-	fmt.Println("[1/6] Checking Docker Availability")
+	fmt.Println("[1/8] Checking Docker Availability")
 	if err := utils.IsDockerAvailable(); err != nil {
 		return fmt.Errorf("Docker is not available: %w", err)
 	}
 	fmt.Println("  ✓ Docker is available")
+
+	// Check docker buildx if platform is specified
+	if platform != "" {
+		if err := utils.IsDockerBuildxAvailable(); err != nil {
+			return fmt.Errorf("docker buildx is not available but required for --platform flag: %w\n\nPlease install docker buildx or remove the --platform flag", err)
+		}
+		fmt.Println("  ✓ Docker buildx is available")
+	}
 
 	// Determine build mode
 	if offline {
@@ -143,7 +152,7 @@ func runBuildCommand() error {
 
 func runOnlineBuild() error {
 	// Step 2: Read Policy Manifest
-	fmt.Println("[2/6] Reading Policy Manifest")
+	fmt.Println("[2/8] Reading Policy Manifest")
 
 	// Get manifest file path
 	manifestFilePath, err := getManifestFilePath(manifestPath)
@@ -158,7 +167,7 @@ func runOnlineBuild() error {
 	fmt.Printf("  ✓ Loaded manifest with %d policies\n\n", len(manifest.Policies))
 
 	// Step 3: Display policy breakdown
-	fmt.Println("[3/7] Categorizing Policies")
+	fmt.Println("[3/8] Categorizing Policies")
 	localPolicies, hubPolicies := policy.SeparatePolicies(manifest)
 	fmt.Printf("  → Local policies: %d\n", len(localPolicies))
 	fmt.Printf("  → Hub policies: %d\n\n", len(hubPolicies))
@@ -166,7 +175,7 @@ func runOnlineBuild() error {
 	var allProcessed []policy.ProcessedPolicy
 
 	// Step 4: Process Local Policies
-	fmt.Println("[4/7] Processing Local Policies")
+	fmt.Println("[4/8] Processing Local Policies")
 	if len(localPolicies) > 0 {
 		processed, err := policy.ProcessLocalPolicies(localPolicies)
 		if err != nil {
@@ -178,7 +187,7 @@ func runOnlineBuild() error {
 	}
 
 	// Step 5: Resolve and Download Hub Policies
-	fmt.Println("[5/7] Resolving Hub Policies from PolicyHub")
+	fmt.Println("[5/8] Resolving Hub Policies from PolicyHub")
 	if len(hubPolicies) > 0 {
 		processed, err := policy.ProcessHubPolicies(hubPolicies, manifest.VersionResolution)
 		if err != nil {
@@ -190,7 +199,7 @@ func runOnlineBuild() error {
 	}
 
 	// Step 6: Generate Lock File
-	fmt.Println("[6/7] Generating Manifest Lock File")
+	fmt.Println("[6/8] Generating Manifest Lock File")
 	lockFilePath := filepath.Join(manifestPath, utils.DefaultManifestLockFile)
 	if err := policy.GenerateLockFile(allProcessed, lockFilePath); err != nil {
 		return fmt.Errorf("failed to generate lock file: %w", err)
@@ -198,7 +207,7 @@ func runOnlineBuild() error {
 	fmt.Printf("  ✓ Generated lock file: %s\n\n", lockFilePath)
 
 	// Step 7: Setup Temp Gateway Image Build Directory
-	fmt.Println("[6/7] Setting Up Temp Gateway Image Build Directory")
+	fmt.Println("[7/8] Setting Up Temp Gateway Image Build Directory")
 	if err := utils.SetupTempGatewayImageBuildDir(lockFilePath); err != nil {
 		return fmt.Errorf("failed to setup temp gateway image build directory: %w", err)
 	}
@@ -214,8 +223,15 @@ func runOnlineBuild() error {
 	fmt.Printf("  ✓ Temp gateway image build directory ready: %s\n", tempGatewayImageBuildDir)
 	fmt.Printf("  ✓ Copied %d policies\n\n", len(allProcessed))
 
-	// Step 8: Display Summary
-	fmt.Println("[7/7] Build Preparation Complete")
+	// Step 8: Run Docker Build
+	fmt.Println("[7/8] Building Gateway Images")
+	if err := runDockerBuild(); err != nil {
+		return fmt.Errorf("failed to build gateway images: %w", err)
+	}
+	fmt.Println("  ✓ All images built successfully\\n")
+
+	// Step 9: Display Summary
+	fmt.Println("[8/8] Build Complete")
 	displayBuildSummary(manifest, manifestFilePath, lockFilePath, allProcessed)
 
 	return nil
@@ -250,7 +266,7 @@ func getManifestFilePath(basePath string) (string, error) {
 
 func runOfflineBuild() error {
 	// Step 2: Read Manifest and Lock Files
-	fmt.Println("[2/5] Reading Manifest and Lock Files")
+	fmt.Println("[2/6] Reading Manifest and Lock Files")
 
 	// Get manifest file path
 	manifestFilePath, err := getManifestFilePath(manifestPath)
@@ -277,14 +293,14 @@ func runOfflineBuild() error {
 	fmt.Printf("  ✓ Loaded manifest and lock file with %d policies\n\n", len(lockFile.Policies))
 
 	// Step 3: Verify All Policies
-	fmt.Println("[3/5] Verifying Policies")
+	fmt.Println("[3/6] Verifying Policies")
 	verified, err := policy.VerifyOfflinePolicies(lockFile, manifest)
 	if err != nil {
 		return fmt.Errorf("policy verification failed: %w", err)
 	}
 
 	// Step 4: Setup Temp Gateway Image Build Directory
-	fmt.Println("[4/5] Setting Up Temp Gateway Image Build Directory")
+	fmt.Println("[4/6] Setting Up Temp Gateway Image Build Directory")
 	if err := utils.SetupTempGatewayImageBuildDir(lockFilePath); err != nil {
 		return fmt.Errorf("failed to setup temp gateway image build directory: %w", err)
 	}
@@ -300,8 +316,15 @@ func runOfflineBuild() error {
 	fmt.Printf("  ✓ Temp gateway image build directory ready: %s\n", tempGatewayImageBuildDir)
 	fmt.Printf("  ✓ Copied %d policies\n\n", len(verified))
 
-	// Step 5: Display Summary
-	fmt.Println("[5/5] Build Preparation Complete")
+	// Step 5: Run Docker Build
+	fmt.Println("[5/6] Building Gateway Images")
+	if err := runDockerBuild(); err != nil {
+		return fmt.Errorf("failed to build gateway images: %w", err)
+	}
+	fmt.Println("  ✓ All images built successfully\\n")
+
+	// Step 6: Display Summary
+	fmt.Println("[6/6] Build Complete")
 	displayOfflineBuildSummary(manifestFilePath, lockFilePath, verified)
 
 	return nil
@@ -441,4 +464,53 @@ func displayBuildSummary(manifest *policy.PolicyManifest, manifestFilePath, lock
 
 	fmt.Println("\n✓ All policies loaded and ready for build")
 	fmt.Println()
+}
+
+// runDockerBuild executes the docker build process for gateway images
+func runDockerBuild() error {
+	tempGatewayImageBuildDir, err := utils.GetTempGatewayImageBuildDir()
+	if err != nil {
+		return fmt.Errorf("failed to get temp gateway image build directory: %w", err)
+	}
+
+	// Create logs directory
+	logsDir := filepath.Join(tempGatewayImageBuildDir, "logs")
+	if err := utils.EnsureDir(logsDir); err != nil {
+		return fmt.Errorf("failed to create logs directory: %w", err)
+	}
+
+	logFilePath := filepath.Join(logsDir, "docker.log")
+
+	// Prepare build configuration
+	config := gateway.DockerBuildConfig{
+		TempDir:                    tempGatewayImageBuildDir,
+		GatewayBuilder:             gatewayBuilder,
+		GatewayControllerBaseImage: gatewayControllerBaseImg,
+		RouterBaseImage:            routerBaseImg,
+		ImageRepository:            imageRepository,
+		GatewayName:                gatewayName,
+		GatewayVersion:             gatewayVersion,
+		Platform:                   platform,
+		NoCache:                    noCache,
+		Push:                       push,
+		LogFilePath:                logFilePath,
+	}
+
+	// Run the build
+	if err := gateway.BuildGatewayImages(config); err != nil {
+		return err
+	}
+
+	// Copy output to --output-dir if specified
+	if outputDir != "" {
+		fmt.Printf("  → Copying output to %s...\n", outputDir)
+		outputSrcDir := filepath.Join(tempGatewayImageBuildDir, "output")
+		if err := utils.CopyDir(outputSrcDir, outputDir); err != nil {
+			return fmt.Errorf("failed to copy output directory: %w", err)
+		}
+		fmt.Printf("  ✓ Output copied to %s\n", outputDir)
+	}
+
+	fmt.Printf("\n  ✓ Docker logs saved to: %s\n", logFilePath)
+	return nil
 }
