@@ -3,59 +3,86 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "0 20 * * *"
+
 jobs:
   scan-policy-engine:
     runs-on: ubuntu-latest
+
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+
     steps:
-      - name: Run Trivy vulnerability scanner
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      # IMPORTANT: network=host lets buildkit reach localhost:5000
+      - uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+
+      - name: Build & push to temporary local registry
+        run: |
+          export RUNTIME_IMAGE=localhost:5000/policy-engine
+          export RUNTIME_TAG=$RUNTIME_IMAGE:trivy
+          make -C gateway/policy-engine build-and-push-multiarch \
+          RUNTIME_IMAGE=localhost:5000/policy-engine \
+          RUNTIME_TAG=localhost:5000/policy-engine:trivy
+
+      - name: Build & push to temporary local registry
+        run: |
+          export RUNTIME_IMAGE=localhost:5000/gateway-controller
+          export RUNTIME_TAG=$RUNTIME_IMAGE:trivy
+          make -C gateway/gateway-controller build-and-push-multiarch \
+          RUNTIME_IMAGE=localhost:5000/gateway-controller \
+          RUNTIME_TAG=localhost:5000/gateway-controller:trivy
+
+      - name: Build & push to temporary local registry
+        run: |
+          export RUNTIME_IMAGE=localhost:5000/gateway-builder
+          export RUNTIME_TAG=$RUNTIME_IMAGE:trivy
+          make -C gateway/gateway-builder build-and-push-multiarch \
+          RUNTIME_IMAGE=localhost:5000/gateway-builder \
+          RUNTIME_TAG=localhost:5000/gateway-builder:trivy
+
+      - name: Build & push to temporary local registry
+        run: |
+          export RUNTIME_IMAGE=localhost:5000/router
+          export RUNTIME_TAG=$RUNTIME_IMAGE:trivy
+          make -C gateway/router build-and-push-multiarch \
+          RUNTIME_IMAGE=localhost:5000/router \
+          RUNTIME_TAG=localhost:5000/router:trivy
+
+
+      - name: Trivy scan from temporary local registry
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'ghcr.io/wso2/api-platform/policy-engine:latest'
+          image-ref: 'localhost:5000/policy-engine:trivy'
           format: 'table'
           ignore-unfixed: true
           vuln-type: 'os,library'
-          severity: 'LOW,MEDIUM,CRITICAL,HIGH'
-  scan-gateway-controller:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Run Trivy vulnerability scanner
+      - name: Trivy scan from temporary local registry
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'ghcr.io/wso2/api-platform/gateway-controller:latest'
+          image-ref: 'localhost:5000/gateway-controller:trivy'
           format: 'table'
           ignore-unfixed: true
           vuln-type: 'os,library'
-          severity: 'LOW,MEDIUM,CRITICAL,HIGH'
-  scan-gateway-router:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Run Trivy vulnerability scanner
+      - name: Trivy scan from temporary local registry
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'ghcr.io/wso2/api-platform/gateway-router:latest'
+          image-ref: 'localhost:5000/gateway-builder:trivy'
           format: 'table'
           ignore-unfixed: true
           vuln-type: 'os,library'
-          severity: 'LOW,MEDIUM,CRITICAL,HIGH'
-  scan-gateway-operator:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Run Trivy vulnerability scanner
+      - name: Trivy scan from temporary local registry
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'ghcr.io/wso2/api-platform/gateway-operator:0.0.1'
+          image-ref: 'localhost:5000/router:trivy'
           format: 'table'
           ignore-unfixed: true
           vuln-type: 'os,library'
-          severity: 'LOW,MEDIUM,CRITICAL,HIGH'
-  scan-gateway-builder:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'ghcr.io/wso2/api-platform/gateway-builder:latest'
-          format: 'table'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'LOW,MEDIUM,CRITICAL,HIGH'
+          
