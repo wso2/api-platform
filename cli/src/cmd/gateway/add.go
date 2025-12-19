@@ -34,22 +34,28 @@ const (
 	AddCmdExample = `# Add a new gateway
 ap gateway add --name dev --server http://localhost:9090
 
-# Add a gateway with authentication token
+# Add a gateway with authentication token (OAuth2)
 ap gateway add --name prod --server https://api.example.com --token <TOKEN>
 
+# Add a gateway with token from environment variable
+ap gateway add --name prod --server https://api.example.com --env-token MY_TOKEN_VAR
+
 # Add a gateway with insecure connection (skip TLS verification)
-ap gateway add --name local --server https://localhost:9090 --insecure`
+ap gateway add --name local --server https://localhost:9090 --insecure
+
+# For Basic Auth, set environment variables before running gateway commands:
+#   export ` + utils.EnvGatewayUsername + `=admin
+#   export ` + utils.EnvGatewayPassword + `=admin
+# Then add the gateway:
+ap gateway add --name dev --server http://localhost:9090`
 )
 
 var (
-	addName        string
-	addServer      string
-	addToken       string
-	addEnvToken    string
-	addUsername    string
-	addPassword    string
-	addPasswordEnv string
-	addInsecure    bool
+	addName     string
+	addServer   string
+	addToken    string
+	addEnvToken string
+	addInsecure bool
 )
 
 var addCmd = &cobra.Command{
@@ -68,11 +74,8 @@ var addCmd = &cobra.Command{
 func init() {
 	utils.AddStringFlag(addCmd, utils.FlagName, &addName, "", "Name of the gateway (required)")
 	utils.AddStringFlag(addCmd, utils.FlagServer, &addServer, "", "Server URL of the gateway (required)")
-	utils.AddStringFlag(addCmd, utils.FlagToken, &addToken, "", "Bearer token for authentication")
+	utils.AddStringFlag(addCmd, utils.FlagToken, &addToken, "", "Bearer token for OAuth2 authentication")
 	utils.AddStringFlag(addCmd, utils.FlagEnvToken, &addEnvToken, "", "Environment variable name to read bearer token from")
-	utils.AddStringFlag(addCmd, utils.FlagUsername, &addUsername, "", "Username for basic authentication")
-	utils.AddStringFlag(addCmd, utils.FlagPassword, &addPassword, "", "Password for basic authentication")
-	utils.AddStringFlag(addCmd, utils.FlagPasswordEnv, &addPasswordEnv, "", "Environment variable name to read password from")
 	utils.AddBoolFlag(addCmd, utils.FlagInsecure, &addInsecure, false, "Allow insecure server connections (no authentication)")
 
 	addCmd.MarkFlagRequired(utils.FlagName)
@@ -87,30 +90,14 @@ func runAddCommand() error {
 	}
 
 	// Validate authentication flags
-	hasToken := addToken != "" || addEnvToken != ""
-	hasBasicAuth := addUsername != "" || addPassword != "" || addPasswordEnv != ""
-
-	if hasToken && hasBasicAuth {
-		return fmt.Errorf("cannot specify both bearer token and basic auth flags")
-	}
-
 	if addToken != "" && addEnvToken != "" {
 		return fmt.Errorf("cannot specify both --%s and --%s flags", utils.FlagToken, utils.FlagEnvToken)
 	}
 
-	if addPassword != "" && addPasswordEnv != "" {
-		return fmt.Errorf("cannot specify both --%s and --%s flags", utils.FlagPassword, utils.FlagPasswordEnv)
-	}
-
-	if hasBasicAuth && addUsername == "" {
-		return fmt.Errorf("--%s is required when using basic authentication", utils.FlagUsername)
-	}
-
 	var token string
-	var basicAuth *config.BasicAuth
 	var insecure bool
 
-	// Handle bearer token authentication
+	// Handle bearer token authentication (OAuth2)
 	if addToken != "" {
 		fmt.Printf("\n⚠️  Warning: Providing tokens via --%s flag is not recommended\n", utils.FlagToken)
 		fmt.Println("   Tokens in command-line arguments may be visible in:")
@@ -121,33 +108,6 @@ func runAddCommand() error {
 		token = addToken
 	} else if addEnvToken != "" {
 		token = fmt.Sprintf("${%s}", addEnvToken)
-	} else if hasBasicAuth {
-		// Handle basic auth
-		password := addPassword
-		if addPasswordEnv != "" {
-			password = fmt.Sprintf("${%s}", addPasswordEnv)
-		} else if addPassword != "" {
-			fmt.Printf("\n⚠️  Warning: Providing passwords via --%s flag is not recommended\n", utils.FlagPassword)
-			fmt.Println("   Passwords in command-line arguments may be visible in:")
-			fmt.Println("   • Shell history")
-			fmt.Println("   • Process lists")
-			fmt.Println("   • Log files")
-			fmt.Printf("   Next time, use --%s or omit for interactive prompt.\n", utils.FlagPasswordEnv)
-		} else {
-			// Interactive password prompt
-			fmt.Print("Password: ")
-			reader := bufio.NewReader(os.Stdin)
-			input, err := reader.ReadString('\n')
-			if err != nil {
-				return fmt.Errorf("failed to read password: %w", err)
-			}
-			password = strings.TrimSpace(input)
-		}
-
-		basicAuth = &config.BasicAuth{
-			Username: addUsername,
-			Password: password,
-		}
 	} else if addInsecure {
 		insecure = true
 	} else {
@@ -155,6 +115,7 @@ func runAddCommand() error {
 		fmt.Println("\nAuthentication token (leave empty for insecure connection):")
 		fmt.Println("  • If provided: connection will use Bearer token authentication")
 		fmt.Println("  • If empty: connection will be marked as insecure")
+		fmt.Printf("  • For Basic Auth: set %s and %s environment variables\n", utils.EnvGatewayUsername, utils.EnvGatewayPassword)
 		fmt.Print("Token: ")
 		reader := bufio.NewReader(os.Stdin)
 		input, err := reader.ReadString('\n')
@@ -169,11 +130,10 @@ func runAddCommand() error {
 
 	// Create new gateway
 	gateway := config.Gateway{
-		Name:      addName,
-		Server:    addServer,
-		Token:     token,
-		BasicAuth: basicAuth,
-		Insecure:  insecure,
+		Name:     addName,
+		Server:   addServer,
+		Token:    token,
+		Insecure: insecure,
 	}
 
 	// Add gateway to config

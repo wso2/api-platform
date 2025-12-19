@@ -54,3 +54,9 @@ const (
 	PolicyHubBaseURL     = "https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/policy-hub-public/v1.0"
 	PolicyHubResolvePath = "/policies/resolve"
 )
+
+// Gateway Authentication Environment Variables
+const (
+	EnvGatewayUsername = "WSO2AP_GW_USERNAME"
+	EnvGatewayPassword = "WSO2AP_GW_PASSWORD"
+)

@@ -27,19 +27,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// BasicAuth represents basic authentication credentials
-type BasicAuth struct {
-	Username string `yaml:"username"`
-	Password string `yaml:"password"` // Can be plaintext or ${ENV_VAR} format
-}
-
 // Gateway represents a gateway configuration
 type Gateway struct {
-	Name      string     `yaml:"name"`
-	Server    string     `yaml:"server"`
-	Token     string     `yaml:"token,omitempty"`     // Bearer token (can be ${ENV_VAR})
-	BasicAuth *BasicAuth `yaml:"basicAuth,omitempty"` // Basic auth credentials
-	Insecure  bool       `yaml:"insecure,omitempty"`  // No authentication
+	Name     string `yaml:"name"`
+	Server   string `yaml:"server"`
+	Token    string `yaml:"token,omitempty"`    // Bearer token (can be ${ENV_VAR}) for OAuth2
+	Insecure bool   `yaml:"insecure,omitempty"` // No authentication
 }
 
 // Config represents the ap configuration
@@ -157,19 +150,6 @@ func (c *Config) GetGateway(name string) (*Gateway, error) {
 					return nil, fmt.Errorf("failed to resolve token for gateway '%s': %w", name, err)
 				}
 				gateway.Token = resolvedToken
-			}
-
-			// Resolve environment variables for basic auth password
-			if gateway.BasicAuth != nil {
-				resolvedPassword, err := utils.ResolveEnvVar(gateway.BasicAuth.Password)
-				if err != nil {
-					return nil, fmt.Errorf("failed to resolve password for gateway '%s': %w", name, err)
-				}
-				// Create a copy of BasicAuth to avoid modifying the original
-				gateway.BasicAuth = &BasicAuth{
-					Username: gateway.BasicAuth.Username,
-					Password: resolvedPassword,
-				}
 			}
 
 			return &gateway, nil

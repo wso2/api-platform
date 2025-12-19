@@ -23,10 +23,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/cli/internal/config"
+	"github.com/wso2/api-platform/cli/utils"
 )
 
 // Client represents an HTTP client configured for a specific gateway
@@ -88,12 +90,15 @@ func NewClientForActive() (*Client, error) {
 
 // Do executes an HTTP request with the gateway's authentication and settings
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
-	// Add authentication
-	if c.gateway.BasicAuth != nil {
-		// Basic authentication
-		req.SetBasicAuth(c.gateway.BasicAuth.Username, c.gateway.BasicAuth.Password)
+	// Add authentication (priority: Basic Auth from env vars, then Token, then Insecure)
+	username := os.Getenv(utils.EnvGatewayUsername)
+	password := os.Getenv(utils.EnvGatewayPassword)
+
+	if username != "" && password != "" {
+		// Basic authentication from environment variables
+		req.SetBasicAuth(username, password)
 	} else if c.gateway.Token != "" {
-		// Bearer token authentication
+		// Bearer token authentication (OAuth2)
 		req.Header.Set("Authorization", "Bearer "+c.gateway.Token)
 	}
 
