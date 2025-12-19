@@ -181,6 +181,47 @@ gateway_controller:
         # Skip server certificate verification (insecure, development only)
         skip_verify: false
 
+
+  # Authentication configuration
+  # - `users`: List of locally defined users (username/password + local roles).
+  #   Passwords can be plain text or hashed depending on your implementation. We support argon2id and bcrypt hashing.
+  # - `idp`: Optional IDP (OIDC/JWKS) configuration to validate incoming JWTs.
+  #   `role_mapping` maps local roles to one or more roles in the IDP.
+  auth:
+    # Local basic authentication configuration
+    basic:
+      enabled: true
+    # Local users
+      users:
+        # Example user entries:
+        # - username: "user1"
+        #   password: "$argon2id.."   # encrypted hash or plain string depending on implementation
+        #   password_hashed: true
+        #   roles: ["developer", "viewer"]
+      - username: "admin"
+        password: "admin"
+        password_hashed: false
+        roles: ["admin"]
+    # IDP (OIDC/JWKS) configuration for validating JWTs (optional)
+    idp:
+      enabled: false
+      # JWKS endpoint used to fetch public keys for JWT validation
+      jwks_url: ""
+      # Expected issuer value in the JWT `iss` claim
+      issuer: ""
+      # Claim path which contains roles (e.g. "roles", "realm_access.roles", etc.)
+      roles_claim: "scope"
+      # Map idp role to local roles. Example maps idp->local-role(s):
+      # role_mapping:
+      #   engineer:
+      #     - "developer"
+      #     - "consumer"
+      #   admin:
+      #     - "developer"
+      #     - "admin"
+      #     - "consumer"
+      role_mapping: 
+
   # Logging configuration
   logging:
     # Log level: "debug", "info", "warn", or "error"
