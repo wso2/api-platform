@@ -61,8 +61,14 @@ type GatewayController struct {
 
 // AuthConfig holds authentication related configuration
 type AuthConfig struct {
-	Users []AuthUser `koanf:"users"`
-	IDP   IDPConfig  `koanf:"idp"`
+	Basic BasicAuth `koanf:"basic"`
+	IDP   IDPConfig `koanf:"idp"`
+}
+
+// BasicAuth describes basic authentication configuration
+type BasicAuth struct {
+	Enabled bool       `koanf:"enabled"`
+	Users   []AuthUser `koanf:"users"`
 }
 
 // AuthUser describes a locally configured user
@@ -426,7 +432,10 @@ func defaultConfig() *Config {
 				},
 			},
 			Auth: AuthConfig{
-				Users: []AuthUser{},
+				Basic: BasicAuth{
+					Enabled: true,
+					Users:   []AuthUser{},
+				},
 				IDP: IDPConfig{
 					Enabled:     false,
 					JWKSURL:     "",

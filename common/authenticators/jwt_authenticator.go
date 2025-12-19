@@ -18,12 +18,15 @@
 package authenticators
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
-	"github.com/MicahParks/keyfunc/v2"
+	"github.com/MicahParks/jwkset"
+	"github.com/MicahParks/keyfunc/v3"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/wso2/api-platform/common/constants"
@@ -41,22 +44,42 @@ var (
 type JWTAuthenticator struct {
 	config *models.AuthConfig
 	logger *zap.Logger
-	jwks   *keyfunc.JWKS
+	jwks   keyfunc.Keyfunc
 }
 
 // NewJWTAuthenticator creates a new JWT authenticator
 func NewJWTAuthenticator(config *models.AuthConfig, logger *zap.Logger) (*JWTAuthenticator, error) {
-	var jwks *keyfunc.JWKS
+	var jwks keyfunc.Keyfunc
 	if config.JWTConfig != nil {
 		// Get Issuer URL from config
 		if config.JWTConfig.JWKSUrl == "" {
 			return nil, errors.New("JWKS endpoint not configured")
 		}
 
-		// Create JWKS provider
-		tempjwksProvider, err := keyfunc.Get(config.JWTConfig.JWKSUrl, keyfunc.Options{RefreshInterval: 10})
+		// Create JWKS storage with custom validation options to skip X5TS256 validation
+		// This is required for some OIDC providers like Asgardeo that may have X5TS256 mismatches
+		ctx := context.Background()
+		storageOptions := jwkset.HTTPClientStorageOptions{
+			Ctx:             ctx,
+			RefreshInterval: 10 * time.Minute,
+			ValidateOptions: jwkset.JWKValidateOptions{
+				SkipAll: true, // Skip JWK metadata validation to handle provider inconsistencies (JWT signature validation still occurs)
+			},
+		}
+
+		storage, err := jwkset.NewStorageFromHTTP(config.JWTConfig.JWKSUrl, storageOptions)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get JWKS: %w", err)
+			return nil, fmt.Errorf("failed to create JWKS storage: %w", err)
+		}
+
+		// Create keyfunc with the custom storage
+		keyfuncOptions := keyfunc.Options{
+			Ctx:     ctx,
+			Storage: storage,
+		}
+		tempjwksProvider, err := keyfunc.New(keyfuncOptions)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create JWKS provider: %w", err)
 		}
 		jwks = tempjwksProvider
 	}

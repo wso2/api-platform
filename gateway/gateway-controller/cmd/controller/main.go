@@ -261,7 +261,11 @@ func main() {
 	router.Use(middleware.ErrorHandlingMiddleware(log))
 	router.Use(middleware.LoggingMiddleware(log))
 	authConfig := generateAuthConfig(cfg)
-	router.Use(authenticators.AuthMiddleware(authConfig, log))
+	authMiddleWare, err := authenticators.AuthMiddleware(authConfig, log)
+	if err != nil {
+		log.Fatal("Failed to create auth middleware", zap.Error(err))
+	}
+	router.Use(authMiddleWare)
 	router.Use(authenticators.AuthorizationMiddleware(authConfig, log))
 	router.Use(gin.Recovery())
 
@@ -351,20 +355,26 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 
 		"GET /config_dump": {"admin"},
 	}
-	users := make([]commonmodels.User, len(config.GatewayController.Auth.Users))
-	for i, authUser := range config.GatewayController.Auth.Users {
-		users[i] = commonmodels.User{
-			Username:       authUser.Username,
-			Password:       authUser.Password,
-			PasswordHashed: authUser.PasswordHashed,
-			Roles:          authUser.Roles,
+	basicAuth := commonmodels.BasicAuth{Enabled: false}
+	idpAuth := commonmodels.IDPConfig{Enabled: false}
+	if config.GatewayController.Auth.Basic.Enabled {
+		users := make([]commonmodels.User, len(config.GatewayController.Auth.Basic.Users))
+		for i, authUser := range config.GatewayController.Auth.Basic.Users {
+			users[i] = commonmodels.User{
+				Username:       authUser.Username,
+				Password:       authUser.Password,
+				PasswordHashed: authUser.PasswordHashed,
+				Roles:          authUser.Roles,
+			}
 		}
+		basicAuth = commonmodels.BasicAuth{Enabled: true, Users: users}
 	}
-	basicAuth := commonmodels.BasicAuth{Enabled: true, Users: users}
-	idpAuth := commonmodels.IDPConfig{IssuerURL: config.GatewayController.Auth.IDP.Issuer,
-		JWKSUrl:           config.GatewayController.Auth.IDP.JWKSURL,
-		ScopeClaim:        config.GatewayController.Auth.IDP.RolesClaim,
-		PermissionMapping: &config.GatewayController.Auth.IDP.RoleMapping,
+	if config.GatewayController.Auth.IDP.Enabled {
+		idpAuth = commonmodels.IDPConfig{Enabled: true, IssuerURL: config.GatewayController.Auth.IDP.Issuer,
+			JWKSUrl:           config.GatewayController.Auth.IDP.JWKSURL,
+			ScopeClaim:        config.GatewayController.Auth.IDP.RolesClaim,
+			PermissionMapping: &config.GatewayController.Auth.IDP.RoleMapping,
+		}
 	}
 	authConfig := commonmodels.AuthConfig{BasicAuth: &basicAuth,
 		JWTConfig:     &idpAuth,
