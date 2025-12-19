@@ -159,3 +159,75 @@ func TestMCPTransformer_Transform(t *testing.T) {
 		t.Fatalf("expected Version ApiPlatformWso2Comv1, got %s", res.ApiVersion)
 	}
 }
+
+func TestMCPTransformer_Transform_WithPoliciesAndUpstreamAuth(t *testing.T) {
+	name := "petstore"
+	version := "1.0.0"
+	context := "/petstore"
+	url := "http://backend:8080"
+	authHeader := "Authorization"
+	authValue := "Bearer token-xyz"
+	authType := api.MCPProxyConfigDataUpstreamAuthType("bearer")
+
+	upstream := api.MCPProxyConfigData_Upstream{
+		Url: &url,
+		Auth: &struct {
+			Header *string                                `json:"header,omitempty" yaml:"header,omitempty"`
+			Type   api.MCPProxyConfigDataUpstreamAuthType `json:"type" yaml:"type"`
+			Value  *string                                `json:"value,omitempty" yaml:"value,omitempty"`
+		}{
+			Header: &authHeader,
+			Type:   authType,
+			Value:  &authValue,
+		},
+	}
+
+	existingPolicy := api.Policy{
+		Name:    "SomePolicy",
+		Version: "v1",
+	}
+	policies := []api.Policy{existingPolicy}
+
+	latest := LATEST_SUPPORTED_MCP_SPEC_VERSION
+	in := &api.MCPProxyConfiguration{
+		Spec: api.MCPProxyConfigData{
+			DisplayName: name,
+			Version:     version,
+			Context:     &context,
+			Upstream:    upstream,
+			SpecVersion: &latest,
+			Policies:    &policies,
+		},
+	}
+
+	var out api.APIConfiguration
+	tr := &MCPTransformer{}
+	res, err := tr.Transform(in, &out)
+	if err != nil {
+		t.Fatalf("Transform returned an error: %v", err)
+	}
+
+	apiData, err := res.Spec.AsAPIConfigData()
+	if err != nil {
+		t.Fatalf("Transform produced invalid API config data: %v", err)
+	}
+
+	if apiData.Policies == nil {
+		t.Fatalf("Expected policies to be present")
+	}
+
+	resPolicies := *apiData.Policies
+	if len(resPolicies) != 2 {
+		t.Fatalf("Expected 2 policies, got %d", len(resPolicies))
+	}
+
+	// Check first policy is the existing one
+	if resPolicies[0].Name != existingPolicy.Name {
+		t.Errorf("Expected first policy to be %s, got %s", existingPolicy.Name, resPolicies[0].Name)
+	}
+
+	// Check second policy is the modify headers policy
+	if resPolicies[1].Name != constants.MODIFY_HEADERS_POLICY_NAME {
+		t.Errorf("Expected last policy to be %s, got %s", constants.MODIFY_HEADERS_POLICY_NAME, resPolicies[1].Name)
+	}
+}

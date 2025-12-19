@@ -101,7 +101,16 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 		Url: mcpConfig.Spec.Upstream.Url,
 	}
 
+	// Process policies
 	var policies []api.Policy
+	// Normal policies need to be set before the upstream auth because if the upstream auth
+	// policy sets the authorization header, it may clash with the authentication policies set.
+	// Setting upstream auth last ensures that the authorization header is set only after the JWT
+	// validation has been performed.
+	if mcpConfig.Spec.Policies != nil && len(*mcpConfig.Spec.Policies) > 0 {
+		policies = append(policies, *mcpConfig.Spec.Policies...)
+	}
+
 	// Set upstream auth if present
 	upstream := mcpConfig.Spec.Upstream
 	if upstream.Auth != nil {
@@ -115,6 +124,8 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 		policies = append(policies, pol)
 	}
 
+	apiData.Policies = &policies
+
 	// Set vhost if present
 	if mcpConfig.Spec.Vhost != nil {
 		v := struct {
@@ -125,12 +136,6 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 		}
 		apiData.Vhosts = &v
 	}
-
-	// Process policies
-	if mcpConfig.Spec.Policies != nil && len(*mcpConfig.Spec.Policies) > 0 {
-		policies = append(policies, *mcpConfig.Spec.Policies...)
-	}
-	apiData.Policies = &policies
 
 	var specUnion api.APIConfiguration_Spec
 	if err := specUnion.FromAPIConfigData(apiData); err != nil {

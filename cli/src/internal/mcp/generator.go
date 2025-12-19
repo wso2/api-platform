@@ -29,6 +29,7 @@ import (
 	"strings"
 	"time"
 
+	gwmodels "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"gopkg.in/yaml.v3"
 )
 
@@ -51,66 +52,34 @@ type JsonRPCRequest struct {
 	Params  interface{} `json:"params,omitempty"`
 }
 
-type Tool struct {
+// Intermediate types for unmarshaling JSON responses
+type mcpToolJSON struct {
 	Name         string          `json:"name"`
-	Title        string          `json:"title"`
+	Title        *string         `json:"title,omitempty"`
 	Description  string          `json:"description"`
 	InputSchema  json.RawMessage `json:"inputSchema"`
-	OutputSchema json.RawMessage `json:"outputSchema"`
-	Policies     []string        `json:"policies"`
+	OutputSchema json.RawMessage `json:"outputSchema,omitempty"`
 }
 
-// MarshalYAML customizes YAML marshaling to keep schemas as JSON strings
-func (t Tool) MarshalYAML() (interface{}, error) {
-	type ToolAlias struct {
-		Name         string   `yaml:"name"`
-		Title        string   `yaml:"title"`
-		Description  string   `yaml:"description"`
-		InputSchema  string   `yaml:"inputSchema"`
-		OutputSchema string   `yaml:"outputSchema"`
-		Policies     []string `yaml:"policies"`
-	}
-
-	return ToolAlias{
-		Name:         t.Name,
-		Title:        t.Title,
-		Description:  t.Description,
-		InputSchema:  string(t.InputSchema),
-		OutputSchema: string(t.OutputSchema),
-		Policies:     t.Policies,
-	}, nil
+type mcpResourceJSON struct {
+	Name        string  `json:"name"`
+	Uri         string  `json:"uri"`
+	Title       *string `json:"title,omitempty"`
+	Description *string `json:"description,omitempty"`
+	MimeType    *string `json:"mimeType,omitempty"`
+	Size        *int    `json:"size,omitempty"`
 }
 
-type Resource struct {
-	Name        string   `json:"name" yaml:"name"`
-	URI         string   `json:"uri" yaml:"uri"`
-	Description string   `json:"description" yaml:"description"`
-	MimeType    string   `json:"mimeType" yaml:"mimeType"`
-	Policies    []string `json:"policies" yaml:"policies"`
-}
-
-type Prompt struct {
-	Name        string   `json:"name" yaml:"name"`
-	Description string   `json:"description" yaml:"description"`
-	Policies    []string `json:"policies" yaml:"policies"`
-}
-
-type McpYAML struct {
-	Version string `yaml:"version"`
-	Kind    string `yaml:"kind"`
-	Spec    struct {
-		Name        string `yaml:"name"`
-		Version     string `yaml:"version"`
-		Context     string `yaml:"context"`
-		SpecVersion string `yaml:"specVersion"`
-		Upstream    struct {
-			URL string `yaml:"url"`
-		} `yaml:"upstream"`
-		Policies  []any      `yaml:"policies"`
-		Tools     []Tool     `yaml:"tools"`
-		Resources []Resource `yaml:"resources"`
-		Prompts   []Prompt   `yaml:"prompts"`
-	} `yaml:"spec"`
+type mcpPromptJSON struct {
+	Name        string  `json:"name"`
+	Title       *string `json:"title,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Arguments   *[]struct {
+		Description *string `json:"description,omitempty"`
+		Name        string  `json:"name"`
+		Required    *bool   `json:"required,omitempty"`
+		Title       *string `json:"title,omitempty"`
+	} `json:"arguments,omitempty"`
 }
 
 type ToolsResult struct {
@@ -118,7 +87,7 @@ type ToolsResult struct {
 		Message string `json:"message"`
 	} `json:"error"`
 	Result struct {
-		Tools []Tool `json:"tools"`
+		Tools []mcpToolJSON `json:"tools"`
 	} `json:"result"`
 }
 
@@ -127,7 +96,7 @@ type PromptsResult struct {
 		Message string `json:"message"`
 	} `json:"error"`
 	Result struct {
-		Prompts []Prompt `json:"prompts"`
+		Prompts []mcpPromptJSON `json:"prompts"`
 	} `json:"result"`
 }
 
@@ -136,7 +105,7 @@ type ResourcesResult struct {
 		Message string `json:"message"`
 	} `json:"error"`
 	Result struct {
-		Resources []Resource `json:"resources"`
+		Resources []mcpResourceJSON `json:"resources"`
 	} `json:"result"`
 }
 
@@ -371,22 +340,94 @@ func isEventStream(resp *http.Response) bool {
 // generateMCPConfigFile generates the MCP configuration YAML file
 func generateMCPConfigFile(url string, toolsResult ToolsResult,
 	resourcesResult ResourcesResult, promptsResult PromptsResult, outputDir string) error {
-	// Build YAML
-	mcp := McpYAML{
-		Version: "ai.api-platform.wso2.com/v1",
-		Kind:    "mcp",
+	// Build YAML using gwmodels structs
+	upstreamURL := strings.TrimSuffix(url, "/mcp")
+	contextPath := "/generated"
+	specVersion := ProtocolVersion
+
+	// Convert intermediate types to gwmodels types
+	tools := make([]gwmodels.MCPTool, 0, len(toolsResult.Result.Tools))
+	for _, tool := range toolsResult.Result.Tools {
+		// Convert json.RawMessage to JSON string
+		inputSchemaStr := string(tool.InputSchema)
+		var outputSchemaStr *string
+		if len(tool.OutputSchema) > 0 {
+			str := string(tool.OutputSchema)
+			outputSchemaStr = &str
+		}
+		tools = append(tools, gwmodels.MCPTool{
+			Name:         tool.Name,
+			Title:        tool.Title,
+			Description:  tool.Description,
+			InputSchema:  inputSchemaStr,
+			OutputSchema: outputSchemaStr,
+		})
 	}
-	mcp.Spec.Name = "Generated-MCP"
-	mcp.Spec.Version = "v1.0"
-	mcp.Spec.Context = "/generated"
-	mcp.Spec.SpecVersion = ProtocolVersion
-	mcp.Spec.Upstream = struct {
-		URL string `yaml:"url"`
-	}{URL: strings.TrimSuffix(url, "/mcp")}
-	mcp.Spec.Policies = []any{}
-	mcp.Spec.Tools = toolsResult.Result.Tools
-	mcp.Spec.Resources = resourcesResult.Result.Resources
-	mcp.Spec.Prompts = promptsResult.Result.Prompts
+
+	resources := make([]gwmodels.MCPResource, 0, len(resourcesResult.Result.Resources))
+	for _, res := range resourcesResult.Result.Resources {
+		resources = append(resources, gwmodels.MCPResource{
+			Name:        res.Name,
+			Uri:         res.Uri,
+			Title:       res.Title,
+			Description: res.Description,
+			MimeType:    res.MimeType,
+			Size:        res.Size,
+		})
+	}
+
+	prompts := make([]gwmodels.MCPPrompt, 0, len(promptsResult.Result.Prompts))
+	for _, prompt := range promptsResult.Result.Prompts {
+		// Convert arguments if present to match gwmodels struct
+		var args *[]struct {
+			Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+			Name        string  `json:"name" yaml:"name"`
+			Required    *bool   `json:"required,omitempty" yaml:"required,omitempty"`
+			Title       *string `json:"title,omitempty" yaml:"title,omitempty"`
+		}
+		if prompt.Arguments != nil && len(*prompt.Arguments) > 0 {
+			convertedArgs := make([]struct {
+				Description *string `json:"description,omitempty" yaml:"description,omitempty"`
+				Name        string  `json:"name" yaml:"name"`
+				Required    *bool   `json:"required,omitempty" yaml:"required,omitempty"`
+				Title       *string `json:"title,omitempty" yaml:"title,omitempty"`
+			}, len(*prompt.Arguments))
+			for i, arg := range *prompt.Arguments {
+				convertedArgs[i].Description = arg.Description
+				convertedArgs[i].Name = arg.Name
+				convertedArgs[i].Required = arg.Required
+				convertedArgs[i].Title = arg.Title
+			}
+			args = &convertedArgs
+		}
+		prompts = append(prompts, gwmodels.MCPPrompt{
+			Name:        prompt.Name,
+			Title:       prompt.Title,
+			Description: prompt.Description,
+			Arguments:   args,
+		})
+	}
+
+	mcp := gwmodels.MCPProxyConfiguration{
+		Version: gwmodels.AiApiPlatformWso2Comv1,
+		Kind:    gwmodels.Mcp,
+		Metadata: gwmodels.Metadata{
+			Name: "Generated-MCP-v1.0",
+		},
+		Spec: gwmodels.MCPProxyConfigData{
+			DisplayName: "Generated-MCP",
+			Version:     "v1.0",
+			Context:     &contextPath,
+			SpecVersion: &specVersion,
+			Upstream: gwmodels.MCPProxyConfigData_Upstream{
+				Url: &upstreamURL,
+			},
+			Policies:  nil,
+			Tools:     &tools,
+			Resources: &resources,
+			Prompts:   &prompts,
+		},
+	}
 
 	out, err := yaml.Marshal(&mcp)
 	if err != nil {
