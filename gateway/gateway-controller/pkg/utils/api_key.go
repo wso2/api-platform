@@ -147,7 +147,7 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 
 		// Rollback database save to maintain consistency
 		if s.db != nil {
-			if delErr := s.db.RemoveAPIKeyAPIAndName(apiKey.Handle, apiKey.Name); delErr != nil {
+			if delErr := s.db.RemoveAPIKeyAPIAndName(apiKey.APIId, apiKey.Name); delErr != nil {
 				logger.Error("Failed to rollback API key from database",
 					zap.Error(delErr),
 					zap.String("correlation_id", params.CorrelationID))
@@ -179,7 +179,7 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 	// err := StoreAPIKey(apiName, apiVersion string, apiKey *APIKey, params.CorrelationID string)
 
 	// Build response following the generated schema
-	result.Response = s.buildAPIKeyResponse(apiKey)
+	result.Response = s.buildAPIKeyResponse(apiKey, params.Handle)
 
 	logger.Info("API key generated successfully",
 		zap.String("handle", params.Handle),
@@ -217,10 +217,8 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) error {
 	// This prevents information leakage about API key details
 	if apiKey != nil {
 		// Check if the API key belongs to the specified API
-		if apiKey.Handle != params.Handle {
+		if apiKey.APIId != config.ID {
 			logger.Debug("API key does not belong to the specified API",
-				zap.String("expected_handle", params.Handle),
-				zap.String("actual_handle", apiKey.Handle),
 				zap.String("correlation_id", params.CorrelationID))
 			return fmt.Errorf("API key revocation failed for API: '%s'", params.Handle)
 		}
@@ -396,7 +394,7 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 		ID:         id,
 		Name:       name,
 		APIKey:     apiKeyValue,
-		Handle:     handle,
+		APIId:      config.ID,
 		Operations: operations,
 		Status:     models.APIKeyStatusActive,
 		CreatedAt:  now,
@@ -432,7 +430,7 @@ func (s *APIKeyService) generateOperationsString(operations []api.Operation) str
 }
 
 // buildAPIKeyResponse builds the response following the generated schema
-func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey) api.APIKeyGenerationResponse {
+func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle string) api.APIKeyGenerationResponse {
 	if key == nil {
 		return api.APIKeyGenerationResponse{
 			Status:  "error",
@@ -446,7 +444,7 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey) api.APIKeyGenera
 		ApiKey: &api.APIKey{
 			Name:       key.Name,
 			ApiKey:     key.APIKey,
-			ApiId:      key.Handle,
+			ApiId:      handle,
 			Operations: key.Operations,
 			Status:     api.APIKeyStatus(key.Status),
 			CreatedAt:  key.CreatedAt,

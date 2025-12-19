@@ -36,7 +36,7 @@ type APIKey struct {
 	ID         string       `json:"id" db:"id"`
 	Name       string       `json:"name" db:"name"`
 	APIKey     string       `json:"api_key" db:"api_key"`
-	Handle     string       `json:"handle" db:"handle"`
+	APIId      string       `json:"apiId" db:"apiId"`
 	Operations string       `json:"operations" db:"operations"`
 	Status     APIKeyStatus `json:"status" db:"status"`
 	CreatedAt  time.Time    `json:"created_at" db:"created_at"`

@@ -778,7 +778,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 		}
 
 		// Delete associated API keys from database
-		err := s.db.RemoveAPIKeysAPI(handle)
+		err := s.db.RemoveAPIKeysAPI(cfg.ID)
 		if err != nil {
 			log.Warn("Failed to remove API keys from database",
 				zap.String("handle", handle),
@@ -787,7 +787,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	}
 
 	// Remove API keys from ConfigStore
-	if err := s.store.RemoveAPIKeysByAPI(handle); err != nil {
+	if err := s.store.RemoveAPIKeysByAPI(cfg.ID); err != nil {
 		log.Warn("Failed to remove API keys from ConfigStore",
 			zap.String("handle", handle),
 			zap.Error(err))

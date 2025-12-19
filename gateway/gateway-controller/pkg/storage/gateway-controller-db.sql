@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     api_key TEXT NOT NULL UNIQUE,
     
     -- API reference
-    handle TEXT NOT NULL,
+    apiId TEXT NOT NULL,
 
     -- Comma-separated list of operations the key will have access to
     operations TEXT NOT NULL DEFAULT '[*]',
@@ -133,15 +133,15 @@ CREATE TABLE IF NOT EXISTS api_keys (
     expires_at TIMESTAMP NULL,  -- NULL means no expiration
     
     -- Foreign key relationship to deployments
-    FOREIGN KEY (handle) REFERENCES deployments(handle) ON DELETE CASCADE,
+    FOREIGN KEY (apiId) REFERENCES deployments(id) ON DELETE CASCADE,
 
     -- Composite unique constraint (handle + api key name must be unique)
-    UNIQUE (handle, name)
+    UNIQUE (apiId, name)
 );
 
 -- Indexes for API key lookups
 CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);
-CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(handle);
+CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(apiId);
 CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_keys(status);
 CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);
 CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);

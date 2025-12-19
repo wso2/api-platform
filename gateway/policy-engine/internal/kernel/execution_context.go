@@ -329,6 +329,7 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 	// Create shared context that will persist across request/response phases
 	sharedCtx := &policy.SharedContext{
 		RequestID:     requestID,
+		APIId:         routeMetadata.APIId,
 		APIName:       routeMetadata.APIName,
 		APIVersion:    routeMetadata.APIVersion,
 		APIContext:    routeMetadata.Context,

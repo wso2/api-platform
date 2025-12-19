@@ -42,7 +42,7 @@ type ConfigStore struct {
 
 	// API Keys storage
 	apiKeys      map[string]*models.APIKey   // Key: API key value → Value: APIKey
-	apiKeysByAPI map[string][]*models.APIKey // Key: "handle" → Value: slice of APIKeys
+	apiKeysByAPI map[string][]*models.APIKey // Key: "configID" → Value: slice of APIKeys
 }
 
 // NewConfigStore creates a new in-memory config store
@@ -461,19 +461,19 @@ func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
 	if strings.TrimSpace(apiKey.APIKey) == "" {
 		return fmt.Errorf("API key value cannot be empty")
 	}
-	if strings.TrimSpace(apiKey.Handle) == "" {
-		return fmt.Errorf("API handle cannot be empty")
+	if strings.TrimSpace(apiKey.APIId) == "" {
+		return fmt.Errorf("API apiId cannot be empty")
 	}
 
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	// Check if an API key with the same handle and name already exists
-	existingKeys, handleExists := cs.apiKeysByAPI[apiKey.Handle]
+	// Check if an API key with the same apiId and name already exists
+	existingKeys, apiIdExists := cs.apiKeysByAPI[apiKey.APIId]
 	var existingKeyIndex = -1
 	var oldAPIKeyValue string
 
-	if handleExists {
+	if apiIdExists {
 		for i, existingKey := range existingKeys {
 			if existingKey.Name == apiKey.Name {
 				existingKeyIndex = i
@@ -483,7 +483,7 @@ func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
 		}
 	}
 
-	// Check if the new API key value already exists (but with different handle/name)
+	// Check if the new API key value already exists (but with different apiId/name)
 	if _, keyExists := cs.apiKeys[apiKey.APIKey]; keyExists && oldAPIKeyValue != apiKey.APIKey {
 		return ErrConflict
 	}
@@ -496,7 +496,7 @@ func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
 		}
 
 		// Update the existing entry in apiKeysByAPI
-		cs.apiKeysByAPI[apiKey.Handle][existingKeyIndex] = apiKey
+		cs.apiKeysByAPI[apiKey.APIId][existingKeyIndex] = apiKey
 
 		// Store by new API key value
 		cs.apiKeys[apiKey.APIKey] = apiKey
@@ -510,8 +510,8 @@ func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
 		// Store by API key value
 		cs.apiKeys[apiKey.APIKey] = apiKey
 
-		// Store by API handle
-		cs.apiKeysByAPI[apiKey.Handle] = append(cs.apiKeysByAPI[apiKey.Handle], apiKey)
+		// Store by API apiId
+		cs.apiKeysByAPI[apiKey.APIId] = append(cs.apiKeysByAPI[apiKey.APIId], apiKey)
 	}
 
 	return nil
@@ -531,11 +531,11 @@ func (cs *ConfigStore) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 }
 
 // GetAPIKeysByAPI retrieves all API keys for a specific API
-func (cs *ConfigStore) GetAPIKeysByAPI(handle string) ([]*models.APIKey, error) {
+func (cs *ConfigStore) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
-	apiKeys, exists := cs.apiKeysByAPI[handle]
+	apiKeys, exists := cs.apiKeysByAPI[apiId]
 	if !exists {
 		return []*models.APIKey{}, nil // Return empty slice instead of nil
 	}
@@ -546,12 +546,12 @@ func (cs *ConfigStore) GetAPIKeysByAPI(handle string) ([]*models.APIKey, error) 
 	return result, nil
 }
 
-// GetAPIKeyByName retrieves an API key by its handle and name
-func (cs *ConfigStore) GetAPIKeyByName(handle, name string) (*models.APIKey, error) {
+// GetAPIKeyByName retrieves an API key by its apiId and name
+func (cs *ConfigStore) GetAPIKeyByName(apiId, name string) (*models.APIKey, error) {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
-	apiKeys, exists := cs.apiKeysByAPI[handle]
+	apiKeys, exists := cs.apiKeysByAPI[apiId]
 	if !exists {
 		return nil, ErrNotFound
 	}
@@ -581,17 +581,17 @@ func (cs *ConfigStore) RemoveAPIKey(apiKey string) error {
 	delete(cs.apiKeys, apiKey)
 
 	// Remove from API-specific map
-	if apiKeys, exists := cs.apiKeysByAPI[key.Handle]; exists {
+	if apiKeys, exists := cs.apiKeysByAPI[key.APIId]; exists {
 		for i, k := range apiKeys {
 			if k.APIKey == apiKey {
 				// Remove from slice
-				cs.apiKeysByAPI[key.Handle] = append(apiKeys[:i], apiKeys[i+1:]...)
+				cs.apiKeysByAPI[key.APIId] = append(apiKeys[:i], apiKeys[i+1:]...)
 				break
 			}
 		}
 		// Clean up empty slices
-		if len(cs.apiKeysByAPI[key.Handle]) == 0 {
-			delete(cs.apiKeysByAPI, key.Handle)
+		if len(cs.apiKeysByAPI[key.APIId]) == 0 {
+			delete(cs.apiKeysByAPI, key.APIId)
 		}
 	}
 
@@ -599,11 +599,11 @@ func (cs *ConfigStore) RemoveAPIKey(apiKey string) error {
 }
 
 // RemoveAPIKeysByAPI removes all API keys for a specific API
-func (cs *ConfigStore) RemoveAPIKeysByAPI(handle string) error {
+func (cs *ConfigStore) RemoveAPIKeysByAPI(apiId string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	apiKeys, exists := cs.apiKeysByAPI[handle]
+	apiKeys, exists := cs.apiKeysByAPI[apiId]
 	if !exists {
 		return nil // No keys to remove
 	}
@@ -614,18 +614,18 @@ func (cs *ConfigStore) RemoveAPIKeysByAPI(handle string) error {
 	}
 
 	// Remove from API-specific map
-	delete(cs.apiKeysByAPI, handle)
+	delete(cs.apiKeysByAPI, apiId)
 
 	return nil
 }
 
-// RemoveAPIKeyByName removes an API key from the in-memory cache by its handle and name
-func (cs *ConfigStore) RemoveAPIKeyByName(handle, name string) error {
+// RemoveAPIKeyByName removes an API key from the in-memory cache by its apiId and name
+func (cs *ConfigStore) RemoveAPIKeyByName(apiId, name string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	// Get API keys for the handle
-	apiKeys, exists := cs.apiKeysByAPI[handle]
+	// Get API keys for the apiId
+	apiKeys, exists := cs.apiKeysByAPI[apiId]
 	if !exists {
 		return ErrNotFound
 	}
@@ -650,11 +650,11 @@ func (cs *ConfigStore) RemoveAPIKeyByName(handle, name string) error {
 	delete(cs.apiKeys, targetAPIKey.APIKey)
 
 	// Remove from apiKeysByAPI slice
-	cs.apiKeysByAPI[handle] = append(apiKeys[:targetIndex], apiKeys[targetIndex+1:]...)
+	cs.apiKeysByAPI[apiId] = append(apiKeys[:targetIndex], apiKeys[targetIndex+1:]...)
 
 	// Clean up empty slices
-	if len(cs.apiKeysByAPI[handle]) == 0 {
-		delete(cs.apiKeysByAPI, handle)
+	if len(cs.apiKeysByAPI[apiId]) == 0 {
+		delete(cs.apiKeysByAPI, apiId)
 	}
 
 	return nil

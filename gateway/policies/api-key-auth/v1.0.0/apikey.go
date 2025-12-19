@@ -61,6 +61,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 	slog.Debug("API Key Auth Policy: OnRequest started",
 		"path", ctx.Path,
 		"method", ctx.Method,
+		"apiId", ctx.APIId,
 		"apiName", ctx.APIName,
 		"apiVersion", ctx.APIVersion,
 	)
@@ -150,13 +151,15 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 		}
 	}
 
+	apiId := ctx.APIId
 	apiName := ctx.APIName
 	apiVersion := ctx.APIVersion
 	apiOperation := ctx.OperationPath
 	operationMethod := ctx.Method
 
-	if apiName == "" || apiVersion == "" || apiOperation == "" || operationMethod == "" {
+	if apiId != "" || apiName == "" || apiVersion == "" || apiOperation == "" || operationMethod == "" {
 		slog.Debug("API Key Auth Policy: Missing API details for validation",
+			"apiId", apiId,
 			"apiName", apiName,
 			"apiVersion", apiVersion,
 			"apiOperation", apiOperation,
@@ -167,6 +170,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 	}
 
 	slog.Debug("API Key Auth Policy: Starting validation",
+		"apiId", apiId,
 		"apiName", apiName,
 		"apiVersion", apiVersion,
 		"apiOperation", apiOperation,
@@ -175,7 +179,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 	)
 
 	// API key was provided - validate it using external validation
-	isValid, err := p.validateAPIKey(apiName, apiVersion, apiOperation, operationMethod, providedKey)
+	isValid, err := p.validateAPIKey(apiId, apiOperation, operationMethod, providedKey)
 	if err != nil {
 		slog.Debug("API Key Auth Policy: Validation error",
 			"error", err,
@@ -197,6 +201,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 // handleAuthSuccess handles successful authentication
 func (p *APIKeyPolicy) handleAuthSuccess(ctx *policy.RequestContext) policy.RequestAction {
 	slog.Debug("API Key Auth Policy: handleAuthSuccess called",
+		"apiId", ctx.APIId,
 		"apiName", ctx.APIName,
 		"apiVersion", ctx.APIVersion,
 		"method", ctx.Method,
@@ -229,6 +234,7 @@ func (p *APIKeyPolicy) handleAuthFailure(ctx *policy.RequestContext, statusCode 
 		"errorFormat", errorFormat,
 		"errorMessage", errorMessage,
 		"reason", reason,
+		"apiId", ctx.APIId,
 		"apiName", ctx.APIName,
 		"apiVersion", ctx.APIVersion,
 		"method", ctx.Method,
@@ -272,9 +278,9 @@ func (p *APIKeyPolicy) handleAuthFailure(ctx *policy.RequestContext, statusCode 
 }
 
 // validateAPIKey validates the provided API key against external store/service
-func (p *APIKeyPolicy) validateAPIKey(apiName, apiVersion, apiOperation, operationMethod, apiKey string) (bool, error) {
+func (p *APIKeyPolicy) validateAPIKey(apiId, apiOperation, operationMethod, apiKey string) (bool, error) {
 	apiKeyStore := policy.GetAPIkeyStoreInstance()
-	isValid, err := apiKeyStore.ValidateAPIKey(apiName, apiVersion, apiOperation, operationMethod, apiKey)
+	isValid, err := apiKeyStore.ValidateAPIKey(apiId, apiOperation, operationMethod, apiKey)
 	if err != nil {
 		return false, fmt.Errorf("failed to validate API key via the policy engine")
 	}

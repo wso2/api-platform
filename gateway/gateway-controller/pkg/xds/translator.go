@@ -400,7 +400,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig) ([]*route.Rout
 
 	for _, op := range apiData.Operations {
 		// Use mainClusterName by default; path rewrite based on main upstream path
-		r := t.createRoute(apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
+		r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
 			mainClusterName, parsedMainURL.Path, effectiveMainVHost)
 		mainRoutesList = append(mainRoutesList, r)
 	}
@@ -419,7 +419,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig) ([]*route.Rout
 		sbRoutesList := make([]*route.Route, 0)
 		for _, op := range apiData.Operations {
 			// Use sbClusterName for sandbox upstream path
-			r := t.createRoute(apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
+			r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
 				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost)
 			sbRoutesList = append(sbRoutesList, r)
 		}
@@ -785,7 +785,7 @@ func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost)
 }
 
 // createRoute creates a route for an operation
-func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clusterName,
+func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, path, clusterName,
 	upstreamPath string, vhost string) *route.Route {
 	// Resolve version placeholder in context
 	context = strings.ReplaceAll(context, "$version", apiVersion)
@@ -871,6 +871,7 @@ func (t *Translator) createRoute(apiName, apiVersion, context, method, path, clu
 	// TODO: (renuka) Include API ID as well
 	metaMap := map[string]interface{}{
 		"route_name":  routeName,
+		"api_id":      apiId,
 		"api_name":    apiName,
 		"api_version": apiVersion,
 		"api_context": context,
