@@ -101,8 +101,9 @@ func TestCmdGatewayImageBuildLocalPolicies(t *testing.T) {
 	cmd := exec.Command(absBinaryPath,
 		"gateway", "image", "build",
 		"--path", absResourcesDir,
-		"--image-tag", "v0.2.0-test",
-		"--image-repository", "test-registry/gateway",
+		"--name", "test-gateway",
+		"--version", "0.2.0-test",
+		"--repository", "test-registry",
 	)
 
 	// Set working directory to the src directory
@@ -210,7 +211,8 @@ func TestCmdGatewayImageBuildHubPolicies(t *testing.T) {
 	cmd := exec.Command(absBinaryPath,
 		"gateway", "image", "build",
 		"--path", absResourcesDir,
-		"--image-tag", "v0.2.0-hub-test",
+		"--name", "hub-test-gateway",
+		"--version", "0.2.0-hub-test",
 	)
 
 	// Set working directory to the src directory
@@ -306,7 +308,8 @@ func TestCmdGatewayImageBuildMixedPolicies(t *testing.T) {
 	cmd := exec.Command(absBinaryPath,
 		"gateway", "image", "build",
 		"--path", absResourcesDir,
-		"--image-tag", "v0.2.0-mixed-test",
+		"--name", "mixed-test-gateway",
+		"--version", "0.2.0-mixed-test",
 	)
 
 	// Set working directory to the src directory
@@ -384,7 +387,8 @@ func TestCmdGatewayImageBuildOfflineMode(t *testing.T) {
 	cmdOnline := exec.Command(absBinaryPath,
 		"gateway", "image", "build",
 		"--path", absResourcesDir,
-		"--image-tag", "v0.2.0-offline-test",
+		"--name", "offline-test-gateway",
+		"--version", "0.2.0-offline-test",
 	)
 	cmdOnline.Dir = filepath.Join("..", "..")
 	outputOnline, errOnline := cmdOnline.CombinedOutput()
@@ -413,7 +417,8 @@ func TestCmdGatewayImageBuildOfflineMode(t *testing.T) {
 	cmd := exec.Command(absBinaryPath,
 		"gateway", "image", "build",
 		"--path", absResourcesDir,
-		"--image-tag", "v0.2.0-offline-test",
+		"--name", "offline-test-gateway",
+		"--version", "0.2.0-offline-test",
 		"--offline",
 	)
 
@@ -443,7 +448,7 @@ func TestCmdGatewayImageBuildOfflineMode(t *testing.T) {
 	expectedPatterns := []string{
 		"=== Gateway Image Build ===",
 		"Building in OFFLINE mode",
-		"[2/4] Reading Manifest Lock File",
+		"[2/4] Reading Manifest and Lock Files",
 		"[3/4] Verifying Policies",
 	}
 
@@ -502,10 +507,11 @@ func TestCmdGatewayImageBuildHelp(t *testing.T) {
 	// Check for expected help content
 	expectedPatterns := []string{
 		"Build a WSO2 API Platform Gateway Docker image",
-		"--image-tag",
+		"--name",
+		"--version",
 		"--path",
 		"--offline",
-		"--image-repository",
+		"--repository",
 		"--gateway-builder",
 	}
 

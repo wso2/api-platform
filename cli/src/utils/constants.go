@@ -32,8 +32,9 @@ const (
 const (
 	DefaultManifestFile         = "policy-manifest.yaml"
 	DefaultManifestLockFile     = "policy-manifest-lock.yaml"
+	DefaultGatewayVersion       = "0.2.0"
 	DefaultImageRepository      = "ghcr.io/wso2/api-platform"
-	DefaultGatewayBuilder       = "ghcr.io/wso2/api-platform/gateway-builder:0.2.0"
+	DefaultGatewayBuilderRepo   = "ghcr.io/wso2/api-platform/gateway-builder"
 	DefaultGatewayControllerImg = "" // Uses default from gateway-builder
 	DefaultRouterImg            = "" // Uses default from gateway-builder
 )

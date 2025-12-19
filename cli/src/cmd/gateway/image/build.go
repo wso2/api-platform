@@ -31,23 +31,25 @@ import (
 const (
 	BuildCmdLiteral = "build"
 	BuildCmdExample = `# Build gateway image with policies (uses current directory)
-apipctl gateway image build --image-tag v0.2.0-policy1
+apipctl gateway image build
+
+# Build with custom name and version
+apipctl gateway image build --name my-gateway --version 1.0.0
 
 # Build with custom path containing manifest files
-apipctl gateway image build --image-tag v0.2.0 --path ./my-policies --image-repository myregistry/gateway
+apipctl gateway image build --name my-gateway --path ./my-policies --repository myregistry
 
 # Build in offline mode (uses manifest lock file)
-apipctl gateway image build --image-tag v0.2.0 --offline
+apipctl gateway image build --name my-gateway --offline
 
 # Build with platform specification
-apipctl gateway image build --image-tag v0.2.0 --platform linux/amd64`
+apipctl gateway image build --name my-gateway --platform linux/amd64`
 )
 
 var (
-	// Required flags
-	imageTag string
-
 	// Optional flags
+	gatewayName              string
+	gatewayVersion           string
 	manifestPath             string
 	imageRepository          string
 	gatewayBuilder           string
@@ -58,6 +60,9 @@ var (
 	platform                 string
 	offline                  bool
 	outputDir                string
+
+	// Computed values
+	imageTag string
 )
 
 var buildCmd = &cobra.Command{
@@ -74,14 +79,12 @@ var buildCmd = &cobra.Command{
 }
 
 func init() {
-	// Required flags
-	buildCmd.Flags().StringVar(&imageTag, "image-tag", "", "Docker image tag (required)")
-	buildCmd.MarkFlagRequired("image-tag")
-
 	// Optional flags with defaults
+	buildCmd.Flags().StringVar(&gatewayName, "name", "", "Gateway name (defaults to directory name)")
+	buildCmd.Flags().StringVar(&gatewayVersion, "version", utils.DefaultGatewayVersion, "Gateway version")
 	buildCmd.Flags().StringVarP(&manifestPath, "path", "p", ".", "Path to directory containing policy manifest files (default: current directory)")
-	buildCmd.Flags().StringVar(&imageRepository, "image-repository", utils.DefaultImageRepository, "Docker image repository")
-	buildCmd.Flags().StringVar(&gatewayBuilder, "gateway-builder", utils.DefaultGatewayBuilder, "Gateway builder image")
+	buildCmd.Flags().StringVar(&imageRepository, "repository", utils.DefaultImageRepository, "Docker image repository")
+	buildCmd.Flags().StringVar(&gatewayBuilder, "gateway-builder", "", "Gateway builder image (defaults to repository/gateway-builder:version)")
 	buildCmd.Flags().StringVar(&gatewayControllerBaseImg, "gateway-controller-base-image", utils.DefaultGatewayControllerImg, "Gateway controller base image (uses builder default if empty)")
 	buildCmd.Flags().StringVar(&routerBaseImg, "router-base-image", utils.DefaultRouterImg, "Router base image (uses builder default if empty)")
 	buildCmd.Flags().BoolVar(&push, "push", false, "Push image to registry after build")
@@ -91,8 +94,35 @@ func init() {
 	buildCmd.Flags().StringVar(&outputDir, "output-dir", "", "Output directory for build artifacts")
 }
 
+// initializeDefaults sets smart defaults for gateway name and constructs the image tag
+func initializeDefaults() error {
+	// Default gateway name from directory name if not provided
+	if gatewayName == "" {
+		absPath, err := filepath.Abs(manifestPath)
+		if err != nil {
+			return fmt.Errorf("failed to get absolute path: %w", err)
+		}
+		gatewayName = filepath.Base(absPath)
+	}
+
+	// Default gateway builder if not provided (uses version)
+	if gatewayBuilder == "" {
+		gatewayBuilder = fmt.Sprintf("%s:%s", utils.DefaultGatewayBuilderRepo, gatewayVersion)
+	}
+
+	// Construct the full image tag: repository/name:version
+	imageTag = fmt.Sprintf("%s/%s:%s", imageRepository, gatewayName, gatewayVersion)
+
+	return nil
+}
+
 func runBuildCommand() error {
 	fmt.Println("\n=== Gateway Image Build ===\n")
+
+	// Initialize computed values
+	if err := initializeDefaults(); err != nil {
+		return err
+	}
 
 	// Step 1: Check Docker availability
 	fmt.Println("[1/6] Checking Docker Availability")
@@ -260,10 +290,12 @@ func displayOfflineBuildSummary(manifestFile, lockFile string, verified []policy
 	fmt.Println("\n=== Build Summary ===")
 
 	fmt.Println("\nConfiguration:")
+	fmt.Printf("  Gateway Name:                 %s\n", gatewayName)
+	fmt.Printf("  Gateway Version:              %s\n", gatewayVersion)
 	fmt.Printf("  Image Tag:                    %s\n", imageTag)
 	fmt.Printf("  Manifest File:                %s\n", manifestFile)
 	fmt.Printf("  Manifest Lock File:           %s\n", lockFile)
-	fmt.Printf("  Image Repository:             %s\n", imageRepository)
+	fmt.Printf("  Repository:                   %s\n", imageRepository)
 	fmt.Printf("  Gateway Builder:              %s\n", gatewayBuilder)
 
 	if gatewayControllerBaseImg != "" {
@@ -326,10 +358,12 @@ func displayBuildSummary(manifest *policy.PolicyManifest, manifestFilePath, lock
 	fmt.Println("\n=== Build Summary ===")
 
 	fmt.Println("\nConfiguration:")
+	fmt.Printf("  Gateway Name:                 %s\n", gatewayName)
+	fmt.Printf("  Gateway Version:              %s\n", gatewayVersion)
 	fmt.Printf("  Image Tag:                    %s\n", imageTag)
 	fmt.Printf("  Manifest File:                %s\n", manifestFilePath)
 	fmt.Printf("  Lock File:                    %s\n", lockFile)
-	fmt.Printf("  Image Repository:             %s\n", imageRepository)
+	fmt.Printf("  Repository:                   %s\n", imageRepository)
 	fmt.Printf("  Gateway Builder:              %s\n", gatewayBuilder)
 
 	if gatewayControllerBaseImg != "" {
