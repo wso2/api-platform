@@ -12,6 +12,7 @@ import (
 	"time"
 
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
+	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 
 	"github.com/policy-engine/policy-engine/internal/admin"
@@ -21,6 +22,7 @@ import (
 	"github.com/policy-engine/policy-engine/internal/pkg/cel"
 	"github.com/policy-engine/policy-engine/internal/registry"
 	"github.com/policy-engine/policy-engine/internal/utils"
+	"github.com/policy-engine/policy-engine/internal/tracing"
 	"github.com/policy-engine/policy-engine/internal/xdsclient"
 )
 
@@ -64,6 +66,14 @@ func main() {
 		"config_mode", cfg.PolicyEngine.ConfigMode.Mode,
 		"extproc_port", cfg.PolicyEngine.Server.ExtProcPort)
 
+	// Initialize tracing (if enabled in config)
+	tracingShutdown, err := tracing.InitTracer(cfg)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to initialize tracer", "error", err)
+		os.Exit(1)
+	}
+	defer tracingShutdown()
+
 	// Initialize core components
 	k := kernel.NewKernel()
 	reg := registry.GetRegistry()
@@ -82,8 +92,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Get tracer for chain executor - will be NoOp if tracing is disabled
+	serviceName := cfg.PolicyEngine.TracingServiceName
+	if serviceName == "" {
+		serviceName = "policy-engine"
+	}
+
 	// Initialize chain executor
-	chainExecutor := executor.NewChainExecutor(reg, celEvaluator)
+	chainExecutor := executor.NewChainExecutor(reg, celEvaluator, otel.Tracer(serviceName))
 
 	// Policy registration happens automatically via Builder-generated plugin_registry.go
 	slog.InfoContext(ctx, "Policies registered via Builder-generated code")
@@ -113,7 +129,7 @@ func main() {
 	}
 
 	// Create and start ext_proc gRPC server
-	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor)
+	extprocServer := kernel.NewExternalProcessorServer(k, chainExecutor, cfg.TracingConfig, cfg.PolicyEngine.TracingServiceName)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.PolicyEngine.Server.ExtProcPort))
 	if err != nil {

@@ -36,6 +36,7 @@ import (
 	endpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	tracev3 "github.com/envoyproxy/go-control-plane/envoy/config/trace/v3"
 	fileaccesslog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
 	dfpcluster "github.com/envoyproxy/go-control-plane/envoy/extensions/clusters/dynamic_forward_proxy/v3"
 	common_dfp "github.com/envoyproxy/go-control-plane/envoy/extensions/common/dynamic_forward_proxy/v3"
@@ -44,6 +45,7 @@ import (
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
@@ -65,6 +67,7 @@ const (
 	DynamicForwardProxyClusterName          = "dynamic-forward-proxy-cluster"
 	ExternalProcessorGRPCServiceClusterName = "ext-processor-grpc-service"
 	WebSubHubInternalClusterName            = "websubhub-internal-cluster"
+	OTELCollectorClusterName                = "otel_collector"
 )
 
 // Translator converts API configurations to Envoy xDS resources
@@ -307,6 +310,15 @@ func (t *Translator) TranslateConfigs(
 		clusters = append(clusters, sdsCluster)
 	}
 
+	// Add OTEL collector cluster if tracing is enabled
+	// This cluster allows Envoy to send traces to OpenTelemetry collector
+	if t.config.TracingConfig.Enabled {
+		otelCluster := t.createOTELCollectorCluster()
+		if otelCluster != nil {
+			clusters = append(clusters, otelCluster)
+		}
+	}
+
 	resources[resource.ListenerType] = listeners
 	// Don't add empty routes - we use inline route configs in listeners
 	// resources[resource.RouteType] = routes
@@ -479,8 +491,9 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 
 	// Create HTTP connection manager
 	manager := &hcm.HttpConnectionManager{
-		CodecType:  hcm.HttpConnectionManager_AUTO,
-		StatPrefix: "http",
+		CodecType:         hcm.HttpConnectionManager_AUTO,
+		StatPrefix:        "http",
+		GenerateRequestId: wrapperspb.Bool(true),
 		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{
 			RouteConfig: routeConfig,
 		},
@@ -494,6 +507,15 @@ func (t *Translator) createListener(virtualHosts []*route.VirtualHost, isHTTPS b
 			return nil, fmt.Errorf("failed to create access log config: %w", err)
 		}
 		manager.AccessLog = accessLogs
+	}
+
+	// Add tracing if enabled
+	tracingConfig, err := t.createTracingConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tracing config: %w", err)
+	}
+	if tracingConfig != nil {
+		manager.Tracing = tracingConfig
 	}
 
 	pbst, err := anypb.New(manager)
@@ -587,9 +609,10 @@ func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
 
 	// HttpConnectionManager for port 8083
 	hcmCfg := &hcm.HttpConnectionManager{
-		StatPrefix:     "websubhub_internal_8083",
-		CodecType:      hcm.HttpConnectionManager_AUTO,
-		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{RouteConfig: routeConfig},
+		StatPrefix:        "websubhub_internal_8083",
+		CodecType:         hcm.HttpConnectionManager_AUTO,
+		GenerateRequestId: wrapperspb.Bool(true),
+		RouteSpecifier:    &hcm.HttpConnectionManager_RouteConfig{RouteConfig: routeConfig},
 		HttpFilters: []*hcm.HttpFilter{
 			{
 				Name:       wellknown.Router,
@@ -605,6 +628,15 @@ func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
 			return nil, fmt.Errorf("failed to create access log config: %w", err)
 		}
 		hcmCfg.AccessLog = accessLogs
+	}
+
+	// Add tracing if enabled
+	tracingCfg, err := t.createTracingConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tracing config: %w", err)
+	}
+	if tracingCfg != nil {
+		hcmCfg.Tracing = tracingCfg
 	}
 
 	hcmAny, err := anypb.New(hcmCfg)
@@ -688,9 +720,10 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener,
 	}
 
 	httpConnManager := &hcm.HttpConnectionManager{
-		StatPrefix:     "WEBSUBHUB_INBOUND_8082",
-		CodecType:      hcm.HttpConnectionManager_AUTO,
-		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{RouteConfig: dynamicForwardProxyRouteConfig},
+		StatPrefix:        "WEBSUBHUB_INBOUND_8082",
+		CodecType:         hcm.HttpConnectionManager_AUTO,
+		GenerateRequestId: wrapperspb.Bool(true),
+		RouteSpecifier:    &hcm.HttpConnectionManager_RouteConfig{RouteConfig: dynamicForwardProxyRouteConfig},
 		HttpFilters: []*hcm.HttpFilter{
 			{ // dynamic forward proxy filter
 				Name:       "envoy.filters.http.dynamic_forward_proxy",
@@ -710,6 +743,15 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener,
 			return nil, fmt.Errorf("failed to create access log config: %w", err)
 		}
 		httpConnManager.AccessLog = accessLogs
+	}
+
+	// Add tracing if enabled
+	tracingCfgDFP, err := t.createTracingConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tracing config: %w", err)
+	}
+	if tracingCfgDFP != nil {
+		httpConnManager.Tracing = tracingCfgDFP
 	}
 
 	hcmAny, err := anypb.New(httpConnManager)
@@ -1100,6 +1142,78 @@ func (t *Translator) createALSCluster() *cluster.Cluster {
         // Enable HTTP/2 for gRPC
         Http2ProtocolOptions: &core.Http2ProtocolOptions{},
     }
+}
+
+// createOTELCollectorCluster creates an Envoy cluster for OpenTelemetry collector
+func (t *Translator) createOTELCollectorCluster() *cluster.Cluster {
+	// Return nil if tracing is not enabled
+	if !t.config.TracingConfig.Enabled {
+		return nil
+	}
+
+	// Parse endpoint to extract host and port
+	otelEndpoint := t.config.TracingConfig.Endpoint
+	if otelEndpoint == "" {
+		otelEndpoint = "otel-collector:4317"
+	}
+
+	// Split host:port
+	host, port := otelEndpoint, uint32(4317)
+	if colonIdx := strings.LastIndex(otelEndpoint, ":"); colonIdx != -1 {
+		host = otelEndpoint[:colonIdx]
+		if parsedPort, err := fmt.Sscanf(otelEndpoint[colonIdx+1:], "%d", &port); err != nil || parsedPort != 1 {
+			t.logger.Warn("Invalid OTEL collector port, using default 4317",
+				zap.String("endpoint", otelEndpoint))
+			port = 4317
+		}
+	}
+
+	// Build the endpoint address
+	address := &core.Address{
+		Address: &core.Address_SocketAddress{
+			SocketAddress: &core.SocketAddress{
+				Protocol: core.SocketAddress_TCP,
+				Address:  host,
+				PortSpecifier: &core.SocketAddress_PortValue{
+					PortValue: port,
+				},
+			},
+		},
+	}
+
+	// Create the load balancing endpoint
+	lbEndpoint := &endpoint.LbEndpoint{
+		HostIdentifier: &endpoint.LbEndpoint_Endpoint{
+			Endpoint: &endpoint.Endpoint{
+				Address: address,
+			},
+		},
+	}
+
+	// Create locality lb endpoints
+	localityLbEndpoints := &endpoint.LocalityLbEndpoints{
+		LbEndpoints: []*endpoint.LbEndpoint{lbEndpoint},
+	}
+
+	// Create the cluster with HTTP/2 support for gRPC
+	c := &cluster.Cluster{
+		Name:                 OTELCollectorClusterName,
+		ConnectTimeout:       durationpb.New(5 * time.Second),
+		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
+		LoadAssignment: &endpoint.ClusterLoadAssignment{
+			ClusterName: OTELCollectorClusterName,
+			Endpoints:   []*endpoint.LocalityLbEndpoints{localityLbEndpoints},
+		},
+		// Enable HTTP/2 for gRPC (OTLP uses gRPC)
+		Http2ProtocolOptions: &core.Http2ProtocolOptions{},
+	}
+
+	t.logger.Info("Created OTEL collector cluster",
+		zap.String("cluster_name", OTELCollectorClusterName),
+		zap.String("endpoint", otelEndpoint))
+
+	return c
 }
 
 // createSDSCluster creates an Envoy cluster for the SDS (Secret Discovery Service)
@@ -1628,6 +1742,66 @@ func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
             TypedConfig: grpcAccessLogAny,
         },
     }, nil
+}
+
+// createTracingConfig creates tracing configuration for HCM if tracing is enabled
+func (t *Translator) createTracingConfig() (*hcm.HttpConnectionManager_Tracing, error) {
+	// Return nil if tracing is not enabled
+	if !t.config.TracingConfig.Enabled {
+		return nil, nil
+	}
+
+	// Determine service name with fallback
+	serviceName := t.config.GatewayController.Router.TracingServiceName
+	if serviceName == "" {
+		serviceName = "envoy-gateway"
+	}
+
+	// Determine sampling rate - convert from 0.0-1.0 to 0.0-100.0 (Envoy percentage)
+	samplingRate := t.config.TracingConfig.SamplingRate
+	if samplingRate <= 0.0 {
+		samplingRate = 1.0 // Default to 100% sampling
+	}
+	samplingPercentage := samplingRate * 100.0
+
+	// Create OpenTelemetry tracing configuration
+	otelConfig := &tracev3.OpenTelemetryConfig{
+		GrpcService: &core.GrpcService{
+			TargetSpecifier: &core.GrpcService_EnvoyGrpc_{
+				EnvoyGrpc: &core.GrpcService_EnvoyGrpc{
+					ClusterName: OTELCollectorClusterName,
+				},
+			},
+		},
+		ServiceName: serviceName,
+	}
+
+	// Marshal to Any
+	otelConfigAny, err := anypb.New(otelConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal OpenTelemetry config: %w", err)
+	}
+
+	// Create tracing configuration
+	tracingConfig := &hcm.HttpConnectionManager_Tracing{
+		Provider: &tracev3.Tracing_Http{
+			Name: "envoy.tracers.opentelemetry",
+			ConfigType: &tracev3.Tracing_Http_TypedConfig{
+				TypedConfig: otelConfigAny,
+			},
+		},
+		SpawnUpstreamSpan: wrapperspb.Bool(true),
+		RandomSampling: &typev3.Percent{
+			Value: samplingPercentage,
+		},
+	}
+
+	t.logger.Info("Tracing configuration created",
+		zap.String("service_name", serviceName),
+		zap.Float64("sampling_rate", samplingRate),
+		zap.String("collector_cluster", OTELCollectorClusterName))
+
+	return tracingConfig, nil
 }
 
 // convertToInterface converts map[string]string to map[string]interface{} for structpb

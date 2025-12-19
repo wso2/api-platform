@@ -150,6 +150,7 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 
 	// Execute request policy chain with headers only
 	execResult, err := ec.server.executor.ExecuteRequestPolicies(
+		ctx,
 		ec.policyChain.Policies,
 		ec.requestContext,
 		ec.policyChain.PolicySpecs,
@@ -178,6 +179,7 @@ func (ec *PolicyExecutionContext) processRequestBody(
 
 		// Execute request policy chain with headers and body
 		execResult, err := ec.server.executor.ExecuteRequestPolicies(
+			ctx,
 			ec.policyChain.Policies,
 			ec.requestContext,
 			ec.policyChain.PolicySpecs,
@@ -218,6 +220,7 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 
 	// Execute response policy chain with headers only
 	execResult, err := ec.server.executor.ExecuteResponsePolicies(
+		ctx,
 		ec.policyChain.Policies,
 		ec.responseContext,
 		ec.policyChain.PolicySpecs,
@@ -246,6 +249,7 @@ func (ec *PolicyExecutionContext) processResponseBody(
 
 		// Execute response policy chain with headers and body
 		execResult, err := ec.server.executor.ExecuteResponsePolicies(
+			ctx,
 			ec.policyChain.Policies,
 			ec.responseContext,
 			ec.policyChain.PolicySpecs,

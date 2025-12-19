@@ -263,4 +263,31 @@ policy_engine:
     # Log format: json, text
     format: json
 
+  # Tracing configuration (OpenTelemetry)
+  tracing:
+    # Enable or disable distributed tracing
+    enabled: true
+
+    # OTLP gRPC endpoint (host:port)
+    endpoint: "otel-collector:4317"
+
+    # Use insecure connection (no TLS)
+    insecure: true
+
+    # Service name reported to tracing backend
+    service_name: "policy-engine"
+
+    # Service version reported to tracing backend
+    service_version: "1.0.0"
+
+    # Batch timeout for exporting spans
+    batch_timeout: 1s
+
+    # Maximum number of spans in a batch
+    max_export_batch_size: 512
+
+    # Sampling rate: 1.0 = 100% of requests, 0.1 = 10% of requests
+    # For high-traffic systems, consider using 0.1 or lower
+    sampling_rate: 1.0
+
 policy_configurations: {}

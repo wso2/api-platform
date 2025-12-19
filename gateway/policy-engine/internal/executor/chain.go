@@ -1,11 +1,15 @@
 package executor
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"github.com/policy-engine/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // RequestPolicyResult represents the result of executing a single request policy
@@ -44,7 +48,7 @@ type ResponseExecutionResult struct {
 
 // ExecuteRequestPolicies executes request policies with condition evaluation
 // T043: Implements execution with condition evaluation and short-circuit logic
-func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policy.Policy, ctx *policy.RequestContext, specs []policy.PolicySpec) (*RequestExecutionResult, error) {
+func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyList []policy.Policy, ctx *policy.RequestContext, specs []policy.PolicySpec) (*RequestExecutionResult, error) {
 	startTime := time.Now()
 	result := &RequestExecutionResult{
 		Results:        make([]RequestPolicyResult, 0, len(policyList)),
@@ -53,11 +57,28 @@ func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policy.Policy, ctx *
 
 	// Execute each policy in order
 	for i, pol := range policyList {
-		policyStartTime := time.Now()
 		spec := specs[i]
+		policyStartTime := time.Now()
+
+		// Create span for individual policy execution - NoOp if tracing disabled
+		_, span := c.tracer.Start(traceCtx, fmt.Sprintf("policy.request.%s", spec.Name),
+			trace.WithSpanKind(trace.SpanKindInternal))
+
+		// Add policy metadata attributes
+		if span.IsRecording() {
+			span.SetAttributes(
+				attribute.String("policy.name", spec.Name),
+				attribute.String("policy.version", spec.Version),
+				attribute.Bool("policy.enabled", spec.Enabled),
+			)
+		}
 
 		// Check if policy is enabled
 		if !spec.Enabled {
+			if span.IsRecording() {
+				span.SetAttributes(attribute.Bool("policy.skipped", true))
+			}
+			span.End()
 			result.Results = append(result.Results, RequestPolicyResult{
 				PolicyName:    spec.Name,
 				PolicyVersion: spec.Version,
@@ -72,10 +93,20 @@ func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policy.Policy, ctx *
 			if c.celEvaluator != nil {
 				conditionMet, err := c.celEvaluator.EvaluateRequestCondition(*spec.ExecutionCondition, ctx)
 				if err != nil {
+					if span.IsRecording() {
+						span.RecordError(err)
+						span.SetStatus(codes.Error, "condition evaluation failed")
+					}
+					span.End()
 					return nil, fmt.Errorf("condition evaluation failed for policy %s:%s: %w", spec.Name, spec.Version, err)
 				}
 				if !conditionMet {
 					// Condition not met - skip policy
+					if span.IsRecording() {
+						span.SetAttributes(attribute.Bool("policy.skipped", true))
+						span.SetAttributes(attribute.String("skip.reason", "condition_not_met"))
+					}
+					span.End()
 					result.Results = append(result.Results, RequestPolicyResult{
 						PolicyName:    spec.Name,
 						PolicyVersion: spec.Version,
@@ -91,6 +122,11 @@ func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policy.Policy, ctx *
 		action := pol.OnRequest(ctx, spec.Parameters.Raw)
 		executionTime := time.Since(policyStartTime)
 
+		// Add execution time attribute
+		if span.IsRecording() {
+			span.SetAttributes(attribute.Int64("policy.execution_time_ns", executionTime.Nanoseconds()))
+		}
+
 		policyResult := RequestPolicyResult{
 			PolicyName:    spec.Name,
 			PolicyVersion: spec.Version,
@@ -105,8 +141,12 @@ func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policy.Policy, ctx *
 		if action != nil {
 			// Check for short-circuit (T047)
 			if action.StopExecution() {
+				if span.IsRecording() {
+					span.SetAttributes(attribute.Bool("policy.short_circuit", true))
+				}
 				result.ShortCircuited = true
 				result.FinalAction = action
+				span.End()
 				break
 			}
 
@@ -115,6 +155,8 @@ func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policy.Policy, ctx *
 				applyRequestModifications(ctx, &mods)
 			}
 		}
+
+		span.End()
 	}
 
 	result.TotalExecutionTime = time.Since(startTime)
@@ -123,7 +165,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(policyList []policy.Policy, ctx *
 
 // ExecuteResponsePolicies executes response policies with condition evaluation
 // T044: Implements execution with condition evaluation
-func (c *ChainExecutor) ExecuteResponsePolicies(policyList []policy.Policy, ctx *policy.ResponseContext, specs []policy.PolicySpec) (*ResponseExecutionResult, error) {
+func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policyList []policy.Policy, ctx *policy.ResponseContext, specs []policy.PolicySpec) (*ResponseExecutionResult, error) {
 	startTime := time.Now()
 	result := &ResponseExecutionResult{
 		Results: make([]ResponsePolicyResult, 0, len(policyList)),
@@ -133,11 +175,28 @@ func (c *ChainExecutor) ExecuteResponsePolicies(policyList []policy.Policy, ctx 
 	// This allows policies to "unwrap" in the reverse order they "wrapped" the request
 	for i := len(policyList) - 1; i >= 0; i-- {
 		pol := policyList[i]
-		policyStartTime := time.Now()
 		spec := specs[i]
+		policyStartTime := time.Now()
+
+		// Create span for individual policy execution - NoOp if tracing disabled
+		_, span := c.tracer.Start(traceCtx, fmt.Sprintf("policy.response.%s", spec.Name),
+			trace.WithSpanKind(trace.SpanKindInternal))
+
+		// Add policy metadata attributes
+		if span.IsRecording() {
+			span.SetAttributes(
+				attribute.String("policy.name", spec.Name),
+				attribute.String("policy.version", spec.Version),
+				attribute.Bool("policy.enabled", spec.Enabled),
+			)
+		}
 
 		// Check if policy is enabled
 		if !spec.Enabled {
+			if span.IsRecording() {
+				span.SetAttributes(attribute.Bool("policy.skipped", true))
+			}
+			span.End()
 			result.Results = append(result.Results, ResponsePolicyResult{
 				PolicyName:    spec.Name,
 				PolicyVersion: spec.Version,
@@ -152,10 +211,20 @@ func (c *ChainExecutor) ExecuteResponsePolicies(policyList []policy.Policy, ctx 
 			if c.celEvaluator != nil {
 				conditionMet, err := c.celEvaluator.EvaluateResponseCondition(*spec.ExecutionCondition, ctx)
 				if err != nil {
+					if span.IsRecording() {
+						span.RecordError(err)
+						span.SetStatus(codes.Error, "condition evaluation failed")
+					}
+					span.End()
 					return nil, fmt.Errorf("condition evaluation failed for policy %s:%s: %w", spec.Name, spec.Version, err)
 				}
 				if !conditionMet {
 					// Condition not met - skip policy
+					if span.IsRecording() {
+						span.SetAttributes(attribute.Bool("policy.skipped", true))
+						span.SetAttributes(attribute.String("skip.reason", "condition_not_met"))
+					}
+					span.End()
 					result.Results = append(result.Results, ResponsePolicyResult{
 						PolicyName:    spec.Name,
 						PolicyVersion: spec.Version,
@@ -170,6 +239,11 @@ func (c *ChainExecutor) ExecuteResponsePolicies(policyList []policy.Policy, ctx 
 		// Execute policy
 		action := pol.OnResponse(ctx, spec.Parameters.Raw)
 		executionTime := time.Since(policyStartTime)
+
+		// Add execution time attribute
+		if span.IsRecording() {
+			span.SetAttributes(attribute.Int64("policy.execution_time_ns", executionTime.Nanoseconds()))
+		}
 
 		policyResult := ResponsePolicyResult{
 			PolicyName:    spec.Name,
@@ -187,6 +261,8 @@ func (c *ChainExecutor) ExecuteResponsePolicies(policyList []policy.Policy, ctx 
 				applyResponseModifications(ctx, &mods)
 			}
 		}
+
+		span.End()
 	}
 
 	result.TotalExecutionTime = time.Since(startTime)
@@ -289,6 +365,7 @@ func applyResponseModifications(ctx *policy.ResponseContext, mods *policy.Upstre
 type ChainExecutor struct {
 	registry     *registry.PolicyRegistry
 	celEvaluator CELEvaluator
+	tracer       trace.Tracer
 }
 
 // CELEvaluator interface for condition evaluation
@@ -298,9 +375,10 @@ type CELEvaluator interface {
 }
 
 // NewChainExecutor creates a new ChainExecutor execution engine
-func NewChainExecutor(reg *registry.PolicyRegistry, celEvaluator CELEvaluator) *ChainExecutor {
+func NewChainExecutor(reg *registry.PolicyRegistry, celEvaluator CELEvaluator, tracer trace.Tracer) *ChainExecutor {
 	return &ChainExecutor{
 		registry:     reg,
 		celEvaluator: celEvaluator,
+		tracer:       tracer,
 	}
 }

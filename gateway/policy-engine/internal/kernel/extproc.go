@@ -11,12 +11,18 @@ import (
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/google/uuid"
-	"google.golang.org/grpc/codes"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+	grpccodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
 
 	"github.com/policy-engine/policy-engine/internal/constants"
+	"github.com/policy-engine/policy-engine/internal/config"
 	"github.com/policy-engine/policy-engine/internal/executor"
+	"github.com/policy-engine/policy-engine/internal/tracing"
 )
 
 // ExternalProcessorServer implements the Envoy external processor service
@@ -26,20 +32,33 @@ type ExternalProcessorServer struct {
 
 	kernel   *Kernel
 	executor *executor.ChainExecutor
+	tracer   trace.Tracer
 }
 
 // NewExternalProcessorServer creates a new ExternalProcessorServer
-func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExecutor) *ExternalProcessorServer {
+func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExecutor, tracingConfig config.TracingConfig, tracingServiceName string) *ExternalProcessorServer {
+	// Initialize tracer once - will be NoOp if tracing is disabled
+	serviceName := tracingServiceName
+	if serviceName == "" {
+		serviceName = "policy-engine"
+	}
+
 	return &ExternalProcessorServer{
 		kernel:   kernel,
 		executor: chainExecutor,
+		tracer:   otel.Tracer(serviceName),
 	}
 }
 
 // Process implements the bidirectional streaming RPC handler
 // T060: Process(stream) bidirectional streaming RPC handler
 func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_ProcessServer) error {
-	ctx := stream.Context()
+	// Extract trace context and create span - NoOp if tracing disabled
+	traceCtx := tracing.ExtractTraceContext(stream.Context())
+	ctx, span := s.tracer.Start(traceCtx, "external_processing.process",
+		trace.WithSpanKind(trace.SpanKindServer),
+	)
+	defer span.End()
 
 	// Execution context for this request-response lifecycle.
 	// Initialized lazily on first request headers phase via handleProcessingPhase.
@@ -56,11 +75,11 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 		}
 		if err != nil {
 			slog.ErrorContext(ctx, "Error receiving from stream", "error", err)
-			return status.Errorf(codes.Unknown, "failed to receive request: %v", err)
+			return status.Errorf(grpccodes.Unknown, "failed to receive request: %v", err)
 		}
 
 		// Handle the request based on phase
-		resp, err := s.handleProcessingPhase(ctx, req, &execCtx)
+		resp, err := s.handleProcessingPhase(ctx, req, &execCtx, span)
 		if err != nil {
 			slog.ErrorContext(ctx, "Error processing request", "error", err)
 			return err
@@ -69,58 +88,140 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 		// Send response back to Envoy
 		if err := stream.Send(resp); err != nil {
 			slog.ErrorContext(ctx, "Error sending response", "error", err)
-			return status.Errorf(codes.Unknown, "failed to send response: %v", err)
+			return status.Errorf(grpccodes.Unknown, "failed to send response: %v", err)
 		}
 	}
 }
 
 // handleProcessingPhase routes processing to the appropriate phase handler
-func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req *extprocv3.ProcessingRequest, execCtx **PolicyExecutionContext) (*extprocv3.ProcessingResponse, error) {
+func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req *extprocv3.ProcessingRequest, execCtx **PolicyExecutionContext, parentSpan trace.Span) (*extprocv3.ProcessingResponse, error) {
 	switch req.Request.(type) {
 	case *extprocv3.ProcessingRequest_RequestHeaders:
-		// Initialize execution context for this request
-		s.initializeExecutionContext(ctx, req, execCtx)
+		
+		// Create span for request headers processing - NoOp if tracing disabled
+		_, span := s.tracer.Start(ctx, "external_processing.process_request_headers",
+			trace.WithSpanKind(trace.SpanKindInternal))
+		defer span.End()
 
+		// Initialize execution context for this request
+		rm := s.initializeExecutionContext(ctx, req, execCtx)
+		if parentSpan.IsRecording() {
+			parentSpan.SetAttributes(
+				attribute.String("route_name", rm.RouteName),
+				attribute.String("api_name", rm.APIName),
+				attribute.String("api_version", rm.APIVersion),
+				attribute.String("api_context", rm.Context),
+				attribute.String("operation_path", rm.OperationPath),
+			)
+		}	
 		// If no execution context (no policy chain), skip processing
 		if *execCtx == nil {
+			if span.IsRecording() {
+				span.SetAttributes(attribute.String("policy_count", "0"))
+			}
 			return s.skipAllProcessing(), nil
 		}
-
-		// Process request headers
-		return (*execCtx).processRequestHeaders(ctx)
+		if span.IsRecording() {
+			span.SetAttributes(attribute.Int("policy_count", len((*execCtx).policyChain.Policies)))
+		}
+		
+		resp, err := (*execCtx).processRequestHeaders(ctx)
+		if span.IsRecording() {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+				parentSpan.RecordError(err)
+				parentSpan.SetStatus(codes.Error, err.Error())
+			}
+		}
+		return resp, err
 
 	case *extprocv3.ProcessingRequest_RequestBody:
+		// Create span for request body processing - NoOp if tracing disabled
+		_, span := s.tracer.Start(ctx, "external_processing.process_request_body",
+			trace.WithSpanKind(trace.SpanKindInternal))
+		defer span.End()
+
 		if *execCtx == nil {
 			slog.WarnContext(ctx, "Request body received before request headers")
+			if span.IsRecording() {
+				span.SetAttributes(attribute.String("error", "no_execution_context"))
+			}
 			return &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_RequestBody{
 					RequestBody: &extprocv3.BodyResponse{},
 				},
 			}, nil
 		}
-		return (*execCtx).processRequestBody(ctx, req.GetRequestBody())
+
+		resp, err := (*execCtx).processRequestBody(ctx, req.GetRequestBody())
+		if span.IsRecording() {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+				parentSpan.RecordError(err)
+				parentSpan.SetStatus(codes.Error, err.Error())
+			}
+		}
+		return resp, err
 
 	case *extprocv3.ProcessingRequest_ResponseHeaders:
+		// Create span for response headers processing - NoOp if tracing disabled
+		_, span := s.tracer.Start(ctx, "external_processing.process_response_headers",
+			trace.WithSpanKind(trace.SpanKindInternal))
+		defer span.End()
+
 		if *execCtx == nil {
 			slog.WarnContext(ctx, "Response headers received without execution context")
+			if span.IsRecording() {
+				span.SetAttributes(attribute.String("error", "no_execution_context"))
+			}
 			return &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 					ResponseHeaders: &extprocv3.HeadersResponse{},
 				},
 			}, nil
 		}
-		return (*execCtx).processResponseHeaders(ctx, req.GetResponseHeaders())
+
+		resp, err := (*execCtx).processResponseHeaders(ctx, req.GetResponseHeaders())
+		if span.IsRecording() {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+				parentSpan.RecordError(err)
+				parentSpan.SetStatus(codes.Error, err.Error())
+			}
+		}
+		return resp, err
 
 	case *extprocv3.ProcessingRequest_ResponseBody:
+		// Create span for response body processing - NoOp if tracing disabled
+		_, span := s.tracer.Start(ctx, "external_processing.process_response_body",
+			trace.WithSpanKind(trace.SpanKindInternal))
+		defer span.End()
+
 		if *execCtx == nil {
 			slog.WarnContext(ctx, "Response body received without execution context")
+			if span.IsRecording() {
+				span.SetAttributes(attribute.String("error", "no_execution_context"))
+			}
 			return &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ResponseBody{
 					ResponseBody: &extprocv3.BodyResponse{},
 				},
 			}, nil
 		}
-		return (*execCtx).processResponseBody(ctx, req.GetResponseBody())
+
+		resp, err := (*execCtx).processResponseBody(ctx, req.GetResponseBody())
+		if span.IsRecording() {
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, err.Error())
+				parentSpan.RecordError(err)
+				parentSpan.SetStatus(codes.Error, err.Error())
+			}
+		}
+		return resp, err
 
 	default:
 		slog.WarnContext(ctx, "Unknown request type", "type", fmt.Sprintf("%T", req.Request))
@@ -137,7 +238,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 // initializeExecutionContext sets up the execution context for a request by retrieving the policy chain
 // T061: Extract metadata key from request and get policy chain
 // T064: Generate request ID
-func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context, req *extprocv3.ProcessingRequest, execCtx **PolicyExecutionContext) {
+func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context, req *extprocv3.ProcessingRequest, execCtx **PolicyExecutionContext) *RouteMetadata {
 	// Extract route metadata from request
 	routeMetadata := s.extractRouteMetadata(req)
 
@@ -150,7 +251,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 			"api_version", routeMetadata.APIVersion,
 			"context", routeMetadata.Context)
 		*execCtx = nil
-		return
+		return &routeMetadata
 	}
 
 	// Create execution context for this request-response lifecycle
@@ -159,6 +260,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 	// Build request context from Envoy headers with route metadata
 	// Request ID will be extracted from x-request-id header or generated if not present
 	(*execCtx).buildRequestContext(req.GetRequestHeaders(), routeMetadata)
+	return &routeMetadata
 }
 
 // skipAllProcessing returns a response that skips all processing phases
