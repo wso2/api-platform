@@ -29,10 +29,9 @@ import (
 
 // Gateway represents a gateway configuration
 type Gateway struct {
-	Name     string `yaml:"name"`
-	Server   string `yaml:"server"`
-	Token    string `yaml:"token,omitempty"`    // Bearer token (can be ${ENV_VAR}) for OAuth2
-	Insecure bool   `yaml:"insecure,omitempty"` // No authentication
+	Name   string `yaml:"name"`
+	Server string `yaml:"server"`
+	Token  string `yaml:"token,omitempty"` // Bearer token (can be ${ENV_VAR}) for OAuth2
 }
 
 // Config represents the ap configuration

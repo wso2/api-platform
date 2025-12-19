@@ -60,11 +60,11 @@ func runListCommand() error {
 
 	// Display each gateway
 	for _, gateway := range cfg.Gateways {
-		securityStatus := "secure"
-		if gateway.Insecure {
-			securityStatus = "insecure"
+		securityStatus := "none"
+		if gateway.Token != "" {
+			securityStatus = "OAuth2"
 		}
-		fmt.Printf("%s: %s (%s)\n", gateway.Name, gateway.Server, securityStatus)
+		fmt.Printf("%s: %s (auth: %s)\n", gateway.Name, gateway.Server, securityStatus)
 	}
 
 	return nil

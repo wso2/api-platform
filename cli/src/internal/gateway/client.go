@@ -39,11 +39,10 @@ type Client struct {
 
 // NewClient creates a new gateway client for the specified gateway
 func NewClient(gateway *config.Gateway) *Client {
-	// Create HTTP client with appropriate TLS configuration
+	// Create HTTP client with TLS configuration
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: gateway.Insecure,
-			MinVersion:         tls.VersionTLS12,
+			MinVersion: tls.VersionTLS12,
 		},
 	}
 
@@ -90,7 +89,7 @@ func NewClientForActive() (*Client, error) {
 
 // Do executes an HTTP request with the gateway's authentication and settings
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
-	// Add authentication (priority: Basic Auth from env vars, then Token, then Insecure)
+	// Add authentication (priority: Basic Auth from env vars, then Token)
 	username := os.Getenv(utils.EnvGatewayUsername)
 	password := os.Getenv(utils.EnvGatewayPassword)
 
