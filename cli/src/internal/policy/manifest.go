@@ -61,9 +61,9 @@ func ParseLockFile(lockPath string) (*PolicyLock, error) {
 }
 
 // GenerateLockFile creates a policy lock file from processed policies
-func GenerateLockFile(policies []ProcessedPolicy, outputPath string) error {
+func GenerateLockFile(policies []ProcessedPolicy, manifestVersion string, outputPath string) error {
 	lock := PolicyLock{
-		Version:  "v1/alpha1",
+		Version:  manifestVersion,
 		Policies: make([]LockPolicy, 0, len(policies)),
 	}
 

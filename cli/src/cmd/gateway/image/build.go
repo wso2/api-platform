@@ -201,7 +201,7 @@ func runOnlineBuild() error {
 	// Step 6: Generate Lock File
 	fmt.Println("[6/8] Generating Manifest Lock File")
 	lockFilePath := filepath.Join(manifestPath, utils.DefaultManifestLockFile)
-	if err := policy.GenerateLockFile(allProcessed, lockFilePath); err != nil {
+	if err := policy.GenerateLockFile(allProcessed, manifest.Version, lockFilePath); err != nil {
 		return fmt.Errorf("failed to generate lock file: %w", err)
 	}
 	fmt.Printf("  ✓ Generated lock file: %s\n\n", lockFilePath)
