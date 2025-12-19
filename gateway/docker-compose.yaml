@@ -97,7 +97,7 @@ services:
       - gateway-network
   
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/all-in-one:1.76.0
     container_name: jaeger
     environment:
       - COLLECTOR_OTLP_ENABLED=true
@@ -109,7 +109,7 @@ services:
     profiles: ["tracing"]
 
   otel-collector:
-    image: otel/opentelemetry-collector:latest
+    image: otel/opentelemetry-collector:0.112.0
     container_name: otel-collector
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
@@ -124,7 +124,7 @@ services:
     profiles: ["tracing"]
 
   opensearch:
-    image: opensearchproject/opensearch:latest
+    image: opensearchproject/opensearch:3.4.0
     container_name: opensearch
     environment:
       - cluster.name=opensearch-cluster
@@ -143,7 +143,7 @@ services:
     profiles: ["logging"]
 
   opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:latest
+    image: opensearchproject/opensearch-dashboards:3.4.0
     container_name: opensearch-dashboards
     environment:
       - OPENSEARCH_HOSTS=["http://opensearch:9200"]
@@ -157,7 +157,7 @@ services:
     profiles: ["logging"]
 
   fluent-bit:
-    image: fluent/fluent-bit:latest
+    image: fluent/fluent-bit:4.2.1
     container_name: fluent-bit
     volumes:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
