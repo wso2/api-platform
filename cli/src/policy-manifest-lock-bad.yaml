@@ -1,0 +1,12 @@
+version: v1/alpha1
+policies:
+    - name: basic-auth
+      version: v1.0.0
+      checksum: sha256:00000000000008148534d9fb02cc6fbd1aea7f5fffa3f3e19bf11a523f78c3e4
+      source: local
+      filePath: ../../gateway/policies/basic-auth
+    - name: jwt-auth
+      version: v0.1.0
+      checksum: sha256:968bb76bae46b96ef40e68e701adc7537a0c686b95b1d7effc17ef11cbe80247
+      source: local
+      filePath: ../../gateway/policies/jwt-auth

@@ -1,9 +1,9 @@
 version: v1/alpha1
-versionResolution: minor
+versionResolution: exact
 policies:
   - name: basic-auth
     version: v1.0.0
-    versionResolution: exact
+    versionResolution: minor
   - name: jwt-auth
     version: v0.1.0
     versionResolution: exact

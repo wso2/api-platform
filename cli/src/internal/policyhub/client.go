@@ -122,7 +122,7 @@ func GetPoliciesDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to get user home directory: %w", err)
 	}
-	return filepath.Join(homeDir, utils.PoliciesPath), nil
+	return filepath.Join(homeDir, utils.PoliciesCachePath), nil
 }
 
 // EnsurePoliciesDir creates the policies directory if it doesn't exist

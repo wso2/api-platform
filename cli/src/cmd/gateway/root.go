@@ -21,6 +21,7 @@ package gateway
 import (
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/cmd/gateway/api"
+	"github.com/wso2/api-platform/cli/cmd/gateway/image"
 	"github.com/wso2/api-platform/cli/cmd/gateway/mcp"
 )
 
@@ -54,6 +55,7 @@ func init() {
 	GatewayCmd.AddCommand(healthCmd)
 	GatewayCmd.AddCommand(applyCmd)
 	GatewayCmd.AddCommand(buildCmd)
+	GatewayCmd.AddCommand(image.ImageCmd)
 	GatewayCmd.AddCommand(api.APICmd)
 	GatewayCmd.AddCommand(mcp.McpCmd)
 }

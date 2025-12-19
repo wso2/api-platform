@@ -22,8 +22,20 @@ const CliName = "apipctl"
 
 // APIPCTL Configuration
 const (
-	ConfigPath   = ".apipctl/config.yaml"
-	PoliciesPath = ".apipctl/policies"
+	ConfigPath        = ".apipctl/config.yaml"
+	CachePath         = ".apipctl/cache"
+	PoliciesCachePath = ".apipctl/cache/policies"
+	TempPath          = ".apipctl/.temp"
+)
+
+// Gateway Image Build Defaults
+const (
+	DefaultManifestFile         = "policy-manifest.yaml"
+	DefaultManifestLockFile     = "policy-manifest-lock.yaml"
+	DefaultImageRepository      = "ghcr.io/wso2/api-platform"
+	DefaultGatewayBuilder       = "ghcr.io/wso2/api-platform/gateway-builder:0.2.0"
+	DefaultGatewayControllerImg = "" // Uses default from gateway-builder
+	DefaultRouterImg            = "" // Uses default from gateway-builder
 )
 
 // Gateway REST API Endpoints
@@ -38,6 +50,6 @@ const (
 
 // PolicyHub REST API
 const (
-	PolicyHubBaseURL     = "https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/v1.0"
+	PolicyHubBaseURL     = "https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/policy-hub-public/v1.0"
 	PolicyHubResolvePath = "/policies/resolve"
 )

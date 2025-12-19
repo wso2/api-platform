@@ -3,7 +3,7 @@ versionResolution: minor
 policies:
   - name: basic-auth
     version: v1.0.0
-    versionResolution: exact
+    filePath: ../../gateway/policies/basic-auth
   - name: jwt-auth
     version: v0.1.0
-    versionResolution: exact
+    filePath: ../../gateway/policies/jwt-auth
