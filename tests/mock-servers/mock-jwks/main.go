@@ -68,14 +68,14 @@ func tokenHandler(w http.ResponseWriter, r *http.Request) {
 		Audience:  jwt.Audience{"test-audience"},
 	}
 
-	raw, err := jwt.Signed(signer).Claims(claims).Construct()
+	raw, err := jwt.Signed(signer).Claims(claims).Serialize()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to sign token: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/plain")
-	w.Write([]byte(raw.Compact()))
+	w.Write([]byte(raw))
 }
 
 func main() {
