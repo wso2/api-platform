@@ -29,6 +29,7 @@ import (
 	"time"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/selector"
@@ -420,6 +421,11 @@ func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *ap
 	}
 	req.Header.Set("Content-Type", "application/yaml")
 
+	// Add authentication
+	if err := r.addAuthToRequest(ctx, req, gateway); err != nil {
+		log.Warn("Failed to add authentication to request, proceeding without auth", zap.Error(err))
+	}
+
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -457,6 +463,11 @@ func (r *RestApiReconciler) apiExistsOnGateway(ctx context.Context, gateway *reg
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return false, &RetryableError{Err: fmt.Errorf("failed to create HTTP request for existence check: %w", err)}
+	}
+
+	// Add authentication
+	if err := r.addAuthToRequest(ctx, req, gateway); err != nil {
+		log.Warn("Failed to add authentication to existence check request, proceeding without auth", zap.Error(err))
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -825,6 +836,11 @@ func (r *RestApiReconciler) deleteAPIFromGateway(ctx context.Context, handle str
 		return fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
+	// Add authentication
+	if err := r.addAuthToRequest(ctx, req, gateway); err != nil {
+		log.Warn("Failed to add authentication to delete request, proceeding without auth", zap.Error(err))
+	}
+
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -843,6 +859,52 @@ func (r *RestApiReconciler) deleteAPIFromGateway(ctx context.Context, handle str
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("gateway returned error status %d: %s", resp.StatusCode, string(body))
 	}
+}
+
+// addAuthToRequest adds authentication headers to an HTTP request based on gateway auth config
+func (r *RestApiReconciler) addAuthToRequest(ctx context.Context, req *http.Request, gatewayInfo *registry.GatewayInfo) error {
+	log := r.Logger.With(zap.String("controller", "RestApi"))
+
+	// Fetch the Gateway CR to access ConfigRef
+	gateway := &apiv1.Gateway{}
+	if err := r.Get(ctx, types.NamespacedName{
+		Namespace: gatewayInfo.Namespace,
+		Name:      gatewayInfo.Name,
+	}, gateway); err != nil {
+		return fmt.Errorf("failed to get Gateway CR: %w", err)
+	}
+
+	// Try to get auth config from the Gateway's ConfigMap
+	authConfig, err := auth.GetAuthConfigFromGateway(ctx, r.Client, gateway)
+	if err != nil {
+		log.Warn("Failed to retrieve auth config from Gateway ConfigMap, using default credentials",
+			zap.Error(err),
+			zap.String("gateway", gatewayInfo.Name))
+	}
+
+	var username, password string
+	if authConfig != nil {
+		// Try to get credentials from the auth config
+		var ok bool
+		username, password, ok = auth.GetBasicAuthCredentials(authConfig)
+		if !ok {
+			// Auth config exists but no valid basic auth, use default
+			log.Debug("No valid basic auth in config, using default credentials",
+				zap.String("gateway", gatewayInfo.Name))
+			username, password = auth.GetDefaultBasicAuthCredentials()
+		}
+	} else {
+		// No auth config, use default
+		log.Debug("No auth config found, using default credentials",
+			zap.String("gateway", gatewayInfo.Name))
+		username, password = auth.GetDefaultBasicAuthCredentials()
+	}
+
+	// Encode and set the Authorization header
+	encodedAuth := auth.EncodeBasicAuth(username, password)
+	req.Header.Set("Authorization", "Basic "+encodedAuth)
+
+	return nil
 }
 
 // enqueueAPIsForGateway watches for Gateway changes and enqueues affected RestApis

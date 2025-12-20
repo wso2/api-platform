@@ -23,6 +23,20 @@ gateway:
   # This config is mounted to both components as /configs/config.yaml
   config:
     gateway_controller:
+      auth:
+        basic:
+          enabled: true
+          users:
+            - username: "admin"
+              password: "admin"
+              password_hashed: false
+              roles: ["admin"]
+        idp:
+          enabled: false
+          jwks_url: ""
+          issuer: ""
+          roles_claim: "scope"
+          role_mapping: {}
       # Server configuration
       server:
         # REST API port for gateway management
@@ -152,6 +166,8 @@ gateway:
             route_timeout_in_seconds: 60
             max_route_timeout_in_seconds: 60
             route_idle_timeout_in_seconds: 300
+        
+        tracing_service_name: router
 
         # Policy Engine ext_proc filter configuration
         policy_engine:

@@ -35,9 +35,15 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	controller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
@@ -931,6 +937,51 @@ func (r *GatewayReconciler) deleteGatewayWithHelm(ctx context.Context, owner *ap
 	return nil
 }
 
+// enqueueGatewaysForConfigMap watches for ConfigMap changes and enqueues affected Gateways
+func (r *GatewayReconciler) enqueueGatewaysForConfigMap(ctx context.Context, obj client.Object) []reconcile.Request {
+	configMap, ok := obj.(*corev1.ConfigMap)
+	if !ok {
+		return nil
+	}
+
+	logger := log.FromContext(ctx)
+
+	// Find all Gateways that reference this ConfigMap
+	gatewayList := &apiv1.GatewayList{}
+	if err := r.List(ctx, gatewayList); err != nil {
+		logger.Error(err, "failed to list Gateways for ConfigMap event",
+			"configMap", configMap.Name,
+			"namespace", configMap.Namespace)
+		return nil
+	}
+
+	requests := make([]reconcile.Request, 0)
+
+	for i := range gatewayList.Items {
+		gateway := &gatewayList.Items[i]
+
+		// Check if this Gateway references the ConfigMap
+		if gateway.Spec.ConfigRef != nil &&
+			gateway.Spec.ConfigRef.Name == configMap.Name &&
+			gateway.Namespace == configMap.Namespace {
+
+			logger.Info("Enqueuing Gateway for ConfigMap change",
+				"gateway", gateway.Name,
+				"namespace", gateway.Namespace,
+				"configMap", configMap.Name)
+
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: gateway.Namespace,
+					Name:      gateway.Name,
+				},
+			})
+		}
+	}
+
+	return requests
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *GatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	opts := controller.Options{MaxConcurrentReconciles: r.Config.Reconciliation.MaxConcurrentReconciles}
@@ -938,10 +989,32 @@ func (r *GatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		opts.MaxConcurrentReconciles = 1
 	}
 
+	// Predicate to only watch ConfigMap updates and deletes (not creates)
+	configMapPred := predicate.Funcs{
+		CreateFunc: func(event event.CreateEvent) bool {
+			// Don't trigger on create - Gateway will reconcile on its own creation
+			return false
+		},
+		UpdateFunc: func(evt event.UpdateEvent) bool {
+			// Trigger on any ConfigMap update
+			return true
+		},
+		DeleteFunc: func(event event.DeleteEvent) bool {
+			// Trigger on delete so Gateway can handle missing ConfigMap
+			return true
+		},
+		GenericFunc: func(event event.GenericEvent) bool {
+			return false
+		},
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(opts).
 		For(&apiv1.Gateway{}).
 		Owns(&appsv1.Deployment{}).
+		Watches(&corev1.ConfigMap{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueGatewaysForConfigMap),
+			builder.WithPredicates(configMapPred)).
 		Complete(r)
 }
 

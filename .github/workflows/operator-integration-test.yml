@@ -271,6 +271,21 @@ jobs:
                 # This config is mounted to both components as /configs/config.yaml
                 config:
                   gateway_controller:
+                    auth:
+                      # Local basic authentication configuration
+                      basic:
+                        enabled: true
+                      # Local users
+                        users:
+                          # Example user entries:
+                          # - username: "user1"
+                          #   password: "$argon2id.."   # encrypted hash or plain string depending on implementation
+                          #   password_hashed: true
+                          #   roles: ["developer", "viewer"]
+                        - username: "admin"
+                          password: "admin"
+                          password_hashed: false
+                          roles: ["admin"]
                     # Server configuration
                     server:
                       # REST API port for gateway management

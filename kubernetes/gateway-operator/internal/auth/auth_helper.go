@@ -1,0 +1,140 @@
+/*
+Copyright 2025.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package auth
+
+import (
+	"context"
+	"encoding/base64"
+	"fmt"
+
+	"gopkg.in/yaml.v3"
+	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+)
+
+// AuthConfig represents the authentication configuration from the gateway ConfigMap
+type AuthConfig struct {
+	GatewayController GatewayControllerConfig `yaml:"gateway_controller"`
+}
+
+// GatewayControllerConfig represents the gateway_controller section of the config
+type GatewayControllerConfig struct {
+	Auth AuthSettings `yaml:"auth"`
+}
+
+// AuthSettings holds authentication related configuration
+type AuthSettings struct {
+	Basic BasicAuthConfig `yaml:"basic"`
+	IDP   IDPConfig       `yaml:"idp"`
+}
+
+// BasicAuthConfig describes basic authentication configuration
+type BasicAuthConfig struct {
+	Enabled bool       `yaml:"enabled"`
+	Users   []AuthUser `yaml:"users"`
+}
+
+// AuthUser describes a locally configured user
+type AuthUser struct {
+	Username       string   `yaml:"username"`
+	Password       string   `yaml:"password"`
+	PasswordHashed bool     `yaml:"password_hashed"`
+	Roles          []string `yaml:"roles"`
+}
+
+// IDPConfig describes an external identity provider for JWT validation
+type IDPConfig struct {
+	Enabled bool `yaml:"enabled"`
+}
+
+// GetAuthConfigFromGateway retrieves authentication configuration from a Gateway's ConfigRef
+// Returns nil if no ConfigRef is specified or if auth config is not found in the ConfigMap
+func GetAuthConfigFromGateway(ctx context.Context, k8sClient client.Client, gateway *apiv1.Gateway) (*AuthConfig, error) {
+	// If no ConfigRef, return nil (will use default auth)
+	if gateway.Spec.ConfigRef == nil {
+		return nil, nil
+	}
+
+	// Get the ConfigMap
+	configMap := &corev1.ConfigMap{}
+	if err := k8sClient.Get(ctx, client.ObjectKey{
+		Name:      gateway.Spec.ConfigRef.Name,
+		Namespace: gateway.Namespace,
+	}, configMap); err != nil {
+		return nil, fmt.Errorf("failed to get ConfigMap %s/%s: %w", gateway.Namespace, gateway.Spec.ConfigRef.Name, err)
+	}
+
+	// Look for values.yaml key
+	valuesYAML, ok := configMap.Data["values.yaml"]
+	if !ok {
+		// No values.yaml key, return nil (will use default auth)
+		return nil, nil
+	}
+
+	// Parse the YAML
+	var authConfig AuthConfig
+	if err := yaml.Unmarshal([]byte(valuesYAML), &authConfig); err != nil {
+		return nil, fmt.Errorf("failed to parse auth config from ConfigMap: %w", err)
+	}
+
+	return &authConfig, nil
+}
+
+// GetBasicAuthCredentials extracts basic auth credentials from the auth config
+// Returns username, password, and ok=true if basic auth is enabled and has at least one user
+// Returns empty strings and ok=false if basic auth is not configured or disabled
+func GetBasicAuthCredentials(authConfig *AuthConfig) (username, password string, ok bool) {
+	if authConfig == nil {
+		return "", "", false
+	}
+
+	// Check if basic auth is enabled
+	if !authConfig.GatewayController.Auth.Basic.Enabled {
+		return "", "", false
+	}
+
+	// Get the first user (if any)
+	if len(authConfig.GatewayController.Auth.Basic.Users) == 0 {
+		return "", "", false
+	}
+
+	user := authConfig.GatewayController.Auth.Basic.Users[0]
+
+	// For now, we only support plain passwords (not hashed)
+	// The operator needs the plain password to send in the Authorization header
+	if user.PasswordHashed {
+		// Cannot use hashed password for outgoing requests
+		return "", "", false
+	}
+
+	return user.Username, user.Password, true
+}
+
+// GetDefaultBasicAuthCredentials returns the default basic auth credentials
+// Default: username="admin", password="admin"
+func GetDefaultBasicAuthCredentials() (username, password string) {
+	return "admin", "admin"
+}
+
+// EncodeBasicAuth encodes username and password for HTTP Basic Authentication
+// Returns the value to be used in the Authorization header (without "Basic " prefix)
+func EncodeBasicAuth(username, password string) string {
+	auth := username + ":" + password
+	return base64.StdEncoding.EncodeToString([]byte(auth))
+}
