@@ -20,7 +20,7 @@ package utils
 
 const CliName = "ap"
 
-// WSO2 AP Configuration
+// WSO2AP Configuration
 const (
 	ConfigPath        = ".wso2ap/config.yaml"
 	CachePath         = ".wso2ap/cache"
@@ -28,8 +28,9 @@ const (
 	TempPath          = ".wso2ap/.tmp"
 )
 
-// Gateway Image Build Defaults
+// Gateway
 const (
+	// Image Build Defaults
 	DefaultManifestFile         = "policy-manifest.yaml"
 	DefaultManifestLockFile     = "policy-manifest-lock.yaml"
 	DefaultGatewayVersion       = "0.2.0"
@@ -37,26 +38,24 @@ const (
 	DefaultGatewayBuilderRepo   = "ghcr.io/wso2/api-platform/gateway-builder"
 	DefaultGatewayControllerImg = "" // Uses default from gateway-builder
 	DefaultRouterImg            = "" // Uses default from gateway-builder
-)
 
-// Gateway REST API Endpoints
-// Relative Paths for using gateway server URL
-const (
+	// REST API Endpoints
 	GatewayHealthPath       = "/health"
 	GatewayAPIsPath         = "/apis"
 	GatewayAPIByIDPath      = "/apis/%s"
 	GatewayMCPProxiesPath   = "/mcp-proxies"
 	GatewayMCPProxyByIDPath = "/mcp-proxies/%s"
+
+	// BasicAuth Environment Variables
+	EnvGatewayUsername = "WSO2AP_GW_USERNAME"
+	EnvGatewayPassword = "WSO2AP_GW_PASSWORD"
+
+	// Image Build Configuration
+	GatewayVerifyChecksumOnBuild = false
 )
 
 // PolicyHub REST API
 const (
 	PolicyHubBaseURL     = "https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/policy-hub-public/v1.0"
 	PolicyHubResolvePath = "/policies/resolve"
-)
-
-// Gateway Authentication Environment Variables
-const (
-	EnvGatewayUsername = "WSO2AP_GW_USERNAME"
-	EnvGatewayPassword = "WSO2AP_GW_PASSWORD"
 )
