@@ -93,17 +93,21 @@ func verifyHubPolicyOffline(lockPolicy LockPolicy) (ProcessedPolicy, error) {
 		return ProcessedPolicy{}, fmt.Errorf("\n  ✗ Policy %s v%s not found in cache. Run without --offline first.", lockPolicy.Name, lockPolicy.Version)
 	}
 
-	// Verify checksum
-	match, err := utils.VerifyChecksum(cachePath, lockPolicy.Checksum)
-	if err != nil {
-		return ProcessedPolicy{}, fmt.Errorf("failed to verify checksum: %w", err)
-	}
+	// Verify checksum if enabled
+	if utils.GatewayVerifyChecksumOnBuild {
+		match, err := utils.VerifyChecksum(cachePath, lockPolicy.Checksum)
+		if err != nil {
+			return ProcessedPolicy{}, fmt.Errorf("failed to verify checksum: %w", err)
+		}
 
-	if !match {
-		return ProcessedPolicy{}, fmt.Errorf("\n  ✗ Checksum mismatch for %s v%s. Cache may be corrupted. Run without --offline to refresh.", lockPolicy.Name, lockPolicy.Version)
-	}
+		if !match {
+			return ProcessedPolicy{}, fmt.Errorf("\n  ✗ Checksum mismatch for %s v%s. Cache may be corrupted. Run without --offline to refresh.", lockPolicy.Name, lockPolicy.Version)
+		}
 
-	fmt.Printf("found in cache, checksum verified\n")
+		fmt.Printf("found in cache, checksum verified\n")
+	} else {
+		fmt.Printf("found in cache (checksum verification disabled)\n")
+	}
 
 	return ProcessedPolicy{
 		Name:      lockPolicy.Name,
@@ -149,17 +153,21 @@ func verifyLocalPolicyOffline(lockPolicy LockPolicy, filePath string) (Processed
 		checksumPath = policyPath
 	}
 
-	// Verify checksum
-	match, err := utils.VerifyChecksum(checksumPath, lockPolicy.Checksum)
-	if err != nil {
-		return ProcessedPolicy{}, fmt.Errorf("failed to verify checksum: %w", err)
-	}
+	// Verify checksum if enabled
+	if utils.GatewayVerifyChecksumOnBuild {
+		match, err := utils.VerifyChecksum(checksumPath, lockPolicy.Checksum)
+		if err != nil {
+			return ProcessedPolicy{}, fmt.Errorf("failed to verify checksum: %w", err)
+		}
 
-	if !match {
-		return ProcessedPolicy{}, fmt.Errorf("\n  ✗ Checksum mismatch for local policy %s v%s. Policy may have been modified.", lockPolicy.Name, lockPolicy.Version)
-	}
+		if !match {
+			return ProcessedPolicy{}, fmt.Errorf("\n  ✗ Checksum mismatch for local policy %s v%s. Policy may have been modified.", lockPolicy.Name, lockPolicy.Version)
+		}
 
-	fmt.Printf("found at %s, checksum verified\n", policyPath)
+		fmt.Printf("found at %s, checksum verified\n", policyPath)
+	} else {
+		fmt.Printf("found at %s (checksum verification disabled)\n", policyPath)
+	}
 
 	return ProcessedPolicy{
 		Name:      lockPolicy.Name,

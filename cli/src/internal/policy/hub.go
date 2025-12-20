@@ -196,20 +196,26 @@ func downloadAndVerifyPolicies(resolvedPolicies []PolicyHubData) ([]ProcessedPol
 
 		// Check if policy exists in cache
 		if _, err := os.Stat(cachePath); err == nil {
-			// Policy exists, verify checksum
-			match, err := utils.VerifyChecksum(cachePath, expectedChecksum)
-			if err != nil {
-				return nil, fmt.Errorf("failed to verify checksum for %s: %w", policy.PolicyName, err)
-			}
-
-			if match {
-				fmt.Printf("found in cache, checksum verified\n")
-			} else {
-				fmt.Printf("cache checksum mismatch, re-downloading...")
-				if err := downloadPolicy(policy.DownloadURL, cachePath); err != nil {
-					return nil, fmt.Errorf("failed to download %s: %w", policy.PolicyName, err)
+			// Policy exists in cache
+			if utils.GatewayVerifyChecksumOnBuild {
+				// Verify checksum against hub
+				match, err := utils.VerifyChecksum(cachePath, expectedChecksum)
+				if err != nil {
+					return nil, fmt.Errorf("failed to verify checksum for %s: %w", policy.PolicyName, err)
 				}
-				fmt.Printf(" done\n")
+
+				if match {
+					fmt.Printf("found in cache, checksum verified\n")
+				} else {
+					fmt.Printf("cache checksum mismatch, re-downloading...")
+					if err := downloadPolicy(policy.DownloadURL, cachePath); err != nil {
+						return nil, fmt.Errorf("failed to download %s: %w", policy.PolicyName, err)
+					}
+					fmt.Printf(" done\n")
+				}
+			} else {
+				// Skip checksum verification, use cached version
+				fmt.Printf("found in cache (checksum verification disabled)\n")
 			}
 		} else {
 			// Policy not in cache, download it
@@ -218,16 +224,19 @@ func downloadAndVerifyPolicies(resolvedPolicies []PolicyHubData) ([]ProcessedPol
 				return nil, fmt.Errorf("failed to download %s: %w", policy.PolicyName, err)
 			}
 
-			// Verify downloaded policy
-			match, err := utils.VerifyChecksum(cachePath, expectedChecksum)
-			if err != nil {
-				return nil, fmt.Errorf("failed to verify downloaded policy %s: %w", policy.PolicyName, err)
+			if utils.GatewayVerifyChecksumOnBuild {
+				// Verify downloaded policy
+				match, err := utils.VerifyChecksum(cachePath, expectedChecksum)
+				if err != nil {
+					return nil, fmt.Errorf("failed to verify downloaded policy %s: %w", policy.PolicyName, err)
+				}
+				if !match {
+					return nil, fmt.Errorf("downloaded policy %s checksum mismatch", policy.PolicyName)
+				}
+				fmt.Printf(" done, verified\n")
+			} else {
+				fmt.Printf(" done (checksum verification disabled)\n")
 			}
-			if !match {
-				return nil, fmt.Errorf("downloaded policy %s checksum mismatch", policy.PolicyName)
-			}
-
-			fmt.Printf(" done, verified\n")
 		}
 
 		processed = append(processed, ProcessedPolicy{
