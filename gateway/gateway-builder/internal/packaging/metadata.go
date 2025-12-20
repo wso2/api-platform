@@ -14,9 +14,9 @@ func GenerateDockerLabels(metadata *types.PackagingMetadata) map[string]string {
 
 	// Standard OCI labels
 	labels["org.opencontainers.image.created"] = metadata.BuildTimestamp.Format(time.RFC3339)
-	labels["org.opencontainers.image.title"] = "Envoy Policy Engine"
-	labels["org.opencontainers.image.description"] = "Custom policy engine with compiled policies"
-	labels["org.opencontainers.image.vendor"] = "Policy Engine Builder"
+	labels["org.opencontainers.image.title"] = "API Platform Policy Engine"
+	labels["org.opencontainers.image.description"] = "API Platform Policy Engine with compiled policies"
+	labels["org.opencontainers.image.vendor"] = "WSO2"
 
 	// Builder metadata
 	labels["build.timestamp"] = metadata.BuildTimestamp.Format(time.RFC3339)

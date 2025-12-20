@@ -22,14 +22,6 @@ const (
 	DefaultManifestLockFile = "policy-manifest-lock.yaml"
 	DefaultOutputDir        = "output"
 	DefaultPolicyEngineSrc  = "/api-platform/gateway/policy-engine"
-
-	// Gateway Controller (extends base image)
-	DefaultGatewayControllerBaseImage = "wso2/api-platform/gateway-controller:v1.0.0-m4" // TODO (renuka): check the usage
-
-	// Router (uses base image)
-	DefaultRouterBaseImage = "wso2/api-platform/gateway-router:v1.0.0-m4" // TODO (renuka): check the usage
-
-	BuilderVersion = "v1.0.0"
 )
 
 // Version information (set via ldflags during build)
@@ -40,15 +32,18 @@ var (
 )
 
 func main() {
+	defaultGatewayControllerBaseImage := "wso2/api-platform/gateway-controller:" + Version
+	defaultRouterBaseImage := "wso2/api-platform/gateway-router:" + Version
+
 	// Parse command-line flags
 	manifestLockPath := flag.String("manifest-lock", DefaultManifestLockFile, "Path to policy manifest lock file")
 	policyEngineSrc := flag.String("policy-engine-src", DefaultPolicyEngineSrc, "Path to policy-engine runtime source directory")
 	outputDir := flag.String("out-dir", DefaultOutputDir, "Output directory for generated Dockerfiles and artifacts")
 
 	// Base image configuration
-	gatewayControllerBaseImage := flag.String("gateway-controller-base-image", DefaultGatewayControllerBaseImage,
+	gatewayControllerBaseImage := flag.String("gateway-controller-base-image", defaultGatewayControllerBaseImage,
 		"Base image for gateway controller to extend (used in generated Dockerfile)")
-	routerBaseImage := flag.String("router-base-image", DefaultRouterBaseImage,
+	routerBaseImage := flag.String("router-base-image", defaultRouterBaseImage,
 		"Base router image (used in generated Dockerfile)")
 
 	// Logging flags
@@ -85,7 +80,6 @@ func main() {
 		"version", Version,
 		"git_commit", GitCommit,
 		"build_date", BuildDate,
-		"builder_version", BuilderVersion,
 		"manifest_lock", *manifestLockPath)
 
 	var outManifestPath string
@@ -139,11 +133,10 @@ func main() {
 	}
 
 	buildMetadata := &types.BuildMetadata{
-		Timestamp:      time.Now().UTC(),
-		BuilderVersion: BuilderVersion,
-		Version:        version,
-		GitCommit:      gitCommit,
-		Policies:       make([]types.PolicyInfo, 0, len(policies)),
+		Timestamp: time.Now().UTC(),
+		Version:   version,
+		GitCommit: gitCommit,
+		Policies:  make([]types.PolicyInfo, 0, len(policies)),
 	}
 
 	for _, p := range policies {
@@ -176,7 +169,6 @@ func main() {
 		OutputDir:                  *outputDir,
 		GatewayControllerBaseImage: *gatewayControllerBaseImage,
 		RouterBaseImage:            *routerBaseImage,
-		BuilderVersion:             BuilderVersion,
 	}
 
 	generateResult, err := dockerfileGenerator.GenerateAll()
@@ -190,7 +182,7 @@ func main() {
 	// Phase 6: Manifest Generation
 	slog.Info("Starting Phase 6: Manifest Generation", "phase", "manifest")
 
-	buildManifest := manifest.CreateManifest(BuilderVersion, policies, *outputDir)
+	buildManifest := manifest.CreateManifest(version, policies, *outputDir)
 
 	// Write manifest to file
 	outManifestPath = filepath.Join(*outputDir, "build-manifest.json")
@@ -268,13 +260,4 @@ func printDockerfileGenerationSummary(result *docker.GenerateResult, buildManife
 	} else {
 		fmt.Println(manifestJSON)
 	}
-
-	fmt.Println("\nNext Steps:")
-	fmt.Println("  1. Build the images:")
-	fmt.Printf("     cd %s/policy-engine && docker build -t <image-name> .\n", result.OutputDir)
-	fmt.Printf("     cd %s/gateway-controller && docker build -t <image-name> .\n", result.OutputDir)
-	fmt.Printf("     cd %s/router && docker build -t <image-name> .\n", result.OutputDir)
-	fmt.Println("  2. Deploy the gateway stack:")
-	fmt.Println("     docker-compose up -d")
-	fmt.Println()
 }
