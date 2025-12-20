@@ -19,6 +19,7 @@ RUN go mod download
 COPY kubernetes/gateway-operator/cmd/main.go cmd/main.go
 COPY kubernetes/gateway-operator/api/ api/
 COPY kubernetes/gateway-operator/internal/ internal/
+COPY kubernetes/gateway-operator/pkg/ pkg/
 COPY kubernetes/gateway-operator/config/config.yaml config/config.yaml
 COPY kubernetes/gateway-operator/config/gateway_values.yaml config/gateway_values.yaml
 

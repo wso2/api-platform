@@ -109,7 +109,11 @@ type LoggingConfig struct {
 	Level string `koanf:"level"`
 
 	// Development enables development mode logging
+	// Deprecated: Use Format instead
 	Development bool `koanf:"development"`
+
+	// Format specifies the log format: "json" or "console"
+	Format string `koanf:"format"`
 }
 
 // getDefaults returns default configuration as a map
@@ -130,6 +134,7 @@ func getDefaults() map[string]interface{} {
 		"logging": map[string]interface{}{
 			"level":       "info",
 			"development": true,
+			"format":      "console",
 		},
 	}
 }
@@ -212,6 +217,11 @@ func (c *OperatorConfig) Validate() error {
 	}
 	if !validLogLevels[c.Logging.Level] {
 		return fmt.Errorf("invalid log level: %s (must be debug, info, warn, or error)", c.Logging.Level)
+	}
+
+	// Validate log format
+	if c.Logging.Format != "" && c.Logging.Format != "json" && c.Logging.Format != "console" {
+		return fmt.Errorf("invalid log format: %s (must be json or console)", c.Logging.Format)
 	}
 
 	// Validate reconciliation config

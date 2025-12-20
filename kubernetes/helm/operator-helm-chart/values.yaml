@@ -78,6 +78,14 @@ gateway:
       # This config is mounted to both components as /configs/config.yaml
       config:
         gateway_controller:
+          auth:
+            basic:
+              enabled: true
+              users:
+                - username: "admin"
+                  password: "admin"
+                  password_hashed: false
+                  roles: ["admin"]
           # Server configuration
           server:
             # REST API port for gateway management

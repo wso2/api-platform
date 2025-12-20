@@ -69,7 +69,7 @@ WORKDIR /app
 COPY --from=builder /build/controller .
 
 # Copy default configuration file
-COPY config/config.yaml /app/config/config.yaml
+
 
 # Copy policy definitions
 COPY default-policies /app/default-policies

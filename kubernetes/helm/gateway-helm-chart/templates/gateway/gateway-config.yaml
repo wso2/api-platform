@@ -67,6 +67,7 @@ data:
             route_timeout_in_seconds: {{ $gc.router.envoy_upstream.timeouts.route_timeout_in_seconds }}
             max_route_timeout_in_seconds: {{ $gc.router.envoy_upstream.timeouts.max_route_timeout_in_seconds }}
             route_idle_timeout_in_seconds: {{ $gc.router.envoy_upstream.timeouts.route_idle_timeout_in_seconds }}
+        tracing_service_name: {{ $gc.router.tracing_service_name }}
         policy_engine:
           enabled: {{ $gc.router.policy_engine.enabled }}
           host: {{ $policyEngineHost }}
@@ -84,6 +85,32 @@ data:
             ca_path: {{ $gc.router.policy_engine.tls.ca_path | quote }}
             server_name: {{ $gc.router.policy_engine.tls.server_name | quote }}
             skip_verify: {{ $gc.router.policy_engine.tls.skip_verify }}
+      {{- if $gc.auth }}
+      auth:
+        {{- if $gc.auth.basic }}
+        basic:
+          enabled: {{ $gc.auth.basic.enabled }}
+          {{- if $gc.auth.basic.users }}
+          users:
+            {{- $gc.auth.basic.users | toYaml | nindent 12 }}
+          {{- else }}
+          users: []
+          {{- end }}
+        {{- end }}
+        {{- if $gc.auth.idp }}
+        idp:
+          enabled: {{ $gc.auth.idp.enabled }}
+          jwks_url: {{ $gc.auth.idp.jwks_url | quote }}
+          issuer: {{ $gc.auth.idp.issuer | quote }}
+          roles_claim: {{ $gc.auth.idp.roles_claim | quote }}
+          {{- if $gc.auth.idp.role_mapping }}
+          role_mapping:
+            {{- $gc.auth.idp.role_mapping | toYaml | nindent 12 }}
+          {{- else }}
+          role_mapping: {}
+          {{- end }}
+        {{- end }}
+      {{- end }}
       logging:
         level: {{ $gc.logging.level }}
         format: {{ $gc.logging.format }}
@@ -113,6 +140,42 @@ data:
       logging:
         level: {{ $pe.logging.level }}
         format: {{ $pe.logging.format }}
+    {{- if .Values.gateway.config.analytics }}
+    analytics:
+      enabled: {{ .Values.gateway.config.analytics.enabled }}
+      {{- if .Values.gateway.config.analytics.publishers }}
+      publishers:
+        {{- .Values.gateway.config.analytics.publishers | toYaml | nindent 8 }}
+      {{- end }}
+      {{- if .Values.gateway.config.analytics.grpc_access_logs }}
+      grpc_access_logs:
+        host: {{ $policyEngineHost }}
+        log_name: {{ .Values.gateway.config.analytics.grpc_access_logs.log_name | quote }}
+        buffer_flush_interval: {{ .Values.gateway.config.analytics.grpc_access_logs.buffer_flush_interval }}
+        buffer_size_bytes: {{ .Values.gateway.config.analytics.grpc_access_logs.buffer_size_bytes }}
+        grpc_request_timeout: {{ .Values.gateway.config.analytics.grpc_access_logs.grpc_request_timeout }}
+      {{- end }}
+      {{- if .Values.gateway.config.analytics.access_logs_service }}
+      access_logs_service:
+        als_server_port: {{ .Values.gateway.config.analytics.access_logs_service.als_server_port }}
+        shutdown_timeout: {{ .Values.gateway.config.analytics.access_logs_service.shutdown_timeout }}
+        public_key_path: {{ .Values.gateway.config.analytics.access_logs_service.public_key_path | quote }}
+        private_key_path: {{ .Values.gateway.config.analytics.access_logs_service.private_key_path | quote }}
+        als_plain_text: {{ .Values.gateway.config.analytics.access_logs_service.als_plain_text }}
+        max_message_size: {{ .Values.gateway.config.analytics.access_logs_service.max_message_size }}
+        max_header_limit: {{ .Values.gateway.config.analytics.access_logs_service.max_header_limit }}
+      {{- end }}
+    {{- end }}
+    {{- if .Values.gateway.config.tracing }}
+    tracing:
+      enabled: {{ .Values.gateway.config.tracing.enabled }}
+      endpoint: {{ .Values.gateway.config.tracing.endpoint }}
+      insecure: {{ .Values.gateway.config.tracing.insecure }}
+      service_version: {{ .Values.gateway.config.tracing.service_version | quote }}
+      batch_timeout: {{ .Values.gateway.config.tracing.batch_timeout }}
+      max_export_batch_size: {{ .Values.gateway.config.tracing.max_export_batch_size }}
+      sampling_rate: {{ .Values.gateway.config.tracing.sampling_rate }}
+    {{- end }}
     {{- if .Values.gateway.config.policy_configurations }}
     policy_configurations:
       {{- .Values.gateway.config.policy_configurations | toYaml | nindent 6 }}

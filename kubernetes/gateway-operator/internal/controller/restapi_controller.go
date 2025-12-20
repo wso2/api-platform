@@ -19,6 +19,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -27,6 +28,12 @@ import (
 	"sync"
 	"time"
 
+	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/selector"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -44,11 +51,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
-	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
-	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
-	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/selector"
 )
 
 // APITrackingStatus represents the deployment status tracked in memory
@@ -122,15 +124,17 @@ type RestApiReconciler struct {
 	Scheme     *runtime.Scheme
 	Config     *config.OperatorConfig
 	apiTracker *APITracker
+	Logger     *zap.Logger
 }
 
 // NewRestApiReconciler creates a new RestApiReconciler
-func NewRestApiReconciler(client client.Client, scheme *runtime.Scheme, cfg *config.OperatorConfig) *RestApiReconciler {
+func NewRestApiReconciler(client client.Client, scheme *runtime.Scheme, cfg *config.OperatorConfig, logger *zap.Logger) *RestApiReconciler {
 	return &RestApiReconciler{
 		Client:     client,
 		Scheme:     scheme,
 		Config:     cfg,
 		apiTracker: NewAPITracker(),
+		Logger:     logger,
 	}
 }
 
@@ -140,7 +144,7 @@ func NewRestApiReconciler(client client.Client, scheme *runtime.Scheme, cfg *con
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *RestApiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
+	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("namespace", req.Namespace), zap.String("name", req.Name))
 
 	// Fetch the RestApi CR
 	apiConfig := &apiv1.RestApi{}
@@ -150,14 +154,14 @@ func (r *RestApiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			r.apiTracker.Delete(req.String())
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "unable to fetch RestApi")
+		log.Error("unable to fetch RestApi", zap.Error(err))
 		return ctrl.Result{}, err
 	}
 
 	log.Info("Reconciling RestApi",
-		"name", apiConfig.Name,
-		"namespace", apiConfig.Namespace,
-		"generation", apiConfig.Generation)
+		zap.String("name", apiConfig.Name),
+		zap.String("namespace", apiConfig.Namespace),
+		zap.Int64("generation", apiConfig.Generation))
 
 	// Handle deletion
 	if !apiConfig.DeletionTimestamp.IsZero() {
@@ -168,7 +172,7 @@ func (r *RestApiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if !controllerutil.ContainsFinalizer(apiConfig, apiFinalizerName) {
 		controllerutil.AddFinalizer(apiConfig, apiFinalizerName)
 		if err := r.Update(ctx, apiConfig); err != nil {
-			log.Error(err, "failed to add finalizer")
+			log.Error("failed to add finalizer", zap.Error(err))
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{Requeue: true}, nil
@@ -201,7 +205,7 @@ func (r *RestApiReconciler) decideAndProcess(
 	trackingEntry *APITrackingEntry,
 	hasTrackingEntry bool,
 ) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
+	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
 
 	// Case 1: CR generation == status observed generation
 	// This means the API is already deployed (or controller restarted after successful deploy)
@@ -211,9 +215,9 @@ func (r *RestApiReconciler) decideAndProcess(
 			Generation: crGeneration,
 			Status:     TrackingStatusDeployed,
 		})
-		log.V(1).Info("API already deployed, skipping",
-			"name", apiConfig.Name,
-			"generation", crGeneration)
+		log.Debug("API already deployed, skipping",
+			zap.String("name", apiConfig.Name),
+			zap.Int64("generation", crGeneration))
 		return ctrl.Result{}, nil
 	}
 
@@ -226,25 +230,25 @@ func (r *RestApiReconciler) decideAndProcess(
 				// Tracker has same generation - check status
 				if trackingEntry.Status == TrackingStatusProcessing {
 					// FALSE POSITIVE - already processing this generation (avoid concurrent processing)
-					log.V(1).Info("Already processing this generation, skipping false positive event",
-						"name", apiConfig.Name,
-						"generation", crGeneration,
-						"status", trackingEntry.Status)
+					log.Debug("Already processing this generation, skipping false positive event",
+						zap.String("name", apiConfig.Name),
+						zap.Int64("generation", crGeneration),
+						zap.String("status", string(trackingEntry.Status)))
 					return ctrl.Result{}, nil
 				}
 				// If Retrying, let it proceed to retry the API deployment
 				if trackingEntry.Status == TrackingStatusRetrying {
 					log.Info("Retrying API deployment",
-						"name", apiConfig.Name,
-						"generation", crGeneration,
-						"retryCount", trackingEntry.RetryCount)
+						zap.String("name", apiConfig.Name),
+						zap.Int64("generation", crGeneration),
+						zap.Int("retryCount", trackingEntry.RetryCount))
 					return r.processDeployment(ctx, apiConfig, trackingKey, crGeneration)
 				}
 				// If Deployed but status not updated yet, wait for status propagation
 				if trackingEntry.Status == TrackingStatusDeployed {
-					log.V(1).Info("Deployment completed but status not yet propagated, skipping",
-						"name", apiConfig.Name,
-						"generation", crGeneration)
+					log.Debug("Deployment completed but status not yet propagated, skipping",
+						zap.String("name", apiConfig.Name),
+						zap.Int64("generation", crGeneration))
 					return ctrl.Result{}, nil
 				}
 			}
@@ -252,23 +256,23 @@ func (r *RestApiReconciler) decideAndProcess(
 			if trackingEntry.Generation < crGeneration {
 				// UPDATE - new generation to process
 				log.Info("Processing API update",
-					"name", apiConfig.Name,
-					"oldGeneration", trackingEntry.Generation,
-					"newGeneration", crGeneration)
+					zap.String("name", apiConfig.Name),
+					zap.Int64("oldGeneration", trackingEntry.Generation),
+					zap.Int64("newGeneration", crGeneration))
 				return r.processDeployment(ctx, apiConfig, trackingKey, crGeneration)
 			}
 		} else {
 			// No tracking entry
-			log.Info("Processing API", "name", apiConfig.Name, "generation", crGeneration)
-        	return r.processDeployment(ctx, apiConfig, trackingKey, crGeneration)
+			log.Info("Processing API", zap.String("name", apiConfig.Name), zap.Int64("generation", crGeneration))
+			return r.processDeployment(ctx, apiConfig, trackingKey, crGeneration)
 		}
 	}
 
 	// Default: nothing to do
-	log.V(1).Info("No action needed",
-		"name", apiConfig.Name,
-		"crGeneration", crGeneration,
-		"statusObservedGen", statusObservedGen)
+	log.Debug("No action needed",
+		zap.String("name", apiConfig.Name),
+		zap.Int64("crGeneration", crGeneration),
+		zap.Int64("statusObservedGen", statusObservedGen))
 	return ctrl.Result{}, nil
 }
 
@@ -353,14 +357,14 @@ func (r *RestApiReconciler) setInitialConditions(ctx context.Context, apiConfig 
 
 // executeDeployment performs the actual HTTP request to the gateway
 func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *apiv1.RestApi, gateway *registry.GatewayInfo) error {
-	log := log.FromContext(ctx)
+	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
 
 	// Create clean payload
 	cleanPayload := struct {
-		ApiVersion string              `yaml:"apiVersion"`
-		Kind       string              `yaml:"kind"`
-		Metadata   map[string]string   `yaml:"metadata"`
-		Spec       apiv1.APIConfigData `yaml:"spec"`
+		ApiVersion string              `yaml:"apiVersion" json:"apiVersion"`
+		Kind       string              `yaml:"kind" json:"kind"`
+		Metadata   map[string]string   `yaml:"metadata" json:"metadata"`
+		Spec       apiv1.APIConfigData `yaml:"spec" json:"spec"`
 	}{
 		ApiVersion: apiConfig.APIVersion,
 		Kind:       apiConfig.Kind,
@@ -370,7 +374,20 @@ func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *ap
 		Spec: apiConfig.Spec,
 	}
 
-	apiYAML, err := yaml.Marshal(cleanPayload)
+	// 1. Marshal to JSON (handles runtime.RawExtension correctly)
+	jsonBytes, err := json.Marshal(cleanPayload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal API spec to JSON: %w", err)
+	}
+
+	// 2. Unmarshal to generic map
+	var genericMap map[string]interface{}
+	if err := json.Unmarshal(jsonBytes, &genericMap); err != nil {
+		return fmt.Errorf("failed to unmarshal JSON to map: %w", err)
+	}
+
+	// 3. Marshal to YAML
+	apiYAML, err := yaml.Marshal(genericMap)
 	if err != nil {
 		return fmt.Errorf("failed to marshal API spec to YAML: %w", err)
 	}
@@ -394,15 +411,20 @@ func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *ap
 	}
 
 	log.Info("Deploying API to gateway",
-		"method", method,
-		"endpoint", endpoint,
-		"api", apiConfig.Name)
+		zap.String("method", method),
+		zap.String("endpoint", endpoint),
+		zap.String("api", apiConfig.Name))
 
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(apiYAML))
 	if err != nil {
 		return &RetryableError{Err: fmt.Errorf("failed to create HTTP request: %w", err)}
 	}
 	req.Header.Set("Content-Type", "application/yaml")
+
+	// Add authentication
+	if err := r.addAuthToRequest(ctx, req, gateway); err != nil {
+		log.Warn("Failed to add authentication to request, proceeding without auth", zap.Error(err))
+	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -415,7 +437,7 @@ func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *ap
 
 	switch {
 	case resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated:
-		log.Info("API successfully deployed to gateway", "status", resp.StatusCode)
+		log.Info("API successfully deployed to gateway", zap.Int("status", resp.StatusCode))
 		return nil
 
 	case isRetryableStatusCode(resp.StatusCode):
@@ -435,12 +457,17 @@ func (r *RestApiReconciler) executeDeployment(ctx context.Context, apiConfig *ap
 // apiExistsOnGateway checks whether an API with the given handle exists on the gateway.
 // Returns (true, nil) if exists; (false, nil) if not found; otherwise returns an error (RetryableError or NonRetryableError).
 func (r *RestApiReconciler) apiExistsOnGateway(ctx context.Context, gateway *registry.GatewayInfo, handle string) (bool, error) {
-	log := log.FromContext(ctx)
+	log := r.Logger.With(zap.String("controller", "RestApi"))
 
 	endpoint := fmt.Sprintf("%s/apis/%s", gateway.GetGatewayServiceEndpoint(), url.PathEscape(handle))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return false, &RetryableError{Err: fmt.Errorf("failed to create HTTP request for existence check: %w", err)}
+	}
+
+	// Add authentication
+	if err := r.addAuthToRequest(ctx, req, gateway); err != nil {
+		log.Warn("Failed to add authentication to existence check request, proceeding without auth", zap.Error(err))
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -452,10 +479,10 @@ func (r *RestApiReconciler) apiExistsOnGateway(ctx context.Context, gateway *reg
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		log.V(1).Info("API exists on gateway", "api", handle)
+		log.Debug("API exists on gateway", zap.String("api", handle))
 		return true, nil
 	case http.StatusNotFound:
-		log.V(1).Info("API does not exist on gateway", "api", handle)
+		log.Debug("API does not exist on gateway", zap.String("api", handle))
 		return false, nil
 	case http.StatusServiceUnavailable, http.StatusTooManyRequests, http.StatusBadGateway, http.StatusGatewayTimeout:
 		// transient - retry later
@@ -508,8 +535,8 @@ func (r *RestApiReconciler) handleDeploymentSuccess(
 	entry *APITrackingEntry,
 	gatewayKey string,
 ) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
-	log.Info("Deployment succeeded", "api", apiConfig.Name, "gateway", gatewayKey)
+	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
+	log.Info("Deployment succeeded", zap.String("api", apiConfig.Name), zap.String("gateway", gatewayKey))
 
 	// Update tracker to Deployed
 	entry.Status = TrackingStatusDeployed
@@ -556,7 +583,7 @@ func (r *RestApiReconciler) handleRetryableError(
 	entry *APITrackingEntry,
 	err *RetryableError,
 ) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
+	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
 
 	entry.RetryCount++
 	entry.LastRetryTime = time.Now()
@@ -568,10 +595,11 @@ func (r *RestApiReconciler) handleRetryableError(
 	}
 
 	if entry.RetryCount >= maxRetries {
-		log.Error(err.Err, "Max retries exceeded",
-			"api", apiConfig.Name,
-			"retryCount", entry.RetryCount,
-			"maxRetries", maxRetries)
+		log.Error("Max retries exceeded",
+			zap.Error(err.Err),
+			zap.String("api", apiConfig.Name),
+			zap.Int("retryCount", entry.RetryCount),
+			zap.Int("maxRetries", maxRetries))
 
 		// Mark as deployed (failed) - keeps tracking but won't retry
 		entry.Status = TrackingStatusDeployed
@@ -599,11 +627,11 @@ func (r *RestApiReconciler) handleRetryableError(
 	r.apiTracker.Set(trackingKey, entry)
 
 	log.Info("Deployment failed, scheduling retry",
-		"api", apiConfig.Name,
-		"retryCount", entry.RetryCount,
-		"maxRetries", maxRetries,
-		"nextRetryIn", backoff,
-		"error", err.Error())
+		zap.String("api", apiConfig.Name),
+		zap.Int("retryCount", entry.RetryCount),
+		zap.Int("maxRetries", maxRetries),
+		zap.Duration("nextRetryIn", backoff),
+		zap.String("error", err.Error()))
 
 	if updateErr := r.updateProgrammedCondition(ctx, apiConfig, metav1.Condition{
 		Type:               apiv1.APIConditionProgrammed,
@@ -627,10 +655,11 @@ func (r *RestApiReconciler) handleNonRetryableError(
 	entry *APITrackingEntry,
 	err *NonRetryableError,
 ) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
-	log.Error(err.Err, "Non-retryable deployment error",
-		"api", apiConfig.Name,
-		"statusCode", err.StatusCode)
+	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
+	log.Error("Non-retryable deployment error",
+		zap.Error(err.Err),
+		zap.String("api", apiConfig.Name),
+		zap.Int("statusCode", err.StatusCode))
 
 	// Mark as deployed (failed)
 	entry.Status = TrackingStatusDeployed
@@ -659,8 +688,8 @@ func (r *RestApiReconciler) handleNonRetryableError(
 
 // handleNoGateway handles the case when no gateway is available
 func (r *RestApiReconciler) handleNoGateway(ctx context.Context, apiConfig *apiv1.RestApi) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
-	log.Info("No matching gateway available", "api", apiConfig.Name)
+	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
+	log.Info("No matching gateway available", zap.String("api", apiConfig.Name))
 
 	if err := r.updateProgrammedCondition(ctx, apiConfig, metav1.Condition{
 		Type:               apiv1.APIConditionProgrammed,
@@ -743,7 +772,7 @@ func (r *RestApiReconciler) updateProgrammedCondition(ctx context.Context, apiCo
 
 // reconcileAPIDeletion handles CR deletion
 func (r *RestApiReconciler) reconcileAPIDeletion(ctx context.Context, apiConfig *apiv1.RestApi) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
+	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
 
 	if !controllerutil.ContainsFinalizer(apiConfig, apiFinalizerName) {
 		return ctrl.Result{}, nil
@@ -751,7 +780,7 @@ func (r *RestApiReconciler) reconcileAPIDeletion(ctx context.Context, apiConfig 
 
 	// Clean up from gateway
 	if err := r.cleanupAPIDeployments(ctx, apiConfig); err != nil {
-		log.Error(err, "failed to clean up API deployments")
+		log.Error("failed to clean up API deployments", zap.Error(err))
 		return ctrl.Result{}, err
 	}
 
@@ -762,7 +791,7 @@ func (r *RestApiReconciler) reconcileAPIDeletion(ctx context.Context, apiConfig 
 	// Remove finalizer
 	controllerutil.RemoveFinalizer(apiConfig, apiFinalizerName)
 	if err := r.Update(ctx, apiConfig); err != nil {
-		log.Error(err, "failed to remove finalizer")
+		log.Error("failed to remove finalizer", zap.Error(err))
 		return ctrl.Result{}, err
 	}
 
@@ -771,7 +800,7 @@ func (r *RestApiReconciler) reconcileAPIDeletion(ctx context.Context, apiConfig 
 
 // cleanupAPIDeployments removes the API from all gateways
 func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig *apiv1.RestApi) error {
-	log := log.FromContext(ctx)
+	log := r.Logger.With(zap.String("controller", "RestApi"), zap.String("name", apiConfig.Name))
 
 	handle := apiConfig.Name
 	if handle == "" {
@@ -783,9 +812,11 @@ func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig
 
 	for _, gateway := range matched {
 		if err := r.deleteAPIFromGateway(ctx, handle, gateway); err != nil {
-			log.Error(err, "failed to delete API from gateway",
-				"gateway", gateway.Name,
-				"namespace", gateway.Namespace)
+			log.Error("failed to delete API from gateway",
+				zap.Error(err),
+				zap.String("api", handle),
+				zap.String("gateway", gateway.Name))
+			// Continue with other gateways even if one fails
 		}
 	}
 
@@ -794,7 +825,7 @@ func (r *RestApiReconciler) cleanupAPIDeployments(ctx context.Context, apiConfig
 
 // deleteAPIFromGateway removes an API from a specific gateway
 func (r *RestApiReconciler) deleteAPIFromGateway(ctx context.Context, handle string, gateway *registry.GatewayInfo) error {
-	log := log.FromContext(ctx)
+	log := r.Logger.With(zap.String("controller", "RestApi"))
 
 	endpoint := fmt.Sprintf("%s/apis/%s",
 		gateway.GetGatewayServiceEndpoint(),
@@ -805,28 +836,75 @@ func (r *RestApiReconciler) deleteAPIFromGateway(ctx context.Context, handle str
 		return fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	// Add authentication
+	if err := r.addAuthToRequest(ctx, req, gateway); err != nil {
+		log.Warn("Failed to add authentication to delete request, proceeding without auth", zap.Error(err))
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send delete request: %w", err)
+		log.Error("failed to send delete request to gateway", zap.Error(err), zap.String("gateway", gateway.Name))
+		return fmt.Errorf("failed to send delete request to gateway: %w", err)
 	}
 	defer resp.Body.Close()
 
 	switch resp.StatusCode {
-	case http.StatusOK, http.StatusNoContent, http.StatusAccepted:
-		log.Info("API removed from gateway",
-			"gateway", gateway.Name,
-			"namespace", gateway.Namespace)
-		return nil
-	case http.StatusNotFound:
-		log.V(1).Info("API already absent from gateway",
-			"gateway", gateway.Name,
-			"namespace", gateway.Namespace)
+	case http.StatusOK, http.StatusNoContent, http.StatusAccepted, http.StatusNotFound:
+		log.Info("API deleted from gateway",
+			zap.String("api", handle),
+			zap.String("gateway", gateway.Name))
 		return nil
 	default:
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("gateway returned error status %d: %s", resp.StatusCode, string(body))
 	}
+}
+
+// addAuthToRequest adds authentication headers to an HTTP request based on gateway auth config
+func (r *RestApiReconciler) addAuthToRequest(ctx context.Context, req *http.Request, gatewayInfo *registry.GatewayInfo) error {
+	log := r.Logger.With(zap.String("controller", "RestApi"))
+
+	// Fetch the Gateway CR to access ConfigRef
+	gateway := &apiv1.Gateway{}
+	if err := r.Get(ctx, types.NamespacedName{
+		Namespace: gatewayInfo.Namespace,
+		Name:      gatewayInfo.Name,
+	}, gateway); err != nil {
+		return fmt.Errorf("failed to get Gateway CR: %w", err)
+	}
+
+	// Try to get auth config from the Gateway's ConfigMap
+	authConfig, err := auth.GetAuthConfigFromGateway(ctx, r.Client, gateway)
+	if err != nil {
+		log.Warn("Failed to retrieve auth config from Gateway ConfigMap, using default credentials",
+			zap.Error(err),
+			zap.String("gateway", gatewayInfo.Name))
+	}
+
+	var username, password string
+	if authConfig != nil {
+		// Try to get credentials from the auth config
+		var ok bool
+		username, password, ok = auth.GetBasicAuthCredentials(authConfig)
+		if !ok {
+			// Auth config exists but no valid basic auth, use default
+			log.Debug("No valid basic auth in config, using default credentials",
+				zap.String("gateway", gatewayInfo.Name))
+			username, password = auth.GetDefaultBasicAuthCredentials()
+		}
+	} else {
+		// No auth config, use default
+		log.Debug("No auth config found, using default credentials",
+			zap.String("gateway", gatewayInfo.Name))
+		username, password = auth.GetDefaultBasicAuthCredentials()
+	}
+
+	// Encode and set the Authorization header
+	encodedAuth := auth.EncodeBasicAuth(username, password)
+	req.Header.Set("Authorization", "Basic "+encodedAuth)
+
+	return nil
 }
 
 // enqueueAPIsForGateway watches for Gateway changes and enqueues affected RestApis
