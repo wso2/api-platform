@@ -26,8 +26,152 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
+
+// PolicyDefinition represents the structure of policy-definition.yaml
+type PolicyDefinition struct {
+	Name    string `yaml:"name"`
+	Version string `yaml:"version"`
+}
+
+// normalizeNameForComparison converts a name to kebab-case for comparison
+func normalizeNameForComparison(name string) string {
+	// Convert to kebab-case (lowercase with hyphens)
+	var result strings.Builder
+
+	for i, r := range name {
+		// Add hyphen before uppercase letters (except the first character)
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			result.WriteRune('-')
+		}
+		result.WriteRune(r)
+	}
+
+	return strings.ToLower(result.String())
+}
+
+// ValidateLocalPolicyZip validates a local policy zip file structure and content
+// Returns the extracted policy name and version if valid, error otherwise
+func ValidateLocalPolicyZip(zipPath string) (policyName string, policyVersion string, err error) {
+	// 1. Validate zip filename format: <name>-<version>.zip
+	zipFileName := filepath.Base(zipPath)
+	if !strings.HasSuffix(zipFileName, ".zip") {
+		return "", "", fmt.Errorf("policy file must be a .zip file, got: %s", zipFileName)
+	}
+
+	// Extract name and version from filename
+	policyName = ExtractPolicyNameFromZipFilename(zipFileName)
+	versionPart := strings.TrimSuffix(strings.TrimPrefix(zipFileName, policyName+"-"), ".zip")
+
+	if policyName == "" || versionPart == "" {
+		return "", "", fmt.Errorf("policy zip filename must follow format '<name>-<version>.zip', got: %s\nExample: basic-auth-v1.0.0.zip", zipFileName)
+	}
+
+	// Normalize version to include 'v' prefix
+	if !strings.HasPrefix(versionPart, "v") {
+		versionPart = "v" + versionPart
+	}
+	policyVersion = versionPart
+
+	// 2. Extract and validate zip structure
+	tempExtractDir, err := os.MkdirTemp("", "policy-validate-*")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create temp directory for validation: %w", err)
+	}
+	defer os.RemoveAll(tempExtractDir)
+
+	if err := Unzip(zipPath, tempExtractDir); err != nil {
+		return "", "", fmt.Errorf("failed to extract policy zip: %w", err)
+	}
+
+	// 3. Check for single version folder
+	entries, err := os.ReadDir(tempExtractDir)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read extracted content: %w", err)
+	}
+
+	if len(entries) != 1 || !entries[0].IsDir() {
+		return "", "", fmt.Errorf("policy zip must contain a single version folder (e.g., v1.0.0/), found %d entries\n"+
+			"Expected structure:\n"+
+			"  %s\n"+
+			"  └── %s/\n"+
+			"      └── policy-definition.yaml", len(entries), zipFileName, policyVersion)
+	}
+
+	versionFolderName := entries[0].Name()
+	versionFolderPath := filepath.Join(tempExtractDir, versionFolderName)
+
+	// 4. Validate version folder name matches expected version
+	if versionFolderName != policyVersion && versionFolderName != strings.TrimPrefix(policyVersion, "v") {
+		return "", "", fmt.Errorf("version folder name '%s' does not match expected version '%s' from filename\n"+
+			"Expected structure:\n"+
+			"  %s\n"+
+			"  └── %s/\n"+
+			"      └── policy-definition.yaml", versionFolderName, policyVersion, zipFileName, policyVersion)
+	}
+
+	// 5. Check for policy-definition.yaml
+	policyDefPath := filepath.Join(versionFolderPath, "policy-definition.yaml")
+	if _, err := os.Stat(policyDefPath); os.IsNotExist(err) {
+		return "", "", fmt.Errorf("policy-definition.yaml not found in version folder\n"+
+			"Expected structure:\n"+
+			"  %s\n"+
+			"  └── %s/\n"+
+			"      └── policy-definition.yaml", zipFileName, versionFolderName)
+	}
+
+	// 6. Parse and validate policy-definition.yaml
+	data, err := os.ReadFile(policyDefPath)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read policy-definition.yaml: %w", err)
+	}
+
+	var policyDef PolicyDefinition
+	if err := yaml.Unmarshal(data, &policyDef); err != nil {
+		return "", "", fmt.Errorf("failed to parse policy-definition.yaml: %w", err)
+	}
+
+	// 7. Validate name field exists and matches (case-insensitive kebab-case comparison)
+	if policyDef.Name == "" {
+		return "", "", fmt.Errorf("'name' field is required in policy-definition.yaml")
+	}
+
+	// Normalize both names for comparison (convert to kebab-case)
+	normalizedZipName := normalizeNameForComparison(policyName)
+	normalizedDefName := normalizeNameForComparison(policyDef.Name)
+
+	if normalizedZipName != normalizedDefName {
+		return "", "", fmt.Errorf("policy name mismatch:\n"+
+			"  - Zip filename indicates: '%s' (normalized: '%s')\n"+
+			"  - policy-definition.yaml has: '%s' (normalized: '%s')\n"+
+			"Both must match when normalized to kebab-case.", policyName, normalizedZipName, policyDef.Name, normalizedDefName)
+	}
+
+	// 8. Validate version field exists and matches
+	if policyDef.Version == "" {
+		return "", "", fmt.Errorf("'version' field is required in policy-definition.yaml")
+	}
+
+	// Normalize version from yaml
+	yamlVersion := policyDef.Version
+	if !strings.HasPrefix(yamlVersion, "v") {
+		yamlVersion = "v" + yamlVersion
+	}
+
+	if yamlVersion != policyVersion {
+		return "", "", fmt.Errorf("policy version mismatch:\n"+
+			"  - Zip filename indicates: '%s'\n"+
+			"  - policy-definition.yaml has: '%s'\n"+
+			"  - Version folder name is: '%s'\n"+
+			"All must match.", policyVersion, policyDef.Version, versionFolderName)
+	}
+
+	return policyName, policyVersion, nil
+}
 
 // CalculateSHA256 calculates SHA-256 checksum of a file
 func CalculateSHA256(filePath string) (string, error) {
@@ -370,32 +514,26 @@ func SetupTempGatewayImageBuildDir(lockFilePath string) error {
 	return nil
 }
 
-// CopyPolicyToTempGatewayImageBuild copies an extracted policy to the temp gateway image build directory structure
-// The policy will be organized as: .wso2ap/.tmp/gateway-image-build/policies/<name>/v<version>/
+// CopyPolicyToTempGatewayImageBuild copies a validated policy zip to the temp gateway image build directory structure
+// The policy will be organized as: .wso2ap/.tmp/gateway-image-build/policies/<name>/<version>/
+// Note: This function expects a validated policy zip file (via ValidateLocalPolicyZip)
 func CopyPolicyToTempGatewayImageBuild(policyName, policyVersion, sourcePath string) error {
 	tempGatewayImageBuildDir, err := GetTempGatewayImageBuildDir()
 	if err != nil {
 		return fmt.Errorf("failed to get temp gateway image build directory path: %w", err)
 	}
 
-	// Create destination directory: .tmp/gateway-image-build/policies/<name>/<version>
-	destDir := filepath.Join(tempGatewayImageBuildDir, "policies", policyName, policyVersion)
-	if err := EnsureDir(destDir); err != nil {
-		return fmt.Errorf("failed to create policy directory: %w", err)
-	}
-
-	// Check if source is a zip file or directory
+	// Only zip files are supported (directories are no longer accepted)
 	fileInfo, err := os.Stat(sourcePath)
 	if err != nil {
 		return fmt.Errorf("failed to stat source path: %w", err)
 	}
 
 	if fileInfo.IsDir() {
-		// If source is a directory, copy its contents
-		return CopyDir(sourcePath, destDir)
+		return fmt.Errorf("policy source must be a zip file, not a directory: %s", sourcePath)
 	}
 
-	// If source is a zip file, extract to a temp location first
+	// Extract zip to temporary location
 	tempExtractDir, err := os.MkdirTemp("", "policy-extract-*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp extract directory: %w", err)
@@ -406,20 +544,67 @@ func CopyPolicyToTempGatewayImageBuild(policyName, policyVersion, sourcePath str
 		return fmt.Errorf("failed to extract policy: %w", err)
 	}
 
-	// Check if extracted content is in a single version folder
+	// Read the extracted content
 	entries, err := os.ReadDir(tempExtractDir)
 	if err != nil {
 		return fmt.Errorf("failed to read extracted directory: %w", err)
 	}
 
-	// If there's a single directory that looks like a version folder, use its contents
-	if len(entries) == 1 && entries[0].IsDir() && strings.HasPrefix(entries[0].Name(), "v") {
-		extractedVersionDir := filepath.Join(tempExtractDir, entries[0].Name())
-		return CopyDir(extractedVersionDir, destDir)
+	// Extract policy name from zip filename
+	zipFileName := filepath.Base(sourcePath)
+	extractedPolicyName := ExtractPolicyNameFromZipFilename(zipFileName)
+
+	// Find the version folder (ignore metadata folders)
+	var versionFolderName string
+	var versionFolderCount int
+	for _, entry := range entries {
+		// Skip macOS metadata folders and hidden folders
+		if entry.IsDir() && !strings.HasPrefix(entry.Name(), "__") && !strings.HasPrefix(entry.Name(), ".") {
+			versionFolderName = entry.Name()
+			versionFolderCount++
+		}
 	}
 
-	// Otherwise, copy all extracted contents
-	return CopyDir(tempExtractDir, destDir)
+	// Ensure we found exactly one version folder
+	if versionFolderCount != 1 {
+		return fmt.Errorf("invalid policy structure: expected single version folder, found %d (excluding metadata folders)", versionFolderCount)
+	}
+
+	// Create destination: .tmp/gateway-image-build/policies/<name>/<version>/
+	policiesBaseDir := filepath.Join(tempGatewayImageBuildDir, "policies", extractedPolicyName)
+	if err := EnsureDir(policiesBaseDir); err != nil {
+		return fmt.Errorf("failed to create policy base directory: %w", err)
+	}
+
+	// Copy version folder to destination
+	srcVersionDir := filepath.Join(tempExtractDir, versionFolderName)
+	dstVersionDir := filepath.Join(policiesBaseDir, versionFolderName)
+
+	if err := CopyDir(srcVersionDir, dstVersionDir); err != nil {
+		return fmt.Errorf("failed to copy version directory: %w", err)
+	}
+
+	return nil
+}
+
+// ExtractPolicyNameFromZipFilename extracts the policy name from a zip filename
+// Examples: basic-auth-v1.0.0.zip -> basic-auth, jwt-auth-v2.1.0.zip -> jwt-auth
+func ExtractPolicyNameFromZipFilename(filename string) string {
+	// Remove .zip extension
+	name := strings.TrimSuffix(filename, ".zip")
+
+	// Find the last occurrence of version pattern (e.g., -v1.0.0)
+	// Match pattern like: -v<digit>
+	re := regexp.MustCompile(`-v\d+`)
+	loc := re.FindStringIndex(name)
+
+	if loc != nil {
+		// Return everything before the version part
+		return name[:loc[0]]
+	}
+
+	// If no version pattern found, return the whole name
+	return name
 }
 
 // CopyDir recursively copies a directory

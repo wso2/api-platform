@@ -1,4 +1,4 @@
-name: JwtAuthentication
+name: JwtAuth
 version: v0.1.0
 description: |
   Validates JWT access tokens using one or more JWKS providers (key managers).
