@@ -88,43 +88,18 @@ func ValidateLocalPolicyZip(zipPath string) (policyName string, policyVersion st
 		return "", "", fmt.Errorf("failed to extract policy zip: %w", err)
 	}
 
-	// 3. Check for single version folder
-	entries, err := os.ReadDir(tempExtractDir)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to read extracted content: %w", err)
-	}
-
-	if len(entries) != 1 || !entries[0].IsDir() {
-		return "", "", fmt.Errorf("policy zip must contain a single version folder (e.g., v1.0.0/), found %d entries\n"+
-			"Expected structure:\n"+
-			"  %s\n"+
-			"  └── %s/\n"+
-			"      └── policy-definition.yaml", len(entries), zipFileName, policyVersion)
-	}
-
-	versionFolderName := entries[0].Name()
-	versionFolderPath := filepath.Join(tempExtractDir, versionFolderName)
-
-	// 4. Validate version folder name matches expected version
-	if versionFolderName != policyVersion && versionFolderName != strings.TrimPrefix(policyVersion, "v") {
-		return "", "", fmt.Errorf("version folder name '%s' does not match expected version '%s' from filename\n"+
-			"Expected structure:\n"+
-			"  %s\n"+
-			"  └── %s/\n"+
-			"      └── policy-definition.yaml", versionFolderName, policyVersion, zipFileName, policyVersion)
-	}
-
-	// 5. Check for policy-definition.yaml
-	policyDefPath := filepath.Join(versionFolderPath, "policy-definition.yaml")
+	// 3. Check for policy-definition.yaml at root
+	policyDefPath := filepath.Join(tempExtractDir, "policy-definition.yaml")
 	if _, err := os.Stat(policyDefPath); os.IsNotExist(err) {
-		return "", "", fmt.Errorf("policy-definition.yaml not found in version folder\n"+
+		return "", "", fmt.Errorf("policy-definition.yaml not found at root of zip\n"+
 			"Expected structure:\n"+
 			"  %s\n"+
-			"  └── %s/\n"+
-			"      └── policy-definition.yaml", zipFileName, versionFolderName)
+			"  ├── policy-definition.yaml\n"+
+			"  ├── <policy-code>.go\n"+
+			"  └── go.mod", zipFileName)
 	}
 
-	// 6. Parse and validate policy-definition.yaml
+	// 4. Parse and validate policy-definition.yaml
 	data, err := os.ReadFile(policyDefPath)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to read policy-definition.yaml: %w", err)
@@ -135,7 +110,7 @@ func ValidateLocalPolicyZip(zipPath string) (policyName string, policyVersion st
 		return "", "", fmt.Errorf("failed to parse policy-definition.yaml: %w", err)
 	}
 
-	// 7. Validate name field exists and matches (case-insensitive kebab-case comparison)
+	// 5. Validate name field exists and matches (case-insensitive kebab-case comparison)
 	if policyDef.Name == "" {
 		return "", "", fmt.Errorf("'name' field is required in policy-definition.yaml")
 	}
@@ -151,7 +126,7 @@ func ValidateLocalPolicyZip(zipPath string) (policyName string, policyVersion st
 			"Both must match when normalized to kebab-case.", policyName, normalizedZipName, policyDef.Name, normalizedDefName)
 	}
 
-	// 8. Validate version field exists and matches
+	// 6. Validate version field exists and matches
 	if policyDef.Version == "" {
 		return "", "", fmt.Errorf("'version' field is required in policy-definition.yaml")
 	}
@@ -166,8 +141,7 @@ func ValidateLocalPolicyZip(zipPath string) (policyName string, policyVersion st
 		return "", "", fmt.Errorf("policy version mismatch:\n"+
 			"  - Zip filename indicates: '%s'\n"+
 			"  - policy-definition.yaml has: '%s'\n"+
-			"  - Version folder name is: '%s'\n"+
-			"All must match.", policyVersion, policyDef.Version, versionFolderName)
+			"Both must match.", policyVersion, policyDef.Version)
 	}
 
 	return policyName, policyVersion, nil
@@ -514,7 +488,49 @@ func SetupTempGatewayImageBuildDir(lockFilePath string) error {
 	return nil
 }
 
+// CopyPolicyToWorkspace copies a policy to the workspace using the new cache structure
+// For hub policies: reads from cache using kebab-case path
+// For local policies: reads from manifest filePath
+// Final structure: .wso2ap/.tmp/gateway-image-build/policies/<kebab-case-name>/<version>/
+func CopyPolicyToWorkspace(policyName, policyVersion, sourcePath string, isLocal bool, index *PolicyIndex) (string, error) {
+	tempGatewayImageBuildDir, err := GetTempGatewayImageBuildDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get temp gateway image build directory path: %w", err)
+	}
+
+	// Generate kebab-case path for workspace
+	kebabPath := GenerateUniqueCachePath(policyName, policyVersion, index)
+
+	// Workspace destination: policies/<kebab-case-name>/<version>/
+	workspacePolicyDir := filepath.Join(tempGatewayImageBuildDir, "policies", kebabPath)
+
+	// Ensure destination directory exists
+	if err := EnsureDir(workspacePolicyDir); err != nil {
+		return "", fmt.Errorf("failed to create workspace policy directory: %w", err)
+	}
+
+	// Extract zip to temporary location
+	tempExtractDir, err := os.MkdirTemp("", "policy-extract-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp extract directory: %w", err)
+	}
+	defer os.RemoveAll(tempExtractDir)
+
+	if err := Unzip(sourcePath, tempExtractDir); err != nil {
+		return "", fmt.Errorf("failed to extract policy: %w", err)
+	}
+
+	// Both hub and local policies have files at root, copy directly
+	if err := CopyDir(tempExtractDir, workspacePolicyDir); err != nil {
+		return "", fmt.Errorf("failed to copy policy contents: %w", err)
+	}
+
+	// Return the relative path for lock file: policies/<kebab-case-name>/<version>
+	return filepath.Join("policies", kebabPath), nil
+}
+
 // CopyPolicyToTempGatewayImageBuild copies a validated policy zip to the temp gateway image build directory structure
+// DEPRECATED: Use CopyPolicyToWorkspace instead for new cache structure
 // The policy will be organized as: .wso2ap/.tmp/gateway-image-build/policies/<name>/<version>/
 // Note: This function expects a validated policy zip file (via ValidateLocalPolicyZip)
 func CopyPolicyToTempGatewayImageBuild(policyName, policyVersion, sourcePath string) error {

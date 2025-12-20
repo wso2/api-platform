@@ -198,7 +198,7 @@ func runOnlineBuild() error {
 		fmt.Println("  → No hub policies to resolve\n")
 	}
 
-	// Step 6: Generate Lock File
+	// Step 6: Generate Lock File (user-facing, without filePaths)
 	fmt.Println("[6/8] Generating Manifest Lock File")
 	lockFilePath := filepath.Join(manifestPath, utils.DefaultManifestLockFile)
 	if err := policy.GenerateLockFile(allProcessed, manifest.Version, lockFilePath); err != nil {
@@ -212,14 +212,29 @@ func runOnlineBuild() error {
 		return fmt.Errorf("failed to setup temp gateway image build directory: %w", err)
 	}
 
-	// Copy all policies to temp gateway image build directory
-	for _, p := range allProcessed {
-		if err := utils.CopyPolicyToTempGatewayImageBuild(p.Name, p.Version, p.LocalPath); err != nil {
-			return fmt.Errorf("failed to copy policy %s v%s to temp gateway image build directory: %w", p.Name, p.Version, err)
-		}
+	// Load policy index for workspace copy
+	index, err := utils.LoadPolicyIndex()
+	if err != nil {
+		return fmt.Errorf("failed to load policy index: %w", err)
 	}
 
+	// Copy all policies to workspace and collect their workspace paths
+	policyWorkspacePaths := make(map[string]string) // key: name:version, value: workspace relative path
+	for _, p := range allProcessed {
+		workspacePath, err := utils.CopyPolicyToWorkspace(p.Name, p.Version, p.LocalPath, p.IsLocal, index)
+		if err != nil {
+			return fmt.Errorf("failed to copy policy %s v%s to workspace: %w", p.Name, p.Version, err)
+		}
+		policyWorkspacePaths[fmt.Sprintf("%s:%s", p.Name, p.Version)] = workspacePath
+	}
+
+	// Generate workspace lock file with filePaths
 	tempGatewayImageBuildDir, _ := utils.GetTempGatewayImageBuildDir()
+	workspaceLockPath := filepath.Join(tempGatewayImageBuildDir, utils.DefaultManifestLockFile)
+	if err := policy.GenerateLockFileWithPaths(allProcessed, manifest.Version, workspaceLockPath, policyWorkspacePaths); err != nil {
+		return fmt.Errorf("failed to generate workspace lock file: %w", err)
+	}
+
 	fmt.Printf("  ✓ Temp gateway image build directory ready: %s\n", tempGatewayImageBuildDir)
 	fmt.Printf("  ✓ Copied %d policies\n\n", len(allProcessed))
 
@@ -305,14 +320,29 @@ func runOfflineBuild() error {
 		return fmt.Errorf("failed to setup temp gateway image build directory: %w", err)
 	}
 
-	// Copy all policies to temp gateway image build directory
-	for _, p := range verified {
-		if err := utils.CopyPolicyToTempGatewayImageBuild(p.Name, p.Version, p.LocalPath); err != nil {
-			return fmt.Errorf("failed to copy policy %s v%s to temp gateway image build directory: %w", p.Name, p.Version, err)
-		}
+	// Load policy index for workspace copy
+	index, err := utils.LoadPolicyIndex()
+	if err != nil {
+		return fmt.Errorf("failed to load policy index: %w", err)
 	}
 
+	// Copy all policies to workspace and collect their workspace paths
+	policyWorkspacePaths := make(map[string]string) // key: name:version, value: workspace relative path
+	for _, p := range verified {
+		workspacePath, err := utils.CopyPolicyToWorkspace(p.Name, p.Version, p.LocalPath, p.IsLocal, index)
+		if err != nil {
+			return fmt.Errorf("failed to copy policy %s v%s to workspace: %w", p.Name, p.Version, err)
+		}
+		policyWorkspacePaths[fmt.Sprintf("%s:%s", p.Name, p.Version)] = workspacePath
+	}
+
+	// Generate workspace lock file with filePaths
 	tempGatewayImageBuildDir, _ := utils.GetTempGatewayImageBuildDir()
+	workspaceLockPath := filepath.Join(tempGatewayImageBuildDir, utils.DefaultManifestLockFile)
+	if err := policy.GenerateLockFileWithPaths(verified, manifest.Version, workspaceLockPath, policyWorkspacePaths); err != nil {
+		return fmt.Errorf("failed to generate workspace lock file: %w", err)
+	}
+
 	fmt.Printf("  ✓ Temp gateway image build directory ready: %s\n", tempGatewayImageBuildDir)
 	fmt.Printf("  ✓ Copied %d policies\n\n", len(verified))
 

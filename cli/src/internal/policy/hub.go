@@ -170,35 +170,54 @@ func resolveWithPolicyHub(hubPolicies []ManifestPolicy, rootVersionResolution st
 	return hubResponse.Data, nil
 }
 
-// downloadAndVerifyPolicies downloads and verifies policies from PolicyHub
+// downloadAndVerifyPolicies downloads and verifies policies from PolicyHub using the new cache structure
 func downloadAndVerifyPolicies(resolvedPolicies []PolicyHubData) ([]ProcessedPolicy, error) {
 	fmt.Printf("→ Downloading and verifying %d policies...\n", len(resolvedPolicies))
 
-	cacheDir, err := utils.GetCacheDir()
+	// Load policy index
+	index, err := utils.LoadPolicyIndex()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get cache directory: %w", err)
+		return nil, fmt.Errorf("failed to load policy index: %w", err)
 	}
 
 	var processed []ProcessedPolicy
 
 	for _, policy := range resolvedPolicies {
-		// Normalize version to include "v" prefix early for consistent naming
+		// Normalize version to include "v" prefix
 		version := policy.Version
 		if !strings.HasPrefix(version, "v") {
 			version = "v" + version
 		}
 
+		// Validate version format
+		if err := utils.ValidateVersionFormat(version); err != nil {
+			return nil, fmt.Errorf("policy %s: %w", policy.PolicyName, err)
+		}
+
 		policyFileName := utils.FormatPolicyFileName(policy.PolicyName, version)
-		cachePath := filepath.Join(cacheDir, policyFileName)
 		expectedChecksum := fmt.Sprintf("sha256:%s", policy.Checksum.Value)
 
 		fmt.Printf("  %s %s: ", policy.PolicyName, version)
 
-		// Check if policy exists in cache
-		if _, err := os.Stat(cachePath); err == nil {
-			// Policy exists in cache
-			if utils.GatewayVerifyChecksumOnBuild {
-				// Verify checksum against hub
+		// Check if policy exists in index
+		relativePath, inCache := utils.GetPolicyFromIndex(index, policy.PolicyName, version)
+
+		var cachePath string
+		if inCache {
+			// Policy is in index, get full path
+			fullPath, err := utils.GetPolicyCachePath(relativePath, policyFileName)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get cache path for %s: %w", policy.PolicyName, err)
+			}
+			cachePath = fullPath
+
+			// Verify the file actually exists
+			if _, err := os.Stat(cachePath); err != nil {
+				// File missing, treat as not cached
+				fmt.Printf("cache entry exists but file missing, re-downloading...")
+				inCache = false
+			} else if utils.GatewayVerifyChecksumOnBuild {
+				// Verify checksum
 				match, err := utils.VerifyChecksum(cachePath, expectedChecksum)
 				if err != nil {
 					return nil, fmt.Errorf("failed to verify checksum for %s: %w", policy.PolicyName, err)
@@ -214,12 +233,29 @@ func downloadAndVerifyPolicies(resolvedPolicies []PolicyHubData) ([]ProcessedPol
 					fmt.Printf(" done\n")
 				}
 			} else {
-				// Skip checksum verification, use cached version
 				fmt.Printf("found in cache (checksum verification disabled)\n")
 			}
-		} else {
-			// Policy not in cache, download it
-			fmt.Printf("downloading...")
+		}
+
+		if !inCache {
+			// Policy not in cache, need to cache it
+			// Generate unique cache path
+			relativePath = utils.GenerateUniqueCachePath(policy.PolicyName, version, index)
+			fullPath, err := utils.GetPolicyCachePath(relativePath, policyFileName)
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate cache path for %s: %w", policy.PolicyName, err)
+			}
+			cachePath = fullPath
+
+			// Ensure directory exists
+			if err := utils.EnsureDir(filepath.Dir(cachePath)); err != nil {
+				return nil, fmt.Errorf("failed to create cache directory for %s: %w", policy.PolicyName, err)
+			}
+
+			// Download policy
+			if !strings.Contains(fmt.Sprint(os.Stderr), "cache entry exists but file missing") {
+				fmt.Printf("downloading...")
+			}
 			if err := downloadPolicy(policy.DownloadURL, cachePath); err != nil {
 				return nil, fmt.Errorf("failed to download %s: %w", policy.PolicyName, err)
 			}
@@ -237,6 +273,9 @@ func downloadAndVerifyPolicies(resolvedPolicies []PolicyHubData) ([]ProcessedPol
 			} else {
 				fmt.Printf(" done (checksum verification disabled)\n")
 			}
+
+			// Add to index
+			utils.AddPolicyToIndex(index, policy.PolicyName, version, relativePath)
 		}
 
 		processed = append(processed, ProcessedPolicy{
@@ -247,6 +286,11 @@ func downloadAndVerifyPolicies(resolvedPolicies []PolicyHubData) ([]ProcessedPol
 			LocalPath: cachePath,
 			IsLocal:   false,
 		})
+	}
+
+	// Save updated index
+	if err := utils.SavePolicyIndex(index); err != nil {
+		return nil, fmt.Errorf("failed to save policy index: %w", err)
 	}
 
 	fmt.Printf("✓ Downloaded and verified %d policies\n\n", len(processed))

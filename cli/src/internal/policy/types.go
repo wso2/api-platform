@@ -60,7 +60,8 @@ type LockPolicy struct {
 	Name     string `yaml:"name"`
 	Version  string `yaml:"version"`
 	Checksum string `yaml:"checksum"`
-	Source   string `yaml:"source"` // "hub" or "local"
+	Source   string `yaml:"source"`             // "hub" or "local"
+	FilePath string `yaml:"filePath,omitempty"` // Workspace path (only in workspace lock file)
 }
 
 // ProcessedPolicy represents a policy after processing (downloading, verifying, etc.)

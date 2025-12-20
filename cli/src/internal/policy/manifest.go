@@ -95,6 +95,44 @@ func GenerateLockFile(policies []ProcessedPolicy, manifestVersion string, output
 	return nil
 }
 
+// GenerateLockFileWithPaths creates a workspace lock file with filePath entries
+func GenerateLockFileWithPaths(policies []ProcessedPolicy, manifestVersion string, outputPath string, workspacePaths map[string]string) error {
+	lock := PolicyLock{
+		Version:  manifestVersion,
+		Policies: make([]LockPolicy, 0, len(policies)),
+	}
+
+	for _, p := range policies {
+		source := "hub"
+		if p.IsLocal {
+			source = "local"
+		}
+
+		// Get workspace path for this policy
+		key := fmt.Sprintf("%s:%s", p.Name, p.Version)
+		workspacePath := workspacePaths[key]
+
+		lock.Policies = append(lock.Policies, LockPolicy{
+			Name:     p.Name,
+			Version:  p.Version,
+			Checksum: p.Checksum,
+			Source:   source,
+			FilePath: workspacePath,
+		})
+	}
+
+	data, err := yaml.Marshal(&lock)
+	if err != nil {
+		return fmt.Errorf("failed to marshal lock file: %w", err)
+	}
+
+	if err := os.WriteFile(outputPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write lock file: %w", err)
+	}
+
+	return nil
+}
+
 // validateManifest validates the manifest structure
 func validateManifest(manifest *PolicyManifest) error {
 	if manifest.Version == "" {
