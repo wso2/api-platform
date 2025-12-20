@@ -14,6 +14,7 @@ import (
 
 const (
 	SupportedManifestVersion = "v1"
+	PoliciesDir              = "policies"
 )
 
 // LoadManifest loads and validates the policy manifest lock file
@@ -147,7 +148,7 @@ func DiscoverPoliciesFromManifest(manifestLockPath string, baseDir string) ([]*t
 	for _, entry := range manifest.Policies {
 		// Derive file path from policy name and version (always relative to baseDir)
 		derivedPath := entry.DeriveFilePath()
-		policyPath := filepath.Join(baseDir, derivedPath)
+		policyPath := filepath.Join(baseDir, PoliciesDir, derivedPath)
 
 		slog.Debug("Resolving policy path",
 			"policy", entry.Name,

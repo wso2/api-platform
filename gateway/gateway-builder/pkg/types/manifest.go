@@ -18,11 +18,11 @@ type ManifestEntry struct {
 }
 
 // DeriveFilePath derives the file path from policy name and version
-// Converts policy name to kebab-case and appends version
-// Example: "BasicAuth" with version "1.0.0" -> "basic-auth-v1.0.0"
+// Converts policy name to kebab-case and creates a directory path
+// Example: "BasicAuth" with version "v1.0.0" -> "basic-auth/v1.0.0"
 func (e *ManifestEntry) DeriveFilePath() string {
 	kebabName := toKebabCase(e.Name)
-	return fmt.Sprintf("%s-v%s", kebabName, e.Version)
+	return fmt.Sprintf("%s/%s", kebabName, e.Version)
 }
 
 // toKebabCase converts a string to kebab-case

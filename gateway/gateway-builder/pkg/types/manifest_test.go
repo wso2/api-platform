@@ -10,33 +10,33 @@ func TestManifestEntry_DeriveFilePath(t *testing.T) {
 	}{
 		{
 			name:     "BasicAuth policy",
-			entry:    ManifestEntry{Name: "BasicAuth", Version: "1.0.0"},
-			expected: "basic-auth-v1.0.0",
+			entry:    ManifestEntry{Name: "BasicAuth", Version: "v1.0.0"},
+			expected: "basic-auth/v1.0.0",
 		},
 		{
 			name:     "APIKey policy",
-			entry:    ManifestEntry{Name: "APIKey", Version: "2.1.0"},
-			expected: "api-key-v2.1.0",
+			entry:    ManifestEntry{Name: "APIKey", Version: "v2.1.0"},
+			expected: "api-key/v2.1.0",
 		},
 		{
 			name:     "RateLimit policy",
-			entry:    ManifestEntry{Name: "RateLimit", Version: "1.5.2"},
-			expected: "rate-limit-v1.5.2",
+			entry:    ManifestEntry{Name: "RateLimit", Version: "v1.5.2"},
+			expected: "rate-limit/v1.5.2",
 		},
 		{
 			name:     "Single word policy",
-			entry:    ManifestEntry{Name: "CORS", Version: "1.0.0"},
-			expected: "cors-v1.0.0",
+			entry:    ManifestEntry{Name: "CORS", Version: "v1.0.0"},
+			expected: "cors/v1.0.0",
 		},
 		{
 			name:     "Already lowercase",
-			entry:    ManifestEntry{Name: "transform", Version: "3.0.0"},
-			expected: "transform-v3.0.0",
+			entry:    ManifestEntry{Name: "transform", Version: "v3.0.0"},
+			expected: "transform/v3.0.0",
 		},
 		{
 			name:     "Multiple consecutive uppercase",
-			entry:    ManifestEntry{Name: "HTTPSRedirect", Version: "1.0.0"},
-			expected: "https-redirect-v1.0.0",
+			entry:    ManifestEntry{Name: "HTTPSRedirect", Version: "v1.0.0"},
+			expected: "https-redirect/v1.0.0",
 		},
 	}
 

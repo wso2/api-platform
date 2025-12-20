@@ -21,7 +21,7 @@ import (
 const (
 	DefaultManifestLockFile = "policy-manifest-lock.yaml"
 	DefaultOutputDir        = "output"
-	DefaultPolicyEngineSrc  = "/gateway/policy-engine"
+	DefaultPolicyEngineSrc  = "/api-platform/gateway/policy-engine"
 
 	// Gateway Controller (extends base image)
 	DefaultGatewayControllerBaseImage = "wso2/api-platform/gateway-controller:v1.0.0-m4" // TODO (renuka): check the usage
@@ -41,7 +41,7 @@ var (
 
 func main() {
 	// Parse command-line flags
-	manifestLockPath := flag.String("manifest", DefaultManifestLockFile, "Path to policy manifest lock file")
+	manifestLockPath := flag.String("manifest-lock", DefaultManifestLockFile, "Path to policy manifest lock file")
 	policyEngineSrc := flag.String("policy-engine-src", DefaultPolicyEngineSrc, "Path to policy-engine runtime source directory")
 	outputDir := flag.String("out-dir", DefaultOutputDir, "Output directory for generated Dockerfiles and artifacts")
 
