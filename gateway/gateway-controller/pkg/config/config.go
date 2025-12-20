@@ -36,6 +36,7 @@ type Config struct {
 	PolicyEngine         map[string]interface{} `koanf:"policy_engine"`
 	PolicyConfigurations map[string]interface{} `koanf:"policy_configurations"`
 	Analytics AnalyticsConfig `koanf:"analytics"`
+	TracingConfig        TracingConfig          `koanf:"tracing"`
 }
 
 // AnalyticsConfig holds analytics configuration
@@ -86,6 +87,32 @@ type IDPConfig struct {
 	Issuer      string              `koanf:"issuer"`
 	RolesClaim  string              `koanf:"roles_claim"`
 	RoleMapping map[string][]string `koanf:"role_mapping"` // local role -> idp roles
+}
+
+// TracingConfig holds OpenTelemetry tracing configuration
+type TracingConfig struct {
+	// Enabled toggles tracing on/off
+	Enabled bool `koanf:"enabled"`
+
+	// Endpoint is the OTLP gRPC endpoint (host:port)
+	Endpoint string `koanf:"endpoint"`
+
+	// Insecure indicates whether to use an insecure connection (no TLS)
+	Insecure bool `koanf:"insecure"`
+
+	// ServiceVersion is the service version reported to the tracing backend
+	ServiceVersion string `koanf:"service_version"`
+
+	// BatchTimeout is the export batch timeout
+	BatchTimeout time.Duration `koanf:"batch_timeout"`
+
+	// MaxExportBatchSize is the maximum batch size for exports
+	MaxExportBatchSize int `koanf:"max_export_batch_size"`
+
+	// SamplingRate is the ratio of requests to sample (0.0 to 1.0)
+	// 1.0 = sample all requests, 0.1 = sample 10% of requests
+	// If set to 0 or not specified, defaults to 1.0 (sample all)
+	SamplingRate float64 `koanf:"sampling_rate"`
 }
 
 // ServerConfig holds server-related configuration
@@ -152,6 +179,8 @@ type RouterConfig struct {
 	DownstreamTLS DownstreamTLS       `koanf:"downstream_tls"`
 	EventGateway  EventGatewayConfig `koanf:"event_gateway"`
 	VHosts        VHostsConfig       `koanf:"vhosts"`
+	// Tracing holds OpenTelemetry exporter configuration
+	TracingServiceName string `koanf:"tracing_service_name"`
 }
 
 // EventGatewayConfig holds event gateway specific configurations
@@ -430,6 +459,8 @@ func defaultConfig() *Config {
 					Main:    VHostEntry{Default: "*"},
 					Sandbox: VHostEntry{Default: "sandbox-*"},
 				},
+				TracingServiceName: "router",
+				
 			},
 			Auth: AuthConfig{
 				Basic: BasicAuth{
@@ -477,6 +508,15 @@ func defaultConfig() *Config {
 				"max_message_size": 1000000000,
 				"max_header_limit": 8192,
 			},
+		},
+		TracingConfig: TracingConfig{
+			Enabled:            false,
+			Endpoint:           "otel-collector:4317",
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       1 * time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       1.0,
 		},
 	}
 }

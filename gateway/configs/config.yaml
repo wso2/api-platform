@@ -129,6 +129,8 @@ gateway_controller:
         route_timeout_in_seconds: 60
         max_route_timeout_in_seconds: 60
         route_idle_timeout_in_seconds: 300
+    tracing_service_name: router
+
 
     # Policy Engine ext_proc filter configuration
     policy_engine:
@@ -357,3 +359,12 @@ analytics:
 
     # max header limit for the ALS server
     max_header_limit: 8192
+
+tracing:
+  enabled: false
+  endpoint: otel-collector:4317
+  insecure: true
+  service_version: "1.0.0"
+  batch_timeout: 1s
+  max_export_batch_size: 512
+  sampling_rate: 1.0

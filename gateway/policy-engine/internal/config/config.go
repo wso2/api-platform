@@ -9,10 +9,11 @@ import (
 )
 
 type Config struct {
-	PolicyEngine PolicyEngine `mapstructure:"policy_engine"`
-	GatewayController map[string]interface{} `mapstructure:"gateway_controller"`
+	PolicyEngine         PolicyEngine           `mapstructure:"policy_engine"`
+	GatewayController    map[string]interface{} `mapstructure:"gateway_controller"`
 	PolicyConfigurations map[string]interface{} `mapstructure:"policy_configurations"`
 	Analytics AnalyticsConfig `mapstructure:"analytics"`
+	TracingConfig        TracingConfig          `mapstructure:"tracing"`
 }
 
 // AnalyticsConfig holds analytics configuration
@@ -38,10 +39,38 @@ type PolicyEngine struct {
 	XDS        XDSConfig        `mapstructure:"xds"`
 	FileConfig FileConfigConfig `mapstructure:"file_config"`
 	Logging    LoggingConfig    `mapstructure:"logging"`
+	// Tracing holds OpenTelemetry exporter configuration
+	TracingServiceName string `mapstructure:"tracing_service_name"`
 
 	// RawConfig holds the complete raw configuration map including custom fields
 	// This is used for resolving ${config} CEL expressions in policy systemParameters
 	RawConfig map[string]interface{} `mapstructure:",remain"`
+}
+
+// TracingConfig holds OpenTelemetry tracing configuration
+type TracingConfig struct {
+	// Enabled toggles tracing on/off
+	Enabled bool `mapstructure:"enabled"`
+
+	// Endpoint is the OTLP gRPC endpoint (host:port)
+	Endpoint string `mapstructure:"endpoint"`
+
+	// Insecure indicates whether to use an insecure connection (no TLS)
+	Insecure bool `mapstructure:"insecure"`
+
+	// ServiceVersion is the service version reported to the tracing backend
+	ServiceVersion string `mapstructure:"service_version"`
+
+	// BatchTimeout is the export batch timeout
+	BatchTimeout time.Duration `mapstructure:"batch_timeout"`
+
+	// MaxExportBatchSize is the maximum batch size for exports
+	MaxExportBatchSize int `mapstructure:"max_export_batch_size"`
+
+	// SamplingRate is the ratio of requests to sample (0.0 to 1.0)
+	// 1.0 = sample all requests, 0.1 = sample 10% of requests
+	// If set to 0 or not specified, defaults to 1.0 (sample all)
+	SamplingRate float64 `mapstructure:"sampling_rate"`
 }
 
 // ServerConfig holds ext_proc server configuration
@@ -229,6 +258,16 @@ func setDefaults(v *viper.Viper) {
 		"max_message_size": 1000000000,
 		"max_header_limit": 8192,
 	})
+	v.SetDefault("policy_engine.tracing_service_name", "policy-engine")
+	// Tracing defaults
+	v.SetDefault("tracing.enabled", false)
+	v.SetDefault("tracing.endpoint", "otel-collector:4317")
+	v.SetDefault("tracing.insecure", true)
+	
+	v.SetDefault("tracing.service_version", "1.0.0")
+	v.SetDefault("tracing.batch_timeout", "1s")
+	v.SetDefault("tracing.max_export_batch_size", 512)
+	v.SetDefault("tracing.sampling_rate", 1.0)
 }
 
 // Validate validates the configuration
@@ -284,6 +323,20 @@ func (c *Config) Validate() error {
 	if c.Analytics.Enabled {
 		if err := c.validateAnalyticsConfig(); err != nil {
 			return fmt.Errorf("analytics configuration validation failed: %v", err)
+		}
+	}
+	if c.TracingConfig.Enabled {
+		if c.TracingConfig.Endpoint == "" {
+			return fmt.Errorf("tracing.endpoint is required when tracing is enabled")
+		}
+		if c.TracingConfig.BatchTimeout <= 0 {
+			return fmt.Errorf("tracing.batch_timeout must be positive")
+		}
+		if c.TracingConfig.MaxExportBatchSize <= 0 {
+			return fmt.Errorf("tracing.max_export_batch_size must be positive")
+		}
+		if c.TracingConfig.SamplingRate <= 0.0 || c.TracingConfig.SamplingRate > 1.0 {
+			return fmt.Errorf("tracing.sampling_rate must be > 0.0 and <= 1.0, got %f", c.TracingConfig.SamplingRate)
 		}
 	}
 

@@ -95,9 +95,86 @@ services:
       - ./resources/secure-backend/secure-backend-nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - gateway-network
+  
+  jaeger:
+    image: jaegertracing/all-in-one:1.76.0
+    container_name: jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"     # Jaeger UI
+      - "14268:14268"     # Jaeger collector HTTP
+    networks:
+      - gateway-network
+    profiles: ["tracing"]
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.112.0
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./observability/otel-collector/config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+    networks:
+      - gateway-network
+    depends_on:
+      - jaeger
+    profiles: ["tracing"]
+
+  opensearch:
+    image: opensearchproject/opensearch:3.4.0
+    container_name: opensearch
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch-node1
+      - discovery.type=single-node
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      - DISABLE_SECURITY_PLUGIN=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    networks:
+      - gateway-network
+    profiles: ["logging"]
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:3.4.0
+    container_name: opensearch-dashboards
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    networks:
+      - gateway-network
+    depends_on:
+      - opensearch
+    profiles: ["logging"]
+
+  fluent-bit:
+    image: fluent/fluent-bit:4.2.1
+    container_name: fluent-bit
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./observability/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
+      - ./observability/fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf
+      - ./observability/fluent-bit/add_component.lua:/fluent-bit/scripts/add_component.lua
+    command: /fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf
+    networks:
+      - gateway-network
+    depends_on:
+      - opensearch
+    profiles: ["logging"]
 
 volumes:
   controller-data:
+    driver: local
+  opensearch-data:
     driver: local
 
 networks:
