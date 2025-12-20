@@ -122,20 +122,10 @@ func main() {
 	// Phase 4: Compilation
 	slog.Info("Starting Phase 4: Compilation", "phase", "compilation")
 
-	// Read version information from environment variables (set by Docker build)
-	version := os.Getenv("VERSION")
-	if version == "" {
-		version = "dev"
-	}
-	gitCommit := os.Getenv("GIT_COMMIT") // TODO: (renuka) check this
-	if gitCommit == "" {
-		gitCommit = "unknown"
-	}
-
 	buildMetadata := &types.BuildMetadata{
 		Timestamp: time.Now().UTC(),
-		Version:   version,
-		GitCommit: gitCommit,
+		Version:   Version,
+		GitCommit: GitCommit,
 		Policies:  make([]types.PolicyInfo, 0, len(policies)),
 	}
 
@@ -182,7 +172,7 @@ func main() {
 	// Phase 6: Manifest Generation
 	slog.Info("Starting Phase 6: Manifest Generation", "phase", "manifest")
 
-	buildManifest := manifest.CreateManifest(version, policies, *outputDir)
+	buildManifest := manifest.CreateManifest(Version, policies, *outputDir)
 
 	// Write manifest to file
 	outManifestPath = filepath.Join(*outputDir, "build-manifest.json")
