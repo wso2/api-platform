@@ -1,13 +1,13 @@
-# Envoy Policy Engine
+# API Platform Policy Engine
 
 A flexible, extensible HTTP request and response processing system that integrates with Envoy Proxy via the ext_proc filter.
 
 ## Overview
 
-The Envoy Policy Engine is an external processor service consisting of three major components:
+The API Platform Policy Engine is an external processor service consisting of three major components:
 
 1. **Policy Engine Runtime** - Core framework (kernel + worker + interfaces) with ZERO built-in policies
-2. **Policy Engine Builder** - Build-time tooling that discovers, validates, and compiles custom policies
+2. **Gateway Builder** - Build-time tooling that discovers, validates, and compiles custom policies
 3. **Sample Policy Implementations** - Optional reference examples (SetHeader, JWT, Rate Limiting, etc.)
 
 ### Critical Architecture Note

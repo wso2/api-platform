@@ -32,8 +32,8 @@ var (
 )
 
 func main() {
-	defaultGatewayControllerBaseImage := "wso2/api-platform/gateway-controller:" + Version
-	defaultRouterBaseImage := "wso2/api-platform/gateway-router:" + Version
+	defaultGatewayControllerBaseImage := "ghcr.io/wso2/api-platform/gateway-controller:" + Version
+	defaultRouterBaseImage := "ghcr.io/wso2/api-platform/gateway-router:" + Version
 
 	// Parse command-line flags
 	manifestLockPath := flag.String("manifest-lock", DefaultManifestLockFile, "Path to policy manifest lock file")

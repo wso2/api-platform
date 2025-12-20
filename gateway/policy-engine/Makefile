@@ -1,4 +1,4 @@
-# Makefile for Envoy Policy Engine
+# Makefile for API Platform Policy Engine
 
 # Variables
 VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo "0.0.1-SNAPSHOT")
@@ -31,7 +31,7 @@ all: help
 
 ## help: Display this help message
 help:
-	@echo "Envoy Policy Engine - Build Targets (Version: $(VERSION))"
+	@echo "API Platform Policy Engine - Build Targets (Version: $(VERSION))"
 	@echo ""
 	@echo "Build Targets:"
 	@echo "  make build                - Build the Policy Engine Docker image using buildx"
