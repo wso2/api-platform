@@ -19,12 +19,25 @@
 package it
 
 import (
+	"encoding/base64"
+	"fmt"
+
 	"github.com/cucumber/godog"
 	"github.com/wso2/api-platform/gateway/it/steps"
 )
 
 // RegisterAPISteps registers all API deployment step definitions
 func RegisterAPISteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps) {
+	ctx.Step(`^I authenticate using basic auth as "([^"]*)"$`, func(userKey string) error {
+		user, ok := state.Config.Users[userKey]
+		if !ok {
+			return fmt.Errorf("unknown user: %s", userKey)
+		}
+		credentials := base64.StdEncoding.EncodeToString([]byte(user.Username + ":" + user.Password))
+		httpSteps.SetHeader("Authorization", "Basic "+credentials)
+		return nil
+	})
+
 	ctx.Step(`^I deploy this API configuration:$`, func(body *godog.DocString) error {
 		httpSteps.SetHeader("Content-Type", "application/yaml")
 		return httpSteps.SendPOSTToService("gateway-controller", "/apis", body)

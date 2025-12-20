@@ -25,6 +25,12 @@ import (
 	"time"
 )
 
+// AuthUser holds credentials for a test user
+type AuthUser struct {
+	Username string
+	Password string
+}
+
 // Config holds configuration for the test suite
 type Config struct {
 	GatewayControllerURL string
@@ -32,6 +38,7 @@ type Config struct {
 	PolicyEngineURL      string
 	SampleBackendURL     string
 	HTTPTimeout          time.Duration
+	Users                map[string]AuthUser
 }
 
 // DefaultConfig returns the default test configuration
@@ -42,6 +49,9 @@ func DefaultConfig() *Config {
 		PolicyEngineURL:      "http://localhost:9002",
 		SampleBackendURL:     "http://localhost:5000",
 		HTTPTimeout:          10 * time.Second,
+		Users: map[string]AuthUser{
+			"admin": {Username: "admin", Password: "admin"},
+		},
 	}
 }
 

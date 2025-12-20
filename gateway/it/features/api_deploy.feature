@@ -25,6 +25,7 @@ Feature: API Deployment and Invocation
     Given the gateway services are running
 
   Scenario: Deploy a simple HTTP API and invoke it successfully
+    Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
       apiVersion: gateway.api-platform.wso2.com/v1alpha1
