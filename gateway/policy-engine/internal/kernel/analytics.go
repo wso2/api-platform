@@ -94,3 +94,21 @@ func buildDynamicMetadata(analyticsStruct *structpb.Struct) *structpb.Struct {
 		},
 	}
 }
+
+// extractMetadataFromMap extracts the metadata from the route metadata
+func extractMetadataFromRouteMetadata(routeMeta RouteMetadata) map[string]interface{} {
+	metadata := make(map[string]interface{})
+	if routeMeta.APIName != "" {
+		metadata["api_name"] = routeMeta.APIName
+	}
+	if routeMeta.APIVersion != "" {
+		metadata["api_version"] = routeMeta.APIVersion
+	}
+	if routeMeta.Context != "" {
+		metadata["api_context"] = routeMeta.Context
+	}
+	if routeMeta.OperationPath != "" {
+		metadata["operation_path"] = routeMeta.OperationPath
+	}
+	return metadata
+}

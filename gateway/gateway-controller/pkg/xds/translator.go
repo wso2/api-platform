@@ -1865,6 +1865,9 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 			ReceivingNamespaces: &extproc.MetadataOptions_MetadataNamespaces{
 				Untyped: []string{constants.ExtProcFilterName},
 			},
+			ForwardingNamespaces: &extproc.MetadataOptions_MetadataNamespaces{
+				Untyped: []string{constants.ExtProcFilterName},
+			},
 		},
 	}
 
