@@ -930,7 +930,7 @@ jobs:
                     - MockKeyManager
             operations:
               - method: GET
-                path: /info
+                path: /get
           EOF
 
       - name: Wait for JWT API to be programmed
@@ -966,19 +966,19 @@ jobs:
           echo "Testing JWT API invocation..."
 
           # 1. Test without token (should fail)
-          status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/secure/info)
-          echo "GET /secure/info (no token) returned: $status"
+          status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/secure/get)
+          echo "GET /secure/get (no token) returned: $status"
           if [ "$status" != "401" ]; then
             echo "Expected 401, got $status"
             exit 1
           fi
 
           # 2. Test with token (should pass)
-          status=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" http://localhost:8080/secure/info)
-          echo "GET /secure/info (with token) returned: $status"
+          status=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" http://localhost:8080/secure/get)
+          echo "GET /secure/get (with token) returned: $status"
           if [ "$status" != "200" ]; then
             echo "Expected 200, got $status"
-            curl -v -H "Authorization: Bearer $TOKEN" http://localhost:8080/secure/info || true
+            curl -v -H "Authorization: Bearer $TOKEN" http://localhost:8080/secure/get || true
             exit 1
           fi
 
