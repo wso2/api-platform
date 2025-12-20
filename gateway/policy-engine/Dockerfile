@@ -68,7 +68,7 @@ WORKDIR /workspace
 
 # Run the gateway builder with manifest (VERSION and GIT_COMMIT are available as env vars)
 RUN /usr/local/bin/gateway-builder \
-    -manifest /workspace/policies/policy-manifest.yaml \
+    -manifest-lock /workspace/policies/policy-manifest-lock.yaml \
     -policy-engine-src /workspace/gateway/policy-engine \
     -out-dir /workspace/output
 
