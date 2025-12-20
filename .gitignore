@@ -46,7 +46,6 @@ out-tsc/
 tmp/
 
 # Testing and coverage
-coverage/
 *.test
 *.out
 

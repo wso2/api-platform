@@ -59,13 +59,49 @@ func NewCoverageCollector(config *CoverageConfig) *CoverageCollector {
 	}
 }
 
+// cleanCoverageDirectory removes existing files in the coverage directory (preserving .gitkeep)
+func (c *CoverageCollector) cleanCoverageDirectory() error {
+	entries, err := os.ReadDir(c.config.OutputDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil // Directory doesn't exist, nothing to clean
+		}
+		return fmt.Errorf("failed to read coverage directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		// Preserve .gitkeep file
+		if entry.Name() == ".gitkeep" {
+			continue
+		}
+		path := filepath.Join(c.config.OutputDir, entry.Name())
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("failed to remove %s: %w", path, err)
+		}
+	}
+
+	log.Println("Cleaned existing coverage data")
+	return nil
+}
+
 // Setup prepares the coverage output directories
 func (c *CoverageCollector) Setup() error {
 	log.Println("Setting up coverage collection directories...")
 
+	// Delete existing coverage folder contents
+	if err := c.cleanCoverageDirectory(); err != nil {
+		log.Printf("Warning: Failed to clean coverage directory: %v", err)
+	}
+
 	// Create main coverage directory
 	if err := os.MkdirAll(c.config.OutputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create coverage directory: %w", err)
+	}
+
+	// Create output directory for reports
+	outputDir := filepath.Join(c.config.OutputDir, "output")
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("failed to create coverage output directory: %w", err)
 	}
 
 	// Create per-service directories
@@ -127,7 +163,7 @@ func (c *CoverageCollector) MergeAndGenerateReport() error {
 	}
 
 	// Generate HTML report
-	htmlReportPath := filepath.Join(c.config.OutputDir, "coverage.html")
+	htmlReportPath := filepath.Join(c.config.OutputDir, "output", "coverage.html")
 	if err := c.generateHTMLReport(mergedDir, htmlReportPath); err != nil {
 		log.Printf("Warning: Failed to generate HTML report: %v", err)
 	}
@@ -137,7 +173,7 @@ func (c *CoverageCollector) MergeAndGenerateReport() error {
 		log.Printf("Warning: Failed to calculate coverage percentage: %v", err)
 	}
 
-	log.Printf("Coverage reports generated in %s", c.config.OutputDir)
+	log.Printf("Coverage reports generated in %s/output", c.config.OutputDir)
 	return nil
 }
 
@@ -295,7 +331,7 @@ func (c *CoverageCollector) logCoveragePercentage(coverDir string) error {
 	}
 
 	// Write JSON report
-	jsonPath := filepath.Join(c.config.OutputDir, "coverage-report.json")
+	jsonPath := filepath.Join(c.config.OutputDir, "output", "coverage-report.json")
 	if err := c.writeCoverageJSON(jsonPath, &report); err != nil {
 		return err
 	}

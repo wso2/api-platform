@@ -113,6 +113,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 build-coverage-image: ## Build coverage-instrumented gateway-controller image
 	docker buildx build -f Dockerfile.coverage \
 		--build-context sdk=../../sdk \
+		--build-context common=../../common \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
 		-t $(IMAGE_NAME)-coverage:$(VERSION) \

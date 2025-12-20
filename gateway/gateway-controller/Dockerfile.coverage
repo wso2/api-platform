@@ -27,6 +27,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy SDK (needed for go.mod replace directive)
 COPY --from=sdk . /sdk
 
+# Copy common (needed for go.mod replace directive)
+COPY --from=common . /common
+
 # Copy go mod files
 COPY go.mod go.sum ./
 RUN go mod download
@@ -53,6 +56,7 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     -o controller cmd/controller/main.go
 
 # Stage 2: Create minimal runtime image
+# Using Debian slim for glibc compatibility with builder stage
 FROM debian:bookworm-slim
 
 # Install runtime dependencies
