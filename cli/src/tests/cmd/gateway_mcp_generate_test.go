@@ -46,9 +46,21 @@ func TestCmdGatewayMcpGenerate(t *testing.T) {
 	// Get the binary path
 	binaryPath := filepath.Join("..", "..", "build", "ap")
 
-	// Check if binary exists
+	// Check if binary exists; if not, try to build it here so CI doesn't
+	// need a separate build step.
 	if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
-		t.Fatalf("Binary not found at %s. Run 'make build' first.", binaryPath)
+		t.Logf("Binary not found at %s. Attempting to build...", binaryPath)
+		if err := os.MkdirAll(filepath.Dir(binaryPath), 0755); err != nil {
+			t.Fatalf("Failed to create build directory: %v", err)
+		}
+		buildCmd := exec.Command("go", "build", "-o", binaryPath, filepath.Join("..", "..", "main.go"))
+		out, err := buildCmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("Failed to build binary: %v\nOutput: %s", err, string(out))
+		}
+		if _, err := os.Stat(binaryPath); os.IsNotExist(err) {
+			t.Fatalf("Binary still not found at %s after build", binaryPath)
+		}
 	}
 
 	t.Log("Starting MCP server Docker container...")
