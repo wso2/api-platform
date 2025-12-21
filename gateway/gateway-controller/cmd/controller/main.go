@@ -104,6 +104,9 @@ func main() {
 	// Initialize in-memory config store
 	configStore := storage.NewConfigStore()
 
+	// Initialize in-memory API key store for xDS
+	apiKeyStore := storage.NewAPIKeyStore(log)
+
 	// Load configurations from database on startup (if persistent mode)
 	if cfg.IsPersistentMode() && db != nil {
 		log.Info("Loading configurations from database")
@@ -114,6 +117,13 @@ func main() {
 			log.Fatal("Failed to load llm provider template configurations from database", zap.Error(err))
 		}
 		log.Info("Loaded configurations", zap.Int("count", len(configStore.GetAll())))
+
+		// Load API keys from database into both in-memory stores
+		log.Info("Loading API keys from database")
+		if err := storage.LoadAPIKeysFromDatabase(db, configStore, apiKeyStore); err != nil {
+			log.Fatal("Failed to load API keys from database", zap.Error(err))
+		}
+		log.Info("Loaded API keys", zap.Int("count", apiKeyStore.Count()))
 	}
 
 	// Initialize xDS snapshot manager with router config
@@ -156,9 +166,20 @@ func main() {
 		}
 	}()
 
-	apiKeyStore := storage.NewAPIKeyStore(log)
 	apiKeySnapshotManager := apikeyxds.NewAPIKeySnapshotManager(apiKeyStore, log)
 	apiKeyXDSManager := apikeyxds.NewAPIKeyStateManager(apiKeyStore, apiKeySnapshotManager, log)
+
+	// Generate initial API key snapshot if API keys were loaded from database
+	if cfg.IsPersistentMode() && apiKeyStore.Count() > 0 {
+		log.Info("Generating initial API key snapshot for policy engine", zap.Int("api_key_count", apiKeyStore.Count()))
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := apiKeySnapshotManager.UpdateSnapshot(ctx); err != nil {
+			log.Warn("Failed to generate initial API key snapshot", zap.Error(err))
+		} else {
+			log.Info("Initial API key snapshot generated successfully")
+		}
+		cancel()
+	}
 
 	// Initialize policy store and start policy xDS server if enabled
 	var policyXDSServer *policyxds.Server

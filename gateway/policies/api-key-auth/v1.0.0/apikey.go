@@ -157,7 +157,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 	apiOperation := ctx.OperationPath
 	operationMethod := ctx.Method
 
-	if apiId != "" || apiName == "" || apiVersion == "" || apiOperation == "" || operationMethod == "" {
+	if apiId == "" || apiName == "" || apiVersion == "" || apiOperation == "" || operationMethod == "" {
 		slog.Debug("API Key Auth Policy: Missing API details for validation",
 			"apiId", apiId,
 			"apiName", apiName,

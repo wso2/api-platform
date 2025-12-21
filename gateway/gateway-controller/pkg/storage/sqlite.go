@@ -1509,3 +1509,79 @@ func isAPIKeyUniqueConstraintError(err error) bool {
 		(err.Error() == "UNIQUE constraint failed: api_keys.api_key" ||
 			err.Error() == "UNIQUE constraint failed: api_keys.id")
 }
+
+// GetAllAPIKeys retrieves all API keys from the database
+func (s *SQLiteStorage) GetAllAPIKeys() ([]*models.APIKey, error) {
+	query := `
+		SELECT id, name, api_key, apiId, operations, status,
+		       created_at, created_by, updated_at, expires_at
+		FROM api_keys
+		WHERE status = 'active'
+		ORDER BY created_at DESC
+	`
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query all API keys: %w", err)
+	}
+	defer rows.Close()
+
+	var apiKeys []*models.APIKey
+
+	for rows.Next() {
+		var apiKey models.APIKey
+		var expiresAt sql.NullTime
+
+		err := rows.Scan(
+			&apiKey.ID,
+			&apiKey.Name,
+			&apiKey.APIKey,
+			&apiKey.APIId,
+			&apiKey.Operations,
+			&apiKey.Status,
+			&apiKey.CreatedAt,
+			&apiKey.CreatedBy,
+			&apiKey.UpdatedAt,
+			&expiresAt,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan API key row: %w", err)
+		}
+
+		// Handle nullable expires_at field
+		if expiresAt.Valid {
+			apiKey.ExpiresAt = &expiresAt.Time
+		}
+
+		apiKeys = append(apiKeys, &apiKey)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating API key rows: %w", err)
+	}
+
+	return apiKeys, nil
+}
+
+// LoadAPIKeysFromDatabase loads all API keys from database into both the ConfigStore and APIKeyStore
+func LoadAPIKeysFromDatabase(storage Storage, configStore *ConfigStore, apiKeyStore *APIKeyStore) error {
+	// Get all API keys from persistent storage
+	apiKeys, err := storage.GetAllAPIKeys()
+	if err != nil {
+		return fmt.Errorf("failed to load API keys from database: %w", err)
+	}
+
+	// Load into both stores
+	for _, apiKey := range apiKeys {
+		// Load into ConfigStore for backward compatibility
+		if err := configStore.StoreAPIKey(apiKey); err != nil {
+			return fmt.Errorf("failed to load API key %s into ConfigStore: %w", apiKey.ID, err)
+		}
+
+		// Load into APIKeyStore for state-of-the-world updates
+		apiKeyStore.Store(apiKey)
+	}
+
+	return nil
+}
