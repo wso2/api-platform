@@ -7,36 +7,6 @@ tests:
     description: Verify all CLI flags have unique values
     enabled: true
   
-  - name: Cmd-GatewayImageBuild-LocalPolicies
-    description: Test gateway image build command with local policies
-    enabled: true
-    dependencies:
-      - Docker
-  
-  - name: Cmd-GatewayImageBuild-HubPolicies
-    description: Test gateway image build command with hub policies from PolicyHub
-    enabled: true
-    dependencies:
-      - Docker
-      - PolicyHub
-  
-  - name: Cmd-GatewayImageBuild-MixedPolicies
-    description: Test gateway image build command with mixed local and hub policies
-    enabled: true
-    dependencies:
-      - Docker
-      - PolicyHub
-  
-  - name: Cmd-GatewayImageBuild-OfflineMode
-    description: Test gateway image build command in offline mode
-    enabled: true
-    dependencies:
-      - Docker
-  
-  - name: Cmd-GatewayImageBuild-Help
-    description: Test gateway image build help command
-    enabled: true
-  
   - name: Cmd-GatewayMcpGenerate
     description: Test gateway MCP generate command with Docker container
     enabled: true

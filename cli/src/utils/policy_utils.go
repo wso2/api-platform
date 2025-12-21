@@ -32,6 +32,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var versionDirRegex = regexp.MustCompile(`^v?\d+\.\d+\.\d+$`)
+
 // PolicyDefinition represents the structure of policy-definition.yaml
 type PolicyDefinition struct {
 	Name    string `yaml:"name"`
@@ -74,15 +76,41 @@ func ValidateLocalPolicyZip(zipPath string) (policyName string, policyVersion st
 		return "", "", fmt.Errorf("failed to extract policy zip: %w", err)
 	}
 
-	// 3. Check for policy-definition.yaml at root
+	// 3. Check for policy-definition.yaml at root; if not present, allow a single top-level
+	// directory layout where the policy-definition.yaml is inside that directory (common when zipping
+	// a folder whose name is the policy or version folder).
 	policyDefPath := filepath.Join(tempExtractDir, "policy-definition.yaml")
 	if _, err := os.Stat(policyDefPath); os.IsNotExist(err) {
-		return "", "", fmt.Errorf("policy-definition.yaml not found at root of zip\n" +
-			"Expected structure:\n" +
-			"  <zip-file>.zip\n" +
-			"  ├── policy-definition.yaml\n" +
-			"  ├── <policy-code>.go\n" +
-			"  └── go.mod")
+		// Inspect top-level entries
+		entries, err := os.ReadDir(tempExtractDir)
+		if err != nil {
+			return "", "", fmt.Errorf("failed to read extracted zip contents: %w", err)
+		}
+
+		// Find candidate top-level directories (exclude hidden and macOS metadata)
+		var candidateDirs []string
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			name := e.Name()
+			if strings.HasPrefix(name, "__") || strings.HasPrefix(name, ".") {
+				continue
+			}
+			candidateDirs = append(candidateDirs, name)
+		}
+
+		if len(candidateDirs) == 1 {
+			// Check inside that directory for policy-definition.yaml
+			nestedPath := filepath.Join(tempExtractDir, candidateDirs[0], "policy-definition.yaml")
+			if _, err := os.Stat(nestedPath); err == nil {
+				policyDefPath = nestedPath
+			} else {
+				return "", "", fmt.Errorf("policy-definition.yaml not found at root or inside single top-level folder '%s'", candidateDirs[0])
+			}
+		} else {
+			return "", "", fmt.Errorf("policy-definition.yaml not found at root of zip and expected a single top-level folder; found %d top-level entries", len(candidateDirs))
+		}
 	}
 
 	// 4. Parse and validate policy-definition.yaml
@@ -536,20 +564,26 @@ func CopyPolicyToTempGatewayImageBuild(policyName, policyVersion, sourcePath str
 	zipFileName := filepath.Base(sourcePath)
 	extractedPolicyName := ExtractPolicyNameFromZipFilename(zipFileName)
 
-	// Find the version folder (ignore metadata folders)
+	// Find the version folder (ignore metadata and hidden folders); expect one semver-like folder
 	var versionFolderName string
 	var versionFolderCount int
 	for _, entry := range entries {
-		// Skip macOS metadata folders and hidden folders
-		if entry.IsDir() && !strings.HasPrefix(entry.Name(), "__") && !strings.HasPrefix(entry.Name(), ".") {
-			versionFolderName = entry.Name()
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasPrefix(name, "__") || strings.HasPrefix(name, ".") {
+			continue
+		}
+		if versionDirRegex.MatchString(name) {
+			versionFolderName = name
 			versionFolderCount++
 		}
 	}
 
 	// Ensure we found exactly one version folder
 	if versionFolderCount != 1 {
-		return fmt.Errorf("invalid policy structure: expected single version folder, found %d (excluding metadata folders)", versionFolderCount)
+		return fmt.Errorf("invalid policy structure: expected single version folder matching pattern %s, found %d (excluding metadata folders)", versionDirRegex.String(), versionFolderCount)
 	}
 
 	// Create destination: .tmp/gateway-image-build/policies/<name>/<version>/

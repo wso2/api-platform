@@ -61,14 +61,33 @@ func ProcessLocalPolicies(localPolicies []ManifestPolicy) ([]ProcessedPolicy, er
 
 		var zipPath string
 
-		// Local policies must be provided as a zip file containing policy-definition.yaml at the root.
+		// Local policies can be provided as a zip file or as a directory containing policy-definition.yaml.
 		if info.IsDir() {
-			return nil, fmt.Errorf("local policy '%s' at path '%s' is a directory: local policies must be zip files containing a policy-definition.yaml at the root", policy.Name, policy.FilePath)
-		}
+			// Create a temporary zip from directory for validation and checksum
+			tempZip, err := os.CreateTemp("", "policy-zip-*.zip")
+			if err != nil {
+				return nil, fmt.Errorf("failed to create temp zip for policy %s: %w", policy.Name, err)
+			}
+			tempZipPath := tempZip.Name()
+			tempZip.Close()
 
-		// It's a file: ensure it's a zip and validate structure
-		zipPath = policyPath
-		fmt.Printf("using zip, ")
+			if err := utils.ZipDirectory(policyPath, tempZipPath); err != nil {
+				os.Remove(tempZipPath)
+				return nil, fmt.Errorf("failed to zip local policy directory %s: %w", policyPath, err)
+			}
+
+			// Ensure cleanup
+			defer func() {
+				_ = os.Remove(tempZipPath)
+			}()
+
+			zipPath = tempZipPath
+			fmt.Printf("zipped directory to temp archive, ")
+		} else {
+			// It's a file: ensure it's a zip and validate structure
+			zipPath = policyPath
+			fmt.Printf("using zip, ")
+		}
 
 		// Validate zip structure using central util so validation can be changed later
 		_, _, err = utils.ValidateLocalPolicyZip(zipPath)

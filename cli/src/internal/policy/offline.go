@@ -135,6 +135,7 @@ func verifyLocalPolicyOffline(lockPolicy LockPolicy, filePath string) (Processed
 	}
 
 	var checksumPath string
+	createdTemp := false
 	if info.IsDir() {
 		// Need to zip it temporarily to calculate checksum
 		tempDir, err := utils.GetTempDir()
@@ -148,6 +149,13 @@ func verifyLocalPolicyOffline(lockPolicy LockPolicy, filePath string) (Processed
 		if err := utils.ZipDirectory(policyPath, checksumPath); err != nil {
 			return ProcessedPolicy{}, fmt.Errorf("failed to zip directory for checksum: %w", err)
 		}
+		createdTemp = true
+		// Ensure cleanup of the temporary zip
+		defer func() {
+			if createdTemp {
+				_ = os.Remove(checksumPath)
+			}
+		}()
 	} else {
 		// It's already a zip file
 		checksumPath = policyPath

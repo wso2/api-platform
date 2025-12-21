@@ -49,7 +49,7 @@ build:
 	@echo "Running Tests"
 	@echo "==============================================="
 	@mkdir -p tests/logs
-	@$(GOTEST) -v ./tests/... > tests/logs/test-results.log 2>&1 || true
+	@bash -c 'set -o pipefail; $(GOTEST) -v ./tests/... 2>&1 | tee tests/logs/test-results.log'
 	@echo ""
 	@echo "==============================================="
 	@echo "Test Results Summary"
@@ -64,7 +64,8 @@ build:
 	@echo "==============================================="
 	@echo "ℹ Full test logs: tests/logs/test-results.log"
 	@if grep -q "^--- FAIL" tests/logs/test-results.log 2>/dev/null; then \
-		echo "⚠ Some tests failed - check logs for details"; \
+		echo "✗ Tests failed - build aborted. Check logs for details"; \
+		exit 1; \
 	fi
 	@echo ""
 	@echo "Building $(BINARY_NAME)..."

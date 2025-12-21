@@ -27,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/wso2/api-platform/cli/utils"
 )
@@ -78,7 +79,7 @@ func ProcessHubPolicies(hubPolicies []ManifestPolicy, rootVersionResolution stri
 
 		errMsg := fmt.Sprintf("no policies were resolved successfully from PolicyHub\n\nRequested policies:\n%s\n\nPossible reasons:\n  • Policy names may not exist in PolicyHub\n  • Versions may not be available\n  • Check policy names match exactly (case-sensitive)\n  • PolicyHub URL: %s",
 			join(requestedPolicies, "\n"),
-			utils.PolicyHubBaseURL)
+			utils.GetPolicyHubBaseURL())
 
 		return nil, fmt.Errorf("%s", errMsg)
 	}
@@ -124,7 +125,7 @@ func resolveWithPolicyHub(hubPolicies []ManifestPolicy, rootVersionResolution st
 		return nil, fmt.Errorf("failed to marshal PolicyHub request: %w", err)
 	}
 
-	url := utils.PolicyHubBaseURL + utils.PolicyHubResolvePath
+	url := utils.GetPolicyHubBaseURL() + utils.PolicyHubResolvePath
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PolicyHub request: %w", err)
@@ -132,7 +133,7 @@ func resolveWithPolicyHub(hubPolicies []ManifestPolicy, rootVersionResolution st
 
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to contact PolicyHub: %w", err)
@@ -258,9 +259,7 @@ func downloadAndVerifyPolicies(resolvedPolicies []PolicyHubData) ([]ProcessedPol
 			}
 
 			// Download policy
-			if !strings.Contains(fmt.Sprint(os.Stderr), "cache entry exists but file missing") {
-				fmt.Printf("downloading...")
-			}
+			fmt.Printf("downloading...")
 			if err := downloadPolicy(policy.DownloadURL, cachePath); err != nil {
 				return nil, fmt.Errorf("failed to download %s: %w", policy.PolicyName, err)
 			}
@@ -313,14 +312,34 @@ func downloadAndVerifyPolicies(resolvedPolicies []PolicyHubData) ([]ProcessedPol
 
 // downloadPolicy downloads a policy from a URL to a destination path
 func downloadPolicy(url, destPath string) error {
-	resp, err := http.Get(url)
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Get(url)
 	if err != nil {
 		return fmt.Errorf("failed to download policy: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed with status %d", resp.StatusCode)
+		bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		if err != nil {
+			return fmt.Errorf("download failed with status %d; failed to read response: %w", resp.StatusCode, err)
+		}
+		return fmt.Errorf("download failed with status %d; response: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	// Validate Content-Type when present
+	contentType := resp.Header.Get("Content-Type")
+	if contentType != "" && !strings.Contains(contentType, "zip") && !strings.Contains(contentType, "octet-stream") {
+		bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		if err != nil {
+			return fmt.Errorf("unexpected content-type '%s' when downloading policy; failed to read response: %w", contentType, err)
+		}
+		return fmt.Errorf("unexpected content-type '%s' when downloading policy; first bytes: %s", contentType, string(bodyBytes))
+	}
+
+	// Ensure destination directory
+	if err := utils.EnsureDir(filepath.Dir(destPath)); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
 	// Create destination file
@@ -331,8 +350,7 @@ func downloadPolicy(url, destPath string) error {
 	defer out.Close()
 
 	// Copy data
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
+	if _, err := io.Copy(out, resp.Body); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 

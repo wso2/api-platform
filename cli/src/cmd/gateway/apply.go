@@ -229,6 +229,9 @@ func resourceExists(client *gateway.Client, handler gateway.ResourceHandler, han
 	}
 
 	// Any other status code is an error
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, fmt.Errorf("unexpected status code %d and failed to read response body: %w", resp.StatusCode, err)
+	}
 	return false, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(body))
 }

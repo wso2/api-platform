@@ -73,7 +73,7 @@ func NewPolicyHubClient() *PolicyHubClient {
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		baseURL: utils.PolicyHubBaseURL,
+		baseURL: utils.GetPolicyHubBaseURL(),
 	}
 }
 

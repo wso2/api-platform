@@ -118,7 +118,8 @@ func initializeDefaults() error {
 }
 
 func runBuildCommand() error {
-	fmt.Println("\n=== Gateway Image Build ===\n")
+	fmt.Println("=== Gateway Image Build ===")
+	fmt.Println()
 
 	// Initialize computed values
 	if err := initializeDefaults(); err != nil {
@@ -142,11 +143,13 @@ func runBuildCommand() error {
 
 	// Determine build mode
 	if offline {
-		fmt.Println("\n→ Building in OFFLINE mode\n")
+		fmt.Println("→ Building in OFFLINE mode")
+		fmt.Println()
 		return runOfflineBuild()
 	}
 
-	fmt.Println("\n→ Building in ONLINE mode\n")
+	fmt.Println("→ Building in ONLINE mode")
+	fmt.Println()
 	return runOnlineBuild()
 }
 
@@ -183,7 +186,8 @@ func runOnlineBuild() error {
 		}
 		allProcessed = append(allProcessed, processed...)
 	} else {
-		fmt.Println("  → No local policies to process\n")
+		fmt.Println("  → No local policies to process")
+		fmt.Println()
 	}
 
 	// Step 5: Resolve and Download Hub Policies
@@ -195,7 +199,8 @@ func runOnlineBuild() error {
 		}
 		allProcessed = append(allProcessed, processed...)
 	} else {
-		fmt.Println("  → No hub policies to resolve\n")
+		fmt.Println("  → No hub policies to resolve")
+		fmt.Println()
 	}
 
 	// Step 6: Generate Lock File (user-facing, without filePaths)
@@ -229,7 +234,10 @@ func runOnlineBuild() error {
 	}
 
 	// Generate workspace lock file with filePaths
-	tempGatewayImageBuildDir, _ := utils.GetTempGatewayImageBuildDir()
+	tempGatewayImageBuildDir, err := utils.GetTempGatewayImageBuildDir()
+	if err != nil {
+		return fmt.Errorf("failed to get temp gateway image build directory path: %w", err)
+	}
 	workspaceLockPath := filepath.Join(tempGatewayImageBuildDir, utils.DefaultManifestLockFile)
 	if err := policy.GenerateLockFileWithPaths(allProcessed, manifest.Version, workspaceLockPath, policyWorkspacePaths); err != nil {
 		return fmt.Errorf("failed to generate workspace lock file: %w", err)
@@ -243,7 +251,7 @@ func runOnlineBuild() error {
 	if err := runDockerBuild(); err != nil {
 		return fmt.Errorf("failed to build gateway images: %w", err)
 	}
-	fmt.Println("  ✓ All images built successfully\n")
+	fmt.Println("  ✓ All images built successfully")
 
 	// Step 9: Copy Output if requested
 	fmt.Println("[9/9] Finalizing Build")
@@ -349,7 +357,10 @@ func runOfflineBuild() error {
 	}
 
 	// Generate workspace lock file with filePaths
-	tempGatewayImageBuildDir, _ := utils.GetTempGatewayImageBuildDir()
+	tempGatewayImageBuildDir, err := utils.GetTempGatewayImageBuildDir()
+	if err != nil {
+		return fmt.Errorf("failed to get temp gateway image build directory path: %w", err)
+	}
 	workspaceLockPath := filepath.Join(tempGatewayImageBuildDir, utils.DefaultManifestLockFile)
 	if err := policy.GenerateLockFileWithPaths(verified, manifest.Version, workspaceLockPath, policyWorkspacePaths); err != nil {
 		return fmt.Errorf("failed to generate workspace lock file: %w", err)
@@ -363,7 +374,7 @@ func runOfflineBuild() error {
 	if err := runDockerBuild(); err != nil {
 		return fmt.Errorf("failed to build gateway images: %w", err)
 	}
-	fmt.Println("  ✓ All images built successfully\n")
+	fmt.Println("  ✓ All images built successfully")
 
 	// Step 6: Copy Output
 	fmt.Println("[6/7] Finalizing Build")
@@ -384,7 +395,7 @@ func runOfflineBuild() error {
 }
 
 func displayOfflineBuildSummary(manifestFile, lockFile string, verified []policy.ProcessedPolicy, workspaceDir string) {
-	fmt.Println("\n=== Build Summary ===")
+	fmt.Println("=== Build Summary ===")
 	fmt.Println()
 
 	// Images built
@@ -421,7 +432,7 @@ func displayOfflineBuildSummary(manifestFile, lockFile string, verified []policy
 }
 
 func displayBuildSummary(manifest *policy.PolicyManifest, manifestFilePath, lockFile string, processed []policy.ProcessedPolicy, workspaceDir string) {
-	fmt.Println("\n=== Build Summary ===")
+	fmt.Println("=== Build Summary ===")
 	fmt.Println()
 
 	// Images built

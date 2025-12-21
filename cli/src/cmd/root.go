@@ -37,9 +37,6 @@ A command-line tool for managing and interacting with the WSO2 API Platform.
 USAGE:
   ap [command] [subcommand] [flags]
 
-FLAG SHORTCUTS:
-  All flags support shorthand notation using their first letter:
-  --name → -n, --server → -s, --token → -t, --output → -o, --insecure → -i
 
 EXAMPLES:
   # Add a gateway

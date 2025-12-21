@@ -19,6 +19,7 @@
 package tests
 
 import (
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -84,36 +85,36 @@ func TestCmdGatewayMcpGenerate(t *testing.T) {
 		t.Log("✓ Container cleaned up")
 	}()
 
-	// Wait for container to be ready
-	t.Log("Waiting for MCP server to be ready...")
-	ready := false
+	// Wait for container to be ready using HTTP health check
+	t.Log("Waiting for MCP server to be ready (HTTP health check)...")
+	client := &http.Client{Timeout: 2 * time.Second}
 	for i := 0; i < 30; i++ {
-		checkCmd := exec.Command("docker", "logs", containerName)
-		logs, _ := checkCmd.CombinedOutput()
-		logsStr := string(logs)
-
-		// Save logs for debugging
-		os.MkdirAll("logs", 0755)
-		os.WriteFile("logs/mcp-container.log", logs, 0644)
-
-		if strings.Contains(logsStr, "Server started") ||
-			strings.Contains(logsStr, "listening") ||
-			strings.Contains(logsStr, "started") ||
-			len(logsStr) > 100 { // Container is producing output
-			ready = true
-			t.Log("✓ MCP server is ready")
-			break
+		resp, err := client.Get("http://localhost:3001/mcp")
+		if err == nil {
+			if resp.StatusCode < 500 {
+				resp.Body.Close()
+				t.Log("✓ MCP server is ready (health check passed)")
+				break
+			}
+			resp.Body.Close()
 		}
 
+		// Not ready yet; if last iteration, dump logs
 		if i == 29 {
+			checkCmd := exec.Command("docker", "logs", containerName)
+			logs, _ := checkCmd.CombinedOutput()
+			logsStr := string(logs)
+
+			if err := os.MkdirAll("logs", 0755); err != nil {
+				t.Logf("Warning: failed to create logs directory: %v", err)
+			} else if err := os.WriteFile("logs/mcp-container.log", logs, 0644); err != nil {
+				t.Logf("Warning: failed to write container logs: %v", err)
+			}
+
 			t.Logf("Container logs:\n%s", logsStr)
 			t.Fatal("MCP server did not start within 30 seconds")
 		}
 		time.Sleep(1 * time.Second)
-	}
-
-	if !ready {
-		t.Fatal("MCP server did not become ready")
 	}
 
 	// Give the server a bit more time to fully initialize
