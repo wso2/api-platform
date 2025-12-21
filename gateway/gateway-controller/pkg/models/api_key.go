@@ -43,6 +43,8 @@ type APIKey struct {
 	CreatedBy  string       `json:"created_by" db:"created_by"`
 	UpdatedAt  time.Time    `json:"updated_at" db:"updated_at"`
 	ExpiresAt  *time.Time   `json:"expires_at" db:"expires_at"`
+	Unit       *string      `json:"-" db:"expires_in_unit"`
+	Duration   *int         `json:"-" db:"expires_in_duration"`
 }
 
 // IsValid checks if the API key is valid (active and not expired)

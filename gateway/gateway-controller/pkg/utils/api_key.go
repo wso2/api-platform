@@ -371,35 +371,42 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 
 	// Process operations
 	operations := "[*]" // Default to all operations
-	if request.Operations != nil && len(*request.Operations) > 0 {
-		operations = s.generateOperationsString(*request.Operations)
-	}
+	//if request.Operations != nil && len(*request.Operations) > 0 {
+	//	operations = s.generateOperationsString(*request.Operations)
+	//}
 
 	now := time.Now()
 
 	// Calculate expiration time
 	var expiresAt *time.Time
+	var unit *string
+	var duration *int
+
 	if request.ExpiresAt != nil {
 		expiresAt = request.ExpiresAt
 	} else if request.ExpiresIn != nil {
-		duration := time.Duration(request.ExpiresIn.Duration)
+		// Store the original unit and duration values
+		unitStr := string(request.ExpiresIn.Unit)
+		unit = &unitStr
+		duration = &request.ExpiresIn.Duration
+		timeDuration := time.Duration(request.ExpiresIn.Duration)
 		switch request.ExpiresIn.Unit {
 		case api.Seconds:
-			duration *= time.Second
+			timeDuration *= time.Second
 		case api.Minutes:
-			duration *= time.Minute
+			timeDuration *= time.Minute
 		case api.Hours:
-			duration *= time.Hour
+			timeDuration *= time.Hour
 		case api.Days:
-			duration *= 24 * time.Hour
+			timeDuration *= 24 * time.Hour
 		case api.Weeks:
-			duration *= 7 * 24 * time.Hour
+			timeDuration *= 7 * 24 * time.Hour
 		case api.Months:
-			duration *= 30 * 24 * time.Hour // Approximate month as 30 days
+			timeDuration *= 30 * 24 * time.Hour // Approximate month as 30 days
 		default:
 			return nil, fmt.Errorf("unsupported expiration unit: %s", request.ExpiresIn.Unit)
 		}
-		expiry := now.Add(duration)
+		expiry := now.Add(timeDuration)
 		expiresAt = &expiry
 	}
 
@@ -418,6 +425,8 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 		CreatedBy:  user,
 		UpdatedAt:  now,
 		ExpiresAt:  expiresAt,
+		Unit:       unit,
+		Duration:   duration,
 	}, nil
 }
 

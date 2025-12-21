@@ -185,6 +185,8 @@ func (s *SQLiteStorage) initSchema() error {
 				created_by TEXT NOT NULL DEFAULT 'system',
 				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				expires_at TIMESTAMP NULL,
+				expires_in_unit TEXT NULL,
+				expires_in_duration INTEGER NULL,
 				FOREIGN KEY (apiId) REFERENCES deployments(id) ON DELETE CASCADE,
 				UNIQUE (apiId, name)
 			);`); err != nil {
@@ -1081,8 +1083,8 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 		insertQuery := `
 			INSERT INTO api_keys (
 				id, name, api_key, apiId, operations, status,
-				created_at, created_by, updated_at, expires_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				created_at, created_by, updated_at, expires_at, expires_in_unit, expires_in_duration
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
 
 		_, err := tx.Exec(insertQuery,
@@ -1096,6 +1098,8 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 			apiKey.CreatedBy,
 			apiKey.UpdatedAt,
 			apiKey.ExpiresAt,
+			apiKey.Unit,
+			apiKey.Duration,
 		)
 
 		if err != nil {
@@ -1116,7 +1120,7 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 		// Existing record found, update it with new API key data
 		updateQuery := `
 			UPDATE api_keys 
-			SET api_key = ?, operations = ?, status = ?, created_by = ?, updated_at = ?, expires_at = ?
+			SET api_key = ?, operations = ?, status = ?, created_by = ?, updated_at = ?, expires_at = ?, expires_in_unit = ?, expires_in_duration = ?
 			WHERE apiId = ? AND name = ?
 		`
 
@@ -1127,6 +1131,8 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 			apiKey.CreatedBy,
 			apiKey.UpdatedAt,
 			apiKey.ExpiresAt,
+			apiKey.Unit,
+			apiKey.Duration,
 			apiKey.APIId,
 			apiKey.Name,
 		)

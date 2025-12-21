@@ -2100,11 +2100,6 @@ components:
           type: string
           description: Name of the API key
           example: my-weather-api-key
-        operations:
-          type: array
-          description: List of API operations the key will have access to
-          items:
-            $ref: '#/components/schemas/Operation'
         expires_in:
           type: object
           description: Expiration duration for the API key

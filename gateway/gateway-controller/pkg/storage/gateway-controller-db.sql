@@ -131,6 +131,10 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP NULL,  -- NULL means no expiration
+
+    -- Expiration policy fields
+    expires_in_unit TEXT NULL,
+    expires_in_duration INTEGER NULL,
     
     -- Foreign key relationship to deployments
     FOREIGN KEY (apiId) REFERENCES deployments(id) ON DELETE CASCADE,
