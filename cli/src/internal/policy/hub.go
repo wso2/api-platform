@@ -29,6 +29,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/cli/internal/policyhub"
 	"github.com/wso2/api-platform/cli/utils"
 )
 
@@ -46,13 +47,10 @@ type PolicyHubResponse struct {
 
 // PolicyHubData represents a resolved policy from PolicyHub
 type PolicyHubData struct {
-	PolicyName  string `json:"policy_name"`
-	Version     string `json:"version"`
-	DownloadURL string `json:"download_url"`
-	Checksum    struct {
-		Algorithm string `json:"algorithm"`
-		Value     string `json:"value"`
-	} `json:"checksum"`
+	PolicyName  string             `json:"policy_name"`
+	Version     string             `json:"version"`
+	DownloadURL string             `json:"download_url"`
+	Checksum    policyhub.Checksum `json:"checksum"`
 }
 
 // ProcessHubPolicies resolves and downloads hub policies
