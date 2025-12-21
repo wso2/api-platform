@@ -58,6 +58,22 @@ type APIKeyRevocationParams struct {
 	Logger        *zap.Logger // Logger instance
 }
 
+// APIKeyRotationParams contains parameters for API key rotation operations
+type APIKeyRotationParams struct {
+	Handle        string                    // API handle/ID
+	APIKeyName    string                    // Name of the API key to rotate
+	Request       api.APIKeyRotationRequest // Request body with rotation details
+	User          string                    // User who initiated the request
+	CorrelationID string                    // Correlation ID for tracking
+	Logger        *zap.Logger               // Logger instance
+}
+
+// APIKeyRotationResult contains the result of API key rotation
+type APIKeyRotationResult struct {
+	Response api.APIKeyGenerationResponse // Response following the generated schema
+	IsRetry  bool                         // Whether this was a retry due to collision
+}
+
 // APIKeyService provides utilities for API configuration deployment
 type APIKeyService struct {
 	store      *storage.ConfigStore
@@ -347,6 +363,150 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) error {
 	return nil
 }
 
+// RotateAPIKey rotates an existing API key
+func (s *APIKeyService) RotateAPIKey(params APIKeyRotationParams) (*APIKeyRotationResult, error) {
+	logger := params.Logger
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+
+	logger.Info("Starting API key rotation",
+		zap.String("handle", params.Handle),
+		zap.String("api_key_name", params.APIKeyName),
+		zap.String("user", params.User),
+		zap.String("correlation_id", params.CorrelationID))
+
+	// Get the API configuration
+	config, err := s.store.GetByHandle(params.Handle)
+	if err != nil {
+		logger.Warn("API configuration not found for API Key rotation",
+			zap.String("handle", params.Handle),
+			zap.String("correlation_id", params.CorrelationID))
+		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+	}
+
+	// Get the existing API key by name
+	existingKey, err := s.store.GetAPIKeyByName(config.ID, params.APIKeyName)
+	if err != nil {
+		logger.Warn("API key not found for rotation",
+			zap.String("handle", params.Handle),
+			zap.String("api_key_name", params.APIKeyName),
+			zap.String("correlation_id", params.CorrelationID))
+		return nil, fmt.Errorf("API key '%s' not found for API '%s'", params.APIKeyName, params.Handle)
+	}
+
+	// Generate the rotated API key using the extracted helper method
+	rotatedKey, err := s.generateRotatedAPIKey(existingKey, params.Request, params.User, logger)
+	if err != nil {
+		logger.Error("Failed to generate rotated API key",
+			zap.Error(err),
+			zap.String("handle", params.Handle),
+			zap.String("correlation_id", params.CorrelationID))
+		return nil, fmt.Errorf("failed to generate rotated API key: %w", err)
+	}
+
+	result := &APIKeyRotationResult{
+		IsRetry: false,
+	}
+
+	// Save rotated API key to database (only if persistent mode)
+	if s.db != nil {
+		if err := s.db.SaveAPIKey(rotatedKey); err != nil {
+			if errors.Is(err, storage.ErrConflict) {
+				// Handle collision by retrying once with a new key
+				logger.Warn("API key collision detected during rotation, retrying",
+					zap.String("handle", params.Handle),
+					zap.String("correlation_id", params.CorrelationID))
+
+				// Generate a new rotated key
+				rotatedKey, err = s.generateRotatedAPIKey(existingKey, params.Request, params.User, logger)
+				if err != nil {
+					logger.Error("Failed to regenerate rotated API key after collision",
+						zap.Error(err),
+						zap.String("correlation_id", params.CorrelationID))
+					return nil, fmt.Errorf("failed to regenerate rotated API key after collision: %w", err)
+				}
+
+				// Try saving again
+				if err := s.db.SaveAPIKey(rotatedKey); err != nil {
+					logger.Error("Failed to save rotated API key after retry",
+						zap.Error(err),
+						zap.String("correlation_id", params.CorrelationID))
+					return nil, fmt.Errorf("failed to save rotated API key after retry: %w", err)
+				}
+
+				result.IsRetry = true
+			} else {
+				logger.Error("Failed to save rotated API key to database",
+					zap.Error(err),
+					zap.String("handle", params.Handle),
+					zap.String("correlation_id", params.CorrelationID))
+				return nil, fmt.Errorf("failed to save rotated API key to database: %w", err)
+			}
+		}
+		// No need to revoke the old API key as the old one will be overwritten
+	}
+
+	// Store the generated API key in the ConfigStore
+	if err := s.store.StoreAPIKey(rotatedKey); err != nil {
+		logger.Error("Failed to store the rotated API key in ConfigStore",
+			zap.Error(err),
+			zap.String("handle", params.Handle),
+			zap.String("correlation_id", params.CorrelationID))
+
+		// Rollback database save to maintain consistency
+		if s.db != nil {
+			if delErr := s.db.RemoveAPIKeyAPIAndName(rotatedKey.APIId, rotatedKey.Name); delErr != nil {
+				logger.Error("Failed to rollback API key from database",
+					zap.Error(delErr),
+					zap.String("correlation_id", params.CorrelationID))
+			}
+		}
+		return nil, fmt.Errorf("failed to store API key in ConfigStore: %w", err)
+	}
+
+	apiConfig, err := config.Configuration.Spec.AsAPIConfigData()
+	if err != nil {
+		logger.Error("Failed to parse API configuration data",
+			zap.Error(err),
+			zap.String("handle", params.Handle),
+			zap.String("correlation_id", params.CorrelationID))
+		return nil, fmt.Errorf("failed to parse API configuration data: %w", err)
+	}
+
+	apiId := config.ID
+	apiName := apiConfig.DisplayName
+	apiVersion := apiConfig.Version
+	logger.Info("Storing API key in policy engine",
+		zap.String("handle", params.Handle),
+		zap.String("name", rotatedKey.Name),
+		zap.String("api_name", apiName),
+		zap.String("api_version", apiVersion),
+		zap.String("user", params.User),
+		zap.String("correlation_id", params.CorrelationID))
+
+	// Update xDS snapshot if needed
+	if s.xdsManager != nil {
+		if err := s.xdsManager.StoreAPIKey(apiId, apiName, apiVersion, rotatedKey, params.CorrelationID); err != nil {
+			logger.Error("Failed to send rotated API key to policy engine",
+				zap.Error(err),
+				zap.String("correlation_id", params.CorrelationID))
+			return nil, fmt.Errorf("failed to send rotated API key to policy engine: %w", err)
+		}
+	}
+
+	// Build and return the response
+	result.Response = s.buildAPIKeyResponse(rotatedKey, params.Handle)
+
+	logger.Info("API key rotation completed successfully",
+		zap.String("handle", params.Handle),
+		zap.String("api_key_name", params.APIKeyName),
+		zap.String("new_key_id", rotatedKey.ID),
+		zap.String("correlation_id", params.CorrelationID))
+
+	return result, nil
+}
+
 // generateAPIKeyFromRequest creates a new API key based on the APIKeyGenerationRequest
 func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.APIKeyGenerationRequest, user string,
 	config *models.StoredConfig) (*models.APIKey, error) {
@@ -355,13 +515,10 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 	id := uuid.New().String()
 
 	// Generate 32 random bytes for the API key
-	randomBytes := make([]byte, 32)
-	if _, err := rand.Read(randomBytes); err != nil {
-		return nil, fmt.Errorf("failed to generate random bytes: %w", err)
+	apiKeyValue, err := s.generateAPIKeyValue()
+	if err != nil {
+		return nil, err
 	}
-
-	// Encode to hex and prefix
-	apiKeyValue := APIKeyPrefix + hex.EncodeToString(randomBytes)
 
 	// Set name - use provided name or generate a default one
 	name := fmt.Sprintf("%s-key-%s", handle, id[:8]) // Default name
@@ -391,17 +548,17 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 		duration = &request.ExpiresIn.Duration
 		timeDuration := time.Duration(request.ExpiresIn.Duration)
 		switch request.ExpiresIn.Unit {
-		case api.Seconds:
+		case api.APIKeyGenerationRequestExpiresInUnitSeconds:
 			timeDuration *= time.Second
-		case api.Minutes:
+		case api.APIKeyGenerationRequestExpiresInUnitMinutes:
 			timeDuration *= time.Minute
-		case api.Hours:
+		case api.APIKeyGenerationRequestExpiresInUnitHours:
 			timeDuration *= time.Hour
-		case api.Days:
+		case api.APIKeyGenerationRequestExpiresInUnitDays:
 			timeDuration *= 24 * time.Hour
-		case api.Weeks:
+		case api.APIKeyGenerationRequestExpiresInUnitWeeks:
 			timeDuration *= 7 * 24 * time.Hour
-		case api.Months:
+		case api.APIKeyGenerationRequestExpiresInUnitMonths:
 			timeDuration *= 30 * 24 * time.Hour // Approximate month as 30 days
 		default:
 			return nil, fmt.Errorf("unsupported expiration unit: %s", request.ExpiresIn.Unit)
@@ -486,4 +643,124 @@ func (s *APIKeyService) maskAPIKey(apiKey string) string {
 		return "****"
 	}
 	return apiKey[:8] + "****" + apiKey[len(apiKey)-4:]
+}
+
+// generateAPIKeyValue generates a new API key value with collision handling
+func (s *APIKeyService) generateAPIKeyValue() (string, error) {
+	randomBytes := make([]byte, 32)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+	}
+	return APIKeyPrefix + hex.EncodeToString(randomBytes), nil
+}
+
+// generateRotatedAPIKey creates a new API key for rotation based on existing key and request parameters
+func (s *APIKeyService) generateRotatedAPIKey(existingKey *models.APIKey, request api.APIKeyRotationRequest,
+	user string, logger *zap.Logger) (*models.APIKey, error) {
+	// Generate new API key value
+	newAPIKeyValue, err := s.generateAPIKeyValue()
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+
+	// Determine expiration settings based on request and existing key
+	var expiresAt *time.Time
+	var unit *string
+	var duration *int
+
+	if request.ExpiresAt != nil {
+		// If expires_at is explicitly provided, use it
+		expiresAt = request.ExpiresAt
+		logger.Info("Using provided expires_at for rotation", zap.Time("expires_at", *expiresAt))
+	} else if request.ExpiresIn != nil {
+		// If expires_in is provided, calculate expires_at from now
+		unitStr := string(request.ExpiresIn.Unit)
+		unit = &unitStr
+		duration = &request.ExpiresIn.Duration
+
+		timeDuration := time.Duration(request.ExpiresIn.Duration)
+		switch request.ExpiresIn.Unit {
+		case api.APIKeyRotationRequestExpiresInUnitSeconds:
+			timeDuration *= time.Second
+		case api.APIKeyRotationRequestExpiresInUnitMinutes:
+			timeDuration *= time.Minute
+		case api.APIKeyRotationRequestExpiresInUnitHours:
+			timeDuration *= time.Hour
+		case api.APIKeyRotationRequestExpiresInUnitDays:
+			timeDuration *= 24 * time.Hour
+		case api.APIKeyRotationRequestExpiresInUnitWeeks:
+			timeDuration *= 7 * 24 * time.Hour
+		case api.APIKeyRotationRequestExpiresInUnitMonths:
+			timeDuration *= 30 * 24 * time.Hour
+		default:
+			return nil, fmt.Errorf("unsupported expiration unit: %s", request.ExpiresIn.Unit)
+		}
+		expiry := now.Add(timeDuration)
+		expiresAt = &expiry
+		logger.Info("Using provided expires_in for rotation",
+			zap.String("unit", unitStr),
+			zap.Int("duration", *duration),
+			zap.Time("calculated_expires_at", *expiresAt))
+	} else {
+		// No expiration provided in request, use existing key's logic
+		if existingKey.Unit != nil && existingKey.Duration != nil {
+			// Existing key has duration/unit, apply same duration from now
+			unit = existingKey.Unit
+			duration = existingKey.Duration
+
+			timeDuration := time.Duration(*existingKey.Duration)
+			switch *existingKey.Unit {
+			case string(api.APIKeyRotationRequestExpiresInUnitSeconds):
+				timeDuration *= time.Second
+			case string(api.APIKeyRotationRequestExpiresInUnitMinutes):
+				timeDuration *= time.Minute
+			case string(api.APIKeyRotationRequestExpiresInUnitHours):
+				timeDuration *= time.Hour
+			case string(api.APIKeyRotationRequestExpiresInUnitDays):
+				timeDuration *= 24 * time.Hour
+			case string(api.APIKeyRotationRequestExpiresInUnitWeeks):
+				timeDuration *= 7 * 24 * time.Hour
+			case string(api.APIKeyRotationRequestExpiresInUnitMonths):
+				timeDuration *= 30 * 24 * time.Hour
+			default:
+				return nil, fmt.Errorf("unsupported existing expiration unit: %s", *existingKey.Unit)
+			}
+			expiry := now.Add(timeDuration)
+			expiresAt = &expiry
+			logger.Info("Using existing key's duration settings for rotation",
+				zap.String("unit", *unit),
+				zap.Int("duration", *duration),
+				zap.Time("calculated_expires_at", *expiresAt))
+		} else if existingKey.ExpiresAt != nil {
+			// Existing key has absolute expiry, use same expiry
+			expiresAt = existingKey.ExpiresAt
+			logger.Info("Using existing key's expires_at for rotation", zap.Time("expires_at", *expiresAt))
+		} else {
+			// Existing key has no expiry, new key also has no expiry
+			expiresAt = nil
+			logger.Info("No expiry set for rotated key (matching existing key)")
+		}
+	}
+
+	if user == "" {
+		user = "system"
+	}
+
+	// Create the rotated API key
+	return &models.APIKey{
+		ID:         uuid.New().String(),
+		Name:       existingKey.Name,
+		APIKey:     newAPIKeyValue,
+		APIId:      existingKey.APIId,
+		Operations: existingKey.Operations,
+		Status:     models.APIKeyStatusActive,
+		CreatedAt:  now,
+		CreatedBy:  user,
+		UpdatedAt:  now,
+		ExpiresAt:  expiresAt,
+		Unit:       unit,
+		Duration:   duration,
+	}, nil
 }

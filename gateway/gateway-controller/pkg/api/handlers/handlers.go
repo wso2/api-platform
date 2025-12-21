@@ -2425,3 +2425,71 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKey string) {
 	// Return the response using the generated schema
 	c.JSON(http.StatusNoContent, nil)
 }
+
+// RotateAPIKey implements ServerInterface.RotateAPIKey
+// (PUT /apis/{id}/api-key/{apiKeyName})
+func (s *APIServer) RotateAPIKey(c *gin.Context, id string, apiKeyName string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	// TODO - Do user validation and get user info
+	user := "api_consumer" // Placeholder for user identification
+
+	log.Debug("Starting API key rotation",
+		zap.String("handle", handle),
+		zap.String("key name", apiKeyName),
+		zap.String("user", user),
+		zap.String("correlation_id", correlationID))
+
+	// Parse and validate request body
+	var request api.APIKeyRotationRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		log.Warn("Invalid request body for API key rotation",
+			zap.Error(err),
+			zap.String("handle", handle),
+			zap.String("correlation_id", correlationID))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Invalid request body: %v", err),
+		})
+		return
+	}
+
+	// Prepare parameters
+	params := utils.APIKeyRotationParams{
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.RotateAPIKey(params)
+	if err != nil {
+		// Check error type to determine appropriate status code
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		}
+		return
+	}
+
+	log.Info("API key rotation completed",
+		zap.String("handle", handle),
+		zap.String("key name", apiKeyName),
+		zap.String("user", user),
+		zap.String("correlation_id", correlationID))
+
+	// Return the response using the generated schema
+	c.JSON(http.StatusCreated, result.Response)
+}

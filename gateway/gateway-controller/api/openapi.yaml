@@ -402,6 +402,69 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /apis/{id}/api-key/{apiKeyName}:
+    put:
+      summary: Rotate API key for an API
+      description: |
+        Rotate the given API key for the specified API. The newly rotated key can be
+        used by clients to authenticate requests to the API if API Key validation
+        policy is applied. The key is a 32-byte random value encoded in hexadecimal
+        and prefixed with "apip_".
+      operationId: rotateAPIKey
+      tags:
+        - API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API to generate the key for
+          schema:
+            type: string
+          example: weather-api-v1.0
+        - name: apiKeyName
+          in: path
+          required: true
+          description: |
+            Name of the API key to rotate
+          schema:
+            type: string
+          example: weather-api-key
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyRotationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRotationRequest"
+      responses:
+        '200':
+          description: API key rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyGenerationResponse"
+        "400":
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: API configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /apis/{id}/api-key/{apiKey}:
     delete:
       summary: Revoke an API key
@@ -2193,6 +2256,36 @@ components:
         - created_at
         - created_by
         - expires_at
+    APIKeyRotationRequest:
+      type: object
+      properties:
+        expires_in:
+          type: object
+          description: Expiration duration for the API key
+          properties:
+            unit:
+              type: string
+              description: Time unit for expiration
+              enum:
+                - seconds
+                - minutes
+                - hours
+                - days
+                - weeks
+                - months
+              example: days
+            duration:
+              type: integer
+              description: Duration value for expiration
+              example: 30
+          required:
+            - unit
+            - duration
+        expires_at:
+          type: string
+          format: date-time
+          description: Expiration timestamp
+          example: "2026-12-08T10:30:00Z"
 
     APIListItem:
       type: object
