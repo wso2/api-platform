@@ -43,9 +43,9 @@ LDFLAGS=-ldflags "-X github.com/wso2/api-platform/cli/utils.Version=$(VERSION) -
 
 all: clean test build
 
+
 ## build: Build the binary for current platform (runs tests first)
 build:
-	@mkdir -p tests/logs
 	@bash scripts/run-tests-with-summary.sh
 	@echo ""
 	@echo "Building $(BINARY_NAME)..."
