@@ -61,5 +61,5 @@ policies:
 
   # API Key Authentication Policy
   - name: APIKeyAuthentication
-    version: v1.0.0
-    filePath: ./api-key-auth/v1.0.0
+    version: v0.1.0
+    filePath: ./api-key-auth/v0.1.0

@@ -1,5 +1,5 @@
 name: APIKeyAuthentication
-version: v1.0.0
+version: v0.1.0
 description: |
   Implements API Key Authentication to protect APIs with pre-shared API keys.
   Validates API keys from request headers or query parameters against a configured
