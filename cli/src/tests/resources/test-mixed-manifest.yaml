@@ -6,7 +6,7 @@ policies:
     versionResolution: exact
   - name: modify-headers
     version: v1.0.0
-    filePath: ../../gateway/policies/modify-headers
+    filePath: modify-headers-v1.0.0.zip
   - name: jwt-auth
     version: v0.1.0
     versionResolution: exact

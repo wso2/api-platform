@@ -139,9 +139,9 @@ func TestCmdGatewayImageBuildLocalPolicies(t *testing.T) {
 	// Check for expected output patterns
 	expectedPatterns := []string{
 		"=== Gateway Image Build ===",
-		"[1/6] Checking Docker Availability",
-		"[2/6] Reading Policy Manifest",
-		"[3/6] Processing Local Policies",
+		"Checking Docker Availability",
+		"Reading Policy Manifest",
+		"Processing Local Policies",
 		"Local policies:",
 	}
 
@@ -247,7 +247,7 @@ func TestCmdGatewayImageBuildHubPolicies(t *testing.T) {
 	// Check for expected output patterns
 	expectedPatterns := []string{
 		"=== Gateway Image Build ===",
-		"[4/6] Resolving Hub Policies from PolicyHub",
+		"Resolving Hub Policies from PolicyHub",
 		"Hub policies:",
 	}
 
@@ -448,8 +448,8 @@ func TestCmdGatewayImageBuildOfflineMode(t *testing.T) {
 	expectedPatterns := []string{
 		"=== Gateway Image Build ===",
 		"Building in OFFLINE mode",
-		"[2/4] Reading Manifest and Lock Files",
-		"[3/4] Verifying Policies",
+		"Reading Manifest and Lock Files",
+		"Verifying Policies",
 	}
 
 	for _, pattern := range expectedPatterns {
