@@ -63,6 +63,14 @@ func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFu
 			}
 		}
 
+		// If no authenticators are configured, allow all requests (no-auth mode)
+		if len(authenticators) == 0 {
+			logger.Debug("No authenticators configured - allowing request without authentication")
+			c.Set(constants.AuthzSkipKey, true)
+			c.Next()
+			return
+		}
+
 		// Find suitable authenticator
 		var selectedAuth Authenticator
 		for _, auth := range authenticators {

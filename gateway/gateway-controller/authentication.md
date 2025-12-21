@@ -10,6 +10,10 @@ You can enable one (or both) of the following:
 
 - **Basic Auth (local users)**: Define usernames/passwords and assign local roles.
 - **IDP/JWT (external users)**: Validate incoming JWTs using `jwks_url` optionally `issuer`.
+- **No Authentication (open access)**: If BOTH `basic.enabled` and `idp.enabled` are set to `false`, all requests are allowed without authentication. This is useful for:
+  - Development and testing environments
+  - Public APIs that don't require authentication
+  - Internal services behind a secure network perimeter
 
 ### Authorization (Are you allowed?)
 Gateway Controller routes are protected using **local roles** (for example `admin`, `developer`, `consumer`).
@@ -80,6 +84,7 @@ In this example, a user in `platform-admins` becomes both `admin` and `developer
 - **You enabled `roles_claim` and suddenly everything is forbidden**: add `role_mapping` (mapping is mandatory when `roles_claim` is provided).
 - **Users authenticate but don’t have expected access**: confirm the token actually contains the configured `roles_claim`, and that its values match what you listed in `role_mapping`.
 - **You want authN but not authZ**: keep IDP enabled, but leave `roles_claim` and `role_mapping` unset to bypass authorization checks.
+- **You want to disable authentication entirely**: set both `basic.enabled` and `idp.enabled` to `false`. All requests will be allowed through without authentication.
 
 ## Testing
 Unit tests cover wildcard precedence, one-to-many role grants, and supported claim formats for `roles_claim`.
