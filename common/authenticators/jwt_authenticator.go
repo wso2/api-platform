@@ -49,8 +49,14 @@ type JWTAuthenticator struct {
 
 // NewJWTAuthenticator creates a new JWT authenticator
 func NewJWTAuthenticator(config *models.AuthConfig, logger *zap.Logger) (*JWTAuthenticator, error) {
+	return newJWTAuthenticatorWithJWKS(config, logger, true)
+}
+
+// newJWTAuthenticatorWithJWKS creates a new JWT authenticator with optional JWKS initialization
+// This is useful for testing where JWKS is not needed
+func newJWTAuthenticatorWithJWKS(config *models.AuthConfig, logger *zap.Logger, initJWKS bool) (*JWTAuthenticator, error) {
 	var jwks keyfunc.Keyfunc
-	if config.JWTConfig != nil {
+	if config.JWTConfig != nil && initJWKS {
 		// Get Issuer URL from config
 		if config.JWTConfig.JWKSUrl == "" {
 			return nil, errors.New("JWKS endpoint not configured")
@@ -138,11 +144,12 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 		}
 	}
 
+	j.logger.Info("ScopeClaim", zap.String("ScopeClaim", j.config.JWTConfig.ScopeClaim))
 	// If no role claim is configured, set flag to skip authorization
 	// This allows authentication-only mode where all authenticated users can access resources
 	var permissions []string
 	if j.config.JWTConfig.ScopeClaim == "" {
-		j.logger.Debug("No role claim configured, setting skip_authz flag")
+		j.logger.Info("No role claim configured, setting skip_authz flag")
 		ctx.Set(constants.AuthzSkipKey, true)
 		permissions = []string{}
 	} else {
