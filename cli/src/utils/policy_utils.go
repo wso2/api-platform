@@ -57,25 +57,11 @@ func normalizeNameForComparison(name string) string {
 // ValidateLocalPolicyZip validates a local policy zip file structure and content
 // Returns the extracted policy name and version if valid, error otherwise
 func ValidateLocalPolicyZip(zipPath string) (policyName string, policyVersion string, err error) {
-	// 1. Validate zip filename format: <name>-<version>.zip
+	// Ensure file is a zip
 	zipFileName := filepath.Base(zipPath)
 	if !strings.HasSuffix(zipFileName, ".zip") {
 		return "", "", fmt.Errorf("policy file must be a .zip file, got: %s", zipFileName)
 	}
-
-	// Extract name and version from filename
-	policyName = ExtractPolicyNameFromZipFilename(zipFileName)
-	versionPart := strings.TrimSuffix(strings.TrimPrefix(zipFileName, policyName+"-"), ".zip")
-
-	if policyName == "" || versionPart == "" {
-		return "", "", fmt.Errorf("policy zip filename must follow format '<name>-<version>.zip', got: %s\nExample: basic-auth-v1.0.0.zip", zipFileName)
-	}
-
-	// Normalize version to include 'v' prefix
-	if !strings.HasPrefix(versionPart, "v") {
-		versionPart = "v" + versionPart
-	}
-	policyVersion = versionPart
 
 	// 2. Extract and validate zip structure
 	tempExtractDir, err := os.MkdirTemp("", "policy-validate-*")
@@ -91,12 +77,12 @@ func ValidateLocalPolicyZip(zipPath string) (policyName string, policyVersion st
 	// 3. Check for policy-definition.yaml at root
 	policyDefPath := filepath.Join(tempExtractDir, "policy-definition.yaml")
 	if _, err := os.Stat(policyDefPath); os.IsNotExist(err) {
-		return "", "", fmt.Errorf("policy-definition.yaml not found at root of zip\n"+
-			"Expected structure:\n"+
-			"  %s\n"+
-			"  ├── policy-definition.yaml\n"+
-			"  ├── <policy-code>.go\n"+
-			"  └── go.mod", zipFileName)
+		return "", "", fmt.Errorf("policy-definition.yaml not found at root of zip\n" +
+			"Expected structure:\n" +
+			"  <zip-file>.zip\n" +
+			"  ├── policy-definition.yaml\n" +
+			"  ├── <policy-code>.go\n" +
+			"  └── go.mod")
 	}
 
 	// 4. Parse and validate policy-definition.yaml
@@ -110,41 +96,21 @@ func ValidateLocalPolicyZip(zipPath string) (policyName string, policyVersion st
 		return "", "", fmt.Errorf("failed to parse policy-definition.yaml: %w", err)
 	}
 
-	// 5. Validate name field exists and matches (case-insensitive kebab-case comparison)
+	// 5. Ensure required fields exist in policy-definition.yaml
 	if policyDef.Name == "" {
 		return "", "", fmt.Errorf("'name' field is required in policy-definition.yaml")
 	}
-
-	// Normalize both names for comparison (convert to kebab-case)
-	normalizedZipName := normalizeNameForComparison(policyName)
-	normalizedDefName := normalizeNameForComparison(policyDef.Name)
-
-	if normalizedZipName != normalizedDefName {
-		return "", "", fmt.Errorf("policy name mismatch:\n"+
-			"  - Zip filename indicates: '%s' (normalized: '%s')\n"+
-			"  - policy-definition.yaml has: '%s' (normalized: '%s')\n"+
-			"Both must match when normalized to kebab-case.", policyName, normalizedZipName, policyDef.Name, normalizedDefName)
-	}
-
-	// 6. Validate version field exists and matches
 	if policyDef.Version == "" {
 		return "", "", fmt.Errorf("'version' field is required in policy-definition.yaml")
 	}
 
-	// Normalize version from yaml
+	// Normalize version to include 'v' prefix for returned value
 	yamlVersion := policyDef.Version
 	if !strings.HasPrefix(yamlVersion, "v") {
 		yamlVersion = "v" + yamlVersion
 	}
 
-	if yamlVersion != policyVersion {
-		return "", "", fmt.Errorf("policy version mismatch:\n"+
-			"  - Zip filename indicates: '%s'\n"+
-			"  - policy-definition.yaml has: '%s'\n"+
-			"Both must match.", policyVersion, policyDef.Version)
-	}
-
-	return policyName, policyVersion, nil
+	return policyDef.Name, yamlVersion, nil
 }
 
 // CalculateSHA256 calculates SHA-256 checksum of a file

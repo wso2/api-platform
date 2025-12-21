@@ -34,11 +34,6 @@ func ProcessLocalPolicies(localPolicies []ManifestPolicy) ([]ProcessedPolicy, er
 
 	fmt.Printf("→ Processing %d local policies...\n", len(localPolicies))
 
-	tempDir, err := utils.GetTempDir()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get temp directory: %w", err)
-	}
-
 	var processed []ProcessedPolicy
 
 	for _, policy := range localPolicies {
@@ -66,19 +61,19 @@ func ProcessLocalPolicies(localPolicies []ManifestPolicy) ([]ProcessedPolicy, er
 
 		var zipPath string
 
-		// If it's a directory, zip it
+		// Local policies must be provided as a zip file containing policy-definition.yaml at the root.
 		if info.IsDir() {
-			zipFileName := utils.FormatPolicyFileName(policy.Name, policy.Version)
-			zipPath = filepath.Join(tempDir, zipFileName)
+			return nil, fmt.Errorf("local policy '%s' at path '%s' is a directory: local policies must be zip files containing a policy-definition.yaml at the root", policy.Name, policy.FilePath)
+		}
 
-			if err := utils.ZipDirectory(policyPath, zipPath); err != nil {
-				return nil, fmt.Errorf("failed to zip policy directory %s: %w", policy.FilePath, err)
-			}
-			fmt.Printf("zipped, ")
-		} else {
-			// It's already a file, assume it's a zip
-			zipPath = policyPath
-			fmt.Printf("using existing zip, ")
+		// It's a file: ensure it's a zip and validate structure
+		zipPath = policyPath
+		fmt.Printf("using zip, ")
+
+		// Validate zip structure using central util so validation can be changed later
+		_, _, err = utils.ValidateLocalPolicyZip(zipPath)
+		if err != nil {
+			return nil, fmt.Errorf("policy %s: validation failed: %w\n\nLocal policies must be a zip file containing a policy-definition.yaml at the root. The policy-definition.yaml must include 'name' and 'version' fields.", policy.Name, err)
 		}
 
 		// Calculate checksum
