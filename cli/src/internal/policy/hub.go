@@ -172,7 +172,7 @@ func resolveWithPolicyHub(hubPolicies []ManifestPolicy, rootVersionResolution st
 
 // downloadAndVerifyPolicies downloads and verifies policies from PolicyHub using the new cache structure
 func downloadAndVerifyPolicies(resolvedPolicies []PolicyHubData) ([]ProcessedPolicy, error) {
-	fmt.Printf("→ Downloading and verifying %d policies...\n", len(resolvedPolicies))
+	fmt.Printf("→ Processing %d hub policies...\n", len(resolvedPolicies))
 
 	// Load policy index
 	index, err := utils.LoadPolicyIndex()
@@ -181,6 +181,8 @@ func downloadAndVerifyPolicies(resolvedPolicies []PolicyHubData) ([]ProcessedPol
 	}
 
 	var processed []ProcessedPolicy
+	downloadCount := 0
+	cacheHitCount := 0
 
 	for _, policy := range resolvedPolicies {
 		// Normalize version to include "v" prefix
@@ -225,15 +227,18 @@ func downloadAndVerifyPolicies(resolvedPolicies []PolicyHubData) ([]ProcessedPol
 
 				if match {
 					fmt.Printf("found in cache, checksum verified\n")
+					cacheHitCount++
 				} else {
 					fmt.Printf("cache checksum mismatch, re-downloading...")
 					if err := downloadPolicy(policy.DownloadURL, cachePath); err != nil {
 						return nil, fmt.Errorf("failed to download %s: %w", policy.PolicyName, err)
 					}
 					fmt.Printf(" done\n")
+					downloadCount++
 				}
 			} else {
 				fmt.Printf("found in cache (checksum verification disabled)\n")
+				cacheHitCount++
 			}
 		}
 
@@ -274,6 +279,7 @@ func downloadAndVerifyPolicies(resolvedPolicies []PolicyHubData) ([]ProcessedPol
 				fmt.Printf(" done (checksum verification disabled)\n")
 			}
 
+			downloadCount++
 			// Add to index
 			utils.AddPolicyToIndex(index, policy.PolicyName, version, relativePath)
 		}
@@ -293,7 +299,15 @@ func downloadAndVerifyPolicies(resolvedPolicies []PolicyHubData) ([]ProcessedPol
 		return nil, fmt.Errorf("failed to save policy index: %w", err)
 	}
 
-	fmt.Printf("✓ Downloaded and verified %d policies\n\n", len(processed))
+	// Display summary based on what actually happened
+	if downloadCount > 0 && cacheHitCount > 0 {
+		fmt.Printf("✓ Downloaded %d, found %d in cache\n\n", downloadCount, cacheHitCount)
+	} else if downloadCount > 0 {
+		fmt.Printf("✓ Downloaded and verified %d policies\n\n", downloadCount)
+	} else {
+		fmt.Printf("✓ All %d policies found in cache\n\n", cacheHitCount)
+	}
+
 	return processed, nil
 }
 
