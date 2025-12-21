@@ -18,7 +18,7 @@ type testConfig struct {
 
 // isTestEnabled reads ../test-config.yaml and returns whether the named test
 // is enabled. If the config cannot be read or the test is not listed, it
-// conservatively returns false (enabled).
+// conservatively returns false (disabled).
 func isTestEnabled(name string) bool {
 	cfgPath := filepath.Join("..", "test-config.yaml")
 	data, err := os.ReadFile(cfgPath)
