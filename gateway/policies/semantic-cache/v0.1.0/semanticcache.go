@@ -21,9 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,23 +38,6 @@ const (
 	MetadataKeyAPIID = "semantic_cache_api_id"
 )
 
-var (
-	// Map of policy instance hash to its providers
-	embeddingProviders   = make(map[string]embeddingproviders.EmbeddingProvider)
-	vectorStoreProviders = make(map[string]vectordbproviders.VectorDBProvider)
-
-	// Mutex to protect access to global providers
-	providerMutex sync.RWMutex
-
-	// Map of policy instance hash to its configurations (to detect changes)
-	embeddingConfigs   = make(map[string]embeddingproviders.EmbeddingProviderConfig)
-	vectorStoreConfigs = make(map[string]vectordbproviders.VectorDBProviderConfig)
-
-	// Map to track if index has been created for each policy instance
-	indexCreated = make(map[string]bool)
-	indexMutex   sync.RWMutex
-)
-
 // SemanticCachePolicy implements semantic caching for LLM responses
 type SemanticCachePolicy struct {
 	embeddingConfig     embeddingproviders.EmbeddingProviderConfig
@@ -65,7 +46,6 @@ type SemanticCachePolicy struct {
 	vectorStoreProvider vectordbproviders.VectorDBProvider
 	jsonPath            string
 	threshold           float64
-	policyInstanceHash  string
 }
 
 // GetPolicy creates a new instance of the semantic cache policy
@@ -80,21 +60,23 @@ func GetPolicy(
 		return nil, fmt.Errorf("invalid params: %w", err)
 	}
 
-	// Generate unique policy instance hash based on route and policy metadata
-	p.policyInstanceHash = generatePolicyInstanceHash(metadata)
-
-	// Initialize or reuse embedding provider
-	if err := p.initializeEmbeddingProvider(); err != nil {
-		return nil, fmt.Errorf("failed to initialize embedding provider: %w", err)
+	// Initialize embedding provider
+	embeddingProvider, err := createEmbeddingProvider(p.embeddingConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create embedding provider: %w", err)
 	}
+	p.embeddingProvider = embeddingProvider
 
-	// Initialize or reuse vector store provider
-	if err := p.initializeVectorStoreProvider(); err != nil {
-		return nil, fmt.Errorf("failed to initialize vector store provider: %w", err)
+	// Initialize vector store provider
+	vectorStoreProvider, err := createVectorDBProvider(p.vectorStoreConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create vector store provider: %w", err)
 	}
+	p.vectorStoreProvider = vectorStoreProvider
 
-	if p.embeddingProvider == nil || p.vectorStoreProvider == nil {
-		return nil, fmt.Errorf("failed to initialize providers")
+	// Create index during initialization
+	if err := p.vectorStoreProvider.CreateIndex(); err != nil {
+		return nil, fmt.Errorf("failed to create vector store index: %w", err)
 	}
 
 	return p, nil
@@ -122,8 +104,12 @@ func parseParams(params map[string]interface{}, p *SemanticCachePolicy) error {
 		return fmt.Errorf("'threshold' must be a number: %w", err)
 	}
 	if threshold < 0.0 || threshold > 1.0 {
-		return fmt.Errorf("'threshold' must be between 0.0 and 1.0")
+		return fmt.Errorf("'threshold' must be between 0.0 and 1.0 (similarity range)")
 	}
+	// Convert similarity (0-1) to cosine distance (0-1): distance = 1 - similarity
+	// Higher similarity (1.0) → lower distance (0.0) for identical vectors
+	// Lower similarity (0.0) → higher distance (1.0) for orthogonal vectors
+	p.threshold = 1.0 - threshold
 
 	// Parse embedding provider config
 	p.embeddingConfig = embeddingproviders.EmbeddingProviderConfig{
@@ -137,9 +123,10 @@ func parseParams(params map[string]interface{}, p *SemanticCachePolicy) error {
 		return fmt.Errorf("'embeddingEndpoint' is required for %s provider", embeddingProvider)
 	}
 
+	// embeddingModel is required for OPENAI and MISTRAL, but not for AZURE_OPENAI
 	if model, ok := params["embeddingModel"].(string); ok && model != "" {
 		p.embeddingConfig.EmbeddingModel = model
-	} else {
+	} else if embeddingProvider == "OPENAI" || embeddingProvider == "MISTRAL" {
 		return fmt.Errorf("'embeddingModel' is required for %s provider", embeddingProvider)
 	}
 
@@ -149,16 +136,19 @@ func parseParams(params map[string]interface{}, p *SemanticCachePolicy) error {
 		return fmt.Errorf("'apiKey' is required for %s provider", embeddingProvider)
 	}
 
-	if headerName, ok := params["headerName"].(string); ok && headerName != "" {
-		p.embeddingConfig.AuthHeaderName = headerName
+	// Set header name based on provider type
+	// Azure OpenAI uses "api-key", others use "Authorization"
+	if embeddingProvider == "AZURE_OPENAI" {
+		p.embeddingConfig.AuthHeaderName = "api-key"
 	} else {
 		p.embeddingConfig.AuthHeaderName = "Authorization"
 	}
 
 	// Parse vector store provider config
+	// Note: threshold is stored as cosine distance (0-1) after conversion from similarity
 	p.vectorStoreConfig = vectordbproviders.VectorDBProviderConfig{
 		VectorStoreProvider: vectorStoreProvider,
-		Threshold:           fmt.Sprintf("%.2f", threshold),
+		Threshold:           fmt.Sprintf("%.2f", p.threshold),
 	}
 
 	if dbHost, ok := params["dbHost"].(string); ok && dbHost != "" {
@@ -212,8 +202,6 @@ func parseParams(params map[string]interface{}, p *SemanticCachePolicy) error {
 		p.jsonPath = jsonPath
 	}
 
-	p.threshold = threshold
-
 	return nil
 }
 
@@ -262,77 +250,6 @@ func extractInt(value interface{}) (int, error) {
 	}
 }
 
-// generatePolicyInstanceHash generates a unique hash for this policy instance
-func generatePolicyInstanceHash(metadata policy.PolicyMetadata) string {
-	// Use route name as the unique identifier for this policy instance
-	// This ensures each route gets its own provider instances
-	return metadata.RouteName
-}
-
-// initializeEmbeddingProvider initializes or reuses the embedding provider
-func (p *SemanticCachePolicy) initializeEmbeddingProvider() error {
-	providerMutex.RLock()
-	configChanged := !reflect.DeepEqual(p.embeddingConfig, embeddingConfigs[p.policyInstanceHash])
-	existingProvider := embeddingProviders[p.policyInstanceHash]
-	providerMutex.RUnlock()
-
-	if !configChanged && existingProvider != nil {
-		p.embeddingProvider = existingProvider
-		return nil
-	}
-
-	providerMutex.Lock()
-	defer providerMutex.Unlock()
-
-	// Check again after acquiring lock
-	if !reflect.DeepEqual(p.embeddingConfig, embeddingConfigs[p.policyInstanceHash]) || embeddingProviders[p.policyInstanceHash] == nil {
-		provider, err := createEmbeddingProvider(p.embeddingConfig)
-		if err != nil {
-			return fmt.Errorf("failed to create embedding provider: %w", err)
-		}
-
-		embeddingProviders[p.policyInstanceHash] = provider
-		embeddingConfigs[p.policyInstanceHash] = p.embeddingConfig
-		p.embeddingProvider = provider
-	} else {
-		p.embeddingProvider = embeddingProviders[p.policyInstanceHash]
-	}
-
-	return nil
-}
-
-// initializeVectorStoreProvider initializes or reuses the vector store provider
-func (p *SemanticCachePolicy) initializeVectorStoreProvider() error {
-	providerMutex.RLock()
-	configChanged := !reflect.DeepEqual(p.vectorStoreConfig, vectorStoreConfigs[p.policyInstanceHash])
-	existingProvider := vectorStoreProviders[p.policyInstanceHash]
-	providerMutex.RUnlock()
-
-	if !configChanged && existingProvider != nil {
-		p.vectorStoreProvider = existingProvider
-		return nil
-	}
-
-	providerMutex.Lock()
-	defer providerMutex.Unlock()
-
-	// Check again after acquiring lock
-	if !reflect.DeepEqual(p.vectorStoreConfig, vectorStoreConfigs[p.policyInstanceHash]) || vectorStoreProviders[p.policyInstanceHash] == nil {
-		provider, err := createVectorDBProvider(p.vectorStoreConfig)
-		if err != nil {
-			return fmt.Errorf("failed to create vector store provider: %w", err)
-		}
-
-		vectorStoreProviders[p.policyInstanceHash] = provider
-		vectorStoreConfigs[p.policyInstanceHash] = p.vectorStoreConfig
-		p.vectorStoreProvider = provider
-	} else {
-		p.vectorStoreProvider = vectorStoreProviders[p.policyInstanceHash]
-	}
-
-	return nil
-}
-
 // createEmbeddingProvider creates a new embedding provider based on the config
 func createEmbeddingProvider(config embeddingproviders.EmbeddingProviderConfig) (embeddingproviders.EmbeddingProvider, error) {
 	var provider embeddingproviders.EmbeddingProvider
@@ -372,39 +289,7 @@ func createVectorDBProvider(config vectordbproviders.VectorDBProviderConfig) (ve
 		return nil, fmt.Errorf("failed to initialize vector store provider: %w", err)
 	}
 
-	// Create index immediately after provider initialization
-	if err := provider.CreateIndex(); err != nil {
-		return nil, fmt.Errorf("failed to create vector store index: %w", err)
-	}
-
 	return provider, nil
-}
-
-// ensureIndexCreated ensures the vector store index is created
-func (p *SemanticCachePolicy) ensureIndexCreated() error {
-	indexMutex.RLock()
-	created := indexCreated[p.policyInstanceHash]
-	indexMutex.RUnlock()
-
-	if created {
-		return nil
-	}
-
-	indexMutex.Lock()
-	defer indexMutex.Unlock()
-
-	// Check again after acquiring lock (double-check pattern)
-	if indexCreated[p.policyInstanceHash] {
-		return nil
-	}
-
-	// Create index
-	if err := p.vectorStoreProvider.CreateIndex(); err != nil {
-		return fmt.Errorf("failed to create index: %w", err)
-	}
-
-	indexCreated[p.policyInstanceHash] = true
-	return nil
 }
 
 // Mode returns the processing mode for this policy
@@ -417,32 +302,27 @@ func (p *SemanticCachePolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// Name returns the policy name
-func (p *SemanticCachePolicy) Name() string {
-	return "SemanticCache"
-}
-
-// Version returns the policy version
-func (p *SemanticCachePolicy) Version() string {
-	return "v1.0.0"
-}
-
 // OnRequest handles request body processing for semantic caching
 func (p *SemanticCachePolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	if ctx.Body == nil || ctx.Body.Content == nil || len(ctx.Body.Content) == 0 {
-		return policy.UpstreamRequestModifications{}
+	var content []byte
+	if ctx.Body != nil {
+		content = ctx.Body.Content
 	}
 
 	// Extract text from request body using JSONPath if specified
-	textToEmbed := string(ctx.Body.Content)
-	if p.jsonPath != "" {
-		extracted, err := utils.ExtractStringValueFromJsonpath(ctx.Body.Content, p.jsonPath)
+	textToEmbed := string(content)
+	if p.jsonPath != "" && len(content) > 0 {
+		extracted, err := utils.ExtractStringValueFromJsonpath(content, p.jsonPath)
 		if err != nil {
-			// If JSONPath extraction fails, use entire body
-			textToEmbed = string(ctx.Body.Content)
-		} else {
-			textToEmbed = extracted
+			// JSONPath extraction failed - return error response
+			return p.buildErrorResponse("Error extracting value from JSONPath", err)
 		}
+		textToEmbed = extracted
+	}
+
+	// If no content to embed, continue to upstream
+	if len(textToEmbed) == 0 {
+		return policy.UpstreamRequestModifications{}
 	}
 
 	// Generate embedding
@@ -461,18 +341,8 @@ func (p *SemanticCachePolicy) OnRequest(ctx *policy.RequestContext, params map[s
 		ctx.Metadata[MetadataKeyEmbedding] = string(embeddingBytes)
 	}
 
-	// Ensure index is created (lazy initialization)
-	if err := p.ensureIndexCreated(); err != nil {
-		// If index creation fails, continue to upstream (don't block request)
-		return policy.UpstreamRequestModifications{}
-	}
-
 	// Get API ID from context (use APIName and APIVersion to create unique ID)
 	apiID := fmt.Sprintf("%s:%s", ctx.APIName, ctx.APIVersion)
-	if apiID == ":" {
-		// Fallback to route name if API info not available
-		apiID = ctx.RequestID
-	}
 
 	// Check cache for similar response
 	// Threshold needs to be a string for the vector DB provider
@@ -518,7 +388,12 @@ func (p *SemanticCachePolicy) OnResponse(ctx *policy.ResponseContext, params map
 		return policy.UpstreamResponseModifications{}
 	}
 
-	if ctx.ResponseBody == nil || ctx.ResponseBody.Content == nil {
+	var content []byte
+	if ctx.ResponseBody != nil {
+		content = ctx.ResponseBody.Content
+	}
+
+	if len(content) == 0 {
 		return policy.UpstreamResponseModifications{}
 	}
 
@@ -536,7 +411,7 @@ func (p *SemanticCachePolicy) OnResponse(ctx *policy.ResponseContext, params map
 
 	// Parse response body
 	var responseData map[string]interface{}
-	if err := json.Unmarshal(ctx.ResponseBody.Content, &responseData); err != nil {
+	if err := json.Unmarshal(content, &responseData); err != nil {
 		return policy.UpstreamResponseModifications{}
 	}
 
@@ -565,4 +440,30 @@ func (p *SemanticCachePolicy) OnResponse(ctx *policy.ResponseContext, params map
 	}
 
 	return policy.UpstreamResponseModifications{}
+}
+
+// buildErrorResponse builds an error response for JSONPath extraction failures
+func (p *SemanticCachePolicy) buildErrorResponse(message string, err error) policy.RequestAction {
+	errorMsg := message
+	if err != nil {
+		errorMsg = fmt.Sprintf("%s: %v", message, err)
+	}
+
+	responseBody := map[string]interface{}{
+		"type":    "SEMANTIC_CACHE",
+		"message": errorMsg,
+	}
+
+	bodyBytes, err := json.Marshal(responseBody)
+	if err != nil {
+		bodyBytes = []byte(`{"type":"SEMANTIC_CACHE","message":"Internal error"}`)
+	}
+
+	return policy.ImmediateResponse{
+		StatusCode: 400,
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+		},
+		Body: bodyBytes,
+	}
 }

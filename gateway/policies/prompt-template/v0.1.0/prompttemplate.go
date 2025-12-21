@@ -3,6 +3,7 @@ package prompttemplate
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"regexp"
 	"strings"
@@ -104,6 +105,13 @@ func parseParams(params map[string]interface{}) (PromptTemplatePolicyParams, err
 		result.templates[templateConfig.Name] = templateConfig.Prompt
 	}
 
+	// Collect template names for logging
+	templateNames := make([]string, 0, len(result.templates))
+	for name := range result.templates {
+		templateNames = append(templateNames, name)
+	}
+	slog.Debug("PromptTemplate: Policy initialized", "templateCount", len(result.templates), "templateNames", templateNames)
+
 	return result, nil
 }
 
@@ -134,6 +142,9 @@ func (p *PromptTemplatePolicy) OnRequest(ctx *policy.RequestContext, params map[
 
 	// Find all template://<template-name>?<params> patterns (query params are optional)
 	matches := promptTemplateRegex.FindAllString(jsonContent, -1)
+	if len(matches) > 0 {
+		slog.Debug("PromptTemplate: Found template patterns", "count", len(matches))
+	}
 	for _, matched := range matches {
 		// Parse the matched string as a URI
 		// Example: template://translate?from=english&to=spanish or template://translate
@@ -149,6 +160,7 @@ func (p *PromptTemplatePolicy) OnRequest(ctx *policy.RequestContext, params map[
 		// Look up template by name
 		templatePrompt, exists := p.params.templates[templateName]
 		if !exists {
+			slog.Debug("PromptTemplate: Template not found", "templateName", templateName)
 			// Template not found, return error
 			return p.buildErrorResponse(fmt.Sprintf("Template '%s' not found", templateName), nil)
 		}
@@ -182,12 +194,14 @@ func (p *PromptTemplatePolicy) OnRequest(ctx *policy.RequestContext, params map[
 		// Escape the resolved prompt for JSON (add quotes and escape special chars)
 		escapedPromptBytes, err := json.Marshal(resolvedPrompt)
 		if err != nil {
+			slog.Debug("PromptTemplate: Error marshaling resolved prompt to JSON", "templateName", templateName, "error", err)
 			// If marshaling fails, return error
 			return p.buildErrorResponse("Error marshaling resolved prompt to JSON", err)
 		}
 		escapedPrompt := string(escapedPromptBytes)
 		escapedPrompt = textCleanRegex.ReplaceAllString(escapedPrompt, "")
 
+		slog.Debug("PromptTemplate: Resolved template", "templateName", templateName, "paramCount", len(paramsMap), "resolvedLength", len(resolvedPrompt))
 		// Replace the matched template:// pattern with the resolved prompt
 		updatedJsonContent = strings.Replace(updatedJsonContent, matched, escapedPrompt, 1)
 	}

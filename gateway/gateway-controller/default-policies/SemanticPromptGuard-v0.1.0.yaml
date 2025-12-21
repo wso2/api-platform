@@ -1,0 +1,107 @@
+name: SemanticPromptGuard
+version: v0.1.0
+description: |
+  Blocks or allows prompts based on semantic similarity to configured allow/deny
+  phrase embeddings. The incoming prompt is embedded via the configured embedding provider
+  and compared using cosine similarity against pre-computed vectors.
+  Supports JSONPath extraction to validate specific fields within JSON payloads.
+  Validates prompts in the request phase before they are sent to the LLM.
+
+parameters:
+  type: object
+  properties:
+    jsonPath:
+      type: string
+      description: |
+        JSONPath expression to extract the prompt from JSON payload.
+        If empty, validates the entire payload as a string.
+        Examples: "$.message", "$.data.prompt", "$.items[0].text"
+      default: ""
+    allowSimilarityThreshold:
+      type: number
+      description: |
+        Minimum similarity threshold (0.0 to 1.0) for a prompt to be considered similar to an
+        allowed phrase. Higher values mean stricter matching.
+      default: 0.65
+      minimum: 0.0
+      maximum: 1.0
+    denySimilarityThreshold:
+      type: number
+      description: |
+        Maximum similarity threshold (0.0 to 1.0) for a prompt to be considered similar to a
+        denied phrase. If any denied phrase has similarity >= this threshold, the request is blocked.
+      default: 0.65
+      minimum: 0.0
+      maximum: 1.0
+    allowedPhrases:
+      type: array
+      description: |
+        List of phrases that are considered safe. The prompt must match one of these
+        within allowSimilarityThreshold. Embeddings will be automatically generated
+        for these phrases during policy initialization.
+      items:
+        type: string
+        description: Phrase text to allow
+    deniedPhrases:
+      type: array
+      description: |
+        List of phrases that should block the prompt when similar within the
+        denySimilarityThreshold. Embeddings will be automatically generated
+        for these phrases during policy initialization.
+      items:
+        type: string
+        description: Phrase text to deny
+    showAssessment:
+      type: boolean
+      description: |
+        If true, includes detailed assessment information in error responses.
+        If false, returns minimal error information.
+      default: false
+
+systemParameters:
+  type: object
+  properties:
+    embeddingProvider:
+      type: string
+      description: |
+        Embedding provider to use. Supported: AZURE_OPENAI, OPENAI, MISTRAL.
+      enum:
+        - AZURE_OPENAI
+        - OPENAI
+        - MISTRAL
+      default: AZURE_OPENAI
+      "wso2/defaultValue": "${config.semanticpromptguard_embedding_provider}"
+    embeddingEndpoint:
+      type: string
+      description: |
+        HTTP endpoint for the embedding provider. For Azure OpenAI, this should be
+        the base endpoint (e.g., https://myres.openai.azure.com).
+        For OpenAI: "https://api.openai.com/v1/embeddings"
+        For Mistral: "https://api.mistral.ai/v1/embeddings"
+      minLength: 1
+      "wso2/defaultValue": "${config.semanticpromptguard_embedding_endpoint}"
+    embeddingModel:
+      type: string
+      description: |
+        Embedding model name (required for OPENAI, MISTRAL; not required for AZURE_OPENAI)
+        For OpenAI: "text-embedding-ada-002" or "text-embedding-3-small"
+        For Mistral: "mistral-embed"
+        For Azure OpenAI: Not required (deployment name is in the endpoint URL)
+      "wso2/defaultValue": "${config.semanticpromptguard_embedding_model}"
+    apiKey:
+      type: string
+      description: API key for the embedding provider.
+      minLength: 1
+      "wso2/defaultValue": "${config.semanticpromptguard_embedding_api_key}"
+    timeoutMs:
+      type: integer
+      description: |
+        Timeout in milliseconds for the embedding endpoint request.
+      default: 5000
+      minimum: 1
+      maximum: 60000
+      "wso2/defaultValue": "${config.semanticpromptguard_embedding_timeout_ms}"
+  required:
+    - embeddingProvider
+    - embeddingEndpoint
+    - apiKey

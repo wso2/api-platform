@@ -53,10 +53,9 @@ These parameters are typically configured at the gateway level and automatically
 |-----------|------|----------|-------------|
 | `embeddingProvider` | string | Yes | Embedding provider type. Must be one of: `OPENAI`, `MISTRAL`, `AZURE_OPENAI` |
 | `embeddingEndpoint` | string | Yes | Endpoint URL for the embedding service. Examples: OpenAI: `https://api.openai.com/v1/embeddings`, Mistral: `https://api.mistral.ai/v1/embeddings`, Azure OpenAI: Your Azure OpenAI endpoint URL |
-| `embeddingModel` | string | Yes | Embedding model name. Examples: OpenAI: `text-embedding-ada-002`, Mistral: `mistral-embed` |
+| `embeddingModel` | string | Conditional | - | Embedding model name. **Required for OPENAI and MISTRAL**, not required for AZURE_OPENAI (deployment name is in endpoint URL). Examples: OpenAI: `text-embedding-ada-002` or `text-embedding-3-small`, Mistral: `mistral-embed` |
 | `embeddingDimension` | integer | Yes | Dimension of embedding vectors. Common values: 1536 (OpenAI ada-002), 1024 (Mistral). Must match the model's output dimension. |
-| `apiKey` | string | Yes | API key for the embedding service authentication |
-| `headerName` | string | No | `Authorization` | Custom header name for API key authentication. Defaults to `Authorization`. Used for Azure OpenAI or custom authentication setups. |
+| `apiKey` | string | Yes | API key for the embedding service authentication. The authentication header is automatically set to `api-key` for Azure OpenAI and `Authorization` for other providers. |
 
 #### Vector Database Configuration
 
@@ -127,7 +126,6 @@ spec:
             embeddingModel: text-embedding-ada-002
             embeddingDimension: 1536
             apiKey: <openai-api-key>
-            headerName: Authorization
             vectorStoreProvider: REDIS
             dbHost: localhost
             dbPort: 6379
@@ -213,7 +211,6 @@ spec:
             embeddingModel: mistral-embed
             embeddingDimension: 1024
             apiKey: <mistral-api-key>
-            headerName: Authorization
             vectorStoreProvider: MILVUS
             dbHost: localhost
             dbPort: 19530
@@ -240,10 +237,8 @@ policies:
           jsonPath: "$.messages[0].content"
           embeddingProvider: AZURE_OPENAI
           embeddingEndpoint: https://your-resource.openai.azure.com/openai/deployments/embedding-model/embeddings?api-version=2023-05-15
-          embeddingModel: text-embedding-ada-002
           embeddingDimension: 1536
           apiKey: <azure-openai-api-key>
-          headerName: api-key
           vectorStoreProvider: REDIS
           dbHost: redis.example.com
           dbPort: 6379

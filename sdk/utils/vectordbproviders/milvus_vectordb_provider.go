@@ -101,9 +101,9 @@ func (m *MilvusVectorDBProvider) CreateIndex() error {
 
 	// Define HNSW Index Parameter
 	hnswIndex := index.NewHNSWIndex(
-		entity.L2, // MetricType: L2, IP, or COSINE
-		64,        // M: Maximum number of neighbors per node
-		100,       // efConstruction: Number of candidates during construction
+		entity.COSINE, // MetricType: L2, IP, or COSINE (using COSINE for semantic similarity)
+		64,            // M: Maximum number of neighbors per node
+		100,           // efConstruction: Number of candidates during construction
 	)
 
 	// Create the Index Option

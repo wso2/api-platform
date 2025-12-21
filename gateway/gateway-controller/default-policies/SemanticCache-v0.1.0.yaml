@@ -14,8 +14,7 @@ parameters:
     threshold:
       type: number
       description: |
-        Similarity threshold for cache hits (0.0 to 1.0)
-        Higher values require more similarity (e.g., 0.9 = 90% similarity)
+        Similarity threshold for cache hits (0.0 to 1.0). Higher values require more similarity.
       minimum: 0.0
       maximum: 1.0
     jsonPath:
@@ -52,10 +51,10 @@ systemParameters:
     embeddingModel:
       type: string
       description: |
-        Embedding model name (required for OPENAI, MISTRAL, AZURE_OPENAI)
-        For OpenAI: "text-embedding-ada-002"
+        Embedding model name (required for OPENAI, MISTRAL; not required for AZURE_OPENAI)
+        For OpenAI: "text-embedding-ada-002" or "text-embedding-3-small"
         For Mistral: "mistral-embed"
-      minLength: 1
+        For Azure OpenAI: Not required (deployment name is in the endpoint URL)
       "wso2/defaultValue": "${config.semanticcache_embedding_model}"
     embeddingDimension:
       type: integer
@@ -70,12 +69,6 @@ systemParameters:
         For Azure OpenAI, this may be the API key or the header name for authentication
       minLength: 1
       "wso2/defaultValue": "${config.semanticcache_embedding_api_key}"
-    headerName:
-      type: string
-      description: |
-        Custom header name for API key authentication (for Azure OpenAI or custom setups)
-        If not specified, uses default "Authorization" header
-      "wso2/defaultValue": "${config.semanticcache_embedding_header_name}"
     vectorStoreProvider:
       type: string
       description: |
@@ -112,7 +105,6 @@ systemParameters:
   required:
   - embeddingProvider
   - embeddingEndpoint
-  - embeddingModel
   - apiKey
   - vectorStoreProvider
   - embeddingDimension

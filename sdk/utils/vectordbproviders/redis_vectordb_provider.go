@@ -109,7 +109,7 @@ func (r *RedisVectorDBProvider) CreateIndex() error {
 			VectorArgs: &redis.FTVectorArgs{
 				HNSWOptions: &redis.FTHNSWOptions{
 					Dim:            r.dimension,
-					DistanceMetric: "L2",
+					DistanceMetric: "COSINE",
 					Type:           "FLOAT32",
 				},
 			},
