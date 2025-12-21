@@ -40,21 +40,7 @@ type PolicyDefinition struct {
 	Version string `yaml:"version"`
 }
 
-// normalizeNameForComparison converts a name to kebab-case for comparison
-func normalizeNameForComparison(name string) string {
-	// Convert to kebab-case (lowercase with hyphens)
-	var result strings.Builder
-
-	for i, r := range name {
-		// Add hyphen before uppercase letters (except the first character)
-		if i > 0 && r >= 'A' && r <= 'Z' {
-			result.WriteRune('-')
-		}
-		result.WriteRune(r)
-	}
-
-	return strings.ToLower(result.String())
-}
+// (removed duplicate normalizeNameForComparison — use ToKebabCase)
 
 // ValidateLocalPolicyZip validates a local policy zip file structure and content
 // Returns the extracted policy name and version if valid, error otherwise
