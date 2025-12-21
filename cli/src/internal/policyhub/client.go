@@ -32,6 +32,8 @@ import (
 	"github.com/wso2/api-platform/cli/utils"
 )
 
+// (limits moved to utils/constants.go)
+
 // Checksum represents the checksum information
 type Checksum struct {
 	Algorithm string `json:"algorithm"`
@@ -178,10 +180,35 @@ func ExtractZipToMemory(zipPath string) (map[string][]byte, error) {
 	}
 	defer r.Close()
 
+	// Quick check on file count
+	if len(r.File) > utils.MaxZipFiles {
+		return nil, fmt.Errorf("zip contains too many entries: %d (max %d)", len(r.File), utils.MaxZipFiles)
+	}
+
 	contents := make(map[string][]byte)
+	var totalUncompressed uint64
+	fileCount := 0
+
 	for _, f := range r.File {
 		if f.FileInfo().IsDir() {
 			continue
+		}
+
+		fileCount++
+		if fileCount > utils.MaxZipFiles {
+			return nil, fmt.Errorf("zip contains too many files: %d (max %d)", fileCount, utils.MaxZipFiles)
+		}
+
+		// Use declared uncompressed size when available to avoid allocating large buffers.
+		uncompressed := f.UncompressedSize64
+		if uncompressed > 0 {
+			if uncompressed > uint64(utils.MaxUncompressedPerFile) {
+				return nil, fmt.Errorf("file %s uncompressed size %d exceeds per-file limit %d", f.Name, uncompressed, utils.MaxUncompressedPerFile)
+			}
+			totalUncompressed += uncompressed
+			if totalUncompressed > uint64(utils.MaxTotalUncompressed) {
+				return nil, fmt.Errorf("total uncompressed size %d exceeds limit %d", totalUncompressed, utils.MaxTotalUncompressed)
+			}
 		}
 
 		rc, err := f.Open()
@@ -189,10 +216,21 @@ func ExtractZipToMemory(zipPath string) (map[string][]byte, error) {
 			return nil, fmt.Errorf("failed to open file %s in zip: %w", f.Name, err)
 		}
 
-		data, err := io.ReadAll(rc)
+		// Limit the reader to (maxUncompressedPerFile + 1) to detect over-limit files even when header is missing.
+		lr := io.LimitReader(rc, int64(utils.MaxUncompressedPerFile)+1)
+		data, err := io.ReadAll(lr)
 		rc.Close()
 		if err != nil {
 			return nil, fmt.Errorf("failed to read file %s in zip: %w", f.Name, err)
+		}
+
+		if uint64(len(data)) > uint64(utils.MaxUncompressedPerFile) {
+			return nil, fmt.Errorf("file %s uncompressed size exceeds per-file limit %d", f.Name, utils.MaxUncompressedPerFile)
+		}
+
+		totalUncompressed += uint64(len(data))
+		if totalUncompressed > uint64(utils.MaxTotalUncompressed) {
+			return nil, fmt.Errorf("total uncompressed size %d exceeds limit %d", totalUncompressed, utils.MaxTotalUncompressed)
 		}
 
 		contents[f.Name] = data
