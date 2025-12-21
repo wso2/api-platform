@@ -29,9 +29,10 @@ import (
 	"go.uber.org/zap"
 )
 
-func TestAuthMiddleware_NoAuthenticatorsConfigured_AllowsAllRequests(t *testing.T) {
+func TestAuthMiddleware_NoAuthenticatorsConfigured_ReturnsUnauthorized(t *testing.T) {
 	// Scenario: Both basic.enabled and idp.enabled are false
-	// All requests should be allowed without authentication
+	// This configuration should be prevented at startup validation,
+	// but if it occurs, middleware returns 401 (secure by default)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	logger := zap.NewNop()
@@ -52,11 +53,6 @@ func TestAuthMiddleware_NoAuthenticatorsConfigured_AllowsAllRequests(t *testing.
 
 	router.Use(middleware)
 	router.GET("/api/test", func(c *gin.Context) {
-		// Check that AuthzSkipKey is set
-		skipAuthz, exists := c.Get(constants.AuthzSkipKey)
-		assert.True(t, exists)
-		assert.True(t, skipAuthz.(bool))
-
 		c.JSON(http.StatusOK, gin.H{"message": "success"})
 	})
 
@@ -64,12 +60,13 @@ func TestAuthMiddleware_NoAuthenticatorsConfigured_AllowsAllRequests(t *testing.
 	req, _ := http.NewRequest("GET", "/api/test", nil)
 	router.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "success")
+	// Should return 401 when no auth is configured (secure by default)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Contains(t, w.Body.String(), "authentication is required")
 }
 
-func TestAuthMiddleware_NoAuthenticatorsConfigured_NoCredentials_Success(t *testing.T) {
-	// Scenario: No auth configured, request without any credentials should succeed
+func TestAuthMiddleware_NoAuthenticatorsConfigured_NoCredentials_Unauthorized(t *testing.T) {
+	// Scenario: No auth configured, request without any credentials should return 401
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	logger := zap.NewNop()
@@ -96,8 +93,9 @@ func TestAuthMiddleware_NoAuthenticatorsConfigured_NoCredentials_Success(t *test
 	// No Authorization header
 	router.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "public endpoint")
+	// Should return 401 (secure by default)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Contains(t, w.Body.String(), "authentication is required")
 }
 
 func TestAuthMiddleware_BasicAuthEnabled_NoCredentials_Unauthorized(t *testing.T) {
@@ -179,9 +177,9 @@ func TestAuthMiddleware_SkipPaths_NoAuthRequired(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "healthy")
 }
 
-func TestAuthMiddleware_NilBasicAuth_NilJWTConfig_AllowsAllRequests(t *testing.T) {
+func TestAuthMiddleware_NilBasicAuth_NilJWTConfig_ReturnsUnauthorized(t *testing.T) {
 	// Scenario: Auth configs are nil (not just disabled)
-	// Should allow all requests
+	// Should return 401 (secure by default)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	logger := zap.NewNop()
@@ -203,6 +201,7 @@ func TestAuthMiddleware_NilBasicAuth_NilJWTConfig_AllowsAllRequests(t *testing.T
 	req, _ := http.NewRequest("GET", "/api/open", nil)
 	router.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "open access")
+	// Should return 401 when no auth is configured
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Contains(t, w.Body.String(), "authentication is required")
 }

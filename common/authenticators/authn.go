@@ -63,11 +63,14 @@ func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFu
 			}
 		}
 
-		// If no authenticators are configured, allow all requests (no-auth mode)
+		// If no authenticators are configured, this is a misconfiguration
+		// The config validation should prevent this, but handle it defensively
 		if len(authenticators) == 0 {
-			logger.Debug("No authenticators configured - allowing request without authentication")
-			c.Set(constants.AuthzSkipKey, true)
-			c.Next()
+			logger.Error("No authenticators configured.")
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "authentication is required but not configured",
+			})
+			c.Abort()
 			return
 		}
 
