@@ -133,7 +133,7 @@ If the gateway was added with `--insecure`, the client skips TLS certificate ver
 
 ## Config File Reference
 
-The client reads gateway settings from `~/.apipctl/config.yaml`:
+The client reads gateway settings from `~/.ap/config.yaml`:
 
 ```yaml
 gateways:

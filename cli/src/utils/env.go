@@ -45,3 +45,12 @@ func ResolveEnvVar(value string) (string, error) {
 	// Not an env var reference, return as-is
 	return value, nil
 }
+
+// GetPolicyHubBaseURL returns the PolicyHub base URL using the environment
+// override `WSO2AP_POLICYHUB_BASE_URL` when set, otherwise returns the default.
+func GetPolicyHubBaseURL() string {
+	if v := os.Getenv(PolicyHubEnvVar); v != "" {
+		return v
+	}
+	return PolicyHubBaseURLDefault
+}

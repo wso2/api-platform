@@ -1,6 +1,6 @@
-# apipctl - WSO2 API Platform CLI
+# ap - WSO2 API Platform CLI
 
-`apipctl` is a command-line tool for managing and interacting with the WSO2 API Platform.
+`ap` is a command-line tool for managing and interacting with the WSO2 API Platform.
 
 ## Installation
 
@@ -10,13 +10,13 @@ cd cli/src
 make build
 
 # The binary will be available at
-./build/apipctl
+./build/ap
 ```
 
 ## Usage
 
 ```bash
-apipctl [command] [subcommand] [flags]
+ap [command] [subcommand] [flags]
 ```
 
 **Note:** All flags support shorthand notation using their first letter. For example:
@@ -35,23 +35,23 @@ apipctl [command] [subcommand] [flags]
 Add a gateway configuration to connect to your API Platform Gateway instance.
 
 ```bash
-apipctl gateway add --name <name> --server <url> [--token <token>] [--insecure]
+ap gateway add --name <name> --server <url> [--token <token>] [--insecure]
 ```
 
 **Examples:**
 
 ```bash
 # Add a local development gateway
-apipctl gateway add --name dev --server http://localhost:9090
+ap gateway add --name dev --server http://localhost:9090
 
 # Add a production gateway with authentication
-apipctl gateway add --name prod --server https://api.example.com --token <TOKEN>
+ap gateway add --name prod --server https://api.example.com --token <TOKEN>
 
 # Add a gateway with self-signed certificate (skip TLS verification)
-apipctl gateway add --name local --server https://localhost:9090 --insecure
+ap gateway add --name local --server https://localhost:9090 --insecure
 
 # Using shorthand flags
-apipctl gateway add -n dev -s http://localhost:9090 -t SECRET_TOKEN -i
+ap gateway add -n dev -s http://localhost:9090 -t SECRET_TOKEN -i
 ```
 
 **Flags:**
@@ -63,7 +63,7 @@ apipctl gateway add -n dev -s http://localhost:9090 -t SECRET_TOKEN -i
 **Output:**
 ```
 Gateway in <url> added as <name>
-Configuration saved to: ~/.apipctl/config.yaml
+Configuration saved to: ~/.ap/config.yaml
 ```
 
 ---
@@ -73,20 +73,20 @@ Configuration saved to: ~/.apipctl/config.yaml
 Generate Model Context Protocol (MCP) configuration from an MCP server.
 
 ```bash
-apipctl gateway mcp generate --server <url> --output <path>
+ap gateway mcp generate --server <url> --output <path>
 ```
 
 **Examples:**
 
 ```bash
 # Generate MCP configuration
-apipctl gateway mcp generate --server http://localhost:3001/mcp --output target
+ap gateway mcp generate --server http://localhost:3001/mcp --output target
 
 # Generate in current directory
-apipctl gateway mcp generate --server http://localhost:3001/mcp --output .
+ap gateway mcp generate --server http://localhost:3001/mcp --output .
 
 # Using shorthand flags
-apipctl gateway mcp generate -s http://localhost:3001/mcp -o target
+ap gateway mcp generate -s http://localhost:3001/mcp -o target
 ```
 
 **Flags:**
@@ -121,19 +121,19 @@ MCP generated successfully.
 Display the CLI version and build information.
 
 ```bash
-apipctl version
+ap version
 ```
 
 **Output:**
 ```
-apipctl version v0.0.1 (built at 2025-12-16T05:35:30Z)
+ap version v0.0.1 (built at 2025-12-16T05:35:30Z)
 ```
 
 ---
 
 ## Configuration
 
-Gateway configurations are stored in `~/.apipctl/config.yaml`.
+Gateway configurations are stored in `~/.ap/config.yaml`.
 
 **Example configuration:**
 
@@ -167,9 +167,9 @@ configVersion: 1.0.0
 Get help for any command:
 
 ```bash
-apipctl --help
-apipctl gateway --help
-apipctl gateway add --help
-apipctl gateway mcp --help
-apipctl gateway mcp generate --help
+ap --help
+ap gateway --help
+ap gateway add --help
+ap gateway mcp --help
+ap gateway mcp generate --help
 ```

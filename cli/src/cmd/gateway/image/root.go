@@ -16,35 +16,36 @@
  * under the License.
  */
 
-package mcp
+package image
 
 import (
 	"github.com/spf13/cobra"
 )
 
 const (
-	McpCmdLiteral = "mcp"
-	McpCmdExample = `# List all MCPs
-ap gateway mcp list
+	ImageCmdLiteral = "image"
+	ImageCmdExample = `# Build gateway image
+ap gateway image build --image-tag v0.2.0-policy1
 
-# Generate MCP configuration
-ap gateway mcp generate --server http://localhost:3001/mcp --output target`
+# Build with custom manifest file
+ap gateway image build --image-tag v0.2.0 -f custom-manifest.yaml
+
+# Build in offline mode
+ap gateway image build --image-tag v0.2.0 --offline`
 )
 
-// McpCmd represents the mcp command
-var McpCmd = &cobra.Command{
-	Use:     McpCmdLiteral,
-	Short:   "Manage MCPs on the gateway",
-	Long:    "Execute MCP (Model Context Protocol) related operations for the WSO2 API Platform Gateway.",
-	Example: McpCmdExample,
+// ImageCmd represents the image command
+var ImageCmd = &cobra.Command{
+	Use:     ImageCmdLiteral,
+	Short:   "Manage gateway Docker images",
+	Long:    "This command allows you to build and manage WSO2 API Platform Gateway Docker images with policies.",
+	Example: ImageCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
 }
 
 func init() {
-	McpCmd.AddCommand(listCmd)
-	McpCmd.AddCommand(getCmd)
-	McpCmd.AddCommand(deleteCmd)
-	McpCmd.AddCommand(generateCmd)
+	// Register subcommands
+	ImageCmd.AddCommand(buildCmd)
 }

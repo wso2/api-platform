@@ -18,4 +18,50 @@
 
 package utils
 
-const CliName = "apipctl"
+const CliName = "ap"
+
+// WSO2AP Configuration
+const (
+	ConfigPath        = ".wso2ap/config.yaml"
+	CachePath         = ".wso2ap/cache"
+	PoliciesCachePath = ".wso2ap/cache/policies"
+	TempPath          = ".wso2ap/.tmp"
+)
+
+// Gateway
+const (
+	// Image Build Defaults
+	DefaultManifestFile         = "policy-manifest.yaml"
+	DefaultManifestLockFile     = "policy-manifest-lock.yaml"
+	DefaultGatewayVersion       = "0.2.0"
+	DefaultImageRepository      = "ghcr.io/wso2/api-platform"
+	DefaultGatewayBuilderRepo   = "ghcr.io/wso2/api-platform/gateway-builder"
+	DefaultGatewayControllerImg = "" // Uses default from gateway-builder
+	DefaultRouterImg            = "" // Uses default from gateway-builder
+
+	// REST API Endpoints
+	GatewayHealthPath       = "/health"
+	GatewayAPIsPath         = "/apis"
+	GatewayAPIByIDPath      = "/apis/%s"
+	GatewayMCPProxiesPath   = "/mcp-proxies"
+	GatewayMCPProxyByIDPath = "/mcp-proxies/%s"
+
+	// BasicAuth Environment Variables
+	EnvGatewayUsername = "WSO2AP_GW_USERNAME"
+	EnvGatewayPassword = "WSO2AP_GW_PASSWORD"
+
+	// Image Build Configuration
+	GatewayVerifyChecksumOnBuild = true
+
+	// Allowed Policy Zip Sizes for Safety (in bytes)
+	MaxZipFiles            = 1000              // Maximum number of files allowed in the zip (non-directory entries).
+	MaxUncompressedPerFile = 20 * 1024 * 1024  // Maximum uncompressed size allowed per file (20 MB).
+	MaxTotalUncompressed   = 100 * 1024 * 1024 // Maximum total uncompressed size allowed for the archive (100 MB).
+)
+
+// PolicyHub REST API defaults and paths
+const (
+	PolicyHubResolvePath    = "/policies/resolve"                                                                                                                   // Resolve path appended to PolicyHub base URL
+	PolicyHubEnvVar         = "WSO2AP_POLICYHUB_BASE_URL"                                                                                                           // Environment variable name to override the PolicyHub base URL
+	PolicyHubBaseURLDefault = "https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-dev.e1-us-east-azure.choreoapis.dev/api-platform/policy-hub-api/policy-hub-public/v1.0" // Default PolicyHub base URL (can be overridden via env)
+)

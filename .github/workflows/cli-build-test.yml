@@ -1,0 +1,93 @@
+name: ap Build Test
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'cli/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'cli/**'
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    name: Build and Test ap
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      
+      - name: Run build and tests
+        working-directory: ./cli/src
+        run: |
+          make build build-all
+      
+      - name: List built binaries
+        working-directory: ./cli/src
+        run: |
+          echo "Built binaries:"
+          ls -lh build/
+      
+      - name: Upload darwin-arm64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ap-darwin-arm64
+          path: cli/src/build/ap-darwin-arm64
+          retention-days: 7
+      
+      - name: Upload darwin-amd64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ap-darwin-amd64
+          path: cli/src/build/ap-darwin-amd64
+          retention-days: 7
+      
+      - name: Upload linux-arm64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ap-linux-arm64
+          path: cli/src/build/ap-linux-arm64
+          retention-days: 7
+      
+      - name: Upload linux-amd64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ap-linux-amd64
+          path: cli/src/build/ap-linux-amd64
+          retention-days: 7
+      
+      - name: Upload windows-arm64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ap-windows-arm64
+          path: cli/src/build/ap-windows-arm64.exe
+          retention-days: 7
+      
+      - name: Upload windows-amd64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ap-windows-amd64
+          path: cli/src/build/ap-windows-amd64.exe
+          retention-days: 7

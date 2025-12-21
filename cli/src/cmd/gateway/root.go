@@ -20,16 +20,18 @@ package gateway
 
 import (
 	"github.com/spf13/cobra"
+	"github.com/wso2/api-platform/cli/cmd/gateway/api"
+	"github.com/wso2/api-platform/cli/cmd/gateway/image"
 	"github.com/wso2/api-platform/cli/cmd/gateway/mcp"
 )
 
 const (
 	GatewayCmdLiteral = "gateway"
 	GatewayCmdExample = `# Add a new gateway
-apipctl gateway add --name dev --server http://localhost:9090
+ap gateway add --name dev --server http://localhost:9090
 
 # Generate MCP configuration
-apipctl gateway mcp generate --server http://localhost:3001/mcp --output target`
+ap gateway mcp generate --server http://localhost:3001/mcp --output target`
 )
 
 // GatewayCmd represents the gateway command
@@ -46,5 +48,14 @@ var GatewayCmd = &cobra.Command{
 func init() {
 	// Register subcommands
 	GatewayCmd.AddCommand(addCmd)
+	GatewayCmd.AddCommand(listCmd)
+	GatewayCmd.AddCommand(removeCmd)
+	GatewayCmd.AddCommand(useCmd)
+	GatewayCmd.AddCommand(currentCmd)
+	GatewayCmd.AddCommand(healthCmd)
+	GatewayCmd.AddCommand(applyCmd)
+	GatewayCmd.AddCommand(buildCmd)
+	GatewayCmd.AddCommand(image.ImageCmd)
+	GatewayCmd.AddCommand(api.APICmd)
 	GatewayCmd.AddCommand(mcp.McpCmd)
 }

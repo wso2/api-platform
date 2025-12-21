@@ -29,24 +29,16 @@ import (
 
 // Gateway represents a gateway configuration
 type Gateway struct {
-	Name     string `yaml:"name"`
-	Server   string `yaml:"server"`
-	Token    string `yaml:"token,omitempty"`
-	Insecure bool   `yaml:"insecure,omitempty"`
+	Name   string `yaml:"name"`
+	Server string `yaml:"server"`
+	Token  string `yaml:"token,omitempty"` // Bearer token (can be ${ENV_VAR}) for OAuth2
 }
 
-// Config represents the apipctl configuration
+// Config represents the ap configuration
 type Config struct {
 	Gateways      []Gateway `yaml:"gateways,omitempty"`
 	ActiveGateway string    `yaml:"activeGateway,omitempty"`
-	ConfigVersion string    `yaml:"configVersion"`
 }
-
-const (
-	ConfigDirName  = ".apipctl"
-	ConfigFileName = "config.yaml"
-	ConfigVersion  = "1.0.0"
-)
 
 // GetConfigPath returns the path to the configuration file
 func GetConfigPath() (string, error) {
@@ -54,7 +46,7 @@ func GetConfigPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to get user home directory: %w", err)
 	}
-	return filepath.Join(homeDir, ConfigDirName, ConfigFileName), nil
+	return filepath.Join(homeDir, utils.ConfigPath), nil
 }
 
 // LoadConfig loads the configuration from the config file
@@ -74,8 +66,7 @@ func LoadConfig() (*Config, error) {
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		// Create a new default config
 		config := &Config{
-			ConfigVersion: ConfigVersion,
-			Gateways:      []Gateway{},
+			Gateways: []Gateway{},
 		}
 		if err := SaveConfig(config); err != nil {
 			return nil, err
@@ -144,20 +135,22 @@ func (c *Config) AddGateway(gateway Gateway) error {
 	return nil
 }
 
-// GetGateway returns a gateway by name with resolved token
+// GetGateway returns a gateway by name with resolved credentials
 func (c *Config) GetGateway(name string) (*Gateway, error) {
 	for i := range c.Gateways {
 		if c.Gateways[i].Name == name {
 			// Create a copy to avoid modifying the config
 			gateway := c.Gateways[i]
-			// Resolve environment variable if token is present and connection is secure
-			if !gateway.Insecure && gateway.Token != "" {
+
+			// Resolve environment variables for token
+			if gateway.Token != "" {
 				resolvedToken, err := utils.ResolveEnvVar(gateway.Token)
 				if err != nil {
 					return nil, fmt.Errorf("failed to resolve token for gateway '%s': %w", name, err)
 				}
 				gateway.Token = resolvedToken
 			}
+
 			return &gateway, nil
 		}
 	}
@@ -178,5 +171,31 @@ func (c *Config) SetActiveGateway(name string) error {
 		return err
 	}
 	c.ActiveGateway = name
+	return nil
+}
+
+// RemoveGateway removes a gateway by name
+func (c *Config) RemoveGateway(name string) error {
+	// Find the gateway
+	index := -1
+	for i, gw := range c.Gateways {
+		if gw.Name == name {
+			index = i
+			break
+		}
+	}
+
+	if index == -1 {
+		return fmt.Errorf("gateway '%s' not found", name)
+	}
+
+	// Remove the gateway
+	c.Gateways = append(c.Gateways[:index], c.Gateways[index+1:]...)
+
+	// Clear active gateway if it was the one removed
+	if c.ActiveGateway == name {
+		c.ActiveGateway = ""
+	}
+
 	return nil
 }

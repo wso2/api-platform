@@ -1,0 +1,124 @@
+name: ap Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (format: x.x.x)'
+        required: true
+        type: string
+      release_notes:
+        description: 'Release notes'
+        required: true
+        type: string
+
+jobs:
+  validate-and-build:
+    name: Validate, Build, and Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Validate version format
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Version must be in x.x.x format (e.g., 1.0.0)"
+            exit 1
+          fi
+          echo "Version format is valid: $VERSION"
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      
+      - name: Build binaries with version
+        working-directory: ./cli/src
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          make build build-all VERSION=$VERSION
+      
+      - name: Rename binaries with version
+        working-directory: ./cli/src/build
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          # Rename binaries to include version
+          mv ap-darwin-arm64 ap-darwin-arm64-v${VERSION}
+          mv ap-darwin-amd64 ap-darwin-amd64-v${VERSION}
+          mv ap-linux-arm64 ap-linux-arm64-v${VERSION}
+          mv ap-linux-amd64 ap-linux-amd64-v${VERSION}
+          mv ap-windows-arm64.exe ap-windows-arm64-v${VERSION}.exe
+          mv ap-windows-amd64.exe ap-windows-amd64-v${VERSION}.exe
+          
+          # List renamed binaries
+          echo "Renamed binaries:"
+          ls -lh
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ap-v${{ github.event.inputs.version }}
+          name: ap v${{ github.event.inputs.version }}
+          body: |
+            ${{ github.event.inputs.release_notes }}
+            
+            ## Downloads
+            
+            Choose the appropriate binary for your platform:
+            
+            ### macOS
+            - **Apple Silicon (M1/M2/M3)**: `ap-darwin-arm64-v${{ github.event.inputs.version }}`
+            - **Intel**: `ap-darwin-amd64-v${{ github.event.inputs.version }}`
+            
+            ### Linux
+            - **ARM64**: `ap-linux-arm64-v${{ github.event.inputs.version }}`
+            - **AMD64/x86_64**: `ap-linux-amd64-v${{ github.event.inputs.version }}`
+            
+            ### Windows
+            - **ARM64**: `ap-windows-arm64-v${{ github.event.inputs.version }}.exe`
+            - **AMD64/x86_64**: `ap-windows-amd64-v${{ github.event.inputs.version }}.exe`
+            
+            ## Installation
+            
+            ### macOS/Linux
+            ```bash
+            # Download the binary for your platform
+            # Make it executable
+            chmod +x ap-*
+            # Move to PATH
+            sudo mv ap-* /usr/local/bin/ap
+            ```
+            
+            ### Windows
+            ```powershell
+            # Download the .exe file for your platform
+            # Rename and move to a directory in your PATH
+            ```
+          draft: false
+          prerelease: false
+          files: |
+            cli/src/build/ap-darwin-arm64-v${{ github.event.inputs.version }}
+            cli/src/build/ap-darwin-amd64-v${{ github.event.inputs.version }}
+            cli/src/build/ap-linux-arm64-v${{ github.event.inputs.version }}
+            cli/src/build/ap-linux-amd64-v${{ github.event.inputs.version }}
+            cli/src/build/ap-windows-arm64-v${{ github.event.inputs.version }}.exe
+            cli/src/build/ap-windows-amd64-v${{ github.event.inputs.version }}.exe

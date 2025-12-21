@@ -16,10 +16,10 @@
 # under the License.
 # --------------------------------------------------------------------
 
-# Makefile for apipctl CLI
+# Makefile for ap CLI
 
 # Binary name
-BINARY_NAME=apipctl
+BINARY_NAME=ap
 
 # Go parameters
 GOCMD=go
@@ -43,16 +43,30 @@ LDFLAGS=-ldflags "-X github.com/wso2/api-platform/cli/utils.Version=$(VERSION) -
 
 all: clean test build
 
+
 ## build: Build the binary for current platform (runs tests first)
-build: test
+build:
+	@bash scripts/run-tests-with-summary.sh
+	@echo ""
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BUILD_DIR)
 	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) main.go
 	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)"
 
-## build-all: Build binaries for all platforms (macOS, Linux, Windows)
-build-all: build-macos build-linux build-windows
+## build-skip-tests: Build the binary without running tests
+build-skip-tests:
+	@echo "Building $(BINARY_NAME) (skipping tests)..."
+	@mkdir -p $(BUILD_DIR)
+	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) main.go
+	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)"
+
+## build-all: Build binaries for all platforms (macOS, Linux, Windows) - runs tests first
+build-all: test build-macos build-linux build-windows
 	@echo "All platform builds complete"
+
+## build-all-skip-tests: Build binaries for all platforms without running tests
+build-all-skip-tests: build-macos build-linux build-windows
+	@echo "All platform builds complete (tests skipped)"
 
 ## build-macos: Build for macOS (Intel and Apple Silicon)
 build-macos:

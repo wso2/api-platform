@@ -21,19 +21,34 @@ package utils
 import "github.com/spf13/cobra"
 
 const (
-	FlagName     = "name"
-	FlagServer   = "server"
-	FlagToken    = "token"
-	FlagEnvToken = "token-env"
-	FlagInsecure = "insecure"
-	FlagOutput   = "output"
+	FlagName                   = "display-name"
+	FlagServer                 = "server"
+	FlagToken                  = "token"
+	FlagEnvToken               = "token-env"
+	FlagUsername               = "username"
+	FlagPassword               = "password"
+	FlagPasswordEnv            = "password-env"
+	FlagInsecure               = "insecure"
+	FlagOutput                 = "output"
+	FlagFile                   = "file"
+	FlagFormat                 = "format"
+	FlagVersion                = "version"
+	FlagID                     = "id"
+	FlagConfirm                = "confirm"
+	FlagDockerRegistry         = "docker-registry"
+	FlagImageTag               = "image-tag"
+	FlagGatewayBuilder         = "gateway-builder"
+	FlagGatewayControllerImage = "gateway-controller-base-image"
+	FlagRouterBaseImage        = "router-base-image"
 )
 
 var shortFlags = map[string]string{
-	FlagName:   "n",
-	FlagServer: "s",
-	FlagToken:  "t",
-	FlagOutput: "o",
+	FlagName:    "n",
+	FlagServer:  "s",
+	FlagToken:   "t",
+	FlagOutput:  "o",
+	FlagFile:    "f",
+	FlagVersion: "v",
 }
 
 func GetShortFlags() []string {

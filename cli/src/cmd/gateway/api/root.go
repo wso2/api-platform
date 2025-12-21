@@ -16,35 +16,32 @@
  * under the License.
  */
 
-package mcp
+package api
 
 import (
 	"github.com/spf13/cobra"
 )
 
 const (
-	McpCmdLiteral = "mcp"
-	McpCmdExample = `# List all MCPs
-ap gateway mcp list
-
-# Generate MCP configuration
-ap gateway mcp generate --server http://localhost:3001/mcp --output target`
+	APICmdLiteral = "api"
+	APICmdExample = `# List all APIs
+ap gateway api list`
 )
 
-// McpCmd represents the mcp command
-var McpCmd = &cobra.Command{
-	Use:     McpCmdLiteral,
-	Short:   "Manage MCPs on the gateway",
-	Long:    "Execute MCP (Model Context Protocol) related operations for the WSO2 API Platform Gateway.",
-	Example: McpCmdExample,
+// APICmd represents the api command
+var APICmd = &cobra.Command{
+	Use:     APICmdLiteral,
+	Short:   "Manage APIs on the gateway",
+	Long:    "This command allows you to manage APIs on the WSO2 API Platform Gateway.",
+	Example: APICmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
 }
 
 func init() {
-	McpCmd.AddCommand(listCmd)
-	McpCmd.AddCommand(getCmd)
-	McpCmd.AddCommand(deleteCmd)
-	McpCmd.AddCommand(generateCmd)
+	// Register subcommands
+	APICmd.AddCommand(listCmd)
+	APICmd.AddCommand(getCmd)
+	APICmd.AddCommand(deleteCmd)
 }

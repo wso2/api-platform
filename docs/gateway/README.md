@@ -26,6 +26,44 @@ A complete API gateway system consisting of Gateway-Controller (xDS control plan
 - **Technology**: Go, Docker
 - **Distribution**: Docker image containing Policy Engine source code and build tooling
 
+### CLI Tool (ap)
+- **Purpose**: Command-line interface for managing gateways, APIs, and MCP proxies
+- **Features**: 
+  - Gateway management (add, list, remove, health check)
+  - API lifecycle management (apply, list, get, delete)
+  - MCP proxy management (generate, list, get, delete)
+  - Configuration stored in: `~/.wso2ap/config.yaml`
+- **Authentication**: Supports Basic Auth (via environment variables) and OAuth2 tokens
+
+**Adding a Gateway:**
+```bash
+# Add gateway with OAuth2 token
+ap gateway add --display-name dev --server http://localhost:9090 --token <TOKEN>
+
+# Or use Basic Auth via environment variables
+export WSO2AP_GW_USERNAME=admin
+export WSO2AP_GW_PASSWORD=admin
+ap gateway add --display-name dev --server http://localhost:9090
+
+# Set as current gateway
+ap gateway use --display-name dev
+```
+
+**Managing Gateways:**
+```bash
+# List all configured gateways
+ap gateway list
+
+# Show current gateway
+ap gateway current
+
+# Check gateway health
+ap gateway health
+
+# Remove a gateway
+ap gateway remove --display-name dev
+```
+
 ## Quick Start
 
 ### Using Docker Compose (Recommended)
@@ -60,6 +98,9 @@ docker compose up -d
 
 # Verify gateway controller is running
 curl http://localhost:9090/health
+
+# Or use the CLI (requires gateway to be added first)
+ap gateway health
 
 # Deploy an API configuration
 curl -X POST http://localhost:9090/apis \
@@ -97,6 +138,18 @@ EOF
 # Test routing through the gateway
 curl http://localhost:8080/weather/v1.0/us/seattle
 curl https://localhost:8443/weather/v1.0/us/seattle -k
+
+# List all deployed APIs using CLI
+ap gateway api list
+
+# Get a specific API by name and version
+ap gateway api get --display-name "Weather-API" --version v1.0 --format yaml
+
+# Or get by ID
+ap gateway api get --id <api-id> --format yaml
+
+# Delete an API
+ap gateway api delete --id <api-id> --confirm
 ```
 
 ### Stopping the Gateway

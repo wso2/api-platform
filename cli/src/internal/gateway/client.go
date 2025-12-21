@@ -23,10 +23,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/cli/internal/config"
+	"github.com/wso2/api-platform/cli/utils"
 )
 
 // Client represents an HTTP client configured for a specific gateway
@@ -37,11 +39,10 @@ type Client struct {
 
 // NewClient creates a new gateway client for the specified gateway
 func NewClient(gateway *config.Gateway) *Client {
-	// Create HTTP client with appropriate TLS configuration
+	// Create HTTP client with TLS configuration
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: gateway.Insecure,
-			MinVersion:         tls.VersionTLS12,
+			MinVersion: tls.VersionTLS12,
 		},
 	}
 
@@ -88,8 +89,15 @@ func NewClientForActive() (*Client, error) {
 
 // Do executes an HTTP request with the gateway's authentication and settings
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
-	// Add authentication token if present
-	if c.gateway.Token != "" {
+	// Add authentication (priority: Basic Auth from env vars, then Token)
+	username := os.Getenv(utils.EnvGatewayUsername)
+	password := os.Getenv(utils.EnvGatewayPassword)
+
+	if username != "" && password != "" {
+		// Basic authentication from environment variables
+		req.SetBasicAuth(username, password)
+	} else if c.gateway.Token != "" {
+		// Bearer token authentication (OAuth2)
 		req.Header.Set("Authorization", "Bearer "+c.gateway.Token)
 	}
 
@@ -134,6 +142,22 @@ func (c *Client) Post(path string, body io.Reader) (*http.Response, error) {
 	return c.Do(req)
 }
 
+// PostYAML performs a POST request with YAML content
+func (c *Client) PostYAML(path string, body io.Reader) (*http.Response, error) {
+	baseURL := strings.TrimSuffix(c.gateway.Server, "/")
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	url := baseURL + path
+	req, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-yaml")
+
+	return c.Do(req)
+}
+
 // Put performs a PUT request to the specified path with the given body
 func (c *Client) Put(path string, body io.Reader) (*http.Response, error) {
 	baseURL := strings.TrimSuffix(c.gateway.Server, "/")
@@ -145,6 +169,22 @@ func (c *Client) Put(path string, body io.Reader) (*http.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+
+	return c.Do(req)
+}
+
+// PutYAML performs a PUT request with YAML content
+func (c *Client) PutYAML(path string, body io.Reader) (*http.Response, error) {
+	baseURL := strings.TrimSuffix(c.gateway.Server, "/")
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	url := baseURL + path
+	req, err := http.NewRequest("PUT", url, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-yaml")
 
 	return c.Do(req)
 }

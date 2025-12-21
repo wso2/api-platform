@@ -28,28 +28,25 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "apipctl",
-	Short: "apipctl is a CLI tool to interact with the WSO2 API Platform",
-	Long: `apipctl - WSO2 API Platform CLI
+	Use:   "ap",
+	Short: "ap is a CLI tool to interact with the WSO2 API Platform",
+	Long: `ap - WSO2 API Platform CLI
 
 A command-line tool for managing and interacting with the WSO2 API Platform.
 
 USAGE:
-  apipctl [command] [subcommand] [flags]
+  ap [command] [subcommand] [flags]
 
-FLAG SHORTCUTS:
-  All flags support shorthand notation using their first letter:
-  --name → -n, --server → -s, --token → -t, --output → -o, --insecure → -i
 
 EXAMPLES:
   # Add a gateway
-  apipctl gateway add -n dev -s http://localhost:9090
+  ap gateway add -n dev -s http://localhost:9090
 
   # Generate MCP configuration  
-  apipctl gateway mcp generate -s http://localhost:3001/mcp -o target
+  ap gateway mcp generate -s http://localhost:3001/mcp -o target
 
   # Show version
-  apipctl version
+  ap version
 
 For detailed documentation, see: src/HELP.md`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -59,10 +56,10 @@ For detailed documentation, see: src/HELP.md`,
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Print the version of apipctl",
-	Long:  "Print the version and build information of apipctl",
+	Short: "Print the version of ap",
+	Long:  "Print the version and build information of ap",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("apipctl version v%s (built at %s)\n", utils.Version, utils.BuildTime)
+		fmt.Printf("ap version v%s (built at %s)\n", utils.Version, utils.BuildTime)
 	},
 }
 
