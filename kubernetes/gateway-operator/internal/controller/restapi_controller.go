@@ -875,7 +875,7 @@ func (r *RestApiReconciler) addAuthToRequest(ctx context.Context, req *http.Requ
 	}
 
 	// Try to get auth config from the Gateway's ConfigMap
-	authConfig, err := auth.GetAuthConfigFromGateway(ctx, r.Client, gateway)
+	authConfig, err := auth.GetDeploymentConfigFromGateway(ctx, r.Client, gateway)
 	if err != nil {
 		log.Warn("Failed to retrieve auth config from Gateway ConfigMap, using default credentials",
 			zap.Error(err),

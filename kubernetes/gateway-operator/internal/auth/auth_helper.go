@@ -18,7 +18,9 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 
 	"gopkg.in/yaml.v3"
@@ -28,8 +30,18 @@ import (
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
 )
 
-// AuthConfig represents the authentication configuration from the gateway ConfigMap
-type AuthConfig struct {
+// DeploymentConfig represents the authentication configuration from the gateway ConfigMap
+type DeploymentConfig struct {
+	Gateway GatewayConfig `yaml:"gateway"`
+}
+
+// GatewayConfig represents the gateway section
+type GatewayConfig struct {
+	Config Config `yaml:"config"`
+}
+
+// Config represents the config section
+type Config struct {
 	GatewayController GatewayControllerConfig `yaml:"gateway_controller"`
 }
 
@@ -63,9 +75,9 @@ type IDPConfig struct {
 	Enabled bool `yaml:"enabled"`
 }
 
-// GetAuthConfigFromGateway retrieves authentication configuration from a Gateway's ConfigRef
+// GetDeploymentConfigFromGateway retrieves authentication configuration from a Gateway's ConfigRef
 // Returns nil if no ConfigRef is specified or if auth config is not found in the ConfigMap
-func GetAuthConfigFromGateway(ctx context.Context, k8sClient client.Client, gateway *apiv1.Gateway) (*AuthConfig, error) {
+func GetDeploymentConfigFromGateway(ctx context.Context, k8sClient client.Client, gateway *apiv1.Gateway) (*AuthSettings, error) {
 	// If no ConfigRef, return nil (will use default auth)
 	if gateway.Spec.ConfigRef == nil {
 		return nil, nil
@@ -88,33 +100,33 @@ func GetAuthConfigFromGateway(ctx context.Context, k8sClient client.Client, gate
 	}
 
 	// Parse the YAML
-	var authConfig AuthConfig
-	if err := yaml.Unmarshal([]byte(valuesYAML), &authConfig); err != nil {
+	var deploymentConfig DeploymentConfig
+	if err := yaml.Unmarshal([]byte(valuesYAML), &deploymentConfig); err != nil {
 		return nil, fmt.Errorf("failed to parse auth config from ConfigMap: %w", err)
 	}
 
-	return &authConfig, nil
+	return &deploymentConfig.Gateway.Config.GatewayController.Auth, nil
 }
 
 // GetBasicAuthCredentials extracts basic auth credentials from the auth config
 // Returns username, password, and ok=true if basic auth is enabled and has at least one user
 // Returns empty strings and ok=false if basic auth is not configured or disabled
-func GetBasicAuthCredentials(authConfig *AuthConfig) (username, password string, ok bool) {
+func GetBasicAuthCredentials(authConfig *AuthSettings) (username, password string, ok bool) {
 	if authConfig == nil {
 		return "", "", false
 	}
 
 	// Check if basic auth is enabled
-	if !authConfig.GatewayController.Auth.Basic.Enabled {
+	if !authConfig.Basic.Enabled {
 		return "", "", false
 	}
 
 	// Get the first user (if any)
-	if len(authConfig.GatewayController.Auth.Basic.Users) == 0 {
+	if len(authConfig.Basic.Users) == 0 {
 		return "", "", false
 	}
 
-	user := authConfig.GatewayController.Auth.Basic.Users[0]
+	user := authConfig.Basic.Users[0]
 
 	// For now, we only support plain passwords (not hashed)
 	// The operator needs the plain password to send in the Authorization header
@@ -137,4 +149,11 @@ func GetDefaultBasicAuthCredentials() (username, password string) {
 func EncodeBasicAuth(username, password string) string {
 	auth := username + ":" + password
 	return base64.StdEncoding.EncodeToString([]byte(auth))
+}
+
+// CalculateConfigHash calculates a SHA256 hash of the configuration content
+// This is used to detect changes in the configuration that should trigger reconciliation
+func CalculateConfigHash(configContent string) string {
+	hash := sha256.Sum256([]byte(configContent))
+	return hex.EncodeToString(hash[:])
 }
