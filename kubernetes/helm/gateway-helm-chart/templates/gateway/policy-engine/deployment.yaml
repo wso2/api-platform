@@ -74,6 +74,10 @@ spec:
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 12 }}
             {{- end }}
+            {{- with $deployment.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           ports:
             - name: ext
               containerPort: {{ $policy.service.ports.ext }}

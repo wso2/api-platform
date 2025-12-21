@@ -907,6 +907,57 @@ jobs:
 
           echo "API invocation test passed!"
 
+      - name: Update test RestApi
+        run: |
+          echo "Updating test-api to add PUT /put..."
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          kind: RestApi
+          metadata:
+            name: test-api
+            namespace: default
+          spec:
+            displayName: test-api
+            version: v1.0
+            context: /test
+            upstream:
+              main:
+                url: http://httpbin.default.svc.cluster.local:80
+            operations:
+              - method: GET
+                path: /get
+              - method: POST
+                path: /post
+              - method: PUT
+                path: /put
+          EOF
+
+      - name: Wait for updated API to be programmed
+        run: |
+          echo "Waiting for updated RestApi to be programmed..."
+          # Give it a few seconds to trigger reconciliation
+          sleep 10
+          kubectl wait --for=condition=Programmed restapi/test-api --timeout=120s
+
+          echo "RestApi status after update:"
+          kubectl get restapi test-api -o yaml
+
+      - name: Test updated API invocation
+        run: |
+          echo "Testing updated API invocation (PUT /test/put)..."
+
+          # Test PUT request
+          response=$(curl -s -o /dev/null -w "%{http_code}" -X PUT http://localhost:8080/test/put)
+          echo "PUT /test/put returned: $response"
+
+          if [ "$response" != "200" ]; then
+            echo "Updated API test failed with status $response"
+            curl -v -X PUT http://localhost:8080/test/put || true
+            exit 1
+          fi
+
+          echo "Updated API invocation test passed!"
+
       - name: Create JWT Protected API
         run: |
           cat <<EOF | kubectl apply -f -
@@ -983,6 +1034,65 @@ jobs:
           fi
 
           echo "JWT API invocation test passed!"
+
+      - name: Update JWT RestApi with dummy issuer
+        run: |
+          echo "Updating jwt-api to use DummyKeyManager..."
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          kind: RestApi
+          metadata:
+            name: jwt-api
+            namespace: default
+          spec:
+            displayName: jwt-api
+            version: v1.0
+            context: /secure
+            upstream:
+              main:
+                url: http://httpbin.default.svc.cluster.local:80
+            policies:
+              - name: JwtAuthentication
+                version: v0.1.0
+                params:
+                  issuers:
+                    - DummyKeyManager
+            operations:
+              - method: GET
+                path: /get
+          EOF
+
+      - name: Wait for updated JWT API to be programmed
+        run: |
+          echo "Waiting for updated JWT API to be programmed..."
+          # Give it a few seconds to trigger reconciliation
+          sleep 10
+          kubectl wait --for=condition=Programmed restapi/jwt-api --timeout=120s
+
+          echo "RestApi status after update:"
+          kubectl get restapi jwt-api -o yaml
+
+      - name: Test updated JWT API invocation
+        run: |
+          # Get a token from the mock service again to be sure
+          kubectl port-forward svc/mock-jwks 8081:8080 &
+          PID=$!
+          sleep 5
+          TOKEN=$(curl -s http://localhost:8081/token)
+          kill $PID || true
+          
+          echo "Testing updated JWT API invocation (should fail with 401)..."
+
+          # Test with previously valid token (should now fail because issuer is different)
+          status=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" http://localhost:8080/secure/get)
+          echo "GET /secure/get (with token) returned: $status"
+          
+          if [ "$status" != "401" ]; then
+            echo "Expected 401, got $status. The dummy issuer configuration did not reject the token."
+            exit 1
+          fi
+
+          echo "Updated JWT API invocation test passed (correctly rejected)!"
 
       - name: Debug on failure - Dump logs
         if: failure()

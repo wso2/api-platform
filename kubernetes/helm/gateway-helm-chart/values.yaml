@@ -428,6 +428,10 @@ gateway:
       replicaCount: 1
       volumeMountPath: /app/data
       extraEnv: []
+      # extraEnvFrom:
+      #   - secretRef:
+      #       name: my-secret
+      extraEnvFrom: []
       env:
         xdsServerAddress: ""
       extraVolumeMounts: []
@@ -544,6 +548,10 @@ gateway:
       env:
         xdsServerAddress: ""
       extraEnv: []
+      # extraEnvFrom:
+      #   - configMapRef:
+      #       name: my-config-map
+      extraEnvFrom: []
       labels: {}
       annotations: {}
       podAnnotations: {}
