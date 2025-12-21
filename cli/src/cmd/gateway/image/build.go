@@ -409,10 +409,14 @@ func displayOfflineBuildSummary(manifestFile, lockFile string, verified []policy
 	fmt.Println()
 
 	// Workspace and output
-	fmt.Printf("✓ Build workspace: %s\n", workspaceDir)
+	// Workspace output
+	outputPath := filepath.Join(workspaceDir, "output")
+	fmt.Printf("✓ Temporary Build output: %s\n", outputPath)
 	if outputDir != "" {
 		fmt.Printf("✓ Output artifacts copied to: %s\n", outputDir)
 	}
+	// Explain workspace cleanup behavior
+	fmt.Printf("\nNote: Workspace may be cleared on the next run of this command.\n")
 	fmt.Println()
 }
 
@@ -442,11 +446,15 @@ func displayBuildSummary(manifest *policy.PolicyManifest, manifestFilePath, lock
 	fmt.Println()
 
 	// Workspace and output
-	fmt.Printf("✓ Build workspace: %s\n", workspaceDir)
+	// Workspace output
+	outputPath := filepath.Join(workspaceDir, "output")
+	fmt.Printf("✓ Temporary Build output: %s\n", outputPath)
 	fmt.Printf("✓ Manifest lock file: %s\n", lockFile)
 	if outputDir != "" {
 		fmt.Printf("✓ Output artifacts copied to: %s\n", outputDir)
 	}
+	// Explain workspace cleanup behavior
+	fmt.Printf("\nNote: Workspace may be cleared on the next run of this command.\n")
 	fmt.Println()
 }
 
