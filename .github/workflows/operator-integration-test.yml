@@ -1094,6 +1094,103 @@ jobs:
 
           echo "Updated JWT API invocation test passed (correctly rejected)!"
 
+      - name: Multi-namespace API test
+        run: |
+          echo "Creating namespace test-ns..."
+          kubectl create namespace test-ns
+          
+          echo "Creating RestApi in test-ns..."
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          kind: RestApi
+          metadata:
+            name: multi-ns-api
+            namespace: test-ns
+          spec:
+            displayName: multi-ns-api
+            version: v1.0
+            context: /multi-ns
+            upstream:
+              main:
+                url: http://httpbin.default.svc.cluster.local:80
+            operations:
+              - method: GET
+                path: /get
+          EOF
+          
+          echo "Waiting for multi-namespace API to be programmed..."
+          # Give it a few seconds to trigger reconciliation
+          sleep 10
+          kubectl wait --for=condition=Programmed restapi/multi-ns-api -n test-ns --timeout=120s
+          
+          echo "Testing multi-namespace API invocation..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/multi-ns/get)
+          echo "GET /multi-ns/get returned: $response"
+          
+          if [ "$response" != "200" ]; then
+            echo "Multi-namespace API test failed with status $response"
+            curl -v http://localhost:8080/multi-ns/get || true
+            exit 1
+          fi
+          
+          echo "Multi-namespace API invocation test passed!"
+          
+          echo "Cleaning up multi-namespace API..."
+          kubectl delete restapi multi-ns-api -n test-ns
+          kubectl delete namespace test-ns
+
+      - name: Delete test RestApi
+        run: |
+          echo "Deleting RestApi test-api..."
+          kubectl delete restapi test-api
+          
+          echo "Waiting for routes to be removed..."
+          # Give it some time for the operator to sync and Envoy to update
+          sleep 15
+          
+          echo "Verifying API is no longer reachable (expecting 404)..."
+          status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/test/get)
+          echo "GET /test/get returned: $status"
+          
+          if [ "$status" != "404" ]; then
+            echo "Expected 404, got $status. API route was not removed correctly."
+            exit 1
+          fi
+          echo "RestApi deletion and route removal verified!"
+
+      - name: Delete test Gateway
+        run: |
+          echo "Deleting Gateway test-gateway..."
+          kubectl delete gateway test-gateway
+          
+          echo "Waiting for resources to be cleaned up..."
+          # Cleanup can take a bit longer as it involves uninstalling Helm charts
+          sleep 30
+          
+          echo "Verifying gateway resources are removed..."
+          
+          # Check for pods with the gateway labels
+          pods=$(kubectl get pods -l app.kubernetes.io/instance=test-gateway-gateway --no-headers | wc -l)
+          echo "Found $pods pods remaining."
+          
+          if [ "$pods" -ne "0" ]; then
+            echo "Gateway pods were not removed!"
+            kubectl get pods -A
+            exit 1
+          fi
+          
+          # Check for services
+          services=$(kubectl get svc -l app.kubernetes.io/instance=test-gateway-gateway --no-headers | wc -l)
+          echo "Found $services services remaining."
+          
+          if [ "$services" -ne "0" ]; then
+            echo "Gateway services were not removed!"
+            kubectl get svc -A
+            exit 1
+          fi
+          
+          echo "Gateway deletion and resource cleanup verified!"
+
       - name: Debug on failure - Dump logs
         if: failure()
         run: |
