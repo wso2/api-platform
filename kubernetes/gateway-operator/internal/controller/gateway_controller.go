@@ -46,6 +46,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1alpha1"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/auth"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
@@ -56,9 +57,10 @@ import (
 type GatewayTrackingStatus string
 
 const (
-	GatewayTrackingStatusProcessing GatewayTrackingStatus = "Processing"
-	GatewayTrackingStatusRetrying   GatewayTrackingStatus = "Retrying"
-	GatewayTrackingStatusDeployed   GatewayTrackingStatus = "Deployed"
+	GatewayTrackingStatusProcessing    GatewayTrackingStatus = "Processing"
+	GatewayTrackingStatusRetrying      GatewayTrackingStatus = "Retrying"
+	GatewayTrackingStatusDeployed      GatewayTrackingStatus = "Deployed"
+	GatewayTrackingStatusConfigChanged GatewayTrackingStatus = "ConfigChanged"
 )
 
 // GatewayTrackingEntry tracks the state of a Gateway deployment
@@ -205,9 +207,56 @@ func (r *GatewayReconciler) decideAndProcess(
 ) (ctrl.Result, error) {
 	log := r.Logger.With(zap.String("controller", "Gateway"), zap.String("name", gatewayConfig.Name))
 
+	// Calculate current config hash
+	currentConfigHash := ""
+	if gatewayConfig.Spec.ConfigRef != nil {
+		values, err := r.getConfigMapValues(ctx, gatewayConfig.Spec.ConfigRef.Name, gatewayConfig.Namespace)
+		if err != nil {
+			// If we can't read config map, it might be transient or deleted
+			// We should probably fail to deploy/reconcile
+			// But if we are already deployed, maybe we just log error?
+			// For now, let's treat it as error so we can retry
+			return ctrl.Result{}, fmt.Errorf("failed to get config map values: %w", err)
+		}
+		currentConfigHash = auth.CalculateConfigHash(values)
+	}
+
+	// Check if config has changed
+	configChanged := currentConfigHash != gatewayConfig.Status.ConfigHash
+
 	// Case 1: CR generation == status observed generation and Programmed=True
 	// This means the Gateway is already deployed (or controller restarted after successful deploy)
 	if crGeneration == statusObservedGen && programmedCond != nil && programmedCond.Status == metav1.ConditionTrue {
+		// If config changed, we need to redeploy
+		if configChanged {
+			log.Info("Configuration changed, triggering redeployment",
+				zap.String("oldHash", gatewayConfig.Status.ConfigHash),
+				zap.String("newHash", currentConfigHash))
+
+			// Update status to Programmed=False to trigger a new reconciliation loop
+			// This effectively resets the state machine to "Not Ready"
+			// The next reconciliation will see Programmed=False and trigger processGatewayDeployment
+
+			// Reset tracking status to ConfigChanged with current generation.
+			// This explicitly signals that we are pending a deployment due to config change.
+			r.gatewayTracker.Set(trackingKey, &GatewayTrackingEntry{
+				Generation: crGeneration,
+				Status:     GatewayTrackingStatusConfigChanged,
+				RetryCount: 0,
+			})
+
+			if err := r.updateGatewayProgrammedCondition(ctx, gatewayConfig, metav1.Condition{
+				Type:               apiv1.GatewayConditionProgrammed,
+				Status:             metav1.ConditionFalse,
+				Reason:             "ConfigChanged",
+				Message:            "Configuration changed, redeployment pending",
+				LastTransitionTime: metav1.Now(),
+			}, nil, ""); err != nil {
+				return ctrl.Result{}, err
+			}
+			return ctrl.Result{Requeue: true}, nil
+		}
+
 		// Already deployed - update tracker and skip
 		r.gatewayTracker.Set(trackingKey, &GatewayTrackingEntry{
 			Generation: crGeneration,
@@ -248,7 +297,7 @@ func (r *GatewayReconciler) decideAndProcess(
 						zap.String("name", gatewayConfig.Name),
 						zap.Int64("generation", crGeneration),
 						zap.Int("retryCount", trackingEntry.RetryCount))
-					return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration)
+					return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
 				}
 				// If Deployed but status not updated yet, wait for status propagation
 				if trackingEntry.Status == GatewayTrackingStatusDeployed {
@@ -256,6 +305,13 @@ func (r *GatewayReconciler) decideAndProcess(
 						zap.String("name", gatewayConfig.Name),
 						zap.Int64("generation", crGeneration))
 					return ctrl.Result{}, nil
+				}
+				// If ConfigChanged, proceed to redeploy
+				if trackingEntry.Status == GatewayTrackingStatusConfigChanged {
+					log.Info("Processing Gateway config change redeployment",
+						zap.String("name", gatewayConfig.Name),
+						zap.Int64("generation", crGeneration))
+					return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
 				}
 			}
 
@@ -265,7 +321,7 @@ func (r *GatewayReconciler) decideAndProcess(
 					zap.String("name", gatewayConfig.Name),
 					zap.Int64("oldGeneration", trackingEntry.Generation),
 					zap.Int64("newGeneration", crGeneration))
-				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration)
+				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
 			}
 		} else {
 			// No tracking entry
@@ -274,7 +330,7 @@ func (r *GatewayReconciler) decideAndProcess(
 				log.Info("Processing new Gateway",
 					zap.String("name", gatewayConfig.Name),
 					zap.Int64("generation", crGeneration))
-				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration)
+				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
 			}
 
 			// Controller restart scenario:
@@ -286,7 +342,7 @@ func (r *GatewayReconciler) decideAndProcess(
 					zap.String("name", gatewayConfig.Name),
 					zap.Int64("statusObservedGen", statusObservedGen),
 					zap.Int64("crGeneration", crGeneration))
-				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration)
+				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
 			}
 
 			if statusObservedGen == 0 && crGeneration > 1 {
@@ -295,7 +351,7 @@ func (r *GatewayReconciler) decideAndProcess(
 				log.Info("Controller restart detected - retrying incomplete initial deployment",
 					zap.String("name", gatewayConfig.Name),
 					zap.Int64("crGeneration", crGeneration))
-				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration)
+				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
 			}
 
 			// statusObservedGen == crGeneration but condition is not True
@@ -304,7 +360,7 @@ func (r *GatewayReconciler) decideAndProcess(
 				log.Info("Retrying previously failed deployment",
 					zap.String("name", gatewayConfig.Name),
 					zap.Int64("generation", crGeneration))
-				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration)
+				return r.processGatewayDeployment(ctx, gatewayConfig, trackingKey, crGeneration, currentConfigHash)
 			}
 		}
 	}
@@ -323,6 +379,7 @@ func (r *GatewayReconciler) processGatewayDeployment(
 	gatewayConfig *apiv1.Gateway,
 	trackingKey string,
 	generation int64,
+	configHash string,
 ) (ctrl.Result, error) {
 	log := r.Logger.With(zap.String("controller", "Gateway"), zap.String("name", gatewayConfig.Name))
 
@@ -396,7 +453,7 @@ func (r *GatewayReconciler) processGatewayDeployment(
 			Reason:             apiv1.GatewayProgrammedReasonPending,
 			Message:            readinessMsg,
 			LastTransitionTime: metav1.Now(),
-		}, &selectedCount); err != nil {
+		}, &selectedCount, ""); err != nil {
 			return ctrl.Result{}, err
 		}
 
@@ -405,7 +462,7 @@ func (r *GatewayReconciler) processGatewayDeployment(
 	}
 
 	// Success - Gateway is ready
-	return r.handleGatewayDeploymentSuccess(ctx, gatewayConfig, trackingKey, entry, selectedCount, readinessMsg)
+	return r.handleGatewayDeploymentSuccess(ctx, gatewayConfig, trackingKey, entry, selectedCount, readinessMsg, configHash)
 }
 
 // setGatewayInitialConditions sets the Accepted and initial Programmed conditions
@@ -451,6 +508,7 @@ func (r *GatewayReconciler) handleGatewayDeploymentSuccess(
 	entry *GatewayTrackingEntry,
 	selectedCount int,
 	readinessMsg string,
+	configHash string,
 ) (ctrl.Result, error) {
 	log := r.Logger.With(zap.String("controller", "Gateway"), zap.String("name", gatewayConfig.Name))
 	log.Info("Gateway deployment succeeded", zap.String("gateway", gatewayConfig.Name))
@@ -467,7 +525,7 @@ func (r *GatewayReconciler) handleGatewayDeploymentSuccess(
 		Reason:             apiv1.GatewayProgrammedReasonProgrammed,
 		Message:            readinessMsg,
 		LastTransitionTime: metav1.Now(),
-	}, &selectedCount); err != nil {
+	}, &selectedCount, configHash); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -513,7 +571,7 @@ func (r *GatewayReconciler) handleGatewayDeploymentError(
 			Reason:             apiv1.GatewayProgrammedReasonDeploymentFailed,
 			Message:            fmt.Sprintf("Max retries (%d) exceeded. Last error: %s", maxRetries, err.Error()),
 			LastTransitionTime: metav1.Now(),
-		}, &selectedCount); updateErr != nil {
+		}, &selectedCount, ""); updateErr != nil {
 			return ctrl.Result{}, updateErr
 		}
 
@@ -540,7 +598,7 @@ func (r *GatewayReconciler) handleGatewayDeploymentError(
 		Reason:             apiv1.GatewayProgrammedReasonRetrying,
 		Message:            fmt.Sprintf("Deployment failed, retrying (attempt %d/%d): %s", entry.RetryCount, maxRetries, err.Error()),
 		LastTransitionTime: metav1.Now(),
-	}, &selectedCount); updateErr != nil {
+	}, &selectedCount, ""); updateErr != nil {
 		return ctrl.Result{}, updateErr
 	}
 
@@ -570,7 +628,7 @@ func (r *GatewayReconciler) calculateBackoff(retryCount int) time.Duration {
 }
 
 // updateGatewayProgrammedCondition updates the Programmed condition and related status fields
-func (r *GatewayReconciler) updateGatewayProgrammedCondition(ctx context.Context, gatewayConfig *apiv1.Gateway, cond metav1.Condition, selectedCount *int) error {
+func (r *GatewayReconciler) updateGatewayProgrammedCondition(ctx context.Context, gatewayConfig *apiv1.Gateway, cond metav1.Condition, selectedCount *int, configHash string) error {
 	// Re-fetch to get latest version
 	latest := &apiv1.Gateway{}
 	if err := r.Get(ctx, types.NamespacedName{Namespace: gatewayConfig.Namespace, Name: gatewayConfig.Name}, latest); err != nil {
@@ -617,6 +675,10 @@ func (r *GatewayReconciler) updateGatewayProgrammedCondition(ctx context.Context
 
 	if selectedCount != nil {
 		latest.Status.SelectedAPIs = *selectedCount
+	}
+
+	if configHash != "" {
+		latest.Status.ConfigHash = configHash
 	}
 
 	now := metav1.Now()

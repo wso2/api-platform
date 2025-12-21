@@ -246,6 +246,11 @@ type GatewayStatus struct {
 	// LastUpdateTime is the last time the status was updated
 	// +optional
 	LastUpdateTime *metav1.Time `json:"lastUpdateTime,omitempty"`
+
+	// ConfigHash represents the hash of the referenced configuration
+	// used to detect changes in ConfigMap content
+	// +optional
+	ConfigHash string `json:"configHash,omitempty"`
 }
 
 //+kubebuilder:object:root=true
