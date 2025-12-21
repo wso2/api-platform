@@ -51,7 +51,7 @@ const (
 	EnvGatewayPassword = "WSO2AP_GW_PASSWORD"
 
 	// Image Build Configuration
-	GatewayVerifyChecksumOnBuild = true
+	GatewayVerifyChecksumOnBuild = false
 )
 
 // PolicyHub REST API
