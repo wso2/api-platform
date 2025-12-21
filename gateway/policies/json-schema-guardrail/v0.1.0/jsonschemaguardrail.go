@@ -3,6 +3,7 @@ package jsonschemaguardrail
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	utils "github.com/wso2/api-platform/sdk/utils"
@@ -58,6 +59,8 @@ func GetPolicy(
 	if !p.hasRequestParams && !p.hasResponseParams {
 		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
 	}
+
+	slog.Debug("JSONSchemaGuardrail: Policy initialized", "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
 
 	return p, nil
 }
@@ -162,6 +165,7 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params JSONS
 	if params.JsonPath != "" {
 		extractedValue, err := extractValueFromJSONPathForSchema(payload, params.JsonPath)
 		if err != nil {
+			slog.Debug("JSONSchemaGuardrail: Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
 			return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment, nil)
 		}
 		documentLoader = gojsonschema.NewBytesLoader(extractedValue)
@@ -172,6 +176,7 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params JSONS
 	// Validate against schema
 	result, err := gojsonschema.Validate(schemaLoader, documentLoader)
 	if err != nil {
+		slog.Debug("JSONSchemaGuardrail: Error validating schema", "error", err, "isResponse", isResponse)
 		return p.buildErrorResponse("Error validating schema", err, isResponse, params.ShowAssessment, nil)
 	}
 
@@ -184,6 +189,7 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params JSONS
 	}
 
 	if !validationPassed {
+		slog.Debug("JSONSchemaGuardrail: Validation failed", "valid", result.Valid(), "invert", params.Invert, "errorCount", len(result.Errors()), "isResponse", isResponse)
 		var reason string
 		if params.Invert {
 			reason = "JSON schema validation passed but invert is enabled"
@@ -193,6 +199,7 @@ func (p *JSONSchemaGuardrailPolicy) validatePayload(payload []byte, params JSONS
 		return p.buildErrorResponse(reason, nil, isResponse, params.ShowAssessment, result.Errors())
 	}
 
+	slog.Debug("JSONSchemaGuardrail: Validation passed", "invert", params.Invert, "isResponse", isResponse)
 	if isResponse {
 		return policy.UpstreamResponseModifications{}
 	}

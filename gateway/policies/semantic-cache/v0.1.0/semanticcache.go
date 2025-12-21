@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -78,6 +79,10 @@ func GetPolicy(
 	if err := p.vectorStoreProvider.CreateIndex(); err != nil {
 		return nil, fmt.Errorf("failed to create vector store index: %w", err)
 	}
+
+	// Log similarity threshold (convert back from distance: similarity = 1.0 - distance)
+	similarityThreshold := 1.0 - p.threshold
+	slog.Debug("SemanticCache: Policy initialized", "embeddingProvider", embeddingProvider, "vectorStoreProvider", vectorStoreProvider, "similarityThreshold", similarityThreshold)
 
 	return p, nil
 }
@@ -328,6 +333,7 @@ func (p *SemanticCachePolicy) OnRequest(ctx *policy.RequestContext, params map[s
 	// Generate embedding
 	embedding, err := p.embeddingProvider.GetEmbedding(textToEmbed)
 	if err != nil {
+		slog.Debug("SemanticCache: Error generating embedding", "error", err)
 		// Log error but don't block request
 		return policy.UpstreamRequestModifications{}
 	}
@@ -354,6 +360,7 @@ func (p *SemanticCachePolicy) OnRequest(ctx *policy.RequestContext, params map[s
 
 	cacheResponse, err := p.vectorStoreProvider.Retrieve(embedding, cacheFilter)
 	if err != nil {
+		slog.Debug("SemanticCache: Cache retrieval error", "error", err, "apiID", apiID)
 		// Cache miss or error - continue to upstream
 		return policy.UpstreamRequestModifications{}
 	}
@@ -361,11 +368,14 @@ func (p *SemanticCachePolicy) OnRequest(ctx *policy.RequestContext, params map[s
 	// Check if we got a valid cache response
 	// Retrieve returns empty CacheResponse on no match or threshold not met
 	if cacheResponse.ResponsePayload == nil || len(cacheResponse.ResponsePayload) == 0 {
+		similarityThreshold := 1.0 - p.threshold
+		slog.Debug("SemanticCache: Cache miss", "apiID", apiID, "similarityThreshold", similarityThreshold)
 		// Cache miss - continue to upstream
 		return policy.UpstreamRequestModifications{}
 	}
 
 	// Cache hit - return cached response immediately
+	slog.Debug("SemanticCache: Cache hit", "apiID", apiID)
 	responseBytes, err := json.Marshal(cacheResponse.ResponsePayload)
 	if err != nil {
 		return policy.UpstreamRequestModifications{}
@@ -385,6 +395,7 @@ func (p *SemanticCachePolicy) OnRequest(ctx *policy.RequestContext, params map[s
 func (p *SemanticCachePolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
 	// Only cache successful responses (2xx status codes)
 	if ctx.ResponseStatus < 200 || ctx.ResponseStatus >= 300 {
+		slog.Debug("SemanticCache: Skipping cache for non-2xx response", "statusCode", ctx.ResponseStatus)
 		return policy.UpstreamResponseModifications{}
 	}
 
@@ -400,6 +411,7 @@ func (p *SemanticCachePolicy) OnResponse(ctx *policy.ResponseContext, params map
 	// Retrieve embedding from metadata (stored in request phase)
 	embeddingStr, ok := ctx.Metadata[MetadataKeyEmbedding].(string)
 	if !ok || embeddingStr == "" {
+		slog.Debug("SemanticCache: No embedding found in metadata, skipping cache storage")
 		return policy.UpstreamResponseModifications{}
 	}
 
@@ -435,10 +447,12 @@ func (p *SemanticCachePolicy) OnResponse(ctx *policy.ResponseContext, params map
 	}
 
 	if err := p.vectorStoreProvider.Store(embedding, cacheResponse, cacheFilter); err != nil {
+		slog.Debug("SemanticCache: Error storing in cache", "error", err, "apiID", apiID)
 		// Log error but don't modify response
 		return policy.UpstreamResponseModifications{}
 	}
 
+	slog.Debug("SemanticCache: Response cached successfully", "apiID", apiID)
 	return policy.UpstreamResponseModifications{}
 }
 
