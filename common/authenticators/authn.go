@@ -56,11 +56,14 @@ func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFu
 		if config.JWTConfig != nil && config.JWTConfig.Enabled && config.JWTConfig.IssuerURL != "" {
 			jwtAuthenticator, err := NewJWTAuthenticator(&config, logger)
 			if err != nil {
-				logger.Sugar().Errorf("JWT Authenticator couldn't initialized %v", err)
+				logger.Sugar().Errorf("JWT Authenticator initialization failed: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error": "JWT authentication service unavailable",
+				})
+				c.Abort()
 				return
-			} else {
-				authenticators = append(authenticators, jwtAuthenticator)
 			}
+			authenticators = append(authenticators, jwtAuthenticator)
 		}
 
 		// If no authenticators are configured, this is a misconfiguration
