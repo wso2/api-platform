@@ -60,15 +60,24 @@ type APIKeyRevocationParams struct {
 
 // APIKeyService provides utilities for API configuration deployment
 type APIKeyService struct {
-	store *storage.ConfigStore
-	db    storage.Storage
+	store      *storage.ConfigStore
+	db         storage.Storage
+	xdsManager XDSManager
+}
+
+// XDSManager interface for API key operations
+type XDSManager interface {
+	StoreAPIKey(apiId, apiName, apiVersion string, apiKey *models.APIKey, correlationID string) error
+	RevokeAPIKey(apiId, apiName, apiVersion, apiKeyValue, correlationID string) error
+	RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID string) error
 }
 
 // NewAPIKeyService creates a new API key generation service
-func NewAPIKeyService(store *storage.ConfigStore, db storage.Storage) *APIKeyService {
+func NewAPIKeyService(store *storage.ConfigStore, db storage.Storage, xdsManager XDSManager) *APIKeyService {
 	return &APIKeyService{
-		store: store,
-		db:    db,
+		store:      store,
+		db:         db,
+		xdsManager: xdsManager,
 	}
 }
 
@@ -165,6 +174,7 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 		return nil, fmt.Errorf("failed to parse API configuration data: %w", err)
 	}
 
+	apiId := config.ID
 	apiName := apiConfig.DisplayName
 	apiVersion := apiConfig.Version
 	logger.Info("Storing API key in policy engine",
@@ -175,8 +185,15 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 		zap.String("user", params.User),
 		zap.String("correlation_id", params.CorrelationID))
 
-	// TODO - Send the API key to the policy engine
-	// err := StoreAPIKey(apiName, apiVersion string, apiKey *APIKey, params.CorrelationID string)
+	// Send the API key to the policy engine via xDS
+	if s.xdsManager != nil {
+		if err := s.xdsManager.StoreAPIKey(apiId, apiName, apiVersion, apiKey, params.CorrelationID); err != nil {
+			logger.Error("Failed to send API key to policy engine",
+				zap.Error(err),
+				zap.String("correlation_id", params.CorrelationID))
+			return nil, fmt.Errorf("failed to send API key to policy engine: %w", err)
+		}
+	}
 
 	// Build response following the generated schema
 	result.Response = s.buildAPIKeyResponse(apiKey, params.Handle)
@@ -300,6 +317,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) error {
 		return fmt.Errorf("failed to revoke API key: %w", err)
 	}
 
+	apiId := config.ID
 	apiName := apiConfig.DisplayName
 	apiVersion := apiConfig.Version
 	logger.Info("Removing API key from policy engine",
@@ -310,14 +328,15 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) error {
 		zap.String("user", params.User),
 		zap.String("correlation_id", params.CorrelationID))
 
-	// TODO - Send the API key revocation to the policy engine
-	// err := RevokeAPIKey(apiName, apiVersion, params.APIKey, params.CorrelationID string)
-	// if err != nil {
-	//     logger.Error("Failed to remove api key from policy engine",
-	//         zap.Error(err),
-	//         zap.String("correlation_id", params.CorrelationID))
-	//     return fmt.Errorf("failed to revoke API key: %w", err)
-	// }
+	// Send the API key revocation to the policy engine via xDS
+	if s.xdsManager != nil {
+		if err := s.xdsManager.RevokeAPIKey(apiId, apiName, apiVersion, params.APIKey, params.CorrelationID); err != nil {
+			logger.Error("Failed to remove API key from policy engine",
+				zap.Error(err),
+				zap.String("correlation_id", params.CorrelationID))
+			return fmt.Errorf("failed to revoke API key: %w", err)
+		}
+	}
 
 	logger.Info("API key revoked successfully",
 		zap.String("handle", params.Handle),
@@ -331,8 +350,6 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) error {
 // generateAPIKeyFromRequest creates a new API key based on the APIKeyGenerationRequest
 func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.APIKeyGenerationRequest, user string,
 	config *models.StoredConfig) (*models.APIKey, error) {
-	// Prevent unused parameter build error - config may be used in future enhancements
-	_ = config
 
 	// Generate UUID for the record ID
 	id := uuid.New().String()

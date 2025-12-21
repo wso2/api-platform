@@ -22,6 +22,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+
 	"io"
 	"net/http"
 	"sort"
@@ -59,6 +61,7 @@ type APIServer struct {
 	mcpDeploymentService *utils.MCPDeploymentService
 	llmDeploymentService *utils.LLMDeploymentService
 	apiKeyService        *utils.APIKeyService
+	apiKeyXDSManager     *apikeyxds.APIKeyStateManager
 	controlPlaneClient   controlplane.ControlPlaneClient
 	routerConfig         *config.RouterConfig
 	httpClient           *http.Client
@@ -76,6 +79,7 @@ func NewAPIServer(
 	templateDefinitions map[string]*api.LLMProviderTemplate,
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
+	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
 ) *APIServer {
 	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig)
 	server := &APIServer{
@@ -91,7 +95,8 @@ func NewAPIServer(
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, templateDefinitions,
 			deploymentService, routerConfig),
-		apiKeyService:        utils.NewAPIKeyService(store, db),
+		apiKeyService:        utils.NewAPIKeyService(store, db, apiKeyXDSManager),
+		apiKeyXDSManager:     apiKeyXDSManager,
 		controlPlaneClient: controlPlaneClient,
 		routerConfig:       routerConfig,
 		httpClient:         &http.Client{Timeout: 10 * time.Second},
@@ -791,6 +796,39 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 		log.Warn("Failed to remove API keys from ConfigStore",
 			zap.String("handle", handle),
 			zap.Error(err))
+	}
+
+	// Remove API keys from policy engine via xDS
+	if s.apiKeyXDSManager != nil {
+		// Extract API name and version from the config
+		apiConfig, err := cfg.Configuration.Spec.AsAPIConfigData()
+		if err == nil {
+			apiId := cfg.ID
+			apiName := apiConfig.DisplayName
+			apiVersion := apiConfig.Version
+			correlationID := middleware.GetCorrelationID(c)
+
+			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID); err != nil {
+				log.Warn("Failed to remove API keys from policy engine",
+					zap.String("api_id", apiId),
+					zap.String("handle", handle),
+					zap.String("api_name", apiName),
+					zap.String("api_version", apiVersion),
+					zap.String("correlation_id", correlationID),
+					zap.Error(err))
+			} else {
+				log.Info("Successfully removed API keys from policy engine",
+					zap.String("api_id", apiId),
+					zap.String("handle", handle),
+					zap.String("api_name", apiName),
+					zap.String("api_version", apiVersion),
+					zap.String("correlation_id", correlationID))
+			}
+		} else {
+			log.Warn("Failed to extract API config data for API key removal",
+				zap.String("handle", handle),
+				zap.Error(err))
+		}
 	}
 
 	if cfg.Configuration.Kind == api.Asyncwebsub {

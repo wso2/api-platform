@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"net/http"
 	"os"
 	"os/signal"
@@ -155,6 +156,10 @@ func main() {
 		}
 	}()
 
+	apiKeyStore := storage.NewAPIKeyStore(log)
+	apiKeySnapshotManager := apikeyxds.NewAPIKeySnapshotManager(apiKeyStore, log)
+	apiKeyXDSManager := apikeyxds.NewAPIKeyStateManager(apiKeyStore, apiKeySnapshotManager, log)
+
 	// Initialize policy store and start policy xDS server if enabled
 	var policyXDSServer *policyxds.Server
 	var policyManager *policyxds.PolicyManager
@@ -210,7 +215,7 @@ func main() {
 				cfg.GatewayController.PolicyServer.TLS.KeyFile,
 			))
 		}
-		policyXDSServer = policyxds.NewServer(policySnapshotManager, cfg.GatewayController.PolicyServer.Port, log, serverOpts...)
+		policyXDSServer = policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, cfg.GatewayController.PolicyServer.Port, log, serverOpts...)
 		go func() {
 			if err := policyXDSServer.Start(); err != nil {
 				log.Fatal("Policy xDS server failed", zap.Error(err))
@@ -273,9 +278,9 @@ func main() {
 	router.Use(authenticators.AuthorizationMiddleware(authConfig, log))
 	router.Use(gin.Recovery())
 
-	// Initialize API server with the configured validator
+	// Initialize API server with the configured validator and API key manager
 	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient,
-		policyDefinitions, templateDefinitions, validator, &cfg.GatewayController.Router)
+		policyDefinitions, templateDefinitions, validator, &cfg.GatewayController.Router, apiKeyXDSManager)
 
 	// Register API routes (includes certificate management endpoints from OpenAPI spec)
 	api.RegisterHandlers(router, apiServer)

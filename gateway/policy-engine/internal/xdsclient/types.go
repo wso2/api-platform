@@ -26,6 +26,9 @@ const (
 	// PolicyChainTypeURL is the custom type URL for policy chain configurations
 	PolicyChainTypeURL = "api-platform.wso2.org/v1.PolicyChainConfig"
 
+	// APIKeyStateTypeURL is the custom type URL for API key state (state-of-the-world approach)
+	APIKeyStateTypeURL = "api-platform.wso2.org/v1.APIKeyState"
+
 	// Default configuration values
 	DefaultNodeID                = "policy-engine"
 	DefaultCluster               = "policy-engine-cluster"

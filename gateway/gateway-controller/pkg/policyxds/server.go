@@ -21,6 +21,7 @@ package policyxds
 import (
 	"context"
 	"fmt"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"net"
 	"time"
 
@@ -35,12 +36,13 @@ import (
 
 // Server is the policy xDS gRPC server
 type Server struct {
-	grpcServer      *grpc.Server
-	xdsServer       server.Server
-	snapshotManager *SnapshotManager
-	port            int
-	tlsConfig       *TLSConfig
-	logger          *zap.Logger
+	grpcServer        *grpc.Server
+	xdsServer         server.Server
+	snapshotManager   *SnapshotManager
+	apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager
+	port              int
+	tlsConfig         *TLSConfig
+	logger            *zap.Logger
 }
 
 // TLSConfig holds TLS configuration for the server
@@ -65,12 +67,13 @@ func WithTLS(certFile, keyFile string) ServerOption {
 }
 
 // NewServer creates a new policy xDS server
-func NewServer(snapshotManager *SnapshotManager, port int, logger *zap.Logger, opts ...ServerOption) *Server {
+func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.APIKeySnapshotManager, port int, logger *zap.Logger, opts ...ServerOption) *Server {
 	s := &Server{
-		snapshotManager: snapshotManager,
-		port:            port,
-		logger:          logger,
-		tlsConfig:       &TLSConfig{Enabled: false},
+		snapshotManager:   snapshotManager,
+		apiKeySnapshotMgr: apiKeySnapshotMgr,
+		port:              port,
+		logger:            logger,
+		tlsConfig:         &TLSConfig{Enabled: false},
 	}
 
 	// Apply options
@@ -104,10 +107,13 @@ func NewServer(snapshotManager *SnapshotManager, port int, logger *zap.Logger, o
 
 	grpcServer := grpc.NewServer(grpcOpts...)
 
-	// Create xDS server with the snapshot cache
-	cache := snapshotManager.GetCache()
+	// Create combined cache that handles both policy chains and API key state
+	policyCache := snapshotManager.GetCache()
+	apiKeyCache := apiKeySnapshotMgr.GetCache()
+	combinedCache := NewCombinedCache(policyCache, apiKeyCache, logger)
+
 	callbacks := &serverCallbacks{logger: logger}
-	xdsServer := server.NewServer(context.Background(), cache, callbacks)
+	xdsServer := server.NewServer(context.Background(), combinedCache, callbacks)
 
 	// Register ADS (Aggregated Discovery Service) for policy distribution
 	discoverygrpc.RegisterAggregatedDiscoveryServiceServer(grpcServer, xdsServer)

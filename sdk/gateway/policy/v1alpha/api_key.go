@@ -270,6 +270,20 @@ func (aks *APIkeyStore) RemoveAPIKeysByAPI(apiId string) error {
 	return nil
 }
 
+// ClearAll removes all API keys from the store
+func (aks *APIkeyStore) ClearAll() error {
+	aks.mu.Lock()
+	defer aks.mu.Unlock()
+
+	// Clear the main API keys map
+	aks.apiKeys = make(map[string]*APIKey)
+
+	// Clear the API-specific keys map
+	aks.apiKeysByAPI = make(map[string][]*APIKey)
+
+	return nil
+}
+
 // compositeKey creates a composite key from name and version
 func compositeKey(name, version string) string {
 	return fmt.Sprintf("%s:%s", name, version)

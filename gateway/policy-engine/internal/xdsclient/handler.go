@@ -45,17 +45,20 @@ type StoredPolicyConfig struct {
 
 // ResourceHandler handles xDS resource updates
 type ResourceHandler struct {
-	kernel       *kernel.Kernel
-	registry     *registry.PolicyRegistry
-	configLoader *kernel.ConfigLoader
+	kernel        *kernel.Kernel
+	registry      *registry.PolicyRegistry
+	configLoader  *kernel.ConfigLoader
+	apiKeyHandler *APIKeyOperationHandler
 }
 
 // NewResourceHandler creates a new ResourceHandler
 func NewResourceHandler(k *kernel.Kernel, reg *registry.PolicyRegistry) *ResourceHandler {
+	apiKeyStore := policy.GetAPIkeyStoreInstance()
 	return &ResourceHandler{
-		kernel:       k,
-		registry:     reg,
-		configLoader: kernel.NewConfigLoader(k, reg),
+		kernel:        k,
+		registry:      reg,
+		configLoader:  kernel.NewConfigLoader(k, reg),
+		apiKeyHandler: NewAPIKeyOperationHandler(apiKeyStore, slog.Default()),
 	}
 }
 
