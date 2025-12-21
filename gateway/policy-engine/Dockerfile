@@ -18,17 +18,17 @@ RUN apk add --no-cache \
 WORKDIR /workspace
 
 # Copy SDK components
-COPY --from=sdk . /workspace/sdk
+COPY --from=sdk . /api-platform/sdk
 
 # Copy Gateway Builder application
-COPY --from=gateway-builder . /workspace/gateway/gateway-builder
+COPY --from=gateway-builder . /api-platform/gateway/gateway-builder
 
 # Pre-download Go dependencies for SDK
-WORKDIR /workspace/sdk
+WORKDIR /api-platform/sdk
 RUN go mod download
 
 # Pre-download Go dependencies for gateway-builder
-WORKDIR /workspace/gateway/gateway-builder
+WORKDIR /api-platform/gateway/gateway-builder
 RUN go mod download
 
 # Build the Gateway Builder binary (CGO disabled for static binary)
@@ -50,11 +50,11 @@ ENV VERSION=${VERSION}
 ENV GIT_COMMIT=${GIT_COMMIT}
 
 # Copy Policy Engine framework source code
-COPY --from=policy-engine . /workspace/gateway/policy-engine
-COPY --from=sdk . /workspace/sdk
+COPY --from=policy-engine . /api-platform/gateway/policy-engine
+COPY --from=sdk . /api-platform/sdk
 
 # Pre-download Go dependencies for runtime
-WORKDIR /workspace/gateway/policy-engine
+WORKDIR /api-platform/gateway/policy-engine
 RUN go mod download
 
 # Copy policy implementations
@@ -68,12 +68,12 @@ WORKDIR /workspace
 
 # Run the gateway builder with manifest (VERSION and GIT_COMMIT are available as env vars)
 RUN /usr/local/bin/gateway-builder \
-    -manifest /workspace/policies/policy-manifest.yaml \
-    -policy-engine-src /workspace/gateway/policy-engine \
+    -manifest-lock /workspace/policies/policy-manifest-lock.yaml \
+    -policy-engine-src /api-platform/gateway/policy-engine \
     -out-dir /workspace/output
 
 # Stage 3: Runtime - Minimal image with compiled binary
-FROM alpine:3.23.0
+FROM alpine:3.23.2
 
 RUN apk --no-cache add ca-certificates
 

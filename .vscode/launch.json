@@ -38,7 +38,7 @@
             "mode": "auto",
             "program": "${workspaceFolder}/gateway/gateway-builder/cmd/builder",
             "args": [
-                "-manifest", "${workspaceFolder}/gateway/policies/policy-manifest.yaml",
+                "-manifest-lock", "${workspaceFolder}/gateway/policy-manifest-lock.yaml",
                 "-policy-engine-src", "${workspaceFolder}/gateway/policy-engine",
                 "-out-dir", "${workspaceFolder}/gateway/gateway-builder/target/output",
                 "-log-level", "debug",
