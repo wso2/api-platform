@@ -66,7 +66,7 @@ func TestCmdGatewayMcpGenerate(t *testing.T) {
 	t.Log("Starting MCP server Docker container...")
 
 	containerName := "everything-test"
-	imageName := "rakhitharr/mcp-everything:v2"
+	imageName := "mcp/everything:latest"
 
 	// Clean up any existing container with the same name
 	cleanupCmd := exec.Command("docker", "rm", "-f", containerName)
