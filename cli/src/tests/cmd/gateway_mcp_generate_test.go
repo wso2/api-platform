@@ -103,7 +103,9 @@ func TestCmdGatewayMcpGenerate(t *testing.T) {
 	for i := 0; i < 30; i++ {
 		resp, err := client.Get("http://localhost:3001/mcp")
 		if err == nil {
-			if resp.StatusCode < 500 {
+			// Consider the server ready only on HTTP 2xx responses.
+			// Reject 3xx/4xx/5xx during startup to avoid false positives (e.g., 404 or 401).
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				resp.Body.Close()
 				t.Log("✓ MCP server is ready (health check passed)")
 				break
