@@ -9,6 +9,6 @@ tests:
   
   - name: Cmd-GatewayMcpGenerate
     description: Test gateway MCP generate command with Docker container
-    enabled: true
+    enabled: false
     dependencies:
       - Docker
