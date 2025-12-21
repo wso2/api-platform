@@ -37,81 +37,93 @@ func ProcessLocalPolicies(localPolicies []ManifestPolicy) ([]ProcessedPolicy, er
 	var processed []ProcessedPolicy
 
 	for _, policy := range localPolicies {
-		fmt.Printf("  %s %s: ", policy.Name, policy.Version)
+		// Use a per-iteration closure so deferred cleanup runs at the end of
+		// each iteration instead of at function exit (avoids accumulating
+		// temporary zip files when processing many policies).
+		err := func() error {
+			fmt.Printf("  %s %s: ", policy.Name, policy.Version)
 
-		// Resolve the file path (can be relative or absolute)
-		policyPath := policy.FilePath
-		if !filepath.IsAbs(policyPath) {
-			// Get current working directory
-			cwd, err := os.Getwd()
+			// Resolve the file path (can be relative or absolute)
+			policyPath := policy.FilePath
+			if !filepath.IsAbs(policyPath) {
+				// Get current working directory
+				cwd, err := os.Getwd()
+				if err != nil {
+					return fmt.Errorf("failed to get current directory: %w", err)
+				}
+				policyPath = filepath.Join(cwd, policyPath)
+			}
+
+			// Check if path exists
+			info, err := os.Stat(policyPath)
 			if err != nil {
-				return nil, fmt.Errorf("failed to get current directory: %w", err)
+				if os.IsNotExist(err) {
+					return fmt.Errorf("local policy path not found: %s", policy.FilePath)
+				}
+				return fmt.Errorf("failed to stat policy path %s: %w", policy.FilePath, err)
 			}
-			policyPath = filepath.Join(cwd, policyPath)
-		}
 
-		// Check if path exists
-		info, err := os.Stat(policyPath)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil, fmt.Errorf("local policy path not found: %s", policy.FilePath)
+			var zipPath string
+			var tempZipPath string
+
+			// Local policies can be provided as a zip file or as a directory containing policy-definition.yaml.
+			if info.IsDir() {
+				// Create a temporary zip from directory for validation and checksum
+				tempZip, err := os.CreateTemp("", "policy-zip-*.zip")
+				if err != nil {
+					return fmt.Errorf("failed to create temp zip for policy %s: %w", policy.Name, err)
+				}
+				tempZipPath = tempZip.Name()
+				tempZip.Close()
+
+				if err := utils.ZipDirectory(policyPath, tempZipPath); err != nil {
+					_ = os.Remove(tempZipPath)
+					return fmt.Errorf("failed to zip local policy directory %s: %w", policyPath, err)
+				}
+
+				// Ensure cleanup for this iteration only
+				defer func() {
+					_ = os.Remove(tempZipPath)
+				}()
+
+				zipPath = tempZipPath
+				fmt.Printf("zipped directory to temp archive, ")
+			} else {
+				// It's a file: ensure it's a zip and validate structure
+				zipPath = policyPath
+				fmt.Printf("using zip, ")
 			}
-			return nil, fmt.Errorf("failed to stat policy path %s: %w", policy.FilePath, err)
-		}
 
-		var zipPath string
-
-		// Local policies can be provided as a zip file or as a directory containing policy-definition.yaml.
-		if info.IsDir() {
-			// Create a temporary zip from directory for validation and checksum
-			tempZip, err := os.CreateTemp("", "policy-zip-*.zip")
+			// Validate zip structure using central util so validation can be changed later
+			_, _, err = utils.ValidateLocalPolicyZip(zipPath)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create temp zip for policy %s: %w", policy.Name, err)
-			}
-			tempZipPath := tempZip.Name()
-			tempZip.Close()
-
-			if err := utils.ZipDirectory(policyPath, tempZipPath); err != nil {
-				os.Remove(tempZipPath)
-				return nil, fmt.Errorf("failed to zip local policy directory %s: %w", policyPath, err)
+				return fmt.Errorf("policy %s: validation failed: %w\n\nLocal policies must be a zip file containing a policy-definition.yaml at the root. The policy-definition.yaml must include 'name' and 'version' fields.", policy.Name, err)
 			}
 
-			// Ensure cleanup
-			defer func() {
-				_ = os.Remove(tempZipPath)
-			}()
+			// Calculate checksum
+			checksum, err := utils.CalculateSHA256(zipPath)
+			if err != nil {
+				return fmt.Errorf("failed to calculate checksum for %s: %w", policy.Name, err)
+			}
 
-			zipPath = tempZipPath
-			fmt.Printf("zipped directory to temp archive, ")
-		} else {
-			// It's a file: ensure it's a zip and validate structure
-			zipPath = policyPath
-			fmt.Printf("using zip, ")
-		}
+			fmt.Printf("checksum: %s\n", checksum[:20]+"...")
 
-		// Validate zip structure using central util so validation can be changed later
-		_, _, err = utils.ValidateLocalPolicyZip(zipPath)
+			processed = append(processed, ProcessedPolicy{
+				Name:      policy.Name,
+				Version:   policy.Version,
+				Checksum:  checksum,
+				Source:    "local",
+				LocalPath: zipPath,
+				IsLocal:   true,
+				FilePath:  policy.FilePath,
+			})
+
+			return nil
+		}()
+
 		if err != nil {
-			return nil, fmt.Errorf("policy %s: validation failed: %w\n\nLocal policies must be a zip file containing a policy-definition.yaml at the root. The policy-definition.yaml must include 'name' and 'version' fields.", policy.Name, err)
+			return nil, err
 		}
-
-		// Calculate checksum
-		checksum, err := utils.CalculateSHA256(zipPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to calculate checksum for %s: %w", policy.Name, err)
-		}
-
-		fmt.Printf("checksum: %s\n", checksum[:20]+"...")
-
-		processed = append(processed, ProcessedPolicy{
-			Name:      policy.Name,
-			Version:   policy.Version,
-			Checksum:  checksum,
-			Source:    "local",
-			LocalPath: zipPath,
-			IsLocal:   true,
-			FilePath:  policy.FilePath,
-		})
 	}
 
 	fmt.Printf("✓ Processed %d local policies\n\n", len(processed))
