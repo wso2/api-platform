@@ -1435,7 +1435,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: LLM provider not found
+          description: LLM proxy not found
           content:
             application/json:
               schema:
@@ -1479,7 +1479,7 @@ paths:
                     type: string
                     example: wso2-docs-assistant
         '404':
-          description: LLM provider not found
+          description: LLM proxy not found
           content:
             application/json:
               schema:
