@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -39,7 +40,7 @@ import (
 type APIKeyGenerationParams struct {
 	Handle        string                      // API handle/ID
 	Request       api.APIKeyGenerationRequest // Request body with API key generation details
-	User          string                      // User who initiated the request
+	User          *commonmodels.AuthContext   // User who initiated the request
 	CorrelationID string                      // Correlation ID for tracking
 	Logger        *zap.Logger                 // Logger instance
 }
@@ -52,11 +53,11 @@ type APIKeyGenerationResult struct {
 
 // APIKeyRevocationParams contains parameters for API key revocation operations
 type APIKeyRevocationParams struct {
-	Handle        string      // API handle/ID
-	APIKey        string      // APi key to be revoked
-	User          string      // User who initiated the request
-	CorrelationID string      // Correlation ID for tracking
-	Logger        *zap.Logger // Logger instance
+	Handle        string                    // API handle/ID
+	APIKey        string                    // APi key to be revoked
+	User          *commonmodels.AuthContext // User who initiated the request
+	CorrelationID string                    // Correlation ID for tracking
+	Logger        *zap.Logger               // Logger instance
 }
 
 // APIKeyRotationParams contains parameters for API key rotation operations
@@ -64,7 +65,7 @@ type APIKeyRotationParams struct {
 	Handle        string                    // API handle/ID
 	APIKeyName    string                    // Name of the API key to rotate
 	Request       api.APIKeyRotationRequest // Request body with rotation details
-	User          string                    // User who initiated the request
+	User          *commonmodels.AuthContext // User who initiated the request
 	CorrelationID string                    // Correlation ID for tracking
 	Logger        *zap.Logger               // Logger instance
 }
@@ -77,10 +78,10 @@ type APIKeyRotationResult struct {
 
 // ListAPIKeyParams contains parameters for listing API keys
 type ListAPIKeyParams struct {
-	Handle        string      // API handle/ID
-	User          string      // User who initiated the request
-	CorrelationID string      // Correlation ID for tracking
-	Logger        *zap.Logger // Logger instance
+	Handle        string                    // API handle/ID
+	User          *commonmodels.AuthContext // User who initiated the request
+	CorrelationID string                    // Correlation ID for tracking
+	Logger        *zap.Logger               // Logger instance
 }
 
 // ListAPIKeyResult contains the result of listing API keys
@@ -591,15 +592,16 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 	}
 
 	// Filter only active API keys
-	for _, apiKey := range apiKeys {
+	var activeUserAPIKeys []*models.APIKey
+	for _, apiKey := range userAPIKeys {
 		if apiKey.Status == models.APIKeyStatusActive {
-			userAPIKeys = append(userAPIKeys, apiKey)
+			activeUserAPIKeys = append(activeUserAPIKeys, apiKey)
 		}
 	}
 
 	// Build response API keys
 	var responseAPIKeys []api.APIKey
-	for _, key := range userAPIKeys {
+	for _, key := range activeUserAPIKeys {
 		responseAPIKey := api.APIKey{
 			Name:       key.Name,
 			ApiKey:     key.APIKey,
@@ -654,7 +656,7 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 	}
 
 	// Process operations
-	operations := "[*]" // Default to all operations
+	operations := "[\"*\"]" // Default to all operations
 	//if request.Operations != nil && len(*request.Operations) > 0 {
 	//	operations = s.generateOperationsString(*request.Operations)
 	//}
@@ -869,7 +871,7 @@ func (s *APIKeyService) generateRotatedAPIKey(existingKey *models.APIKey, reques
 
 // canRevokeAPIKey determines if a user can revoke a specific API key
 // Admin role can revoke any API key of an API. Other users can only revoke API keys that they created.
-func (s *APIKeyService) canRevokeAPIKey(user *AuthenticatedUser, apiKey *models.APIKey, logger *zap.Logger) error {
+func (s *APIKeyService) canRevokeAPIKey(user *commonmodels.AuthContext, apiKey *models.APIKey, logger *zap.Logger) error {
 	if user == nil {
 		return fmt.Errorf("user authentication required")
 	}
@@ -910,7 +912,7 @@ func (s *APIKeyService) canRevokeAPIKey(user *AuthenticatedUser, apiKey *models.
 
 // canRotateAPIKey determines if a user can rotate a specific API key
 // Only the user who created the API key can rotate it
-func (s *APIKeyService) canRotateAPIKey(user *AuthenticatedUser, apiKey *models.APIKey, logger *zap.Logger) error {
+func (s *APIKeyService) canRotateAPIKey(user *commonmodels.AuthContext, apiKey *models.APIKey, logger *zap.Logger) error {
 	if user == nil {
 		return fmt.Errorf("user authentication required")
 	}
@@ -943,7 +945,7 @@ func (s *APIKeyService) canRotateAPIKey(user *AuthenticatedUser, apiKey *models.
 
 // filterAPIKeysByUser filters a list of API keys based on the user's roles
 // Admin role can list all keys of an API. Other users can view only API keys that they created.
-func (s *APIKeyService) filterAPIKeysByUser(user *AuthenticatedUser, apiKeys []*models.APIKey,
+func (s *APIKeyService) filterAPIKeysByUser(user *commonmodels.AuthContext, apiKeys []*models.APIKey,
 	logger *zap.Logger) ([]*models.APIKey, error) {
 	if user == nil {
 		return nil, fmt.Errorf("user authentication required")
@@ -996,11 +998,11 @@ func (s *APIKeyService) maskAPIKey(apiKey string) string {
 }
 
 // isAdmin checks if the user has admin role
-func (s *APIKeyService) isAdmin(user *AuthenticatedUser) bool {
+func (s *APIKeyService) isAdmin(user *commonmodels.AuthContext) bool {
 	return slices.Contains(user.Roles, "admin")
 }
 
 // isDeveloper checks if the user has developer role
-func (s *APIKeyService) isDeveloper(user *AuthenticatedUser) bool {
+func (s *APIKeyService) isDeveloper(user *commonmodels.AuthContext) bool {
 	return slices.Contains(user.Roles, "developer")
 }

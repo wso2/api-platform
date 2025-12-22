@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -96,8 +97,8 @@ func NewAPIServer(
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, templateDefinitions,
 			deploymentService, routerConfig),
-		apiKeyService:        utils.NewAPIKeyService(store, db, apiKeyXDSManager),
-		apiKeyXDSManager:     apiKeyXDSManager,
+		apiKeyService:      utils.NewAPIKeyService(store, db, apiKeyXDSManager),
+		apiKeyXDSManager:   apiKeyXDSManager,
 		controlPlaneClient: controlPlaneClient,
 		routerConfig:       routerConfig,
 		httpClient:         &http.Client{Timeout: 10 * time.Second},
@@ -2296,19 +2297,11 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 	handle := id
 	correlationID := middleware.GetCorrelationID(c)
 
-	authContext, exists := c.Get(constants.AuthContextKey)
-	if !exists {
-		log.Warn("Unauthorized API key generation attempt",
-			zap.String("handle", handle),
-			zap.String("correlation_id", correlationID))
-		c.JSON(http.StatusUnauthorized, api.ErrorResponse{
-			Status:  "error",
-			Message: "Unauthorized",
-		})
-		return
+	// Extract authenticated user from context
+	user, ok := s.extractAuthenticatedUser(c, "GenerateAPIKey", correlationID)
+	if !ok {
+		return // Error response already sent by extractAuthenticatedUser
 	}
-	// TODO - marshal user info to AuthContext
-	var user
 
 	log.Debug("Starting API key generation",
 		zap.String("handle", handle),
@@ -2373,19 +2366,11 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKey string) {
 	handle := id
 	correlationID := middleware.GetCorrelationID(c)
 
-	authContext, exists := c.Get(constants.AuthContextKey)
-	if !exists {
-		log.Warn("Unauthorized API key generation attempt",
-			zap.String("handle", handle),
-			zap.String("correlation_id", correlationID))
-		c.JSON(http.StatusUnauthorized, api.ErrorResponse{
-			Status:  "error",
-			Message: "Unauthorized",
-		})
-		return
+	// Extract authenticated user from context
+	user, ok := s.extractAuthenticatedUser(c, "RevokeAPIKey", correlationID)
+	if !ok {
+		return // Error response already sent by extractAuthenticatedUser
 	}
-	// TODO - marshal user info to AuthContext
-	var user
 
 	log.Debug("Starting API key revocation",
 		zap.String("handle", handle),
@@ -2457,19 +2442,11 @@ func (s *APIServer) RotateAPIKey(c *gin.Context, id string, apiKeyName string) {
 	handle := id
 	correlationID := middleware.GetCorrelationID(c)
 
-	authContext, exists := c.Get(constants.AuthContextKey)
-	if !exists {
-		log.Warn("Unauthorized API key generation attempt",
-			zap.String("handle", handle),
-			zap.String("correlation_id", correlationID))
-		c.JSON(http.StatusUnauthorized, api.ErrorResponse{
-			Status:  "error",
-			Message: "Unauthorized",
-		})
-		return
+	// Extract authenticated user from context
+	user, ok := s.extractAuthenticatedUser(c, "RotateAPIKey", correlationID)
+	if !ok {
+		return // Error response already sent by extractAuthenticatedUser
 	}
-	// TODO - marshal user info to AuthContext
-	var user
 
 	log.Debug("Starting API key rotation",
 		zap.String("handle", handle),
@@ -2536,21 +2513,13 @@ func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 	handle := id
 	correlationID := middleware.GetCorrelationID(c)
 
-	authContext, exists := c.Get(constants.AuthContextKey)
-	if !exists {
-		log.Warn("Unauthorized API key generation attempt",
-			zap.String("handle", handle),
-			zap.String("correlation_id", correlationID))
-		c.JSON(http.StatusUnauthorized, api.ErrorResponse{
-			Status:  "error",
-			Message: "Unauthorized",
-		})
-		return
+	// Extract authenticated user from context
+	user, ok := s.extractAuthenticatedUser(c, "ListAPIKeys", correlationID)
+	if !ok {
+		return // Error response already sent by extractAuthenticatedUser
 	}
-	// TODO - marshal user info to AuthContext
-	var user
 
-	log.Debug("Starting API key rotation",
+	log.Debug("Starting API key listing",
 		zap.String("handle", handle),
 		zap.String("user", user.UserID),
 		zap.String("correlation_id", correlationID))
@@ -2587,4 +2556,44 @@ func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 
 	// Return the response using the generated schema
 	c.JSON(http.StatusOK, result.Response)
+}
+
+// extractAuthenticatedUser extracts and validates the authenticated user from Gin context
+// Returns the AuthenticatedUser object and handles error responses automatically
+func (s *APIServer) extractAuthenticatedUser(c *gin.Context, operationName string, correlationID string) (*commonmodels.AuthContext, bool) {
+	log := s.logger
+
+	// Extract authentication context
+	authCtxValue, exists := c.Get(constants.AuthContextKey)
+	if !exists {
+		log.Error("Authentication context not found",
+			zap.String("operation", operationName),
+			zap.String("correlation_id", correlationID))
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{
+			Status:  "error",
+			Message: "Authentication context not available",
+		})
+		return nil, false
+	}
+
+	// Type assert to AuthContext
+	user, ok := authCtxValue.(commonmodels.AuthContext)
+	if !ok {
+		log.Error("Invalid authentication context type",
+			zap.String("operation", operationName),
+			zap.String("correlation_id", correlationID))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Invalid authentication context",
+		})
+		return nil, false
+	}
+
+	log.Debug("Authenticated user extracted",
+		zap.String("operation", operationName),
+		zap.String("user_id", user.UserID),
+		zap.Strings("roles", user.Roles),
+		zap.String("correlation_id", correlationID))
+
+	return &user, true
 }
