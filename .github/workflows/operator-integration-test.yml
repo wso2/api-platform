@@ -1221,21 +1221,21 @@ jobs:
 
           echo "Verifying RBAC (Scoped Mode)..."
           # Expect Role/RoleBinding in scoped-test
-          if ! kubectl get role -n scoped-test gateway-operator-manager-role; then
+          if ! kubectl get role -n scoped-test release-name-gateway-operator-manager-role; then
             echo "FAILED: Role not found in scoped-test"
             exit 1
           fi
-          if ! kubectl get rolebinding -n scoped-test gateway-operator-manager-rolebinding; then
+          if ! kubectl get rolebinding -n scoped-test release-name-gateway-operator-manager-rolebinding; then
             echo "FAILED: RoleBinding not found in scoped-test"
             exit 1
           fi
 
           # Expect NO ClusterRole/ClusterRoleBinding
-          if kubectl get clusterrole gateway-operator-manager-role; then
+          if kubectl get clusterrole release-name-gateway-operator-manager-role; then
              echo "FAILED: ClusterRole found but should be disabled in scoped mode"
              exit 1
           fi
-          if kubectl get clusterrolebinding gateway-operator-manager-binding; then
+          if kubectl get clusterrolebinding release-name-gateway-operator-manager-binding; then
              echo "FAILED: ClusterRoleBinding found but should be disabled in scoped mode"
              exit 1
           fi

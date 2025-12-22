@@ -306,6 +306,8 @@ policy_engine:
     # Log format: json, text
     format: json
 
+policy_configurations: {}
+
 analytics:
   enabled: true
   # Publishers specific configuration
@@ -366,33 +368,3 @@ tracing:
   batch_timeout: 1s
   max_export_batch_size: 512
   sampling_rate: 1.0
-
-policy_configurations: 
-  JWTAuth_v010:
-    KeyManagers:
-    - name: WSO2KeyManager1
-      issuer: https://api.asgardeo.io/t/tharsanan1995/oauth2/token
-      jwks:
-        remote:
-          uri: https://api.asgardeo.io/t/tharsanan1995/oauth2/jwks
-          skipTlsVerify: false
-    - name: WSO2KeyManager2
-      issuer: https://api.asgardeo.io/t/testorgforsecurity/oauth2/token
-      jwks:
-        remote:
-          uri: https://api.asgardeo.io/t/testorgforsecurity/oauth2/jwks
-          skipTlsVerify: false
-    JwksCacheTtl: "5m"
-    JwksFetchTimeout: "5s"
-    JwksFetchRetryCount: 3
-    JwksFetchRetryInterval: "2s"
-    AllowedAlgorithms:
-      - RS256
-      - ES256
-    Leeway: "30s"
-    AuthHeaderScheme: Bearer
-    HeaderName: Authorization
-    OnFailureStatusCode: 401
-    ErrorMessageFormat: json
-    ErrorMessage: "Authentication failed."
-    ValidateIssuer: true

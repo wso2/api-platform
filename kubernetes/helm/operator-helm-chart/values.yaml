@@ -9,10 +9,10 @@ nameOverride: ""
 fullnameOverride: ""
 
 image:
-  # repository: ghcr.io/tharsanan1/api-platform/gateway-operator
+  # repository: ghcr.io/wso2/api-platform/gateway-operator
   # For local registry: host.docker.internal:5000/gateway-operator
-  repository: ghcr.io/tharsanan1/api-platform/gateway-operator
-  tag: "0.1.0-SNAPSHOT"
+  repository: ghcr.io/wso2/api-platform/gateway-operator
+  tag: "0.1.0"
   pullPolicy: Always  # Uses locally loaded image from nerdctl load
 
 serviceAccount:
@@ -54,7 +54,7 @@ securityContext:
 gateway:
   controlPlaneHost: "http://platform-api:3001"
   helm:
-    chartName: "oci://ghcr.io/tharsanan1/api-platform/helm-charts/gateway"
+    chartName: "oci://ghcr.io/wso2/api-platform/helm-charts/gateway"
     chartVersion: "0.1.0"
     valuesFilePath: "/config/gateway_values.yaml"
     # Allow insecure connections to OCI registries (skips TLS verification, still uses HTTPS)
@@ -360,36 +360,7 @@ gateway:
             # Log format: json, text
             format: json
 
-        policy_configurations: 
-          JWTAuth_v010:
-            KeyManagers:
-            - name: WSO2KeyManager1
-              issuer: https://api.asgardeo.io/t/tharsanan1995/oauth2/token
-              jwks:
-                remote:
-                  uri: https://api.asgardeo.io/t/tharsanan1995/oauth2/jwks
-                  skipTlsVerify: false
-            - name: WSO2KeyManager2
-              issuer: https://api.asgardeo.io/t/testorgforsecurity/oauth2/token
-              jwks:
-                remote:
-                  uri: https://api.asgardeo.io/t/testorgforsecurity/oauth2/jwks
-                  skipTlsVerify: false
-            JwksCacheTtl: "5m"
-            JwksFetchTimeout: "5s"
-            JwksFetchRetryCount: 3
-            JwksFetchRetryInterval: "2s"
-            AllowedAlgorithms:
-              - RS256
-              - ES256
-            Leeway: "30s"
-            AuthHeaderScheme: Bearer
-            HeaderName: Authorization
-            OnFailureStatusCode: 401
-            ErrorMessageFormat: json
-            ErrorMessage: "Authentication failed."
-            ValidateIssuer: true
-
+        policy_configurations: {}
 
       # metadata for the generated shared ConfigMap (annotations / labels)
       configMap:
@@ -398,8 +369,8 @@ gateway:
 
       controller:
         image:
-          repository: ghcr.io/tharsanan1/api-platform/gateway-controller
-          tag: "0.1.0-SNAPSHOT"
+          repository: ghcr.io/wso2/api-platform/gateway-controller
+          tag: "0.1.0"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -529,8 +500,8 @@ gateway:
 
       router:
         image:
-          repository: ghcr.io/tharsanan1/api-platform/gateway-router
-          tag: "0.1.0-SNAPSHOT"
+          repository: ghcr.io/wso2/api-platform/gateway-router
+          tag: "0.1.0"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -586,8 +557,8 @@ gateway:
 
       policyEngine:
         image:
-          repository: ghcr.io/tharsanan1/api-platform/policy-engine
-          tag: "0.1.0-SNAPSHOT"
+          repository: ghcr.io/wso2/api-platform/policy-engine
+          tag: "0.1.0"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -642,7 +613,7 @@ reconciliation:
   enabled: true
   interval: 300
 logging:
-  level: "debug"
+  level: "info"
   format: "json"
 
 cleanupJob:

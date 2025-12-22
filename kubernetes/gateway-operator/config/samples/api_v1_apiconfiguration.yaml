@@ -30,8 +30,6 @@ spec:
       path: /helloworld
     - method: GET
       path: /heyhelloworld
-    - method: GET
-      path: /eeheyhelloworld
 
 
 ---
