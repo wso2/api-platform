@@ -62,7 +62,7 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     -o platform-api ./cmd/main.go
 
 # Stage 2: Create minimal runtime image
-# Using Debian slim for glibc compatibility with builder stage
+# Using Ubuntu 24.04 for glibc compatibility with builder stage
 FROM ubuntu:24.04
 
 ARG USERNAME=wso2
