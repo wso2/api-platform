@@ -152,25 +152,15 @@ func applyResource(client *gateway.Client, handler gateway.ResourceHandler, reso
 	}
 	defer resp.Body.Close()
 
-	// Read the response body
+	// If the response indicates an error, use the centralized formatter
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return gateway.FormatHTTPError(operation, resp, "Gateway Controller")
+	}
+
+	// Read the success response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("failed to read response: %w", err)
-	}
-
-	// Check if the operation was successful
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// Try to parse error message from response
-		var errorResp map[string]interface{}
-		if json.Unmarshal(body, &errorResp) == nil {
-			if msg, ok := errorResp["message"].(string); ok {
-				return fmt.Errorf("%s failed (status %d): %s", operation, resp.StatusCode, msg)
-			}
-			if msg, ok := errorResp["error"].(string); ok {
-				return fmt.Errorf("%s failed (status %d): %s", operation, resp.StatusCode, msg)
-			}
-		}
-		return fmt.Errorf("%s failed (status %d): %s", operation, resp.StatusCode, string(body))
 	}
 
 	// Parse the success response
@@ -178,7 +168,11 @@ func applyResource(client *gateway.Client, handler gateway.ResourceHandler, reso
 	if err := json.Unmarshal(body, &responseData); err != nil {
 		// If we can't parse JSON, just show success
 		fmt.Println("Status: success")
-		fmt.Printf("Message: %s applied successfully\n", resource.Kind)
+		if exists {
+			fmt.Printf("Message: %s updated successfully\n", resource.Kind)
+		} else {
+			fmt.Printf("Message: %s applied successfully\n", resource.Kind)
+		}
 		fmt.Printf("ID: %s\n", resource.Handle)
 		return nil
 	}
@@ -228,10 +222,6 @@ func resourceExists(client *gateway.Client, handler gateway.ResourceHandler, han
 		return false, nil
 	}
 
-	// Any other status code is an error
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return false, fmt.Errorf("unexpected status code %d and failed to read response body: %w", resp.StatusCode, err)
-	}
-	return false, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(body))
+	// Any other status code is an error — delegate to centralized formatter
+	return false, gateway.FormatHTTPError("query", resp, "Gateway Controller")
 }

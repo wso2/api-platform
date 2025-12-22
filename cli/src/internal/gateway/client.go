@@ -219,3 +219,26 @@ func (c *Client) GetGateway() *config.Gateway {
 func (c *Client) GetBaseURL() string {
 	return c.gateway.Server
 }
+
+// FormatHTTPError
+func FormatHTTPError(operation string, resp *http.Response, responser string) error {
+	if resp == nil {
+		if responser == "" {
+			return fmt.Errorf("%s failed: no response received", operation)
+		}
+		return fmt.Errorf("%s failed: no response received from %s", operation, responser)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		if responser == "" {
+			return fmt.Errorf("%s failed (status %d): failed to read response body: %v", operation, resp.StatusCode, err)
+		}
+		return fmt.Errorf("%s failed (status %d): failed to read response from %s: %v", operation, resp.StatusCode, responser, err)
+	}
+
+	if responser == "" {
+		return fmt.Errorf("%s failed (status %d): %s", operation, resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return fmt.Errorf("%s failed (status %d) from %s: %s", operation, resp.StatusCode, responser, strings.TrimSpace(string(body)))
+}
