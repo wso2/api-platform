@@ -1252,6 +1252,9 @@ jobs:
             name: scoped-gateway
             namespace: scoped-test
           spec:
+            gatewayClassName: "test"
+            apiSelector:
+              scope: Cluster
             configRef:
               name: test-gateway-config
           EOF
