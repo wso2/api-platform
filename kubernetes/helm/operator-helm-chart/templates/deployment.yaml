@@ -60,7 +60,7 @@ spec:
           {{ end }}
           env:
             - name: WATCH_NAMESPACES
-              value: {{ join "," .Values.watchNamespaces | quote }}
+              value: {{ join "," (default (list) .Values.watchNamespaces) | quote }}
             - name: HELM_CACHE_HOME
               value: /tmp/helm/cache
             - name: HELM_CONFIG_HOME
