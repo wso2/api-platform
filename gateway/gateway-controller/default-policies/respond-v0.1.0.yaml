@@ -1,0 +1,46 @@
+name: respond
+version: v0.1.0
+description: |
+  Returns an immediate response to the client without forwarding the request to the upstream backend.
+  This policy terminates the request processing chain and is useful for mocking APIs, returning
+  error responses, or implementing custom short-circuit logic.
+
+parameters:
+  type: object
+  properties:
+    statusCode:
+      type: integer
+      description: HTTP status code for the response. Defaults to 200 if not specified.
+      minimum: 100
+      maximum: 599
+      default: 200
+    body:
+      type: string
+      description: Response body content as a string. Can be plain text, JSON, XML,
+        or any other format. Set appropriate content-type header to indicate the body
+        format.
+      maxLength: 1048576
+    headers:
+      type: array
+      description: Array of response headers to include in the response. Each header
+        must have 'name' and 'value' fields.
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+            description: Header name
+            minLength: 1
+            maxLength: 256
+            pattern: "^[a-zA-Z0-9-_]+$"
+          value:
+            type: string
+            description: Header value
+            maxLength: 8192
+        required:
+        - name
+        - value
+
+systemParameters:
+  type: object
+  properties: {}

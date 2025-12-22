@@ -46,7 +46,7 @@ spec:
     main:
       url: http://sample-backend:5000/api/v2
   policies:
-    - name: APIKeyAuthentication
+    - name: api-key-auth
       version: v0.1.0
       params:
         key: X-API-Key
@@ -77,7 +77,7 @@ spec:
     main:
       url: http://sample-backend:5000/api/v2
   policies:
-    - name: APIKeyAuthentication
+    - name: api-key-auth
       version: v0.1.0
       params:
         key: Authorization
@@ -109,7 +109,7 @@ spec:
     main:
       url: http://sample-backend:5000/api/v2
   policies:
-    - name: APIKeyAuthentication
+    - name: api-key-auth
       version: v0.1.0
       params:
         key: api_key
@@ -140,7 +140,7 @@ spec:
     main:
       url: http://sample-backend:5000/api/v2
   policies:
-    - name: APIKeyAuthentication
+    - name: api-key-auth
       version: v0.1.0
       params:
         key: X-Custom-Auth
@@ -172,7 +172,7 @@ spec:
     main:
       url: http://sample-backend:5000/api/v2
   policies:
-    - name: APIKeyAuthentication
+    - name: api-key-auth
       version: v0.1.0
       params:
         key: X-Custom-Auth
@@ -182,7 +182,7 @@ spec:
     - method: GET
       path: /{country_code}/{city}
       policies:
-        - name: APIKeyAuthentication
+        - name: api-key-auth
           version: v0.1.0
           params:
             key: X-API-Key
@@ -190,7 +190,7 @@ spec:
     - method: GET
       path: /alerts/active
       policies:
-        - name: APIKeyAuthentication
+        - name: api-key-auth
           version: v0.1.0
           params:
             key: Authorization
