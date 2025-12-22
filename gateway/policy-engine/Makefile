@@ -80,7 +80,7 @@ help:
 	@echo ""
 
 ## build: Build the Policy Engine Docker image using buildx
-build:
+build: test
 	@echo "Building Policy Engine image: $(RUNTIME_TAG)"
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \

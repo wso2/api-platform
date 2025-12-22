@@ -37,7 +37,7 @@ func TestParseLLMProviderTemplate_YAML_Valid(t *testing.T) {
 		{
 			name: "full template with all fields",
 			yaml: `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 metadata:
   name: openai
@@ -67,7 +67,7 @@ spec:
 		{
 			name: "minimal template with only required fields",
 			yaml: `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 metadata:
   name: minimal-template
@@ -85,7 +85,7 @@ spec:
 		{
 			name: "template with header location",
 			yaml: `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 metadata:
   name: minimal-template
@@ -109,7 +109,7 @@ spec:
 		{
 			name: "template with partial fields",
 			yaml: `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 metadata:
   name: anthropic
@@ -142,7 +142,7 @@ spec:
 			require.NoError(t, err, "Failed to parse valid LLM Provider Template YAML")
 
 			// Verify version and kind
-			assert.Equal(t, api.LLMProviderTemplateVersion("ai.api-platform.wso2.com/v1"), template.Version)
+			assert.Equal(t, api.LLMProviderTemplateApiVersion("gateway.api-platform.wso2.com/v1alpha1"), template.ApiVersion)
 			assert.Equal(t, api.LLMProviderTemplateKind("LlmProviderTemplate"), template.Kind)
 
 			// Verify spec.name
@@ -194,7 +194,7 @@ func TestParseLLMProviderTemplate_JSON_Valid(t *testing.T) {
 		{
 			name: "full template JSON",
 			json: `{
-				"version": "ai.api-platform.wso2.com/v1",
+				"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
 				"kind": "LlmProviderTemplate",
 				"metadata": {
 					"name": "openai"
@@ -224,7 +224,7 @@ func TestParseLLMProviderTemplate_JSON_Valid(t *testing.T) {
 		{
 			name: "minimal template JSON",
 			json: `{
-				"version": "ai.api-platform.wso2.com/v1",
+				"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
 				"kind": "LlmProviderTemplate",
 				"metadata": {
 					"name": "minimal-template"
@@ -245,7 +245,7 @@ func TestParseLLMProviderTemplate_JSON_Valid(t *testing.T) {
 			err := parser.Parse([]byte(tt.json), "application/json", &template)
 
 			require.NoError(t, err, "Failed to parse valid LLM Provider Template JSON")
-			assert.Equal(t, api.LLMProviderTemplateVersion("ai.api-platform.wso2.com/v1"), template.Version)
+			assert.Equal(t, api.LLMProviderTemplateApiVersion("gateway.api-platform.wso2.com/v1alpha1"), template.ApiVersion)
 			assert.Equal(t, api.LLMProviderTemplateKind("LlmProviderTemplate"), template.Kind)
 			assert.Equal(t, tt.expectedName, template.Spec.DisplayName)
 		})
@@ -271,7 +271,7 @@ spec:
 		{
 			name: "missing kind",
 			yaml: `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 spec:
   name: test
 `,
@@ -279,14 +279,14 @@ spec:
 		{
 			name: "missing spec",
 			yaml: `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 `,
 		},
 		{
 			name: "missing name in spec",
 			yaml: `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 spec: {}
 `,
@@ -294,7 +294,7 @@ spec: {}
 		{
 			name: "malformed YAML",
 			yaml: `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 spec:
   name: test
@@ -340,7 +340,7 @@ func TestParseLLMProvider_YAML_Valid(t *testing.T) {
 		{
 			name: "provider with allow_all mode and auth",
 			yaml: `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: my-openai-provider
@@ -376,7 +376,7 @@ spec:
 		{
 			name: "provider with deny_all mode",
 			yaml: `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: restricted-llm
@@ -408,7 +408,7 @@ spec:
 		{
 			name: "provider with policies",
 			yaml: `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: policy-test-provider
@@ -458,7 +458,7 @@ spec:
 		{
 			name: "minimal provider without optional fields",
 			yaml: `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: minimal-provider
@@ -492,7 +492,7 @@ spec:
 			require.NoError(t, err, "Failed to parse valid LLM Provider YAML")
 
 			// Verify version and kind
-			assert.Equal(t, api.LLMProviderConfigurationVersion("ai.api-platform.wso2.com/v1"), provider.Version)
+			assert.Equal(t, api.LLMProviderConfigurationApiVersion("gateway.api-platform.wso2.com/v1alpha1"), provider.ApiVersion)
 			assert.Equal(t, api.LLMProviderConfigurationKind("LlmProvider"), provider.Kind)
 
 			// Verify spec fields
@@ -559,7 +559,7 @@ func TestParseLLMProvider_JSON_Valid(t *testing.T) {
 		{
 			name: "full provider JSON",
 			json: `{
-				"version": "ai.api-platform.wso2.com/v1",
+				"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
 				"kind": "LlmProvider",
 				"metadata": {
 					"name": "my-openai-provider"
@@ -595,7 +595,7 @@ func TestParseLLMProvider_JSON_Valid(t *testing.T) {
 		{
 			name: "minimal provider JSON",
 			json: `{
-				"version": "ai.api-platform.wso2.com/v1",
+				"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
 				"kind": "LlmProvider",
 				"metadata": {
 					"name": "minimal-provider"
@@ -625,7 +625,7 @@ func TestParseLLMProvider_JSON_Valid(t *testing.T) {
 			err := parser.Parse([]byte(tt.json), "application/json", &provider)
 
 			require.NoError(t, err, "Failed to parse valid LLM Provider JSON")
-			assert.Equal(t, api.LLMProviderConfigurationVersion("ai.api-platform.wso2.com/v1"), provider.Version)
+			assert.Equal(t, api.LLMProviderConfigurationApiVersion("gateway.api-platform.wso2.com/v1alpha1"), provider.ApiVersion)
 			assert.Equal(t, api.LLMProviderConfigurationKind("LlmProvider"), provider.Kind)
 			assert.Equal(t, tt.expectedName, provider.Spec.DisplayName)
 			assert.Equal(t, tt.expectedVersion, provider.Spec.Version)
@@ -659,7 +659,7 @@ spec:
 		{
 			name: "missing kind",
 			yaml: `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 spec:
   name: test
   version: v1.0
@@ -674,7 +674,7 @@ spec:
 		{
 			name: "malformed JSON",
 			json: `{
-				"version": "ai.api-platform.wso2.com/v1",
+				"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
 				"kind": "LlmProvider",
 				"spec": {
 					"name": "test",
@@ -711,7 +711,7 @@ spec:
 // TestParseContentType tests that parser handles different content types correctly
 func TestParseContentType(t *testing.T) {
 	yamlData := `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 metadata:
   name: test-template
@@ -720,7 +720,7 @@ spec:
 `
 
 	jsonData := `{
-		"version": "ai.api-platform.wso2.com/v1",
+		"apiVersion": "gateway.api-platform.wso2.com/v1alpha1",
 		"kind": "LlmProviderTemplate",
 		"metadata": {
 			"name": "test-template"
@@ -802,7 +802,7 @@ func TestParseLLMProviderTemplate_ExtractionIdentifier(t *testing.T) {
 		{
 			name: "payload location with JSONPath",
 			yaml: `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 metadata:
   name: test
@@ -818,7 +818,7 @@ spec:
 		{
 			name: "header location with header name",
 			yaml: `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 metadata:
   name: test
@@ -852,7 +852,7 @@ spec:
 // TestParseLLMProvider_AccessControlExceptions tests parsing of access control exceptions
 func TestParseLLMProvider_AccessControlExceptions(t *testing.T) {
 	yaml := `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: test-provider
@@ -903,7 +903,7 @@ spec:
 // TestParseLLMProvider_UpstreamAuth tests parsing of upstream authentication
 func TestParseLLMProvider_UpstreamAuth(t *testing.T) {
 	yaml := `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: test-provider
@@ -939,7 +939,7 @@ spec:
 // TestParseLLMProvider_Policies tests parsing of policies
 func TestParseLLMProvider_Policies(t *testing.T) {
 	yaml := `
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: test-provider
@@ -1004,7 +1004,8 @@ spec:
 
 // TestParseRoundTrip tests that parsing and re-marshaling produces consistent results
 func TestParseRoundTrip(t *testing.T) {
-	originalYAML := `version: ai.api-platform.wso2.com/v1
+	originalYAML := `
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 metadata:
   name: openai
