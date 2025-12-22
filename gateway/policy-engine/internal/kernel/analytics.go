@@ -46,6 +46,9 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 		metadata := make(map[string]interface{})
 
 		sharedCtx := execCtx.requestContext.SharedContext
+		if sharedCtx.APIId != "" {
+			metadata["api_id"] = sharedCtx.APIId
+		}
 		if sharedCtx.APIName != "" {
 			metadata["api_name"] = sharedCtx.APIName
 		}

@@ -172,6 +172,48 @@ func (s *SQLiteStorage) initSchema() error {
 			version = 4
 		}
 
+		if version == 4 {
+			// Add API keys table
+			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS api_keys (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL,
+				api_key TEXT NOT NULL UNIQUE,
+				apiId TEXT NOT NULL,
+				operations TEXT NOT NULL DEFAULT '*',
+				status TEXT NOT NULL CHECK(status IN ('active', 'revoked', 'expired')) DEFAULT 'active',
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				created_by TEXT NOT NULL DEFAULT 'system',
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				expires_at TIMESTAMP NULL,
+				expires_in_unit TEXT NULL,
+				expires_in_duration INTEGER NULL,
+				FOREIGN KEY (apiId) REFERENCES deployments(id) ON DELETE CASCADE,
+				UNIQUE (apiId, name)
+			);`); err != nil {
+				return fmt.Errorf("failed to migrate schema to version 5 (api_keys): %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);`); err != nil {
+				return fmt.Errorf("failed to create api_keys key index: %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(apiId);`); err != nil {
+				return fmt.Errorf("failed to create api_keys handle index: %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_keys(status);`); err != nil {
+				return fmt.Errorf("failed to create api_keys status index: %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);`); err != nil {
+				return fmt.Errorf("failed to create api_keys expiry index: %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);`); err != nil {
+				return fmt.Errorf("failed to create api_keys created_by index: %w", err)
+			}
+			if _, err := s.db.Exec("PRAGMA user_version = 5"); err != nil {
+				return fmt.Errorf("failed to set schema version to 5: %w", err)
+			}
+			s.logger.Info("Schema migrated to version 5 (api_keys table)")
+			version = 5
+		}
+
 		s.logger.Info("Database schema up to date", zap.Int("version", version))
 	}
 
@@ -1007,6 +1049,351 @@ func (s *SQLiteStorage) DeleteCertificate(id string) error {
 	return nil
 }
 
+// API Key Storage Methods
+
+// SaveAPIKey persists a new API key to the database or updates existing one
+// if an API key with the same apiId and name already exists
+func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
+	// Begin transaction to ensure atomicity
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// Ensure transaction is properly handled
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback()
+			panic(p) // Re-throw panic after rollback
+		}
+	}()
+
+	// First, check if an API key with the same apiId and name exists
+	checkQuery := `SELECT id FROM api_keys WHERE apiId = ? AND name = ?`
+	var existingID string
+	err = tx.QueryRow(checkQuery, apiKey.APIId, apiKey.Name).Scan(&existingID)
+
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		tx.Rollback()
+		return fmt.Errorf("failed to check existing API key: %w", err)
+	}
+
+	if errors.Is(err, sql.ErrNoRows) {
+		// No existing record, insert new API key
+		insertQuery := `
+			INSERT INTO api_keys (
+				id, name, api_key, apiId, operations, status,
+				created_at, created_by, updated_at, expires_at, expires_in_unit, expires_in_duration
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`
+
+		_, err := tx.Exec(insertQuery,
+			apiKey.ID,
+			apiKey.Name,
+			apiKey.APIKey,
+			apiKey.APIId,
+			apiKey.Operations,
+			apiKey.Status,
+			apiKey.CreatedAt,
+			apiKey.CreatedBy,
+			apiKey.UpdatedAt,
+			apiKey.ExpiresAt,
+			apiKey.Unit,
+			apiKey.Duration,
+		)
+
+		if err != nil {
+			tx.Rollback()
+			// Check for unique constraint violation on api_key field
+			if isAPIKeyUniqueConstraintError(err) {
+				return fmt.Errorf("%w: API key value already exists", ErrConflict)
+			}
+			return fmt.Errorf("failed to insert API key: %w", err)
+		}
+
+		s.logger.Info("API key inserted successfully",
+			zap.String("id", apiKey.ID),
+			zap.String("name", apiKey.Name),
+			zap.String("apiId", apiKey.APIId),
+			zap.String("created_by", apiKey.CreatedBy))
+	} else {
+		// Existing record found, update it with new API key data
+		updateQuery := `
+			UPDATE api_keys 
+			SET api_key = ?, operations = ?, status = ?, created_by = ?, updated_at = ?, expires_at = ?, expires_in_unit = ?, expires_in_duration = ?
+			WHERE apiId = ? AND name = ?
+		`
+
+		_, err := tx.Exec(updateQuery,
+			apiKey.APIKey,
+			apiKey.Operations,
+			apiKey.Status,
+			apiKey.CreatedBy,
+			apiKey.UpdatedAt,
+			apiKey.ExpiresAt,
+			apiKey.Unit,
+			apiKey.Duration,
+			apiKey.APIId,
+			apiKey.Name,
+		)
+
+		if err != nil {
+			tx.Rollback()
+			// Check for unique constraint violation on api_key field
+			if isAPIKeyUniqueConstraintError(err) {
+				return fmt.Errorf("%w: API key value already exists", ErrConflict)
+			}
+			return fmt.Errorf("failed to update API key: %w", err)
+		}
+
+		s.logger.Info("API key updated successfully",
+			zap.String("existing_id", existingID),
+			zap.String("name", apiKey.Name),
+			zap.String("apiId", apiKey.APIId),
+			zap.String("created_by", apiKey.CreatedBy))
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// GetAPIKeyByKey retrieves an API key by its key value
+func (s *SQLiteStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
+	query := `
+		SELECT id, name, api_key, apiId, operations, status,
+		       created_at, created_by, updated_at, expires_at
+		FROM api_keys
+		WHERE api_key = ?
+	`
+
+	var apiKey models.APIKey
+	var expiresAt sql.NullTime
+
+	err := s.db.QueryRow(query, key).Scan(
+		&apiKey.ID,
+		&apiKey.Name,
+		&apiKey.APIKey,
+		&apiKey.APIId,
+		&apiKey.Operations,
+		&apiKey.Status,
+		&apiKey.CreatedAt,
+		&apiKey.CreatedBy,
+		&apiKey.UpdatedAt,
+		&expiresAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: key not found", ErrNotFound)
+		}
+		return nil, fmt.Errorf("failed to query API key: %w", err)
+	}
+
+	// Handle nullable expires_at field
+	if expiresAt.Valid {
+		apiKey.ExpiresAt = &expiresAt.Time
+	}
+
+	return &apiKey, nil
+}
+
+// GetAPIKeysByAPI retrieves all API keys for a specific API
+func (s *SQLiteStorage) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
+	query := `
+		SELECT id, name, api_key, apiId, operations, status,
+		       created_at, created_by, updated_at, expires_at
+		FROM api_keys
+		WHERE apiId = ?
+		ORDER BY created_at DESC
+	`
+
+	rows, err := s.db.Query(query, apiId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query API keys: %w", err)
+	}
+	defer rows.Close()
+
+	var apiKeys []*models.APIKey
+
+	for rows.Next() {
+		var apiKey models.APIKey
+		var expiresAt sql.NullTime
+
+		err := rows.Scan(
+			&apiKey.ID,
+			&apiKey.Name,
+			&apiKey.APIKey,
+			&apiKey.APIId,
+			&apiKey.Operations,
+			&apiKey.Status,
+			&apiKey.CreatedAt,
+			&apiKey.CreatedBy,
+			&apiKey.UpdatedAt,
+			&expiresAt,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan API key row: %w", err)
+		}
+
+		// Handle nullable expires_at field
+		if expiresAt.Valid {
+			apiKey.ExpiresAt = &expiresAt.Time
+		}
+
+		apiKeys = append(apiKeys, &apiKey)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating API key rows: %w", err)
+	}
+
+	return apiKeys, nil
+}
+
+// GetAPIKeysByAPIAndName retrieves an API key by its apiId and name
+func (s *SQLiteStorage) GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, error) {
+	query := `
+		SELECT id, name, api_key, apiId, operations, status,
+		       created_at, created_by, updated_at, expires_at
+		FROM api_keys
+		WHERE apiId = ? AND name = ?
+		LIMIT 1
+	`
+
+	var apiKey models.APIKey
+	var expiresAt sql.NullTime
+
+	err := s.db.QueryRow(query, apiId, name).Scan(
+		&apiKey.ID,
+		&apiKey.Name,
+		&apiKey.APIKey,
+		&apiKey.APIId,
+		&apiKey.Operations,
+		&apiKey.Status,
+		&apiKey.CreatedAt,
+		&apiKey.CreatedBy,
+		&apiKey.UpdatedAt,
+		&expiresAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to query API key by name: %w", err)
+	}
+
+	// Handle nullable expires_at field
+	if expiresAt.Valid {
+		apiKey.ExpiresAt = &expiresAt.Time
+	}
+
+	return &apiKey, nil
+}
+
+// UpdateAPIKey updates an existing API key
+func (s *SQLiteStorage) UpdateAPIKey(apiKey *models.APIKey) error {
+	query := `
+		UPDATE api_keys
+		SET status = ?, updated_at = ?, expires_at = ?
+		WHERE api_key = ?
+	`
+
+	result, err := s.db.Exec(query,
+		apiKey.Status,
+		apiKey.UpdatedAt,
+		apiKey.ExpiresAt,
+		apiKey.APIKey,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update API key: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		return fmt.Errorf("%w: API key not found", ErrNotFound)
+	}
+
+	s.logger.Info("API key updated successfully",
+		zap.String("id", apiKey.ID),
+		zap.String("status", string(apiKey.Status)))
+
+	return nil
+}
+
+// DeleteAPIKey removes an API key by its key value
+func (s *SQLiteStorage) DeleteAPIKey(key string) error {
+	query := `DELETE FROM api_keys WHERE api_key = ?`
+
+	result, err := s.db.Exec(query, key)
+	if err != nil {
+		return fmt.Errorf("failed to delete API key: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		return fmt.Errorf("%w: API key not found", ErrNotFound)
+	}
+
+	s.logger.Info("API key deleted successfully", zap.String("key_prefix", key[:min(8, len(key))]+"***"))
+
+	return nil
+}
+
+// RemoveAPIKeysAPI removes an API keys by apiId
+func (s *SQLiteStorage) RemoveAPIKeysAPI(apiId string) error {
+	query := `DELETE FROM api_keys WHERE apiId = ?`
+
+	_, err := s.db.Exec(query, apiId)
+	if err != nil {
+		return fmt.Errorf("failed to remove API keys for API: %w", err)
+	}
+
+	s.logger.Info("API keys removed successfully",
+		zap.String("apiId", apiId))
+
+	return nil
+}
+
+// RemoveAPIKeyAPIAndName removes an API key by its apiId and name
+func (s *SQLiteStorage) RemoveAPIKeyAPIAndName(apiId, name string) error {
+	query := `DELETE FROM api_keys WHERE apiId = ? AND name = ?`
+
+	result, err := s.db.Exec(query, apiId, name)
+	if err != nil {
+		return fmt.Errorf("failed to remove API key: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		return fmt.Errorf("%w: API key not found", ErrNotFound)
+	}
+
+	s.logger.Info("API key removed successfully",
+		zap.String("apiId", apiId),
+		zap.String("name", name))
+
+	return nil
+}
+
 // Close closes the database connection
 func (s *SQLiteStorage) Close() error {
 	s.logger.Info("Closing SQLite storage")
@@ -1120,4 +1507,87 @@ func isCertificateUniqueConstraintError(err error) bool {
 	// Error message contains "UNIQUE constraint failed"
 	return err != nil && (err.Error() == "UNIQUE constraint failed: certificates.name" ||
 		err.Error() == "UNIQUE constraint failed: certificates.id")
+}
+
+// Helper function to check for API key unique constraint errors
+func isAPIKeyUniqueConstraintError(err error) bool {
+	return err != nil &&
+		(err.Error() == "UNIQUE constraint failed: api_keys.api_key" ||
+			err.Error() == "UNIQUE constraint failed: api_keys.id")
+}
+
+// GetAllAPIKeys retrieves all API keys from the database
+func (s *SQLiteStorage) GetAllAPIKeys() ([]*models.APIKey, error) {
+	query := `
+		SELECT id, name, api_key, apiId, operations, status,
+		       created_at, created_by, updated_at, expires_at
+		FROM api_keys
+		WHERE status = 'active'
+		ORDER BY created_at DESC
+	`
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query all API keys: %w", err)
+	}
+	defer rows.Close()
+
+	var apiKeys []*models.APIKey
+
+	for rows.Next() {
+		var apiKey models.APIKey
+		var expiresAt sql.NullTime
+
+		err := rows.Scan(
+			&apiKey.ID,
+			&apiKey.Name,
+			&apiKey.APIKey,
+			&apiKey.APIId,
+			&apiKey.Operations,
+			&apiKey.Status,
+			&apiKey.CreatedAt,
+			&apiKey.CreatedBy,
+			&apiKey.UpdatedAt,
+			&expiresAt,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan API key row: %w", err)
+		}
+
+		// Handle nullable expires_at field
+		if expiresAt.Valid {
+			apiKey.ExpiresAt = &expiresAt.Time
+		}
+
+		apiKeys = append(apiKeys, &apiKey)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating API key rows: %w", err)
+	}
+
+	return apiKeys, nil
+}
+
+// LoadAPIKeysFromDatabase loads all API keys from database into both the ConfigStore and APIKeyStore
+func LoadAPIKeysFromDatabase(storage Storage, configStore *ConfigStore, apiKeyStore *APIKeyStore) error {
+	// Get all API keys from persistent storage
+	apiKeys, err := storage.GetAllAPIKeys()
+	if err != nil {
+		return fmt.Errorf("failed to load API keys from database: %w", err)
+	}
+
+	// Load into both stores
+	for _, apiKey := range apiKeys {
+		// Load into ConfigStore for backward compatibility
+		if err := configStore.StoreAPIKey(apiKey); err != nil {
+			return fmt.Errorf("failed to load API key %s into ConfigStore: %w", apiKey.ID, err)
+		}
+
+		// Load into APIKeyStore for state-of-the-world updates
+		apiKeyStore.Store(apiKey)
+	}
+
+	return nil
 }

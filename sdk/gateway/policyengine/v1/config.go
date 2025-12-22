@@ -58,6 +58,9 @@ type Metadata struct {
 	// ResourceVersion is used for optimistic concurrency control
 	ResourceVersion int64 `json:"resource_version" yaml:"resource_version"`
 
+	// APIId is the unique identifier of the API this policy configuration belongs to
+	APIId string `json:"api_id" yaml:"api_id"`
+
 	// APIName is the name of the API this policy configuration belongs to
 	APIName string `json:"api_name" yaml:"api_name"`
 

@@ -145,6 +145,57 @@ type Storage interface {
 	// May be expensive for large datasets; consider pagination in future versions.
 	GetAllLLMProviderTemplates() ([]*models.StoredLLMProviderTemplate, error)
 
+	// SaveAPIKey persists a new API key.
+	//
+	// Returns an error if an API key with the same key value already exists.
+	// Implementations should ensure this operation is atomic (all-or-nothing).
+	SaveAPIKey(apiKey *models.APIKey) error
+
+	// GetAPIKeyByKey retrieves an API key by its key value.
+	//
+	// Returns an error if the API key is not found.
+	// This is used for API key validation during authentication.
+	GetAPIKeyByKey(key string) (*models.APIKey, error)
+
+	// GetAPIKeysByAPI retrieves all API keys for a specific API.
+	//
+	// Returns an empty slice if no API keys exist for the API.
+	// Used for listing API keys associated with an API.
+	GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error)
+
+	// GetAllAPIKeys retrieves all API keys from the database.
+	//
+	// Returns an empty slice if no API keys exist.
+	// Used for loading API keys into memory on startup.
+	GetAllAPIKeys() ([]*models.APIKey, error)
+
+	// GetAPIKeysByAPIAndName retrieves an API key by its name within a specific API.
+	//
+	// Returns an error if the API key is not found.
+	// Used for retrieving specific API keys by name.
+	GetAPIKeysByAPIAndName(apiId, name string) (*models.APIKey, error)
+
+	// UpdateAPIKey updates an existing API key (e.g., to revoke or expire it).
+	//
+	// Returns an error if the API key does not exist.
+	// Implementations should ensure this operation is atomic and thread-safe.
+	UpdateAPIKey(apiKey *models.APIKey) error
+
+	// DeleteAPIKey removes an API key by its key value.
+	//
+	// Returns an error if the API key does not exist.
+	DeleteAPIKey(key string) error
+
+	// RemoveAPIKeysAPI removes all API keys for a specific API.
+	//
+	// Returns an error if API key removal fails.
+	RemoveAPIKeysAPI(apiId string) error
+
+	// RemoveAPIKeyAPIAndName removes an API key by its API apiId and name.
+	//
+	// Returns an error if the API key does not exist.
+	RemoveAPIKeyAPIAndName(apiId, name string) error
+
 	// SaveCertificate persists a new certificate.
 	//
 	// Returns an error if a certificate with the same name already exists.

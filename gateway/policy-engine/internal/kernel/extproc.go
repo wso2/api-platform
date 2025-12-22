@@ -265,6 +265,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 	if chain == nil {
 		slog.InfoContext(ctx, "No policy chain found for route, skipping all processing",
 			"route", routeMetadata.RouteName,
+			"api_id", routeMetadata.APIId,
 			"api_name", routeMetadata.APIName,
 			"api_version", routeMetadata.APIVersion,
 			"context", routeMetadata.Context)
@@ -300,6 +301,7 @@ func (s *ExternalProcessorServer) skipAllProcessing() *extprocv3.ProcessingRespo
 // RouteMetadata contains metadata about the route
 type RouteMetadata struct {
 	RouteName     string
+	APIId         string
 	APIName       string
 	APIVersion    string
 	Context       string
@@ -337,6 +339,9 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 			} else {
 				// Extract fields from "wso2.route" filter metadata
 				if routeStruct, ok := envoyMetadata.FilterMetadata["wso2.route"]; ok && routeStruct.Fields != nil {
+					if apiIdValue, ok := routeStruct.Fields["api_id"]; ok {
+						metadata.APIId = apiIdValue.GetStringValue()
+					}
 					if apiNameValue, ok := routeStruct.Fields["api_name"]; ok {
 						metadata.APIName = apiNameValue.GetStringValue()
 					}

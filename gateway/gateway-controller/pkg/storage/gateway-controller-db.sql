@@ -103,5 +103,52 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
 -- Index for fast name lookups
 CREATE INDEX IF NOT EXISTS idx_template_handle ON llm_provider_templates(handle);
 
--- Set schema version to 4
-PRAGMA user_version = 4;
+-- Table for API keys
+CREATE TABLE IF NOT EXISTS api_keys (
+    -- Primary identifier (UUID)
+    id TEXT PRIMARY KEY,
+
+    -- Human-readable name for the API key
+    name TEXT NOT NULL,
+    
+    -- The generated API key
+    api_key TEXT NOT NULL UNIQUE,
+    
+    -- API reference
+    apiId TEXT NOT NULL,
+
+    -- Comma-separated list of operations the key will have access to
+    operations TEXT NOT NULL DEFAULT '[*]',
+
+    -- Key status
+    status TEXT NOT NULL CHECK(status IN ('active', 'revoked', 'expired')) DEFAULT 'active',
+    
+    -- Timestamps
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    -- User who generated the API key
+    created_by TEXT NOT NULL DEFAULT 'system',
+
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NULL,  -- NULL means no expiration
+
+    -- Expiration policy fields
+    expires_in_unit TEXT NULL,
+    expires_in_duration INTEGER NULL,
+    
+    -- Foreign key relationship to deployments
+    FOREIGN KEY (apiId) REFERENCES deployments(id) ON DELETE CASCADE,
+
+    -- Composite unique constraint (handle + api key name must be unique)
+    UNIQUE (apiId, name)
+);
+
+-- Indexes for API key lookups
+CREATE INDEX IF NOT EXISTS idx_api_key ON api_keys(api_key);
+CREATE INDEX IF NOT EXISTS idx_api_key_api ON api_keys(apiId);
+CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_keys(status);
+CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);
+CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);
+
+-- Set schema version to 5
+PRAGMA user_version = 5;

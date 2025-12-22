@@ -33,6 +33,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/policy-engine/policy-engine/internal/kernel"
 	"github.com/policy-engine/policy-engine/internal/registry"
@@ -45,12 +46,14 @@ type Client struct {
 	reconnectManager *ReconnectManager
 
 	// Connection state
-	mu             sync.RWMutex
-	state          ClientState
-	conn           *grpc.ClientConn
-	stream         discoveryv3.AggregatedDiscoveryService_StreamAggregatedResourcesClient
-	currentVersion string
-	currentNonce   string
+	mu     sync.RWMutex
+	state  ClientState
+	conn   *grpc.ClientConn
+	stream discoveryv3.AggregatedDiscoveryService_StreamAggregatedResourcesClient
+	// Track versions separately for each resource type to avoid version confusion
+	policyChainVersion string
+	apiKeyVersion      string
+	currentNonce       string
 
 	// Lifecycle management
 	ctx         context.Context
@@ -282,15 +285,18 @@ func (c *Client) loadTLSConfig() (*tls.Config, error) {
 func (c *Client) sendDiscoveryRequest(versionInfo, responseNonce string) error {
 	c.mu.RLock()
 	stream := c.stream
+	policyVersion := c.policyChainVersion
+	apiKeyVersion := c.apiKeyVersion
 	c.mu.RUnlock()
 
 	if stream == nil {
 		return fmt.Errorf("stream is not available")
 	}
 
-	req := &discoveryv3.DiscoveryRequest{
+	// Send policy chain subscription with its own version
+	policyReq := &discoveryv3.DiscoveryRequest{
 		TypeUrl:       PolicyChainTypeURL,
-		VersionInfo:   versionInfo,
+		VersionInfo:   policyVersion,
 		ResponseNonce: responseNonce,
 		Node: &corev3.Node{
 			Id:      c.config.NodeID,
@@ -298,12 +304,36 @@ func (c *Client) sendDiscoveryRequest(versionInfo, responseNonce string) error {
 		},
 	}
 
-	slog.DebugContext(c.ctx, "Sending discovery request",
-		"type_url", req.TypeUrl,
-		"version", versionInfo,
+	slog.DebugContext(c.ctx, "Sending policy chain discovery request",
+		"type_url", policyReq.TypeUrl,
+		"version", policyVersion,
 		"nonce", responseNonce)
 
-	return stream.Send(req)
+	if err := stream.Send(policyReq); err != nil {
+		return fmt.Errorf("failed to send policy chain request: %w", err)
+	}
+
+	// Send API key subscription with its own version
+	apiKeyReq := &discoveryv3.DiscoveryRequest{
+		TypeUrl:       APIKeyStateTypeURL,
+		VersionInfo:   apiKeyVersion,
+		ResponseNonce: responseNonce,
+		Node: &corev3.Node{
+			Id:      c.config.NodeID,
+			Cluster: c.config.Cluster,
+		},
+	}
+
+	slog.DebugContext(c.ctx, "Sending API key discovery request",
+		"type_url", apiKeyReq.TypeUrl,
+		"version", apiKeyVersion,
+		"nonce", responseNonce)
+
+	if err := stream.Send(apiKeyReq); err != nil {
+		return fmt.Errorf("failed to send API key request: %w", err)
+	}
+
+	return nil
 }
 
 // processStream processes incoming DiscoveryResponse messages
@@ -321,34 +351,82 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 
 		// Process response
 		if err := c.handleDiscoveryResponse(resp); err != nil {
-			slog.ErrorContext(c.ctx, "Failed to process discovery response",
-				"error", err,
+			slog.ErrorContext(c.ctx, "Failed to handle discovery response",
+				"type_url", resp.TypeUrl,
 				"version", resp.VersionInfo,
-				"nonce", resp.Nonce)
+				"error", err)
 
-			// Send NACK
-			if sendErr := c.sendDiscoveryRequest(c.currentVersion, resp.Nonce); sendErr != nil {
+			// Send NACK with the appropriate current version for this resource type
+			c.mu.RLock()
+			currentVersion := ""
+			switch resp.TypeUrl {
+			case PolicyChainTypeURL:
+				currentVersion = c.policyChainVersion
+			case APIKeyStateTypeURL:
+				currentVersion = c.apiKeyVersion
+			}
+			c.mu.RUnlock()
+
+			if sendErr := c.sendDiscoveryRequestForType(resp.TypeUrl, currentVersion, resp.Nonce); sendErr != nil {
 				return fmt.Errorf("failed to send NACK: %w", sendErr)
 			}
 
 			continue
 		}
 
-		// Update current version and nonce
+		// Update version for the specific resource type and send ACK
 		c.mu.Lock()
-		c.currentVersion = resp.VersionInfo
+		switch resp.TypeUrl {
+		case PolicyChainTypeURL:
+			c.policyChainVersion = resp.VersionInfo
+		case APIKeyStateTypeURL:
+			c.apiKeyVersion = resp.VersionInfo
+		}
 		c.currentNonce = resp.Nonce
 		c.mu.Unlock()
 
-		// Send ACK
-		if err := c.sendDiscoveryRequest(resp.VersionInfo, resp.Nonce); err != nil {
+		// Send ACK for this specific resource type
+		if err := c.sendDiscoveryRequestForType(resp.TypeUrl, resp.VersionInfo, resp.Nonce); err != nil {
 			return fmt.Errorf("failed to send ACK: %w", err)
 		}
 
 		slog.InfoContext(c.ctx, "Successfully processed and ACKed discovery response",
+			"type_url", resp.TypeUrl,
 			"version", resp.VersionInfo,
 			"num_resources", len(resp.Resources))
 	}
+}
+
+// sendDiscoveryRequestForType sends a DiscoveryRequest for a specific resource type with its own version
+func (c *Client) sendDiscoveryRequestForType(typeURL, versionInfo, responseNonce string) error {
+	c.mu.RLock()
+	stream := c.stream
+	c.mu.RUnlock()
+
+	if stream == nil {
+		return fmt.Errorf("stream is not available")
+	}
+
+	req := &discoveryv3.DiscoveryRequest{
+		TypeUrl:       typeURL,
+		VersionInfo:   versionInfo,
+		ResponseNonce: responseNonce,
+		Node: &corev3.Node{
+			Id:      c.config.NodeID,
+			Cluster: c.config.Cluster,
+		},
+	}
+
+	slog.DebugContext(c.ctx, "Sending discovery request for specific type",
+		"type_url", typeURL,
+		"version", versionInfo,
+		"nonce", responseNonce)
+
+	if err := stream.Send(req); err != nil {
+		return fmt.Errorf("failed to send request for %s: %w", typeURL, err)
+	}
+
+	return nil
 }
 
 // handleDiscoveryResponse processes a DiscoveryResponse
@@ -359,11 +437,21 @@ func (c *Client) handleDiscoveryResponse(resp *discoveryv3.DiscoveryResponse) er
 		"nonce", resp.Nonce,
 		"num_resources", len(resp.Resources))
 
-	// Verify type URL
-	if resp.TypeUrl != PolicyChainTypeURL {
-		return fmt.Errorf("unexpected type URL: %s, expected: %s", resp.TypeUrl, PolicyChainTypeURL)
-	}
+	// Handle different resource types
+	switch resp.TypeUrl {
+	case PolicyChainTypeURL:
+		// Handle policy chain updates
+		return c.handler.HandlePolicyChainUpdate(c.ctx, resp.Resources, resp.VersionInfo)
 
-	// Handle resource update
-	return c.handler.HandlePolicyChainUpdate(c.ctx, resp.Resources, resp.VersionInfo)
+	case APIKeyStateTypeURL:
+		// Handle API key operation updates
+		resourceMap := make(map[string]*anypb.Any)
+		for i, resource := range resp.Resources {
+			resourceMap[fmt.Sprintf("resource_%d", i)] = resource
+		}
+		return c.handler.apiKeyHandler.HandleAPIKeyOperation(c.ctx, resourceMap)
+
+	default:
+		return fmt.Errorf("unexpected type URL: %s", resp.TypeUrl)
+	}
 }

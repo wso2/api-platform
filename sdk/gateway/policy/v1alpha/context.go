@@ -29,6 +29,9 @@ type SharedContext struct {
 	// API metadata fields (populated by policy engine at request time)
 	// These provide context about which API and operation is being processed
 
+	// APIId is the unique identifier of the API (e.g., UUID)
+	APIId string
+
 	// APIName is the name of the API (e.g., "PetStore")
 	APIName string
 

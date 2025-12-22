@@ -32,12 +32,17 @@ type ConfigStore struct {
 	mu           sync.RWMutex                    // Protects concurrent access
 	configs      map[string]*models.StoredConfig // Key: config ID
 	nameVersion  map[string]string               // Key: "name:version" → Value: config ID
+	handle       map[string]string               // Key: "handle" → Value: config ID
 	snapVersion  int64                           // Current xDS snapshot version
 	TopicManager *TopicManager
 
 	// LLM Provider Templates
 	templates          map[string]*models.StoredLLMProviderTemplate // Key: template ID
 	templateIdByHandle map[string]string
+
+	// API Keys storage
+	apiKeys      map[string]*models.APIKey   // Key: API key value → Value: APIKey
+	apiKeysByAPI map[string][]*models.APIKey // Key: "configID" → Value: slice of APIKeys
 }
 
 // NewConfigStore creates a new in-memory config store
@@ -45,10 +50,13 @@ func NewConfigStore() *ConfigStore {
 	return &ConfigStore{
 		configs:            make(map[string]*models.StoredConfig),
 		nameVersion:        make(map[string]string),
+		handle:             make(map[string]string),
 		snapVersion:        0,
 		TopicManager:       NewTopicManager(),
 		templates:          make(map[string]*models.StoredLLMProviderTemplate),
 		templateIdByHandle: make(map[string]string),
+		apiKeys:            make(map[string]*models.APIKey),
+		apiKeysByAPI:       make(map[string][]*models.APIKey),
 	}
 }
 
@@ -58,12 +66,18 @@ func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 	defer cs.mu.Unlock()
 
 	key := cfg.GetCompositeKey()
+	handle := cfg.GetHandle()
+	if existingID, exists := cs.handle[handle]; exists {
+		return fmt.Errorf("%w: configuration with handle '%s' already exists (ID: %s)",
+			ErrConflict, handle, existingID)
+	}
 	if existingID, exists := cs.nameVersion[key]; exists {
 		return fmt.Errorf("%w: configuration with displayName '%s' and version '%s' already exists (ID: %s)",
 			ErrConflict, cfg.GetDisplayName(), cfg.GetVersion(), existingID)
 	}
 
 	cs.configs[cfg.ID] = cfg
+	cs.handle[handle] = cfg.ID
 	cs.nameVersion[key] = cfg.ID
 
 	if cfg.Configuration.Kind == api.Asyncwebsub {
@@ -83,6 +97,20 @@ func (cs *ConfigStore) Update(cfg *models.StoredConfig) error {
 	existing, exists := cs.configs[cfg.ID]
 	if !exists {
 		return fmt.Errorf("configuration with ID '%s' not found", cfg.ID)
+	}
+
+	// If handle changed, update the handle index
+	oldHandle := existing.GetHandle()
+	newHandle := cfg.GetHandle()
+
+	if oldHandle != newHandle {
+		// Check if new handle already exists
+		if existingID, exists := cs.handle[newHandle]; exists && existingID != cfg.ID {
+			return fmt.Errorf("%w: configuration with handle '%s' already exists (ID: %s)",
+				ErrConflict, newHandle, existingID)
+		}
+		delete(cs.handle, oldHandle)
+		cs.handle[newHandle] = cfg.ID
 	}
 
 	// If name/version changed, update the nameVersion index
@@ -149,10 +177,12 @@ func (cs *ConfigStore) Delete(id string) error {
 	}
 
 	key := cfg.GetCompositeKey()
+	handle := cfg.GetHandle()
 
 	if cfg.Configuration.Kind == api.Asyncwebsub {
 		cs.TopicManager.RemoveAllForConfig(cfg.ID)
 	}
+	delete(cs.handle, handle)
 	delete(cs.nameVersion, key)
 	delete(cs.configs, id)
 	return nil
@@ -184,6 +214,28 @@ func (cs *ConfigStore) GetByNameVersion(name, version string) (*models.StoredCon
 	cfg, exists := cs.configs[configID]
 	if !exists {
 		return nil, fmt.Errorf("configuration with name '%s' and version '%s' not found", name, version)
+	}
+	return cfg, nil
+}
+
+// GetByHandle retrieves a configuration by handle
+func (cs *ConfigStore) GetByHandle(handle string) (*models.StoredConfig, error) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	key := fmt.Sprintf("%s", handle)
+	configID, exists := cs.handle[key]
+	if !exists {
+		return nil, fmt.Errorf("configuration with handle '%s' not found", handle)
+	}
+
+	cfg, exists := cs.configs[configID]
+	if !exists {
+		return nil, fmt.Errorf("configuration with handle '%s' not found", handle)
+	}
+
+	if cfg.GetHandle() != handle {
+		return nil, fmt.Errorf("configuration with handle '%s' not found", handle)
 	}
 	return cfg, nil
 }
@@ -396,4 +448,214 @@ func (cs *ConfigStore) GetAllTemplates() []*models.StoredLLMProviderTemplate {
 	}
 
 	return templates
+}
+
+// StoreAPIKey stores an API key in the in-memory cache
+func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
+	if apiKey == nil {
+		return fmt.Errorf("API key cannot be nil")
+	}
+	if strings.TrimSpace(apiKey.Name) == "" {
+		return fmt.Errorf("API key name cannot be empty")
+	}
+	if strings.TrimSpace(apiKey.APIKey) == "" {
+		return fmt.Errorf("API key value cannot be empty")
+	}
+	if strings.TrimSpace(apiKey.APIId) == "" {
+		return fmt.Errorf("API apiId cannot be empty")
+	}
+
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	// Check if an API key with the same apiId and name already exists
+	existingKeys, apiIdExists := cs.apiKeysByAPI[apiKey.APIId]
+	var existingKeyIndex = -1
+	var oldAPIKeyValue string
+
+	if apiIdExists {
+		for i, existingKey := range existingKeys {
+			if existingKey.Name == apiKey.Name {
+				existingKeyIndex = i
+				oldAPIKeyValue = existingKey.APIKey
+				break
+			}
+		}
+	}
+
+	// Check if the new API key value already exists (but with different apiId/name)
+	if _, keyExists := cs.apiKeys[apiKey.APIKey]; keyExists && oldAPIKeyValue != apiKey.APIKey {
+		return ErrConflict
+	}
+
+	if existingKeyIndex >= 0 {
+		// Update existing API key
+		// Remove old API key value from apiKeys map if it's different
+		if oldAPIKeyValue != apiKey.APIKey {
+			delete(cs.apiKeys, oldAPIKeyValue)
+		}
+
+		// Update the existing entry in apiKeysByAPI
+		cs.apiKeysByAPI[apiKey.APIId][existingKeyIndex] = apiKey
+
+		// Store by new API key value
+		cs.apiKeys[apiKey.APIKey] = apiKey
+	} else {
+		// Insert new API key
+		// Check if API key value already exists
+		if _, exists := cs.apiKeys[apiKey.APIKey]; exists {
+			return ErrConflict
+		}
+
+		// Store by API key value
+		cs.apiKeys[apiKey.APIKey] = apiKey
+
+		// Store by API apiId
+		cs.apiKeysByAPI[apiKey.APIId] = append(cs.apiKeysByAPI[apiKey.APIId], apiKey)
+	}
+
+	return nil
+}
+
+// GetAPIKeyByKey retrieves an API key by its key value
+func (cs *ConfigStore) GetAPIKeyByKey(key string) (*models.APIKey, error) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	apiKey, exists := cs.apiKeys[key]
+	if !exists {
+		return nil, ErrNotFound
+	}
+
+	return apiKey, nil
+}
+
+// GetAPIKeysByAPI retrieves all API keys for a specific API
+func (cs *ConfigStore) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	apiKeys, exists := cs.apiKeysByAPI[apiId]
+	if !exists {
+		return []*models.APIKey{}, nil // Return empty slice instead of nil
+	}
+
+	// Return a copy to prevent external modification
+	result := make([]*models.APIKey, len(apiKeys))
+	copy(result, apiKeys)
+	return result, nil
+}
+
+// GetAPIKeyByName retrieves an API key by its apiId and name
+func (cs *ConfigStore) GetAPIKeyByName(apiId, name string) (*models.APIKey, error) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
+
+	apiKeys, exists := cs.apiKeysByAPI[apiId]
+	if !exists {
+		return nil, ErrNotFound
+	}
+
+	// Search for the API key with the matching name
+	for _, apiKey := range apiKeys {
+		if apiKey.Name == name {
+			return apiKey, nil
+		}
+	}
+
+	return nil, ErrNotFound
+}
+
+// RemoveAPIKey removes an API key from the in-memory cache
+func (cs *ConfigStore) RemoveAPIKey(apiKey string) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	// Get the API key first to find its API association
+	key, exists := cs.apiKeys[apiKey]
+	if !exists {
+		return ErrNotFound
+	}
+
+	// Remove from main map
+	delete(cs.apiKeys, apiKey)
+
+	// Remove from API-specific map
+	if apiKeys, exists := cs.apiKeysByAPI[key.APIId]; exists {
+		for i, k := range apiKeys {
+			if k.APIKey == apiKey {
+				// Remove from slice
+				cs.apiKeysByAPI[key.APIId] = append(apiKeys[:i], apiKeys[i+1:]...)
+				break
+			}
+		}
+		// Clean up empty slices
+		if len(cs.apiKeysByAPI[key.APIId]) == 0 {
+			delete(cs.apiKeysByAPI, key.APIId)
+		}
+	}
+
+	return nil
+}
+
+// RemoveAPIKeysByAPI removes all API keys for a specific API
+func (cs *ConfigStore) RemoveAPIKeysByAPI(apiId string) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	apiKeys, exists := cs.apiKeysByAPI[apiId]
+	if !exists {
+		return nil // No keys to remove
+	}
+
+	// Remove from main map
+	for _, key := range apiKeys {
+		delete(cs.apiKeys, key.APIKey)
+	}
+
+	// Remove from API-specific map
+	delete(cs.apiKeysByAPI, apiId)
+
+	return nil
+}
+
+// RemoveAPIKeyByName removes an API key from the in-memory cache by its apiId and name
+func (cs *ConfigStore) RemoveAPIKeyByName(apiId, name string) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	// Get API keys for the apiId
+	apiKeys, exists := cs.apiKeysByAPI[apiId]
+	if !exists {
+		return ErrNotFound
+	}
+
+	// Find the API key with the matching name
+	var targetAPIKey *models.APIKey
+	var targetIndex = -1
+
+	for i, apiKey := range apiKeys {
+		if apiKey.Name == name {
+			targetAPIKey = apiKey
+			targetIndex = i
+			break
+		}
+	}
+
+	if targetAPIKey == nil {
+		return ErrNotFound
+	}
+
+	// Remove from main apiKeys map
+	delete(cs.apiKeys, targetAPIKey.APIKey)
+
+	// Remove from apiKeysByAPI slice
+	cs.apiKeysByAPI[apiId] = append(apiKeys[:targetIndex], apiKeys[targetIndex+1:]...)
+
+	// Clean up empty slices
+	if len(cs.apiKeysByAPI[apiId]) == 0 {
+		delete(cs.apiKeysByAPI, apiId)
+	}
+
+	return nil
 }

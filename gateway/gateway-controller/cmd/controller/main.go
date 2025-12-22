@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"net/http"
 	"os"
 	"os/signal"
@@ -103,6 +104,9 @@ func main() {
 	// Initialize in-memory config store
 	configStore := storage.NewConfigStore()
 
+	// Initialize in-memory API key store for xDS
+	apiKeyStore := storage.NewAPIKeyStore(log)
+
 	// Load configurations from database on startup (if persistent mode)
 	if cfg.IsPersistentMode() && db != nil {
 		log.Info("Loading configurations from database")
@@ -113,6 +117,13 @@ func main() {
 			log.Fatal("Failed to load llm provider template configurations from database", zap.Error(err))
 		}
 		log.Info("Loaded configurations", zap.Int("count", len(configStore.GetAll())))
+
+		// Load API keys from database into both in-memory stores
+		log.Info("Loading API keys from database")
+		if err := storage.LoadAPIKeysFromDatabase(db, configStore, apiKeyStore); err != nil {
+			log.Fatal("Failed to load API keys from database", zap.Error(err))
+		}
+		log.Info("Loaded API keys", zap.Int("count", apiKeyStore.Count()))
 	}
 
 	// Initialize xDS snapshot manager with router config
@@ -154,6 +165,21 @@ func main() {
 			log.Fatal("xDS server failed", zap.Error(err))
 		}
 	}()
+
+	apiKeySnapshotManager := apikeyxds.NewAPIKeySnapshotManager(apiKeyStore, log)
+	apiKeyXDSManager := apikeyxds.NewAPIKeyStateManager(apiKeyStore, apiKeySnapshotManager, log)
+
+	// Generate initial API key snapshot if API keys were loaded from database
+	if cfg.IsPersistentMode() && apiKeyStore.Count() > 0 {
+		log.Info("Generating initial API key snapshot for policy engine", zap.Int("api_key_count", apiKeyStore.Count()))
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := apiKeySnapshotManager.UpdateSnapshot(ctx); err != nil {
+			log.Warn("Failed to generate initial API key snapshot", zap.Error(err))
+		} else {
+			log.Info("Initial API key snapshot generated successfully")
+		}
+		cancel()
+	}
 
 	// Initialize policy store and start policy xDS server if enabled
 	var policyXDSServer *policyxds.Server
@@ -210,7 +236,7 @@ func main() {
 				cfg.GatewayController.PolicyServer.TLS.KeyFile,
 			))
 		}
-		policyXDSServer = policyxds.NewServer(policySnapshotManager, cfg.GatewayController.PolicyServer.Port, log, serverOpts...)
+		policyXDSServer = policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, cfg.GatewayController.PolicyServer.Port, log, serverOpts...)
 		go func() {
 			if err := policyXDSServer.Start(); err != nil {
 				log.Fatal("Policy xDS server failed", zap.Error(err))
@@ -273,9 +299,9 @@ func main() {
 	router.Use(authenticators.AuthorizationMiddleware(authConfig, log))
 	router.Use(gin.Recovery())
 
-	// Initialize API server with the configured validator
+	// Initialize API server with the configured validator and API key manager
 	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient,
-		policyDefinitions, templateDefinitions, validator, &cfg.GatewayController.Router)
+		policyDefinitions, templateDefinitions, validator, &cfg.GatewayController.Router, apiKeyXDSManager)
 
 	// Register API routes (includes certificate management endpoints from OpenAPI spec)
 	api.RegisterHandlers(router, apiServer)
@@ -362,6 +388,11 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"GET /llm-proxies/:id":    {"admin", "developer"},
 		"PUT /llm-proxies/:id":    {"admin", "developer"},
 		"DELETE /llm-proxies/:id": {"admin", "developer"},
+
+		"POST /apis/:id/api-key":            {"admin", "consumer"},
+		"GET /apis/:id/api-key":             {"admin", "consumer"},
+		"PUT /apis/:id/api-key/:apiKeyName": {"admin", "consumer"},
+		"DELETE /apis/:id/api-key/:apiKey":  {"admin", "consumer"},
 
 		"GET /config_dump": {"admin"},
 	}

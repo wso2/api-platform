@@ -22,6 +22,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/wso2/api-platform/common/constants"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+
 	"io"
 	"net/http"
 	"sort"
@@ -31,6 +34,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -58,6 +62,8 @@ type APIServer struct {
 	deploymentService    *utils.APIDeploymentService
 	mcpDeploymentService *utils.MCPDeploymentService
 	llmDeploymentService *utils.LLMDeploymentService
+	apiKeyService        *utils.APIKeyService
+	apiKeyXDSManager     *apikeyxds.APIKeyStateManager
 	controlPlaneClient   controlplane.ControlPlaneClient
 	routerConfig         *config.RouterConfig
 	httpClient           *http.Client
@@ -75,6 +81,7 @@ func NewAPIServer(
 	templateDefinitions map[string]*api.LLMProviderTemplate,
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
+	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
 ) *APIServer {
 	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig)
 	server := &APIServer{
@@ -90,6 +97,8 @@ func NewAPIServer(
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, templateDefinitions,
 			deploymentService, routerConfig),
+		apiKeyService:      utils.NewAPIKeyService(store, db, apiKeyXDSManager),
+		apiKeyXDSManager:   apiKeyXDSManager,
 		controlPlaneClient: controlPlaneClient,
 		routerConfig:       routerConfig,
 		httpClient:         &http.Client{Timeout: 10 * time.Second},
@@ -773,6 +782,54 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 				Message: "Failed to delete configuration",
 			})
 			return
+		}
+
+		// Delete associated API keys from database
+		err := s.db.RemoveAPIKeysAPI(cfg.ID)
+		if err != nil {
+			log.Warn("Failed to remove API keys from database",
+				zap.String("handle", handle),
+				zap.Error(err))
+		}
+	}
+
+	// Remove API keys from ConfigStore
+	if err := s.store.RemoveAPIKeysByAPI(cfg.ID); err != nil {
+		log.Warn("Failed to remove API keys from ConfigStore",
+			zap.String("handle", handle),
+			zap.Error(err))
+	}
+
+	// Remove API keys from policy engine via xDS
+	if s.apiKeyXDSManager != nil {
+		// Extract API name and version from the config
+		apiConfig, err := cfg.Configuration.Spec.AsAPIConfigData()
+		if err == nil {
+			apiId := cfg.ID
+			apiName := apiConfig.DisplayName
+			apiVersion := apiConfig.Version
+			correlationID := middleware.GetCorrelationID(c)
+
+			if err := s.apiKeyXDSManager.RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID); err != nil {
+				log.Warn("Failed to remove API keys from policy engine",
+					zap.String("api_id", apiId),
+					zap.String("handle", handle),
+					zap.String("api_name", apiName),
+					zap.String("api_version", apiVersion),
+					zap.String("correlation_id", correlationID),
+					zap.Error(err))
+			} else {
+				log.Info("Successfully removed API keys from policy engine",
+					zap.String("api_id", apiId),
+					zap.String("handle", handle),
+					zap.String("api_name", apiName),
+					zap.String("api_version", apiVersion),
+					zap.String("correlation_id", correlationID))
+			}
+		} else {
+			log.Warn("Failed to extract API config data for API key removal",
+				zap.String("handle", handle),
+				zap.Error(err))
 		}
 	}
 
@@ -2230,4 +2287,313 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 		zap.Int("apis", len(apisSlice)),
 		zap.Int("policies", len(policies)),
 		zap.Int("certificates", len(certificates)))
+}
+
+// GenerateAPIKey implements ServerInterface.GenerateAPIKey
+// (POST /apis/{id}/api-key)
+func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Extract authenticated user from context
+	user, ok := s.extractAuthenticatedUser(c, "GenerateAPIKey", correlationID)
+	if !ok {
+		return // Error response already sent by extractAuthenticatedUser
+	}
+
+	log.Debug("Starting API key generation",
+		zap.String("handle", handle),
+		zap.String("user", user.UserID),
+		zap.String("correlation_id", correlationID))
+
+	// Parse and validate request body
+	var request api.APIKeyGenerationRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		log.Warn("Invalid request body for API key generation",
+			zap.Error(err),
+			zap.String("handle", handle),
+			zap.String("correlation_id", correlationID))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Invalid request body: %v", err),
+		})
+		return
+	}
+
+	// Prepare parameters
+	params := utils.APIKeyGenerationParams{
+		Handle:        handle,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.GenerateAPIKey(params)
+	if err != nil {
+		// Check error type to determine appropriate status code
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		}
+		return
+	}
+
+	log.Info("API key generation completed",
+		zap.String("handle", handle),
+		zap.String("key name", result.Response.ApiKey.Name),
+		zap.String("user", user.UserID),
+		zap.String("correlation_id", correlationID))
+
+	// Return the response using the generated schema
+	c.JSON(http.StatusCreated, result.Response)
+}
+
+// RevokeAPIKey implements ServerInterface.RevokeAPIKey
+// (DELETE /apis/{id}/api-key/{apiKey})
+func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKey string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Extract authenticated user from context
+	user, ok := s.extractAuthenticatedUser(c, "RevokeAPIKey", correlationID)
+	if !ok {
+		return // Error response already sent by extractAuthenticatedUser
+	}
+
+	log.Debug("Starting API key revocation",
+		zap.String("handle", handle),
+		zap.String("user", user.UserID),
+		zap.String("correlation_id", correlationID))
+
+	// Parse and validate
+	if strings.TrimSpace(id) == "" {
+		log.Warn("API handle is required for revocation",
+			zap.String("correlation_id", correlationID))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "API handle is required for revocation",
+		})
+		return
+	}
+	if strings.TrimSpace(apiKey) == "" {
+		log.Warn("API key is required for revocation",
+			zap.String("handle", handle),
+			zap.String("correlation_id", correlationID))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: "API key is required for revocation",
+		})
+		return
+	}
+
+	// Prepare parameters
+	params := utils.APIKeyRevocationParams{
+		Handle:        handle,
+		APIKey:        apiKey,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	err := s.apiKeyService.RevokeAPIKey(params)
+	if err != nil {
+		// Check error type to determine appropriate status code
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		}
+		return
+	}
+
+	log.Info("API key revoked successfully",
+		zap.String("handle", handle),
+		zap.String("key", s.apiKeyService.MaskAPIKey(apiKey)),
+		zap.String("user", user.UserID),
+		zap.String("correlation_id", correlationID))
+
+	// Return the response using the generated schema
+	c.JSON(http.StatusNoContent, nil)
+}
+
+// RotateAPIKey implements ServerInterface.RotateAPIKey
+// (PUT /apis/{id}/api-key/{apiKeyName})
+func (s *APIServer) RotateAPIKey(c *gin.Context, id string, apiKeyName string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Extract authenticated user from context
+	user, ok := s.extractAuthenticatedUser(c, "RotateAPIKey", correlationID)
+	if !ok {
+		return // Error response already sent by extractAuthenticatedUser
+	}
+
+	log.Debug("Starting API key rotation",
+		zap.String("handle", handle),
+		zap.String("key name", apiKeyName),
+		zap.String("user", user.UserID),
+		zap.String("correlation_id", correlationID))
+
+	// Parse and validate request body
+	var request api.APIKeyRotationRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		log.Warn("Invalid request body for API key rotation",
+			zap.Error(err),
+			zap.String("handle", handle),
+			zap.String("correlation_id", correlationID))
+		c.JSON(http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: fmt.Sprintf("Invalid request body: %v", err),
+		})
+		return
+	}
+
+	// Prepare parameters
+	params := utils.APIKeyRotationParams{
+		Handle:        handle,
+		APIKeyName:    apiKeyName,
+		Request:       request,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.RotateAPIKey(params)
+	if err != nil {
+		// Check error type to determine appropriate status code
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		}
+		return
+	}
+
+	log.Info("API key rotation completed",
+		zap.String("handle", handle),
+		zap.String("key name", apiKeyName),
+		zap.String("user", user.UserID),
+		zap.String("correlation_id", correlationID))
+
+	// Return the response using the generated schema
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// ListAPIKeys implements ServerInterface.ListAPIKeys
+// (GET /apis/{id}/api-key)
+func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	// Extract authenticated user from context
+	user, ok := s.extractAuthenticatedUser(c, "ListAPIKeys", correlationID)
+	if !ok {
+		return // Error response already sent by extractAuthenticatedUser
+	}
+
+	log.Debug("Starting API key listing",
+		zap.String("handle", handle),
+		zap.String("user", user.UserID),
+		zap.String("correlation_id", correlationID))
+
+	// Prepare parameters
+	params := utils.ListAPIKeyParams{
+		Handle:        handle,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.ListAPIKeys(params)
+	if err != nil {
+		// Check error type to determine appropriate status code
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		}
+		return
+	}
+
+	log.Info("API key listing completed",
+		zap.String("handle", handle),
+		zap.String("user", user.UserID),
+		zap.String("correlation_id", correlationID))
+
+	// Return the response using the generated schema
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// extractAuthenticatedUser extracts and validates the authenticated user from Gin context
+// Returns the AuthenticatedUser object and handles error responses automatically
+func (s *APIServer) extractAuthenticatedUser(c *gin.Context, operationName string, correlationID string) (*commonmodels.AuthContext, bool) {
+	log := s.logger
+
+	// Extract authentication context
+	authCtxValue, exists := c.Get(constants.AuthContextKey)
+	if !exists {
+		log.Error("Authentication context not found",
+			zap.String("operation", operationName),
+			zap.String("correlation_id", correlationID))
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{
+			Status:  "error",
+			Message: "Authentication context not available",
+		})
+		return nil, false
+	}
+
+	// Type assert to AuthContext
+	user, ok := authCtxValue.(commonmodels.AuthContext)
+	if !ok {
+		log.Error("Invalid authentication context type",
+			zap.String("operation", operationName),
+			zap.String("correlation_id", correlationID))
+		c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+			Status:  "error",
+			Message: "Invalid authentication context",
+		})
+		return nil, false
+	}
+
+	log.Debug("Authenticated user extracted",
+		zap.String("operation", operationName),
+		zap.String("user_id", user.UserID),
+		zap.Strings("roles", user.Roles),
+		zap.String("correlation_id", correlationID))
+
+	return &user, true
 }
