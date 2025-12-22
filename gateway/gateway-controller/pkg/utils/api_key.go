@@ -74,6 +74,19 @@ type APIKeyRotationResult struct {
 	IsRetry  bool                         // Whether this was a retry due to collision
 }
 
+// ListAPIKeyParams contains parameters for listing API keys
+type ListAPIKeyParams struct {
+	Handle        string      // API handle/ID
+	User          string      // User who initiated the request
+	CorrelationID string      // Correlation ID for tracking
+	Logger        *zap.Logger // Logger instance
+}
+
+// ListAPIKeyResult contains the result of listing API keys
+type ListAPIKeyResult struct {
+	Response api.APIKeyListResponse // Response following the generated schema
+}
+
 // APIKeyService provides utilities for API configuration deployment
 type APIKeyService struct {
 	store      *storage.ConfigStore
@@ -763,4 +776,91 @@ func (s *APIKeyService) generateRotatedAPIKey(existingKey *models.APIKey, reques
 		Unit:       unit,
 		Duration:   duration,
 	}, nil
+}
+
+// ListAPIKeys handles listing API keys for a specific API and user
+func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult, error) {
+	logger := params.Logger
+
+	// Validate that API exists
+	config, err := s.store.GetByHandle(params.Handle)
+	if err != nil {
+		logger.Warn("API configuration not found for API keys listing",
+			zap.String("handle", params.Handle),
+			zap.String("correlation_id", params.CorrelationID))
+		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+	}
+
+	// Get all API keys for this API from memory store first
+	var apiKeys []*models.APIKey
+
+	// Try to get from memory store
+	memoryKeys, err := s.store.GetAPIKeysByAPI(config.ID)
+	if err != nil {
+		logger.Debug("Failed to get API keys from memory store, trying database",
+			zap.Error(err),
+			zap.String("handle", params.Handle),
+			zap.String("correlation_id", params.CorrelationID))
+
+		// If memory store fails, try database
+		if s.db != nil {
+			dbKeys, dbErr := s.db.GetAPIKeysByAPI(config.ID)
+			if dbErr != nil {
+				logger.Error("Failed to get API keys from database",
+					zap.Error(dbErr),
+					zap.String("handle", params.Handle),
+					zap.String("correlation_id", params.CorrelationID))
+				return nil, fmt.Errorf("failed to retrieve API keys: %w", dbErr)
+			}
+			apiKeys = dbKeys
+		} else {
+			return nil, fmt.Errorf("failed to retrieve API keys: %w", err)
+		}
+	} else {
+		apiKeys = memoryKeys
+	}
+
+	// Filter API keys by the requesting user (only show keys created by this user)
+	var userAPIKeys []*models.APIKey
+	for _, apiKey := range apiKeys {
+		if apiKey.CreatedBy == params.User {
+			userAPIKeys = append(userAPIKeys, apiKey)
+		}
+	}
+
+	// Build response API keys (excluding sensitive information like the actual API key value)
+	var responseAPIKeys []api.APIKey
+	for _, key := range userAPIKeys {
+		responseAPIKey := api.APIKey{
+			Name:       key.Name,
+			ApiId:      params.Handle, // Use handle instead of internal API ID
+			Operations: key.Operations,
+			Status:     api.APIKeyStatus(key.Status),
+			CreatedAt:  key.CreatedAt,
+			CreatedBy:  key.CreatedBy,
+			ExpiresAt:  key.ExpiresAt,
+			// Note: Intentionally NOT including ApiKey field for security
+		}
+		responseAPIKeys = append(responseAPIKeys, responseAPIKey)
+	}
+
+	// Build the list response
+	status := "success"
+	totalCount := len(responseAPIKeys)
+
+	result := &ListAPIKeyResult{
+		Response: api.APIKeyListResponse{
+			Status:     &status,
+			ApiKeys:    &responseAPIKeys,
+			TotalCount: &totalCount,
+		},
+	}
+
+	logger.Info("API keys listed successfully",
+		zap.String("handle", params.Handle),
+		zap.String("user", params.User),
+		zap.Int("total_count", totalCount),
+		zap.String("correlation_id", params.CorrelationID))
+
+	return result, nil
 }

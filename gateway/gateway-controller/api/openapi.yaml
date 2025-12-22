@@ -402,6 +402,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+    get:
+      summary: Get the list of API keys for an API
+      description: |
+        Retrieve the list of all API keys generated for the specified API.
+      operationId: listAPIKeys
+      tags:
+        - API Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Unique public identifier of the API to retrieve the keys for
+          schema:
+            type: string
+          example: weather-api-v1.0
+      responses:
+        "200":
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyListResponse"
+        "404":
+          description: API configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /apis/{id}/api-key/{apiKeyName}:
     put:
       summary: Rotate API key for an API
@@ -3336,6 +3372,21 @@ components:
           type: integer
           description: Total bytes of all certificate files
           example: 221599
+        status:
+          type: string
+          example: success
+
+    APIKeyListResponse:
+      type: object
+      properties:
+        apiKeys:
+          type: array
+          items:
+            $ref: "#/components/schemas/APIKey"
+        totalCount:
+          type: integer
+          description: Total number of certificate files
+          example: 3
         status:
           type: string
           example: success

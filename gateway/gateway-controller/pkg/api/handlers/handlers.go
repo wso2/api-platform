@@ -2491,5 +2491,55 @@ func (s *APIServer) RotateAPIKey(c *gin.Context, id string, apiKeyName string) {
 		zap.String("correlation_id", correlationID))
 
 	// Return the response using the generated schema
-	c.JSON(http.StatusCreated, result.Response)
+	c.JSON(http.StatusOK, result.Response)
+}
+
+// ListAPIKeys implements ServerInterface.ListAPIKeys
+// (GET /apis/{id}/api-key)
+func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
+	// Get correlation-aware logger from context
+	log := middleware.GetLogger(c, s.logger)
+	handle := id
+	correlationID := middleware.GetCorrelationID(c)
+
+	// TODO - Do user validation and get user info
+	user := "api_consumer" // Placeholder for user identification
+
+	log.Debug("Starting API key rotation",
+		zap.String("handle", handle),
+		zap.String("user", user),
+		zap.String("correlation_id", correlationID))
+
+	// Prepare parameters
+	params := utils.ListAPIKeyParams{
+		Handle:        handle,
+		User:          user,
+		CorrelationID: correlationID,
+		Logger:        log,
+	}
+
+	result, err := s.apiKeyService.ListAPIKeys(params)
+	if err != nil {
+		// Check error type to determine appropriate status code
+		if strings.Contains(err.Error(), "not found") {
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
+		}
+		return
+	}
+
+	log.Info("API key listing completed",
+		zap.String("handle", handle),
+		zap.String("user", user),
+		zap.String("correlation_id", correlationID))
+
+	// Return the response using the generated schema
+	c.JSON(http.StatusOK, result.Response)
 }
