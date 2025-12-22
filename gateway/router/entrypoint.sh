@@ -23,8 +23,10 @@ set -e
 # Default XDS server configuration if not provided
 export XDS_SERVER_HOST="${XDS_SERVER_HOST:-gateway-controller}"
 export XDS_SERVER_PORT="${XDS_SERVER_PORT:-18000}"
+export LOG_LEVEL="${LOG_LEVEL:-info}"
 
 echo "Starting Envoy with xDS server at ${XDS_SERVER_HOST}:${XDS_SERVER_PORT}"
+echo "Log level: ${LOG_LEVEL}"
 
 # Generate config override by substituting environment variables
 CONFIG_OVERRIDE=$(envsubst < /etc/envoy/config-override.yaml)
@@ -33,4 +35,5 @@ CONFIG_OVERRIDE=$(envsubst < /etc/envoy/config-override.yaml)
 exec /usr/local/bin/envoy \
   -c /etc/envoy/envoy.yaml \
   --config-yaml "${CONFIG_OVERRIDE}" \
-  --log-level info
+  --log-level "${LOG_LEVEL}" \
+  "$@"
