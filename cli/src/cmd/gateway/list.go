@@ -24,6 +24,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/config"
+	"github.com/wso2/api-platform/cli/utils"
 )
 
 const (
@@ -58,14 +59,17 @@ func runListCommand() error {
 		return nil
 	}
 
-	// Display each gateway
-	for _, gateway := range cfg.Gateways {
+	// Display as table
+	headers := []string{"NAME", "SERVER", "AUTH"}
+	rows := make([][]string, 0, len(cfg.Gateways))
+	for _, gw := range cfg.Gateways {
 		securityStatus := "none"
-		if gateway.Token != "" {
+		if gw.Token != "" {
 			securityStatus = "OAuth2"
 		}
-		fmt.Printf("%s: %s (auth: %s)\n", gateway.Name, gateway.Server, securityStatus)
+		rows = append(rows, []string{gw.Name, gw.Server, securityStatus})
 	}
+	utils.PrintTable(headers, rows)
 
 	return nil
 }

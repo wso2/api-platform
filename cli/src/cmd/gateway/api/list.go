@@ -99,24 +99,18 @@ func runListCommand() error {
 		return fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	// Display the APIs
+	// Display the APIs as a table when present
 	if listResp.Count == 0 {
 		fmt.Println("No APIs found on the gateway.")
 		return nil
 	}
 
-	for i, api := range listResp.APIs {
-		fmt.Printf("API %d:\n", i+1)
-		fmt.Printf("  ID: %s\n", api.ID)
-		fmt.Printf("  Name: %s\n", api.Name)
-		fmt.Printf("  Version: %s\n", api.Version)
-		fmt.Printf("  Context: %s\n", api.Context)
-		fmt.Printf("  Status: %s\n", api.Status)
-		fmt.Printf("  Created At: %s\n", api.CreatedAt)
-		if i < len(listResp.APIs)-1 {
-			fmt.Println()
-		}
+	headers := []string{"ID", "NAME", "VERSION", "CONTEXT", "STATUS", "CREATED_AT"}
+	rows := make([][]string, 0, len(listResp.APIs))
+	for _, api := range listResp.APIs {
+		rows = append(rows, []string{api.ID, api.Name, api.Version, api.Context, api.Status, api.CreatedAt})
 	}
+	utils.PrintTable(headers, rows)
 
 	return nil
 }
