@@ -50,13 +50,14 @@ var listCmd = &cobra.Command{
 
 // MCPListItem represents a single MCP in the list response
 type MCPListItem struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Version   string `json:"version"`
-	Context   string `json:"context"`
-	Status    string `json:"status"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Version     string `json:"version"`
+	Context     string `json:"context"`
+	Status      string `json:"status"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 // MCPListResponse represents the response from GET /mcp-proxies
@@ -103,10 +104,10 @@ func runListCommand() error {
 		return nil
 	}
 
-	headers := []string{"ID", "NAME", "VERSION", "CONTEXT", "STATUS", "CREATED_AT"}
+	headers := []string{"ID", "DISPLAY_NAME", "VERSION", "CONTEXT", "STATUS", "CREATED_AT"}
 	rows := make([][]string, 0, len(listResp.MCPProxies))
 	for _, mcp := range listResp.MCPProxies {
-		rows = append(rows, []string{mcp.ID, mcp.Name, mcp.Version, mcp.Context, mcp.Status, mcp.CreatedAt})
+		rows = append(rows, []string{mcp.ID, mcp.DisplayName, mcp.Version, mcp.Context, mcp.Status, mcp.CreatedAt})
 	}
 	utils.PrintTable(headers, rows)
 

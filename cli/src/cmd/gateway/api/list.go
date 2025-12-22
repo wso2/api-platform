@@ -51,13 +51,14 @@ var listCmd = &cobra.Command{
 
 // APIListItem represents a single API in the list response
 type APIListItem struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Version   string `json:"version"`
-	Context   string `json:"context"`
-	Status    string `json:"status"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Version     string `json:"version"`
+	Context     string `json:"context"`
+	Status      string `json:"status"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 // APIListResponse represents the response from GET /apis
@@ -105,10 +106,10 @@ func runListCommand() error {
 		return nil
 	}
 
-	headers := []string{"ID", "NAME", "VERSION", "CONTEXT", "STATUS", "CREATED_AT"}
+	headers := []string{"ID", "DISPLAY_NAME", "VERSION", "CONTEXT", "STATUS", "CREATED_AT"}
 	rows := make([][]string, 0, len(listResp.APIs))
 	for _, api := range listResp.APIs {
-		rows = append(rows, []string{api.ID, api.Name, api.Version, api.Context, api.Status, api.CreatedAt})
+		rows = append(rows, []string{api.ID, api.DisplayName, api.Version, api.Context, api.Status, api.CreatedAt})
 	}
 	utils.PrintTable(headers, rows)
 
