@@ -35,16 +35,16 @@ type Config struct {
 	GatewayController    GatewayController      `koanf:"gateway_controller"`
 	PolicyEngine         map[string]interface{} `koanf:"policy_engine"`
 	PolicyConfigurations map[string]interface{} `koanf:"policy_configurations"`
-	Analytics AnalyticsConfig `koanf:"analytics"`
+	Analytics            AnalyticsConfig        `koanf:"analytics"`
 	TracingConfig        TracingConfig          `koanf:"tracing"`
 }
 
 // AnalyticsConfig holds analytics configuration
 type AnalyticsConfig struct {
-	Enabled bool `koanf:"enabled"`
-	Publishers []map[string]interface{} `koanf:"publishers"`
-	GRPCAccessLogCfg GRPCAccessLogConfig `koanf:"grpc_access_logs"`
-	AccessLogsServiceCfg map[string]interface{} `koanf:"access_logs_service"`
+	Enabled              bool                     `koanf:"enabled"`
+	Publishers           []map[string]interface{} `koanf:"publishers"`
+	GRPCAccessLogCfg     GRPCAccessLogConfig      `koanf:"grpc_access_logs"`
+	AccessLogsServiceCfg map[string]interface{}   `koanf:"access_logs_service"`
 }
 
 // GatewayController holds the main configuration sections for the gateway-controller
@@ -169,14 +169,14 @@ type PostgresConfig struct {
 
 // RouterConfig holds router (Envoy) related configuration
 type RouterConfig struct {
-	AccessLogs    AccessLogsConfig    `koanf:"access_logs"`
-	ListenerPort  int                 `koanf:"listener_port"`
-	HTTPSEnabled  bool                `koanf:"https_enabled"`
-	HTTPSPort     int                 `koanf:"https_port"`
-	GatewayHost   string              `koanf:"gateway_host"`
-	Upstream      envoyUpstream       `koanf:"envoy_upstream"`
-	PolicyEngine  PolicyEngineConfig  `koanf:"policy_engine"`
-	DownstreamTLS DownstreamTLS       `koanf:"downstream_tls"`
+	AccessLogs    AccessLogsConfig   `koanf:"access_logs"`
+	ListenerPort  int                `koanf:"listener_port"`
+	HTTPSEnabled  bool               `koanf:"https_enabled"`
+	HTTPSPort     int                `koanf:"https_port"`
+	GatewayHost   string             `koanf:"gateway_host"`
+	Upstream      envoyUpstream      `koanf:"envoy_upstream"`
+	PolicyEngine  PolicyEngineConfig `koanf:"policy_engine"`
+	DownstreamTLS DownstreamTLS      `koanf:"downstream_tls"`
 	EventGateway  EventGatewayConfig `koanf:"event_gateway"`
 	VHosts        VHostsConfig       `koanf:"vhosts"`
 	// Tracing holds OpenTelemetry exporter configuration
@@ -271,11 +271,11 @@ type AccessLogsConfig struct {
 
 // GRPCAccessLogConfig holds configuration for gRPC Access Log Service
 type GRPCAccessLogConfig struct {
-	Host                  string `koanf:"host"`
-	LogName               string `koanf:"log_name"`
-	BufferFlushInterval 	int  `koanf:"buffer_flush_interval"`
-	BufferSizeBytes       	int  `koanf:"buffer_size_bytes"`
-	GRPCRequestTimeout  	int  `koanf:"grpc_request_timeout"`
+	Host                string `koanf:"host"`
+	LogName             string `koanf:"log_name"`
+	BufferFlushInterval int    `koanf:"buffer_flush_interval"`
+	BufferSizeBytes     int    `koanf:"buffer_size_bytes"`
+	GRPCRequestTimeout  int    `koanf:"grpc_request_timeout"`
 }
 
 // LoggingConfig holds logging configuration
@@ -460,7 +460,6 @@ func defaultConfig() *Config {
 					Sandbox: VHostEntry{Default: "sandbox-*"},
 				},
 				TracingServiceName: "router",
-				
 			},
 			Auth: AuthConfig{
 				Basic: BasicAuth{
@@ -471,7 +470,7 @@ func defaultConfig() *Config {
 					Enabled:     false,
 					JWKSURL:     "",
 					Issuer:      "",
-					RolesClaim:  "roles",
+					RolesClaim:  "",
 					RoleMapping: map[string][]string{},
 				},
 			},
@@ -489,22 +488,22 @@ func defaultConfig() *Config {
 			},
 		},
 		Analytics: AnalyticsConfig{
-			Enabled: false,
+			Enabled:    false,
 			Publishers: make([]map[string]interface{}, 0),
 			GRPCAccessLogCfg: GRPCAccessLogConfig{
-				Host: "policy-engine",
-				LogName: "envoy_access_log",
+				Host:                "policy-engine",
+				LogName:             "envoy_access_log",
 				BufferFlushInterval: 1000000000,
-				BufferSizeBytes: 16384,
-				GRPCRequestTimeout: 20000000000,
+				BufferSizeBytes:     16384,
+				GRPCRequestTimeout:  20000000000,
 			},
 			AccessLogsServiceCfg: map[string]interface{}{
-				"enabled": false,
-				"als_server_port": 18090,
+				"enabled":          false,
+				"als_server_port":  18090,
 				"shutdown_timeout": 600,
-				"public_key_path": "",
+				"public_key_path":  "",
 				"private_key_path": "",
-				"als_plain_text": true,
+				"als_plain_text":   true,
 				"max_message_size": 1000000000,
 				"max_header_limit": 8192,
 			},
@@ -633,6 +632,11 @@ func (c *Config) Validate() error {
 	}
 
 	if err := c.validateAnalyticsConfig(); err != nil {
+		return err
+	}
+
+	// Validate authentication configuration
+	if err := c.validateAuthConfig(); err != nil {
 		return err
 	}
 
@@ -1022,7 +1026,7 @@ func validateDomains(field string, domains []string) error {
 func (c *Config) validateAnalyticsConfig() error {
 	// Validate analytics configuration
 	if c.Analytics.Enabled {
-		// Validate gRPC access log configuration	
+		// Validate gRPC access log configuration
 		grpcAccessLogCfg := c.Analytics.GRPCAccessLogCfg
 		var alsServerPort int
 		switch v := c.Analytics.AccessLogsServiceCfg["als_server_port"].(type) {
@@ -1049,9 +1053,36 @@ func (c *Config) validateAnalyticsConfig() error {
 				grpcAccessLogCfg.BufferSizeBytes,
 				grpcAccessLogCfg.GRPCRequestTimeout,
 			)
-		}	
+		}
 
 	}
+	return nil
+}
+
+// validateAuthConfig validates the authentication configuration
+func (c *Config) validateAuthConfig() error {
+	// Validate IDP role mapping for multiple wildcards
+	if c.GatewayController.Auth.IDP.Enabled && len(c.GatewayController.Auth.IDP.RoleMapping) > 0 {
+		wildcardRoles := []string{}
+		for localRole, idpRoles := range c.GatewayController.Auth.IDP.RoleMapping {
+			for _, idpRole := range idpRoles {
+				if idpRole == "*" {
+					wildcardRoles = append(wildcardRoles, localRole)
+					break
+				}
+			}
+		}
+
+		if len(wildcardRoles) > 1 {
+			return fmt.Errorf(
+				"auth.idp.role_mapping: multiple wildcard ('*') mappings detected for roles %v. "+
+					"Due to Go's non-deterministic map iteration, only one wildcard mapping will be used unpredictably. "+
+					"Configure only ONE role with wildcard mapping, or use explicit role mappings instead",
+				wildcardRoles,
+			)
+		}
+	}
+
 	return nil
 }
 

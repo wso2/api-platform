@@ -185,10 +185,12 @@ gateway_controller:
 
 
   # Authentication configuration
+  # - If BOTH `basic.enabled` and `idp.enabled` are false, all requests are allowed without authentication.
   # - `users`: List of locally defined users (username/password + local roles).
   #   Passwords can be plain text or hashed depending on your implementation. We support argon2id and bcrypt hashing.
   # - `idp`: Optional IDP (OIDC/JWKS) configuration to validate incoming JWTs.
   #   `role_mapping` maps local roles to one or more roles in the IDP.
+  # - Wildcard role mapping: configure at most ONE local role with `"*"` in `role_mapping` (multiple wildcards are rejected)
   auth:
     # Local basic authentication configuration
     basic:
@@ -205,24 +207,15 @@ gateway_controller:
         password_hashed: false
         roles: ["admin"]
     # IDP (OIDC/JWKS) configuration for validating JWTs (optional)
+    # When enabled, JWT tokens will be validated for authentication.
+    # If roles_claim and role_mapping are not provided, authorization is bypassed and all authenticated calls are allowed.
+    # If roles_claim and role_mapping are provided, authorization happens using the specified claim and mapping.
     idp:
       enabled: false
       # JWKS endpoint used to fetch public keys for JWT validation
       jwks_url: ""
       # Expected issuer value in the JWT `iss` claim
       issuer: ""
-      # Claim path which contains roles (e.g. "roles", "realm_access.roles", etc.)
-      roles_claim: "scope"
-      # Map idp role to local roles. Example maps idp->local-role(s):
-      # role_mapping:
-      #   engineer:
-      #     - "developer"
-      #     - "consumer"
-      #   admin:
-      #     - "developer"
-      #     - "admin"
-      #     - "consumer"
-      role_mapping: 
 
   # Logging configuration
   logging:

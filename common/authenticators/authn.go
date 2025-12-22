@@ -19,6 +19,7 @@ package authenticators
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -34,32 +35,48 @@ var (
 
 // AuthMiddleware creates a unified authentication middleware supporting both Basic and Bearer auth
 func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFunc, error) {
+	// Initialize authenticators once at startup (middleware creation time).
+	// Any configuration errors (e.g., JWT JWKS init failures) should fail fast here
+	// rather than per-request.
+	authenticators := []Authenticator{}
+
+	// Add Basic authenticator if configured
+	if config.BasicAuth != nil && config.BasicAuth.Enabled && len(config.BasicAuth.Users) > 0 {
+		authenticators = append(authenticators, NewBasicAuthenticator(config, logger))
+	}
+
+	// Add JWT authenticator if configured
+	if config.JWTConfig != nil && config.JWTConfig.Enabled && config.JWTConfig.IssuerURL != "" {
+		jwtAuthenticator, err := NewJWTAuthenticator(&config, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize JWT authenticator: %w", err)
+		}
+		authenticators = append(authenticators, jwtAuthenticator)
+	}
+
+	// No authenticators configured => run in no-auth mode.
+	// This disables both authentication and authorization (via AuthzSkipKey).
+	if len(authenticators) == 0 {
+		return func(c *gin.Context) {
+			authCtx := models.AuthContext{
+				Authenticated: true,
+				UserID:        "sys_noauth_user",
+				Roles:         []string{},
+				Claims:        map[string]any{},
+			}
+			c.Set(constants.AuthContextKey, authCtx)
+			c.Set(constants.AuthzSkipKey, true)
+			c.Next()
+		}, nil
+	}
+
 	return func(c *gin.Context) {
 		// Skip authentication for specified paths
 		for _, path := range config.SkipPaths {
 			if strings.HasPrefix(c.Request.URL.Path, path) {
-				c.Set(constants.AuthSkippedKey, true)
+				c.Set(constants.AuthzSkipKey, true)
 				c.Next()
 				return
-			}
-		}
-
-		// Initialize authenticators
-		authenticators := []Authenticator{}
-
-		// Add Basic authenticator if configured
-		if config.BasicAuth != nil && config.BasicAuth.Enabled && len(config.BasicAuth.Users) > 0 {
-			authenticators = append(authenticators, NewBasicAuthenticator(config, logger))
-		}
-
-		// Add JWT authenticator if configured
-		if config.JWTConfig != nil && config.JWTConfig.Enabled && config.JWTConfig.IssuerURL != "" {
-			jwtAuthenticator, err := NewJWTAuthenticator(&config, logger)
-			if err != nil {
-				logger.Sugar().Errorf("JWT Authenticator couldn't initialized %v", err)
-				return
-			} else {
-				authenticators = append(authenticators, jwtAuthenticator)
 			}
 		}
 
@@ -92,13 +109,19 @@ func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFu
 		}
 		logger.Sugar().Debugf("Authentication result %v", result)
 		logger.Sugar().Debugf("Authentication roles %v", result.Roles)
-		// Set authentication context
-		c.Set(constants.AuthenticatedKey, result.Success)
-		c.Set(constants.UserIDKey, result.UserID)
-		c.Set(constants.AuthRolesKey, result.Roles)
-		if result.Claims != nil {
-			c.Set(constants.ClaimsKey, result.Claims)
+
+		claims := result.Claims
+		if claims == nil {
+			claims = map[string]any{}
 		}
+		// Set authentication context
+		authCtx := models.AuthContext{
+			Authenticated: result.Success,
+			UserID:        result.UserID,
+			Roles:         result.Roles,
+			Claims:        claims,
+		}
+		c.Set(constants.AuthContextKey, authCtx)
 
 		c.Next()
 	}, nil

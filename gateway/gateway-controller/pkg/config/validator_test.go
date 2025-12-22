@@ -21,6 +21,7 @@ package config
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 )
 
@@ -146,4 +147,88 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestValidateAuthConfig_BothAuthDisabled_AllowsNoAuthMode(t *testing.T) {
+	// Test that validation allows no-auth mode when both auth methods are disabled
+	config := &Config{
+		GatewayController: GatewayController{
+			Auth: AuthConfig{
+				Basic: BasicAuth{
+					Enabled: false,
+				},
+				IDP: IDPConfig{
+					Enabled: false,
+				},
+			},
+		},
+	}
+
+	err := config.validateAuthConfig()
+	assert.NoError(t, err)
+}
+
+func TestValidateAuthConfig_BasicAuthEnabled(t *testing.T) {
+	// Test that validation passes when basic auth is enabled
+	config := &Config{
+		GatewayController: GatewayController{
+			Auth: AuthConfig{
+				Basic: BasicAuth{
+					Enabled: true,
+					Users: []AuthUser{
+						{Username: "admin", Password: "pass", Roles: []string{"admin"}},
+					},
+				},
+				IDP: IDPConfig{
+					Enabled: false,
+				},
+			},
+		},
+	}
+
+	err := config.validateAuthConfig()
+	assert.NoError(t, err)
+}
+
+func TestValidateAuthConfig_IDPAuthEnabled(t *testing.T) {
+	// Test that validation passes when IDP auth is enabled
+	config := &Config{
+		GatewayController: GatewayController{
+			Auth: AuthConfig{
+				Basic: BasicAuth{
+					Enabled: false,
+				},
+				IDP: IDPConfig{
+					Enabled: true,
+					JWKSURL: "https://idp.example.com/jwks",
+				},
+			},
+		},
+	}
+
+	err := config.validateAuthConfig()
+	assert.NoError(t, err)
+}
+
+func TestValidateAuthConfig_BothAuthEnabled(t *testing.T) {
+	// Test that validation passes when both auth methods are enabled
+	config := &Config{
+		GatewayController: GatewayController{
+			Auth: AuthConfig{
+				Basic: BasicAuth{
+					Enabled: true,
+					Users: []AuthUser{
+						{Username: "admin", Password: "pass", Roles: []string{"admin"}},
+					},
+				},
+				IDP: IDPConfig{
+					Enabled: true,
+					JWKSURL: "https://idp.example.com/jwks",
+				},
+			},
+		},
+	}
+
+	err := config.validateAuthConfig()
+	assert.NoError(t, err)
 }
