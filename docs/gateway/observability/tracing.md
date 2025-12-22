@@ -852,7 +852,7 @@ Example log entry with trace ID:
   "msg": "Policy executed",
   "trace_id": "0af7651916cd43dd8448eb211c80319c",
   "span_id": "b7ad6b7169203331",
-  "policy": "ModifyHeaders"
+  "policy": "modify-headers"
 }
 ```
 

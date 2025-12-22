@@ -125,7 +125,7 @@ spec:
     main:
       url: https://backend-service:8080/api
   policies:
-    - name: JwtAuthentication
+    - name: jwt-auth
       version: v0.1.0
       params:
         issuers:
@@ -152,7 +152,7 @@ spec:
     main:
       url: https://customer-service:8080
   policies:
-    - name: JwtAuthentication
+    - name: jwt-auth
       version: v0.1.0
       params:
         issuers:
@@ -184,7 +184,7 @@ spec:
     main:
       url: https://data-service:8080
   policies:
-    - name: JwtAuthentication
+    - name: jwt-auth
       version: v0.1.0
       params:
         issuers:
@@ -216,7 +216,7 @@ spec:
     main:
       url: https://admin-service:8080
   policies:
-    - name: JwtAuthentication
+    - name: jwt-auth
       version: v0.1.0
       params:
         issuers:
@@ -248,7 +248,7 @@ spec:
     main:
       url: https://user-service:8080
   policies:
-    - name: JwtAuthentication
+    - name: jwt-auth
       version: v0.1.0
       params:
         issuers:
@@ -279,7 +279,7 @@ spec:
     main:
       url: https://backend-service:8080
   policies:
-    - name: JwtAuthentication
+    - name: jwt-auth
       version: v0.1.0
       params:
         issuers:

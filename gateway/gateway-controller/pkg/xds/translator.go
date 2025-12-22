@@ -29,16 +29,16 @@ import (
 	"time"
 
 	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
-	grpc_accesslogv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/grpc/v3"
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	mutationrules "github.com/envoyproxy/go-control-plane/envoy/config/common/mutation_rules/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	tracev3 "github.com/envoyproxy/go-control-plane/envoy/config/trace/v3"
 	fileaccesslog "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/file/v3"
+	grpc_accesslogv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/access_loggers/grpc/v3"
 	dfpcluster "github.com/envoyproxy/go-control-plane/envoy/extensions/clusters/dynamic_forward_proxy/v3"
 	common_dfp "github.com/envoyproxy/go-control-plane/envoy/extensions/common/dynamic_forward_proxy/v3"
 	dfpv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/dynamic_forward_proxy/v3"
@@ -46,8 +46,8 @@ import (
 	router "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
 	hcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
-	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
+	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
@@ -1106,44 +1106,44 @@ func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 
 // createALSCluster creates an Envoy cluster for the gRPC access log service
 func (t *Translator) createALSCluster() *cluster.Cluster {
-    grpcConfig := t.config.Analytics.GRPCAccessLogCfg
+	grpcConfig := t.config.Analytics.GRPCAccessLogCfg
 
-    address := &core.Address{
-        Address: &core.Address_SocketAddress{
-            SocketAddress: &core.SocketAddress{
-                Protocol: core.SocketAddress_TCP,
-                Address:  grpcConfig.Host,
-                PortSpecifier: &core.SocketAddress_PortValue{
-                    PortValue: uint32(t.config.Analytics.AccessLogsServiceCfg["als_server_port"].(int)),
-                },
-            },
-        },
-    }
+	address := &core.Address{
+		Address: &core.Address_SocketAddress{
+			SocketAddress: &core.SocketAddress{
+				Protocol: core.SocketAddress_TCP,
+				Address:  grpcConfig.Host,
+				PortSpecifier: &core.SocketAddress_PortValue{
+					PortValue: uint32(t.config.Analytics.AccessLogsServiceCfg["als_server_port"].(int)),
+				},
+			},
+		},
+	}
 
-    lbEndpoint := &endpoint.LbEndpoint{
-        HostIdentifier: &endpoint.LbEndpoint_Endpoint{
-            Endpoint: &endpoint.Endpoint{
-                Address: address,
-            },
-        },
-    }
+	lbEndpoint := &endpoint.LbEndpoint{
+		HostIdentifier: &endpoint.LbEndpoint_Endpoint{
+			Endpoint: &endpoint.Endpoint{
+				Address: address,
+			},
+		},
+	}
 
-    localityLbEndpoints := &endpoint.LocalityLbEndpoints{
-        LbEndpoints: []*endpoint.LbEndpoint{lbEndpoint},
-    }
+	localityLbEndpoints := &endpoint.LocalityLbEndpoints{
+		LbEndpoints: []*endpoint.LbEndpoint{lbEndpoint},
+	}
 
-    return &cluster.Cluster{
-        Name:                 constants.GRPCAccessLogClusterName,
-        ConnectTimeout:       durationpb.New(5 * time.Second),
-        ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
-        LbPolicy:             cluster.Cluster_ROUND_ROBIN,
-        LoadAssignment: &endpoint.ClusterLoadAssignment{
-            ClusterName: constants.GRPCAccessLogClusterName,
-            Endpoints:   []*endpoint.LocalityLbEndpoints{localityLbEndpoints},
-        },
-        // Enable HTTP/2 for gRPC
-        Http2ProtocolOptions: &core.Http2ProtocolOptions{},
-    }
+	return &cluster.Cluster{
+		Name:                 constants.GRPCAccessLogClusterName,
+		ConnectTimeout:       durationpb.New(5 * time.Second),
+		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STRICT_DNS},
+		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
+		LoadAssignment: &endpoint.ClusterLoadAssignment{
+			ClusterName: constants.GRPCAccessLogClusterName,
+			Endpoints:   []*endpoint.LocalityLbEndpoints{localityLbEndpoints},
+		},
+		// Enable HTTP/2 for gRPC
+		Http2ProtocolOptions: &core.Http2ProtocolOptions{},
+	}
 }
 
 // createOTELCollectorCluster creates an Envoy cluster for OpenTelemetry collector
@@ -1701,25 +1701,25 @@ func (t *Translator) createAccessLogConfig() ([]*accesslog.AccessLog, error) {
 	})
 
 	// If gRPC access log is enabled, create the configuration and append to existing access logs
-    if t.config.Analytics.Enabled {
+	if t.config.Analytics.Enabled {
 		t.logger.Info("Creating gRPC access log configuration")
-        grpcAccessLog, err := t.createGRPCAccessLog()
-        if err != nil {
-            t.logger.Warn("Failed to create gRPC access log config, continuing without it", 
-                zap.Error(err))
-        } else {
-            accessLogs = append(accessLogs, grpcAccessLog)
-        }
-    }
+		grpcAccessLog, err := t.createGRPCAccessLog()
+		if err != nil {
+			t.logger.Warn("Failed to create gRPC access log config, continuing without it",
+				zap.Error(err))
+		} else {
+			accessLogs = append(accessLogs, grpcAccessLog)
+		}
+	}
 
-    return accessLogs, nil
+	return accessLogs, nil
 }
 
 // createGRPCAccessLog creates a gRPC access log configuration for the gateway controller
 func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
-    grpcConfig := t.config.Analytics.GRPCAccessLogCfg
+	grpcConfig := t.config.Analytics.GRPCAccessLogCfg
 
-    httpGrpcAccessLog := &grpc_accesslogv3.HttpGrpcAccessLogConfig{
+	httpGrpcAccessLog := &grpc_accesslogv3.HttpGrpcAccessLogConfig{
 		CommonConfig: &grpc_accesslogv3.CommonGrpcAccessLogConfig{
 			TransportApiVersion: corev3.ApiVersion_V3,
 			LogName:             grpcConfig.LogName,
@@ -1736,17 +1736,17 @@ func (t *Translator) createGRPCAccessLog() (*accesslog.AccessLog, error) {
 		},
 	}
 
-    grpcAccessLogAny, err := anypb.New(httpGrpcAccessLog)
-    if err != nil {
-        return nil, fmt.Errorf("failed to marshal gRPC access log config: %w", err)
-    }
+	grpcAccessLogAny, err := anypb.New(httpGrpcAccessLog)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal gRPC access log config: %w", err)
+	}
 
-    return &accesslog.AccessLog{
-        Name: "envoy.access_loggers.http_grpc",
-        ConfigType: &accesslog.AccessLog_TypedConfig{
-            TypedConfig: grpcAccessLogAny,
-        },
-    }, nil
+	return &accesslog.AccessLog{
+		Name: "envoy.access_loggers.http_grpc",
+		ConfigType: &accesslog.AccessLog_TypedConfig{
+			TypedConfig: grpcAccessLogAny,
+		},
+	}, nil
 }
 
 // createTracingConfig creates tracing configuration for HCM if tracing is enabled
@@ -1824,7 +1824,7 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 
 	// Convert route cache action string to enum
 	routeCacheAction := extproc.ExternalProcessor_DEFAULT
-	switch policyEngine.RouteCacheAction {
+	switch policyEngine.RouteCacheAction { // TODO: (renuka) This is not a config. Fix it.
 	case constants.ExtProcRouteCacheActionRetain:
 		routeCacheAction = extproc.ExternalProcessor_RETAIN
 	case constants.ExtProcRouteCacheActionClear:

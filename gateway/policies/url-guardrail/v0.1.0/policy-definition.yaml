@@ -1,4 +1,4 @@
-name: URLGuardrail
+name: url-guardrail
 version: v0.1.0
 description: |
   Validates URLs found in request or response body content.

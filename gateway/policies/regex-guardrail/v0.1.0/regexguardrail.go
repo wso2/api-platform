@@ -230,7 +230,7 @@ func (p *RegexGuardrailPolicy) buildErrorResponse(reason string, validationError
 func (p *RegexGuardrailPolicy) buildAssessmentObject(reason string, validationError error, isResponse bool, showAssessment bool) map[string]interface{} {
 	assessment := map[string]interface{}{
 		"action":               "GUARDRAIL_INTERVENED",
-		"interveningGuardrail": "RegexGuardrail",
+		"interveningGuardrail": "regex-guardrail",
 	}
 
 	if isResponse {

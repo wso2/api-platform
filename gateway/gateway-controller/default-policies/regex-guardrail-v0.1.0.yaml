@@ -1,9 +1,9 @@
-name: ContentLengthGuardrail
+name: regex-guardrail
 version: v0.1.0
 description: |
-  Validates the byte length of request or response body content.
+  Validates request or response body content against a regular expression pattern.
   Supports JSONPath extraction to validate specific fields within JSON payloads.
-  Can be configured with min/max byte length constraints and inverted logic.
+  Can be configured to match or invert the regex pattern.
   Supports separate configuration for request and response phases.
 
 parameters:
@@ -13,14 +13,10 @@ parameters:
       type: object
       description: Configuration for request phase validation
       properties:
-        min:
-          type: integer
-          description: Minimum allowed byte length (inclusive)
-          minimum: 0
-        max:
-          type: integer
-          description: Maximum allowed byte length (inclusive)
-          minimum: 1
+        regex:
+          type: string
+          description: Regular expression pattern to match against the content
+          minLength: 1
         jsonPath:
           type: string
           description: |
@@ -31,8 +27,8 @@ parameters:
         invert:
           type: boolean
           description: |
-            If true, validation passes when content length is NOT within the min-max range (inverted logic).
-            If false (default), validation passes when content length is within the min-max range.
+            If true, validation passes when regex does NOT match (inverted logic).
+            If false (default), validation passes when regex matches.
           default: false
         showAssessment:
           type: boolean
@@ -41,20 +37,15 @@ parameters:
             If false, returns minimal error information.
           default: false
       required:
-      - min
-      - max
+      - regex
     response:
       type: object
       description: Configuration for response phase validation
       properties:
-        min:
-          type: integer
-          description: Minimum allowed byte length (inclusive)
-          minimum: 0
-        max:
-          type: integer
-          description: Maximum allowed byte length (inclusive)
-          minimum: 1
+        regex:
+          type: string
+          description: Regular expression pattern to match against the content
+          minLength: 1
         jsonPath:
           type: string
           description: |
@@ -65,8 +56,8 @@ parameters:
         invert:
           type: boolean
           description: |
-            If true, validation passes when content length is NOT within the min-max range (inverted logic).
-            If false (default), validation passes when content length is within the min-max range.
+            If true, validation passes when regex does NOT match (inverted logic).
+            If false (default), validation passes when regex matches.
           default: false
         showAssessment:
           type: boolean
@@ -75,9 +66,8 @@ parameters:
             If false, returns minimal error information.
           default: false
       required:
-      - min
-      - max
+      - regex
 
-systemParameters:         
+systemParameters:
   type: object
   properties: {}

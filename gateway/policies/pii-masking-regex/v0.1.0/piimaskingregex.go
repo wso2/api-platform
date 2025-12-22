@@ -347,7 +347,7 @@ func (p *PIIMaskingRegexPolicy) updatePayloadWithMaskedContent(originalPayload [
 func (p *PIIMaskingRegexPolicy) buildErrorResponse(reason string) interface{} {
 	responseBody := map[string]interface{}{
 		"code":    APIMInternalExceptionCode,
-		"message": "Error occurred during PIIMaskingRegex mediation: " + reason,
+		"message": "Error occurred during pii-masking-regex mediation: " + reason,
 	}
 
 	bodyBytes, err := json.Marshal(responseBody)

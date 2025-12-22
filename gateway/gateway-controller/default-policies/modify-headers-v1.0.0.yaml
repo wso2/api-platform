@@ -1,4 +1,4 @@
-name: ModifyHeaders
+name: modify-headers
 version: v1.0.0
 description: |
   Comprehensive header manipulation policy for both request and response flows.

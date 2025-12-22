@@ -97,7 +97,7 @@ spec:
       - path: /models/{modelId}
         methods: [GET]
   policies:
-    - name: URLGuardrail
+    - name: url-guardrail
       version: v0.1.0
       paths:
         - path: /chat/completions
@@ -181,7 +181,7 @@ When validation fails, the guardrail returns an HTTP 422 status code with the fo
   "type": "URL_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "URLGuardrail",
+    "interveningGuardrail": "url-guardrail",
     "actionReason": "Violation of url validity detected.",
     "direction": "REQUEST"
   }
@@ -195,7 +195,7 @@ If `showAssessment` is enabled, additional details including invalid URLs are in
   "type": "URL_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "URLGuardrail",
+    "interveningGuardrail": "url-guardrail",
     "actionReason": "Violation of url validity detected.",
     "assessments": {
       "invalidUrls": [

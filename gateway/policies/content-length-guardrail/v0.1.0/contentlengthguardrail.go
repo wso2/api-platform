@@ -274,7 +274,7 @@ func (p *ContentLengthGuardrailPolicy) buildErrorResponse(reason string, validat
 func (p *ContentLengthGuardrailPolicy) buildAssessmentObject(reason string, validationError error, isResponse bool, showAssessment bool, min, max int) map[string]interface{} {
 	assessment := map[string]interface{}{
 		"action":               "GUARDRAIL_INTERVENED",
-		"interveningGuardrail": "ContentLengthGuardrail",
+		"interveningGuardrail": "content-length-guardrail",
 	}
 
 	if isResponse {

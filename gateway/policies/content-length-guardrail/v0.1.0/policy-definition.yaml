@@ -1,4 +1,4 @@
-name: ContentLengthGuardrail
+name: content-length-guardrail
 version: v0.1.0
 description: |
   Validates the byte length of request or response body content.

@@ -1,4 +1,4 @@
-name: PIIMaskingRegex
+name: pii-masking-regex
 version: v0.1.0
 description: |
   Masks or redacts Personally Identifiable Information (PII) from request/response bodies using regex patterns.

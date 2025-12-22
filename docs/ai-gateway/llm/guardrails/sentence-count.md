@@ -89,7 +89,7 @@ spec:
       - path: /models/{modelId}
         methods: [GET]
   policies:
-    - name: SentenceCountGuardrail
+    - name: sentence-count-guardrail
       version: v0.1.0
       paths:
         - path: /chat/completions
@@ -169,7 +169,7 @@ When validation fails, the guardrail returns an HTTP 422 status code with the fo
   "type": "SENTENCE_COUNT_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "SentenceCountGuardrail",
+    "interveningGuardrail": "sentence-count-guardrail",
     "actionReason": "Violation of applied sentence count constraints detected.",
     "direction": "REQUEST"
   }
@@ -183,7 +183,7 @@ If `showAssessment` is enabled, additional details are included:
   "type": "SENTENCE_COUNT_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "SentenceCountGuardrail",
+    "interveningGuardrail": "sentence-count-guardrail",
     "actionReason": "Violation of applied sentence count constraints detected.",
     "assessments": "Violation of sentence count detected. Expected between 1 and 3 sentences.",
     "direction": "REQUEST"

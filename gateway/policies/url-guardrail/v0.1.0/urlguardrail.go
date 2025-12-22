@@ -321,7 +321,7 @@ func (p *URLGuardrailPolicy) buildErrorResponse(reason string, validationError e
 func (p *URLGuardrailPolicy) buildAssessmentObject(reason string, validationError error, isResponse bool, showAssessment bool, invalidURLs []string) map[string]interface{} {
 	assessment := map[string]interface{}{
 		"action":               "GUARDRAIL_INTERVENED",
-		"interveningGuardrail": "URLGuardrail",
+		"interveningGuardrail": "url-guardrail",
 	}
 
 	if isResponse {
