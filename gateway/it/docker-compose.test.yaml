@@ -24,13 +24,14 @@ services:
     container_name: it-gateway-controller
     image: ghcr.io/wso2/api-platform/gateway-controller-coverage:0.1.0-SNAPSHOT
     ports:
-      - "9090:9090"   # REST API
+      - "9099:9090"   # REST API
       - "18000:18000" # xDS gRPC
       - "18001:18001"
     environment:
       - GATEWAY_STORAGE_TYPE=sqlite
       - GATEWAY_STORAGE_SQLITE_PATH=./data/gateway.db
       - GATEWAY_LOGGING_LEVEL=info
+      - GATEWAY_TRACING_ENABLED=${GATEWAY_TRACING_ENABLED:-false}
       - GOCOVERDIR=/coverage
     volumes:
       - controller-data-tests:/app/data
@@ -53,6 +54,8 @@ services:
     command: ["-xds-server", "it-gateway-controller:18001"]
     ports:
       - "9002:9002"   # Admin API
+    environment:
+      - GATEWAY_TRACING_ENABLED=${GATEWAY_TRACING_ENABLED:-false}
     volumes:
       - ../configs/config.yaml:/app/configs/config.yaml:ro
     depends_on:
@@ -60,6 +63,19 @@ services:
         condition: service_healthy
     networks:
       - it-gateway-network
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.88.0
+    container_name: it-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+    networks:
+      - it-gateway-network
+
 
   router:
     container_name: it-router
@@ -87,7 +103,7 @@ services:
     container_name: it-sample-backend
     image: renukafernando/request-info:latest
     ports:
-      - "5000:5000"
+      - "5050:5000"
     command: ["-addr", ":5000", "-pretty"]
     networks:
       - it-gateway-network

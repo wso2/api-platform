@@ -20,6 +20,7 @@ package it
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -47,7 +48,19 @@ var (
 
 	// testReporter manages test report generation
 	testReporter *TestReporter
+
+	// gatewayConfigManager manages gateway configuration profiles
+	gatewayConfigManager *GatewayConfigManager
 )
+
+var opts = godog.Options{
+	Format: "pretty",
+	Paths:  []string{"features"},
+}
+
+func init() {
+	godog.BindCommandLineFlags("godog.", &opts)
+}
 
 // TestFeatures is the main entry point for BDD tests
 func TestFeatures(t *testing.T) {
@@ -57,14 +70,20 @@ func TestFeatures(t *testing.T) {
 		log.Printf("Warning: Failed to setup test reporter: %v", err)
 	}
 
+	// Register cleanup to run on any test exit (including panics and failures)
+	t.Cleanup(func() {
+		if composeManager != nil {
+			log.Println("Running t.Cleanup: ensuring containers and volumes are removed...")
+			composeManager.Cleanup()
+		}
+	})
+
+	opts.TestingT = t
+
 	suite := godog.TestSuite{
 		TestSuiteInitializer: InitializeTestSuite,
 		ScenarioInitializer:  InitializeScenario,
-		Options: &godog.Options{
-			Format:   "pretty",
-			Paths:    []string{"features"},
-			TestingT: t,
-		},
+		Options:              &opts,
 	}
 
 	exitCode := suite.Run()
@@ -77,6 +96,9 @@ func TestFeatures(t *testing.T) {
 func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 	ctx.BeforeSuite(func() {
 		log.Println("=== Integration Test Suite Starting ===")
+
+		// Disable Ryuk reaper to avoid socket mount issues with Colima
+		os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 		// Initialize coverage collector (always enabled)
 		coverageCollector = NewCoverageCollector(DefaultCoverageConfig())
@@ -105,6 +127,9 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 		if err := composeManager.Start(); err != nil {
 			log.Fatalf("Failed to start services: %v", err)
 		}
+
+		// Initialize config manager
+		gatewayConfigManager = NewGatewayConfigManager(composeManager)
 
 		// Initialize global test state
 		testState = NewTestState()
@@ -154,6 +179,14 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// Reset state before each scenario
 	ctx.Before(func(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
 		log.Printf("Starting scenario: %s", sc.Name)
+
+		// Ensure correct configuration is running
+		if gatewayConfigManager != nil {
+			if err := gatewayConfigManager.EnsureConfig(ctx, sc); err != nil {
+				return ctx, fmt.Errorf("failed to configure gateway: %w", err)
+			}
+		}
+
 		if testState != nil {
 			testState.Reset()
 		}
@@ -185,6 +218,11 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	if testState != nil {
 		RegisterHealthSteps(ctx, testState)
 		RegisterAPISteps(ctx, testState, httpSteps)
+	}
+
+	// Register tracing steps
+	if composeManager != nil {
+		RegisterTracingSteps(ctx, composeManager)
 	}
 
 	// Register common HTTP and assertion steps
