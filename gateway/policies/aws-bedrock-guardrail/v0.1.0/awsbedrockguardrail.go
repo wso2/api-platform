@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -594,6 +595,10 @@ func (p *AWSBedrockGuardrailPolicy) evaluateGuardrailResponse(output interface{}
 					metadata[MetadataKeyPIIEntities] = maskedPII
 				}
 				return false, maskedContent, nil
+			} else {
+				// Response case: PII was already masked in request, allow through
+				// Restoration happens earlier in validatePayload
+				return false, "", nil
 			}
 		}
 
@@ -620,40 +625,68 @@ func (p *AWSBedrockGuardrailPolicy) processPIIEntitiesForMasking(output *bedrock
 	updatedContent := originalContent
 	counter := 0
 
+	// Collect all matches first, then sort by length (longest first) to avoid substring collisions
+	type matchInfo struct {
+		match      string
+		entityType string
+		isRegex    bool
+	}
+
+	var matches []matchInfo
+
 	for _, assessment := range output.Assessments {
 		if assessment.SensitiveInformationPolicy != nil {
-			// Process PII entities
+			// Collect PII entities
 			if len(assessment.SensitiveInformationPolicy.PiiEntities) > 0 {
 				for _, entity := range assessment.SensitiveInformationPolicy.PiiEntities {
 					if entity.Action == types.GuardrailSensitiveInformationPolicyActionAnonymized {
 						match := aws.ToString(entity.Match)
 						if match != "" && maskedPII[match] == "" {
-							entityType := string(entity.Type)
-							replacement := fmt.Sprintf("%s_%04x", entityType, counter)
-							updatedContent = strings.ReplaceAll(updatedContent, match, replacement)
-							maskedPII[match] = replacement
-							counter++
+							matches = append(matches, matchInfo{
+								match:      match,
+								entityType: string(entity.Type),
+								isRegex:    false,
+							})
+							maskedPII[match] = "" // Mark as seen to avoid duplicates
 						}
 					}
 				}
 			}
 
-			// Process regex matches
+			// Collect regex matches
 			if len(assessment.SensitiveInformationPolicy.Regexes) > 0 {
 				for _, regex := range assessment.SensitiveInformationPolicy.Regexes {
 					if regex.Action == types.GuardrailSensitiveInformationPolicyActionAnonymized {
 						match := aws.ToString(regex.Match)
 						name := aws.ToString(regex.Name)
 						if match != "" && maskedPII[match] == "" {
-							replacement := fmt.Sprintf("%s_%04x", name, counter)
-							updatedContent = strings.ReplaceAll(updatedContent, match, replacement)
-							maskedPII[match] = replacement
-							counter++
+							matches = append(matches, matchInfo{
+								match:      match,
+								entityType: name,
+								isRegex:    true,
+							})
+							maskedPII[match] = "" // Mark as seen to avoid duplicates
 						}
 					}
 				}
 			}
 		}
+	}
+
+	// Sort matches by length (longest first) to prevent substring collisions
+	sort.Slice(matches, func(i, j int) bool {
+		return len(matches[i].match) > len(matches[j].match)
+	})
+
+	// Clear maskedPII map and rebuild with replacements
+	maskedPII = make(map[string]string)
+
+	// Process matches in order (longest first)
+	for _, matchInfo := range matches {
+		replacement := fmt.Sprintf("%s_%04x", matchInfo.entityType, counter)
+		updatedContent = strings.ReplaceAll(updatedContent, matchInfo.match, replacement)
+		maskedPII[matchInfo.match] = replacement
+		counter++
 	}
 
 	return updatedContent, maskedPII
@@ -664,17 +697,30 @@ func (p *AWSBedrockGuardrailPolicy) extractRedactedContent(output *bedrockruntim
 	redactedText := originalContent
 	// Replace all PII entity matches with *****
 	if output != nil && len(output.Assessments) > 0 && output.Assessments[0].SensitiveInformationPolicy != nil {
+		// Collect all matches first
+		var matches []string
+
 		for _, entity := range output.Assessments[0].SensitiveInformationPolicy.PiiEntities {
 			match := aws.ToString(entity.Match)
 			if match != "" {
-				redactedText = strings.ReplaceAll(redactedText, match, "*****")
+				matches = append(matches, match)
 			}
 		}
 		for _, regex := range output.Assessments[0].SensitiveInformationPolicy.Regexes {
 			match := aws.ToString(regex.Match)
 			if match != "" {
-				redactedText = strings.ReplaceAll(redactedText, match, "*****")
+				matches = append(matches, match)
 			}
+		}
+
+		// Sort matches by length (longest first) to prevent substring collisions
+		sort.Slice(matches, func(i, j int) bool {
+			return len(matches[i]) > len(matches[j])
+		})
+
+		// Process matches in order (longest first)
+		for _, match := range matches {
+			redactedText = strings.ReplaceAll(redactedText, match, "*****")
 		}
 	}
 	return redactedText
@@ -686,10 +732,30 @@ func (p *AWSBedrockGuardrailPolicy) restorePIIInResponse(originalContent string,
 		return originalContent
 	}
 
-	transformedContent := originalContent
+	// Collect placeholder-original pairs and sort by placeholder length (longest first)
+	// to prevent substring collisions when restoring
+	type restorePair struct {
+		placeholder string
+		original    string
+	}
+
+	var pairs []restorePair
 	for original, placeholder := range maskedPIIEntities {
-		if strings.Contains(transformedContent, placeholder) {
-			transformedContent = strings.ReplaceAll(transformedContent, placeholder, original)
+		pairs = append(pairs, restorePair{
+			placeholder: placeholder,
+			original:    original,
+		})
+	}
+
+	// Sort by placeholder length (longest first) to prevent substring collisions
+	sort.Slice(pairs, func(i, j int) bool {
+		return len(pairs[i].placeholder) > len(pairs[j].placeholder)
+	})
+
+	transformedContent := originalContent
+	for _, pair := range pairs {
+		if strings.Contains(transformedContent, pair.placeholder) {
+			transformedContent = strings.ReplaceAll(transformedContent, pair.placeholder, pair.original)
 		}
 	}
 
@@ -697,6 +763,9 @@ func (p *AWSBedrockGuardrailPolicy) restorePIIInResponse(originalContent string,
 }
 
 // updatePayloadWithMaskedContent updates the original payload by replacing the extracted content
+// Fallback policy: If jsonPath is empty, returns modifiedContent directly. For all JSON processing
+// errors (unmarshal, SetValueAtJSONPath, marshal), logs the error and returns originalPayload to
+// avoid returning invalid JSON or silently losing guardrail modifications.
 func (p *AWSBedrockGuardrailPolicy) updatePayloadWithMaskedContent(originalPayload []byte, extractedValue, modifiedContent string, jsonPath string) []byte {
 	if jsonPath == "" {
 		return []byte(modifiedContent)
@@ -704,16 +773,19 @@ func (p *AWSBedrockGuardrailPolicy) updatePayloadWithMaskedContent(originalPaylo
 
 	var jsonData map[string]interface{}
 	if err := json.Unmarshal(originalPayload, &jsonData); err != nil {
-		return []byte(modifiedContent)
+		slog.Debug("AWSBedrockGuardrail: Failed to unmarshal payload for content update", "jsonPath", jsonPath, "extractedValue", extractedValue, "error", err)
+		return originalPayload
 	}
 
 	err := utils.SetValueAtJSONPath(jsonData, jsonPath, modifiedContent)
 	if err != nil {
+		slog.Debug("AWSBedrockGuardrail: Failed to set value at JSONPath", "jsonPath", jsonPath, "extractedValue", extractedValue, "error", err)
 		return originalPayload
 	}
 
 	updatedPayload, err := json.Marshal(jsonData)
 	if err != nil {
+		slog.Debug("AWSBedrockGuardrail: Failed to marshal updated payload", "jsonPath", jsonPath, "extractedValue", extractedValue, "error", err)
 		return originalPayload
 	}
 

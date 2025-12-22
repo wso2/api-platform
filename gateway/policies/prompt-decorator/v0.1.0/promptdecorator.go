@@ -221,10 +221,24 @@ func (p *PromptDecoratorPolicy) OnRequest(ctx *policy.RequestContext, params map
 	case []interface{}:
 		// Decorating an array of messages (e.g., $.messages)
 		messages := make([]map[string]interface{}, 0, len(v))
-		for _, item := range v {
+		var malformedEntries []string
+
+		for i, item := range v {
 			if msg, ok := item.(map[string]interface{}); ok {
 				messages = append(messages, msg)
+			} else {
+				// Detect non-map entries and collect details for error reporting
+				elementType := fmt.Sprintf("%T", item)
+				elementValue := fmt.Sprintf("%v", item)
+				malformedEntries = append(malformedEntries, fmt.Sprintf("index %d: type=%s, value=%s", i, elementType, elementValue))
+				slog.Debug("PromptDecorator: Non-map element detected in messages array", "jsonPath", p.params.JsonPath, "index", i, "type", elementType, "value", elementValue)
 			}
+		}
+
+		// If malformed entries found, return error without modifying the slice
+		if len(malformedEntries) > 0 {
+			errorDetails := fmt.Sprintf("malformed entries at %s", strings.Join(malformedEntries, "; "))
+			return p.buildErrorResponse("Array contains non-map elements", fmt.Errorf(errorDetails))
 		}
 
 		// Create decoration messages from decoration config

@@ -79,8 +79,7 @@ func (m *MilvusVectorDBProvider) CreateIndex() error {
 		).
 		WithField(entity.NewField().
 			WithName("created_at").
-			WithDataType(entity.FieldTypeInt64).
-			WithDim(4),
+			WithDataType(entity.FieldTypeInt64),
 		).
 		WithField(entity.NewField().
 			WithName("api_id").
@@ -122,8 +121,27 @@ func (m *MilvusVectorDBProvider) CreateIndex() error {
 
 // Store stores the embeddings and associated response in Milvus
 func (m *MilvusVectorDBProvider) Store(embeddings []float32, response CacheResponse, filter map[string]interface{}) error {
+	// Safely retrieve and validate ctx
+	ctxVal, ok := filter["ctx"]
+	if !ok {
+		return fmt.Errorf("missing 'ctx' key in filter")
+	}
+	ctx, ok := ctxVal.(context.Context)
+	if !ok {
+		return fmt.Errorf("'ctx' must be of type context.Context, got %T", ctxVal)
+	}
+
+	// Safely retrieve and validate api_id
+	apiIDVal, ok := filter["api_id"]
+	if !ok {
+		return fmt.Errorf("missing 'api_id' key in filter")
+	}
+	apiID, ok := apiIDVal.(string)
+	if !ok {
+		return fmt.Errorf("'api_id' must be of type string, got %T", apiIDVal)
+	}
+
 	id := uuid.New().String()
-	ctx := filter["ctx"].(context.Context)
 	responseBytes, err := SerializeObject(response)
 	if err != nil {
 		return err
@@ -134,7 +152,7 @@ func (m *MilvusVectorDBProvider) Store(embeddings []float32, response CacheRespo
 	dbRow := map[string]interface{}{
 		"id":           id,
 		"created_at":   time.Now().Unix(),
-		"api_id":       filter["api_id"].(string),
+		"api_id":       apiID,
 		embeddingField: embeddings,
 		responseField:  responseString,
 	}

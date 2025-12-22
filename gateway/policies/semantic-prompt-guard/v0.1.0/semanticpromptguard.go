@@ -111,11 +111,8 @@ func parseEmbeddingConfig(params map[string]interface{}, p *SemanticPromptGuardP
 		EmbeddingEndpoint: embeddingEndpoint,
 		APIKey:            apiKey,
 		AuthHeaderName:    authHeaderName,
+		EmbeddingModel:    embeddingModel, // Empty string is allowed for AZURE_OPENAI (deployment name is in endpoint)
 		TimeOut:           strconv.Itoa(defaultTimeoutMs),
-	}
-	// Only set EmbeddingModel if it was provided (required for OPENAI/MISTRAL)
-	if embeddingModel != "" {
-		p.embeddingConfig.EmbeddingModel = embeddingModel
 	}
 
 	return nil

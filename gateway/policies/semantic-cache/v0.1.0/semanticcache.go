@@ -125,11 +125,15 @@ func parseParams(params map[string]interface{}, p *SemanticCachePolicy) error {
 	}
 
 	// embeddingModel is required for OPENAI and MISTRAL, but not for AZURE_OPENAI
+	// For AZURE_OPENAI, deployment name is in the endpoint URL, so model can be empty
+	var embeddingModel string
 	if model, ok := params["embeddingModel"].(string); ok && model != "" {
-		p.embeddingConfig.EmbeddingModel = model
+		embeddingModel = model
 	} else if embeddingProvider == "OPENAI" || embeddingProvider == "MISTRAL" {
 		return fmt.Errorf("'embeddingModel' is required for %s provider", embeddingProvider)
 	}
+	// Always set EmbeddingModel explicitly (empty string is allowed for AZURE_OPENAI)
+	p.embeddingConfig.EmbeddingModel = embeddingModel
 
 	if apiKey, ok := params["apiKey"].(string); ok && apiKey != "" {
 		p.embeddingConfig.APIKey = apiKey

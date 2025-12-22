@@ -74,6 +74,11 @@ func (m *MistralEmbeddingProvider) GetEmbedding(input string) ([]float32, error)
 		return nil, err
 	}
 
+	if resp.StatusCode != http.StatusOK {
+		errStr := fmt.Sprintf("API request failed with status %d: %s", resp.StatusCode, string(respBody))
+		return nil, errors.New(errStr)
+	}
+
 	var response map[string]interface{}
 	if err := json.Unmarshal(respBody, &response); err != nil {
 		return nil, err

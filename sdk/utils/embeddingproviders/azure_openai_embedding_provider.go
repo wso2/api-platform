@@ -134,19 +134,51 @@ func (a *AzureOpenAIEmbeddingProvider) GetEmbeddings(inputs []string) ([][]float
 		return nil, err
 	}
 
-	var response map[string]interface{}
-	if err := json.Unmarshal(respBody, &response); err != nil {
-		return nil, err
+	// Check HTTP status code
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Azure OpenAI API error: status %d, body: %s", resp.StatusCode, string(respBody))
 	}
 
-	data := response["data"].([]interface{})
+	var response map[string]interface{}
+	if err := json.Unmarshal(respBody, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// Safely extract data field
+	dataField, ok := response["data"]
+	if !ok || dataField == nil {
+		return nil, fmt.Errorf("missing 'data' field in response")
+	}
+
+	data, ok := dataField.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("invalid 'data' field: expected array")
+	}
+
 	var embeddings [][]float32
-	for _, dataNode := range data {
-		dataMap := dataNode.(map[string]interface{})
-		embedding := dataMap["embedding"].([]interface{})
+	for idx, dataNode := range data {
+		dataMap, ok := dataNode.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("invalid data array element at index %d: expected object", idx)
+		}
+
+		embeddingField, ok := dataMap["embedding"]
+		if !ok || embeddingField == nil {
+			return nil, fmt.Errorf("missing 'embedding' field in response data at index %d", idx)
+		}
+
+		embedding, ok := embeddingField.([]interface{})
+		if !ok {
+			return nil, fmt.Errorf("invalid 'embedding' field at index %d: expected array", idx)
+		}
+
 		embeddingResult := make([]float32, len(embedding))
 		for i, value := range embedding {
-			embeddingResult[i] = float32(value.(float64))
+			val, ok := value.(float64)
+			if !ok {
+				return nil, fmt.Errorf("invalid embedding value at index %d[%d]: expected number", idx, i)
+			}
+			embeddingResult[i] = float32(val)
 		}
 		embeddings = append(embeddings, embeddingResult)
 	}

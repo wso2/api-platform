@@ -202,8 +202,8 @@ func (p *PromptTemplatePolicy) OnRequest(ctx *policy.RequestContext, params map[
 		escapedPrompt = textCleanRegex.ReplaceAllString(escapedPrompt, "")
 
 		slog.Debug("PromptTemplate: Resolved template", "templateName", templateName, "paramCount", len(paramsMap), "resolvedLength", len(resolvedPrompt))
-		// Replace the matched template:// pattern with the resolved prompt
-		updatedJsonContent = strings.Replace(updatedJsonContent, matched, escapedPrompt, 1)
+		// Replace all occurrences of the matched template:// pattern with the resolved prompt
+		updatedJsonContent = strings.ReplaceAll(updatedJsonContent, matched, escapedPrompt)
 	}
 
 	// Convert back to bytes
