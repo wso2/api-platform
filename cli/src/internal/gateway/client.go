@@ -148,7 +148,21 @@ func (c *Client) Get(path string) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	return c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Treat 2XX as success
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	// Treat 404 as non-error
+	if resp.StatusCode == http.StatusNotFound {
+		return resp, nil
+	}
+
+	return nil, utils.FormatHTTPError(fmt.Sprintf("GET %s", path), resp, "Gateway Controller")
 }
 
 // Post performs a POST request to the specified path with the given body
@@ -163,7 +177,15 @@ func (c *Client) Post(path string, body io.Reader) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	return c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	// Treat 2XX as success
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	return nil, utils.FormatHTTPError(fmt.Sprintf("POST %s", path), resp, "Gateway Controller")
 }
 
 // PostYAML performs a POST request with YAML content
@@ -179,7 +201,15 @@ func (c *Client) PostYAML(path string, body io.Reader) (*http.Response, error) {
 	}
 	req.Header.Set("Content-Type", "application/x-yaml")
 
-	return c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	// Treat 2XX as success
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	return nil, utils.FormatHTTPError(fmt.Sprintf("POST %s", path), resp, "Gateway Controller")
 }
 
 // Put performs a PUT request to the specified path with the given body
@@ -194,7 +224,15 @@ func (c *Client) Put(path string, body io.Reader) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	return c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	// Treat 2XX as success
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	return nil, utils.FormatHTTPError(fmt.Sprintf("PUT %s", path), resp, "Gateway Controller")
 }
 
 // PutYAML performs a PUT request with YAML content
@@ -210,7 +248,15 @@ func (c *Client) PutYAML(path string, body io.Reader) (*http.Response, error) {
 	}
 	req.Header.Set("Content-Type", "application/x-yaml")
 
-	return c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	// Treat 2XX as success
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	return nil, utils.FormatHTTPError(fmt.Sprintf("PUT %s", path), resp, "Gateway Controller")
 }
 
 // Delete performs a DELETE request to the specified path
@@ -225,7 +271,15 @@ func (c *Client) Delete(path string) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	return c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	// Treat 2XX as success
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	return nil, utils.FormatHTTPError(fmt.Sprintf("DELETE %s", path), resp, "Gateway Controller")
 }
 
 // GetGateway returns the gateway configuration
@@ -238,39 +292,4 @@ func (c *Client) GetBaseURL() string {
 	return c.gateway.Server
 }
 
-// FormatHTTPError
-func FormatHTTPError(operation string, resp *http.Response, responser string) error {
-	// Special-case: 1
-	// if Gateway Controller returns 401, suggest checking env var values
-	if resp.StatusCode == http.StatusUnauthorized && responser == "Gateway Controller" {
-		var b strings.Builder
-		b.WriteString(fmt.Sprintf("%s failed (status %d) from %s: unauthorized.\n", operation, resp.StatusCode, responser))
-		b.WriteString("Please check that the following environment variables contain the correct values:\n")
-		b.WriteString("  - ")
-		b.WriteString(utils.EnvGatewayUsername)
-		b.WriteString("\n  - ")
-		b.WriteString(utils.EnvGatewayPassword)
-		b.WriteString("\n")
-		return fmt.Errorf(b.String())
-	}
-
-	if resp == nil {
-		if responser == "" {
-			return fmt.Errorf("%s failed: no response received", operation)
-		}
-		return fmt.Errorf("%s failed: no response received from %s", operation, responser)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		if responser == "" {
-			return fmt.Errorf("%s failed (status %d): failed to read response body: %v", operation, resp.StatusCode, err)
-		}
-		return fmt.Errorf("%s failed (status %d): failed to read response from %s: %v", operation, resp.StatusCode, responser, err)
-	}
-
-	if responser == "" {
-		return fmt.Errorf("%s failed (status %d): %s", operation, resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	return fmt.Errorf("%s failed (status %d) from %s: %s", operation, resp.StatusCode, responser, strings.TrimSpace(string(body)))
-}
+// FormatHTTPError is implemented in the utils package; use utils.FormatHTTPError

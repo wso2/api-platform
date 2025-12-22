@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -86,9 +87,10 @@ func runListCommand() error {
 		return fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Check if the response is successful
-	if resp.StatusCode != 200 {
-		return gateway.FormatHTTPError("List APIs", resp, "Gateway Controller")
+	// If the gateway returned 404, treat as "no APIs"
+	if resp.StatusCode == http.StatusNotFound {
+		fmt.Println("No APIs found on the gateway.")
+		return nil
 	}
 
 	// Parse the response

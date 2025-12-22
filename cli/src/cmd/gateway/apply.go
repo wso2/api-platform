@@ -152,11 +152,6 @@ func applyResource(client *gateway.Client, handler gateway.ResourceHandler, reso
 	}
 	defer resp.Body.Close()
 
-	// If the response indicates an error, use the centralized formatter
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return gateway.FormatHTTPError(operation, resp, "Gateway Controller")
-	}
-
 	// Read the success response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -223,5 +218,5 @@ func resourceExists(client *gateway.Client, handler gateway.ResourceHandler, han
 	}
 
 	// Any other status code is an error — delegate to centralized formatter
-	return false, gateway.FormatHTTPError("query", resp, "Gateway Controller")
+	return false, utils.FormatHTTPError("query", resp, "Gateway Controller")
 }
