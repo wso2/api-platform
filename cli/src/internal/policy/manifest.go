@@ -167,12 +167,12 @@ func validateManifest(manifest *PolicyManifest) error {
 				return fmt.Errorf("policy %s: file not found at path: %s", policy.Name, policy.FilePath)
 			}
 
-			// Validate local policy zip structure
-			if err := utils.ValidateLocalPolicyZip(policyPath); err != nil {
+			// Validate local policy zip structure and that YAML matches manifest
+			if err := utils.ValidateLocalPolicyZip(policyPath, policy.Name, policy.Version); err != nil {
 				return fmt.Errorf("policy %s: validation failed:\n%w\n\nLocal policies must:\n"+
-					"  1. Be in zip format: <name>-<version>.zip (e.g., basic-auth-v1.0.0.zip)\n"+
+					"  1. Be a .zip file (file extension .zip)\n"+
 					"  2. Contain a policy-definition.yaml at the root of the archive\n"+
-					"  3. Ensure name and version fields exist inside policy-definition.yaml", policy.Name, err)
+					"  3. Ensure 'name' and 'version' fields inside policy-definition.yaml exactly match the manifest", policy.Name, err)
 			}
 		}
 	}

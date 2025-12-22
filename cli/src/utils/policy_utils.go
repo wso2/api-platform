@@ -38,7 +38,7 @@ var versionDirRegex = regexp.MustCompile(`^v?\d+\.\d+\.\d+$`)
 // It ensures that the provided zip contains a policy-definition.yaml at the root
 // of the archive (no nested single top-level folder is allowed). Name and version
 // are not returned from the zip; they are expected to come from the manifest.
-func ValidateLocalPolicyZip(zipPath string) error {
+func ValidateLocalPolicyZip(zipPath, expectedName, expectedVersion string) error {
 	// Ensure file is a zip
 	zipFileName := filepath.Base(zipPath)
 	if !strings.HasSuffix(zipFileName, ".zip") {
@@ -82,6 +82,14 @@ func ValidateLocalPolicyZip(zipPath string) error {
 	}
 	if pd.Version == "" {
 		return fmt.Errorf("'version' field is required in policy-definition.yaml")
+	}
+
+	if expectedName != "" && pd.Name != expectedName {
+		return fmt.Errorf("name mismatch: manifest specifies '%s' but policy-definition.yaml contains '%s'", expectedName, pd.Name)
+	}
+
+	if expectedVersion != "" && pd.Version != expectedVersion {
+		return fmt.Errorf("version mismatch: manifest specifies '%s' but policy-definition.yaml contains '%s'", expectedVersion, pd.Version)
 	}
 
 	return nil
