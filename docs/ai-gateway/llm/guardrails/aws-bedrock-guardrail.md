@@ -149,7 +149,7 @@ spec:
       - path: /chat/completions
         methods: [POST]
   policies:
-    - name: AWSBedrockGuardrail
+    - name: aws-bedrock-guardrail
       version: v0.1.0
       paths:
         - path: /chat/completions
@@ -206,7 +206,7 @@ Configure guardrail with IAM role assumption:
 
 ```yaml
 policies:
-  - name: AWSBedrockGuardrail
+  - name: aws-bedrock-guardrail
     version: v0.1.0
     paths:
       - path: /chat/completions
@@ -227,7 +227,7 @@ Use default AWS credential chain (no explicit credentials needed):
 
 ```yaml
 policies:
-  - name: AWSBedrockGuardrail
+  - name: aws-bedrock-guardrail
     version: v0.1.0
     paths:
       - path: /chat/completions
@@ -244,7 +244,7 @@ Configure to mask PII in requests and restore in responses:
 
 ```yaml
 policies:
-  - name: AWSBedrockGuardrail
+  - name: aws-bedrock-guardrail
     version: v0.1.0
     paths:
       - path: /chat/completions

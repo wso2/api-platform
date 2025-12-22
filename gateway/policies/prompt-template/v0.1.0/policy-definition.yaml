@@ -1,4 +1,4 @@
-name: PromptTemplate
+name: prompt-template
 version: v0.1.0
 description: |
   Dynamically modifies the prompt by applying custom templates using a configured strategy.

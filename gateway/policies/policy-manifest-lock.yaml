@@ -45,7 +45,7 @@ policies:
     version: v0.1.0
     filePath: ./json-schema-guardrail/v0.1.0
 
-  - name: McpAuthentication
+  - name: mcp-auth
     version: v0.1.0
     filePath: ./mcp-auth/v0.1.0
 
@@ -54,26 +54,26 @@ policies:
     version: v0.1.0
     filePath: ./api-key-auth/v0.1.0
 
-  - name: AzureContentSafetyContentModeration
+  - name: azure-content-safety-content-moderation
     version: v0.1.0
     filePath: ./azure-content-safety-content-moderation/v0.1.0
 
-  - name: AWSBedrockGuardrail
+  - name: aws-bedrock-guardrail
     version: v0.1.0
     filePath: ./aws-bedrock-guardrail/v0.1.0
 
-  - name: SemanticCache
+  - name: semantic-cache
     version: v0.1.0
     filePath: ./semantic-cache/v0.1.0
     
-  - name: PromptDecorator
+  - name: prompt-decorator
     version: v0.1.0
     filePath: ./prompt-decorator/v0.1.0
 
-  - name: PromptTemplate
+  - name: prompt-template
     version: v0.1.0
     filePath: ./prompt-template/v0.1.0
 
-  - name: SemanticPromptGuard
+  - name: semantic-prompt-guard
     version: v0.1.0
     filePath: ./semantic-prompt-guard/v0.1.0

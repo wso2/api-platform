@@ -1,4 +1,4 @@
-name: AzureContentSafetyContentModeration
+name: azure-content-safety-content-moderation
 version: v0.1.0
 description: |
   Validates request or response body content against Azure Content Safety API for content moderation.

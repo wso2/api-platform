@@ -106,7 +106,7 @@ spec:
       - path: /chat/completions
         methods: [POST]
   policies:
-    - name: PromptDecorator
+    - name: prompt-decorator
       version: v0.1.0
       paths:
         - path: /chat/completions
@@ -178,7 +178,7 @@ spec:
       - path: /chat/completions
         methods: [POST]
   policies:
-    - name: PromptDecorator
+    - name: prompt-decorator
       version: v0.1.0
       paths:
         - path: /chat/completions
@@ -229,7 +229,7 @@ Append instructions to the end of user messages:
 
 ```yaml
 policies:
-  - name: PromptDecorator
+  - name: prompt-decorator
     version: v0.1.0
     paths:
       - path: /chat/completions

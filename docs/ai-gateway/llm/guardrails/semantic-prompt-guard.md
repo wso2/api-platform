@@ -137,7 +137,7 @@ spec:
       - path: /chat/completions
         methods: [POST]
   policies:
-    - name: SemanticPromptGuard
+    - name: semantic-prompt-guard
       version: v0.1.0
       paths:
         - path: /chat/completions
@@ -216,7 +216,7 @@ spec:
       - path: /chat/completions
         methods: [POST]
   policies:
-    - name: SemanticPromptGuard
+    - name: semantic-prompt-guard
       version: v0.1.0
       paths:
         - path: /chat/completions
@@ -238,7 +238,7 @@ Use both allow and deny lists for comprehensive filtering:
 
 ```yaml
 policies:
-  - name: SemanticPromptGuard
+  - name: semantic-prompt-guard
     version: v0.1.0
     paths:
       - path: /chat/completions
@@ -264,7 +264,7 @@ Configure semantic prompt guardrail with Azure OpenAI and extended timeout:
 
 ```yaml
 policies:
-  - name: SemanticPromptGuard
+  - name: semantic-prompt-guard
     version: v0.1.0
     paths:
       - path: /chat/completions
@@ -304,7 +304,7 @@ When validation fails, the guardrail returns an HTTP 422 status code with the fo
   "type": "SEMANTIC_PROMPT_GUARD",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "SemanticPromptGuard",
+    "interveningGuardrail": "semantic-prompt-guard",
     "actionReason": "Violation of applied semantic prompt guard constraints detected.",
     "direction": "REQUEST"
   }
@@ -318,7 +318,7 @@ If `showAssessment` is enabled, additional details are included in the `assessme
   "type": "SEMANTIC_PROMPT_GUARD",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "SemanticPromptGuard",
+    "interveningGuardrail": "semantic-prompt-guard",
     "actionReason": "Violation of applied semantic prompt guard constraints detected.",
     "direction": "REQUEST",
     "assessments": "prompt is too similar to denied phrase 'How to hack into a system' (similarity=0.8500)"
@@ -333,7 +333,7 @@ For allow list violations, the assessment message format is:
   "type": "SEMANTIC_PROMPT_GUARD",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "SemanticPromptGuard",
+    "interveningGuardrail": "semantic-prompt-guard",
     "actionReason": "Violation of applied semantic prompt guard constraints detected.",
     "direction": "REQUEST",
     "assessments": "prompt is not similar enough to allowed phrases (similarity=0.6000 < threshold=0.6500)"
@@ -348,7 +348,7 @@ For errors during processing (e.g., JSONPath extraction failures, embedding gene
   "type": "SEMANTIC_PROMPT_GUARD",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "SemanticPromptGuard",
+    "interveningGuardrail": "semantic-prompt-guard",
     "actionReason": "Error extracting value from JSONPath",
     "direction": "REQUEST"
   }

@@ -140,7 +140,7 @@ spec:
       - path: /chat/completions
         methods: [POST]
   policies:
-    - name: SemanticCache
+    - name: semantic-cache
       version: v0.1.0
       paths:
         - path: /chat/completions
@@ -215,7 +215,7 @@ spec:
       - path: /chat/completions
         methods: [POST]
   policies:
-    - name: SemanticCache
+    - name: semantic-cache
       version: v0.1.0
       paths:
         - path: /chat/completions
@@ -232,7 +232,7 @@ Configure semantic caching with Azure OpenAI and extended cache duration:
 
 ```yaml
 policies:
-  - name: SemanticCache
+  - name: semantic-cache
     version: v0.1.0
     paths:
       - path: /chat/completions

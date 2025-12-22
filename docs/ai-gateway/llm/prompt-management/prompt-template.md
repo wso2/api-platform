@@ -104,7 +104,7 @@ spec:
       - path: /chat/completions
         methods: [POST]
   policies:
-    - name: PromptTemplate
+    - name: prompt-template
       version: v0.1.0
       paths:
         - path: /chat/completions
@@ -176,7 +176,7 @@ spec:
       - path: /chat/completions
         methods: [POST]
   policies:
-    - name: PromptTemplate
+    - name: prompt-template
       version: v0.1.0
       paths:
         - path: /chat/completions
@@ -209,7 +209,7 @@ Configure multiple templates in a single policy:
 
 ```yaml
 policies:
-  - name: PromptTemplate
+  - name: prompt-template
     version: v0.1.0
     paths:
       - path: /chat/completions

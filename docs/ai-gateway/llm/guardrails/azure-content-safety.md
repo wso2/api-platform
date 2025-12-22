@@ -126,7 +126,7 @@ spec:
       - path: /chat/completions
         methods: [POST]
   policies:
-    - name: AzureContentSafetyContentModeration
+    - name: azure-content-safety-content-moderation
       version: v0.1.0
       paths:
         - path: /chat/completions
@@ -189,7 +189,7 @@ Configure strict moderation thresholds:
 
 ```yaml
 policies:
-  - name: AzureContentSafetyContentModeration
+  - name: azure-content-safety-content-moderation
     version: v0.1.0
     paths:
       - path: /chat/completions
@@ -218,7 +218,7 @@ Monitor only specific categories:
 
 ```yaml
 policies:
-  - name: AzureContentSafetyContentModeration
+  - name: azure-content-safety-content-moderation
     version: v0.1.0
     paths:
       - path: /chat/completions
@@ -238,7 +238,7 @@ Allow more content with higher thresholds:
 
 ```yaml
 policies:
-  - name: AzureContentSafetyContentModeration
+  - name: azure-content-safety-content-moderation
     version: v0.1.0
     paths:
       - path: /chat/completions
@@ -296,7 +296,7 @@ When validation fails, the guardrail returns an HTTP 422 status code with the fo
   "type": "AZURE_CONTENT_SAFETY_CONTENT_MODERATION",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "AzureContentSafetyContentModeration",
+    "interveningGuardrail": "azure-content-safety-content-moderation",
     "actionReason": "Violation of Azure content safety content moderation detected.",
     "direction": "REQUEST"
   }
@@ -310,7 +310,7 @@ If `showAssessment` is enabled, additional details are included:
   "type": "AZURE_CONTENT_SAFETY_CONTENT_MODERATION",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "AzureContentSafetyContentModeration",
+    "interveningGuardrail": "azure-content-safety-content-moderation",
     "actionReason": "Violation of Azure content safety content moderation detected.",
     "direction": "REQUEST",
     "assessments": {
