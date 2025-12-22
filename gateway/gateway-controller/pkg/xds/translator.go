@@ -401,7 +401,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig) ([]*route.Rout
 	for _, op := range apiData.Operations {
 		// Use mainClusterName by default; path rewrite based on main upstream path
 		r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-			mainClusterName, parsedMainURL.Path, effectiveMainVHost)
+			mainClusterName, parsedMainURL.Path, effectiveMainVHost, cfg.Kind)
 		mainRoutesList = append(mainRoutesList, r)
 	}
 	routesList = append(routesList, mainRoutesList...)
@@ -420,7 +420,7 @@ func (t *Translator) translateAPIConfig(cfg *models.StoredConfig) ([]*route.Rout
 		for _, op := range apiData.Operations {
 			// Use sbClusterName for sandbox upstream path
 			r := t.createRoute(cfg.ID, apiData.DisplayName, apiData.Version, apiData.Context, string(op.Method), op.Path,
-				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost)
+				sbClusterName, parsedSbURL.Path, effectiveSandboxVHost, cfg.Kind)
 			sbRoutesList = append(sbRoutesList, r)
 		}
 		routesList = append(routesList, sbRoutesList...)
@@ -786,7 +786,7 @@ func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost)
 
 // createRoute creates a route for an operation
 func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, path, clusterName,
-	upstreamPath string, vhost string) *route.Route {
+	upstreamPath string, vhost string, apiKind string) *route.Route {
 	// Resolve version placeholder in context
 	context = strings.ReplaceAll(context, "$version", apiVersion)
 
@@ -878,6 +878,7 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 		"path":        path,
 		"method":      method,
 		"vhost":       vhost,
+		"api_kind":    apiKind,
 	}
 	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
 		r.Metadata = &core.Metadata{FilterMetadata: map[string]*structpb.Struct{
@@ -1863,6 +1864,9 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 		},
 		MetadataOptions: &extproc.MetadataOptions{
 			ReceivingNamespaces: &extproc.MetadataOptions_MetadataNamespaces{
+				Untyped: []string{constants.ExtProcFilterName},
+			},
+			ForwardingNamespaces: &extproc.MetadataOptions_MetadataNamespaces{
 				Untyped: []string{constants.ExtProcFilterName},
 			},
 		},

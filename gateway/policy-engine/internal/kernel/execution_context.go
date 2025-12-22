@@ -332,6 +332,7 @@ func (ec *PolicyExecutionContext) buildRequestContext(headers *extprocv3.HttpHea
 		APIId:         routeMetadata.APIId,
 		APIName:       routeMetadata.APIName,
 		APIVersion:    routeMetadata.APIVersion,
+		APIKind:       routeMetadata.APIKind,
 		APIContext:    routeMetadata.Context,
 		OperationPath: routeMetadata.OperationPath,
 		Metadata:      make(map[string]interface{}),

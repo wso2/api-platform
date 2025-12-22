@@ -26,6 +26,18 @@ import (
 	"github.com/policy-engine/policy-engine/internal/constants"
 )
 
+// Constants for analytics metadata
+const (
+		Wso2MetadataPrefix = "x-wso2-"
+		APIIDKey = Wso2MetadataPrefix + "api-id"
+		APINameKey = Wso2MetadataPrefix + "api-name"
+		APIVersionKey = Wso2MetadataPrefix + "api-version"
+		APITypeKey = Wso2MetadataPrefix + "api-type"
+		APIContextKey = Wso2MetadataPrefix + "api-context"
+		OperationPathKey = Wso2MetadataPrefix + "operation-path"
+		APIKindKey = Wso2MetadataPrefix + "api-kind"
+)
+
 // buildAnalyticsStruct converts analytics metadata map to structpb.Struct
 // If execCtx is provided, adds system-level metadata (API name, version, etc.) to analytics_data.metadata
 func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecutionContext) (*structpb.Struct, error) {
@@ -43,31 +55,25 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 
 	// Add system-level metadata if context is provided
 	if execCtx != nil && execCtx.requestContext != nil && execCtx.requestContext.SharedContext != nil {
-		metadata := make(map[string]interface{})
 
 		sharedCtx := execCtx.requestContext.SharedContext
 		if sharedCtx.APIId != "" {
-			metadata["api_id"] = sharedCtx.APIId
+			fields[APIIDKey] = structpb.NewStringValue(sharedCtx.APIId)
 		}
 		if sharedCtx.APIName != "" {
-			metadata["api_name"] = sharedCtx.APIName
+			fields[APINameKey] = structpb.NewStringValue(sharedCtx.APIName)
 		}
 		if sharedCtx.APIVersion != "" {
-			metadata["api_version"] = sharedCtx.APIVersion
+			fields[APIVersionKey] = structpb.NewStringValue(sharedCtx.APIVersion)
 		}
 		if sharedCtx.APIContext != "" {
-			metadata["api_context"] = sharedCtx.APIContext
+			fields[APIContextKey] = structpb.NewStringValue(sharedCtx.APIContext)
 		}
 		if sharedCtx.OperationPath != "" {
-			metadata["operation_path"] = sharedCtx.OperationPath
+			fields[OperationPathKey] = structpb.NewStringValue(sharedCtx.OperationPath)
 		}
-
-		if len(metadata) > 0 {
-			metadataVal, err := structpb.NewValue(metadata)
-			if err != nil {
-				return nil, fmt.Errorf("failed to convert system metadata: %w", err)
-			}
-			fields["metadata"] = metadataVal
+		if sharedCtx.APIKind != "" {
+			fields[APIKindKey] = structpb.NewStringValue(sharedCtx.APIKind)
 		}
 	}
 
@@ -93,4 +99,25 @@ func buildDynamicMetadata(analyticsStruct *structpb.Struct) *structpb.Struct {
 			},
 		},
 	}
+}
+
+// extractMetadataFromMap extracts the metadata from the route metadata
+func extractMetadataFromRouteMetadata(routeMeta RouteMetadata) map[string]interface{} {
+	metadata := make(map[string]interface{})
+	if routeMeta.APIName != "" {
+		metadata[APINameKey] = routeMeta.APIName
+	}
+	if routeMeta.APIVersion != "" {
+		metadata[APIVersionKey] = routeMeta.APIVersion
+	}
+	if routeMeta.Context != "" {
+		metadata[APIContextKey] = routeMeta.Context
+	}
+	if routeMeta.OperationPath != "" {
+		metadata[OperationPathKey] = routeMeta.OperationPath
+	}
+	if routeMeta.APIKind != "" {
+		metadata[APIKindKey] = routeMeta.APIKind
+	}
+	return metadata
 }

@@ -86,7 +86,7 @@ const (
 	// ExtAuthMetadataContextKey is the context key for external authorization metadata.
 	ExtAuthMetadataContextKey = "envoy.filters.http.ext_authz"
 	// ExtProcMetadataContextKey is the context key for external processing metadata.
-	ExtProcMetadataContextKey = "com.wso2.kgw.ext_proc"
+	ExtProcMetadataContextKey = "api_platform.policy_engine.envoy.filters.http.ext_proc"
 	// Wso2MetadataPrefix is the prefix for WSO2 metadata.
 	Wso2MetadataPrefix = "x-wso2-"
 	// APIIDKey is the key for the API ID.
@@ -98,7 +98,7 @@ const (
 	// APIVersionKey is the key for the API version.
 	APIVersionKey = Wso2MetadataPrefix + "api-version"
 	// APITypeKey is the key for the API type.
-	APITypeKey = Wso2MetadataPrefix + "api-type"
+	APITypeKey = Wso2MetadataPrefix + "api-kind"
 	// APIUserNameKey is the key for the API user name.
 	APIUserNameKey = Wso2MetadataPrefix + "username"
 	// APIContextKey is the key for the API context.
@@ -141,8 +141,6 @@ const (
 
 	// ErrorCodeKey is the key for the error code.
 	ErrorCodeKey = "ErrorCode"
-	// ApkEnforcerReply is the key for the APK enforcer reply.
-	ApkEnforcerReply = "apk-enforcer-reply"
 	// RatelimitWso2OrgPrefix is the prefix for WSO2 organization rate limit.
 	RatelimitWso2OrgPrefix = "customorg"
 	// APIEnvironmentKey is the key for the API environment.

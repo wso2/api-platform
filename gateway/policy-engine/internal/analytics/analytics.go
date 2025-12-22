@@ -148,7 +148,19 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 				slog.Debug(fmt.Sprintf("Filter metadata: %+v", sv))
 				for key, value := range sv.Fields {
 					if value != nil {
-						keyValuePairsFromMetadata[key] = value.GetStringValue()
+						if key == "analytics_data" {
+							// Handle the analytics_data struct
+							if analyticsStruct := value.GetStructValue(); analyticsStruct != nil {
+								for analyticsKey, analyticsValue := range analyticsStruct.Fields {
+									if analyticsValue != nil {
+										keyValuePairsFromMetadata[analyticsKey] = analyticsValue.GetStringValue()
+									}
+								}
+							}
+						} else {
+							// Handle regular string values
+							keyValuePairsFromMetadata[key] = value.GetStringValue()
+						}
 					}
 				}
 			}

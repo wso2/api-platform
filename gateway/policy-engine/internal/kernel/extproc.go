@@ -36,6 +36,7 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/prototext"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/policy-engine/policy-engine/internal/constants"
 	"github.com/policy-engine/policy-engine/internal/config"
@@ -122,6 +123,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		defer span.End()
 
 		// Initialize execution context for this request
+		routeMetadata := s.extractRouteMetadata(req)
 		rm := s.initializeExecutionContext(ctx, req, execCtx)
 		if parentSpan.IsRecording() {
 			parentSpan.SetAttributes(
@@ -137,7 +139,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 			if span.IsRecording() {
 				span.SetAttributes(attribute.Int(constants.AttrPolicyCount, 0))
 			}
-			return s.skipAllProcessing(), nil
+			return s.skipAllProcessing(routeMetadata), nil
 		}
 		if span.IsRecording() {
 			span.SetAttributes(attribute.Int(constants.AttrPolicyCount, len((*execCtx).policyChain.Policies)))
@@ -283,7 +285,21 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 }
 
 // skipAllProcessing returns a response that skips all processing phases
-func (s *ExternalProcessorServer) skipAllProcessing() *extprocv3.ProcessingResponse {
+func (s *ExternalProcessorServer) skipAllProcessing(routeMetadata RouteMetadata) *extprocv3.ProcessingResponse {
+	// Build analytics metadata using route metadataeven when skipping policy processing
+	analyticsData := extractMetadataFromRouteMetadata(routeMetadata)
+	
+	// Build the analytics struct
+	analyticsStruct, err := structpb.NewStruct(analyticsData)
+	if err != nil {
+		// Log error but continue
+		slog.Warn("Failed to build analytics struct for skip processing", "error", err)
+		analyticsStruct = &structpb.Struct{Fields: make(map[string]*structpb.Value)}
+	}
+	
+	// Build dynamic metadata structure
+	dynamicMetadata := buildDynamicMetadata(analyticsStruct)
+	
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{},
@@ -295,6 +311,7 @@ func (s *ExternalProcessorServer) skipAllProcessing() *extprocv3.ProcessingRespo
 			RequestBodyMode:     extprocconfigv3.ProcessingMode_NONE,
 			ResponseBodyMode:    extprocconfigv3.ProcessingMode_NONE,
 		},
+		DynamicMetadata: dynamicMetadata,
 	}
 }
 
@@ -307,6 +324,7 @@ type RouteMetadata struct {
 	Context       string
 	OperationPath string
 	Vhost         string
+	APIKind       string
 }
 
 // extractRouteMetadata extracts the route metadata from Envoy metadata
@@ -356,6 +374,9 @@ func (s *ExternalProcessorServer) extractRouteMetadata(req *extprocv3.Processing
 					}
 					if vhostValue, ok := routeStruct.Fields["vhost"]; ok {
 						metadata.Vhost = vhostValue.GetStringValue()
+					}
+					if originalAPIKindValue, ok := routeStruct.Fields["api_kind"]; ok {
+						metadata.APIKind = originalAPIKindValue.GetStringValue()
 					}
 				}
 			}
