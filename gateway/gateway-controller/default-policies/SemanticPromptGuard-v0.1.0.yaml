@@ -93,14 +93,6 @@ systemParameters:
       description: API key for the embedding provider.
       minLength: 1
       "wso2/defaultValue": "${config.semanticpromptguard_embedding_api_key}"
-    timeoutMs:
-      type: integer
-      description: |
-        Timeout in milliseconds for the embedding endpoint request.
-      default: 5000
-      minimum: 1
-      maximum: 60000
-      "wso2/defaultValue": "${config.semanticpromptguard_embedding_timeout_ms}"
   required:
     - embeddingProvider
     - embeddingEndpoint

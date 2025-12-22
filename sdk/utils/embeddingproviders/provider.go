@@ -38,7 +38,7 @@ func ValidateEmbeddingProviderConfigProps(config EmbeddingProviderConfig) error 
 	if config.EmbeddingProvider != "MISTRAL" && config.EmbeddingProvider != "AZURE_OPENAI" && config.EmbeddingProvider != "OPENAI" {
 		return fmt.Errorf("missing/Invalid embedding provider found in the embedding provider configuration")
 	}
-	if config.EmbeddingModel == "" {
+	if config.EmbeddingModel == "" && config.EmbeddingProvider != "AZURE_OPENAI" {
 		return fmt.Errorf("missing embedding model in the embedding provider configuration")
 	}
 	return nil

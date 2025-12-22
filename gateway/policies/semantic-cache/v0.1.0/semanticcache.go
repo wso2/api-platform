@@ -80,9 +80,7 @@ func GetPolicy(
 		return nil, fmt.Errorf("failed to create vector store index: %w", err)
 	}
 
-	// Log similarity threshold (convert back from distance: similarity = 1.0 - distance)
-	similarityThreshold := 1.0 - p.threshold
-	slog.Debug("SemanticCache: Policy initialized", "embeddingProvider", embeddingProvider, "vectorStoreProvider", vectorStoreProvider, "similarityThreshold", similarityThreshold)
+	slog.Debug("SemanticCache: Policy initialized", "embeddingProvider", embeddingProvider, "vectorStoreProvider", vectorStoreProvider, "similarityThreshold", p.threshold)
 
 	return p, nil
 }
@@ -100,21 +98,19 @@ func parseParams(params map[string]interface{}, p *SemanticCachePolicy) error {
 		return fmt.Errorf("'vectorStoreProvider' parameter is required")
 	}
 
-	thresholdRaw, ok := params["threshold"]
+	thresholdRaw, ok := params["similarityThreshold"]
 	if !ok {
-		return fmt.Errorf("'threshold' parameter is required")
+		return fmt.Errorf("'similarityThreshold' parameter is required")
 	}
 	threshold, err := extractFloat64(thresholdRaw)
 	if err != nil {
-		return fmt.Errorf("'threshold' must be a number: %w", err)
+		return fmt.Errorf("'similarityThreshold' must be a number: %w", err)
 	}
 	if threshold < 0.0 || threshold > 1.0 {
-		return fmt.Errorf("'threshold' must be between 0.0 and 1.0 (similarity range)")
+		return fmt.Errorf("'similarityThreshold' must be between 0.0 and 1.0 (similarity range)")
 	}
-	// Convert similarity (0-1) to cosine distance (0-1): distance = 1 - similarity
-	// Higher similarity (1.0) → lower distance (0.0) for identical vectors
-	// Lower similarity (0.0) → higher distance (1.0) for orthogonal vectors
-	p.threshold = 1.0 - threshold
+
+	p.threshold = threshold
 
 	// Parse embedding provider config
 	p.embeddingConfig = embeddingproviders.EmbeddingProviderConfig{
@@ -150,7 +146,7 @@ func parseParams(params map[string]interface{}, p *SemanticCachePolicy) error {
 	}
 
 	// Parse vector store provider config
-	// Note: threshold is stored as cosine distance (0-1) after conversion from similarity
+	// Threshold is stored as similarity threshold (0-1, higher is better)
 	p.vectorStoreConfig = vectordbproviders.VectorDBProviderConfig{
 		VectorStoreProvider: vectorStoreProvider,
 		Threshold:           fmt.Sprintf("%.2f", p.threshold),
@@ -368,8 +364,7 @@ func (p *SemanticCachePolicy) OnRequest(ctx *policy.RequestContext, params map[s
 	// Check if we got a valid cache response
 	// Retrieve returns empty CacheResponse on no match or threshold not met
 	if cacheResponse.ResponsePayload == nil || len(cacheResponse.ResponsePayload) == 0 {
-		similarityThreshold := 1.0 - p.threshold
-		slog.Debug("SemanticCache: Cache miss", "apiID", apiID, "similarityThreshold", similarityThreshold)
+		slog.Debug("SemanticCache: Cache miss", "apiID", apiID, "threshold", p.threshold)
 		// Cache miss - continue to upstream
 		return policy.UpstreamRequestModifications{}
 	}

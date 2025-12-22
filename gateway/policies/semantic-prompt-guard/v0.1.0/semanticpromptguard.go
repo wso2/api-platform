@@ -99,22 +99,6 @@ func parseEmbeddingConfig(params map[string]interface{}, p *SemanticPromptGuardP
 		return fmt.Errorf("'apiKey' is required")
 	}
 
-	// Extract optional timeoutMs parameter (default: 5000ms)
-	timeoutMs := defaultTimeoutMs
-	if timeoutMsRaw, ok := params["timeoutMs"]; ok {
-		switch v := timeoutMsRaw.(type) {
-		case int:
-			timeoutMs = v
-		case int64:
-			timeoutMs = int(v)
-		case float64:
-			timeoutMs = int(v)
-		}
-	}
-	if timeoutMs < 1 || timeoutMs > 60000 {
-		return fmt.Errorf("'timeoutMs' must be between 1 and 60000")
-	}
-
 	// Set header name based on provider type
 	// Azure OpenAI uses "api-key", others use "Authorization"
 	authHeaderName := "Authorization"
@@ -127,7 +111,7 @@ func parseEmbeddingConfig(params map[string]interface{}, p *SemanticPromptGuardP
 		EmbeddingEndpoint: embeddingEndpoint,
 		APIKey:            apiKey,
 		AuthHeaderName:    authHeaderName,
-		TimeOut:           strconv.Itoa(timeoutMs),
+		TimeOut:           strconv.Itoa(defaultTimeoutMs),
 	}
 	// Only set EmbeddingModel if it was provided (required for OPENAI/MISTRAL)
 	if embeddingModel != "" {
