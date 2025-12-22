@@ -1347,6 +1347,106 @@ jobs:
           kubectl delete ns scoped-test ignored-ns --ignore-not-found
 
 
+      - name: Test ConfigMap Update Trigger
+        run: |
+          echo "=== Testing ConfigMap Update Trigger ==="
+          
+          # Get current configHash
+          INITIAL_HASH=$(kubectl get gateway test-gateway -o jsonpath='{.status.configHash}')
+          echo "Initial configHash: $INITIAL_HASH"
+          
+          # Update ConfigMap
+          echo "Updating ConfigMap..."
+          kubectl patch configmap test-gateway-config --type merge -p '{"data":{"values.yaml":"# Updated config\nnameOverride: \"\""}}'
+          
+          # Wait for Operator to reconcile (give it some time to detect change)
+          # The operator should detect the hash change and update the status
+          echo "Waiting for operator to process ConfigMap change..."
+          sleep 60 
+          
+          # Get new configHash
+          NEW_HASH=$(kubectl get gateway test-gateway -o jsonpath='{.status.configHash}')
+          echo "New configHash: $NEW_HASH"
+          
+          if [ "$INITIAL_HASH" == "$NEW_HASH" ]; then
+             echo "FAILED: configHash did not change after ConfigMap update!"
+             echo "Expected different hash than $INITIAL_HASH"
+             exit 1
+          fi
+          
+          echo "SUCCESS: configHash updated successfully."
+
+      - name: Test Status Accuracy (Selected APIs)
+        run: |
+          echo "=== Testing Status Accuracy (SelectedAPIs) ==="
+          
+          # Current state: test-gateway has 'test-api' (1 API)
+          # Verify initial count
+          COUNT=$(kubectl get gateway test-gateway -o jsonpath='{.status.selectedAPIs}')
+          echo "Initial SelectedAPIs count: $COUNT"
+          
+          if [ "$COUNT" != "1" ]; then
+             echo "FAILED: Expected 1 selected API, got $COUNT"
+             exit 1
+          fi
+          
+          # Add a second API
+          echo "Creating second API (status-test-api)..."
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          kind: RestApi
+          metadata:
+            name: status-test-api
+            namespace: default
+          spec:
+            displayName: status-test-api
+            version: v1.0
+            context: /status-test
+            upstream:
+              main:
+                url: http://httpbin.default.svc.cluster.local:80
+            operations:
+              - method: GET
+                path: /get
+          EOF
+          
+          echo "Waiting for status-test-api to be programmed..."
+          kubectl wait --for=condition=Programmed restapi/status-test-api --timeout=120s
+          
+          # Wait for Gateway status update
+          sleep 10
+          
+          # Verify count incremented
+          COUNT=$(kubectl get gateway test-gateway -o jsonpath='{.status.selectedAPIs}')
+          echo "SelectedAPIs count after adding API: $COUNT"
+          
+          if [ "$COUNT" != "2" ]; then
+             echo "FAILED: Expected 2 selected APIs, got $COUNT"
+             kubectl get restapi
+             exit 1
+          fi
+          
+          # Delete second API
+          echo "Deleting status-test-api..."
+          kubectl delete restapi status-test-api
+          
+          echo "Waiting for deletion..."
+          kubectl wait --for=delete restapi/status-test-api --timeout=60s
+          
+          # Wait for Gateway status update
+          sleep 10
+          
+          # Verify count decremented
+          COUNT=$(kubectl get gateway test-gateway -o jsonpath='{.status.selectedAPIs}')
+          echo "SelectedAPIs count after deleting API: $COUNT"
+          
+          if [ "$COUNT" != "1" ]; then
+             echo "FAILED: Expected 1 selected API, got $COUNT"
+             exit 1
+          fi
+          
+          echo "SUCCESS: Status SelectedAPIs updated accurately."
+
       - name: Debug on failure - Dump logs
         if: failure()
         run: |
