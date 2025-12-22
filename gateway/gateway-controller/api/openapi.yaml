@@ -2427,6 +2427,8 @@ components:
           enum:
             - payload
             - header
+            - queryParam
+            - pathParam
           example: payload
         identifier:
           type: string

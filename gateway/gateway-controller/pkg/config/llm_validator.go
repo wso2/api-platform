@@ -186,10 +186,11 @@ func (v *LLMValidator) validateExtractionIdentifier(
 	var errors []ValidationError
 
 	// Only 'payload', 'header' and 'queryParam' locations are supported
-	if identifier.Location != "payload" && identifier.Location != "header" && identifier.Location != "queryParam" {
+	if identifier.Location != "payload" && identifier.Location != "header" && identifier.Location != "queryParam" &&
+		identifier.Location != "pathParam" {
 		errors = append(errors, ValidationError{
 			Field:   fmt.Sprintf("%s.location", fieldPrefix),
-			Message: "Location must be 'payload' or 'header' or 'queryParam'",
+			Message: "Location must be 'payload' or 'header' or 'queryParam' or 'pathParam'",
 		})
 	}
 
