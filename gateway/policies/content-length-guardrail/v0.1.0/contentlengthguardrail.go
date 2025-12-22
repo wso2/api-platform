@@ -3,6 +3,7 @@ package contentlengthguardrail
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
@@ -64,6 +65,8 @@ func GetPolicy(
 	if !p.hasRequestParams && !p.hasResponseParams {
 		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
 	}
+
+	slog.Debug("ContentLengthGuardrail: Policy initialized", "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
 
 	return p, nil
 }
@@ -200,6 +203,7 @@ func (p *ContentLengthGuardrailPolicy) validatePayload(payload []byte, params Co
 	// Extract value using JSONPath
 	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, params.JsonPath)
 	if err != nil {
+		slog.Debug("ContentLengthGuardrail: Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
 		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment, params.Min, params.Max)
 	}
 
@@ -221,6 +225,7 @@ func (p *ContentLengthGuardrailPolicy) validatePayload(payload []byte, params Co
 	}
 
 	if !validationPassed {
+		slog.Debug("ContentLengthGuardrail: Validation failed", "byteCount", byteCount, "min", params.Min, "max", params.Max, "invert", params.Invert, "isResponse", isResponse)
 		var reason string
 		if params.Invert {
 			reason = fmt.Sprintf("content length %d bytes is within the excluded range %d-%d bytes", byteCount, params.Min, params.Max)
@@ -230,6 +235,7 @@ func (p *ContentLengthGuardrailPolicy) validatePayload(payload []byte, params Co
 		return p.buildErrorResponse(reason, nil, isResponse, params.ShowAssessment, params.Min, params.Max)
 	}
 
+	slog.Debug("ContentLengthGuardrail: Validation passed", "byteCount", byteCount, "min", params.Min, "max", params.Max, "isResponse", isResponse)
 	if isResponse {
 		return policy.UpstreamResponseModifications{}
 	}

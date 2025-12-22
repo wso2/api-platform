@@ -3,6 +3,7 @@ package wordcountguardrail
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
@@ -68,6 +69,8 @@ func GetPolicy(
 	if !p.hasRequestParams && !p.hasResponseParams {
 		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
 	}
+
+	slog.Debug("WordCountGuardrail: Policy initialized", "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
 
 	return p, nil
 }
@@ -204,6 +207,7 @@ func (p *WordCountGuardrailPolicy) validatePayload(payload []byte, params WordCo
 	// Extract value using JSONPath
 	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, params.JsonPath)
 	if err != nil {
+		slog.Debug("WordCountGuardrail: Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
 		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment, params.Min, params.Max)
 	}
 
@@ -231,6 +235,7 @@ func (p *WordCountGuardrailPolicy) validatePayload(payload []byte, params WordCo
 	}
 
 	if !validationPassed {
+		slog.Debug("WordCountGuardrail: Validation failed", "wordCount", wordCount, "min", params.Min, "max", params.Max, "invert", params.Invert, "isResponse", isResponse)
 		var reason string
 		if params.Invert {
 			reason = fmt.Sprintf("word count %d is within the excluded range %d-%d words", wordCount, params.Min, params.Max)
@@ -240,6 +245,7 @@ func (p *WordCountGuardrailPolicy) validatePayload(payload []byte, params WordCo
 		return p.buildErrorResponse(reason, nil, isResponse, params.ShowAssessment, params.Min, params.Max)
 	}
 
+	slog.Debug("WordCountGuardrail: Validation passed", "wordCount", wordCount, "min", params.Min, "max", params.Max, "isResponse", isResponse)
 	if isResponse {
 		return policy.UpstreamResponseModifications{}
 	}

@@ -3,6 +3,7 @@ package regexguardrail
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"regexp"
 
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
@@ -58,6 +59,8 @@ func GetPolicy(
 	if !p.hasRequestParams && !p.hasResponseParams {
 		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
 	}
+
+	slog.Debug("RegexGuardrail: Policy initialized", "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
 
 	return p, nil
 }
@@ -164,12 +167,14 @@ func (p *RegexGuardrailPolicy) validatePayload(payload []byte, params RegexGuard
 	// Extract value using JSONPath
 	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, params.JsonPath)
 	if err != nil {
+		slog.Debug("RegexGuardrail: Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
 		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment)
 	}
 
 	// Compile regex pattern
 	compiledRegex, err := regexp.Compile(params.Regex)
 	if err != nil {
+		slog.Debug("RegexGuardrail: Invalid regex pattern", "regex", params.Regex, "error", err, "isResponse", isResponse)
 		return p.buildErrorResponse("Invalid regex pattern", err, isResponse, params.ShowAssessment)
 	}
 	matched := compiledRegex.MatchString(extractedValue)
@@ -183,8 +188,11 @@ func (p *RegexGuardrailPolicy) validatePayload(payload []byte, params RegexGuard
 	}
 
 	if !validationPassed {
+		slog.Debug("RegexGuardrail: Validation failed", "regex", params.Regex, "matched", matched, "invert", params.Invert, "isResponse", isResponse)
 		return p.buildErrorResponse("Violated regular expression: "+params.Regex, nil, isResponse, params.ShowAssessment)
 	}
+
+	slog.Debug("RegexGuardrail: Validation passed", "regex", params.Regex, "matched", matched, "invert", params.Invert, "isResponse", isResponse)
 
 	if isResponse {
 		return policy.UpstreamResponseModifications{}

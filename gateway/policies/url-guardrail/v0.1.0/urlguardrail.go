@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -73,6 +74,8 @@ func GetPolicy(
 	if !p.hasRequestParams && !p.hasResponseParams {
 		return nil, fmt.Errorf("at least one of 'request' or 'response' parameters must be provided")
 	}
+
+	slog.Debug("URLGuardrail: Policy initialized", "hasRequestParams", p.hasRequestParams, "hasResponseParams", p.hasResponseParams)
 
 	return p, nil
 }
@@ -192,6 +195,7 @@ func (p *URLGuardrailPolicy) validatePayload(payload []byte, params URLGuardrail
 	// Extract value using JSONPath
 	extractedValue, err := utils.ExtractStringValueFromJsonpath(payload, params.JsonPath)
 	if err != nil {
+		slog.Debug("URLGuardrail: Error extracting value from JSONPath", "jsonPath", params.JsonPath, "error", err, "isResponse", isResponse)
 		return p.buildErrorResponse("Error extracting value from JSONPath", err, isResponse, params.ShowAssessment, []string{})
 	}
 
@@ -201,6 +205,9 @@ func (p *URLGuardrailPolicy) validatePayload(payload []byte, params URLGuardrail
 
 	// Extract URLs from the value
 	urls := urlRegexCompiled.FindAllString(extractedValue, -1)
+	if len(urls) > 0 {
+		slog.Debug("URLGuardrail: Found URLs to validate", "urlCount", len(urls), "onlyDNS", params.OnlyDNS, "isResponse", isResponse)
+	}
 	invalidURLs := make([]string, 0)
 
 	for _, urlStr := range urls {
@@ -217,7 +224,12 @@ func (p *URLGuardrailPolicy) validatePayload(payload []byte, params URLGuardrail
 	}
 
 	if len(invalidURLs) > 0 {
+		slog.Debug("URLGuardrail: Validation failed", "invalidURLCount", len(invalidURLs), "totalURLCount", len(urls), "isResponse", isResponse)
 		return p.buildErrorResponse("Violation of url validity detected", nil, isResponse, params.ShowAssessment, invalidURLs)
+	}
+
+	if len(urls) > 0 {
+		slog.Debug("URLGuardrail: Validation passed", "urlCount", len(urls), "isResponse", isResponse)
 	}
 
 	if isResponse {

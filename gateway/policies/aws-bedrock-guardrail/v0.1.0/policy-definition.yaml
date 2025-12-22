@@ -1,0 +1,118 @@
+name: aws-bedrock-guardrail
+version: v0.1.0
+description: |
+  Validates request or response body content against AWS Bedrock Guardrails.
+  Supports content filtering, topic detection, word filtering, and PII detection/masking.
+  Supports three authentication modes: role-based (AssumeRole), static credentials, or default credential chain.
+  Supports JSONPath extraction to validate specific fields within JSON payloads.
+  Supports separate configuration for request and response phases.
+
+parameters:
+  type: object
+  properties:
+    request:
+      type: object
+      description: Configuration for request phase validation
+      properties:
+        jsonPath:
+          type: string
+          description: |
+            JSONPath expression to extract a specific value from JSON payload.
+            If empty, validates the entire payload as a string.
+            Examples: "$.message", "$.data.content", "$.items[0].text"
+          default: ""
+        redactPII:
+          type: boolean
+          description: |
+            If true, redacts PII by replacing with "*****" (permanent, cannot be restored).
+            If false (default), masks PII with placeholders that can be restored in responses.
+          default: false
+        passthroughOnError:
+          type: boolean
+          description: |
+            If true, allows requests to proceed if AWS Bedrock Guardrail API call fails.
+            If false (default), blocks requests on API errors.
+          default: false
+        showAssessment:
+          type: boolean
+          description: |
+            If true, includes detailed assessment information from AWS Bedrock Guardrail in error responses.
+            If false, returns minimal error information.
+          default: false
+    response:
+      type: object
+      description: Configuration for response phase validation
+      properties:
+        jsonPath:
+          type: string
+          description: |
+            JSONPath expression to extract a specific value from JSON payload.
+            If empty, validates the entire payload as a string.
+            Examples: "$.message", "$.data.content", "$.items[0].text"
+          default: ""
+        passthroughOnError:
+          type: boolean
+          description: |
+            If true, allows requests to proceed if AWS Bedrock Guardrail API call fails.
+            If false (default), blocks requests on API errors.
+          default: false
+        showAssessment:
+          type: boolean
+          description: |
+            If true, includes detailed assessment information from AWS Bedrock Guardrail in error responses.
+            If false, returns minimal error information.
+          default: false
+
+systemParameters:
+  type: object
+  additionalProperties: false
+  properties:
+    region:
+      type: string
+      description: AWS region where the Bedrock Guardrail is located (e.g., "us-east-1").
+      minLength: 1
+      "wso2/defaultValue": "${config.awsbedrock_guardrail_region}"
+    guardrailID:
+      type: string
+      description: AWS Bedrock Guardrail identifier.
+      minLength: 1
+      "wso2/defaultValue": "${config.awsbedrock_guardrail_id}"
+    guardrailVersion:
+      type: string
+      description: AWS Bedrock Guardrail version (e.g., "DRAFT", "1").
+      minLength: 1
+      "wso2/defaultValue": "${config.awsbedrock_guardrail_version}"
+    awsAccessKeyID:
+      type: string
+      description: AWS access key ID (for static credentials or role assumption). If omitted, runtime uses default credential chain.
+      minLength: 1
+      "wso2/defaultValue": "${config.awsbedrock_access_key_id}"
+    awsSecretAccessKey:
+      type: string
+      description: AWS secret access key (for static credentials or role assumption). If omitted, runtime uses default credential chain.
+      minLength: 1
+      "wso2/defaultValue": "${config.awsbedrock_secret_access_key}"
+    awsSessionToken:
+      type: string
+      description: AWS session token (optional, for temporary credentials).
+      minLength: 1
+      "wso2/defaultValue": "${config.awsbedrock_session_token}"
+    awsRoleARN:
+      type: string
+      description: AWS IAM role ARN to assume (for role-based authentication). If specified, runtime assumes this role instead of using static credentials.
+      minLength: 1
+      "wso2/defaultValue": "${config.awsbedrock_role_arn}"
+    awsRoleRegion:
+      type: string
+      description: AWS region for role assumption (required if awsRoleARN is specified).
+      minLength: 1
+      "wso2/defaultValue": "${config.awsbedrock_role_region}"
+    awsRoleExternalID:
+      type: string
+      description: External ID for role assumption (optional, for cross-account access).
+      minLength: 1
+      "wso2/defaultValue": "${config.awsbedrock_role_external_id}"
+  required:
+    - region
+    - guardrailID
+    - guardrailVersion
