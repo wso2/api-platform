@@ -93,7 +93,7 @@ services:
       - it-gateway-network
 
   mcp-server-backend:
-    image: rakhitharr/mcp-everything:v2
+    image: rakhitharr/mcp-everything:v3
     pull_policy: missing
     container_name: mcp-server-backend
     ports:

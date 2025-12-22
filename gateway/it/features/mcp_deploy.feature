@@ -38,7 +38,7 @@ Feature: Test MCP CRUD and connectivity
                 context: /everything
                 specVersion: "2025-06-18"
                 upstream:
-                    url: http://mcp-backend-server:3001
+                    url: http://mcp-server-backend:3001
                 tools: []
                 resources: []
                 prompts: []
@@ -69,7 +69,7 @@ Feature: Test MCP CRUD and connectivity
                 context: /everything
                 specVersion: "2025-06-18"
                 upstream:
-                    url: http://mcp-backend-server:3001
+                    url: http://mcp-server-backend:3001
                 tools: []
                 resources: []
                 prompts: []
