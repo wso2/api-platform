@@ -9,12 +9,6 @@ const (
 	BasicPrefix = "Basic "
 	// AuthzSkipKey is the context key to indicate to skip
 	AuthzSkipKey = "skip_authz"
-	// AuthenticatedKey is the context key to indicate if the user is authenticated
-	AuthenticatedKey = "authenticated"
-	// UserIDKey is the context key for the authenticated user's ID
-	UserIDKey = "userID"
-	// AuthRolesKey is the context key for the authenticated user's roles
-	AuthRolesKey = "roles"
-	// ClaimsKey is the context key for JWT claims
-	ClaimsKey = "claims"
+	// AuthContextKey is the context key for packed authentication context
+	AuthContextKey = "auth_context"
 )

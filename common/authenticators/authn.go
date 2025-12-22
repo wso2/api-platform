@@ -58,11 +58,14 @@ func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFu
 	// This disables both authentication and authorization (via AuthzSkipKey).
 	if len(authenticators) == 0 {
 		return func(c *gin.Context) {
+			authCtx := models.AuthContext{
+				Authenticated: true,
+				UserID:        "sys_noauth_user",
+				Roles:         []string{},
+				Claims:        map[string]any{},
+			}
+			c.Set(constants.AuthContextKey, authCtx)
 			c.Set(constants.AuthzSkipKey, true)
-			// Optional: mark as authenticated for downstream logs/handlers.
-			c.Set(constants.AuthenticatedKey, true)
-			c.Set(constants.UserIDKey, "sys_noauth_user")
-			c.Set(constants.AuthRolesKey, []string{})
 			c.Next()
 		}, nil
 	}
@@ -106,13 +109,19 @@ func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFu
 		}
 		logger.Sugar().Debugf("Authentication result %v", result)
 		logger.Sugar().Debugf("Authentication roles %v", result.Roles)
-		// Set authentication context
-		c.Set(constants.AuthenticatedKey, result.Success)
-		c.Set(constants.UserIDKey, result.UserID)
-		c.Set(constants.AuthRolesKey, result.Roles)
-		if result.Claims != nil {
-			c.Set(constants.ClaimsKey, result.Claims)
+
+		claims := result.Claims
+		if claims == nil {
+			claims = map[string]any{}
 		}
+		// Set authentication context
+		authCtx := models.AuthContext{
+			Authenticated: result.Success,
+			UserID:        result.UserID,
+			Roles:         result.Roles,
+			Claims:        claims,
+		}
+		c.Set(constants.AuthContextKey, authCtx)
 
 		c.Next()
 	}, nil

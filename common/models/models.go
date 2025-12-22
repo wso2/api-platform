@@ -17,6 +17,18 @@
  */
 package models
 
+// AuthContext is a packed authentication/authorization context that can be attached
+// to a request context and passed downstream.
+//
+// This avoids setting and reading multiple independent context keys.
+// Claims is kept as 'any' to avoid coupling common/models to a specific JWT library type.
+type AuthContext struct {
+	Authenticated bool
+	UserID        string
+	Roles         []string
+	Claims        any
+}
+
 // AuthConfig holds configuration for the authentication middleware
 type AuthConfig struct {
 	// Basic Auth Configuration

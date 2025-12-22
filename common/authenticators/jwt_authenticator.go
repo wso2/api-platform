@@ -144,12 +144,11 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 		}
 	}
 
-	j.logger.Info("ScopeClaim", zap.String("ScopeClaim", j.config.JWTConfig.ScopeClaim))
 	// If no role claim is configured, set flag to skip authorization
 	// This allows authentication-only mode where all authenticated users can access resources
 	var permissions []string
 	if j.config.JWTConfig.ScopeClaim == "" {
-		j.logger.Info("No role claim configured, setting skip_authz flag")
+		j.logger.Debug("No role claim configured, setting skip_authz flag")
 		ctx.Set(constants.AuthzSkipKey, true)
 		permissions = []string{}
 	} else {

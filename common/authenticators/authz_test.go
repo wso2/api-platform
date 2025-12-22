@@ -47,7 +47,7 @@ func TestAuthorizationMiddleware_NoResourceRoles_AllowsAllRequests(t *testing.T)
 
 	router.Use(func(c *gin.Context) {
 		// Simulate that user is authenticated with some roles
-		c.Set(AuthRolesKey, []string{"developer", "consumer"})
+		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"developer", "consumer"}})
 		c.Next()
 	})
 	router.Use(AuthorizationMiddleware(config, logger))
@@ -76,7 +76,7 @@ func TestAuthorizationMiddleware_NoResourceRoles_NilMap_AllowsAllRequests(t *tes
 
 	router.Use(func(c *gin.Context) {
 		// Simulate authenticated user
-		c.Set(AuthRolesKey, []string{"admin"})
+		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"admin"}})
 		c.Next()
 	})
 	router.Use(AuthorizationMiddleware(config, logger))
@@ -107,7 +107,7 @@ func TestAuthorizationMiddleware_WithResourceRoles_MatchingRole_Allowed(t *testi
 
 	router.Use(func(c *gin.Context) {
 		// User has developer role which is allowed
-		c.Set(AuthRolesKey, []string{"developer"})
+		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"developer"}})
 		c.Next()
 	})
 	router.Use(AuthorizationMiddleware(config, logger))
@@ -137,7 +137,7 @@ func TestAuthorizationMiddleware_WithResourceRoles_NoMatchingRole_Forbidden(t *t
 
 	router.Use(func(c *gin.Context) {
 		// User has developer role but endpoint requires admin
-		c.Set(AuthRolesKey, []string{"developer"})
+		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"developer"}})
 		c.Next()
 	})
 	router.Use(AuthorizationMiddleware(config, logger))
@@ -166,7 +166,7 @@ func TestAuthorizationMiddleware_WithResourceRoles_MultipleRoles_OneMatches_Allo
 
 	router.Use(func(c *gin.Context) {
 		// User has developer, consumer, and admin roles
-		c.Set(AuthRolesKey, []string{"developer", "consumer", "admin"})
+		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"developer", "consumer", "admin"}})
 		c.Next()
 	})
 	router.Use(AuthorizationMiddleware(config, logger))
@@ -196,7 +196,7 @@ func TestAuthorizationMiddleware_ResourceNotDefined_Forbidden(t *testing.T) {
 	}
 
 	router.Use(func(c *gin.Context) {
-		c.Set(AuthRolesKey, []string{"admin"})
+		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"admin"}})
 		c.Next()
 	})
 	router.Use(AuthorizationMiddleware(config, logger))
@@ -224,7 +224,7 @@ func TestAuthorizationMiddleware_NoUserRoles_Forbidden(t *testing.T) {
 
 	router.Use(func(c *gin.Context) {
 		// User has no roles
-		c.Set(AuthRolesKey, []string{})
+		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{}})
 		c.Next()
 	})
 	router.Use(AuthorizationMiddleware(config, logger))
@@ -308,7 +308,7 @@ func TestAuthorizationMiddleware_DifferentMethodsSamePathDifferentRoles(t *testi
 	// Test GET with developer role - should succeed
 	router1 := setupTestRouter()
 	router1.Use(func(c *gin.Context) {
-		c.Set(AuthRolesKey, []string{"developer"})
+		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"developer"}})
 		c.Next()
 	})
 	router1.Use(AuthorizationMiddleware(config, logger))
@@ -324,7 +324,7 @@ func TestAuthorizationMiddleware_DifferentMethodsSamePathDifferentRoles(t *testi
 	// Test POST with developer role - should fail
 	router2 := setupTestRouter()
 	router2.Use(func(c *gin.Context) {
-		c.Set(AuthRolesKey, []string{"developer"})
+		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"developer"}})
 		c.Next()
 	})
 	router2.Use(AuthorizationMiddleware(config, logger))
@@ -340,7 +340,7 @@ func TestAuthorizationMiddleware_DifferentMethodsSamePathDifferentRoles(t *testi
 	// Test DELETE with admin role - should succeed
 	router3 := setupTestRouter()
 	router3.Use(func(c *gin.Context) {
-		c.Set(AuthRolesKey, []string{"admin"})
+		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"admin"}})
 		c.Next()
 	})
 	router3.Use(AuthorizationMiddleware(config, logger))
@@ -370,7 +370,7 @@ func TestAuthorizationMiddleware_WildcardRoleMapping(t *testing.T) {
 
 	// User has developer role (could have any value from IDP claim)
 	router.Use(func(c *gin.Context) {
-		c.Set(AuthRolesKey, []string{"developer"})
+		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"developer"}})
 		c.Next()
 	})
 	router.Use(AuthorizationMiddleware(config, logger))
@@ -399,7 +399,7 @@ func TestAuthorizationMiddleware_CaseSensitiveRoles(t *testing.T) {
 	router := setupTestRouter()
 	router.Use(func(c *gin.Context) {
 		// User has lowercase admin
-		c.Set(AuthRolesKey, []string{"admin"})
+		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{"admin"}})
 		c.Next()
 	})
 	router.Use(AuthorizationMiddleware(config, logger))
@@ -430,9 +430,9 @@ func TestAuthorizationMiddleware_SkipAuthzFlag_BypassesAuthorization(t *testing.
 
 	router.Use(func(c *gin.Context) {
 		// Simulate JWT authenticator setting skip_authz flag when no role claim configured
-		c.Set("skip_authz", true)
+		c.Set(constants.AuthzSkipKey, true)
 		// User might not even have roles
-		c.Set(AuthRolesKey, []string{})
+		c.Set(constants.AuthContextKey, models.AuthContext{Roles: []string{}})
 		c.Next()
 	})
 	router.Use(AuthorizationMiddleware(config, logger))

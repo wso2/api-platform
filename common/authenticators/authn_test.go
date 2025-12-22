@@ -49,6 +49,11 @@ func TestAuthMiddleware_NoAuthenticatorsConfigured_AllowsAllRequests(t *testing.
 		skipAuthz, exists := c.Get(constants.AuthzSkipKey)
 		assert.True(t, exists)
 		assert.True(t, skipAuthz.(bool))
+		packed, exists := c.Get(constants.AuthContextKey)
+		assert.True(t, exists)
+		ac, ok := packed.(models.AuthContext)
+		assert.True(t, ok)
+		assert.True(t, ac.Authenticated)
 		c.JSON(http.StatusOK, gin.H{"message": "success"})
 	})
 
@@ -174,6 +179,11 @@ func TestAuthMiddleware_NilBasicAuth_NilJWTConfig_AllowsAllRequests(t *testing.T
 		skipAuthz, exists := c.Get(constants.AuthzSkipKey)
 		assert.True(t, exists)
 		assert.True(t, skipAuthz.(bool))
+		packed, exists := c.Get(constants.AuthContextKey)
+		assert.True(t, exists)
+		ac, ok := packed.(models.AuthContext)
+		assert.True(t, ok)
+		assert.True(t, ac.Authenticated)
 		c.JSON(http.StatusOK, gin.H{"message": "open access"})
 	})
 

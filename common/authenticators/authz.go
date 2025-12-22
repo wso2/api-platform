@@ -27,10 +27,6 @@ import (
 	"go.uber.org/zap"
 )
 
-var (
-	AuthRolesKey = "roles"
-)
-
 // AuthorizationMiddleware enforces resource->roles mapping stored in this package.
 func AuthorizationMiddleware(config models.AuthConfig, logger *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -51,9 +47,9 @@ func AuthorizationMiddleware(config models.AuthConfig, logger *zap.Logger) gin.H
 		}
 		// Retrieve user roles from context (set by auth middleware)
 		var userRoles []string
-		if v, ok := c.Get(AuthRolesKey); ok {
-			if ur, ok2 := v.([]string); ok2 {
-				userRoles = ur
+		if v, ok := c.Get(constants.AuthContextKey); ok {
+			if ac, ok2 := v.(models.AuthContext); ok2 {
+				userRoles = ac.Roles
 			}
 		}
 		logger.Sugar().Debugf("User roles %v", userRoles)
