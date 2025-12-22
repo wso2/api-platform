@@ -497,6 +497,7 @@ func runDockerBuild() error {
 		NoCache:                    noCache,
 		Push:                       push,
 		LogFilePath:                logFilePath,
+		OutputCopyDir:              outputDir,
 	}
 
 	// Run the build

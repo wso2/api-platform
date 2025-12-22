@@ -23,6 +23,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/wso2/api-platform/cli/utils"
 )
 
 // DockerBuildConfig holds configuration for building gateway images
@@ -38,6 +40,7 @@ type DockerBuildConfig struct {
 	NoCache                    bool
 	Push                       bool
 	LogFilePath                string
+	OutputCopyDir              string
 }
 
 // BuildGatewayImages executes the docker build process for gateway images
@@ -54,15 +57,21 @@ func BuildGatewayImages(config DockerBuildConfig) error {
 	if err := runGatewayBuilder(config, logFile); err != nil {
 		return fmt.Errorf("failed to run gateway-builder: %w\n\nCheck logs at: %s", err, config.LogFilePath)
 	}
+
+	if config.OutputCopyDir != "" {
+		outputSrc := filepath.Join(config.TempDir, "output")
+		if _, err := os.Stat(outputSrc); err == nil {
+			if err := utils.CopyDir(outputSrc, config.OutputCopyDir); err != nil {
+				return fmt.Errorf("failed to copy workspace output to %s: %w", config.OutputCopyDir, err)
+			}
+			fmt.Printf("  ✓ Workspace output copied to: %s\n", config.OutputCopyDir)
+		}
+	}
+
 	fmt.Println("  ✓ Gateway-builder completed")
 
 	// Step 2: Build the three images
 	components := []string{"policy-engine", "gateway-controller", "router"}
-
-	// Validate platform and push flags
-	if config.Platform != "" && !config.Push {
-		return fmt.Errorf("--platform flag requires --push flag to be set")
-	}
 
 	if config.Platform != "" {
 		// Use docker buildx for cross-platform builds
