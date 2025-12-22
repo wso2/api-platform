@@ -2,34 +2,79 @@ package utils
 
 import (
 	"fmt"
-	"os"
-	"text/tabwriter"
+	"strings"
 )
 
-// PrintTable prints a simple aligned table to stdout. Headers and each row
-// should have the same number of columns.
+// PrintTable prints a table with ASCII borders. Headers and each row
+// should have the same number of columns; rows may be shorter and will be
+// padded.
 func PrintTable(headers []string, rows [][]string) {
-	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-
-	// Print header
-	for i, h := range headers {
-		if i == len(headers)-1 {
-			fmt.Fprintf(w, "%s\n", h)
-		} else {
-			fmt.Fprintf(w, "%s\t", h)
-		}
+	cols := len(headers)
+	if cols == 0 {
+		return
 	}
 
-	// Print rows
-	for _, row := range rows {
-		for i, col := range row {
-			if i == len(row)-1 {
-				fmt.Fprintf(w, "%s\n", col)
-			} else {
-				fmt.Fprintf(w, "%s\t", col)
+	// compute column widths
+	widths := make([]int, cols)
+	for i, h := range headers {
+		widths[i] = len(h)
+	}
+	for _, r := range rows {
+		for i := 0; i < cols && i < len(r); i++ {
+			if len(r[i]) > widths[i] {
+				widths[i] = len(r[i])
 			}
 		}
 	}
 
-	_ = w.Flush()
+	// helper to build separator like +-----+------+
+	buildSep := func() string {
+		var b strings.Builder
+		b.WriteString("+")
+		for _, w := range widths {
+			b.WriteString(strings.Repeat("-", w+2))
+			b.WriteString("+")
+		}
+		return b.String()
+	}
+
+	pad := func(s string, w int) string {
+		if len(s) >= w {
+			return s
+		}
+		return s + strings.Repeat(" ", w-len(s))
+	}
+
+	sep := buildSep()
+	fmt.Println(sep)
+
+	// header
+	var hb strings.Builder
+	hb.WriteString("|")
+	for i, h := range headers {
+		hb.WriteString(" ")
+		hb.WriteString(pad(h, widths[i]))
+		hb.WriteString(" |")
+	}
+	fmt.Println(hb.String())
+	fmt.Println(sep)
+
+	// rows
+	for _, r := range rows {
+		var rb strings.Builder
+		rb.WriteString("|")
+		for i := 0; i < cols; i++ {
+			var cell string
+			if i < len(r) {
+				cell = r[i]
+			} else {
+				cell = ""
+			}
+			rb.WriteString(" ")
+			rb.WriteString(pad(cell, widths[i]))
+			rb.WriteString(" |")
+		}
+		fmt.Println(rb.String())
+		fmt.Println(sep)
+	}
 }
