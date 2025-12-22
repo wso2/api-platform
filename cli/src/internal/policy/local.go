@@ -76,7 +76,7 @@ func ProcessLocalPolicies(localPolicies []ManifestPolicy) ([]ProcessedPolicy, er
 			fmt.Printf("using zip, ")
 
 			// Validate zip structure using central util so validation can be changed later
-			_, _, err = utils.ValidateLocalPolicyZip(zipPath)
+			err = utils.ValidateLocalPolicyZip(zipPath)
 			if err != nil {
 				return fmt.Errorf("policy %s: validation failed: %w\n\nLocal policies must be a zip file containing a policy-definition.yaml at the root. The policy-definition.yaml must include 'name' and 'version' fields.", policy.Name, err)
 			}

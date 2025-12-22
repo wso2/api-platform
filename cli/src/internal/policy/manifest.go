@@ -148,21 +148,13 @@ func validateManifest(manifest *PolicyManifest) error {
 			return fmt.Errorf("policy at index %d: name is required", i)
 		}
 
-		// Policy must have either (version) or (filePath)
-		hasVersion := policy.Version != ""
-		hasFilePath := policy.FilePath != ""
-
-		if !hasVersion && !hasFilePath {
-			return fmt.Errorf("policy %s: must specify either version or filePath", policy.Name)
+		// Require version for all policies. Version is mandatory and not optional.
+		if policy.Version == "" {
+			return fmt.Errorf("policy[%d] (%s): 'version' field is required", i, policy.Name)
 		}
 
-		// Hub policies must have version
-		if !hasFilePath && !hasVersion {
-			return fmt.Errorf("policy %s: hub policies must specify version", policy.Name)
-		}
-
-		// Validate local policy zip file structure
-		if hasFilePath {
+		// Validate local policy zip file structure when a filePath is provided
+		if policy.FilePath != "" {
 			// Resolve relative paths relative to manifest directory
 			policyPath := policy.FilePath
 			if !filepath.IsAbs(policyPath) {
@@ -176,25 +168,11 @@ func validateManifest(manifest *PolicyManifest) error {
 			}
 
 			// Validate local policy zip structure
-			validatedName, validatedVersion, err := utils.ValidateLocalPolicyZip(policyPath)
-			if err != nil {
+			if err := utils.ValidateLocalPolicyZip(policyPath); err != nil {
 				return fmt.Errorf("policy %s: validation failed:\n%w\n\nLocal policies must:\n"+
 					"  1. Be in zip format: <name>-<version>.zip (e.g., basic-auth-v1.0.0.zip)\n"+
-					"  2. Contain a single version folder (e.g., v1.0.0/)\n"+
-					"  3. Have policy-definition.yaml inside the version folder\n"+
-					"  4. Ensure name and version match across filename, folder, and YAML", policy.Name, err)
-			}
-
-			// If version is specified in manifest, verify it matches
-			if hasVersion && validatedVersion != policy.Version {
-				return fmt.Errorf("policy %s: version mismatch - manifest specifies '%s' but zip contains '%s'",
-					policy.Name, policy.Version, validatedVersion)
-			}
-
-			// Verify policy name matches
-			if validatedName != policy.Name {
-				return fmt.Errorf("policy %s: name mismatch - manifest specifies '%s' but zip contains '%s'",
-					policy.Name, policy.Name, validatedName)
+					"  2. Contain a policy-definition.yaml at the root of the archive\n"+
+					"  3. Ensure name and version fields exist inside policy-definition.yaml", policy.Name, err)
 			}
 		}
 	}

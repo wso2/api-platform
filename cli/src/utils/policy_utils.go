@@ -34,97 +34,57 @@ import (
 
 var versionDirRegex = regexp.MustCompile(`^v?\d+\.\d+\.\d+$`)
 
-// PolicyDefinition represents the structure of policy-definition.yaml
-type PolicyDefinition struct {
-	Name    string `yaml:"name"`
-	Version string `yaml:"version"`
-}
-
-// (removed duplicate normalizeNameForComparison — use ToKebabCase)
-
-// ValidateLocalPolicyZip validates a local policy zip file structure and content
-// Returns the extracted policy name and version if valid, error otherwise
-func ValidateLocalPolicyZip(zipPath string) (policyName string, policyVersion string, err error) {
+// ValidateLocalPolicyZip validates a local policy zip file structure and content.
+// It ensures that the provided zip contains a policy-definition.yaml at the root
+// of the archive (no nested single top-level folder is allowed). Name and version
+// are not returned from the zip; they are expected to come from the manifest.
+func ValidateLocalPolicyZip(zipPath string) error {
 	// Ensure file is a zip
 	zipFileName := filepath.Base(zipPath)
 	if !strings.HasSuffix(zipFileName, ".zip") {
-		return "", "", fmt.Errorf("policy file must be a .zip file, got: %s", zipFileName)
+		return fmt.Errorf("policy file must be a .zip file, got: %s", zipFileName)
 	}
 
-	// 2. Extract and validate zip structure
+	// Extract to a temp dir and validate presence of policy-definition.yaml at root
 	tempExtractDir, err := os.MkdirTemp("", "policy-validate-*")
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create temp directory for validation: %w", err)
+		return fmt.Errorf("failed to create temp directory for validation: %w", err)
 	}
 	defer os.RemoveAll(tempExtractDir)
 
 	if err := Unzip(zipPath, tempExtractDir); err != nil {
-		return "", "", fmt.Errorf("failed to extract policy zip: %w", err)
+		return fmt.Errorf("failed to extract policy zip: %w", err)
 	}
 
-	// 3. Check for policy-definition.yaml at root; if not present, allow a single top-level
-	// directory layout where the policy-definition.yaml is inside that directory (common when zipping
-	// a folder whose name is the policy or version folder).
 	policyDefPath := filepath.Join(tempExtractDir, "policy-definition.yaml")
 	if _, err := os.Stat(policyDefPath); os.IsNotExist(err) {
-		// Inspect top-level entries
-		entries, err := os.ReadDir(tempExtractDir)
-		if err != nil {
-			return "", "", fmt.Errorf("failed to read extracted zip contents: %w", err)
-		}
-
-		// Find candidate top-level directories (exclude hidden and macOS metadata)
-		var candidateDirs []string
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			name := e.Name()
-			if strings.HasPrefix(name, "__") || strings.HasPrefix(name, ".") {
-				continue
-			}
-			candidateDirs = append(candidateDirs, name)
-		}
-
-		if len(candidateDirs) == 1 {
-			// Check inside that directory for policy-definition.yaml
-			nestedPath := filepath.Join(tempExtractDir, candidateDirs[0], "policy-definition.yaml")
-			if _, err := os.Stat(nestedPath); err == nil {
-				policyDefPath = nestedPath
-			} else {
-				return "", "", fmt.Errorf("policy-definition.yaml not found at root or inside single top-level folder '%s'", candidateDirs[0])
-			}
-		} else {
-			return "", "", fmt.Errorf("policy-definition.yaml not found at root of zip and expected a single top-level folder; found %d top-level entries", len(candidateDirs))
-		}
+		return fmt.Errorf("policy-definition.yaml not found at root of zip archive")
+	} else if err != nil {
+		return fmt.Errorf("failed to stat policy-definition.yaml: %w", err)
 	}
 
-	// 4. Parse and validate policy-definition.yaml
+	// Quick parse to ensure YAML is valid and contains name/version
 	data, err := os.ReadFile(policyDefPath)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to read policy-definition.yaml: %w", err)
+		return fmt.Errorf("failed to read policy-definition.yaml: %w", err)
 	}
 
-	var policyDef PolicyDefinition
-	if err := yaml.Unmarshal(data, &policyDef); err != nil {
-		return "", "", fmt.Errorf("failed to parse policy-definition.yaml: %w", err)
+	var pd struct {
+		Name    string `yaml:"name"`
+		Version string `yaml:"version"`
+	}
+	if err := yaml.Unmarshal(data, &pd); err != nil {
+		return fmt.Errorf("failed to parse policy-definition.yaml: %w", err)
 	}
 
-	// 5. Ensure required fields exist in policy-definition.yaml
-	if policyDef.Name == "" {
-		return "", "", fmt.Errorf("'name' field is required in policy-definition.yaml")
+	if pd.Name == "" {
+		return fmt.Errorf("'name' field is required in policy-definition.yaml")
 	}
-	if policyDef.Version == "" {
-		return "", "", fmt.Errorf("'version' field is required in policy-definition.yaml")
-	}
-
-	// Normalize version to include 'v' prefix for returned value
-	yamlVersion := policyDef.Version
-	if !strings.HasPrefix(yamlVersion, "v") {
-		yamlVersion = "v" + yamlVersion
+	if pd.Version == "" {
+		return fmt.Errorf("'version' field is required in policy-definition.yaml")
 	}
 
-	return policyDef.Name, yamlVersion, nil
+	return nil
 }
 
 // CalculateSHA256 calculates SHA-256 checksum of a file
