@@ -47,7 +47,7 @@ const (
 	HealthCheckInterval = 2 * time.Second
 
 	// GatewayControllerPort is the REST API port for gateway-controller
-	GatewayControllerPort = "9111"
+	GatewayControllerPort = "9090"
 
 	// RouterPort is the HTTP traffic port for the router
 	RouterPort = "8080"
