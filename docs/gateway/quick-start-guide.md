@@ -38,6 +38,7 @@ ap gateway health
 
 # Deploy an API configuration
 curl -X POST http://localhost:9090/apis \
+  -u admin:admin \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
 version: api-platform.wso2.com/v1
