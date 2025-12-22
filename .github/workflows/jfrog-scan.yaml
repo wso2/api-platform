@@ -3,38 +3,85 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "0 20 * * *"
+
 jobs:
   scan-images:
     runs-on: ubuntu-latest
+
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      # IMPORTANT: network=host lets buildkit reach localhost:5000
+      - uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+
       - name: Setup JFrog CLI
         uses: jfrog/setup-jfrog-cli@v4
         env:
-            JF_URL: ${{ secrets.JF_URL }}
-            JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
-      - name: Scan Policy Engine
-        shell: sh
+          JF_URL: ${{ secrets.JF_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+
+      # -------------------------
+      # Policy Engine
+      # -------------------------
+      - name: Build & push policy-engine to temp registry
         run: |
-          docker pull ghcr.io/wso2/api-platform/policy-engine:latest
-          jf docker scan ghcr.io/wso2/api-platform/policy-engine:latest
-      - name: Scan Gateway Controller
-        shell: sh
+          make -C gateway/policy-engine build-and-push-multiarch \
+            RUNTIME_IMAGE=localhost:5000/policy-engine \
+            RUNTIME_TAG=localhost:5000/policy-engine:trivy
+
+      - name: JFrog scan policy-engine
         run: |
-          docker pull ghcr.io/wso2/api-platform/gateway-controller:latest
-          jf docker scan ghcr.io/wso2/api-platform/gateway-controller:latest
-      - name: Scan Gateway Router
-        shell: sh
+          docker pull localhost:5000/policy-engine:trivy
+          jf docker scan localhost:5000/policy-engine:trivy
+
+      # -------------------------
+      # Gateway Controller
+      # -------------------------
+      - name: Build & push gateway-controller to temp registry
         run: |
-          docker pull ghcr.io/wso2/api-platform/gateway-router:latest
-          jf docker scan ghcr.io/wso2/api-platform/gateway-router:latest
-      - name: Scan Gateway Builder
-        shell: sh
+          make -C gateway/gateway-controller build-and-push-multiarch \
+            IMAGE_NAME=localhost:5000/gateway-controller \
+            VERSION=trivy
+
+      - name: JFrog scan gateway-controller
         run: |
-          docker pull ghcr.io/wso2/api-platform/gateway-builder:latest
-          jf docker scan ghcr.io/wso2/api-platform/gateway-builder:latest
-      - name: Scan Gateway Operator
-        shell: sh
+          docker pull localhost:5000/gateway-controller:trivy
+          jf docker scan localhost:5000/gateway-controller:trivy
+
+      # -------------------------
+      # Gateway Builder
+      # -------------------------
+      - name: Build & push gateway-builder to temp registry
         run: |
-          docker pull ghcr.io/wso2/api-platform/gateway-operator:0.0.1
-          jf docker scan ghcr.io/wso2/api-platform/gateway-operator:0.0.1
-    
+          make -C gateway/gateway-builder build-and-push-multiarch \
+            IMAGE_NAME=localhost:5000/gateway-builder \
+            VERSION=trivy
+
+      - name: JFrog scan gateway-builder
+        run: |
+          docker pull localhost:5000/gateway-builder:trivy
+          jf docker scan localhost:5000/gateway-builder:trivy
+
+      # -------------------------
+      # Router
+      # -------------------------
+      - name: Build & push router to temp registry
+        run: |
+          make -C gateway/router build-and-push-multiarch \
+            IMAGE_NAME=localhost:5000/router \
+            VERSION=trivy
+
+      - name: JFrog scan router
+        run: |
+          docker pull localhost:5000/router:trivy
+          jf docker scan localhost:5000/router:trivy
