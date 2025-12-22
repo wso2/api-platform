@@ -71,5 +71,6 @@ func runUseCommand() error {
 	}
 
 	fmt.Printf("Gateway set to %s.\n", useName)
+	fmt.Printf("Note: gateway controller commands use Basic Auth. Ensure %s and %s are exported in your environment (or provide an equivalent credential mechanism).\n", utils.EnvGatewayUsername, utils.EnvGatewayPassword)
 	return nil
 }
