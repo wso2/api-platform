@@ -186,11 +186,11 @@ func (m *MilvusVectorDBProvider) Retrieve(embeddings []float32, filter map[strin
 		return CacheResponse{}, nil
 	}
 
-	// Raw Milvus distance → similarity score
+	// Milvus COSINE metric returns similarity score (0-1, higher is better)
 	simScore := float64(rs.Scores[0])
 	response := rs.GetColumn("response").FieldData().GetScalars()
 
-	// Check for threshold and comapre with similarity score
+	// Check for threshold and compare with similarity score
 	thrRaw, ok := filter["threshold"].(string)
 	if !ok {
 		return CacheResponse{}, fmt.Errorf("missing threshold")
@@ -200,7 +200,8 @@ func (m *MilvusVectorDBProvider) Retrieve(embeddings []float32, filter map[strin
 		return CacheResponse{}, fmt.Errorf("bad threshold value found: %w", err)
 	}
 
-	if simScore > thr {
+	fmt.Printf("Similarity score: %f, Threshold: %f\n", simScore, thr)
+	if simScore < thr {
 		return CacheResponse{}, nil
 	}
 	var resp CacheResponse

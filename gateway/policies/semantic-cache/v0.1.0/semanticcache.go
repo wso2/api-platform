@@ -388,9 +388,9 @@ func (p *SemanticCachePolicy) OnRequest(ctx *policy.RequestContext, params map[s
 
 // OnResponse handles response body processing for semantic caching
 func (p *SemanticCachePolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
-	// Only cache successful responses (2xx status codes)
-	if ctx.ResponseStatus < 200 || ctx.ResponseStatus >= 300 {
-		slog.Debug("SemanticCache: Skipping cache for non-2xx response", "statusCode", ctx.ResponseStatus)
+	// Only cache successful responses (200 status code)
+	if ctx.ResponseStatus != 200 {
+		slog.Debug("SemanticCache: Skipping cache for non-200 response", "statusCode", ctx.ResponseStatus)
 		return policy.UpstreamResponseModifications{}
 	}
 

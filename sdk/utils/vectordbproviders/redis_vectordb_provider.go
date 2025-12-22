@@ -259,8 +259,11 @@ func (r *RedisVectorDBProvider) Retrieve(embeddings []float32, filter map[string
 	if err != nil {
 		return CacheResponse{}, fmt.Errorf("invalid threshold: %w", err)
 	}
-	fmt.Printf("Match Score: %f | Threshold: %f", score, threshold)
-	if score > threshold {
+
+	similarityScore := 1.0 - score
+	fmt.Printf("Distance Score: %f | Similarity Score: %f | Similarity Threshold: %f", score, similarityScore, threshold)
+
+	if similarityScore < threshold {
 		return CacheResponse{}, nil
 	}
 
