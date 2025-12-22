@@ -61,6 +61,19 @@ services:
     networks:
       - it-gateway-network
 
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.88.0
+    container_name: it-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+    networks:
+      - it-gateway-network
+
+
   router:
     container_name: it-router
     image: ghcr.io/wso2/api-platform/gateway-router:0.1.0-SNAPSHOT
