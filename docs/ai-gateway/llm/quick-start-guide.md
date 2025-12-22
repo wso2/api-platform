@@ -38,11 +38,12 @@ curl http://localhost:9090/health
 
 ## Deploy an OpenAI LLM provider configuration
 
-The API Platform Gateway currently includes first-class support for the OpenAI LLM provider. Replace `<openai-apikey>` with your openai API key and run the following command to deploy a sample OpenAI LLM provider.
+The API Platform Gateway currently includes first-class support for the OpenAI LLM provider. As a platform administrator, replace `<openai-apikey>` with your openai API key and run the following command to deploy a sample OpenAI LLM provider.
 
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
@@ -69,12 +70,12 @@ spec:
         methods: [GET]
 EOF
 ```
+
 To test LLM provider traffic routing through the gateway, invoke the following request.
 
 ```bash
-curl -X POST http://localhost:8080/chat/completions \
+curl -X POST https://localhost:8443/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Host: openai" \
   -d '{
     "model": "gpt-4",
     "messages": [
@@ -83,7 +84,45 @@ curl -X POST http://localhost:8080/chat/completions \
         "content": "Hi"
       }
     ]
-  }'
+  }' -k
+```
+
+## Deploy an LLM proxy configuration to consume an LLM provider
+
+The API Platform Gateway provides first-class support for configuring and deploying LLM proxies. As an AI developer, run the following command to deploy a sample LLM proxy that consumes the OpenAI LLM provider previously deployed by the platform administrator.
+
+```bash
+curl -X POST http://localhost:9090/llm-proxies \
+  -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
+  --data-binary @- <<'EOF'
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: LlmProxy
+metadata:
+  name: docs-assistant
+spec:
+  displayName: Docs Assistant
+  version: v1.0
+  context: /assistant
+  provider: openai-provider
+  policies: []
+EOF
+```
+
+To test LLM proxy traffic routing through the gateway and consume the LLM provider, invoke the following request.
+
+```bash
+curl -X POST "https://localhost:8443/assistant/chat/completions" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hi"
+      }
+    ]
+  }' -k
 ```
 
 ## Stopping the Gateway
