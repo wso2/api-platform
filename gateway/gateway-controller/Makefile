@@ -69,7 +69,7 @@ copy-policy-definitions: ## Copy policy definitions from policy-manifest.yaml
 		fi; \
 	done
 
-build: generate copy-policy-definitions ## Build Docker image using buildx
+build: generate copy-policy-definitions test ## Build Docker image using buildx
 	@echo "Building Docker image ($(IMAGE_NAME):$(VERSION))..."
 	docker buildx build -f Dockerfile \
 		--build-context sdk=../../sdk \

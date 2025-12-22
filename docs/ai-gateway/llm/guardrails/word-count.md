@@ -57,7 +57,7 @@ Deploy an LLM provider that validates request messages contain between 10 and 50
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
-version: ai.api-platform.wso2.com/v1
+version: gateway.api-platform.wso2.com/v1alpha1
 kind: llm/provider
 spec:
   name: word-count-provider
