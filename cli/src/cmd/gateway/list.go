@@ -60,14 +60,10 @@ func runListCommand() error {
 	}
 
 	// Display as table
-	headers := []string{"NAME", "SERVER", "AUTH"}
+	headers := []string{"NAME", "SERVER"}
 	rows := make([][]string, 0, len(cfg.Gateways))
 	for _, gw := range cfg.Gateways {
-		securityStatus := "none"
-		if gw.Token != "" {
-			securityStatus = "OAuth2"
-		}
-		rows = append(rows, []string{gw.Name, gw.Server, securityStatus})
+		rows = append(rows, []string{gw.Name, gw.Server})
 	}
 	utils.PrintTable(headers, rows)
 
