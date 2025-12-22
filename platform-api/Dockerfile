@@ -65,8 +65,8 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     -o platform-api ./cmd/main.go
 
 # Stage 2: Create minimal runtime image
-# Using Debian slim for glibc compatibility with builder stage
-FROM debian:bookworm-slim
+# Using Ubuntu 24.04 for glibc compatibility with builder stage
+FROM ubuntu:24.04
 
 ARG USERNAME=wso2
 ARG USER_UID=10001
@@ -75,7 +75,6 @@ ARG USER_GID=$USER_UID
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    wget \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
