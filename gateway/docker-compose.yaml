@@ -55,8 +55,8 @@ services:
     container_name: router
     image: ghcr.io/wso2/api-platform/gateway-router:0.1.0-SNAPSHOT
     ports:
-      - "8080:8080"   # HTTP traffic
-      - "8443:8443"   # HTTPS traffic
+      - "8090:8080"   # HTTP traffic
+      - "8444:8443"   # HTTPS traffic
       - "9901:9901"   # Envoy admin
       - "8081:8081"
       - "8082:8082"
@@ -180,3 +180,6 @@ volumes:
 networks:
   gateway-network:
     driver: bridge
+
+
+# 

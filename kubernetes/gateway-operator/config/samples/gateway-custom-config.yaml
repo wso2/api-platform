@@ -34,7 +34,7 @@ data:
               enabled: true
               users:
                 - username: "admin"
-                  password: "admin"
+                  password: "admin7"
                   password_hashed: false
                   roles: ["admin"]
           # Server configuration
