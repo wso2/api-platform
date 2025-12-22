@@ -1,8 +1,8 @@
-name: CLI Hourly Gateway Build
+name: Periodic Gateway Build
 
 on:
   schedule:
-    - cron: '0 * * * *' # run at the top of every hour
+    - cron: '*/30 * * * *' # run every 30 minutes
   workflow_dispatch:
 
 jobs:
