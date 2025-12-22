@@ -33,9 +33,6 @@ docker compose up -d
 # Verify gateway controller is running
 curl http://localhost:9090/health
 
-# Or use the CLI (requires gateway to be added first with: ap gateway add)
-ap gateway health
-
 # Deploy an API configuration
 curl -X POST http://localhost:9090/apis \
   -u admin:admin \
@@ -75,34 +72,6 @@ EOF
 # Test routing through the gateway
 curl http://localhost:8080/weather/v1.0/us/seattle
 curl https://localhost:8443/weather/v1.0/us/seattle -k
-```
-
-### Managing APIs with CLI
-
-The CLI provides convenient commands for managing your APIs:
-
-**List all APIs:**
-```bash
-ap gateway api list
-```
-
-**Get a specific API:**
-```bash
-# By name and version
-ap gateway api get --display-name "Weather-API" --version v1.0 --format yaml
-
-# By ID
-ap gateway api get --id <api-id> --format yaml
-```
-
-**Apply an API from a file:**
-```bash
-ap gateway apply --file petstore-api.yaml
-```
-
-**Delete an API:**
-```bash
-ap gateway api delete --id <api-id>
 ```
 
 ### Stopping the Gateway
