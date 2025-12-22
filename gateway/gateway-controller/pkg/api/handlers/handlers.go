@@ -2426,7 +2426,7 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKey string) {
 
 	log.Info("API key revoked successfully",
 		zap.String("handle", handle),
-		zap.String("key", apiKey),
+		zap.String("key", s.apiKeyService.MaskAPIKey(apiKey)),
 		zap.String("user", user.UserID),
 		zap.String("correlation_id", correlationID))
 

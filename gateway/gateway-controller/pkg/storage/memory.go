@@ -67,7 +67,7 @@ func (cs *ConfigStore) Add(cfg *models.StoredConfig) error {
 
 	key := cfg.GetCompositeKey()
 	handle := cfg.GetHandle()
-	if existingID, exists := cs.handle[key]; exists {
+	if existingID, exists := cs.handle[handle]; exists {
 		return fmt.Errorf("%w: configuration with handle '%s' already exists (ID: %s)",
 			ErrConflict, handle, existingID)
 	}

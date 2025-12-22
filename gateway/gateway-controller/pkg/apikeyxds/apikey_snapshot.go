@@ -134,11 +134,11 @@ func (sm *APIKeySnapshotManager) StoreAPIKey(apiKey *models.APIKey) error {
 
 // RevokeAPIKey revokes an API key and updates the snapshot
 func (sm *APIKeySnapshotManager) RevokeAPIKey(apiKeyValue string) error {
-	sm.logger.Info("Revoking API key", zap.String("api_key_value", apiKeyValue))
+	sm.logger.Info("Revoking API key", zap.String("api_key_value", MaskAPIKey(apiKeyValue)))
 
 	// Revoke in the API key store
 	if !sm.store.Revoke(apiKeyValue) {
-		return fmt.Errorf("API key not found: %s", apiKeyValue)
+		return fmt.Errorf("API key not found: %s", MaskAPIKey(apiKeyValue))
 	}
 
 	// Update the snapshot to reflect the new state
@@ -262,4 +262,12 @@ func (t *APIKeyTranslator) createAPIKeyStateResource(stateResource *APIKeyStateR
 	resource.TypeUrl = APIKeyStateTypeURL
 
 	return resource, nil
+}
+
+// MaskAPIKey masks an API key for secure logging, showing first 8 and last 4 characters
+func MaskAPIKey(apiKey string) string {
+	if len(apiKey) <= 12 {
+		return "****"
+	}
+	return apiKey[:8] + "****" + apiKey[len(apiKey)-4:]
 }

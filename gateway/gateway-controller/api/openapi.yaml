@@ -3385,7 +3385,7 @@ components:
             $ref: "#/components/schemas/APIKey"
         totalCount:
           type: integer
-          description: Total number of certificate files
+          description: Total number of API keys
           example: 3
         status:
           type: string

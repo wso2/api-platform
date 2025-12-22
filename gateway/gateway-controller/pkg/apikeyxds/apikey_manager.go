@@ -78,13 +78,13 @@ func (asm *APIKeyStateManager) RevokeAPIKey(apiId, apiName, apiVersion, apiKeyVa
 	// Revoke the API key and update the snapshot
 	if err := asm.snapshotManager.RevokeAPIKey(apiKeyValue); err != nil {
 		asm.logger.Error("Failed to revoke API key and update snapshot",
-			zap.String("api_key_value", apiKeyValue),
+			zap.String("api_key_value", asm.MaskAPIKey(apiKeyValue)),
 			zap.Error(err))
 		return fmt.Errorf("failed to revoke API key: %w", err)
 	}
 
 	asm.logger.Info("Successfully revoked API key and updated policy engine state",
-		zap.String("api_key_value", apiKeyValue),
+		zap.String("api_key_value", asm.MaskAPIKey(apiKeyValue)),
 		zap.String("correlation_id", correlationID))
 
 	return nil
@@ -149,4 +149,12 @@ func (asm *APIKeyStateManager) RefreshSnapshot() error {
 
 	asm.logger.Info("Successfully refreshed API key snapshot")
 	return nil
+}
+
+// MaskAPIKey masks an API key for secure logging, showing first 8 and last 4 characters
+func (asm *APIKeyStateManager) MaskAPIKey(apiKey string) string {
+	if len(apiKey) <= 12 {
+		return "****"
+	}
+	return apiKey[:8] + "****" + apiKey[len(apiKey)-4:]
 }

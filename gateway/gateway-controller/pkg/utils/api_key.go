@@ -355,7 +355,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) error {
 	apiVersion := apiConfig.Version
 	logger.Info("Removing API key from policy engine",
 		zap.String("handle", params.Handle),
-		zap.String("api key", s.maskAPIKey(params.APIKey)),
+		zap.String("api key", s.MaskAPIKey(params.APIKey)),
 		zap.String("api_name", apiName),
 		zap.String("api_version", apiVersion),
 		zap.String("user", user.UserID),
@@ -373,7 +373,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) error {
 
 	logger.Info("API key revoked successfully",
 		zap.String("handle", params.Handle),
-		zap.String("api key", s.maskAPIKey(params.APIKey)),
+		zap.String("api key", s.MaskAPIKey(params.APIKey)),
 		zap.String("user", user.UserID),
 		zap.String("correlation_id", params.CorrelationID))
 
@@ -602,9 +602,9 @@ func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult,
 	// Build response API keys
 	var responseAPIKeys []api.APIKey
 	for _, key := range activeUserAPIKeys {
+		// API key is not returned for security reasons
 		responseAPIKey := api.APIKey{
 			Name:       key.Name,
-			ApiKey:     key.APIKey,
 			ApiId:      params.Handle, // Use handle instead of internal API ID
 			Operations: key.Operations,
 			Status:     api.APIKeyStatus(key.Status),
@@ -989,8 +989,8 @@ func (s *APIKeyService) generateAPIKeyValue() (string, error) {
 	return APIKeyPrefix + hex.EncodeToString(randomBytes), nil
 }
 
-// maskAPIKey masks an API key for secure logging, showing first 8 and last 4 characters
-func (s *APIKeyService) maskAPIKey(apiKey string) string {
+// MaskAPIKey masks an API key for secure logging, showing first 8 and last 4 characters
+func (s *APIKeyService) MaskAPIKey(apiKey string) string {
 	if len(apiKey) <= 12 {
 		return "****"
 	}
