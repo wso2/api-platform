@@ -151,7 +151,7 @@ ap gateway apply --file <path>
 **Sample Command**
 
 ```
-ap gateway apply--file petstore-api.yaml
+ap gateway apply --file petstore-api.yaml
 ```
 
 ---
