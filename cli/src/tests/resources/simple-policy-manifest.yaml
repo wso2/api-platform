@@ -1,6 +1,78 @@
 version: v1
 versionResolution: minor
 policies:
+  - name: pii-masking-regex
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: api-key-auth
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: mcp-auth
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: json-schema-guardrail
+    version: v0.1.0
+    versionResolution: exact
+
   - name: basic-auth
-    version: v1.0.0
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: url-guardrail
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: prompt-decorator
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: aws-bedrock-guardrail
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: semantic-prompt-guard
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: regex-guardrail
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: sentence-count-guardrail
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: azure-content-safety-content-moderation
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: modify-headers
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: content-length-guardrail
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: respond
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: word-count-guardrail
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: semantic-cache
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: jwt-auth
+    version: v0.1.0
+    versionResolution: exact
+
+  - name: prompt-template
+    version: v0.1.0
     versionResolution: exact
