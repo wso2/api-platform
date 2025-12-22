@@ -1,0 +1,6 @@
+version: v1
+versionResolution: minor
+policies:
+  - name: basic-auth
+    version: v1.0.0
+    versionResolution: exact

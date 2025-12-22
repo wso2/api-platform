@@ -106,9 +106,9 @@ func initializeDefaults() error {
 		gatewayName = filepath.Base(absPath)
 	}
 
-	// Default gateway builder if not provided (uses version)
+	// Default gateway builder if not provided (use repo without forcing a tag)
 	if gatewayBuilder == "" {
-		gatewayBuilder = fmt.Sprintf("%s:%s", utils.DefaultGatewayBuilderRepo, gatewayVersion)
+		gatewayBuilder = utils.DefaultGatewayBuilderRepo
 	}
 
 	// Construct the full image tag: repository/name:version
@@ -165,7 +165,7 @@ func runOnlineBuild() error {
 
 	manifest, err := policy.ParseManifest(manifestFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to parse manifest file at '%s': %w\n\nMake sure the file exists and is a valid YAML file", manifestFilePath, err)
+		return fmt.Errorf("failed to parse manifest file at '%s': %w", manifestFilePath, err)
 	}
 	fmt.Printf("  ✓ Loaded manifest with %d policies\n\n", len(manifest.Policies))
 
@@ -312,7 +312,7 @@ func runOfflineBuild() error {
 	// Read manifest file (needed for local policy paths)
 	manifest, err := policy.ParseManifest(manifestFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to parse manifest file at '%s': %w\n\nMake sure the file exists and is a valid YAML file", manifestFilePath, err)
+		return fmt.Errorf("failed to parse manifest file at '%s': %w", manifestFilePath, err)
 	}
 
 	// Read lock file
@@ -497,6 +497,7 @@ func runDockerBuild() error {
 		NoCache:                    noCache,
 		Push:                       push,
 		LogFilePath:                logFilePath,
+		OutputCopyDir:              outputDir,
 	}
 
 	// Run the build

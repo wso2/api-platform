@@ -50,13 +50,14 @@ var listCmd = &cobra.Command{
 
 // MCPListItem represents a single MCP in the list response
 type MCPListItem struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Version   string `json:"version"`
-	Context   string `json:"context"`
-	Status    string `json:"status"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Version     string `json:"version"`
+	Context     string `json:"context"`
+	Status      string `json:"status"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 // MCPListResponse represents the response from GET /mcp-proxies
@@ -97,24 +98,18 @@ func runListCommand() error {
 		return fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	// Display the MCPs
+	// Display the MCPs as a table when present
 	if listResp.Count == 0 {
 		fmt.Println("No MCPs found on the gateway.")
 		return nil
 	}
 
-	for i, mcp := range listResp.MCPProxies {
-		fmt.Printf("MCP %d:\n", i+1)
-		fmt.Printf("  ID: %s\n", mcp.ID)
-		fmt.Printf("  Name: %s\n", mcp.Name)
-		fmt.Printf("  Version: %s\n", mcp.Version)
-		fmt.Printf("  Context: %s\n", mcp.Context)
-		fmt.Printf("  Status: %s\n", mcp.Status)
-		fmt.Printf("  Created At: %s\n", mcp.CreatedAt)
-		if i < len(listResp.MCPProxies)-1 {
-			fmt.Println()
-		}
+	headers := []string{"ID", "DISPLAY_NAME", "VERSION", "CONTEXT", "STATUS", "CREATED_AT"}
+	rows := make([][]string, 0, len(listResp.MCPProxies))
+	for _, mcp := range listResp.MCPProxies {
+		rows = append(rows, []string{mcp.ID, mcp.DisplayName, mcp.Version, mcp.Context, mcp.Status, mcp.CreatedAt})
 	}
+	utils.PrintTable(headers, rows)
 
 	return nil
 }

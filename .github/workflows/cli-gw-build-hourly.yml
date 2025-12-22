@@ -1,0 +1,70 @@
+name: Periodic Gateway Build
+
+on:
+  schedule:
+    - cron: '*/30 * * * *' # run every 30 minutes
+  workflow_dispatch:
+
+jobs:
+  hourly-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build gateway
+        working-directory: ./gateway
+        run: |
+          set -e
+          make build
+
+      - name: Build CLI
+        working-directory: ./cli/src
+        run: |
+          set -e
+          make build-all
+
+      - name: Prepare my-gw run directory
+        run: |
+          set -e
+          rm -rf my-gw
+          mkdir my-gw
+          # Copy the linux amd64 binary produced by build-all to my-gw and name it `ap`
+          if [ -f cli/src/build/ap-linux-amd64 ]; then
+            cp cli/src/build/ap-linux-amd64 my-gw/ap
+          elif [ -f cli/src/build/ap-linux-amd64-v* ]; then
+            # handle versioned outputs if present
+            cp cli/src/build/ap-linux-amd64-v* my-gw/ap || true
+          else
+            echo "Warning: expected CLI binary not found at cli/src/build/ap-linux-amd64"
+          fi
+          chmod +x my-gw/ap || true
+          # Copy the sample manifest into the run directory if it exists
+          if [ -f cli/src/tests/resources/simple-policy-manifest.yaml ]; then
+            # copy and rename to policy-manifest.yaml as expected by the build
+            cp cli/src/tests/resources/simple-policy-manifest.yaml my-gw/policy-manifest.yaml
+          fi
+
+      - name: Run ap gateway image build (smoke test)
+        working-directory: ./my-gw
+        env:
+          # Force printing of workspace note by unsetting CI in this step
+          CI: ""
+          # make sure any required env vars are unset for a deterministic run
+          WSO2AP_GW_USERNAME: ${{ secrets.WSO2AP_GW_USERNAME || '' }}
+          WSO2AP_GW_PASSWORD: ${{ secrets.WSO2AP_GW_PASSWORD || '' }}
+        run: |
+          set -eux
+          if [ ! -x ./ap ]; then
+            echo "ap binary not present or not executable; skipping smoke run"
+            exit 0
+          fi
+          # Run the command and capture output
+          ./ap gateway image build 2>&1 | tee build.log || true
+          # Verify the build printed the workspace-cleared note
+          grep -q "Note: Workspace may be cleared on the next run of this command." build.log

@@ -149,7 +149,7 @@ ap gateway api get --display-name "Weather-API" --version v1.0 --format yaml
 ap gateway api get --id <api-id> --format yaml
 
 # Delete an API
-ap gateway api delete --id <api-id> --confirm
+ap gateway api delete --id <api-id>
 ```
 
 ### Stopping the Gateway

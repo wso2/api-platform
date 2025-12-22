@@ -98,7 +98,7 @@ ap gateway apply --file petstore-api.yaml
 
 **Delete an API:**
 ```bash
-ap gateway api delete --id <api-id> --confirm
+ap gateway api delete --id <api-id>
 ```
 
 ### Stopping the Gateway

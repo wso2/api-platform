@@ -89,16 +89,40 @@ func NewClientForActive() (*Client, error) {
 
 // Do executes an HTTP request with the gateway's authentication and settings
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
-	// Add authentication (priority: Basic Auth from env vars, then Token)
-	username := os.Getenv(utils.EnvGatewayUsername)
-	password := os.Getenv(utils.EnvGatewayPassword)
+	// Authentication priority (future-proofed):
+	// 1. Env token (WSO2AP_GW_TOKEN) - reserved for OAuth2/token-based auth
+	// 2. Basic Auth from env vars (WSO2AP_GW_USERNAME / WSO2AP_GW_PASSWORD)
+	// If neither is present, fail early to avoid making unauthenticated requests.
 
-	if username != "" && password != "" {
-		// Basic authentication from environment variables
+	// 1) Env token (future OAuth2 flow)
+	if token := os.Getenv(utils.EnvGatewayToken); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	} else {
+		// 2) Basic Auth via env vars
+		username := os.Getenv(utils.EnvGatewayUsername)
+		password := os.Getenv(utils.EnvGatewayPassword)
+
+		var missing []string
+		if username == "" {
+			missing = append(missing, utils.EnvGatewayUsername)
+		}
+		if password == "" {
+			missing = append(missing, utils.EnvGatewayPassword)
+		}
+
+		if len(missing) > 0 {
+			var b strings.Builder
+			b.WriteString("missing Basic Auth credentials:\n")
+			for _, m := range missing {
+				b.WriteString("  - ")
+				b.WriteString(m)
+				b.WriteByte('\n')
+			}
+			b.WriteString("\nExport these environment variables and try again.\n")
+			return nil, fmt.Errorf(b.String())
+		}
+
 		req.SetBasicAuth(username, password)
-	} else if c.gateway.Token != "" {
-		// Bearer token authentication (OAuth2)
-		req.Header.Set("Authorization", "Bearer "+c.gateway.Token)
 	}
 
 	// Set common headers
@@ -124,7 +148,21 @@ func (c *Client) Get(path string) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	return c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Treat 2XX as success
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	// Treat 404 as non-error
+	if resp.StatusCode == http.StatusNotFound {
+		return resp, nil
+	}
+
+	return nil, utils.FormatHTTPError(fmt.Sprintf("GET %s", path), resp, "Gateway Controller")
 }
 
 // Post performs a POST request to the specified path with the given body
@@ -139,7 +177,15 @@ func (c *Client) Post(path string, body io.Reader) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	return c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	// Treat 2XX as success
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	return nil, utils.FormatHTTPError(fmt.Sprintf("POST %s", path), resp, "Gateway Controller")
 }
 
 // PostYAML performs a POST request with YAML content
@@ -155,7 +201,15 @@ func (c *Client) PostYAML(path string, body io.Reader) (*http.Response, error) {
 	}
 	req.Header.Set("Content-Type", "application/x-yaml")
 
-	return c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	// Treat 2XX as success
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	return nil, utils.FormatHTTPError(fmt.Sprintf("POST %s", path), resp, "Gateway Controller")
 }
 
 // Put performs a PUT request to the specified path with the given body
@@ -170,7 +224,15 @@ func (c *Client) Put(path string, body io.Reader) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	return c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	// Treat 2XX as success
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	return nil, utils.FormatHTTPError(fmt.Sprintf("PUT %s", path), resp, "Gateway Controller")
 }
 
 // PutYAML performs a PUT request with YAML content
@@ -186,7 +248,15 @@ func (c *Client) PutYAML(path string, body io.Reader) (*http.Response, error) {
 	}
 	req.Header.Set("Content-Type", "application/x-yaml")
 
-	return c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	// Treat 2XX as success
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	return nil, utils.FormatHTTPError(fmt.Sprintf("PUT %s", path), resp, "Gateway Controller")
 }
 
 // Delete performs a DELETE request to the specified path
@@ -201,7 +271,15 @@ func (c *Client) Delete(path string) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	return c.Do(req)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	// Treat 2XX as success
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	return nil, utils.FormatHTTPError(fmt.Sprintf("DELETE %s", path), resp, "Gateway Controller")
 }
 
 // GetGateway returns the gateway configuration
@@ -213,3 +291,5 @@ func (c *Client) GetGateway() *config.Gateway {
 func (c *Client) GetBaseURL() string {
 	return c.gateway.Server
 }
+
+// FormatHTTPError is implemented in the utils package; use utils.FormatHTTPError

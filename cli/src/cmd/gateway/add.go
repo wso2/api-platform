@@ -19,10 +19,8 @@
 package gateway
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/config"
@@ -31,27 +29,18 @@ import (
 
 const (
 	AddCmdLiteral = "add"
-	AddCmdExample = `# Add a new gateway
+	AddCmdExample = `# Add a new gateway (Basic Auth is used by default)
 ap gateway add --name dev --server http://localhost:9090
 
-# Add a gateway with authentication token (OAuth2)
-ap gateway add --name prod --server https://api.example.com --token <TOKEN>
-
-# Add a gateway with token from environment variable
-ap gateway add --name prod --server https://api.example.com --env-token MY_TOKEN_VAR
-
-# For Basic Auth, set environment variables before running gateway commands:
+# For Basic Auth, set environment variables before running gateway controller commands:
 #   export ` + utils.EnvGatewayUsername + `=admin
 #   export ` + utils.EnvGatewayPassword + `=admin
-# Then add the gateway:
 ap gateway add --name dev --server http://localhost:9090`
 )
 
 var (
-	addName     string
-	addServer   string
-	addToken    string
-	addEnvToken string
+	addName   string
+	addServer string
 )
 
 var addCmd = &cobra.Command{
@@ -70,8 +59,6 @@ var addCmd = &cobra.Command{
 func init() {
 	utils.AddStringFlag(addCmd, utils.FlagName, &addName, "", "Name of the gateway (required)")
 	utils.AddStringFlag(addCmd, utils.FlagServer, &addServer, "", "Server URL of the gateway (required)")
-	utils.AddStringFlag(addCmd, utils.FlagToken, &addToken, "", "Bearer token for OAuth2 authentication")
-	utils.AddStringFlag(addCmd, utils.FlagEnvToken, &addEnvToken, "", "Environment variable name to read bearer token from")
 
 	addCmd.MarkFlagRequired(utils.FlagName)
 	addCmd.MarkFlagRequired(utils.FlagServer)
@@ -84,44 +71,14 @@ func runAddCommand() error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Validate authentication flags
-	if addToken != "" && addEnvToken != "" {
-		return fmt.Errorf("cannot specify both --%s and --%s flags", utils.FlagToken, utils.FlagEnvToken)
-	}
-
-	var token string
-
-	// Handle bearer token authentication (OAuth2)
-	if addToken != "" {
-		fmt.Printf("\n⚠️  Warning: Providing tokens via --%s flag is not recommended\n", utils.FlagToken)
-		fmt.Println("   Tokens in command-line arguments may be visible in:")
-		fmt.Println("   • Shell history")
-		fmt.Println("   • Process lists")
-		fmt.Println("   • Log files")
-		fmt.Printf("   Next time, use --%s or omit for interactive prompt.\n", utils.FlagEnvToken)
-		token = addToken
-	} else if addEnvToken != "" {
-		token = fmt.Sprintf("${%s}", addEnvToken)
-	} else {
-		// Interactive prompt for token
-		fmt.Println("\nAuthentication token (leave empty if not using OAuth2):")
-		fmt.Println("  • If provided: connection will use Bearer token authentication (OAuth2)")
-		fmt.Println("  • If empty: no token will be stored")
-		fmt.Printf("  • For Basic Auth: set %s and %s environment variables\n", utils.EnvGatewayUsername, utils.EnvGatewayPassword)
-		fmt.Print("Token: ")
-		reader := bufio.NewReader(os.Stdin)
-		input, err := reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("failed to read token: %w", err)
-		}
-		token = strings.TrimSpace(input)
-	}
+	// No token is stored anymore; gateways use Basic Auth by default.
+	// Users should set %s and %s in their environment for gateway controller commands.
 
 	// Create new gateway
 	gateway := config.Gateway{
 		Name:   addName,
 		Server: addServer,
-		Token:  token,
+		Token:  "",
 	}
 
 	// Add gateway to config
@@ -141,9 +98,10 @@ func runAddCommand() error {
 		configPath = "(unknown location)"
 	}
 
-	// Print success message
+	// Print success message and guidance about Basic Auth
 	fmt.Printf("Gateway in %s added as %s\n", addServer, addName)
 	fmt.Printf("Configuration saved to: %s\n", configPath)
+	fmt.Printf("Note: gateways use Basic Auth. Ensure %s and %s are exported in your environment for controller commands.\n", utils.EnvGatewayUsername, utils.EnvGatewayPassword)
 
 	return nil
 }

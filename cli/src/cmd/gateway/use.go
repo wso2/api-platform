@@ -21,6 +21,7 @@ package gateway
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/config"
@@ -71,5 +72,24 @@ func runUseCommand() error {
 	}
 
 	fmt.Printf("Gateway set to %s.\n", useName)
+
+	// If Basic Auth env vars are not present, show a helpful, friendly message.
+	user := os.Getenv(utils.EnvGatewayUsername)
+	pass := os.Getenv(utils.EnvGatewayPassword)
+	if user == "" || pass == "" {
+		fmt.Println()
+		fmt.Println("Warn: Gateway controller commands use Basic Auth credentials.")
+		missing := []string{}
+		if user == "" {
+			missing = append(missing, utils.EnvGatewayUsername)
+		}
+		if pass == "" {
+			missing = append(missing, utils.EnvGatewayPassword)
+		}
+		fmt.Printf("Missing environment variables: %s\n", strings.Join(missing, ", "))
+		fmt.Println("Please export them before running controller commands, for example:")
+		fmt.Printf("  export %s=admin\n  export %s=admin\n", utils.EnvGatewayUsername, utils.EnvGatewayPassword)
+		fmt.Println("Or provide an equivalent credential mechanism for automation/CI.")
+	}
 	return nil
 }

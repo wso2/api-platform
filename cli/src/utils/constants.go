@@ -33,7 +33,7 @@ const (
 	// Image Build Defaults
 	DefaultManifestFile         = "policy-manifest.yaml"
 	DefaultManifestLockFile     = "policy-manifest-lock.yaml"
-	DefaultGatewayVersion       = "0.2.0"
+	DefaultGatewayVersion       = "latest"
 	DefaultImageRepository      = "ghcr.io/wso2/api-platform"
 	DefaultGatewayBuilderRepo   = "ghcr.io/wso2/api-platform/gateway-builder"
 	DefaultGatewayControllerImg = "" // Uses default from gateway-builder
@@ -46,9 +46,10 @@ const (
 	GatewayMCPProxiesPath   = "/mcp-proxies"
 	GatewayMCPProxyByIDPath = "/mcp-proxies/%s"
 
-	// BasicAuth Environment Variables
-	EnvGatewayUsername = "WSO2AP_GW_USERNAME"
-	EnvGatewayPassword = "WSO2AP_GW_PASSWORD"
+	// Auth Environment Variables
+	EnvGatewayUsername = "WSO2AP_GW_USERNAME" // For Basic Auth
+	EnvGatewayPassword = "WSO2AP_GW_PASSWORD" // For Basic Auth
+	EnvGatewayToken    = "WSO2AP_GW_TOKEN"    // For OAuth2
 
 	// Image Build Configuration
 	GatewayVerifyChecksumOnBuild = true
