@@ -1313,9 +1313,15 @@ jobs:
             name: ignored-api
             namespace: ignored-ns
           spec:
-            displayName: ignored-api
+            displayName: scoped-api
             version: v1.0
-            context: /ignored
+            context: /ignored-api
+            upstream:
+              main:
+                url: http://httpbin.default.svc.cluster.local:80
+            operations:
+              - method: GET
+                path: /get
           EOF
 
           echo "Checking status of ignored-api (should be empty)..."
