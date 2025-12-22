@@ -38,6 +38,9 @@ type SharedContext struct {
 	// APIVersion is the version of the API (e.g., "v1.0.0")
 	APIVersion string
 
+	// APIKind is the type of the API
+	APIKind string
+
 	// APIContext is the base context path of the API (e.g., "/petstore")
 	// This is the base path without the version
 	APIContext string

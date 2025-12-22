@@ -108,7 +108,7 @@ func (m *Moesif) Publish(event *dto.Event) {
 		Verb:       event.Operation.APIMethod,
 		ApiVersion: &event.API.APIVersion,
 		IpAddress:  &event.UserIP,
-		Headers: map[string]interface{}{ // TODO: Need to populate them dynamically
+		Headers: map[string]interface{}{ // TODO (osura): Need to populate them dynamically
 			"User-Agent":   event.UserAgentHeader,
 			"Content-Type": "application/json",
 		},
@@ -119,7 +119,7 @@ func (m *Moesif) Publish(event *dto.Event) {
 		respTime = event.RequestTimestamp.Add(time.Duration(event.Latencies.ResponseLatency) * time.Millisecond)
 	}
 
-	rspHeaders := map[string]string{ //TODO: Need to populate them dynamically
+	rspHeaders := map[string]string{ //TODO (osura): Need to populate them dynamically
 		"Vary":          "Accept-Encoding",
 		"Pragma":        "no-cache",
 		"Expires":       "-1",
@@ -133,7 +133,12 @@ func (m *Moesif) Publish(event *dto.Event) {
 		Headers: rspHeaders,
 	}
 
-	metadataMap := m.prepareMetadataMap(event.Properties)
+	// Medatadata Map for the event
+	metadataMap := make(map[string]interface{})
+	m.addToMetadata("apiContext", event.API.APIContext, metadataMap)
+	m.addToMetadata("apiName", event.API.APIName, metadataMap)
+	m.addToMetadata("apiVersion", event.API.APIVersion, metadataMap)
+	m.addToMetadata("apiType", event.API.APIType, metadataMap)
 
 	userID := anonymous
 	eventModel := &models.EventModel{
@@ -148,13 +153,6 @@ func (m *Moesif) Publish(event *dto.Event) {
 }
 
 // Map any additional metadata related to the event provided under properties
-func (m *Moesif) prepareMetadataMap(eventProps map[string]interface{}) map[string]interface{} {
-	metadataMap := make(map[string]interface{})
-	if aiMetadata, ok := eventProps["aiMetadata"]; ok {
-		metadataMap["aiMetadata"] = aiMetadata
-	}
-	if aiTokenUsage, ok := eventProps["aiTokenUsage"]; ok {
-		metadataMap["aiTokenUsage"] = aiTokenUsage
-	}
-	return metadataMap
+func (m *Moesif) addToMetadata(key, val string, metadataMap map[string]interface{}) {
+	metadataMap[key] = val
 }
