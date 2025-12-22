@@ -54,7 +54,7 @@ gateway_controller:
         admin: ["gateway-admins", "platform-admins"]
         developer: ["api-developers", "ops"]
         # Optional: give any authenticated user a baseline role
-        viewer: ["*"]
+        consumer: ["*"]
 ```
 
 ## Role Mapping Semantics
