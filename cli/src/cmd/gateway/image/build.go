@@ -165,7 +165,7 @@ func runOnlineBuild() error {
 
 	manifest, err := policy.ParseManifest(manifestFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to parse manifest file at '%s': %w\n\nMake sure the file exists and is a valid YAML file", manifestFilePath, err)
+		return fmt.Errorf("failed to parse manifest file at '%s': %w", manifestFilePath, err)
 	}
 	fmt.Printf("  ✓ Loaded manifest with %d policies\n\n", len(manifest.Policies))
 
@@ -312,7 +312,7 @@ func runOfflineBuild() error {
 	// Read manifest file (needed for local policy paths)
 	manifest, err := policy.ParseManifest(manifestFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to parse manifest file at '%s': %w\n\nMake sure the file exists and is a valid YAML file", manifestFilePath, err)
+		return fmt.Errorf("failed to parse manifest file at '%s': %w", manifestFilePath, err)
 	}
 
 	// Read lock file
