@@ -20,14 +20,14 @@ Ensure `docker` and `docker compose` commands are available.
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway-v0.1.0/gateway-v0.1.0.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway-v0.2.0/gateway-v0.2.0.zip
 
 # Unzip the downloaded distribution.
-unzip gateway-v0.1.0.zip
+unzip gateway-v0.2.0.zip
 
 
 # Start the complete stack
-cd gateway-v0.1.0/
+cd gateway-v0.2.0/
 docker compose up -d
 
 # Verify gateway controller is running
@@ -41,30 +41,35 @@ curl -X POST http://localhost:9090/apis \
   -u admin:admin \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
-version: api-platform.wso2.com/v1
-kind: http/rest
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: weather-api-v1.0
 spec:
-  name: Weather-API
+  displayName: Weather-API
   version: v1.0
   context: /weather/$version
   upstream:
-    - url: http://sample-backend:5000/api/v2
+    main:
+      url: http://sample-backend:5000/api/v2
+  policies:
+    - name: modify-headers
+      version: v0.1.0
+      params:
+        requestHeaders:
+          - action: SET
+            name: operation-level-req-header
+            value: hello
+        responseHeaders:
+          - action: SET
+            name: operation-level-res-header
+            value: world
   operations:
     - method: GET
       path: /{country_code}/{city}
-      policies:
-        - name: modify-headers
-          version: v1.0.0
-          params:
-            requestHeaders:
-              - action: SET
-                name: operation-level-req-header
-                value: hello
-            responseHeaders:
-              - action: SET
-                name: operation-level-res-header
-                value: world
     - method: GET
+      path: /alerts/active
+    - method: POST
       path: /alerts/active
 EOF
 
