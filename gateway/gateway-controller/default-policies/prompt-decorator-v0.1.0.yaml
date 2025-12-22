@@ -1,4 +1,4 @@
-name: PromptDecorator
+name: prompt-decorator
 version: v0.1.0
 description: |
   Dynamically modifies the prompt by applying custom decorations using a configured strategy.

@@ -1,4 +1,4 @@
-name: SemanticPromptGuard
+name: semantic-prompt-guard
 version: v0.1.0
 description: |
   Blocks or allows prompts based on semantic similarity to configured allow/deny

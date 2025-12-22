@@ -1,4 +1,4 @@
-name: SemanticCache
+name: semantic-cache
 version: v0.1.0
 description: |
   Implements semantic caching for LLM responses using vector similarity search.

@@ -401,6 +401,7 @@ func (p *AzureContentSafetyContentModerationPolicy) callAzureContentSafetyAPI(en
 
 		resp, lastErr = p.makeHTTPRequest("POST", serviceURL, headers, bodyBytes)
 		if lastErr != nil {
+			// Network error, retry
 			if resp != nil {
 				resp.Body.Close()
 			}
@@ -414,12 +415,20 @@ func (p *AzureContentSafetyContentModerationPolicy) callAzureContentSafetyAPI(en
 		// Read error response body before closing
 		errorBodyBytes, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		if attempt == maxRetries-1 {
-			// Last attempt, return error with body content
-			return nil, fmt.Errorf("Azure Content Safety API returned non-200 status code: %d, body: %s", resp.StatusCode, string(errorBodyBytes))
+
+		// Only retry on 5xx server errors
+		if resp.StatusCode >= 500 {
+			if attempt == maxRetries-1 {
+				// Last attempt, return error with body content
+				return nil, fmt.Errorf("Azure Content Safety API returned non-200 status code: %d, body: %s", resp.StatusCode, string(errorBodyBytes))
+			}
+			// Not the last attempt, continue retrying
+			resp = nil
+			continue
 		}
-		// Not the last attempt, continue retrying
-		resp = nil
+
+		// For 4xx client errors, fail immediately without retry
+		return nil, fmt.Errorf("Azure Content Safety API returned non-200 status code: %d, body: %s", resp.StatusCode, string(errorBodyBytes))
 	}
 
 	if lastErr != nil {
