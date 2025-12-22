@@ -75,7 +75,7 @@ build: build-controller build-gateway-builder build-policy-engine build-router #
 build-local: build-local-controller build-local-gateway-builder build-local-policy-engine build-local-router ## Build all gateway components locally (faster)
 
 .PHONY: build-coverage
-build-coverage: build-controller-coverage build-local-gateway-builder build-local-policy-engine build-local-router ## Build all coverage-instrumented gateway components
+build-coverage: build-controller-coverage build-gateway-builder build-policy-engine build-router ## Build all coverage-instrumented gateway components
 
 .PHONY: build-controller
 build-controller: ## Build gateway-controller Docker image

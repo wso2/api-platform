@@ -109,7 +109,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 		--push \
 		.
 
-build-coverage-image: ## Build coverage-instrumented gateway-controller image
+build-coverage-image: test ## Build coverage-instrumented gateway-controller image
 	docker buildx build -f Dockerfile.coverage \
 		--build-context sdk=../../sdk \
 		--build-context common=../../common \
