@@ -1,4 +1,4 @@
-name: APIKeyAuthentication
+name: api-key-auth
 version: v0.1.0
 description: |
   Implements API Key Authentication to protect APIs with pre-shared API keys.
