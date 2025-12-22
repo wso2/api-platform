@@ -1191,6 +1191,162 @@ jobs:
           
           echo "Gateway deletion and resource cleanup verified!"
 
+      - name: Verify Scoped Mode
+        run: |
+          echo "=== Starting Scoped Mode Integration Test ==="
+
+          # 1. Teardown existing operator (from prior steps)
+          echo "Uninstalling global operator..."
+          helm uninstall gateway-operator -n operator
+          kubectl delete ns operator --ignore-not-found
+
+          # 2. Install Scoped Operator
+          echo "Creating scoped-test namespace..."
+          kubectl create ns scoped-test --dry-run=client -o yaml | kubectl apply -f -
+          
+          echo "Installing operator in scoped mode (watchNamespaces={scoped-test})..."
+          helm install gateway-operator ./kubernetes/helm/operator-helm-chart \
+            --namespace scoped-test \
+            --set image.repository=${{ env.DOCKER_REGISTRY }}/gateway-operator \
+            --set image.tag=${{ env.VERSION }} \
+            --set image.pullPolicy=Never \
+            --set gateway.helm.chartName=oci://registry.registry.svc.cluster.local:5000/charts/gateway \
+            --set gateway.helm.chartVersion=0.0.0-test \
+            --set gateway.helm.plainHTTP=true \
+            --set watchNamespaces="{scoped-test}" \
+            --wait --timeout 5m
+
+          echo "Verifying operator pod is running..."
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=gateway-operator -n scoped-test --timeout=120s
+
+          echo "Verifying RBAC (Scoped Mode)..."
+          # Expect Role/RoleBinding in scoped-test
+          if ! kubectl get role -n scoped-test gateway-operator-manager-role; then
+            echo "FAILED: Role not found in scoped-test"
+            exit 1
+          fi
+          if ! kubectl get rolebinding -n scoped-test gateway-operator-manager-rolebinding; then
+            echo "FAILED: RoleBinding not found in scoped-test"
+            exit 1
+          fi
+
+          # Expect NO ClusterRole/ClusterRoleBinding
+          if kubectl get clusterrole gateway-operator-manager-role; then
+             echo "FAILED: ClusterRole found but should be disabled in scoped mode"
+             exit 1
+          fi
+          if kubectl get clusterrolebinding gateway-operator-manager-binding; then
+             echo "FAILED: ClusterRoleBinding found but should be disabled in scoped mode"
+             exit 1
+          fi
+
+          # 3. Positive Test: Deploy Gateway & API in scoped-test
+          echo "Deploying Gateway in scoped-test..."
+          # Configure Gateway to use test images (same configmap as before but in new namespace)
+          kubectl create configmap test-gateway-config --from-file=values.yaml=<(kubectl get cm test-gateway-config -n default -o jsonpath='{.data.values\.yaml}') -n scoped-test
+
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          kind: Gateway
+          metadata:
+            name: scoped-gateway
+            namespace: scoped-test
+          spec:
+            gatewayClassName: "test"
+            apiSelector:
+              scope: Cluster
+            configRef:
+              name: test-gateway-config
+          EOF
+
+          echo "Waiting for scoped-gateway to be Ready..."
+          kubectl wait --for=condition=Programmed gateway/scoped-gateway -n scoped-test --timeout=180s
+
+          echo "Deploying RestApi in scoped-test..."
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          kind: RestApi
+          metadata:
+            name: scoped-api
+            namespace: scoped-test
+          spec:
+            displayName: scoped-api
+            version: v1.0
+            context: /scoped
+            upstream:
+              main:
+                url: http://httpbin.default.svc.cluster.local:80
+            operations:
+              - method: GET
+                path: /get
+          EOF
+          
+          echo "Waiting for scoped-api..."
+          sleep 5 # Give operator time to reconcile
+          kubectl wait --for=condition=Programmed restapi/scoped-api -n scoped-test --timeout=120s
+
+          echo "Invoking scoped API..."
+          # Port forward the scoped gateway router
+          kubectl port-forward svc/scoped-gateway-gateway-router -n scoped-test 9090:8080 &
+          PF_PID=$!
+          sleep 5
+          
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9090/scoped/get)
+          echo "Scoped API returned: $CODE"
+          
+          kill $PF_PID || true
+          
+          if [ "$CODE" != "200" ]; then
+             echo "FAILED: Scoped API invocation failed"
+             exit 1
+          fi
+
+          # 4. Negative Test: Deploy API in ignored-ns
+          echo "Creating ignored-ns..."
+          kubectl create ns ignored-ns --dry-run=client -o yaml | kubectl apply -f -
+
+          echo "Deploying RestApi in ignored-ns (should be ignored)..."
+          cat <<EOF | kubectl apply -f -
+          apiVersion: gateway.api-platform.wso2.com/v1alpha1
+          kind: RestApi
+          metadata:
+            name: ignored-api
+            namespace: ignored-ns
+          spec:
+            displayName: scoped-api
+            version: v1.0
+            context: /ignored-api
+            upstream:
+              main:
+                url: http://httpbin.default.svc.cluster.local:80
+            operations:
+              - method: GET
+                path: /get
+          EOF
+
+          echo "Checking status of ignored-api (should be empty)..."
+          sleep 10
+          STATUS=$(kubectl get restapi ignored-api -n ignored-ns -o jsonpath='{.status}')
+          if [ -n "$STATUS" ] && [ "$STATUS" != "<nil>" ]; then
+             echo "FAILED: RestApi in ignored-ns has status! Operator is NOT restricted properly."
+             echo "Status: $STATUS"
+             exit 1
+          fi
+          echo "SUCCESS: RestApi in ignored-ns was ignored (no status update)."
+          
+          # Cleanup
+          echo "Cleaning up scoped resources..."
+          kubectl delete gateway scoped-gateway -n scoped-test --ignore-not-found
+          kubectl delete restapi scoped-api -n scoped-test --ignore-not-found
+          
+          # Wait for resources to be deleted to ensure finalizers are handled
+          kubectl wait --for=delete gateway/scoped-gateway -n scoped-test --timeout=60s || true
+          kubectl wait --for=delete restapi/scoped-api -n scoped-test --timeout=60s || true
+
+          helm uninstall gateway-operator -n scoped-test
+          kubectl delete ns scoped-test ignored-ns --ignore-not-found
+
+
       - name: Debug on failure - Dump logs
         if: failure()
         run: |
@@ -1198,12 +1354,24 @@ jobs:
           kubectl logs -n operator -l app.kubernetes.io/name=gateway-operator --tail=200 || true
 
           echo ""
+          echo "=== Scoped Operator Logs ==="
+          kubectl logs -n scoped-test -l app.kubernetes.io/name=gateway-operator --tail=200 || true
+
+          echo ""
           echo "=== Gateway Status ==="
           kubectl describe gateway test-gateway || true
 
           echo ""
+          echo "=== Scoped Gateway Status ==="
+          kubectl describe gateway scoped-gateway -n scoped-test || true
+
+          echo ""
           echo "=== RestApi Status ==="
           kubectl describe restapi test-api || true
+
+          echo ""
+          echo "=== Scoped RestApi Status ==="
+          kubectl describe restapi scoped-api -n scoped-test || true
 
           echo ""
           echo "=== All Pods Description ==="
@@ -1212,14 +1380,26 @@ jobs:
           echo ""
           echo "=== Gateway Controller Logs ==="
           kubectl logs -l app.kubernetes.io/component=controller --tail=200 || true
+
+          echo ""
+          echo "=== Scoped Gateway Controller Logs ==="
+          kubectl logs -n scoped-test -l app.kubernetes.io/component=controller --tail=200 || true
           
           echo ""
           echo "=== Router Logs ==="
           kubectl logs -l app.kubernetes.io/component=router --tail=200 || true
 
           echo ""
+          echo "=== Scoped Router Logs ==="
+          kubectl logs -n scoped-test -l app.kubernetes.io/component=router --tail=200 || true
+
+          echo ""
           echo "=== Policy Engine Logs ==="
           kubectl logs -l app.kubernetes.io/component=policy-engine --tail=200 || true
+
+          echo ""
+          echo "=== Scoped Policy Engine Logs ==="
+          kubectl logs -n scoped-test -l app.kubernetes.io/component=policy-engine --tail=200 || true
 
           echo ""
           echo "=== All Pods ==="

@@ -1,3 +1,4 @@
+{{- if not .Values.watchNamespaces }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -7,98 +8,5 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
 rules:
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  - namespaces
-  - persistentvolumeclaims
-  - serviceaccounts
-  - services
-  - secrets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - gateway.api-platform.wso2.com
-  resources:
-  - restapis
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - gateway.api-platform.wso2.com
-  resources:
-  - restapis/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - gateway.api-platform.wso2.com
-  resources:
-  - restapis/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - gateway.api-platform.wso2.com
-  resources:
-  - gateways
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - gateway.api-platform.wso2.com
-  resources:
-  - gateways/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - gateway.api-platform.wso2.com
-  resources:
-  - gateways/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - apps
-  resources:
-  - deployments
-  - replicasets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - cert-manager.io
-  resources:
-  - certificates
-  - issuers
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
+{{ include "gateway-operator.rbacRules" . }}
+{{- end }}

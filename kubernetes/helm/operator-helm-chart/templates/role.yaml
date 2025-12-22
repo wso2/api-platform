@@ -1,0 +1,17 @@
+{{- if .Values.watchNamespaces }}
+{{- $root := . }}
+{{- range .Values.watchNamespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "gateway-operator.fullname" $root }}-manager-role
+  namespace: {{ . }}
+  labels:
+    app.kubernetes.io/name: {{ include "gateway-operator.name" $root }}
+    app.kubernetes.io/instance: {{ $root.Release.Name }}
+    app.kubernetes.io/managed-by: {{ $root.Release.Service }}
+rules:
+{{ include "gateway-operator.rbacRules" $root }}
+{{- end }}
+{{- end }}

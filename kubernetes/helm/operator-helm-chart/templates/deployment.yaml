@@ -58,6 +58,15 @@ spec:
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=0
           {{ end }}
+          env:
+            - name: WATCH_NAMESPACES
+              value: {{ join "," (default (list) .Values.watchNamespaces) | quote }}
+            - name: HELM_CACHE_HOME
+              value: /tmp/helm/cache
+            - name: HELM_CONFIG_HOME
+              value: /tmp/helm/config
+            - name: HELM_DATA_HOME
+              value: /tmp/helm/data
           {{ if .Values.debug.enabled }}
           securityContext:
             capabilities:
@@ -78,6 +87,12 @@ spec:
               port: 8081
             initialDelaySeconds: 5
             periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
           {{ end }}
           resources:
 {{ toYaml .Values.resources | nindent 12 }}
@@ -88,6 +103,8 @@ spec:
             - name: gateway-values
               mountPath: /config/gateway_values.yaml
               subPath: gateway_values.yaml
+            - name: tmp-volume
+              mountPath: /tmp
       volumes:
         - name: config
           configMap:
@@ -95,3 +112,5 @@ spec:
         - name: gateway-values
           configMap:
             name: {{ include "gateway-operator.fullname" . }}-gateway-values
+        - name: tmp-volume
+          emptyDir: {}
