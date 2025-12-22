@@ -24,7 +24,7 @@ The policy uses embedding models to convert request text into high-dimensional v
 1. **Text Extraction**: Extracts text from the request body using JSONPath (if configured) or uses the entire request body
 2. **Embedding Generation**: Generates a vector embedding from the extracted text using the configured embedding provider
 3. **Cache Lookup**: Searches the vector database for semantically similar cached responses using cosine similarity
-4. **Threshold Check**: If a similar embedding is found with similarity >= threshold, returns the cached response immediately
+4. **Threshold Check**: If a similar embedding is found with similarity >= similarityThreshold, returns the cached response immediately
 5. **Cache Miss**: If no similar response is found, the request proceeds to the upstream service
 
 ### Response Phase
@@ -40,7 +40,7 @@ The policy uses embedding models to convert request text into high-dimensional v
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `threshold` | number | Yes | - | Similarity threshold for cache hits (0.0 to 1.0). Higher values require more similarity. For example, 0.9 means 90% similarity required. Recommended: 0.85-0.95 for strict matching, 0.70-0.85 for more flexible matching. |
+| `similarityThreshold` | number | Yes | - | Similarity threshold for cache hits (0.0 to 1.0). Higher values require more similarity. For example, 0.9 means 90% similarity required. Recommended: 0.85-0.95 for strict matching, 0.70-0.85 for more flexible matching. |
 | `jsonPath` | string | No | `""` | JSONPath expression to extract text from request body for embedding generation. If empty, uses the entire request body. Example: `"$.messages[0].content"` to extract the first message's content. |
 
 ### System Parameters (Required)
@@ -119,7 +119,7 @@ spec:
         - path: /chat/completions
           methods: [POST]
           params:
-            threshold: 0.85
+            similarityThreshold: 0.85
             jsonPath: "$.messages[0].content"
             embeddingProvider: OPENAI
             embeddingEndpoint: https://api.openai.com/v1/embeddings
@@ -204,7 +204,7 @@ spec:
         - path: /chat/completions
           methods: [POST]
           params:
-            threshold: 0.90
+            similarityThreshold: 0.90
             jsonPath: "$.messages[-1].content"
             embeddingProvider: MISTRAL
             embeddingEndpoint: https://api.mistral.ai/v1/embeddings
@@ -233,7 +233,7 @@ policies:
       - path: /chat/completions
         methods: [POST]
         params:
-          threshold: 0.88
+          similarityThreshold: 0.88
           jsonPath: "$.messages[0].content"
           embeddingProvider: AZURE_OPENAI
           embeddingEndpoint: https://your-resource.openai.azure.com/openai/deployments/embedding-model/embeddings?api-version=2023-05-15
@@ -268,7 +268,7 @@ policies:
 
 ## Similarity Threshold Guidelines
 
-The threshold parameter controls how similar requests must be to trigger a cache hit:
+The `similarityThreshold` parameter controls how similar requests must be to trigger a cache hit:
 
 - **0.95-1.0**: Very strict matching. Only near-identical requests will hit cache. Use for exact-match scenarios.
 - **0.85-0.94**: Recommended for most use cases. Catches semantically equivalent requests with some wording variation.

@@ -50,7 +50,6 @@ These parameters are typically configured at the gateway level and automatically
 | `embeddingEndpoint` | string | Yes | Endpoint URL for the embedding service. Examples: OpenAI: `https://api.openai.com/v1/embeddings`, Mistral: `https://api.mistral.ai/v1/embeddings`, Azure OpenAI: Your Azure OpenAI endpoint URL |
 | `embeddingModel` | string | Conditional | - | Embedding model name. **Required for OPENAI and MISTRAL**, not required for AZURE_OPENAI (deployment name is in endpoint URL). Examples: OpenAI: `text-embedding-ada-002` or `text-embedding-3-small`, Mistral: `mistral-embed` |
 | `apiKey` | string | Yes | API key for the embedding service authentication |
-| `timeoutMs` | integer | No | `5000` | Timeout in milliseconds for the embedding endpoint request. Range: 1-60000. Default is 5000ms (5 seconds). |
 
 ## Similarity Threshold Guidelines
 
@@ -137,7 +136,6 @@ spec:
             embeddingEndpoint: https://api.openai.com/v1/embeddings
             embeddingModel: text-embedding-3-small
             apiKey: <openai-api-key>
-            timeoutMs: 5000
 EOF
 ```
 
@@ -219,7 +217,6 @@ spec:
             embeddingEndpoint: https://api.openai.com/v1/embeddings
             embeddingModel: text-embedding-3-small
             apiKey: <openai-api-key>
-            timeoutMs: 5000
 EOF
 ```
 
@@ -251,7 +248,6 @@ policies:
           embeddingEndpoint: https://api.mistral.ai/v1/embeddings
           embeddingModel: mistral-embed
           apiKey: <mistral-api-key>
-          timeoutMs: 5000
 ```
 
 ### Example 4: Azure OpenAI with Custom Timeout
@@ -274,7 +270,6 @@ policies:
           embeddingProvider: AZURE_OPENAI
           embeddingEndpoint: https://your-resource.openai.azure.com/openai/deployments/embedding-model/embeddings?api-version=2023-05-15
           apiKey: <azure-openai-api-key>
-          timeoutMs: 10000  # 10 seconds
 ```
 
 ## Use Cases
@@ -368,7 +363,6 @@ For errors during processing (e.g., JSONPath extraction failures, embedding gene
    - Mistral: Alternative option with good performance
    - Azure OpenAI: Good for Azure-integrated environments
 
-5. **Timeout Configuration**: Set `timeoutMs` appropriately based on your embedding provider's response time. Default 5000ms is suitable for most providers.
 
 ## Notes
 
