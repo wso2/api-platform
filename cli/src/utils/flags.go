@@ -21,12 +21,11 @@ package utils
 import "github.com/spf13/cobra"
 
 const (
-	FlagName        = "display-name"
-	FlagServer      = "server"
-	FlagUsername    = "username"
-	FlagPassword    = "password"
-	FlagPasswordEnv = "password-env"
-
+	FlagName                   = "display-name"
+	FlagServer                 = "server"
+	FlagUsername               = "username"
+	FlagPassword               = "password"
+	FlagPasswordEnv            = "password-env"
 	FlagOutput                 = "output"
 	FlagFile                   = "file"
 	FlagFormat                 = "format"
