@@ -19,24 +19,21 @@
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 metadata:
-  name: gemini
+  name: awsbedrock
 spec:
-  displayName: Gemini
+  displayName: AWS Bedrock
   promptTokens:
     location: payload
-    identifier: $.usageMetadata.promptTokenCount
+    identifier: $.usage.inputTokens
   completionTokens:
     location: payload
-    identifier: $.usageMetadata.candidatesTokenCount
+    identifier: $.usage.outputTokens
   totalTokens:
     location: payload
-    identifier: $.usageMetadata.totalTokenCount
-  remainingTokens:
-    location: header
-    identifier: x-ratelimit-remaining-tokens
+    identifier: $.usage.totalTokens
   requestModel:
-    location: pathParams
-    identifier: (?<=models/)[a-zA-Z0-9.\-]+
+    location: pathParam
+    identifier: (?<=model/)[a-zA-Z0-9.:-]+(?=/)
   responseModel:
-    location: payload
-    identifier: $.modelVersion
+    location: pathParam
+    identifier: (?<=model/)[a-zA-Z0-9.:-]+(?=/)

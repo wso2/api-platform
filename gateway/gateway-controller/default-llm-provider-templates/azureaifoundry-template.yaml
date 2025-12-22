@@ -19,9 +19,9 @@
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 metadata:
-  name: openai
+  name: azureai-foundry
 spec:
-  displayName: OpenAI
+  displayName: Azure AI Foundry
   promptTokens:
     location: payload
     identifier: $.usage.prompt_tokens
