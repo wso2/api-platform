@@ -383,9 +383,9 @@ curl -X GET "http://localhost:9090/apis/weather-api-v1.0/api-key" \
     {
       "apiId": "weather-api-v1.0",
       "api_key": "",
-      "createdAt": "2025-12-22T13:02:24.504957558Z",
+      "created_at": "2025-12-22T13:02:24.504957558Z",
       "created_by": "admin",
-      "expiresAt": "2026-03-22T13:02:24.504957558Z",
+      "expires_at": "2026-03-22T13:02:24.504957558Z",
       "name": "production-key",
       "operations": "[\"*\"]",
       "status": "active"
