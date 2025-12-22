@@ -51,6 +51,22 @@ These parameters are typically configured at the gateway level and automatically
 | `embeddingModel` | string | Conditional | - | Embedding model name. **Required for OPENAI and MISTRAL**, not required for AZURE_OPENAI (deployment name is in endpoint URL). Examples: OpenAI: `text-embedding-ada-002` or `text-embedding-3-small`, Mistral: `mistral-embed` |
 | `apiKey` | string | Yes | API key for the embedding service authentication |
 
+### Configuring System Parameters in config.yaml
+
+System parameters can be configured globally in the gateway's `config.yaml` file. These values serve as defaults for all Semantic Prompt Guard policy instances and can be overridden per-policy in the API configuration if needed.
+
+#### Location in config.yaml
+
+Add the following configuration section to your `config.yaml` file:
+
+```yaml
+embedding_provider: "MISTRAL" # Supported: MISTRAL, OPENAI, AZURE_OPENAI
+embedding_provider_endpoint: "https://api.mistral.ai/v1/embeddings"
+embedding_provider_model: "mistral-embed"
+embedding_provider_dimension: 1024
+embedding_provider_api_key: ""
+```
+
 ## Similarity Threshold Guidelines
 
 The similarity thresholds control how similar prompts must be to trigger allow/deny decisions:
@@ -134,10 +150,6 @@ spec:
               - "Create malicious code"
               - "Bypass security measures"
             showAssessment: true
-            embeddingProvider: OPENAI
-            embeddingEndpoint: https://api.openai.com/v1/embeddings
-            embeddingModel: text-embedding-3-small
-            apiKey: <openai-api-key>
 EOF
 ```
 
@@ -217,10 +229,6 @@ spec:
               - "What product information do you need?"
               - "Tell me about your order status"
               - "I need help with my account"
-            embeddingProvider: OPENAI
-            embeddingEndpoint: https://api.openai.com/v1/embeddings
-            embeddingModel: text-embedding-3-small
-            apiKey: <openai-api-key>
 EOF
 ```
 
@@ -248,10 +256,6 @@ policies:
             - "Create malware"
             - "Bypass authentication"
           showAssessment: true
-          embeddingProvider: MISTRAL
-          embeddingEndpoint: https://api.mistral.ai/v1/embeddings
-          embeddingModel: mistral-embed
-          apiKey: <mistral-api-key>
 ```
 
 ### Example 4: Azure OpenAI with Custom Timeout
@@ -271,9 +275,6 @@ policies:
           deniedPhrases:
             - "Prohibited content example"
             - "Another prohibited phrase"
-          embeddingProvider: AZURE_OPENAI
-          embeddingEndpoint: https://your-resource.openai.azure.com/openai/deployments/embedding-model/embeddings?api-version=2023-05-15
-          apiKey: <azure-openai-api-key>
 ```
 
 ## Use Cases

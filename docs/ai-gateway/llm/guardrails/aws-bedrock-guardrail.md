@@ -57,6 +57,27 @@ These parameters are typically configured at the gateway level and automatically
 | `awsRoleRegion` | string | No | AWS region for role assumption (required if `awsRoleARN` is specified). |
 | `awsRoleExternalID` | string | No | External ID for role assumption (optional, for cross-account access security). |
 
+
+### Configuring System Parameters in config.yaml
+
+System parameters can be configured globally in the gateway's `config.yaml` file. These values serve as defaults for all AWS Bedrock Guardrail policy instances and can be overridden per-policy in the API configuration if needed.
+
+#### Location in config.yaml
+
+Add the following configuration section to your `config.yaml` file:
+
+```yaml
+awsbedrock_guardrail_region: "us-east-1" 
+awsbedrock_guardrail_id: "your-guardrail-id"
+awsbedrock_guardrail_version: "DRAFT"
+awsbedrock_access_key_id: ""
+awsbedrock_secret_access_key: "" 
+awsbedrock_session_token: ""
+awsbedrock_role_arn: ""
+awsbedrock_role_region: ""
+awsbedrock_role_external_id: ""
+```
+
 ### Authentication Modes
 
 The policy supports three authentication modes, in priority order:
@@ -142,11 +163,6 @@ spec:
               jsonPath: "$.choices[0].message.content"
               redactPII: false
               showAssessment: true
-            region: us-east-1
-            guardrailID: abc123def456
-            guardrailVersion: "1"
-            awsAccessKeyID: <aws-access-key-id>
-            awsSecretAccessKey: <aws-secret-access-key>
 EOF
 ```
 
@@ -203,12 +219,6 @@ policies:
           response:
             jsonPath: "$.choices[0].message.content"
             redactPII: true
-          region: us-west-2
-          guardrailID: xyz789abc123
-          guardrailVersion: "2"
-          awsRoleARN: arn:aws:iam::123456789012:role/BedrockGuardrailRole
-          awsRoleRegion: us-west-2
-          awsRoleExternalID: external-id-12345
 ```
 
 ### Example 3: Default Credential Chain (EC2/ECS)
@@ -226,10 +236,6 @@ policies:
           request:
             jsonPath: "$.messages[-1].content"
             showAssessment: true
-          region: us-east-1
-          guardrailID: guardrail-abc-123
-          guardrailVersion: "DRAFT"
-          # No credentials specified - uses IAM instance profile role
 ```
 
 ### Example 4: PII Masking with Restoration
@@ -251,11 +257,6 @@ policies:
           response:
             jsonPath: "$.choices[0].message.content"
             redactPII: false  # Restore masked PII
-          region: us-east-1
-          guardrailID: guardrail-123
-          guardrailVersion: "1"
-          awsAccessKeyID: <key>
-          awsSecretAccessKey: <secret>
 ```
 
 ## Use Cases

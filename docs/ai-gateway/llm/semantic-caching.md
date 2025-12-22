@@ -69,6 +69,31 @@ These parameters are typically configured at the gateway level and automatically
 | `database` | string | No | Database name or index number (for Redis) |
 | `ttl` | integer | No | `3600` | Time-to-live for cache entries in seconds. Default is 3600 (1 hour). Set to 0 for no expiration. |
 
+
+### Configuring System Parameters in config.yaml
+
+System parameters can be configured globally in the gateway's `config.yaml` file. These values serve as defaults for all Semantic Cache policy instances and can be overridden per-policy in the API configuration if needed.
+
+#### Location in config.yaml
+
+Add the following configuration section to your `config.yaml` file:
+
+```yaml
+embedding_provider: "MISTRAL" # Supported: MISTRAL, OPENAI, AZURE_OPENAI
+embedding_provider_endpoint: "https://api.mistral.ai/v1/embeddings"
+embedding_provider_model: "mistral-embed"
+embedding_provider_dimension: 1024
+embedding_provider_api_key: ""
+
+vector_db_provider: "REDIS" # Supported: REDIS, MILVUS
+vector_db_provider_host: "redis"
+vector_db_provider_port: 6379
+vector_db_provider_database: "0"
+vector_db_provider_username: "default"
+vector_db_provider_password: "default"
+vector_db_provider_ttl: 3600
+```
+
 ## JSONPath Support
 
 The policy supports JSONPath expressions to extract specific text from request bodies before generating embeddings. This is useful for:
@@ -123,18 +148,6 @@ spec:
           params:
             similarityThreshold: 0.85
             jsonPath: "$.messages[0].content"
-            embeddingProvider: OPENAI
-            embeddingEndpoint: https://api.openai.com/v1/embeddings
-            embeddingModel: text-embedding-ada-002
-            embeddingDimension: 1536
-            apiKey: <openai-api-key>
-            vectorStoreProvider: REDIS
-            dbHost: localhost
-            dbPort: 6379
-            username: ""
-            password: ""
-            database: "0"
-            ttl: 3600
 EOF
 ```
 
@@ -210,18 +223,6 @@ spec:
           params:
             similarityThreshold: 0.90
             jsonPath: "$.messages[-1].content"
-            embeddingProvider: MISTRAL
-            embeddingEndpoint: https://api.mistral.ai/v1/embeddings
-            embeddingModel: mistral-embed
-            embeddingDimension: 1024
-            apiKey: <mistral-api-key>
-            vectorStoreProvider: MILVUS
-            dbHost: localhost
-            dbPort: 19530
-            username: root
-            password: Milvus
-            database: default
-            ttl: 7200
 EOF
 ```
 
@@ -239,17 +240,6 @@ policies:
         params:
           similarityThreshold: 0.88
           jsonPath: "$.messages[0].content"
-          embeddingProvider: AZURE_OPENAI
-          embeddingEndpoint: https://your-resource.openai.azure.com/openai/deployments/embedding-model/embeddings?api-version=2023-05-15
-          embeddingDimension: 1536
-          apiKey: <azure-openai-api-key>
-          vectorStoreProvider: REDIS
-          dbHost: redis.example.com
-          dbPort: 6379
-          username: ""
-          password: <redis-password>
-          database: "1"
-          ttl: 86400  # 24 hours
 ```
 
 ## Use Cases

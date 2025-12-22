@@ -38,7 +38,7 @@ systemParameters:
       - OPENAI
       - MISTRAL
       - AZURE_OPENAI
-      "wso2/defaultValue": "${config.semanticcache_embedding_provider}"
+      "wso2/defaultValue": "${config.embedding_provider}"
     embeddingEndpoint:
       type: string
       description: |
@@ -47,7 +47,7 @@ systemParameters:
         For Mistral: "https://api.mistral.ai/v1/embeddings"
         For Azure OpenAI: Azure OpenAI endpoint URL
       minLength: 1
-      "wso2/defaultValue": "${config.semanticcache_embedding_endpoint}"
+      "wso2/defaultValue": "${config.embedding_provider_endpoint}"
     embeddingModel:
       type: string
       description: |
@@ -55,20 +55,20 @@ systemParameters:
         For OpenAI: "text-embedding-ada-002" or "text-embedding-3-small"
         For Mistral: "mistral-embed"
         For Azure OpenAI: Not required (deployment name is in the endpoint URL)
-      "wso2/defaultValue": "${config.semanticcache_embedding_model}"
+      "wso2/defaultValue": "${config.embedding_provider_model}"
     embeddingDimension:
       type: integer
       description: |
         Dimension of embedding vectors (required for some vector databases)
         Common values: 1536 (OpenAI ada-002), 1024 (Mistral), etc.
-      "wso2/defaultValue": "${config.semanticcache_embedding_dimension}"
+      "wso2/defaultValue": "${config.embedding_provider_dimension}"
     apiKey:
       type: string
       description: |
         API key for the embedding service (required for OPENAI, MISTRAL, AZURE_OPENAI)
         For Azure OpenAI, this may be the API key or the header name for authentication
       minLength: 1
-      "wso2/defaultValue": "${config.semanticcache_embedding_api_key}"
+      "wso2/defaultValue": "${config.embedding_provider_api_key}"
     vectorStoreProvider:
       type: string
       description: |
@@ -76,32 +76,32 @@ systemParameters:
       enum:
       - REDIS
       - MILVUS
-      "wso2/defaultValue": "${config.semanticcache_vector_store_provider}"
+      "wso2/defaultValue": "${config.vector_db_provider}"
     dbHost:
       type: string
       description: Vector database host (required for Redis/Milvus)
       minLength: 1
-      "wso2/defaultValue": "${config.semanticcache_vector_store_db_host}"
+      "wso2/defaultValue": "${config.vector_db_provider_host}"
     dbPort:
       type: integer
       description: Vector database port (required for Redis/Milvus)
-      "wso2/defaultValue": "${config.semanticcache_vector_store_db_port}"
+      "wso2/defaultValue": "${config.vector_db_provider_port}"
     username:
       type: string
       description: Vector database username (optional)
-      "wso2/defaultValue": "${config.semanticcache_vector_store_username}"
+      "wso2/defaultValue": "${config.vector_db_provider_username}"
     password:
       type: string
       description: Vector database password (optional)
-      "wso2/defaultValue": "${config.semanticcache_vector_store_password}"
+      "wso2/defaultValue": "${config.vector_db_provider_password}"
     database:
       type: string
       description: Vector database (optional)
-      "wso2/defaultValue": "${config.semanticcache_vector_store_database}"
+      "wso2/defaultValue": "${config.vector_db_provider_database}"
     ttl:
       type: integer
       description: Vector database TTL (optional)
-      "wso2/defaultValue": "${config.semanticcache_vector_store_ttl}"
+      "wso2/defaultValue": "${config.vector_db_provider_ttl}"
   required:
   - embeddingProvider
   - embeddingEndpoint

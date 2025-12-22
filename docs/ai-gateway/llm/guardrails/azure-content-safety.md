@@ -54,6 +54,19 @@ These parameters are typically configured at the gateway level and automatically
 | `azureContentSafetyEndpoint` | string | Yes | Azure Content Safety API endpoint URL (without trailing slash). Example: `https://your-resource.cognitiveservices.azure.com` |
 | `azureContentSafetyKey` | string | Yes | Azure Content Safety API subscription key for authentication. Found in Azure Portal under your Content Safety resource's "Keys and Endpoint" section. |
 
+### Configuring System Parameters in config.yaml
+
+System parameters can be configured globally in the gateway's `config.yaml` file. These values serve as defaults for all Azure Content Safety guardrail policy instances and can be overridden per-policy in the API configuration if needed.
+
+#### Location in config.yaml
+
+Add the following configuration section to your `config.yaml` file:
+
+```yaml
+azurecontentsafety_endpoint: "https://your-resource.cognitiveservices.azure.com"
+azurecontentsafety_key: "<your-azure-content-safety-key>"
+```
+
 ## Severity Levels
 
 Azure Content Safety uses an 8-level severity scale (0-7):
@@ -133,8 +146,6 @@ spec:
               selfHarmCategory: 2
               violenceCategory: 2
               showAssessment: true
-            azureContentSafetyEndpoint: https://your-resource.cognitiveservices.azure.com
-            azureContentSafetyKey: <azure-content-safety-key>
 EOF
 ```
 
@@ -199,8 +210,6 @@ policies:
             selfHarmCategory: 1
             violenceCategory: 1
             showAssessment: true
-          azureContentSafetyEndpoint: https://your-resource.cognitiveservices.azure.com
-          azureContentSafetyKey: <key>
 ```
 
 ### Example 3: Selective Category Monitoring
@@ -221,8 +230,6 @@ policies:
             sexualCategory: -1  # Disabled
             selfHarmCategory: 2
             violenceCategory: -1  # Disabled
-          azureContentSafetyEndpoint: https://your-resource.cognitiveservices.azure.com
-          azureContentSafetyKey: <key>
 ```
 
 ### Example 4: Lenient Moderation
@@ -244,8 +251,6 @@ policies:
             selfHarmCategory: 4
             violenceCategory: 5
             passthroughOnError: true
-          azureContentSafetyEndpoint: https://your-resource.cognitiveservices.azure.com
-          azureContentSafetyKey: <key>
 ```
 
 ## Use Cases

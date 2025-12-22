@@ -70,7 +70,7 @@ systemParameters:
         - OPENAI
         - MISTRAL
       default: AZURE_OPENAI
-      "wso2/defaultValue": "${config.semanticpromptguard_embedding_provider}"
+      "wso2/defaultValue": "${config.embedding_provider}"
     embeddingEndpoint:
       type: string
       description: |
@@ -79,7 +79,7 @@ systemParameters:
         For OpenAI: "https://api.openai.com/v1/embeddings"
         For Mistral: "https://api.mistral.ai/v1/embeddings"
       minLength: 1
-      "wso2/defaultValue": "${config.semanticpromptguard_embedding_endpoint}"
+      "wso2/defaultValue": "${config.embedding_provider_endpoint}"
     embeddingModel:
       type: string
       description: |
@@ -87,12 +87,12 @@ systemParameters:
         For OpenAI: "text-embedding-ada-002" or "text-embedding-3-small"
         For Mistral: "mistral-embed"
         For Azure OpenAI: Not required (deployment name is in the endpoint URL)
-      "wso2/defaultValue": "${config.semanticpromptguard_embedding_model}"
+      "wso2/defaultValue": "${config.embedding_provider_model}"
     apiKey:
       type: string
       description: API key for the embedding provider.
       minLength: 1
-      "wso2/defaultValue": "${config.semanticpromptguard_embedding_api_key}"
+      "wso2/defaultValue": "${config.embedding_provider_api_key}"
   required:
     - embeddingProvider
     - embeddingEndpoint
