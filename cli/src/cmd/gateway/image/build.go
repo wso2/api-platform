@@ -106,9 +106,9 @@ func initializeDefaults() error {
 		gatewayName = filepath.Base(absPath)
 	}
 
-	// Default gateway builder if not provided (uses version)
+	// Default gateway builder if not provided (use repo without forcing a tag)
 	if gatewayBuilder == "" {
-		gatewayBuilder = fmt.Sprintf("%s:%s", utils.DefaultGatewayBuilderRepo, gatewayVersion)
+		gatewayBuilder = utils.DefaultGatewayBuilderRepo
 	}
 
 	// Construct the full image tag: repository/name:version
