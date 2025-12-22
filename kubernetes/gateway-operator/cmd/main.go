@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -29,6 +30,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -123,8 +125,25 @@ func main() {
 		TLSOpts: tlsOpts,
 	})
 
+	// Parse WATCH_NAMESPACES env var
+	watchNamespaces := os.Getenv("WATCH_NAMESPACES")
+	var defaultNamespaces map[string]cache.Config
+	if watchNamespaces != "" {
+		nsList := strings.Split(watchNamespaces, ",")
+		defaultNamespaces = make(map[string]cache.Config)
+		for _, ns := range nsList {
+			defaultNamespaces[strings.TrimSpace(ns)] = cache.Config{}
+		}
+		setupLog.Info("watching specific namespaces", "namespaces", nsList)
+	} else {
+		setupLog.Info("watching all namespaces (cluster-wide)")
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
+		Cache: cache.Options{
+			DefaultNamespaces: defaultNamespaces,
+		},
 		Metrics: metricsserver.Options{
 			BindAddress:   metricsAddr,
 			SecureServing: secureMetrics,

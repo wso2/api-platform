@@ -1,5 +1,8 @@
 replicaCount: 1
 
+# Namespaces to watch (cluster-wide if empty)
+watchNamespaces: []
+
 # Override the chart name used for resource naming
 nameOverride: ""
 # Override the full name used for resource naming
@@ -16,7 +19,13 @@ serviceAccount:
   create: true
   name: controller-manager
 
-resources: {}
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
 
 nodeSelector: {}
 tolerations: []
@@ -34,10 +43,12 @@ debug:
 # runAsNonRoot: true only if your image runs as a non-root user. The chart will
 # still force runAsUser: 0 when debug.enabled=true (Delve needs root privileges).
 securityContext:
-  runAsNonRoot: false
+  runAsNonRoot: true
   # If you want the pod to run as a specific uid, set this (e.g. 1000). Leave
   # null to not set runAsUser and let the image default decide.
-  runAsUser: null
+  runAsUser: 10001
+  seccompProfile:
+    type: RuntimeDefault
 
 # Operator config.yaml contents (YAML block, indented)
 gateway:
@@ -604,3 +615,9 @@ reconciliation:
 logging:
   level: "info"
   format: "json"
+
+cleanupJob:
+  image:
+    repository: bitnami/kubectl
+    tag: latest
+    pullPolicy: IfNotPresent

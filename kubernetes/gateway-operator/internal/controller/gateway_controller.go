@@ -800,7 +800,7 @@ func (r *GatewayReconciler) deployGatewayWithHelm(ctx context.Context, owner *ap
 		ValuesYAML:      valuesYAML,     // Custom values from ConfigMap
 		ValuesFilePath:  valuesFilePath, // Default values file
 		Version:         r.Config.Gateway.HelmChartVersion,
-		CreateNamespace: true,
+		CreateNamespace: false,
 		Wait:            true,
 		Timeout:         300, // 5 minutes
 		Username:        dockerUserName,

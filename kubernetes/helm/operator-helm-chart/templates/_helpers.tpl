@@ -55,4 +55,115 @@ runAsUser: {{ .Values.securityContext.runAsUser }}
 runAsNonRoot: true
 {{- end }}
 {{- end }}
+{{- end }}
+
+{{- /*
+Common RBAC rules shared between ClusterRole (global) and Role (scoped)
+*/ -}}
+{{- define "gateway-operator.rbacRules" -}}
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - persistentvolumeclaims
+  - serviceaccounts
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - gateway.api-platform.wso2.com
+  resources:
+  - restapis
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - gateway.api-platform.wso2.com
+  resources:
+  - restapis/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - gateway.api-platform.wso2.com
+  resources:
+  - restapis/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - gateway.api-platform.wso2.com
+  resources:
+  - gateways
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - gateway.api-platform.wso2.com
+  resources:
+  - gateways/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - gateway.api-platform.wso2.com
+  resources:
+  - gateways/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - replicasets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - cert-manager.io
+  resources:
+  - certificates
+  - issuers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
 {{- end -}}
