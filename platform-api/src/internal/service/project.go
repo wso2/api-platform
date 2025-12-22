@@ -64,7 +64,7 @@ func (s *ProjectService) CreateProject(name, description, organizationID, id str
 	}
 
 	for _, existingProject := range existingProjects {
-		if existingProject.Name == name {
+		if existingProject.Name == name || (id != "" && existingProject.ID == id) {
 			return nil, constants.ErrProjectExists
 		}
 	}
