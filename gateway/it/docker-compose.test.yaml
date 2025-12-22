@@ -92,6 +92,15 @@ services:
     networks:
       - it-gateway-network
 
+  mcp-server-backend:
+    image: rakhitharr/mcp-everything:v3
+    pull_policy: missing
+    container_name: mcp-server-backend
+    ports:
+      - "3001:3001"
+    networks:
+      - it-gateway-network
+
 volumes:
   controller-data-tests:
     driver: local

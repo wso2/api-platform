@@ -71,3 +71,7 @@ jobs:
           echo ""
           echo "=== Sample Backend Logs ==="
           docker logs it-sample-backend 2>&1 || true
+
+          echo ""
+          echo "=== MCP Server Logs ==="
+          docker logs mcp-server-backend 2>&1 || true
