@@ -184,7 +184,9 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// Register step definitions
 	if testState != nil {
 		RegisterHealthSteps(ctx, testState)
+		RegisterAuthSteps(ctx, testState, httpSteps)
 		RegisterAPISteps(ctx, testState, httpSteps)
+		RegisterMCPSteps(ctx, testState, httpSteps)
 	}
 
 	// Register common HTTP and assertion steps

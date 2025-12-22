@@ -90,6 +90,31 @@ func (h *HTTPSteps) SendPOSTToService(serviceName, path string, body *godog.DocS
 	return h.iSendPOSTToServiceWithBody(serviceName, path, body)
 }
 
+// SendGETToService sends a GET request to a named service
+func (h *HTTPSteps) SendGETToService(serviceName, path string) error {
+	return h.iSendGETToService(serviceName, path)
+}
+
+// SendPUTToService sends a PUT request to a named service with body
+func (h *HTTPSteps) SendPUTToService(serviceName, path string, body *godog.DocString) error {
+	baseURL, ok := h.baseURLs[serviceName]
+	if !ok {
+		return fmt.Errorf("unknown service: %s", serviceName)
+	}
+	url := baseURL + path
+	return h.sendRequest(http.MethodPut, url, []byte(body.Content))
+}
+
+// SendDELETEToService sends a DELETE request to a named service
+func (h *HTTPSteps) SendDELETEToService(serviceName, path string) error {
+	baseURL, ok := h.baseURLs[serviceName]
+	if !ok {
+		return fmt.Errorf("unknown service: %s", serviceName)
+	}
+	url := baseURL + path
+	return h.sendRequest(http.MethodDelete, url, nil)
+}
+
 // LastResponse returns the last HTTP response
 func (h *HTTPSteps) LastResponse() *http.Response {
 	return h.lastResponse
