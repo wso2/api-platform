@@ -1260,7 +1260,7 @@ jobs:
           EOF
 
           echo "Waiting for scoped-gateway to be Ready..."
-          kubectl wait --for=condition=Ready gateway/scoped-gateway -n scoped-test --timeout=180s
+          kubectl wait --for=condition=Programmed gateway/scoped-gateway -n scoped-test --timeout=180s
 
           echo "Deploying RestApi in scoped-test..."
           cat <<EOF | kubectl apply -f -
