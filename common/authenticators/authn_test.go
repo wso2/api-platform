@@ -31,10 +31,7 @@ import (
 
 func TestAuthMiddleware_NoAuthenticatorsConfigured_ReturnsUnauthorized(t *testing.T) {
 	// Scenario: Both basic.enabled and idp.enabled are false
-	// This configuration should be prevented at startup validation,
-	// but if it occurs, middleware returns 401 (secure by default)
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
+	// Middleware creation should fail fast (startup-time validation)
 	logger := zap.NewNop()
 
 	// Config with both auth methods disabled
@@ -48,54 +45,26 @@ func TestAuthMiddleware_NoAuthenticatorsConfigured_ReturnsUnauthorized(t *testin
 		ResourceRoles: map[string][]string{},
 	}
 
-	middleware, err := AuthMiddleware(config, logger)
-	assert.NoError(t, err)
-
-	router.Use(middleware)
-	router.GET("/api/test", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "success"})
-	})
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/api/test", nil)
-	router.ServeHTTP(w, req)
-
-	// Should return 401 when no auth is configured (secure by default)
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
-	assert.Contains(t, w.Body.String(), "authentication is required")
+	_, err := AuthMiddleware(config, logger)
+	assert.Error(t, err)
 }
 
-func TestAuthMiddleware_NoAuthenticatorsConfigured_NoCredentials_Unauthorized(t *testing.T) {
-	// Scenario: No auth configured, request without any credentials should return 401
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
+func TestAuthMiddleware_JWTEnabled_MissingJWKS_FailsAtCreation(t *testing.T) {
+	// Scenario: JWT is enabled but JWKS URL is not configured.
+	// Should fail at middleware creation time (startup), not per-request.
 	logger := zap.NewNop()
 
 	config := models.AuthConfig{
-		BasicAuth: &models.BasicAuth{
-			Enabled: false,
-		},
 		JWTConfig: &models.IDPConfig{
-			Enabled: false,
+			Enabled:   true,
+			IssuerURL: "https://issuer.example.com",
+			JWKSUrl:   "", // triggers constructor error deterministically
 		},
 	}
 
-	middleware, err := AuthMiddleware(config, logger)
-	assert.NoError(t, err)
-
-	router.Use(middleware)
-	router.GET("/api/public", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "public endpoint"})
-	})
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/api/public", nil)
-	// No Authorization header
-	router.ServeHTTP(w, req)
-
-	// Should return 401 (secure by default)
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
-	assert.Contains(t, w.Body.String(), "authentication is required")
+	_, err := AuthMiddleware(config, logger)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to initialize JWT authenticator")
 }
 
 func TestAuthMiddleware_BasicAuthEnabled_NoCredentials_Unauthorized(t *testing.T) {
@@ -179,9 +148,7 @@ func TestAuthMiddleware_SkipPaths_NoAuthRequired(t *testing.T) {
 
 func TestAuthMiddleware_NilBasicAuth_NilJWTConfig_ReturnsUnauthorized(t *testing.T) {
 	// Scenario: Auth configs are nil (not just disabled)
-	// Should return 401 (secure by default)
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
+	// Middleware creation should fail fast (startup-time validation)
 	logger := zap.NewNop()
 
 	config := models.AuthConfig{
@@ -189,19 +156,6 @@ func TestAuthMiddleware_NilBasicAuth_NilJWTConfig_ReturnsUnauthorized(t *testing
 		JWTConfig: nil,
 	}
 
-	middleware, err := AuthMiddleware(config, logger)
-	assert.NoError(t, err)
-
-	router.Use(middleware)
-	router.GET("/api/open", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "open access"})
-	})
-
-	w := httptest.NewRecorder()
-	req, _ := http.NewRequest("GET", "/api/open", nil)
-	router.ServeHTTP(w, req)
-
-	// Should return 401 when no auth is configured
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
-	assert.Contains(t, w.Body.String(), "authentication is required")
+	_, err := AuthMiddleware(config, logger)
+	assert.Error(t, err)
 }

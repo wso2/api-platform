@@ -19,6 +19,7 @@ package authenticators
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -34,6 +35,29 @@ var (
 
 // AuthMiddleware creates a unified authentication middleware supporting both Basic and Bearer auth
 func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFunc, error) {
+	// Initialize authenticators once at startup (middleware creation time).
+	// Any configuration errors (e.g., JWT JWKS init failures) should fail fast here
+	// rather than per-request.
+	authenticators := []Authenticator{}
+
+	// Add Basic authenticator if configured
+	if config.BasicAuth != nil && config.BasicAuth.Enabled && len(config.BasicAuth.Users) > 0 {
+		authenticators = append(authenticators, NewBasicAuthenticator(config, logger))
+	}
+
+	// Add JWT authenticator if configured
+	if config.JWTConfig != nil && config.JWTConfig.Enabled && config.JWTConfig.IssuerURL != "" {
+		jwtAuthenticator, err := NewJWTAuthenticator(&config, logger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize JWT authenticator: %w", err)
+		}
+		authenticators = append(authenticators, jwtAuthenticator)
+	}
+
+	if len(authenticators) == 0 {
+		return nil, ErrNoAuthenticator
+	}
+
 	return func(c *gin.Context) {
 		// Skip authentication for specified paths
 		for _, path := range config.SkipPaths {
@@ -42,39 +66,6 @@ func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFu
 				c.Next()
 				return
 			}
-		}
-
-		// Initialize authenticators
-		authenticators := []Authenticator{}
-
-		// Add Basic authenticator if configured
-		if config.BasicAuth != nil && config.BasicAuth.Enabled && len(config.BasicAuth.Users) > 0 {
-			authenticators = append(authenticators, NewBasicAuthenticator(config, logger))
-		}
-
-		// Add JWT authenticator if configured
-		if config.JWTConfig != nil && config.JWTConfig.Enabled && config.JWTConfig.IssuerURL != "" {
-			jwtAuthenticator, err := NewJWTAuthenticator(&config, logger)
-			if err != nil {
-				logger.Sugar().Errorf("JWT Authenticator initialization failed: %v", err)
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error": "JWT authentication service unavailable",
-				})
-				c.Abort()
-				return
-			}
-			authenticators = append(authenticators, jwtAuthenticator)
-		}
-
-		// If no authenticators are configured, this is a misconfiguration
-		// The config validation should prevent this, but handle it defensively
-		if len(authenticators) == 0 {
-			logger.Error("No authenticators configured.")
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "authentication is required but not configured",
-			})
-			c.Abort()
-			return
 		}
 
 		// Find suitable authenticator
