@@ -34,9 +34,6 @@ docker compose up -d
 
 # Verify gateway controller is running
 curl http://localhost:9090/health
-
-# Or use the CLI (requires gateway to be added first with: ap gateway add)
-ap gateway health
 ```
 
 ## Deploy an MCP proxy configuration
@@ -71,34 +68,6 @@ To test MCP traffic routing through the gateway, add the following URL to your M
 
 ```
 http://localhost:8080/everything/mcp
-```
-
-### Managing MCPs with CLI
-
-The CLI provides convenient commands for managing your MCP proxies:
-
-**Generate MCP from a server:**
-```bash
-ap gateway mcp generate --server http://localhost:3001/mcp --output target
-```
-
-**List all MCPs:**
-```bash
-ap gateway mcp list
-```
-
-**Get a specific MCP:**
-```bash
-# By name and version
-ap gateway mcp get --display-name "Everything" --version v1.0 --format yaml
-
-# By ID
-ap gateway mcp get --id <mcp-id> --format yaml
-```
-
-**Delete an MCP:**
-```bash
-ap gateway mcp delete --id <mcp-id>
 ```
 
 ## Stopping the Gateway
