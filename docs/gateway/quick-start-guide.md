@@ -69,8 +69,6 @@ spec:
       path: /{country_code}/{city}
     - method: GET
       path: /alerts/active
-    - method: POST
-      path: /alerts/active
 EOF
 
 
