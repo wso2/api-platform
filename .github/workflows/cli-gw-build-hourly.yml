@@ -1,4 +1,4 @@
-name: Hourly CLI Gateway Build
+name: CLI Hourly Gateway Build
 
 on:
   schedule:
