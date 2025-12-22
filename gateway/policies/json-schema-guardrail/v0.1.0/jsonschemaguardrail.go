@@ -263,7 +263,7 @@ func (p *JSONSchemaGuardrailPolicy) buildErrorResponse(reason string, validation
 func (p *JSONSchemaGuardrailPolicy) buildAssessmentObject(reason string, validationError error, isResponse bool, showAssessment bool, errors []gojsonschema.ResultError) map[string]interface{} {
 	assessment := map[string]interface{}{
 		"action":               "GUARDRAIL_INTERVENED",
-		"interveningGuardrail": "JSONSchemaGuardrail",
+		"interveningGuardrail": "json-schema-guardrail",
 	}
 
 	if isResponse {

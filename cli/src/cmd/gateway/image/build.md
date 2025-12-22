@@ -43,13 +43,13 @@ The `--path` flag must point to a directory containing:
 version: v1/alpha1
 versionResolution: minor  # Optional root-level default
 policies:
-  - name: BasicAuth
+  - name: basic-auth
     version: v1.0.0
     versionResolution: exact  # Override root-level
-  - name: BasicAuth
+  - name: basic-auth
     version: v1.0.1
     versionResolution: exact
-  - name: BasicAuth
+  - name: basic-auth
     version: v1.0.2
     versionResolution: minor
   - name: MyCustomPolicy
@@ -66,11 +66,11 @@ policies:
 ```yaml
 version: v1/alpha1
 policies:
-  - name: BasicAuth
+  - name: basic-auth
     version: v1.0.0
     checksum: sha256:abc123...
     source: hub
-  - name: BasicAuth
+  - name: basic-auth
     version: v1.0.8  # Resolved version
     checksum: sha256:def456...
     source: hub
@@ -96,7 +96,7 @@ policies:
 ### Policy Naming Convention
 - Format: `<policy-name>-v<version>.zip`
 - Policy name and version in kebab-case
-- Example: `BasicAuth v1.0.0` → `basic-auth-v1.0.0.zip`
+- Example: `basic-auth v1.0.0` → `basic-auth-v1.0.0.zip`
 
 ## Implementation Flow
 

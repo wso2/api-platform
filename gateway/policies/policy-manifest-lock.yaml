@@ -1,60 +1,50 @@
 version: v1
 
 policies:
-  # Respond Policy
-  - name: Respond
+  - name: respond
     version: v1.0.0
     filePath: ./respond/v1.0.0
 
-  # ModifyHeaders Policy
-  - name: ModifyHeaders
+  - name: modify-headers
     version: v1.0.0
     filePath: ./modify-headers/v1.0.0
 
-  # BasicAuth Policy
-  - name: BasicAuth
+  - name: basic-auth
     version: v1.0.0
     filePath: ./basic-auth/v1.0.0
 
-  - name: JwtAuthentication
+  - name: jwt-auth
     version: v0.1.0
     filePath: ./jwt-auth/v0.1.0
 
-  # WordCountGuardrail Policy
-  - name: WordCountGuardrail
+  - name: word-count-guardrail
     version: v0.1.0
     filePath: ./word-count-guardrail/v0.1.0
 
-  # SentenceCountGuardrail Policy
-  - name: SentenceCountGuardrail
+  - name: sentence-count-guardrail
     version: v0.1.0
     filePath: ./sentence-count-guardrail/v0.1.0
 
-  # UrlGuardrail Policy
-  - name: URLGuardrail
+  - name: url-guardrail
     version: v0.1.0
     filePath: ./url-guardrail/v0.1.0
 
-  # RegexGuardrail Policy
-  - name: RegexGuardrail
+  - name: regex-guardrail
     version: v0.1.0
     filePath: ./regex-guardrail/v0.1.0
 
-  # ContentLengthGuardrail Policy
-  - name: ContentLengthGuardrail
+  - name: content-length-guardrail
     version: v0.1.0
     filePath: ./content-length-guardrail/v0.1.0
 
-  # PIIMaskingRegex Policy
-  - name: PIIMaskingRegex
+  - name: pii-masking-regex
     version: v0.1.0
     filePath: ./pii-masking-regex/v0.1.0
 
-  # JSONSchemaGuardrail Policy
-  - name: JSONSchemaGuardrail
+  - name: json-schema-guardrail
     version: v0.1.0
     filePath: ./json-schema-guardrail/v0.1.0
 
-  - name: McpAuthentication
+  - name: mcp-auth
     version: v0.1.0
     filePath: ./mcp-auth/v0.1.0

@@ -1,10 +1,9 @@
-name: McpAuthentication
+name: jwt-auth
 version: v0.1.0
 description: |
-  This policy is used to secure traffic to Model Context Protocol server as defined in the specification 
-  (https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization). The Gateway acts as the 
-  resource server and protects the MCP resources by validating the access tokens presented in the requests.
-  This uses the JwtAuthentication policy underneath to validate the access tokens.
+  Validates JWT access tokens using one or more JWKS providers (key managers).
+  System-level configuration holds key manager endpoints and fetch behavior.
+  User-level configuration holds per-route assertions (selected issuers, audiences, scopes, claims and mappings).
 
 parameters:
   type: object
@@ -13,26 +12,21 @@ parameters:
     issuers:
       type: array
       description: >-
-        List of issuer names (referencing entries in `system.keyManagers`).
-        This list will be sent as the authorization servers in the protected resource
-        metadata response. If omitted, all configured key managers will be used. The
-        selection will be based on the MCP client Implementation.
-        Furthermore, this list will also be used for validating tokens. If omitted, 
-        runtime will try to match token `iss` claim to available key managers or try all providers.
-      items:
-        type: string
-
-    requiredScopes:
-      type: array
-      description: >-
-        List of scopes that should be included in the token generated through MCP auth flow.
-        List of scopes that must be present in the token (space-delimited 'scope' claim or array 'scp').
+        List of issuer names (referencing entries in `system.keyManagers`) to use
+        for validating tokens for this route. If omitted, runtime will try to
+        match token `iss` claim to available key managers or try all providers.
       items:
         type: string
 
     audiences:
       type: array
       description: List of acceptable audience values; token must contain at least one.
+      items:
+        type: string
+
+    requiredScopes:
+      type: array
+      description: List of scopes that must be present in the token (space-delimited 'scope' claim or array 'scp').
       items:
         type: string
 
@@ -47,6 +41,10 @@ parameters:
       description: Map claimName -> downstream header or context key to expose for downstream services.
       additionalProperties:
         type: string
+
+    authHeaderPrefix:
+      type: string
+      description: Override for the authorization header scheme prefix (e.g., "Bearer", "JWT"). If specified at user-level, takes precedence over system configuration for this route.
 
 systemParameters:          
   type: object
@@ -182,13 +180,5 @@ systemParameters:
       type: boolean
       description: Whether to validate the token's issuer claim against configured key managers.
       "wso2/defaultValue": "${config.policy_configurations.jwtauth_v010.validateissuer}"
-    
-    gatewayHost:
-      type: string
-      description: The host of the gateway to be included in the protected metadata URL and response.
-      example: mcp1.api-platform.com
-      default: localhost
-      "wso2/defaultValue": "${config.policy_configurations.mcpauth_v010.gatewayhost}"
-
 
   required: ["keyManagers"]

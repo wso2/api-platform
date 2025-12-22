@@ -974,7 +974,7 @@ jobs:
               main:
                 url: http://httpbin.default.svc.cluster.local:80
             policies:
-              - name: JwtAuthentication
+              - name: jwt-auth
                 version: v0.1.0
                 params:
                   issuers:
@@ -1052,7 +1052,7 @@ jobs:
               main:
                 url: http://httpbin.default.svc.cluster.local:80
             policies:
-              - name: JwtAuthentication
+              - name: jwt-auth
                 version: v0.1.0
                 params:
                   issuers:

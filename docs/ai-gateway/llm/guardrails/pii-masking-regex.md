@@ -97,7 +97,7 @@ spec:
       - path: /models/{modelId}
         methods: [GET]
   policies:
-    - name: PIIMaskingRegex
+    - name: pii-masking-regex
       version: v0.1.0
       paths:
         - path: /chat/completions

@@ -1,4 +1,4 @@
-name: Respond
+name: respond
 version: v1.0.0
 description: |
   Returns an immediate response to the client without forwarding the request to the upstream backend.

@@ -1,4 +1,4 @@
-name: McpAuthentication
+name: mcp-auth
 version: v0.1.0
 description: |
   This policy is used to secure traffic to Model Context Protocol server as defined in the specification 

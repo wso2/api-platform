@@ -114,7 +114,7 @@ spec:
     main:
       url: https://mcp-backend:8080
   policies:
-    - name: McpAuthentication
+    - name: mcp-auth
       version: v0.1.0
       params:
         issuers:
@@ -141,7 +141,7 @@ spec:
     main:
       url: https://mcp-backend:8080
   policies:
-    - name: McpAuthentication
+    - name: mcp-auth
       version: v0.1.0
       params:
         issuers:

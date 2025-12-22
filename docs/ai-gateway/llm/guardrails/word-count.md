@@ -80,7 +80,7 @@ spec:
       - path: /models/{modelId}
         methods: [GET]
   policies:
-    - name: WordCountGuardrail
+    - name: word-count-guardrail
       version: v0.1.0
       paths:
         - path: /chat/completions
@@ -159,7 +159,7 @@ When validation fails, the guardrail returns an HTTP 422 status code with the fo
   "type": "WORD_COUNT_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "WordCountGuardrail",
+    "interveningGuardrail": "word-count-guardrail",
     "actionReason": "Violation of applied word count constraints detected.",
     "direction": "REQUEST"
   }
@@ -173,7 +173,7 @@ If `showAssessment` is enabled, additional details are included:
   "type": "WORD_COUNT_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "WordCountGuardrail",
+    "interveningGuardrail": "word-count-guardrail",
     "actionReason": "Violation of applied word count constraints detected.",
     "assessments": "Violation of word count detected. Expected between 2 and 10 words.",
     "direction": "REQUEST"

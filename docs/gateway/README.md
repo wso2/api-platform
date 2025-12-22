@@ -119,7 +119,7 @@ spec:
     - method: GET
       path: /{country_code}/{city}
       policies:
-        - name: ModifyHeaders
+        - name: modify-headers
           version: v1.0.0
           params:
             requestHeaders:

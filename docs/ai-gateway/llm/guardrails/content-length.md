@@ -80,7 +80,7 @@ spec:
       - path: /models/{modelId}
         methods: [GET]
   policies:
-    - name: ContentLengthGuardrail
+    - name: content-length-guardrail
       version: v0.1.0
       paths:
         - path: /chat/completions
@@ -159,7 +159,7 @@ When validation fails, the guardrail returns an HTTP 422 status code with the fo
   "type": "CONTENT_LENGTH_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "ContentLengthGuardrail",
+    "interveningGuardrail": "content-length-guardrail",
     "actionReason": "Violation of applied content length constraints detected.",
     "direction": "REQUEST"
   }
@@ -173,7 +173,7 @@ If `showAssessment` is enabled, additional details are included:
   "type": "CONTENT_LENGTH_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "ContentLengthGuardrail",
+    "interveningGuardrail": "content-length-guardrail",
     "actionReason": "Violation of applied content length constraints detected.",
     "assessments": "Violation of content length detected. Expected between 10 and 100 bytes.",
     "direction": "REQUEST"

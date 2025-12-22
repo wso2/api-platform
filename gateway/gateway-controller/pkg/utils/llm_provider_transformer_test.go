@@ -230,7 +230,7 @@ func TestTransform_FullProvider(t *testing.T) {
 	require.NotNil(t, spec.Policies)
 	assert.Len(t, *spec.Policies, 1)
 	authPolicy := (*spec.Policies)[0]
-	assert.Equal(t, "ModifyHeaders", authPolicy.Name)
+	assert.Equal(t, "modify-headers", authPolicy.Name)
 	assert.Equal(t, "v1.0.0", authPolicy.Version)
 	assert.NotNil(t, authPolicy.Params)
 }
@@ -627,7 +627,7 @@ func TestTransform_AllowAll_WithSingleException(t *testing.T) {
 	// Should have 2 exception operations + 1 catch-all = 3 total
 	require.Len(t, spec.Operations, 2+len(constants.WILDCARD_HTTP_METHODS))
 
-	// Verify exception operations have Respond policy
+	// Verify exception operations have respond policy
 	foundGET := false
 	foundPOST := false
 	catchAllCount := 0
@@ -708,7 +708,7 @@ func TestTransform_AllowAll_WithSingleExceptionWithWildCardMethod(t *testing.T) 
 	// Should have 12
 	require.Len(t, spec.Operations, 2*len(constants.WILDCARD_HTTP_METHODS))
 
-	// Verify exception operations have Respond policy
+	// Verify exception operations have respond policy
 	foundWildCardCount := 0
 	foundCatchCount := 0
 
@@ -773,7 +773,7 @@ func TestTransform_AllowAll_WithSingleExceptionWithWildCardResource(t *testing.T
 	// Should have 12
 	require.Len(t, spec.Operations, 2*len(constants.WILDCARD_HTTP_METHODS))
 
-	// Verify exception operations have Respond policy
+	// Verify exception operations have respond policy
 	foundWildCardCount := 0
 	foundCatchCount := 0
 
@@ -945,9 +945,9 @@ func TestTransform_DenyAll_WithSingleException(t *testing.T) {
 	assert.Equal(t, api.OperationMethod("POST"), spec.Operations[0].Method)
 	assert.Equal(t, "/v1/chat/completions", spec.Operations[0].Path)
 
-	// Exception operations in deny_all mode should NOT have Respond policy
+	// Exception operations in deny_all mode should NOT have respond policy
 	if spec.Operations[0].Policies != nil {
-		assert.Len(t, *spec.Operations[0].Policies, 0, "Deny all exceptions should not have Respond policy")
+		assert.Len(t, *spec.Operations[0].Policies, 0, "Deny all exceptions should not have respond policy")
 	}
 }
 
@@ -995,9 +995,9 @@ func TestTransform_DenyAll_WithSingleExceptionWithWildCardMethod(t *testing.T) {
 		assert.Contains(t, constants.WILDCARD_HTTP_METHODS, string(op.Method),
 			"Operation %d method %s should be in WILDCARD_HTTP_METHODS", i, op.Method)
 
-		// Exception operations in deny_all mode should NOT have Respond policy
+		// Exception operations in deny_all mode should NOT have respond policy
 		if op.Policies != nil {
-			assert.Len(t, *op.Policies, 0, "Operation %d (%s) should not have Respond policy", i, op.Method)
+			assert.Len(t, *op.Policies, 0, "Operation %d (%s) should not have respond policy", i, op.Method)
 		}
 	}
 
@@ -1011,9 +1011,9 @@ func TestTransform_DenyAll_WithSingleExceptionWithWildCardMethod(t *testing.T) {
 		assert.True(t, foundMethods[expectedMethod], "Expected method %s should be present in operations", expectedMethod)
 	}
 
-	// Exception operations in deny_all mode should NOT have Respond policy
+	// Exception operations in deny_all mode should NOT have respond policy
 	if spec.Operations[0].Policies != nil {
-		assert.Len(t, *spec.Operations[0].Policies, 0, "Deny all exceptions should not have Respond policy")
+		assert.Len(t, *spec.Operations[0].Policies, 0, "Deny all exceptions should not have respond policy")
 	}
 }
 
@@ -1064,9 +1064,9 @@ func TestTransform_DenyAll_WithSingleExceptionWithWildCardResource(t *testing.T)
 		assert.Contains(t, constants.WILDCARD_HTTP_METHODS, string(op.Method),
 			"Operation %d method %s should be in WILDCARD_HTTP_METHODS", i, op.Method)
 
-		// Exception operations in deny_all mode should NOT have Respond policy
+		// Exception operations in deny_all mode should NOT have respond policy
 		if op.Policies != nil {
-			assert.Len(t, *op.Policies, 0, "Operation %d (%s) should not have Respond policy", i, op.Method)
+			assert.Len(t, *op.Policies, 0, "Operation %d (%s) should not have respond policy", i, op.Method)
 		}
 	}
 
@@ -1178,7 +1178,7 @@ func TestTransform_WithSinglePolicy(t *testing.T) {
 
 	policies := []api.LLMPolicy{
 		{
-			Name:    "ContentLengthGuardrail",
+			Name:    "content-length-guardrail",
 			Version: "v0.1.0",
 			Paths: []api.LLMPolicyPath{
 				{
@@ -1235,7 +1235,7 @@ func TestTransform_WithSinglePolicy(t *testing.T) {
 	assert.Len(t, *op.Policies, 1)
 
 	policy := (*op.Policies)[0]
-	assert.Equal(t, "ContentLengthGuardrail", policy.Name)
+	assert.Equal(t, "content-length-guardrail", policy.Name)
 	assert.Equal(t, "v0.1.0", policy.Version)
 	require.NotNil(t, policy.Params)
 
@@ -1248,7 +1248,7 @@ func TestTransform_WithMultiplePoliciesSameRoute(t *testing.T) {
 
 	policies := []api.LLMPolicy{
 		{
-			Name:    "ContentLengthGuardrail",
+			Name:    "content-length-guardrail",
 			Version: "v0.1.0",
 			Paths: []api.LLMPolicyPath{
 				{
@@ -1261,7 +1261,7 @@ func TestTransform_WithMultiplePoliciesSameRoute(t *testing.T) {
 			},
 		},
 		{
-			Name:    "RegexGuardrail",
+			Name:    "regex-guardrail",
 			Version: "v0.1.0",
 			Paths: []api.LLMPolicyPath{
 				{
@@ -1322,8 +1322,8 @@ func TestTransform_WithMultiplePoliciesSameRoute(t *testing.T) {
 
 	// Verify policies are in order
 	policyList := *op.Policies
-	assert.Equal(t, "ContentLengthGuardrail", policyList[0].Name)
-	assert.Equal(t, "RegexGuardrail", policyList[1].Name)
+	assert.Equal(t, "content-length-guardrail", policyList[0].Name)
+	assert.Equal(t, "regex-guardrail", policyList[1].Name)
 }
 
 func TestTransform_PolicyOnDifferentRoutes(t *testing.T) {
@@ -1331,7 +1331,7 @@ func TestTransform_PolicyOnDifferentRoutes(t *testing.T) {
 
 	policies := []api.LLMPolicy{
 		{
-			Name:    "ContentLengthGuardrail",
+			Name:    "content-length-guardrail",
 			Version: "v0.1.0",
 			Paths: []api.LLMPolicyPath{
 				{
@@ -1344,7 +1344,7 @@ func TestTransform_PolicyOnDifferentRoutes(t *testing.T) {
 			},
 		},
 		{
-			Name:    "RegexGuardrail",
+			Name:    "regex-guardrail",
 			Version: "v0.1.0",
 			Paths: []api.LLMPolicyPath{
 				{
@@ -1407,9 +1407,9 @@ func TestTransform_PolicyOnDifferentRoutes(t *testing.T) {
 
 		policy := (*op.Policies)[0]
 		if op.Path == "/v1/chat/completions" {
-			assert.Equal(t, "ContentLengthGuardrail", policy.Name)
+			assert.Equal(t, "content-length-guardrail", policy.Name)
 		} else if op.Path == "/v1/embeddings" {
-			assert.Equal(t, "RegexGuardrail", policy.Name)
+			assert.Equal(t, "regex-guardrail", policy.Name)
 		}
 	}
 }
@@ -1420,7 +1420,7 @@ func TestTransform_PolicyOnWildcardMethod_1(t *testing.T) {
 
 	policies := []api.LLMPolicy{
 		{
-			Name:    "ModifyHeaders",
+			Name:    "modify-headers",
 			Version: "v1.0.0",
 			Paths: []api.LLMPolicyPath{
 				{
@@ -1478,9 +1478,9 @@ func TestTransform_PolicyOnWildcardMethod_1(t *testing.T) {
 		require.NotNil(t, op.Policies, "Operation %s %s should have policies", op.Method, op.Path)
 		require.Len(t, *op.Policies, 1, "Operation %s %s should have exactly 1 policy", op.Method, op.Path)
 
-		// The policy should be ModifyHeaders
+		// The policy should be modify-headers
 		policy := (*op.Policies)[0]
-		assert.Equal(t, "ModifyHeaders", policy.Name, "Operation %s %s should have ModifyHeaders policy", op.Method, op.Path)
+		assert.Equal(t, "modify-headers", policy.Name, "Operation %s %s should have modify-headers policy", op.Method, op.Path)
 		assert.Equal(t, "v1.0.0", policy.Version, "Operation %s %s should have correct policy version", op.Method, op.Path)
 
 		// Verify the policy params are set correctly
@@ -1495,7 +1495,7 @@ func TestTransform_PolicyOnWildcardMethod_2(t *testing.T) {
 
 	policies := []api.LLMPolicy{
 		{
-			Name:    "ModifyHeaders",
+			Name:    "modify-headers",
 			Version: "v1.0.0",
 			Paths: []api.LLMPolicyPath{
 				{
@@ -1560,9 +1560,9 @@ func TestTransform_PolicyOnWildcardMethod_2(t *testing.T) {
 		require.NotNil(t, op.Policies, "Operation %s %s should have policies", op.Method, op.Path)
 		require.Len(t, *op.Policies, 1, "Operation %s %s should have exactly 1 policy", op.Method, op.Path)
 
-		// The policy should be ModifyHeaders
+		// The policy should be modify-headers
 		policy := (*op.Policies)[0]
-		assert.Equal(t, "ModifyHeaders", policy.Name, "Operation %s %s should have ModifyHeaders policy", op.Method, op.Path)
+		assert.Equal(t, "modify-headers", policy.Name, "Operation %s %s should have modify-headers policy", op.Method, op.Path)
 		assert.Equal(t, "v1.0.0", policy.Version, "Operation %s %s should have correct policy version", op.Method, op.Path)
 
 		// Verify the policy params are set correctly
@@ -1577,7 +1577,7 @@ func TestTransform_PolicyOnNonExistentRoute(t *testing.T) {
 	// Policy for route that doesn't exist in operations
 	policies := []api.LLMPolicy{
 		{
-			Name:    "ContentLengthGuardrail",
+			Name:    "content-length-guardrail",
 			Version: "v0.1.0",
 			Paths: []api.LLMPolicyPath{
 				{
@@ -1692,7 +1692,7 @@ func TestTransform_AuthWithAllowAll(t *testing.T) {
 	// Should have 1 exception + 6 catch-all operations (one per HTTP method) = 7 total
 	require.Len(t, spec.Operations, 7)
 
-	// Exception operation should have Respond policy
+	// Exception operation should have respond policy
 	foundException := false
 	catchAllCount := 0
 	for _, op := range spec.Operations {
@@ -1863,12 +1863,12 @@ func TestTransform_DuplicateExceptionPaths(t *testing.T) {
 func TestTransform_AllowAllWithPolicies(t *testing.T) {
 	transformer, _ := setupTestTransformer(t)
 
-	// BUG POTENTIAL: Policies might be applied to exception operations with Respond policy
+	// BUG POTENTIAL: Policies might be applied to exception operations with respond policy
 	// This could cause unexpected behavior
 
 	policies := []api.LLMPolicy{
 		{
-			Name:    "ContentLengthGuardrail",
+			Name:    "content-length-guardrail",
 			Version: "v0.1.0",
 			Paths: []api.LLMPolicyPath{
 				{
@@ -1928,7 +1928,7 @@ func TestTransform_AllowAllWithPolicies(t *testing.T) {
 	require.NotNil(t, adminOp)
 	require.NotNil(t, adminOp.Policies)
 
-	// ISSUE: Should have both Respond (from exception) and ContentLengthGuardrail (from policy)
+	// ISSUE: Should have both respond (from exception) and content-length-guardrail (from policy)
 	// Current implementation might have ordering issues
 	t.Logf("Admin operation has %d policies", len(*adminOp.Policies))
 	for i, p := range *adminOp.Policies {
@@ -1936,7 +1936,7 @@ func TestTransform_AllowAllWithPolicies(t *testing.T) {
 	}
 
 	// Verify policies
-	assert.GreaterOrEqual(t, len(*adminOp.Policies), 1, "Should have at least Respond policy")
+	assert.GreaterOrEqual(t, len(*adminOp.Policies), 1, "Should have at least respond policy")
 }
 
 // ============================================================================
@@ -3507,7 +3507,7 @@ func TestTransform_Auth_Plus_APILevel_Plus_OperationLevel_AllowAll(t *testing.T)
 	require.NotNil(t, adminOp, "/admin/delete DELETE should exist")
 	if adminOp.Policies != nil {
 		assert.Len(t, *adminOp.Policies, 1, "/admin/delete should have Deny policy only")
-		assert.Equal(t, "Respond", (*adminOp.Policies)[0].Name)
+		assert.Equal(t, "respond", (*adminOp.Policies)[0].Name)
 	}
 
 	// Verify total operations count
@@ -3744,7 +3744,7 @@ func TestTransform_MultipleAPILevelPolicies_Plus_Exceptions_Plus_OperationPolici
 	}
 	assert.Equal(t, len(constants.WILDCARD_HTTP_METHODS), catchAllCount, "Should have 6 catch-all operations")
 
-	// Verify /internal/* wildcard exception operations exist with deny policy (Respond)
+	// Verify /internal/* wildcard exception operations exist with deny policy (respond)
 	internalWildcardCount := 0
 	for _, op := range spec.Operations {
 		if op.Path == "/internal/*" {
@@ -3756,14 +3756,14 @@ func TestTransform_MultipleAPILevelPolicies_Plus_Exceptions_Plus_OperationPolici
 	}
 	assert.Equal(t, len(constants.WILDCARD_HTTP_METHODS), internalWildcardCount, "Should have /internal/* for all 6 HTTP methods")
 
-	// Verify /admin/users DELETE exception operation with deny policy (Respond)
+	// Verify /admin/users DELETE exception operation with deny policy (respond)
 	adminDeleteOp := findOperation(spec.Operations, "/admin/users", "DELETE")
 	require.NotNil(t, adminDeleteOp, "/admin/users DELETE should exist")
 	require.NotNil(t, adminDeleteOp.Policies, "Operation should have policies")
 	require.Len(t, *adminDeleteOp.Policies, 1, "Should have 1 policy (deny policy)")
 	assert.Equal(t, constants.ACCESS_CONTROL_DENY_POLICY_NAME, (*adminDeleteOp.Policies)[0].Name)
 
-	// Verify /admin/users POST exception operation with deny policy (Respond)
+	// Verify /admin/users POST exception operation with deny policy (respond)
 	adminPostOp := findOperation(spec.Operations, "/admin/users", "POST")
 	require.NotNil(t, adminPostOp, "/admin/users POST should exist")
 	require.NotNil(t, adminPostOp.Policies, "Operation should have policies")

@@ -1,4 +1,4 @@
-name: BasicAuth
+name: basic-auth
 version: v1.0.0
 description: |
   Implements HTTP Basic Authentication to protect APIs with username and password credentials.

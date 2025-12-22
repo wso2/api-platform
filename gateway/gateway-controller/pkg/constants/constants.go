@@ -96,34 +96,34 @@ const (
 	WILD_CARD = "*"
 
 	// LLM Transformer constants
-	UPSTREAM_AUTH_APIKEY_POLICY_NAME    = "ModifyHeaders"
+	UPSTREAM_AUTH_APIKEY_POLICY_NAME    = "modify-headers"
 	UPSTREAM_AUTH_APIKEY_POLICY_VERSION = "v1.0.0"
 	UPSTREAM_AUTH_APIKEY_POLICY_PARAMS  = "requestHeaders:\n" +
 		"  - action: SET\n" +
-		"    name: %s\n" +
-		"    value: %s\n"
-	PROXY_HOST__HEADER_POLICY_NAME    = "ModifyHeaders"
+		"    name: '%s'\n" +
+		"    value: '%s'\n"
+	PROXY_HOST__HEADER_POLICY_NAME    = "modify-Headers"
 	PROXY_HOST__HEADER_POLICY_VERSION = "v1.0.0"
 	PROXY_HOST__HEADER_POLICY_PARAMS  = "requestHeaders:\n" +
 		"  - action: SET\n" +
 		"    name: Host\n" +
-		"    value: %s\n"
+		"    value: '%s'\n"
 
-	ACCESS_CONTROL_DENY_POLICY_NAME    = "Respond"
+	ACCESS_CONTROL_DENY_POLICY_NAME    = "respond"
 	ACCESS_CONTROL_DENY_POLICY_VERSION = "v1.0.0"
-	// YAML for default 404 Respond policy params
+	// YAML for default 404 respond policy params
 	ACCESS_CONTROL_DENY_POLICY_PARAMS = "statusCode: 404\n" +
 		"body: \"{\\\"message\\\": \\\"Resource not found.\\\"}\"\n" +
 		"headers:\n" +
 		"  - name: Content-Type\n" +
 		"    value: application/json\n"
 
-	MODIFY_HEADERS_POLICY_NAME    = "ModifyHeaders"
-	MODIFY_HEADERS_POLICY_VERSION = "v1.0.0"
+	MODIFY_HEADERS_POLICY_NAME    = "modify-headers"
+	MODIFY_HEADERS_POLICY_VERSION = "v0.1.0"
 	MODIFY_HEADERS_POLICY_PARAMS  = "requestHeaders:\n" +
 		"  - action: SET\n" +
-		"    name: %s\n" +
-		"    value: %s\n"
+		"    name: '%s'\n" +
+		"    value: '%s'\n"
 )
 
 var WILDCARD_HTTP_METHODS = []string{

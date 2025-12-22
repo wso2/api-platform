@@ -28,7 +28,7 @@ spec:
     main:
       url: http://sample-backend:5000/api/v2
   policies:
-    - name: ModifyHeaders
+    - name: modify-headers
       version: v1.0.0
       params:
         requestHeaders:
@@ -46,7 +46,7 @@ spec:
     - method: GET
       path: /{country_code}/{city}
       policies:
-        - name: ModifyHeaders
+        - name: modify-headers
           version: v1.0.0
           params:
             requestHeaders:
@@ -62,7 +62,7 @@ spec:
     - method: POST
       path: /alerts/active
       policies:
-        - name: Respond
+        - name: respond
           version: v1.0.0
           params:
             statusCode: 201

@@ -21,7 +21,7 @@
 
 - route_key: my_upstream_service_route
   policies:
-    - name: ModifyHeaders
+    - name: modify-headers
       version: v1.0.0
       enabled: true
       parameters:
@@ -40,7 +40,7 @@
             value: nosniff
           - action: DELETE
             name: server
-    # - name: Respond
+    # - name: respond
     #   version: v1.0.0
     #   enabled: true
     #   parameters:
@@ -54,7 +54,7 @@
     # - name: UppercaseBody
     #   version: v1.0.0
     #   enabled: true
-    - name: BasicAuth
+    - name: basic-auth
       version: v1.0.0
       enabled: true
       parameters:
@@ -62,14 +62,14 @@
         password: secret123
         allowUnauthenticated: true
         realm: "Admin API"
-    - name: ModifyHeaders
+    - name: modify-headers
       version: v1.0.0
       enabled: true
       parameters:
         requestHeaders:
           - action: DELETE
             name: authorization  # Remove auth header after validation
-    - name: ModifyHeaders
+    - name: modify-headers
       version: v1.0.0
       enabled: true
       executionCondition: request.Metadata['auth.success'] == false
@@ -78,7 +78,7 @@
           - action: SET
             name: auth-failed
             value: "true"
-    - name: ModifyHeaders
+    - name: modify-headers
       version: v1.0.0
       enabled: true
       executionCondition: request.Metadata['auth.success'] == true

@@ -1,4 +1,4 @@
-name: SentenceCountGuardrail
+name: sentence-count-guardrail
 version: v0.1.0
 description: |
   Validates the sentence count of request or response body content.

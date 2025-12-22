@@ -29,7 +29,7 @@ spec:
   upstream:
     url: http://everything:3001
   # policies:
-  #   - name: McpAuthentication
+  #   - name: mcp-auth
   #     version: v0.1.0
   #     params:
   #       issuers:

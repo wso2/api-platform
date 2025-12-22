@@ -1,4 +1,4 @@
-name: WordCountGuardrail
+name: word-count-guardrail
 version: v0.1.0
 description: |
   Validates the word count of request or response body content.

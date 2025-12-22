@@ -284,7 +284,7 @@ func (p *SentenceCountGuardrailPolicy) buildErrorResponse(reason string, validat
 func (p *SentenceCountGuardrailPolicy) buildAssessmentObject(reason string, validationError error, isResponse bool, showAssessment bool, min, max int) map[string]interface{} {
 	assessment := map[string]interface{}{
 		"action":               "GUARDRAIL_INTERVENED",
-		"interveningGuardrail": "SentenceCountGuardrail",
+		"interveningGuardrail": "sentence-count-guardrail",
 	}
 
 	if isResponse {

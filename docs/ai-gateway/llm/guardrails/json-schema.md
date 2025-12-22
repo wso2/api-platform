@@ -89,7 +89,7 @@ spec:
       - path: /models/{modelId}
         methods: [GET]
   policies:
-    - name: JSONSchemaGuardrail
+    - name: json-schema-guardrail
       version: v0.1.0
       paths:
         - path: /chat/completions
@@ -179,7 +179,7 @@ When validation fails, the guardrail returns an HTTP 422 status code with the fo
   "type": "JSON_SCHEMA_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "JSONSchemaGuardrail",
+    "interveningGuardrail": "json-schema-guardrail",
     "actionReason": "Violation of JSON schema detected.",
     "direction": "REQUEST"
   }
@@ -193,7 +193,7 @@ If `showAssessment` is enabled, detailed validation errors are included:
   "type": "JSON_SCHEMA_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "JSONSchemaGuardrail",
+    "interveningGuardrail": "json-schema-guardrail",
     "actionReason": "Violation of JSON schema detected.",
     "assessments": [
       {

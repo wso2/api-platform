@@ -425,7 +425,7 @@ spec:
         methods:
           - POST
   policies:
-    - name: ContentLengthGuardrail
+    - name: content-length-guardrail
       version: v0.1.0
       paths:
         - path: /v1/chat/completions
@@ -434,7 +434,7 @@ spec:
           params:
             maxRequestBodySize: 10240
             maxResponseBodySize: 51200
-    - name: RegexGuardrail
+    - name: regex-guardrail
       version: v0.1.0
       paths:
         - path: /v1/chat/completions
@@ -956,7 +956,7 @@ spec:
         methods:
           - POST
   policies:
-    - name: ContentLengthGuardrail
+    - name: content-length-guardrail
       version: v0.1.0
       paths:
         - path: /v1/chat/completions
@@ -964,7 +964,7 @@ spec:
             - POST
           params:
             maxRequestBodySize: 10240
-    - name: RegexGuardrail
+    - name: regex-guardrail
       version: v0.1.0
       paths:
         - path: /v1/chat/completions
@@ -988,14 +988,14 @@ spec:
 	assert.Len(t, policies, 2, "Should have 2 policies")
 
 	// Verify first policy
-	assert.Equal(t, "ContentLengthGuardrail", policies[0].Name)
+	assert.Equal(t, "content-length-guardrail", policies[0].Name)
 	assert.Equal(t, "v0.1.0", policies[0].Version)
 	assert.Len(t, policies[0].Paths, 1)
 	assert.Equal(t, "/v1/chat/completions", policies[0].Paths[0].Path)
 	assert.NotNil(t, policies[0].Paths[0].Params)
 
 	// Verify second policy
-	assert.Equal(t, "RegexGuardrail", policies[1].Name)
+	assert.Equal(t, "regex-guardrail", policies[1].Name)
 	assert.Equal(t, "v0.1.0", policies[1].Version)
 	assert.Len(t, policies[1].Paths, 1)
 	assert.Equal(t, "/v1/chat/completions", policies[1].Paths[0].Path)

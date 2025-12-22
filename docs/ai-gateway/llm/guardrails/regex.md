@@ -89,7 +89,7 @@ spec:
       - path: /models/{modelId}
         methods: [GET]
   policies:
-    - name: RegexGuardrail
+    - name: regex-guardrail
       version: v0.1.0
       paths:
         - path: /chat/completions
@@ -168,7 +168,7 @@ When validation fails, the guardrail returns an HTTP 422 status code with the fo
   "type": "REGEX_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "RegexGuardrail",
+    "interveningGuardrail": "regex-guardrail",
     "actionReason": "Violation of regular expression detected.",
     "direction": "REQUEST"
   }
@@ -182,7 +182,7 @@ If `showAssessment` is enabled, additional details are included:
   "type": "REGEX_GUARDRAIL",
   "message": {
     "action": "GUARDRAIL_INTERVENED",
-    "interveningGuardrail": "RegexGuardrail",
+    "interveningGuardrail": "regex-guardrail",
     "actionReason": "Violation of regular expression detected.",
     "assessments": "Violation of regular expression detected. (?i)ignore\\s+all\\s+previous\\s+instructions",
     "direction": "REQUEST"

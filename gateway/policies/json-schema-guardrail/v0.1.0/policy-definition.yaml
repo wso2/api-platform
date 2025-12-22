@@ -1,4 +1,4 @@
-name: JSONSchemaGuardrail
+name: json-schema-guardrail
 version: v0.1.0
 description: |
   Validates request or response body content against a JSON Schema.

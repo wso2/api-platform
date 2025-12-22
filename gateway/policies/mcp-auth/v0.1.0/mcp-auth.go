@@ -25,7 +25,7 @@ import (
 	"strconv"
 	"strings"
 
-	jwtauth "github.com/policy-engine/policies/jwtauthentication"
+	jwtauth "github.com/policy-engine/policies/jwt-auth"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 

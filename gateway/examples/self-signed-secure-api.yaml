@@ -28,7 +28,7 @@ spec:
       url: https://secure-backend:5443/api/v2
       # url: http://httpbin.org/anything
   policies:
-    - name: JwtAuthentication
+    - name: jwt-auth
       version: v0.1.0
       params:
         issuers:

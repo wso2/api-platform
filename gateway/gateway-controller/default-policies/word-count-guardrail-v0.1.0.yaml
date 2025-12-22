@@ -1,9 +1,9 @@
-name: URLGuardrail
+name: word-count-guardrail
 version: v0.1.0
 description: |
-  Validates URLs found in request or response body content.
+  Validates the word count of request or response body content.
   Supports JSONPath extraction to validate specific fields within JSON payloads.
-  Can validate URLs via DNS resolution only or HTTP HEAD request reachability.
+  Can be configured with min/max word count constraints and inverted logic.
   Supports separate configuration for request and response phases.
 
 parameters:
@@ -13,6 +13,14 @@ parameters:
       type: object
       description: Configuration for request phase validation
       properties:
+        min:
+          type: integer
+          description: Minimum allowed word count (inclusive)
+          minimum: 0
+        max:
+          type: integer
+          description: Maximum allowed word count (inclusive)
+          minimum: 1
         jsonPath:
           type: string
           description: |
@@ -20,28 +28,33 @@ parameters:
             If empty, validates the entire payload as a string.
             Examples: "$.message", "$.data.content", "$.items[0].text"
           default: ""
-        onlyDNS:
+        invert:
           type: boolean
           description: |
-            If true, validates URLs only via DNS resolution (faster, less reliable).
-            If false (default), validates URLs via HTTP HEAD request (slower, more reliable).
+            If true, validation passes when word count is NOT within the min-max range (inverted logic).
+            If false (default), validation passes when word count is within the min-max range.
           default: false
-        timeout:
-          type: integer
-          description: |
-            Timeout in milliseconds for DNS lookup or HTTP HEAD request.
-            Default is 3000ms (3 seconds).
-          default: 3000
         showAssessment:
           type: boolean
           description: |
-            If true, includes detailed assessment information including invalid URLs in error responses.
+            If true, includes detailed assessment information in error responses.
             If false, returns minimal error information.
           default: false
+      required:
+      - min
+      - max
     response:
       type: object
       description: Configuration for response phase validation
       properties:
+        min:
+          type: integer
+          description: Minimum allowed word count (inclusive)
+          minimum: 0
+        max:
+          type: integer
+          description: Maximum allowed word count (inclusive)
+          minimum: 1
         jsonPath:
           type: string
           description: |
@@ -49,24 +62,21 @@ parameters:
             If empty, validates the entire payload as a string.
             Examples: "$.message", "$.data.content", "$.items[0].text"
           default: ""
-        onlyDNS:
+        invert:
           type: boolean
           description: |
-            If true, validates URLs only via DNS resolution (faster, less reliable).
-            If false (default), validates URLs via HTTP HEAD request (slower, more reliable).
+            If true, validation passes when word count is NOT within the min-max range (inverted logic).
+            If false (default), validation passes when word count is within the min-max range.
           default: false
-        timeout:
-          type: integer
-          description: |
-            Timeout in milliseconds for DNS lookup or HTTP HEAD request.
-            Default is 3000ms (3 seconds).
-          default: 3000
         showAssessment:
           type: boolean
           description: |
-            If true, includes detailed assessment information including invalid URLs in error responses.
+            If true, includes detailed assessment information in error responses.
             If false, returns minimal error information.
           default: false
+      required:
+      - min
+      - max
 
 systemParameters:
   type: object
