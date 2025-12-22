@@ -52,6 +52,8 @@ jobs:
       - name: Run ap gateway image build (smoke test)
         working-directory: ./my-gw
         env:
+          # Force printing of workspace note by unsetting CI in this step
+          CI: ""
           # make sure any required env vars are unset for a deterministic run
           WSO2AP_GW_USERNAME: ${{ secrets.WSO2AP_GW_USERNAME || '' }}
           WSO2AP_GW_PASSWORD: ${{ secrets.WSO2AP_GW_PASSWORD || '' }}
@@ -61,5 +63,7 @@ jobs:
             echo "ap binary not present or not executable; skipping smoke run"
             exit 0
           fi
-          # Run the command; allow it to fail but capture output for diagnostics
-          ./ap gateway image build || true
+          # Run the command and capture output
+          ./ap gateway image build 2>&1 | tee build.log || true
+          # Verify the build printed the workspace-cleared note
+          grep -q "Note: Workspace may be cleared on the next run of this command." build.log
