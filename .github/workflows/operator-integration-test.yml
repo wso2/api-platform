@@ -1333,8 +1333,16 @@ jobs:
              exit 1
           fi
           echo "SUCCESS: RestApi in ignored-ns was ignored (no status update)."
-
+          
           # Cleanup
+          echo "Cleaning up scoped resources..."
+          kubectl delete gateway scoped-gateway -n scoped-test --ignore-not-found
+          kubectl delete restapi scoped-api -n scoped-test --ignore-not-found
+          
+          # Wait for resources to be deleted to ensure finalizers are handled
+          kubectl wait --for=delete gateway/scoped-gateway -n scoped-test --timeout=60s || true
+          kubectl wait --for=delete restapi/scoped-api -n scoped-test --timeout=60s || true
+
           helm uninstall gateway-operator -n scoped-test
           kubectl delete ns scoped-test ignored-ns --ignore-not-found
 
