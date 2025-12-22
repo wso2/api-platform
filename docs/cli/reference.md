@@ -30,13 +30,13 @@
 
 #### CLI Command
 
-```
+```shell
 ap gateway add --display-name <name> --server <server>
 ```
 
 #### Sample Command
 
-```
+```shell
 ap gateway add --display-name dev --server http://localhost:9090
 ```
 
@@ -46,13 +46,13 @@ ap gateway add --display-name dev --server http://localhost:9090
 
 #### CLI Command
 
-```
+```shell
 ap gateway list
 ```
 
 #### Sample Command
 
-```
+```shell
 ap gateway list
 ```
 
@@ -62,13 +62,13 @@ ap gateway list
 
 #### CLI Command
 
-```
+```shell
 ap gateway remove --display-name <name>
 ```
 
 #### Sample Command
 
-```
+```shell
 ap gateway remove --display-name dev
 ```
 
@@ -78,13 +78,13 @@ ap gateway remove --display-name dev
 
 #### CLI Command
 
-```
+```shell
 ap gateway use --display-name <name>
 ```
 
 #### Sample Command
 
-```
+```shell
 ap gateway use --display-name <name>
 ```
 
@@ -94,13 +94,13 @@ ap gateway use --display-name <name>
 
 #### CLI Command
 
-```
+```shell
 ap gateway current
 ```
 
 #### Sample Command
 
-```
+```shell
 ap gateway current
 ```
 
@@ -110,13 +110,13 @@ ap gateway current
 
 #### CLI Command
 
-```
+```shell
 ap gateway health
 ```
 
 #### Sample Command
 
-```
+```shell
 ap gateway health
 ```
 
@@ -126,13 +126,13 @@ ap gateway health
 
 #### CLI Command
 
-```
+```shell
 ap gateway apply --file <path>
 ```
 
 #### Sample Command
 
-```
+```shell
 ap gateway apply --file petstore-api.yaml
 ```
 
@@ -142,13 +142,13 @@ ap gateway apply --file petstore-api.yaml
 
 #### CLI Command
 
-```
+```shell
 ap gateway api list
 ```
 
 #### Sample Command
 
-```
+```shell
 ap gateway api list
 ```
 
@@ -158,14 +158,14 @@ ap gateway api list
 
 #### CLI Command
 
-```
+```shell
 ap gateway api get --display-name <name> --version <version> --format <json|yaml>
 ap gateway api get --id <id> --format <json|yaml>
 ```
 
 #### Sample Command
 
-```
+```shell
 ap gateway api get --display-name "PetStore API" --version v1.0 --format yaml
 ap gateway api get --id sample-1 --format yaml
 ```
@@ -176,13 +176,13 @@ ap gateway api get --id sample-1 --format yaml
 
 #### CLI Command
 
-```
+```shell
 ap gateway api delete --id <id> 
 ```
 
 #### Sample Command
 
-```
+```shell
 ap gateway api delete --id <id>
 ```
 
@@ -192,7 +192,7 @@ ap gateway api delete --id <id>
 
 #### CLI Command
 
-```
+```shell
 ap gateway image build \
   [--name <gateway-name>] \
   [--path <gateway-project-dir>]
@@ -210,7 +210,7 @@ ap gateway image build \
 
 #### Sample Command
 
-```
+```shell
 ap gateway build
 ```
 
@@ -268,13 +268,13 @@ When running in **offline mode**, a `policy_manifest_lock.yaml` file is mandator
 
 #### CLI Command
 
-```
+```shell
 ap gateway mcp list
 ```
 
 #### Sample Command
 
-```
+```shell
 ap gateway mcp list
 ```
 
@@ -284,14 +284,14 @@ ap gateway mcp list
 
 #### CLI Command
 
-```
+```shell
 ap gateway mcp get --display-name <name> --version <version> --format <json|yaml>
 ap gateway mcp get --id <id> --format <json|yaml>
 ```
 
 #### Sample Command
 
-```
+```shell
 ap gateway mcp get --display-name my-mcp --version 1.0.0 --format json
 ap gateway mcp get --id sample-id --format json
 ```
@@ -302,13 +302,13 @@ ap gateway mcp get --id sample-id --format json
 
 #### CLI Command
 
-```
+```shell
 ap gateway mcp delete --id <id> 
 ```
 
 #### Sample Command
 
-```
+```shell
 ap gateway mcp delete --id sample-id
 ```
 
@@ -318,12 +318,12 @@ ap gateway mcp delete --id sample-id
 
 #### CLI Command
 
-```
+```shell
 ap gateway mcp generate --server <server> --output <path>
 ```
 
 #### Sample Command
 
-```
+```shell
 ap gateway mcp generate --server http://localhost:3001/mcp --output target
 ```
