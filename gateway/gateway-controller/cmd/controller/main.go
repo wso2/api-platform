@@ -70,6 +70,10 @@ func main() {
 		zap.Bool("control_plane_token_configured", cfg.GatewayController.ControlPlane.Token != ""),
 	)
 
+	if !cfg.GatewayController.Auth.Basic.Enabled && !cfg.GatewayController.Auth.IDP.Enabled {
+		log.Warn("No authentication configured: both basic auth and IDP are disabled. Gateway Controller API will allow all requests without authentication")
+	}
+
 	// Initialize storage based on type
 	var db storage.Storage
 	if cfg.IsPersistentMode() {

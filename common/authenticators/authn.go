@@ -54,8 +54,17 @@ func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFu
 		authenticators = append(authenticators, jwtAuthenticator)
 	}
 
+	// No authenticators configured => run in no-auth mode.
+	// This disables both authentication and authorization (via AuthzSkipKey).
 	if len(authenticators) == 0 {
-		return nil, ErrNoAuthenticator
+		return func(c *gin.Context) {
+			c.Set(constants.AuthzSkipKey, true)
+			// Optional: mark as authenticated for downstream logs/handlers.
+			c.Set(constants.AuthenticatedKey, true)
+			c.Set(constants.UserIDKey, "sys_noauth_user")
+			c.Set(constants.AuthRolesKey, []string{})
+			c.Next()
+		}, nil
 	}
 
 	return func(c *gin.Context) {

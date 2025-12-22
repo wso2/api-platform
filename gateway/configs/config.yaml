@@ -185,10 +185,12 @@ gateway_controller:
 
 
   # Authentication configuration
+  # - If BOTH `basic.enabled` and `idp.enabled` are false, all requests are allowed without authentication.
   # - `users`: List of locally defined users (username/password + local roles).
   #   Passwords can be plain text or hashed depending on your implementation. We support argon2id and bcrypt hashing.
   # - `idp`: Optional IDP (OIDC/JWKS) configuration to validate incoming JWTs.
   #   `role_mapping` maps local roles to one or more roles in the IDP.
+  # - Wildcard role mapping: configure at most ONE local role with `"*"` in `role_mapping` (multiple wildcards are rejected)
   auth:
     # Local basic authentication configuration
     basic:

@@ -149,8 +149,8 @@ func TestValidator_URLFriendlyName(t *testing.T) {
 	}
 }
 
-func TestValidateAuthConfig_BothAuthDisabled(t *testing.T) {
-	// Test that validation fails when both auth methods are disabled
+func TestValidateAuthConfig_BothAuthDisabled_AllowsNoAuthMode(t *testing.T) {
+	// Test that validation allows no-auth mode when both auth methods are disabled
 	config := &Config{
 		GatewayController: GatewayController{
 			Auth: AuthConfig{
@@ -165,8 +165,7 @@ func TestValidateAuthConfig_BothAuthDisabled(t *testing.T) {
 	}
 
 	err := config.validateAuthConfig()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "at least one authentication method must be enabled")
+	assert.NoError(t, err)
 }
 
 func TestValidateAuthConfig_BasicAuthEnabled(t *testing.T) {

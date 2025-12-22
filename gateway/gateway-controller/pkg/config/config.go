@@ -1061,15 +1061,6 @@ func (c *Config) validateAnalyticsConfig() error {
 
 // validateAuthConfig validates the authentication configuration
 func (c *Config) validateAuthConfig() error {
-	// Require at least one authentication method to be enabled
-	if !c.GatewayController.Auth.Basic.Enabled && !c.GatewayController.Auth.IDP.Enabled {
-		return fmt.Errorf(
-			"auth configuration invalid: at least one authentication method must be enabled. " +
-				"Set either 'auth.basic.enabled=true' or 'auth.idp.enabled=true'. " +
-				"Disabling both authentication methods is not allowed for security reasons",
-		)
-	}
-
 	// Validate IDP role mapping for multiple wildcards
 	if c.GatewayController.Auth.IDP.Enabled && len(c.GatewayController.Auth.IDP.RoleMapping) > 0 {
 		wildcardRoles := []string{}

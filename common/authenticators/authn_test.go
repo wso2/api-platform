@@ -29,24 +29,35 @@ import (
 	"go.uber.org/zap"
 )
 
-func TestAuthMiddleware_NoAuthenticatorsConfigured_ReturnsUnauthorized(t *testing.T) {
+func TestAuthMiddleware_NoAuthenticatorsConfigured_AllowsAllRequests(t *testing.T) {
 	// Scenario: Both basic.enabled and idp.enabled are false
-	// Middleware creation should fail fast (startup-time validation)
+	// Middleware should enable no-auth mode and allow all requests.
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
 	logger := zap.NewNop()
 
-	// Config with both auth methods disabled
 	config := models.AuthConfig{
-		BasicAuth: &models.BasicAuth{
-			Enabled: false,
-		},
-		JWTConfig: &models.IDPConfig{
-			Enabled: false,
-		},
-		ResourceRoles: map[string][]string{},
+		BasicAuth: &models.BasicAuth{Enabled: false},
+		JWTConfig: &models.IDPConfig{Enabled: false},
 	}
 
-	_, err := AuthMiddleware(config, logger)
-	assert.Error(t, err)
+	middleware, err := AuthMiddleware(config, logger)
+	assert.NoError(t, err)
+
+	router.Use(middleware)
+	router.GET("/api/test", func(c *gin.Context) {
+		skipAuthz, exists := c.Get(constants.AuthzSkipKey)
+		assert.True(t, exists)
+		assert.True(t, skipAuthz.(bool))
+		c.JSON(http.StatusOK, gin.H{"message": "success"})
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/test", nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "success")
 }
 
 func TestAuthMiddleware_JWTEnabled_MissingJWKS_FailsAtCreation(t *testing.T) {
@@ -146,16 +157,30 @@ func TestAuthMiddleware_SkipPaths_NoAuthRequired(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "healthy")
 }
 
-func TestAuthMiddleware_NilBasicAuth_NilJWTConfig_ReturnsUnauthorized(t *testing.T) {
+func TestAuthMiddleware_NilBasicAuth_NilJWTConfig_AllowsAllRequests(t *testing.T) {
 	// Scenario: Auth configs are nil (not just disabled)
-	// Middleware creation should fail fast (startup-time validation)
+	// Middleware should enable no-auth mode and allow all requests.
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
 	logger := zap.NewNop()
 
-	config := models.AuthConfig{
-		BasicAuth: nil,
-		JWTConfig: nil,
-	}
+	config := models.AuthConfig{BasicAuth: nil, JWTConfig: nil}
 
-	_, err := AuthMiddleware(config, logger)
-	assert.Error(t, err)
+	middleware, err := AuthMiddleware(config, logger)
+	assert.NoError(t, err)
+
+	router.Use(middleware)
+	router.GET("/api/open", func(c *gin.Context) {
+		skipAuthz, exists := c.Get(constants.AuthzSkipKey)
+		assert.True(t, exists)
+		assert.True(t, skipAuthz.(bool))
+		c.JSON(http.StatusOK, gin.H{"message": "open access"})
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/open", nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "open access")
 }
