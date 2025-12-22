@@ -1,8 +1,8 @@
 name: Periodic Gateway Build
 
 on:
-  schedule:
-    - cron: '*/30 * * * *' # run every 30 minutes
+  # schedule:
+  #   - cron: '*/30 * * * *' # run every 30 minutes
   workflow_dispatch:
 
 jobs:
