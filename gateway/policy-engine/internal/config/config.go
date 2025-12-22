@@ -233,14 +233,14 @@ func setDefaults(v *viper.Viper) {
 	// Admin defaults
 	v.SetDefault("policy_engine.admin.enabled", true)
 	v.SetDefault("policy_engine.admin.port", 9002)
-	v.SetDefault("policy_engine.admin.allowed_ips", []string{"127.0.0.1", "::1"})
+	v.SetDefault("policy_engine.admin.allowed_ips", []string{"*", "127.0.0.1"})
 
 	// Config mode defaults
-	v.SetDefault("policy_engine.config_mode.mode", "file")
+	v.SetDefault("policy_engine.config_mode.mode", "xds")
 
 	// xDS defaults
-	v.SetDefault("policy_engine.xds.enabled", false)
-	v.SetDefault("policy_engine.xds.server_address", "localhost:18000")
+	v.SetDefault("policy_engine.xds.enabled", true)
+	v.SetDefault("policy_engine.xds.server_address", "gateway-controller:18001")
 	v.SetDefault("policy_engine.xds.node_id", "policy-engine")
 	v.SetDefault("policy_engine.xds.cluster", "policy-engine-cluster")
 	v.SetDefault("policy_engine.xds.connect_timeout", "10s")
