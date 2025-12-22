@@ -19,18 +19,18 @@
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 metadata:
-  name: openai
+  name: azure-openai
 spec:
-  displayName: OpenAI
+  displayName: Azure OpenAI
   promptTokens:
     location: payload
-    identifier: $.usage.inputTokens
+    identifier: $.usage.input_tokens
   completionTokens:
     location: payload
-    identifier: $.usage.outputTokens
+    identifier: $.usage.output_tokens
   totalTokens:
     location: payload
-    identifier: $.usage.totalTokens
+    identifier: $.usage.total_tokens
   remainingTokens:
     location: header
     identifier: x-ratelimit-remaining-tokens

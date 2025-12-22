@@ -283,26 +283,26 @@ func (cs *ConfigStore) AddTemplate(template *models.StoredLLMProviderTemplate) e
 	defer cs.mu.Unlock()
 
 	// Normalize inputs
-	id := strings.TrimSpace(template.ID)
+	uuid := strings.TrimSpace(template.ID)
 	handle := strings.TrimSpace(template.GetHandle())
 
-	if id == "" || handle == "" {
+	if uuid == "" || handle == "" {
 		return fmt.Errorf("template ID and handle is required")
 	}
 
 	// Enforce unique immutable ID: cannot add if ID already exists
-	if _, exists := cs.templates[id]; exists {
-		return fmt.Errorf("template with ID '%s' already exists", id)
+	if _, exists := cs.templates[uuid]; exists {
+		return fmt.Errorf("template with uuid '%s' already exists", uuid)
 	}
 
-	// Enforce unique name: cannot add if name already mapped to a different ID
+	// Enforce unique handle: cannot add if handle already mapped to a different UUID
 	if _, exists := cs.templateIdByHandle[handle]; exists {
 		return fmt.Errorf("template with handle '%s' already exists", handle)
 	}
 
 	// Store
-	cs.templates[id] = template
-	cs.templateIdByHandle[handle] = id
+	cs.templates[uuid] = template
+	cs.templateIdByHandle[handle] = uuid
 	return nil
 }
 
@@ -312,35 +312,35 @@ func (cs *ConfigStore) UpdateTemplate(template *models.StoredLLMProviderTemplate
 	defer cs.mu.Unlock()
 
 	// Normalize inputs
-	id := strings.TrimSpace(template.ID)
+	uuid := strings.TrimSpace(template.ID)
 	newHandle := strings.TrimSpace(template.GetHandle())
 
-	if id == "" || newHandle == "" {
-		return fmt.Errorf("template ID and handle is required")
+	if uuid == "" || newHandle == "" {
+		return fmt.Errorf("template uuid and handle is required")
 	}
 
 	// Require existing template by ID (ID is immutable)
-	existing, exists := cs.templates[id]
+	existing, exists := cs.templates[uuid]
 	if !exists {
-		return fmt.Errorf("template with ID '%s' not found", id)
+		return fmt.Errorf("template with uuid '%s' not found", uuid)
 	}
 
 	oldName := strings.TrimSpace(existing.GetHandle())
 
 	// If name is changing, ensure no collision with another template
 	if newHandle != oldName {
-		if mappedID, exists := cs.templateIdByHandle[newHandle]; exists && mappedID != id {
+		if mappedID, exists := cs.templateIdByHandle[newHandle]; exists && mappedID != uuid {
 			return fmt.Errorf("template with given handle '%s' already exists", newHandle)
 		}
 		// Remove old handle mapping if it points to this ID
-		if mappedID, ok := cs.templateIdByHandle[oldName]; ok && mappedID == id {
+		if mappedID, ok := cs.templateIdByHandle[oldName]; ok && mappedID == uuid {
 			delete(cs.templateIdByHandle, oldName)
 		}
 	}
 
 	// Update stored template and refresh name mapping
-	cs.templates[id] = template
-	cs.templateIdByHandle[newHandle] = id
+	cs.templates[uuid] = template
+	cs.templateIdByHandle[newHandle] = uuid
 	return nil
 }
 

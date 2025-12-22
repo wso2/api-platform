@@ -33,8 +33,6 @@ type LLMValidator struct {
 	versionRegex *regexp.Regexp
 	// metadataNameRegex matches URL-safe characters for Metadata.Name
 	metadataNameRegex *regexp.Regexp
-	// specRegex matches valid LLM specification versions
-	specRegex *regexp.Regexp
 }
 
 // NewLLMValidator creates a new LLM configuration validator
@@ -42,7 +40,6 @@ func NewLLMValidator() *LLMValidator {
 	return &LLMValidator{
 		versionRegex:      regexp.MustCompile(`^v?\d+(\.\d+)?(\.\d+)?$`),
 		metadataNameRegex: regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`),
-		specRegex:         regexp.MustCompile(`^ai\.api-platform\.wso2\.com/v?(\d+)(\.\d+)?(\.\d+)?$`),
 	}
 }
 
@@ -62,9 +59,10 @@ func (v *LLMValidator) Validate(config interface{}) []ValidationError {
 		return v.validateLLMProvider(cfg)
 	case api.LLMProviderConfiguration:
 		return v.validateLLMProvider(&cfg)
-	// Future: Add cases for LLMProxy
-	// case *api.LLMProxy:
-	//     return v.validateLLMProxy(cfg)
+	case *api.LLMProxyConfiguration:
+		return v.validateLLMProxy(cfg)
+	case api.LLMProxyConfiguration:
+		return v.validateLLMProxy(&cfg)
 	default:
 		return []ValidationError{
 			{
@@ -88,10 +86,10 @@ func (v *LLMValidator) validateLLMProviderTemplate(template *api.LLMProviderTemp
 	}
 
 	// Validate version
-	if !v.specRegex.MatchString(string(template.Version)) {
+	if template.ApiVersion != api.LLMProviderTemplateApiVersionGatewayApiPlatformWso2Comv1alpha1 {
 		errors = append(errors, ValidationError{
 			Field:   "version",
-			Message: "Version must be in the format 'ai.api-platform.wso2.com/vX.Y.Z'",
+			Message: "Version must be 'gateway.api-platform.wso2.com/v1alpha1'",
 		})
 	}
 
@@ -218,10 +216,10 @@ func (v *LLMValidator) validateLLMProvider(provider *api.LLMProviderConfiguratio
 	}
 
 	// Validate version
-	if !v.specRegex.MatchString(string(provider.Version)) {
+	if provider.ApiVersion != api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1 {
 		errors = append(errors, ValidationError{
 			Field:   "version",
-			Message: "Version must be in the format 'ai.api-platform.wso2.com/vX.Y.Z'",
+			Message: "Version must be in the format 'gateway.api-platform.wso2.com/v1alpha1'",
 		})
 	}
 
@@ -257,7 +255,7 @@ func (v *LLMValidator) validateLLMProvider(provider *api.LLMProviderConfiguratio
 	return errors
 }
 
-// validateProviderSpec validates the data section of an LLM provider
+// validateProviderSpec validates the spec section of an LLM provider
 func (v *LLMValidator) validateProviderSpec(spec *api.LLMProviderConfigData) []ValidationError {
 	var errors []ValidationError
 
@@ -382,6 +380,108 @@ func (v *LLMValidator) validateUpstreamWithAuth(fieldPrefix string,
 	return errors
 }
 
+// validateLLMProxy validates an LLM proxy configuration
+func (v *LLMValidator) validateLLMProxy(proxy *api.LLMProxyConfiguration) []ValidationError {
+	var errors []ValidationError
+
+	// Check if proxy is nil
+	if proxy == nil {
+		return []ValidationError{{
+			Field:   "proxy",
+			Message: "proxy cannot be nil",
+		}}
+	}
+
+	// Validate version
+	if proxy.ApiVersion != api.LLMProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1 {
+		errors = append(errors, ValidationError{
+			Field:   "version",
+			Message: "Version must be in the format 'gateway.api-platform.wso2.com/v1alpha1'",
+		})
+	}
+
+	// Validate kind
+	if proxy.Kind != api.LlmProxy {
+		errors = append(errors, ValidationError{
+			Field:   "kind",
+			Message: "Kind must be 'LlmProxy'",
+		})
+	}
+
+	// Validate Metadata.Name
+	if proxy.Metadata.Name == "" {
+		errors = append(errors, ValidationError{
+			Field:   "metadata.name",
+			Message: "metadata.name is required",
+		})
+	} else if len(proxy.Metadata.Name) > 253 {
+		errors = append(errors, ValidationError{
+			Field:   "metadata.name",
+			Message: "metadata.name must not exceed 253 characters",
+		})
+	} else if !v.metadataNameRegex.MatchString(proxy.Metadata.Name) {
+		errors = append(errors, ValidationError{
+			Field:   "metadata.name",
+			Message: "metadata.name must consist of lowercase alphanumeric characters, hyphens, or dots, and must start and end with an alphanumeric character",
+		})
+	}
+
+	// Validate spec section
+	errors = append(errors, v.validateProxyData(&proxy.Spec)...)
+
+	return errors
+}
+
+// validateProxyData validates the spec section of an LLM proxy
+func (v *LLMValidator) validateProxyData(spec *api.LLMProxyConfigData) []ValidationError {
+	var errors []ValidationError
+
+	// Check if data is nil
+	if spec == nil {
+		return []ValidationError{{
+			Field:   "spec",
+			Message: "Proxy data is required",
+		}}
+	}
+
+	// Validate display name
+	if spec.DisplayName == "" {
+		errors = append(errors, ValidationError{
+			Field:   "spec.displayName",
+			Message: "spec.displayName is required",
+		})
+	} else if len(spec.DisplayName) > 253 {
+		errors = append(errors, ValidationError{
+			Field:   "spec.displayName",
+			Message: "spec.displayName must not exceed 253 characters",
+		})
+	}
+
+	// Spec version is not mandatory, but if provided, validate format
+	if spec.Version != "" && !v.versionRegex.MatchString(spec.Version) {
+		errors = append(errors, ValidationError{
+			Field:   "spec.version",
+			Message: "Proxy version format is invalid (expected vX.Y.Z)",
+		})
+	}
+
+	// Validate provider id
+	if spec.Provider == "" {
+		errors = append(errors, ValidationError{
+			Field:   "spec.provider",
+			Message: "Provider is required",
+		})
+		return errors
+	} else if !v.metadataNameRegex.MatchString(spec.Provider) {
+		errors = append(errors, ValidationError{
+			Field:   "spec.provider",
+			Message: "spec.provider must consist of lowercase alphanumeric characters, hyphens, or dots, and must start and end with an alphanumeric character",
+		})
+	}
+
+	return errors
+}
+
 // validateAccessControl validates access control configuration
 func (v *LLMValidator) validateAccessControl(fieldPrefix string, ac *api.LLMAccessControl) []ValidationError {
 	var errors []ValidationError
@@ -425,7 +525,3 @@ func (v *LLMValidator) validateAccessControl(fieldPrefix string, ac *api.LLMAcce
 
 	return errors
 }
-
-// Future: Add validation methods for other LLM entities
-//
-// validateLLMProxy validates an LLM proxy configuration

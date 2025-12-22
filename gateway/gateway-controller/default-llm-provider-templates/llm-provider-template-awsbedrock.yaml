@@ -19,9 +19,9 @@
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 metadata:
-  name: openai
+  name: awsbedrock
 spec:
-  displayName: OpenAI
+  displayName: AWS Bedrock
   promptTokens:
     location: payload
     identifier: $.usage.inputTokens
@@ -31,12 +31,9 @@ spec:
   totalTokens:
     location: payload
     identifier: $.usage.totalTokens
-  remainingTokens:
-    location: header
-    identifier: x-ratelimit-remaining-tokens
   requestModel:
-    location: payload
-    identifier: $.model
+    location: pathParams
+    identifier: (?<=model/)[a-zA-Z0-9.:-]+(?=/)
   responseModel:
-    location: payload
-    identifier: $.model
+    location: pathParams
+    identifier: (?<=model/)[a-zA-Z0-9.:-]+(?=/)

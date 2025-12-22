@@ -19,21 +19,21 @@
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProviderTemplate
 metadata:
-  name: openai
+  name: anthropic
 spec:
-  displayName: OpenAI
+  displayName: Anthropic
   promptTokens:
     location: payload
-    identifier: $.usage.inputTokens
+    identifier: $.usage.input_tokens
   completionTokens:
     location: payload
-    identifier: $.usage.outputTokens
+    identifier: $.usage.output_tokens
   totalTokens:
     location: payload
-    identifier: $.usage.totalTokens
+    identifier: $.usage.total_tokens
   remainingTokens:
     location: header
-    identifier: x-ratelimit-remaining-tokens
+    identifier: anthropic-ratelimit-tokens-remaining
   requestModel:
     location: payload
     identifier: $.model

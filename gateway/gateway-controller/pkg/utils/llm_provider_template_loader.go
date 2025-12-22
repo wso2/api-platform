@@ -89,7 +89,7 @@ func (tl *LLMTemplateLoader) LoadTemplatesFromDirectory(dirPath string) (map[str
 		templates[templateHandle] = template
 		tl.logger.Info("Loaded LLM provider template",
 			zap.String("handle", templateHandle),
-			zap.String("version", string(template.Version)),
+			zap.String("apiVersion", string(template.ApiVersion)),
 			zap.String("file", path))
 
 		return nil
@@ -142,7 +142,7 @@ func (tl *LLMTemplateLoader) loadTemplateFile(filePath string) (*api.LLMProvider
 		tl.logger.Debug("Parsed template from YAML",
 			zap.String("file", filePath),
 			zap.String("handle", templateConfig.Metadata.Name),
-			zap.String("version", string(templateConfig.Version)))
+			zap.String("apiVersion", string(templateConfig.ApiVersion)))
 	}
 
 	// Log serialized JSON to see what will be stored
