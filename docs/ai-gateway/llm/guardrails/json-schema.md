@@ -67,9 +67,11 @@ curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
 version: gateway.api-platform.wso2.com/v1alpha1
-kind: llm/provider
-spec:
+kind: LlmProvider
+metadata:
   name: json-schema-provider
+spec:
+  displayName: JSON Schema Provider
   version: v1.0
   template: openai
   vhost: openai

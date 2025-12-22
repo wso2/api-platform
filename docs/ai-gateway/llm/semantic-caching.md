@@ -95,9 +95,11 @@ curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
 version: ai.api-platform.wso2.com/v1
-kind: llm/provider
-spec:
+kind: LlmProvider
+metadata:
   name: cached-chat-provider
+spec:
+  displayName: OpenAI Cached Provider
   version: v1.0
   template: openai
   vhost: openai
@@ -180,9 +182,11 @@ curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
 version: ai.api-platform.wso2.com/v1
-kind: llm/provider
-spec:
+kind: LlmProvider
+metadata:
   name: mistral-cached-provider
+spec:
+  displayName: Mistral Cached Provider
   version: v1.0
   template: openai
   vhost: openai

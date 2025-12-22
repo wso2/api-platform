@@ -108,9 +108,11 @@ curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
   --data-binary @- <<'EOF'
 version: ai.api-platform.wso2.com/v1
-kind: llm/provider
-spec:
+kind: LlmProvider
+metadata:
   name: bedrock-guardrail-provider
+spec:
+  displayName: AWS Bedrock Guardrail Provider
   version: v1.0
   template: openai
   vhost: openai
