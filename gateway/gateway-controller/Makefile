@@ -133,3 +133,8 @@ generate-listener-certs: ## Generate listener certificates
 	@echo "Certificate and key generated successfully in listener-certs/"
 	@echo "  Certificate: listener-certs/default-listener.crt"
 	@echo "  Private Key: listener-certs/default-listener.key"
+
+generate-postman-collection: ## Generate Postman collection from OpenAPI spec
+	@echo "Generating Postman collection from OpenAPI spec..."
+	@npx openapi-to-postmanv2 -s api/openapi.yaml -o api/postman_collection.json -p
+	@echo "Postman collection generated at api/postman_collection.json"
