@@ -23,7 +23,7 @@ ap gateway image build \
 ### Optional Flags & Defaults
 - `--path` / `-p`: Current directory (`.`) - Directory containing `policy-manifest.yaml` and `policy-manifest-lock.yaml`
 - `--image-repository`: `ghcr.io/wso2/api-platform`
-- `--gateway-builder`: `ghcr.io/wso2/api-platform/gateway-builder:0.2.0`
+- `--gateway-builder`: `ghcr.io/wso2/api-platform/gateway-builder:latest`
 - `--gateway-controller-base-image`: Uses default from gateway-builder image
 - `--router-base-image`: Uses default from gateway-builder image
 - `--platform`: Uses host platform
