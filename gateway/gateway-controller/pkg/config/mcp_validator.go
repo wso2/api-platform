@@ -71,7 +71,7 @@ func (v *MCPValidator) validateMCPConfiguration(config *api.MCPProxyConfiguratio
 	var errors []ValidationError
 
 	// Validate version
-	if config.ApiVersion != api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1alpha1 {
+	if config.ApiVersion != api.GatewayApiPlatformWso2Comv1alpha1 {
 		errors = append(errors, ValidationError{
 			Field:   "version",
 			Message: "Unsupported configuration version (must be 'gateway.api-platform.wso2.com/v1alpha1')",
