@@ -15,7 +15,7 @@ make clean # Clean build artifacts
 ```
 
 ## CLI Project Structure
-```
+```text
 cli/
 ├── README.md             # This file (single source of truth)
 └── src/ 
