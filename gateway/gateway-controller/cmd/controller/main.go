@@ -389,6 +389,11 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /llm-proxies/:id":    {"admin", "developer"},
 		"DELETE /llm-proxies/:id": {"admin", "developer"},
 
+		"POST /apis/:id/api-key":            {"admin", "consumer"},
+		"GET /apis/:id/api-key":             {"admin", "consumer"},
+		"PUT /apis/:id/api-key/:apiKeyName": {"admin", "consumer"},
+		"DELETE /apis/:id/api-key/:apiKey":  {"admin", "consumer"},
+
 		"GET /config_dump": {"admin"},
 	}
 	basicAuth := commonmodels.BasicAuth{Enabled: false}

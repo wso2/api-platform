@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -115,6 +116,7 @@ const APIKeyPrefix = "apip_"
 // GenerateAPIKey handles the complete API key generation process
 func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGenerationResult, error) {
 	logger := params.Logger
+	user := params.User
 
 	// Validate that API exists
 	config, err := s.store.GetByHandle(params.Handle)
@@ -126,7 +128,7 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 	}
 
 	// Generate the API key from request
-	apiKey, err := s.generateAPIKeyFromRequest(params.Handle, &params.Request, params.User, config)
+	apiKey, err := s.generateAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config)
 	if err != nil {
 		logger.Error("Failed to generate API key",
 			zap.Error(err),
@@ -149,7 +151,7 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 					zap.String("correlation_id", params.CorrelationID))
 
 				// Generate a new key
-				apiKey, err = s.generateAPIKeyFromRequest(params.Handle, &params.Request, params.User, config)
+				apiKey, err = s.generateAPIKeyFromRequest(params.Handle, &params.Request, user.UserID, config)
 				if err != nil {
 					logger.Error("Failed to regenerate API key after collision",
 						zap.Error(err),
@@ -211,7 +213,7 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 		zap.String("name", apiKey.Name),
 		zap.String("api_name", apiName),
 		zap.String("api_version", apiVersion),
-		zap.String("user", params.User),
+		zap.String("user", user.UserID),
 		zap.String("correlation_id", params.CorrelationID))
 
 	// Send the API key to the policy engine via xDS
@@ -230,7 +232,7 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 	logger.Info("API key generated successfully",
 		zap.String("handle", params.Handle),
 		zap.String("name", apiKey.Name),
-		zap.String("user", params.User),
+		zap.String("user", user.UserID),
 		zap.Bool("is_retry", result.IsRetry),
 		zap.String("correlation_id", params.CorrelationID))
 
@@ -240,6 +242,7 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 // RevokeAPIKey handles the API key revocation process
 func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) error {
 	logger := params.Logger
+	user := params.User
 
 	// Validate that API exists
 	config, err := s.store.GetByHandle(params.Handle)
@@ -269,12 +272,12 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) error {
 			return fmt.Errorf("API key revocation failed for API: '%s'", params.Handle)
 		}
 
-		// Check if the user revoking the key is the same as the one who created it
-		if apiKey.CreatedBy != params.User {
-			logger.Debug("User attempting to revoke API key is not the creator",
+		err := s.canRevokeAPIKey(user, apiKey, logger)
+		if err != nil {
+			logger.Debug("User not authorized to revoke API key",
 				zap.String("handle", params.Handle),
 				zap.String("creator", apiKey.CreatedBy),
-				zap.String("requesting_user", params.User),
+				zap.String("requesting_user", user.UserID),
 				zap.String("correlation_id", params.CorrelationID))
 			return fmt.Errorf("API key revocation failed for API: '%s'", params.Handle)
 		}
@@ -354,7 +357,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) error {
 		zap.String("api key", s.maskAPIKey(params.APIKey)),
 		zap.String("api_name", apiName),
 		zap.String("api_version", apiVersion),
-		zap.String("user", params.User),
+		zap.String("user", user.UserID),
 		zap.String("correlation_id", params.CorrelationID))
 
 	// Send the API key revocation to the policy engine via xDS
@@ -370,7 +373,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) error {
 	logger.Info("API key revoked successfully",
 		zap.String("handle", params.Handle),
 		zap.String("api key", s.maskAPIKey(params.APIKey)),
-		zap.String("user", params.User),
+		zap.String("user", user.UserID),
 		zap.String("correlation_id", params.CorrelationID))
 
 	return nil
@@ -382,11 +385,12 @@ func (s *APIKeyService) RotateAPIKey(params APIKeyRotationParams) (*APIKeyRotati
 	if logger == nil {
 		logger = zap.NewNop()
 	}
+	user := params.User
 
 	logger.Info("Starting API key rotation",
 		zap.String("handle", params.Handle),
 		zap.String("api_key_name", params.APIKeyName),
-		zap.String("user", params.User),
+		zap.String("user", user.UserID),
 		zap.String("correlation_id", params.CorrelationID))
 
 	// Get the API configuration
@@ -408,8 +412,19 @@ func (s *APIKeyService) RotateAPIKey(params APIKeyRotationParams) (*APIKeyRotati
 		return nil, fmt.Errorf("API key '%s' not found for API '%s'", params.APIKeyName, params.Handle)
 	}
 
+	err = s.canRotateAPIKey(user, existingKey, logger)
+	if err != nil {
+		logger.Warn("User attempting to rotate API key is not the creator",
+			zap.String("handle", params.Handle),
+			zap.String("api_key_name", params.APIKeyName),
+			zap.String("creator", existingKey.CreatedBy),
+			zap.String("requesting_user", user.UserID),
+			zap.String("correlation_id", params.CorrelationID))
+		return nil, fmt.Errorf("API key rotation failed for API: '%s'", params.Handle)
+	}
+
 	// Generate the rotated API key using the extracted helper method
-	rotatedKey, err := s.generateRotatedAPIKey(existingKey, params.Request, params.User, logger)
+	rotatedKey, err := s.generateRotatedAPIKey(existingKey, params.Request, user.UserID, logger)
 	if err != nil {
 		logger.Error("Failed to generate rotated API key",
 			zap.Error(err),
@@ -432,7 +447,7 @@ func (s *APIKeyService) RotateAPIKey(params APIKeyRotationParams) (*APIKeyRotati
 					zap.String("correlation_id", params.CorrelationID))
 
 				// Generate a new rotated key
-				rotatedKey, err = s.generateRotatedAPIKey(existingKey, params.Request, params.User, logger)
+				rotatedKey, err = s.generateRotatedAPIKey(existingKey, params.Request, user.UserID, logger)
 				if err != nil {
 					logger.Error("Failed to regenerate rotated API key after collision",
 						zap.Error(err),
@@ -495,7 +510,7 @@ func (s *APIKeyService) RotateAPIKey(params APIKeyRotationParams) (*APIKeyRotati
 		zap.String("name", rotatedKey.Name),
 		zap.String("api_name", apiName),
 		zap.String("api_version", apiVersion),
-		zap.String("user", params.User),
+		zap.String("user", user.UserID),
 		zap.String("correlation_id", params.CorrelationID))
 
 	// Update xDS snapshot if needed
@@ -515,6 +530,105 @@ func (s *APIKeyService) RotateAPIKey(params APIKeyRotationParams) (*APIKeyRotati
 		zap.String("handle", params.Handle),
 		zap.String("api_key_name", params.APIKeyName),
 		zap.String("new_key_id", rotatedKey.ID),
+		zap.String("correlation_id", params.CorrelationID))
+
+	return result, nil
+}
+
+// ListAPIKeys handles listing API keys for a specific API and user
+func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult, error) {
+	logger := params.Logger
+	user := params.User
+
+	// Validate that API exists
+	config, err := s.store.GetByHandle(params.Handle)
+	if err != nil {
+		logger.Warn("API configuration not found for API keys listing",
+			zap.String("handle", params.Handle),
+			zap.String("correlation_id", params.CorrelationID))
+		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+	}
+
+	// Get all API keys for this API from memory store first
+	var apiKeys []*models.APIKey
+
+	// Try to get from memory store
+	memoryKeys, err := s.store.GetAPIKeysByAPI(config.ID)
+	if err != nil {
+		logger.Debug("Failed to get API keys from memory store, trying database",
+			zap.Error(err),
+			zap.String("handle", params.Handle),
+			zap.String("correlation_id", params.CorrelationID))
+
+		// If memory store fails, try database
+		if s.db != nil {
+			dbKeys, dbErr := s.db.GetAPIKeysByAPI(config.ID)
+			if dbErr != nil {
+				logger.Error("Failed to get API keys from database",
+					zap.Error(dbErr),
+					zap.String("handle", params.Handle),
+					zap.String("correlation_id", params.CorrelationID))
+				return nil, fmt.Errorf("failed to retrieve API keys: %w", dbErr)
+			}
+			apiKeys = dbKeys
+		} else {
+			return nil, fmt.Errorf("failed to retrieve API keys: %w", err)
+		}
+	} else {
+		apiKeys = memoryKeys
+	}
+
+	// Filter API keys by the requesting user (only show keys created by this user)
+	// and only active keys
+	userAPIKeys, err := s.filterAPIKeysByUser(user, apiKeys, logger)
+	if err != nil {
+		logger.Error("Failed to filter API keys by user",
+			zap.Error(err),
+			zap.String("handle", params.Handle),
+			zap.String("user", user.UserID),
+			zap.String("correlation_id", params.CorrelationID))
+		return nil, fmt.Errorf("failed to filter API keys: %w", err)
+	}
+
+	// Filter only active API keys
+	for _, apiKey := range apiKeys {
+		if apiKey.Status == models.APIKeyStatusActive {
+			userAPIKeys = append(userAPIKeys, apiKey)
+		}
+	}
+
+	// Build response API keys
+	var responseAPIKeys []api.APIKey
+	for _, key := range userAPIKeys {
+		responseAPIKey := api.APIKey{
+			Name:       key.Name,
+			ApiKey:     key.APIKey,
+			ApiId:      params.Handle, // Use handle instead of internal API ID
+			Operations: key.Operations,
+			Status:     api.APIKeyStatus(key.Status),
+			CreatedAt:  key.CreatedAt,
+			CreatedBy:  key.CreatedBy,
+			ExpiresAt:  key.ExpiresAt,
+		}
+		responseAPIKeys = append(responseAPIKeys, responseAPIKey)
+	}
+
+	// Build the list response
+	status := "success"
+	totalCount := len(responseAPIKeys)
+
+	result := &ListAPIKeyResult{
+		Response: api.APIKeyListResponse{
+			Status:     &status,
+			ApiKeys:    &responseAPIKeys,
+			TotalCount: &totalCount,
+		},
+	}
+
+	logger.Info("API keys listed successfully",
+		zap.String("handle", params.Handle),
+		zap.String("user", user.UserID),
+		zap.Int("total_count", totalCount),
 		zap.String("correlation_id", params.CorrelationID))
 
 	return result, nil
@@ -578,10 +692,6 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 		}
 		expiry := now.Add(timeDuration)
 		expiresAt = &expiry
-	}
-
-	if user == "" {
-		user = "system"
 	}
 
 	return &models.APIKey{
@@ -648,23 +758,6 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle string) a
 			ExpiresAt:  key.ExpiresAt,
 		},
 	}
-}
-
-// maskAPIKey masks an API key for secure logging, showing first 8 and last 4 characters
-func (s *APIKeyService) maskAPIKey(apiKey string) string {
-	if len(apiKey) <= 12 {
-		return "****"
-	}
-	return apiKey[:8] + "****" + apiKey[len(apiKey)-4:]
-}
-
-// generateAPIKeyValue generates a new API key value with collision handling
-func (s *APIKeyService) generateAPIKeyValue() (string, error) {
-	randomBytes := make([]byte, 32)
-	if _, err := rand.Read(randomBytes); err != nil {
-		return "", fmt.Errorf("failed to generate random bytes: %w", err)
-	}
-	return APIKeyPrefix + hex.EncodeToString(randomBytes), nil
 }
 
 // generateRotatedAPIKey creates a new API key for rotation based on existing key and request parameters
@@ -757,10 +850,6 @@ func (s *APIKeyService) generateRotatedAPIKey(existingKey *models.APIKey, reques
 		}
 	}
 
-	if user == "" {
-		user = "system"
-	}
-
 	// Create the rotated API key
 	return &models.APIKey{
 		ID:         uuid.New().String(),
@@ -778,89 +867,140 @@ func (s *APIKeyService) generateRotatedAPIKey(existingKey *models.APIKey, reques
 	}, nil
 }
 
-// ListAPIKeys handles listing API keys for a specific API and user
-func (s *APIKeyService) ListAPIKeys(params ListAPIKeyParams) (*ListAPIKeyResult, error) {
-	logger := params.Logger
-
-	// Validate that API exists
-	config, err := s.store.GetByHandle(params.Handle)
-	if err != nil {
-		logger.Warn("API configuration not found for API keys listing",
-			zap.String("handle", params.Handle),
-			zap.String("correlation_id", params.CorrelationID))
-		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
+// canRevokeAPIKey determines if a user can revoke a specific API key
+// Admin role can revoke any API key of an API. Other users can only revoke API keys that they created.
+func (s *APIKeyService) canRevokeAPIKey(user *AuthenticatedUser, apiKey *models.APIKey, logger *zap.Logger) error {
+	if user == nil {
+		return fmt.Errorf("user authentication required")
 	}
 
-	// Get all API keys for this API from memory store first
-	var apiKeys []*models.APIKey
-
-	// Try to get from memory store
-	memoryKeys, err := s.store.GetAPIKeysByAPI(config.ID)
-	if err != nil {
-		logger.Debug("Failed to get API keys from memory store, trying database",
-			zap.Error(err),
-			zap.String("handle", params.Handle),
-			zap.String("correlation_id", params.CorrelationID))
-
-		// If memory store fails, try database
-		if s.db != nil {
-			dbKeys, dbErr := s.db.GetAPIKeysByAPI(config.ID)
-			if dbErr != nil {
-				logger.Error("Failed to get API keys from database",
-					zap.Error(dbErr),
-					zap.String("handle", params.Handle),
-					zap.String("correlation_id", params.CorrelationID))
-				return nil, fmt.Errorf("failed to retrieve API keys: %w", dbErr)
-			}
-			apiKeys = dbKeys
-		} else {
-			return nil, fmt.Errorf("failed to retrieve API keys: %w", err)
-		}
-	} else {
-		apiKeys = memoryKeys
+	if apiKey == nil {
+		return fmt.Errorf("API key not found")
 	}
 
-	// Filter API keys by the requesting user (only show keys created by this user)
+	logger.Debug("Checking API key revocation authorization",
+		zap.String("user_id", user.UserID),
+		zap.Strings("roles", user.Roles),
+		zap.String("api_key_name", apiKey.Name),
+		zap.String("api_key_creator", apiKey.CreatedBy))
+
+	// Admin role can revoke any API key
+	if s.isAdmin(user) {
+		logger.Debug("User has admin role, authorized to revoke any API key",
+			zap.String("user_id", user.UserID),
+			zap.String("api_key_name", apiKey.Name))
+		return nil
+	}
+
+	// Non-admin users can only revoke keys they created
+	if apiKey.CreatedBy != user.UserID {
+		logger.Warn("User cannot revoke API key - not the creator and not admin",
+			zap.String("user_id", user.UserID),
+			zap.String("api_key_name", apiKey.Name),
+			zap.String("api_key_creator", apiKey.CreatedBy))
+		return fmt.Errorf("API key revocation not authorized for user")
+	}
+
+	logger.Debug("User authorized to revoke API key as creator",
+		zap.String("user_id", user.UserID),
+		zap.String("api_key_name", apiKey.Name))
+
+	return nil
+}
+
+// canRotateAPIKey determines if a user can rotate a specific API key
+// Only the user who created the API key can rotate it
+func (s *APIKeyService) canRotateAPIKey(user *AuthenticatedUser, apiKey *models.APIKey, logger *zap.Logger) error {
+	if user == nil {
+		return fmt.Errorf("user authentication required")
+	}
+
+	if apiKey == nil {
+		return fmt.Errorf("API key not found")
+	}
+
+	logger.Debug("Checking API key rotation authorization",
+		zap.String("user_id", user.UserID),
+		zap.Strings("roles", user.Roles),
+		zap.String("api_key_name", apiKey.Name),
+		zap.String("api_key_creator", apiKey.CreatedBy))
+
+	// Only the creator can rotate the API key
+	if apiKey.CreatedBy != user.UserID {
+		logger.Warn("User cannot rotate API key - not the creator",
+			zap.String("user_id", user.UserID),
+			zap.String("api_key_name", apiKey.Name),
+			zap.String("api_key_creator", apiKey.CreatedBy))
+		return fmt.Errorf("only the creator of the API key can rotate it")
+	}
+
+	logger.Debug("User authorized to rotate API key",
+		zap.String("user_id", user.UserID),
+		zap.String("api_key_name", apiKey.Name))
+
+	return nil
+}
+
+// filterAPIKeysByUser filters a list of API keys based on the user's roles
+// Admin role can list all keys of an API. Other users can view only API keys that they created.
+func (s *APIKeyService) filterAPIKeysByUser(user *AuthenticatedUser, apiKeys []*models.APIKey,
+	logger *zap.Logger) ([]*models.APIKey, error) {
+	if user == nil {
+		return nil, fmt.Errorf("user authentication required")
+	}
+
+	logger.Debug("Checking API key list authorization",
+		zap.String("user_id", user.UserID),
+		zap.Strings("roles", user.Roles),
+		zap.Int("total_keys", len(apiKeys)))
+
+	// Admin role can see all API keys
+	if s.isAdmin(user) {
+		logger.Debug("User has admin role, returning all API keys",
+			zap.String("user_id", user.UserID),
+			zap.Int("returned_keys", len(apiKeys)))
+		return apiKeys, nil
+	}
+
+	// Non-admin users can only see keys they created
 	var userAPIKeys []*models.APIKey
 	for _, apiKey := range apiKeys {
-		if apiKey.CreatedBy == params.User {
+		if apiKey.CreatedBy == user.UserID {
 			userAPIKeys = append(userAPIKeys, apiKey)
 		}
 	}
 
-	// Build response API keys (excluding sensitive information like the actual API key value)
-	var responseAPIKeys []api.APIKey
-	for _, key := range userAPIKeys {
-		responseAPIKey := api.APIKey{
-			Name:       key.Name,
-			ApiId:      params.Handle, // Use handle instead of internal API ID
-			Operations: key.Operations,
-			Status:     api.APIKeyStatus(key.Status),
-			CreatedAt:  key.CreatedAt,
-			CreatedBy:  key.CreatedBy,
-			ExpiresAt:  key.ExpiresAt,
-			// Note: Intentionally NOT including ApiKey field for security
-		}
-		responseAPIKeys = append(responseAPIKeys, responseAPIKey)
+	logger.Debug("User can only see own API keys",
+		zap.String("user_id", user.UserID),
+		zap.Int("owned_keys", len(userAPIKeys)),
+		zap.Int("total_keys", len(apiKeys)))
+
+	return userAPIKeys, nil
+}
+
+// generateAPIKeyValue generates a new API key value with collision handling
+func (s *APIKeyService) generateAPIKeyValue() (string, error) {
+	randomBytes := make([]byte, 32)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
 	}
+	return APIKeyPrefix + hex.EncodeToString(randomBytes), nil
+}
 
-	// Build the list response
-	status := "success"
-	totalCount := len(responseAPIKeys)
-
-	result := &ListAPIKeyResult{
-		Response: api.APIKeyListResponse{
-			Status:     &status,
-			ApiKeys:    &responseAPIKeys,
-			TotalCount: &totalCount,
-		},
+// maskAPIKey masks an API key for secure logging, showing first 8 and last 4 characters
+func (s *APIKeyService) maskAPIKey(apiKey string) string {
+	if len(apiKey) <= 12 {
+		return "****"
 	}
+	return apiKey[:8] + "****" + apiKey[len(apiKey)-4:]
+}
 
-	logger.Info("API keys listed successfully",
-		zap.String("handle", params.Handle),
-		zap.String("user", params.User),
-		zap.Int("total_count", totalCount),
-		zap.String("correlation_id", params.CorrelationID))
+// isAdmin checks if the user has admin role
+func (s *APIKeyService) isAdmin(user *AuthenticatedUser) bool {
+	return slices.Contains(user.Roles, "admin")
+}
 
-	return result, nil
+// isDeveloper checks if the user has developer role
+func (s *APIKeyService) isDeveloper(user *AuthenticatedUser) bool {
+	return slices.Contains(user.Roles, "developer")
 }

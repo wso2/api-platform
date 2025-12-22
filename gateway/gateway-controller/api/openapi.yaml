@@ -405,7 +405,7 @@ paths:
     get:
       summary: Get the list of API keys for an API
       description: |
-        Retrieve the list of all API keys generated for the specified API.
+        Retrieve the list of all the active API keys for the specified API by the user.
       operationId: listAPIKeys
       tags:
         - API Management

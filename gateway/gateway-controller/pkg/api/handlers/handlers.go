@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 
 	"io"
@@ -2295,12 +2296,23 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 	handle := id
 	correlationID := middleware.GetCorrelationID(c)
 
-	// TODO - Do user validation and get user info
-	user := "api_consumer" // Placeholder for user identification
+	authContext, exists := c.Get(constants.AuthContextKey)
+	if !exists {
+		log.Warn("Unauthorized API key generation attempt",
+			zap.String("handle", handle),
+			zap.String("correlation_id", correlationID))
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{
+			Status:  "error",
+			Message: "Unauthorized",
+		})
+		return
+	}
+	// TODO - marshal user info to AuthContext
+	var user
 
 	log.Debug("Starting API key generation",
 		zap.String("handle", handle),
-		zap.String("user", user),
+		zap.String("user", user.UserID),
 		zap.String("correlation_id", correlationID))
 
 	// Parse and validate request body
@@ -2346,7 +2358,7 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 	log.Info("API key generation completed",
 		zap.String("handle", handle),
 		zap.String("key name", result.Response.ApiKey.Name),
-		zap.String("user", user),
+		zap.String("user", user.UserID),
 		zap.String("correlation_id", correlationID))
 
 	// Return the response using the generated schema
@@ -2361,12 +2373,23 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKey string) {
 	handle := id
 	correlationID := middleware.GetCorrelationID(c)
 
-	// TODO - Do user validation and get user info
-	user := "api_consumer" // Placeholder for user identification
+	authContext, exists := c.Get(constants.AuthContextKey)
+	if !exists {
+		log.Warn("Unauthorized API key generation attempt",
+			zap.String("handle", handle),
+			zap.String("correlation_id", correlationID))
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{
+			Status:  "error",
+			Message: "Unauthorized",
+		})
+		return
+	}
+	// TODO - marshal user info to AuthContext
+	var user
 
 	log.Debug("Starting API key revocation",
 		zap.String("handle", handle),
-		zap.String("user", user),
+		zap.String("user", user.UserID),
 		zap.String("correlation_id", correlationID))
 
 	// Parse and validate
@@ -2419,7 +2442,7 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKey string) {
 	log.Info("API key revoked successfully",
 		zap.String("handle", handle),
 		zap.String("key", apiKey),
-		zap.String("user", user),
+		zap.String("user", user.UserID),
 		zap.String("correlation_id", correlationID))
 
 	// Return the response using the generated schema
@@ -2434,13 +2457,24 @@ func (s *APIServer) RotateAPIKey(c *gin.Context, id string, apiKeyName string) {
 	handle := id
 	correlationID := middleware.GetCorrelationID(c)
 
-	// TODO - Do user validation and get user info
-	user := "api_consumer" // Placeholder for user identification
+	authContext, exists := c.Get(constants.AuthContextKey)
+	if !exists {
+		log.Warn("Unauthorized API key generation attempt",
+			zap.String("handle", handle),
+			zap.String("correlation_id", correlationID))
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{
+			Status:  "error",
+			Message: "Unauthorized",
+		})
+		return
+	}
+	// TODO - marshal user info to AuthContext
+	var user
 
 	log.Debug("Starting API key rotation",
 		zap.String("handle", handle),
 		zap.String("key name", apiKeyName),
-		zap.String("user", user),
+		zap.String("user", user.UserID),
 		zap.String("correlation_id", correlationID))
 
 	// Parse and validate request body
@@ -2487,7 +2521,7 @@ func (s *APIServer) RotateAPIKey(c *gin.Context, id string, apiKeyName string) {
 	log.Info("API key rotation completed",
 		zap.String("handle", handle),
 		zap.String("key name", apiKeyName),
-		zap.String("user", user),
+		zap.String("user", user.UserID),
 		zap.String("correlation_id", correlationID))
 
 	// Return the response using the generated schema
@@ -2502,12 +2536,23 @@ func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 	handle := id
 	correlationID := middleware.GetCorrelationID(c)
 
-	// TODO - Do user validation and get user info
-	user := "api_consumer" // Placeholder for user identification
+	authContext, exists := c.Get(constants.AuthContextKey)
+	if !exists {
+		log.Warn("Unauthorized API key generation attempt",
+			zap.String("handle", handle),
+			zap.String("correlation_id", correlationID))
+		c.JSON(http.StatusUnauthorized, api.ErrorResponse{
+			Status:  "error",
+			Message: "Unauthorized",
+		})
+		return
+	}
+	// TODO - marshal user info to AuthContext
+	var user
 
 	log.Debug("Starting API key rotation",
 		zap.String("handle", handle),
-		zap.String("user", user),
+		zap.String("user", user.UserID),
 		zap.String("correlation_id", correlationID))
 
 	// Prepare parameters
@@ -2537,7 +2582,7 @@ func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 
 	log.Info("API key listing completed",
 		zap.String("handle", handle),
-		zap.String("user", user),
+		zap.String("user", user.UserID),
 		zap.String("correlation_id", correlationID))
 
 	// Return the response using the generated schema
