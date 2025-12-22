@@ -83,6 +83,42 @@ func TestAuthMiddleware_JWTEnabled_MissingJWKS_FailsAtCreation(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to initialize JWT authenticator")
 }
 
+func TestAuthMiddleware_JWTEnabled_NoIssuer_MissingJWKS_FailsAtCreation(t *testing.T) {
+	// Scenario: JWT is enabled, issuer is not provided, but JWKS URL is also missing.
+	// Should fail at middleware creation time, since issuer is required.
+	logger := zap.NewNop()
+
+	config := models.AuthConfig{
+		JWTConfig: &models.IDPConfig{
+			Enabled:   true,
+			IssuerURL: "", // issuer is required
+			JWKSUrl:   "", // but JWKS is required
+		},
+	}
+
+	_, err := AuthMiddleware(config, logger)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to initialize JWT authenticator")
+}
+
+func TestAuthMiddleware_JWTEnabled_NoIssuer_WithJWKS_FailsAtCreation(t *testing.T) {
+	// Scenario: JWT is enabled and JWKS is configured, but issuer is missing.
+	// Should fail at middleware creation time, since issuer is required.
+	logger := zap.NewNop()
+
+	config := models.AuthConfig{
+		JWTConfig: &models.IDPConfig{
+			Enabled:   true,
+			IssuerURL: "",
+			JWKSUrl:   "https://jwks.example.com/keys",
+		},
+	}
+
+	_, err := AuthMiddleware(config, logger)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to initialize JWT authenticator")
+}
+
 func TestAuthMiddleware_BasicAuthEnabled_NoCredentials_Unauthorized(t *testing.T) {
 	// Scenario: Basic auth is enabled, but no credentials provided
 	// Should return 401 Unauthorized

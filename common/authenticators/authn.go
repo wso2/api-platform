@@ -46,7 +46,7 @@ func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFu
 	}
 
 	// Add JWT authenticator if configured
-	if config.JWTConfig != nil && config.JWTConfig.Enabled && config.JWTConfig.IssuerURL != "" {
+	if config.JWTConfig != nil && config.JWTConfig.Enabled {
 		jwtAuthenticator, err := NewJWTAuthenticator(&config, logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize JWT authenticator: %w", err)
@@ -100,7 +100,17 @@ func AuthMiddleware(config models.AuthConfig, logger *zap.Logger) (gin.HandlerFu
 		// Authenticate
 		result, err := selectedAuth.Authenticate(c)
 		if err != nil {
-			logger.Sugar().Errorf("Authentication error: %v", err)
+			logger.Info("authentication failed",
+				zap.String("authenticator", selectedAuth.Name()),
+				zap.String("method", c.Request.Method),
+				zap.String("path", c.Request.URL.Path),
+				zap.String("client_ip", c.ClientIP()),
+			)
+			// Keep details for debug only.
+			logger.Debug("authentication failure detail",
+				zap.String("authenticator", selectedAuth.Name()),
+				zap.Error(err),
+			)
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": "authentication failed",
 			})

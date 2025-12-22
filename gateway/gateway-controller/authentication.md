@@ -9,7 +9,7 @@ The Gateway Controller REST API (the control-plane API used to manage gateway co
 You can enable one (or both) of the following:
 
 - **Basic Auth (local users)**: Define usernames/passwords and assign local roles.
-- **IDP/JWT (external users)**: Validate incoming JWTs using `jwks_url` optionally `issuer`.
+- **IDP/JWT (external users)**: Validate incoming JWTs using `jwks_url` and `issuer`.
 
 **No Authentication (open access)**: If BOTH `basic.enabled` and `idp.enabled` are set to `false`, all requests to the gateway controller are allowed without authentication.
 
@@ -79,7 +79,8 @@ role_mapping:
 In this example, a user in `platform-admins` becomes both `admin` and `developer` in the Gateway Controller.
 
 ## Troubleshooting (What you’ll observe)
-- **Requests are denied after enabling JWT auth**: verify `jwks_url` and (if set) `issuer` match the token you're sending.
+- **Controller fails to start after enabling JWT auth**: ensure BOTH `jwks_url` and `issuer` are configured under `gateway_controller.auth.idp`.
+- **Requests are denied after enabling JWT auth**: verify `jwks_url` and `issuer` match the token you're sending.
 - **You enabled `roles_claim` and suddenly everything is forbidden**: add `role_mapping` (mapping is mandatory when `roles_claim` is provided).
 - **Users authenticate but don't have expected access**: confirm the token actually contains the configured `roles_claim`, and that its values match what you listed in `role_mapping`.
 - **You want authN but not authZ**: keep IDP enabled, but leave `roles_claim` and `role_mapping` unset to bypass authorization checks.
