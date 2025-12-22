@@ -97,20 +97,20 @@ const (
 
 	// LLM Transformer constants
 	UPSTREAM_AUTH_APIKEY_POLICY_NAME    = "modify-headers"
-	UPSTREAM_AUTH_APIKEY_POLICY_VERSION = "v1.0.0"
+	UPSTREAM_AUTH_APIKEY_POLICY_VERSION = "v0.1.0"
 	UPSTREAM_AUTH_APIKEY_POLICY_PARAMS  = "requestHeaders:\n" +
 		"  - action: SET\n" +
 		"    name: '%s'\n" +
 		"    value: '%s'\n"
 	PROXY_HOST__HEADER_POLICY_NAME    = "modify-Headers"
-	PROXY_HOST__HEADER_POLICY_VERSION = "v1.0.0"
+	PROXY_HOST__HEADER_POLICY_VERSION = "v0.1.0"
 	PROXY_HOST__HEADER_POLICY_PARAMS  = "requestHeaders:\n" +
 		"  - action: SET\n" +
 		"    name: Host\n" +
 		"    value: '%s'\n"
 
 	ACCESS_CONTROL_DENY_POLICY_NAME    = "respond"
-	ACCESS_CONTROL_DENY_POLICY_VERSION = "v1.0.0"
+	ACCESS_CONTROL_DENY_POLICY_VERSION = "v0.1.0"
 	// YAML for default 404 respond policy params
 	ACCESS_CONTROL_DENY_POLICY_PARAMS = "statusCode: 404\n" +
 		"body: \"{\\\"message\\\": \\\"Resource not found.\\\"}\"\n" +

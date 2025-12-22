@@ -1,5 +1,5 @@
 name: respond
-version: v1.0.0
+version: v0.1.0
 description: |
   Returns an immediate response to the client without forwarding the request to the upstream backend.
   This policy terminates the request processing chain and is useful for mocking APIs, returning

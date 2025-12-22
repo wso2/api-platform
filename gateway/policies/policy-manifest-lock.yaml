@@ -2,16 +2,16 @@ version: v1
 
 policies:
   - name: respond
-    version: v1.0.0
-    filePath: ./respond/v1.0.0
+    version: v0.1.0
+    filePath: ./respond/v0.1.0
 
   - name: modify-headers
-    version: v1.0.0
-    filePath: ./modify-headers/v1.0.0
+    version: v0.1.0
+    filePath: ./modify-headers/v0.1.0
 
   - name: basic-auth
-    version: v1.0.0
-    filePath: ./basic-auth/v1.0.0
+    version: v0.1.0
+    filePath: ./basic-auth/v0.1.0
 
   - name: jwt-auth
     version: v0.1.0

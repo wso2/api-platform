@@ -231,7 +231,7 @@ func TestTransform_FullProvider(t *testing.T) {
 	assert.Len(t, *spec.Policies, 1)
 	authPolicy := (*spec.Policies)[0]
 	assert.Equal(t, "modify-headers", authPolicy.Name)
-	assert.Equal(t, "v1.0.0", authPolicy.Version)
+	assert.Equal(t, "v0.1.0", authPolicy.Version)
 	assert.NotNil(t, authPolicy.Params)
 }
 
@@ -1421,7 +1421,7 @@ func TestTransform_PolicyOnWildcardMethod_1(t *testing.T) {
 	policies := []api.LLMPolicy{
 		{
 			Name:    "modify-headers",
-			Version: "v1.0.0",
+			Version: "v0.1.0",
 			Paths: []api.LLMPolicyPath{
 				{
 					Path:    "/v1/chat/completions",
@@ -1481,7 +1481,7 @@ func TestTransform_PolicyOnWildcardMethod_1(t *testing.T) {
 		// The policy should be modify-headers
 		policy := (*op.Policies)[0]
 		assert.Equal(t, "modify-headers", policy.Name, "Operation %s %s should have modify-headers policy", op.Method, op.Path)
-		assert.Equal(t, "v1.0.0", policy.Version, "Operation %s %s should have correct policy version", op.Method, op.Path)
+		assert.Equal(t, "v0.1.0", policy.Version, "Operation %s %s should have correct policy version", op.Method, op.Path)
 
 		// Verify the policy params are set correctly
 		require.NotNil(t, policy.Params, "Operation %s %s policy should have params", op.Method, op.Path)
@@ -1496,7 +1496,7 @@ func TestTransform_PolicyOnWildcardMethod_2(t *testing.T) {
 	policies := []api.LLMPolicy{
 		{
 			Name:    "modify-headers",
-			Version: "v1.0.0",
+			Version: "v0.1.0",
 			Paths: []api.LLMPolicyPath{
 				{
 					Path:    "/v1/chat/completions",
@@ -1563,7 +1563,7 @@ func TestTransform_PolicyOnWildcardMethod_2(t *testing.T) {
 		// The policy should be modify-headers
 		policy := (*op.Policies)[0]
 		assert.Equal(t, "modify-headers", policy.Name, "Operation %s %s should have modify-headers policy", op.Method, op.Path)
-		assert.Equal(t, "v1.0.0", policy.Version, "Operation %s %s should have correct policy version", op.Method, op.Path)
+		assert.Equal(t, "v0.1.0", policy.Version, "Operation %s %s should have correct policy version", op.Method, op.Path)
 
 		// Verify the policy params are set correctly
 		require.NotNil(t, policy.Params, "Operation %s %s policy should have params", op.Method, op.Path)

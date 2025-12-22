@@ -1,5 +1,5 @@
 name: basic-auth
-version: v1.0.0
+version: v0.1.0
 description: |
   Implements HTTP Basic Authentication to protect APIs with username and password credentials.
   Validates the Authorization header against configured credentials and sets authentication
