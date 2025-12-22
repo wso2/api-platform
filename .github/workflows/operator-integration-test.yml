@@ -1340,12 +1340,24 @@ jobs:
           kubectl logs -n operator -l app.kubernetes.io/name=gateway-operator --tail=200 || true
 
           echo ""
+          echo "=== Scoped Operator Logs ==="
+          kubectl logs -n scoped-test -l app.kubernetes.io/name=gateway-operator --tail=200 || true
+
+          echo ""
           echo "=== Gateway Status ==="
           kubectl describe gateway test-gateway || true
 
           echo ""
+          echo "=== Scoped Gateway Status ==="
+          kubectl describe gateway scoped-gateway -n scoped-test || true
+
+          echo ""
           echo "=== RestApi Status ==="
           kubectl describe restapi test-api || true
+
+          echo ""
+          echo "=== Scoped RestApi Status ==="
+          kubectl describe restapi scoped-api -n scoped-test || true
 
           echo ""
           echo "=== All Pods Description ==="
@@ -1354,14 +1366,26 @@ jobs:
           echo ""
           echo "=== Gateway Controller Logs ==="
           kubectl logs -l app.kubernetes.io/component=controller --tail=200 || true
+
+          echo ""
+          echo "=== Scoped Gateway Controller Logs ==="
+          kubectl logs -n scoped-test -l app.kubernetes.io/component=controller --tail=200 || true
           
           echo ""
           echo "=== Router Logs ==="
           kubectl logs -l app.kubernetes.io/component=router --tail=200 || true
 
           echo ""
+          echo "=== Scoped Router Logs ==="
+          kubectl logs -n scoped-test -l app.kubernetes.io/component=router --tail=200 || true
+
+          echo ""
           echo "=== Policy Engine Logs ==="
           kubectl logs -l app.kubernetes.io/component=policy-engine --tail=200 || true
+
+          echo ""
+          echo "=== Scoped Policy Engine Logs ==="
+          kubectl logs -n scoped-test -l app.kubernetes.io/component=policy-engine --tail=200 || true
 
           echo ""
           echo "=== All Pods ==="
