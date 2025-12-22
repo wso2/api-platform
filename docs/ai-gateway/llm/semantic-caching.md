@@ -45,7 +45,7 @@ The policy uses embedding models to convert request text into high-dimensional v
 
 ### System Parameters (Required)
 
-These parameters are typically configured at the gateway level and automatically injected, or you can override those values from the params section in the api.yaml as well:
+These parameters are typically configured at the gateway level and automatically injected, or you can override those values from the params section in the api artifact definition file as well:
 
 #### Embedding Provider Configuration
 
@@ -67,7 +67,7 @@ These parameters are typically configured at the gateway level and automatically
 | `username` | string | No | Database username for authentication (if required) |
 | `password` | string | No | Database password for authentication (if required) |
 | `database` | string | No | Database name or index number (for Redis) |
-| `ttl` | integer | No | `3600` | Time-to-live for cache entries in seconds. Default is 3600 (1 hour). Set to 0 for no expiration. |
+| `ttl` | integer | No | Time-to-live for cache entries in seconds. Default is 3600 (1 hour). Set to 0 for no expiration. |
 
 
 ### Configuring System Parameters in config.yaml

@@ -43,7 +43,7 @@ The policy supports multiple authentication modes including AWS IAM role assumpt
 
 ### System Parameters (Required)
 
-These parameters are typically configured at the gateway level and automatically injected, or you can override those values from the params section in the api.yaml as well:
+These parameters are typically configured at the gateway level and automatically injected, or you can override those values from the params section in the api artifact definition file as well:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
