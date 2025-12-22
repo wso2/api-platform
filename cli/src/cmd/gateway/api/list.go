@@ -88,7 +88,7 @@ func runListCommand() error {
 
 	// Check if the response is successful
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("failed to list APIs (status %d): %s", resp.StatusCode, string(body))
+		return gateway.FormatHTTPError("List APIs", resp, "Gateway Controller")
 	}
 
 	// Parse the response

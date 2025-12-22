@@ -101,9 +101,27 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		// 2) Basic Auth via env vars
 		username := os.Getenv(utils.EnvGatewayUsername)
 		password := os.Getenv(utils.EnvGatewayPassword)
-		if username == "" || password == "" {
-			return nil, fmt.Errorf("missing Basic Auth credentials: set %s and %s in your environment before running gateway controller commands", utils.EnvGatewayUsername, utils.EnvGatewayPassword)
+
+		var missing []string
+		if username == "" {
+			missing = append(missing, utils.EnvGatewayUsername)
 		}
+		if password == "" {
+			missing = append(missing, utils.EnvGatewayPassword)
+		}
+
+		if len(missing) > 0 {
+			var b strings.Builder
+			b.WriteString("missing Basic Auth credentials:\n")
+			for _, m := range missing {
+				b.WriteString("  - ")
+				b.WriteString(m)
+				b.WriteByte('\n')
+			}
+			b.WriteString("\nExport these environment variables and try again.\n")
+			return nil, fmt.Errorf(b.String())
+		}
+
 		req.SetBasicAuth(username, password)
 	}
 
@@ -222,6 +240,20 @@ func (c *Client) GetBaseURL() string {
 
 // FormatHTTPError
 func FormatHTTPError(operation string, resp *http.Response, responser string) error {
+	// Special-case: 1
+	// if Gateway Controller returns 401, suggest checking env var values
+	if resp.StatusCode == http.StatusUnauthorized && responser == "Gateway Controller" {
+		var b strings.Builder
+		b.WriteString(fmt.Sprintf("%s failed (status %d) from %s: unauthorized.\n", operation, resp.StatusCode, responser))
+		b.WriteString("Please check that the following environment variables contain the correct values:\n")
+		b.WriteString("  - ")
+		b.WriteString(utils.EnvGatewayUsername)
+		b.WriteString("\n  - ")
+		b.WriteString(utils.EnvGatewayPassword)
+		b.WriteString("\n")
+		return fmt.Errorf(b.String())
+	}
+
 	if resp == nil {
 		if responser == "" {
 			return fmt.Errorf("%s failed: no response received", operation)
