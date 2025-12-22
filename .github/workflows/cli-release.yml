@@ -23,14 +23,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Validate version format
+      - name: Validate version
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Error: Version must be in x.x.x format (e.g., 1.0.0)"
+          if [[ -z "$VERSION" ]]; then
+            echo "Error: version must be a non-empty string"
             exit 1
           fi
-          echo "Version format is valid: $VERSION"
+          echo "Version provided: $VERSION"
       
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -98,21 +98,8 @@ jobs:
             - **AMD64/x86_64**: `ap-windows-amd64-v${{ github.event.inputs.version }}.exe`
             
             ## Installation
-            
-            ### macOS/Linux
-            ```bash
-            # Download the binary for your platform
-            # Make it executable
-            chmod +x ap-*
-            # Move to PATH
-            sudo mv ap-* /usr/local/bin/ap
-            ```
-            
-            ### Windows
-            ```powershell
-            # Download the .exe file for your platform
-            # Rename and move to a directory in your PATH
-            ```
+
+            Download the binary for your platform from the release assets and add the binary (`ap` on macOS/Linux or `ap.exe` on Windows) to your PATH.
           draft: false
           prerelease: false
           files: |
