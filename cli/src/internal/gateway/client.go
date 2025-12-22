@@ -89,16 +89,22 @@ func NewClientForActive() (*Client, error) {
 
 // Do executes an HTTP request with the gateway's authentication and settings
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
-	// Add authentication (priority: Basic Auth from env vars, then Token)
-	username := os.Getenv(utils.EnvGatewayUsername)
-	password := os.Getenv(utils.EnvGatewayPassword)
+	// Authentication priority (future-proofed):
+	// 1. Env token (WSO2AP_GW_TOKEN) - reserved for OAuth2/token-based auth
+	// 2. Basic Auth from env vars (WSO2AP_GW_USERNAME / WSO2AP_GW_PASSWORD)
+	// If neither is present, fail early to avoid making unauthenticated requests.
 
-	if username != "" && password != "" {
-		// Basic authentication from environment variables
+	// 1) Env token (future OAuth2 flow)
+	if token := os.Getenv(utils.EnvGatewayToken); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	} else {
+		// 2) Basic Auth via env vars
+		username := os.Getenv(utils.EnvGatewayUsername)
+		password := os.Getenv(utils.EnvGatewayPassword)
+		if username == "" || password == "" {
+			return nil, fmt.Errorf("missing Basic Auth credentials: set %s and %s in your environment before running gateway controller commands", utils.EnvGatewayUsername, utils.EnvGatewayPassword)
+		}
 		req.SetBasicAuth(username, password)
-	} else if c.gateway.Token != "" {
-		// Bearer token authentication (OAuth2)
-		req.Header.Set("Authorization", "Bearer "+c.gateway.Token)
 	}
 
 	// Set common headers

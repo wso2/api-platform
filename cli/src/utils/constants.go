@@ -46,9 +46,10 @@ const (
 	GatewayMCPProxiesPath   = "/mcp-proxies"
 	GatewayMCPProxyByIDPath = "/mcp-proxies/%s"
 
-	// BasicAuth Environment Variables
-	EnvGatewayUsername = "WSO2AP_GW_USERNAME"
-	EnvGatewayPassword = "WSO2AP_GW_PASSWORD"
+	// Auth Environment Variables
+	EnvGatewayUsername = "WSO2AP_GW_USERNAME" // For Basic Auth
+	EnvGatewayPassword = "WSO2AP_GW_PASSWORD" // For Basic Auth
+	EnvGatewayToken    = "WSO2AP_GW_TOKEN"    // For OAuth2
 
 	// Image Build Configuration
 	GatewayVerifyChecksumOnBuild = true
