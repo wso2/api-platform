@@ -98,7 +98,7 @@ ap gateway mcp get --id <mcp-id> --format yaml
 
 **Delete an MCP:**
 ```bash
-ap gateway mcp delete --id <mcp-id> --confirm
+ap gateway mcp delete --id <mcp-id>
 ```
 
 ## Stopping the Gateway

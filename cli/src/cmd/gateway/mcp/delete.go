@@ -33,18 +33,17 @@ import (
 const (
 	DeleteCmdLiteral = "delete"
 	DeleteCmdExample = `# Delete an MCP by ID
-ap gateway mcp delete --id sample-1 --confirm`
+ap gateway mcp delete --id sample-1`
 )
 
 var (
-	deleteMCPID      string
-	deleteMCPConfirm bool
+	deleteMCPID string
 )
 
 var deleteCmd = &cobra.Command{
 	Use:     DeleteCmdLiteral,
 	Short:   "Delete an MCP from the gateway",
-	Long:    "Deletes a specific MCP from the gateway by ID. Requires --confirm flag to prevent accidental deletions.",
+	Long:    "Deletes a specific MCP from the gateway by ID.",
 	Example: DeleteCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runDeleteCommand(); err != nil {
@@ -56,16 +55,11 @@ var deleteCmd = &cobra.Command{
 
 func init() {
 	utils.AddStringFlag(deleteCmd, utils.FlagID, &deleteMCPID, "", "MCP ID (handle) to delete")
-	utils.AddBoolFlag(deleteCmd, utils.FlagConfirm, &deleteMCPConfirm, false, "Confirm deletion")
 	deleteCmd.MarkFlagRequired(utils.FlagID)
-	deleteCmd.MarkFlagRequired(utils.FlagConfirm)
 }
 
 func runDeleteCommand() error {
-	// Validate that confirm flag is set
-	if !deleteMCPConfirm {
-		return fmt.Errorf("deletion not confirmed: please use --confirm flag to confirm deletion")
-	}
+	// Proceed with deletion (no confirm flag required)
 
 	// Create a client for the active gateway
 	client, err := gateway.NewClientForActive()
