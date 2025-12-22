@@ -54,7 +54,7 @@ copy-policy-definitions: ## Copy policy definitions from policy-manifest.yaml
 	fi
 	@echo "Copying policy definitions..."
 	@mkdir -p policies
-	@yq e '.policies[] | .name + "|" + .version + "|" + .filePath' ../policies/policy-manifest.yaml | \
+	@yq e '.policies[] | .name + "|" + .version + "|" + .filePath' ../policies/policy-manifest-lock.yaml | \
 	while IFS= read -r line; do \
 		name=$$(echo "$$line" | cut -d'|' -f1); \
 		version=$$(echo "$$line" | cut -d'|' -f2); \
