@@ -57,6 +57,9 @@ func NewJWTAuthenticator(config *models.AuthConfig, logger *zap.Logger) (*JWTAut
 func newJWTAuthenticatorWithJWKS(config *models.AuthConfig, logger *zap.Logger, initJWKS bool) (*JWTAuthenticator, error) {
 	var jwks keyfunc.Keyfunc
 	if config.JWTConfig != nil && initJWKS {
+		if config.JWTConfig.IssuerURL == "" {
+			return nil, errors.New("issuer URL not configured")
+		}
 		// Get Issuer URL from config
 		if config.JWTConfig.JWKSUrl == "" {
 			return nil, errors.New("JWKS endpoint not configured")
@@ -114,6 +117,9 @@ func (j *JWTAuthenticator) Authenticate(ctx *gin.Context) (*AuthResult, error) {
 	validatedToken, err := jwt.ParseWithClaims(tokenString, claims, j.jwks.Keyfunc)
 
 	if err != nil {
+		if errors.Is(err, jwt.ErrTokenExpired) {
+			return nil, ErrExpiredToken
+		}
 		return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
 	}
 
