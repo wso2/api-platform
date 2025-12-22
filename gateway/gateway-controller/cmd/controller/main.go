@@ -345,17 +345,23 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 		"PUT /mcp-proxies/:id":    {"admin", "developer"},
 		"DELETE /mcp-proxies/:id": {"admin", "developer"},
 
-		"POST /llm-provider-templates":         {"admin"},
-		"GET /llm-provider-templates":          {"admin"},
-		"GET /llm-provider-templates/:name":    {"admin"},
-		"PUT /llm-provider-templates/:name":    {"admin"},
-		"DELETE /llm-provider-templates/:name": {"admin"},
+		"POST /llm-provider-templates":       {"admin"},
+		"GET /llm-provider-templates":        {"admin"},
+		"GET /llm-provider-templates/:id":    {"admin"},
+		"PUT /llm-provider-templates/:id":    {"admin"},
+		"DELETE /llm-provider-templates/:id": {"admin"},
 
-		"POST /llm-providers":                  {"admin"},
-		"GET /llm-providers":                   {"admin", "developer"},
-		"GET /llm-providers/:name/:version":    {"admin", "developer"},
-		"PUT /llm-providers/:name/:version":    {"admin"},
-		"DELETE /llm-providers/:name/:version": {"admin"},
+		"POST /llm-providers":       {"admin"},
+		"GET /llm-providers":        {"admin", "developer"},
+		"GET /llm-providers/:id":    {"admin", "developer"},
+		"PUT /llm-providers/:id":    {"admin"},
+		"DELETE /llm-providers/:id": {"admin"},
+
+		"POST /llm-proxies":       {"admin", "developer"},
+		"GET /llm-proxies":        {"admin", "developer"},
+		"GET /llm-proxies/:id":    {"admin", "developer"},
+		"PUT /llm-proxies/:id":    {"admin", "developer"},
+		"DELETE /llm-proxies/:id": {"admin", "developer"},
 
 		"GET /config_dump": {"admin"},
 	}
