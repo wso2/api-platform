@@ -24,13 +24,14 @@ services:
     container_name: it-gateway-controller
     image: ghcr.io/wso2/api-platform/gateway-controller-coverage:0.1.0-SNAPSHOT
     ports:
-      - "9090:9090"   # REST API
+      - "9099:9090"   # REST API
       - "18000:18000" # xDS gRPC
       - "18001:18001"
     environment:
       - GATEWAY_STORAGE_TYPE=sqlite
       - GATEWAY_STORAGE_SQLITE_PATH=./data/gateway.db
       - GATEWAY_LOGGING_LEVEL=info
+      - GATEWAY_TRACING_ENABLED=${GATEWAY_TRACING_ENABLED:-false}
       - GOCOVERDIR=/coverage
     volumes:
       - controller-data-tests:/app/data
@@ -53,6 +54,8 @@ services:
     command: ["-xds-server", "it-gateway-controller:18001"]
     ports:
       - "9002:9002"   # Admin API
+    environment:
+      - GATEWAY_TRACING_ENABLED=${GATEWAY_TRACING_ENABLED:-false}
     volumes:
       - ../configs/config.yaml:/app/configs/config.yaml:ro
     depends_on:
@@ -100,7 +103,7 @@ services:
     container_name: it-sample-backend
     image: renukafernando/request-info:latest
     ports:
-      - "5000:5000"
+      - "5050:5000"
     command: ["-addr", ":5000", "-pretty"]
     networks:
       - it-gateway-network

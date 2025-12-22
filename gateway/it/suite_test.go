@@ -70,6 +70,14 @@ func TestFeatures(t *testing.T) {
 		log.Printf("Warning: Failed to setup test reporter: %v", err)
 	}
 
+	// Register cleanup to run on any test exit (including panics and failures)
+	t.Cleanup(func() {
+		if composeManager != nil {
+			log.Println("Running t.Cleanup: ensuring containers and volumes are removed...")
+			composeManager.Cleanup()
+		}
+	})
+
 	opts.TestingT = t
 
 	suite := godog.TestSuite{

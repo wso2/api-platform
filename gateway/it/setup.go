@@ -47,7 +47,7 @@ const (
 	HealthCheckInterval = 2 * time.Second
 
 	// GatewayControllerPort is the REST API port for gateway-controller
-	GatewayControllerPort = "9090"
+	GatewayControllerPort = "9099"
 
 	// RouterPort is the HTTP traffic port for the router
 	RouterPort = "8080"
@@ -92,8 +92,14 @@ func NewComposeManager(composeFile string) (*ComposeManager, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Create compose stack using testcontainers-go
-	compose, err := tc.NewDockerCompose(absPath)
+	// Create compose stack using testcontainers-go with explicit project name
+	// This ensures that RestartGatewayController uses the same project name
+	// for docker compose commands, keeping all containers on the same network
+	projectName := "gateway-it"
+	compose, err := tc.NewDockerComposeWith(
+		tc.StackIdentifier(projectName),
+		tc.WithStackFiles(absPath),
+	)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("failed to create docker compose: %w", err)
@@ -102,7 +108,7 @@ func NewComposeManager(composeFile string) (*ComposeManager, error) {
 	cm := &ComposeManager{
 		compose:     compose,
 		composeFile: absPath,
-		projectName: "gateway-it",
+		projectName: projectName,
 		ctx:         ctx,
 		cancel:      cancel,
 		signalChan:  make(chan os.Signal, 1),
@@ -157,10 +163,23 @@ func (cm *ComposeManager) Start() error {
 	}
 
 	log.Println("All services are healthy and ready")
+	cm.PrintServiceStatus()
 	return nil
 }
 
-// RestartGatewayController restarts the gateway-controller service with specific environment variables
+// PrintServiceStatus prints the status of docker compose services
+func (cm *ComposeManager) PrintServiceStatus() {
+	cmd := execCommandContext(cm.ctx, "docker", "compose", "-f", cm.composeFile, "-p", cm.projectName, "ps")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	log.Println("--- Docker Compose Services ---")
+	if err := cmd.Run(); err != nil {
+		log.Printf("Failed to run docker compose ps: %v", err)
+	}
+	log.Println("-------------------------------")
+}
+
+// RestartGatewayController restarts the gateway-controller, policy-engine, and router services with specific environment variables
 func (cm *ComposeManager) RestartGatewayController(ctx context.Context, envVars map[string]string) error {
 	// Project name is "gateway-it", service is "gateway-controller".
 	// Default naming is usually project-service-1 or project_service_1.
@@ -175,39 +194,78 @@ func (cm *ComposeManager) RestartGatewayController(ctx context.Context, envVars 
 
 	// I'll stick to 'docker compose' commands to be safe with names.
 
-	log.Println("Restarting gateway-controller with new configuration...")
+	log.Println("Restarting gateway services with new configuration...")
 
-	// Stop and remove the service container
-	stopCmd := execCommandContext(ctx, "docker", "compose", "-f", cm.composeFile, "-p", cm.projectName, "stop", "gateway-controller")
+	// Stop and remove gateway-controller, policy-engine, and router
+	// We restart all three to ensure they reconnect to xDS with new config
+	stopCmd := execCommandContext(ctx, "docker", "compose", "-f", cm.composeFile, "-p", cm.projectName, "stop", "gateway-controller", "policy-engine", "router")
 	if err := stopCmd.Run(); err != nil {
-		return fmt.Errorf("failed to stop gateway-controller: %w", err)
+		return fmt.Errorf("failed to stop services: %w", err)
 	}
 
-	// Force remove the container by declared name to avoid conflicts
+	// Force remove the containers by declared name to avoid conflicts
 	// We use direct docker rm because compose rm sometimes doesn't clear the name reservation fast enough
 	// or behaves differently with static container_names.
-	rmCmd := execCommandContext(ctx, "docker", "rm", "-f", "it-gateway-controller")
+	rmCmd := execCommandContext(ctx, "docker", "rm", "-f", "it-gateway-controller", "it-policy-engine", "it-router")
 	// We ignore error here because if it doesn't exist, that's fine.
 	_ = rmCmd.Run()
 
-	// Start with new env vars
-	args := []string{"compose", "-f", cm.composeFile, "-p", cm.projectName, "up", "-d", "gateway-controller"}
-	cmd := execCommandContext(ctx, "docker", args...)
-
-	// Copy existing env and append new ones
-	cmd.Env = os.Environ()
+	// Build environment for docker compose commands
+	composeEnv := os.Environ()
 	for k, v := range envVars {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+		composeEnv = append(composeEnv, fmt.Sprintf("%s=%s", k, v))
 		log.Printf("Setting env: %s=%s", k, v)
 	}
+
+	// Start gateway-controller with new env vars
+	log.Println("Starting gateway-controller...")
+	args := []string{"compose", "-f", cm.composeFile, "-p", cm.projectName, "up", "-d", "gateway-controller"}
+	cmd := execCommandContext(ctx, "docker", args...)
+	cmd.Env = composeEnv
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to start gateway-controller: %w\nOutput: %s", err, string(output))
 	}
 
-	// Wait for health check
-	return cm.WaitForGatewayControllerHealthy(ctx)
+	// Wait for gateway-controller health check
+	if err := cm.WaitForGatewayControllerHealthy(ctx); err != nil {
+		return err
+	}
+
+	// Start policy-engine with same env vars (it depends on gateway-controller)
+	log.Println("Starting policy-engine...")
+	policyArgs := []string{"compose", "-f", cm.composeFile, "-p", cm.projectName, "up", "-d", "policy-engine"}
+	policyCmd := execCommandContext(ctx, "docker", policyArgs...)
+	policyCmd.Env = composeEnv
+	policyOutput, err := policyCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to start policy-engine: %w\nOutput: %s", err, string(policyOutput))
+	}
+
+	// Now start router (it depends on gateway-controller)
+	log.Println("Starting router...")
+	routerArgs := []string{"compose", "-f", cm.composeFile, "-p", cm.projectName, "up", "-d", "router"}
+	routerCmd := execCommandContext(ctx, "docker", routerArgs...)
+	routerCmd.Env = composeEnv // Router also needs env vars for consistency
+	routerOutput, err := routerCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to start router: %w\nOutput: %s", err, string(routerOutput))
+	}
+
+	cm.PrintServiceStatus()
+
+	// Wait for router to be ready and give time for xDS config propagation
+	if err := cm.WaitForRouterReady(ctx); err != nil {
+		return err
+	}
+
+	// Additional wait for xDS configuration to propagate
+	log.Println("Waiting for xDS configuration to propagate...")
+	time.Sleep(3 * time.Second)
+
+	log.Println("Gateway configuration change complete")
+	return nil
 }
 
 // WaitForGatewayControllerHealthy waits for the gateway-controller to be healthy
@@ -235,6 +293,38 @@ func (cm *ComposeManager) WaitForGatewayControllerHealthy(ctx context.Context) e
 			resp.Body.Close()
 
 			if resp.StatusCode == http.StatusOK {
+				return nil
+			}
+		}
+	}
+}
+
+// WaitForRouterReady waits for the router (Envoy) to be ready
+func (cm *ComposeManager) WaitForRouterReady(ctx context.Context) error {
+	endpoint := fmt.Sprintf("http://localhost:%s/ready", EnvoyAdminPort)
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+	}
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	for {
+		select {
+		case <-timeoutCtx.Done():
+			return fmt.Errorf("timeout waiting for router to be ready")
+		case <-ticker.C:
+			resp, err := client.Get(endpoint)
+			if err != nil {
+				continue
+			}
+			resp.Body.Close()
+
+			if resp.StatusCode == http.StatusOK {
+				log.Println("Router is ready after gateway-controller restart")
 				return nil
 			}
 		}
@@ -335,8 +425,25 @@ func (cm *ComposeManager) Cleanup() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		if err := cm.compose.Down(cleanupCtx, tc.RemoveOrphans(true), tc.RemoveImagesLocal); err != nil {
-			log.Printf("Failed to stop docker compose: %v", err)
+		// First try testcontainers-go compose down
+		if err := cm.compose.Down(cleanupCtx, tc.RemoveOrphans(true), tc.RemoveImagesLocal, tc.RemoveVolumes(true)); err != nil {
+			log.Printf("Testcontainers compose down warning: %v", err)
+		}
+
+		// Also run direct docker compose down to catch any containers started outside testcontainers tracking
+		// (e.g., containers restarted via RestartGatewayController)
+		log.Println("Running direct docker compose down for complete cleanup...")
+		cmd := execCommandContext(cleanupCtx, "docker", "compose", "-f", cm.composeFile, "-p", cm.projectName, "down", "-v", "--remove-orphans")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("Direct docker compose down warning: %v, output: %s", err, string(output))
+		}
+
+		// Explicitly remove the test volume in case it wasn't removed by compose down
+		volumeName := cm.projectName + "_controller-data-tests"
+		log.Printf("Removing volume %s...", volumeName)
+		volCmd := execCommandContext(cleanupCtx, "docker", "volume", "rm", "-f", volumeName)
+		if output, err := volCmd.CombinedOutput(); err != nil {
+			log.Printf("Volume removal warning (may not exist): %v, output: %s", err, string(output))
 		}
 	})
 }
@@ -369,6 +476,16 @@ func (cm *ComposeManager) CheckLogsForText(ctx context.Context, containerName, t
 	}
 
 	return strings.Contains(string(output), text), nil
+}
+
+// GetContainerLogs returns the logs of a container
+func (cm *ComposeManager) GetContainerLogs(ctx context.Context, containerName string) (string, error) {
+	cmd := execCommandContext(ctx, "docker", "logs", containerName)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to get logs for %s: %w", containerName, err)
+	}
+	return string(output), nil
 }
 
 // CheckDockerAvailable verifies that Docker is running and accessible

@@ -47,7 +47,7 @@ func DefaultConfig() *Config {
 		GatewayControllerURL: fmt.Sprintf("http://localhost:%s", GatewayControllerPort),
 		RouterURL:            fmt.Sprintf("http://localhost:%s", RouterPort),
 		PolicyEngineURL:      "http://localhost:9002",
-		SampleBackendURL:     "http://localhost:5000",
+		SampleBackendURL:     "http://localhost:5050",
 		HTTPTimeout:          10 * time.Second,
 		Users: map[string]AuthUser{
 			"admin": {Username: "admin", Password: "admin"},

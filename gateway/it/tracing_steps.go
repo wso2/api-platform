@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"log"
+
 	"github.com/cucumber/godog"
 )
 
@@ -32,6 +34,10 @@ func verifyTraceInLogs(cm *ComposeManager, text string) error {
 	for {
 		select {
 		case <-ctx.Done():
+			// capturing logs for debugging
+			log.Printf("Timeout waiting for trace logs. Dumping logs for %s:", "it-otel-collector")
+			output, _ := cm.GetContainerLogs(context.Background(), "it-otel-collector")
+			log.Println(output)
 			return fmt.Errorf("timed out waiting for trace logs containing '%s'", text)
 		case <-ticker.C:
 			found, err := cm.CheckLogsForText(ctx, "it-otel-collector", text)
@@ -40,6 +46,7 @@ func verifyTraceInLogs(cm *ComposeManager, text string) error {
 				continue
 			}
 			if found {
+				log.Printf("Found trace log containing '%s'", text)
 				return nil
 			}
 		}

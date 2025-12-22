@@ -20,8 +20,9 @@
 
 # Run integration tests (always with coverage)
 # Requires: make build-coverage-image (run once before tests)
+# Uses script to force unbuffered output on macOS
 test:
-	go test -v ./...
+	script -q /dev/null go test -v -count=1 ./...
 
 # Build all coverage-instrumented gateway components
 build-coverage:
