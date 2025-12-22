@@ -149,10 +149,12 @@ func TestTopicRegistrationForConcurrentAPIConfigs(t *testing.T) {
 
 	// Two different API YAMLs
 	yamlA := `kind: async/websub
-version: api-platform.wso2.com/v1
-spec:
+apiVersion: api-platform.wso2.com/v1
+metadata:
   name: apiA
+spec:
   context: /a
+  name: apiA # TODO: (renuka) This should be displayName
   version: v1
   servers:
     - url: "http://host.docker.internal:9098"
@@ -163,10 +165,12 @@ spec:
 `
 
 	yamlB := `kind: async/websub
-version: api-platform.wso2.com/v1
-spec:
+apiVersion: api-platform.wso2.com/v1
+metadata:
   name: apiB
+spec:
   context: /b
+  name: apiB # TODO: (renuka) This should be displayName
   version: v1
   servers:
     - url: "http://host.docker.internal:9098"

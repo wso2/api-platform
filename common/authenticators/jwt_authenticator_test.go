@@ -18,13 +18,36 @@
 package authenticators
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/MicahParks/jwkset"
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
+	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/models"
 	"go.uber.org/zap"
 )
+
+type staticKeyfunc struct {
+	key any
+}
+
+func (s staticKeyfunc) Keyfunc(token *jwt.Token) (any, error) { return s.key, nil }
+
+func (s staticKeyfunc) KeyfuncCtx(ctx context.Context) jwt.Keyfunc {
+	return func(token *jwt.Token) (any, error) { return s.key, nil }
+}
+
+func (s staticKeyfunc) Storage() jwkset.Storage { return nil }
+
+func (s staticKeyfunc) VerificationKeySet(ctx context.Context) (jwt.VerificationKeySet, error) {
+	return jwt.VerificationKeySet{}, nil
+}
 
 func TestJWTAuthenticator_ResolvePermissions_WildcardMapping(t *testing.T) {
 	logger := zap.NewNop()
@@ -54,7 +77,7 @@ func TestJWTAuthenticator_ResolvePermissions_WildcardMapping(t *testing.T) {
 			permissionMapping: &map[string][]string{
 				"admin":     {"*"},
 				"developer": {"developer"},
-				"consumer":    {"consumer"},
+				"consumer":  {"consumer"},
 			},
 			expectedRoles: []string{"developer", "consumer", "admin"},
 			description:   "developer->developer, consumer->consumer, admin->admin (wildcard)",
@@ -74,7 +97,7 @@ func TestJWTAuthenticator_ResolvePermissions_WildcardMapping(t *testing.T) {
 			scopeClaim: "scope",
 			claimValue: "developer consumer admin",
 			permissionMapping: &map[string][]string{
-				"admin":  {"*"},
+				"admin":    {"*"},
 				"consumer": {"consumer"},
 			},
 			expectedRoles: []string{"admin", "consumer", "admin"},
@@ -115,7 +138,7 @@ func TestJWTAuthenticator_ResolvePermissions_WildcardMapping(t *testing.T) {
 			permissionMapping: &map[string][]string{
 				"admin":     {"*"},
 				"developer": {"developer"},
-				"consumer":    {"admin"}, // admin claim maps to consumer specifically
+				"consumer":  {"admin"}, // admin claim maps to consumer specifically
 			},
 			expectedRoles: []string{"consumer", "developer", "admin"},
 			description:   "admin->consumer (specific), developer->developer (specific), other->admin (wildcard)",
@@ -214,4 +237,36 @@ func TestJWTAuthenticator_ResolvePermissions_InvalidClaimType(t *testing.T) {
 	roles := authenticator.resolvePermissions(claims)
 
 	assert.Empty(t, roles, "Should return empty array when claim type is invalid")
+}
+
+func TestJWTAuthenticator_Authenticate_ExpiredTokenRejected_WithIssuerValidation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	logger := zap.NewNop()
+	issuer := "https://issuer.example.com"
+
+	secret := []byte("test-secret")
+	expired := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"iss": issuer,
+		"sub": "user123",
+		"exp": time.Now().Add(-1 * time.Minute).Unix(),
+	})
+	tokenString, err := expired.SignedString(secret)
+	assert.NoError(t, err)
+
+	config := &models.AuthConfig{JWTConfig: &models.IDPConfig{Enabled: true, IssuerURL: issuer}}
+
+	a := &JWTAuthenticator{
+		config: config,
+		logger: logger,
+		jwks:   staticKeyfunc{key: secret},
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	req, _ := http.NewRequest("GET", "/", nil)
+	req.Header.Set(constants.AuthorizationHeader, constants.BearerPrefix+tokenString)
+	c.Request = req
+
+	_, err = a.Authenticate(c)
+	assert.ErrorIs(t, err, ErrExpiredToken)
 }
