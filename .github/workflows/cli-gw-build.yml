@@ -15,7 +15,7 @@ jobs:
 
     steps:
       # ------------------------------------------------------------
-      # 0. Initialize log files early (guarantees existence)
+      # 0. Initialize log files (guaranteed existence)
       # ------------------------------------------------------------
       - name: Initialize log files
         run: |
@@ -24,22 +24,59 @@ jobs:
           touch .wso2ap/.tmp/gateway-image-build/logs/docker.log
 
       # ------------------------------------------------------------
-      # 1. Initiation (checkout, go, cache, buildx)
+      # 1. Checkout repository (logged)
       # ------------------------------------------------------------
-      - name: Initiate environment
+      - name: Checkout repository
         run: |
           set -o pipefail
           {
             echo "== Checkout repository =="
-            git status
+            git --version || true
+          } 2>&1 | tee -a initiate.log
 
-            echo "== Set up Go =="
+      - uses: actions/checkout@v4
+
+      # ------------------------------------------------------------
+      # 2. Set up Go (logged)
+      # ------------------------------------------------------------
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Verify Go
+        run: |
+          set -o pipefail
+          {
+            echo "== Go version =="
             go version
+          } 2>&1 | tee -a initiate.log
 
-            echo "== Cache Go modules =="
-            echo "Cache handled by actions/cache"
+      # ------------------------------------------------------------
+      # 3. Cache Go modules (logged)
+      # ------------------------------------------------------------
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
 
-            echo "== Set up Docker Buildx =="
+      - name: Cache status
+        run: |
+          echo "== Go module cache configured ==" >> initiate.log
+
+      # ------------------------------------------------------------
+      # 4. Docker Buildx (named builder, logged)
+      # ------------------------------------------------------------
+      - name: Set up Docker Buildx
+        run: |
+          set -o pipefail
+          {
+            echo "== Docker Buildx setup =="
             if ! docker buildx inspect docker-container >/dev/null 2>&1; then
               docker buildx create \
                 --name docker-container \
@@ -49,25 +86,10 @@ jobs:
             docker buildx use docker-container
             docker buildx inspect --bootstrap
             docker buildx ls
-          } 2>&1 | tee initiate.log
-
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+          } 2>&1 | tee -a initiate.log
 
       # ------------------------------------------------------------
-      # 2. Build gateway
+      # 5. Build gateway
       # ------------------------------------------------------------
       - name: Build gateway
         working-directory: ./gateway
@@ -76,7 +98,7 @@ jobs:
           (make build) 2>&1 | tee "$GITHUB_WORKSPACE/gw-build.log"
 
       # ------------------------------------------------------------
-      # 3. Build CLI
+      # 6. Build CLI
       # ------------------------------------------------------------
       - name: Build CLI
         working-directory: ./cli/src
@@ -85,7 +107,7 @@ jobs:
           (make build-all) 2>&1 | tee "$GITHUB_WORKSPACE/cli-build.log"
 
       # ------------------------------------------------------------
-      # 4. Prepare run directory
+      # 7. Prepare run directory
       # ------------------------------------------------------------
       - name: Prepare my-gw run directory
         run: |
@@ -108,7 +130,7 @@ jobs:
           } 2>&1 | tee prepare.log
 
       # ------------------------------------------------------------
-      # 5. Gateway image build (smoke test)
+      # 8. Gateway image build
       # ------------------------------------------------------------
       - name: Build gateway image
         working-directory: ./my-gw
@@ -122,14 +144,13 @@ jobs:
 
           (./ap gateway image build) 2>&1 | tee "$GITHUB_WORKSPACE/ap-gw-image-build.log"
 
-          # Copy docker.log if created
           if [ -f "$HOME/.wso2ap/.tmp/gateway-image-build/logs/docker.log" ]; then
             cp "$HOME/.wso2ap/.tmp/gateway-image-build/logs/docker.log" \
                "$GITHUB_WORKSPACE/.wso2ap/.tmp/gateway-image-build/logs/docker.log"
           fi
 
       # ------------------------------------------------------------
-      # 6. Upload logs ALWAYS (even on failure)
+      # 9. Upload logs ALWAYS
       # ------------------------------------------------------------
       - name: Upload logs
         if: always()
