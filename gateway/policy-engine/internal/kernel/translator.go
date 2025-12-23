@@ -78,10 +78,14 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 
 	// Build final action by resolving conflicting header operations
 	headerOps := make(map[string][]*headerOp)
-	analyticsData = make(map[string]any)
 	headerMutation = &extprocv3.HeaderMutation{}
 	var finalBodyLength int
 	bodyModified := false
+
+	// To this - collect into accumulated analytics:
+	if execCtx.accumulatedAnalyticsData == nil {
+		execCtx.accumulatedAnalyticsData = make(map[string]any)
+	}
 
 	// Collect all operations in order
 	for _, policyResult := range result.Results {
@@ -122,7 +126,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 				// Collect analytics metadata from policies
 				if mods.AnalyticsMetadata != nil {
 					for key, value := range mods.AnalyticsMetadata {
-						analyticsData[key] = value
+						execCtx.accumulatedAnalyticsData[key] = value
 					}
 				}
 			}
@@ -142,7 +146,7 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 		setContentLengthHeader(headerMutation, finalBodyLength)
 	}
 
-	return headerMutation, bodyMutation, analyticsData, nil, nil
+	return headerMutation, bodyMutation, execCtx.accumulatedAnalyticsData, nil, nil
 }
 
 // TranslateRequestHeadersActions converts request headers execution result to ext_proc response
@@ -220,10 +224,14 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 
 	// Build final action by resolving conflicting header operations
 	headerOps := make(map[string][]*headerOp)
-	analyticsData = make(map[string]any)
 	headerMutation = &extprocv3.HeaderMutation{}
 	var finalBodyLength int
 	bodyModified := false
+
+	// Ensure accumulated data is initialized
+	if execCtx.accumulatedAnalyticsData == nil {
+		execCtx.accumulatedAnalyticsData = make(map[string]any)
+	}
 
 	// Collect all operations in order
 	for _, policyResult := range result.Results {
@@ -264,7 +272,7 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 				// Collect analytics metadata from policies
 				if mods.AnalyticsMetadata != nil {
 					for key, value := range mods.AnalyticsMetadata {
-						analyticsData[key] = value
+						execCtx.accumulatedAnalyticsData[key] = value
 					}
 				}
 			}
@@ -284,7 +292,7 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 		setContentLengthHeader(headerMutation, finalBodyLength)
 	}
 
-	return headerMutation, bodyMutation, analyticsData, nil
+	return headerMutation, bodyMutation, execCtx.accumulatedAnalyticsData, nil
 }
 
 // TranslateResponseHeadersActions converts response headers execution result to ext_proc response

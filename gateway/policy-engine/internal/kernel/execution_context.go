@@ -53,6 +53,10 @@ type PolicyExecutionContext struct {
 
 	// Reference to server components
 	server *ExternalProcessorServer
+
+	// Accumulated analytics metadata from all phases
+    // This accumulates across request headers, request body, response headers, response body
+    accumulatedAnalyticsData map[string]any
 }
 
 // newPolicyExecutionContext creates a new execution context for a request

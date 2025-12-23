@@ -1,0 +1,41 @@
+name: analytics-header-filter
+version: v0.1.0
+description: |
+  Filters specified headers from being sent to analytics publishers.
+  This policy allows users to exclude sensitive or unwanted headers from analytics data.
+  The policy only operates when analytics is enabled at the system level.
+  Users must explicitly add this policy to their policy chain for it to take effect.
+
+parameters:
+  type: object
+  properties:
+    requestHeadersToFilter:
+      type: array
+      description: |
+        List of request header names to exclude from analytics data.
+        Header names are case-insensitive.
+      items:
+        type: string
+        description: Header name to filter from request analytics
+        minLength: 1
+        maxLength: 256
+    responseHeadersToFilter:
+      type: array
+      description: |
+        List of response header names to exclude from analytics data.
+        Header names are case-insensitive.
+      items:
+        type: string
+        description: Header name to filter from response analytics
+        minLength: 1
+        maxLength: 256
+
+systemParameters:
+  type: object
+  properties:
+    analyticsEnabled:
+      type: boolean
+      description: System-level flag indicating whether analytics is enabled. This policy only operates when this is set to true.
+      default: false
+      "wso2/defaultValue": "${config.analytics.enabled}"
+
