@@ -35,7 +35,7 @@ helm upgrade --install \
 ## 2. Install Gateway Operator
 
 ```sh
-helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.0.1
+helm install my-gateway-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-operator --version 0.2.0
 ```
 
 ---
@@ -57,15 +57,15 @@ kubectl get gateway -n default -o json | jq '.items[0].status'
 ## 4. Apply ApiConfiguration (Configure APIs)
 
 ```sh
-curl -X GET "https://raw.githubusercontent.com/wso2/api-platform/refs/heads/main/kubernetes/gateway-operator/config/samples/api_v1_apiconfiguration.yaml" \
-  -o /tmp/api_v1_apiconfiguration.yaml
+curl -X GET "https://raw.githubusercontent.com/wso2/api-platform/refs/heads/main/kubernetes/gateway-operator/config/samples/api_v1_restapi.yaml" \
+  -o /tmp/api_v1_restapi.yaml
 
-apiconfig_path="/tmp/api_v1_apiconfiguration.yaml"
+apiconfig_path="/tmp/api_v1_restapi.yaml"
 kubectl create ns test
 kubectl apply -f $apiconfig_path
 
-kubectl get apiconfiguration -n default -o json | jq '.items[0].status'
-kubectl get apiconfiguration -n test -o json | jq '.items[0].status'
+kubectl get restapi -n default -o json | jq '.items[0].status'
+kubectl get restapi -n default -o json | jq '.items[1].status'
 ```
 
 ---
@@ -103,12 +103,6 @@ kubectl wait --for=condition=ready pod -l app=secure-backend --timeout=120s
 
 ```sh
 curl https://localhost:8444/test/info -vk
-```
-
-### HTTP Test API (proxied as HTTPS)
-
-```sh
-curl https://localhost:8444/test2/info -vk
 ```
 
 ### Secure Backend API (expected to fail before adding certificate)
