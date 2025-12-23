@@ -2,7 +2,7 @@ name: Periodic Gateway Build
 
 on:
   schedule:
-    - cron: '0 * * * *' # run every hour
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -14,16 +14,50 @@ jobs:
       BUILDX_BUILDER: docker-container
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      # ------------------------------------------------------------
+      # 0. Initialize log files early (guarantees existence)
+      # ------------------------------------------------------------
+      - name: Initialize log files
+        run: |
+          touch initiate.log gw-build.log cli-build.log prepare.log ap-gw-image-build.log
+          mkdir -p .wso2ap/.tmp/gateway-image-build/logs
+          touch .wso2ap/.tmp/gateway-image-build/logs/docker.log
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      # ------------------------------------------------------------
+      # 1. Initiation (checkout, go, cache, buildx)
+      # ------------------------------------------------------------
+      - name: Initiate environment
+        run: |
+          set -o pipefail
+          {
+            echo "== Checkout repository =="
+            git status
+
+            echo "== Set up Go =="
+            go version
+
+            echo "== Cache Go modules =="
+            echo "Cache handled by actions/cache"
+
+            echo "== Set up Docker Buildx =="
+            if ! docker buildx inspect docker-container >/dev/null 2>&1; then
+              docker buildx create \
+                --name docker-container \
+                --driver docker-container
+            fi
+
+            docker buildx use docker-container
+            docker buildx inspect --bootstrap
+            docker buildx ls
+          } 2>&1 | tee initiate.log
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
 
-      - name: Cache Go modules
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cache/go-build
@@ -33,68 +67,79 @@ jobs:
             ${{ runner.os }}-go-
 
       # ------------------------------------------------------------
-      # FIX: Explicitly create a Buildx builder NAMED "docker-container"
+      # 2. Build gateway
       # ------------------------------------------------------------
-      - name: Set up Docker Buildx (named builder)
-        run: |
-          set -e
-
-          if ! docker buildx inspect docker-container >/dev/null 2>&1; then
-            docker buildx create \
-              --name docker-container \
-              --driver docker-container
-          fi
-
-          docker buildx use docker-container
-          docker buildx inspect --bootstrap
-          docker buildx ls
-
       - name: Build gateway
         working-directory: ./gateway
         run: |
           set -o pipefail
-          : > "$GITHUB_WORKSPACE/gateway-build.log"
-          (make build) 2>&1 | tee "$GITHUB_WORKSPACE/gateway-build.log"
+          (make build) 2>&1 | tee "$GITHUB_WORKSPACE/gw-build.log"
 
+      # ------------------------------------------------------------
+      # 3. Build CLI
+      # ------------------------------------------------------------
       - name: Build CLI
         working-directory: ./cli/src
         run: |
           set -o pipefail
-          : > "$GITHUB_WORKSPACE/cli-build.log"
           (make build-all) 2>&1 | tee "$GITHUB_WORKSPACE/cli-build.log"
 
+      # ------------------------------------------------------------
+      # 4. Prepare run directory
+      # ------------------------------------------------------------
       - name: Prepare my-gw run directory
         run: |
-          rm -rf my-gw
-          mkdir my-gw
+          set -o pipefail
+          {
+            rm -rf my-gw
+            mkdir my-gw
 
-          if [ -f cli/src/build/ap-linux-amd64 ]; then
-            cp cli/src/build/ap-linux-amd64 my-gw/ap
-          else
-            cp cli/src/build/ap-linux-amd64-v* my-gw/ap
-          fi
+            if [ -f cli/src/build/ap-linux-amd64 ]; then
+              cp cli/src/build/ap-linux-amd64 my-gw/ap
+            else
+              cp cli/src/build/ap-linux-amd64-v* my-gw/ap
+            fi
 
-          chmod +x my-gw/ap
+            chmod +x my-gw/ap
 
-          if [ -f cli/src/tests/resources/simple-policy-manifest.yaml ]; then
-            cp cli/src/tests/resources/simple-policy-manifest.yaml my-gw/policy-manifest.yaml
-          fi
+            if [ -f cli/src/tests/resources/simple-policy-manifest.yaml ]; then
+              cp cli/src/tests/resources/simple-policy-manifest.yaml my-gw/policy-manifest.yaml
+            fi
+          } 2>&1 | tee prepare.log
 
-      - name: Run ap gateway image build (smoke test)
+      # ------------------------------------------------------------
+      # 5. Gateway image build (smoke test)
+      # ------------------------------------------------------------
+      - name: Build gateway image
         working-directory: ./my-gw
         env:
           CI: ""
           WSO2AP_GW_USERNAME: ${{ secrets.WSO2AP_GW_USERNAME || '' }}
           WSO2AP_GW_PASSWORD: ${{ secrets.WSO2AP_GW_PASSWORD || '' }}
         run: |
+          set -o pipefail
           mkdir -p "$HOME/.wso2ap/.tmp/gateway-image-build/logs"
-          ./ap gateway image build
 
+          (./ap gateway image build) 2>&1 | tee "$GITHUB_WORKSPACE/ap-gw-image-build.log"
+
+          # Copy docker.log if created
+          if [ -f "$HOME/.wso2ap/.tmp/gateway-image-build/logs/docker.log" ]; then
+            cp "$HOME/.wso2ap/.tmp/gateway-image-build/logs/docker.log" \
+               "$GITHUB_WORKSPACE/.wso2ap/.tmp/gateway-image-build/logs/docker.log"
+          fi
+
+      # ------------------------------------------------------------
+      # 6. Upload logs ALWAYS (even on failure)
+      # ------------------------------------------------------------
       - name: Upload logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: gateway-build-logs
           path: |
-            gateway-build.log
+            initiate.log
+            gw-build.log
             cli-build.log
+            prepare.log
+            ap-gw-image-build.log
             .wso2ap/.tmp/gateway-image-build/logs/docker.log
