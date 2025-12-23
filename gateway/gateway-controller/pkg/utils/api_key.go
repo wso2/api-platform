@@ -717,7 +717,7 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 // Ignores the policies field from operations
 func (s *APIKeyService) generateOperationsString(operations []api.Operation) string {
 	if len(operations) == 0 {
-		return "[*]" // Default to all operations if none specified
+		return "[\"*\"]" // Default to all operations if none specified
 	}
 
 	var operationStrings []string
@@ -731,7 +731,7 @@ func (s *APIKeyService) generateOperationsString(operations []api.Operation) str
 	operationsJSON, err := json.Marshal(operationStrings)
 	if err != nil {
 		// Fallback to default if marshaling fails
-		return "[*]"
+		return "[\"*\"]"
 	}
 
 	return string(operationsJSON)
