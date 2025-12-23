@@ -2,5 +2,5 @@ apiVersion: v2
 name: gateway-operator
 description: Helm chart to install the Gateway Operator
 type: application
-version: 0.0.1
-appVersion: "latest"
+version: 0.2.0
+appVersion: "0.2.0"
