@@ -15,13 +15,13 @@ jobs:
 
     steps:
       # ------------------------------------------------------------
-      # 0. Checkout FIRST (mandatory)
+      # Checkout MUST be first
       # ------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # ------------------------------------------------------------
-      # 1. Initialize log files (guarantee existence)
+      # Initialize all log files (guarantee existence)
       # ------------------------------------------------------------
       - name: Initialize log files
         run: |
@@ -33,25 +33,23 @@ jobs:
             5-ap-gw-image-build.log \
             docker.log
 
-          mkdir -p "$HOME/.wso2ap/.tmp/gateway-image-build/logs"
-
       # ------------------------------------------------------------
-      # 2. Initiate environment
+      # 1. Initiation
       # ------------------------------------------------------------
       - name: Initiate environment
         run: |
           set -o pipefail
           {
-            echo "== Git repository =="
-            git rev-parse --short HEAD
+            echo "== Repository =="
+            git rev-parse HEAD
 
-            echo "== Set up Go =="
-            go version
+            echo "== Go version =="
+            go version || true
 
-            echo "== Cache Go modules =="
-            echo "Using GitHub Actions cache"
+            echo "== Docker =="
+            docker version
 
-            echo "== Set up Docker Buildx =="
+            echo "== Buildx setup =="
             if ! docker buildx inspect docker-container >/dev/null 2>&1; then
               docker buildx create \
                 --name docker-container \
@@ -63,11 +61,13 @@ jobs:
             docker buildx ls
           } 2>&1 | tee 1-initiate.log
 
-      - uses: actions/setup-go@v5
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
           go-version: '1.25'
 
-      - uses: actions/cache@v4
+      - name: Cache Go modules
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/go-build
@@ -77,7 +77,7 @@ jobs:
             ${{ runner.os }}-go-
 
       # ------------------------------------------------------------
-      # 3. Build gateway
+      # 2. Build gateway
       # ------------------------------------------------------------
       - name: Build gateway
         working-directory: ./gateway
@@ -86,7 +86,7 @@ jobs:
           (make build) 2>&1 | tee "$GITHUB_WORKSPACE/2-gw-build.log"
 
       # ------------------------------------------------------------
-      # 4. Build CLI
+      # 3. Build CLI
       # ------------------------------------------------------------
       - name: Build CLI
         working-directory: ./cli/src
@@ -95,7 +95,7 @@ jobs:
           (make build-all) 2>&1 | tee "$GITHUB_WORKSPACE/3-cli-build.log"
 
       # ------------------------------------------------------------
-      # 5. Prepare run directory
+      # 4. Prepare run directory
       # ------------------------------------------------------------
       - name: Prepare my-gw run directory
         run: |
@@ -118,7 +118,7 @@ jobs:
           } 2>&1 | tee 4-prepare-dir.log
 
       # ------------------------------------------------------------
-      # 6. Gateway image build (smoke test)
+      # 5. Gateway image build + docker.log extraction
       # ------------------------------------------------------------
       - name: Build gateway image
         working-directory: ./my-gw
@@ -129,18 +129,20 @@ jobs:
         run: |
           set -o pipefail
 
-          mkdir -p "$HOME/.wso2ap/.tmp/gateway-image-build/logs"
+          REAL_DOCKER_LOG="$HOME/.wso2ap/.tmp/gateway-image-build/logs/docker.log"
 
+          mkdir -p "$(dirname "$REAL_DOCKER_LOG")"
+
+          # Run gateway image build
           (./ap gateway image build) 2>&1 | tee "$GITHUB_WORKSPACE/5-ap-gw-image-build.log"
 
-          # Copy docker.log if it exists
-          if [ -f "$HOME/.wso2ap/.tmp/gateway-image-build/logs/docker.log" ]; then
-            cp "$HOME/.wso2ap/.tmp/gateway-image-build/logs/docker.log" \
-               "$GITHUB_WORKSPACE/docker.log"
+          # Copy docker.log if it exists (even partial)
+          if [ -f "$REAL_DOCKER_LOG" ]; then
+            cp "$REAL_DOCKER_LOG" "$GITHUB_WORKSPACE/docker.log"
           fi
 
       # ------------------------------------------------------------
-      # 7. Upload logs ALWAYS
+      # Upload logs ALWAYS
       # ------------------------------------------------------------
       - name: Upload logs
         if: always()
