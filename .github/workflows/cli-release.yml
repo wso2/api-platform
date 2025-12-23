@@ -125,9 +125,9 @@ jobs:
             All the open issues pertaining to WSO2 API Controller are reported at [GitHub](https://github.com/wso2/api-platform/issues?q=is%3Aissue%20state%3Aopen%20label%3AArea%2FCLI)
 
             ## Documentation
-            [Readme] (https://github.com/wso2/api-platform/blob/main/cli/README.md)
-            [Quick Start] (https://github.com/wso2/api-platform/blob/main/docs/cli/quick-start-guide.md)
-            [Reference] (https://github.com/wso2/api-platform/blob/main/docs/cli/reference.md)
+            [Readme](https://github.com/wso2/api-platform/blob/main/cli/README.md)
+            [Quick Start](https://github.com/wso2/api-platform/blob/main/docs/cli/quick-start-guide.md)
+            [Reference](https://github.com/wso2/api-platform/blob/main/docs/cli/reference.md)
 
             ## How You Can Contribute
 
