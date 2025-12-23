@@ -5,24 +5,35 @@ import (
 	"time"
 )
 
-// TopicName represents a unique topic identifier
-type TopicName string
+// OrganizationID represents a unique organization identifier
+type OrganizationID string
+
+// EventType represents the type of event
+type EventType string
+
+// Event type constants
+const (
+	EventTypeAPI         EventType = "API"
+	EventTypeCertificate EventType = "CERTIFICATE"
+	EventTypeLLMTemplate EventType = "LLM_TEMPLATE"
+)
 
 // Event represents a single event in the hub
 type Event struct {
-	ID                  int64
-	TopicName           TopicName
-	ProcessedTimestamp  time.Time // When event was recorded in DB
-	OriginatedTimestamp time.Time // When event was created
-	EventData           []byte    // JSON serialized payload
+	OrganizationID      OrganizationID // Organization this event belongs to
+	ProcessedTimestamp  time.Time      // When event was recorded in DB
+	OriginatedTimestamp time.Time      // When event was created
+	EventType           EventType      // Type of event (API, CERTIFICATE, etc.)
+	Action              string         // CREATE, UPDATE, or DELETE
+	EntityID            string         // ID of the affected entity
+	EventData           []byte         // JSON serialized payload
 }
 
-// TopicState represents the version state for a topic
-type TopicState struct {
-	Organization string
-	TopicName    TopicName
+// OrganizationState represents the version state for an organization
+type OrganizationState struct {
+	Organization string    // Organization ID
 	VersionID    string    // UUID that changes on every modification
-	UpdatedAt    time.Time
+	UpdatedAt    time.Time // Last update timestamp
 }
 
 // EventHub is the main interface for the message broker
@@ -30,18 +41,19 @@ type EventHub interface {
 	// Initialize sets up database connections and starts background poller
 	Initialize(ctx context.Context) error
 
-	// RegisterTopic registers a topic
-	// Returns error if the events table for this topic does not exist
-	// Creates entry in States table with empty version
-	RegisterTopic(organization string, topicName TopicName) error
+	// RegisterOrganization registers an organization for event tracking
+	// Creates entry in organization_states table with empty version
+	RegisterOrganization(organizationID OrganizationID) error
 
-	// PublishEvent publishes an event to a topic
-	// Updates the states table and events table atomically
-	PublishEvent(ctx context.Context, organization string, topicName TopicName, eventData []byte) error
+	// PublishEvent publishes an event for an organization
+	// Updates the organization_states and events tables atomically
+	PublishEvent(ctx context.Context, organizationID OrganizationID, eventType EventType,
+		action, entityID string, eventData []byte) error
 
-	// RegisterSubscription registers a channel to receive events for a topic
+	// Subscribe registers a channel to receive events for an organization
 	// Events are delivered as batches (arrays) based on poll cycle
-	RegisterSubscription(topicName TopicName, eventChan chan<- []Event) error
+	// Subscriber receives ALL event types and should filter by EventType if needed
+	Subscribe(organizationID OrganizationID, eventChan chan<- []Event) error
 
 	// CleanUpEvents removes events between the specified time range
 	CleanUpEvents(ctx context.Context, timeFrom, timeEnd time.Time) error

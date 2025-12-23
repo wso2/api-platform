@@ -7,107 +7,104 @@ import (
 )
 
 var (
-	ErrTopicNotFound      = errors.New("topic not found")
-	ErrTopicAlreadyExists = errors.New("topic already registered")
-	ErrTopicTableMissing  = errors.New("events table for topic does not exist")
+	ErrOrganizationNotFound      = errors.New("organization not found")
+	ErrOrganizationAlreadyExists = errors.New("organization already registered")
 )
 
-// topic represents an internal topic with its subscriptions and poll state
-type topic struct {
-	organization string
-	name         TopicName
+// organization represents an internal organization with its subscriptions and poll state
+type organization struct {
+	id           OrganizationID
 	subscribers  []chan<- []Event // Registered subscription channels
 	subscriberMu sync.RWMutex
 
 	// Polling state
-	knownVersion string    // Last known version from states table
+	knownVersion string    // Last known version from organization_states table
 	lastPolled   time.Time // Timestamp of last successful poll
 }
 
-// topicRegistry manages all registered topics
-type topicRegistry struct {
-	topics map[TopicName]*topic
-	mu     sync.RWMutex
+// organizationRegistry manages all registered organizations
+type organizationRegistry struct {
+	orgs map[OrganizationID]*organization
+	mu   sync.RWMutex
 }
 
-// newTopicRegistry creates a new topic registry
-func newTopicRegistry() *topicRegistry {
-	return &topicRegistry{
-		topics: make(map[TopicName]*topic),
+// newOrganizationRegistry creates a new organization registry
+func newOrganizationRegistry() *organizationRegistry {
+	return &organizationRegistry{
+		orgs: make(map[OrganizationID]*organization),
 	}
 }
 
-// register adds a new topic to the registry
-func (r *topicRegistry) register(organization string, name TopicName) error {
+// register adds a new organization to the registry
+func (r *organizationRegistry) register(id OrganizationID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, exists := r.topics[name]; exists {
-		return ErrTopicAlreadyExists
+	if _, exists := r.orgs[id]; exists {
+		return ErrOrganizationAlreadyExists
 	}
 
-	r.topics[name] = &topic{
-		organization: organization,
-		name:         name,
-		subscribers:  make([]chan<- []Event, 0),
-		lastPolled:   time.Now(), // Start from now, don't replay old events
+	r.orgs[id] = &organization{
+		id:          id,
+		subscribers: make([]chan<- []Event, 0),
+		lastPolled:  time.Now(), // Start from now, don't replay old events
 	}
 
 	return nil
 }
 
-// get retrieves a topic by name
-func (r *topicRegistry) get(name TopicName) (*topic, error) {
+// get retrieves an organization by ID
+func (r *organizationRegistry) get(id OrganizationID) (*organization, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	t, exists := r.topics[name]
+	org, exists := r.orgs[id]
 	if !exists {
-		return nil, ErrTopicNotFound
+		return nil, ErrOrganizationNotFound
 	}
-	return t, nil
+	return org, nil
 }
 
-// addSubscriber adds a subscription channel to a topic
-func (r *topicRegistry) addSubscriber(name TopicName, ch chan<- []Event) error {
+// addSubscriber adds a subscription channel to an organization
+func (r *organizationRegistry) addSubscriber(id OrganizationID, ch chan<- []Event) error {
 	r.mu.RLock()
-	t, exists := r.topics[name]
+	org, exists := r.orgs[id]
 	r.mu.RUnlock()
 
 	if !exists {
-		return ErrTopicNotFound
+		return ErrOrganizationNotFound
 	}
 
-	t.subscriberMu.Lock()
-	defer t.subscriberMu.Unlock()
-	t.subscribers = append(t.subscribers, ch)
+	org.subscriberMu.Lock()
+	defer org.subscriberMu.Unlock()
+	org.subscribers = append(org.subscribers, ch)
 	return nil
 }
 
-// getAll returns all registered topics
-func (r *topicRegistry) getAll() []*topic {
+// getAll returns all registered organizations
+func (r *organizationRegistry) getAll() []*organization {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	topics := make([]*topic, 0, len(r.topics))
-	for _, t := range r.topics {
-		topics = append(topics, t)
+	orgs := make([]*organization, 0, len(r.orgs))
+	for _, org := range r.orgs {
+		orgs = append(orgs, org)
 	}
-	return topics
+	return orgs
 }
 
-// updatePollState updates the polling state for a topic
-func (t *topic) updatePollState(version string, polledAt time.Time) {
-	t.knownVersion = version
-	t.lastPolled = polledAt
+// updatePollState updates the polling state for an organization
+func (org *organization) updatePollState(version string, polledAt time.Time) {
+	org.knownVersion = version
+	org.lastPolled = polledAt
 }
 
 // getSubscribers returns a copy of the subscribers list
-func (t *topic) getSubscribers() []chan<- []Event {
-	t.subscriberMu.RLock()
-	defer t.subscriberMu.RUnlock()
+func (org *organization) getSubscribers() []chan<- []Event {
+	org.subscriberMu.RLock()
+	defer org.subscriberMu.RUnlock()
 
-	subs := make([]chan<- []Event, len(t.subscribers))
-	copy(subs, t.subscribers)
+	subs := make([]chan<- []Event, len(org.subscribers))
+	copy(subs, org.subscribers)
 	return subs
 }

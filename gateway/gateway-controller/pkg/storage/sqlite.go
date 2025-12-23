@@ -324,6 +324,66 @@ func (s *SQLiteStorage) initSchema() error {
 			version = 8
 		}
 
+		if version == 8 {
+			// Migrate to organization-centric Event Hub architecture
+			s.logger.Info("Migrating to organization-centric Event Hub (version 9)")
+
+			// Step 1: Create new organization_states table
+			if _, err := s.db.Exec(`CREATE TABLE organization_states (
+				organization TEXT PRIMARY KEY,
+				version_id TEXT NOT NULL DEFAULT '',
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);`); err != nil {
+				return fmt.Errorf("failed to create organization_states table: %w", err)
+			}
+
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_organization_states_updated ON organization_states(updated_at);`); err != nil {
+				return fmt.Errorf("failed to create organization_states index: %w", err)
+			}
+
+			// Step 2: Migrate state data (consolidate per organization)
+			if _, err := s.db.Exec(`INSERT INTO organization_states (organization, version_id, updated_at)
+				SELECT organization, MAX(version_id), MAX(updated_at)
+				FROM topic_states
+				GROUP BY organization;`); err != nil {
+				return fmt.Errorf("failed to migrate state data: %w", err)
+			}
+
+			// Step 3: Create unified events table
+			if _, err := s.db.Exec(`CREATE TABLE events (
+				organization_id TEXT NOT NULL,
+				processed_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				originated_timestamp TIMESTAMP NOT NULL,
+				event_type TEXT NOT NULL,
+				action TEXT NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
+				entity_id TEXT NOT NULL,
+				event_data TEXT NOT NULL,
+				PRIMARY KEY (organization_id, processed_timestamp)
+			);`); err != nil {
+				return fmt.Errorf("failed to create events table: %w", err)
+			}
+
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_events_lookup ON events(organization_id, processed_timestamp);`); err != nil {
+				return fmt.Errorf("failed to create events lookup index: %w", err)
+			}
+
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);`); err != nil {
+				return fmt.Errorf("failed to create events type index: %w", err)
+			}
+
+			// Step 4: Drop old topic_states table (data already migrated)
+			if _, err := s.db.Exec(`DROP TABLE topic_states;`); err != nil {
+				return fmt.Errorf("failed to drop topic_states table: %w", err)
+			}
+
+			if _, err := s.db.Exec("PRAGMA user_version = 9"); err != nil {
+				return fmt.Errorf("failed to set schema version to 9: %w", err)
+			}
+
+			s.logger.Info("Schema migrated to version 9 (organization-centric Event Hub)")
+			version = 9
+		}
+
 		s.logger.Info("Database schema up to date", zap.Int("version", version))
 	}
 

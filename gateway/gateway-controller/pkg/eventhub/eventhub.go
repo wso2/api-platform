@@ -14,7 +14,7 @@ import (
 type eventHub struct {
 	db       *sql.DB
 	store    *store
-	registry *topicRegistry
+	registry *organizationRegistry
 	poller   *poller
 	config   Config
 	logger   *zap.Logger
@@ -28,7 +28,7 @@ type eventHub struct {
 
 // New creates a new EventHub instance
 func New(db *sql.DB, logger *zap.Logger, config Config) EventHub {
-	registry := newTopicRegistry()
+	registry := newOrganizationRegistry()
 	store := newStore(db, logger)
 
 	return &eventHub{
@@ -67,94 +67,75 @@ func (eh *eventHub) Initialize(ctx context.Context) error {
 	return nil
 }
 
-// RegisterTopic registers a new topic with the EventHub
-func (eh *eventHub) RegisterTopic(organization string, topicName TopicName) error {
+// RegisterOrganization registers a new organization with the EventHub
+func (eh *eventHub) RegisterOrganization(organizationID OrganizationID) error {
 	ctx := context.Background()
 
-	// Check if events table exists
-	exists, err := eh.store.tableExists(ctx, topicName)
-	if err != nil {
-		return fmt.Errorf("failed to check table existence: %w", err)
-	}
-	if !exists {
-		return fmt.Errorf("%w: table %s does not exist",
-			ErrTopicTableMissing, eh.store.getEventsTableName(topicName))
-	}
-
-	// Register topic in registry
-	if err := eh.registry.register(organization, topicName); err != nil {
+	// Register organization in registry
+	if err := eh.registry.register(organizationID); err != nil {
 		return err
 	}
 
 	// Initialize empty state in database
-	if err := eh.store.initializeTopicState(ctx, organization, topicName); err != nil {
+	if err := eh.store.initializeOrgState(ctx, organizationID); err != nil {
 		return fmt.Errorf("failed to initialize state: %w", err)
 	}
 
-	eh.logger.Info("Topic registered",
-		zap.String("organization", organization),
-		zap.String("topic", string(topicName)),
+	eh.logger.Info("Organization registered",
+		zap.String("organization", string(organizationID)),
 	)
 
 	return nil
 }
 
-// PublishEvent publishes an event to a topic
-// Note: States and Events are updated ATOMICALLY in a transaction
-func (eh *eventHub) PublishEvent(ctx context.Context, organization string, topicName TopicName, eventData []byte) error {
-	// Verify topic is registered
-	_, err := eh.registry.get(topicName)
+// PublishEvent publishes an event for an organization
+// Note: Organization state and events are updated ATOMICALLY in a transaction
+func (eh *eventHub) PublishEvent(ctx context.Context, organizationID OrganizationID,
+	eventType EventType, action, entityID string, eventData []byte) error {
+
+	// Verify organization is registered
+	_, err := eh.registry.get(organizationID)
 	if err != nil {
 		return err
 	}
 
-	now := time.Now()
-	event := &Event{
-		TopicName:           topicName,
-		ProcessedTimestamp:  now,
-		OriginatedTimestamp: now,
-		EventData:           eventData,
-	}
-
 	// Publish atomically (event + state update in transaction)
-	id, version, err := eh.store.publishEventAtomic(ctx, organization, topicName, event)
+	version, err := eh.store.publishEventAtomic(ctx, organizationID, eventType, action, entityID, eventData)
 	if err != nil {
 		return fmt.Errorf("failed to publish event: %w", err)
 	}
 
 	eh.logger.Debug("Event published",
-		zap.String("organization", organization),
-		zap.String("topic", string(topicName)),
-		zap.Int64("id", id),
+		zap.String("organization", string(organizationID)),
+		zap.String("eventType", string(eventType)),
+		zap.String("action", action),
+		zap.String("entityID", entityID),
 		zap.String("version", version),
 	)
 
 	return nil
 }
 
-// RegisterSubscription registers a channel to receive events for a topic
-func (eh *eventHub) RegisterSubscription(topicName TopicName, eventChan chan<- []Event) error {
-	if err := eh.registry.addSubscriber(topicName, eventChan); err != nil {
+// Subscribe registers a channel to receive events for an organization
+// Subscriber receives ALL event types and should filter by EventType if needed
+func (eh *eventHub) Subscribe(organizationID OrganizationID, eventChan chan<- []Event) error {
+	if err := eh.registry.addSubscriber(organizationID, eventChan); err != nil {
 		return err
 	}
 
 	eh.logger.Info("Subscription registered",
-		zap.String("topic", string(topicName)),
+		zap.String("organization", string(organizationID)),
 	)
 
 	return nil
 }
 
-// CleanUpEvents removes events within the specified time range
+// CleanUpEvents removes events from the unified events table within the specified time range
 func (eh *eventHub) CleanUpEvents(ctx context.Context, timeFrom, timeEnd time.Time) error {
-	for _, t := range eh.registry.getAll() {
-		_, err := eh.store.cleanupEvents(ctx, t.name, timeFrom, timeEnd)
-		if err != nil {
-			eh.logger.Error("Failed to cleanup events for topic",
-				zap.String("topic", string(t.name)),
-				zap.Error(err),
-			)
-		}
+	_, err := eh.store.cleanupEvents(ctx, timeFrom, timeEnd)
+	if err != nil {
+		eh.logger.Error("Failed to cleanup events", zap.Error(err))
+		return err
 	}
 	return nil
 }
@@ -172,7 +153,7 @@ func (eh *eventHub) cleanupLoop() {
 			return
 		case <-ticker.C:
 			cutoff := time.Now().Add(-eh.config.RetentionPeriod)
-			if err := eh.store.cleanupAllTopics(eh.cleanupCtx, cutoff); err != nil {
+			if err := eh.store.cleanupAllOrganizations(eh.cleanupCtx, cutoff); err != nil {
 				eh.logger.Error("Periodic cleanup failed", zap.Error(err))
 			}
 		}

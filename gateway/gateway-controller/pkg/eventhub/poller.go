@@ -11,7 +11,7 @@ import (
 // poller handles background polling for state changes and event delivery
 type poller struct {
 	store    *store
-	registry *topicRegistry
+	registry *organizationRegistry
 	config   Config
 	logger   *zap.Logger
 
@@ -21,7 +21,7 @@ type poller struct {
 }
 
 // newPoller creates a new event poller
-func newPoller(store *store, registry *topicRegistry, config Config, logger *zap.Logger) *poller {
+func newPoller(store *store, registry *organizationRegistry, config Config, logger *zap.Logger) *poller {
 	return &poller{
 		store:    store,
 		registry: registry,
@@ -52,91 +52,88 @@ func (p *poller) pollLoop() {
 		case <-p.ctx.Done():
 			return
 		case <-ticker.C:
-			p.pollAllTopics()
+			p.pollAllOrganizations()
 		}
 	}
 }
 
-// pollAllTopics checks all registered topics for state changes
-func (p *poller) pollAllTopics() {
-	topics := p.registry.getAll()
-
-	for _, t := range topics {
-		if err := p.pollTopic(t); err != nil {
-			p.logger.Error("Failed to poll topic",
-				zap.String("topic", string(t.name)),
-				zap.Error(err),
-			)
-		}
-	}
-}
-
-// pollTopic checks a single topic for state changes and delivers events
-func (p *poller) pollTopic(t *topic) error {
+// pollAllOrganizations checks all organizations for state changes using single query
+func (p *poller) pollAllOrganizations() {
 	ctx := p.ctx
 
-	// Get current state from database
-	state, err := p.store.getState(ctx, t.organization, t.name)
+	// STEP 1: Single query for ALL organization states
+	states, err := p.store.getAllStates(ctx)
 	if err != nil {
-		return err
-	}
-	if state == nil {
-		// Topic state not initialized yet
-		return nil
+		p.logger.Error("Failed to fetch all states", zap.Error(err))
+		return
 	}
 
-	// Check if version has changed
-	if state.VersionID == t.knownVersion {
-		// No changes
-		return nil
+	// STEP 2: Loop through each organization sequentially
+	for _, state := range states {
+		orgID := OrganizationID(state.Organization)
+
+		// Get the organization from registry
+		org, err := p.registry.get(orgID)
+		if err != nil {
+			// Organization not registered with subscribers, skip
+			continue
+		}
+
+		// Check if version changed
+		if state.VersionID == org.knownVersion {
+			// No changes
+			continue
+		}
+
+		p.logger.Debug("State change detected",
+			zap.String("organization", string(orgID)),
+			zap.String("oldVersion", org.knownVersion),
+			zap.String("newVersion", state.VersionID),
+		)
+
+		// Fetch events since last poll
+		events, err := p.store.getEventsSince(ctx, orgID, org.lastPolled)
+		if err != nil {
+			p.logger.Error("Failed to fetch events",
+				zap.String("organization", string(orgID)),
+				zap.Error(err))
+			continue
+		}
+
+		if len(events) > 0 {
+			// Deliver events to subscribers
+			p.deliverEvents(org, events)
+		}
+
+		// Update poll state
+		org.updatePollState(state.VersionID, time.Now())
 	}
-
-	p.logger.Debug("State change detected",
-		zap.String("topic", string(t.name)),
-		zap.String("oldVersion", t.knownVersion),
-		zap.String("newVersion", state.VersionID),
-	)
-
-	// Fetch events since last poll
-	events, err := p.store.getEventsSince(ctx, t.name, t.lastPolled)
-	if err != nil {
-		return err
-	}
-
-	if len(events) > 0 {
-		// Deliver events to subscribers
-		p.deliverEvents(t, events)
-	}
-
-	// Update poll state
-	t.updatePollState(state.VersionID, time.Now())
-
-	return nil
 }
 
-// deliverEvents sends events to all subscribers of a topic
-func (p *poller) deliverEvents(t *topic, events []Event) {
-	subscribers := t.getSubscribers()
+// deliverEvents sends events to all subscribers of an organization
+func (p *poller) deliverEvents(org *organization, events []Event) {
+	subscribers := org.getSubscribers()
 
 	if len(subscribers) == 0 {
-		p.logger.Debug("No subscribers for topic",
-			zap.String("topic", string(t.name)),
+		p.logger.Debug("No subscribers for organization",
+			zap.String("organization", string(org.id)),
 			zap.Int("events", len(events)),
 		)
 		return
 	}
 
-	// Deliver to all subscribers
+	// Deliver ALL events (all event types) to subscribers
+	// Consumers are responsible for filtering by EventType if needed
 	for _, ch := range subscribers {
 		select {
 		case ch <- events:
 			p.logger.Debug("Delivered events to subscriber",
-				zap.String("topic", string(t.name)),
+				zap.String("organization", string(org.id)),
 				zap.Int("events", len(events)),
 			)
 		default:
 			p.logger.Warn("Subscriber channel full, dropping events",
-				zap.String("topic", string(t.name)),
+				zap.String("organization", string(org.id)),
 				zap.Int("events", len(events)),
 			)
 		}
