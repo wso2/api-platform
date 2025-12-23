@@ -50,13 +50,49 @@ jobs:
             docker version
 
             echo "== Buildx setup =="
-            if ! docker buildx inspect docker-local >/dev/null 2>&1; then
-              docker buildx create \
-                --name docker-local \
-                --driver docker
+
+            # Try to use an existing docker-backed buildx builder (preferred),
+            # otherwise create a local one. Creating a second docker-driver
+            # builder on some runners can fail, so detect and reuse if present.
+            FOUND_BUILDER=""
+            # Iterate known builder names from `docker buildx ls` (skip header)
+            for b in $(docker buildx ls 2>/dev/null | tail -n +2 | awk '{print $1}' | sed 's/\*//g'); do
+              if docker buildx inspect "$b" >/dev/null 2>&1; then
+                if docker buildx inspect "$b" | grep -qi 'Driver: *docker'; then
+                  FOUND_BUILDER="$b"
+                  break
+                fi
+              fi
+            done
+
+            if [ -n "${FOUND_BUILDER}" ]; then
+              echo "Using existing docker buildx builder: ${FOUND_BUILDER}"
+              docker buildx use "${FOUND_BUILDER}"
+            else
+              echo "No existing docker-driver builder found; creating docker-local"
+              if ! docker buildx inspect docker-local >/dev/null 2>&1; then
+                docker buildx create --name docker-local --driver docker || true
+              fi
+              # If create failed due to driver constraints, try to detect again and use any docker builder
+              if ! docker buildx inspect docker-local >/dev/null 2>&1; then
+                for b in $(docker buildx ls 2>/dev/null | tail -n +2 | awk '{print $1}' | sed 's/\*//g'); do
+                  if docker buildx inspect "$b" >/dev/null 2>&1 && docker buildx inspect "$b" | grep -qi 'Driver: *docker'; then
+                    FOUND_BUILDER="$b"
+                    break
+                  fi
+                done
+                if [ -n "${FOUND_BUILDER}" ]; then
+                  echo "Falling back to existing builder: ${FOUND_BUILDER}"
+                  docker buildx use "${FOUND_BUILDER}"
+                else
+                  echo "Warning: could not create or find a docker-driver builder; attempts continue"
+                  docker buildx use docker-local || true
+                fi
+              else
+                docker buildx use docker-local
+              fi
             fi
 
-            docker buildx use docker-local
             docker buildx inspect --bootstrap
             docker buildx ls
           } 2>&1 | tee 1-initiate.log
@@ -135,13 +171,7 @@ jobs:
 
             set -o pipefail
 
-            # Start background tail to capture the real docker.log as soon as it appears.
-            : > "$GITHUB_WORKSPACE/docker.log"
-            tail -n +1 -F "$REAL_DOCKER_LOG" >> "$GITHUB_WORKSPACE/docker.log" 2>&1 &
-            TAIL_PID=$!
-
-            # Ensure tail is killed on exit
-            trap 'kill "${TAIL_PID}" 2>/dev/null || true' EXIT
+            # (removed background tailing - will copy logs after build instead)
 
             # Run the build and capture stdout/stderr into the workspace build log.
             (./ap gateway image build) 2>&1 | tee "$GITHUB_WORKSPACE/5-ap-gw-image-build.log"
@@ -171,9 +201,7 @@ jobs:
               fi
             fi
 
-            # Kill the tail process and wait for it to exit
-            kill "$TAIL_PID" 2>/dev/null || true
-            wait "$TAIL_PID" 2>/dev/null || true
+            # (no background tail to kill)
 
             # Exit with the build return code so failures are visible
             if [ "${BUILD_RC}" -ne 0 ]; then
