@@ -134,11 +134,24 @@ jobs:
           mkdir -p "$(dirname "$REAL_DOCKER_LOG")"
 
           # Run gateway image build
+          # Start tailing the real docker.log (if it appears) into workspace docker.log so we capture output live.
+          # `tail -F` will wait for the file to appear and follow rotations; run it in background.
+          : > "$GITHUB_WORKSPACE/docker.log"
+          tail -n +1 -F "$REAL_DOCKER_LOG" >> "$GITHUB_WORKSPACE/docker.log" 2>&1 &
+          TAIL_PID=$!
+
+          # Ensure we kill the tail process on exit
+          trap 'kill "${TAIL_PID}" 2>/dev/null || true' EXIT
+
+          # Run the build and capture its stdout/stderr into the workspace build log as well.
           (./ap gateway image build) 2>&1 | tee "$GITHUB_WORKSPACE/5-ap-gw-image-build.log"
+
+          # Give tail a moment to flush remaining output
+          sleep 1 || true
 
           # Copy docker.log if it exists (even partial)
           if [ -f "$REAL_DOCKER_LOG" ]; then
-            cp "$REAL_DOCKER_LOG" "$GITHUB_WORKSPACE/docker.log"
+            cp "$REAL_DOCKER_LOG" "$GITHUB_WORKSPACE/docker.log" || true
           fi
 
       # ------------------------------------------------------------
