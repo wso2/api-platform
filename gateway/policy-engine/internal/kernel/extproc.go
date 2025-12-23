@@ -20,6 +20,7 @@ package kernel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -93,6 +94,13 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 			return nil
 		}
 		if err != nil {
+			// Check if this is a normal stream closure due to context cancellation
+			// This happens when Envoy closes the stream after completing the request
+			if errors.Is(err, context.Canceled) || status.Code(err) == grpccodes.Canceled {
+				// Log at debug level for visibility in troubleshooting
+				slog.DebugContext(ctx, "Stream closed due to context cancellation")
+				return nil
+			}
 			slog.ErrorContext(ctx, "Error receiving from stream", "error", err)
 			return status.Errorf(grpccodes.Unknown, "failed to receive request: %v", err)
 		}

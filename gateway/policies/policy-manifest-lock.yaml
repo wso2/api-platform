@@ -49,7 +49,6 @@ policies:
     version: v0.1.0
     filePath: ./mcp-auth/v0.1.0
 
-  # API Key Authentication Policy
   - name: api-key-auth
     version: v0.1.0
     filePath: ./api-key-auth/v0.1.0
