@@ -19,7 +19,6 @@ docker --version
 docker compose version
 ```
 
-Replace ${version} with the actual release version of the API Platform Gateway.
 ```bash
 # Download distribution.
 wget https://github.com/wso2/api-platform/releases/download/ai-gateway-v0.2.0/ai-gateway-v0.2.0.zip
@@ -53,13 +52,15 @@ curl -X POST http://localhost:9090/mcp-proxies \
   --data-binary @- <<'EOF'
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: Mcp
+metadata:
+  name: everything-mcp-v1.0
 spec:
-  name: Everything
+  displayName: Everything
   version: v1.0
   context: /everything
   specVersion: "2025-06-18"
-  upstreams:
-    - url: http://everything:3001
+  upstream:
+    url: http://everything:3001
   tools: []
   resources: []
   prompts: []
