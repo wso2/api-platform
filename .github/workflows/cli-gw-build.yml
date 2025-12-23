@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      BUILDX_BUILDER: docker-container
+      BUILDX_BUILDER: docker-local
 
     steps:
       # ------------------------------------------------------------
@@ -50,13 +50,13 @@ jobs:
             docker version
 
             echo "== Buildx setup =="
-            if ! docker buildx inspect docker-container >/dev/null 2>&1; then
+            if ! docker buildx inspect docker-local >/dev/null 2>&1; then
               docker buildx create \
-                --name docker-container \
-                --driver docker-container
+                --name docker-local \
+                --driver docker
             fi
 
-            docker buildx use docker-container
+            docker buildx use docker-local
             docker buildx inspect --bootstrap
             docker buildx ls
           } 2>&1 | tee 1-initiate.log
