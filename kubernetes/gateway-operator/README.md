@@ -54,7 +54,7 @@ kubectl get gateway -n default -o json | jq '.items[0].status'
 
 ---
 
-## 4. Apply ApiConfiguration (Configure APIs)
+## 4. Apply RestApi (Configure APIs)
 
 ```sh
 curl -X GET "https://raw.githubusercontent.com/wso2/api-platform/refs/heads/main/kubernetes/gateway-operator/config/samples/api_v1_restapi.yaml" \
