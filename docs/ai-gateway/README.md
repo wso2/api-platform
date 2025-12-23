@@ -1,4 +1,4 @@
-# AI Gateway
+# API Platform AI Gateway
 
 A gateway for managing and securing AI traffic, including Large Language Model (LLM) APIs and Model Context Protocol (MCP) servers.
 
@@ -65,3 +65,13 @@ An MCP Proxy routes Model Context Protocol traffic to MCP servers. MCP is a prot
 1. Administrators configure LLM Providers and MCP Proxies via the Gateway-Controller API
 2. Developers create LLM Proxies to build AI applications on top of available providers
 3. The gateway routes traffic, applies policies, and manages authentication
+
+## Documentation
+
+| Section | Description |
+|---------|-------------|
+| [llm/](llm/) | LLM provider configuration, guardrails, prompt management, and semantic caching |
+| [mcp/](mcp/) | MCP proxy setup and policies |
+| [observability/](observability/) | Logging and tracing configuration |
+| [analytics/](analytics/) | Analytics integrations (Moesif) |
+| [ai-gateway-rest-api/](ai-gateway-rest-api/) | REST API authentication and usage |

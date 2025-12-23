@@ -55,3 +55,13 @@ User → Gateway-Controller (REST API)
 1. User submits API configuration (YAML/JSON) to Gateway-Controller
 2. Gateway-Controller validates and persists the configuration
 3. Router receives the updated configuration and starts routing traffic
+
+## Documentation
+
+| Section | Description |
+|---------|-------------|
+| [policies/](policies/) | Authentication policies (JWT, API Key) |
+| [mcp/](mcp/) | MCP proxy setup and policies |
+| [observability/](observability/) | Logging and tracing configuration |
+| [analytics/](analytics/) | Analytics integrations (Moesif) |
+| [gateway-rest-api/](gateway-rest-api/) | REST API authentication and usage |

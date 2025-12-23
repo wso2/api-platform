@@ -95,8 +95,6 @@ See [gateway-controller/README.md](gateway-controller/README.md) for full config
 - [router/](router/) - Envoy data plane
 - [policy-engine/](policy-engine/) - Request/response processing
 - [gateway-builder/](gateway-builder/) - Policy compilation tooling
-- [it/](it/) - Integration tests
-- [API Spec](gateway-controller/api/openapi.yaml) - OpenAPI 3.0
 
 ## Examples
 
