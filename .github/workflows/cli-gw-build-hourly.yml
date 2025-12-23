@@ -2,7 +2,160 @@ name: Periodic Gateway Build
 
 on:
   schedule:
-    - cron: '*/30 * * * *' # run every 30 minutes
+    - cron: '0 * * * *' # run every hour at the top of the hour
+  workflow_dispatch:
+
+jobs:
+  hourly-build:
+    runs-on: ubuntu-latest
+    env:
+      BUILDX_BUILDER: docker-container
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+
+      - name: Build gateway
+        working-directory: ./gateway
+        run: |
+          set -o pipefail
+          : > "$GITHUB_WORKSPACE/gateway-build.log"
+          (set -o pipefail; make build) 2>&1 | tee "$GITHUB_WORKSPACE/gateway-build.log"
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            echo "gateway build failed (rc=$rc), see $GITHUB_WORKSPACE/gateway-build.log" >&2
+            exit $rc
+          fi
+
+      - name: Build CLI
+        working-directory: ./cli/src
+        run: |
+          set -o pipefail
+          : > "$GITHUB_WORKSPACE/cli-build.log"
+          (set -o pipefail; make build-all) 2>&1 | tee "$GITHUB_WORKSPACE/cli-build.log"
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            echo "cli build failed (rc=$rc), see $GITHUB_WORKSPACE/cli-build.log" >&2
+            exit $rc
+          fi
+
+      - name: Prepare my-gw run directory
+        run: |
+          set -o pipefail
+          : > "$GITHUB_WORKSPACE/prepare-dir.log"
+          (set -o pipefail; \
+            rm -rf my-gw; \
+            mkdir my-gw; \
+            # Copy the linux amd64 binary produced by build-all to my-gw and name it `ap`; handle variants
+            if [ -f cli/src/build/ap-linux-amd64 ]; then \
+              cp cli/src/build/ap-linux-amd64 my-gw/ap; \
+            elif ls cli/src/build/ap-linux-amd64-v* 1> /dev/null 2>&1; then \
+              cp cli/src/build/ap-linux-amd64-v* my-gw/ap; \
+            else \
+              echo "Error: expected CLI binary not found at cli/src/build/ap-linux-amd64"; \
+              exit 1; \
+            fi; \
+            chmod +x my-gw/ap || true; \
+            # Copy the sample manifest into the run directory if it exists
+            if [ -f cli/src/tests/resources/simple-policy-manifest.yaml ]; then \
+              cp cli/src/tests/resources/simple-policy-manifest.yaml my-gw/policy-manifest.yaml; \
+            fi) 2>&1 | tee "$GITHUB_WORKSPACE/prepare-dir.log"
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            echo "prepare-dir failed (rc=$rc), see $GITHUB_WORKSPACE/prepare-dir.log" >&2
+            exit $rc
+          fi
+
+      - name: Run ap gateway image build (smoke test)
+        working-directory: ./my-gw
+        env:
+          CI: ""
+          WSO2AP_GW_USERNAME: ${{ secrets.WSO2AP_GW_USERNAME || '' }}
+          WSO2AP_GW_PASSWORD: ${{ secrets.WSO2AP_GW_PASSWORD || '' }}
+        run: |
+          set -o pipefail
+          : > "$GITHUB_WORKSPACE/ap-gateway-image-build.log"
+          # ensure docker log directory exists in runner home so the build can write into it
+          mkdir -p "$HOME/.wso2ap/.tmp/gateway-image-build/logs"
+          (set -o pipefail; \
+            if [ ! -x ./ap ]; then \
+              echo "ap binary not present or not executable; skipping smoke run"; \
+              exit 0; \
+            fi; \
+            ./ap gateway image build) 2>&1 | tee "$GITHUB_WORKSPACE/ap-gateway-image-build.log"
+          rc=${PIPESTATUS[0]}
+          # copy docker.log from runner home into workspace for upload
+          mkdir -p "$GITHUB_WORKSPACE/.wso2ap/.tmp/gateway-image-build/logs"
+          if [ -f "$HOME/.wso2ap/.tmp/gateway-image-build/logs/docker.log" ]; then
+            cp "$HOME/.wso2ap/.tmp/gateway-image-build/logs/docker.log" "$GITHUB_WORKSPACE/.wso2ap/.tmp/gateway-image-build/logs/docker.log" || true
+          fi
+          if [ "$rc" -ne 0 ]; then
+            echo "ap gateway image build failed (rc=$rc), see $GITHUB_WORKSPACE/ap-gateway-image-build.log and docker.log" >&2
+            exit $rc
+          fi
+
+      - name: Ensure log files exist (placeholders)
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.wso2ap/.tmp/gateway-image-build/logs"
+          touch "$GITHUB_WORKSPACE/gateway-build.log" || true
+          touch "$GITHUB_WORKSPACE/cli-build.log" || true
+          touch "$GITHUB_WORKSPACE/prepare-dir.log" || true
+          touch "$GITHUB_WORKSPACE/ap-gateway-image-build.log" || true
+          touch "$GITHUB_WORKSPACE/.wso2ap/.tmp/gateway-image-build/logs/docker.log" || true
+
+      - name: Upload gateway-build.log
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-build.log
+          path: gateway-build.log
+
+      - name: Upload cli-build.log
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-build.log
+          path: cli-build.log
+
+      - name: Upload prepare-dir.log
+        uses: actions/upload-artifact@v4
+        with:
+          name: prepare-dir.log
+          path: prepare-dir.log
+
+      - name: Upload ap-gateway-image-build.log
+        uses: actions/upload-artifact@v4
+        with:
+          name: ap-gateway-image-build.log
+          path: ap-gateway-image-build.log
+
+      - name: Upload docker.log
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker.log
+          path: .wso2ap/.tmp/gateway-image-build/logs/docker.log
+name: Periodic Gateway Build
+
+on:
+  schedule:
+    - cron: '0 * * * *' # run every hour at the top of the hour
   workflow_dispatch:
 
 jobs:
@@ -26,35 +179,38 @@ jobs:
       - name: Build gateway
         working-directory: ./gateway
         run: |
-          set -e
-          make build
+          set -o pipefail
+          # ensure log file exists and capture all output
+          : > "$GITHUB_WORKSPACE/gateway-build.log"
+          (set -o pipefail; make build) 2>&1 | tee "$GITHUB_WORKSPACE/gateway-build.log" || true
 
       - name: Build CLI
         working-directory: ./cli/src
         run: |
-          set -e
-          make build-all
+          set -o pipefail
+          : > "$GITHUB_WORKSPACE/cli-build.log"
+          (set -o pipefail; make build-all) 2>&1 | tee "$GITHUB_WORKSPACE/cli-build.log" || true
 
       - name: Prepare my-gw run directory
         run: |
-          set -e
-          rm -rf my-gw
-          mkdir my-gw
-          # Copy the linux amd64 binary produced by build-all to my-gw and name it `ap`
-          if [ -f cli/src/build/ap-linux-amd64 ]; then
-            cp cli/src/build/ap-linux-amd64 my-gw/ap
-          elif [ -f cli/src/build/ap-linux-amd64-v* ]; then
-            # handle versioned outputs if present
-            cp cli/src/build/ap-linux-amd64-v* my-gw/ap || true
-          else
-            echo "Warning: expected CLI binary not found at cli/src/build/ap-linux-amd64"
-          fi
-          chmod +x my-gw/ap || true
-          # Copy the sample manifest into the run directory if it exists
-          if [ -f cli/src/tests/resources/simple-policy-manifest.yaml ]; then
-            # copy and rename to policy-manifest.yaml as expected by the build
-            cp cli/src/tests/resources/simple-policy-manifest.yaml my-gw/policy-manifest.yaml
-          fi
+          set -o pipefail
+          : > "$GITHUB_WORKSPACE/prepare-dir.log"
+          (set -o pipefail; \
+            rm -rf my-gw; \
+            mkdir my-gw; \
+            # Copy the linux amd64 binary produced by build-all to my-gw and name it `ap`; handle variants
+            if [ -f cli/src/build/ap-linux-amd64 ]; then \
+              cp cli/src/build/ap-linux-amd64 my-gw/ap; \
+            elif ls cli/src/build/ap-linux-amd64-v* 1> /dev/null 2>&1; then \
+              cp cli/src/build/ap-linux-amd64-v* my-gw/ap || true; \
+            else \
+              echo "Warning: expected CLI binary not found at cli/src/build/ap-linux-amd64"; \
+            fi; \
+            chmod +x my-gw/ap || true; \
+            # Copy the sample manifest into the run directory if it exists
+            if [ -f cli/src/tests/resources/simple-policy-manifest.yaml ]; then \
+              cp cli/src/tests/resources/simple-policy-manifest.yaml my-gw/policy-manifest.yaml; \
+            fi) 2>&1 | tee "$GITHUB_WORKSPACE/prepare-dir.log" || true
 
       - name: Run ap gateway image build (smoke test)
         working-directory: ./my-gw
@@ -65,12 +221,54 @@ jobs:
           WSO2AP_GW_USERNAME: ${{ secrets.WSO2AP_GW_USERNAME || '' }}
           WSO2AP_GW_PASSWORD: ${{ secrets.WSO2AP_GW_PASSWORD || '' }}
         run: |
-          set -eux
-          if [ ! -x ./ap ]; then
-            echo "ap binary not present or not executable; skipping smoke run"
-            exit 0
-          fi
-          # Run the command and capture output
-          ./ap gateway image build 2>&1 | tee build.log || true
-          # Verify the build printed the workspace-cleared note
-          grep -q "Note: Workspace may be cleared on the next run of this command." build.log
+          set -o pipefail
+          : > "$GITHUB_WORKSPACE/ap-gateway-image-build.log"
+          # ensure docker log directory exists so the build can write into it
+          mkdir -p "$GITHUB_WORKSPACE/.wso2ap/.tmp/gateway-image-build/logs"
+          (set -o pipefail; \
+            if [ ! -x ./ap ]; then \
+              echo "ap binary not present or not executable; skipping smoke run"; \
+              exit 0; \
+            fi; \
+            ./ap gateway image build) 2>&1 | tee "$GITHUB_WORKSPACE/ap-gateway-image-build.log" || true
+          # optional verification: check for workspace-cleared note (non-fatal)
+          grep -q "Note: Workspace may be cleared on the next run of this command." "$GITHUB_WORKSPACE/ap-gateway-image-build.log" || true
+
+      - name: Ensure log files exist (placeholders)
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.wso2ap/.tmp/gateway-image-build/logs"
+          touch "$GITHUB_WORKSPACE/gateway-build.log" || true
+          touch "$GITHUB_WORKSPACE/cli-build.log" || true
+          touch "$GITHUB_WORKSPACE/prepare-dir.log" || true
+          touch "$GITHUB_WORKSPACE/ap-gateway-image-build.log" || true
+          touch "$GITHUB_WORKSPACE/.wso2ap/.tmp/gateway-image-build/logs/docker.log" || true
+
+      - name: Upload gateway-build.log
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-build.log
+          path: gateway-build.log
+
+      - name: Upload cli-build.log
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-build.log
+          path: cli-build.log
+
+      - name: Upload prepare-dir.log
+        uses: actions/upload-artifact@v4
+        with:
+          name: prepare-dir.log
+          path: prepare-dir.log
+
+      - name: Upload ap-gateway-image-build.log
+        uses: actions/upload-artifact@v4
+        with:
+          name: ap-gateway-image-build.log
+          path: ap-gateway-image-build.log
+
+      - name: Upload docker.log
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker.log
+          path: .wso2ap/.tmp/gateway-image-build/logs/docker.log

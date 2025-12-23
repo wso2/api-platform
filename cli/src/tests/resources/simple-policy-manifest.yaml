@@ -1,3 +1,5 @@
+### Policy Manifest used for periodic GitHub Action
+### Should contain all policies in the Hub to be tested
 version: v1
 versionResolution: minor
 policies:
