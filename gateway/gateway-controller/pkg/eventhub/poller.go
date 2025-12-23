@@ -76,7 +76,7 @@ func (p *poller) pollTopic(t *topic) error {
 	ctx := p.ctx
 
 	// Get current state from database
-	state, err := p.store.getState(ctx, t.name)
+	state, err := p.store.getState(ctx, t.organization, t.name)
 	if err != nil {
 		return err
 	}

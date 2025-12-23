@@ -20,9 +20,11 @@ func setupTestDB(t *testing.T) *sql.DB {
 	// Create topic_states table
 	_, err = db.Exec(`
 		CREATE TABLE topic_states (
-			topic_name TEXT PRIMARY KEY,
+			organization TEXT NOT NULL,
+			topic_name TEXT NOT NULL,
 			version_id TEXT NOT NULL DEFAULT '',
-			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (organization, topic_name)
 		)
 	`)
 	require.NoError(t, err)
@@ -53,15 +55,15 @@ func TestEventHub_RegisterTopic(t *testing.T) {
 	defer hub.Close()
 
 	// Test successful registration
-	err = hub.RegisterTopic("test")
+	err = hub.RegisterTopic("test-org", "test")
 	assert.NoError(t, err)
 
 	// Test duplicate registration
-	err = hub.RegisterTopic("test")
+	err = hub.RegisterTopic("test-org", "test")
 	assert.ErrorIs(t, err, ErrTopicAlreadyExists)
 
 	// Test missing table
-	err = hub.RegisterTopic("nonexistent")
+	err = hub.RegisterTopic("test-org", "nonexistent")
 	assert.ErrorIs(t, err, ErrTopicTableMissing)
 }
 
@@ -78,7 +80,7 @@ func TestEventHub_PublishAndSubscribe(t *testing.T) {
 	require.NoError(t, err)
 	defer hub.Close()
 
-	err = hub.RegisterTopic("test")
+	err = hub.RegisterTopic("test-org", "test")
 	require.NoError(t, err)
 
 	// Register subscription
@@ -88,7 +90,7 @@ func TestEventHub_PublishAndSubscribe(t *testing.T) {
 
 	// Publish event
 	data, _ := json.Marshal(map[string]string{"key": "value"})
-	err = hub.PublishEvent(context.Background(), "test", data)
+	err = hub.PublishEvent(context.Background(), "test-org", "test", data)
 	require.NoError(t, err)
 
 	// Wait for event delivery via polling
@@ -112,13 +114,13 @@ func TestEventHub_CleanUpEvents(t *testing.T) {
 	require.NoError(t, err)
 	defer hub.Close()
 
-	err = hub.RegisterTopic("test")
+	err = hub.RegisterTopic("test-org", "test")
 	require.NoError(t, err)
 
 	// Publish events
 	for i := 0; i < 5; i++ {
 		data, _ := json.Marshal(map[string]int{"index": i})
-		err = hub.PublishEvent(context.Background(), "test", data)
+		err = hub.PublishEvent(context.Background(), "test-org", "test", data)
 		require.NoError(t, err)
 	}
 
@@ -146,7 +148,7 @@ func TestEventHub_PollerDetectsChanges(t *testing.T) {
 	require.NoError(t, err)
 	defer hub.Close()
 
-	err = hub.RegisterTopic("test")
+	err = hub.RegisterTopic("test-org", "test")
 	require.NoError(t, err)
 
 	eventChan := make(chan []Event, 10)
@@ -156,7 +158,7 @@ func TestEventHub_PollerDetectsChanges(t *testing.T) {
 	// Publish multiple events
 	for i := 0; i < 3; i++ {
 		data, _ := json.Marshal(map[string]int{"index": i})
-		err = hub.PublishEvent(context.Background(), "test", data)
+		err = hub.PublishEvent(context.Background(), "test-org", "test", data)
 		require.NoError(t, err)
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -190,12 +192,12 @@ func TestEventHub_AtomicPublish(t *testing.T) {
 	require.NoError(t, err)
 	defer hub.Close()
 
-	err = hub.RegisterTopic("test")
+	err = hub.RegisterTopic("test-org", "test")
 	require.NoError(t, err)
 
 	// Publish event
 	data, _ := json.Marshal(map[string]string{"test": "data"})
-	err = hub.PublishEvent(context.Background(), "test", data)
+	err = hub.PublishEvent(context.Background(), "test-org", "test", data)
 	require.NoError(t, err)
 
 	// Verify event was recorded
@@ -206,7 +208,7 @@ func TestEventHub_AtomicPublish(t *testing.T) {
 
 	// Verify state was updated
 	var versionID string
-	err = db.QueryRow("SELECT version_id FROM topic_states WHERE topic_name = ?", "test").Scan(&versionID)
+	err = db.QueryRow("SELECT version_id FROM topic_states WHERE organization = ? AND topic_name = ?", "test-org", "test").Scan(&versionID)
 	require.NoError(t, err)
 	assert.NotEmpty(t, versionID)
 }
@@ -224,7 +226,7 @@ func TestEventHub_MultipleSubscribers(t *testing.T) {
 	require.NoError(t, err)
 	defer hub.Close()
 
-	err = hub.RegisterTopic("test")
+	err = hub.RegisterTopic("test-org", "test")
 	require.NoError(t, err)
 
 	// Register multiple subscribers
@@ -237,7 +239,7 @@ func TestEventHub_MultipleSubscribers(t *testing.T) {
 
 	// Publish event
 	data, _ := json.Marshal(map[string]string{"test": "multi"})
-	err = hub.PublishEvent(context.Background(), "test", data)
+	err = hub.PublishEvent(context.Background(), "test-org", "test", data)
 	require.NoError(t, err)
 
 	// Both subscribers should receive the event
@@ -268,7 +270,7 @@ func TestEventHub_GracefulShutdown(t *testing.T) {
 	err := hub.Initialize(context.Background())
 	require.NoError(t, err)
 
-	err = hub.RegisterTopic("test")
+	err = hub.RegisterTopic("test-org", "test")
 	require.NoError(t, err)
 
 	// Close should complete without hanging

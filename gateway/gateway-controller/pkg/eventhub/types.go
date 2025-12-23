@@ -19,9 +19,10 @@ type Event struct {
 
 // TopicState represents the version state for a topic
 type TopicState struct {
-	TopicName TopicName
-	VersionID string    // UUID that changes on every modification
-	UpdatedAt time.Time
+	Organization string
+	TopicName    TopicName
+	VersionID    string    // UUID that changes on every modification
+	UpdatedAt    time.Time
 }
 
 // EventHub is the main interface for the message broker
@@ -32,11 +33,11 @@ type EventHub interface {
 	// RegisterTopic registers a topic
 	// Returns error if the events table for this topic does not exist
 	// Creates entry in States table with empty version
-	RegisterTopic(topicName TopicName) error
+	RegisterTopic(organization string, topicName TopicName) error
 
 	// PublishEvent publishes an event to a topic
 	// Updates the states table and events table atomically
-	PublishEvent(ctx context.Context, topicName TopicName, eventData []byte) error
+	PublishEvent(ctx context.Context, organization string, topicName TopicName, eventData []byte) error
 
 	// RegisterSubscription registers a channel to receive events for a topic
 	// Events are delivered as batches (arrays) based on poll cycle

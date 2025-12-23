@@ -68,7 +68,7 @@ func (eh *eventHub) Initialize(ctx context.Context) error {
 }
 
 // RegisterTopic registers a new topic with the EventHub
-func (eh *eventHub) RegisterTopic(topicName TopicName) error {
+func (eh *eventHub) RegisterTopic(organization string, topicName TopicName) error {
 	ctx := context.Background()
 
 	// Check if events table exists
@@ -82,16 +82,17 @@ func (eh *eventHub) RegisterTopic(topicName TopicName) error {
 	}
 
 	// Register topic in registry
-	if err := eh.registry.register(topicName); err != nil {
+	if err := eh.registry.register(organization, topicName); err != nil {
 		return err
 	}
 
 	// Initialize empty state in database
-	if err := eh.store.initializeTopicState(ctx, topicName); err != nil {
+	if err := eh.store.initializeTopicState(ctx, organization, topicName); err != nil {
 		return fmt.Errorf("failed to initialize state: %w", err)
 	}
 
 	eh.logger.Info("Topic registered",
+		zap.String("organization", organization),
 		zap.String("topic", string(topicName)),
 	)
 
@@ -100,7 +101,7 @@ func (eh *eventHub) RegisterTopic(topicName TopicName) error {
 
 // PublishEvent publishes an event to a topic
 // Note: States and Events are updated ATOMICALLY in a transaction
-func (eh *eventHub) PublishEvent(ctx context.Context, topicName TopicName, eventData []byte) error {
+func (eh *eventHub) PublishEvent(ctx context.Context, organization string, topicName TopicName, eventData []byte) error {
 	// Verify topic is registered
 	_, err := eh.registry.get(topicName)
 	if err != nil {
@@ -116,12 +117,13 @@ func (eh *eventHub) PublishEvent(ctx context.Context, topicName TopicName, event
 	}
 
 	// Publish atomically (event + state update in transaction)
-	id, version, err := eh.store.publishEventAtomic(ctx, topicName, event)
+	id, version, err := eh.store.publishEventAtomic(ctx, organization, topicName, event)
 	if err != nil {
 		return fmt.Errorf("failed to publish event: %w", err)
 	}
 
 	eh.logger.Debug("Event published",
+		zap.String("organization", organization),
 		zap.String("topic", string(topicName)),
 		zap.Int64("id", id),
 		zap.String("version", version),

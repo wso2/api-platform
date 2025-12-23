@@ -47,15 +47,15 @@ func (s *store) getEventsTableName(topicName TopicName) string {
 }
 
 // initializeTopicState creates an empty state entry for a topic
-func (s *store) initializeTopicState(ctx context.Context, topicName TopicName) error {
+func (s *store) initializeTopicState(ctx context.Context, organization string, topicName TopicName) error {
 	query := `
-		INSERT INTO topic_states (topic_name, version_id, updated_at)
-		VALUES (?, ?, ?)
-		ON CONFLICT(topic_name)
+		INSERT INTO topic_states (organization, topic_name, version_id, updated_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(organization, topic_name)
 		DO NOTHING
 	`
 
-	_, err := s.db.ExecContext(ctx, query, string(topicName), "", time.Now())
+	_, err := s.db.ExecContext(ctx, query, organization, string(topicName), "", time.Now())
 	if err != nil {
 		return fmt.Errorf("failed to initialize topic state: %w", err)
 	}
@@ -63,17 +63,17 @@ func (s *store) initializeTopicState(ctx context.Context, topicName TopicName) e
 }
 
 // getState retrieves the current state for a topic
-func (s *store) getState(ctx context.Context, topicName TopicName) (*TopicState, error) {
+func (s *store) getState(ctx context.Context, organization string, topicName TopicName) (*TopicState, error) {
 	query := `
-		SELECT topic_name, version_id, updated_at
+		SELECT organization, topic_name, version_id, updated_at
 		FROM topic_states
-		WHERE topic_name = ?
+		WHERE organization = ? AND topic_name = ?
 	`
 
 	var state TopicState
 	var name string
-	err := s.db.QueryRowContext(ctx, query, string(topicName)).Scan(
-		&name, &state.VersionID, &state.UpdatedAt,
+	err := s.db.QueryRowContext(ctx, query, organization, string(topicName)).Scan(
+		&state.Organization, &name, &state.VersionID, &state.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -87,7 +87,7 @@ func (s *store) getState(ctx context.Context, topicName TopicName) (*TopicState,
 }
 
 // publishEventAtomic records an event and updates state in a single transaction
-func (s *store) publishEventAtomic(ctx context.Context, topicName TopicName, event *Event) (int64, string, error) {
+func (s *store) publishEventAtomic(ctx context.Context, organization string, topicName TopicName, event *Event) (int64, string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, "", fmt.Errorf("failed to begin transaction: %w", err)
@@ -120,13 +120,13 @@ func (s *store) publishEventAtomic(ctx context.Context, topicName TopicName, eve
 	now := time.Now()
 
 	updateQuery := `
-		INSERT INTO topic_states (topic_name, version_id, updated_at)
-		VALUES (?, ?, ?)
-		ON CONFLICT(topic_name)
+		INSERT INTO topic_states (organization, topic_name, version_id, updated_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(organization, topic_name)
 		DO UPDATE SET version_id = excluded.version_id, updated_at = excluded.updated_at
 	`
 
-	_, err = tx.ExecContext(ctx, updateQuery, string(topicName), newVersion, now)
+	_, err = tx.ExecContext(ctx, updateQuery, organization, string(topicName), newVersion, now)
 	if err != nil {
 		return 0, "", fmt.Errorf("failed to update state: %w", err)
 	}
@@ -137,6 +137,7 @@ func (s *store) publishEventAtomic(ctx context.Context, topicName TopicName, eve
 	}
 
 	s.logger.Debug("Published event atomically",
+		zap.String("organization", organization),
 		zap.String("topic", string(topicName)),
 		zap.Int64("id", id),
 		zap.String("version", newVersion),
@@ -210,7 +211,7 @@ func (s *store) cleanupEvents(ctx context.Context, topicName TopicName, timeFrom
 
 // cleanupAllTopics removes old events from all known topics
 func (s *store) cleanupAllTopics(ctx context.Context, olderThan time.Time) error {
-	rows, err := s.db.QueryContext(ctx, `SELECT topic_name FROM topic_states`)
+	rows, err := s.db.QueryContext(ctx, `SELECT organization, topic_name FROM topic_states`)
 	if err != nil {
 		return fmt.Errorf("failed to query topics: %w", err)
 	}
@@ -218,8 +219,9 @@ func (s *store) cleanupAllTopics(ctx context.Context, olderThan time.Time) error
 
 	var topics []TopicName
 	for rows.Next() {
+		var org string
 		var name string
-		if err := rows.Scan(&name); err != nil {
+		if err := rows.Scan(&org, &name); err != nil {
 			return fmt.Errorf("failed to scan topic name: %w", err)
 		}
 		topics = append(topics, TopicName(name))

@@ -195,9 +195,11 @@ CREATE INDEX IF NOT EXISTS idx_llm_events_lookup ON llm_template_events(organiza
 -- EventHub: Topic States Table (added in schema version 7)
 -- Tracks version information per topic for change detection
 CREATE TABLE IF NOT EXISTS topic_states (
-    topic_name TEXT PRIMARY KEY,
+    organization TEXT NOT NULL,
+    topic_name TEXT NOT NULL,
     version_id TEXT NOT NULL DEFAULT '',
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (organization, topic_name)
 );
 
 CREATE INDEX IF NOT EXISTS idx_topic_states_updated ON topic_states(updated_at);
@@ -216,4 +218,4 @@ CREATE INDEX IF NOT EXISTS idx_topic_states_updated ON topic_states(updated_at);
 -- CREATE INDEX IF NOT EXISTS idx_api_events_processed ON api_events(processed_timestamp);
 
 -- Set schema version to 7
-PRAGMA user_version = 7;
+PRAGMA user_version = 8;

@@ -214,6 +214,116 @@ func (s *SQLiteStorage) initSchema() error {
 			version = 5
 		}
 
+		if version == 5 {
+			// Add event tables for EventHub
+			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS api_events (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				organization_id TEXT NOT NULL,
+				processed_timestamp TIMESTAMP NOT NULL,
+				originated_timestamp TIMESTAMP NOT NULL,
+				event_data TEXT NOT NULL
+			);`); err != nil {
+				return fmt.Errorf("failed to migrate schema to version 6 (api_events): %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_api_events_lookup ON api_events(organization_id, processed_timestamp);`); err != nil {
+				return fmt.Errorf("failed to create api_events index: %w", err)
+			}
+
+			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS certificate_events (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				organization_id TEXT NOT NULL,
+				processed_timestamp TIMESTAMP NOT NULL,
+				originated_timestamp TIMESTAMP NOT NULL,
+				event_data TEXT NOT NULL
+			);`); err != nil {
+				return fmt.Errorf("failed to migrate schema to version 6 (certificate_events): %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_cert_events_lookup ON certificate_events(organization_id, processed_timestamp);`); err != nil {
+				return fmt.Errorf("failed to create certificate_events index: %w", err)
+			}
+
+			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS llm_template_events (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				organization_id TEXT NOT NULL,
+				processed_timestamp TIMESTAMP NOT NULL,
+				originated_timestamp TIMESTAMP NOT NULL,
+				event_data TEXT NOT NULL
+			);`); err != nil {
+				return fmt.Errorf("failed to migrate schema to version 6 (llm_template_events): %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_llm_events_lookup ON llm_template_events(organization_id, processed_timestamp);`); err != nil {
+				return fmt.Errorf("failed to create llm_template_events index: %w", err)
+			}
+
+			if _, err := s.db.Exec("PRAGMA user_version = 6"); err != nil {
+				return fmt.Errorf("failed to set schema version to 6: %w", err)
+			}
+			s.logger.Info("Schema migrated to version 6 (event tables)")
+			version = 6
+		}
+
+		if version == 6 {
+			// Add topic_states table
+			if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS topic_states (
+				topic_name TEXT PRIMARY KEY,
+				version_id TEXT NOT NULL DEFAULT '',
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);`); err != nil {
+				return fmt.Errorf("failed to migrate schema to version 7 (topic_states): %w", err)
+			}
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_topic_states_updated ON topic_states(updated_at);`); err != nil {
+				return fmt.Errorf("failed to create topic_states index: %w", err)
+			}
+			if _, err := s.db.Exec("PRAGMA user_version = 7"); err != nil {
+				return fmt.Errorf("failed to set schema version to 7: %w", err)
+			}
+			s.logger.Info("Schema migrated to version 7 (topic_states table)")
+			version = 7
+		}
+
+		if version == 7 {
+			// Migrate topic_states to include organization as part of primary key
+			s.logger.Info("Migrating topic_states table to include organization (version 8)")
+
+			// Step 1: Rename old table
+			if _, err := s.db.Exec(`ALTER TABLE topic_states RENAME TO topic_states_old;`); err != nil {
+				return fmt.Errorf("failed to rename topic_states table: %w", err)
+			}
+
+			// Step 2: Create new table with organization
+			if _, err := s.db.Exec(`CREATE TABLE topic_states (
+				organization TEXT NOT NULL,
+				topic_name TEXT NOT NULL,
+				version_id TEXT NOT NULL DEFAULT '',
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (organization, topic_name)
+			);`); err != nil {
+				return fmt.Errorf("failed to create new topic_states table: %w", err)
+			}
+
+			// Step 3: Migrate data (set organization to empty string for existing rows)
+			if _, err := s.db.Exec(`INSERT INTO topic_states (organization, topic_name, version_id, updated_at)
+				SELECT '', topic_name, version_id, updated_at FROM topic_states_old;`); err != nil {
+				return fmt.Errorf("failed to migrate topic_states data: %w", err)
+			}
+
+			// Step 4: Drop old table
+			if _, err := s.db.Exec(`DROP TABLE topic_states_old;`); err != nil {
+				return fmt.Errorf("failed to drop old topic_states table: %w", err)
+			}
+
+			// Step 5: Recreate index
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_topic_states_updated ON topic_states(updated_at);`); err != nil {
+				return fmt.Errorf("failed to create topic_states index: %w", err)
+			}
+
+			if _, err := s.db.Exec("PRAGMA user_version = 8"); err != nil {
+				return fmt.Errorf("failed to set schema version to 8: %w", err)
+			}
+			s.logger.Info("Schema migrated to version 8 (topic_states with organization)")
+			version = 8
+		}
+
 		s.logger.Info("Database schema up to date", zap.Int("version", version))
 	}
 

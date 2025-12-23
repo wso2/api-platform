@@ -14,6 +14,7 @@ var (
 
 // topic represents an internal topic with its subscriptions and poll state
 type topic struct {
+	organization string
 	name         TopicName
 	subscribers  []chan<- []Event // Registered subscription channels
 	subscriberMu sync.RWMutex
@@ -37,7 +38,7 @@ func newTopicRegistry() *topicRegistry {
 }
 
 // register adds a new topic to the registry
-func (r *topicRegistry) register(name TopicName) error {
+func (r *topicRegistry) register(organization string, name TopicName) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -46,9 +47,10 @@ func (r *topicRegistry) register(name TopicName) error {
 	}
 
 	r.topics[name] = &topic{
-		name:        name,
-		subscribers: make([]chan<- []Event, 0),
-		lastPolled:  time.Now(), // Start from now, don't replay old events
+		organization: organization,
+		name:         name,
+		subscribers:  make([]chan<- []Event, 0),
+		lastPolled:   time.Now(), // Start from now, don't replay old events
 	}
 
 	return nil
