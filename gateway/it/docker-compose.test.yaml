@@ -23,6 +23,9 @@ services:
   gateway-controller:
     container_name: it-gateway-controller
     image: ghcr.io/wso2/api-platform/gateway-controller-coverage:0.1.0-SNAPSHOT
+    mem_limit: 128m
+    mem_reservation: 128m
+    cpus: 0.1
     ports:
       - "9090:9090"   # REST API
       - "18000:18000" # xDS gRPC
@@ -50,6 +53,9 @@ services:
   policy-engine:
     container_name: it-policy-engine
     image: ghcr.io/wso2/api-platform/policy-engine:0.1.0-SNAPSHOT
+    mem_limit: 128m
+    mem_reservation: 128m
+    cpus: 0.2
     command: ["-xds-server", "it-gateway-controller:18001"]
     ports:
       - "9002:9002"   # Admin API
@@ -64,6 +70,9 @@ services:
   router:
     container_name: it-router
     image: ghcr.io/wso2/api-platform/gateway-router:0.1.0-SNAPSHOT
+    mem_limit: 256m
+    mem_reservation: 256m
+    cpus: 0.2
     ports:
       - "8080:8080"   # HTTP traffic
       - "8443:8443"   # HTTPS traffic
