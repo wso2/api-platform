@@ -118,8 +118,9 @@ Deploy an LLM provider with semantic caching using OpenAI embeddings and Redis v
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: cached-chat-provider
@@ -129,11 +130,11 @@ spec:
   template: openai
   vhost: openai
   upstream:
-    url: https://api.openai.com/v1
+    url: "https://api.openai.com/v1"
     auth:
       type: api-key
       header: Authorization
-      value: <openai-apikey>
+      value: Bearer <openai-apikey>
   accessControl:
     mode: deny_all
     exceptions:
@@ -193,8 +194,9 @@ Configure semantic caching with Mistral embeddings and Milvus vector database:
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: mistral-cached-provider
@@ -204,7 +206,7 @@ spec:
   template: openai
   vhost: openai
   upstream:
-    url: https://api.mistral.ai/v1
+    url: "https://api.mistral.ai/v1"
     auth:
       type: api-key
       header: Authorization
