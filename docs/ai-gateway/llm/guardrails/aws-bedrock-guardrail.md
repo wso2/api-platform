@@ -37,7 +37,6 @@ The policy supports multiple authentication modes including AWS IAM role assumpt
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `jsonPath` | string | No | `""` | JSONPath expression to extract a specific value from JSON payload. If empty, validates the entire payload as a string. |
-| `redactPII` | boolean | No | `false` | If `true`, redacts PII by replacing with "*****" (permanent). If `false`, restores masked PII from request phase. |
 | `passthroughOnError` | boolean | No | `false` | If `true`, allows requests to proceed if AWS Bedrock Guardrail API call fails. If `false`, blocks requests on API errors. |
 | `showAssessment` | boolean | No | `false` | If `true`, includes detailed assessment information from AWS Bedrock Guardrail in error responses. |
 
@@ -108,7 +107,6 @@ If `jsonPath` is empty or not specified, the entire payload is treated as a stri
 
 When `redactPII` is `false`:
 - **Request phase**: PII entities are masked with placeholders like `EMAIL_0001`, `PHONE_0002`, etc.
-- **Response phase**: Masked PII is restored to original values automatically
 - Use this mode when you need PII to flow through the system but want it masked during processing
 
 ### Redaction Mode (redactPII: true)
@@ -127,8 +125,9 @@ Deploy an LLM provider with AWS Bedrock Guardrail validation:
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: bedrock-guardrail-provider
@@ -138,11 +137,11 @@ spec:
   template: openai
   vhost: openai
   upstream:
-    url: https://api.openai.com/v1
+    url: "https://api.openai.com/v1"
     auth:
       type: api-key
       header: Authorization
-      value: <openai-apikey>
+      value: Bearer <openai-apikey>
   accessControl:
     mode: deny_all
     exceptions:
@@ -161,7 +160,6 @@ spec:
               showAssessment: true
             response:
               jsonPath: "$.choices[0].message.content"
-              redactPII: false
               showAssessment: true
 EOF
 ```
@@ -218,7 +216,6 @@ policies:
             passthroughOnError: false
           response:
             jsonPath: "$.choices[0].message.content"
-            redactPII: true
 ```
 
 ### Example 3: Default Credential Chain (EC2/ECS)
@@ -256,7 +253,6 @@ policies:
             showAssessment: false
           response:
             jsonPath: "$.choices[0].message.content"
-            redactPII: false  # Restore masked PII
 ```
 
 ## Use Cases

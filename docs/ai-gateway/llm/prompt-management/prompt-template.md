@@ -19,7 +19,6 @@ The Prompt Template policy enables dynamic prompt transformation by replacing `t
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `promptTemplateConfig` | string | Yes | - | JSON string containing an array of template objects. Each template must have a `name` and `prompt` field. Example: `[{"name": "translate", "prompt": "Translate from [[from]] to [[to]]: [[text]]"}]` |
-| `jsonPath` | string | No | `$.messages[0].content` | **Note**: Currently not used. The policy searches the entire JSON payload string for `template://` patterns. This parameter is reserved for future use. |
 
 ### Template Configuration Format
 
@@ -82,8 +81,9 @@ Deploy an LLM provider with a translation prompt template:
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: translation-provider
@@ -93,11 +93,11 @@ spec:
   template: openai
   vhost: openai
   upstream:
-    url: https://api.openai.com/v1
+    url: "https://api.openai.com/v1"
     auth:
       type: api-key
       header: Authorization
-      value: <openai-apikey>
+      value: Bearer <openai-apikey>
   accessControl:
     mode: deny_all
     exceptions:
@@ -154,8 +154,9 @@ Create a template for summarizing content with configurable length:
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: summarization-provider
@@ -165,11 +166,11 @@ spec:
   template: openai
   vhost: openai
   upstream:
-    url: https://api.openai.com/v1
+    url: "https://api.openai.com/v1"
     auth:
       type: api-key
       header: Authorization
-      value: <openai-apikey>
+      value: Bearer <openai-apikey>
   accessControl:
     mode: deny_all
     exceptions:
@@ -273,4 +274,3 @@ When template resolution fails (e.g., invalid JSON escaping), the specific patte
 - The resolved template string is JSON-escaped (special characters like quotes, newlines are escaped) before replacement.
 - The policy processes the entire JSON payload as a string, so templates can be used anywhere in the JSON structure.
 - Multiple `template://` patterns can appear in a single payload and will all be processed.
-- The `jsonPath` parameter is currently reserved for future functionality and is not used in the current implementation.
