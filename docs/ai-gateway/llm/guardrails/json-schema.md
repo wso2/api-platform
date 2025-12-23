@@ -65,6 +65,7 @@ Deploy an LLM provider that validates that request contains a user object with r
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
 version: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider

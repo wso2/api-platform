@@ -84,6 +84,7 @@ Add a summarization instruction to user prompts:
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
 version: ai.api-platform.wso2.com/v1
 kind: LlmProvider
@@ -156,6 +157,7 @@ Add a system message to define AI behavior:
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
 version: ai.api-platform.wso2.com/v1
 kind: LlmProvider

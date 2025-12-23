@@ -86,14 +86,14 @@ Ensure `docker` and `docker compose` commands are available.
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway-v0.1.0/gateway-v0.1.0.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway-v0.2.0/gateway-v0.2.0.zip
 
 # Unzip the downloaded distribution.
-unzip gateway-v0.1.0.zip
+unzip gateway-v0.2.0.zip
 
 
 # Start the complete stack
-cd gateway-v0.1.0/
+cd gateway-v0.2.0/
 docker compose up -d
 
 # Verify gateway controller is running
@@ -105,6 +105,7 @@ ap gateway health
 # Deploy an API configuration
 curl -X POST http://localhost:9090/apis \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
 version: api-platform.wso2.com/v1
 kind: http/rest
