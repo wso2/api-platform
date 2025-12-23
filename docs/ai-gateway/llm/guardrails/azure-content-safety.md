@@ -333,15 +333,6 @@ If `showAssessment` is enabled, additional details are included:
 }
 ```
 
-## API Retry Logic
-
-The policy includes automatic retry logic for transient API failures:
-
-- **Maximum retries**: 5 attempts
-- **Retry delay**: 1 second between attempts
-- **Timeout**: 30 seconds per request
-- Retries are automatic for network errors and HTTP 5xx responses
-
 ## Notes
 
 - Azure Content Safety API requires an active Azure subscription and Content Safety resource.
