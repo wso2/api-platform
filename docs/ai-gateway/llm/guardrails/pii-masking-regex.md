@@ -10,11 +10,10 @@ The PII Masking Regex Guardrail masks or redacts Personally Identifiable Informa
 - Two modes: masking (reversible) and redaction (permanent)
 - Automatic PII restoration in responses when using masking mode
 - Supports JSONPath extraction to process specific fields within JSON payloads
-- Separate configuration for request and response phases
 
 ## Configuration
 
-### Request Phase Parameters
+### Parameters
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -22,20 +21,14 @@ The PII Masking Regex Guardrail masks or redacts Personally Identifiable Informa
 | `jsonPath` | string | No | `""` | JSONPath expression to extract a specific value from JSON payload. If empty, processes the entire payload as a string. |
 | `redactPII` | boolean | No | `false` | If `true`, redacts PII by replacing with "*****" (permanent, cannot be restored). If `false`, masks PII with placeholders that can be restored in responses. |
 
-### Response Phase Parameters
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `redactPII` | boolean | No | `false` | If `true`, no restoration is performed (PII was permanently redacted). If `false`, restores masked PII from request phase. |
-
 ### PII Entity Configuration
 
 Each PII entity in the `piiEntities` array must contain:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `piiEntity` | string | Yes | Name/type of the PII entity (e.g., "EMAIL", "PHONE", "SSN", "CREDIT_CARD"). |
-| `piiRegex` | string | Yes | Regular expression pattern to match the PII entity. |
+| `piiEntity` | string | Yes | Name/type of the PII entity (e.g., "EMAIL", "PHONE", "SSN", "CREDIT_CARD"). Must contain only uppercase letters and underscores (matches `^[A-Z_]+$`). |
+| `piiRegex` | string | Yes | Regular expression pattern to match the PII entity. Must be a valid Go regexp pattern. |
 
 ## JSONPath Support
 
@@ -52,9 +45,9 @@ If `jsonPath` is empty or not specified, the entire payload is processed as a st
 
 ### Masking Mode (`redactPII: false`)
 
-- PII is replaced with placeholders in the format `[ENTITY_TYPE_XXXX]` (e.g., `[EMAIL_0001]`, `[PHONE_0002]`)
-- Placeholders can be restored in responses to their original values
-- Original PII values are stored temporarily for restoration
+- PII is replaced with placeholders in the format `[ENTITY_TYPE_XXXX]` where XXXX is a 4-digit hexadecimal number (e.g., `[EMAIL_0000]`, `[EMAIL_0001]`, `[PHONE_000a]`)
+- Placeholders are automatically restored in responses to their original values
+- Original PII values are stored temporarily in request metadata for restoration
 - Recommended when you need to preserve data for downstream processing or response generation
 
 ### Redaction Mode (`redactPII: true`)
@@ -106,16 +99,13 @@ spec:
         - path: /chat/completions
           methods: [POST]
           params:
-            request:
-              piiEntities:
-                - piiEntity: "EMAIL"
-                  piiRegex: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
-                - piiEntity: "PHONE"
-                  piiRegex: "\\+?[1-9]\\d{1,14}"
-              jsonPath: "$.messages[0].content"
-              redactPII: false
-            response:
-              redactPII: false
+            piiEntities:
+              - piiEntity: "EMAIL"
+                piiRegex: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+              - piiEntity: "PHONE"
+                piiRegex: "\\+?[1-9]\\d{1,14}"
+            jsonPath: "$.messages[0].content"
+            redactPII: true
 EOF
 ```
 
@@ -151,7 +141,7 @@ You can customize the guardrail behavior by modifying the `policies` section:
 
 - **Field-Specific Processing**: Use `jsonPath` to extract and process PII from specific fields within JSON payloads (e.g., `"$.messages[0].content"` for message content).
 
-- **Response Restoration**: When using masking mode (`redactPII: false`), set `response.redactPII: false` to restore masked PII values in responses. Set `response.redactPII: true` if PII was permanently redacted in the request phase.
+- **Response Restoration**: When using masking mode (`redactPII: false`), PII is automatically restored in responses. No separate response configuration is needed. If `redactPII: true`, no restoration occurs in the response phase.
 
 ## Use Cases
 
@@ -177,10 +167,10 @@ You can customize the guardrail behavior by modifying the `policies` section:
 
 ### Response Phase (Restoration)
 
-1. Extract content from response
-2. If `redactPII: false`, replace placeholders with original PII values from request phase
-3. If `redactPII: true`, no restoration is performed
-4. Return restored or redacted content
+1. Check if PII was masked in the request phase (metadata contains PII mappings)
+2. If `redactPII: false` and mappings exist, replace placeholders with original PII values
+3. If `redactPII: true`, no restoration is performed (PII was permanently redacted)
+4. Return restored content or original response
 
 
 #### Sample Payload after intervention from Regex PII Masking with redact=true
@@ -200,9 +190,10 @@ You can customize the guardrail behavior by modifying the `policies` section:
 
 - Regular expressions use Go's regexp package (RE2 syntax).
 - PII detection is case-sensitive by default. Use `(?i)` flag for case-insensitive matching.
-- When using masking mode, the placeholder-to-original mapping is stored in request metadata and used for response restoration.
+- The `piiEntity` name must contain only uppercase letters and underscores (e.g., "EMAIL", "PHONE_NUMBER", "SSN").
+- When using masking mode, the placeholder-to-original mapping is stored in request metadata and automatically used for response restoration.
 - Multiple PII entities can match the same content; each match is processed according to its entity type.
-- Placeholder format is `[ENTITY_TYPE_XXXX]` where XXXX is a hexadecimal counter.
-- When using JSONPath, if the path does not exist or the extracted value is not a string, processing will skip that field.
+- Placeholder format is `[ENTITY_TYPE_XXXX]` where XXXX is a 4-digit hexadecimal number (e.g., `[EMAIL_0000]`, `[EMAIL_0001]`, `[PHONE_000a]`).
+- When using JSONPath, if the path does not exist or the extracted value is not a string, an error response (HTTP 500) is returned.
 - Redaction mode is irreversible; use masking mode if you need to restore PII in responses.
 - Complex regex patterns may impact performance; test thoroughly with expected content volumes.

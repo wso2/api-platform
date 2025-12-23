@@ -90,7 +90,7 @@ spec:
           methods: [POST]
           params:
             request:
-              min: 10
+              min: 5
               max: 500
               jsonPath: "$.messages[0].content"
 EOF

@@ -99,7 +99,7 @@ spec:
           methods: [POST]
           params:
             request:
-              min: 1
+              min: 2
               max: 10
               jsonPath: "$.messages[0].content"
 EOF
@@ -119,7 +119,7 @@ curl -X POST http://openai:8080/chat/completions \
     "messages": [
       {
         "role": "user",
-        "content": "What is machine learning? How does it work? Can you explain it simply?"
+        "content": "What is machine learning?. How does it work?. Can you explain it simply?"
       }
     ]
   }'
