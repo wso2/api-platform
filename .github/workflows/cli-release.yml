@@ -4,11 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (format: x.x.x)'
-        required: true
-        type: string
-      release_notes:
-        description: 'Release notes'
+        description: 'Release version (format: x.x.x) (do NOT include leading v)'
         required: true
         type: string
 
@@ -54,58 +50,112 @@ jobs:
         run: |
           make build build-all VERSION=$VERSION
       
-      - name: Rename binaries with version
+      - name: Package platform zips
         working-directory: ./cli/src/build
         env:
           VERSION: ${{ github.event.inputs.version }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
-          # Rename binaries to include version
-          mv ap-darwin-arm64 ap-darwin-arm64-v${VERSION}
-          mv ap-darwin-amd64 ap-darwin-amd64-v${VERSION}
-          mv ap-linux-arm64 ap-linux-arm64-v${VERSION}
-          mv ap-linux-amd64 ap-linux-amd64-v${VERSION}
-          mv ap-windows-arm64.exe ap-windows-arm64-v${VERSION}.exe
-          mv ap-windows-amd64.exe ap-windows-amd64-v${VERSION}.exe
-          
-          # List renamed binaries
-          echo "Renamed binaries:"
-          ls -lh
+          set -euo pipefail
+          VERSION=${VERSION}
+          mkdir -p "$GITHUB_WORKSPACE/release-artifacts"
+
+          platforms=(
+            "darwin-arm64"
+            "darwin-amd64"
+            "linux-arm64"
+            "linux-amd64"
+            "windows-arm64"
+            "windows-amd64"
+          )
+
+          for p in "${platforms[@]}"; do
+            base="ap-${p}"
+            zipname="${base}-v${VERSION}.zip"
+            dir="${base}-v${VERSION}"
+            tmpdir="tmp_release_${p}"
+            mkdir -p "$tmpdir/$dir"
+
+            # Source binary path
+            if [[ "$p" == windows-* ]]; then
+              src="${base}.exe"
+              destname="ap.exe"
+            else
+              src="${base}"
+              destname="ap"
+            fi
+
+            if [[ -f "$src" ]]; then
+              cp "$src" "$tmpdir/$dir/$destname"
+              if [[ "$destname" == "ap" ]]; then
+                chmod +x "$tmpdir/$dir/$destname" || true
+              fi
+            else
+              # create an empty placeholder file so zip is not empty
+              touch "$tmpdir/$dir/README.txt"
+              echo "Binary $src not found in build output." > "$tmpdir/$dir/README.txt"
+            fi
+
+            # Create zip with top-level directory
+            (cd "$tmpdir" && zip -r "$zipname" "$dir")
+            mv "$tmpdir/$zipname" "$GITHUB_WORKSPACE/release-artifacts/"
+            rm -rf "$tmpdir"
+          done
+
+          # Remove raw binaries to keep only zip artifacts
+          rm -f ap-* || true
+          ls -lh "$GITHUB_WORKSPACE/release-artifacts"
       
-      - name: Create GitHub Release
+      - name: Create GitHub Release and upload assets
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ap-v${{ github.event.inputs.version }}
-          name: ap v${{ github.event.inputs.version }}
+          name: "WSO2 API Platform Controller (ap) v${{ github.event.inputs.version }} is Released!"
           body: |
-            ${{ github.event.inputs.release_notes }}
-            
-            ## Downloads
-            
-            Choose the appropriate binary for your platform:
-            
-            ### macOS
-            - **Apple Silicon (M1/M2/M3)**: `ap-darwin-arm64-v${{ github.event.inputs.version }}`
-            - **Intel**: `ap-darwin-amd64-v${{ github.event.inputs.version }}`
-            
-            ### Linux
-            - **ARM64**: `ap-linux-arm64-v${{ github.event.inputs.version }}`
-            - **AMD64/x86_64**: `ap-linux-amd64-v${{ github.event.inputs.version }}`
-            
-            ### Windows
-            - **ARM64**: `ap-windows-arm64-v${{ github.event.inputs.version }}.exe`
-            - **AMD64/x86_64**: `ap-windows-amd64-v${{ github.event.inputs.version }}.exe`
-            
-            ## Installation
+            WSO2 is pleased to announce the release of API Platform Controller ${{ github.event.inputs.version }} version.
 
-            Download the binary for your platform from the release assets and add the binary (`ap` on macOS/Linux or `ap.exe` on Windows) to your PATH.
+            WSO2 API Platform Controller (ap) is a command-line tool providing the capability to manasge, do actions for API Platform
+
+            ## Fixed Issues
+            N/A
+
+            ## Known Issues
+            All the open issues pertaining to WSO2 API Controller are reported at [GitHub](https://github.com/wso2/api-platform/issues?q=is%3Aissue%20state%3Aopen%20label%3AArea%2FCLI)
+
+            ## Documentation
+            [Readme] (https://github.com/wso2/api-platform/blob/main/cli/README.md)
+            [Quick Start] (https://github.com/wso2/api-platform/blob/main/docs/cli/quick-start-guide.md)
+            [Reference] (https://github.com/wso2/api-platform/blob/main/docs/cli/reference.md)
+
+            ## How You Can Contribute
+
+            Your feedback is most welcome!
+
+            **Community**
+
+            You can use our Discord Channel and Stack Overflow Collective to engage with the wider audience https://wso2.com/community/
+
+            **Reporting Issues**
+
+            We encourage you to report issues, documentation faults, and feature requests regarding WSO2 API Platform Controller through the public [API manager Git Repo with label **_Area/CLI_**](https://github.com/wso2/api-platform/issues?q=is%3Aissue%20state%3Aopen%20label%3AArea%2FCLI).
+
+            Important: Do not report security issues via GitHub. For proper handling and confidentiality, report all security issues directly to security@wso2.com. We strongly advise following the [WSO2 Security Vulnerability Reporting Guidelines](https://security.docs.wso2.com/en/latest/security-reporting/vulnerability-reporting-guidelines/) when reporting security issues.
+
+            ~ WSO2 API Manager Team ~
           draft: false
           prerelease: false
           files: |
-            cli/src/build/ap-darwin-arm64-v${{ github.event.inputs.version }}
-            cli/src/build/ap-darwin-amd64-v${{ github.event.inputs.version }}
-            cli/src/build/ap-linux-arm64-v${{ github.event.inputs.version }}
-            cli/src/build/ap-linux-amd64-v${{ github.event.inputs.version }}
-            cli/src/build/ap-windows-arm64-v${{ github.event.inputs.version }}.exe
-            cli/src/build/ap-windows-amd64-v${{ github.event.inputs.version }}.exe
+            release-artifacts/ap-darwin-arm64-v${{ github.event.inputs.version }}.zip
+            release-artifacts/ap-darwin-amd64-v${{ github.event.inputs.version }}.zip
+            release-artifacts/ap-linux-arm64-v${{ github.event.inputs.version }}.zip
+            release-artifacts/ap-linux-amd64-v${{ github.event.inputs.version }}.zip
+            release-artifacts/ap-windows-arm64-v${{ github.event.inputs.version }}.zip
+            release-artifacts/ap-windows-amd64-v${{ github.event.inputs.version }}.zip
+
+      - name: Upload release zips as workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ap-release-zips-${{ github.event.inputs.version }}
+          path: release-artifacts/*.zip
