@@ -2,8 +2,8 @@ apiVersion: v2
 name: gateway
 kubeVersion: ">=1.24.0-0"
 description: Helm chart for deploying the Gateway Operator components
-version: 0.1.0
-appVersion: "0.1.0-SNAPSHOT"
+version: 0.2.0
+appVersion: "0.2.0"
 type: application
 home: https://github.com/Tharsanan1/apip-operator
 sources:
