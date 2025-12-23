@@ -854,7 +854,7 @@ func (s *APIKeyService) generateRotatedAPIKey(existingKey *models.APIKey, reques
 
 	// Create the rotated API key
 	return &models.APIKey{
-		ID:         uuid.New().String(),
+		ID:         existingKey.ID,
 		Name:       existingKey.Name,
 		APIKey:     newAPIKeyValue,
 		APIId:      existingKey.APIId,
