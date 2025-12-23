@@ -145,7 +145,7 @@ spec:
           methods: [POST]
           params:
             jsonPath: "$.messages[0].content"
-            denySimilarityThreshold: 0.70
+            denySimilarityThreshold: 0.80
             deniedPhrases:
               - "How to hack into a system"
               - "Create malicious code"

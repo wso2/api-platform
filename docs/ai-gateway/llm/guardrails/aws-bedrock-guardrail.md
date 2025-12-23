@@ -77,18 +77,6 @@ awsbedrock_role_region: ""
 awsbedrock_role_external_id: ""
 ```
 
-### Authentication Modes
-
-The policy supports three authentication modes, in priority order:
-
-1. **Role Assumption** (if `awsRoleARN` is provided): Assumes the specified IAM role for authentication. Requires `awsRoleRegion` if specified.
-2. **Static Credentials** (if `awsAccessKeyID` and `awsSecretAccessKey` are provided): Uses provided AWS credentials directly.
-3. **Default Credential Chain** (if neither role nor static credentials are provided): Uses AWS SDK default credential chain:
-   - Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
-   - IAM instance profile roles (for EC2/ECS)
-   - AWS credentials file (`~/.aws/credentials`)
-   - IAM roles for service accounts (for EKS)
-
 ## JSONPath Support
 
 The guardrail supports JSONPath expressions to extract and validate specific fields within JSON payloads. Common examples:
@@ -198,46 +186,9 @@ curl -X POST http://openai:8080/chat/completions \
   }'
 ```
 
-### Example 2: Role-Based Authentication
+### Example 2: PII Redaction Mode
 
-Configure guardrail with IAM role assumption:
-
-```yaml
-policies:
-  - name: aws-bedrock-guardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            jsonPath: "$.messages[0].content"
-            redactPII: true
-            passthroughOnError: false
-          response:
-            jsonPath: "$.choices[0].message.content"
-```
-
-### Example 3: Default Credential Chain (EC2/ECS)
-
-Use default AWS credential chain (no explicit credentials needed):
-
-```yaml
-policies:
-  - name: aws-bedrock-guardrail
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          request:
-            jsonPath: "$.messages[-1].content"
-            showAssessment: true
-```
-
-### Example 4: PII Masking with Restoration
-
-Configure to mask PII in requests and restore in responses:
+Configure to redact PII:
 
 ```yaml
 policies:
@@ -249,7 +200,7 @@ policies:
         params:
           request:
             jsonPath: "$.messages[0].content"
-            redactPII: false  # Mask mode - uses placeholders
+            redactPII: true  # Redact mode
             showAssessment: false
           response:
             jsonPath: "$.choices[0].message.content"
@@ -313,30 +264,14 @@ If `showAssessment` is enabled, additional details are included:
 }
 ```
 
-## Guardrail Response Actions
-
-The policy processes AWS Bedrock Guardrail responses based on the `Action` field and `ActionReason`:
-
-- **`NONE`**: No violation detected, content passes validation and proceeds normally.
-
-- **`GUARDRAIL_INTERVENED`** with `ActionReason: "Guardrail blocked."`: Content violation detected (content policy, topic policy, or word policy violation). The request/response is blocked with HTTP 422 error.
-
-- **`GUARDRAIL_INTERVENED`** with `ActionReason: "Guardrail masked."`: PII masking was applied. The policy behavior depends on configuration:
-  - If `redactPII: false` and this is a request: PII is masked with placeholders (e.g., `EMAIL_0001`, `PHONE_0002`) and stored for restoration in the response phase.
-  - If `redactPII: false` and this is a response: Previously masked PII is restored from placeholders to original values.
-  - If `redactPII: true`: PII is permanently redacted with `*****` replacement, and the modified content proceeds.
-
-The policy distinguishes between blocking violations and masking operations using the `ActionReason` field to determine the appropriate handling.
-
 ## Notes
 
 - The guardrail must be created in AWS Bedrock before use. Use AWS Console, CLI, or SDK to create guardrails with your policies.
 - Guardrail version "DRAFT" is useful for testing. Use numbered versions (e.g., "1", "2") for production.
 - PII masking with restoration (`redactPII: false`) stores mapping between original and masked values in request metadata, which is used during response processing.
-- When using role assumption, ensure the IAM role has `bedrock:InvokeGuardrail` permission.
+- When using role assumption, ensure the IAM role has `bedrock:ApplyGuardrail` permission.
 - The policy uses AWS SDK v2 for authentication and API calls.
 - JSONPath extraction failures result in error responses unless `passthroughOnError: true`.
 - Content modifications (PII masking) are applied to the payload and forwarded to upstream if no blocking violation occurs.
 - The policy validates both request and response phases independently when both are configured.
 - Ensure your guardrail is in the specified AWS region; cross-region calls are not supported.
-
