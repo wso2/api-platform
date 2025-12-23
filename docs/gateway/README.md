@@ -33,14 +33,6 @@ For the complete list of CLI commands and usage examples, see the [CLI Reference
 | 8443 | Router | HTTPS traffic |
 | 9090 | Gateway-Controller | REST API |
 
-## Features
-
-- **Full CRUD Lifecycle**: Create, update, delete, and query API configurations
-- **Zero-Downtime Updates**: Configuration changes apply without dropping connections
-- **Validation**: Comprehensive validation with structured error messages
-- **Persistence**: API configurations are persisted and restored on restart
-- **Observability**: Structured logging with configurable levels
-
 ## Architecture
 
 ```
