@@ -6,9 +6,7 @@ This short guide explains how to use a prebuilt `ap` binary so you can run the C
 
 	- macOS / Linux:
 
-		```bash
-		sudo mv ap /usr/local/bin/
-		```
+		Extract the zip to a local bin directory and add it to your `PATH`.
 
 	- Windows:
 
