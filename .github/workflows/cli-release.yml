@@ -142,7 +142,7 @@ jobs:
 
             And please be advised that security issues must be reported to [security@wso2.com](mailto:security@wso2.com), not as a GitHub issue, in order to reach the proper audience. We strongly advise following the [WSO2 Security Vulnerability Reporting Guidelines](https://docs.wso2.com/display/Security/WSO2+Security+Vulnerability+Reporting+Guidelines) when reporting security issues.
           draft: false
-          prerelease: false
+          prerelease: true
           files: |
             release-artifacts/ap-darwin-arm64-v${{ github.event.inputs.version }}.zip
             release-artifacts/ap-darwin-amd64-v${{ github.event.inputs.version }}.zip
