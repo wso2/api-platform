@@ -50,64 +50,56 @@ jobs:
 
             echo "== Buildx setup =="
 
-            # Try to use an existing docker-backed buildx builder (preferred),
-            # otherwise create a local one. Creating a second docker-driver
-            # builder on some runners can fail, so detect and reuse if present.
-            FOUND_BUILDER=""
-            # Iterate known builder names from `docker buildx ls` (skip header)
-            for b in $(docker buildx ls 2>/dev/null | tail -n +2 | awk '{print $1}' | sed 's/\*//g'); do
-              if docker buildx inspect "$b" >/dev/null 2>&1; then
-                if docker buildx inspect "$b" | grep -qi 'Driver: *docker'; then
-                  FOUND_BUILDER="$b"
+            # Prefer an active docker-backed builder. Strategy:
+            # 1. If there's an active builder (starred), and it's docker-backed, use it.
+            # 2. Otherwise, find any existing docker-backed builder and use it.
+            # 3. Otherwise, attempt to create `docker-local` and use it only if creation succeeded.
+            # 4. If none of the above work, fall back to whatever builder is active (do not attempt to `use` a non-existent name).
+            ACTIVE_BUILDER=$(docker buildx ls 2>/dev/null | awk '/\*/{print $1}' | sed 's/\*//g' | head -n1 || true)
+            CHOSEN_BUILDER=""
+
+            if [ -n "${ACTIVE_BUILDER}" ] && docker buildx inspect "${ACTIVE_BUILDER}" >/dev/null 2>&1 && docker buildx inspect "${ACTIVE_BUILDER}" | grep -qi 'Driver: *docker'; then
+              CHOSEN_BUILDER="${ACTIVE_BUILDER}"
+              echo "Active docker-backed builder detected: ${CHOSEN_BUILDER}"
+            else
+              # find any docker-backed builder
+              for b in $(docker buildx ls 2>/dev/null | tail -n +2 | awk '{print $1}' | sed 's/\*//g'); do
+                if docker buildx inspect "$b" >/dev/null 2>&1 && docker buildx inspect "$b" | grep -qi 'Driver: *docker'; then
+                  CHOSEN_BUILDER="$b"
+                  echo "Found existing docker-backed builder: ${CHOSEN_BUILDER}"
                   break
                 fi
-              fi
-            done
+              done
+            fi
 
-            if [ -n "${FOUND_BUILDER}" ]; then
-              echo "Using existing docker buildx builder: ${FOUND_BUILDER}"
-              docker buildx use "${FOUND_BUILDER}"
-            else
-              echo "No existing docker-driver builder found; creating docker-local"
-              if ! docker buildx inspect docker-local >/dev/null 2>&1; then
-                docker buildx create --name docker-local --driver docker || true
-              fi
-              # If create failed due to driver constraints, try to detect again and use any docker builder
-              if ! docker buildx inspect docker-local >/dev/null 2>&1; then
-                for b in $(docker buildx ls 2>/dev/null | tail -n +2 | awk '{print $1}' | sed 's/\*//g'); do
-                  if docker buildx inspect "$b" >/dev/null 2>&1 && docker buildx inspect "$b" | grep -qi 'Driver: *docker'; then
-                    FOUND_BUILDER="$b"
-                    break
-                  fi
-                done
-                if [ -n "${FOUND_BUILDER}" ]; then
-                  echo "Falling back to existing builder: ${FOUND_BUILDER}"
-                  docker buildx use "${FOUND_BUILDER}"
-                else
-                  echo "Warning: could not create or find a docker-driver builder; attempts continue"
-                  docker buildx use docker-local || true
-                fi
+            if [ -z "${CHOSEN_BUILDER}" ]; then
+              echo "No existing docker-backed builder found; attempting to create docker-local"
+              if docker buildx create --name docker-local --driver docker >/dev/null 2>&1; then
+                CHOSEN_BUILDER="docker-local"
+                echo "Created docker-local builder"
               else
-                docker buildx use docker-local
+                echo "Could not create docker-local builder; will not call 'docker buildx use' for a missing builder"
               fi
+            fi
+
+            # Only call `docker buildx use` if the chosen builder actually exists.
+            if [ -n "${CHOSEN_BUILDER}" ] && docker buildx inspect "${CHOSEN_BUILDER}" >/dev/null 2>&1; then
+              docker buildx use "${CHOSEN_BUILDER}"
+            else
+              echo "Proceeding without switching builder (using runner's default)"
             fi
 
             docker buildx inspect --bootstrap
             docker buildx ls
 
-            # Determine the active builder (starred in `docker buildx ls`) or
-            # fall back to FOUND_BUILDER or docker-local if present. Export the
-            # chosen builder to GITHUB_ENV so subsequent steps use the same
-            # builder name without relying on job-level env that may force
-            # buildx to check a non-existent builder early.
+            # Determine and export the builder for later steps.
             CURRENT_BUILDER=$(docker buildx ls 2>/dev/null | awk '/\*/{print $1}' | sed 's/\*//g' | head -n1 || true)
             if [ -z "${CURRENT_BUILDER}" ]; then
-              if [ -n "${FOUND_BUILDER}" ]; then
-                CURRENT_BUILDER="${FOUND_BUILDER}"
+              if [ -n "${CHOSEN_BUILDER}" ]; then
+                CURRENT_BUILDER="${CHOSEN_BUILDER}"
               elif docker buildx inspect docker-local >/dev/null 2>&1; then
                 CURRENT_BUILDER="docker-local"
               else
-                # pick first docker-driver builder if any
                 for b in $(docker buildx ls 2>/dev/null | tail -n +2 | awk '{print $1}' | sed 's/\*//g'); do
                   if docker buildx inspect "$b" >/dev/null 2>&1 && docker buildx inspect "$b" | grep -qi 'Driver: *docker'; then
                     CURRENT_BUILDER="$b"
@@ -116,9 +108,13 @@ jobs:
                 done
               fi
             fi
-            CURRENT_BUILDER=${CURRENT_BUILDER:-docker-local}
-            echo "BUILDX_BUILDER=${CURRENT_BUILDER}" >> $GITHUB_ENV
-            echo "Exported BUILDX_BUILDER=${CURRENT_BUILDER}"
+            if [ -n "${CURRENT_BUILDER}" ]; then
+              echo "BUILDX_BUILDER=${CURRENT_BUILDER}" >> $GITHUB_ENV
+              echo "Exported BUILDX_BUILDER=${CURRENT_BUILDER}"
+            else
+              echo "BUILDX_BUILDER=" >> $GITHUB_ENV
+              echo "No docker-backed builder available; subsequent steps may use runner default"
+            fi
           } 2>&1 | tee 1-initiate.log || true
 
       - name: Set up Go
