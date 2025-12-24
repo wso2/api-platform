@@ -72,7 +72,6 @@ func runAddCommand() error {
 	}
 
 	// No token is stored anymore; gateways use Basic Auth by default.
-	// Users should set %s and %s in their environment for gateway controller commands.
 
 	// Create new gateway
 	gateway := config.Gateway{
