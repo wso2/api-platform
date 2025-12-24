@@ -116,7 +116,7 @@ jobs:
           body: |
             WSO2 is pleased to announce the release of API Platform Controller ${{ github.event.inputs.version }} version.
 
-            WSO2 API Platform Controller (ap) is a command-line tool providing the capability to manasge, do actions for API Platform
+            WSO2 API Platform Controller (ap) is a command-line tool providing the capability to manage, do actions for API Platform
 
             ## Fixed Issues
             N/A
