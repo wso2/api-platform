@@ -19,13 +19,13 @@ func FormatHTTPError(operation string, resp *http.Response, responder string) er
 
 	defer resp.Body.Close()
 	bodyBytes, err := io.ReadAll(resp.Body)
-	bodyStr := strings.TrimSpace(string(bodyBytes))
 	if err != nil {
 		if responder == "" {
 			return fmt.Errorf("%s failed (status %d): failed to read response body: %v", operation, resp.StatusCode, err)
 		}
 		return fmt.Errorf("%s failed (status %d): failed to read response from %s: %v", operation, resp.StatusCode, responder, err)
 	}
+	bodyStr := strings.TrimSpace(string(bodyBytes))
 
 	// Special-case 1
 	// If responder is Gateway Controller and 401, suggest checking env vars.

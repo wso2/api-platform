@@ -114,38 +114,35 @@ jobs:
           tag_name: ap-v${{ github.event.inputs.version }}
           name: "WSO2 API Platform Controller (ap) v${{ github.event.inputs.version }} is Released!"
           body: |
-            WSO2 is pleased to announce the release of API Platform Controller ${{ github.event.inputs.version }} version.
+            ## Overview
 
-            WSO2 API Platform Controller (ap) is a command-line tool providing the capability to manasge, do actions for API Platform
+            The **WSO2 API Platform CLI (ap)** is a command-line tool for managing and interacting with the WSO2 API Platform. It provides capabilities to deploy API configurations, customize gateway policies, and manage platform resources.
 
-            ## Fixed Issues
-            N/A
+            ## Quick Start
 
-            ## Known Issues
-            All the open issues pertaining to WSO2 API Controller are reported at [GitHub](https://github.com/wso2/api-platform/issues?q=is%3Aissue%20state%3Aopen%20label%3AArea%2FCLI)
+            Get started with the [Quick Start Guide](https://github.com/wso2/api-platform/blob/main/docs/cli/quick-start-guide.md) to install and configure the CLI.
 
             ## Documentation
-            [Readme](https://github.com/wso2/api-platform/blob/main/cli/README.md)
-            [Quick Start](https://github.com/wso2/api-platform/blob/main/docs/cli/quick-start-guide.md)
-            [Reference](https://github.com/wso2/api-platform/blob/main/docs/cli/reference.md)
 
-            ## How You Can Contribute
+            For complete documentation on all features and capabilities, see the [CLI Documentation](https://github.com/wso2/api-platform/tree/main/docs/cli).
+            - [CLI Reference](https://github.com/wso2/api-platform/blob/main/docs/cli/reference.md)
+            - [Customizing Gateway Policies](https://github.com/wso2/api-platform/blob/main/docs/cli/customizing-gateway-policies.md)
 
+            ### Known Issues
+            All the open issues pertaining to WSO2 API Platform CLI are reported [here](https://github.com/wso2/api-platform/issues?q=is%3Aissue%20state%3Aopen%20label%3AArea%2FCLI).
+
+            ### How To Contribute
             Your feedback is most welcome!
 
-            **Community**
+            ### Community
+            You can use our Discord Channel and Stackoverflow Collective to engage with a wider audience https://wso2.com/community/
 
-            You can use our Discord Channel and Stack Overflow Collective to engage with the wider audience https://wso2.com/community/
+            ### Reporting Issues
+            We encourage you to report issues, improvements, and feature requests regarding WSO2 API Platform CLI through [WSO2 API Platform GIT Issues](https://github.com/wso2/api-platform/issues).
 
-            **Reporting Issues**
-
-            We encourage you to report issues, documentation faults, and feature requests regarding WSO2 API Platform Controller through the public [API manager Git Repo with label **_Area/CLI_**](https://github.com/wso2/api-platform/issues?q=is%3Aissue%20state%3Aopen%20label%3AArea%2FCLI).
-
-            Important: Do not report security issues via GitHub. For proper handling and confidentiality, report all security issues directly to security@wso2.com. We strongly advise following the [WSO2 Security Vulnerability Reporting Guidelines](https://security.docs.wso2.com/en/latest/security-reporting/vulnerability-reporting-guidelines/) when reporting security issues.
-
-            ~ WSO2 API Manager Team ~
+            And please be advised that security issues must be reported to [security@wso2.com](mailto:security@wso2.com), not as a GitHub issue, in order to reach the proper audience. We strongly advise following the [WSO2 Security Vulnerability Reporting Guidelines](https://docs.wso2.com/display/Security/WSO2+Security+Vulnerability+Reporting+Guidelines) when reporting security issues.
           draft: false
-          prerelease: false
+          prerelease: true
           files: |
             release-artifacts/ap-darwin-arm64-v${{ github.event.inputs.version }}.zip
             release-artifacts/ap-darwin-amd64-v${{ github.event.inputs.version }}.zip

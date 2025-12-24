@@ -4,15 +4,14 @@ This short guide explains how to use a prebuilt `ap` binary so you can run the C
 
 - Install the binary: put the file on your `PATH`. For example:
 
-	- macOS / Linux:
 
-		```bash
-		sudo mv ap /usr/local/bin/
-		```
+  - macOS / Linux:
 
-	- Windows:
+    Extract the zip to a local bin directory and add it to your `PATH`.
 
-		Place `ap.exe` in a folder that's included in your `%PATH%` (for example `%USERPROFILE%\bin`) or add its folder to your PATH.
+  - Windows:
+
+    Place `ap.exe` in a folder that's included in your `%PATH%` (for example `%USERPROFILE%\bin`) or add its folder to your PATH.
 
 - Gateway credentials: export `WSO2AP_GW_USERNAME` and `WSO2AP_GW_PASSWORD` before running controller commands.
 
