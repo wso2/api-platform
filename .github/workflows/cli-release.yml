@@ -140,7 +140,7 @@ jobs:
             ### Reporting Issues
             We encourage you to report issues, improvements, and feature requests regarding WSO2 API Platform CLI through [WSO2 API Platform GIT Issues](https://github.com/wso2/api-platform/issues).
 
-            And please be advised that security issues must be reported to [security@wso2.com](mailto:security@wso2.com), not as a GitHub issue, in order to reach the proper audience. We strongly advise following the WSO2 Security Vulnerability Reporting Guidelines (https://docs.wso2.com/display/Security/WSO2+Security+Vulnerability+Reporting+Guidelines) when reporting security issues.
+            And please be advised that security issues must be reported to [security@wso2.com](mailto:security@wso2.com), not as a GitHub issue, in order to reach the proper audience. We strongly advise following the [WSO2 Security Vulnerability Reporting Guidelines](https://docs.wso2.com/display/Security/WSO2+Security+Vulnerability+Reporting+Guidelines) when reporting security issues.
           draft: false
           prerelease: false
           files: |
