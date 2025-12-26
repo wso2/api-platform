@@ -224,7 +224,7 @@ jobs:
         run: |
           cd kubernetes/it
           echo "Running Cucumber integration tests..."
-          go test -v -timeout 45m ./... 2>&1 | tee test-output.log
+          go run ./cmd/... 2>&1 | tee test-output.log
         env:
           # Configuration for the test suite
           DOCKER_REGISTRY: ${{ env.DOCKER_REGISTRY }}
