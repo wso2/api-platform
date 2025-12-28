@@ -1,28 +1,50 @@
 // REPLACE your existing OptionCard with this
-import * as React from "react";
-import { Box, Divider, Typography, Tooltip, CircularProgress } from "@mui/material";
-import LaunchOutlinedIcon from "@mui/icons-material/LaunchOutlined";
+import * as React from 'react';
+import {
+  Box,
+  Divider,
+  Typography,
+  Tooltip,
+  CircularProgress,
+} from '@mui/material';
+import LaunchOutlinedIcon from '@mui/icons-material/LaunchOutlined';
 import {
   Card,
   CardActionArea,
   CardContent,
-} from "../../components/src/components/Card";
-import Edit from "../../components/src/Icons/generated/Edit";
-import { Link } from "../../components/src/components/Link";
-import { Button } from "../../components/src/components/Button";
-import { IconButton } from "../../components/src/components/IconButton";
-import { Chip } from "../../components/src/components/Chip";
-import { PORTAL_CONSTANTS } from "../../constants/portal";
-import type { PortalCardProps } from "../../types/portal";
+} from '../../components/src/components/Card';
+import Edit from '../../components/src/Icons/generated/Edit';
+import { Link } from '../../components/src/components/Link';
+import { Button } from '../../components/src/components/Button';
+import { IconButton } from '../../components/src/components/IconButton';
+import { Chip } from '../../components/src/components/Chip';
+import { PORTAL_CONSTANTS } from '../../constants/portal';
+
+interface PortalCardProps {
+  title: string;
+  description: string;
+  enabled: boolean;
+  onClick: () => void;
+  logoSrc?: string;
+  logoAlt?: string;
+  portalUrl?: string;
+  userAuthLabel?: string;
+  authStrategyLabel?: string;
+  visibilityLabel?: string;
+  onEdit?: () => void;
+  onActivate?: () => void;
+  activating?: boolean;
+  testId?: string;
+}
 
 const valuePill = (
   text: string,
-  variant: "green" | "grey" | "red" = "grey"
+  variant: 'green' | 'grey' | 'red' = 'grey'
 ) => {
-  if (variant === "green") {
+  if (variant === 'green') {
     return <Chip label={text} color="success" />;
   }
-  if (variant === "red") {
+  if (variant === 'red') {
     return <Chip label={text} color="error" variant="outlined" />;
   }
   return <Chip label={text} variant="outlined" color="default" />;
@@ -31,7 +53,7 @@ const valuePill = (
 const PortalCard: React.FC<PortalCardProps> = ({
   title,
   description,
-  selected, // currently unused visually, but kept for parity
+  enabled, // indicates if the portal is activated/enabled
   onClick,
   logoSrc,
   logoAlt = PORTAL_CONSTANTS.DEFAULT_LOGO_ALT,
@@ -44,15 +66,15 @@ const PortalCard: React.FC<PortalCardProps> = ({
   activating,
 }) => {
   return (
-    <Card testId={""} style={{ maxWidth: 450 }}>
-      <CardActionArea onClick={onClick} testId={""}>
+    <Card testId="portal-card" style={{ maxWidth: 450 }}>
+      <CardActionArea onClick={onClick} testId="portal-card-action">
         <CardContent>
           <Box
             sx={{
-              display: "grid",
-              gridTemplateColumns: "auto 1fr auto",
+              display: 'grid',
+              gridTemplateColumns: 'auto 1fr auto',
               gap: 2,
-              alignItems: "start",
+              alignItems: 'start',
             }}
           >
             {/* Logo block */}
@@ -61,23 +83,23 @@ const PortalCard: React.FC<PortalCardProps> = ({
                 width: 100,
                 height: 100,
                 borderRadius: 2,
-                bgcolor: "transparent",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                bgcolor: 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
               <Box
                 sx={{
                   width: 100,
                   height: 100,
-                  borderRadius: "8px",
-                  border: "0.5px solid #abb8c2ff",
-                  bgcolor: "#d9e0e4ff",
-                  overflow: "hidden",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  borderRadius: '8px',
+                  border: '0.5px solid #abb8c2ff',
+                  bgcolor: '#d9e0e4ff',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               >
                 {logoSrc ? (
@@ -85,7 +107,7 @@ const PortalCard: React.FC<PortalCardProps> = ({
                     component="img"
                     src={logoSrc}
                     alt={logoAlt}
-                    sx={{ width: 90, height: 90, objectFit: "contain" }}
+                    sx={{ width: 90, height: 90, objectFit: 'contain' }}
                   />
                 ) : null}
               </Box>
@@ -93,7 +115,7 @@ const PortalCard: React.FC<PortalCardProps> = ({
 
             {/* Title + description + URL */}
             <Box sx={{ minWidth: 0 }}>
-              <Box sx={{ display: "flex", alignItems: "center" }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Typography sx={{ mr: 1 }} fontSize={18} fontWeight={600}>
                   {title}
                 </Typography>
@@ -114,7 +136,7 @@ const PortalCard: React.FC<PortalCardProps> = ({
                 sx={{
                   mt: 0.5,
                   lineHeight: 1.5,
-                  color: "rgba(0,0,0,0.6)",
+                  color: 'rgba(0,0,0,0.6)',
                   maxWidth: 300,
                 }}
                 variant="body2"
@@ -122,7 +144,7 @@ const PortalCard: React.FC<PortalCardProps> = ({
                 {description}
               </Typography>
 
-              <Box sx={{ mt: 1, display: "flex", alignItems: "center" }}>
+              <Box sx={{ mt: 1, display: 'flex', alignItems: 'center' }}>
                 <Box
                   sx={{
                     flex: 1,
@@ -130,26 +152,30 @@ const PortalCard: React.FC<PortalCardProps> = ({
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
-                    mr: 0.5
+                    mr: 0.5,
                   }}
                 >
                   <Tooltip
-                    title={selected ? "" : PORTAL_CONSTANTS.MESSAGES.URL_NOT_AVAILABLE}
+                    title={
+                      enabled
+                        ? ''
+                        : PORTAL_CONSTANTS.MESSAGES.URL_NOT_AVAILABLE
+                    }
                     placement="top"
                   >
                     <span>
                       <Link
-                        href={selected ? portalUrl : undefined}
+                        href={enabled ? portalUrl : undefined}
                         underline="hover"
                         target="_blank"
                         rel="noopener"
                         sx={{
                           fontWeight: 600,
-                          color: selected ? 'inherit' : 'text.disabled',
-                          cursor: selected ? 'pointer' : 'not-allowed'
+                          color: enabled ? 'inherit' : 'text.disabled',
+                          cursor: enabled ? 'pointer' : 'not-allowed',
                         }}
                         onClick={(e: React.MouseEvent) => {
-                          if (!selected) {
+                          if (!enabled) {
                             e.preventDefault();
                             return;
                           }
@@ -162,18 +188,22 @@ const PortalCard: React.FC<PortalCardProps> = ({
                   </Tooltip>
                 </Box>
                 <Tooltip
-                  title={selected ? PORTAL_CONSTANTS.MESSAGES.OPEN_PORTAL_URL : PORTAL_CONSTANTS.MESSAGES.URL_NOT_AVAILABLE}
+                  title={
+                    enabled
+                      ? PORTAL_CONSTANTS.MESSAGES.OPEN_PORTAL_URL
+                      : PORTAL_CONSTANTS.MESSAGES.URL_NOT_AVAILABLE
+                  }
                   placement="top"
                 >
                   <span>
                     <IconButton
                       size="small"
                       sx={{ ml: 0.5 }}
-                      disabled={!selected}
+                      disabled={!enabled}
                       onClick={(e: React.MouseEvent) => {
-                        if (!selected) return;
+                        if (!enabled) return;
                         e.stopPropagation();
-                        window.open(portalUrl, "_blank", "noopener,noreferrer");
+                        window.open(portalUrl, '_blank', 'noopener,noreferrer');
                       }}
                       aria-label={PORTAL_CONSTANTS.ARIA_LABELS.OPEN_PORTAL_URL}
                     >
@@ -192,47 +222,47 @@ const PortalCard: React.FC<PortalCardProps> = ({
           <Divider sx={{ my: 2 }} />
 
           {/* Spec rows */}
-          <Box sx={{ display: "grid", gap: 3 }}>
+          <Box sx={{ display: 'grid', gap: 3 }}>
             <Box
               sx={{
-                display: "grid",
-                gridTemplateColumns: "1fr auto",
-                alignItems: "center",
+                display: 'grid',
+                gridTemplateColumns: '1fr auto',
+                alignItems: 'center',
                 columnGap: 16,
               }}
             >
               <Typography>User authentication</Typography>
-              {valuePill(userAuthLabel, "grey")}
+              {valuePill(userAuthLabel, 'grey')}
             </Box>
 
             <Box
               sx={{
-                display: "grid",
-                gridTemplateColumns: "1fr auto",
-                alignItems: "center",
+                display: 'grid',
+                gridTemplateColumns: '1fr auto',
+                alignItems: 'center',
                 columnGap: 16,
               }}
             >
               <Typography>Authentication strategy</Typography>
-              {valuePill(authStrategyLabel, "grey")}
+              {valuePill(authStrategyLabel, 'grey')}
             </Box>
 
             <Box
               sx={{
-                display: "grid",
-                gridTemplateColumns: "1fr auto",
-                alignItems: "center",
+                display: 'grid',
+                gridTemplateColumns: '1fr auto',
+                alignItems: 'center',
                 columnGap: 16,
               }}
             >
               <Typography>Visibility</Typography>
-              {valuePill(visibilityLabel, selected ? "green" : "grey")}
+              {valuePill(visibilityLabel, enabled ? 'green' : 'grey')}
             </Box>
           </Box>
 
           {/* CTA */}
           <Box sx={{ mt: 2 }}>
-            {selected ? (
+            {enabled ? (
               <Button
                 fullWidth
                 disabled
@@ -242,7 +272,7 @@ const PortalCard: React.FC<PortalCardProps> = ({
                   color: 'success.contrastText',
                   '&:hover': {
                     backgroundColor: 'success.main',
-                  }
+                  },
                 }}
               >
                 {PORTAL_CONSTANTS.STATUS_LABELS.ACTIVATED}
@@ -259,7 +289,14 @@ const PortalCard: React.FC<PortalCardProps> = ({
                 sx={{ position: 'relative' }}
               >
                 {activating ? (
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 1,
+                    }}
+                  >
                     <CircularProgress size={18} color="inherit" />
                     <span>Activating...</span>
                   </Box>

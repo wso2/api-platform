@@ -1,19 +1,21 @@
-import { useCallback } from "react";
-import { getApiConfig } from "./apiConfig";
+import { useCallback } from 'react';
+import { getApiConfig } from './apiConfig';
+import { parseApiError } from '../utils/apiErrorUtils';
 
-/* ---------- Response types ---------- */
+// ---------------------------------------------------------
+// Types
+// ---------------------------------------------------------
 
 export type PublishResponse = {
-  message: string; // "API published successfully to API portal"
-  apiId: string;
-  apiPortalRefId: string;
-  publishedAt: string; // ISO string
+  success: boolean;
+  message: string;
+  timestamp: string;
 };
 
 export type UnpublishResponse = {
-  message: string; // "API unpublished successfully from API portal"
-  apiId: string;
-  unpublishedAt: string; // ISO string
+  success: boolean;
+  message: string;
+  timestamp: string;
 };
 
 export type Publication = {
@@ -33,7 +35,7 @@ export type ApiPublicationWithPortal = {
   portalUrl: string;
   apiUrl: string;
   hostname: string;
-  isActive: boolean;
+  isEnabled: boolean;
   createdAt: string;
   updatedAt: string;
   associatedAt: string;
@@ -63,77 +65,110 @@ export interface ApiPublishPayload {
   subscriptionPolicies: string[];
 }
 
-type PublicationsListResponse = {
+export type PublicationsListResponse = {
   count: number;
-  list: any[];
-  pagination?: { total: number; offset: number; limit: number } | null;
+  list: ApiPublicationWithPortal[];
+  pagination?: {
+    total: number;
+    offset: number;
+    limit: number;
+  } | null;
 };
+
+// ---------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------
 
 const normalizePublication = (item: any): ApiPublicationWithPortal => ({
   ...item,
   portalUrl: item.uiUrl ?? item.portalUrl,
 });
 
-// Hook that centralizes API calls related to publishing
+// ---------------------------------------------------------
+// API Hook: useApiPublishApi
+// ---------------------------------------------------------
+
 export const useApiPublishApi = () => {
-  const fetchPublications = useCallback(async (apiId: string): Promise<ApiPublicationWithPortal[]> => {
-    const { token, baseUrl } = getApiConfig();
-    const response = await fetch(`${baseUrl}/api/v1/apis/${apiId}/publications`, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${token}` },
-    });
+  const fetchPublications = useCallback(
+    async (apiId: string): Promise<ApiPublicationWithPortal[]> => {
+      const { token, baseUrl } = getApiConfig();
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Failed to fetch publications: ${response.status} ${response.statusText} ${errorBody}`);
-    }
+      const response = await fetch(
+        `${baseUrl}/api/v1/apis/${apiId}/publications`,
+        {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
 
-    const data = (await response.json()) as PublicationsListResponse;
-    return (data.list ?? []).map(normalizePublication);
-  }, []);
+      if (!response.ok) {
+        const errorMessage = await parseApiError(
+          response,
+          'fetch publications'
+        );
+        throw new Error(errorMessage);
+      }
 
-  const publishApiToDevPortal = useCallback(async (apiId: string, payload: ApiPublishPayload): Promise<PublishResponse> => {
-    const { token, baseUrl } = getApiConfig();
+      const data = (await response.json()) as PublicationsListResponse;
+      return (data.list ?? []).map(normalizePublication);
+    },
+    []
+  );
 
-    const response = await fetch(`${baseUrl}/api/v1/apis/${apiId}/devportals/publish`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
+  const publishApiToDevPortal = useCallback(
+    async (
+      apiId: string,
+      payload: ApiPublishPayload
+    ): Promise<PublishResponse> => {
+      const { token, baseUrl } = getApiConfig();
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Failed to publish API: ${response.status} ${response.statusText} ${errorBody}`);
-    }
+      const response = await fetch(
+        `${baseUrl}/api/v1/apis/${apiId}/devportals/publish`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        }
+      );
 
-    const data = (await response.json()) as PublishResponse;
-    return data;
-  }, []);
+      if (!response.ok) {
+        const errorMessage = await parseApiError(response, 'publish API');
+        throw new Error(errorMessage);
+      }
 
-  const unpublishApiFromDevPortal = useCallback(async (apiId: string, devPortalId: string): Promise<UnpublishResponse> => {
-    const { token, baseUrl } = getApiConfig();
+      return (await response.json()) as PublishResponse;
+    },
+    []
+  );
 
-    // Assume unpublish endpoint follows this shape; adjust if backend differs
-    const response = await fetch(`${baseUrl}/api/v1/apis/${apiId}/devportals/${devPortalId}/unpublish`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ devPortalId }),
-    });
+  const unpublishApiFromDevPortal = useCallback(
+    async (apiId: string, devPortalId: string): Promise<UnpublishResponse> => {
+      const { token, baseUrl } = getApiConfig();
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Failed to unpublish API: ${response.status} ${response.statusText} ${errorBody}`);
-    }
+      const response = await fetch(
+        `${baseUrl}/api/v1/apis/${apiId}/devportals/${devPortalId}/unpublish`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ devPortalId }),
+        }
+      );
 
-    const data = (await response.json()) as UnpublishResponse;
-    return data;
-  }, []);
+      if (!response.ok) {
+        const errorMessage = await parseApiError(response, 'unpublish API');
+        throw new Error(errorMessage);
+      }
+
+      return (await response.json()) as UnpublishResponse;
+    },
+    []
+  );
 
   return {
     fetchPublications,
@@ -141,4 +176,3 @@ export const useApiPublishApi = () => {
     unpublishApiFromDevPortal,
   };
 };
-

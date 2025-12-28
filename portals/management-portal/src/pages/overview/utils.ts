@@ -13,7 +13,8 @@ export const twoLetters = (s: string) => {
   return `${first}${second}`;
 };
 
-export const relativeTime = (d: Date) => {
+export const relativeTime = (d?: Date) => {
+  if (!d) return "";
   const diff = Math.max(0, Date.now() - d.getTime());
   const sec = Math.floor(diff / 1000);
   const min = Math.floor(sec / 60);

@@ -1,17 +1,11 @@
-import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  Stack,
-} from "@mui/material";
-import { useNavigate } from "react-router-dom";
-import { useDevPortals } from "../../../context/DevPortalContext";
-import { IconButton } from "../../../components/src/components/IconButton";
-import LaunchOutlinedIcon from "@mui/icons-material/LaunchOutlined";
+import { Box, Card, CardContent, Typography, Stack } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { useDevPortals } from '../../../context/DevPortalContext';
+import { IconButton } from '../../../components/src/components/IconButton';
+import LaunchOutlinedIcon from '@mui/icons-material/LaunchOutlined';
 
 // Import the logo image
-import BijiraDPLogo from "../../BijiraDPLogo.png";
+import BijiraDPLogo from '../../BijiraDPLogo.png';
 
 type Portal = { id: string; name: string; href: string; description?: string };
 
@@ -21,37 +15,46 @@ type Props = {
   portals?: Portal[];
 };
 
-export default function APIPortalWidget({ height = 220, href, portals = [] }: Props) {
+export default function APIPortalWidget({
+  height = 220,
+  href,
+  portals = [],
+}: Props) {
   const navigate = useNavigate();
   const { devportals } = useDevPortals();
 
   // Use provided portals or map devportals
-  const displayPortals = portals.length > 0 ? portals : devportals
-    .filter(portal => portal.isActive)
-    .map(portal => ({
-      id: portal.uuid,
-      name: portal.name,
-      href: portal.uiUrl || '#',
-      description: portal.description || ''
-    }));
+  const displayPortals =
+    portals.length > 0
+      ? portals
+      : devportals
+          // .filter((portal) => portal.isEnabled)
+          .map((portal) => ({
+            id: portal.uuid,
+            name: portal.name,
+            href: portal.uiUrl || '#',
+            description: portal.description || '',
+          }));
 
   return (
     <Card variant="outlined" sx={{ height }}>
-      <CardContent sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <CardContent
+        sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+      >
         <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5 }}>
           Dev Portals
         </Typography>
 
-        <Box sx={{ flex: 1, overflow: "auto" }}>
+        <Box sx={{ flex: 1, overflow: 'auto' }}>
           {displayPortals.length === 0 ? (
             <Box
               sx={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                height: "100%",
-                textAlign: "center",
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                textAlign: 'center',
                 py: 2,
               }}
             >
@@ -62,7 +65,7 @@ export default function APIPortalWidget({ height = 220, href, portals = [] }: Pr
                 sx={{ width: 48, height: 48, opacity: 0.6, mb: 1 }}
               />
               <Typography variant="body2" color="text.secondary">
-                No API portals available
+                No Developer Portals available
               </Typography>
             </Box>
           ) : (
@@ -71,8 +74,8 @@ export default function APIPortalWidget({ height = 220, href, portals = [] }: Pr
                 <Box
                   key={portal.id}
                   sx={(t) => ({
-                    display: "flex",
-                    alignItems: "center",
+                    display: 'flex',
+                    alignItems: 'center',
                     gap: 1.5,
                     p: 1.5,
                     borderRadius: 2,
@@ -85,9 +88,9 @@ export default function APIPortalWidget({ height = 220, href, portals = [] }: Pr
                       variant="body2"
                       fontWeight={600}
                       sx={{
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
                       }}
                     >
                       {portal.name}
@@ -97,10 +100,10 @@ export default function APIPortalWidget({ height = 220, href, portals = [] }: Pr
                         variant="caption"
                         color="#666666"
                         sx={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          display: "block",
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          display: 'block',
                           mt: 0.25,
                         }}
                       >
@@ -113,7 +116,11 @@ export default function APIPortalWidget({ height = 220, href, portals = [] }: Pr
                       size="small"
                       onClick={(e: React.MouseEvent) => {
                         e.stopPropagation();
-                        window.open(portal.href, '_blank', 'noopener,noreferrer');
+                        window.open(
+                          portal.href,
+                          '_blank',
+                          'noopener,noreferrer'
+                        );
                       }}
                       sx={{ flexShrink: 0 }}
                     >
@@ -130,7 +137,7 @@ export default function APIPortalWidget({ height = 220, href, portals = [] }: Pr
           <Typography
             variant="body2"
             color="primary"
-            sx={{ mt: 1.5, cursor: "pointer" }}
+            sx={{ mt: 1.5, cursor: 'pointer' }}
             onClick={() => navigate(href)}
           >
             Manage Dev Portals →
