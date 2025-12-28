@@ -20,20 +20,20 @@ package eventlistener
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 	"go.uber.org/zap"
 )
 
-// EventListener subscribes to EventHub and processes events to update XDS
+// EventListener subscribes to an EventSource and processes events to update XDS.
+// It uses the generic EventSource interface, allowing it to work with different
+// event delivery mechanisms (EventHub, Kafka, RabbitMQ, etc.) and enabling easy mocking for tests.
 type EventListener struct {
-	eventHub        eventhub.EventHub
+	eventSource     EventSource              // Generic event source (EventHub, Kafka, etc.)
 	store           *storage.ConfigStore     // In-memory config store
 	db              storage.Storage          // Persistent storage (SQLite)
 	snapshotManager *xds.SnapshotManager     // XDS snapshot manager
@@ -41,15 +41,27 @@ type EventListener struct {
 	routerConfig    *config.RouterConfig     // Router configuration for vhosts
 	logger          *zap.Logger
 
-	eventChan chan []eventhub.Event // Buffered channel (size 10)
+	eventChan chan []Event // Buffered channel (size 10) for generic events
 	ctx       context.Context
 	cancel    context.CancelFunc
 	wg        sync.WaitGroup
 }
 
-// NewEventListener creates a new EventListener instance
+// NewEventListener creates a new EventListener instance.
+//
+// Parameters:
+//   - eventSource: The event source to subscribe to (can be EventHubAdapter, MockEventSource, or any EventSource implementation)
+//   - store: In-memory configuration store
+//   - db: Persistent storage (SQLite)
+//   - snapshotManager: xDS snapshot manager for updating Envoy configuration
+//   - policyManager: Optional policy manager (can be nil)
+//   - routerConfig: Router configuration for vhosts
+//   - logger: Structured logger
+//
+// Returns:
+//   - *EventListener ready to be started
 func NewEventListener(
-	eventHub eventhub.EventHub,
+	eventSource EventSource,
 	store *storage.ConfigStore,
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
@@ -58,7 +70,7 @@ func NewEventListener(
 	logger *zap.Logger,
 ) *EventListener {
 	return &EventListener{
-		eventHub:        eventHub,
+		eventSource:     eventSource,
 		store:           store,
 		db:              db,
 		snapshotManager: snapshotManager,
@@ -68,23 +80,18 @@ func NewEventListener(
 	}
 }
 
-// Start initializes the event listener and starts processing events
+// Start initializes the event listener and starts processing events.
+// Subscribes to the "default" organization and starts the event processing goroutine.
 func (el *EventListener) Start(ctx context.Context) error {
 	el.ctx, el.cancel = context.WithCancel(ctx)
 
-	// Create buffered channel with size 10
-	el.eventChan = make(chan []eventhub.Event, 10)
+	// Create buffered channel with size 10 for generic events
+	el.eventChan = make(chan []Event, 10)
 
-	// Register "default" organization (idempotent - may already exist)
-	orgID := eventhub.OrganizationID("default")
-	if err := el.eventHub.RegisterOrganization(orgID); err != nil {
-		// Ignore if already exists
-		el.logger.Debug("Organization may already be registered", zap.String("organization", string(orgID)))
-	}
-
-	// Subscribe to events
-	if err := el.eventHub.Subscribe(orgID, el.eventChan); err != nil {
-		return fmt.Errorf("failed to subscribe to events: %w", err)
+	// Subscribe to "default" organization events via the EventSource
+	organizationID := "default"
+	if err := el.eventSource.Subscribe(ctx, organizationID, el.eventChan); err != nil {
+		return err // Let the EventSource adapter handle details
 	}
 
 	// Start processing goroutine
@@ -92,7 +99,7 @@ func (el *EventListener) Start(ctx context.Context) error {
 	// TODO: (VirajSalaka) Should recover in case of panics
 	go el.processEvents()
 
-	el.logger.Info("EventListener started", zap.String("organization", "default"))
+	el.logger.Info("EventListener started", zap.String("organization", organizationID))
 	return nil
 }
 
@@ -114,16 +121,17 @@ func (el *EventListener) processEvents() {
 	}
 }
 
-// handleEvent processes a single event and delegates based on event type
-func (el *EventListener) handleEvent(event eventhub.Event) {
+// handleEvent processes a single event and delegates based on event type.
+// Uses the generic Event type that works with any EventSource implementation.
+func (el *EventListener) handleEvent(event Event) {
 	log := el.logger.With(
-		zap.String("event_type", string(event.EventType)),
+		zap.String("event_type", event.EventType),
 		zap.String("action", event.Action),
 		zap.String("entity_id", event.EntityID),
 	)
 
 	switch event.EventType {
-	case eventhub.EventTypeAPI:
+	case "API": // EventTypeAPI constant
 		el.processAPIEvents(event)
 	default:
 		log.Debug("Ignoring non-API event")

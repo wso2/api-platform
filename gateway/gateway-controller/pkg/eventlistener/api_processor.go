@@ -25,15 +25,15 @@ import (
 	"time"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 	"go.uber.org/zap"
 )
 
-// processAPIEvents handles API events based on action type
-func (el *EventListener) processAPIEvents(event eventhub.Event) {
+// processAPIEvents handles API events based on action type.
+// Works with the generic Event type from any EventSource implementation.
+func (el *EventListener) processAPIEvents(event Event) {
 	log := el.logger.With(
 		zap.String("api_id", event.EntityID),
 		zap.String("action", event.Action),
