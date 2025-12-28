@@ -1,0 +1,12 @@
+# Simple workflow to test PRs
+name: PR Hello
+
+on:
+  pull_request:
+
+jobs:
+  say-hi:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print hi
+        run: echo "hi"
