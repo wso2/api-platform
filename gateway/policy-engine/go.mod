@@ -52,9 +52,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251213004720-97cd9d5aeac2 // indirect
 )
 
-// Replace old monolithic genproto to prevent ambiguous imports with split modules
-// This forces all references to use a version compatible with the new split structure
-replace google.golang.org/genproto => google.golang.org/genproto v0.0.0-20240227224415-6ceb2ff114de
-
 // Local module replacements for Docker builds
 replace github.com/wso2/api-platform/sdk => ../../sdk
