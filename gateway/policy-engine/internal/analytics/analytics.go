@@ -24,10 +24,10 @@ import (
 	"time"
 
 	v3 "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3"
-	"github.com/policy-engine/policy-engine/internal/analytics/dto"
-	analytics_publisher "github.com/policy-engine/policy-engine/internal/analytics/publishers"
-	"github.com/policy-engine/policy-engine/internal/config"
-	"github.com/policy-engine/policy-engine/internal/constants"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/analytics/dto"
+	analytics_publisher "github.com/wso2/api-platform/gateway/policy-engine/internal/analytics/publishers"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/constants"
 )
 
 // EventCategory represents the category of an event.

@@ -33,15 +33,15 @@ import (
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
 
-	"github.com/policy-engine/policy-engine/internal/admin"
-	"github.com/policy-engine/policy-engine/internal/config"
-	"github.com/policy-engine/policy-engine/internal/executor"
-	"github.com/policy-engine/policy-engine/internal/kernel"
-	"github.com/policy-engine/policy-engine/internal/pkg/cel"
-	"github.com/policy-engine/policy-engine/internal/registry"
-	"github.com/policy-engine/policy-engine/internal/utils"
-	"github.com/policy-engine/policy-engine/internal/tracing"
-	"github.com/policy-engine/policy-engine/internal/xdsclient"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/admin"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/executor"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/kernel"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/pkg/cel"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/tracing"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/utils"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/xdsclient"
 )
 
 // Version information (set via ldflags during build)

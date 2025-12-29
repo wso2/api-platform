@@ -1,0 +1,10 @@
+go 1.25.1
+
+use (
+	./common
+	./gateway/gateway-builder
+	./gateway/gateway-controller
+	./gateway/policy-engine
+	./platform-api/src
+	./sdk
+)
