@@ -225,7 +225,7 @@ The gateway controller uses the authentication context of the requesting user to
 #### Basic Authentication Example
 
 ```bash
-curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-key" \
+curl -X POST "http://localhost:9090/apis/weather-api-v1.0/generate-api-key" \
   -H "Content-Type: application/json" \
   -u "username:password" \
   -d '{"name": "production-key"}'
@@ -234,7 +234,7 @@ curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-key" \
 #### JWT Authentication Example
 
 ```bash
-curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-key" \
+curl -X POST "http://localhost:9090/apis/weather-api-v1.0/generate-api-key" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
   -d '{"name": "production-key"}'
@@ -244,7 +244,7 @@ curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-key" \
 
 Generate a new API key for a specific API.
 
-**Endpoint**: `POST /apis/{id}/api-key`
+**Endpoint**: `POST /apis/{id}/generate-api-key`
 
 #### Request Parameters
 
@@ -269,7 +269,7 @@ Generate a new API key for a specific API.
 | Field                | Type | Required | Description |
 |----------------------|------|----------|-------------|
 | `name`               | string | No | Custom name for the API key. If not provided, a default name will be generated |
-| `expires_at`         | string (ISO 8601) | No | Specific expiration timestamp for the API key |
+| `expires_at`         | string (ISO 8601) | No | Specific expiration timestamp for the API key. If both `expires_in` and `expires_at` are provided, `expires_at` takes precedence |
 | `expires_in`         | object | No | Relative expiration time from creation |
 | `expires_in.duration` | integer | Yes (if expiresIn used) | Duration value |
 | `expires_in.unit`     | string | Yes (if expiresIn used) | Time unit: `seconds`, `minutes`, `hours`, `days`, `weeks`, `months` |
@@ -278,7 +278,7 @@ Generate a new API key for a specific API.
 
 **Using Basic Authentication:**
 ```bash
-curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-key" \
+curl -X POST "http://localhost:9090/apis/weather-api-v1.0/generate-api-key" \
   -H "Content-Type: application/json" \
   -u "username:password" \
   -d '{
@@ -292,7 +292,7 @@ curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-key" \
 
 **Using JWT Authentication:**
 ```bash
-curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-key" \
+curl -X POST "http://localhost:9090/apis/weather-api-v1.0/generate-api-key" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
   -d '{
@@ -338,12 +338,12 @@ curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-key" \
 | `apiKey.expires_at` | string | ISO 8601 expiration timestamp (if set)         |
 | `apiKey.operations` | array | Allowed operations (currently `["*"]` for all) |
 
-### View API Keys
+### List API Keys
 
-Retrieve a list of all active API keys for a specific API created by the authenticated user.
+Retrieve all active API keys for the specified API created by the user.
 If the user is an admin, all API keys for the API are returned.
 
-**Endpoint**: `GET /apis/{id}/api-key`
+**Endpoint**: `GET /apis/{id}/api-keys`
 
 #### Request Parameters
 
@@ -355,13 +355,13 @@ If the user is an admin, all API keys for the API are returned.
 
 **Using Basic Authentication:**
 ```bash
-curl -X GET "http://localhost:9090/apis/weather-api-v1.0/api-key" \
+curl -X GET "http://localhost:9090/apis/weather-api-v1.0/api-keys" \
   -u "username:password"
 ```
 
 **Using JWT Authentication:**
 ```bash
-curl -X GET "http://localhost:9090/apis/weather-api-v1.0/api-key" \
+curl -X GET "http://localhost:9090/apis/weather-api-v1.0/api-keys" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
@@ -372,7 +372,6 @@ curl -X GET "http://localhost:9090/apis/weather-api-v1.0/api-key" \
   "apiKeys": [
     {
       "apiId": "weather-api-v1.0",
-      "api_key": "",
       "created_at": "2025-12-22T13:02:24.504957558Z",
       "created_by": "john",
       "expires_at": "2025-12-23T13:02:24.504957558Z",
@@ -382,7 +381,6 @@ curl -X GET "http://localhost:9090/apis/weather-api-v1.0/api-key" \
     },
     {
       "apiId": "weather-api-v1.0",
-      "api_key": "",
       "created_at": "2025-12-22T13:02:24.504957558Z",
       "created_by": "admin",
       "expires_at": "2026-03-22T13:02:24.504957558Z",
@@ -411,7 +409,7 @@ curl -X GET "http://localhost:9090/apis/weather-api-v1.0/api-key" \
 Rotate an existing API key, generating a new key value while maintaining the same name and metadata.
 Only the user who created the key can perform this operation.
 
-**Endpoint**: `PUT /apis/{id}/api-key/{apiKeyName}`
+**Endpoint**: `POST /apis/{id}/api-keys/{apiKeyName}/regenerate`
 
 #### Request Parameters
 
@@ -437,7 +435,7 @@ Only the user who created the key can perform this operation.
 
 **Using Basic Authentication:**
 ```bash
-curl -X PUT "http://localhost:9090/apis/weather-api-v1.0/api-key/production-key" \
+curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-keys/production-key/regenerate" \
   -H "Content-Type: application/json" \
   -u "username:password" \
   -d '{
@@ -450,7 +448,7 @@ curl -X PUT "http://localhost:9090/apis/weather-api-v1.0/api-key/production-key"
 
 **Using JWT Authentication:**
 ```bash
-curl -X PUT "http://localhost:9090/apis/weather-api-v1.0/api-key/production-key" \
+curl -X POST "http://localhost:9090/apis/weather-api-v1.0/api-keys/production-key/regenerate" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
   -d '{
@@ -487,32 +485,58 @@ curl -X PUT "http://localhost:9090/apis/weather-api-v1.0/api-key/production-key"
 Revoke an existing API key, making it permanently invalid for authentication.
 The user who created the key or an admin can perform this operation.
 
-**Endpoint**: `DELETE /apis/{id}/api-key/{apiKey}`
+**Endpoint**: `POST /apis/{id}/revoke-api-key`
 
 #### Request Parameters
 
 | Parameter | Type | Location | Required | Description |
 |-----------|------|----------|----------|-------------|
 | `id` | string | path | Yes | Unique public identifier of the API |
-| `apiKey` | string | path | Yes | The actual API key value to revoke |
+
+#### Request Body
+
+```json
+{
+  "api_key": "apip_4f3c2e1d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d"
+}
+```
+
+**Request Body Schema:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `api_key` | string | Yes | The actual API key value to revoke |
 
 #### Example Request
 
 **Using Basic Authentication:**
 ```bash
-curl -X DELETE "http://localhost:9090/apis/weather-api-v1.0/api-key/apip_4f3c2e1d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d" \
-  -u "username:password"
+curl -X POST "http://localhost:9090/apis/weather-api-v1.0/revoke-api-key" \
+  -H "Content-Type: application/json" \
+  -u "username:password" \
+  -d '{
+    "api_key": "apip_4f3c2e1d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d"
+  }'
 ```
 
 **Using JWT Authentication:**
 ```bash
-curl -X DELETE "http://localhost:9090/apis/weather-api-v1.0/api-key/apip_4f3c2e1d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+curl -X POST "http://localhost:9090/apis/weather-api-v1.0/revoke-api-key" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -d '{
+    "api_key": "apip_4f3c2e1d5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d"
+  }'
 ```
 
-#### Successful Response (204 No Content)
+#### Successful Response (200 OK)
 
-No response body is returned for successful revocation.
+```json
+{
+  "status": "success",
+  "message": "API key revoked successfully"
+}
+```
 
 **Note**: Once revoked, an API key cannot be restored. Generate a new API key if needed.
 

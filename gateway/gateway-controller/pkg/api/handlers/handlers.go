@@ -2290,7 +2290,7 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 }
 
 // GenerateAPIKey implements ServerInterface.GenerateAPIKey
-// (POST /apis/{id}/api-key)
+// (POST /apis/{id}/generate-api-key)
 func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
@@ -2359,8 +2359,8 @@ func (s *APIServer) GenerateAPIKey(c *gin.Context, id string) {
 }
 
 // RevokeAPIKey implements ServerInterface.RevokeAPIKey
-// (DELETE /apis/{id}/api-key/{apiKey})
-func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKey string) {
+// (POST /apis/{id}/revoke-api-key)
+func (s *APIServer) RevokeAPIKey(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 	handle := id
@@ -2377,23 +2377,16 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKey string) {
 		zap.String("user", user.UserID),
 		zap.String("correlation_id", correlationID))
 
-	// Parse and validate
-	if strings.TrimSpace(id) == "" {
-		log.Warn("API handle is required for revocation",
-			zap.String("correlation_id", correlationID))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: "API handle is required for revocation",
-		})
-		return
-	}
-	if strings.TrimSpace(apiKey) == "" {
-		log.Warn("API key is required for revocation",
+	// Parse and validate request body
+	var request api.APIKeyRevocationRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		log.Warn("Invalid request body for API key revocation",
+			zap.Error(err),
 			zap.String("handle", handle),
 			zap.String("correlation_id", correlationID))
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
-			Message: "API key is required for revocation",
+			Message: fmt.Sprintf("Invalid request body: %v", err),
 		})
 		return
 	}
@@ -2401,13 +2394,13 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKey string) {
 	// Prepare parameters
 	params := utils.APIKeyRevocationParams{
 		Handle:        handle,
-		APIKey:        apiKey,
+		Request:       request,
 		User:          user,
 		CorrelationID: correlationID,
 		Logger:        log,
 	}
 
-	err := s.apiKeyService.RevokeAPIKey(params)
+	result, err := s.apiKeyService.RevokeAPIKey(params)
 	if err != nil {
 		// Check error type to determine appropriate status code
 		if strings.Contains(err.Error(), "not found") {
@@ -2426,16 +2419,16 @@ func (s *APIServer) RevokeAPIKey(c *gin.Context, id string, apiKey string) {
 
 	log.Info("API key revoked successfully",
 		zap.String("handle", handle),
-		zap.String("key", s.apiKeyService.MaskAPIKey(apiKey)),
+		zap.String("key", s.apiKeyService.MaskAPIKey(request.ApiKey)),
 		zap.String("user", user.UserID),
 		zap.String("correlation_id", correlationID))
 
 	// Return the response using the generated schema
-	c.JSON(http.StatusNoContent, nil)
+	c.JSON(http.StatusOK, result.Response)
 }
 
 // RotateAPIKey implements ServerInterface.RotateAPIKey
-// (PUT /apis/{id}/api-key/{apiKeyName})
+// (POST /apis/{id}/api-keys/{apiKeyName}/regenerate)
 func (s *APIServer) RotateAPIKey(c *gin.Context, id string, apiKeyName string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
@@ -2506,7 +2499,7 @@ func (s *APIServer) RotateAPIKey(c *gin.Context, id string, apiKeyName string) {
 }
 
 // ListAPIKeys implements ServerInterface.ListAPIKeys
-// (GET /apis/{id}/api-key)
+// (GET /apis/{id}/api-keys)
 func (s *APIServer) ListAPIKeys(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
