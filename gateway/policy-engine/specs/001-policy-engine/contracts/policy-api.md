@@ -43,7 +43,7 @@ The Policy Engine uses a **multi-module architecture** to avoid cyclic dependenc
 **Import Rules**:
 - ✅ Policy implementations: Import `github.com/policy-engine/sdk/policy`
 - ✅ Policy implementations: Import `github.com/policy-engine/sdk/core` (if needed for registry)
-- ❌ Policy implementations: Never import `github.com/policy-engine/policy-engine`
+- ❌ Policy implementations: Never import `github.com/wso2/api-platform/gateway/policy-engine`
 
 ---
 

@@ -112,7 +112,7 @@ src/
 ├── pkg/                        # Shared packages
 │   ├── validation/             # Parameter validation engine
 │   └── cel/                    # CEL utilities
-└── go.mod                      # Main module: github.com/policy-engine/policy-engine
+└── go.mod                      # Main module: github.com/wso2/api-platform/gateway/policy-engine
 
 # ========================================
 # SDK Module (Separate module to avoid cyclic dependencies)

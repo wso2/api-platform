@@ -29,7 +29,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/policy-engine/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/config"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -49,7 +49,6 @@ func InitTracer(cfg *config.Config) (func(), error) {
 		slog.InfoContext(ctx, "Tracing is disabled by configuration")
 		return func() {}, nil
 	}
-	
 
 	endpoint := cfg.TracingConfig.Endpoint
 	if endpoint == "" {
@@ -162,37 +161,37 @@ func InitTracer(cfg *config.Config) (func(), error) {
 
 // ExtractTraceContext extracts W3C Trace Context from gRPC metadata
 func ExtractTraceContext(ctx context.Context) context.Context {
-    md, ok := metadata.FromIncomingContext(ctx)
-    if !ok {
-        slog.DebugContext(ctx, "No gRPC metadata in context")
-        return ctx
-    }
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		slog.DebugContext(ctx, "No gRPC metadata in context")
+		return ctx
+	}
 
-    // Create carrier from gRPC metadata
-    carrier := propagation.MapCarrier{}
+	// Create carrier from gRPC metadata
+	carrier := propagation.MapCarrier{}
 
-    for key, values := range md {
-        lowerKey := strings.ToLower(key)
-        // gRPC metadata is case-insensitive
-        if lowerKey == "traceparent" || lowerKey == "tracestate" {
-            if len(values) > 0 {
-                carrier.Set(lowerKey, values[0])
-                slog.DebugContext(ctx, "Extracted trace header", "header", lowerKey, "value", values[0])
-            }
-        }
-    }
+	for key, values := range md {
+		lowerKey := strings.ToLower(key)
+		// gRPC metadata is case-insensitive
+		if lowerKey == "traceparent" || lowerKey == "tracestate" {
+			if len(values) > 0 {
+				carrier.Set(lowerKey, values[0])
+				slog.DebugContext(ctx, "Extracted trace header", "header", lowerKey, "value", values[0])
+			}
+		}
+	}
 
-    // Extract using W3C Trace Context propagator
-    propagator := otel.GetTextMapPropagator()
-    newCtx := propagator.Extract(ctx, carrier)
+	// Extract using W3C Trace Context propagator
+	propagator := otel.GetTextMapPropagator()
+	newCtx := propagator.Extract(ctx, carrier)
 
-    // Verify extraction
-    span := trace.SpanContextFromContext(newCtx)
-    if span.IsValid() {
-        slog.DebugContext(ctx, "Successfully extracted trace", "trace_id", span.TraceID().String())
-    } else {
-        slog.WarnContext(ctx, "No valid trace context extracted")
-    }
+	// Verify extraction
+	span := trace.SpanContextFromContext(newCtx)
+	if span.IsValid() {
+		slog.DebugContext(ctx, "Successfully extracted trace", "trace_id", span.TraceID().String())
+	} else {
+		slog.WarnContext(ctx, "No valid trace context extracted")
+	}
 
-    return newCtx
+	return newCtx
 }

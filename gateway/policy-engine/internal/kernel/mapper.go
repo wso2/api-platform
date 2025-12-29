@@ -21,7 +21,7 @@ package kernel
 import (
 	"sync"
 
-	"github.com/policy-engine/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
 )
 
 // RouteMapping maps Envoy metadata keys to PolicyChains for route-specific processing

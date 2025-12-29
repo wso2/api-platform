@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/policy-engine/gateway-builder/pkg/types"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 )
 
 // DockerfileGenerator orchestrates generating all Dockerfiles and artifacts

@@ -17,7 +17,7 @@
 
 package publishers
 
-import "github.com/policy-engine/policy-engine/internal/analytics/dto"
+import "github.com/wso2/api-platform/gateway/policy-engine/internal/analytics/dto"
 
 // Publisher represents an analytics publisher.
 type Publisher interface {

@@ -27,8 +27,8 @@ import (
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/moesif/moesifapi-go"
 	"github.com/moesif/moesifapi-go/models"
-	"github.com/policy-engine/policy-engine/internal/analytics/dto"
-	"github.com/policy-engine/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/analytics/dto"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/config"
 )
 
 const (

@@ -21,7 +21,7 @@ package kernel
 import (
 	"fmt"
 
-	"github.com/policy-engine/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 

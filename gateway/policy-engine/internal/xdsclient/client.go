@@ -35,8 +35,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/anypb"
 
-	"github.com/policy-engine/policy-engine/internal/kernel"
-	"github.com/policy-engine/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/kernel"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
 )
 
 // Client is the xDS client that subscribes to policy chain configurations via ADS

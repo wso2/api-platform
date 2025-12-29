@@ -27,7 +27,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/policy-engine/gateway-builder/pkg/types"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 )
 
 // ValidateGoInterface checks if the policy implements required Policy interfaces

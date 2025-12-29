@@ -25,9 +25,9 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/policy-engine/policy-engine/internal/config"
-	"github.com/policy-engine/policy-engine/internal/kernel"
-	"github.com/policy-engine/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/kernel"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
 )
 
 // Server is the admin HTTP server

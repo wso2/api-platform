@@ -39,10 +39,10 @@ import (
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/policy-engine/policy-engine/internal/constants"
-	"github.com/policy-engine/policy-engine/internal/config"
-	"github.com/policy-engine/policy-engine/internal/executor"
-	"github.com/policy-engine/policy-engine/internal/tracing"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/constants"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/executor"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/tracing"
 )
 
 // ExternalProcessorServer implements the Envoy external processor service
@@ -124,7 +124,7 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req *extprocv3.ProcessingRequest, execCtx **PolicyExecutionContext, parentSpan trace.Span) (*extprocv3.ProcessingResponse, error) {
 	switch req.Request.(type) {
 	case *extprocv3.ProcessingRequest_RequestHeaders:
-		
+
 		// Create span for request headers processing - NoOp if tracing disabled
 		_, span := s.tracer.Start(ctx, constants.SpanProcessRequestHeaders,
 			trace.WithSpanKind(trace.SpanKindInternal))
@@ -141,7 +141,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 				attribute.String(constants.AttrAPIContext, rm.Context),
 				attribute.String(constants.AttrOperationPath, rm.OperationPath),
 			)
-		}	
+		}
 		// If no execution context (no policy chain), skip processing
 		if *execCtx == nil {
 			if span.IsRecording() {
@@ -152,7 +152,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		if span.IsRecording() {
 			span.SetAttributes(attribute.Int(constants.AttrPolicyCount, len((*execCtx).policyChain.Policies)))
 		}
-		
+
 		resp, err := (*execCtx).processRequestHeaders(ctx)
 		if span.IsRecording() {
 			if err != nil {
@@ -296,7 +296,7 @@ func (s *ExternalProcessorServer) initializeExecutionContext(ctx context.Context
 func (s *ExternalProcessorServer) skipAllProcessing(routeMetadata RouteMetadata) *extprocv3.ProcessingResponse {
 	// Build analytics metadata using route metadataeven when skipping policy processing
 	analyticsData := extractMetadataFromRouteMetadata(routeMetadata)
-	
+
 	// Build the analytics struct
 	analyticsStruct, err := structpb.NewStruct(analyticsData)
 	if err != nil {
@@ -304,10 +304,10 @@ func (s *ExternalProcessorServer) skipAllProcessing(routeMetadata RouteMetadata)
 		slog.Warn("Failed to build analytics struct for skip processing", "error", err)
 		analyticsStruct = &structpb.Struct{Fields: make(map[string]*structpb.Value)}
 	}
-	
+
 	// Build dynamic metadata structure
 	dynamicMetadata := buildDynamicMetadata(analyticsStruct)
-	
+
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
 			RequestHeaders: &extprocv3.HeadersResponse{},

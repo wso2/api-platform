@@ -25,8 +25,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/policy-engine/gateway-builder/pkg/errors"
-	"github.com/policy-engine/gateway-builder/pkg/types"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/errors"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 )
 
 // CompileBinary compiles the policy engine binary with all discovered policies

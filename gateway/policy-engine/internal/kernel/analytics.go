@@ -23,19 +23,19 @@ import (
 
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/policy-engine/policy-engine/internal/constants"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/constants"
 )
 
 // Constants for analytics metadata
 const (
-		Wso2MetadataPrefix = "x-wso2-"
-		APIIDKey = Wso2MetadataPrefix + "api-id"
-		APINameKey = Wso2MetadataPrefix + "api-name"
-		APIVersionKey = Wso2MetadataPrefix + "api-version"
-		APITypeKey = Wso2MetadataPrefix + "api-type"
-		APIContextKey = Wso2MetadataPrefix + "api-context"
-		OperationPathKey = Wso2MetadataPrefix + "operation-path"
-		APIKindKey = Wso2MetadataPrefix + "api-kind"
+	Wso2MetadataPrefix = "x-wso2-"
+	APIIDKey           = Wso2MetadataPrefix + "api-id"
+	APINameKey         = Wso2MetadataPrefix + "api-name"
+	APIVersionKey      = Wso2MetadataPrefix + "api-version"
+	APITypeKey         = Wso2MetadataPrefix + "api-type"
+	APIContextKey      = Wso2MetadataPrefix + "api-context"
+	OperationPathKey   = Wso2MetadataPrefix + "operation-path"
+	APIKindKey         = Wso2MetadataPrefix + "api-kind"
 )
 
 // buildAnalyticsStruct converts analytics metadata map to structpb.Struct

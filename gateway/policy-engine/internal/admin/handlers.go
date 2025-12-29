@@ -22,8 +22,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/policy-engine/policy-engine/internal/kernel"
-	"github.com/policy-engine/policy-engine/internal/registry"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/kernel"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
 )
 
 // ConfigDumpHandler handles GET /config_dump requests
