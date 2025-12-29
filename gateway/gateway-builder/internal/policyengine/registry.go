@@ -25,8 +25,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/policy-engine/gateway-builder/pkg/types"
-	"github.com/policy-engine/gateway-builder/templates"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
+	"github.com/wso2/api-platform/gateway/gateway-builder/templates"
 )
 
 // PolicyImport represents a policy import for code generation

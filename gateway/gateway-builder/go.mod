@@ -1,4 +1,4 @@
-module github.com/policy-engine/gateway-builder
+module github.com/wso2/api-platform/gateway/gateway-builder
 
 go 1.25.1
 

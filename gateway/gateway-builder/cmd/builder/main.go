@@ -26,14 +26,14 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/policy-engine/gateway-builder/internal/compilation"
-	"github.com/policy-engine/gateway-builder/internal/discovery"
-	"github.com/policy-engine/gateway-builder/internal/docker"
-	"github.com/policy-engine/gateway-builder/internal/manifest"
-	"github.com/policy-engine/gateway-builder/internal/policyengine"
-	"github.com/policy-engine/gateway-builder/internal/validation"
-	"github.com/policy-engine/gateway-builder/pkg/errors"
-	"github.com/policy-engine/gateway-builder/pkg/types"
+	"github.com/wso2/api-platform/gateway/gateway-builder/internal/compilation"
+	"github.com/wso2/api-platform/gateway/gateway-builder/internal/discovery"
+	"github.com/wso2/api-platform/gateway/gateway-builder/internal/docker"
+	"github.com/wso2/api-platform/gateway/gateway-builder/internal/manifest"
+	"github.com/wso2/api-platform/gateway/gateway-builder/internal/policyengine"
+	"github.com/wso2/api-platform/gateway/gateway-builder/internal/validation"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/errors"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 )
 
 const (

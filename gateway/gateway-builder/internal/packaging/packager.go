@@ -27,9 +27,9 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/policy-engine/gateway-builder/pkg/errors"
-	"github.com/policy-engine/gateway-builder/pkg/types"
-	"github.com/policy-engine/gateway-builder/templates"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/errors"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
+	"github.com/wso2/api-platform/gateway/gateway-builder/templates"
 )
 
 // GenerateDockerfile generates the runtime Dockerfile

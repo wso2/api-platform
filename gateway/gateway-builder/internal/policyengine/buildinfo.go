@@ -24,8 +24,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/policy-engine/gateway-builder/pkg/types"
-	"github.com/policy-engine/gateway-builder/templates"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
+	"github.com/wso2/api-platform/gateway/gateway-builder/templates"
 )
 
 // GenerateBuildInfo generates the build_info.go file with metadata
