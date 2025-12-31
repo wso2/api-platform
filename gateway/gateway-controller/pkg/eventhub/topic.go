@@ -81,6 +81,29 @@ func (r *organizationRegistry) addSubscriber(id OrganizationID, ch chan<- []Even
 	return nil
 }
 
+// removeSubscriber removes a subscription channel from an organization
+func (r *organizationRegistry) removeSubscriber(id OrganizationID, ch chan<- []Event) error {
+	r.mu.RLock()
+	org, exists := r.orgs[id]
+	r.mu.RUnlock()
+
+	if !exists {
+		return ErrOrganizationNotFound
+	}
+
+	org.subscriberMu.Lock()
+	defer org.subscriberMu.Unlock()
+
+	// Find and remove the subscriber
+	for i, sub := range org.subscribers {
+		if sub == ch {
+			org.subscribers = append(org.subscribers[:i], org.subscribers[i+1:]...)
+			return nil
+		}
+	}
+	return nil // Not found is not an error
+}
+
 // getAll returns all registered organizations
 func (r *organizationRegistry) getAll() []*organization {
 	r.mu.RLock()

@@ -3,186 +3,94 @@ package eventhub
 import (
 	"context"
 	"database/sql"
-	"fmt"
-	"sync"
 	"time"
 
 	"go.uber.org/zap"
 )
 
 // eventHub is the main implementation of EventHub interface
+// It delegates to a Backend implementation for actual message broker operations
 type eventHub struct {
-	db       *sql.DB
-	store    *store
-	registry *organizationRegistry
-	poller   *poller
-	config   Config
-	logger   *zap.Logger
+	backend EventhubImpl
+	logger  *zap.Logger
 
-	cleanupCtx    context.Context
-	cleanupCancel context.CancelFunc
-	wg            sync.WaitGroup
-	initialized   bool
-	mu            sync.RWMutex
+	initialized bool
 }
 
-// New creates a new EventHub instance
+// New creates a new EventHub instance with SQLite backend (default)
+// This maintains backward compatibility with existing code
 func New(db *sql.DB, logger *zap.Logger, config Config) EventHub {
-	registry := newOrganizationRegistry()
-	store := newStore(db, logger)
-
+	sqliteConfig := &SQLiteBackendConfig{
+		PollInterval:    config.PollInterval,
+		CleanupInterval: config.CleanupInterval,
+		RetentionPeriod: config.RetentionPeriod,
+	}
+	backend := NewSQLiteBackend(db, logger, sqliteConfig)
 	return &eventHub{
-		db:       db,
-		store:    store,
-		registry: registry,
-		config:   config,
-		logger:   logger,
+		backend: backend,
+		logger:  logger,
+	}
+}
+
+// NewWithBackend creates a new EventHub instance with a custom backend
+// Use this to provide alternative message broker implementations (NATS, Azure Service Bus, etc.)
+func NewWithBackend(backend EventhubImpl, logger *zap.Logger) EventHub {
+	return &eventHub{
+		backend: backend,
+		logger:  logger,
 	}
 }
 
 // Initialize sets up the EventHub and starts background workers
 func (eh *eventHub) Initialize(ctx context.Context) error {
-	eh.mu.Lock()
-	defer eh.mu.Unlock()
-
 	if eh.initialized {
 		return nil
 	}
 
 	eh.logger.Info("Initializing EventHub")
 
-	// Create and start poller
-	eh.poller = newPoller(eh.store, eh.registry, eh.config, eh.logger)
-	eh.poller.start(ctx)
-
-	// Start cleanup goroutine
-	eh.cleanupCtx, eh.cleanupCancel = context.WithCancel(ctx)
-	eh.wg.Add(1)
-	go eh.cleanupLoop()
+	if err := eh.backend.Initialize(ctx); err != nil {
+		return err
+	}
 
 	eh.initialized = true
-	eh.logger.Info("EventHub initialized successfully",
-		zap.Duration("pollInterval", eh.config.PollInterval),
-	)
+	eh.logger.Info("EventHub initialized successfully")
 	return nil
 }
 
 // RegisterOrganization registers a new organization with the EventHub
 func (eh *eventHub) RegisterOrganization(organizationID OrganizationID) error {
 	ctx := context.Background()
-
-	// Register organization in registry
-	if err := eh.registry.register(organizationID); err != nil {
-		return err
-	}
-
-	// Initialize empty state in database
-	if err := eh.store.initializeOrgState(ctx, organizationID); err != nil {
-		return fmt.Errorf("failed to initialize state: %w", err)
-	}
-
-	eh.logger.Info("Organization registered",
-		zap.String("organization", string(organizationID)),
-	)
-
-	return nil
+	return eh.backend.RegisterOrganization(ctx, organizationID)
 }
 
 // PublishEvent publishes an event for an organization
-// Note: Organization state and events are updated ATOMICALLY in a transaction
 func (eh *eventHub) PublishEvent(ctx context.Context, organizationID OrganizationID,
 	eventType EventType, action, entityID string, eventData []byte) error {
-
-	// Verify organization is registered
-	_, err := eh.registry.get(organizationID)
-	if err != nil {
-		return err
-	}
-
-	// Publish atomically (event + state update in transaction)
-	version, err := eh.store.publishEventAtomic(ctx, organizationID, eventType, action, entityID, eventData)
-	if err != nil {
-		return fmt.Errorf("failed to publish event: %w", err)
-	}
-
-	eh.logger.Debug("Event published",
-		zap.String("organization", string(organizationID)),
-		zap.String("eventType", string(eventType)),
-		zap.String("action", action),
-		zap.String("entityID", entityID),
-		zap.String("version", version),
-	)
-
-	return nil
+	return eh.backend.Publish(ctx, organizationID, eventType, action, entityID, eventData)
 }
 
 // Subscribe registers a channel to receive events for an organization
-// Subscriber receives ALL event types and should filter by EventType if needed
 func (eh *eventHub) Subscribe(organizationID OrganizationID, eventChan chan<- []Event) error {
-	if err := eh.registry.addSubscriber(organizationID, eventChan); err != nil {
-		return err
-	}
-
-	eh.logger.Info("Subscription registered",
-		zap.String("organization", string(organizationID)),
-	)
-
-	return nil
+	return eh.backend.Subscribe(organizationID, eventChan)
 }
 
 // CleanUpEvents removes events from the unified events table within the specified time range
 func (eh *eventHub) CleanUpEvents(ctx context.Context, timeFrom, timeEnd time.Time) error {
-	_, err := eh.store.cleanupEvents(ctx, timeFrom, timeEnd)
-	if err != nil {
-		eh.logger.Error("Failed to cleanup events", zap.Error(err))
-		return err
-	}
-	return nil
-}
-
-// cleanupLoop runs periodic cleanup of old events
-func (eh *eventHub) cleanupLoop() {
-	defer eh.wg.Done()
-
-	ticker := time.NewTicker(eh.config.CleanupInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-eh.cleanupCtx.Done():
-			return
-		case <-ticker.C:
-			cutoff := time.Now().Add(-eh.config.RetentionPeriod)
-			if err := eh.store.cleanupAllOrganizations(eh.cleanupCtx, cutoff); err != nil {
-				eh.logger.Error("Periodic cleanup failed", zap.Error(err))
-			}
-		}
-	}
+	return eh.backend.CleanupRange(ctx, timeFrom, timeEnd)
 }
 
 // Close gracefully shuts down the EventHub
 func (eh *eventHub) Close() error {
-	eh.mu.Lock()
-	defer eh.mu.Unlock()
-
 	if !eh.initialized {
 		return nil
 	}
 
 	eh.logger.Info("Shutting down EventHub")
 
-	// Stop cleanup loop
-	if eh.cleanupCancel != nil {
-		eh.cleanupCancel()
+	if err := eh.backend.Close(); err != nil {
+		return err
 	}
-
-	// Stop poller
-	if eh.poller != nil {
-		eh.poller.stop()
-	}
-
-	// Wait for goroutines
-	eh.wg.Wait()
 
 	eh.initialized = false
 	eh.logger.Info("EventHub shutdown complete")
