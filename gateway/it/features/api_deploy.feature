@@ -38,7 +38,7 @@ Feature: API Deployment and Invocation
         context: /weather/$version
         upstream:
           main:
-            url: http://sample-backend:5000/api/v2
+            url: http://sample-backend:9080/api/v2
         operations:
           - method: GET
             path: /{country_code}/{city}
