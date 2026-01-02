@@ -65,9 +65,7 @@ Feature: Multi-Namespace API Support
             path: /get
       """
     Then the "RestApi" "multi-ns-api" in namespace "test-ns" should have condition "Programmed" within 120 seconds
-    When I wait for 5 seconds
-    And I send a GET request to "http://localhost:8080/multi-ns/get"
-    Then the response status code should be 200
+    And I send a GET request to "http://localhost:8080/multi-ns/get" expecting 200 not accepting 500 with 10 retries
 
   Scenario: Cleanup multi-namespace API
     When I delete the "RestApi" "multi-ns-api" in namespace "test-ns"

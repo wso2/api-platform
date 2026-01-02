@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -88,6 +89,15 @@ func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 	// Token steps for JWT tests
 	ctx.Step(`^I obtain a token from "([^"]*)"$`, h.obtainToken)
 	ctx.Step(`^I send a GET request with the token to "([^"]*)"$`, h.sendGETRequestWithToken)
+
+	// HTTP method steps with retry
+	ctx.Step(`^I send a GET request to "([^"]*)" expecting (\d+) not accepting ([\d,]+) with (\d+) retries$`, h.sendGETRequestWithRetry)
+	ctx.Step(`^I send a POST request to "([^"]*)" expecting (\d+) not accepting ([\d,]+) with (\d+) retries$`, h.sendPOSTRequestWithRetry)
+	ctx.Step(`^I send a POST request to "([^"]*)" expecting (\d+) not accepting ([\d,]+) with (\d+) retries with body:$`, h.sendPOSTRequestWithBodyAndRetry)
+	ctx.Step(`^I send a PUT request to "([^"]*)" expecting (\d+) not accepting ([\d,]+) with (\d+) retries$`, h.sendPUTRequestWithRetry)
+	ctx.Step(`^I send a PUT request to "([^"]*)" expecting (\d+) not accepting ([\d,]+) with (\d+) retries with body:$`, h.sendPUTRequestWithBodyAndRetry)
+	ctx.Step(`^I send a DELETE request to "([^"]*)" expecting (\d+) not accepting ([\d,]+) with (\d+) retries$`, h.sendDELETERequestWithRetry)
+	ctx.Step(`^I send a GET request with the token to "([^"]*)" expecting (\d+) not accepting ([\d,]+) with (\d+) retries$`, h.sendGETRequestWithTokenAndRetry)
 }
 
 // Reset clears state between scenarios
@@ -320,4 +330,115 @@ func (h *HTTPSteps) sendRequest(method, urlStr string, body []byte) error {
 	debugLog("=========================================")
 
 	return nil
+}
+
+// parseNotAcceptingCodes parses comma-separated status codes
+func parseNotAcceptingCodes(codes string) []int {
+	var result []int
+	for _, code := range strings.Split(codes, ",") {
+		if c, err := strconv.Atoi(strings.TrimSpace(code)); err == nil {
+			result = append(result, c)
+		}
+	}
+	return result
+}
+
+// sendRequestWithRetry sends a request with retry logic
+func (h *HTTPSteps) sendRequestWithRetry(method, url string, body []byte,
+	expectedCode int, notAcceptingCodes []int, maxRetries int) error {
+
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			debugLog("Retry attempt %d/%d after 2 second delay", attempt, maxRetries)
+			time.Sleep(2 * time.Second)
+		}
+
+		err := h.sendRequest(method, url, body)
+		if err != nil {
+			lastErr = fmt.Errorf("attempt %d: request failed: %w", attempt+1, err)
+			debugLog("Attempt %d failed with error: %v", attempt+1, err)
+			continue
+		}
+
+		statusCode := h.lastResponse.StatusCode
+
+		// Check for expected code (success)
+		if statusCode == expectedCode {
+			debugLog("Attempt %d: received expected status code %d", attempt+1, expectedCode)
+			return nil
+		}
+
+		// Check for not-accepting codes (immediate failure)
+		for _, code := range notAcceptingCodes {
+			if statusCode == code {
+				bodyStr := string(h.lastBody)
+				if len(bodyStr) > 200 {
+					bodyStr = bodyStr[:200] + "..."
+				}
+				return fmt.Errorf("received not-accepting status code %d (body: %s)",
+					statusCode, bodyStr)
+			}
+		}
+
+		// Otherwise, retry
+		lastErr = fmt.Errorf("attempt %d: expected %d, got %d",
+			attempt+1, expectedCode, statusCode)
+		debugLog("Attempt %d: expected %d, got %d - will retry", attempt+1, expectedCode, statusCode)
+	}
+
+	return fmt.Errorf("max retries (%d) exceeded: %v", maxRetries, lastErr)
+}
+
+// sendGETRequestWithRetry sends a GET request with retry logic
+func (h *HTTPSteps) sendGETRequestWithRetry(url string, expectedCode int,
+	notAcceptingCodes string, maxRetries int) error {
+	codes := parseNotAcceptingCodes(notAcceptingCodes)
+	return h.sendRequestWithRetry(http.MethodGet, url, nil, expectedCode, codes, maxRetries)
+}
+
+// sendPOSTRequestWithRetry sends a POST request with retry logic
+func (h *HTTPSteps) sendPOSTRequestWithRetry(url string, expectedCode int,
+	notAcceptingCodes string, maxRetries int) error {
+	codes := parseNotAcceptingCodes(notAcceptingCodes)
+	return h.sendRequestWithRetry(http.MethodPost, url, nil, expectedCode, codes, maxRetries)
+}
+
+// sendPOSTRequestWithBodyAndRetry sends a POST request with body and retry logic
+func (h *HTTPSteps) sendPOSTRequestWithBodyAndRetry(url string, expectedCode int,
+	notAcceptingCodes string, maxRetries int, body *godog.DocString) error {
+	codes := parseNotAcceptingCodes(notAcceptingCodes)
+	return h.sendRequestWithRetry(http.MethodPost, url, []byte(body.Content), expectedCode, codes, maxRetries)
+}
+
+// sendPUTRequestWithRetry sends a PUT request with retry logic
+func (h *HTTPSteps) sendPUTRequestWithRetry(url string, expectedCode int,
+	notAcceptingCodes string, maxRetries int) error {
+	codes := parseNotAcceptingCodes(notAcceptingCodes)
+	return h.sendRequestWithRetry(http.MethodPut, url, nil, expectedCode, codes, maxRetries)
+}
+
+// sendPUTRequestWithBodyAndRetry sends a PUT request with body and retry logic
+func (h *HTTPSteps) sendPUTRequestWithBodyAndRetry(url string, expectedCode int,
+	notAcceptingCodes string, maxRetries int, body *godog.DocString) error {
+	codes := parseNotAcceptingCodes(notAcceptingCodes)
+	return h.sendRequestWithRetry(http.MethodPut, url, []byte(body.Content), expectedCode, codes, maxRetries)
+}
+
+// sendDELETERequestWithRetry sends a DELETE request with retry logic
+func (h *HTTPSteps) sendDELETERequestWithRetry(url string, expectedCode int,
+	notAcceptingCodes string, maxRetries int) error {
+	codes := parseNotAcceptingCodes(notAcceptingCodes)
+	return h.sendRequestWithRetry(http.MethodDelete, url, nil, expectedCode, codes, maxRetries)
+}
+
+// sendGETRequestWithTokenAndRetry sends a GET request with token and retry logic
+func (h *HTTPSteps) sendGETRequestWithTokenAndRetry(url string, expectedCode int,
+	notAcceptingCodes string, maxRetries int) error {
+	if h.Token == "" {
+		return fmt.Errorf("no token available - call 'I obtain a token from' first")
+	}
+	h.headers["Authorization"] = "Bearer " + h.Token
+	codes := parseNotAcceptingCodes(notAcceptingCodes)
+	return h.sendRequestWithRetry(http.MethodGet, url, nil, expectedCode, codes, maxRetries)
 }

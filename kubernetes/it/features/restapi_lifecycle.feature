@@ -67,9 +67,7 @@ Feature: RestApi CR Lifecycle
             path: /post
       """
     Then RestApi "test-api" should be Programmed within 120 seconds
-    When I wait for 5 seconds
-    And I send a GET request to "http://localhost:8080/test/get"
-    Then the response status code should be 200
+    And I send a GET request to "http://localhost:8080/test/get" expecting 200 not accepting 500 with 10 retries
 
   @update
   Scenario: Update a RestApi and verify new operation
@@ -96,13 +94,9 @@ Feature: RestApi CR Lifecycle
             path: /put
       """
     And RestApi "test-api" should be Programmed within 120 seconds
-    When I wait for 5 seconds
-    And I send a PUT request to "http://localhost:8080/test/put"
-    Then the response status code should be 200
+    And I send a PUT request to "http://localhost:8080/test/put" expecting 200 not accepting 500 with 10 retries
 
   @delete
   Scenario: Delete a RestApi and verify route is removed
     When I delete the "RestApi" "test-api" in namespace "default"
-    And I wait for 15 seconds
-    And I send a GET request to "http://localhost:8080/test/get"
-    Then the response status code should be 404
+    And I send a GET request to "http://localhost:8080/test/get" expecting 404 not accepting 500 with 10 retries

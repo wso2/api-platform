@@ -83,9 +83,7 @@ Feature: Complete Operator Lifecycle
             path: /post
       """
     Then RestApi "test-api" should be Programmed within 120 seconds
-    When I wait for 5 seconds
-    And I send a GET request to "http://localhost:8080/test/get"
-    Then the response status code should be 200
+    And I send a GET request to "http://localhost:8080/test/get" expecting 200 not accepting 500 with 10 retries
 
   @api-update
   Scenario: Update a RestApi and verify new operation
@@ -113,17 +111,13 @@ Feature: Complete Operator Lifecycle
             path: /put
       """
     And RestApi "test-api" should be Programmed within 120 seconds
-    And I wait for 5 seconds
-    Then I send a PUT request to "http://localhost:8080/test/put"
-    And the response status code should be 200
+    And I send a PUT request to "http://localhost:8080/test/put" expecting 200 not accepting 500 with 10 retries
 
   @api-delete
   Scenario: Delete a RestApi and verify route is removed
     Given I port-forward service "test-gateway-gateway-router" in namespace "default" to local port 8080
     When I delete the "RestApi" "test-api" in namespace "default"
-    And I wait for 5 seconds
-    And I send a GET request to "http://localhost:8080/test/get"
-    Then the response status code should be 404
+    And I send a GET request to "http://localhost:8080/test/get" expecting 404 not accepting 500 with 10 retries
 
   @gateway-delete
   Scenario: Delete a Gateway and verify cleanup
@@ -179,11 +173,9 @@ Feature: Complete Operator Lifecycle
             path: /get
       """
     Then RestApi "cycle-api" should be Programmed within 120 seconds
-    
+
     # Invoke API
-    When I wait for 5 seconds
-    And I send a GET request to "http://localhost:8090/cycle/get"
-    Then the response status code should be 200
+    And I send a GET request to "http://localhost:8090/cycle/get" expecting 200 not accepting 500 with 10 retries
     
     # Cleanup
     When I delete the "RestApi" "cycle-api" in namespace "default"

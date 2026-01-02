@@ -89,9 +89,7 @@ Feature: Scoped Operator Mode
             path: /get
       """
     Then the "RestApi" "scoped-api" in namespace "scoped-test" should have condition "Programmed" within 120 seconds
-    When I wait for 5 seconds
-    And I send a GET request to "http://localhost:9090/scoped/get"
-    Then the response status code should be 200
+    And I send a GET request to "http://localhost:9090/scoped/get" expecting 200 not accepting 500 with 10 retries
 
   @scoped-negative
   Scenario: Scoped operator ignores resources in non-watched namespace

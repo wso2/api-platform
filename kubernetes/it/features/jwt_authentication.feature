@@ -78,22 +78,18 @@ Feature: JWT Authentication Policy
             path: /get
       """
     And RestApi "jwt-api" should be Programmed within 120 seconds
-    When I wait for 5 seconds
-    And I send a GET request to "http://localhost:8080/secure/get"
-    Then the response status code should be 401
+    And I send a GET request to "http://localhost:8080/secure/get" expecting 401 not accepting 500 with 10 retries
 
   @jwt-accept-authenticated
   Scenario: JWT protected API accepts valid tokens
     Given I obtain a token from "http://localhost:8081/token"
-    When I send a GET request with the token to "http://localhost:8080/secure/get"
-    Then the response status code should be 200
+    And I send a GET request with the token to "http://localhost:8080/secure/get" expecting 200 not accepting 500 with 10 retries
 
   @jwt-issuer-update
   Scenario: Updating JWT issuer rejects previously valid tokens
     # First get a token from MockKeyManager
     Given I obtain a token from "http://localhost:8081/token"
-    When I send a GET request with the token to "http://localhost:8080/secure/get"
-    Then the response status code should be 200
+    And I send a GET request with the token to "http://localhost:8080/secure/get" expecting 200 not accepting 500 with 10 retries
     
     # Update API to use a different (non-existent) issuer
     When I apply the following CR:
@@ -121,8 +117,6 @@ Feature: JWT Authentication Policy
             path: /get
       """
     And RestApi "jwt-api" should be Programmed within 120 seconds
-    And I wait for 10 seconds
-    
+
     # Same token should now be rejected
-    When I send a GET request with the token to "http://localhost:8080/secure/get"
-    Then the response status code should be 401
+    And I send a GET request with the token to "http://localhost:8080/secure/get" expecting 401 not accepting 500 with 10 retries

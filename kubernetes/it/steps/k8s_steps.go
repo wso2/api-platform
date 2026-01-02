@@ -467,7 +467,7 @@ func (k *K8sSteps) portForwardService(serviceName, namespace string, localPort i
 	k.portForwards[key] = cmd
 
 	// Wait for port forward to be ready
-	time.Sleep(3 * time.Second)
+	time.Sleep(10 * time.Second)
 
 	return nil
 }
