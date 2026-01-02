@@ -222,9 +222,9 @@ jobs:
 
       - name: Run Operator Integration Tests
         run: |
-          cd kubernetes/it/cmd
+          cd kubernetes/it
           echo "Running Cucumber integration tests..."
-          go run . 2>&1 | tee ../test-output.log
+          go run ./cmd/... 2>&1 | tee test-output.log
         env:
           # Configuration for the test suite
           DOCKER_REGISTRY: ${{ env.DOCKER_REGISTRY }}
