@@ -47,7 +47,7 @@ var (
 func main() {
 	opts := &godog.Options{
 		Format: "pretty",
-		Paths:  []string{"../features"},
+		Paths:  []string{"features"},
 		Output: os.Stdout,
 	}
 

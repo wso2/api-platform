@@ -222,6 +222,7 @@ jobs:
 
       - name: Run Operator Integration Tests
         run: |
+          set -o pipefail
           cd kubernetes/it
           echo "Running Cucumber integration tests..."
           GOWORK=off go run ./cmd/... 2>&1 | tee test-output.log
