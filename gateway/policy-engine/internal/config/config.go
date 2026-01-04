@@ -65,7 +65,7 @@ type PolicyEngine struct {
 
 	// RawConfig holds the complete raw configuration map including custom fields
 	// This is used for resolving ${config} CEL expressions in policy systemParameters
-	// Note: No struct tag - populated manually via k.All()
+	// Note: No struct tag - populated manually via k.Raw()
 	RawConfig map[string]interface{}
 }
 
