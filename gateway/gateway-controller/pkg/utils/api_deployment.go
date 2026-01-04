@@ -55,15 +55,15 @@ type APIDeploymentResult struct {
 
 // APIDeploymentService provides utilities for API configuration deployment
 type APIDeploymentService struct {
-	store                 *storage.ConfigStore
-	db                    storage.Storage
-	snapshotManager       *xds.SnapshotManager
-	parser                *config.Parser
-	validator             config.Validator
-	routerConfig          *config.RouterConfig
-	httpClient            *http.Client
-	eventHub              eventhub.EventHub
-	enableMultiTenantMode bool
+	store             *storage.ConfigStore
+	db                storage.Storage
+	snapshotManager   *xds.SnapshotManager
+	parser            *config.Parser
+	validator         config.Validator
+	routerConfig      *config.RouterConfig
+	httpClient        *http.Client
+	eventHub          eventhub.EventHub
+	enableReplicaSync bool
 }
 
 // NewAPIDeploymentService creates a new API deployment service
@@ -74,18 +74,18 @@ func NewAPIDeploymentService(
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
 	eventHub eventhub.EventHub,
-	enableMultiTenantMode bool,
+	enableReplicaSync bool,
 ) *APIDeploymentService {
 	return &APIDeploymentService{
-		store:                 store,
-		db:                    db,
-		snapshotManager:       snapshotManager,
-		parser:                config.NewParser(),
-		validator:             validator,
-		httpClient:            &http.Client{Timeout: 10 * time.Second},
-		routerConfig:          routerConfig,
-		eventHub:              eventHub,
-		enableMultiTenantMode: enableMultiTenantMode,
+		store:             store,
+		db:                db,
+		snapshotManager:   snapshotManager,
+		parser:            config.NewParser(),
+		validator:         validator,
+		httpClient:        &http.Client{Timeout: 10 * time.Second},
+		routerConfig:      routerConfig,
+		eventHub:          eventHub,
+		enableReplicaSync: enableReplicaSync,
 	}
 }
 
@@ -276,7 +276,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	}
 
 	// Update xDS snapshot or publish event based on multi-tenant mode
-	if !s.enableMultiTenantMode {
+	if !s.enableReplicaSync {
 		// Single-tenant mode: Update xDS snapshot asynchronously
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -393,7 +393,7 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 	}
 
 	// Try to add to in-memory store
-	if !s.enableMultiTenantMode {
+	if !s.enableReplicaSync {
 		if err := s.store.Add(storedCfg); err != nil {
 			// Check if it's a conflict (API already exists)
 			if storage.IsConflictError(err) {

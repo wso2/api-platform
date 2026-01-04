@@ -4,13 +4,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/authenticators"
@@ -110,7 +111,7 @@ func main() {
 
 	// Initialize EventHub if multi-tenant mode is enabled
 	var eventHub eventhub.EventHub
-	if cfg.GatewayController.Server.EnableMultiTenantMode {
+	if cfg.GatewayController.Server.EnableReplicaSync {
 		if cfg.IsPersistentMode() && db != nil {
 			log.Info("Initializing EventHub for multi-tenant mode")
 			eventHub = eventhub.New(db.GetDB(), log, eventhub.DefaultConfig())
@@ -318,7 +319,7 @@ func main() {
 
 	// Initialize API server with the configured validator and API key manager
 	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient,
-		policyDefinitions, templateDefinitions, validator, &cfg.GatewayController.Router, apiKeyXDSManager, eventHub, cfg.GatewayController.Server.EnableMultiTenantMode)
+		policyDefinitions, templateDefinitions, validator, &cfg.GatewayController.Router, apiKeyXDSManager, eventHub, cfg.GatewayController.Server.EnableReplicaSync)
 
 	// Register API routes (includes certificate management endpoints from OpenAPI spec)
 	api.RegisterHandlers(router, apiServer)
