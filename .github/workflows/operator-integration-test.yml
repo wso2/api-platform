@@ -549,9 +549,9 @@ jobs:
                       # Log format: json, text
                       format: json
 
-                  policy_configurations: 
-                    JWTAuth_v010:
-                      KeyManagers:
+                  policy_configurations:
+                    jwtauth_v010:
+                      keymanagers:
                       - name: WSO2KeyManager1
                         issuer: https://api.asgardeo.io/t/tharsanan1995/oauth2/token
                         jwks:
@@ -570,20 +570,20 @@ jobs:
                           remote:
                             uri: http://mock-jwks.default.svc.cluster.local:8080/jwks
                             skipTlsVerify: true
-                      JwksCacheTtl: "5m"
-                      JwksFetchTimeout: "5s"
-                      JwksFetchRetryCount: 3
-                      JwksFetchRetryInterval: "2s"
-                      AllowedAlgorithms:
+                      jwkscachettl: "5m"
+                      jwksfetchtimeout: "5s"
+                      jwksfetchretrycount: 3
+                      jwksfetchretryinterval: "2s"
+                      allowedalgorithms:
                         - RS256
                         - ES256
-                      Leeway: "30s"
-                      AuthHeaderScheme: Bearer
-                      HeaderName: Authorization
-                      OnFailureStatusCode: 401
-                      ErrorMessageFormat: json
-                      ErrorMessage: "Authentication failed."
-                      ValidateIssuer: true
+                      leeway: "30s"
+                      authheaderscheme: Bearer
+                      headername: Authorization
+                      onfailurestatuscode: 401
+                      errormessageformat: json
+                      errormessage: "Authentication failed."
+                      validateissuer: true
 
                 # metadata for the generated shared ConfigMap (annotations / labels)
                 configMap:

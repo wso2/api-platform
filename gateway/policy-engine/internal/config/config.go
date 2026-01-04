@@ -39,10 +39,10 @@ type Config struct {
 
 // AnalyticsConfig holds analytics configuration
 type AnalyticsConfig struct {
-	Enabled              bool                       `koanf:"enabled"`
-	Publishers           []PublisherConfig          `koanf:"publishers"`
-	GRPCAccessLogCfg     map[string]interface{}     `koanf:"grpc_access_logs"`
-	AccessLogsServiceCfg AccessLogsServiceConfig    `koanf:"access_logs_service"`
+	Enabled              bool                    `koanf:"enabled"`
+	Publishers           []PublisherConfig       `koanf:"publishers"`
+	GRPCAccessLogCfg     map[string]interface{}  `koanf:"grpc_access_logs"`
+	AccessLogsServiceCfg AccessLogsServiceConfig `koanf:"access_logs_service"`
 }
 
 // PublisherConfig holds publisher configuration
@@ -228,7 +228,7 @@ func Load(configPath string) (*Config, error) {
 	}
 
 	// Capture complete raw config for CEL ${config} expression resolution
-	cfg.PolicyEngine.RawConfig = k.All()
+	cfg.PolicyEngine.RawConfig = k.Raw()
 
 	// Validate
 	if err := cfg.Validate(); err != nil {
@@ -432,7 +432,7 @@ func (c *Config) validateAnalyticsConfig() error {
 	if c.Analytics.Enabled {
 		// Validate ALS server config (policy-engine side)
 		als := c.Analytics.AccessLogsServiceCfg
-		
+
 		if als.ALSServerPort <= 0 || als.ALSServerPort > 65535 {
 			return fmt.Errorf("analytics.access_logs_service.als_server_port must be between 1 and 65535, got %d", als.ALSServerPort)
 		}
@@ -444,7 +444,7 @@ func (c *Config) validateAnalyticsConfig() error {
 		}
 		if als.ExtProcMaxHeaderLimit <= 0 {
 			return fmt.Errorf("analytics.access_logs_service.max_header_limit must be positive, got %d", als.ExtProcMaxHeaderLimit)
-		}	
+		}
 
 		// Validate publishers
 		for i, pub := range c.Analytics.Publishers {
