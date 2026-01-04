@@ -126,7 +126,8 @@ func NewClient(
 		snapshotManager:   snapshotManager,
 		parser:            config.NewParser(),
 		validator:         validator,
-		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig),
+		// TODO: (VirajSalaka) Decide on behavior when controlplane is involved.
+		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig, nil, false),
 		state: &ConnectionState{
 			Current:        Disconnected,
 			Conn:           nil,

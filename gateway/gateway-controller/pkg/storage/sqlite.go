@@ -1761,3 +1761,9 @@ func LoadAPIKeysFromDatabase(storage Storage, configStore *ConfigStore, apiKeySt
 
 	return nil
 }
+
+// GetDB returns the underlying *sql.DB instance
+// This is used for eventhub initialization
+func (s *SQLiteStorage) GetDB() *sql.DB {
+	return s.db
+}

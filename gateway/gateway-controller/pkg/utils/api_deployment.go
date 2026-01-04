@@ -31,6 +31,7 @@ import (
 	"github.com/google/uuid"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -54,13 +55,15 @@ type APIDeploymentResult struct {
 
 // APIDeploymentService provides utilities for API configuration deployment
 type APIDeploymentService struct {
-	store           *storage.ConfigStore
-	db              storage.Storage
-	snapshotManager *xds.SnapshotManager
-	parser          *config.Parser
-	validator       config.Validator
-	routerConfig    *config.RouterConfig
-	httpClient      *http.Client
+	store                 *storage.ConfigStore
+	db                    storage.Storage
+	snapshotManager       *xds.SnapshotManager
+	parser                *config.Parser
+	validator             config.Validator
+	routerConfig          *config.RouterConfig
+	httpClient            *http.Client
+	eventHub              eventhub.EventHub
+	enableMultiTenantMode bool
 }
 
 // NewAPIDeploymentService creates a new API deployment service
@@ -70,15 +73,19 @@ func NewAPIDeploymentService(
 	snapshotManager *xds.SnapshotManager,
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
+	eventHub eventhub.EventHub,
+	enableMultiTenantMode bool,
 ) *APIDeploymentService {
 	return &APIDeploymentService{
-		store:           store,
-		db:              db,
-		snapshotManager: snapshotManager,
-		parser:          config.NewParser(),
-		validator:       validator,
-		httpClient:      &http.Client{Timeout: 10 * time.Second},
-		routerConfig:    routerConfig,
+		store:                 store,
+		db:                    db,
+		snapshotManager:       snapshotManager,
+		parser:                config.NewParser(),
+		validator:             validator,
+		httpClient:            &http.Client{Timeout: 10 * time.Second},
+		routerConfig:          routerConfig,
+		eventHub:              eventHub,
+		enableMultiTenantMode: enableMultiTenantMode,
 	}
 }
 
@@ -268,18 +275,53 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			zap.String("correlation_id", params.CorrelationID))
 	}
 
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+	// Update xDS snapshot or publish event based on multi-tenant mode
+	if !s.enableMultiTenantMode {
+		// Single-tenant mode: Update xDS snapshot asynchronously
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
 
-		if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
-			params.Logger.Error("Failed to update xDS snapshot",
-				zap.Error(err),
-				zap.String("api_id", apiID),
-				zap.String("correlation_id", params.CorrelationID))
+			if err := s.snapshotManager.UpdateSnapshot(ctx, params.CorrelationID); err != nil {
+				params.Logger.Error("Failed to update xDS snapshot",
+					zap.Error(err),
+					zap.String("api_id", apiID),
+					zap.String("correlation_id", params.CorrelationID))
+			}
+		}()
+	} else {
+		// Multi-tenant mode: Publish event to eventhub
+		if s.eventHub != nil {
+			// Determine action based on whether it's an update or create
+			action := "CREATE"
+			if isUpdate {
+				action = "UPDATE"
+			}
+
+			// Use default organization ID (can be made configurable in future)
+			organizationID := eventhub.OrganizationID("default")
+
+			// Publish event with empty payload as per requirements
+			ctx := context.Background()
+			if err := s.eventHub.PublishEvent(ctx, organizationID, eventhub.EventTypeAPI, action, apiID, []byte{}); err != nil {
+				params.Logger.Error("Failed to publish event to eventhub",
+					zap.Error(err),
+					zap.String("api_id", apiID),
+					zap.String("action", action),
+					zap.String("organization_id", string(organizationID)),
+					zap.String("correlation_id", params.CorrelationID))
+			} else {
+				params.Logger.Info("Event published to eventhub",
+					zap.String("api_id", apiID),
+					zap.String("action", action),
+					zap.String("organization_id", string(organizationID)),
+					zap.String("correlation_id", params.CorrelationID))
+			}
+		} else {
+			params.Logger.Warn("Multi-tenant mode enabled but eventhub is not initialized",
+				zap.String("api_id", apiID))
 		}
-	}()
+	}
 
 	return &APIDeploymentResult{
 		StoredConfig: storedCfg,

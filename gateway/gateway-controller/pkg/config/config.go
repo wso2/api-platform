@@ -117,9 +117,10 @@ type TracingConfig struct {
 
 // ServerConfig holds server-related configuration
 type ServerConfig struct {
-	APIPort         int           `koanf:"api_port"`
-	XDSPort         int           `koanf:"xds_port"`
-	ShutdownTimeout time.Duration `koanf:"shutdown_timeout"`
+	APIPort              int           `koanf:"api_port"`
+	XDSPort              int           `koanf:"xds_port"`
+	ShutdownTimeout      time.Duration `koanf:"shutdown_timeout"`
+	EnableMultiTenantMode bool          `koanf:"enable_multi_tenant_mode"`
 }
 
 // PolicyServerConfig holds policy xDS server-related configuration
@@ -359,9 +360,10 @@ func defaultConfig() *Config {
 	return &Config{
 		GatewayController: GatewayController{
 			Server: ServerConfig{
-				APIPort:         9090,
-				XDSPort:         18000,
-				ShutdownTimeout: 15 * time.Second,
+				APIPort:              9090,
+				XDSPort:              18000,
+				ShutdownTimeout:      15 * time.Second,
+				EnableMultiTenantMode: false,
 			},
 			PolicyServer: PolicyServerConfig{
 				Enabled: true,

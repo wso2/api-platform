@@ -20,6 +20,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
@@ -106,6 +107,22 @@ func main() {
 
 	// Initialize in-memory API key store for xDS
 	apiKeyStore := storage.NewAPIKeyStore(log)
+
+	// Initialize EventHub if multi-tenant mode is enabled
+	var eventHub eventhub.EventHub
+	if cfg.GatewayController.Server.EnableMultiTenantMode {
+		if cfg.IsPersistentMode() && db != nil {
+			log.Info("Initializing EventHub for multi-tenant mode")
+			eventHub = eventhub.New(db.GetDB(), log, eventhub.DefaultConfig())
+			ctx := context.Background()
+			if err := eventHub.Initialize(ctx); err != nil {
+				log.Fatal("Failed to initialize EventHub", zap.Error(err))
+			}
+			log.Info("EventHub initialized successfully")
+		} else {
+			log.Fatal("EventHub requires persistent storage. Multi-tenant mode will not function correctly in memory-only mode.")
+		}
+	}
 
 	// Load configurations from database on startup (if persistent mode)
 	if cfg.IsPersistentMode() && db != nil {
@@ -301,7 +318,7 @@ func main() {
 
 	// Initialize API server with the configured validator and API key manager
 	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient,
-		policyDefinitions, templateDefinitions, validator, &cfg.GatewayController.Router, apiKeyXDSManager)
+		policyDefinitions, templateDefinitions, validator, &cfg.GatewayController.Router, apiKeyXDSManager, eventHub, cfg.GatewayController.Server.EnableMultiTenantMode)
 
 	// Register API routes (includes certificate management endpoints from OpenAPI spec)
 	api.RegisterHandlers(router, apiServer)
