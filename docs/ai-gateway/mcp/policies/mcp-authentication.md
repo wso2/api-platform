@@ -16,7 +16,7 @@ The MCP Authentication policy is designed to secure traffic to Model Context Pro
 
 The MCP Authentication policy uses a two-level configuration model:
 
-- **System Parameters**: Configured by the administrator in `config.yaml` under `policy_configurations.McpAuth_v010` or `policy_configurations.JwtAuth_v010` depending on the parameter.
+- **System Parameters**: Configured by the administrator in `config.yaml` under `policy_configurations.mcpauth_v010` or `policy_configurations.jwtauth_v010` depending on the parameter.
 - **User Parameters**: Configured per MCP proxy in the configuration yaml.
 
 ### System Parameters (config.yaml)
@@ -25,12 +25,12 @@ These parameters are set by the administrator and apply globally to all MCP auth
 
 | Parameter | Type | Required | Path | Description |
 |-----------|------|----------|----------|-------------|
-| `keyManagers` | array | Yes | JwtAuth_v010 | List of key manager definitions. Each entry must include a unique `name` and either `jwks` (for remote JWKS or local certificates) configuration. |
-| `gatewayHost` | string | No | McpAuth_v010 | The outward facing gateway host name which will be used when deriving the values related to protected resource metadata in headers and body. The gateway will fall back to this if there are no vhosts defined in the MCP proxy configuration. |
+| `keymanagers` | array | Yes | jwtauth_v010 | List of key manager definitions. Each entry must include a unique `name` and either `jwks` (for remote JWKS or local certificates) configuration. |
+| `gatewayhost` | string | No | mcpauth_v010 | The outward facing gateway host name which will be used when deriving the values related to protected resource metadata in headers and body. The gateway will fall back to this if there are no vhosts defined in the MCP proxy configuration. |
 
 #### Key Manager Configuration
 
-Each key manager in the `keyManagers` array supports the following structure:
+Each key manager in the `keymanagers` array supports the following structure:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -50,7 +50,7 @@ These parameters are configured per-API/route by the API developer:
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `issuers` | array | No | - | List of issuer names (referencing entries in `system.keyManagers`). This list is sent as `authorization_servers` in the protected resource metadata response. If omitted, all configured key managers are used. |
+| `issuers` | array | No | - | List of issuer names (referencing entries in `system.keymanagers`). This list is sent as `authorization_servers` in the protected resource metadata response. If omitted, all configured key managers are used. |
 | `requiredScopes` | array | No | - | List of scopes that should be included in the token. These are also advertised in the protected resource metadata. |
 | `audiences` | array | No | - | List of acceptable audience values; token must contain at least one. |
 | `requiredClaims` | object | No | - | Map of claimName → expectedValue for custom claim validation. |
@@ -62,10 +62,10 @@ Add the following to your `gateway/configs/config.yaml` file under `policy_confi
 
 ```yaml
 policy_configurations:
-  McpAuth_v010:
-    gatewayHost: gw.example.com
-  JwtAuth_v010:
-    keyManagers:
+  mcpauth_v010:
+    gatewayhost: gw.example.com
+  jwtauth_v010:
+    keymanagers:
       - name: PrimaryIDP
         issuer: https://idp.example.com/oauth2/token
         jwks:
@@ -78,20 +78,20 @@ policy_configurations:
           remote:
             uri: https://auth.example.org/oauth2/jwks
             skipTlsVerify: false
-    JwksCacheTtl: "5m"
-    JwksFetchTimeout: "5s"
-    JwksFetchRetryCount: 3
-    JwksFetchRetryInterval: "2s"
-    AllowedAlgorithms:
+    jwkscachettl: "5m"
+    jwksfetchtimeout: "5s"
+    jwksfetchretrycount: 3
+    jwksfetchretryinterval: "2s"
+    allowedalgorithms:
       - RS256
       - ES256
-    Leeway: "30s"
-    AuthHeaderScheme: Bearer
-    HeaderName: Authorization
-    OnFailureStatusCode: 401
-    ErrorMessageFormat: json
-    ErrorMessage: "Authentication failed."
-    ValidateIssuer: true
+    leeway: "30s"
+    authheaderscheme: Bearer
+    headername: Authorization
+    onfailurestatuscode: 401
+    errormessageformat: json
+    errormessage: "Authentication failed."
+    validateissuer: true
 ```
 
 ## MCP Proxy Definition Examples

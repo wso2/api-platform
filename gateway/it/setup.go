@@ -287,7 +287,7 @@ func CheckPortsAvailable() error {
 		"8443",                // HTTPS
 		EnvoyAdminPort,        // 9901
 		"9002",                // Policy engine
-		"5000",                // Sample backend
+		"9080",                // Sample backend
 		"3001",                // MCP server backend
 		"18000",               // xDS gRPC
 		"18001",               // xDS gRPC
