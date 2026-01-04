@@ -393,22 +393,24 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 	}
 
 	// Try to add to in-memory store
-	if err := s.store.Add(storedCfg); err != nil {
-		// Check if it's a conflict (API already exists)
-		if storage.IsConflictError(err) {
-			logger.Info("API configuration already exists in memory, updating instead",
-				zap.String("api_id", storedCfg.ID),
-				zap.String("displayName", storedCfg.GetDisplayName()),
-				zap.String("version", storedCfg.GetVersion()))
+	if !s.enableMultiTenantMode {
+		if err := s.store.Add(storedCfg); err != nil {
+			// Check if it's a conflict (API already exists)
+			if storage.IsConflictError(err) {
+				logger.Info("API configuration already exists in memory, updating instead",
+					zap.String("api_id", storedCfg.ID),
+					zap.String("displayName", storedCfg.GetDisplayName()),
+					zap.String("version", storedCfg.GetVersion()))
 
-			// Try to update instead
-			return s.updateExistingConfig(storedCfg, logger)
-		} else {
-			// Rollback database write (only if persistent mode)
-			if s.db != nil {
-				_ = s.db.DeleteConfig(storedCfg.ID)
+				// Try to update instead
+				return s.updateExistingConfig(storedCfg, logger)
+			} else {
+				// Rollback database write (only if persistent mode)
+				if s.db != nil {
+					_ = s.db.DeleteConfig(storedCfg.ID)
+				}
+				return false, fmt.Errorf("failed to add config to memory store: %w", err)
 			}
-			return false, fmt.Errorf("failed to add config to memory store: %w", err)
 		}
 	}
 
