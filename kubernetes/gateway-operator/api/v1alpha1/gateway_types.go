@@ -125,6 +125,12 @@ type GatewaySpec struct {
 	// If not specified, the operator will use the default mounted configuration.
 	// +optional
 	ConfigRef *corev1.LocalObjectReference `json:"configRef,omitempty"`
+
+	// AuthSecretRef references a Secret containing the user list in a 'users.yaml' key.
+	// The Secret data should contain a key "users.yaml" with a list of users.
+	// This takes precedence over auth configuration in ConfigRef.
+	// +optional
+	AuthSecretRef *corev1.LocalObjectReference `json:"authSecretRef,omitempty"`
 }
 
 // GatewayControlPlane defines control plane connection settings
