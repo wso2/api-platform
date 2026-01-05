@@ -22,6 +22,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventlistener"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
@@ -119,6 +120,7 @@ func main() {
 			if err := eventHub.Initialize(ctx); err != nil {
 				log.Fatal("Failed to initialize EventHub", zap.Error(err))
 			}
+			eventHub.RegisterOrganization("default")
 			log.Info("EventHub initialized successfully")
 		} else {
 			log.Fatal("EventHub requires persistent storage. Multi-tenant mode will not function correctly in memory-only mode.")
@@ -264,6 +266,26 @@ func main() {
 		log.Info("Policy xDS server is disabled")
 	}
 
+	// Initialize and start EventListener if EventHub is available
+	var evtListener *eventlistener.EventListener
+	if eventHub != nil {
+		log.Info("Initializing EventListener")
+		eventSource := eventlistener.NewEventHubAdapter(eventHub, log)
+		evtListener = eventlistener.NewEventListener(
+			eventSource,
+			configStore,
+			db,
+			snapshotManager,
+			policyManager, // Can be nil if policy server is disabled
+			&cfg.GatewayController.Router,
+			log,
+		)
+		if err := evtListener.Start(context.Background()); err != nil {
+			log.Fatal("Failed to start EventListener", zap.Error(err))
+		}
+		log.Info("EventListener started successfully")
+	}
+
 	// Load policy definitions from files (must be done before creating validator)
 	policyLoader := utils.NewPolicyLoader(log)
 	policyDir := cfg.GatewayController.Policies.DefinitionsPath
@@ -363,6 +385,11 @@ func main() {
 	// Stop policy xDS server if it was started
 	if policyXDSServer != nil {
 		policyXDSServer.Stop()
+	}
+
+	// Stop EventListener if it was started
+	if evtListener != nil {
+		evtListener.Stop()
 	}
 
 	log.Info("Gateway-Controller stopped")
