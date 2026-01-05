@@ -5,9 +5,6 @@ import (
 	"time"
 )
 
-// OrganizationID represents a unique organization identifier
-type OrganizationID string
-
 // EventType represents the type of event
 type EventType string
 
@@ -20,7 +17,7 @@ const (
 
 // Event represents a single event in the hub
 type Event struct {
-	OrganizationID      OrganizationID // Organization this event belongs to
+	OrganizationID      string // Organization this event belongs to
 	ProcessedTimestamp  time.Time      // When event was recorded in DB
 	OriginatedTimestamp time.Time      // When event was created
 	EventType           EventType      // Type of event (API, CERTIFICATE, etc.)
@@ -43,17 +40,17 @@ type EventHub interface {
 
 	// RegisterOrganization registers an organization for event tracking
 	// Creates entry in organization_states table with empty version
-	RegisterOrganization(organizationID OrganizationID) error
+	RegisterOrganization(organizationID string) error
 
 	// PublishEvent publishes an event for an organization
 	// Updates the organization_states and events tables atomically
-	PublishEvent(ctx context.Context, organizationID OrganizationID, eventType EventType,
+	PublishEvent(ctx context.Context, organizationID string, eventType EventType,
 		action, entityID string, eventData []byte) error
 
 	// Subscribe registers a channel to receive events for an organization
 	// Events are delivered as batches (arrays) based on poll cycle
 	// Subscriber receives ALL event types and should filter by EventType if needed
-	Subscribe(organizationID OrganizationID, eventChan chan<- []Event) error
+	Subscribe(organizationID string, eventChan chan<- []Event) error
 
 	// CleanUpEvents removes events between the specified time range
 	CleanUpEvents(ctx context.Context, timeFrom, timeEnd time.Time) error
@@ -61,6 +58,7 @@ type EventHub interface {
 	// Close gracefully shuts down the EventHub
 	Close() error
 }
+
 
 // Config holds EventHub configuration
 type Config struct {

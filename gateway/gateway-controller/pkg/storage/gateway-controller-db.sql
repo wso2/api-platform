@@ -150,72 +150,31 @@ CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_keys(status);
 CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);
 CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);
 
--- API Events table (added in schema version 6)
--- Stores events for API entity changes
-CREATE TABLE IF NOT EXISTS api_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    processed_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    originated_timestamp TIMESTAMP NOT NULL,
-    organization_id TEXT NOT NULL DEFAULT 'default',
-    action TEXT NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
-    entity_id TEXT NOT NULL,
-    event_data TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_api_events_lookup ON api_events(organization_id, processed_timestamp);
-
--- Certificate Events table (added in schema version 6)
--- Stores events for certificate entity changes
-CREATE TABLE IF NOT EXISTS certificate_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    processed_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    originated_timestamp TIMESTAMP NOT NULL,
-    organization_id TEXT NOT NULL DEFAULT 'default',
-    action TEXT NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
-    entity_id TEXT NOT NULL,
-    event_data TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_cert_events_lookup ON certificate_events(organization_id, processed_timestamp);
-
--- LLM Template Events table (added in schema version 6)
--- Stores events for LLM template entity changes
-CREATE TABLE IF NOT EXISTS llm_template_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    processed_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    originated_timestamp TIMESTAMP NOT NULL,
-    organization_id TEXT NOT NULL DEFAULT 'default',
-    action TEXT NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
-    entity_id TEXT NOT NULL,
-    event_data TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_llm_events_lookup ON llm_template_events(organization_id, processed_timestamp);
-
--- EventHub: Topic States Table (added in schema version 7)
--- Tracks version information per topic for change detection
-CREATE TABLE IF NOT EXISTS topic_states (
-    organization TEXT NOT NULL,
-    topic_name TEXT NOT NULL,
+-- EventHub: Organization States Table (added in schema version 9)
+-- Tracks version information per organization for change detection
+CREATE TABLE IF NOT EXISTS organization_states (
+    organization TEXT PRIMARY KEY,
     version_id TEXT NOT NULL DEFAULT '',
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (organization, topic_name)
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_topic_states_updated ON topic_states(updated_at);
+CREATE INDEX IF NOT EXISTS idx_organization_states_updated ON organization_states(updated_at);
 
--- EventHub: Example events table template
--- Each topic needs its own events table following this pattern:
--- Table name format: {topic_name}_events
---
--- Example for 'api' topic:
--- CREATE TABLE IF NOT EXISTS api_events (
---     id INTEGER PRIMARY KEY AUTOINCREMENT,
---     processed_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
---     originated_timestamp TIMESTAMP NOT NULL,
---     event_data TEXT NOT NULL
--- );
--- CREATE INDEX IF NOT EXISTS idx_api_events_processed ON api_events(processed_timestamp);
+-- EventHub: Unified Events Table (added in schema version 9)
+-- Stores all entity change events (APIs, certificates, LLM templates, etc.)
+CREATE TABLE IF NOT EXISTS events (
+    organization_id TEXT NOT NULL,
+    processed_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    originated_timestamp TIMESTAMP NOT NULL,
+    event_type TEXT NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
+    entity_id TEXT NOT NULL,
+    event_data TEXT NOT NULL,
+    PRIMARY KEY (organization_id, processed_timestamp)
+);
 
--- Set schema version to 7
-PRAGMA user_version = 8;
+CREATE INDEX IF NOT EXISTS idx_events_lookup ON events(organization_id, processed_timestamp);
+CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+
+-- Set schema version to 9
+PRAGMA user_version = 9;

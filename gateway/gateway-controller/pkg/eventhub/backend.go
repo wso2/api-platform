@@ -18,20 +18,20 @@ type EventhubImpl interface {
 	// For SQLite: creates entry in organization_states table
 	// For NATS: creates subject/stream for the organization
 	// For Azure Service Bus: creates topic for the organization
-	RegisterOrganization(ctx context.Context, orgID OrganizationID) error
+	RegisterOrganization(ctx context.Context, orgID string) error
 
 	// Publish publishes an event for an organization.
 	// The implementation should ensure delivery semantics appropriate for the broker.
-	Publish(ctx context.Context, orgID OrganizationID, eventType EventType,
+	Publish(ctx context.Context, orgID string, eventType EventType,
 		action, entityID string, eventData []byte) error
 
 	// Subscribe registers a channel to receive events for an organization.
 	// Events are delivered as batches (slices) when available.
 	// The subscriber receives ALL event types and should filter if needed.
-	Subscribe(orgID OrganizationID, eventChan chan<- []Event) error
+	Subscribe(orgID string, eventChan chan<- []Event) error
 
 	// Unsubscribe removes a subscription channel for an organization.
-	Unsubscribe(orgID OrganizationID, eventChan chan<- []Event) error
+	Unsubscribe(orgID string, eventChan chan<- []Event) error
 
 	// Cleanup removes old events based on retention policy.
 	// For SQLite: deletes events older than specified time

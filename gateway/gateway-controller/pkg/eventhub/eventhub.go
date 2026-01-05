@@ -59,19 +59,19 @@ func (eh *eventHub) Initialize(ctx context.Context) error {
 }
 
 // RegisterOrganization registers a new organization with the EventHub
-func (eh *eventHub) RegisterOrganization(organizationID OrganizationID) error {
+func (eh *eventHub) RegisterOrganization(organizationID string) error {
 	ctx := context.Background()
 	return eh.backend.RegisterOrganization(ctx, organizationID)
 }
 
 // PublishEvent publishes an event for an organization
-func (eh *eventHub) PublishEvent(ctx context.Context, organizationID OrganizationID,
+func (eh *eventHub) PublishEvent(ctx context.Context, organizationID string,
 	eventType EventType, action, entityID string, eventData []byte) error {
 	return eh.backend.Publish(ctx, organizationID, eventType, action, entityID, eventData)
 }
 
 // Subscribe registers a channel to receive events for an organization
-func (eh *eventHub) Subscribe(organizationID OrganizationID, eventChan chan<- []Event) error {
+func (eh *eventHub) Subscribe(organizationID string, eventChan chan<- []Event) error {
 	return eh.backend.Subscribe(organizationID, eventChan)
 }
 

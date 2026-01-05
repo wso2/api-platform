@@ -299,7 +299,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 			}
 
 			// Use default organization ID (can be made configurable in future)
-			organizationID := eventhub.OrganizationID("default")
+			organizationID := "default"
 
 			// Publish event with empty payload as per requirements
 			ctx := context.Background()

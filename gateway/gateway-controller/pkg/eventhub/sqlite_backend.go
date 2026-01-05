@@ -73,7 +73,7 @@ func (b *SQLiteBackend) Initialize(ctx context.Context) error {
 }
 
 // RegisterOrganization creates the necessary resources for an organization
-func (b *SQLiteBackend) RegisterOrganization(ctx context.Context, orgID OrganizationID) error {
+func (b *SQLiteBackend) RegisterOrganization(ctx context.Context, orgID string) error {
 	// Register in local registry
 	if err := b.registry.register(orgID); err != nil {
 		return err
@@ -98,7 +98,7 @@ func (b *SQLiteBackend) RegisterOrganization(ctx context.Context, orgID Organiza
 }
 
 // Publish publishes an event for an organization
-func (b *SQLiteBackend) Publish(ctx context.Context, orgID OrganizationID,
+func (b *SQLiteBackend) Publish(ctx context.Context, orgID string,
 	eventType EventType, action, entityID string, eventData []byte) error {
 
 	// Verify organization is registered
@@ -157,7 +157,7 @@ func (b *SQLiteBackend) Publish(ctx context.Context, orgID OrganizationID,
 }
 
 // Subscribe registers a channel to receive events for an organization
-func (b *SQLiteBackend) Subscribe(orgID OrganizationID, eventChan chan<- []Event) error {
+func (b *SQLiteBackend) Subscribe(orgID string, eventChan chan<- []Event) error {
 	if err := b.registry.addSubscriber(orgID, eventChan); err != nil {
 		return err
 	}
@@ -169,7 +169,7 @@ func (b *SQLiteBackend) Subscribe(orgID OrganizationID, eventChan chan<- []Event
 }
 
 // Unsubscribe removes a subscription channel for an organization
-func (b *SQLiteBackend) Unsubscribe(orgID OrganizationID, eventChan chan<- []Event) error {
+func (b *SQLiteBackend) Unsubscribe(orgID string, eventChan chan<- []Event) error {
 	if err := b.registry.removeSubscriber(orgID, eventChan); err != nil {
 		return err
 	}
@@ -275,7 +275,7 @@ func (b *SQLiteBackend) pollAllOrganizations() {
 
 	// Check each organization for changes
 	for _, state := range states {
-		orgID := OrganizationID(state.Organization)
+		orgID := state.Organization
 
 		org, err := b.registry.get(orgID)
 		if err != nil {
@@ -337,7 +337,7 @@ func (b *SQLiteBackend) getAllStates(ctx context.Context) ([]OrganizationState, 
 }
 
 // getEventsSince retrieves events for an organization after a given timestamp
-func (b *SQLiteBackend) getEventsSince(ctx context.Context, orgID OrganizationID, since time.Time) ([]Event, error) {
+func (b *SQLiteBackend) getEventsSince(ctx context.Context, orgID string, since time.Time) ([]Event, error) {
 	query := `
 		SELECT processed_timestamp, originated_timestamp, event_type,
 		       action, entity_id, event_data

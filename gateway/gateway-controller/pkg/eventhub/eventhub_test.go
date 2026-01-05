@@ -95,7 +95,7 @@ func TestEventHub_PublishAndSubscribe(t *testing.T) {
 	select {
 	case events := <-eventChan:
 		assert.GreaterOrEqual(t, len(events), 1)
-		assert.Equal(t, OrganizationID("test-org"), events[0].OrganizationID)
+		assert.Equal(t, "test-org", events[0].OrganizationID)
 		assert.Equal(t, EventTypeAPI, events[0].EventType)
 		assert.Equal(t, "CREATE", events[0].Action)
 		assert.Equal(t, "api-1", events[0].EntityID)

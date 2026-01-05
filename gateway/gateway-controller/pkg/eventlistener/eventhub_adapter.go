@@ -62,10 +62,8 @@ func (a *EventHubAdapter) Subscribe(ctx context.Context, organizationID string, 
 		return fmt.Errorf("already subscribed to organization: %s", organizationID)
 	}
 
-	orgID := eventhub.OrganizationID(organizationID)
-
 	// Register organization with EventHub (idempotent operation)
-	if err := a.eventHub.RegisterOrganization(orgID); err != nil {
+	if err := a.eventHub.RegisterOrganization(organizationID); err != nil {
 		a.logger.Debug("Organization may already be registered",
 			zap.String("organization", organizationID),
 			zap.Error(err),
@@ -77,7 +75,7 @@ func (a *EventHubAdapter) Subscribe(ctx context.Context, organizationID string, 
 	bridgeChan := make(chan []eventhub.Event, 10)
 
 	// Subscribe to EventHub
-	if err := a.eventHub.Subscribe(orgID, bridgeChan); err != nil {
+	if err := a.eventHub.Subscribe(organizationID, bridgeChan); err != nil {
 		close(bridgeChan)
 		return fmt.Errorf("failed to subscribe to eventhub: %w", err)
 	}

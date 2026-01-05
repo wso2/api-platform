@@ -13,7 +13,7 @@ var (
 
 // organization represents an internal organization with its subscriptions and poll state
 type organization struct {
-	id           OrganizationID
+	id           string
 	subscribers  []chan<- []Event // Registered subscription channels
 	subscriberMu sync.RWMutex
 
@@ -24,19 +24,19 @@ type organization struct {
 
 // organizationRegistry manages all registered organizations
 type organizationRegistry struct {
-	orgs map[OrganizationID]*organization
+	orgs map[string]*organization
 	mu   sync.RWMutex
 }
 
 // newOrganizationRegistry creates a new organization registry
 func newOrganizationRegistry() *organizationRegistry {
 	return &organizationRegistry{
-		orgs: make(map[OrganizationID]*organization),
+		orgs: make(map[string]*organization),
 	}
 }
 
 // register adds a new organization to the registry
-func (r *organizationRegistry) register(id OrganizationID) error {
+func (r *organizationRegistry) register(id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -54,7 +54,7 @@ func (r *organizationRegistry) register(id OrganizationID) error {
 }
 
 // get retrieves an organization by ID
-func (r *organizationRegistry) get(id OrganizationID) (*organization, error) {
+func (r *organizationRegistry) get(id string) (*organization, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -66,7 +66,7 @@ func (r *organizationRegistry) get(id OrganizationID) (*organization, error) {
 }
 
 // addSubscriber adds a subscription channel to an organization
-func (r *organizationRegistry) addSubscriber(id OrganizationID, ch chan<- []Event) error {
+func (r *organizationRegistry) addSubscriber(id string, ch chan<- []Event) error {
 	r.mu.RLock()
 	org, exists := r.orgs[id]
 	r.mu.RUnlock()
@@ -82,7 +82,7 @@ func (r *organizationRegistry) addSubscriber(id OrganizationID, ch chan<- []Even
 }
 
 // removeSubscriber removes a subscription channel from an organization
-func (r *organizationRegistry) removeSubscriber(id OrganizationID, ch chan<- []Event) error {
+func (r *organizationRegistry) removeSubscriber(id string, ch chan<- []Event) error {
 	r.mu.RLock()
 	org, exists := r.orgs[id]
 	r.mu.RUnlock()
