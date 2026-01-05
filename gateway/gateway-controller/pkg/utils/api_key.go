@@ -20,6 +20,8 @@ package utils
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -34,6 +36,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"
+	"golang.org/x/crypto/argon2"
 )
 
 // APIKeyGenerationParams contains parameters for API key generation operations
@@ -117,7 +120,15 @@ func NewAPIKeyService(store *storage.ConfigStore, db storage.Storage, xdsManager
 	}
 }
 
-const APIKeyPrefix = "apip_"
+const (
+	APIKeyPrefix = "apip_"
+	// Argon2id parameters (recommended for production security)
+	argon2Time    = 1         // Number of iterations
+	argon2Memory  = 64 * 1024 // Memory usage in KiB (64 MiB)
+	argon2Threads = 4         // Number of threads
+	argon2KeyLen  = 32        // Length of derived key in bytes
+	argon2SaltLen = 16        // Length of salt in bytes
+)
 
 // GenerateAPIKey handles the complete API key generation process
 func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGenerationResult, error) {
@@ -259,21 +270,43 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		return nil, fmt.Errorf("API configuration handle '%s' not found", params.Handle)
 	}
 
-	apiKeyValue := strings.TrimSpace(params.Request.ApiKey)
-	if apiKeyValue == "" {
+	providedAPIKeyValue := strings.TrimSpace(params.Request.ApiKey)
+	if providedAPIKeyValue == "" {
 		logger.Warn("API key value is required for revocation",
 			zap.String("handle", params.Handle),
 			zap.String("correlation_id", params.CorrelationID))
 		return nil, fmt.Errorf("API key value is required for revocation")
 	}
 
-	// Get the API key by its value
-	apiKey, err := s.store.GetAPIKeyByKey(apiKeyValue)
+	// Get all API keys for this API and find the one that matches the plain text key
+	var apiKey *models.APIKey
+	var matchedKey *models.APIKey
+
+	// First, try to get API keys from memory store
+	apiKeys, err := s.store.GetAPIKeysByAPI(config.ID)
 	if err != nil {
-		logger.Debug("API key not found for revocation",
-			zap.String("handle", params.Handle),
-			zap.String("correlation_id", params.CorrelationID))
-		//return nil
+		// If memory store fails, try database
+		if s.db != nil {
+			apiKeys, err = s.db.GetAPIKeysByAPI(config.ID)
+			if err != nil {
+				logger.Debug("Failed to get API keys for revocation",
+					zap.Error(err),
+					zap.String("handle", params.Handle),
+					zap.String("correlation_id", params.CorrelationID))
+				// Continue with revocation for security reasons (don't leak info)
+			}
+		}
+	}
+
+	// Find the API key that matches the provided plain text key
+	if apiKeys != nil {
+		for _, key := range apiKeys {
+			if s.ValidateAPIKey(providedAPIKeyValue, key.APIKey) {
+				matchedKey = key
+				apiKey = key
+				break
+			}
+		}
 	}
 
 	result := &APIKeyRevocationResult{
@@ -327,8 +360,8 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 			}
 		}
 
-		// Remove the API key from memory store
-		if err := s.store.RemoveAPIKey(apiKeyValue); err != nil {
+		// Remove the API key from memory store by name (since we have the matched key)
+		if err := s.store.RemoveAPIKeyByName(config.ID, apiKey.Name); err != nil {
 			logger.Error("Failed to remove API key from memory store",
 				zap.Error(err),
 				zap.String("handle", params.Handle),
@@ -349,8 +382,8 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 
 	// Remove the API key from database (complete removal)
 	// Note: This is cleanup only - the revocation is already complete
-	if s.db != nil {
-		if err := s.db.DeleteAPIKey(apiKeyValue); err != nil {
+	if s.db != nil && matchedKey != nil {
+		if err := s.db.RemoveAPIKeyAPIAndName(config.ID, matchedKey.Name); err != nil {
 			logger.Warn("Failed to remove API key from database, but revocation was successful",
 				zap.Error(err),
 				zap.String("handle", params.Handle),
@@ -375,15 +408,16 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	apiVersion := apiConfig.Version
 	logger.Info("Removing API key from policy engine",
 		zap.String("handle", params.Handle),
-		zap.String("api key", s.MaskAPIKey(apiKeyValue)),
+		zap.String("api key", s.MaskAPIKey(providedAPIKeyValue)),
 		zap.String("api_name", apiName),
 		zap.String("api_version", apiVersion),
 		zap.String("user", user.UserID),
 		zap.String("correlation_id", params.CorrelationID))
 
-	// Send the API key revocation to the policy engine via xDS
+	// Send the plain API key revocation to the policy engine via xDS
+	// The policy engine will find and revoke the matching hashed key
 	if s.xdsManager != nil {
-		if err := s.xdsManager.RevokeAPIKey(apiId, apiName, apiVersion, apiKeyValue, params.CorrelationID); err != nil {
+		if err := s.xdsManager.RevokeAPIKey(apiId, apiName, apiVersion, providedAPIKeyValue, params.CorrelationID); err != nil {
 			logger.Error("Failed to remove API key from policy engine",
 				zap.Error(err),
 				zap.String("correlation_id", params.CorrelationID))
@@ -393,7 +427,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 
 	logger.Info("API key revoked successfully",
 		zap.String("handle", params.Handle),
-		zap.String("api key", s.MaskAPIKey(apiKeyValue)),
+		zap.String("api key", s.MaskAPIKey(providedAPIKeyValue)),
 		zap.String("user", user.UserID),
 		zap.String("correlation_id", params.CorrelationID))
 
@@ -664,9 +698,15 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 	id := uuid.New().String()
 
 	// Generate 32 random bytes for the API key
-	apiKeyValue, err := s.generateAPIKeyValue()
+	plainAPIKeyValue, err := s.generateAPIKeyValue()
 	if err != nil {
 		return nil, err
+	}
+
+	// Hash the API key for storage and policy engine
+	hashedAPIKeyValue, err := s.hashAPIKey(plainAPIKeyValue)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash API key: %w", err)
 	}
 
 	// Set name - use provided name or generate a default one
@@ -716,10 +756,10 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 		expiresAt = &expiry
 	}
 
-	return &models.APIKey{
+	apiKey := &models.APIKey{
 		ID:         id,
 		Name:       name,
-		APIKey:     apiKeyValue,
+		APIKey:     hashedAPIKeyValue, // Store hashed key in database and policy engine
 		APIId:      config.ID,
 		Operations: operations,
 		Status:     models.APIKeyStatusActive,
@@ -729,7 +769,13 @@ func (s *APIKeyService) generateAPIKeyFromRequest(handle string, request *api.AP
 		ExpiresAt:  expiresAt,
 		Unit:       unit,
 		Duration:   duration,
-	}, nil
+	}
+
+	// Temporarily store the plain key for response generation
+	// This field is not persisted and only used for returning to user
+	apiKey.PlainAPIKey = plainAPIKeyValue
+
+	return apiKey, nil
 }
 
 // generateOperationsString creates a string array from operations in format "METHOD path"
@@ -766,12 +812,21 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle string) a
 		}
 	}
 
+	// Use PlainAPIKey for response if available, otherwise mask the hashed key
+	var responseAPIKey *string
+	if key.PlainAPIKey != "" {
+		responseAPIKey = &key.PlainAPIKey
+	} else {
+		// For existing keys where PlainAPIKey is not available, don't return the hashed key
+		responseAPIKey = nil
+	}
+
 	return api.APIKeyGenerationResponse{
 		Status:  "success",
 		Message: "API key generated successfully",
 		ApiKey: &api.APIKey{
 			Name:       key.Name,
-			ApiKey:     &key.APIKey,
+			ApiKey:     responseAPIKey, // Return plain key only during generation/rotation
 			ApiId:      handle,
 			Operations: key.Operations,
 			Status:     api.APIKeyStatus(key.Status),
@@ -786,9 +841,15 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle string) a
 func (s *APIKeyService) generateRotatedAPIKey(existingKey *models.APIKey, request api.APIKeyRotationRequest,
 	user string, logger *zap.Logger) (*models.APIKey, error) {
 	// Generate new API key value
-	newAPIKeyValue, err := s.generateAPIKeyValue()
+	plainAPIKeyValue, err := s.generateAPIKeyValue()
 	if err != nil {
 		return nil, err
+	}
+
+	// Hash the new API key for storage
+	hashedAPIKeyValue, err := s.hashAPIKey(plainAPIKeyValue)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash rotated API key: %w", err)
 	}
 
 	now := time.Now()
@@ -873,10 +934,10 @@ func (s *APIKeyService) generateRotatedAPIKey(existingKey *models.APIKey, reques
 	}
 
 	// Create the rotated API key
-	return &models.APIKey{
+	rotatedKey := &models.APIKey{
 		ID:         existingKey.ID,
 		Name:       existingKey.Name,
-		APIKey:     newAPIKeyValue,
+		APIKey:     hashedAPIKeyValue, // Store hashed key
 		APIId:      existingKey.APIId,
 		Operations: existingKey.Operations,
 		Status:     models.APIKeyStatusActive,
@@ -886,7 +947,12 @@ func (s *APIKeyService) generateRotatedAPIKey(existingKey *models.APIKey, reques
 		ExpiresAt:  expiresAt,
 		Unit:       unit,
 		Duration:   duration,
-	}, nil
+	}
+
+	// Temporarily store the plain key for response generation
+	rotatedKey.PlainAPIKey = plainAPIKeyValue
+
+	return rotatedKey, nil
 }
 
 // canRevokeAPIKey determines if a user can revoke a specific API key
@@ -1025,4 +1091,103 @@ func (s *APIKeyService) isAdmin(user *commonmodels.AuthContext) bool {
 // isDeveloper checks if the user has developer role
 func (s *APIKeyService) isDeveloper(user *commonmodels.AuthContext) bool {
 	return slices.Contains(user.Roles, "developer")
+}
+
+// hashAPIKey securely hashes an API key using Argon2id
+// Returns the hashed API key that should be stored in database and policy engine
+func (s *APIKeyService) hashAPIKey(plainAPIKey string) (string, error) {
+	if plainAPIKey == "" {
+		return "", fmt.Errorf("API key cannot be empty")
+	}
+
+	// Generate random salt
+	salt := make([]byte, argon2SaltLen)
+	if _, err := rand.Read(salt); err != nil {
+		return "", fmt.Errorf("failed to generate salt: %w", err)
+	}
+
+	// Generate hash using Argon2id
+	hash := argon2.IDKey([]byte(plainAPIKey), salt, argon2Time, argon2Memory, argon2Threads, argon2KeyLen)
+
+	// Encode salt and hash using base64
+	saltEncoded := base64.RawStdEncoding.EncodeToString(salt)
+	hashEncoded := base64.RawStdEncoding.EncodeToString(hash)
+
+	// Format: $argon2id$v=19$m=65536,t=1,p=4$<salt_b64>$<hash_b64>
+	hashedKey := fmt.Sprintf("$argon2id$v=19$m=%d,t=%d,p=%d$%s$%s",
+		argon2Memory, argon2Time, argon2Threads, saltEncoded, hashEncoded)
+
+	return hashedKey, nil
+}
+
+// ValidateAPIKey is a public method to validate API keys for external use
+// Returns true if the plain API key matches the hash, false otherwise
+func (s *APIKeyService) ValidateAPIKey(providedAPIKey, storedAPIKey string) bool {
+	if providedAPIKey == "" {
+		return false
+	}
+	if storedAPIKey == "" {
+		return false
+	}
+	if strings.HasPrefix(storedAPIKey, "$argon2id$") {
+		err := s.compareArgon2id(providedAPIKey, storedAPIKey)
+		return err == nil
+	}
+	return false
+}
+
+// compareArgon2id parses an encoded Argon2id hash and compares it to the provided password.
+// Expected format: $argon2id$v=19$m=65536,t=3,p=4$<salt_b64>$<hash_b64>
+func (s *APIKeyService) compareArgon2id(apiKey, encoded string) error {
+	parts := strings.Split(encoded, "$")
+	if len(parts) != 6 || parts[1] != "argon2id" {
+		return fmt.Errorf("invalid argon2id hash format")
+	}
+
+	// parts[2] -> v=19
+	var version int
+	if _, err := fmt.Sscanf(parts[2], "v=%d", &version); err != nil {
+		return err
+	}
+	if version != argon2.Version {
+		return fmt.Errorf("unsupported argon2 version: %d", version)
+	}
+
+	// parts[3] -> m=65536,t=3,p=4
+	var mem uint32
+	var iters uint32
+	var threads uint8
+	var t, m, p uint32
+	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &m, &t, &p); err != nil {
+		return err
+	}
+	mem = m
+	iters = t
+	threads = uint8(p)
+
+	// decode salt and hash (try RawStd then Std)
+	salt, err := decodeBase64(parts[4])
+	if err != nil {
+		return err
+	}
+	hash, err := decodeBase64(parts[5])
+	if err != nil {
+		return err
+	}
+
+	derived := argon2.IDKey([]byte(apiKey), salt, iters, mem, threads, uint32(len(hash)))
+	if subtle.ConstantTimeCompare(derived, hash) == 1 {
+		return nil
+	}
+	return errors.New("API key mismatch")
+}
+
+// decodeBase64 decodes a base64 string, trying RawStdEncoding first, then StdEncoding
+func decodeBase64(s string) ([]byte, error) {
+	b, err := base64.RawStdEncoding.DecodeString(s)
+	if err == nil {
+		return b, nil
+	}
+	// try StdEncoding as a fallback
+	return base64.StdEncoding.DecodeString(s)
 }
