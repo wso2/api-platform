@@ -1109,7 +1109,15 @@ jobs:
           sleep 5
           kubectl wait --for=jsonpath='{.metadata.annotations.helm-upgrade-test}=true' deployment/test-gateway-gateway-router --timeout=180s
           
-          echo "Helm upgrade verified."
+          echo "Deployment metadata updated. Waiting for rollout to complete..."
+          
+          # Wait for the deployments to finish rolling out to ensure stability
+          kubectl rollout status deployment/test-gateway-gateway-controller --timeout=300s
+          kubectl rollout status deployment/test-gateway-gateway-router --timeout=300s
+          # Policy engine might also be updated if it had empty annotations
+          kubectl rollout status deployment/test-gateway-gateway-policy-engine --timeout=300s || true
+          
+          echo "Helm upgrade and rollout verified."
 
       - name: Multi-namespace API test
         run: |
