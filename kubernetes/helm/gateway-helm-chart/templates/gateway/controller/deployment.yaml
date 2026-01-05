@@ -92,10 +92,10 @@ spec:
             {{- range $deployment.extraEnv }}
             - {{- toYaml . | nindent 14 }}
             {{- end }}
-            {{- with $deployment.extraEnvFrom }}
+          {{- with $deployment.extraEnvFrom }}
           envFrom:
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{- tpl (toYaml .) $ | nindent 12 }}
+          {{- end }}
           ports:
             - name: rest
               containerPort: {{ $controller.service.ports.rest }}
