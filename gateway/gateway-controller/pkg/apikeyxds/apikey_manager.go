@@ -76,7 +76,7 @@ func (asm *APIKeyStateManager) RevokeAPIKey(apiId, apiName, apiVersion, apiKeyVa
 		zap.String("correlation_id", correlationID))
 
 	// Revoke the API key and update the snapshot
-	if err := asm.snapshotManager.RevokeAPIKey(apiKeyValue); err != nil {
+	if err := asm.snapshotManager.RevokeAPIKey(apiId, apiKeyValue); err != nil {
 		asm.logger.Error("Failed to revoke API key and update snapshot",
 			zap.String("api_key_value", asm.MaskAPIKey(apiKeyValue)),
 			zap.Error(err))
@@ -84,6 +84,7 @@ func (asm *APIKeyStateManager) RevokeAPIKey(apiId, apiName, apiVersion, apiKeyVa
 	}
 
 	asm.logger.Info("Successfully revoked API key and updated policy engine state",
+		zap.String("api_id", apiId),
 		zap.String("api_key_value", asm.MaskAPIKey(apiKeyValue)),
 		zap.String("correlation_id", correlationID))
 
@@ -111,11 +112,6 @@ func (asm *APIKeyStateManager) RemoveAPIKeysByAPI(apiId, apiName, apiVersion, co
 		zap.String("correlation_id", correlationID))
 
 	return nil
-}
-
-// GetAPIKeyByValue retrieves an API key by its value
-func (asm *APIKeyStateManager) GetAPIKeyByValue(value string) (*models.APIKey, bool) {
-	return asm.store.GetByValue(value)
 }
 
 // GetAPIKeyByID retrieves an API key by its ID

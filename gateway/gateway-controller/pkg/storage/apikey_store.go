@@ -19,18 +19,23 @@
 package storage
 
 import (
+	"crypto/subtle"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"go.uber.org/zap"
+	"golang.org/x/crypto/argon2"
 )
 
 // APIKeyStore manages API keys in memory with thread-safe operations
 type APIKeyStore struct {
 	mu              sync.RWMutex
 	apiKeys         map[string]*models.APIKey   // key: API key ID
-	apiKeysByValue  map[string]*models.APIKey   // key: API key value
 	apiKeysByAPI    map[string][]*models.APIKey // key: API ID
 	resourceVersion int64
 	logger          *zap.Logger
@@ -39,10 +44,9 @@ type APIKeyStore struct {
 // NewAPIKeyStore creates a new API key store
 func NewAPIKeyStore(logger *zap.Logger) *APIKeyStore {
 	return &APIKeyStore{
-		apiKeys:        make(map[string]*models.APIKey),
-		apiKeysByValue: make(map[string]*models.APIKey),
-		apiKeysByAPI:   make(map[string][]*models.APIKey),
-		logger:         logger,
+		apiKeys:      make(map[string]*models.APIKey),
+		apiKeysByAPI: make(map[string][]*models.APIKey),
+		logger:       logger,
 	}
 }
 
@@ -53,13 +57,11 @@ func (s *APIKeyStore) Store(apiKey *models.APIKey) {
 
 	// Remove old entry if updating
 	if existing, exists := s.apiKeys[apiKey.ID]; exists {
-		delete(s.apiKeysByValue, existing.APIKey)
 		s.removeFromAPIMapping(existing)
 	}
 
 	// Store the API key
 	s.apiKeys[apiKey.ID] = apiKey
-	s.apiKeysByValue[apiKey.APIKey] = apiKey
 	s.addToAPIMapping(apiKey)
 
 	s.logger.Debug("Stored API key",
@@ -74,15 +76,6 @@ func (s *APIKeyStore) GetByID(id string) (*models.APIKey, bool) {
 	defer s.mu.RUnlock()
 
 	apiKey, exists := s.apiKeys[id]
-	return apiKey, exists
-}
-
-// GetByValue retrieves an API key by its value
-func (s *APIKeyStore) GetByValue(value string) (*models.APIKey, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	apiKey, exists := s.apiKeysByValue[value]
 	return apiKey, exists
 }
 
@@ -110,24 +103,40 @@ func (s *APIKeyStore) GetAll() []*models.APIKey {
 	return result
 }
 
-// Revoke marks an API key as revoked
-func (s *APIKeyStore) Revoke(apiKeyValue string) bool {
+// Revoke marks an API key as revoked by finding it through hash comparison
+func (s *APIKeyStore) Revoke(apiId, plainAPIKeyValue string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	apiKey, exists := s.apiKeysByValue[apiKeyValue]
+	// Get all API keys for the specified API
+	apiKeys, exists := s.apiKeysByAPI[apiId]
 	if !exists {
+		s.logger.Debug("No API keys found for API",
+			zap.String("api_id", apiId))
 		return false
 	}
 
-	// Update status to revoked
-	apiKey.Status = models.APIKeyStatusRevoked
+	// Find the API key by comparing plain text key against stored hashes
+	for _, apiKey := range apiKeys {
+		// Compare plain text key with stored hashed key using Argon2id
+		err := compareArgon2id(plainAPIKeyValue, apiKey.APIKey)
+		if err == nil {
+			// Hash matches - this is our target API key
+			apiKey.Status = models.APIKeyStatusRevoked
 
-	s.logger.Debug("Revoked API key",
-		zap.String("id", apiKey.ID),
-		zap.String("api_id", apiKey.APIId))
+			s.logger.Debug("Revoked API key",
+				zap.String("id", apiKey.ID),
+				zap.String("name", apiKey.Name),
+				zap.String("api_id", apiKey.APIId))
 
-	return true
+			return true
+		}
+	}
+
+	s.logger.Debug("API key not found for revocation",
+		zap.String("api_id", apiId))
+
+	return false
 }
 
 // RemoveByID removes an API key by its ID
@@ -141,7 +150,6 @@ func (s *APIKeyStore) RemoveByID(id string) bool {
 	}
 
 	delete(s.apiKeys, id)
-	delete(s.apiKeysByValue, apiKey.APIKey)
 	s.removeFromAPIMapping(apiKey)
 
 	s.logger.Debug("Removed API key",
@@ -161,7 +169,6 @@ func (s *APIKeyStore) RemoveByAPI(apiId string) int {
 
 	for _, apiKey := range apiKeys {
 		delete(s.apiKeys, apiKey.ID)
-		delete(s.apiKeysByValue, apiKey.APIKey)
 	}
 	delete(s.apiKeysByAPI, apiId)
 
@@ -210,4 +217,66 @@ func (s *APIKeyStore) removeFromAPIMapping(apiKey *models.APIKey) {
 	if len(s.apiKeysByAPI[apiKey.APIId]) == 0 {
 		delete(s.apiKeysByAPI, apiKey.APIId)
 	}
+}
+
+// compareArgon2id validates a plain text key against an Argon2id hash
+func compareArgon2id(apiKey, hashedAPIKey string) error {
+	if apiKey == "" {
+		return fmt.Errorf("plain API key cannot be empty")
+	}
+	if hashedAPIKey == "" {
+		return fmt.Errorf("hashed API key cannot be empty")
+	}
+
+	parts := strings.Split(hashedAPIKey, "$")
+	if len(parts) != 6 || parts[1] != "argon2id" {
+		return fmt.Errorf("invalid argon2id hash format")
+	}
+
+	// parts[2] -> v=19
+	var version int
+	if _, err := fmt.Sscanf(parts[2], "v=%d", &version); err != nil {
+		return err
+	}
+	if version != argon2.Version {
+		return fmt.Errorf("unsupported argon2 version: %d", version)
+	}
+
+	// parts[3] -> m=65536,t=3,p=4
+	var mem uint32
+	var iters uint32
+	var threads uint8
+	var t, m, p uint32
+	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &m, &t, &p); err != nil {
+		return err
+	}
+	mem = m
+	iters = t
+	threads = uint8(p)
+
+	// decode salt and hash (try RawStd then Std)
+	salt, err := decodeBase64(parts[4])
+	if err != nil {
+		return err
+	}
+	hash, err := decodeBase64(parts[5])
+	if err != nil {
+		return err
+	}
+
+	derived := argon2.IDKey([]byte(apiKey), salt, iters, mem, threads, uint32(len(hash)))
+	if subtle.ConstantTimeCompare(derived, hash) == 1 {
+		return nil
+	}
+	return errors.New("API key mismatch")
+}
+
+// decodeBase64 decodes a base64 string, trying RawStdEncoding first, then StdEncoding
+func decodeBase64(s string) ([]byte, error) {
+	b, err := base64.RawStdEncoding.DecodeString(s)
+	if err == nil {
+		return b, nil
+	}
+	// try StdEncoding as a fallback
+	return base64.StdEncoding.DecodeString(s)
 }

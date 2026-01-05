@@ -1,12 +1,16 @@
 package policyv1alpha
 
 import (
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/argon2"
 )
 
 type APIKey struct {
@@ -61,14 +65,12 @@ var (
 type APIkeyStore struct {
 	mu sync.RWMutex // Protects concurrent access
 	// API Keys storage
-	apiKeys      map[string]*APIKey   // Key: API key value → Value: APIKey
 	apiKeysByAPI map[string][]*APIKey // Key: "API ID" → Value: slice of APIKeys
 }
 
 // NewAPIkeyStore creates a new in-memory API key store
 func NewAPIkeyStore() *APIkeyStore {
 	return &APIkeyStore{
-		apiKeys:      make(map[string]*APIKey),
 		apiKeysByAPI: make(map[string][]*APIKey),
 	}
 }
@@ -93,46 +95,26 @@ func (aks *APIkeyStore) StoreAPIKey(apiId string, apiKey *APIKey) error {
 	// Check if an API key with the same apiId and name already exists
 	existingKeys, apiIdExists := aks.apiKeysByAPI[apiId]
 	var existingKeyIndex = -1
-	var oldAPIKeyValue string
 
 	if apiIdExists {
 		for i, existingKey := range existingKeys {
 			if existingKey.Name == apiKey.Name {
 				existingKeyIndex = i
-				oldAPIKeyValue = existingKey.APIKey
 				break
 			}
 		}
 	}
 
-	// Check if the new API key value already exists (but with different apiId/name)
-	if _, keyExists := aks.apiKeys[apiKey.APIKey]; keyExists && oldAPIKeyValue != apiKey.APIKey {
-		return ErrConflict
-	}
+	// Note: We no longer check for API key value collisions because:
+	// 1. API key values are now hashed, making direct comparison impossible
+	// 2. API keys use 256-bit cryptographic random generation, making collisions highly unlikely
+	// 3. Any extremely rare hash collisions will be handled at the database level with constraints
 
 	if existingKeyIndex >= 0 {
-		// Update existing API key
-		// Remove old API key value from apiKeys map if it's different
-		if oldAPIKeyValue != apiKey.APIKey {
-			delete(aks.apiKeys, oldAPIKeyValue)
-		}
-
 		// Update the existing entry in apiKeysByAPI
 		aks.apiKeysByAPI[apiId][existingKeyIndex] = apiKey
-
-		// Store by new API key value
-		aks.apiKeys[apiKey.APIKey] = apiKey
 	} else {
 		// Insert new API key
-		// Check if API key value already exists
-		if _, exists := aks.apiKeys[apiKey.APIKey]; exists {
-			return ErrConflict
-		}
-
-		// Store by API key value
-		aks.apiKeys[apiKey.APIKey] = apiKey
-
-		// Store by API ID
 		aks.apiKeysByAPI[apiId] = append(aks.apiKeysByAPI[apiId], apiKey)
 	}
 
@@ -140,7 +122,7 @@ func (aks *APIkeyStore) StoreAPIKey(apiId string, apiKey *APIKey) error {
 }
 
 // ValidateAPIKey validates the provided API key against the internal APIkey store
-func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, apiKey string) (bool, error) {
+func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, providedAPIKey string) (bool, error) {
 	aks.mu.Lock()
 	defer aks.mu.Unlock()
 
@@ -150,13 +132,18 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, api
 		return false, ErrNotFound
 	}
 
-	// Find the API key with the matching key value
+	// Find the API key that matches the provided plain text key (by comparing against hashed values)
 	var targetAPIKey *APIKey
 
 	for _, ak := range apiKeys {
-		if ak.APIKey == apiKey {
-			targetAPIKey = ak
-			break
+		// Compare provided plain text key with stored hashed key using Argon2id
+		if strings.HasPrefix(ak.APIKey, "$argon2id$") {
+			err := compareArgon2id(providedAPIKey, ak.APIKey)
+			if err == nil {
+				// Hash matches - this is our target API key
+				targetAPIKey = ak
+				break
+			}
 		}
 	}
 
@@ -202,8 +189,8 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, api
 	return false, nil
 }
 
-// RevokeAPIKey revokes a specific API key by API key value
-func (aks *APIkeyStore) RevokeAPIKey(apiId, apiKeyValue string) error {
+// RevokeAPIKey revokes a specific API key by plain text API key value
+func (aks *APIkeyStore) RevokeAPIKey(apiId, plainAPIKeyValue string) error {
 	aks.mu.Lock()
 	defer aks.mu.Unlock()
 
@@ -215,12 +202,14 @@ func (aks *APIkeyStore) RevokeAPIKey(apiId, apiKeyValue string) error {
 		return nil
 	}
 
-	// Find the API key with the matching key value
+	// Find the API key with the matching hashed key value
 	var targetAPIKey *APIKey
 	var targetIndex = -1
 
 	for i, apiKey := range apiKeys {
-		if apiKey.APIKey == apiKeyValue {
+		// Compare plain text key with stored hashed key using Argon2id
+		err := compareArgon2id(plainAPIKeyValue, apiKey.APIKey)
+		if err == nil {
 			targetAPIKey = apiKey
 			targetIndex = i
 			break
@@ -234,9 +223,6 @@ func (aks *APIkeyStore) RevokeAPIKey(apiId, apiKeyValue string) error {
 
 	// Set status to revoked
 	targetAPIKey.Status = Revoked
-
-	// Remove from main apiKeys map
-	delete(aks.apiKeys, apiKeyValue)
 
 	// Remove from apiKeysByAPI slice
 	aks.apiKeysByAPI[apiId] = append(apiKeys[:targetIndex], apiKeys[targetIndex+1:]...)
@@ -254,14 +240,9 @@ func (aks *APIkeyStore) RemoveAPIKeysByAPI(apiId string) error {
 	aks.mu.Lock()
 	defer aks.mu.Unlock()
 
-	apiKeys, exists := aks.apiKeysByAPI[apiId]
+	_, exists := aks.apiKeysByAPI[apiId]
 	if !exists {
 		return nil // No keys to remove
-	}
-
-	// Remove from main map
-	for _, key := range apiKeys {
-		delete(aks.apiKeys, key.APIKey)
 	}
 
 	// Remove from API-specific map
@@ -275,16 +256,70 @@ func (aks *APIkeyStore) ClearAll() error {
 	aks.mu.Lock()
 	defer aks.mu.Unlock()
 
-	// Clear the main API keys map
-	aks.apiKeys = make(map[string]*APIKey)
-
 	// Clear the API-specific keys map
 	aks.apiKeysByAPI = make(map[string][]*APIKey)
 
 	return nil
 }
 
-// compositeKey creates a composite key from name and version
-func compositeKey(name, version string) string {
-	return fmt.Sprintf("%s:%s", name, version)
+// compareArgon2id validates a plain text key against an Argon2id hash
+func compareArgon2id(apiKey, hashedAPIKey string) error {
+	if apiKey == "" {
+		return fmt.Errorf("plain API key cannot be empty")
+	}
+	if hashedAPIKey == "" {
+		return fmt.Errorf("hashed API key cannot be empty")
+	}
+
+	parts := strings.Split(hashedAPIKey, "$")
+	if len(parts) != 6 || parts[1] != "argon2id" {
+		return fmt.Errorf("invalid argon2id hash format")
+	}
+
+	// parts[2] -> v=19
+	var version int
+	if _, err := fmt.Sscanf(parts[2], "v=%d", &version); err != nil {
+		return err
+	}
+	if version != argon2.Version {
+		return fmt.Errorf("unsupported argon2 version: %d", version)
+	}
+
+	// parts[3] -> m=65536,t=3,p=4
+	var mem uint32
+	var iters uint32
+	var threads uint8
+	var t, m, p uint32
+	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &m, &t, &p); err != nil {
+		return err
+	}
+	mem = m
+	iters = t
+	threads = uint8(p)
+
+	// decode salt and hash (try RawStd then Std)
+	salt, err := decodeBase64(parts[4])
+	if err != nil {
+		return err
+	}
+	hash, err := decodeBase64(parts[5])
+	if err != nil {
+		return err
+	}
+
+	derived := argon2.IDKey([]byte(apiKey), salt, iters, mem, threads, uint32(len(hash)))
+	if subtle.ConstantTimeCompare(derived, hash) == 1 {
+		return nil
+	}
+	return errors.New("API key mismatch")
+}
+
+// decodeBase64 decodes a base64 string, trying RawStdEncoding first, then StdEncoding
+func decodeBase64(s string) ([]byte, error) {
+	b, err := base64.RawStdEncoding.DecodeString(s)
+	if err == nil {
+		return b, nil
+	}
+	// try StdEncoding as a fallback
+	return base64.StdEncoding.DecodeString(s)
 }
