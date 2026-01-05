@@ -296,6 +296,17 @@ func (r *RestApiReconciler) processDeployment(
 	retryCount := 0
 	if hasExisting && existingEntry.Generation == generation {
 		retryCount = existingEntry.RetryCount
+
+		// Respect backoff if set
+		if !existingEntry.NextRetryTime.IsZero() {
+			wait := time.Until(existingEntry.NextRetryTime)
+			if wait > 0 {
+				r.Logger.Info("Waiting for backoff",
+					zap.String("api", apiConfig.Name),
+					zap.Duration("wait", wait))
+				return ctrl.Result{RequeueAfter: wait}, nil
+			}
+		}
 	}
 
 	// Update tracker to Processing
