@@ -1114,10 +1114,31 @@ jobs:
           # Wait for the deployments to finish rolling out to ensure stability
           kubectl rollout status deployment/test-gateway-gateway-controller --timeout=300s
           kubectl rollout status deployment/test-gateway-gateway-router --timeout=300s
-          # Policy engine might also be updated if it had empty annotations
           kubectl rollout status deployment/test-gateway-gateway-policy-engine --timeout=300s || true
           
-          echo "Helm upgrade and rollout verified."
+          echo "Waiting for Gateway CR to be Programmed..."
+          kubectl wait --for=condition=Programmed gateway/test-gateway --timeout=180s
+
+          echo "Gateway rollout complete. Verifying Controller health..."
+          # Give it a moment to stabilize
+          sleep 20
+
+          # Port forward the new controller to check health
+          kubectl port-forward svc/test-gateway-gateway-controller 9091:9090 &
+          PF_PID=$!
+          sleep 5
+          
+          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9091/health)
+          echo "Controller Health Status: $HEALTH_STATUS"
+          
+          kill $PF_PID || true
+          
+          if [ "$HEALTH_STATUS" != "200" ]; then
+            echo "Gateway Controller is not healthy after upgrade!"
+            exit 1
+          fi
+          
+          echo "Helm upgrade, rollout, and health check verified."
 
       - name: Multi-namespace API test
         run: |
