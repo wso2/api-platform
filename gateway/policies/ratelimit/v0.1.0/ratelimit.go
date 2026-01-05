@@ -10,7 +10,8 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/policy-engine/policies/ratelimit/v0.1.0/algorithms/gcra" // Register GCRA algorithm
+	_ "github.com/policy-engine/policies/ratelimit/v0.1.0/algorithms/fixedwindow" // Register Fixed Window algorithm
+	_ "github.com/policy-engine/policies/ratelimit/v0.1.0/algorithms/gcra"        // Register GCRA algorithm
 	"github.com/policy-engine/policies/ratelimit/v0.1.0/limiter"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	"github.com/redis/go-redis/v9"
@@ -91,6 +92,7 @@ func GetPolicy(
 	}
 
 	// 2. Parse system parameters
+	algorithm := getStringParam(params, "algorithm", "gcra")
 	backend := getStringParam(params, "backend", "memory")
 
 	// Header configuration
@@ -151,7 +153,7 @@ func GetPolicy(
 
 		// Create limiter using factory pattern
 		rlLimiter, err = limiter.CreateLimiter(limiter.Config{
-			Algorithm:       "gcra",
+			Algorithm:       algorithm,
 			Limits:          limiterLimits,
 			Backend:         backend,
 			RedisClient:     redisClient,
@@ -177,7 +179,7 @@ func GetPolicy(
 
 		// Create limiter using factory pattern
 		rlLimiter, err = limiter.CreateLimiter(limiter.Config{
-			Algorithm:       "gcra",
+			Algorithm:       algorithm,
 			Limits:          limiterLimits,
 			Backend:         backend,
 			CleanupInterval: cleanupInterval,

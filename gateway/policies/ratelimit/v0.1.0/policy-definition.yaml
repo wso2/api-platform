@@ -1,18 +1,19 @@
 name: RateLimit
 version: v0.1.0
 description: |
-  GCRA-based rate limiting policy supporting multiple concurrent limits, weighted rate limiting,
-  flexible key extraction, and both in-memory and Redis backends. Supports fail-open behavior
-  for Redis failures and provides comprehensive rate limit headers (X-RateLimit-*, IETF RateLimit,
-  and Retry-After).
+  Rate limiting policy supporting multiple algorithms (GCRA, Fixed Window), multiple concurrent limits,
+  weighted rate limiting, flexible key extraction, and both in-memory and Redis backends. Supports
+  fail-open behavior for Redis failures and provides comprehensive rate limit headers (X-RateLimit-*,
+  IETF RateLimit, and Retry-After).
 
   Key features:
+  - Multiple algorithms: GCRA (smooth rate limiting) or Fixed Window (simple counter)
   - Weighted rate limiting via cost parameter (different operations consume different quota amounts)
   - Multiple concurrent limits (e.g., 10/second AND 1000/hour)
   - Array-based key extraction with sensible defaults (route name)
   - Dual backends: in-memory (single instance) or Redis (distributed)
   - Graceful degradation: missing key components log warnings but don't fail requests
-  - Atomic operations via Lua scripts (Redis) or mutex (memory)
+  - Atomic operations via Lua scripts (GCRA+Redis) or native Redis commands (Fixed Window)
 
 parameters:
   type: object
@@ -121,6 +122,20 @@ systemParameters:
   type: object
   additionalProperties: false
   properties:
+    algorithm:
+      type: string
+      description: |
+        Rate limiting algorithm to use:
+        - gcra: Generic Cell Rate Algorithm (default). Provides smooth rate limiting
+          with burst support and token bucket semantics. Better for consistent traffic
+          shaping and burst handling.
+        - fixed-window: Simple fixed time window counter. Divides time into fixed
+          intervals and counts requests per window. Lower computational overhead,
+          but can allow up to 2x burst at window boundaries.
+      enum: ["gcra", "fixed-window"]
+      default: "gcra"
+      "wso2/defaultValue": "${config.policy_configurations.ratelimit_v010.algorithm}"
+
     backend:
       type: string
       description: |
