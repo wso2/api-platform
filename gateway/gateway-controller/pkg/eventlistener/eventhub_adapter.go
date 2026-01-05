@@ -133,6 +133,7 @@ func (a *EventHubAdapter) bridgeEvents(
 					Action:         hubEvent.Action,
 					EntityID:       hubEvent.EntityID,
 					EventData:      hubEvent.EventData,
+					CorrelationID:  hubEvent.CorrelationID,
 					Timestamp:      hubEvent.ProcessedTimestamp,
 				}
 			}

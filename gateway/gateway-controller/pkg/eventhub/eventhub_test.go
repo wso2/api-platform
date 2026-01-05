@@ -36,6 +36,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			event_type TEXT NOT NULL,
 			action TEXT NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
 			entity_id TEXT NOT NULL,
+			correlation_id TEXT NOT NULL DEFAULT '',
 			event_data TEXT NOT NULL,
 			PRIMARY KEY (organization_id, processed_timestamp)
 		)
@@ -88,7 +89,7 @@ func TestEventHub_PublishAndSubscribe(t *testing.T) {
 
 	// Publish event
 	data, _ := json.Marshal(map[string]string{"key": "value"})
-	err = hub.PublishEvent(context.Background(), "test-org", EventTypeAPI, "CREATE", "api-1", data)
+	err = hub.PublishEvent(context.Background(), "test-org", EventTypeAPI, "CREATE", "api-1", "test-correlation-id", data)
 	require.NoError(t, err)
 
 	// Wait for event delivery via polling
@@ -121,7 +122,7 @@ func TestEventHub_CleanUpEvents(t *testing.T) {
 	// Publish events
 	for i := 0; i < 5; i++ {
 		data, _ := json.Marshal(map[string]int{"index": i})
-		err = hub.PublishEvent(context.Background(), "test-org", EventTypeAPI, "CREATE", "api-1", data)
+		err = hub.PublishEvent(context.Background(), "test-org", EventTypeAPI, "CREATE", "api-1", "test-correlation-id", data)
 		require.NoError(t, err)
 	}
 
@@ -159,7 +160,7 @@ func TestEventHub_PollerDetectsChanges(t *testing.T) {
 	// Publish multiple events
 	for i := 0; i < 3; i++ {
 		data, _ := json.Marshal(map[string]int{"index": i})
-		err = hub.PublishEvent(context.Background(), "test-org", EventTypeAPI, "CREATE", "api-1", data)
+		err = hub.PublishEvent(context.Background(), "test-org", EventTypeAPI, "CREATE", "api-1", "test-correlation-id", data)
 		require.NoError(t, err)
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -198,7 +199,7 @@ func TestEventHub_AtomicPublish(t *testing.T) {
 
 	// Publish event
 	data, _ := json.Marshal(map[string]string{"test": "data"})
-	err = hub.PublishEvent(context.Background(), "test-org", EventTypeAPI, "CREATE", "api-1", data)
+	err = hub.PublishEvent(context.Background(), "test-org", EventTypeAPI, "CREATE", "api-1", "test-correlation-id", data)
 	require.NoError(t, err)
 
 	// Verify event was recorded in unified table
@@ -240,7 +241,7 @@ func TestEventHub_MultipleSubscribers(t *testing.T) {
 
 	// Publish event
 	data, _ := json.Marshal(map[string]string{"test": "multi"})
-	err = hub.PublishEvent(context.Background(), "test-org", EventTypeAPI, "CREATE", "api-1", data)
+	err = hub.PublishEvent(context.Background(), "test-org", EventTypeAPI, "CREATE", "api-1", "test-correlation-id", data)
 	require.NoError(t, err)
 
 	// Both subscribers should receive the event
@@ -305,15 +306,15 @@ func TestEventHub_MultipleEventTypes(t *testing.T) {
 
 	// Publish different event types
 	data1, _ := json.Marshal(map[string]string{"type": "api"})
-	err = hub.PublishEvent(context.Background(), "test-org", EventTypeAPI, "CREATE", "api-1", data1)
+	err = hub.PublishEvent(context.Background(), "test-org", EventTypeAPI, "CREATE", "api-1", "test-correlation-id-1", data1)
 	require.NoError(t, err)
 
 	data2, _ := json.Marshal(map[string]string{"type": "cert"})
-	err = hub.PublishEvent(context.Background(), "test-org", EventTypeCertificate, "UPDATE", "cert-1", data2)
+	err = hub.PublishEvent(context.Background(), "test-org", EventTypeCertificate, "UPDATE", "cert-1", "test-correlation-id-2", data2)
 	require.NoError(t, err)
 
 	data3, _ := json.Marshal(map[string]string{"type": "llm"})
-	err = hub.PublishEvent(context.Background(), "test-org", EventTypeLLMTemplate, "DELETE", "template-1", data3)
+	err = hub.PublishEvent(context.Background(), "test-org", EventTypeLLMTemplate, "DELETE", "template-1", "test-correlation-id-3", data3)
 	require.NoError(t, err)
 
 	// Wait for events to be delivered (all types should come through)

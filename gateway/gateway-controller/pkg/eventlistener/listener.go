@@ -128,6 +128,7 @@ func (el *EventListener) handleEvent(event Event) {
 		zap.String("event_type", event.EventType),
 		zap.String("action", event.Action),
 		zap.String("entity_id", event.EntityID),
+		zap.String("correlation_id", event.CorrelationID),
 	)
 
 	switch event.EventType {

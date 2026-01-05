@@ -303,7 +303,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 
 			// Publish event with empty payload as per requirements
 			ctx := context.Background()
-			if err := s.eventHub.PublishEvent(ctx, organizationID, eventhub.EventTypeAPI, action, apiID, []byte{}); err != nil {
+			if err := s.eventHub.PublishEvent(ctx, organizationID, eventhub.EventTypeAPI, action, apiID, params.CorrelationID, []byte{}); err != nil {
 				params.Logger.Error("Failed to publish event to eventhub",
 					zap.Error(err),
 					zap.String("api_id", apiID),

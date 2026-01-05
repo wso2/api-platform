@@ -357,6 +357,7 @@ func (s *SQLiteStorage) initSchema() error {
 				event_type TEXT NOT NULL,
 				action TEXT NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
 				entity_id TEXT NOT NULL,
+				correlation_id TEXT NOT NULL DEFAULT '',
 				event_data TEXT NOT NULL,
 				PRIMARY KEY (organization_id, processed_timestamp)
 			);`); err != nil {

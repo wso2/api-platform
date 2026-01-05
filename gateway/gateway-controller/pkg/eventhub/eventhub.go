@@ -66,8 +66,8 @@ func (eh *eventHub) RegisterOrganization(organizationID string) error {
 
 // PublishEvent publishes an event for an organization
 func (eh *eventHub) PublishEvent(ctx context.Context, organizationID string,
-	eventType EventType, action, entityID string, eventData []byte) error {
-	return eh.backend.Publish(ctx, organizationID, eventType, action, entityID, eventData)
+	eventType EventType, action, entityID, correlationID string, eventData []byte) error {
+	return eh.backend.Publish(ctx, organizationID, eventType, action, entityID, correlationID, eventData)
 }
 
 // Subscribe registers a channel to receive events for an organization

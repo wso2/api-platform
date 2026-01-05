@@ -20,7 +20,6 @@ package eventlistener
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -37,22 +36,23 @@ func (el *EventListener) processAPIEvents(event Event) {
 	log := el.logger.With(
 		zap.String("api_id", event.EntityID),
 		zap.String("action", event.Action),
+		zap.String("correlation_id", event.CorrelationID),
 	)
 
 	apiID := event.EntityID
-
+	// TODO: (VirajSalaka) Use Context to propogate correlationID
 	switch event.Action {
 	case "CREATE", "UPDATE":
-		el.handleAPICreateOrUpdate(apiID, log)
+		el.handleAPICreateOrUpdate(apiID, event.CorrelationID, log)
 	case "DELETE":
-		el.handleAPIDelete(apiID, log)
+		el.handleAPIDelete(apiID, event.CorrelationID, log)
 	default:
 		log.Warn("Unknown action type")
 	}
 }
 
 // handleAPICreateOrUpdate fetches the API from DB and updates XDS
-func (el *EventListener) handleAPICreateOrUpdate(apiID string, log *zap.Logger) {
+func (el *EventListener) handleAPICreateOrUpdate(apiID string, correlationID string, log *zap.Logger) {
 	// 1. Fetch API configuration from database
 	config, err := el.db.GetConfig(apiID)
 	if err != nil {
@@ -85,7 +85,6 @@ func (el *EventListener) handleAPICreateOrUpdate(apiID string, log *zap.Logger) 
 	}
 
 	// 3. Trigger async XDS snapshot update
-	correlationID := fmt.Sprintf("event-%s-%d", apiID, time.Now().UnixNano())
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -108,7 +107,7 @@ func (el *EventListener) handleAPICreateOrUpdate(apiID string, log *zap.Logger) 
 }
 
 // handleAPIDelete removes the API from in-memory store and updates XDS
-func (el *EventListener) handleAPIDelete(apiID string, log *zap.Logger) {
+func (el *EventListener) handleAPIDelete(apiID string, correlationID string, log *zap.Logger) {
 	// 1. Check if config exists in store (for logging/policy removal)
 	config, err := el.store.Get(apiID)
 	if err != nil {
@@ -125,7 +124,6 @@ func (el *EventListener) handleAPIDelete(apiID string, log *zap.Logger) {
 	}
 
 	// 3. Trigger async XDS snapshot update
-	correlationID := fmt.Sprintf("event-delete-%s-%d", apiID, time.Now().UnixNano())
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

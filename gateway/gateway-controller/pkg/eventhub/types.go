@@ -17,13 +17,14 @@ const (
 
 // Event represents a single event in the hub
 type Event struct {
-	OrganizationID      string // Organization this event belongs to
-	ProcessedTimestamp  time.Time      // When event was recorded in DB
-	OriginatedTimestamp time.Time      // When event was created
-	EventType           EventType      // Type of event (API, CERTIFICATE, etc.)
-	Action              string         // CREATE, UPDATE, or DELETE
-	EntityID            string         // ID of the affected entity
-	EventData           []byte         // JSON serialized payload
+	OrganizationID      string    // Organization this event belongs to
+	ProcessedTimestamp  time.Time // When event was recorded in DB
+	OriginatedTimestamp time.Time // When event was created
+	EventType           EventType // Type of event (API, CERTIFICATE, etc.)
+	Action              string    // CREATE, UPDATE, or DELETE
+	EntityID            string    // ID of the affected entity
+	CorrelationID       string    // Correlation ID for request tracing
+	EventData           []byte    // JSON serialized payload
 }
 
 // OrganizationState represents the version state for an organization
@@ -45,7 +46,7 @@ type EventHub interface {
 	// PublishEvent publishes an event for an organization
 	// Updates the organization_states and events tables atomically
 	PublishEvent(ctx context.Context, organizationID string, eventType EventType,
-		action, entityID string, eventData []byte) error
+		action, entityID, correlationID string, eventData []byte) error
 
 	// Subscribe registers a channel to receive events for an organization
 	// Events are delivered as batches (arrays) based on poll cycle

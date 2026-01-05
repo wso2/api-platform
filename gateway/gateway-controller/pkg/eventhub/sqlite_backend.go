@@ -19,11 +19,11 @@ type SQLiteBackend struct {
 	registry *organizationRegistry
 
 	// Polling state
-	pollerCtx    context.Context
-	pollerCancel context.CancelFunc
-	cleanupCtx   context.Context
+	pollerCtx     context.Context
+	pollerCancel  context.CancelFunc
+	cleanupCtx    context.Context
 	cleanupCancel context.CancelFunc
-	wg           sync.WaitGroup
+	wg            sync.WaitGroup
 
 	initialized bool
 	mu          sync.RWMutex
@@ -99,7 +99,7 @@ func (b *SQLiteBackend) RegisterOrganization(ctx context.Context, orgID string) 
 
 // Publish publishes an event for an organization
 func (b *SQLiteBackend) Publish(ctx context.Context, orgID string,
-	eventType EventType, action, entityID string, eventData []byte) error {
+	eventType EventType, action, entityID, correlationID string, eventData []byte) error {
 
 	// Verify organization is registered
 	_, err := b.registry.get(orgID)
@@ -119,11 +119,11 @@ func (b *SQLiteBackend) Publish(ctx context.Context, orgID string,
 	// Insert event
 	insertQuery := `
 		INSERT INTO events (organization_id, processed_timestamp, originated_timestamp,
-		                   event_type, action, entity_id, event_data)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		                   event_type, action, entity_id, correlation_id, event_data)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err = tx.ExecContext(ctx, insertQuery,
-		string(orgID), now, now, string(eventType), action, entityID, eventData)
+		string(orgID), now, now, string(eventType), action, entityID, correlationID, eventData)
 	if err != nil {
 		return fmt.Errorf("failed to record event: %w", err)
 	}
@@ -150,6 +150,7 @@ func (b *SQLiteBackend) Publish(ctx context.Context, orgID string,
 		zap.String("eventType", string(eventType)),
 		zap.String("action", action),
 		zap.String("entityID", entityID),
+		zap.String("correlationID", correlationID),
 		zap.String("version", newVersion),
 	)
 
@@ -340,7 +341,7 @@ func (b *SQLiteBackend) getAllStates(ctx context.Context) ([]OrganizationState, 
 func (b *SQLiteBackend) getEventsSince(ctx context.Context, orgID string, since time.Time) ([]Event, error) {
 	query := `
 		SELECT processed_timestamp, originated_timestamp, event_type,
-		       action, entity_id, event_data
+		       action, entity_id, correlation_id, event_data
 		FROM events
 		WHERE organization_id = ? AND processed_timestamp > ?
 		ORDER BY processed_timestamp ASC
@@ -359,7 +360,7 @@ func (b *SQLiteBackend) getEventsSince(ctx context.Context, orgID string, since 
 		e.OrganizationID = orgID
 
 		if err := rows.Scan(&e.ProcessedTimestamp, &e.OriginatedTimestamp,
-			&eventTypeStr, &e.Action, &e.EntityID, &e.EventData); err != nil {
+			&eventTypeStr, &e.Action, &e.EntityID, &e.CorrelationID, &e.EventData); err != nil {
 			return nil, fmt.Errorf("failed to scan event: %w", err)
 		}
 		e.EventType = EventType(eventTypeStr)

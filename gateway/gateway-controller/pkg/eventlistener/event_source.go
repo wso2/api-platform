@@ -39,6 +39,9 @@ type Event struct {
 	// EntityID identifies the specific entity affected by the event
 	EntityID string
 
+	// CorrelationID is used to trace requests across services
+	CorrelationID string
+
 	// EventData contains the serialized event payload (typically JSON)
 	EventData []byte
 

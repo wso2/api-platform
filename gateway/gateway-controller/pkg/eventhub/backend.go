@@ -23,7 +23,7 @@ type EventhubImpl interface {
 	// Publish publishes an event for an organization.
 	// The implementation should ensure delivery semantics appropriate for the broker.
 	Publish(ctx context.Context, orgID string, eventType EventType,
-		action, entityID string, eventData []byte) error
+		action, entityID, correlationID string, eventData []byte) error
 
 	// Subscribe registers a channel to receive events for an organization.
 	// Events are delivered as batches (slices) when available.
