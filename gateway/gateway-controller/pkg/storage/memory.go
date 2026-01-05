@@ -41,7 +41,6 @@ type ConfigStore struct {
 	templateIdByHandle map[string]string
 
 	// API Keys storage
-	apiKeys      map[string]*models.APIKey   // Key: API key value → Value: APIKey
 	apiKeysByAPI map[string][]*models.APIKey // Key: "configID" → Value: slice of APIKeys
 }
 
@@ -55,7 +54,6 @@ func NewConfigStore() *ConfigStore {
 		TopicManager:       NewTopicManager(),
 		templates:          make(map[string]*models.StoredLLMProviderTemplate),
 		templateIdByHandle: make(map[string]string),
-		apiKeys:            make(map[string]*models.APIKey),
 		apiKeysByAPI:       make(map[string][]*models.APIKey),
 	}
 }
@@ -471,63 +469,30 @@ func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
 	// Check if an API key with the same apiId and name already exists
 	existingKeys, apiIdExists := cs.apiKeysByAPI[apiKey.APIId]
 	var existingKeyIndex = -1
-	var oldAPIKeyValue string
 
 	if apiIdExists {
 		for i, existingKey := range existingKeys {
 			if existingKey.Name == apiKey.Name {
 				existingKeyIndex = i
-				oldAPIKeyValue = existingKey.APIKey
 				break
 			}
 		}
 	}
 
-	// Check if the new API key value already exists (but with different apiId/name)
-	if _, keyExists := cs.apiKeys[apiKey.APIKey]; keyExists && oldAPIKeyValue != apiKey.APIKey {
-		return ErrConflict
-	}
+	// Note: We no longer check for API key value collisions because:
+	// 1. API key values are now hashed, making direct comparison impossible
+	// 2. API keys use 256-bit cryptographic random generation, making collisions highly unlikely
+	// 3. Any extremely rare hash collisions will be handled at the database level with constraints
 
 	if existingKeyIndex >= 0 {
-		// Update existing API key
-		// Remove old API key value from apiKeys map if it's different
-		if oldAPIKeyValue != apiKey.APIKey {
-			delete(cs.apiKeys, oldAPIKeyValue)
-		}
-
 		// Update the existing entry in apiKeysByAPI
 		cs.apiKeysByAPI[apiKey.APIId][existingKeyIndex] = apiKey
-
-		// Store by new API key value
-		cs.apiKeys[apiKey.APIKey] = apiKey
 	} else {
 		// Insert new API key
-		// Check if API key value already exists
-		if _, exists := cs.apiKeys[apiKey.APIKey]; exists {
-			return ErrConflict
-		}
-
-		// Store by API key value
-		cs.apiKeys[apiKey.APIKey] = apiKey
-
-		// Store by API apiId
 		cs.apiKeysByAPI[apiKey.APIId] = append(cs.apiKeysByAPI[apiKey.APIId], apiKey)
 	}
 
 	return nil
-}
-
-// GetAPIKeyByKey retrieves an API key by its key value
-func (cs *ConfigStore) GetAPIKeyByKey(key string) (*models.APIKey, error) {
-	cs.mu.RLock()
-	defer cs.mu.RUnlock()
-
-	apiKey, exists := cs.apiKeys[key]
-	if !exists {
-		return nil, ErrNotFound
-	}
-
-	return apiKey, nil
 }
 
 // GetAPIKeysByAPI retrieves all API keys for a specific API
@@ -566,51 +531,14 @@ func (cs *ConfigStore) GetAPIKeyByName(apiId, name string) (*models.APIKey, erro
 	return nil, ErrNotFound
 }
 
-// RemoveAPIKey removes an API key from the in-memory cache
-func (cs *ConfigStore) RemoveAPIKey(apiKey string) error {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-
-	// Get the API key first to find its API association
-	key, exists := cs.apiKeys[apiKey]
-	if !exists {
-		return ErrNotFound
-	}
-
-	// Remove from main map
-	delete(cs.apiKeys, apiKey)
-
-	// Remove from API-specific map
-	if apiKeys, exists := cs.apiKeysByAPI[key.APIId]; exists {
-		for i, k := range apiKeys {
-			if k.APIKey == apiKey {
-				// Remove from slice
-				cs.apiKeysByAPI[key.APIId] = append(apiKeys[:i], apiKeys[i+1:]...)
-				break
-			}
-		}
-		// Clean up empty slices
-		if len(cs.apiKeysByAPI[key.APIId]) == 0 {
-			delete(cs.apiKeysByAPI, key.APIId)
-		}
-	}
-
-	return nil
-}
-
 // RemoveAPIKeysByAPI removes all API keys for a specific API
 func (cs *ConfigStore) RemoveAPIKeysByAPI(apiId string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	apiKeys, exists := cs.apiKeysByAPI[apiId]
+	_, exists := cs.apiKeysByAPI[apiId]
 	if !exists {
 		return nil // No keys to remove
-	}
-
-	// Remove from main map
-	for _, key := range apiKeys {
-		delete(cs.apiKeys, key.APIKey)
 	}
 
 	// Remove from API-specific map
@@ -645,9 +573,6 @@ func (cs *ConfigStore) RemoveAPIKeyByName(apiId, name string) error {
 	if targetAPIKey == nil {
 		return ErrNotFound
 	}
-
-	// Remove from main apiKeys map
-	delete(cs.apiKeys, targetAPIKey.APIKey)
 
 	// Remove from apiKeysByAPI slice
 	cs.apiKeysByAPI[apiId] = append(apiKeys[:targetIndex], apiKeys[targetIndex+1:]...)
