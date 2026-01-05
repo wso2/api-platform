@@ -19,7 +19,7 @@ The JWT Authentication policy validates JWT (JSON Web Token) access tokens using
 
 The JWT Authentication policy uses a two-level configuration model:
 
-- **System Parameters**: Configured by the administrator in `config.yaml` under `policy_configurations.JWTAuth_v010`
+- **System Parameters**: Configured by the administrator in `config.yaml` under `policy_configurations.jwtauth_v010`
 - **User Parameters**: Configured per-API/route in the API definition YAML
 
 ### System Parameters (config.yaml)
@@ -28,23 +28,23 @@ These parameters are set by the administrator and apply globally to all JWT auth
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `KeyManagers` | array | Yes | - | List of key manager definitions with JWKS endpoints or local certificates. |
-| `JwksCacheTtl` | string | No | `"5m"` | Duration for caching JWKS responses (e.g., "5m", "1h"). |
-| `JwksFetchTimeout` | string | No | `"5s"` | Timeout for HTTP fetch of JWKS. |
-| `JwksFetchRetryCount` | integer | No | `3` | Number of retries for JWKS fetch on transient failures. |
-| `JwksFetchRetryInterval` | string | No | `"2s"` | Interval between JWKS fetch retries. |
-| `AllowedAlgorithms` | array | No | `["RS256", "ES256"]` | Allowed JWT signing algorithms. |
-| `Leeway` | string | No | `"30s"` | Clock skew allowance for exp/nbf checks. |
-| `AuthHeaderScheme` | string | No | `"Bearer"` | Expected scheme prefix in the authorization header. |
-| `HeaderName` | string | No | `"Authorization"` | Header name to extract token from. |
-| `OnFailureStatusCode` | integer | No | `401` | HTTP status code to return on authentication failure. |
-| `ErrorMessageFormat` | string | No | `"json"` | Format of error response: "json", "plain", or "minimal". |
-| `ErrorMessage` | string | No | `"Authentication failed."` | Custom error message for authentication failures. |
-| `ValidateIssuer` | boolean | No | `true` | Whether to validate the token's issuer claim against configured key managers. |
+| `keymanagers` | array | Yes | - | List of key manager definitions with JWKS endpoints or local certificates. |
+| `jwkscachettl` | string | No | `"5m"` | Duration for caching JWKS responses (e.g., "5m", "1h"). |
+| `jwksfetchtimeout` | string | No | `"5s"` | Timeout for HTTP fetch of JWKS. |
+| `jwksfetchretrycount` | integer | No | `3` | Number of retries for JWKS fetch on transient failures. |
+| `jwksfetchretryinterval` | string | No | `"2s"` | Interval between JWKS fetch retries. |
+| `allowedalgorithms` | array | No | `["RS256", "ES256"]` | Allowed JWT signing algorithms. |
+| `leeway` | string | No | `"30s"` | Clock skew allowance for exp/nbf checks. |
+| `authheaderscheme` | string | No | `"Bearer"` | Expected scheme prefix in the authorization header. |
+| `headername` | string | No | `"Authorization"` | Header name to extract token from. |
+| `onfailurestatuscode` | integer | No | `401` | HTTP status code to return on authentication failure. |
+| `errormessageformat` | string | No | `"json"` | Format of error response: "json", "plain", or "minimal". |
+| `errormessage` | string | No | `"Authentication failed."` | Custom error message for authentication failures. |
+| `validateissuer` | boolean | No | `true` | Whether to validate the token's issuer claim against configured key managers. |
 
 #### Key Manager Configuration
 
-Each key manager in the `KeyManagers` array supports the following structure:
+Each key manager in the `keymanagers` array supports the following structure:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -64,7 +64,7 @@ These parameters are configured per-API/route by the API developer:
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `issuers` | array | No | - | List of issuer names (referencing entries in system `KeyManagers`) to use for validating tokens. If omitted, runtime tries to match token `iss` claim to available key managers. |
+| `issuers` | array | No | - | List of issuer names (referencing entries in system `keymanagers`) to use for validating tokens. If omitted, runtime tries to match token `iss` claim to available key managers. |
 | `audiences` | array | No | - | List of acceptable audience values; token must contain at least one. |
 | `requiredScopes` | array | No | - | List of scopes that must be present in the token. |
 | `requiredClaims` | object | No | - | Map of claimName → expectedValue for custom claim validation. |
@@ -76,9 +76,9 @@ These parameters are configured per-API/route by the API developer:
 Add the following to your `gateway/configs/config.yaml` file under `policy_configurations`:
 
 ```yaml
-policy_configurations: 
-  JWTAuth_v010:
-    KeyManagers:
+policy_configurations:
+  jwtauth_v010:
+    keymanagers:
     - name: PrimaryIDP
       issuer: https://idp.example.com/oauth2/token
       jwks:
@@ -91,20 +91,20 @@ policy_configurations:
         remote:
           uri: https://auth.example.org/oauth2/jwks
           skipTlsVerify: false
-    JwksCacheTtl: "5m"
-    JwksFetchTimeout: "5s"
-    JwksFetchRetryCount: 3
-    JwksFetchRetryInterval: "2s"
-    AllowedAlgorithms:
+    jwkscachettl: "5m"
+    jwksfetchtimeout: "5s"
+    jwksfetchretrycount: 3
+    jwksfetchretryinterval: "2s"
+    allowedalgorithms:
       - RS256
       - ES256
-    Leeway: "30s"
-    AuthHeaderScheme: Bearer
-    HeaderName: Authorization
-    OnFailureStatusCode: 401
-    ErrorMessageFormat: json
-    ErrorMessage: "Authentication failed."
-    ValidateIssuer: true
+    leeway: "30s"
+    authheaderscheme: Bearer
+    headername: Authorization
+    onfailurestatuscode: 401
+    errormessageformat: json
+    errormessage: "Authentication failed."
+    validateissuer: true
 ```
 
 

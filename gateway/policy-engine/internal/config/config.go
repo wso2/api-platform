@@ -23,269 +23,289 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/viper"
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
 )
 
 type Config struct {
-	PolicyEngine         PolicyEngine           `mapstructure:"policy_engine"`
-	GatewayController    map[string]interface{} `mapstructure:"gateway_controller"`
-	PolicyConfigurations map[string]interface{} `mapstructure:"policy_configurations"`
-	Analytics AnalyticsConfig `mapstructure:"analytics"`
-	TracingConfig        TracingConfig          `mapstructure:"tracing"`
+	PolicyEngine         PolicyEngine           `koanf:"policy_engine"`
+	GatewayController    map[string]interface{} `koanf:"gateway_controller"`
+	PolicyConfigurations map[string]interface{} `koanf:"policy_configurations"`
+	Analytics            AnalyticsConfig        `koanf:"analytics"`
+	TracingConfig        TracingConfig          `koanf:"tracing"`
 }
 
 // AnalyticsConfig holds analytics configuration
 type AnalyticsConfig struct {
-	Enabled bool `mapstructure:"enabled"`
-	Publishers []PublisherConfig `mapstructure:"publishers"`
-	GRPCAccessLogCfg map[string]interface{} `mapstructure:"grpc_access_logs"`
-	AccessLogsServiceCfg AccessLogsServiceConfig `mapstructure:"access_logs_service"`
+	Enabled              bool                    `koanf:"enabled"`
+	Publishers           []PublisherConfig       `koanf:"publishers"`
+	GRPCAccessLogCfg     map[string]interface{}  `koanf:"grpc_access_logs"`
+	AccessLogsServiceCfg AccessLogsServiceConfig `koanf:"access_logs_service"`
 }
 
 // PublisherConfig holds publisher configuration
 type PublisherConfig struct {
-	Enabled bool `mapstructure:"enabled"`
-	Type string `mapstructure:"type"`
-	Settings map[string]interface{} `mapstructure:"settings"`
+	Enabled  bool                   `koanf:"enabled"`
+	Type     string                 `koanf:"type"`
+	Settings map[string]interface{} `koanf:"settings"`
 }
 
 // Config represents the complete policy engine configuration
 type PolicyEngine struct {
-	Server     ServerConfig     `mapstructure:"server"`
-	Admin      AdminConfig      `mapstructure:"admin"`
-	ConfigMode ConfigModeConfig `mapstructure:"config_mode"`
-	XDS        XDSConfig        `mapstructure:"xds"`
-	FileConfig FileConfigConfig `mapstructure:"file_config"`
-	Logging    LoggingConfig    `mapstructure:"logging"`
+	Server     ServerConfig     `koanf:"server"`
+	Admin      AdminConfig      `koanf:"admin"`
+	ConfigMode ConfigModeConfig `koanf:"config_mode"`
+	XDS        XDSConfig        `koanf:"xds"`
+	FileConfig FileConfigConfig `koanf:"file_config"`
+	Logging    LoggingConfig    `koanf:"logging"`
 	// Tracing holds OpenTelemetry exporter configuration
-	TracingServiceName string `mapstructure:"tracing_service_name"`
+	TracingServiceName string `koanf:"tracing_service_name"`
 
 	// RawConfig holds the complete raw configuration map including custom fields
 	// This is used for resolving ${config} CEL expressions in policy systemParameters
-	RawConfig map[string]interface{} `mapstructure:",remain"`
+	// Note: No struct tag - populated manually via k.Raw()
+	RawConfig map[string]interface{}
 }
 
 // TracingConfig holds OpenTelemetry tracing configuration
 type TracingConfig struct {
 	// Enabled toggles tracing on/off
-	Enabled bool `mapstructure:"enabled"`
+	Enabled bool `koanf:"enabled"`
 
 	// Endpoint is the OTLP gRPC endpoint (host:port)
-	Endpoint string `mapstructure:"endpoint"`
+	Endpoint string `koanf:"endpoint"`
 
 	// Insecure indicates whether to use an insecure connection (no TLS)
-	Insecure bool `mapstructure:"insecure"`
+	Insecure bool `koanf:"insecure"`
 
 	// ServiceVersion is the service version reported to the tracing backend
-	ServiceVersion string `mapstructure:"service_version"`
+	ServiceVersion string `koanf:"service_version"`
 
 	// BatchTimeout is the export batch timeout
-	BatchTimeout time.Duration `mapstructure:"batch_timeout"`
+	BatchTimeout time.Duration `koanf:"batch_timeout"`
 
 	// MaxExportBatchSize is the maximum batch size for exports
-	MaxExportBatchSize int `mapstructure:"max_export_batch_size"`
+	MaxExportBatchSize int `koanf:"max_export_batch_size"`
 
 	// SamplingRate is the ratio of requests to sample (0.0 to 1.0)
 	// 1.0 = sample all requests, 0.1 = sample 10% of requests
 	// If set to 0 or not specified, defaults to 1.0 (sample all)
-	SamplingRate float64 `mapstructure:"sampling_rate"`
+	SamplingRate float64 `koanf:"sampling_rate"`
 }
 
 // ServerConfig holds ext_proc server configuration
 type ServerConfig struct {
 	// ExtProcPort is the port for the ext_proc gRPC server
-	ExtProcPort int `mapstructure:"extproc_port"`
+	ExtProcPort int `koanf:"extproc_port"`
 }
 
 // AdminConfig holds admin HTTP server configuration
 type AdminConfig struct {
 	// Enabled indicates whether the admin server should be started
-	Enabled bool `mapstructure:"enabled"`
+	Enabled bool `koanf:"enabled"`
 
 	// Port is the port for the admin HTTP server
-	Port int `mapstructure:"port"`
+	Port int `koanf:"port"`
 
 	// AllowedIPs is a list of IP addresses allowed to access the admin API
 	// Defaults to localhost only (127.0.0.1 and ::1)
-	AllowedIPs []string `mapstructure:"allowed_ips"`
+	AllowedIPs []string `koanf:"allowed_ips"`
 }
 
 // ConfigModeConfig specifies how policy chains are configured
 type ConfigModeConfig struct {
 	// Mode can be "file" or "xds"
-	Mode string `mapstructure:"mode"`
+	Mode string `koanf:"mode"`
 }
 
 // XDSConfig holds xDS client configuration
 type XDSConfig struct {
 	// Enabled indicates whether xDS client should be started
-	Enabled bool `mapstructure:"enabled"`
+	Enabled bool `koanf:"enabled"`
 
 	// ServerAddress is the xDS server address (e.g., "localhost:18000")
-	ServerAddress string `mapstructure:"server_address"`
+	ServerAddress string `koanf:"server_address"`
 
 	// NodeID identifies this policy engine instance to the xDS server
-	NodeID string `mapstructure:"node_id"`
+	NodeID string `koanf:"node_id"`
 
 	// Cluster identifies the cluster this policy engine belongs to
-	Cluster string `mapstructure:"cluster"`
+	Cluster string `koanf:"cluster"`
 
 	// ConnectTimeout is the timeout for establishing initial connection
-	ConnectTimeout time.Duration `mapstructure:"connect_timeout"`
+	ConnectTimeout time.Duration `koanf:"connect_timeout"`
 
 	// RequestTimeout is the timeout for individual xDS requests
-	RequestTimeout time.Duration `mapstructure:"request_timeout"`
+	RequestTimeout time.Duration `koanf:"request_timeout"`
 
 	// InitialReconnectDelay is the initial delay before reconnecting
-	InitialReconnectDelay time.Duration `mapstructure:"initial_reconnect_delay"`
+	InitialReconnectDelay time.Duration `koanf:"initial_reconnect_delay"`
 
 	// MaxReconnectDelay is the maximum delay between reconnection attempts
-	MaxReconnectDelay time.Duration `mapstructure:"max_reconnect_delay"`
+	MaxReconnectDelay time.Duration `koanf:"max_reconnect_delay"`
 
 	// TLS configuration
-	TLS XDSTLSConfig `mapstructure:"tls"`
+	TLS XDSTLSConfig `koanf:"tls"`
 }
 
 // XDSTLSConfig holds TLS configuration for xDS connection
 type XDSTLSConfig struct {
 	// Enabled indicates whether to use TLS
-	Enabled bool `mapstructure:"enabled"`
+	Enabled bool `koanf:"enabled"`
 
 	// CertPath is the path to the TLS certificate file
-	CertPath string `mapstructure:"cert_path"`
+	CertPath string `koanf:"cert_path"`
 
 	// KeyPath is the path to the TLS private key file
-	KeyPath string `mapstructure:"key_path"`
+	KeyPath string `koanf:"key_path"`
 
 	// CAPath is the path to the CA certificate for server verification
-	CAPath string `mapstructure:"ca_path"`
+	CAPath string `koanf:"ca_path"`
 }
 
 // FileConfigConfig holds file-based configuration settings
 type FileConfigConfig struct {
 	// Path is the path to the policy chains YAML file
-	Path string `mapstructure:"path"`
+	Path string `koanf:"path"`
 }
 
 // LoggingConfig holds logging configuration
 type LoggingConfig struct {
 	// Level can be "debug", "info", "warn", "error"
-	Level string `mapstructure:"level"`
+	Level string `koanf:"level"`
 
 	// Format can be "json" or "text"
-	Format string `mapstructure:"format"`
+	Format string `koanf:"format"`
 }
 
 // AccessLogsServiceConfig holds access logs service configuration
 type AccessLogsServiceConfig struct {
-	ALSServerPort int `mapstructure:"als_server_port"`
-	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
-	PublicKeyPath string `mapstructure:"public_key_path"`
-	PrivateKeyPath string `mapstructure:"private_key_path"`
-	ALSPlainText bool `mapstructure:"als_plain_text"`
-	ExtProcMaxMessageSize int `mapstructure:"max_message_size"`
-	ExtProcMaxHeaderLimit int `mapstructure:"max_header_limit"`
+	ALSServerPort         int           `koanf:"als_server_port"`
+	ShutdownTimeout       time.Duration `koanf:"shutdown_timeout"`
+	PublicKeyPath         string        `koanf:"public_key_path"`
+	PrivateKeyPath        string        `koanf:"private_key_path"`
+	ALSPlainText          bool          `koanf:"als_plain_text"`
+	ExtProcMaxMessageSize int           `koanf:"max_message_size"`
+	ExtProcMaxHeaderLimit int           `koanf:"max_header_limit"`
 }
 
-// Load loads configuration from a YAML file
+// Load loads configuration from file, environment variables, and defaults
+// Priority: Environment variables > Config file > Defaults
 func Load(configPath string) (*Config, error) {
-	v := viper.New()
+	cfg := defaultConfig()
+	k := koanf.New(".")
 
-	// Set defaults
-	setDefaults(v)
-
-	// Set config file path
-	v.SetConfigFile(configPath)
-
-	// Enable environment variable support with PE prefix
-	v.SetEnvPrefix("PE")
-	v.AutomaticEnv()
-	// Map environment variables to config keys (e.g., PE_XDS_SERVER_ADDRESS -> xds.server_address)
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-
-	// Read config file
-	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+	// Load config file if path is provided
+	if configPath != "" {
+		if err := k.Load(file.Provider(configPath), yaml.Parser()); err != nil {
+			return nil, fmt.Errorf("failed to load config file: %w", err)
+		}
 	}
 
-	// Unmarshal config
-	var cfg Config
-	if err := v.Unmarshal(&cfg); err != nil {
+	// Load environment variables with PE_ prefix
+	// Double underscores (__) preserve literal underscores in field names
+	// Example: PE_POLICY__ENGINE_SERVER_EXTPROC__PORT -> policy_engine.server.extproc_port
+	if err := k.Load(env.Provider("PE_", ".", func(s string) string {
+		s = strings.TrimPrefix(s, "PE_")
+		s = strings.ToLower(s)
+
+		// Step 1: Preserve literal underscores with placeholder
+		s = strings.ReplaceAll(s, "__", "%UNDERSCORE%")
+		// Step 2: Convert single underscores to dots (nested paths)
+		s = strings.ReplaceAll(s, "_", ".")
+		// Step 3: Restore literal underscores
+		s = strings.ReplaceAll(s, "%UNDERSCORE%", "_")
+		return s
+	}), nil); err != nil {
+		return nil, fmt.Errorf("failed to load environment variables: %w", err)
+	}
+
+	// Unmarshal into Config struct
+	if err := k.Unmarshal("", cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	// Capture complete raw config map for ${config} CEL resolution
-	cfg.PolicyEngine.RawConfig = v.AllSettings()
+	// Capture complete raw config for CEL ${config} expression resolution
+	cfg.PolicyEngine.RawConfig = k.Raw()
 
-	// Validate config
+	// Validate
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	return &cfg, nil
+	return cfg, nil
 }
 
-// setDefaults sets default configuration values
-func setDefaults(v *viper.Viper) {
-	// Server defaults
-	v.SetDefault("policy_engine.server.extproc_port", 9001)
-
-	// Admin defaults
-	v.SetDefault("policy_engine.admin.enabled", true)
-	v.SetDefault("policy_engine.admin.port", 9002)
-	v.SetDefault("policy_engine.admin.allowed_ips", []string{"127.0.0.1", "::1"})
-
-	// Config mode defaults
-	v.SetDefault("policy_engine.config_mode.mode", "file")
-
-	// xDS defaults
-	v.SetDefault("policy_engine.xds.enabled", false)
-	v.SetDefault("policy_engine.xds.server_address", "localhost:18000")
-	v.SetDefault("policy_engine.xds.node_id", "policy-engine")
-	v.SetDefault("policy_engine.xds.cluster", "policy-engine-cluster")
-	v.SetDefault("policy_engine.xds.connect_timeout", "10s")
-	v.SetDefault("policy_engine.xds.request_timeout", "5s")
-	v.SetDefault("policy_engine.xds.initial_reconnect_delay", "1s")
-	v.SetDefault("policy_engine.xds.max_reconnect_delay", "60s")
-	v.SetDefault("policy_engine.xds.tls.enabled", false)
-
-	// File config defaults
-	v.SetDefault("policy_engine.file_config.path", "configs/policy-chains.yaml")
-
-	// Logging defaults
-	v.SetDefault("policy_engine.logging.level", "info")
-	v.SetDefault("policy_engine.logging.format", "json")
-
-	// Analytics defaults
-	v.SetDefault("analytics.enabled", false)
-	v.SetDefault("analytics.publishers", make([]PublisherConfig, 0))
-	v.SetDefault("analytics.grpc_access_logs", map[string]interface{}{
-		"host": "policy-engine",
-		"port": 18090,
-		"log_name": "envoy_access_log",
-		"buffer_flush_interval": 1000000000,
-		"buffer_size_bytes": 16384,
-		"grpc_request_timeout": 20000000000,
-	})
-	v.SetDefault("analytics.access_logs_service", map[string]interface{}{
-		"als_server_port": 18090,
-		"shutdown_timeout": 600,
-		"public_key_path": "",
-		"private_key_path": "",
-		"als_plain_text": true,
-		"max_message_size": 1000000000,
-		"max_header_limit": 8192,
-	})
-	v.SetDefault("policy_engine.tracing_service_name", "policy-engine")
-	// Tracing defaults
-	v.SetDefault("tracing.enabled", false)
-	v.SetDefault("tracing.endpoint", "otel-collector:4317")
-	v.SetDefault("tracing.insecure", true)
-	
-	v.SetDefault("tracing.service_version", "1.0.0")
-	v.SetDefault("tracing.batch_timeout", "1s")
-	v.SetDefault("tracing.max_export_batch_size", 512)
-	v.SetDefault("tracing.sampling_rate", 1.0)
+// defaultConfig returns a Config struct with default configuration values
+func defaultConfig() *Config {
+	return &Config{
+		PolicyEngine: PolicyEngine{
+			Server: ServerConfig{
+				ExtProcPort: 9001,
+			},
+			Admin: AdminConfig{
+				Enabled:    true,
+				Port:       9002,
+				AllowedIPs: []string{"127.0.0.1", "::1"},
+			},
+			ConfigMode: ConfigModeConfig{
+				Mode: "file",
+			},
+			XDS: XDSConfig{
+				Enabled:               false,
+				ServerAddress:         "localhost:18000",
+				NodeID:                "policy-engine",
+				Cluster:               "policy-engine-cluster",
+				ConnectTimeout:        10 * time.Second,
+				RequestTimeout:        5 * time.Second,
+				InitialReconnectDelay: 1 * time.Second,
+				MaxReconnectDelay:     60 * time.Second,
+				TLS: XDSTLSConfig{
+					Enabled: false,
+				},
+			},
+			FileConfig: FileConfigConfig{
+				Path: "configs/policy-chains.yaml",
+			},
+			Logging: LoggingConfig{
+				Level:  "info",
+				Format: "json",
+			},
+			TracingServiceName: "policy-engine",
+		},
+		Analytics: AnalyticsConfig{
+			Enabled:    false,
+			Publishers: []PublisherConfig{},
+			GRPCAccessLogCfg: map[string]interface{}{
+				"host":                  "policy-engine",
+				"port":                  18090,
+				"log_name":              "envoy_access_log",
+				"buffer_flush_interval": 1000000000,
+				"buffer_size_bytes":     16384,
+				"grpc_request_timeout":  20000000000,
+			},
+			AccessLogsServiceCfg: AccessLogsServiceConfig{
+				ALSServerPort:         18090,
+				ShutdownTimeout:       600 * time.Second,
+				PublicKeyPath:         "",
+				PrivateKeyPath:        "",
+				ALSPlainText:          true,
+				ExtProcMaxMessageSize: 1000000000,
+				ExtProcMaxHeaderLimit: 8192,
+			},
+		},
+		TracingConfig: TracingConfig{
+			Enabled:            false,
+			Endpoint:           "otel-collector:4317",
+			Insecure:           true,
+			ServiceVersion:     "1.0.0",
+			BatchTimeout:       1 * time.Second,
+			MaxExportBatchSize: 512,
+			SamplingRate:       1.0,
+		},
+	}
 }
 
 // Validate validates the configuration
@@ -412,7 +432,7 @@ func (c *Config) validateAnalyticsConfig() error {
 	if c.Analytics.Enabled {
 		// Validate ALS server config (policy-engine side)
 		als := c.Analytics.AccessLogsServiceCfg
-		
+
 		if als.ALSServerPort <= 0 || als.ALSServerPort > 65535 {
 			return fmt.Errorf("analytics.access_logs_service.als_server_port must be between 1 and 65535, got %d", als.ALSServerPort)
 		}
@@ -424,7 +444,7 @@ func (c *Config) validateAnalyticsConfig() error {
 		}
 		if als.ExtProcMaxHeaderLimit <= 0 {
 			return fmt.Errorf("analytics.access_logs_service.max_header_limit must be positive, got %d", als.ExtProcMaxHeaderLimit)
-		}	
+		}
 
 		// Validate publishers
 		for i, pub := range c.Analytics.Publishers {

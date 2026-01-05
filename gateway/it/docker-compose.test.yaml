@@ -96,8 +96,8 @@ services:
     container_name: it-sample-backend
     image: renukafernando/request-info:latest
     ports:
-      - "5000:5000"
-    command: ["-addr", ":5000", "-pretty"]
+      - "9080:9080"
+    command: ["-addr", ":9080", "-pretty"]
     networks:
       - it-gateway-network
 
