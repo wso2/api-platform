@@ -1094,6 +1094,23 @@ jobs:
 
           echo "Updated JWT API invocation test passed (correctly rejected)!"
 
+      - name: Test Gateway Helm Upgrade
+        run: |
+          echo "Updating ConfigMap to trigger Helm Upgrade..."
+          kubectl get configmap test-gateway-config -o jsonpath='{.data.values\.yaml}' > values.yaml
+          
+          # Replace annotations to trigger upgrade
+          sed -i 's/annotations: {}/annotations: {helm-upgrade-test: "true"}/g' values.yaml
+          
+          kubectl create configmap test-gateway-config --from-file=values.yaml=values.yaml --dry-run=client -o yaml | kubectl apply -f -
+          
+          echo "Waiting for deployment update..."
+          # Give the operator a moment to detect and start the upgrade
+          sleep 5
+          kubectl wait --for=jsonpath='{.metadata.annotations.helm-upgrade-test}=true' deployment/test-gateway-gateway-router --timeout=180s
+          
+          echo "Helm upgrade verified."
+
       - name: Multi-namespace API test
         run: |
           echo "Creating namespace test-ns..."
