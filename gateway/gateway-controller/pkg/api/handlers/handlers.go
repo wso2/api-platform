@@ -516,7 +516,6 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		return
 	}
 
-	// TODO: (VirajSalaka) Needs to implement this based on deploymentService DeployAPIConfiguration
 	// Validate that the handle in the YAML matches the path parameter
 	if apiConfig.Metadata.Name != "" {
 		if apiConfig.Metadata.Name != handle {
@@ -703,7 +702,6 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Update xDS snapshot asynchronously
-	// TODO: (VirajSalaka) Fix to work with eventhub
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
