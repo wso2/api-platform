@@ -355,23 +355,49 @@ func (a *AssertSteps) jsonShouldHaveItems(expected int) error {
 }
 
 // getJSONField extracts a field from JSON body (supports dot notation)
+// getJSONField extracts a field from JSON body (supports dot notation and array indices)
 func (a *AssertSteps) getJSONField(field string) (interface{}, error) {
 	body := a.provider.LastBody()
-	var data map[string]interface{}
+	var data interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
 		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
-	// Support dot notation: "user.name"
 	parts := strings.Split(field, ".")
-	var current interface{} = data
+	current := data
 
 	for _, part := range parts {
-		switch v := current.(type) {
-		case map[string]interface{}:
-			current = v[part]
-		default:
-			return nil, fmt.Errorf("cannot navigate to %q in %T", part, current)
+		// Handle array index like "items[0]"
+		if i := strings.Index(part, "["); i != -1 && strings.HasSuffix(part, "]") {
+			key := part[:i]
+			idxStr := part[i+1 : len(part)-1]
+			idx, err := strconv.Atoi(idxStr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid array index in path %q: %v", part, err)
+			}
+
+			if key != "" {
+				m, ok := current.(map[string]interface{})
+				if !ok {
+					return nil, fmt.Errorf("expected map at %q but got %T", key, current)
+				}
+				current = m[key]
+			}
+
+			l, ok := current.([]interface{})
+			if !ok {
+				return nil, fmt.Errorf("expected array at %q but got %T", part, current)
+			}
+			if idx < 0 || idx >= len(l) {
+				return nil, fmt.Errorf("index out of bounds at %q: %d", part, idx)
+			}
+			current = l[idx]
+		} else {
+			m, ok := current.(map[string]interface{})
+			if !ok {
+				return nil, fmt.Errorf("expected map at %q but got %T", part, current)
+			}
+			current = m[part]
 		}
 	}
 
