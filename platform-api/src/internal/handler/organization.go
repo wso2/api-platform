@@ -101,8 +101,7 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 func (h *OrganizationHandler) HeadOrganizationByUuid(c *gin.Context) {
 	organizationIdFromContext, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
-			"Organization claim not found in the token"))
+		c.Status(http.StatusUnauthorized)
 		return
 	}
 	orgID := c.Param("OrganizationID")
