@@ -19,10 +19,10 @@
 ## Prerequisites for Gateway Controller Commands
 
 - You must first add and/or select a gateway in the CLI using the appropriate gateway-related commands.
-- Either:
-  - Export the environment variables `WSO2AP_GW_USERNAME` and `WSO2AP_GW_PASSWORD`, or
-  - Use an alternative mechanism to ensure these credentials are available in the environment.
-- The Gateway is secured, and the CLI uses Basic Authentication to communicate with it.
+- Depending on the gateway's authentication type:
+  - **none**: No authentication required
+  - **basic**: Export the environment variables `WSO2AP_GW_USERNAME` and `WSO2AP_GW_PASSWORD`
+  - **bearer**: Export the environment variable `WSO2AP_GW_TOKEN`
 
 ---
 
@@ -31,13 +31,33 @@
 #### CLI Command
 
 ```shell
-ap gateway add --display-name <name> --server <server>
+ap gateway add --display-name <name> --server <server> [--auth <none|basic|bearer>]
 ```
 
-#### Sample Command
+#### Sample Commands
 
 ```shell
+# Add a gateway with no authentication (default)
 ap gateway add --display-name dev --server http://localhost:9090
+
+# Add a gateway with basic authentication
+ap gateway add --display-name dev --server http://localhost:9090 --auth basic
+
+# Add a gateway with bearer token authentication
+ap gateway add --display-name prod --server https://api.example.com --auth bearer
+```
+
+#### Authentication Setup
+
+For **basic** authentication, export these environment variables:
+```shell
+export WSO2AP_GW_USERNAME=admin
+export WSO2AP_GW_PASSWORD=admin
+```
+
+For **bearer** authentication, export this environment variable:
+```shell
+export WSO2AP_GW_TOKEN=your_token_here
 ```
 
 ---

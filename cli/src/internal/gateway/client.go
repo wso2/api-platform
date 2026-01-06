@@ -89,16 +89,14 @@ func NewClientForActive() (*Client, error) {
 
 // Do executes an HTTP request with the gateway's authentication and settings
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
-	// Authentication priority (future-proofed):
-	// 1. Env token (WSO2AP_GW_TOKEN) - reserved for OAuth2/token-based auth
-	// 2. Basic Auth from env vars (WSO2AP_GW_USERNAME / WSO2AP_GW_PASSWORD)
-	// If neither is present, fail early to avoid making unauthenticated requests.
+	// Apply authentication based on gateway's auth type
+	authType := c.gateway.Auth
+	switch authType {
+	case utils.AuthTypeNone:
+		// No authentication required
 
-	// 1) Env token (future OAuth2 flow)
-	if token := os.Getenv(utils.EnvGatewayToken); token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	} else {
-		// 2) Basic Auth via env vars
+	case utils.AuthTypeBasic:
+		// Basic Auth using environment variables
 		username := os.Getenv(utils.EnvGatewayUsername)
 		password := os.Getenv(utils.EnvGatewayPassword)
 
@@ -111,18 +109,21 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		}
 
 		if len(missing) > 0 {
-			var b strings.Builder
-			b.WriteString("missing Basic Auth credentials:\n")
-			for _, m := range missing {
-				b.WriteString("  - ")
-				b.WriteString(m)
-				b.WriteByte('\n')
-			}
-			b.WriteString("\nExport these environment variables and try again.\n")
-			return nil, fmt.Errorf(b.String())
+			return nil, fmt.Errorf("%s", utils.FormatMissingEnvVarsError("basic", missing))
 		}
 
 		req.SetBasicAuth(username, password)
+
+	case utils.AuthTypeBearer:
+		// Bearer token authentication
+		token := os.Getenv(utils.EnvGatewayToken)
+		if token == "" {
+			return nil, fmt.Errorf("%s", utils.FormatMissingEnvVarsError("bearer", []string{utils.EnvGatewayToken}))
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+
+	default:
+		return nil, fmt.Errorf("unsupported auth type '%s' for gateway '%s'", authType, c.gateway.Name)
 	}
 
 	// Set common headers

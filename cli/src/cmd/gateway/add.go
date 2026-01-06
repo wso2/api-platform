@@ -21,6 +21,7 @@ package gateway
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/config"
@@ -29,18 +30,27 @@ import (
 
 const (
 	AddCmdLiteral = "add"
-	AddCmdExample = `# Add a new gateway (Basic Auth is used by default)
+	AddCmdExample = `# Add a new gateway with no authentication
 ap gateway add --name dev --server http://localhost:9090
 
-# For Basic Auth, set environment variables before running gateway controller commands:
+# Add a gateway with basic authentication
+ap gateway add --name dev --server http://localhost:9090 --auth basic
+
+# Add a gateway with bearer token authentication
+ap gateway add --name prod --server https://api.example.com --auth bearer
+
+# For Basic Auth, set environment variables before running gateway commands:
 #   export ` + utils.EnvGatewayUsername + `=admin
 #   export ` + utils.EnvGatewayPassword + `=admin
-ap gateway add --name dev --server http://localhost:9090`
+
+# For Bearer Auth, set environment variable before running gateway commands:
+#   export ` + utils.EnvGatewayToken + `=your_token_here`
 )
 
 var (
 	addName   string
 	addServer string
+	addAuth   string
 )
 
 var addCmd = &cobra.Command{
@@ -59,25 +69,30 @@ var addCmd = &cobra.Command{
 func init() {
 	utils.AddStringFlag(addCmd, utils.FlagName, &addName, "", "Name of the gateway (required)")
 	utils.AddStringFlag(addCmd, utils.FlagServer, &addServer, "", "Server URL of the gateway (required)")
+	utils.AddStringFlag(addCmd, utils.FlagAuth, &addAuth, utils.AuthTypeNone, "Authentication type: none, basic, or bearer (default: none)")
 
 	addCmd.MarkFlagRequired(utils.FlagName)
 	addCmd.MarkFlagRequired(utils.FlagServer)
 }
 
 func runAddCommand() error {
+	// Validate auth type
+	addAuth = strings.ToLower(addAuth)
+	if addAuth != utils.AuthTypeNone && addAuth != utils.AuthTypeBasic && addAuth != utils.AuthTypeBearer {
+		return fmt.Errorf("invalid auth type '%s'. Must be one of: none, basic, bearer", addAuth)
+	}
+
 	// Load existing config
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// No token is stored anymore; gateways use Basic Auth by default.
-
 	// Create new gateway
 	gateway := config.Gateway{
 		Name:   addName,
 		Server: addServer,
-		Token:  "",
+		Auth:   addAuth,
 	}
 
 	// Add gateway to config
@@ -97,10 +112,17 @@ func runAddCommand() error {
 		configPath = "(unknown location)"
 	}
 
-	// Print success message and guidance about Basic Auth
-	fmt.Printf("Gateway in %s added as %s\n", addServer, addName)
+	// Print success message
+	fmt.Printf("Gateway in %s added as %s with auth type: %s\n", addServer, addName, addAuth)
 	fmt.Printf("Configuration saved to: %s\n", configPath)
-	fmt.Printf("Note: gateways use Basic Auth. Ensure %s and %s are exported in your environment for controller commands.\n", utils.EnvGatewayUsername, utils.EnvGatewayPassword)
+
+	// Validate environment variables for basic and bearer auth
+	if addAuth != utils.AuthTypeNone {
+		missing, ok := utils.ValidateAuthEnvVars(addAuth)
+		if !ok {
+			fmt.Println("\n" + utils.FormatMissingEnvVarsWarning(addAuth, missing))
+		}
+	}
 
 	return nil
 }

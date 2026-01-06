@@ -1,9 +1,17 @@
 # Gateway Client Usage
 
 The `internal/gateway/client.go` module provides an HTTP client that automatically handles:
-- **Authentication tokens** (Bearer token added to Authorization header)
-- **TLS verification** (skipped if gateway was added with `--insecure`)
+- **Authentication** based on gateway's auth type (none, basic, or bearer)
 - **Common headers** (Content-Type, Accept)
+- **Environment-based credentials** (reads from WSO2AP_GW_* environment variables)
+
+## Authentication Types
+
+The client supports three authentication types configured per gateway:
+
+- **none**: No authentication (for unsecured gateways)
+- **basic**: HTTP Basic Auth using `WSO2AP_GW_USERNAME` and `WSO2AP_GW_PASSWORD`
+- **bearer**: Bearer token using `WSO2AP_GW_TOKEN`
 
 ## How to Use in Future Commands
 
@@ -107,17 +115,22 @@ resp, err := client.Do(req)
 
 ## Key Features
 
-### Automatic Token Injection
-If the gateway was added with a `--token` flag, the client automatically adds it to all requests:
-```
-Authorization: Bearer <token>
-```
+### Automatic Authentication
+The client automatically applies authentication based on the gateway's `auth` type:
 
-### TLS Configuration
-If the gateway was added with `--insecure`, the client skips TLS certificate verification. This is useful for:
-- Development environments with self-signed certificates
-- Local testing
-- Internal networks
+**None (auth: none)**
+- No Authorization header added
+- Use for unsecured/development gateways
+
+**Basic Auth (auth: basic)**
+- Reads `WSO2AP_GW_USERNAME` and `WSO2AP_GW_PASSWORD` from environment
+- Adds `Authorization: Basic <credentials>` header
+- Fails if environment variables are not set
+
+**Bearer Token (auth: bearer)**
+- Reads `WSO2AP_GW_TOKEN` from environment
+- Adds `Authorization: Bearer <token>` header
+- Fails if environment variable is not set
 
 ### Available Methods
 - `Get(path string)` - GET request
@@ -133,18 +146,33 @@ If the gateway was added with `--insecure`, the client skips TLS certificate ver
 
 ## Config File Reference
 
-The client reads gateway settings from `~/.ap/config.yaml`:
+The client reads gateway settings from `~/.wso2ap/config.yaml`:
 
 ```yaml
 gateways:
   - name: dev
-    url: http://localhost:9090
+    server: http://localhost:9090
+    auth: none
+  - name: staging
+    server: https://staging.example.com
+    auth: basic
   - name: prod
-    url: https://api.example.com
-    token: SECRET_TOKEN
-    insecure: true
+    server: https://api.example.com
+    auth: bearer
 activeGateway: dev
-configVersion: 1.0.0
 ```
 
 When you call `NewClientForActive()`, it will use the gateway marked as `activeGateway`.
+
+### Environment Variables
+
+Set the appropriate environment variables based on the gateway's auth type:
+
+```shell
+# For basic auth
+export WSO2AP_GW_USERNAME=admin
+export WSO2AP_GW_PASSWORD=admin
+
+# For bearer auth
+export WSO2AP_GW_TOKEN=your_token_here
+```

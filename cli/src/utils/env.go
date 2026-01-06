@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 )
 
 // ResolveEnvVar resolves environment variable references in the format ${VAR_NAME}
@@ -53,4 +54,56 @@ func GetPolicyHubBaseURL() string {
 		return v
 	}
 	return PolicyHubBaseURLDefault
+}
+
+// ValidateAuthEnvVars checks if required environment variables are set for the given auth type
+// Returns missing variable names and whether validation passed
+func ValidateAuthEnvVars(authType string) (missing []string, ok bool) {
+	switch authType {
+	case AuthTypeBasic:
+		if os.Getenv(EnvGatewayUsername) == "" {
+			missing = append(missing, EnvGatewayUsername)
+		}
+		if os.Getenv(EnvGatewayPassword) == "" {
+			missing = append(missing, EnvGatewayPassword)
+		}
+	case AuthTypeBearer:
+		if os.Getenv(EnvGatewayToken) == "" {
+			missing = append(missing, EnvGatewayToken)
+		}
+	case AuthTypeNone:
+		// No env vars required
+		return nil, true
+	default:
+		// Unknown auth type
+		return nil, false
+	}
+
+	return missing, len(missing) == 0
+}
+
+// FormatMissingEnvVarsWarning formats a warning message for missing environment variables
+func FormatMissingEnvVarsWarning(authType string, missing []string) string {
+	if len(missing) == 0 {
+		return ""
+	}
+
+	msg := fmt.Sprintf("%s authentication requires the following environment variables:\n", strings.Title(authType))
+	for _, envVar := range missing {
+		msg += fmt.Sprintf("  %s\n", envVar)
+	}
+	return msg
+}
+
+// FormatMissingEnvVarsError formats an error message for missing environment variables
+func FormatMissingEnvVarsError(authType string, missing []string) string {
+	if len(missing) == 0 {
+		return ""
+	}
+
+	msg := fmt.Sprintf("%s authentication requires the following environment variables:\n", strings.Title(authType))
+	for _, envVar := range missing {
+		msg += fmt.Sprintf("  %s\n", envVar)
+	}
+	return msg
 }
