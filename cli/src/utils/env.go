@@ -111,6 +111,12 @@ func FormatMissingEnvVarsError(authType string, missing []string) string {
 		return ""
 	}
 
+	// Check for unknown auth type sentinel
+	if len(missing) == 1 && strings.HasPrefix(missing[0], "UNKNOWN_AUTH_TYPE:") {
+		unknownType := strings.TrimPrefix(missing[0], "UNKNOWN_AUTH_TYPE:")
+		return fmt.Sprintf("Error: unsupported authentication type '%s'. Valid types: none, basic, bearer", unknownType)
+	}
+
 	titler := cases.Title(language.English)
 	msg := fmt.Sprintf("%s authentication requires the following environment variables:\n", titler.String(authType))
 	for _, envVar := range missing {
