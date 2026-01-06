@@ -19,9 +19,18 @@
 package it
 
 import (
+	"encoding/json"
+
 	"github.com/cucumber/godog"
 	"github.com/wso2/api-platform/gateway/it/steps"
 )
+
+type JsonRPCRequest struct {
+	JSONRPC string `json:"jsonrpc"`
+	ID      int    `json:"id,omitempty"`
+	Method  string `json:"method"`
+	Params  any    `json:"params,omitempty"`
+}
 
 // RegisterMCPSteps registers all MCP related step definitions
 func RegisterMCPSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps) {
@@ -42,4 +51,55 @@ func RegisterMCPSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 	ctx.Step(`^I delete the MCP proxy "([^"]*)"$`, func(name string) error {
 		return httpSteps.SendDELETEToService("gateway-controller", "/mcp-proxies/"+name)
 	})
+
+	ctx.Step(`^I use the MCP Client to send an initialize request to "([^"]*)"$`, func(url string) error {
+		httpSteps.SetHeader("Content-Type", "application/json")
+		payload := generateMcpPayload("initialize")
+		return httpSteps.SendMcpRequest(url, &godog.DocString{
+			Content: payload,
+		})
+	})
+
+	ctx.Step(`^I use the MCP Client to send a tools/call request to "([^"]*)"$`, func(url string) error {
+		httpSteps.SetHeader("Content-Type", "application/json")
+		payload := generateMcpPayload("tools/call")
+		return httpSteps.SendMcpRequest(url, &godog.DocString{
+			Content: payload,
+		})
+	})
+}
+
+func generateMcpPayload(method string) string {
+	var initRequest JsonRPCRequest
+	switch method {
+	case "initialize":
+		initRequest = JsonRPCRequest{
+			JSONRPC: "2.0",
+			ID:      1,
+			Method:  method,
+			Params: map[string]interface{}{
+				"protocolVersion": "2025-06-18",
+				"capabilities":    map[string]interface{}{"roots": map[string]bool{"listChanged": true}},
+				"clientInfo":      map[string]string{"name": "gateway-it-client", "version": "1.0.0"},
+			},
+		}
+	case "tools/call":
+		initRequest = JsonRPCRequest{
+			JSONRPC: "2.0",
+			ID:      2,
+			Method:  method,
+			Params: map[string]any{
+				"name": "add",
+				"arguments": map[string]any{
+					"a": 40,
+					"b": 60,
+				},
+			},
+		}
+	default:
+		return ""
+	}
+
+	payloadBytes, _ := json.Marshal(initRequest)
+	return string(payloadBytes)
 }
