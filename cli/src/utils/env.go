@@ -75,8 +75,8 @@ func ValidateAuthEnvVars(authType string) (missing []string, ok bool) {
 		// No env vars required
 		return nil, true
 	default:
-		// Unknown auth type
-		return nil, false
+		// Unknown auth type - return sentinel to trigger clear error message
+		return []string{fmt.Sprintf("UNKNOWN_AUTH_TYPE:%s", authType)}, false
 	}
 
 	return missing, len(missing) == 0
@@ -86,6 +86,12 @@ func ValidateAuthEnvVars(authType string) (missing []string, ok bool) {
 func FormatMissingEnvVarsWarning(authType string, missing []string) string {
 	if len(missing) == 0 {
 		return ""
+	}
+
+	// Check for unknown auth type sentinel
+	if len(missing) == 1 && strings.HasPrefix(missing[0], "UNKNOWN_AUTH_TYPE:") {
+		unknownType := strings.TrimPrefix(missing[0], "UNKNOWN_AUTH_TYPE:")
+		return fmt.Sprintf("Error: unsupported authentication type '%s'. Valid types: none, basic, bearer\n", unknownType)
 	}
 
 	msg := fmt.Sprintf("%s authentication requires the following environment variables:\n", strings.Title(authType))
