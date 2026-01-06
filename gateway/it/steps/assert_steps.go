@@ -381,7 +381,11 @@ func (a *AssertSteps) getJSONField(field string) (interface{}, error) {
 				if !ok {
 					return nil, fmt.Errorf("expected map at %q but got %T", key, current)
 				}
-				current = m[key]
+				v, exists := m[key]
+				if !exists {
+					return nil, fmt.Errorf("key %q does not exist in JSON", key)
+				}
+				current = v
 			}
 
 			l, ok := current.([]interface{})
@@ -397,7 +401,11 @@ func (a *AssertSteps) getJSONField(field string) (interface{}, error) {
 			if !ok {
 				return nil, fmt.Errorf("expected map at %q but got %T", part, current)
 			}
-			current = m[part]
+			v, exists := m[part]
+			if !exists {
+				return nil, fmt.Errorf("key %q does not exist in JSON", part)
+			}
+			current = v
 		}
 	}
 
