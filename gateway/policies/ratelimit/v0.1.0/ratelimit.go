@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/policy-engine/policies/ratelimit/v0.1.0/algorithms/fixedwindow" // Register Fixed Window algorithm
-	_ "github.com/policy-engine/policies/ratelimit/v0.1.0/algorithms/gcra"        // Register GCRA algorithm
-	"github.com/policy-engine/policies/ratelimit/v0.1.0/limiter"
-	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
+	_ "github.com/policy-engine/policies/ratelimit/algorithms/fixedwindow" // Register Fixed Window algorithm
+	_ "github.com/policy-engine/policies/ratelimit/algorithms/gcra"        // Register GCRA algorithm
+	"github.com/policy-engine/policies/ratelimit/limiter"
 	"github.com/redis/go-redis/v9"
+	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
 // KeyComponent represents a single component for building rate limit keys
@@ -207,12 +207,15 @@ func GetPolicy(
 	}, nil
 }
 
+// Metadata key for storing rate limit result across request/response phases
+const rateLimitResultKey = "ratelimit:result"
+
 // Mode returns the processing mode for this policy
 func (p *RateLimitPolicy) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{
 		RequestHeaderMode:  policy.HeaderModeProcess, // Need headers for key extraction
 		RequestBodyMode:    policy.BodyModeSkip,      // Don't need body
-		ResponseHeaderMode: policy.HeaderModeSkip,    // Don't process response
+		ResponseHeaderMode: policy.HeaderModeProcess, // Need to add rate limit headers to response
 		ResponseBodyMode:   policy.BodyModeSkip,      // Don't need response body
 	}
 }
@@ -251,23 +254,43 @@ func (p *RateLimitPolicy) OnRequest(
 
 	// 5. Check if allowed
 	if result.Allowed {
-		// Request allowed - add informational headers and continue
-		headers := p.buildRateLimitHeaders(result, false)
-		return policy.UpstreamRequestModifications{
-			SetHeaders: headers,
-		}
+		// Request allowed - store result in metadata for response phase
+		// Rate limit headers will be added to the response (not upstream request)
+		ctx.Metadata[rateLimitResultKey] = result
+		return policy.UpstreamRequestModifications{}
 	}
 
 	// 6. Request denied - return 429 with headers
 	return p.buildRateLimitResponse(result)
 }
 
-// OnResponse is not used by this policy (rate limiting is request-only)
+// OnResponse adds rate limit headers to the response sent to the client
 func (p *RateLimitPolicy) OnResponse(
 	ctx *policy.ResponseContext,
 	params map[string]interface{},
 ) policy.ResponseAction {
-	return nil
+	// Retrieve rate limit result stored during request phase
+	resultRaw, ok := ctx.Metadata[rateLimitResultKey]
+	if !ok {
+		// No rate limit result stored (e.g., fail-open on Redis error)
+		return nil
+	}
+
+	result, ok := resultRaw.(*limiter.Result)
+	if !ok {
+		log.Printf("[WARN] Invalid rate limit result in metadata")
+		return nil
+	}
+
+	// Add rate limit headers to the response
+	headers := p.buildRateLimitHeaders(result, false)
+	if len(headers) == 0 {
+		return nil
+	}
+
+	return policy.UpstreamResponseModifications{
+		SetHeaders: headers,
+	}
 }
 
 // extractRateLimitKey builds the rate limit key from components

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/policy-engine/policies/ratelimit/v0.1.0/limiter"
+	"github.com/policy-engine/policies/ratelimit/limiter"
 	"github.com/redis/go-redis/v9"
 )
 
