@@ -25,8 +25,9 @@ import (
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/utils"
 
-	"github.com/gin-gonic/gin"
 	"platform-api/src/internal/service"
+
+	"github.com/gin-gonic/gin"
 )
 
 type OrganizationHandler struct {
@@ -95,6 +96,23 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 	c.JSON(http.StatusCreated, org)
 }
 
+// HeadOrganizationByUuid handles HEAD /api/v1/organizations/{organizationId}
+func (h *OrganizationHandler) HeadOrganizationByUuid(c *gin.Context) {
+	orgID := c.Param("organizationId")
+
+	_, err := h.orgService.GetOrganizationByUUID(orgID)
+	if err != nil {
+		if errors.Is(err, constants.ErrOrganizationNotFound) {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+
+	c.Status(http.StatusOK)
+}
+
 // GetOrganization handles GET /api/v1/organizations
 func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
@@ -129,5 +147,6 @@ func (h *OrganizationHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		orgGroup.POST("", h.RegisterOrganization)
 		orgGroup.GET("", h.GetOrganization)
+		orgGroup.HEAD("/:organizationId", h.HeadOrganizationByUuid)
 	}
 }

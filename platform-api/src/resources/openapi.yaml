@@ -92,6 +92,27 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /organizations/{organizationId}:
+    head:
+      summary: Check if organization exists
+      description: |
+        Checks if an organization with the specified UUID.
+        Returns only headers without a response body.
+      operationId: HeadOrganizationByUuid
+      tags:
+        - Organizations
+      parameters:
+        - $ref: '#/components/parameters/OrganizationID'
+      responses:
+        '200':
+          description: Organization exists
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Organization not found
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /projects:
     post:
       summary: Create a new project
