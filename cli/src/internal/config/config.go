@@ -85,6 +85,13 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
+	// Normalize empty auth to "none" for all gateways
+	for i := range config.Gateways {
+		if config.Gateways[i].Auth == "" {
+			config.Gateways[i].Auth = "none"
+		}
+	}
+
 	return &config, nil
 }
 
