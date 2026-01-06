@@ -19,6 +19,7 @@ package handler
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
@@ -98,7 +99,22 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 
 // HeadOrganizationByUuid handles HEAD /api/v1/organizations/{organizationId}
 func (h *OrganizationHandler) HeadOrganizationByUuid(c *gin.Context) {
-	orgID := c.Param("organizationId")
+	organizationIdFromContext, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, utils.NewErrorResponse(401, "Unauthorized",
+			"Organization claim not found in the token"))
+		return
+	}
+	orgID := c.Param("OrganizationID")
+
+	slog.Debug("Organization from token: ", "organizationId", organizationIdFromContext)
+	// to do: enable this check after finalizing authentication method
+
+	// if orgID != organizationIdFromContext {
+	// 	c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden",
+	// 		"Organization ID in token does not match the requested organization ID"))
+	// 	return
+	// }
 
 	_, err := h.orgService.GetOrganizationByUUID(orgID)
 	if err != nil {
@@ -147,6 +163,6 @@ func (h *OrganizationHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		orgGroup.POST("", h.RegisterOrganization)
 		orgGroup.GET("", h.GetOrganization)
-		orgGroup.HEAD("/:organizationId", h.HeadOrganizationByUuid)
+		orgGroup.HEAD("/:OrganizationID", h.HeadOrganizationByUuid)
 	}
 }

@@ -26,7 +26,6 @@ type OrganizationRepository interface {
 	CreateOrganization(org *model.Organization) error
 	GetOrganizationByIdOrHandle(id, handle string) (*model.Organization, error)
 	GetOrganizationByUUID(orgId string) (*model.Organization, error)
-	GetOrganizationByHandle(handle string) (*model.Organization, error)
 	UpdateOrganization(org *model.Organization) error
 	DeleteOrganization(orgId string) error
 	ListOrganizations(limit, offset int) ([]*model.Organization, error)
