@@ -97,7 +97,7 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 	c.JSON(http.StatusCreated, org)
 }
 
-// HeadOrganizationByUuid handles HEAD /api/v1/organizations/{organizationId}
+// HeadOrganizationByUuid handles HEAD /api/v1/organizations/{OrganizationID}
 func (h *OrganizationHandler) HeadOrganizationByUuid(c *gin.Context) {
 	organizationIdFromContext, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
