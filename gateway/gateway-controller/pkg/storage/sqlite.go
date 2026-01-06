@@ -27,6 +27,7 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"go.uber.org/zap"
 )
@@ -282,12 +283,19 @@ func (s *SQLiteStorage) SaveConfig(cfg *models.StoredConfig) error {
 
 // UpdateConfig updates an existing deployment configuration
 func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
+	startTime := time.Now()
+	table := "deployments"
+
 	// Check if configuration exists
 	_, err := s.GetConfig(cfg.ID)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
+			metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+			metrics.StorageErrorsTotal.WithLabelValues("update", "not_found").Inc()
 			return fmt.Errorf("cannot update non-existent configuration: %w", err)
 		}
+		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("update", "database_error").Inc()
 		return err
 	}
 
@@ -298,6 +306,8 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
 	handle := cfg.GetHandle()
 
 	if handle == "" {
+		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("update", "validation_error").Inc()
 		return fmt.Errorf("handle (metadata.name) is required and cannot be empty")
 	}
 
@@ -311,6 +321,8 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
 
 	stmt, err := s.db.Prepare(query)
 	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("update", "prepare_error").Inc()
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
 	defer stmt.Close()
@@ -328,22 +340,34 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
 	)
 
 	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("update", "exec_error").Inc()
 		return fmt.Errorf("failed to update configuration: %w", err)
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("update", "rows_affected_error").Inc()
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
 	if rows == 0 {
+		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("update", "not_found").Inc()
 		return fmt.Errorf("%w: id=%s", ErrNotFound, cfg.ID)
 	}
 
 	_, err = s.updateDeploymentConfigs(cfg)
 	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("update", "deployment_config_error").Inc()
 		return fmt.Errorf("failed to update deployment configurations: %w", err)
 	}
+
+	// Record successful metrics
+	metrics.DatabaseOperationsTotal.WithLabelValues("update", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("update", table).Observe(time.Since(startTime).Seconds())
 
 	s.logger.Info("Configuration updated",
 		zap.String("id", cfg.ID),
@@ -355,21 +379,33 @@ func (s *SQLiteStorage) UpdateConfig(cfg *models.StoredConfig) error {
 
 // DeleteConfig removes an deployment configuration by ID
 func (s *SQLiteStorage) DeleteConfig(id string) error {
+	startTime := time.Now()
+	table := "deployments"
 	query := `DELETE FROM deployments WHERE id = ?`
 
 	result, err := s.db.Exec(query, id)
 	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("delete", "exec_error").Inc()
 		return fmt.Errorf("failed to delete configuration: %w", err)
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
+		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("delete", "rows_affected_error").Inc()
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
 	if rows == 0 {
+		metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("delete", "not_found").Inc()
 		return fmt.Errorf("%w: id=%s", ErrNotFound, id)
 	}
+
+	// Record successful metrics
+	metrics.DatabaseOperationsTotal.WithLabelValues("delete", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("delete", table).Observe(time.Since(startTime).Seconds())
 
 	s.logger.Info("Configuration deleted", zap.String("id", id))
 
@@ -378,8 +414,10 @@ func (s *SQLiteStorage) DeleteConfig(id string) error {
 
 // GetConfig retrieves an deployment configuration by ID
 func (s *SQLiteStorage) GetConfig(id string) (*models.StoredConfig, error) {
+	startTime := time.Now()
+	table := "deployments"
 	query := `
-		SELECT d.id, d.kind, dc.configuration, dc.source_configuration, d.status, d.created_at, 
+		SELECT d.id, d.kind, dc.configuration, dc.source_configuration, d.status, d.created_at,
 		d.updated_at, d.deployed_at, d.deployed_version
 		FROM deployments d
 		LEFT JOIN deployment_configs dc ON d.id = dc.id
@@ -405,8 +443,11 @@ func (s *SQLiteStorage) GetConfig(id string) (*models.StoredConfig, error) {
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()
 			return nil, fmt.Errorf("%w: id=%s", ErrNotFound, id)
 		}
+		metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()
+		metrics.StorageErrorsTotal.WithLabelValues("read", "query_error").Inc()
 		return nil, fmt.Errorf("failed to query configuration: %w", err)
 	}
 
@@ -418,14 +459,22 @@ func (s *SQLiteStorage) GetConfig(id string) (*models.StoredConfig, error) {
 	// Deserialize JSON configuration
 	if configJSON != "" {
 		if err := json.Unmarshal([]byte(configJSON), &cfg.Configuration); err != nil {
+			metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()
+			metrics.StorageErrorsTotal.WithLabelValues("read", "unmarshal_error").Inc()
 			return nil, fmt.Errorf("failed to unmarshal configuration: %w", err)
 		}
 	}
 	if sourceConfigJSON != "" {
 		if err := json.Unmarshal([]byte(sourceConfigJSON), &cfg.SourceConfiguration); err != nil {
+			metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()
+			metrics.StorageErrorsTotal.WithLabelValues("read", "unmarshal_error").Inc()
 			return nil, fmt.Errorf("failed to unmarshal source configuration: %w", err)
 		}
 	}
+
+	// Record successful metrics
+	metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "success").Inc()
+	metrics.DatabaseOperationDurationSeconds.WithLabelValues("read", table).Observe(time.Since(startTime).Seconds())
 
 	return &cfg, nil
 }

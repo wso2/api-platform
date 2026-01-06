@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/constants"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	"go.opentelemetry.io/otel/attribute"
@@ -67,7 +68,7 @@ type ResponseExecutionResult struct {
 
 // ExecuteRequestPolicies executes request policies with condition evaluation
 // T043: Implements execution with condition evaluation and short-circuit logic
-func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyList []policy.Policy, ctx *policy.RequestContext, specs []policy.PolicySpec) (*RequestExecutionResult, error) {
+func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyList []policy.Policy, ctx *policy.RequestContext, specs []policy.PolicySpec, api, route string) (*RequestExecutionResult, error) {
 	startTime := time.Now()
 	result := &RequestExecutionResult{
 		Results:        make([]RequestPolicyResult, 0, len(policyList)),
@@ -97,6 +98,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 			if span.IsRecording() {
 				span.SetAttributes(attribute.Bool(constants.AttrPolicySkipped, true))
 			}
+			metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "disabled").Inc()
 			span.End()
 			result.Results = append(result.Results, RequestPolicyResult{
 				PolicyName:    spec.Name,
@@ -125,6 +127,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 						span.SetAttributes(attribute.Bool(constants.AttrPolicySkipped, true))
 						span.SetAttributes(attribute.String(constants.AttrSkipReason, constants.AttrSkipReasonConditionNotMet))
 					}
+					metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "condition_not_met").Inc()
 					span.End()
 					result.Results = append(result.Results, RequestPolicyResult{
 						PolicyName:    spec.Name,
@@ -140,6 +143,10 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 		// Execute policy
 		action := pol.OnRequest(ctx, spec.Parameters.Raw)
 		executionTime := time.Since(policyStartTime)
+
+		// Record policy execution metrics
+		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, "executed").Inc()
+		metrics.PolicyDurationSeconds.WithLabelValues(spec.Name, spec.Version, api, route).Observe(executionTime.Seconds())
 
 		// Add execution time attribute
 		if span.IsRecording() {
@@ -163,6 +170,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 				if span.IsRecording() {
 					span.SetAttributes(attribute.Bool(constants.AttrPolicyShortCircuit, true))
 				}
+				metrics.ShortCircuitsTotal.WithLabelValues("", spec.Name).Inc()
 				result.ShortCircuited = true
 				result.FinalAction = action
 				span.End()
@@ -184,7 +192,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(traceCtx context.Context, policyL
 
 // ExecuteResponsePolicies executes response policies with condition evaluation
 // T044: Implements execution with condition evaluation
-func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policyList []policy.Policy, ctx *policy.ResponseContext, specs []policy.PolicySpec) (*ResponseExecutionResult, error) {
+func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policyList []policy.Policy, ctx *policy.ResponseContext, specs []policy.PolicySpec, api, route string) (*ResponseExecutionResult, error) {
 	startTime := time.Now()
 	result := &ResponseExecutionResult{
 		Results: make([]ResponsePolicyResult, 0, len(policyList)),
@@ -215,6 +223,7 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 			if span.IsRecording() {
 				span.SetAttributes(attribute.Bool(constants.AttrPolicySkipped, true))
 			}
+			metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "disabled").Inc()
 			span.End()
 			result.Results = append(result.Results, ResponsePolicyResult{
 				PolicyName:    spec.Name,
@@ -243,6 +252,7 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 						span.SetAttributes(attribute.Bool(constants.AttrPolicySkipped, true))
 						span.SetAttributes(attribute.String(constants.AttrSkipReason, constants.AttrSkipReasonConditionNotMet))
 					}
+					metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "condition_not_met").Inc()
 					span.End()
 					result.Results = append(result.Results, ResponsePolicyResult{
 						PolicyName:    spec.Name,
@@ -258,6 +268,10 @@ func (c *ChainExecutor) ExecuteResponsePolicies(traceCtx context.Context, policy
 		// Execute policy
 		action := pol.OnResponse(ctx, spec.Parameters.Raw)
 		executionTime := time.Since(policyStartTime)
+
+		// Record policy execution metrics
+		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, "executed").Inc()
+		metrics.PolicyDurationSeconds.WithLabelValues(spec.Name, spec.Version, api, route).Observe(executionTime.Seconds())
 
 		// Add execution time attribute
 		if span.IsRecording() {

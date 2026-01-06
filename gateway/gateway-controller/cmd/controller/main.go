@@ -21,6 +21,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -48,6 +49,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Initialize metrics based on configuration
+	// This must be done before any metrics are used to ensure no-op behavior when disabled
+	metrics.SetEnabled(cfg.GatewayController.Metrics.Enabled)
+	metrics.Init() // Initialize metrics immediately so they're available throughout the codebase
 
 	// Initialize logger with config
 	log, err := logger.NewLogger(logger.Config{
@@ -290,6 +296,10 @@ func main() {
 	router.Use(middleware.CorrelationIDMiddleware(log))
 	router.Use(middleware.ErrorHandlingMiddleware(log))
 	router.Use(middleware.LoggingMiddleware(log))
+	// Add metrics middleware if metrics are enabled
+	if cfg.GatewayController.Metrics.Enabled {
+		router.Use(middleware.MetricsMiddleware())
+	}
 	authConfig := generateAuthConfig(cfg)
 	authMiddleWare, err := authenticators.AuthMiddleware(authConfig, log)
 	if err != nil {
@@ -305,6 +315,25 @@ func main() {
 
 	// Register API routes (includes certificate management endpoints from OpenAPI spec)
 	api.RegisterHandlers(router, apiServer)
+
+	// Start metrics server if enabled
+	var metricsServer *metrics.Server
+	if cfg.GatewayController.Metrics.Enabled {
+		log.Info("Starting metrics server", zap.Int("port", cfg.GatewayController.Metrics.Port))
+
+		// Set build info metric
+		metrics.Info.WithLabelValues(Version, cfg.GatewayController.Storage.Type, BuildDate).Set(1)
+
+		metricsServer = metrics.NewServer(&cfg.GatewayController.Metrics, log)
+		go func() {
+			if err := metricsServer.Start(); err != nil {
+				log.Error("Metrics server failed", zap.Error(err))
+			}
+		}()
+
+		// Start memory metrics updater
+		metrics.StartMemoryMetricsUpdater(context.Background(), 15*time.Second)
+	}
 
 	// Start REST API server
 	log.Info("Starting REST API server", zap.Int("port", cfg.GatewayController.Server.APIPort))
@@ -345,6 +374,13 @@ func main() {
 	// Stop policy xDS server if it was started
 	if policyXDSServer != nil {
 		policyXDSServer.Stop()
+	}
+
+	// Stop metrics server if it was started
+	if metricsServer != nil {
+		if err := metricsServer.Stop(ctx); err != nil {
+			log.Error("Failed to stop metrics server", zap.Error(err))
+		}
 	}
 
 	log.Info("Gateway-Controller stopped")
