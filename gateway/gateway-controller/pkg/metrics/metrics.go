@@ -644,6 +644,7 @@ func initRegistry() {
 	registerHistogramVec(SnapshotGenerationDurationSeconds)
 	registerCounterVec(SnapshotGenerationTotal)
 	registerGaugeVec(SnapshotSize)
+	registerGaugeVec(PolicyEngineSnapshotSize)
 	registerCounterVec(TranslationErrorsTotal)
 	registerHistogram(RoutesPerAPI)
 
