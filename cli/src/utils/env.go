@@ -23,6 +23,9 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // ResolveEnvVar resolves environment variable references in the format ${VAR_NAME}
@@ -94,7 +97,8 @@ func FormatMissingEnvVarsWarning(authType string, missing []string) string {
 		return fmt.Sprintf("Error: unsupported authentication type '%s'. Valid types: none, basic, bearer\n", unknownType)
 	}
 
-	msg := fmt.Sprintf("%s authentication requires the following environment variables:\n", strings.Title(authType))
+	titler := cases.Title(language.English)
+	msg := fmt.Sprintf("%s authentication requires the following environment variables:\n", titler.String(authType))
 	for _, envVar := range missing {
 		msg += fmt.Sprintf("  %s\n", envVar)
 	}
@@ -107,7 +111,8 @@ func FormatMissingEnvVarsError(authType string, missing []string) string {
 		return ""
 	}
 
-	msg := fmt.Sprintf("%s authentication requires the following environment variables:\n", strings.Title(authType))
+	titler := cases.Title(language.English)
+	msg := fmt.Sprintf("%s authentication requires the following environment variables:\n", titler.String(authType))
 	for _, envVar := range missing {
 		msg += fmt.Sprintf("  %s\n", envVar)
 	}
