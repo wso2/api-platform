@@ -88,7 +88,7 @@ func LoadConfig() (*Config, error) {
 	// Normalize empty auth to "none" for all gateways
 	for i := range config.Gateways {
 		if config.Gateways[i].Auth == "" {
-			config.Gateways[i].Auth = "none"
+			config.Gateways[i].Auth = utils.AuthTypeNone
 		}
 	}
 
