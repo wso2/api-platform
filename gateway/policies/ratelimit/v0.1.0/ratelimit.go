@@ -3,7 +3,7 @@ package ratelimit
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"strconv"
 	"strings"
@@ -32,7 +32,6 @@ type LimitConfig struct {
 
 // RateLimitPolicy implements GCRA-based rate limiting
 type RateLimitPolicy struct {
-	limits         []LimitConfig
 	keyExtraction  []KeyComponent
 	routeName      string // From metadata, used as default key
 	statusCode     int
@@ -138,7 +137,7 @@ func GetPolicy(
 			if !redisFailOpen {
 				return nil, fmt.Errorf("redis connection failed and failureMode=closed: %w", err)
 			}
-			log.Printf("[WARN] Redis connection failed but failureMode=open: %v", err)
+			slog.Warn("Redis connection failed but failureMode=open", "error", err)
 		}
 
 		// Convert limits to limiter.LimitConfig
@@ -191,7 +190,6 @@ func GetPolicy(
 
 	// 4. Return configured policy instance
 	return &RateLimitPolicy{
-		limits:         limits,
 		keyExtraction:  keyExtraction,
 		routeName:      routeName,
 		statusCode:     statusCode,
@@ -244,11 +242,11 @@ func (p *RateLimitPolicy) OnRequest(
 	if err != nil {
 		if p.backend == "redis" && p.redisFailOpen {
 			// Fail open: allow request through on Redis errors
-			log.Printf("[WARN] Rate limit check failed (fail-open): %v", err)
+			slog.Warn("Rate limit check failed (fail-open)", "error", err)
 			return policy.UpstreamRequestModifications{}
 		}
 		// Fail closed: deny request
-		log.Printf("[ERROR] Rate limit check failed (fail-closed): %v", err)
+		slog.Error("Rate limit check failed (fail-closed)", "error", err)
 		return p.buildRateLimitResponse(nil)
 	}
 
@@ -278,7 +276,7 @@ func (p *RateLimitPolicy) OnResponse(
 
 	result, ok := resultRaw.(*limiter.Result)
 	if !ok {
-		log.Printf("[WARN] Invalid rate limit result in metadata")
+		slog.Warn("Invalid rate limit result in metadata")
 		return nil
 	}
 
@@ -294,6 +292,15 @@ func (p *RateLimitPolicy) OnResponse(
 }
 
 // extractRateLimitKey builds the rate limit key from components
+//
+// IMPORTANT: The order of components in keyExtraction matters! Components are joined
+// in the exact order specified in the configuration. For example:
+//
+//	[{type: "header", key: "X-User-ID"}, {type: "ip"}] creates key "user123:192.168.1.1"
+//	[{type: "ip"}, {type: "header", key: "X-User-ID"}] creates key "192.168.1.1:user123"
+//
+// These are treated as DIFFERENT rate limit buckets. Changing the order in configuration
+// will reset rate limit counters. Always maintain consistent ordering across deployments.
 func (p *RateLimitPolicy) extractRateLimitKey(ctx *policy.RequestContext) string {
 	if len(p.keyExtraction) == 0 {
 		// Fallback to route name (should not happen due to default in GetPolicy)
@@ -305,7 +312,7 @@ func (p *RateLimitPolicy) extractRateLimitKey(ctx *policy.RequestContext) string
 		return p.extractKeyComponent(ctx, p.keyExtraction[0])
 	}
 
-	// Multiple components - join with ':'
+	// Multiple components - join with ':' in the order specified
 	parts := make([]string, 0, len(p.keyExtraction))
 	for _, comp := range p.keyExtraction {
 		part := p.extractKeyComponent(ctx, comp)
@@ -322,7 +329,7 @@ func (p *RateLimitPolicy) extractKeyComponent(ctx *policy.RequestContext, comp K
 		if len(values) > 0 && values[0] != "" {
 			return values[0]
 		}
-		log.Printf("[WARN] Header '%s' not found for rate limit key, using empty string", comp.Key)
+		slog.Warn("Header not found for rate limit key, using empty string", "header", comp.Key)
 		return ""
 
 	case "metadata":
@@ -331,7 +338,7 @@ func (p *RateLimitPolicy) extractKeyComponent(ctx *policy.RequestContext, comp K
 				return strVal
 			}
 		}
-		log.Printf("[WARN] Metadata key '%s' not found for rate limit key, using empty string", comp.Key)
+		slog.Warn("Metadata key not found for rate limit key, using empty string", "key", comp.Key)
 		return ""
 
 	case "ip":
@@ -341,21 +348,21 @@ func (p *RateLimitPolicy) extractKeyComponent(ctx *policy.RequestContext, comp K
 		if ctx.APIName != "" {
 			return ctx.APIName
 		}
-		log.Printf("[WARN] APIName not available for rate limit key, using empty string")
+		slog.Warn("APIName not available for rate limit key, using empty string")
 		return ""
 
 	case "apiversion":
 		if ctx.APIVersion != "" {
 			return ctx.APIVersion
 		}
-		log.Printf("[WARN] APIVersion not available for rate limit key, using empty string")
+		slog.Warn("APIVersion not available for rate limit key, using empty string")
 		return ""
 
 	case "routename":
 		return p.routeName
 
 	default:
-		log.Printf("[WARN] Unknown key component type: %s, using empty string", comp.Type)
+		slog.Warn("Unknown key component type, using empty string", "type", comp.Type)
 		return ""
 	}
 }
@@ -387,7 +394,7 @@ func (p *RateLimitPolicy) extractIPAddress(ctx *policy.RequestContext) string {
 		}
 	}
 
-	log.Printf("[WARN] Could not extract IP address for rate limit key, using 'unknown'")
+	slog.Warn("Could not extract IP address for rate limit key, using 'unknown'")
 	return "unknown"
 }
 
