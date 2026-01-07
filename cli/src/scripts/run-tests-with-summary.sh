@@ -9,7 +9,7 @@ echo "Running Tests"
 echo "==============================================="
 
 # Run tests and capture output
-go test -v ./test/unit/... 2>&1 | tee test/unit/logs/test-results.log
+go test -v ./test/basic/... ./test/unit/... 2>&1 | tee test/unit/logs/test-results.log
 
 echo ""
 echo "==============================================="
