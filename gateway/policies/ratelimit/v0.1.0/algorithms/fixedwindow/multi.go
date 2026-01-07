@@ -68,6 +68,8 @@ func (m *MultiLimiter) AllowN(ctx context.Context, key string, n int64) (*limite
 // Safe to call multiple times
 func (m *MultiLimiter) Close() error {
 	var firstErr error
+	// Note: Each limiter's Close() implementation should use sync.Once
+	// to ensure idempotent cleanup and thread-safety
 	for i, limiter := range m.limiters {
 		if err := limiter.Close(); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("failed to close limiter %d: %w", i, err)

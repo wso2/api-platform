@@ -30,6 +30,10 @@ var gcraLuaScript string
 // policy: Rate limit policy defining limits and burst capacity
 // keyPrefix: Prefix prepended to all keys (e.g., "ratelimit:v1:")
 func NewRedisLimiter(client redis.UniversalClient, policy *Policy, keyPrefix string) *RedisLimiter {
+	if keyPrefix == "" {
+		keyPrefix = "ratelimit:v1:"
+	}
+
 	return &RedisLimiter{
 		client:    client,
 		policy:    policy,

@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	_ "github.com/policy-engine/policies/ratelimit/algorithms/fixedwindow" // Register Fixed Window algorithm
@@ -30,7 +28,7 @@ type LimitConfig struct {
 	Burst    int64
 }
 
-// RateLimitPolicy implements GCRA-based rate limiting
+// RateLimitPolicy defines the policy for rate limiting
 type RateLimitPolicy struct {
 	keyExtraction  []KeyComponent
 	routeName      string // From metadata, used as default key
@@ -44,7 +42,6 @@ type RateLimitPolicy struct {
 	includeXRL     bool
 	includeIETF    bool
 	includeRetry   bool
-	closeOnce      sync.Once
 }
 
 // GetPolicy creates and initializes a rate limit policy instance
@@ -329,8 +326,9 @@ func (p *RateLimitPolicy) extractKeyComponent(ctx *policy.RequestContext, comp K
 		if len(values) > 0 && values[0] != "" {
 			return values[0]
 		}
-		slog.Warn("Header not found for rate limit key, using empty string", "header", comp.Key)
-		return ""
+		placeholder := fmt.Sprintf("_missing_header_%s_", comp.Key)
+		slog.Warn("Header not found for rate limit key, using placeholder", "header", comp.Key, "type", comp.Type, "placeholder", placeholder)
+		return placeholder
 
 	case "metadata":
 		if val, ok := ctx.Metadata[comp.Key]; ok {
@@ -338,8 +336,9 @@ func (p *RateLimitPolicy) extractKeyComponent(ctx *policy.RequestContext, comp K
 				return strVal
 			}
 		}
-		slog.Warn("Metadata key not found for rate limit key, using empty string", "key", comp.Key)
-		return ""
+		placeholder := fmt.Sprintf("_missing_metadata_%s_", comp.Key)
+		slog.Warn("Metadata key not found for rate limit key, using placeholder", "key", comp.Key, "type", comp.Type, "placeholder", placeholder)
+		return placeholder
 
 	case "ip":
 		return p.extractIPAddress(ctx)
@@ -384,14 +383,6 @@ func (p *RateLimitPolicy) extractIPAddress(ctx *policy.RequestContext) string {
 	// Try X-Real-IP
 	if xri := ctx.Headers.Get("x-real-ip"); len(xri) > 0 && xri[0] != "" {
 		return xri[0]
-	}
-
-	// Try :authority header (contains host:port)
-	if authority := ctx.Headers.Get(":authority"); len(authority) > 0 && authority[0] != "" {
-		host, _, err := net.SplitHostPort(authority[0])
-		if err == nil && host != "" {
-			return host
-		}
 	}
 
 	slog.Warn("Could not extract IP address for rate limit key, using 'unknown'")
@@ -489,7 +480,11 @@ func parseLimits(raw interface{}) ([]LimitConfig, error) {
 		if !ok {
 			return nil, fmt.Errorf("limits[%d].limit is required", i)
 		}
-		limit := int64(limitVal.(float64)) // JSON numbers come as float64
+		limitFloat, ok := limitVal.(float64)
+		if !ok {
+			return nil, fmt.Errorf("limits[%d].limit invalid type", i)
+		}
+		limit := int64(limitFloat) // JSON numbers come as float64
 
 		// Parse duration (required)
 		durationStr, ok := limitMap["duration"].(string)
@@ -504,7 +499,11 @@ func parseLimits(raw interface{}) ([]LimitConfig, error) {
 		// Parse burst (optional, defaults to limit)
 		burst := limit
 		if burstRaw, ok := limitMap["burst"]; ok {
-			burst = int64(burstRaw.(float64))
+			burstFloat, ok := burstRaw.(float64)
+			if !ok {
+				return nil, fmt.Errorf("limits[%d].burst invalid type", i)
+			}
+			burst = int64(burstFloat)
 		}
 
 		limits = append(limits, LimitConfig{
@@ -542,7 +541,11 @@ func parseKeyExtraction(raw interface{}) ([]KeyComponent, error) {
 
 		comp := KeyComponent{Type: compType}
 		if keyRaw, ok := compMap["key"]; ok {
-			comp.Key = keyRaw.(string)
+			if keyStr, ok := keyRaw.(string); ok {
+				comp.Key = keyStr
+			} else {
+				return nil, fmt.Errorf("keyExtraction[%d].key must be a string", i)
+			}
 		}
 
 		components = append(components, comp)

@@ -200,7 +200,7 @@ func (m *MemoryLimiter) removeExpired() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	now := time.Now()
+	now := m.clock.Now()
 	for key, entry := range m.data {
 		if now.After(entry.expiration) {
 			delete(m.data, key)

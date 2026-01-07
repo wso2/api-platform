@@ -64,15 +64,6 @@ func (m *MultiLimiter) AllowN(ctx context.Context, key string, n int64) (*limite
 	return mostRestrictive, nil
 }
 
-// AllowMulti checks against multiple policies (implements MultiPolicyLimiter)
-// This is an alias for AllowN with policies already configured in the limiters
-func (m *MultiLimiter) AllowMulti(ctx context.Context, key string, policies ...*Policy) (*limiter.Result, error) {
-	// Note: This method exists for interface compatibility
-	// In the new architecture, policies are configured when creating individual limiters
-	// So we just delegate to AllowN
-	return m.AllowN(ctx, key, 1)
-}
-
 // Close closes all limiters
 // Safe to call multiple times
 func (m *MultiLimiter) Close() error {

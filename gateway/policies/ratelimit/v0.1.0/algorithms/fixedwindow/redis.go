@@ -3,8 +3,8 @@ package fixedwindow
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math/rand"
-	"sync"
 	"time"
 
 	"github.com/policy-engine/policies/ratelimit/limiter"
@@ -17,7 +17,6 @@ type RedisLimiter struct {
 	policy    *Policy
 	keyPrefix string
 	clock     limiter.Clock
-	closeOnce sync.Once
 }
 
 // NewRedisLimiter creates a new Redis-backed fixed window rate limiter
@@ -73,8 +72,12 @@ func (r *RedisLimiter) AllowN(ctx context.Context, key string, n int64) (*limite
 		jitter := time.Duration(rand.Int63n(int64(5 * time.Second)))
 		ttl := time.Until(windowEnd) + jitter
 
-		// Set expiration - safe to ignore error as key already has data
-		r.client.Expire(ctx, redisKey, ttl)
+		// Set expiration and handle potential error to avoid keys without TTL
+		if err := r.client.Expire(ctx, redisKey, ttl).Err(); err != nil {
+			// Log with context; surface error so callers can decide (fail-open/closed)
+			slog.Error("redis EXPIRE failed for rate limit key", "redisKey", redisKey, "ttl", ttl, "error", err)
+			return nil, fmt.Errorf("redis EXPIRE failed for key %s ttl %s: %w", redisKey, ttl.String(), err)
+		}
 	}
 
 	// Check if allowed
@@ -112,9 +115,7 @@ func (r *RedisLimiter) AllowN(ctx context.Context, key string, n int64) (*limite
 // Close releases resources (no-op for Redis as connections are managed externally)
 // Safe to call multiple times
 func (r *RedisLimiter) Close() error {
-	r.closeOnce.Do(func() {
-		// Redis client is managed externally, so we don't close it
-		// This method exists to satisfy the Limiter interface
-	})
+	// Redis client is managed externally, so we don't close it
+	// This method exists to satisfy the Limiter interface
 	return nil
 }

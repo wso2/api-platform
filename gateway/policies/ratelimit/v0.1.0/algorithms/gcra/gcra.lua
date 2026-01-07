@@ -39,16 +39,12 @@ local new_tat = tat
 local retry_after_nanos = 0
 
 -- Calculate remaining capacity BEFORE consuming
-local remaining = 0
-if tat < now then
-    remaining = burst_capacity
-else
-    local used_burst = tat - now
-    if used_burst <= burst_allowance then
-        remaining = burst_capacity - math.ceil(used_burst / emission_interval)
-        if remaining < 0 then
-            remaining = 0
-        end
+local remaining = burst_capacity
+local used_burst = tat - now
+if used_burst > 0 and used_burst <= burst_allowance then
+    remaining = burst_capacity - math.ceil(used_burst / emission_interval)
+    if remaining < 0 then
+        remaining = 0
     end
 end
 
