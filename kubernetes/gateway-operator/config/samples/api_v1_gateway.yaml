@@ -31,42 +31,6 @@ spec:
   configRef:
     name: gateway-custom-config
 ---
-# ---
-# # Example 1: Cluster-scoped Gateway
-# # This gateway accepts APIs from ANY namespace
-# apiVersion: gateway.api-platform.wso2.com/v1alpha1
-# kind: Gateway
-# metadata:
-#   name: cluster-gateway-2
-# spec:
-#   gatewayClassName: "production"
-  
-#   apiSelector:
-#     scope: LabelSelector
-#     matchLabels:
-#       environment: "production"
-#       team: "platform"
-#       tier: "stable"
-#   infrastructure:
-#     replicas: 1
-#     resources:
-#       requests:
-#         cpu: "500m"
-#         memory: "1Gi"
-#       limits:
-#         cpu: "2"
-#         memory: "4Gi"
-  
-#   controlPlane:
-#     host: "gateway-control-plane.gateway-operator-system.svc.cluster.local:8443"
-#     tls:
-#       enabled: true
-  
-#   storage:
-#     type: sqlite
-#   configRef:
-#     name: gateway-custom-config
----
 # ConfigMap containing custom Helm values
 apiVersion: v1
 kind: ConfigMap
@@ -362,35 +326,7 @@ data:
             # Log format: json, text
             format: json
 
-        policy_configurations: 
-          JWTAuth_v010:
-            KeyManagers:
-            - name: WSO2KeyManager1
-              issuer: https://api.asgardeo.io/t/tharsanan1995/oauth2/token
-              jwks:
-                remote:
-                  uri: https://api.asgardeo.io/t/tharsanan1995/oauth2/jwks
-                  skipTlsVerify: false
-            - name: WSO2KeyManager2
-              issuer: https://api.asgardeo.io/t/testorgforsecurity/oauth2/token
-              jwks:
-                remote:
-                  uri: https://api.asgardeo.io/t/testorgforsecurity/oauth2/jwks
-                  skipTlsVerify: false
-            JwksCacheTtl: "5m"
-            JwksFetchTimeout: "5s"
-            JwksFetchRetryCount: 3
-            JwksFetchRetryInterval: "2s"
-            AllowedAlgorithms:
-              - RS256
-              - ES256
-            Leeway: "30s"
-            AuthHeaderScheme: Bearer
-            HeaderName: Authorization
-            OnFailureStatusCode: 401
-            ErrorMessageFormat: json
-            ErrorMessage: "Authentication failed."
-            ValidateIssuer: true
+        policy_configurations: {}
 
       # metadata for the generated shared ConfigMap (annotations / labels)
       configMap:
@@ -399,8 +335,8 @@ data:
 
       controller:
         image:
-          repository: ghcr.io/tharsanan1/api-platform/gateway-controller
-          tag: "0.1.0-SNAPSHOT"
+          repository: ghcr.io/wso2/api-platform/gateway-controller
+          tag: "0.2.0"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -530,8 +466,8 @@ data:
 
       router:
         image:
-          repository: ghcr.io/tharsanan1/api-platform/gateway-router
-          tag: "0.1.0-SNAPSHOT"
+          repository: ghcr.io/wso2/api-platform/gateway-router
+          tag: "0.2.0"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -587,8 +523,8 @@ data:
 
       policyEngine:
         image:
-          repository: ghcr.io/tharsanan1/api-platform/policy-engine
-          tag: "0.1.0-SNAPSHOT"
+          repository: ghcr.io/wso2/api-platform/policy-engine
+          tag: "0.2.0"
           pullPolicy: Always
         imagePullSecrets: []
         service:
@@ -638,71 +574,3 @@ data:
           nodeSelector: {}
           tolerations: []
           affinity: {}
-
-
----
-# Example 2: Namespace-scoped Gateway
-# This gateway only accepts APIs from specific namespaces
-# apiVersion: gateway.api-platform.wso2.com/v1alpha1
-# kind: Gateway
-# metadata:
-#   labels:
-#     app.kubernetes.io/name: gateway-operator
-#     app.kubernetes.io/managed-by: kustomize
-#   name: namespaced-gateway
-# spec:
-#   gatewayClassName: "development"
-  
-#   apiSelector:
-#     scope: Namespaced
-#     namespaces:
-#       - "dev-apis"
-#       - "staging-apis"
-#       - "test-apis"
-  
-#   infrastructure:
-#     replicas: 1
-#     image: "wso2/gateway-controller:latest"
-#     routerImage: "envoyproxy/envoy:v1.28-latest"
-  
-#   storage:
-#     type: sqlite
-
-# ---
-# # Example 3: Label-based Gateway
-# # This gateway accepts APIs matching specific labels
-# apiVersion: gateway.api-platform.wso2.com/v1alpha1
-# kind: Gateway
-# metadata:
-#   labels:
-#     app.kubernetes.io/name: gateway-operator
-#     app.kubernetes.io/managed-by: kustomize
-#   name: label-selector-gateway
-# spec:
-#   gatewayClassName: "team-platform"
-  
-#   apiSelector:
-#     scope: LabelSelector
-#     matchLabels:
-#       gateway: "platform-gateway"
-#       environment: "production"
-#     matchExpressions:
-#       - key: team
-#         operator: In
-#         values: ["platform", "infrastructure"]
-#       - key: tier
-#         operator: NotIn
-#         values: ["experimental"]
-  
-#   infrastructure:
-#     replicas: 1
-#     resources:
-#       requests:
-#         cpu: "1"
-#         memory: "2Gi"
-#       limits:
-#         cpu: "4"
-#         memory: "8Gi"
-  
-#   storage:
-#     type: sqlite

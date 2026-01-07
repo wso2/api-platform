@@ -20,13 +20,13 @@ package utils
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"time"
-	"log/slog"
 
 	v3 "github.com/envoyproxy/go-control-plane/envoy/service/accesslog/v3"
-	"github.com/policy-engine/policy-engine/internal/analytics"
-	"github.com/policy-engine/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/analytics"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/config"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
@@ -93,11 +93,11 @@ func StartAccessLogServiceServer(cfg *config.Config) *grpc.Server {
 		panic(err)
 	}
 	go func() {
-        slog.Info("Starting to serve access log service server", "port", cfg.Analytics.AccessLogsServiceCfg.ALSServerPort)
-        if err := server.Serve(listener); err != nil {
-            slog.Error("ALS server exited", "error", err)
-        }
-    }()
+		slog.Info("Starting to serve access log service server", "port", cfg.Analytics.AccessLogsServiceCfg.ALSServerPort)
+		if err := server.Serve(listener); err != nil {
+			slog.Error("ALS server exited", "error", err)
+		}
+	}()
 
-    return server
+	return server
 }

@@ -84,8 +84,9 @@ Add a summarization instruction to user prompts:
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: summarization-provider
@@ -95,11 +96,11 @@ spec:
   template: openai
   vhost: openai
   upstream:
-    url: https://api.openai.com/v1
+    url: "https://api.openai.com/v1"
     auth:
       type: api-key
       header: Authorization
-      value: <openai-apikey>
+      value: Bearer <openai-apikey>
   accessControl:
     mode: deny_all
     exceptions:
@@ -156,8 +157,9 @@ Add a system message to define AI behavior:
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: hotel-booking-provider
@@ -167,11 +169,11 @@ spec:
   template: openai
   vhost: openai
   upstream:
-    url: https://api.openai.com/v1
+    url: "https://api.openai.com/v1"
     auth:
       type: api-key
       header: Authorization
-      value: <openai-apikey>
+      value: Bearer <openai-apikey>
   accessControl:
     mode: deny_all
     exceptions:

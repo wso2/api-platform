@@ -1,0 +1,12 @@
+go 1.25.1
+
+use (
+	./cli/src
+	./common
+	./gateway/gateway-builder
+	./gateway/gateway-controller
+	./gateway/it
+	./gateway/policy-engine
+	./platform-api/src
+	./sdk
+)

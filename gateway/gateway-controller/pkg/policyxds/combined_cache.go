@@ -48,11 +48,18 @@ type combinedWatcher struct {
 	policyCancel  func()
 	apiKeyCancel  func()
 	combinedCache *CombinedCache
+	done          chan struct{} // done channel to signal goroutine cancellation
 }
 
 // NewCombinedCache creates a new combined cache that merges policy and API key caches
 // Returns a cache.Cache interface implementation
 func NewCombinedCache(policyCache cache.Cache, apiKeyCache cache.Cache, logger *zap.Logger) cache.Cache {
+	if policyCache == nil || apiKeyCache == nil {
+		panic("policyCache and apiKeyCache must not be nil")
+	}
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	return &CombinedCache{
 		policyCache: policyCache,
 		apiKeyCache: apiKeyCache,
@@ -77,6 +84,7 @@ func (c *CombinedCache) CreateWatch(request *cache.Request, streamState stream.S
 		streamState:   streamState,
 		responseChan:  responseChan,
 		combinedCache: c,
+		done:          make(chan struct{}),
 	}
 
 	c.watchers[watcherID] = watcher
@@ -95,7 +103,7 @@ func (c *CombinedCache) CreateWatch(request *cache.Request, streamState stream.S
 	watcher.apiKeyCancel = c.apiKeyCache.CreateWatch(request, streamState, apiKeyResponseChan)
 
 	// Start a response multiplexer to handle responses from both caches
-	go c.handleCombinedResponses(watcherID, policyResponseChan, apiKeyResponseChan, responseChan)
+	go c.handleCombinedResponses(watcherID, policyResponseChan, apiKeyResponseChan, responseChan, watcher.done)
 
 	// Return cancel function
 	return func() {
@@ -105,7 +113,8 @@ func (c *CombinedCache) CreateWatch(request *cache.Request, streamState stream.S
 
 // handleCombinedResponses multiplexes responses from both caches
 // This prevents recursion and handles response deduplication
-func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseChan, apiKeyResponseChan chan cache.Response, mainResponseChan chan cache.Response) {
+func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseChan, apiKeyResponseChan chan cache.Response,
+	mainResponseChan chan cache.Response, done chan struct{}) {
 	defer func() {
 		c.logger.Debug("Response handler goroutine exiting", zap.Int64("watcher_id", watcherID))
 	}()
@@ -114,6 +123,10 @@ func (c *CombinedCache) handleCombinedResponses(watcherID int64, policyResponseC
 
 	for {
 		select {
+		case <-done:
+			c.logger.Debug("Watcher cancelled, exiting response handler", zap.Int64("watcher_id", watcherID))
+			return
+
 		case response, ok := <-policyResponseChan:
 			if !ok {
 				c.logger.Debug("Policy response channel closed", zap.Int64("watcher_id", watcherID))
@@ -352,16 +365,17 @@ func (c *CombinedCache) cancelWatch(watcherID int64) {
 	c.logger.Debug("Canceling combined watch",
 		zap.Int64("watcher_id", watcherID))
 
+	// Signal the goroutine to stop by closing the done channel
+	close(watcher.done)
+
 	// Remove the watcher from the map first to prevent new responses
 	delete(c.watchers, watcherID)
 
 	// Cancel both underlying watchers if they exist
-	if watcher != nil {
-		if watcher.policyCancel != nil {
-			watcher.policyCancel()
-		}
-		if watcher.apiKeyCancel != nil {
-			watcher.apiKeyCancel()
-		}
+	if watcher.policyCancel != nil {
+		watcher.policyCancel()
+	}
+	if watcher.apiKeyCancel != nil {
+		watcher.apiKeyCancel()
 	}
 }

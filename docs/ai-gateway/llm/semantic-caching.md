@@ -13,7 +13,7 @@ The policy uses embedding models to convert request text into high-dimensional v
 - **Multiple vector database support**: Supports Redis and Milvus as vector storage backends
 - **Configurable similarity threshold**: Control cache hit sensitivity (0.0 to 1.0)
 - **JSONPath extraction**: Extract specific fields from request body for embedding generation
-- **Automatic cache management**: Stores successful responses (2xx) automatically after upstream calls
+- **Automatic cache management**: Stores successful responses (200) automatically after upstream calls
 - **Immediate response on cache hit**: Returns cached response with `X-Cache-Status: HIT` header without upstream call
 - **TTL support**: Configurable time-to-live for cache entries
 
@@ -29,7 +29,7 @@ The policy uses embedding models to convert request text into high-dimensional v
 
 ### Response Phase
 
-1. **Success Check**: Only processes responses with 2xx status codes
+1. **Success Check**: Only processes responses with 200 status codes
 2. **Embedding Retrieval**: Retrieves the embedding generated during the request phase from metadata
 3. **Response Storage**: Stores the response payload along with its embedding in the vector database
 4. **TTL Application**: Applies the configured TTL to the cache entry
@@ -118,8 +118,9 @@ Deploy an LLM provider with semantic caching using OpenAI embeddings and Redis v
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: cached-chat-provider
@@ -129,11 +130,11 @@ spec:
   template: openai
   vhost: openai
   upstream:
-    url: https://api.openai.com/v1
+    url: "https://api.openai.com/v1"
     auth:
       type: api-key
       header: Authorization
-      value: <openai-apikey>
+      value: Bearer <openai-apikey>
   accessControl:
     mode: deny_all
     exceptions:
@@ -186,62 +187,6 @@ curl -X POST http://openai:8080/chat/completions \
 # Response will include: X-Cache-Status: HIT
 ```
 
-### Example 2: Mistral Embeddings with Milvus
-
-Configure semantic caching with Mistral embeddings and Milvus vector database:
-
-```bash
-curl -X POST http://localhost:9090/llm-providers \
-  -H "Content-Type: application/yaml" \
-  --data-binary @- <<'EOF'
-version: ai.api-platform.wso2.com/v1
-kind: LlmProvider
-metadata:
-  name: mistral-cached-provider
-spec:
-  displayName: Mistral Cached Provider
-  version: v1.0
-  template: openai
-  vhost: openai
-  upstream:
-    url: https://api.mistral.ai/v1
-    auth:
-      type: api-key
-      header: Authorization
-      value: <mistral-apikey>
-  accessControl:
-    mode: deny_all
-    exceptions:
-      - path: /chat/completions
-        methods: [POST]
-  policies:
-    - name: semantic-cache
-      version: v0.1.0
-      paths:
-        - path: /chat/completions
-          methods: [POST]
-          params:
-            similarityThreshold: 0.90
-            jsonPath: "$.messages[-1].content"
-EOF
-```
-
-### Example 3: Azure OpenAI with Custom TTL
-
-Configure semantic caching with Azure OpenAI and extended cache duration:
-
-```yaml
-policies:
-  - name: semantic-cache
-    version: v0.1.0
-    paths:
-      - path: /chat/completions
-        methods: [POST]
-        params:
-          similarityThreshold: 0.88
-          jsonPath: "$.messages[0].content"
-```
-
 ## Use Cases
 
 1. **Cost Reduction**: Reduce API costs by serving cached responses for similar queries, especially valuable for expensive LLM API calls.
@@ -286,12 +231,12 @@ When a similar request is found:
 
 When no similar request is found:
 - Request proceeds to upstream service normally
-- Response is cached after successful upstream call (2xx status)
+- Response is cached after successful upstream call (200 status)
 - Subsequent similar requests may hit the cache
 
 ### Cache Storage
 
-- Only successful responses (2xx status codes) are cached
+- Only successful responses (200 status code) are cached
 - Responses are stored with their embeddings in the vector database
 - TTL is applied to all cache entries
 - Each route/API maintains a separate cache namespace to avoid cross-contamination
@@ -329,7 +274,7 @@ These behaviors ensure that caching failures do not block legitimate requests. T
 
 - Cache entries are scoped per route/API to prevent cross-contamination between different APIs or routes.
 
-- Only responses with 2xx status codes are cached. Errors and non-2xx responses are never cached.
+- Only responses with 200 status code are cached. Errors and non-200 responses are never cached.
 
 - The similarity search uses cosine similarity to compare embeddings. This is optimal for semantic similarity matching.
 

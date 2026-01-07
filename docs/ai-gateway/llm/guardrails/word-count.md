@@ -56,8 +56,9 @@ Deploy an LLM provider that validates request messages contain between 10 and 50
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-version: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: word-count-provider
@@ -67,11 +68,11 @@ spec:
   template: openai
   vhost: openai
   upstream:
-    url: https://api.openai.com/v1
+    url: "https://api.openai.com/v1"
     auth:
       type: api-key
       header: Authorization
-      value: <openai-apikey>
+      value: Bearer <openai-apikey>
   accessControl:
     mode: deny_all
     exceptions:
@@ -89,7 +90,7 @@ spec:
           methods: [POST]
           params:
             request:
-              min: 10
+              min: 5
               max: 500
               jsonPath: "$.messages[0].content"
 EOF

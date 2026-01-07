@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/policy-engine/gateway-builder/pkg/fsutil"
-	"github.com/policy-engine/gateway-builder/pkg/types"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/fsutil"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 )
 
 // ValidateDirectoryStructure validates the policy directory structure

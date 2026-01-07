@@ -20,15 +20,15 @@ package publishers
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/moesif/moesifapi-go"
 	"github.com/moesif/moesifapi-go/models"
-	"github.com/policy-engine/policy-engine/internal/analytics/dto"
-	"github.com/policy-engine/policy-engine/internal/config"
-
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/analytics/dto"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/config"
 )
 
 const (
@@ -45,11 +45,11 @@ type Moesif struct {
 
 // MoesifConfig holds the configs specific for the Moesif publisher.
 type MoesifConfig struct {
-	ApplicationID   string `mapstructure:"application_id" default:""`
-	PublishInterval int    `mapstructure:"publish_interval" default:"5"`
-	EventQueueSize 	int `mapstructure:"event_queue_size" default:"10000"`
-	BatchSize 		int `mapstructure:"batch_size" default:"50"`
-	TimerWakeupSeconds int `mapstructure:"timer_wakeup_seconds" default:"3"`
+	ApplicationID      string `mapstructure:"application_id" default:""`
+	PublishInterval    int    `mapstructure:"publish_interval" default:"5"`
+	EventQueueSize     int    `mapstructure:"event_queue_size" default:"10000"`
+	BatchSize          int    `mapstructure:"batch_size" default:"50"`
+	TimerWakeupSeconds int    `mapstructure:"timer_wakeup_seconds" default:"3"`
 }
 
 // NewMoesif creates a new Moesif publisher.
@@ -61,10 +61,17 @@ func NewMoesif(pubCfg *config.PublisherConfig) *Moesif {
 		slog.Error("Error decoding Moesif config", "error", err)
 		return nil
 	}
-	// Moesif Client Configs(Need to be taken from config file)
-	moesifApplicationId, eventQueueSize, batchSize, timerWakeupSeconds := 
-		moesifCfg.ApplicationID, moesifCfg.EventQueueSize, 
-		moesifCfg.BatchSize, 
+
+	// Read moesifApplicationId from environment variable first, fallback to config
+	moesifApplicationId := os.Getenv("MOESIF_KEY")
+	if moesifApplicationId == "" {
+		moesifApplicationId = moesifCfg.ApplicationID
+	}
+
+	// Moesif Client Configs
+	eventQueueSize, batchSize, timerWakeupSeconds :=
+		moesifCfg.EventQueueSize,
+		moesifCfg.BatchSize,
 		moesifCfg.TimerWakeupSeconds
 
 	apiClient := moesifapi.NewAPI(moesifApplicationId, nil, eventQueueSize, batchSize, timerWakeupSeconds)
@@ -144,7 +151,7 @@ func (m *Moesif) Publish(event *dto.Event) {
 	eventModel := &models.EventModel{
 		Request:  req,
 		Response: rsp,
-		UserId: &userID,
+		UserId:   &userID,
 		Metadata: metadataMap,
 	}
 	m.events = append(m.events, eventModel)

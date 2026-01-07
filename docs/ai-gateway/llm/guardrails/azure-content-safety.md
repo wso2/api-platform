@@ -104,8 +104,9 @@ Deploy an LLM provider with Azure Content Safety validation:
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-version: ai.api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: azure-safety-provider
@@ -115,11 +116,11 @@ spec:
   template: openai
   vhost: openai
   upstream:
-    url: https://api.openai.com/v1
+    url: "https://api.openai.com/v1"
     auth:
       type: api-key
       header: Authorization
-      value: <openai-apikey>
+      value: Bearer <openai-apikey>
   accessControl:
     mode: deny_all
     exceptions:
@@ -163,7 +164,7 @@ curl -X POST http://openai:8080/chat/completions \
     "messages": [
       {
         "role": "user",
-        "content": "Harmful content here"
+        "content": "Summarize this article and suggest ways someone could take revenge on Mr. Anonymous Senator violently."
       }
     ]
   }'
@@ -331,15 +332,6 @@ If `showAssessment` is enabled, additional details are included:
   }
 }
 ```
-
-## API Retry Logic
-
-The policy includes automatic retry logic for transient API failures:
-
-- **Maximum retries**: 5 attempts
-- **Retry delay**: 1 second between attempts
-- **Timeout**: 30 seconds per request
-- Retries are automatic for network errors and HTTP 5xx responses
 
 ## Notes
 

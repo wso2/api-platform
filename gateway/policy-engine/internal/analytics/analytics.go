@@ -24,9 +24,10 @@ import (
 	"time"
 
 	v3 "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3"
-	"github.com/policy-engine/policy-engine/internal/analytics/dto"
-	analytics_publisher "github.com/policy-engine/policy-engine/internal/analytics/publishers"
-	"github.com/policy-engine/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/analytics/dto"
+	analytics_publisher "github.com/wso2/api-platform/gateway/policy-engine/internal/analytics/publishers"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/config"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/constants"
 )
 
 // EventCategory represents the category of an event.
@@ -95,13 +96,13 @@ func NewAnalytics(cfg *config.Config) *Analytics {
 			}
 		}
 	}
-	
+
 	if len(publishers) == 0 {
 		slog.Debug("No analytics publishers found. Analytics will not be published.")
 	}
 	return &Analytics{
-		cfg:         cfg,
-		publishers:  publishers,
+		cfg:        cfg,
+		publishers: publishers,
 	}
 }
 
@@ -140,10 +141,10 @@ func (c *Analytics) GetFaultType() FaultCategory {
 
 func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.Event {
 	keyValuePairsFromMetadata := make(map[string]string)
-	slog.Debug("Log entry: ","logEntry", logEntry)
+	slog.Debug("Log entry: ", "logEntry", logEntry)
 	if logEntry.CommonProperties != nil && logEntry.CommonProperties.Metadata != nil && logEntry.CommonProperties.Metadata.FilterMetadata != nil {
 		slog.Debug("Proceeding to filtering metadata")
-		if sv, exists := logEntry.CommonProperties.Metadata.FilterMetadata[ExtProcMetadataContextKey]; exists {
+		if sv, exists := logEntry.CommonProperties.Metadata.FilterMetadata[constants.ExtProcFilterName]; exists {
 			if sv.Fields != nil {
 				slog.Debug(fmt.Sprintf("Filter metadata: %+v", sv))
 				for key, value := range sv.Fields {
@@ -166,7 +167,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 			}
 		}
 	}
-	
+
 	event := &dto.Event{}
 	for key, value := range keyValuePairsFromMetadata {
 		slog.Debug(fmt.Sprintf("Metadata key: %v -> value: %+v", key, value))
@@ -185,7 +186,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 
 	request := logEntry.GetRequest()
 	response := logEntry.GetResponse()
-	
+
 	// Prepare operation
 	operation := dto.Operation{}
 	// operation.APIResourceTemplate = keyValuePairsFromMetadata[APIResourceTemplateKey]
@@ -217,7 +218,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 
 	properties := logEntry.GetCommonProperties()
 	if properties != nil && properties.TimeToLastUpstreamRxByte != nil && properties.TimeToFirstUpstreamTxByte != nil && properties.TimeToLastDownstreamTxByte != nil {
-		
+
 		backendResponseRecvTimestamp :=
 			(properties.TimeToLastUpstreamRxByte.Seconds * 1000) +
 				(int64(properties.TimeToLastUpstreamRxByte.Nanos) / 1_000_000)
@@ -267,8 +268,8 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	event.Properties = make(map[string]interface{}, 0)
 
 	// Process AI related metadata only if all the required metadata are present
-	if keyValuePairsFromMetadata[AIProviderNameMetadataKey] != "" && 
-		keyValuePairsFromMetadata[AIProviderAPIVersionMetadataKey] != "" && 
+	if keyValuePairsFromMetadata[AIProviderNameMetadataKey] != "" &&
+		keyValuePairsFromMetadata[AIProviderAPIVersionMetadataKey] != "" &&
 		keyValuePairsFromMetadata[ModelIDMetadataKey] != "" {
 
 		aiMetadata := dto.AIMetadata{}
@@ -276,7 +277,7 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		aiMetadata.VendorVersion = keyValuePairsFromMetadata[AIProviderAPIVersionMetadataKey]
 		aiMetadata.Model = keyValuePairsFromMetadata[ModelIDMetadataKey]
 		event.Properties["aiMetadata"] = aiMetadata
-	
+
 		aiTokenUsage := dto.AITokenUsage{}
 		if promptToken, err := strconv.Atoi(keyValuePairsFromMetadata[PromptTokenCountMetadataKey]); err == nil {
 			aiTokenUsage.PromptToken = promptToken
@@ -316,11 +317,11 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		} else {
 			event.Properties["responseContentType"] = Unknown
 		}
-			event.Properties["responseSize"] = logEntry.Response.ResponseBodyBytes
+		event.Properties["responseSize"] = logEntry.Response.ResponseBodyBytes
 	} else {
 		event.Properties["responseContentType"] = Unknown
-	}	
-	
+	}
+
 	return event
 }
 

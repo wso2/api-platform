@@ -22,14 +22,14 @@ docker compose version
 Replace ${version} with the actual release version of the API Platform Gateway.
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway-v0.1.0/gateway-v0.1.0.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway-v0.2.0/gateway-v0.2.0.zip
 
 # Unzip the downloaded distribution.
-unzip gateway-v0.1.0.zip
+unzip gateway-v0.2.0.zip
 
 
 # Start the complete stack
-cd gateway-v0.1.0/
+cd gateway-v0.2.0/
 docker compose up -d
 
 # Verify gateway controller is running
@@ -41,7 +41,7 @@ curl http://localhost:9090/health
 Start the sample MCP server
 
 ```bash
-docker run -p 3001:3001 --name everything --network gateway_gateway-network rakhitharr/mcp-everything:v2
+docker run -p 3001:3001 --name everything --network gateway_gateway-network rakhitharr/mcp-everything:v3
 ```
 
 Run the following command to deploy the MCP proxy.
@@ -49,16 +49,19 @@ Run the following command to deploy the MCP proxy.
 ```bash
 curl -X POST http://localhost:9090/mcp-proxies \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: Mcp
+metadata:
+  name: everything-mcp-v1.0
 spec:
-  name: Everything
+  displayName: Everything
   version: v1.0
   context: /everything
   specVersion: "2025-06-18"
-  upstreams:
-    - url: http://everything:3001
+  upstream:
+    url: http://everything:3001
   tools: []
   resources: []
   prompts: []

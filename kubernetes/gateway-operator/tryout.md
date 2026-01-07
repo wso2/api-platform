@@ -142,6 +142,7 @@ Add certificate to Gateway:
 cert_path="/tmp/test-backend.crt"
 curl -X POST http://localhost:9090/certificates \
   -H "Content-Type: application/json" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   -d "{\"certificate\":$(jq -Rs . < $cert_path),\"filename\":\"my-cert.pem\", \"name\":\"test\"}"
 ```
 

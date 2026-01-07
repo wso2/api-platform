@@ -60,13 +60,14 @@ The guardrail uses Go's standard regexp package, which supports RE2 syntax. Key 
 
 ### Example 1: Email Validation
 
-Deploy an LLM provider that ensures user input contains a valid email address:
+Deploy an LLM provider that protects against sensitive data leaks by blocking any payloads that mention the word "password" (case-insensitive) in either the user’s message or the LLM’s response. This is achieved by using the regex policy to validate both request and response payloads:
 
 ```bash
 curl -X POST http://localhost:9090/llm-providers \
   -H "Content-Type: application/yaml" \
+  -H "Authorization: Basic YWRtaW46YWRtaW4=" \
   --data-binary @- <<'EOF'
-version: gateway.api-platform.wso2.com/v1alpha1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: LlmProvider
 metadata:
   name: regex-provider
@@ -76,11 +77,11 @@ spec:
   template: openai
   vhost: openai
   upstream:
-    url: https://api.openai.com/v1
+    url: "https://api.openai.com/v1"
     auth:
       type: api-key
       header: Authorization
-      value: <openai-apikey>
+      value: Bearer <openai-apikey>
   accessControl:
     mode: deny_all
     exceptions:
@@ -98,7 +99,8 @@ spec:
           methods: [POST]
           params:
             request:
-              regex: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+              regex: "(?i).*password.*"
+              invert: true
               jsonPath: "$.messages[0].content"
 EOF
 ```
@@ -117,7 +119,7 @@ curl -X POST http://openai:8080/chat/completions \
     "messages": [
       {
         "role": "user",
-        "content": "Contact me at user@example.com"
+        "content": "This is a safe message without sensitive data"
       }
     ]
   }'
@@ -131,7 +133,7 @@ curl -X POST http://openai:8080/chat/completions \
     "messages": [
       {
         "role": "user",
-        "content": "Contact me"
+        "content": "My password is 1234567"
       }
     ]
   }'

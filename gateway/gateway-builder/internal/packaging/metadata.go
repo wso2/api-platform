@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/policy-engine/gateway-builder/pkg/types"
+	"github.com/wso2/api-platform/gateway/gateway-builder/pkg/types"
 )
 
 // GenerateDockerLabels creates Docker labels for the runtime image

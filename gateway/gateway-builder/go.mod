@@ -1,11 +1,14 @@
-module github.com/policy-engine/gateway-builder
+module github.com/wso2/api-platform/gateway/gateway-builder
 
-go 1.24.0
+go 1.25.1
 
 require (
-	github.com/wso2/api-platform/sdk v1.0.0
+	github.com/wso2/api-platform/sdk v0.0.0
 	golang.org/x/mod v0.30.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
+require gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
+
+// Local module replacements for Docker builds
 replace github.com/wso2/api-platform/sdk => ../../sdk

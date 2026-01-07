@@ -347,7 +347,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /apis/{id}/api-key:
+  /apis/{id}/generate-api-key:
     post:
       summary: Generate API key for an API
       description: |
@@ -402,10 +402,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /apis/{id}/api-keys:
     get:
       summary: Get the list of API keys for an API
       description: |
-        Retrieve the list of all the active API keys for the specified API by the user.
+        Retrieve all active API keys for the specified API created by the user. If the user is an admin, retrieves all
+        active API keys for the API.
       operationId: listAPIKeys
       tags:
         - API Management
@@ -438,8 +440,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /apis/{id}/api-key/{apiKeyName}:
-    put:
+  /apis/{id}/api-keys/{apiKeyName}/regenerate:
+    post:
       summary: Rotate API key for an API
       description: |
         Rotate the given API key for the specified API. The newly rotated key can be
@@ -501,8 +503,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /apis/{id}/api-key/{apiKey}:
-    delete:
+  /apis/{id}/revoke-api-key:
+    post:
       summary: Revoke an API key
       description: |
         Revoke a previously generated API key for the specified API. Once revoked,
@@ -519,16 +521,22 @@ paths:
           schema:
             type: string
           example: weather-api-v1.0
-        - name: apiKey
-          in: path
-          required: true
-          description: The API key to revoke
-          schema:
-            type: string
-          example: apip_4f3c2e1d5a6b7c8d9e0f1a2b3c4d5e6f
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: "#/components/schemas/APIKeyRevocationRequest"
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyRevocationRequest"
       responses:
-        '204':
+        '200':
           description: API key revoked successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyRevocationResponse"
         "400":
           description: Invalid configuration (validation failed)
           content:
@@ -2224,7 +2232,7 @@ components:
         expires_at:
           type: string
           format: date-time
-          description: Expiration timestamp
+          description: Expiration timestamp. If both expires_in and expires_at are provided, expires_at takes precedence.
           example: "2026-12-08T10:30:00Z"
     APIKeyGenerationResponse:
       type: object
@@ -2285,7 +2293,6 @@ components:
           example: "2025-12-08T10:30:00Z"
       required:
         - name
-        - api_key
         - apiId
         - operations
         - status
@@ -2322,6 +2329,27 @@ components:
           format: date-time
           description: Expiration timestamp
           example: "2026-12-08T10:30:00Z"
+    APIKeyRevocationRequest:
+      type: object
+      properties:
+        api_key:
+          type: string
+          description: API key to be revoked
+          example: "apip_1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+      required:
+        - api_key
+    APIKeyRevocationResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: API key revoked successfully
+      required:
+        - status
+        - message
 
     APIListItem:
       type: object
