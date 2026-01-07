@@ -150,7 +150,7 @@ CREATE INDEX IF NOT EXISTS idx_api_key_status ON api_keys(status);
 CREATE INDEX IF NOT EXISTS idx_api_key_expiry ON api_keys(expires_at);
 CREATE INDEX IF NOT EXISTS idx_created_by ON api_keys(created_by);
 
--- EventHub: Organization States Table (added in schema version 9)
+-- EventHub: Organization States Table (added in schema version 6)
 -- Tracks version information per organization for change detection
 CREATE TABLE IF NOT EXISTS organization_states (
     organization TEXT PRIMARY KEY,
@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS organization_states (
 
 CREATE INDEX IF NOT EXISTS idx_organization_states_updated ON organization_states(updated_at);
 
--- EventHub: Unified Events Table (added in schema version 9)
+-- EventHub: Unified Events Table (added in schema version 6)
 -- Stores all entity change events (APIs, certificates, LLM templates, etc.)
 CREATE TABLE IF NOT EXISTS events (
     organization_id TEXT NOT NULL,
@@ -177,5 +177,5 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_lookup ON events(organization_id, processed_timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
 
--- Set schema version to 9
-PRAGMA user_version = 9;
+-- Set schema version to 6
+PRAGMA user_version = 6;
