@@ -13,6 +13,10 @@ policies:
     version: v0.1.0
     filePath: ./basic-auth/v0.1.0
 
+  - name: ratelimit
+    version: v0.1.0
+    filePath: ./ratelimit/v0.1.0
+
   - name: jwt-auth
     version: v0.1.0
     filePath: ./jwt-auth/v0.1.0
