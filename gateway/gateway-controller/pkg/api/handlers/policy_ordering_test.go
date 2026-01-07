@@ -41,7 +41,7 @@ func newTestAPIServer() *APIServer {
 		VHosts:      *vhosts,
 	}
 	configStore := storage.NewConfigStore()
-	deploymentService := utils.NewAPIDeploymentService(configStore, nil, nil, nil, nil, routerConfig)
+	deploymentService := utils.NewAPIDeploymentService(configStore, nil, nil, nil, nil, routerConfig, nil, false)
 	return &APIServer{
 		routerConfig:      routerConfig,
 		deploymentService: deploymentService,
