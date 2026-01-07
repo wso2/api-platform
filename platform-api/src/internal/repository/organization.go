@@ -89,6 +89,26 @@ func (r *OrganizationRepo) GetOrganizationByUUID(orgId string) (*model.Organizat
 	return org, nil
 }
 
+// GetOrganizationByHandle retrieves an organization by handle
+func (r *OrganizationRepo) GetOrganizationByHandle(handle string) (*model.Organization, error) {
+	org := &model.Organization{}
+	query := `
+		SELECT uuid, handle, name, region, created_at, updated_at
+		FROM organizations
+		WHERE handle = ?
+	`
+	err := r.db.QueryRow(query, handle).Scan(
+		&org.ID, &org.Handle, &org.Name, &org.Region, &org.CreatedAt, &org.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return org, nil
+}
+
 // UpdateOrganization modifies an existing organization
 func (r *OrganizationRepo) UpdateOrganization(org *model.Organization) error {
 	org.UpdatedAt = time.Now()
