@@ -31,13 +31,16 @@ import (
 const (
 	AddCmdLiteral = "add"
 	AddCmdExample = `# Add a new gateway with no authentication
-ap gateway add --name dev --server http://localhost:9090
+ap gateway add --display-name dev --server http://localhost:9090
 
-# Add a gateway with basic authentication
-ap gateway add --name dev --server http://localhost:9090 --auth basic
+# Add a gateway with basic authentication (interactive prompts)
+ap gateway add --display-name dev --server http://localhost:9090 --auth basic
 
-# Add a gateway with bearer token authentication
-ap gateway add --name prod --server https://api.example.com --auth bearer
+# Add a gateway with bearer token authentication (interactive prompts)
+ap gateway add --display-name prod --server https://api.example.com --auth bearer
+
+# Add a gateway without interactive prompts (credentials must be in environment variables)
+ap gateway add --display-name dev --server http://localhost:9090 --auth basic --no-interactive
 
 # For Basic Auth, set environment variables before running gateway commands:
 #   export ` + utils.EnvGatewayUsername + `=admin
@@ -48,9 +51,13 @@ ap gateway add --name prod --server https://api.example.com --auth bearer
 )
 
 var (
-	addName   string
-	addServer string
-	addAuth   string
+	addName          string
+	addServer        string
+	addAuth          string
+	addUsername      string
+	addPassword      string
+	addToken         string
+	addNoInteractive bool
 )
 
 var addCmd = &cobra.Command{
@@ -70,6 +77,10 @@ func init() {
 	utils.AddStringFlag(addCmd, utils.FlagName, &addName, "", "Name of the gateway (required)")
 	utils.AddStringFlag(addCmd, utils.FlagServer, &addServer, "", "Server URL of the gateway (required)")
 	utils.AddStringFlag(addCmd, utils.FlagAuth, &addAuth, utils.AuthTypeNone, "Authentication type: none, basic, or bearer (default: none)")
+	utils.AddStringFlag(addCmd, utils.FlagUsername, &addUsername, "", "Username for basic auth (not recommended, use interactive mode)")
+	utils.AddStringFlag(addCmd, utils.FlagPassword, &addPassword, "", "Password for basic auth (not recommended, use interactive mode)")
+	utils.AddStringFlag(addCmd, utils.FlagToken, &addToken, "", "Token for bearer auth (not recommended, use interactive mode)")
+	utils.AddBoolFlag(addCmd, utils.FlagNoInteractive, &addNoInteractive, false, "Skip interactive prompts for credentials")
 
 	addCmd.MarkFlagRequired(utils.FlagName)
 	addCmd.MarkFlagRequired(utils.FlagServer)
@@ -80,6 +91,54 @@ func runAddCommand() error {
 	addAuth = strings.ToLower(addAuth)
 	if addAuth != utils.AuthTypeNone && addAuth != utils.AuthTypeBasic && addAuth != utils.AuthTypeBearer {
 		return fmt.Errorf("invalid auth type '%s'. Must be one of: none, basic, bearer", addAuth)
+	}
+
+	// Validate credential flags match the auth type
+	switch addAuth {
+	case utils.AuthTypeNone:
+		if addUsername != "" || addPassword != "" || addToken != "" {
+			return fmt.Errorf("credential flags (--username, --password, --token) cannot be used with auth type 'none'")
+		}
+	case utils.AuthTypeBasic:
+		if addToken != "" {
+			return fmt.Errorf("--token flag cannot be used with auth type 'basic'. Use --username and --password instead")
+		}
+	case utils.AuthTypeBearer:
+		if addUsername != "" || addPassword != "" {
+			return fmt.Errorf("--username and --password flags cannot be used with auth type 'bearer'. Use --token instead")
+		}
+	}
+
+	// Check if credential flags were used and warn
+	if addUsername != "" || addPassword != "" || addToken != "" {
+		fmt.Println("Warning: Passing credentials via command-line flags is not recommended for security reasons.")
+		fmt.Println("Consider using interactive mode or environment variables instead.")
+		fmt.Println()
+	}
+
+	var username, password, token string
+	var err error
+
+	// Handle credentials based on auth type and interactive mode
+	if addAuth != utils.AuthTypeNone && !addNoInteractive {
+		// Interactive mode - prompt for credentials
+		if addUsername == "" && addPassword == "" && addToken == "" {
+			// No flags provided, use interactive prompts
+			username, password, token, err = utils.PromptCredentials(addAuth)
+			if err != nil {
+				return fmt.Errorf("failed to read credentials: %w", err)
+			}
+		} else {
+			// Flags were provided, use them (warning already shown above)
+			username = addUsername
+			password = addPassword
+			token = addToken
+		}
+	} else if addAuth != utils.AuthTypeNone && addNoInteractive {
+		// No-interactive mode with auth - use flags if provided, otherwise skip credentials
+		username = addUsername
+		password = addPassword
+		token = addToken
 	}
 
 	// Load existing config
@@ -93,6 +152,17 @@ func runAddCommand() error {
 		Name:   addName,
 		Server: addServer,
 		Auth:   addAuth,
+	}
+
+	// Only store credentials if they are not empty
+	if username != "" {
+		gateway.Username = username
+	}
+	if password != "" {
+		gateway.Password = password
+	}
+	if token != "" {
+		gateway.Token = token
 	}
 
 	// Add gateway to config
@@ -113,14 +183,31 @@ func runAddCommand() error {
 	}
 
 	// Print success message
-	fmt.Printf("Gateway in %s added as %s with auth type: %s\n", addServer, addName, addAuth)
+	fmt.Printf("Gateway %s added as %s with auth type: %s\n", addServer, addName, addAuth)
 	fmt.Printf("Configuration saved to: %s\n", configPath)
 
-	// Validate environment variables for basic and bearer auth
+	// Show info message based on whether credentials were stored
 	if addAuth != utils.AuthTypeNone {
-		missing, ok := utils.ValidateAuthEnvVars(addAuth)
-		if !ok {
-			fmt.Println("\n" + utils.FormatMissingEnvVarsWarning(addAuth, missing))
+		hasStoredCreds := utils.HasCredentials(addAuth, username, password, token)
+		if !hasStoredCreds {
+			// Show boxed message about environment variables
+			fmt.Println()
+			var envVars []string
+			switch addAuth {
+			case utils.AuthTypeBasic:
+				envVars = []string{utils.EnvGatewayUsername, utils.EnvGatewayPassword}
+			case utils.AuthTypeBearer:
+				envVars = []string{utils.EnvGatewayToken}
+			}
+
+			lines := []string{
+				"No credentials stored for this gateway.",
+				"Set the following environment variable(s) before making API calls:",
+			}
+			for _, envVar := range envVars {
+				lines = append(lines, "  "+envVar)
+			}
+			utils.PrintBoxedMessage(lines)
 		}
 	}
 

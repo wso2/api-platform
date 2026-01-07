@@ -96,31 +96,44 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		// No authentication required
 
 	case utils.AuthTypeBasic:
-		// Basic Auth using environment variables
-		username := os.Getenv(utils.EnvGatewayUsername)
-		password := os.Getenv(utils.EnvGatewayPassword)
+		// Step 1: Check if ALL required environment variables are present
+		envUsername := os.Getenv(utils.EnvGatewayUsername)
+		envPassword := os.Getenv(utils.EnvGatewayPassword)
 
-		var missing []string
-		if username == "" {
-			missing = append(missing, utils.EnvGatewayUsername)
-		}
-		if password == "" {
-			missing = append(missing, utils.EnvGatewayPassword)
-		}
+		if envUsername != "" && envPassword != "" {
+			// Use environment variables (both present)
+			req.SetBasicAuth(envUsername, envPassword)
+		} else {
+			// Step 2: Fall back to config credentials
+			username := c.gateway.Username
+			password := c.gateway.Password
 
-		if len(missing) > 0 {
-			return nil, fmt.Errorf("%s", utils.FormatMissingEnvVarsError("basic", missing))
-		}
+			if username == "" || password == "" {
+				// Step 3: Neither env nor config has complete credentials
+				return nil, fmt.Errorf("%s", utils.FormatCredentialsNotFoundError(c.gateway.Name, authType))
+			}
 
-		req.SetBasicAuth(username, password)
+			req.SetBasicAuth(username, password)
+		}
 
 	case utils.AuthTypeBearer:
-		// Bearer token authentication
-		token := os.Getenv(utils.EnvGatewayToken)
-		if token == "" {
-			return nil, fmt.Errorf("%s", utils.FormatMissingEnvVarsError("bearer", []string{utils.EnvGatewayToken}))
+		// Step 1: Check if environment variable is present
+		envToken := os.Getenv(utils.EnvGatewayToken)
+
+		if envToken != "" {
+			// Use environment variable
+			req.Header.Set("Authorization", "Bearer "+envToken)
+		} else {
+			// Step 2: Fall back to config token
+			token := c.gateway.Token
+
+			if token == "" {
+				// Step 3: Neither env nor config has credentials
+				return nil, fmt.Errorf("%s", utils.FormatCredentialsNotFoundError(c.gateway.Name, authType))
+			}
+
+			req.Header.Set("Authorization", "Bearer "+token)
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
 
 	default:
 		return nil, fmt.Errorf("unsupported auth type '%s' for gateway '%s'", authType, c.gateway.Name)

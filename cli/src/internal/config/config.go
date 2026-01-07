@@ -29,9 +29,12 @@ import (
 
 // Gateway represents a gateway configuration
 type Gateway struct {
-	Name   string `yaml:"name"`
-	Server string `yaml:"server"`
-	Auth   string `yaml:"auth,omitempty"` // Auth type: none, basic, bearer (default: none)
+	Name     string `yaml:"name"`
+	Server   string `yaml:"server"`
+	Auth     string `yaml:"auth,omitempty"`     // Auth type: none, basic, bearer (default: none)
+	Username string `yaml:"username,omitempty"` // For basic auth
+	Password string `yaml:"password,omitempty"` // For basic auth
+	Token    string `yaml:"token,omitempty"`    // For bearer auth
 }
 
 // Config represents the ap configuration

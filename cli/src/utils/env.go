@@ -105,6 +105,25 @@ func FormatMissingEnvVarsWarning(authType string, missing []string) string {
 	return msg
 }
 
+// FormatCredentialsNotFoundError formats an error message when credentials are not found in env or config
+func FormatCredentialsNotFoundError(gatewayName, authType string) string {
+	var envVars string
+	switch authType {
+	case AuthTypeBasic:
+		envVars = fmt.Sprintf("%s and %s", EnvGatewayUsername, EnvGatewayPassword)
+	case AuthTypeBearer:
+		envVars = EnvGatewayToken
+	default:
+		return fmt.Sprintf("Error: Unsupported authentication type '%s' for gateway '%s'", authType, gatewayName)
+	}
+
+	return fmt.Sprintf("Error: Authentication credentials not found for gateway '%s' (auth type: %s).\n"+
+		"Please either:\n"+
+		"  - Re-add gateway: ap gateway add --display-name %s --server <server_url> --auth %s\n"+
+		"  - Or export: %s",
+		gatewayName, authType, gatewayName, authType, envVars)
+}
+
 // FormatMissingEnvVarsError formats an error message for missing environment variables
 func FormatMissingEnvVarsError(authType string, missing []string) string {
 	if len(missing) == 0 {
