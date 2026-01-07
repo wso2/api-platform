@@ -82,9 +82,9 @@ func NewAPIServer(
 	routerConfig *config.RouterConfig,
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
 	eventHub eventhub.EventHub,
-	enableMultiTenantMode bool,
+	enableMultiReplicaMode bool,
 ) *APIServer {
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, policyManager, validator, routerConfig, eventHub, enableMultiTenantMode)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, policyManager, validator, routerConfig, eventHub, enableMultiReplicaMode)
 	server := &APIServer{
 		store:                store,
 		db:                   db,

@@ -307,7 +307,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 					zap.String("correlation_id", params.CorrelationID))
 			}
 		} else {
-			params.Logger.Warn("Multi-tenant mode enabled but eventhub is not initialized",
+			params.Logger.Warn("Multi-replica mode enabled but eventhub is not initialized",
 				zap.String("api_id", apiID))
 		}
 	} else {

@@ -110,11 +110,11 @@ func main() {
 	// Initialize in-memory API key store for xDS
 	apiKeyStore := storage.NewAPIKeyStore(log)
 
-	// Initialize EventHub if multi-tenant mode is enabled
+	// Initialize EventHub if multi-replica mode is enabled
 	var eventHub eventhub.EventHub
 	if cfg.GatewayController.Server.EnableReplicaSync {
 		if cfg.IsPersistentMode() && db != nil {
-			log.Info("Initializing EventHub for multi-tenant mode")
+			log.Info("Initializing EventHub for multi-replica mode")
 			eventHub = eventhub.New(db.GetDB(), log, eventhub.DefaultConfig())
 			ctx := context.Background()
 			if err := eventHub.Initialize(ctx); err != nil {
@@ -123,7 +123,7 @@ func main() {
 			eventHub.RegisterOrganization("default")
 			log.Info("EventHub initialized successfully")
 		} else {
-			log.Fatal("EventHub requires persistent storage. Multi-tenant mode will not function correctly in memory-only mode.")
+			log.Fatal("EventHub requires persistent storage. Multi-replica mode will not function correctly in memory-only mode.")
 		}
 	}
 
