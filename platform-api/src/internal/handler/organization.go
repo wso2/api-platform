@@ -97,14 +97,14 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 	c.JSON(http.StatusCreated, org)
 }
 
-// HeadOrganizationByUuid handles HEAD /api/v1/organizations/{OrganizationID}
+// HeadOrganizationByUuid handles HEAD /api/v1/organizations/{organizationId}
 func (h *OrganizationHandler) HeadOrganizationByUuid(c *gin.Context) {
 	organizationIdFromContext, exists := middleware.GetOrganizationFromContext(c)
 	if !exists {
 		c.Status(http.StatusUnauthorized)
 		return
 	}
-	orgID := c.Param("OrganizationID")
+	orgID := c.Param("organizationId")
 
 	slog.Debug("Organization from token: ", "organizationId", organizationIdFromContext)
 	// to do: enable this check after finalizing authentication method
@@ -162,6 +162,6 @@ func (h *OrganizationHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		orgGroup.POST("", h.RegisterOrganization)
 		orgGroup.GET("", h.GetOrganization)
-		orgGroup.HEAD("/:OrganizationID", h.HeadOrganizationByUuid)
+		orgGroup.HEAD("/:organizationId", h.HeadOrganizationByUuid)
 	}
 }

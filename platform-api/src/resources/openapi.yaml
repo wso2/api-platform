@@ -92,7 +92,7 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /organizations/{OrganizationID}:
+  /organizations/{organizationId}:
     head:
       summary: Check if organization exists
       description: |
@@ -102,7 +102,7 @@ paths:
       tags:
         - Organizations
       parameters:
-        - $ref: '#/components/parameters/OrganizationID'
+        - $ref: '#/components/parameters/organizationId'
       responses:
         '200':
           description: Organization exists
@@ -3622,8 +3622,8 @@ components:
             description: The server encountered an internal error. Please contact
               administrator.
   parameters:
-    OrganizationID:
-      name: orgId
+    organizationId:
+      name: organizationId
       in: path
       required: true
       description: |
