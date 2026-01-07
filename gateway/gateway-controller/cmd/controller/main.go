@@ -120,7 +120,9 @@ func main() {
 			if err := eventHub.Initialize(ctx); err != nil {
 				log.Fatal("Failed to initialize EventHub", zap.Error(err))
 			}
-			eventHub.RegisterOrganization("default")
+			if err := eventHub.RegisterOrganization("default"); err != nil {
+				log.Fatal("Failed to register default organization", zap.Error(err))
+			}
 			log.Info("EventHub initialized successfully")
 		} else {
 			log.Fatal("EventHub requires persistent storage. Multi-replica mode will not function correctly in memory-only mode.")

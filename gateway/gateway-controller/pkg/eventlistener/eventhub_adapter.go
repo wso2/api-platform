@@ -21,6 +21,7 @@ package eventlistener
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
 	"go.uber.org/zap"
@@ -35,7 +36,7 @@ type EventHubAdapter struct {
 
 	// activeSubscriptions tracks which organizations have active subscriptions
 	// This is used to ensure proper cleanup and prevent duplicate subscriptions
-	activeSubscriptions map[string]chan<- []Event
+	activeSubscriptions sync.Map // map[string]chan<- []Event
 }
 
 // NewEventHubAdapter creates a new adapter that wraps an EventHub instance.
@@ -48,9 +49,9 @@ type EventHubAdapter struct {
 //   - EventSource implementation backed by EventHub
 func NewEventHubAdapter(eventHub eventhub.EventHub, logger *zap.Logger) EventSource {
 	return &EventHubAdapter{
-		eventHub:            eventHub,
-		logger:              logger,
-		activeSubscriptions: make(map[string]chan<- []Event),
+		eventHub: eventHub,
+		logger:   logger,
+		// activeSubscriptions sync.Map zero value is ready to use
 	}
 }
 
@@ -58,7 +59,7 @@ func NewEventHubAdapter(eventHub eventhub.EventHub, logger *zap.Logger) EventSou
 // It handles organization registration and event conversion.
 func (a *EventHubAdapter) Subscribe(ctx context.Context, organizationID string, eventChan chan<- []Event) error {
 	// Check if already subscribed
-	if _, exists := a.activeSubscriptions[organizationID]; exists {
+	if _, exists := a.activeSubscriptions.Load(organizationID); exists {
 		return fmt.Errorf("already subscribed to organization: %s", organizationID)
 	}
 
@@ -81,7 +82,7 @@ func (a *EventHubAdapter) Subscribe(ctx context.Context, organizationID string, 
 	}
 
 	// Track this subscription
-	a.activeSubscriptions[organizationID] = eventChan
+	a.activeSubscriptions.Store(organizationID, eventChan)
 
 	// Start goroutine to convert and forward events
 	go a.bridgeEvents(ctx, organizationID, bridgeChan, eventChan)
@@ -104,7 +105,7 @@ func (a *EventHubAdapter) bridgeEvents(
 ) {
 	defer func() {
 		// Clean up subscription tracking
-		delete(a.activeSubscriptions, organizationID)
+		a.activeSubscriptions.Delete(organizationID)
 		a.logger.Debug("Bridge goroutine exiting",
 			zap.String("organization", organizationID),
 		)
@@ -153,14 +154,14 @@ func (a *EventHubAdapter) bridgeEvents(
 // Note: The current EventHub implementation doesn't have an explicit unsubscribe method,
 // so we just stop the bridge goroutine by removing the subscription tracking.
 func (a *EventHubAdapter) Unsubscribe(organizationID string) error {
-	if _, exists := a.activeSubscriptions[organizationID]; !exists {
+	if _, exists := a.activeSubscriptions.Load(organizationID); !exists {
 		// Not subscribed - this is fine, make it idempotent
 		return nil
 	}
 
 	// Remove from tracking - the bridge goroutine will detect context cancellation
 	// when the listener stops
-	delete(a.activeSubscriptions, organizationID)
+	a.activeSubscriptions.Delete(organizationID)
 
 	a.logger.Info("Unsubscribed from event source",
 		zap.String("organization", organizationID),
@@ -172,9 +173,7 @@ func (a *EventHubAdapter) Unsubscribe(organizationID string) error {
 // Close implements EventSource.Close by delegating to EventHub.Close.
 func (a *EventHubAdapter) Close() error {
 	// Clean up all subscriptions
-	for orgID := range a.activeSubscriptions {
-		_ = a.Unsubscribe(orgID)
-	}
+	a.activeSubscriptions.Clear()
 
 	// Close the underlying EventHub
 	if err := a.eventHub.Close(); err != nil {

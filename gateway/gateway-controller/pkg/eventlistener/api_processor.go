@@ -84,6 +84,8 @@ func (el *EventListener) handleAPICreateOrUpdate(apiID string, correlationID str
 		storedPolicy = el.buildStoredPolicyFromAPI(config)
 	}
 
+	// TODO: (VirajSalaka) Handle failures in policy addition properly (rollback)
+	// TODO: (VirajSalaka) Use ErrGroup to parallelize XDS update and policy addition
 	// 3. Trigger async XDS snapshot update
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

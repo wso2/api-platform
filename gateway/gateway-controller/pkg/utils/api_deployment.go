@@ -30,13 +30,13 @@ import (
 
 	"github.com/google/uuid"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
+	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 	"go.uber.org/zap"
 )
 
@@ -278,7 +278,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	}
 
 	// Update xDS snapshot asynchronously
-	if (s.enableReplicaSync) {
+	if s.enableReplicaSync {
 		// Multi-replica mode: Publish event to eventhub
 		if s.eventHub != nil {
 			// Determine action based on whether it's an update or create
@@ -884,6 +884,7 @@ func convertAPIPolicy(p api.Policy) policyenginev1.PolicyInstance {
 	}
 }
 
+// TODO: (VirajSalaka) Fix working in multi-replica mode
 // updatePolicyConfiguration builds and updates/removes derived policy config for an API
 func (s *APIDeploymentService) updatePolicyConfiguration(storedCfg *models.StoredConfig, logger *zap.Logger) {
 	if s.policyManager == nil {

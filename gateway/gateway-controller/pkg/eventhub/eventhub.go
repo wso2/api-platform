@@ -3,6 +3,7 @@ package eventhub
 import (
 	"context"
 	"database/sql"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -15,6 +16,7 @@ type eventHub struct {
 	logger  *zap.Logger
 
 	initialized bool
+	mu          sync.RWMutex
 }
 
 // New creates a new EventHub instance with SQLite backend (default)
@@ -43,6 +45,9 @@ func NewWithBackend(backend EventhubImpl, logger *zap.Logger) EventHub {
 
 // Initialize sets up the EventHub and starts background workers
 func (eh *eventHub) Initialize(ctx context.Context) error {
+	eh.mu.Lock()
+	defer eh.mu.Unlock()
+
 	if eh.initialized {
 		return nil
 	}
@@ -82,6 +87,9 @@ func (eh *eventHub) CleanUpEvents(ctx context.Context, timeFrom, timeEnd time.Ti
 
 // Close gracefully shuts down the EventHub
 func (eh *eventHub) Close() error {
+	eh.mu.Lock()
+	defer eh.mu.Unlock()
+
 	if !eh.initialized {
 		return nil
 	}

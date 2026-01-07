@@ -26,7 +26,7 @@ type SQLiteBackend struct {
 	wg            sync.WaitGroup
 
 	initialized bool
-	mu          sync.RWMutex
+	
 }
 
 // NewSQLiteBackend creates a new SQLite-based backend
@@ -44,8 +44,6 @@ func NewSQLiteBackend(db *sql.DB, logger *zap.Logger, config *SQLiteBackendConfi
 
 // Initialize sets up the SQLite backend and starts background workers
 func (b *SQLiteBackend) Initialize(ctx context.Context) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
 
 	if b.initialized {
 		return nil
@@ -216,8 +214,6 @@ func (b *SQLiteBackend) CleanupRange(ctx context.Context, from, to time.Time) er
 
 // Close gracefully shuts down the SQLite backend
 func (b *SQLiteBackend) Close() error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
 
 	if !b.initialized {
 		return nil
@@ -305,8 +301,16 @@ func (b *SQLiteBackend) pollAllOrganizations() {
 		}
 
 		if len(events) > 0 {
-			b.deliverEvents(org, events)
+			 		if len(events) > 0 {
+			if b.deliverEvents(org, events) != nil{
+				org.updatePollState(state.VersionID, time.Now())
+			}
+			// If delivery failed (channel full), don't update timestamp
+			// so events will be retried on next poll
+		} else {
+			org.updatePollState(state.VersionID, time.Now())
 		}
+	}
 
 		org.updatePollState(state.VersionID, time.Now())
 	}
@@ -339,6 +343,7 @@ func (b *SQLiteBackend) getAllStates(ctx context.Context) ([]OrganizationState, 
 
 // getEventsSince retrieves events for an organization after a given timestamp
 func (b *SQLiteBackend) getEventsSince(ctx context.Context, orgID string, since time.Time) ([]Event, error) {
+	// TODO: (VirajSalaka) Implement pagination if large number of events
 	query := `
 		SELECT processed_timestamp, originated_timestamp, event_type,
 		       action, entity_id, correlation_id, event_data
@@ -370,7 +375,7 @@ func (b *SQLiteBackend) getEventsSince(ctx context.Context, orgID string, since 
 }
 
 // deliverEvents sends events to all subscribers of an organization
-func (b *SQLiteBackend) deliverEvents(org *organization, events []Event) {
+func (b *SQLiteBackend) deliverEvents(org *organization, events []Event) error {
 	subscribers := org.getSubscribers()
 
 	if len(subscribers) == 0 {
@@ -378,9 +383,10 @@ func (b *SQLiteBackend) deliverEvents(org *organization, events []Event) {
 			zap.String("organization", string(org.id)),
 			zap.Int("events", len(events)),
 		)
-		return
+		return nil
 	}
 
+	// TODO: (VirajSalaka) One subscriber is considered here. Handle multiple subscribers properly.
 	for _, ch := range subscribers {
 		select {
 		case ch <- events:
@@ -389,12 +395,14 @@ func (b *SQLiteBackend) deliverEvents(org *organization, events []Event) {
 				zap.Int("events", len(events)),
 			)
 		default:
-			b.logger.Warn("Subscriber channel full, dropping events",
+			b.logger.Error("Subscriber channel full, dropping events",
 				zap.String("organization", string(org.id)),
 				zap.Int("events", len(events)),
 			)
+			return fmt.Errorf("subscriber channel full")
 		}
 	}
+	return nil
 }
 
 // cleanupLoop runs periodic cleanup of old events

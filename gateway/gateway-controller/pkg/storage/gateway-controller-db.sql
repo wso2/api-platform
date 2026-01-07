@@ -174,8 +174,5 @@ CREATE TABLE IF NOT EXISTS events (
     PRIMARY KEY (organization_id, processed_timestamp)
 );
 
-CREATE INDEX IF NOT EXISTS idx_events_lookup ON events(organization_id, processed_timestamp);
-CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
-
 -- Set schema version to 6
 PRAGMA user_version = 6;

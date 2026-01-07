@@ -246,14 +246,6 @@ func (s *SQLiteStorage) initSchema() error {
 				return fmt.Errorf("failed to create events table: %w", err)
 			}
 
-			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_events_lookup ON events(organization_id, processed_timestamp);`); err != nil {
-				return fmt.Errorf("failed to create events lookup index: %w", err)
-			}
-
-			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);`); err != nil {
-				return fmt.Errorf("failed to create events type index: %w", err)
-			}
-
 			if _, err := s.db.Exec("PRAGMA user_version = 6"); err != nil {
 				return fmt.Errorf("failed to set schema version to 6: %w", err)
 			}
