@@ -239,11 +239,15 @@ func (s *SQLiteStorage) initSchema() error {
 				event_type TEXT NOT NULL,
 				action TEXT NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
 				entity_id TEXT NOT NULL,
-				correlation_id TEXT NOT NULL DEFAULT '',
+				correlation_id TEXT NOT NULL,
 				event_data TEXT NOT NULL,
-				PRIMARY KEY (organization_id, processed_timestamp)
+				PRIMARY KEY (correlation_id)
 			);`); err != nil {
 				return fmt.Errorf("failed to create events table: %w", err)
+			}
+
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_events_org_time ON events(organization_id, processed_timestamp);`); err != nil {
+				return fmt.Errorf("failed to create events organization-time index: %w", err)
 			}
 
 			if _, err := s.db.Exec("PRAGMA user_version = 6"); err != nil {

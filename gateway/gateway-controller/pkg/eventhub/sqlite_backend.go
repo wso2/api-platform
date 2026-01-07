@@ -301,8 +301,7 @@ func (b *SQLiteBackend) pollAllOrganizations() {
 		}
 
 		if len(events) > 0 {
-			 		if len(events) > 0 {
-			if b.deliverEvents(org, events) != nil{
+			if b.deliverEvents(org, events) == nil{
 				org.updatePollState(state.VersionID, time.Now())
 			}
 			// If delivery failed (channel full), don't update timestamp
@@ -310,9 +309,6 @@ func (b *SQLiteBackend) pollAllOrganizations() {
 		} else {
 			org.updatePollState(state.VersionID, time.Now())
 		}
-	}
-
-		org.updatePollState(state.VersionID, time.Now())
 	}
 }
 
