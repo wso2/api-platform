@@ -7,8 +7,3 @@ tests:
     description: Verify all CLI flags have unique values
     enabled: true
   
-  - name: Cmd-GatewayMcpGenerate
-    description: Test gateway MCP generate command with Docker container
-    enabled: false
-    dependencies:
-      - Docker
