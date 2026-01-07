@@ -27,7 +27,7 @@ type CreateGatewayRequest struct {
 	DisplayName       string `json:"displayName" binding:"required"`
 	Description       string `json:"description,omitempty"`
 	Vhost             string `json:"vhost" binding:"required"`
-	IsCritical        *bool  `json:"isCritical" binding:"required"`
+	IsCritical        bool  `json:"isCritical,omitempty"`
 	FunctionalityType string `json:"functionalityType" binding:"required"`
 }
 
