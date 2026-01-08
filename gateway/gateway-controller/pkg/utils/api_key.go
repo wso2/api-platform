@@ -20,12 +20,14 @@ package utils
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"slices"
 	"strings"
 	"time"
@@ -33,10 +35,12 @@ import (
 	"github.com/google/uuid"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // APIKeyGenerationParams contains parameters for API key generation operations
@@ -97,13 +101,6 @@ type ListAPIKeyResult struct {
 	Response api.APIKeyListResponse // Response following the generated schema
 }
 
-// APIKeyService provides utilities for API configuration deployment
-type APIKeyService struct {
-	store      *storage.ConfigStore
-	db         storage.Storage
-	xdsManager XDSManager
-}
-
 // XDSManager interface for API key operations
 type XDSManager interface {
 	StoreAPIKey(apiId, apiName, apiVersion string, apiKey *models.APIKey, correlationID string) error
@@ -111,23 +108,40 @@ type XDSManager interface {
 	RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID string) error
 }
 
+// APIKeyService provides utilities for API configuration deployment
+type APIKeyService struct {
+	store         *storage.ConfigStore
+	db            storage.Storage
+	xdsManager    XDSManager
+	hashingConfig *config.APIKeyHashingConfig // Configuration for API key hashing
+}
+
 // NewAPIKeyService creates a new API key generation service
-func NewAPIKeyService(store *storage.ConfigStore, db storage.Storage, xdsManager XDSManager) *APIKeyService {
+func NewAPIKeyService(store *storage.ConfigStore, db storage.Storage, xdsManager XDSManager,
+	hashingConfig *config.APIKeyHashingConfig) *APIKeyService {
 	return &APIKeyService{
-		store:      store,
-		db:         db,
-		xdsManager: xdsManager,
+		store:         store,
+		db:            db,
+		xdsManager:    xdsManager,
+		hashingConfig: hashingConfig,
 	}
 }
 
 const (
 	APIKeyPrefix = "apip_"
+
 	// Argon2id parameters (recommended for production security)
 	argon2Time    = 1         // Number of iterations
 	argon2Memory  = 64 * 1024 // Memory usage in KiB (64 MiB)
 	argon2Threads = 4         // Number of threads
 	argon2KeyLen  = 32        // Length of derived key in bytes
 	argon2SaltLen = 16        // Length of salt in bytes
+
+	// bcrypt parameters (alternative hashing method)
+	bcryptCost = 12 // Cost parameter for bcrypt (recommended: 10-15)
+
+	// SHA-256 parameters
+	sha256SaltLen = 32 // Length of salt in bytes for SHA-256
 )
 
 // GenerateAPIKey handles the complete API key generation process
@@ -301,7 +315,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	// Find the API key that matches the provided plain text key
 	if apiKeys != nil {
 		for _, key := range apiKeys {
-			if s.ValidateAPIKey(providedAPIKeyValue, key.APIKey) {
+			if s.compareAPIKeys(providedAPIKeyValue, key.APIKey) {
 				matchedKey = key
 				apiKey = key
 				break
@@ -1093,9 +1107,81 @@ func (s *APIKeyService) isDeveloper(user *commonmodels.AuthContext) bool {
 	return slices.Contains(user.Roles, "developer")
 }
 
-// hashAPIKey securely hashes an API key using Argon2id
+// hashAPIKey securely hashes an API key using the configured algorithm
 // Returns the hashed API key that should be stored in database and policy engine
+// If hashing is disabled, returns the plain API key
 func (s *APIKeyService) hashAPIKey(plainAPIKey string) (string, error) {
+	if plainAPIKey == "" {
+		return "", fmt.Errorf("API key cannot be empty")
+	}
+
+	// If hashing is disabled, return the plain API key
+	if !s.hashingConfig.Enabled {
+		return plainAPIKey, nil
+	}
+
+	// Hash based on configured algorithm
+	switch s.hashingConfig.Algorithm {
+	case constants.HashingAlgorithmSHA256:
+		return s.hashAPIKeyWithSHA256(plainAPIKey)
+	case constants.HashingAlgorithmBcrypt:
+		return s.hashAPIKeyWithBcrypt(plainAPIKey)
+	case constants.HashingAlgorithmArgon2ID:
+		return s.hashAPIKeyWithArgon2ID(plainAPIKey)
+	default:
+		// Default to SHA256 if algorithm is not recognized
+		return s.hashAPIKeyWithSHA256(plainAPIKey)
+	}
+}
+
+// hashAPIKeyWithSHA256 securely hashes an API key using SHA-256 with salt
+// Returns the hashed API key that should be st
+// Generate random saltored in database and policy engine
+func (s *APIKeyService) hashAPIKeyWithSHA256(plainAPIKey string) (string, error) {
+	if plainAPIKey == "" {
+		return "", fmt.Errorf("API key cannot be empty")
+	}
+
+	salt := make([]byte, sha256SaltLen)
+	if _, err := rand.Read(salt); err != nil {
+		return "", fmt.Errorf("failed to generate salt: %w", err)
+	}
+
+	// Generate hash using SHA-256
+	hasher := sha256.New()
+	hasher.Write([]byte(plainAPIKey))
+	hasher.Write(salt)
+	hash := hasher.Sum(nil)
+
+	// Encode salt and hash using hex
+	saltHex := hex.EncodeToString(salt)
+	hashHex := hex.EncodeToString(hash)
+
+	// Format: $sha256$<salt_hex>$<hash_hex>
+	hashedKey := fmt.Sprintf("$sha256$%s$%s", saltHex, hashHex)
+
+	return hashedKey, nil
+}
+
+// hashAPIKeyWithBcrypt securely hashes an API key using bcrypt
+// Returns the hashed API key that should be stored in database and policy engine
+func (s *APIKeyService) hashAPIKeyWithBcrypt(plainAPIKey string) (string, error) {
+	if plainAPIKey == "" {
+		return "", fmt.Errorf("API key cannot be empty")
+	}
+
+	// Generate bcrypt hash with specified cost
+	hashedKey, err := bcrypt.GenerateFromPassword([]byte(plainAPIKey), bcryptCost)
+	if err != nil {
+		return "", fmt.Errorf("failed to hash API key with bcrypt: %w", err)
+	}
+
+	return string(hashedKey), nil
+}
+
+// hashAPIKeyWithArgon2ID securely hashes an API key using Argon2id
+// Returns the hashed API key that should be stored in database and policy engine
+func (s *APIKeyService) hashAPIKeyWithArgon2ID(plainAPIKey string) (string, error) {
 	if plainAPIKey == "" {
 		return "", fmt.Errorf("API key cannot be empty")
 	}
@@ -1120,20 +1206,82 @@ func (s *APIKeyService) hashAPIKey(plainAPIKey string) (string, error) {
 	return hashedKey, nil
 }
 
-// ValidateAPIKey is a public method to validate API keys for external use
+// compareAPIKeys compares API keys for external use
 // Returns true if the plain API key matches the hash, false otherwise
-func (s *APIKeyService) ValidateAPIKey(providedAPIKey, storedAPIKey string) bool {
-	if providedAPIKey == "" {
+// If hashing is disabled, performs plain text comparison
+func (s *APIKeyService) compareAPIKeys(providedAPIKey, storedAPIKey string) bool {
+	if providedAPIKey == "" || storedAPIKey == "" {
 		return false
 	}
-	if storedAPIKey == "" {
-		return false
+
+	// Check if it's an SHA-256 hash (format: $sha256$<salt_hex>$<hash_hex>)
+	if strings.HasPrefix(storedAPIKey, "$sha256$") {
+		return s.compareSHA256Hash(providedAPIKey, storedAPIKey)
 	}
+
+	// Check if it's a bcrypt hash (starts with $2a$, $2b$, or $2y$)
+	if strings.HasPrefix(storedAPIKey, "$2a$") ||
+		strings.HasPrefix(storedAPIKey, "$2b$") ||
+		strings.HasPrefix(storedAPIKey, "$2y$") {
+		return s.compareBcryptHash(providedAPIKey, storedAPIKey)
+	}
+
+	// Check if it's an Argon2id hash
 	if strings.HasPrefix(storedAPIKey, "$argon2id$") {
 		err := s.compareArgon2id(providedAPIKey, storedAPIKey)
 		return err == nil
 	}
-	return false
+
+	// If no hash format is detected and hashing is enabled, try plain text comparison as fallback
+	// This handles migration scenarios where some keys might still be stored as plain text
+	return subtle.ConstantTimeCompare([]byte(providedAPIKey), []byte(storedAPIKey)) == 1
+}
+
+// compareSHA256Hash validates an encoded SHA-256 hash and compares it to the provided password.
+// Expected format: $sha256$<salt_hex>$<hash_hex>
+// Returns true if the plain API key matches the hash, false otherwise
+func (s *APIKeyService) compareSHA256Hash(apiKey, encoded string) bool {
+	if apiKey == "" || encoded == "" {
+		return false
+	}
+
+	// Parse the hash format: $sha256$<salt_hex>$<hash_hex>
+	parts := strings.Split(encoded, "$")
+	if len(parts) != 4 || parts[1] != "sha256" {
+		return false
+	}
+
+	// Decode salt and hash from hex
+	salt, err := hex.DecodeString(parts[2])
+	if err != nil {
+		return false
+	}
+
+	storedHash, err := hex.DecodeString(parts[3])
+	if err != nil {
+		return false
+	}
+
+	// Compute hash of the provided key with the stored salt
+	hasher := sha256.New()
+	hasher.Write([]byte(apiKey))
+	hasher.Write(salt)
+	computedHash := hasher.Sum(nil)
+
+	// Constant-time comparison
+	return subtle.ConstantTimeCompare(computedHash, storedHash) == 1
+}
+
+// compareBcryptHash validates an encoded bcrypt hash and compares it to the provided password.
+// Returns true if the plain API key matches the hash, false otherwise
+func (s *APIKeyService) compareBcryptHash(apiKey, encoded string) bool {
+	if apiKey == "" || encoded == "" {
+		return false
+	}
+
+	// Compare the provided key with the stored bcrypt hash
+	err := bcrypt.CompareHashAndPassword([]byte(encoded), []byte(apiKey))
+	return err == nil
 }
 
 // compareArgon2id parses an encoded Argon2id hash and compares it to the provided password.
@@ -1190,4 +1338,14 @@ func decodeBase64(s string) ([]byte, error) {
 	}
 	// try StdEncoding as a fallback
 	return base64.StdEncoding.DecodeString(s)
+}
+
+// SetHashingConfig allows updating the hashing configuration at runtime
+func (s *APIKeyService) SetHashingConfig(config *config.APIKeyHashingConfig) {
+	s.hashingConfig = config
+}
+
+// GetHashingConfig returns the current hashing configuration
+func (s *APIKeyService) GetHashingConfig() *config.APIKeyHashingConfig {
+	return s.hashingConfig
 }

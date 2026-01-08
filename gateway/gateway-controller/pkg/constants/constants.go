@@ -125,6 +125,11 @@ const (
 		"    name: '%s'\n" +
 		"    value: '%s'\n"
 
+	// HashingAlgorithm constants
+	HashingAlgorithmSHA256   = "sha256"
+	HashingAlgorithmBcrypt   = "bcrypt"
+	HashingAlgorithmArgon2ID = "argon2id"
+
 	// System policy constants
 	ANALYTICS_SYSTEM_POLICY_NAME    = "wso2_apip_sys_analytics"
 	ANALYTICS_SYSTEM_POLICY_VERSION = "v0.1.0"

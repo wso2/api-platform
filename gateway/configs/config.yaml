@@ -217,6 +217,18 @@ gateway_controller:
       # Expected issuer value in the JWT `iss` claim
       issuer: ""
 
+  # API key hashing configuration
+  # Used to hash API keys before storing/comparing them
+  # By default, API keys hashing is enabled with SHA-256 algorithm
+  # Supported algorithms: "sha256", "bcrypt", "argon2id"
+  # We recommend using a strong hashing algorithm like argon2id for production deployments
+  # if `api_key_hashing.enabled` is set to false, API keys will be stored and compared in plain text (not recommended for production)
+  api_key_hashing:
+    # Enable or disable API key hashing
+    enabled: true
+    # Hashing algorithm: "sha256", "bcrypt", "argon2id"
+    algorithm: sha256
+
   # Logging configuration
   logging:
     # Log level: "debug", "info", "warn", or "error"
