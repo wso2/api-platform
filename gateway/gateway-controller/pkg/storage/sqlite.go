@@ -1211,6 +1211,46 @@ func (s *SQLiteStorage) SaveAPIKey(apiKey *models.APIKey) error {
 	return nil
 }
 
+// GetAPIKeyByID retrieves an API key by its ID
+func (s *SQLiteStorage) GetAPIKeyByID(id string) (*models.APIKey, error) {
+	query := `
+		SELECT id, name, api_key, apiId, operations, status,
+		       created_at, created_by, updated_at, expires_at
+		FROM api_keys
+		WHERE id = ?
+	`
+
+	var apiKey models.APIKey
+	var expiresAt sql.NullTime
+
+	err := s.db.QueryRow(query, id).Scan(
+		&apiKey.ID,
+		&apiKey.Name,
+		&apiKey.APIKey,
+		&apiKey.APIId,
+		&apiKey.Operations,
+		&apiKey.Status,
+		&apiKey.CreatedAt,
+		&apiKey.CreatedBy,
+		&apiKey.UpdatedAt,
+		&expiresAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: key not found", ErrNotFound)
+		}
+		return nil, fmt.Errorf("failed to query API key: %w", err)
+	}
+
+	// Handle nullable expires_at field
+	if expiresAt.Valid {
+		apiKey.ExpiresAt = &expiresAt.Time
+	}
+
+	return &apiKey, nil
+}
+
 // GetAPIKeyByKey retrieves an API key by its key value
 func (s *SQLiteStorage) GetAPIKeyByKey(key string) (*models.APIKey, error) {
 	query := `

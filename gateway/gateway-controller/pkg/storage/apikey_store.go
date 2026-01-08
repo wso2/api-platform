@@ -107,23 +107,25 @@ func (s *APIKeyStore) GetAll() []*models.APIKey {
 }
 
 // Revoke marks an API key as revoked by finding it through hash comparison
-func (s *APIKeyStore) Revoke(apiId, plainAPIKeyValue string) bool {
+func (s *APIKeyStore) Revoke(apiId, apiKeyID, plainAPIKeyValue string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Get all API keys for the specified API
-	apiKeys, exists := s.apiKeysByAPI[apiId]
+	apiKey, exists := s.apiKeys[apiKeyID]
 	if !exists {
-		s.logger.Debug("No API keys found for API",
-			zap.String("api_id", apiId))
+		s.logger.Debug("API key ID not found for revocation",
+			zap.String("api_id", apiId),
+			zap.String("api_key_id", apiKeyID))
 		return false
 	}
 
-	// Find the API key by comparing plain text key against stored hashes
-	for _, apiKey := range apiKeys {
+	if apiKey != nil {
 		if compareAPIKeys(plainAPIKeyValue, apiKey.APIKey) {
 			// Hash matches - this is our target API key
 			apiKey.Status = models.APIKeyStatusRevoked
+
+			delete(s.apiKeys, apiKey.ID)
+			s.removeFromAPIMapping(apiKey)
 
 			s.logger.Debug("Revoked API key",
 				zap.String("id", apiKey.ID),
@@ -135,7 +137,8 @@ func (s *APIKeyStore) Revoke(apiId, plainAPIKeyValue string) bool {
 	}
 
 	s.logger.Debug("API key not found for revocation",
-		zap.String("api_id", apiId))
+		zap.String("api_id", apiId),
+		zap.String("api_key_id", apiKeyID))
 
 	return false
 }
