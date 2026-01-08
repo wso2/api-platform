@@ -49,16 +49,17 @@ type AnalyticsConfig struct {
 
 // GatewayController holds the main configuration sections for the gateway-controller
 type GatewayController struct {
-	Server       ServerConfig       `koanf:"server"`
-	Storage      StorageConfig      `koanf:"storage"`
-	Router       RouterConfig       `koanf:"router"`
-	Logging      LoggingConfig      `koanf:"logging"`
-	ControlPlane ControlPlaneConfig `koanf:"controlplane"`
-	PolicyServer PolicyServerConfig `koanf:"policyserver"`
-	Policies     PoliciesConfig     `koanf:"policies"`
-	LLM          LLMConfig          `koanf:"llm"`
-	Auth         AuthConfig         `koanf:"auth"`
-	Metrics      MetricsConfig      `koanf:"metrics"`
+	Server        ServerConfig        `koanf:"server"`
+	Storage       StorageConfig       `koanf:"storage"`
+	Router        RouterConfig        `koanf:"router"`
+	Logging       LoggingConfig       `koanf:"logging"`
+	ControlPlane  ControlPlaneConfig  `koanf:"controlplane"`
+	PolicyServer  PolicyServerConfig  `koanf:"policyserver"`
+	Policies      PoliciesConfig      `koanf:"policies"`
+	LLM           LLMConfig           `koanf:"llm"`
+	Auth          AuthConfig          `koanf:"auth"`
+	APIKeyHashing APIKeyHashingConfig `koanf:"api_key_hashing"`
+	Metrics       MetricsConfig       `koanf:"metrics"`
 }
 
 // MetricsConfig holds Prometheus metrics server configuration
@@ -304,6 +305,12 @@ type ControlPlaneConfig struct {
 	InsecureSkipVerify bool          `koanf:"insecure_skip_verify"` // Skip TLS certificate verification (default: true for dev)
 }
 
+// APIKeyHashingConfig represents the configuration for API key hashing
+type APIKeyHashingConfig struct {
+	Enabled   bool   `koanf:"enabled"`   // Whether API key hashing is enabled
+	Algorithm string `koanf:"algorithm"` // Hashing algorithm to use
+}
+
 // LoadConfig loads configuration from file, environment variables, and defaults
 // Priority: Environment variables > Config file > Defaults
 func LoadConfig(configPath string) (*Config, error) {
@@ -500,6 +507,10 @@ func defaultConfig() *Config {
 				PollingInterval:    15 * time.Minute,
 				InsecureSkipVerify: true,
 			},
+			APIKeyHashing: APIKeyHashingConfig{
+				Enabled:   true,
+				Algorithm: constants.HashingAlgorithmSHA256,
+			},
 		},
 		Analytics: AnalyticsConfig{
 			Enabled:    false,
@@ -664,6 +675,11 @@ func (c *Config) Validate() error {
 
 	// Validate authentication configuration
 	if err := c.validateAuthConfig(); err != nil {
+		return err
+	}
+
+	// Validate API key hashing configuration
+	if err := c.validateAPIKeyHashingConfig(); err != nil {
 		return err
 	}
 
@@ -1110,6 +1126,39 @@ func (c *Config) validateAuthConfig() error {
 		}
 	}
 
+	return nil
+}
+
+// validateControlPlaneConfig validates the control plane configuration
+func (c *Config) validateAPIKeyHashingConfig() error {
+	// If hashing is disabled, skip validation
+	if !c.GatewayController.APIKeyHashing.Enabled {
+		return nil
+	}
+
+	// If hashing is enabled but no algorithm is provided, default to SHA256
+	if c.GatewayController.APIKeyHashing.Algorithm == "" {
+		c.GatewayController.APIKeyHashing.Algorithm = constants.HashingAlgorithmSHA256
+		return nil
+	}
+
+	// If hashing is enabled and algorithm is provided, validate it's one of the supported ones
+	validAlgorithms := []string{
+		constants.HashingAlgorithmSHA256,
+		constants.HashingAlgorithmBcrypt,
+		constants.HashingAlgorithmArgon2ID,
+	}
+	isValidAlgorithm := false
+	for _, alg := range validAlgorithms {
+		if strings.ToLower(c.GatewayController.APIKeyHashing.Algorithm) == alg {
+			isValidAlgorithm = true
+			break
+		}
+	}
+	if !isValidAlgorithm {
+		return fmt.Errorf("api_key_hashing.algorithm must be one of: %s, got: %s",
+			strings.Join(validAlgorithms, ", "), c.GatewayController.APIKeyHashing.Algorithm)
+	}
 	return nil
 }
 
