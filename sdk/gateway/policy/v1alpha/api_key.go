@@ -1,11 +1,14 @@
 package policyv1alpha
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"golang.org/x/crypto/bcrypt"
 	"strings"
 	"sync"
 	"time"
@@ -136,14 +139,9 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 	var targetAPIKey *APIKey
 
 	for _, ak := range apiKeys {
-		// Compare provided plain text key with stored hashed key using Argon2id
-		if strings.HasPrefix(ak.APIKey, "$argon2id$") {
-			err := compareArgon2id(providedAPIKey, ak.APIKey)
-			if err == nil {
-				// Hash matches - this is our target API key
-				targetAPIKey = ak
-				break
-			}
+		if compareAPIKeys(providedAPIKey, ak.APIKey) {
+			targetAPIKey = ak
+			break
 		}
 	}
 
@@ -207,9 +205,8 @@ func (aks *APIkeyStore) RevokeAPIKey(apiId, plainAPIKeyValue string) error {
 	var targetIndex = -1
 
 	for i, apiKey := range apiKeys {
-		// Compare plain text key with stored hashed key using Argon2id
-		err := compareArgon2id(plainAPIKeyValue, apiKey.APIKey)
-		if err == nil {
+		// Compare plain text key with stored hashed key
+		if compareAPIKeys(plainAPIKeyValue, apiKey.APIKey) {
 			targetAPIKey = apiKey
 			targetIndex = i
 			break
@@ -262,16 +259,88 @@ func (aks *APIkeyStore) ClearAll() error {
 	return nil
 }
 
-// compareArgon2id validates a plain text key against an Argon2id hash
-func compareArgon2id(apiKey, hashedAPIKey string) error {
-	if apiKey == "" {
-		return fmt.Errorf("plain API key cannot be empty")
-	}
-	if hashedAPIKey == "" {
-		return fmt.Errorf("hashed API key cannot be empty")
+// compareAPIKeys compares API keys for external use
+// Returns true if the plain API key matches the hash, false otherwise
+// If hashing is disabled, performs plain text comparison
+func compareAPIKeys(providedAPIKey, storedAPIKey string) bool {
+	if providedAPIKey == "" || storedAPIKey == "" {
+		return false
 	}
 
-	parts := strings.Split(hashedAPIKey, "$")
+	// Check if it's an SHA-256 hash (format: $sha256$<salt_hex>$<hash_hex>)
+	if strings.HasPrefix(storedAPIKey, "$sha256$") {
+		return compareSHA256Hash(providedAPIKey, storedAPIKey)
+	}
+
+	// Check if it's a bcrypt hash (starts with $2a$, $2b$, or $2y$)
+	if strings.HasPrefix(storedAPIKey, "$2a$") ||
+		strings.HasPrefix(storedAPIKey, "$2b$") ||
+		strings.HasPrefix(storedAPIKey, "$2y$") {
+		return compareBcryptHash(providedAPIKey, storedAPIKey)
+	}
+
+	// Check if it's an Argon2id hash
+	if strings.HasPrefix(storedAPIKey, "$argon2id$") {
+		err := compareArgon2id(providedAPIKey, storedAPIKey)
+		return err == nil
+	}
+
+	// If no hash format is detected and hashing is enabled, try plain text comparison as fallback
+	// This handles migration scenarios where some keys might still be stored as plain text
+	return subtle.ConstantTimeCompare([]byte(providedAPIKey), []byte(storedAPIKey)) == 1
+}
+
+// compareSHA256Hash validates an encoded SHA-256 hash and compares it to the provided password.
+// Expected format: $sha256$<salt_hex>$<hash_hex>
+// Returns true if the plain API key matches the hash, false otherwise
+func compareSHA256Hash(apiKey, encoded string) bool {
+	if apiKey == "" || encoded == "" {
+		return false
+	}
+
+	// Parse the hash format: $sha256$<salt_hex>$<hash_hex>
+	parts := strings.Split(encoded, "$")
+	if len(parts) != 4 || parts[1] != "sha256" {
+		return false
+	}
+
+	// Decode salt and hash from hex
+	salt, err := hex.DecodeString(parts[2])
+	if err != nil {
+		return false
+	}
+
+	storedHash, err := hex.DecodeString(parts[3])
+	if err != nil {
+		return false
+	}
+
+	// Compute hash of the provided key with the stored salt
+	hasher := sha256.New()
+	hasher.Write([]byte(apiKey))
+	hasher.Write(salt)
+	computedHash := hasher.Sum(nil)
+
+	// Constant-time comparison
+	return subtle.ConstantTimeCompare(computedHash, storedHash) == 1
+}
+
+// compareBcryptHash validates an encoded bcrypt hash and compares it to the provided password.
+// Returns true if the plain API key matches the hash, false otherwise
+func compareBcryptHash(apiKey, encoded string) bool {
+	if apiKey == "" || encoded == "" {
+		return false
+	}
+
+	// Compare the provided key with the stored bcrypt hash
+	err := bcrypt.CompareHashAndPassword([]byte(encoded), []byte(apiKey))
+	return err == nil
+}
+
+// compareArgon2id parses an encoded Argon2id hash and compares it to the provided password.
+// Expected format: $argon2id$v=19$m=65536,t=3,p=4$<salt_b64>$<hash_b64>
+func compareArgon2id(apiKey, encoded string) error {
+	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" {
 		return fmt.Errorf("invalid argon2id hash format")
 	}

@@ -82,6 +82,7 @@ func NewAPIServer(
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
+	apiKeyHashingConfig *config.APIKeyHashingConfig,
 ) *APIServer {
 	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig)
 	server := &APIServer{
@@ -97,7 +98,7 @@ func NewAPIServer(
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, templateDefinitions,
 			deploymentService, routerConfig),
-		apiKeyService:      utils.NewAPIKeyService(store, db, apiKeyXDSManager),
+		apiKeyService:      utils.NewAPIKeyService(store, db, apiKeyXDSManager, apiKeyHashingConfig),
 		apiKeyXDSManager:   apiKeyXDSManager,
 		controlPlaneClient: controlPlaneClient,
 		routerConfig:       routerConfig,

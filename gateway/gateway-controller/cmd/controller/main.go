@@ -300,8 +300,8 @@ func main() {
 	router.Use(gin.Recovery())
 
 	// Initialize API server with the configured validator and API key manager
-	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient,
-		policyDefinitions, templateDefinitions, validator, &cfg.GatewayController.Router, apiKeyXDSManager)
+	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient, policyDefinitions,
+		templateDefinitions, validator, &cfg.GatewayController.Router, apiKeyXDSManager, &cfg.GatewayController.APIKeyHashing)
 
 	// Register API routes (includes certificate management endpoints from OpenAPI spec)
 	api.RegisterHandlers(router, apiServer)

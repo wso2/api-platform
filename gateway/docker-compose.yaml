@@ -19,7 +19,7 @@
 services:
   gateway-controller:
     container_name: gateway-controller
-    image: ghcr.io/wso2/api-platform/gateway-controller:latest
+    image: ghcr.io/wso2/api-platform/gateway-controller:0.3.0-SNAPSHOT
     mem_limit: 128m
     mem_reservation: 128m
     cpus: 0.1
@@ -38,14 +38,14 @@ services:
       - ./configs/config.yaml:/app/config/config.yaml:ro
       - ./gateway-controller/certificates:/app/certificates  # Read-write for dynamic certificate management
       - ./gateway-controller/listener-certs:/app/listener-certs:ro  # Read-only for HTTPS listener certificates
-#    extra_hosts:
-#      - "host.docker.internal:host-gateway"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - gateway-network
 
   policy-engine:
     container_name: policy-engine
-    image: ghcr.io/wso2/api-platform/policy-engine:latest
+    image: ghcr.io/wso2/api-platform/policy-engine:0.3.0-SNAPSHOT
     mem_limit: 128m
     mem_reservation: 128m
     cpus: 0.2
@@ -59,7 +59,7 @@ services:
 
   router:
     container_name: router
-    image: ghcr.io/wso2/api-platform/gateway-router:latest
+    image: ghcr.io/wso2/api-platform/gateway-router:0.3.0-SNAPSHOT
     mem_limit: 256m
     mem_reservation: 256m
     cpus: 0.2

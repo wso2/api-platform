@@ -124,6 +124,11 @@ const (
 		"  - action: SET\n" +
 		"    name: '%s'\n" +
 		"    value: '%s'\n"
+
+	// HashingAlgorithm constants
+	HashingAlgorithmSHA256   = "sha256"
+	HashingAlgorithmBcrypt   = "bcrypt"
+	HashingAlgorithmArgon2ID = "argon2id"
 )
 
 var WILDCARD_HTTP_METHODS = []string{
