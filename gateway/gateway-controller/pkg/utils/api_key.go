@@ -101,10 +101,16 @@ type ListAPIKeyResult struct {
 	Response api.APIKeyListResponse // Response following the generated schema
 }
 
+// ParsedAPIKey represents a parsed API key with its components
+type ParsedAPIKey struct {
+	APIKey string
+	ID     string
+}
+
 // XDSManager interface for API key operations
 type XDSManager interface {
 	StoreAPIKey(apiId, apiName, apiVersion string, apiKey *models.APIKey, correlationID string) error
-	RevokeAPIKey(apiId, apiName, apiVersion, apiKeyValue, correlationID string) error
+	RevokeAPIKey(apiId, apiName, apiVersion, apiKeyID, apiKeyValue, correlationID string) error
 	RemoveAPIKeysByAPI(apiId, apiName, apiVersion, correlationID string) error
 }
 
@@ -128,8 +134,6 @@ func NewAPIKeyService(store *storage.ConfigStore, db storage.Storage, xdsManager
 }
 
 const (
-	APIKeyPrefix = "apip_"
-
 	// Argon2id parameters (recommended for production security)
 	argon2Time    = 1         // Number of iterations
 	argon2Memory  = 64 * 1024 // Memory usage in KiB (64 MiB)
@@ -274,6 +278,12 @@ func (s *APIKeyService) GenerateAPIKey(params APIKeyGenerationParams) (*APIKeyGe
 func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevocationResult, error) {
 	logger := params.Logger
 	user := params.User
+	result := &APIKeyRevocationResult{
+		Response: api.APIKeyRevocationResponse{
+			Status:  "success",
+			Message: "API key revoked successfully",
+		},
+	}
 
 	// Validate that API exists
 	config, err := s.store.GetByHandle(params.Handle)
@@ -292,16 +302,22 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		return nil, fmt.Errorf("API key value is required for revocation")
 	}
 
-	// Get all API keys for this API and find the one that matches the plain text key
-	var apiKey *models.APIKey
+	parsedAPIkey, ok := s.parseAPIKey(providedAPIKeyValue)
+	if !ok {
+		// invalid format
+		logger.Warn("Invalid API key format",
+			zap.String("handle", params.Handle),
+			zap.String("correlation_id", params.CorrelationID))
+		return result, nil
+	}
+
 	var matchedKey *models.APIKey
 
-	// First, try to get API keys from memory store
-	apiKeys, err := s.store.GetAPIKeysByAPI(config.ID)
+	apiKey, err := s.store.GetAPIKeyByID(parsedAPIkey.ID)
 	if err != nil {
 		// If memory store fails, try database
 		if s.db != nil {
-			apiKeys, err = s.db.GetAPIKeysByAPI(config.ID)
+			apiKey, err = s.db.GetAPIKeyByID(parsedAPIkey.ID)
 			if err != nil {
 				logger.Debug("Failed to get API keys for revocation",
 					zap.Error(err),
@@ -313,21 +329,10 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	}
 
 	// Find the API key that matches the provided plain text key
-	if apiKeys != nil {
-		for _, key := range apiKeys {
-			if s.compareAPIKeys(providedAPIKeyValue, key.APIKey) {
-				matchedKey = key
-				apiKey = key
-				break
-			}
+	if apiKey != nil {
+		if s.compareAPIKeys(parsedAPIkey.APIKey, apiKey.APIKey) {
+			matchedKey = apiKey
 		}
-	}
-
-	result := &APIKeyRevocationResult{
-		Response: api.APIKeyRevocationResponse{
-			Status:  "success",
-			Message: "API key revoked successfully",
-		},
 	}
 
 	// For security reasons, perform all validations but don't return errors
@@ -431,7 +436,8 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	// Send the plain API key revocation to the policy engine via xDS
 	// The policy engine will find and revoke the matching hashed key
 	if s.xdsManager != nil {
-		if err := s.xdsManager.RevokeAPIKey(apiId, apiName, apiVersion, providedAPIKeyValue, params.CorrelationID); err != nil {
+		if err := s.xdsManager.RevokeAPIKey(apiId, apiName, apiVersion, parsedAPIkey.ID, parsedAPIkey.APIKey,
+			params.CorrelationID); err != nil {
 			logger.Error("Failed to remove API key from policy engine",
 				zap.Error(err),
 				zap.String("correlation_id", params.CorrelationID))
@@ -829,7 +835,10 @@ func (s *APIKeyService) buildAPIKeyResponse(key *models.APIKey, handle string) a
 	// Use PlainAPIKey for response if available, otherwise mask the hashed key
 	var responseAPIKey *string
 	if key.PlainAPIKey != "" {
-		responseAPIKey = &key.PlainAPIKey
+		// Format: apip_{key}.{hex_encoded_id}
+		hexEncodedID := hex.EncodeToString([]byte(key.ID))
+		formattedAPIKey := key.PlainAPIKey + constants.APIKeySeparator + hexEncodedID
+		responseAPIKey = &formattedAPIKey
 	} else {
 		// For existing keys where PlainAPIKey is not available, don't return the hashed key
 		responseAPIKey = nil
@@ -1082,11 +1091,11 @@ func (s *APIKeyService) filterAPIKeysByUser(user *commonmodels.AuthContext, apiK
 
 // generateAPIKeyValue generates a new API key value with collision handling
 func (s *APIKeyService) generateAPIKeyValue() (string, error) {
-	randomBytes := make([]byte, 32)
+	randomBytes := make([]byte, constants.APIKeyLen)
 	if _, err := rand.Read(randomBytes); err != nil {
 		return "", fmt.Errorf("failed to generate random bytes: %w", err)
 	}
-	return APIKeyPrefix + hex.EncodeToString(randomBytes), nil
+	return constants.APIKeyPrefix + hex.EncodeToString(randomBytes), nil
 }
 
 // MaskAPIKey masks an API key for secure logging, showing first 8 and last 4 characters
@@ -1338,6 +1347,32 @@ func decodeBase64(s string) ([]byte, error) {
 	}
 	// try StdEncoding as a fallback
 	return base64.StdEncoding.DecodeString(s)
+}
+
+// parseAPIKey splits an API key value into its key and ID components
+func (s *APIKeyService) parseAPIKey(value string) (ParsedAPIKey, bool) {
+	idx := strings.LastIndex(value, ".")
+	if idx <= 0 || idx == len(value)-1 {
+		return ParsedAPIKey{}, false
+	}
+
+	apiKey := value[:idx]
+	hexEncodedID := value[idx+1:]
+
+	// Decode the hex encoded ID back to the raw ID
+	decodedIDBytes, err := hex.DecodeString(hexEncodedID)
+	if err != nil {
+		// If decoding fails, return the hex value as-is for backward compatibility
+		return ParsedAPIKey{
+			APIKey: apiKey,
+			ID:     hexEncodedID,
+		}, true
+	}
+
+	return ParsedAPIKey{
+		APIKey: apiKey,
+		ID:     string(decodedIDBytes),
+	}, true
 }
 
 // SetHashingConfig allows updating the hashing configuration at runtime
