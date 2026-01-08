@@ -42,6 +42,12 @@ type APIKey struct {
 // APIKeyStatus Status of the API key
 type APIKeyStatus string
 
+// ParsedAPIKey represents a parsed API key with its components
+type ParsedAPIKey struct {
+	APIKey string
+	ID     string
+}
+
 // Defines values for APIKeyStatus.
 const (
 	Active  APIKeyStatus = "active"
@@ -68,12 +74,14 @@ var (
 type APIkeyStore struct {
 	mu sync.RWMutex // Protects concurrent access
 	// API Keys storage
+	apiKeys      map[string]*APIKey   // key: API key ID → value: APIKey
 	apiKeysByAPI map[string][]*APIKey // Key: "API ID" → Value: slice of APIKeys
 }
 
 // NewAPIkeyStore creates a new in-memory API key store
 func NewAPIkeyStore() *APIkeyStore {
 	return &APIkeyStore{
+		apiKeys:      make(map[string]*APIKey),
 		apiKeysByAPI: make(map[string][]*APIKey),
 	}
 }
@@ -108,16 +116,18 @@ func (aks *APIkeyStore) StoreAPIKey(apiId string, apiKey *APIKey) error {
 		}
 	}
 
-	// Note: We no longer check for API key value collisions because:
-	// 1. API key values are now hashed, making direct comparison impossible
-	// 2. API keys use 256-bit cryptographic random generation, making collisions highly unlikely
-	// 3. Any extremely rare hash collisions will be handled at the database level with constraints
-
 	if existingKeyIndex >= 0 {
 		// Update the existing entry in apiKeysByAPI
+		aks.apiKeys[apiKey.ID] = apiKey
 		aks.apiKeysByAPI[apiId][existingKeyIndex] = apiKey
 	} else {
 		// Insert new API key
+		// Check if API key ID already exists
+		if _, exists := aks.apiKeys[apiKey.ID]; exists {
+			return ErrConflict
+		}
+		// Store by API key value
+		aks.apiKeys[apiKey.ID] = apiKey
 		aks.apiKeysByAPI[apiId] = append(aks.apiKeysByAPI[apiId], apiKey)
 	}
 
@@ -129,19 +139,22 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 	aks.mu.Lock()
 	defer aks.mu.Unlock()
 
-	// Get API keys for the apiId
-	apiKeys, exists := aks.apiKeysByAPI[apiId]
+	parsedAPIkey, ok := parseAPIKey(providedAPIKey)
+	if !ok {
+		return false, ErrNotFound
+	}
+
+	var targetAPIKey *APIKey
+
+	apiKey, exists := aks.apiKeys[parsedAPIkey.ID]
 	if !exists {
 		return false, ErrNotFound
 	}
 
 	// Find the API key that matches the provided plain text key (by comparing against hashed values)
-	var targetAPIKey *APIKey
-
-	for _, ak := range apiKeys {
-		if compareAPIKeys(providedAPIKey, ak.APIKey) {
-			targetAPIKey = ak
-			break
+	if apiKey != nil {
+		if compareAPIKeys(parsedAPIkey.APIKey, apiKey.APIKey) {
+			targetAPIKey = apiKey
 		}
 	}
 
@@ -188,46 +201,39 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 }
 
 // RevokeAPIKey revokes a specific API key by plain text API key value
-func (aks *APIkeyStore) RevokeAPIKey(apiId, plainAPIKeyValue string) error {
+func (aks *APIkeyStore) RevokeAPIKey(apiId, providedAPIKey string) error {
 	aks.mu.Lock()
 	defer aks.mu.Unlock()
 
-	// Get API keys for the apiId
-	apiKeys, exists := aks.apiKeysByAPI[apiId]
-	if !exists {
-		// If the API doesn't exist in our store, we treat revocation as successful
-		// since the key is effectively "not active" anyway
+	parsedAPIkey, ok := parseAPIKey(providedAPIKey)
+	if !ok {
 		return nil
 	}
 
-	// Find the API key with the matching hashed key value
-	var targetAPIKey *APIKey
-	var targetIndex = -1
+	var matchedKey *APIKey
 
-	for i, apiKey := range apiKeys {
-		// Compare plain text key with stored hashed key
-		if compareAPIKeys(plainAPIKeyValue, apiKey.APIKey) {
-			targetAPIKey = apiKey
-			targetIndex = i
-			break
+	apiKey, exists := aks.apiKeys[parsedAPIkey.ID]
+	if !exists {
+		return nil
+	}
+
+	// Find the API key that matches the provided plain text key
+	if apiKey != nil {
+		if compareAPIKeys(parsedAPIkey.APIKey, apiKey.APIKey) {
+			matchedKey = apiKey
 		}
 	}
 
 	// If the API key doesn't exist, treat revocation as successful (idempotent operation)
-	if targetAPIKey == nil {
+	if matchedKey == nil {
 		return nil
 	}
 
 	// Set status to revoked
-	targetAPIKey.Status = Revoked
+	matchedKey.Status = Revoked
 
-	// Remove from apiKeysByAPI slice
-	aks.apiKeysByAPI[apiId] = append(apiKeys[:targetIndex], apiKeys[targetIndex+1:]...)
-
-	// Clean up empty slices
-	if len(aks.apiKeysByAPI[apiId]) == 0 {
-		delete(aks.apiKeysByAPI, apiId)
-	}
+	delete(aks.apiKeys, matchedKey.ID)
+	aks.removeFromAPIMapping(apiKey)
 
 	return nil
 }
@@ -237,9 +243,14 @@ func (aks *APIkeyStore) RemoveAPIKeysByAPI(apiId string) error {
 	aks.mu.Lock()
 	defer aks.mu.Unlock()
 
-	_, exists := aks.apiKeysByAPI[apiId]
+	apiKeys, exists := aks.apiKeysByAPI[apiId]
 	if !exists {
 		return nil // No keys to remove
+	}
+
+	// Remove from main map
+	for _, key := range apiKeys {
+		delete(aks.apiKeys, key.ID)
 	}
 
 	// Remove from API-specific map
@@ -252,6 +263,9 @@ func (aks *APIkeyStore) RemoveAPIKeysByAPI(apiId string) error {
 func (aks *APIkeyStore) ClearAll() error {
 	aks.mu.Lock()
 	defer aks.mu.Unlock()
+
+	// Clear the main API keys map
+	aks.apiKeys = make(map[string]*APIKey)
 
 	// Clear the API-specific keys map
 	aks.apiKeysByAPI = make(map[string][]*APIKey)
@@ -391,4 +405,47 @@ func decodeBase64(s string) ([]byte, error) {
 	}
 	// try StdEncoding as a fallback
 	return base64.StdEncoding.DecodeString(s)
+}
+
+// parseAPIKey splits an API key value into its key and ID components
+func parseAPIKey(value string) (ParsedAPIKey, bool) {
+	idx := strings.LastIndex(value, ".")
+	if idx <= 0 || idx == len(value)-1 {
+		return ParsedAPIKey{}, false
+	}
+
+	apiKey := value[:idx]
+	hexEncodedID := value[idx+1:]
+
+	// Decode the hex encoded ID back to the raw ID
+	decodedIDBytes, err := hex.DecodeString(hexEncodedID)
+	if err != nil {
+		// If decoding fails, return the hex value as-is for backward compatibility
+		return ParsedAPIKey{
+			APIKey: apiKey,
+			ID:     hexEncodedID,
+		}, true
+	}
+
+	return ParsedAPIKey{
+		APIKey: apiKey,
+		ID:     string(decodedIDBytes),
+	}, true
+}
+
+// removeFromAPIMapping removes an API key from the API mapping
+func (aks *APIkeyStore) removeFromAPIMapping(apiKey *APIKey) {
+	apiKeys := aks.apiKeysByAPI[apiKey.APIId]
+	for i, ak := range apiKeys {
+		if ak.ID == apiKey.ID {
+			// Remove the element at index i
+			aks.apiKeysByAPI[apiKey.APIId] = append(apiKeys[:i], apiKeys[i+1:]...)
+			break
+		}
+	}
+
+	// If no API keys left for this API, remove the mapping
+	if len(aks.apiKeysByAPI[apiKey.APIId]) == 0 {
+		delete(aks.apiKeysByAPI, apiKey.APIId)
+	}
 }

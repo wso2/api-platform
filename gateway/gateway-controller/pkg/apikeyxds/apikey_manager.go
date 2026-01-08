@@ -68,7 +68,7 @@ func (asm *APIKeyStateManager) StoreAPIKey(apiId, apiName, apiVersion string, ap
 }
 
 // RevokeAPIKey revokes an API key and updates the policy engine with the complete state
-func (asm *APIKeyStateManager) RevokeAPIKey(apiId, apiName, apiVersion, apiKeyValue, correlationID string) error {
+func (asm *APIKeyStateManager) RevokeAPIKey(apiId, apiName, apiVersion, apiKeyID, apiKeyValue, correlationID string) error {
 	asm.logger.Info("Revoking API key with state-of-the-world update",
 		zap.String("api_id", apiId),
 		zap.String("api_name", apiName),
@@ -76,7 +76,7 @@ func (asm *APIKeyStateManager) RevokeAPIKey(apiId, apiName, apiVersion, apiKeyVa
 		zap.String("correlation_id", correlationID))
 
 	// Revoke the API key and update the snapshot
-	if err := asm.snapshotManager.RevokeAPIKey(apiId, apiKeyValue); err != nil {
+	if err := asm.snapshotManager.RevokeAPIKey(apiId, apiKeyID, apiKeyValue); err != nil {
 		asm.logger.Error("Failed to revoke API key and update snapshot",
 			zap.String("api_key_value", asm.MaskAPIKey(apiKeyValue)),
 			zap.Error(err))
