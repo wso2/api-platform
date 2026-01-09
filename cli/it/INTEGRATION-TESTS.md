@@ -166,10 +166,8 @@ Phase 2 runs CLI command tests. Each test documents its Phase 1 dependencies, an
 | MCP-008 | mcp delete | CLI, GATEWAY |
 | MCP-009 | mcp delete (non-existent) | CLI, GATEWAY |
 | **Gateway Build** |||
-| BUILD-001 | build valid manifest | CLI |
-| BUILD-002 | build invalid manifest | CLI |
-| BUILD-003 | build missing file | CLI |
-| BUILD-004 | build docker not available | CLI |
+| BUILD-001 | build invalid manifest | CLI |
+| BUILD-002 | build missing file | CLI |
 
 ### Smart Dependency Resolution
 
@@ -381,17 +379,7 @@ tests:
         requires: [CLI]
         
       - id: BUILD-002
-        name: build invalid manifest
-        enabled: true
-        requires: [CLI]
-        
-      - id: BUILD-003
         name: build missing manifest file
-        enabled: true
-        requires: [CLI]
-        
-      - id: BUILD-004
-        name: build when docker unavailable
         enabled: true
         requires: [CLI]
 ```
@@ -562,7 +550,7 @@ Gateway MCP:
   ...
 
 Gateway Build:
-  [BUILD-001] build valid manifest               ✓ PASS  → logs/BUILD-001-build-manifest.log
+  [BUILD-001] build invalid manifest             ✓ PASS  → logs/BUILD-001-build-invalid-manifest.log
   ...
 
 ===============================================

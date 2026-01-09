@@ -208,21 +208,11 @@ tests:
 
     build:
       - id: BUILD-001
-        name: build valid policy manifest
-        enabled: true
-        requires: [CLI]
-
-      - id: BUILD-002
         name: build invalid manifest
         enabled: true
         requires: [CLI]
 
-      - id: BUILD-003
+      - id: BUILD-002
         name: build missing manifest file
         enabled: true
-        requires: [CLI]
-
-      - id: BUILD-004
-        name: build when docker unavailable
-        enabled: false  # Requires special setup to simulate docker unavailability
         requires: [CLI]

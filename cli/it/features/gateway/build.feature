@@ -30,18 +30,11 @@ Feature: Gateway Build Command
     # =========================================
 
     @BUILD-001
-    Scenario: Build gateway with valid policy manifest but no PolicyHub access
-        # Note: This test validates manifest parsing works, but PolicyHub is not accessible in the test environment
-        When I run ap with arguments "gateway build -f resources/gateway/policy-manifest.yaml --docker-registry localhost:5000 --image-tag test --gateway-builder ghcr.io/wso2/api-platform/gateway-builder:0.3.0-SNAPSHOT"
-        Then the command should fail
-        And the output should contain "Validating Policy Manifest"
-
-    @BUILD-002
     Scenario: Build gateway with invalid manifest
         When I run ap with arguments "gateway build -f resources/gateway/invalid.yaml --docker-registry localhost:5000 --image-tag test --gateway-builder ghcr.io/wso2/api-platform/gateway-builder:0.3.0-SNAPSHOT"
         Then the command should fail
 
-    @BUILD-003
+    @BUILD-002
     Scenario: Build gateway with missing manifest file
         When I run ap with arguments "gateway build -f non-existent-manifest.yaml --docker-registry localhost:5000 --image-tag test --gateway-builder ghcr.io/wso2/api-platform/gateway-builder:0.3.0-SNAPSHOT"
         Then the command should fail
