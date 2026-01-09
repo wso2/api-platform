@@ -156,11 +156,7 @@ func (s *TestState) ExecuteCLI(args ...string) error {
 	cmd := exec.CommandContext(ctx, s.CLIBinaryPath, args...)
 	cmd.Dir = s.WorkingDir
 
-	// Set environment to use isolated config directory
-	cmd.Env = append(os.Environ(),
-		fmt.Sprintf("AP_CONFIG_DIR=%s", s.ConfigDir),
-		"AP_NO_COLOR=true",
-	)
+	cmd.Env = append(os.Environ(), "AP_NO_COLOR=true")
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

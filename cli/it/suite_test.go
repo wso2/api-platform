@@ -112,6 +112,12 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 		fmt.Printf("%s│  PHASE 1: Infrastructure Setup                                                   │%s\n", ColorBlue, ColorReset)
 		fmt.Printf("%s└──────────────────────────────────────────────────────────────────────────────────┘%s\n\n", ColorBlue, ColorReset)
 
+		// Backup and clear user's real CLI config to run tests against a clean config.
+		// If a backup exists it will be restored in AfterSuite.
+		if err := backupAndClearUserConfig(); err != nil {
+			log.Fatalf("Failed to backup/clear user config: %v", err)
+		}
+
 		// Pre-flight checks
 		if err := CheckDockerAvailable(); err != nil {
 			log.Fatalf("Pre-flight check failed: Docker is not available. %v", err)
@@ -152,7 +158,75 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 				fmt.Printf("%sWarning: Teardown error: %v%s\n", ColorYellow, err, ColorReset)
 			}
 		}
+		// Restore user's CLI config that was backed up at test startup.
+		if err := restoreUserConfig(); err != nil {
+			fmt.Printf("%sWarning: Failed to restore user config: %v%s\n", ColorYellow, err, ColorReset)
+		}
 	})
+}
+
+// backupAndClearUserConfig backs up the user's config file (if present)
+// to config.yaml.backup and writes an empty config to the original path.
+func backupAndClearUserConfig() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	configPath := filepath.Join(home, ".wso2ap", "config.yaml")
+	backupPath := configPath + ".backup"
+
+	// If config exists, copy to backup
+	if _, err := os.Stat(configPath); err == nil {
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(backupPath, data, 0600); err != nil {
+			return err
+		}
+	}
+
+	// Ensure config dir exists
+	if err := os.MkdirAll(filepath.Dir(configPath), 0700); err != nil {
+		return err
+	}
+
+	// Write empty config
+	emptyConfig := "# WSO2 API Platform CLI Configuration\ngateways: []\n"
+	if err := os.WriteFile(configPath, []byte(emptyConfig), 0600); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// restoreUserConfig restores the backed up config if present and removes the backup.
+func restoreUserConfig() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	configPath := filepath.Join(home, ".wso2ap", "config.yaml")
+	backupPath := configPath + ".backup"
+
+	if _, err := os.Stat(backupPath); err == nil {
+		// Restore from backup
+		data, err := os.ReadFile(backupPath)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(configPath, data, 0600); err != nil {
+			return err
+		}
+		// Remove backup
+		if err := os.Remove(backupPath); err != nil {
+			return err
+		}
+	} else {
+		// No backup - remove the test config file we wrote
+		_ = os.Remove(configPath)
+	}
+	return nil
 }
 
 // InitializeScenario sets up each test scenario

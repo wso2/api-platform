@@ -239,19 +239,19 @@ func (s *CLISteps) EnsureGatewayExistsWithServer(name, server string) error {
 
 // ResetConfiguration resets the CLI configuration to empty
 func (s *CLISteps) ResetConfiguration() error {
-	// Create a backup of the config and create a fresh empty config
-	// Use the isolated test config directory from TestState to avoid
-	// polluting the user's real home directory.
-	configDir := s.state.GetConfigDir()
-	if configDir == "" {
-		return fmt.Errorf("test config directory not initialized")
+	// Reset the real user config file used by the CLI so tests operate
+	// against the user's real config (which is backed up at suite start).
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to determine user home directory: %w", err)
 	}
 
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		return fmt.Errorf("failed to create config dir %s: %w", configDir, err)
+	cliConfigDir := filepath.Join(home, ".wso2ap")
+	if err := os.MkdirAll(cliConfigDir, 0755); err != nil {
+		return fmt.Errorf("failed to create cli config dir %s: %w", cliConfigDir, err)
 	}
 
-	configFile := filepath.Join(configDir, "config.yaml")
+	configFile := filepath.Join(cliConfigDir, "config.yaml")
 
 	// Create empty config
 	emptyConfig := "# WSO2 API Platform CLI Configuration\ngateways: []\n"
