@@ -27,7 +27,7 @@ services:
     mem_reservation: 128m
     cpus: 0.1
     ports:
-      - "9090:9090"   # REST API
+      - "9010:9090"   # REST API
       - "18000:18000" # xDS gRPC
       - "18001:18001"
     environment:
