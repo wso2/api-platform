@@ -67,6 +67,7 @@ type APIServer struct {
 	controlPlaneClient   controlplane.ControlPlaneClient
 	routerConfig         *config.RouterConfig
 	httpClient           *http.Client
+	systemConfig      	 *config.Config 
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -80,10 +81,10 @@ func NewAPIServer(
 	policyDefinitions map[string]api.PolicyDefinition,
 	templateDefinitions map[string]*api.LLMProviderTemplate,
 	validator config.Validator,
-	routerConfig *config.RouterConfig,
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
+	systemConfig *config.Config,
 ) *APIServer {
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator,  &systemConfig.GatewayController.Router)
 	server := &APIServer{
 		store:                store,
 		db:                   db,
@@ -96,12 +97,13 @@ func NewAPIServer(
 		deploymentService:    deploymentService,
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, templateDefinitions,
-			deploymentService, routerConfig),
+			deploymentService, &systemConfig.GatewayController.Router),
 		apiKeyService:      utils.NewAPIKeyService(store, db, apiKeyXDSManager),
 		apiKeyXDSManager:   apiKeyXDSManager,
 		controlPlaneClient: controlPlaneClient,
-		routerConfig:       routerConfig,
+		routerConfig:       &systemConfig.GatewayController.Router,
 		httpClient:         &http.Client{Timeout: 10 * time.Second},
+		systemConfig:       systemConfig,
 	}
 
 	// Register status update callback
@@ -1569,7 +1571,7 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 // ListPolicies implements ServerInterface.ListPolicies
 // (GET /policies)
 func (s *APIServer) ListPolicies(c *gin.Context) {
-	// Collect and sort policies loaded from files at startup
+	// Collect and sort policies loaded from files at startup (excluding system policies)
 	s.policyDefMu.RLock()
 	list := make([]api.PolicyDefinition, 0, len(s.policyDefinitions))
 	for _, d := range s.policyDefinitions {
@@ -1653,9 +1655,14 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 			}
 
 			routeKey := xds.GenerateRouteName("POST", apiData.Context, apiData.Version, ch.Path, s.routerConfig.GatewayHost)
+			
+			// Inject system policies into the chain
+			props := make(map[string]any)
+			injectedPolicies := utils.InjectSystemPolicies(finalPolicies, s.systemConfig, props)
+			
 			routes = append(routes, policyenginev1.PolicyChain{
 				RouteKey: routeKey,
-				Policies: finalPolicies,
+				Policies: injectedPolicies,
 			})
 		}
 	case api.RestApi:
@@ -1716,15 +1723,19 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 			}
 
 			for _, vhost := range vhosts {
+				// Inject system policies into the chain
+				props := make(map[string]any)
+				injectedPolicies := utils.InjectSystemPolicies(finalPolicies, s.systemConfig, props)
+				
 				routes = append(routes, policyenginev1.PolicyChain{
 					RouteKey: xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, vhost),
-					Policies: finalPolicies,
+					Policies: injectedPolicies,
 				})
 			}
 		}
 	}
 
-	// If there are no policies at all, return nil (skip creation)
+	// If there are no policies at all (including system policies), return nil (skip creation)
 	policyCount := 0
 	for _, r := range routes {
 		policyCount += len(r.Policies)
@@ -2204,7 +2215,7 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 		apisSlice = append(apisSlice, item)
 	}
 
-	// Get all policies
+	// Get all policies (excluding system policies)
 	s.policyDefMu.RLock()
 	policies := make([]api.PolicyDefinition, 0, len(s.policyDefinitions))
 	for _, policy := range s.policyDefinitions {
