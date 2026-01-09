@@ -38,8 +38,8 @@ import (
 // APIKeyStore manages API keys in memory with thread-safe operations
 type APIKeyStore struct {
 	mu              sync.RWMutex
-	apiKeys         map[string]*models.APIKey   // key: API key ID
-	apiKeysByAPI    map[string][]*models.APIKey // key: API ID
+	apiKeys         map[string]*models.APIKey            // key: API key ID
+	apiKeysByAPI    map[string]map[string]*models.APIKey // Key: configID → Value: map[keyID]*APIKey
 	resourceVersion int64
 	logger          *zap.Logger
 }
@@ -48,7 +48,7 @@ type APIKeyStore struct {
 func NewAPIKeyStore(logger *zap.Logger) *APIKeyStore {
 	return &APIKeyStore{
 		apiKeys:      make(map[string]*models.APIKey),
-		apiKeysByAPI: make(map[string][]*models.APIKey),
+		apiKeysByAPI: make(map[string]map[string]*models.APIKey),
 		logger:       logger,
 	}
 }
@@ -88,9 +88,11 @@ func (s *APIKeyStore) GetByAPI(apiId string) []*models.APIKey {
 	defer s.mu.RUnlock()
 
 	apiKeys := s.apiKeysByAPI[apiId]
-	// Return a copy to avoid external modification
-	result := make([]*models.APIKey, len(apiKeys))
-	copy(result, apiKeys)
+	// Convert map values to slice and return a copy to prevent external modification
+	result := make([]*models.APIKey, 0, len(apiKeys))
+	for _, apiKey := range apiKeys {
+		result = append(result, apiKey)
+	}
 	return result
 }
 
@@ -202,24 +204,39 @@ func (s *APIKeyStore) GetResourceVersion() int64 {
 
 // addToAPIMapping adds an API key to the API mapping
 func (s *APIKeyStore) addToAPIMapping(apiKey *models.APIKey) {
-	apiKeys := s.apiKeysByAPI[apiKey.APIId]
-	s.apiKeysByAPI[apiKey.APIId] = append(apiKeys, apiKey)
+	existingKeys, apiIdExists := s.apiKeysByAPI[apiKey.APIId]
+	var existingKeyID = ""
+
+	if apiIdExists {
+		for id, existingKey := range existingKeys {
+			if existingKey.Name == apiKey.Name {
+				existingKeyID = id
+				break
+			}
+		}
+	}
+
+	if existingKeyID != "" {
+		// Update the existing entry in apiKeysByAPI
+		s.apiKeysByAPI[apiKey.APIId][existingKeyID] = apiKey
+	} else {
+		// Initialize the map for this API ID if it doesn't exist
+		if s.apiKeysByAPI[apiKey.APIId] == nil {
+			s.apiKeysByAPI[apiKey.APIId] = make(map[string]*models.APIKey)
+		}
+		s.apiKeysByAPI[apiKey.APIId][apiKey.ID] = apiKey
+	}
 }
 
 // removeFromAPIMapping removes an API key from the API mapping
 func (s *APIKeyStore) removeFromAPIMapping(apiKey *models.APIKey) {
-	apiKeys := s.apiKeysByAPI[apiKey.APIId]
-	for i, ak := range apiKeys {
-		if ak.ID == apiKey.ID {
-			// Remove the element at index i
-			s.apiKeysByAPI[apiKey.APIId] = append(apiKeys[:i], apiKeys[i+1:]...)
-			break
+	apiKeys, apiIdExists := s.apiKeysByAPI[apiKey.APIId]
+	if apiIdExists {
+		delete(apiKeys, apiKey.ID)
+		// clean up empty maps
+		if len(s.apiKeysByAPI[apiKey.APIId]) == 0 {
+			delete(s.apiKeysByAPI, apiKey.APIId)
 		}
-	}
-
-	// If no API keys left for this API, remove the mapping
-	if len(s.apiKeysByAPI[apiKey.APIId]) == 0 {
-		delete(s.apiKeysByAPI, apiKey.APIId)
 	}
 }
 

@@ -311,13 +311,14 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		return result, nil
 	}
 
+	var apiKey *models.APIKey
 	var matchedKey *models.APIKey
 
-	apiKey, err := s.store.GetAPIKeyByID(parsedAPIkey.ID)
+	existingAPIKey, err := s.store.GetAPIKeyByID(parsedAPIkey.ID)
 	if err != nil {
 		// If memory store fails, try database
 		if s.db != nil {
-			apiKey, err = s.db.GetAPIKeyByID(parsedAPIkey.ID)
+			existingAPIKey, err = s.db.GetAPIKeyByID(parsedAPIkey.ID)
 			if err != nil {
 				logger.Debug("Failed to get API keys for revocation",
 					zap.Error(err),
@@ -329,9 +330,10 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	}
 
 	// Find the API key that matches the provided plain text key
-	if apiKey != nil {
-		if s.compareAPIKeys(parsedAPIkey.APIKey, apiKey.APIKey) {
-			matchedKey = apiKey
+	if existingAPIKey != nil {
+		if s.compareAPIKeys(parsedAPIkey.APIKey, existingAPIKey.APIKey) {
+			apiKey = existingAPIKey
+			matchedKey = existingAPIKey
 		}
 	}
 
