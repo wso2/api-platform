@@ -344,7 +344,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		if apiKey.APIId != config.ID {
 			logger.Debug("API key does not belong to the specified API",
 				zap.String("correlation_id", params.CorrelationID))
-			return nil, fmt.Errorf("API key revocation failed for API: '%s'", params.Handle)
+			return result, nil
 		}
 
 		err := s.canRevokeAPIKey(user, apiKey, logger)
