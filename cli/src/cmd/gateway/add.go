@@ -195,9 +195,17 @@ func runAddCommand() error {
 		configPath = "(unknown location)"
 	}
 
-	// Print success message
-	fmt.Printf("Gateway %s added as %s with auth type: %s\n", addServer, addName, addAuth)
+	// Print success message (show name first for clarity)
+	fmt.Printf("Gateway %s added (server: %s, auth: %s)\n", addName, addServer, addAuth)
 	fmt.Printf("Configuration saved to: %s\n", configPath)
+
+	// Print a short note about required environment variables for the selected auth type
+	switch addAuth {
+	case utils.AuthTypeBasic:
+		fmt.Printf("Note: Basic auth requires %s and %s to be exported in your environment for controller commands.\n", utils.EnvGatewayUsername, utils.EnvGatewayPassword)
+	case utils.AuthTypeBearer:
+		fmt.Printf("Note: Bearer auth requires %s to be exported in your environment for controller commands.\n", utils.EnvGatewayToken)
+	}
 
 	// Show info message based on whether credentials were stored
 	if addAuth != utils.AuthTypeNone {
