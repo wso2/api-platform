@@ -19,6 +19,7 @@
 package gateway
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -35,7 +36,6 @@ import (
 type Client struct {
 	gateway    *config.Gateway
 	httpClient *http.Client
-	credSource utils.CredentialSource
 }
 
 // NewClient creates a new gateway client for the specified gateway
@@ -88,10 +88,14 @@ func NewClientForActive() (*Client, error) {
 	return NewClient(gateway), nil
 }
 
+// context key for credential source
+type credCtxKey struct{}
+
 // Do executes an HTTP request with the gateway's authentication and settings
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	// Apply authentication based on gateway's auth type
 	authType := c.gateway.Auth
+	var credSource utils.CredentialSource
 	switch authType {
 	case utils.AuthTypeNone:
 		// No authentication required
@@ -104,7 +108,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		if envUsername != "" && envPassword != "" {
 			// Use environment variables (both present)
 			req.SetBasicAuth(envUsername, envPassword)
-			c.credSource = utils.CredSourceEnv
+			credSource = utils.CredSourceEnv
 		} else {
 			// Step 2: Fall back to config credentials
 			username := c.gateway.Username
@@ -116,7 +120,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 			}
 
 			req.SetBasicAuth(username, password)
-			c.credSource = utils.CredSourceConfig
+			credSource = utils.CredSourceConfig
 		}
 
 	case utils.AuthTypeBearer:
@@ -126,7 +130,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		if envToken != "" {
 			// Use environment variable
 			req.Header.Set("Authorization", "Bearer "+envToken)
-			c.credSource = utils.CredSourceEnv
+			credSource = utils.CredSourceEnv
 		} else {
 			// Step 2: Fall back to config token
 			token := c.gateway.Token
@@ -137,11 +141,16 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 			}
 
 			req.Header.Set("Authorization", "Bearer "+token)
-			c.credSource = utils.CredSourceConfig
+			credSource = utils.CredSourceConfig
 		}
 
 	default:
 		return nil, fmt.Errorf("unsupported auth type '%s' for gateway '%s'", authType, c.gateway.Name)
+	}
+
+	// Attach credential source to the request context
+	if credSource != "" {
+		req = req.WithContext(context.WithValue(req.Context(), credCtxKey{}, credSource))
 	}
 
 	// Set common headers
@@ -157,12 +166,22 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 
 // formatHTTPError formats HTTP errors with credential-source-aware messaging
 func (c *Client) formatHTTPError(operation string, resp *http.Response) error {
+	// Extract credential source from the request context, if present
+	var credSource utils.CredentialSource
+	if resp != nil && resp.Request != nil {
+		if v := resp.Request.Context().Value(credCtxKey{}); v != nil {
+			if cs, ok := v.(utils.CredentialSource); ok {
+				credSource = cs
+			}
+		}
+	}
+
 	return utils.FormatHTTPErrorWithCredSource(
 		operation,
 		resp,
 		"Gateway Controller",
 		c.gateway.Auth,
-		c.credSource,
+		credSource,
 		c.gateway.Name,
 	)
 }
