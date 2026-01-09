@@ -24,6 +24,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"
@@ -32,6 +33,10 @@ import (
 // TestDatabasePersistenceAcrossRestarts verifies that configurations
 // survive database close and reopen (simulating application restart)
 func TestDatabasePersistenceAcrossRestarts(t *testing.T) {
+	// Initialize metrics for tests (disabled by default)
+	metrics.SetEnabled(false)
+	metrics.Init()
+
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "persistence.db")
 

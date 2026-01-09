@@ -27,15 +27,18 @@ import (
 	"log/slog"
 	"os"
 	"sync"
+	"time"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	discoveryv3 "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/kernel"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
 )
 
@@ -135,9 +138,31 @@ func (c *Client) setState(state ClientState) {
 	if c.state != state {
 		oldState := c.state
 		c.state = state
-		slog.InfoContext(c.ctx, "Client state changed",
-			"old_state", oldState,
-			"new_state", state)
+
+		// Update metrics based on state
+		switch state {
+		case StateConnected:
+			metrics.XDSConnectionState.WithLabelValues("connected").Set(1)
+			metrics.GRPCConnectionsActive.WithLabelValues("xds").Inc()
+			slog.InfoContext(c.ctx, "Client state changed",
+				"old_state", oldState,
+				"new_state", state)
+		case StateDisconnected, StateStopped:
+			metrics.XDSConnectionState.WithLabelValues("connected").Set(0)
+			metrics.GRPCConnectionsActive.WithLabelValues("xds").Dec()
+			slog.InfoContext(c.ctx, "Client state changed",
+				"old_state", oldState,
+				"new_state", state)
+		case StateReconnecting:
+			metrics.XDSConnectionState.WithLabelValues("connected").Set(0)
+			slog.InfoContext(c.ctx, "Client state changed",
+				"old_state", oldState,
+				"new_state", state)
+		default:
+			slog.InfoContext(c.ctx, "Client state changed",
+				"old_state", oldState,
+				"new_state", state)
+		}
 	}
 }
 
@@ -180,11 +205,13 @@ func (c *Client) run() {
 
 // connectAndRun establishes connection and runs the ADS stream
 func (c *Client) connectAndRun() error {
+	startTime := time.Now()
 	c.setState(StateConnecting)
 
 	// Establish gRPC connection
 	conn, err := c.dial()
 	if err != nil {
+		metrics.XDSUpdatesTotal.WithLabelValues("failed", "xds").Inc()
 		return fmt.Errorf("failed to dial xDS server: %w", err)
 	}
 
@@ -205,6 +232,7 @@ func (c *Client) connectAndRun() error {
 	client := discoveryv3.NewAggregatedDiscoveryServiceClient(conn)
 	stream, err := client.StreamAggregatedResources(c.ctx)
 	if err != nil {
+		metrics.XDSUpdatesTotal.WithLabelValues("failed", "xds").Inc()
 		return fmt.Errorf("failed to create ADS stream: %w", err)
 	}
 
@@ -214,6 +242,10 @@ func (c *Client) connectAndRun() error {
 
 	c.setState(StateConnected)
 	c.reconnectManager.Reset()
+
+	// Record successful connection metrics
+	metrics.XDSUpdatesTotal.WithLabelValues("success", "xds").Inc()
+	metrics.ContextBuildDurationSeconds.WithLabelValues("xds_connection").Observe(time.Since(startTime).Seconds())
 
 	slog.InfoContext(c.ctx, "Connected to xDS server", "server", c.config.ServerAddress)
 
@@ -371,6 +403,8 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 				return fmt.Errorf("failed to send NACK: %w", sendErr)
 			}
 
+			// Record NACK metric
+			metrics.XDSUpdatesTotal.WithLabelValues("nack", "xds").Inc()
 			continue
 		}
 
@@ -389,6 +423,29 @@ func (c *Client) processStream(stream discoveryv3.AggregatedDiscoveryService_Str
 		if err := c.sendDiscoveryRequestForType(resp.TypeUrl, resp.VersionInfo, resp.Nonce); err != nil {
 			return fmt.Errorf("failed to send ACK: %w", err)
 		}
+
+		// Record successful ACK metric
+		metrics.XDSUpdatesTotal.WithLabelValues("ack", "xds").Inc()
+
+		// Record snapshot size metric
+		var resourceType string
+		switch resp.TypeUrl {
+		case PolicyChainTypeURL:
+			resourceType = "policy_chain"
+		case APIKeyStateTypeURL:
+			resourceType = "api_key_state"
+		default:
+			resourceType = "unknown"
+		}
+
+		// Calculate total size of resources in bytes
+		var totalSize int
+		for _, resource := range resp.Resources {
+			totalSize += proto.Size(resource)
+		}
+
+		// Record snapshot size
+		metrics.SnapshotSize.WithLabelValues(resourceType).Set(float64(totalSize))
 
 		slog.InfoContext(c.ctx, "Successfully processed and ACKed discovery response",
 			"type_url", resp.TypeUrl,

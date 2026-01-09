@@ -27,10 +27,13 @@ services:
       - "9090:9090"   # REST API
       - "18000:18000" # xDS gRPC
       - "18001:18001"
+      - "9011:9091"   # Metrics
     environment:
       - GATEWAY_GATEWAY__CONTROLLER_STORAGE_TYPE=sqlite
       - GATEWAY_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
       - GATEWAY_GATEWAY__CONTROLLER_LOGGING_LEVEL=info
+      - GATEWAY_GATEWAY__CONTROLLER_METRICS_ENABLED=${GATEWAY_CONTROLLER_METRICS_ENABLED:-false}
+      - GATEWAY_GATEWAY__CONTROLLER_METRICS_PORT=9091
       - GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
       - GATEWAY_GATEWAY__CONTROLLER_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-host.docker.internal:9243}
     volumes:
@@ -52,6 +55,10 @@ services:
     command: ["-xds-server", "gateway-controller:18001"]
     ports:
       - "9002:9002"   # Admin API
+      - "9003:9003"   # Metrics
+    environment:
+      - PE_POLICY__ENGINE_METRICS_ENABLED=${POLICY_ENGINE_METRICS_ENABLED:-false}
+      - PE_POLICY__ENGINE_METRICS_PORT=9003
     volumes:
       - ./configs/config.yaml:/app/configs/config.yaml:ro
     networks:
@@ -181,10 +188,50 @@ services:
       - opensearch
     profiles: ["logging"]
 
+  prometheus:
+    image: prom/prometheus:v3.3.1
+    container_name: prometheus
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9092:9090"   # Prometheus UI (9092 to avoid conflict with gateway-controller)
+    networks:
+      - gateway-network
+    profiles: ["metrics"]
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/infrastructure-overview.json
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
+    ports:
+      - "3000:3000"   # Grafana UI
+    networks:
+      - gateway-network
+    depends_on:
+      - prometheus
+    profiles: ["metrics"]
+
 volumes:
   controller-data:
     driver: local
   opensearch-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
     driver: local
 
 networks:

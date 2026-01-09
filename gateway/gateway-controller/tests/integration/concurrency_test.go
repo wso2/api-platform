@@ -26,6 +26,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"
@@ -34,6 +35,10 @@ import (
 // TestConcurrentWrites tests that SQLite can handle concurrent write operations
 // without errors or data corruption (Success Criterion SC-009)
 func TestConcurrentWrites(t *testing.T) {
+	// Initialize metrics for tests (disabled by default)
+	metrics.SetEnabled(false)
+	metrics.Init()
+
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "concurrent.db")
 
@@ -83,6 +88,10 @@ func TestConcurrentWrites(t *testing.T) {
 
 // TestConcurrentReads tests concurrent read operations
 func TestConcurrentReads(t *testing.T) {
+	// Initialize metrics for tests (disabled by default)
+	metrics.SetEnabled(false)
+	metrics.Init()
+
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "concurrent-reads.db")
 
@@ -139,6 +148,10 @@ func TestConcurrentReads(t *testing.T) {
 
 // TestConcurrentMixedOperations tests concurrent mix of reads, writes, updates, and deletes
 func TestConcurrentMixedOperations(t *testing.T) {
+	// Initialize metrics for tests (disabled by default)
+	metrics.SetEnabled(false)
+	metrics.Init()
+
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "mixed-ops.db")
 
@@ -227,6 +240,10 @@ func TestConcurrentMixedOperations(t *testing.T) {
 
 // TestConcurrentUpdatesOnSameConfig tests multiple goroutines updating the same configuration
 func TestConcurrentUpdatesOnSameConfig(t *testing.T) {
+	// Initialize metrics for tests (disabled by default)
+	metrics.SetEnabled(false)
+	metrics.Init()
+
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "same-config.db")
 
@@ -292,6 +309,10 @@ func TestConcurrentUpdatesOnSameConfig(t *testing.T) {
 
 // TestConcurrentGetAllConfigs tests concurrent GetAllConfigs calls
 func TestConcurrentGetAllConfigs(t *testing.T) {
+	// Initialize metrics for tests (disabled by default)
+	metrics.SetEnabled(false)
+	metrics.Init()
+
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "get-all.db")
 

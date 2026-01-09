@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"time"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocconfigv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/ext_proc/v3"
@@ -42,6 +43,7 @@ import (
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/executor"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/tracing"
 )
 
@@ -73,6 +75,10 @@ func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExe
 // Process implements the bidirectional streaming RPC handler
 // T060: Process(stream) bidirectional streaming RPC handler
 func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_ProcessServer) error {
+	// Track active streams
+	metrics.ActiveStreams.Inc()
+	defer metrics.ActiveStreams.Dec()
+
 	// Extract trace context and create span - NoOp if tracing disabled
 	traceCtx := tracing.ExtractTraceContext(stream.Context())
 	ctx, span := s.tracer.Start(traceCtx, constants.SpanExternalProcessingProcess,
@@ -102,6 +108,7 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 				return nil
 			}
 			slog.ErrorContext(ctx, "Error receiving from stream", "error", err)
+			metrics.StreamErrorsTotal.WithLabelValues("receive").Inc()
 			return status.Errorf(grpccodes.Unknown, "failed to receive request: %v", err)
 		}
 
@@ -115,6 +122,7 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 		// Send response back to Envoy
 		if err := stream.Send(resp); err != nil {
 			slog.ErrorContext(ctx, "Error sending response", "error", err)
+			metrics.StreamErrorsTotal.WithLabelValues("send").Inc()
 			return status.Errorf(grpccodes.Unknown, "failed to send response: %v", err)
 		}
 	}
@@ -124,6 +132,7 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req *extprocv3.ProcessingRequest, execCtx **PolicyExecutionContext, parentSpan trace.Span) (*extprocv3.ProcessingResponse, error) {
 	switch req.Request.(type) {
 	case *extprocv3.ProcessingRequest_RequestHeaders:
+		startTime := time.Now()
 
 		// Create span for request headers processing - NoOp if tracing disabled
 		_, span := s.tracer.Start(ctx, constants.SpanProcessRequestHeaders,
@@ -142,11 +151,17 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 				attribute.String(constants.AttrOperationPath, rm.OperationPath),
 			)
 		}
+
+		// Track request metrics
+		metrics.RequestsTotal.WithLabelValues("request_headers", rm.RouteName, rm.APIName, rm.APIVersion).Inc()
+
 		// If no execution context (no policy chain), skip processing
 		if *execCtx == nil {
 			if span.IsRecording() {
 				span.SetAttributes(attribute.Int(constants.AttrPolicyCount, 0))
 			}
+			metrics.RouteLookupFailuresTotal.Inc()
+			metrics.RequestDurationSeconds.WithLabelValues("request_headers", rm.RouteName).Observe(time.Since(startTime).Seconds())
 			return s.skipAllProcessing(routeMetadata), nil
 		}
 		if span.IsRecording() {
@@ -154,6 +169,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		}
 
 		resp, err := (*execCtx).processRequestHeaders(ctx)
+		metrics.RequestDurationSeconds.WithLabelValues("request_headers", rm.RouteName).Observe(time.Since(startTime).Seconds())
 		if span.IsRecording() {
 			if err != nil {
 				span.RecordError(err)
@@ -162,9 +178,14 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 				parentSpan.SetStatus(codes.Error, err.Error())
 			}
 		}
+		if err != nil {
+			metrics.RequestErrorsTotal.WithLabelValues("request_headers", "processing_failed", rm.RouteName).Inc()
+		}
 		return resp, err
 
 	case *extprocv3.ProcessingRequest_RequestBody:
+		startTime := time.Now()
+
 		// Create span for request body processing - NoOp if tracing disabled
 		_, span := s.tracer.Start(ctx, constants.SpanProcessRequestBody,
 			trace.WithSpanKind(trace.SpanKindInternal))
@@ -175,6 +196,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 			if span.IsRecording() {
 				span.SetAttributes(attribute.String(constants.AttrError, constants.AttrErrorReasonNoContext))
 			}
+			metrics.RequestErrorsTotal.WithLabelValues("request_body", "no_context", "unknown").Inc()
 			return &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_RequestBody{
 					RequestBody: &extprocv3.BodyResponse{},
@@ -182,7 +204,16 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 			}, nil
 		}
 
+		routeName := (*execCtx).routeKey
+		metrics.RequestsTotal.WithLabelValues("request_body", routeName, "", "").Inc()
+
+		// Track body bytes
+		if body := req.GetRequestBody(); body != nil {
+			metrics.BodyBytesProcessed.WithLabelValues("request", "read").Add(float64(len(body.Body)))
+		}
+
 		resp, err := (*execCtx).processRequestBody(ctx, req.GetRequestBody())
+		metrics.RequestDurationSeconds.WithLabelValues("request_body", routeName).Observe(time.Since(startTime).Seconds())
 		if span.IsRecording() {
 			if err != nil {
 				span.RecordError(err)
@@ -191,9 +222,14 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 				parentSpan.SetStatus(codes.Error, err.Error())
 			}
 		}
+		if err != nil {
+			metrics.RequestErrorsTotal.WithLabelValues("request_body", "processing_failed", routeName).Inc()
+		}
 		return resp, err
 
 	case *extprocv3.ProcessingRequest_ResponseHeaders:
+		startTime := time.Now()
+
 		// Create span for response headers processing - NoOp if tracing disabled
 		_, span := s.tracer.Start(ctx, constants.SpanProcessResponseHeaders,
 			trace.WithSpanKind(trace.SpanKindInternal))
@@ -204,6 +240,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 			if span.IsRecording() {
 				span.SetAttributes(attribute.String(constants.AttrError, constants.AttrErrorReasonNoContext))
 			}
+			metrics.RequestErrorsTotal.WithLabelValues("response_headers", "no_context", "unknown").Inc()
 			return &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ResponseHeaders{
 					ResponseHeaders: &extprocv3.HeadersResponse{},
@@ -211,7 +248,11 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 			}, nil
 		}
 
+		routeName := (*execCtx).routeKey
+		metrics.RequestsTotal.WithLabelValues("response_headers", routeName, "", "").Inc()
+
 		resp, err := (*execCtx).processResponseHeaders(ctx, req.GetResponseHeaders())
+		metrics.RequestDurationSeconds.WithLabelValues("response_headers", routeName).Observe(time.Since(startTime).Seconds())
 		if span.IsRecording() {
 			if err != nil {
 				span.RecordError(err)
@@ -220,9 +261,14 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 				parentSpan.SetStatus(codes.Error, err.Error())
 			}
 		}
+		if err != nil {
+			metrics.RequestErrorsTotal.WithLabelValues("response_headers", "processing_failed", routeName).Inc()
+		}
 		return resp, err
 
 	case *extprocv3.ProcessingRequest_ResponseBody:
+		startTime := time.Now()
+
 		// Create span for response body processing - NoOp if tracing disabled
 		_, span := s.tracer.Start(ctx, constants.SpanProcessResponseBody,
 			trace.WithSpanKind(trace.SpanKindInternal))
@@ -233,6 +279,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 			if span.IsRecording() {
 				span.SetAttributes(attribute.String(constants.AttrError, constants.AttrErrorReasonNoContext))
 			}
+			metrics.RequestErrorsTotal.WithLabelValues("response_body", "no_context", "unknown").Inc()
 			return &extprocv3.ProcessingResponse{
 				Response: &extprocv3.ProcessingResponse_ResponseBody{
 					ResponseBody: &extprocv3.BodyResponse{},
@@ -240,7 +287,16 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 			}, nil
 		}
 
+		routeName := (*execCtx).routeKey
+		metrics.RequestsTotal.WithLabelValues("response_body", routeName, "", "").Inc()
+
+		// Track body bytes
+		if body := req.GetResponseBody(); body != nil {
+			metrics.BodyBytesProcessed.WithLabelValues("response", "read").Add(float64(len(body.Body)))
+		}
+
 		resp, err := (*execCtx).processResponseBody(ctx, req.GetResponseBody())
+		metrics.RequestDurationSeconds.WithLabelValues("response_body", routeName).Observe(time.Since(startTime).Seconds())
 		if span.IsRecording() {
 			if err != nil {
 				span.RecordError(err)
@@ -249,10 +305,14 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 				parentSpan.SetStatus(codes.Error, err.Error())
 			}
 		}
+		if err != nil {
+			metrics.RequestErrorsTotal.WithLabelValues("response_body", "processing_failed", routeName).Inc()
+		}
 		return resp, err
 
 	default:
 		slog.WarnContext(ctx, "Unknown request type", "type", fmt.Sprintf("%T", req.Request))
+		metrics.RequestErrorsTotal.WithLabelValues("unknown", "unknown_type", "unknown").Inc()
 		return &extprocv3.ProcessingResponse{
 			Response: &extprocv3.ProcessingResponse_ImmediateResponse{
 				ImmediateResponse: &extprocv3.ImmediateResponse{
