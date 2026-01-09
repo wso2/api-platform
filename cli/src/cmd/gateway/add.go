@@ -169,6 +169,12 @@ func runAddCommand() error {
 		Auth:   addAuth,
 	}
 
+	if username != "" || password != "" || token != "" {
+		fmt.Fprintln(os.Stderr, "Note: Credentials will be stored in plaintext in the configuration file (mode 0600).")
+		fmt.Fprintln(os.Stderr, "To avoid storing secrets on disk, omit credentials and use environment variables instead.")
+		fmt.Fprintln(os.Stderr, "")
+	}
+
 	// Only store credentials if they are not empty
 	if username != "" {
 		gateway.Username = username
