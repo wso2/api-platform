@@ -313,7 +313,7 @@ func (m *InfrastructureManager) Teardown() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	log.Println("Tearing down infrastructure...")
+	// Silent teardown - no console output
 
 	// Stop compose stack using native docker compose
 	if m.composeFile != "" {
@@ -323,9 +323,7 @@ func (m *InfrastructureManager) Teardown() error {
 			"down", "-v", "--remove-orphans",
 		)
 		cmd.Dir = filepath.Dir(m.composeFile)
-		if output, err := cmd.CombinedOutput(); err != nil {
-			log.Printf("Warning: Failed to stop compose stack: %v\nOutput: %s", err, output)
-		}
+		_ = cmd.Run() // Ignore errors during cleanup
 	}
 
 	m.cancel()

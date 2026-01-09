@@ -21,6 +21,7 @@ package it
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -79,9 +80,11 @@ func TestFeatures(t *testing.T) {
 		TestSuiteInitializer: InitializeTestSuite,
 		ScenarioInitializer:  InitializeScenario,
 		Options: &godog.Options{
-			Format:   "pretty",
+			Format:   "progress",
 			Paths:    []string{"features"},
 			TestingT: t,
+			NoColors: false,
+			Output:   io.Discard,
 		},
 	}
 

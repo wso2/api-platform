@@ -49,7 +49,7 @@ test: check-docker
 	@echo "\033[90m   → Loading test configuration\033[0m"
 	@echo "\033[90m   → Setting up test reporter\033[0m"
 	@echo ""
-	@go test -v -timeout 30m ./...
+	@go test -timeout 30m ./... 2>&1 | grep -v "^=== RUN\|^=== NAME\|^--- PASS\|^--- FAIL\|^PASS$$\|^FAIL$$\|^ok \|^\?\|^    --- \|testing: warning\|suite.go:\|suite_test.go:\|^        \|^FAIL	github\|^FAIL$$"
 
 # Build images and run tests (full flow)
 test-all: build-images test

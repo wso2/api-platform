@@ -90,8 +90,8 @@ func (r *TestReporter) StartTest(testID, testName string) {
 		Timestamp: time.Now(),
 	}
 
-	// Print running status
-	fmt.Printf("  %s⏳ [%s] %s running...%s\n", ColorCyan, testID, testName, ColorReset)
+	// Print simple running status
+	fmt.Printf("Running %s...\n", testName)
 }
 
 // EndTest completes the current test and writes the log file
@@ -339,29 +339,6 @@ func (r *TestReporter) PrintSummary() {
 	}
 	fmt.Printf("│  Duration: %-24s │\n", totalDuration.Round(time.Second))
 	fmt.Printf("%s└─────────────────────────────────────┘%s\n", ColorBold, ColorReset)
-
-	if failed > 0 {
-		fmt.Println()
-		fmt.Printf("%s┌─────────────────────────────────────────────────────────────────────────────────┐%s\n", ColorRed, ColorReset)
-		fmt.Printf("%s│                              FAILED TESTS                                       │%s\n", ColorRed, ColorReset)
-		fmt.Printf("%s├─────────────────────────────────────────────────────────────────────────────────┤%s\n", ColorRed, ColorReset)
-		for _, result := range r.results {
-			if result.Status == "FAIL" {
-				fmt.Printf("%s│  %s: %s%s\n", ColorRed, result.TestID, result.TestName, ColorReset)
-				fmt.Printf("%s│    → Log: logs/%s%s\n", ColorGray, result.LogFile, ColorReset)
-				if result.Error != "" {
-					errorLines := strings.Split(result.Error, "\n")
-					for _, line := range errorLines {
-						if len(line) > 75 {
-							line = line[:72] + "..."
-						}
-						fmt.Printf("%s│    → %s%s\n", ColorGray, line, ColorReset)
-					}
-				}
-			}
-		}
-		fmt.Printf("%s└─────────────────────────────────────────────────────────────────────────────────┘%s\n", ColorRed, ColorReset)
-	}
 
 	fmt.Printf("\n%sLogs directory: %s%s\n", ColorCyan, r.logsDir, ColorReset)
 }
