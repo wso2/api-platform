@@ -113,7 +113,7 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 			})
 		} else {
 			// Validate data section
-			errors = append(errors, v.validateAsyncData(&spec)...)
+			errors = append(errors, v.validateAsyncData(&spec, true)...)
 		}
 	}
 
@@ -258,8 +258,8 @@ func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationErr
 	return errors
 }
 
-// validateAsyncData validates the data section of the configuration for RestApi kind
-func (v *APIValidator) validateAsyncData(spec *api.WebhookAPIData) []ValidationError {
+// validateAsyncData validates the data section of the configuration for http/rest kind
+func (v *APIValidator) validateAsyncData(spec *api.WebhookAPIData, isWebSub bool) []ValidationError {
 	var errors []ValidationError
 
 	// Validate name
@@ -296,62 +296,18 @@ func (v *APIValidator) validateAsyncData(spec *api.WebhookAPIData) []ValidationE
 	// Validate context
 	errors = append(errors, v.validateContext(spec.Context)...)
 
-	// Validate upstream
-	errors = append(errors, v.validateServer(spec.Servers)...)
+	// Validate upstream if not WebSub
+	if !isWebSub {
+		if spec.Upstream.Main != nil {
+			errors = append(errors, v.validateUpstream("main", spec.Upstream.Main)...)
+		}
+		if spec.Upstream.Sandbox != nil {
+			errors = append(errors, v.validateUpstream("sandbox", spec.Upstream.Sandbox)...)
+		}
+	}
 
 	// Validate operations
 	errors = append(errors, v.validateChannels(spec.Channels)...)
-
-	return errors
-}
-
-// validateServer validates the server configuration
-func (v *APIValidator) validateServer(server []api.Server) []ValidationError {
-	var errors []ValidationError
-
-	if len(server) == 0 {
-		errors = append(errors, ValidationError{
-			Field:   "data.upstream",
-			Message: "At least one upstream URL is required",
-		})
-		return errors
-	}
-
-	for i, up := range server {
-		if up.Url == "" {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.upstream[%d].url", i),
-				Message: "Upstream URL is required",
-			})
-			continue
-		}
-
-		// Validate URL format
-		parsedURL, err := url.Parse(up.Url)
-		if err != nil {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.upstream[%d].url", i),
-				Message: fmt.Sprintf("Invalid URL format: %v", err),
-			})
-			continue
-		}
-
-		// Ensure scheme is http or https
-		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.upstream[%d].url", i),
-				Message: "Upstream URL must use http or https scheme",
-			})
-		}
-
-		// Ensure host is present
-		if parsedURL.Host == "" {
-			errors = append(errors, ValidationError{
-				Field:   fmt.Sprintf("data.upstream[%d].url", i),
-				Message: "Upstream URL must include a host",
-			})
-		}
-	}
 
 	return errors
 }

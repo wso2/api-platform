@@ -1246,42 +1246,6 @@ type RouteException struct {
 // RouteExceptionMethods defines model for RouteException.Methods.
 type RouteExceptionMethods string
 
-// Server Server definition for async or WebSub APIs.
-type Server struct {
-	// Bindings Protocol-specific server bindings (arbitrary key/value structure).
-	Bindings *map[string]interface{} `json:"bindings,omitempty" yaml:"bindings,omitempty"`
-
-	// Description Human-readable description of this server.
-	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-	// Protocol Transport protocol used by the server.
-	Protocol ServerProtocol `json:"protocol" yaml:"protocol"`
-
-	// ProtocolVersion Version of the selected protocol (if applicable).
-	ProtocolVersion *string `json:"protocolVersion,omitempty" yaml:"protocolVersion,omitempty"`
-
-	// Security Security requirements for this server (each item maps scheme name to optional scopes array).
-	Security *[]map[string][]string `json:"security,omitempty" yaml:"security,omitempty"`
-
-	// Url Base URL or connection string for the server (variables may be denoted by {name}).
-	Url string `json:"url" yaml:"url"`
-
-	// Variables Templated variables contained in the server URL.
-	Variables *map[string]struct {
-		// Default Default value for the variable.
-		Default string `json:"default" yaml:"default"`
-
-		// Description Description of the variable.
-		Description *string `json:"description,omitempty" yaml:"description,omitempty"`
-
-		// Enum Allowed values.
-		Enum *[]string `json:"enum,omitempty" yaml:"enum,omitempty"`
-	} `json:"variables,omitempty" yaml:"variables,omitempty"`
-}
-
-// ServerProtocol Transport protocol used by the server.
-type ServerProtocol string
-
 // Upstream Upstream backend configuration (single target or reference)
 type Upstream struct {
 	// HostRewrite Controls how the Host header is handled when routing to the upstream. `auto` delegates host rewriting to Envoy, which rewrites the Host header using the upstream cluster host. `manual` disables automatic rewriting and expects explicit configuration.
@@ -1339,11 +1303,26 @@ type WebhookAPIData struct {
 	// Policies List of API-level policies applied to all operations unless overridden
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
 
-	// Servers List of backend service URLs (for REST APIs) or event hub URLs (for async APIs)
-	Servers []Server `json:"servers" yaml:"servers"`
+	// Upstream API-level upstream configuration
+	Upstream struct {
+		// Main Upstream backend configuration (single target or reference)
+		Main *Upstream `json:"main,omitempty" yaml:"main,omitempty"`
+
+		// Sandbox Upstream backend configuration (single target or reference)
+		Sandbox *Upstream `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+	} `json:"upstream" yaml:"upstream"`
 
 	// Version Semantic version of the API
 	Version string `json:"version" yaml:"version"`
+
+	// Vhosts Custom virtual hosts/domains for the API
+	Vhosts *struct {
+		// Main Custom virtual host/domain for production traffic
+		Main string `json:"main" yaml:"main"`
+
+		// Sandbox Custom virtual host/domain for sandbox traffic
+		Sandbox *string `json:"sandbox,omitempty" yaml:"sandbox,omitempty"`
+	} `json:"vhosts,omitempty" yaml:"vhosts,omitempty"`
 }
 
 // ListAPIsParams defines parameters for ListAPIs.

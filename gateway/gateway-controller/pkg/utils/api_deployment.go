@@ -110,6 +110,19 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		}
 		apiName = webhookData.Name
 		apiVersion = webhookData.Version
+
+		// Ensure an upstream main exists for async/websub configs so downstream
+		// logic can safely rely on the field being present. Create an empty
+		// upstream if it is missing and save it back into the union spec.
+		if webhookData.Upstream.Main == nil {
+			url := fmt.Sprintf("%s:%d", s.routerConfig.EventGateway.WebSubHubURL, s.routerConfig.EventGateway.WebSubHubPort)
+			webhookData.Upstream.Main = &api.Upstream{
+				Url: &url,
+			}
+			if err := apiConfig.Spec.FromWebhookAPIData(webhookData); err != nil {
+				return nil, fmt.Errorf("failed to write updated webhook spec: %w", err)
+			}
+		}
 	}
 
 	// Validate configuration

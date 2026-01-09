@@ -70,8 +70,8 @@ import (
 const (
 	DynamicForwardProxyClusterName          = "dynamic-forward-proxy-cluster"
 	ExternalProcessorGRPCServiceClusterName = "ext-processor-grpc-service"
-	WebSubHubInternalClusterName            = "websubhub-internal-cluster"
 	OTELCollectorClusterName                = "otel_collector"
+	WebSubHubInternalClusterName            = "WEBSUBHUB_INTERNAL_CLUSTER"
 )
 
 // Translator converts API configurations to Envoy xDS resources
@@ -329,7 +329,7 @@ func (t *Translator) TranslateConfigs(
 			parsedURL.Scheme = "http"
 		}
 
-		websubhubCluster := t.createCluster(WebSubHubInternalClusterName, parsedURL, nil)
+		websubhubCluster := t.createCluster(constants.WEBSUBHUB_INTERNAL_CLUSTER_NAME, parsedURL, nil)
 		clusters = append(clusters, websubhubCluster)
 		websubInternalListener, err := t.createListenerForWebSubHub()
 		if err != nil {
@@ -379,31 +379,53 @@ func (t *Translator) TranslateConfigs(
 // translateAsyncAPIConfig translates a single API configuration
 func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig) ([]*route.Route, []*cluster.Cluster, error) {
 	apiData, err := cfg.Configuration.Spec.AsWebhookAPIData()
+	cfg.GetContext()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse webhook API data: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse API config data: %w", err)
 	}
 
-	t.logger.Info("Started translating routes for WebSub API")
+	clusters := []*cluster.Cluster{}
 
-	// Create routes for each operation
+	mainClusterName := constants.WEBSUBHUB_INTERNAL_CLUSTER_NAME
+	parsedMainURL, err := url.Parse(t.routerConfig.EventGateway.WebSubHubURL)
+	if parsedMainURL.Path == "" {
+		parsedMainURL.Path = "/hub"
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid upstream URL: %w", err)
+	}
+
+	// Create routes for each operation (default to main cluster)
 	routesList := make([]*route.Route, 0)
+	mainRoutesList := make([]*route.Route, 0)
+
+	// Determine effective vhosts (fallback to global router defaults when not provided)
+	effectiveMainVHost := t.config.GatewayController.Router.VHosts.Main.Default
+	if apiData.Vhosts != nil {
+		if strings.TrimSpace(apiData.Vhosts.Main) != "" {
+			effectiveMainVHost = apiData.Vhosts.Main
+		}
+	}
+
 	for _, ch := range apiData.Channels {
-		// Ensure channel path starts with '/'
 		chPath := ch.Path
 		if !strings.HasPrefix(chPath, "/") {
 			chPath = "/" + chPath
 		}
-		// Always route accepts a POST request for WebSubHub calls
-		r := t.createRoutePerTopic("POST", apiData.Context, apiData.Version, WebSubHubInternalClusterName, chPath)
-		routesList = append(routesList, r)
+		// Use mainClusterName by default; path rewrite based on main upstream path
+		r := t.createRoutePerTopic(apiData.Name, apiData.Version, apiData.Context, "POST", chPath,
+			mainClusterName, effectiveMainVHost)
+		mainRoutesList = append(mainRoutesList, r)
 	}
+	routesList = append(routesList, mainRoutesList...)
 
-	return routesList, nil, nil
+	return routesList, clusters, nil
 }
 
 // translateAPIConfig translates a single API configuration
 func (t *Translator) translateAPIConfig(cfg *models.StoredConfig, allConfigs []*models.StoredConfig) ([]*route.Route, []*cluster.Cluster, error) {
 	apiData, err := cfg.Configuration.Spec.AsAPIConfigData()
+	cfg.GetContext()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse API config data: %w", err)
 	}
@@ -645,7 +667,7 @@ func (t *Translator) createListenerForWebSubHub() (*listener.Listener, error) {
 	routeConfig := &route.RouteConfiguration{
 		Name: "websubhub-internal-route",
 		VirtualHosts: []*route.VirtualHost{{
-			Name:    "websubhub-internal",
+			Name:    "WEBSUBHUB_INTERNAL_VHOST",
 			Domains: []string{"*"},
 			Routes: []*route.Route{{
 				Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Path{Path: "/websubhub/operations"}},
@@ -727,8 +749,8 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener,
 	dynamicForwardProxyRouteConfig := &route.RouteConfiguration{
 		Name: "dynamic-forward-proxy-routing",
 		VirtualHosts: []*route.VirtualHost{{
-			Name:    "all-domains",
-			Domains: []string{"*"}, // this should be websubhub domains
+			Name:    "DYNAMIXC_FORWARD_PROXY_VHOST_WEBSUBHUB",
+			Domains: []string{t.routerConfig.EventGateway.WebSubHubURL}, // this should be websubhub domains
 			Routes: []*route.Route{{
 				Match: &route.RouteMatch{PathSpecifier: &route.RouteMatch_Prefix{Prefix: "/"}},
 				Action: &route.Route_Route{Route: &route.RouteAction{
@@ -780,10 +802,9 @@ func (t *Translator) createDynamicFwdListenerForWebSubHub() (*listener.Listener,
 	}
 
 	httpConnManager := &hcm.HttpConnectionManager{
-		StatPrefix:        "WEBSUBHUB_INBOUND_8082",
-		CodecType:         hcm.HttpConnectionManager_AUTO,
-		GenerateRequestId: wrapperspb.Bool(true),
-		RouteSpecifier:    &hcm.HttpConnectionManager_RouteConfig{RouteConfig: dynamicForwardProxyRouteConfig},
+		StatPrefix:     "WEBSUBHUB_INBOUND_8082_LISTENER",
+		CodecType:      hcm.HttpConnectionManager_AUTO,
+		RouteSpecifier: &hcm.HttpConnectionManager_RouteConfig{RouteConfig: dynamicForwardProxyRouteConfig},
 		HttpFilters: []*hcm.HttpFilter{
 			{ // dynamic forward proxy filter
 				Name:       "envoy.filters.http.dynamic_forward_proxy",
@@ -1161,9 +1182,10 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 }
 
 // createRoutePerTopic creates a route for an operation
-func (t *Translator) createRoutePerTopic(method, context, apiVersion, clusterName, path string) *route.Route {
+func (t *Translator) createRoutePerTopic(apiName, apiVersion, context, method, path, clusterName, vhost string) *route.Route {
+	routeName := GenerateRouteName(method, context, apiVersion, path, vhost)
 	r := &route.Route{
-		Name: GenerateRouteName(method, context, apiVersion, path, t.routerConfig.GatewayHost),
+		Name: routeName,
 		Match: &route.RouteMatch{
 			Headers: []*route.HeaderMatcher{{
 				Name: ":method",
@@ -1183,6 +1205,21 @@ func (t *Translator) createRoutePerTopic(method, context, apiVersion, clusterNam
 				},
 			},
 		},
+	}
+
+	// Attach dynamic metadata for downstream correlation (policies, logging, tracing)
+	metaMap := map[string]interface{}{
+		"route_name":  routeName,
+		"api_name":    apiName,
+		"api_version": apiVersion,
+		"api_context": context,
+		"path":        path,
+		"method":      method,
+	}
+	if metaStruct, err := structpb.NewStruct(metaMap); err == nil {
+		r.Metadata = &core.Metadata{FilterMetadata: map[string]*structpb.Struct{
+			"wso2.route": metaStruct,
+		}}
 	}
 
 	r.Match.PathSpecifier = &route.RouteMatch_Path{

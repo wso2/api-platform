@@ -1975,7 +1975,7 @@ components:
         - name
         - version
         - context
-        - servers
+        - upstream
         - channels
       properties:
         name:
@@ -1997,12 +1997,30 @@ components:
           minLength: 1
           maxLength: 200
           example: /weather
-        servers:
-          type: array
-          description: List of backend service URLs (for REST APIs) or event hub URLs (for async APIs)
-          minItems: 1
-          items:
-            $ref: '#/components/schemas/Server'
+        upstream:
+          type: object
+          description: API-level upstream configuration
+          properties:
+            main:
+              $ref: "#/components/schemas/Upstream"
+            sandbox:
+              $ref: "#/components/schemas/Upstream"
+        vhosts:
+          type: object
+          required:
+            - main
+          description: Custom virtual hosts/domains for the API
+          properties:
+            main:
+              type: string
+              description: Custom virtual host/domain for production traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: api.example.com
+            sandbox:
+              type: string
+              description: Custom virtual host/domain for sandbox traffic
+              pattern: '^[a-zA-Z0-9\.\-]+$'
+              example: sandbox-api.example.com
         channels:
           type: array
           description: List of operations - HTTP operations for REST APIs or event/topic operations for async APIs
