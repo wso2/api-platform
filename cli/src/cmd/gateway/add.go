@@ -39,12 +39,14 @@ ap gateway add --display-name dev --server http://localhost:9090 --auth basic
 # Add a gateway with bearer token authentication (interactive prompts)
 ap gateway add --display-name prod --server https://api.example.com --auth bearer
 
-# Add a gateway without interactive prompts (credentials must be in environment variables)
-ap gateway add --display-name dev --server http://localhost:9090 --auth basic --no-interactive
-
-# For Basic Auth, set environment variables before running gateway commands:
+# Add a gateway without interactive prompts (provide credentials via environment variables or flags)
+# Example (flags):
+ap gateway add --display-name dev --server http://localhost:9090 --auth basic --no-interactive --username admin --password secret
+# Example (env vars):
 #   export ` + utils.EnvGatewayUsername + `=admin
 #   export ` + utils.EnvGatewayPassword + `=admin
+# Or run without explicit creds to rely on env vars:
+ap gateway add --display-name dev --server http://localhost:9090 --auth basic --no-interactive
 
 # For Bearer Auth, set environment variable before running gateway commands:
 #   export ` + utils.EnvGatewayToken + `=your_token_here`
