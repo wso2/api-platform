@@ -40,7 +40,12 @@ help:
 # Run integration tests (assumes images are already built)
 test: check-docker
 	@mkdir -p logs
-	@go test -v -timeout 30m ./... 2>&1 | awk '/^Logs directory:/{print;exit}1'
+	@pkgs="$$(go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | xargs)" ; \
+	if [ -z "$$pkgs" ]; then \
+		echo "No packages with tests found under $(PWD)" ; \
+	else \
+		go test -v -timeout 30m $$pkgs 2>&1 | awk '/^Logs directory:/{print;exit}1' ; \
+	fi
 
 # Build images and run tests (full flow)
 test-all: build-images test
