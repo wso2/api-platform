@@ -38,6 +38,7 @@ type TestState interface {
 	SetGatewayInfo(name, server string)
 	SetAPIInfo(name, version string)
 	SetMCPInfo(name, version string)
+	GetConfigDir() string
 }
 
 // CLISteps provides CLI execution step definitions
@@ -239,12 +240,13 @@ func (s *CLISteps) EnsureGatewayExistsWithServer(name, server string) error {
 // ResetConfiguration resets the CLI configuration to empty
 func (s *CLISteps) ResetConfiguration() error {
 	// Create a backup of the config and create a fresh empty config
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to determine user home directory: %w", err)
+	// Use the isolated test config directory from TestState to avoid
+	// polluting the user's real home directory.
+	configDir := s.state.GetConfigDir()
+	if configDir == "" {
+		return fmt.Errorf("test config directory not initialized")
 	}
 
-	configDir := filepath.Join(home, ".wso2ap")
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return fmt.Errorf("failed to create config dir %s: %w", configDir, err)
 	}

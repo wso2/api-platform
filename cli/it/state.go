@@ -250,3 +250,10 @@ func (s *TestState) SetMCPInfo(name, version string) {
 	s.MCPName = name
 	s.MCPVersion = version
 }
+
+// GetConfigDir returns the path to the isolated test config directory
+func (s *TestState) GetConfigDir() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.ConfigDir
+}

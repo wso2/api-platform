@@ -122,21 +122,23 @@ func (m *InfrastructureManager) SetupInfrastructure(required []InfrastructureID)
 			if err := m.buildCLI(); err != nil {
 				return fmt.Errorf("failed to build CLI: %w", err)
 			}
+			m.startedServices[InfraCLI] = true
 		case InfraGatewayImages:
 			if err := m.buildGatewayImages(); err != nil {
 				return fmt.Errorf("failed to build gateway images: %w", err)
 			}
+			m.startedServices[InfraGatewayImages] = true
 		case InfraGateway:
 			// Ensure gateway images are built first
 			if !m.startedServices[InfraGatewayImages] {
 				if err := m.buildGatewayImages(); err != nil {
 					return fmt.Errorf("failed to build gateway images: %w", err)
 				}
-				m.startedServices[InfraGatewayImages] = true
 			}
 			if err := m.startGatewayStack(); err != nil {
 				return fmt.Errorf("failed to start gateway stack: %w", err)
 			}
+			m.startedServices[InfraGateway] = true
 		case InfraMCPServer:
 			// MCP server is part of the same compose file as gateway
 			// It will be started with the gateway stack
@@ -144,10 +146,16 @@ func (m *InfrastructureManager) SetupInfrastructure(required []InfrastructureID)
 				if err := m.startGatewayStack(); err != nil {
 					return fmt.Errorf("failed to start gateway stack for MCP: %w", err)
 				}
+			} else {
+				// Gateway is already reported started; verify MCP is reachable now.
+				if err := m.waitForMCPServer(); err != nil {
+					return fmt.Errorf("MCP server not reachable after gateway is running: %w", err)
+				}
 			}
+			// Only mark MCP as started if the gateway stack start reported success
+			// or MCP readiness was explicitly verified above.
+			m.startedServices[InfraMCPServer] = true
 		}
-
-		m.startedServices[id] = true
 	}
 
 	return nil
@@ -277,15 +285,15 @@ func (m *InfrastructureManager) startGatewayStack() error {
 		return err
 	}
 
-	// Wait for MCP server to be ready
+	// Wait for MCP server to be ready; treat failure as fatal so callers
+	// don't end up marking MCP as started when it's not reachable.
 	m.reporter.LogPhase1Detail("Waiting for mcp-server-backend to be ready...")
 	if err := m.waitForMCPServer(); err != nil {
-		m.reporter.LogPhase1Detail("Warning: MCP server not ready (continuing anyway)")
+		m.reporter.LogPhase1Fail("GATEWAY", "MCP health check failed", err.Error())
+		return fmt.Errorf("mcp server health check failed: %w", err)
 	}
 
 	m.reporter.LogPhase1Pass("GATEWAY", "Gateway stack ready")
-	m.startedServices[InfraMCPServer] = true // MCP is in the same compose file
-
 	return nil
 }
 

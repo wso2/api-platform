@@ -118,6 +118,12 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 		}
 		fmt.Printf("  %s[DOCKER]%s  Docker available %s✓%s\n", ColorBlue, ColorReset, ColorGreen, ColorReset)
 
+		// Verify required ports are free before starting infrastructure
+		if err := CheckPortsAvailable(); err != nil {
+			log.Fatalf("Pre-flight check failed: Required ports are not available. %v", err)
+		}
+		fmt.Printf("  %s[PORTS]%s  Required ports free %s✓%s\n", ColorBlue, ColorReset, ColorGreen, ColorReset)
+
 		// Initialize infrastructure manager
 		infraManager = NewInfrastructureManager(testReporter, testConfig, testConfigPath)
 
