@@ -74,15 +74,15 @@ var (
 type APIkeyStore struct {
 	mu sync.RWMutex // Protects concurrent access
 	// API Keys storage
-	apiKeys      map[string]*APIKey   // key: API key ID → value: APIKey
-	apiKeysByAPI map[string][]*APIKey // Key: "API ID" → Value: slice of APIKeys
+	apiKeys      map[string]*APIKey            // key: API key ID → value: APIKey
+	apiKeysByAPI map[string]map[string]*APIKey // Key: "API ID" → Value: map[API key ID]*APIKey
 }
 
 // NewAPIkeyStore creates a new in-memory API key store
 func NewAPIkeyStore() *APIkeyStore {
 	return &APIkeyStore{
 		apiKeys:      make(map[string]*APIKey),
-		apiKeysByAPI: make(map[string][]*APIKey),
+		apiKeysByAPI: make(map[string]map[string]*APIKey),
 	}
 }
 
@@ -105,30 +105,36 @@ func (aks *APIkeyStore) StoreAPIKey(apiId string, apiKey *APIKey) error {
 
 	// Check if an API key with the same apiId and name already exists
 	existingKeys, apiIdExists := aks.apiKeysByAPI[apiId]
-	var existingKeyIndex = -1
+	var existingKeyID = ""
 
 	if apiIdExists {
-		for i, existingKey := range existingKeys {
+		for id, existingKey := range existingKeys {
 			if existingKey.Name == apiKey.Name {
-				existingKeyIndex = i
+				existingKeyID = id
 				break
 			}
 		}
 	}
 
-	if existingKeyIndex >= 0 {
+	if existingKeyID != "" {
 		// Update the existing entry in apiKeysByAPI
 		aks.apiKeys[apiKey.ID] = apiKey
-		aks.apiKeysByAPI[apiId][existingKeyIndex] = apiKey
+		aks.apiKeysByAPI[apiId][existingKeyID] = apiKey
 	} else {
 		// Insert new API key
 		// Check if API key ID already exists
 		if _, exists := aks.apiKeys[apiKey.ID]; exists {
 			return ErrConflict
 		}
+
+		// Initialize the map for this API ID if it doesn't exist
+		if aks.apiKeysByAPI[apiId] == nil {
+			aks.apiKeysByAPI[apiId] = make(map[string]*APIKey)
+		}
+
 		// Store by API key value
 		aks.apiKeys[apiKey.ID] = apiKey
-		aks.apiKeysByAPI[apiId] = append(aks.apiKeysByAPI[apiId], apiKey)
+		aks.apiKeysByAPI[apiId][apiKey.ID] = apiKey
 	}
 
 	return nil
@@ -268,7 +274,7 @@ func (aks *APIkeyStore) ClearAll() error {
 	aks.apiKeys = make(map[string]*APIKey)
 
 	// Clear the API-specific keys map
-	aks.apiKeysByAPI = make(map[string][]*APIKey)
+	aks.apiKeysByAPI = make(map[string]map[string]*APIKey)
 
 	return nil
 }
@@ -435,17 +441,12 @@ func parseAPIKey(value string) (ParsedAPIKey, bool) {
 
 // removeFromAPIMapping removes an API key from the API mapping
 func (aks *APIkeyStore) removeFromAPIMapping(apiKey *APIKey) {
-	apiKeys := aks.apiKeysByAPI[apiKey.APIId]
-	for i, ak := range apiKeys {
-		if ak.ID == apiKey.ID {
-			// Remove the element at index i
-			aks.apiKeysByAPI[apiKey.APIId] = append(apiKeys[:i], apiKeys[i+1:]...)
-			break
+	apiKeys, apiIdExists := aks.apiKeysByAPI[apiKey.APIId]
+	if apiIdExists {
+		delete(apiKeys, apiKey.ID)
+		// clean up empty maps
+		if len(aks.apiKeysByAPI[apiKey.APIId]) == 0 {
+			delete(aks.apiKeysByAPI, apiKey.APIId)
 		}
-	}
-
-	// If no API keys left for this API, remove the mapping
-	if len(aks.apiKeysByAPI[apiKey.APIId]) == 0 {
-		delete(aks.apiKeysByAPI, apiKey.APIId)
 	}
 }
