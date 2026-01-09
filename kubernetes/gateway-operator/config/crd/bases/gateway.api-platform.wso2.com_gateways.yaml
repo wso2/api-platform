@@ -103,6 +103,23 @@ spec:
                 required:
                 - scope
                 type: object
+              authSecretRef:
+                description: |-
+                  AuthSecretRef references a Secret containing the user list in a 'users.yaml' key.
+                  The Secret data should contain a key "users.yaml" with a list of users.
+                  This takes precedence over auth configuration in ConfigRef.
+                properties:
+                  name:
+                    default: ""
+                    description: |-
+                      Name of the referent.
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
               configRef:
                 description: |-
                   ConfigRef references a ConfigMap containing custom Helm values configuration.
