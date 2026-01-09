@@ -89,7 +89,7 @@ func PromptCredentials(authType string) (username, password, token string, err e
 func HasCredentials(authType, username, password, token string) bool {
 	switch authType {
 	case AuthTypeBasic:
-		return username != "" || password != ""
+		return username != "" && password != ""
 	case AuthTypeBearer:
 		return token != ""
 	case AuthTypeNone:

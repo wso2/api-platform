@@ -141,6 +141,19 @@ func runAddCommand() error {
 		token = addToken
 	}
 
+	// Validate credential completeness after collection
+	switch addAuth {
+	case utils.AuthTypeBasic:
+		// For Basic auth: either both username+password are set, or neither (use env vars)
+		if (username != "" && password == "") || (username == "" && password != "") {
+			return fmt.Errorf("for basic auth, both username and password must be provided, or leave both empty to use environment variables (%s and %s)",
+				utils.EnvGatewayUsername, utils.EnvGatewayPassword)
+		}
+	case utils.AuthTypeBearer:
+		// For Bearer auth: token is either set or empty (use env var)
+		// No additional validation needed as token is a single field
+	}
+
 	// Load existing config
 	cfg, err := config.LoadConfig()
 	if err != nil {
