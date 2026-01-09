@@ -90,6 +90,8 @@ func FormatHTTPErrorWithCredSource(operation string, resp *http.Response, respon
 				b.WriteString(fmt.Sprintf("  export %s=<password>\n", EnvGatewayPassword))
 			case AuthTypeBearer:
 				b.WriteString(fmt.Sprintf("  export %s=<token>\n", EnvGatewayToken))
+			default:
+				b.WriteString("  (Unsupported auth type; please check gateway auth configuration)\n")
 			}
 		case CredSourceConfig:
 			// Credentials came from config file
@@ -104,6 +106,23 @@ func FormatHTTPErrorWithCredSource(operation string, resp *http.Response, respon
 				b.WriteString(fmt.Sprintf("     export %s=<password>\n", EnvGatewayPassword))
 			case AuthTypeBearer:
 				b.WriteString(fmt.Sprintf("     export %s=<token>\n", EnvGatewayToken))
+			default:
+				b.WriteString("     (Unsupported auth type; please check gateway auth configuration)\n")
+			}
+		default:
+			// Unknown or empty credential source - provide generic guidance
+			b.WriteString("\nCredentials source could not be determined.\n")
+			b.WriteString("Please verify the credentials configured for the gateway and try one of:\n")
+			b.WriteString(fmt.Sprintf("  - Re-add the gateway with correct credentials:\n     ap gateway add --display-name %s --server <server_url> --auth %s\n", gatewayName, authType))
+			b.WriteString("  - Or export appropriate environment variables to override:\n")
+			switch authType {
+			case AuthTypeBasic:
+				b.WriteString(fmt.Sprintf("     export %s=<username>\n", EnvGatewayUsername))
+				b.WriteString(fmt.Sprintf("     export %s=<password>\n", EnvGatewayPassword))
+			case AuthTypeBearer:
+				b.WriteString(fmt.Sprintf("     export %s=<token>\n", EnvGatewayToken))
+			default:
+				b.WriteString("     (Unsupported auth type; please check gateway auth configuration)\n")
 			}
 		}
 
