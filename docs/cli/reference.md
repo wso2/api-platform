@@ -19,10 +19,11 @@
 ## Prerequisites for Gateway Controller Commands
 
 - You must first add and/or select a gateway in the CLI using the appropriate gateway-related commands.
+- Credentials for a gateway can come from either the gateway configuration (when you add the gateway) or from environment variables. **Environment variables take precedence** over configuration and will override credentials stored in the config when present.
 - Depending on the gateway's authentication type:
   - **none**: No authentication required
-  - **basic**: Export the environment variables `WSO2AP_GW_USERNAME` and `WSO2AP_GW_PASSWORD`
-  - **bearer**: Export the environment variable `WSO2AP_GW_TOKEN`
+  - **basic**: Provide credentials via config or export `WSO2AP_GW_USERNAME=<username>` and `WSO2AP_GW_PASSWORD=<password>` (env vars override config)
+  - **bearer**: Provide a token via config or export `WSO2AP_GW_TOKEN=<token>` (env var overrides config)
 
 ---
 
@@ -49,16 +50,18 @@ ap gateway add --display-name prod --server https://api.example.com --auth beare
 
 #### Authentication Setup
 
-For **basic** authentication, export these environment variables:
+For **basic** authentication, export these environment variables (replace the placeholders with your values):
 ```shell
-export WSO2AP_GW_USERNAME=admin
-export WSO2AP_GW_PASSWORD=admin
+export WSO2AP_GW_USERNAME=<username>
+export WSO2AP_GW_PASSWORD=<password>
 ```
 
-For **bearer** authentication, export this environment variable:
+For **bearer** authentication, export this environment variable (replace `<token>` with your token):
 ```shell
-export WSO2AP_GW_TOKEN=your_token_here
+export WSO2AP_GW_TOKEN=<token>
 ```
+
+**Note:** Environment variables override credentials stored in the gateway configuration.
 
 ---
 
