@@ -53,6 +53,9 @@ type RateLimitPolicy struct {
 	includeXRL     bool
 	includeIETF    bool
 	includeRetry   bool
+	// Cost extraction for post-response rate limiting
+	costExtractor         *CostExtractor
+	costExtractionEnabled bool
 }
 
 // GetPolicy creates and initializes a rate limit policy instance
@@ -111,6 +114,18 @@ func GetPolicy(
 	includeXRL := getBoolParam(params, "headers.includeXRateLimit", true)
 	includeIETF := getBoolParam(params, "headers.includeIETF", true)
 	includeRetry := getBoolParam(params, "headers.includeRetryAfter", true)
+
+	// Parse cost extraction configuration
+	costExtractionConfig, err := parseCostExtractionConfig(params)
+	if err != nil {
+		return nil, fmt.Errorf("invalid costExtraction config: %w", err)
+	}
+	var costExtractor *CostExtractor
+	costExtractionEnabled := false
+	if costExtractionConfig != nil && costExtractionConfig.Enabled {
+		costExtractor = NewCostExtractor(*costExtractionConfig)
+		costExtractionEnabled = true
+	}
 
 	// 3. Initialize limiter based on backend
 	var rlLimiter limiter.Limiter
@@ -216,34 +231,45 @@ func GetPolicy(
 
 	// 4. Return configured policy instance
 	return &RateLimitPolicy{
-		keyExtraction:  keyExtraction,
-		routeName:      routeName,
-		apiId:          apiId,
-		apiName:        apiName,
-		apiVersion:     apiVersion,
-		statusCode:     statusCode,
-		responseBody:   responseBody,
-		responseFormat: responseFormat,
-		backend:        backend,
-		limiter:        rlLimiter,
-		redisClient:    redisClient,
-		redisFailOpen:  redisFailOpen,
-		includeXRL:     includeXRL,
-		includeIETF:    includeIETF,
-		includeRetry:   includeRetry,
+		keyExtraction:         keyExtraction,
+		routeName:             routeName,
+		apiId:                 apiId,
+		apiName:               apiName,
+		apiVersion:            apiVersion,
+		statusCode:            statusCode,
+		responseBody:          responseBody,
+		responseFormat:        responseFormat,
+		backend:               backend,
+		limiter:               rlLimiter,
+		redisClient:           redisClient,
+		redisFailOpen:         redisFailOpen,
+		includeXRL:            includeXRL,
+		includeIETF:           includeIETF,
+		includeRetry:          includeRetry,
+		costExtractor:         costExtractor,
+		costExtractionEnabled: costExtractionEnabled,
 	}, nil
 }
 
-// Metadata key for storing rate limit result across request/response phases
-const rateLimitResultKey = "ratelimit:result"
+// Metadata keys for storing data across request/response phases
+const (
+	rateLimitResultKey = "ratelimit:result"
+	rateLimitKeyKey    = "ratelimit:key" // Store extracted key for post-response cost extraction
+)
 
 // Mode returns the processing mode for this policy
 func (p *RateLimitPolicy) Mode() policy.ProcessingMode {
+	responseBodyMode := policy.BodyModeSkip
+	// If cost extraction is enabled and requires response body, buffer it
+	if p.costExtractionEnabled && p.costExtractor != nil && p.costExtractor.RequiresResponseBody() {
+		responseBodyMode = policy.BodyModeBuffer
+	}
+
 	return policy.ProcessingMode{
 		RequestHeaderMode:  policy.HeaderModeProcess, // Need headers for key extraction
 		RequestBodyMode:    policy.BodyModeSkip,      // Don't need body
 		ResponseHeaderMode: policy.HeaderModeProcess, // Need to add rate limit headers to response
-		ResponseBodyMode:   policy.BodyModeSkip,      // Don't need response body
+		ResponseBodyMode:   responseBodyMode,         // Buffer if cost extraction from body is configured
 	}
 }
 
@@ -255,7 +281,33 @@ func (p *RateLimitPolicy) OnRequest(
 	// 1. Extract rate limit key
 	key := p.extractRateLimitKey(ctx)
 
-	// 2. Extract cost parameter (defaults to 1 for backwards compatibility)
+	// 2. If cost extraction is enabled, check if quota is already exhausted before sending to upstream
+	// We use AllowN with n=0 to peek at remaining quota without consuming tokens
+	if p.costExtractionEnabled {
+		ctx.Metadata[rateLimitKeyKey] = key
+
+		// Pre-check: if remaining quota is already <= 0, block the request
+		result, err := p.limiter.AllowN(context.Background(), key, 0)
+		if err != nil {
+			if p.backend == "redis" && p.redisFailOpen {
+				slog.Warn("Rate limit pre-check failed (fail-open)", "error", err, "key", key)
+				return policy.UpstreamRequestModifications{}
+			}
+			slog.Error("Rate limit pre-check failed (fail-closed)", "error", err, "key", key)
+			return p.buildRateLimitResponse(nil)
+		}
+
+		// If remaining <= 0, quota is exhausted - block the request
+		if result != nil && result.Remaining <= 0 {
+			slog.Debug("Cost extraction mode: quota exhausted, blocking request", "key", key, "remaining", result.Remaining)
+			return p.buildRateLimitResponse(result)
+		}
+
+		slog.Debug("Cost extraction enabled, deferring cost consumption to response phase", "key", key, "remaining", result.Remaining)
+		return policy.UpstreamRequestModifications{}
+	}
+
+	// 3. Extract cost parameter (defaults to 1 for backwards compatibility)
 	cost := int64(1)
 	if costVal, ok := params["cost"].(float64); ok {
 		cost = int64(costVal)
@@ -264,10 +316,10 @@ func (p *RateLimitPolicy) OnRequest(
 		}
 	}
 
-	// 3. Check rate limit with cost (weighted rate limiting)
+	// 4. Check rate limit with cost (weighted rate limiting)
 	result, err := p.limiter.AllowN(context.Background(), key, cost)
 
-	// 4. Handle errors (Redis failures, etc.)
+	// 5. Handle errors (Redis failures, etc.)
 	if err != nil {
 		if p.backend == "redis" && p.redisFailOpen {
 			// Fail open: allow request through on Redis errors
@@ -279,7 +331,7 @@ func (p *RateLimitPolicy) OnRequest(
 		return p.buildRateLimitResponse(nil)
 	}
 
-	// 5. Check if allowed
+	// 6. Check if allowed
 	if result.Allowed {
 		// Request allowed - store result in metadata for response phase
 		// Rate limit headers will be added to the response (not upstream request)
@@ -287,7 +339,7 @@ func (p *RateLimitPolicy) OnRequest(
 		return policy.UpstreamRequestModifications{}
 	}
 
-	// 6. Request denied - return 429 with headers
+	// 7. Request denied - return 429 with headers
 	return p.buildRateLimitResponse(result)
 }
 
@@ -296,7 +348,12 @@ func (p *RateLimitPolicy) OnResponse(
 	ctx *policy.ResponseContext,
 	params map[string]interface{},
 ) policy.ResponseAction {
-	// Retrieve rate limit result stored during request phase
+	// Handle post-response cost extraction mode
+	if p.costExtractionEnabled {
+		return p.handleCostExtractionResponse(ctx)
+	}
+
+	// Standard mode: retrieve rate limit result stored during request phase
 	resultRaw, ok := ctx.Metadata[rateLimitResultKey]
 	if !ok {
 		// No rate limit result stored (e.g., fail-open on Redis error)
@@ -310,6 +367,62 @@ func (p *RateLimitPolicy) OnResponse(
 	}
 
 	// Add rate limit headers to the response
+	headers := p.buildRateLimitHeaders(result, false)
+	if len(headers) == 0 {
+		return nil
+	}
+
+	return policy.UpstreamResponseModifications{
+		SetHeaders: headers,
+	}
+}
+
+// handleCostExtractionResponse handles post-response cost extraction and rate limiting
+func (p *RateLimitPolicy) handleCostExtractionResponse(ctx *policy.ResponseContext) policy.ResponseAction {
+	// Retrieve the key stored during request phase
+	keyRaw, ok := ctx.Metadata[rateLimitKeyKey]
+	if !ok {
+		slog.Warn("Rate limit key not found in metadata for cost extraction")
+		return nil
+	}
+
+	key, ok := keyRaw.(string)
+	if !ok {
+		slog.Warn("Invalid rate limit key type in metadata")
+		return nil
+	}
+
+	// Extract actual cost from response
+	actualCost, extracted := p.costExtractor.ExtractCost(ctx)
+	if !extracted {
+		slog.Debug("Cost extraction failed, using default", "key", key, "defaultCost", actualCost)
+	}
+
+	// Consume tokens now using existing AllowN
+	result, err := p.limiter.AllowN(context.Background(), key, actualCost)
+
+	if err != nil {
+		if p.backend == "redis" && p.redisFailOpen {
+			// Fail open: just log and continue without headers
+			slog.Warn("Post-response rate limit check failed (fail-open)", "error", err, "key", key, "cost", actualCost)
+			return nil
+		}
+		// Fail closed: log error (request already completed, can't block)
+		slog.Error("Post-response rate limit check failed (fail-closed)", "error", err, "key", key, "cost", actualCost)
+		return nil
+	}
+
+	if result != nil && !result.Allowed {
+		// Note: Request already sent to upstream, so we just log and add headers
+		// The rate limit will apply to subsequent requests
+		slog.Warn("Rate limit exceeded post-response",
+			"key", key,
+			"cost", actualCost,
+			"limit", result.Limit,
+			"remaining", result.Remaining)
+	}
+
+	// Add rate limit headers
 	headers := p.buildRateLimitHeaders(result, false)
 	if len(headers) == 0 {
 		return nil

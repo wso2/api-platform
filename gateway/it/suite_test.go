@@ -123,6 +123,7 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 			"router":             testState.Config.RouterURL,
 			"policy-engine":      testState.Config.PolicyEngineURL,
 			"sample-backend":     testState.Config.SampleBackendURL,
+			"echo-backend":      testState.Config.EchoBackendURL,
 		})
 		assertSteps = steps.NewAssertSteps(httpSteps)
 
@@ -210,7 +211,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 
 	// Register step definitions
 	if testState != nil {
-		RegisterHealthSteps(ctx, testState)
+		RegisterHealthSteps(ctx, testState, httpSteps)
 		RegisterAuthSteps(ctx, testState, httpSteps)
 		RegisterAPISteps(ctx, testState, httpSteps)
 		RegisterMCPSteps(ctx, testState, httpSteps)

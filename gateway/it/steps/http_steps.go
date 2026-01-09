@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"strings"
@@ -156,8 +157,13 @@ func (h *HTTPSteps) ISendGETRequest(url string) error {
 	return h.sendRequest(http.MethodGet, url, nil)
 }
 
-// ISendPOSTRequest sends a POST request without body
-func (h *HTTPSteps) ISendPOSTRequest(url string) error {
+// SendGETRequest is a public wrapper to send GET request to any URL
+func (h *HTTPSteps) SendGETRequest(url string) error {
+	return h.sendRequest(http.MethodGet, url, nil)
+}
+
+// iSendPOSTRequest sends a POST request without body
+func (h *HTTPSteps) iSendPOSTRequest(url string) error {
 	return h.sendRequest(http.MethodPost, url, nil)
 }
 
@@ -183,11 +189,14 @@ func (h *HTTPSteps) ISendPATCHRequestWithBody(url string, body *godog.DocString)
 
 // iSendManyGETRequests sends multiple GET requests
 func (h *HTTPSteps) iSendManyGETRequests(count int, url string) error {
+	log.Printf("DEBUG: Sending %d GET requests to %s", count, url)
 	for i := 0; i < count; i++ {
 		if err := h.sendRequest(http.MethodGet, url, nil); err != nil {
 			return fmt.Errorf("request %d failed: %w", i+1, err)
 		}
+		log.Printf("DEBUG: Request %d/%d completed, last response status: %d", i+1, count, h.lastResponse.StatusCode)
 	}
+	log.Printf("DEBUG: All %d requests completed, final response status: %d", count, h.lastResponse.StatusCode)
 	return nil
 }
 
@@ -247,11 +256,16 @@ func (h *HTTPSteps) sendRequest(method, url string, body []byte) error {
 
 	reqDump, _ := httputil.DumpRequestOut(req, true)
 	fmt.Printf("REQUEST:\n%s\n", string(reqDump))
+	// Log the request for debugging
+	log.Printf("DEBUG: Sending %s request to %s", method, url)
 
 	resp, err := h.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
+		log.Printf("ERROR: Failed to send request to %s: %v", url, err)
+		return fmt.Errorf("failed to send request to %s: %w", url, err)
 	}
+
+	log.Printf("DEBUG: Received response from %s: status=%d", url, resp.StatusCode)
 
 	h.lastResponse = resp
 

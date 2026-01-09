@@ -58,9 +58,72 @@ parameters:
         Use this to assign different costs to different operations. For example, simple
         queries might cost 1 token while expensive analytics operations cost 10 tokens.
         If omitted, defaults to 1.
+        Note: This is ignored when costExtraction is enabled.
       minimum: 1
       maximum: 1000000
       default: 1
+
+    costExtraction:
+      type: object
+      description: |
+        Configuration for extracting cost from response data (post-response rate limiting).
+        When enabled, the actual cost is determined after the upstream responds, allowing
+        for dynamic rate limiting based on response content (e.g., token usage from LLM APIs).
+        Note: When enabled, requests are NOT blocked pre-request - they always go to upstream.
+        Cost is extracted from response and consumed after the response. If rate limit is
+        exceeded, the current request already succeeded but headers indicate quota exhaustion.
+        Subsequent requests using the same key will be impacted.
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+          description: Enable post-response cost extraction
+          default: false
+
+        sources:
+          type: array
+          description: |
+            Ordered list of sources to extract cost from. Sources are tried in order
+            until one succeeds. If all fail, the default value is used.
+          minItems: 1
+          maxItems: 5
+          items:
+            type: object
+            additionalProperties: false
+            required: ["type"]
+            properties:
+              type:
+                type: string
+                description: |
+                  Type of source to extract cost from:
+                  - response_header: Extract from response header (integer value)
+                  - metadata: Extract from shared metadata (set by other policies)
+                  - response_body: Extract from JSON response body using jsonPath
+                enum: ["response_header", "metadata", "response_body"]
+
+              key:
+                type: string
+                description: |
+                  Header name (for response_header) or metadata key (for metadata).
+                  Required for response_header and metadata types.
+                minLength: 1
+                maxLength: 256
+
+              jsonPath:
+                type: string
+                description: |
+                  JSON path expression for extracting cost from response body.
+                  Required for response_body type.
+                  Example: "$.usage.total_tokens"
+                minLength: 1
+                maxLength: 512
+
+        default:
+          type: integer
+          description: Default cost to use if extraction fails from all sources
+          minimum: 1
+          maximum: 1000000
+          default: 1
 
     keyExtraction:
       type: array
