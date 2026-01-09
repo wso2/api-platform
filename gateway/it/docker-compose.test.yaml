@@ -80,6 +80,7 @@ services:
     environment:
       - XDS_SERVER_HOST=it-gateway-controller
       - XDS_SERVER_PORT=18000
+      - LOG_LEVEL=info
     depends_on:
       gateway-controller:
         condition: service_healthy

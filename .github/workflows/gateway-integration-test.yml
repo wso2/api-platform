@@ -57,21 +57,17 @@ jobs:
           docker ps -a
 
           echo ""
-          echo "=== Gateway Controller Logs ==="
-          docker logs it-gateway-controller 2>&1 || true
-
-          echo ""
-          echo "=== Policy Engine Logs ==="
-          docker logs it-policy-engine 2>&1 || true
-
-          echo ""
-          echo "=== Router Logs ==="
-          docker logs it-router 2>&1 || true
-
-          echo ""
-          echo "=== Sample Backend Logs ==="
-          docker logs it-sample-backend 2>&1 || true
-
-          echo ""
-          echo "=== MCP Server Logs ==="
-          docker logs mcp-server-backend 2>&1 || true
+          echo "=== gateway/it/logs Directory Contents ==="
+          if [ -d gateway/it/logs ]; then
+            if [ "$(ls -A gateway/it/logs)" ]; then
+              for f in gateway/it/logs/*; do
+                echo ""
+                echo "--- Contents of $f ---"
+                cat "$f"
+              done
+            else
+              echo "No log files found in gateway/it/logs."
+            fi
+          else
+            echo "Directory gateway/it/logs does not exist."
+          fi

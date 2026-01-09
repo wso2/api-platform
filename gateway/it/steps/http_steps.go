@@ -20,10 +20,13 @@
 package steps
 
 import (
+	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httputil"
 	"strings"
 	"time"
 
@@ -57,12 +60,12 @@ func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I clear all headers$`, h.iClearHeaders)
 
 	// HTTP method steps
-	ctx.Step(`^I send a GET request to "([^"]*)"$`, h.iSendGETRequest)
-	ctx.Step(`^I send a POST request to "([^"]*)"$`, h.iSendPOSTRequest)
-	ctx.Step(`^I send a POST request to "([^"]*)" with body:$`, h.iSendPOSTRequestWithBody)
-	ctx.Step(`^I send a PUT request to "([^"]*)" with body:$`, h.iSendPUTRequestWithBody)
-	ctx.Step(`^I send a DELETE request to "([^"]*)"$`, h.iSendDELETERequest)
-	ctx.Step(`^I send a PATCH request to "([^"]*)" with body:$`, h.iSendPATCHRequestWithBody)
+	ctx.Step(`^I send a GET request to "([^"]*)"$`, h.ISendGETRequest)
+	ctx.Step(`^I send a POST request to "([^"]*)"$`, h.ISendPOSTRequest)
+	ctx.Step(`^I send a POST request to "([^"]*)" with body:$`, h.ISendPOSTRequestWithBody)
+	ctx.Step(`^I send a PUT request to "([^"]*)" with body:$`, h.ISendPUTRequestWithBody)
+	ctx.Step(`^I send a DELETE request to "([^"]*)"$`, h.ISendDELETERequest)
+	ctx.Step(`^I send a PATCH request to "([^"]*)" with body:$`, h.ISendPATCHRequestWithBody)
 
 	// Service-specific shortcuts
 	ctx.Step(`^I send a GET request to the "([^"]*)" service at "([^"]*)"$`, h.iSendGETToService)
@@ -147,33 +150,33 @@ func (h *HTTPSteps) iClearHeaders() error {
 	return nil
 }
 
-// iSendGETRequest sends a GET request
-func (h *HTTPSteps) iSendGETRequest(url string) error {
+// ISendGETRequest sends a GET request
+func (h *HTTPSteps) ISendGETRequest(url string) error {
 	return h.sendRequest(http.MethodGet, url, nil)
 }
 
-// iSendPOSTRequest sends a POST request without body
-func (h *HTTPSteps) iSendPOSTRequest(url string) error {
+// ISendPOSTRequest sends a POST request without body
+func (h *HTTPSteps) ISendPOSTRequest(url string) error {
 	return h.sendRequest(http.MethodPost, url, nil)
 }
 
-// iSendPOSTRequestWithBody sends a POST request with body
-func (h *HTTPSteps) iSendPOSTRequestWithBody(url string, body *godog.DocString) error {
+// ISendPOSTRequestWithBody sends a POST request with body
+func (h *HTTPSteps) ISendPOSTRequestWithBody(url string, body *godog.DocString) error {
 	return h.sendRequest(http.MethodPost, url, []byte(body.Content))
 }
 
-// iSendPUTRequestWithBody sends a PUT request with body
-func (h *HTTPSteps) iSendPUTRequestWithBody(url string, body *godog.DocString) error {
+// ISendPUTRequestWithBody sends a PUT request with body
+func (h *HTTPSteps) ISendPUTRequestWithBody(url string, body *godog.DocString) error {
 	return h.sendRequest(http.MethodPut, url, []byte(body.Content))
 }
 
-// iSendDELETERequest sends a DELETE request
-func (h *HTTPSteps) iSendDELETERequest(url string) error {
+// ISendDELETERequest sends a DELETE request
+func (h *HTTPSteps) ISendDELETERequest(url string) error {
 	return h.sendRequest(http.MethodDelete, url, nil)
 }
 
-// iSendPATCHRequestWithBody sends a PATCH request with body
-func (h *HTTPSteps) iSendPATCHRequestWithBody(url string, body *godog.DocString) error {
+// ISendPATCHRequestWithBody sends a PATCH request with body
+func (h *HTTPSteps) ISendPATCHRequestWithBody(url string, body *godog.DocString) error {
 	return h.sendRequest(http.MethodPatch, url, []byte(body.Content))
 }
 
@@ -231,6 +234,9 @@ func (h *HTTPSteps) sendRequest(method, url string, body []byte) error {
 
 	h.lastRequest = req
 
+	reqDump, _ := httputil.DumpRequestOut(req, true)
+	fmt.Printf("REQUEST:\n%s\n", string(reqDump))
+
 	resp, err := h.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send request: %w", err)
@@ -246,4 +252,83 @@ func (h *HTTPSteps) sendRequest(method, url string, body []byte) error {
 	}
 
 	return nil
+}
+
+func (h *HTTPSteps) SendMcpRequest(url string, body *godog.DocString) error {
+	var bodyReader io.Reader
+	if body != nil {
+		bodyReader = bytes.NewReader([]byte(body.Content))
+	}
+	httpReq, err := http.NewRequest("POST", url, bodyReader)
+	if err != nil {
+		return fmt.Errorf("failed to create init request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json, text/event-stream")
+
+	for name, value := range h.headers {
+		if name == "mcp-session-id" {
+			httpReq.Header.Set(name, value)
+			break
+		}
+	}
+
+	h.lastRequest = httpReq
+
+	resp, err := h.client.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to reach MCP server for initialize: %w", err)
+	}
+
+	h.lastResponse = resp
+	defer resp.Body.Close()
+
+	if isEventStream(resp) {
+		scanner := bufio.NewScanner(resp.Body)
+		foundData := false
+		for scanner.Scan() {
+			line := scanner.Bytes()
+			if bytes.HasPrefix(line, []byte("data: ")) {
+				data := bytes.TrimPrefix(line, []byte("data: "))
+				data = bytes.TrimSpace(data)
+				if len(data) > 0 && !bytes.Equal(data, []byte("{}")) {
+					h.lastBody = data
+					foundData = true
+					break
+				}
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			return fmt.Errorf("error reading event stream: %w", err)
+		}
+		if !foundData {
+			return fmt.Errorf("no data found in event stream")
+		}
+	} else {
+		h.lastBody, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read response body: %w", err)
+		}
+	}
+
+	// Check for JSON-RPC error in response
+	var initResponse map[string]interface{}
+	if err := json.Unmarshal(h.lastBody, &initResponse); err == nil {
+		if errObj, hasError := initResponse["error"]; hasError {
+			if errMap, ok := errObj.(map[string]interface{}); ok {
+				if msg, ok := errMap["message"].(string); ok {
+					return fmt.Errorf("initialize request returned an error: %s", msg)
+				}
+			}
+			return fmt.Errorf("initialize request returned an error: %v", errObj)
+		}
+	}
+	h.headers["mcp-session-id"] = resp.Header.Get("mcp-session-id")
+	return nil
+}
+
+// isEventStream checks if the response is an event stream
+func isEventStream(resp *http.Response) bool {
+	contentType := resp.Header.Get("Content-Type")
+	return bytes.Contains([]byte(contentType), []byte("text/event-stream"))
 }
