@@ -2387,7 +2387,6 @@ components:
         - name
         - displayName
         - vhost
-        - isCritical
         - functionalityType
       properties:
         name:
