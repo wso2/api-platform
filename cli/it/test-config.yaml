@@ -33,6 +33,8 @@ infrastructure:
   compose_file: ../../gateway/it/docker-compose.test.yaml
   startup_timeout: 120s
   health_check_interval: 5s
+  docker_registry: localhost:5000
+  image_tag: test-v1.0.0
 
 # Test definitions with dependencies
 tests:

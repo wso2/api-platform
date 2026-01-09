@@ -124,6 +124,16 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 		}
 		fmt.Printf("  %s[DOCKER]%s  Docker available %s✓%s\n", ColorBlue, ColorReset, ColorGreen, ColorReset)
 
+		// Export docker registry + image tag from test config so steps can use them
+		if testConfig != nil {
+			if testConfig.Infrastructure.DockerRegistry != "" {
+				os.Setenv("TEST_DOCKER_REGISTRY", testConfig.Infrastructure.DockerRegistry)
+			}
+			if testConfig.Infrastructure.ImageTag != "" {
+				os.Setenv("TEST_IMAGE_TAG", testConfig.Infrastructure.ImageTag)
+			}
+		}
+
 		// Verify required ports are free before starting infrastructure
 		if err := CheckPortsAvailable(); err != nil {
 			log.Fatalf("Pre-flight check failed: Required ports are not available. %v", err)

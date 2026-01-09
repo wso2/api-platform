@@ -170,9 +170,21 @@ func (s *CLISteps) BuildGatewayWithManifest(manifestPath string) error {
 		return fmt.Errorf("failed to resolve manifest path %q: %w", manifestPath, err)
 	}
 
+	// Allow test configuration to override registry and image tag via
+	// environment variables set by the test suite (TEST_DOCKER_REGISTRY,
+	// TEST_IMAGE_TAG). Fall back to defaults used previously.
+	registry := os.Getenv("TEST_DOCKER_REGISTRY")
+	if registry == "" {
+		registry = "localhost:5000"
+	}
+	tag := os.Getenv("TEST_IMAGE_TAG")
+	if tag == "" {
+		tag = "test-v1.0.0"
+	}
+
 	return s.state.ExecuteCLI("gateway", "build", "-f", absPath,
-		"--docker-registry", "localhost:5000",
-		"--image-tag", "test-v1.0.0")
+		"--docker-registry", registry,
+		"--image-tag", tag)
 }
 
 // RunGatewayList runs the gateway list command

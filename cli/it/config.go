@@ -36,6 +36,8 @@ type InfrastructureConfig struct {
 	ComposeFile         string `yaml:"compose_file"`
 	StartupTimeout      string `yaml:"startup_timeout"`
 	HealthCheckInterval string `yaml:"health_check_interval"`
+	DockerRegistry      string `yaml:"docker_registry"`
+	ImageTag            string `yaml:"image_tag"`
 }
 
 // TestsConfig holds all test group configurations
