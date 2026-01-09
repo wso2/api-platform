@@ -80,3 +80,11 @@ policies:
   - name: semantic-prompt-guard
     version: v0.1.0
     filePath: ./semantic-prompt-guard/v0.1.0
+
+  - name: model-round-robin
+    version: v0.1.0
+    filePath: ./model-round-robin/v0.1.0
+
+  - name: model-weighted-round-robin
+    version: v0.1.0
+    filePath: ./model-weighted-round-robin/v0.1.0
