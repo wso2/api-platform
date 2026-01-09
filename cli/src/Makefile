@@ -102,7 +102,7 @@ clean:
 ## test: Run tests
 test:
 	@echo "Running tests..."
-	@$(GOTEST) -v ./test/basic/... || (echo "Tests failed. Build aborted." && exit 1)
+	@$(GOTEST) -v ./test/unit/... || (echo "Tests failed. Build aborted." && exit 1)
 
 ## deps: Download dependencies
 deps:

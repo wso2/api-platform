@@ -27,7 +27,7 @@ import (
 // ResourceKind represents the type of gateway resource
 const (
 	ResourceKindRestAPI = "RestApi"
-	ResourceKindMCP     = "mcp"
+	ResourceKindMCP     = "Mcp"
 )
 
 // Resource represents a parsed gateway resource
