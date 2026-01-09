@@ -35,6 +35,7 @@ import (
 type Client struct {
 	gateway    *config.Gateway
 	httpClient *http.Client
+	credSource utils.CredentialSource
 }
 
 // NewClient creates a new gateway client for the specified gateway
@@ -103,6 +104,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		if envUsername != "" && envPassword != "" {
 			// Use environment variables (both present)
 			req.SetBasicAuth(envUsername, envPassword)
+			c.credSource = utils.CredSourceEnv
 		} else {
 			// Step 2: Fall back to config credentials
 			username := c.gateway.Username
@@ -114,6 +116,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 			}
 
 			req.SetBasicAuth(username, password)
+			c.credSource = utils.CredSourceConfig
 		}
 
 	case utils.AuthTypeBearer:
@@ -123,6 +126,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		if envToken != "" {
 			// Use environment variable
 			req.Header.Set("Authorization", "Bearer "+envToken)
+			c.credSource = utils.CredSourceEnv
 		} else {
 			// Step 2: Fall back to config token
 			token := c.gateway.Token
@@ -133,6 +137,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 			}
 
 			req.Header.Set("Authorization", "Bearer "+token)
+			c.credSource = utils.CredSourceConfig
 		}
 
 	default:
@@ -148,6 +153,18 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	}
 
 	return c.httpClient.Do(req)
+}
+
+// formatHTTPError formats HTTP errors with credential-source-aware messaging
+func (c *Client) formatHTTPError(operation string, resp *http.Response) error {
+	return utils.FormatHTTPErrorWithCredSource(
+		operation,
+		resp,
+		"Gateway Controller",
+		c.gateway.Auth,
+		c.credSource,
+		c.gateway.Name,
+	)
 }
 
 // Get performs a GET request to the specified path
@@ -176,7 +193,7 @@ func (c *Client) Get(path string) (*http.Response, error) {
 		return resp, nil
 	}
 
-	return nil, utils.FormatHTTPError(fmt.Sprintf("GET %s", path), resp, "Gateway Controller")
+	return nil, c.formatHTTPError(fmt.Sprintf("GET %s", path), resp)
 }
 
 // Post performs a POST request to the specified path with the given body
@@ -199,7 +216,7 @@ func (c *Client) Post(path string, body io.Reader) (*http.Response, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return resp, nil
 	}
-	return nil, utils.FormatHTTPError(fmt.Sprintf("POST %s", path), resp, "Gateway Controller")
+	return nil, c.formatHTTPError(fmt.Sprintf("POST %s", path), resp)
 }
 
 // PostYAML performs a POST request with YAML content
@@ -223,7 +240,7 @@ func (c *Client) PostYAML(path string, body io.Reader) (*http.Response, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return resp, nil
 	}
-	return nil, utils.FormatHTTPError(fmt.Sprintf("POST %s", path), resp, "Gateway Controller")
+	return nil, c.formatHTTPError(fmt.Sprintf("POST %s", path), resp)
 }
 
 // Put performs a PUT request to the specified path with the given body
@@ -246,7 +263,7 @@ func (c *Client) Put(path string, body io.Reader) (*http.Response, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return resp, nil
 	}
-	return nil, utils.FormatHTTPError(fmt.Sprintf("PUT %s", path), resp, "Gateway Controller")
+	return nil, c.formatHTTPError(fmt.Sprintf("PUT %s", path), resp)
 }
 
 // PutYAML performs a PUT request with YAML content
@@ -270,7 +287,7 @@ func (c *Client) PutYAML(path string, body io.Reader) (*http.Response, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return resp, nil
 	}
-	return nil, utils.FormatHTTPError(fmt.Sprintf("PUT %s", path), resp, "Gateway Controller")
+	return nil, c.formatHTTPError(fmt.Sprintf("PUT %s", path), resp)
 }
 
 // Delete performs a DELETE request to the specified path
@@ -293,7 +310,7 @@ func (c *Client) Delete(path string) (*http.Response, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return resp, nil
 	}
-	return nil, utils.FormatHTTPError(fmt.Sprintf("DELETE %s", path), resp, "Gateway Controller")
+	return nil, c.formatHTTPError(fmt.Sprintf("DELETE %s", path), resp)
 }
 
 // GetGateway returns the gateway configuration

@@ -78,14 +78,22 @@ func runUseCommand() error {
 
 	fmt.Printf("Gateway set to %s (auth: %s).\n", useName, gateway.Auth)
 
-	// Validate environment variables for the gateway's auth type
+	// Validate credentials availability for the gateway's auth type
+	// Only warn if BOTH env vars AND config credentials are missing
 	if gateway.Auth != utils.AuthTypeNone {
-		missing, ok, err := utils.ValidateAuthEnvVars(gateway.Auth)
-		if err != nil {
-			return fmt.Errorf("validation failed: %w", err)
-		}
-		if !ok {
+		hasEnvCreds := utils.HasEnvCredentials(gateway.Auth)
+		hasConfigCreds := utils.HasConfigCredentials(gateway.Auth, gateway.Username, gateway.Password, gateway.Token)
+
+		if !hasEnvCreds && !hasConfigCreds {
+			// Neither env vars nor config credentials are available
+			missing, _, _ := utils.ValidateAuthEnvVars(gateway.Auth)
 			fmt.Println("\n" + utils.FormatMissingEnvVarsWarning(gateway.Auth, missing))
+		} else if hasConfigCreds && !hasEnvCreds {
+			// Config has credentials, env vars not set - this is fine, just inform
+			fmt.Println("Using credentials from configuration.")
+		} else if hasEnvCreds {
+			// Env vars are set - they will be used
+			fmt.Println("Using credentials from environment variables.")
 		}
 	}
 

@@ -105,7 +105,7 @@ ap gateway use --display-name <name>
 #### Sample Command
 
 ```shell
-ap gateway use --display-name <name>
+ap gateway use --display-name dev
 ```
 
 ---

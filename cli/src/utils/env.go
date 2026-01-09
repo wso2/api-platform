@@ -130,3 +130,31 @@ func FormatMissingEnvVarsError(authType string, missing []string) string {
 	}
 	return msg
 }
+
+// HasConfigCredentials checks if the gateway has credentials stored in config
+func HasConfigCredentials(authType, username, password, token string) bool {
+	switch authType {
+	case AuthTypeBasic:
+		return username != "" && password != ""
+	case AuthTypeBearer:
+		return token != ""
+	case AuthTypeNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// HasEnvCredentials checks if environment variables are set for the given auth type
+func HasEnvCredentials(authType string) bool {
+	switch authType {
+	case AuthTypeBasic:
+		return os.Getenv(EnvGatewayUsername) != "" && os.Getenv(EnvGatewayPassword) != ""
+	case AuthTypeBearer:
+		return os.Getenv(EnvGatewayToken) != ""
+	case AuthTypeNone:
+		return true
+	default:
+		return false
+	}
+}
