@@ -177,12 +177,13 @@ func (cb *serverCallbacks) OnStreamRequest(id int64, req *discoverygrpc.Discover
 func (cb *serverCallbacks) OnStreamResponse(ctx context.Context, id int64, req *discoverygrpc.DiscoveryRequest, resp *discoverygrpc.DiscoveryResponse) {
 	// Determine if this is an ACK or NACK
 	status := "ack"
-	if req != nil && resp != nil && req.ResponseNonce != "" {
-		// If version changed, it's likely an ACK
-		if req.VersionInfo != resp.VersionInfo {
-			status = "ack"
-		} else {
+	if req != nil && resp != nil {
+		// NACK if error detail is present
+		if req.ErrorDetail != nil {
 			status = "nack"
+		} else if req.ResponseNonce == resp.Nonce {
+			// ACK if no error and nonce matches
+			status = "ack"
 		}
 	}
 
