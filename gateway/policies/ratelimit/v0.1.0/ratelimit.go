@@ -2,10 +2,14 @@ package ratelimit
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/policy-engine/policies/ratelimit/algorithms/fixedwindow" // Register Fixed Window algorithm
@@ -14,6 +18,10 @@ import (
 	"github.com/redis/go-redis/v9"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
+
+// memoryLimiterCache caches memory-backed limiters to preserve state across xDS rebuilds.
+// Only memory backend limiters are cached; Redis-backed limiters maintain state externally.
+var memoryLimiterCache sync.Map // map[string]limiter.Limiter
 
 // KeyComponent represents a single component for building rate limit keys
 type KeyComponent struct {
@@ -32,6 +40,9 @@ type LimitConfig struct {
 type RateLimitPolicy struct {
 	keyExtraction  []KeyComponent
 	routeName      string // From metadata, used as default key
+	apiId          string // From metadata, API identifier
+	apiName        string // From metadata, API name for scope-based caching
+	apiVersion     string // From metadata, API version
 	statusCode     int
 	responseBody   string
 	responseFormat string
@@ -54,6 +65,11 @@ func GetPolicy(
 	if routeName == "" {
 		routeName = "unknown-route"
 	}
+
+	// Extract API metadata for scope-based caching
+	apiId := metadata.APIId
+	apiName := metadata.APIName
+	apiVersion := metadata.APIVersion
 
 	// 1. Parse user parameters
 	limits, err := parseLimits(params["limits"])
@@ -160,28 +176,41 @@ func GetPolicy(
 			return nil, fmt.Errorf("failed to create Redis limiter: %w", err)
 		}
 	} else {
-		// Memory backend
-		cleanupInterval := getDurationParam(params, "memory.cleanupInterval", 5*time.Minute)
+		// Memory backend - check cache first to preserve state across xDS rebuilds
+		cacheKey := getCacheKey(routeName, apiName, keyExtraction, params)
 
-		// Convert limits to limiter.LimitConfig
-		limiterLimits := make([]limiter.LimitConfig, len(limits))
-		for i, lim := range limits {
-			limiterLimits[i] = limiter.LimitConfig{
-				Limit:    lim.Limit,
-				Duration: lim.Duration,
-				Burst:    lim.Burst,
+		// Try to get cached limiter
+		if cached, ok := memoryLimiterCache.Load(cacheKey); ok {
+			rlLimiter = cached.(limiter.Limiter)
+			slog.Debug("Reusing cached memory limiter", "route", routeName, "apiName", apiName, "cacheKey", cacheKey[:16])
+		} else {
+			// Create new limiter
+			cleanupInterval := getDurationParam(params, "memory.cleanupInterval", 5*time.Minute)
+
+			// Convert limits to limiter.LimitConfig
+			limiterLimits := make([]limiter.LimitConfig, len(limits))
+			for i, lim := range limits {
+				limiterLimits[i] = limiter.LimitConfig{
+					Limit:    lim.Limit,
+					Duration: lim.Duration,
+					Burst:    lim.Burst,
+				}
 			}
-		}
 
-		// Create limiter using factory pattern
-		rlLimiter, err = limiter.CreateLimiter(limiter.Config{
-			Algorithm:       algorithm,
-			Limits:          limiterLimits,
-			Backend:         backend,
-			CleanupInterval: cleanupInterval,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create memory limiter: %w", err)
+			// Create limiter using factory pattern
+			rlLimiter, err = limiter.CreateLimiter(limiter.Config{
+				Algorithm:       algorithm,
+				Limits:          limiterLimits,
+				Backend:         backend,
+				CleanupInterval: cleanupInterval,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create memory limiter: %w", err)
+			}
+
+			// Store in cache
+			memoryLimiterCache.Store(cacheKey, rlLimiter)
+			slog.Debug("Created and cached new memory limiter", "route", routeName, "apiName", apiName, "cacheKey", cacheKey[:16])
 		}
 	}
 
@@ -189,6 +218,9 @@ func GetPolicy(
 	return &RateLimitPolicy{
 		keyExtraction:  keyExtraction,
 		routeName:      routeName,
+		apiId:          apiId,
+		apiName:        apiName,
+		apiVersion:     apiVersion,
 		statusCode:     statusCode,
 		responseBody:   responseBody,
 		responseFormat: responseFormat,
@@ -650,4 +682,114 @@ func getDurationParam(params map[string]interface{}, key string, defaultVal time
 	}
 
 	return defaultVal
+}
+
+// getCacheKey computes a stable hash key for caching memory-backed limiters.
+// The key includes scope (based on keyExtraction) and configuration.
+// Scope logic: if keyExtraction has "apiname" AND NOT "routename" → API-level scope
+// Otherwise → route-level scope (default, backward compatible)
+func getCacheKey(routeName, apiName string, keyExtraction []KeyComponent, params map[string]interface{}) string {
+	h := sha256.New()
+
+	// Determine scope from keyExtraction
+	hasApiName := false
+	hasRouteName := false
+	for _, comp := range keyExtraction {
+		if comp.Type == "apiname" {
+			hasApiName = true
+		}
+		if comp.Type == "routename" {
+			hasRouteName = true
+		}
+	}
+
+	if hasApiName && !hasRouteName {
+		// API-level scope: share limiter across all routes of this API
+		scopeKey := apiName
+		if scopeKey == "" {
+			scopeKey = "_unknown_api_"
+		}
+		h.Write([]byte("scope:api:"))
+		h.Write([]byte(scopeKey))
+		h.Write([]byte("|"))
+	} else {
+		// Route-level scope (default): separate limiter per route
+		h.Write([]byte("scope:route:"))
+		h.Write([]byte(routeName))
+		h.Write([]byte("|"))
+	}
+
+	// Include algorithm
+	algorithm := getStringParam(params, "algorithm", "gcra")
+	h.Write([]byte("algo:"))
+	h.Write([]byte(algorithm))
+	h.Write([]byte("|"))
+
+	// Include limits configuration (in order for stability)
+	if limitsRaw, ok := params["limits"].([]interface{}); ok {
+		h.Write([]byte("limits:"))
+		for i, limitRaw := range limitsRaw {
+			if limitMap, ok := limitRaw.(map[string]interface{}); ok {
+				h.Write([]byte(fmt.Sprintf("[%d:", i)))
+				if limit, ok := limitMap["limit"].(float64); ok {
+					h.Write([]byte(fmt.Sprintf("l=%d,", int64(limit))))
+				}
+				if duration, ok := limitMap["duration"].(string); ok {
+					h.Write([]byte(fmt.Sprintf("d=%s,", duration)))
+				}
+				if burst, ok := limitMap["burst"].(float64); ok {
+					h.Write([]byte(fmt.Sprintf("b=%d", int64(burst))))
+				}
+				h.Write([]byte("]"))
+			}
+		}
+		h.Write([]byte("|"))
+	}
+
+	// Include memory cleanup interval
+	cleanupInterval := getDurationParam(params, "memory.cleanupInterval", 5*time.Minute)
+	h.Write([]byte("cleanup:"))
+	h.Write([]byte(cleanupInterval.String()))
+	h.Write([]byte("|"))
+
+	// Include key extraction configuration (in order for stability)
+	if keRaw, ok := params["keyExtraction"].([]interface{}); ok {
+		h.Write([]byte("keyExtraction:"))
+		for i, compRaw := range keRaw {
+			if compMap, ok := compRaw.(map[string]interface{}); ok {
+				h.Write([]byte(fmt.Sprintf("[%d:", i)))
+				if t, ok := compMap["type"].(string); ok {
+					h.Write([]byte(fmt.Sprintf("t=%s", t)))
+				}
+				if k, ok := compMap["key"].(string); ok {
+					h.Write([]byte(fmt.Sprintf(",k=%s", k)))
+				}
+				h.Write([]byte("]"))
+			}
+		}
+		h.Write([]byte("|"))
+	}
+
+	// Include header configuration
+	includeXRL := getBoolParam(params, "headers.includeXRateLimit", true)
+	includeIETF := getBoolParam(params, "headers.includeIETF", true)
+	includeRetry := getBoolParam(params, "headers.includeRetryAfter", true)
+	h.Write([]byte(fmt.Sprintf("headers:xrl=%t,ietf=%t,retry=%t|", includeXRL, includeIETF, includeRetry)))
+
+	// Include response configuration
+	if exceeded, ok := params["onRateLimitExceeded"].(map[string]interface{}); ok {
+		h.Write([]byte("exceeded:"))
+		// Sort keys for stable ordering
+		keys := make([]string, 0, len(exceeded))
+		for k := range exceeded {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			h.Write([]byte(fmt.Sprintf("%s=%v,", k, exceeded[k])))
+		}
+		h.Write([]byte("|"))
+	}
+
+	return hex.EncodeToString(h.Sum(nil))
 }

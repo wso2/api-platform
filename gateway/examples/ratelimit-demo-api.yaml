@@ -1,0 +1,202 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# This example demonstrates various rate limiting configurations
+# See the documentation at: docs/gateway/policies/ratelimit.md
+
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: ecommerce-api-v1
+spec:
+  displayName: E-Commerce API with Rate Limiting
+  version: v1.0
+  context: /ecommerce/$version
+  upstream:
+    main:
+      url: http://sample-backend:5000/api/v1
+
+  # API-level rate limiting: Apply to all operations
+  policies:
+    - name: ratelimit
+      version: v0.1.0
+      params:
+        # Default cost for all operations (can be overridden per operation)
+        cost: 1
+
+        # Multiple time windows - enforce both per-minute and per-hour limits
+        limits:
+          - limit: 1000
+            duration: "1h"  # 1000 requests per hour
+          # - limit: 10
+          #   duration: "1m"  # 10 requests per minute
+
+        # Rate limit key: API name + User ID from header
+        # This means each user gets their own rate limit counter
+        keyExtraction:
+          - type: apiname
+          - type: header
+            key: X-User-ID
+
+        # Custom error response when rate limit is exceeded
+        onRateLimitExceeded:
+          statusCode: 429
+          body: '{"error": "RATE_LIMIT_EXCEEDED", "message": "You have exceeded your rate limit. Please try again later.", "retryAfter": "60s"}'
+          bodyFormat: json
+
+  operations:
+    # Example 1: Basic rate limiting (inherits API-level policy)
+    # This operation will have: 100 req/min AND 1000 req/hour per user
+    - method: GET
+      path: /products
+      description: "Get product catalog - standard rate limit"
+
+    # Example 2: Per-operation with different cost (weighted rate limiting)
+    # Complex queries cost more tokens than simple lookups
+    - method: GET
+      path: /products/search
+      policies:
+        - name: ratelimit
+          version: v0.1.0
+          params:
+            cost: 5  # Search operations consume more resources
+            limits:
+              - limit: 5
+                duration: "1m"
+              - limit: 10
+                duration: "5m"
+            keyExtraction:
+              - type: apiname
+              - type: header
+                key: X-User-ID
+
+    # Example 3: High-cost operation (report generation)
+    # Heavy operations get stricter limits
+    - method: POST
+      path: /reports/generate
+      policies:
+        - name: ratelimit
+          version: v0.1.0
+          params:
+            cost: 10  # Report generation is expensive
+            limits:
+              - limit: 10
+                duration: "1h"  # Only 10 reports per hour
+              - limit: 5
+                duration: "10m"  # And max 5 per 10 minutes
+            keyExtraction:
+              - type: apiname
+              - type: header
+                key: X-User-ID
+            onRateLimitExceeded:
+              statusCode: 429
+              body: '{"error": "REPORT_LIMIT_EXCEEDED", "message": "Report generation is limited to prevent resource exhaustion. Please wait before generating more reports."}'
+              bodyFormat: json
+
+    # Example 4: Per-IP rate limiting (fallback for unauthenticated users)
+    # Use IP-based limiting when user is not authenticated
+    - method: GET
+      path: /public/products
+      policies:
+        - name: ratelimit
+          version: v0.1.0
+          params:
+            cost: 1
+            limits:
+              - limit: 5
+                duration: "10m"  # 5 requests per minute
+            keyExtraction:
+              - type: ip  # Rate limit by IP address
+            onRateLimitExceeded:
+              statusCode: 429
+              body: 'Too many requests from your IP address. Please try again later.'
+              bodyFormat: plain
+
+    # Example 5: Multi-tenant rate limiting (composite key)
+    # Rate limit per tenant + user combination
+    - method: POST
+      path: /orders
+      policies:
+        - name: ratelimit
+          version: v0.1.0
+          params:
+            cost: 1
+            limits:
+              - limit: 50
+                duration: "1m"
+              - limit: 500
+                duration: "1h"
+            keyExtraction:
+              - type: header
+                key: X-Tenant-ID
+              - type: header
+                key: X-User-ID
+            onRateLimitExceeded:
+              statusCode: 429
+              body: '{"error": "ORDER_RATE_LIMIT", "message": "Order creation rate limit exceeded for your tenant."}'
+
+    # Example 6: Burst rate limiting with GCRA
+    # Allow short bursts but maintain average rate
+    - method: GET
+      path: /inventory/check
+      policies:
+        - name: ratelimit
+          version: v0.1.0
+          params:
+            cost: 1
+            limits:
+              - limit: 10
+                duration: "1s"
+                burst: 20  # Allow up to 20 requests in short bursts
+            keyExtraction:
+              - type: apiname
+              - type: header
+                key: X-User-ID
+
+    # Example 7: Route-specific rate limiting (no policy)
+    # This operation has NO rate limiting (use with caution!)
+    - method: GET
+      path: /health
+      description: "Health check endpoint - no rate limiting"
+      # No rate limit policy applied
+    
+    # Example 8: API level limiting with fixed-window
+    - method: GET
+      path: /inventory/apilevel1
+      policies:
+        - name: ratelimit
+          version: v0.1.0
+          params:
+            cost: 1
+            limits:
+              - limit: 10
+                duration: "1m"
+            keyExtraction:
+              - type: apiname
+    - method: GET
+      path: /inventory/apilevel2
+      policies:
+        - name: ratelimit
+          version: v0.1.0
+          params:
+            cost: 1
+            limits:
+              - limit: 10
+                duration: "1m"
+            keyExtraction:
+              - type: apiname
