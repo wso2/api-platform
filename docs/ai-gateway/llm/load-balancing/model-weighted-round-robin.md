@@ -19,7 +19,7 @@ The Model Weighted Round Robin policy implements weighted round-robin load balan
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `models` | array | Yes | - | List of models with weights for weighted round-robin distribution. Each model must have a `model` name and `weight`. The `endpoint` field is optional. |
+| `models` | array | Yes | - | List of models with weights for weighted round-robin distribution. Each model must have a `model` name and `weight`. |
 | `suspendDuration` | integer | No | `0` | Suspend duration in seconds for failed models. If set to 0, failed model knowledge is not persisted. Must be >= 0. |
 
 ### Model Configuration
@@ -29,8 +29,7 @@ Each model in the `models` array is an object with the following properties:
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
 | `model` | string | Yes | The AI model name to use for load balancing. |
-| `weight` | integer | Yes | The weight assigned to this model for distribution. Higher weights mean more requests will be routed to this model. Weight is relative to total weight of all models. Must be atleast 1. |
-| `endpoint` | string | No | The endpoint URL for the model (optional). Must match pattern `^https?://` if provided. |
+| `weight` | integer | Yes | The weight assigned to this model for distribution. Higher weights mean more requests will be routed to this model. Weight is relative to total weight of all models. Must be at least 1. |
 
 ### LLM provider template
 

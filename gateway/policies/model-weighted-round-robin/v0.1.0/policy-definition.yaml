@@ -19,10 +19,6 @@ parameters:
             type: string
             description: The AI model name
             minLength: 1
-          endpoint:
-            type: string
-            description: The endpoint URL for the model (optional)
-            pattern: '^https?://'
           weight:
             type: integer
             description: |

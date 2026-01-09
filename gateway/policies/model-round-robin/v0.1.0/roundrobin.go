@@ -1,18 +1,19 @@
 /*
- *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
  *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *  http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 
 package modelroundrobin
@@ -46,8 +47,7 @@ type ModelRoundRobinPolicyParams struct {
 
 // ModelConfig represents a single model configuration
 type ModelConfig struct {
-	Model    string
-	Endpoint string
+	Model string
 }
 
 // RequestModelConfig holds the requestModel configuration
@@ -127,22 +127,6 @@ func parseParams(params map[string]interface{}) (ModelRoundRobinPolicyParams, er
 			return result, fmt.Errorf("'models[%d].model' must have a minimum length of 1", i)
 		}
 		modelConfig.Model = modelNameStr
-
-		// Parse endpoint if provided (optional)
-		if endpoint, ok := modelMap["endpoint"]; ok {
-			endpointStr, ok := endpoint.(string)
-			if !ok {
-				return result, fmt.Errorf("'models[%d].endpoint' must be a string", i)
-			}
-
-			// Validate endpoint pattern (must start with http:// or https://)
-			if len(endpointStr) > 0 {
-				if !strings.HasPrefix(endpointStr, "http://") && !strings.HasPrefix(endpointStr, "https://") {
-					return result, fmt.Errorf("'models[%d].endpoint' must match pattern '^https?://'", i)
-				}
-			}
-			modelConfig.Endpoint = endpointStr
-		}
 
 		result.Models = append(result.Models, modelConfig)
 	}
@@ -458,27 +442,43 @@ func (p *ModelRoundRobinPolicy) modifyRequestModel(ctx *policy.RequestContext, n
 // modifyModelInPayload modifies the model in request body using JSONPath
 func (p *ModelRoundRobinPolicy) modifyModelInPayload(ctx *policy.RequestContext, newModel string, jsonPath string) policy.RequestAction {
 	if ctx.Body == nil || ctx.Body.Content == nil {
-		return policy.UpstreamRequestModifications{}
+		return policy.ImmediateResponse{
+			StatusCode: 500,
+			Headers:    map[string]string{"Content-Type": "application/json"},
+			Body:       []byte(`{"error":"Request body is empty, cannot modify model"}`),
+		}
 	}
 
 	// Parse request body
 	var payloadData map[string]interface{}
 	if err := json.Unmarshal(ctx.Body.Content, &payloadData); err != nil {
-		slog.Debug("ModelRoundRobin: Error unmarshaling request body", "error", err)
-		return policy.UpstreamRequestModifications{}
+		slog.Error("ModelRoundRobin: Error unmarshaling request body", "error", err)
+		return policy.ImmediateResponse{
+			StatusCode: 500,
+			Headers:    map[string]string{"Content-Type": "application/json"},
+			Body:       []byte(fmt.Sprintf(`{"error":"Failed to parse request body: %s"}`, err.Error())),
+		}
 	}
 
 	// Update model in payload
 	if err := utils.SetValueAtJSONPath(payloadData, jsonPath, newModel); err != nil {
-		slog.Debug("ModelRoundRobin: Error setting model in request body", "jsonPath", jsonPath, "error", err)
-		return policy.UpstreamRequestModifications{}
+		slog.Error("ModelRoundRobin: Error setting model in request body", "jsonPath", jsonPath, "error", err)
+		return policy.ImmediateResponse{
+			StatusCode: 500,
+			Headers:    map[string]string{"Content-Type": "application/json"},
+			Body:       []byte(fmt.Sprintf(`{"error":"Failed to set model at jsonPath '%s': %s"}`, jsonPath, err.Error())),
+		}
 	}
 
 	// Marshal back to JSON
 	updatedPayload, err := json.Marshal(payloadData)
 	if err != nil {
-		slog.Debug("ModelRoundRobin: Error marshaling updated request body", "error", err)
-		return policy.UpstreamRequestModifications{}
+		slog.Error("ModelRoundRobin: Error marshaling updated request body", "error", err)
+		return policy.ImmediateResponse{
+			StatusCode: 500,
+			Headers:    map[string]string{"Content-Type": "application/json"},
+			Body:       []byte(fmt.Sprintf(`{"error":"Failed to marshal updated request body: %s"}`, err.Error())),
+		}
 	}
 
 	slog.Debug("ModelRoundRobin: Modified request model in payload", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "jsonPath", jsonPath)

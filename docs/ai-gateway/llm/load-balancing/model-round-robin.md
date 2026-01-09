@@ -18,7 +18,7 @@ The Model Round Robin policy implements round-robin load balancing for AI models
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `models` | array | Yes | - | List of models for round-robin distribution. Each model must have a `model` name. The `endpoint` field is optional. |
+| `models` | array | Yes | - | List of models for round-robin distribution. Each model must have a `model` name. |
 | `suspendDuration` | integer | No | `0` | Suspend duration in seconds for failed models. If set to 0, failed model knowledge is not persisted. Must be >= 0. |
 
 ### Model Configuration
@@ -28,7 +28,6 @@ Each model in the `models` array is an object with the following properties:
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
 | `model` | string | Yes | The AI model name to use for load balancing. |
-| `endpoint` | string | No | The endpoint URL for the model (optional). Must match pattern `^https?://` if provided. |
 
 ### LLM provider template
 
