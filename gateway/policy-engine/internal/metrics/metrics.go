@@ -42,7 +42,7 @@ var (
 	PolicyExecutionsTotal CounterVec
 	PolicyDurationSeconds HistogramVec
 	PolicySkippedTotal    CounterVec
-	PoliciesPerChain      HistogramVec
+	PoliciesPerChain      GaugeVec
 
 	PolicyChainsLoaded GaugeVec
 	XDSUpdatesTotal    CounterVec
@@ -132,12 +132,11 @@ func initMetrics() {
 		[]string{"policy_name", "api", "route", "reason"},
 	)
 
-	PoliciesPerChain = newHistogramVec(
-		prometheus.HistogramOpts{
+	PoliciesPerChain = newGaugeVec(
+		prometheus.GaugeOpts{
 			Namespace: namespace,
 			Name:      "policies_per_chain",
-			Help:      "Number of policies in each policy chain",
-			Buckets:   []float64{1, 2, 5, 10, 20, 50},
+			Help:      "Current number of policies in each policy chain",
 		},
 		[]string{"route", "api"},
 	)
@@ -355,7 +354,7 @@ func initRegistry() {
 	registerCounterVec(PolicyExecutionsTotal)
 	registerHistogramVec(PolicyDurationSeconds)
 	registerCounterVec(PolicySkippedTotal)
-	registerHistogramVec(PoliciesPerChain)
+	registerGaugeVec(PoliciesPerChain)
 
 	registerGaugeVec(PolicyChainsLoaded)
 	registerCounterVec(XDSUpdatesTotal)

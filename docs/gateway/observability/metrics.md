@@ -208,7 +208,7 @@ The Policy Engine dashboard provides detailed metrics:
   - `route`: Route name
   - `status`: success, failure, skip
 - **Policy Duration Seconds**: Histogram of policy execution times
-- **Policies Per Chain**: Histogram of policy chain lengths
+- **Policies Per Chain**: Gauge of current policy chain lengths
 
 #### Streaming
 - **Active Streams**: Current ext_proc streams (gauge)
@@ -683,7 +683,7 @@ Configure Prometheus to upload blocks to Thanos object storage.
   - Labels: `policy_name`, `policy_version`, `api`, `route`
 - `policy_engine_policy_skipped_total`: Counter of skipped policies
   - Labels: `policy_name`, `api`, `route`, `reason`
-- `policy_engine_policies_per_chain`: Histogram of policies per chain
+- `policy_engine_policies_per_chain`: Gauge of current policies per chain
   - Labels: `route`, `api`
 
 #### Configuration

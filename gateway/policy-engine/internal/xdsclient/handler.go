@@ -160,7 +160,7 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 				apiName = parts[0]
 			}
 		}
-		metrics.PoliciesPerChain.WithLabelValues(routeKey, apiName).Observe(policyCount)
+		metrics.PoliciesPerChain.WithLabelValues(routeKey, apiName).Set(policyCount)
 	}
 
 	slog.InfoContext(ctx, "Policy chain update completed successfully",
