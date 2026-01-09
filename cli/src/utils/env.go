@@ -107,7 +107,7 @@ func FormatCredentialsNotFoundError(gatewayName, authType string) string {
 	case AuthTypeBearer:
 		envVars = EnvGatewayToken
 	default:
-		return fmt.Sprintf("Error: Unsupported authentication type '%s' for gateway '%s'", authType, gatewayName)
+		return fmt.Sprintf("Unsupported authentication type '%s' for gateway '%s'", authType, gatewayName)
 	}
 
 	return fmt.Sprintf("Authentication credentials not found for gateway '%s' (auth type: %s).\n"+
