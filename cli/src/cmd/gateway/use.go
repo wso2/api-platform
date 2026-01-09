@@ -80,7 +80,10 @@ func runUseCommand() error {
 
 	// Validate environment variables for the gateway's auth type
 	if gateway.Auth != utils.AuthTypeNone {
-		missing, ok := utils.ValidateAuthEnvVars(gateway.Auth)
+		missing, ok, err := utils.ValidateAuthEnvVars(gateway.Auth)
+		if err != nil {
+			return fmt.Errorf("validation failed: %w", err)
+		}
 		if !ok {
 			fmt.Println("\n" + utils.FormatMissingEnvVarsWarning(gateway.Auth, missing))
 		}

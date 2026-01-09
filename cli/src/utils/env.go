@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"strings"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -60,8 +59,8 @@ func GetPolicyHubBaseURL() string {
 }
 
 // ValidateAuthEnvVars checks if required environment variables are set for the given auth type
-// Returns missing variable names and whether validation passed
-func ValidateAuthEnvVars(authType string) (missing []string, ok bool) {
+// Returns missing variable names, whether validation passed, and an error for unknown auth types
+func ValidateAuthEnvVars(authType string) (missing []string, ok bool, err error) {
 	switch authType {
 	case AuthTypeBasic:
 		if os.Getenv(EnvGatewayUsername) == "" {
@@ -76,25 +75,19 @@ func ValidateAuthEnvVars(authType string) (missing []string, ok bool) {
 		}
 	case AuthTypeNone:
 		// No env vars required
-		return nil, true
+		return nil, true, nil
 	default:
-		// Unknown auth type - return sentinel to trigger clear error message
-		return []string{fmt.Sprintf("UNKNOWN_AUTH_TYPE:%s", authType)}, false
+		// Unknown auth type - return error
+		return nil, false, fmt.Errorf("unsupported authentication type '%s'. Valid types: none, basic, bearer", authType)
 	}
 
-	return missing, len(missing) == 0
+	return missing, len(missing) == 0, nil
 }
 
 // FormatMissingEnvVarsWarning formats a warning message for missing environment variables
 func FormatMissingEnvVarsWarning(authType string, missing []string) string {
 	if len(missing) == 0 {
 		return ""
-	}
-
-	// Check for unknown auth type sentinel
-	if len(missing) == 1 && strings.HasPrefix(missing[0], "UNKNOWN_AUTH_TYPE:") {
-		unknownType := strings.TrimPrefix(missing[0], "UNKNOWN_AUTH_TYPE:")
-		return fmt.Sprintf("Error: unsupported authentication type '%s'. Valid types: none, basic, bearer\n", unknownType)
 	}
 
 	titler := cases.Title(language.English)
@@ -128,12 +121,6 @@ func FormatCredentialsNotFoundError(gatewayName, authType string) string {
 func FormatMissingEnvVarsError(authType string, missing []string) string {
 	if len(missing) == 0 {
 		return ""
-	}
-
-	// Check for unknown auth type sentinel
-	if len(missing) == 1 && strings.HasPrefix(missing[0], "UNKNOWN_AUTH_TYPE:") {
-		unknownType := strings.TrimPrefix(missing[0], "UNKNOWN_AUTH_TYPE:")
-		return fmt.Sprintf("Error: unsupported authentication type '%s'. Valid types: none, basic, bearer", unknownType)
 	}
 
 	titler := cases.Title(language.English)
