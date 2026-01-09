@@ -93,19 +93,37 @@ func TestCmdNamingConvention(t *testing.T) {
 			return nil
 		}
 
-		// Check if any command matches the expected name
+		// Determine per-file concise mapping
+		fullCmdPath := "ap " + strings.Join(expectedCommandChain, " ")
+		if len(foundCommands) == 0 {
+			// No cobra.Command definitions found — this is a violation
+			t.Logf("\"%s\" has no cmd defined", relPath)
+			violations = append(violations, fmt.Sprintf(
+				"❌ %s\n"+
+					"   No cobra.Command definitions found\n"+
+					"   → File should implement a command named '%s' (full: %s)",
+				relPath,
+				expectedCommand,
+				fullCmdPath,
+			))
+			return nil
+		}
+
+		// Collect found command names (first word of Use or the literal)
+		foundNames := []string{}
 		matched := false
-		for _, cmdUse := range foundCommands {
-			// Extract the first word from the Use field (e.g., "delete [name]" -> "delete")
-			cmdName := strings.Fields(cmdUse)[0]
+		for _, cmd := range foundCommands {
+			cmdName := strings.Fields(cmd.Use)[0]
+			foundNames = append(foundNames, cmdName)
 			if cmdName == expectedCommand {
 				matched = true
-				break
 			}
 		}
 
-		if !matched && len(foundCommands) > 0 {
-			fullCmdPath := "ap " + strings.Join(expectedCommandChain, " ")
+		if matched {
+			t.Logf("\"%s\" matches \"%s\" cmd", relPath, fullCmdPath)
+		} else {
+			t.Logf("\"%s\" does not match expected \"%s\" (found: %s)", relPath, fullCmdPath, strings.Join(foundNames, ", "))
 			violations = append(violations, fmt.Sprintf(
 				"❌ %s\n"+
 					"   Expected cmd name: '%s'\n"+
@@ -143,30 +161,92 @@ func TestCmdNamingConvention(t *testing.T) {
 	}
 }
 
-// extractCommandUseFields parses a Go file and extracts all cobra.Command Use field values
-func extractCommandUseFields(filePath string) ([]string, error) {
+// commandUse represents a cobra.Command Use value with its position
+type commandUse struct {
+	Use  string
+	Line int
+}
+
+// extractCommandUseFields parses a Go file and extracts all cobra.Command Use field values with line numbers
+func extractCommandUseFields(filePath string) ([]commandUse, error) {
 	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
 	if err != nil {
 		return nil, err
 	}
 
-	var commandUses []string
+	// Build a map of const string values in this file for resolving identifiers used in Use fields
+	constMap := map[string]string{}
+	for _, decl := range node.Decls {
+		if gen, ok := decl.(*ast.GenDecl); ok && gen.Tok == token.CONST {
+			for _, spec := range gen.Specs {
+				if vs, ok := spec.(*ast.ValueSpec); ok {
+					for i, name := range vs.Names {
+						if i < len(vs.Values) {
+							if lit, ok := vs.Values[i].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+								constMap[name.Name] = strings.Trim(lit.Value, "\"")
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 
+	var commandUses []commandUse
+
+	processed := map[int]bool{}
 	ast.Inspect(node, func(n ast.Node) bool {
-		// Look for composite literals (struct initialization)
-		if comp, ok := n.(*ast.CompositeLit); ok {
-			// Check if it's a cobra.Command type
-			if sel, ok := comp.Type.(*ast.SelectorExpr); ok {
-				if ident, ok := sel.X.(*ast.Ident); ok && ident.Name == "cobra" && sel.Sel.Name == "Command" {
-					// Found a cobra.Command, now extract the Use field
-					for _, elt := range comp.Elts {
-						if kv, ok := elt.(*ast.KeyValueExpr); ok {
-							if key, ok := kv.Key.(*ast.Ident); ok && key.Name == "Use" {
-								if val, ok := kv.Value.(*ast.BasicLit); ok && val.Kind == token.STRING {
-									// Remove quotes from string literal
-									useValue := strings.Trim(val.Value, "\"")
-									commandUses = append(commandUses, useValue)
+		// Support both direct composite literal (&cobra.Command{...}) and plain composite literal (cobra.Command{...})
+		var comp *ast.CompositeLit
+
+		if ue, ok := n.(*ast.UnaryExpr); ok {
+			if cl, ok := ue.X.(*ast.CompositeLit); ok {
+				comp = cl
+			}
+		}
+
+		if cl, ok := n.(*ast.CompositeLit); ok {
+			comp = cl
+		}
+
+		if comp == nil {
+			return true
+		}
+
+		// Avoid processing the same composite literal twice (visited via UnaryExpr and CompositeLit)
+		key := int(comp.Pos())
+		if processed[key] {
+			return true
+		}
+		processed[key] = true
+
+		// Check if it's a cobra.Command type
+		if sel, ok := comp.Type.(*ast.SelectorExpr); ok {
+			if ident, ok := sel.X.(*ast.Ident); ok && ident.Name == "cobra" && sel.Sel.Name == "Command" {
+				// Found a cobra.Command, now extract the Use field
+				for _, elt := range comp.Elts {
+					if kv, ok := elt.(*ast.KeyValueExpr); ok {
+						if key, ok := kv.Key.(*ast.Ident); ok && key.Name == "Use" {
+							// Handle string literal value
+							if val, ok := kv.Value.(*ast.BasicLit); ok && val.Kind == token.STRING {
+								useValue := strings.Trim(val.Value, "\"")
+								pos := fset.Position(val.Pos())
+								commandUses = append(commandUses, commandUse{Use: useValue, Line: pos.Line})
+								continue
+							}
+
+							// Handle identifier value (e.g., Use: AddCmdLiteral)
+							if identVal, ok := kv.Value.(*ast.Ident); ok {
+								if v, found := constMap[identVal.Name]; found {
+									// Use value resolved from const map
+									// Use position of the identifier for line number
+									pos := fset.Position(identVal.Pos())
+									commandUses = append(commandUses, commandUse{Use: v, Line: pos.Line})
+								} else {
+									// Fallback: use the identifier name as-is
+									pos := fset.Position(identVal.Pos())
+									commandUses = append(commandUses, commandUse{Use: identVal.Name, Line: pos.Line})
 								}
 							}
 						}
@@ -174,6 +254,7 @@ func extractCommandUseFields(filePath string) ([]string, error) {
 				}
 			}
 		}
+
 		return true
 	})
 

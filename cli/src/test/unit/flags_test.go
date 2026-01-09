@@ -64,6 +64,8 @@ func TestFlagValuesUnique(t *testing.T) {
 			t.Errorf("Duplicate flag value '%s' found %d times", value, count+1)
 		}
 	} else {
-		t.Logf("✓ All %d flag values are unique", len(allFlagValues))
+		t.Logf("%s:%d: ✓ All %d flag values are unique", "flags_test.go", 67, len(allFlagValues))
 	}
+
+	// Divider handled by test runner script; avoid printing inside the test to prevent duplication
 }
