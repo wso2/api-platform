@@ -56,7 +56,7 @@ func main() {
 
 	// Parse command-line flags
 	manifestLockPath := flag.String("manifest-lock", DefaultManifestLockFile, "Path to policy manifest lock file")
-	systemManifestLockPath := flag.String("system-manifest-lock", DefaultSystemPolicyManifestLockFile, "Path to system policy manifest lock file (optional)")
+	systemManifestLockPath := flag.String("system-manifest-lock", DefaultSystemPolicyManifestLockFile, "Path to system policy manifest lock file")
 	policyEngineSrc := flag.String("policy-engine-src", DefaultPolicyEngineSrc, "Path to policy-engine runtime source directory")
 	outputDir := flag.String("out-dir", DefaultOutputDir, "Output directory for generated Dockerfiles and artifacts")
 
