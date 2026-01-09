@@ -19,6 +19,7 @@
 package metrics
 
 import (
+	"fmt"
 	"runtime"
 	"sync"
 
@@ -559,10 +560,17 @@ func registerCounterVec(v CounterVec) {
 	if !Enabled {
 		return
 	}
-	if wrapper, ok := v.(*counterVecWrapper); ok {
-		if err := registry.Register(wrapper.CounterVec); err != nil {
-			// Already registered or other error - ignore
+	wrapper, ok := v.(*counterVecWrapper)
+	if !ok {
+		panic("registerCounterVec: type assertion failed for CounterVec wrapper")
+	}
+	if err := registry.Register(wrapper.CounterVec); err != nil {
+		if _, ok := err.(*prometheus.AlreadyRegisteredError); ok {
+			// Metric already registered, ignore
+			return
 		}
+		// Surface other registration errors
+		panic(fmt.Errorf("registerCounterVec: failed to register metric: %w", err))
 	}
 }
 
@@ -570,10 +578,17 @@ func registerHistogramVec(v HistogramVec) {
 	if !Enabled {
 		return
 	}
-	if wrapper, ok := v.(*histogramVecWrapper); ok {
-		if err := registry.Register(wrapper.HistogramVec); err != nil {
-			// Already registered or other error - ignore
+	wrapper, ok := v.(*histogramVecWrapper)
+	if !ok {
+		panic("registerHistogramVec: type assertion failed for HistogramVec wrapper")
+	}
+	if err := registry.Register(wrapper.HistogramVec); err != nil {
+		if _, ok := err.(*prometheus.AlreadyRegisteredError); ok {
+			// Metric already registered, ignore
+			return
 		}
+		// Surface other registration errors
+		panic(fmt.Errorf("registerHistogramVec: failed to register metric: %w", err))
 	}
 }
 
@@ -581,10 +596,17 @@ func registerHistogram(v Histogram) {
 	if !Enabled {
 		return
 	}
-	if h, ok := v.(prometheus.Histogram); ok {
-		if err := registry.Register(h); err != nil {
-			// Already registered or other error - ignore
+	h, ok := v.(prometheus.Histogram)
+	if !ok {
+		panic("registerHistogram: type assertion failed for Histogram")
+	}
+	if err := registry.Register(h); err != nil {
+		if _, ok := err.(*prometheus.AlreadyRegisteredError); ok {
+			// Metric already registered, ignore
+			return
 		}
+		// Surface other registration errors
+		panic(fmt.Errorf("registerHistogram: failed to register metric: %w", err))
 	}
 }
 
@@ -592,10 +614,17 @@ func registerGaugeVec(v GaugeVec) {
 	if !Enabled {
 		return
 	}
-	if wrapper, ok := v.(*gaugeVecWrapper); ok {
-		if err := registry.Register(wrapper.GaugeVec); err != nil {
-			// Already registered or other error - ignore
+	wrapper, ok := v.(*gaugeVecWrapper)
+	if !ok {
+		panic("registerGaugeVec: type assertion failed for GaugeVec wrapper")
+	}
+	if err := registry.Register(wrapper.GaugeVec); err != nil {
+		if _, ok := err.(*prometheus.AlreadyRegisteredError); ok {
+			// Metric already registered, ignore
+			return
 		}
+		// Surface other registration errors
+		panic(fmt.Errorf("registerGaugeVec: failed to register metric: %w", err))
 	}
 }
 
@@ -603,10 +632,17 @@ func registerGauge(v Gauge) {
 	if !Enabled {
 		return
 	}
-	if g, ok := v.(prometheus.Gauge); ok {
-		if err := registry.Register(g); err != nil {
-			// Already registered or other error - ignore
+	g, ok := v.(prometheus.Gauge)
+	if !ok {
+		panic("registerGauge: type assertion failed for Gauge")
+	}
+	if err := registry.Register(g); err != nil {
+		if _, ok := err.(*prometheus.AlreadyRegisteredError); ok {
+			// Metric already registered, ignore
+			return
 		}
+		// Surface other registration errors
+		panic(fmt.Errorf("registerGauge: failed to register metric: %w", err))
 	}
 }
 
@@ -614,10 +650,17 @@ func registerCounter(v Counter) {
 	if !Enabled {
 		return
 	}
-	if c, ok := v.(prometheus.Counter); ok {
-		if err := registry.Register(c); err != nil {
-			// Already registered or other error - ignore
+	c, ok := v.(prometheus.Counter)
+	if !ok {
+		panic("registerCounter: type assertion failed for Counter")
+	}
+	if err := registry.Register(c); err != nil {
+		if _, ok := err.(*prometheus.AlreadyRegisteredError); ok {
+			// Metric already registered, ignore
+			return
 		}
+		// Surface other registration errors
+		panic(fmt.Errorf("registerCounter: failed to register metric: %w", err))
 	}
 }
 
@@ -626,7 +669,12 @@ func registerGaugeFunc(v GaugeFunc) {
 		return
 	}
 	if err := registry.Register(v); err != nil {
-		// Already registered or other error - ignore
+		if _, ok := err.(*prometheus.AlreadyRegisteredError); ok {
+			// Metric already registered, ignore
+			return
+		}
+		// Surface other registration errors
+		panic(fmt.Errorf("registerGaugeFunc: failed to register metric: %w", err))
 	}
 }
 
