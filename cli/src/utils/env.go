@@ -110,7 +110,7 @@ func FormatCredentialsNotFoundError(gatewayName, authType string) string {
 		return fmt.Sprintf("Error: Unsupported authentication type '%s' for gateway '%s'", authType, gatewayName)
 	}
 
-	return fmt.Sprintf("Error: Authentication credentials not found for gateway '%s' (auth type: %s).\n"+
+	return fmt.Sprintf("Authentication credentials not found for gateway '%s' (auth type: %s).\n"+
 		"Please either:\n"+
 		"  - Re-add gateway: ap gateway add --display-name %s --server <server_url> --auth %s\n"+
 		"  - Or export: %s",
