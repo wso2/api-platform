@@ -8,6 +8,20 @@ End-to-end integration tests for the `ap` CLI, validating commands against real 
 - Docker and Docker Compose
 - Network access to pull Docker images
 
+Important notes:
+
+- Docker Compose: the test runner uses the `docker compose up --wait` flag
+  which requires Docker Compose v2 (the `docker compose` plugin). Ensure
+  your Docker installation provides Compose v2+; older `docker-compose`
+  binaries without the `--wait` flag will not work.
+
+- Configuration backup: the integration suite will temporarily back up your
+  real CLI config file (`~/.wso2ap/config.yaml`) to
+  `~/.wso2ap/config.yaml.backup` and write a clean config during test
+  execution. The original config will be restored after the suite finishes
+  (whether tests pass or fail). If you rely on a custom local config,
+  please be aware of this behavior.
+
 ## Quick Start
 
 ```bash

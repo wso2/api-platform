@@ -169,12 +169,20 @@ func (s *TestState) ExecuteCLI(args ...string) error {
 
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		s.LastExitCode = exitErr.ExitCode()
-	} else if err != nil {
-		s.LastExitCode = -1
-	} else {
-		s.LastExitCode = 0
+		// Process ran and exited with non-zero status; return nil so
+		// callers can inspect `LastExitCode` to determine expected failures.
+		return nil
 	}
 
+	if err != nil {
+		// Process failed to start or was killed (timeout, context cancel,
+		// spawn error). Record an indicative exit code and return the error
+		// so the test step fails fast instead of proceeding with bogus state.
+		s.LastExitCode = -1
+		return err
+	}
+
+	s.LastExitCode = 0
 	return nil
 }
 

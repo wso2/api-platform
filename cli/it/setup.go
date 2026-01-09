@@ -43,9 +43,6 @@ const (
 
 	// MCPServerPort is the port for MCP server
 	MCPServerPort = "3001"
-
-	// ComposeProjectName is the Docker Compose project name for CLI IT tests
-	ComposeProjectName = "cli-it"
 )
 
 // InfrastructureManager manages the lifecycle of test infrastructure
@@ -58,6 +55,7 @@ type InfrastructureManager struct {
 	cancel              context.CancelFunc
 	startedServices     map[InfrastructureID]bool
 	mu                  sync.Mutex
+	composeProjectName  string
 	reporter            *TestReporter
 }
 
@@ -71,6 +69,9 @@ func NewInfrastructureManager(reporter *TestReporter, cfg *TestConfig, cfgPath s
 		startupTimeout:      DefaultStartupTimeout,
 		healthCheckInterval: HealthCheckInterval,
 	}
+
+	// Generate a per-run compose project name to avoid collisions
+	m.composeProjectName = fmt.Sprintf("cli-it-%d-%d", os.Getpid(), time.Now().UnixNano())
 
 	// Resolve compose file from config if set
 	if cfg != nil && cfg.Infrastructure.ComposeFile != "" {
@@ -148,6 +149,7 @@ func (m *InfrastructureManager) SetupInfrastructure(required []InfrastructureID)
 				if err := m.startGatewayStack(); err != nil {
 					return fmt.Errorf("failed to start gateway stack for MCP: %w", err)
 				}
+				m.startedServices[InfraGateway] = true
 			} else {
 				// Gateway is already reported started; verify MCP is reachable now.
 				if err := m.waitForMCPServer(); err != nil {
@@ -270,7 +272,7 @@ func (m *InfrastructureManager) startGatewayStack() error {
 	// Start the compose stack using native docker compose command
 	cmd := exec.CommandContext(m.ctx, "docker", "compose",
 		"-f", m.composeFile,
-		"-p", ComposeProjectName,
+		"-p", m.composeProjectName,
 		"up", "-d", "--wait",
 	)
 	cmd.Dir = filepath.Dir(m.composeFile)
@@ -307,7 +309,7 @@ func (m *InfrastructureManager) stopGatewayStack() {
 
 	cmd := exec.CommandContext(m.ctx, "docker", "compose",
 		"-f", m.composeFile,
-		"-p", ComposeProjectName,
+		"-p", m.composeProjectName,
 		"down", "-v", "--remove-orphans",
 	)
 	cmd.Dir = filepath.Dir(m.composeFile)
@@ -366,7 +368,7 @@ func (m *InfrastructureManager) Teardown() error {
 	if m.composeFile != "" {
 		cmd := exec.Command("docker", "compose",
 			"-f", m.composeFile,
-			"-p", ComposeProjectName,
+			"-p", m.composeProjectName,
 			"down", "-v", "--remove-orphans",
 		)
 		cmd.Dir = filepath.Dir(m.composeFile)
@@ -398,7 +400,7 @@ func CheckPortsAvailable() error {
 	for _, port := range ports {
 		ln, err := net.Listen("tcp", ":"+port)
 		if err != nil {
-			return fmt.Errorf("port %s is already in use", port)
+			return fmt.Errorf("port %s is not available: %w", port, err)
 		}
 		ln.Close()
 	}
