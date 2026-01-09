@@ -253,9 +253,9 @@ func (s *CLISteps) ResetConfiguration() error {
 
 	configFile := filepath.Join(cliConfigDir, "config.yaml")
 
-	// Create empty config
+	// Create empty config with owner-only permissions to match backup/restore
 	emptyConfig := "# WSO2 API Platform CLI Configuration\ngateways: []\n"
-	if err := os.WriteFile(configFile, []byte(emptyConfig), 0644); err != nil {
+	if err := os.WriteFile(configFile, []byte(emptyConfig), 0600); err != nil {
 		return fmt.Errorf("failed to write config file %s: %w", configFile, err)
 	}
 	return nil
