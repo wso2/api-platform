@@ -1132,7 +1132,7 @@ func (s *APIKeyService) hashAPIKey(plainAPIKey string) (string, error) {
 	}
 
 	// Hash based on configured algorithm
-	switch s.hashingConfig.Algorithm {
+	switch strings.ToLower(s.hashingConfig.Algorithm) {
 	case constants.HashingAlgorithmSHA256:
 		return s.hashAPIKeyWithSHA256(plainAPIKey)
 	case constants.HashingAlgorithmBcrypt:
@@ -1146,8 +1146,7 @@ func (s *APIKeyService) hashAPIKey(plainAPIKey string) (string, error) {
 }
 
 // hashAPIKeyWithSHA256 securely hashes an API key using SHA-256 with salt
-// Returns the hashed API key that should be st
-// Generate random saltored in database and policy engine
+// Returns the hashed API key that should be stored in database and policy engine
 func (s *APIKeyService) hashAPIKeyWithSHA256(plainAPIKey string) (string, error) {
 	if plainAPIKey == "" {
 		return "", fmt.Errorf("API key cannot be empty")

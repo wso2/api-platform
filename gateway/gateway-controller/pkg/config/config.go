@@ -1129,7 +1129,7 @@ func (c *Config) validateAuthConfig() error {
 	return nil
 }
 
-// validateControlPlaneConfig validates the control plane configuration
+// validateAPIKeyHashingConfig validates the API key hashing configuration
 func (c *Config) validateAPIKeyHashingConfig() error {
 	// If hashing is disabled, skip validation
 	if !c.GatewayController.APIKeyHashing.Enabled {
