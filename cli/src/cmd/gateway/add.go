@@ -111,11 +111,11 @@ func runAddCommand() error {
 		}
 	}
 
-	// Check if credential flags were used and warn
+	// Check if credential flags were used and warn (write to stderr so stdout remains script-friendly)
 	if addUsername != "" || addPassword != "" || addToken != "" {
-		fmt.Println("Warning: Passing credentials via command-line flags is not recommended for security reasons.")
-		fmt.Println("Consider using interactive mode or environment variables instead.")
-		fmt.Println()
+		fmt.Fprintln(os.Stderr, "Warning: Passing credentials via command-line flags is not recommended for security reasons.")
+		fmt.Fprintln(os.Stderr, "Consider using interactive mode or environment variables instead.")
+		fmt.Fprintln(os.Stderr, "")
 	}
 
 	var username, password, token string
