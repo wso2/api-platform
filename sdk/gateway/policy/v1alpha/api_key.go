@@ -168,6 +168,11 @@ func (aks *APIkeyStore) ValidateAPIKey(apiId, apiOperation, operationMethod, pro
 		return false, ErrNotFound
 	}
 
+	// Check if the API key belongs to the specified API
+	if targetAPIKey.APIId != apiId {
+		return false, nil
+	}
+
 	// Check if the API key is active
 	if targetAPIKey.Status != Active {
 		return false, nil
