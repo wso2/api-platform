@@ -302,7 +302,7 @@ policy_engine:
 policy_configurations: {}
 
 analytics:
-  enabled: true
+  enabled: false
   # Publishers specific configuration
   publishers:
     - type: moesif

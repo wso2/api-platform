@@ -37,9 +37,10 @@ import (
 )
 
 const (
-	DefaultManifestLockFile = "policy-manifest-lock.yaml"
-	DefaultOutputDir        = "output"
-	DefaultPolicyEngineSrc  = "/api-platform/gateway/policy-engine"
+	DefaultManifestLockFile             = "policy-manifest-lock.yaml"
+	DefaultSystemPolicyManifestLockFile = "system-policy-manifest-lock.yaml"
+	DefaultOutputDir                    = "output"
+	DefaultPolicyEngineSrc              = "/api-platform/gateway/policy-engine"
 )
 
 // Version information (set via ldflags during build)
@@ -55,6 +56,7 @@ func main() {
 
 	// Parse command-line flags
 	manifestLockPath := flag.String("manifest-lock", DefaultManifestLockFile, "Path to policy manifest lock file")
+	systemManifestLockPath := flag.String("system-manifest-lock", DefaultSystemPolicyManifestLockFile, "Path to system policy manifest lock file (optional)")
 	policyEngineSrc := flag.String("policy-engine-src", DefaultPolicyEngineSrc, "Path to policy-engine runtime source directory")
 	outputDir := flag.String("out-dir", DefaultOutputDir, "Output directory for generated Dockerfiles and artifacts")
 
@@ -80,6 +82,13 @@ func main() {
 	}
 	manifestLockPath = &absManifestLockPath
 
+	absSystemManifestLockPath, err := filepath.Abs(*systemManifestLockPath)
+	if err != nil {
+		slog.Error("Failed to resolve system manifest lock path", "path", *systemManifestLockPath, "error", err)
+		os.Exit(1)
+	}
+	systemManifestLockPath = &absSystemManifestLockPath
+
 	absPolicyEngineSrc, err := filepath.Abs(*policyEngineSrc)
 	if err != nil {
 		slog.Error("Failed to resolve policy-engine-src path", "path", *policyEngineSrc, "error", err)
@@ -94,17 +103,21 @@ func main() {
 	}
 	outputDir = &absOutputDir
 
-	slog.Info("Policy Builder starting",
+	logFields := []any{
 		"version", Version,
 		"git_commit", GitCommit,
 		"build_date", BuildDate,
-		"manifest_lock", *manifestLockPath)
+		"manifest_lock", *manifestLockPath,
+		"system_manifest_lock", *systemManifestLockPath,
+	}
+	slog.Info("Policy Builder starting", logFields...)
 
 	var outManifestPath string
 
 	// Phase 1: Discovery
 	slog.Info("Starting Phase 1: Discovery", "phase", "discovery")
 
+	// Discover policies from main manifest
 	policies, err := discovery.DiscoverPoliciesFromManifest(*manifestLockPath, "")
 	if err != nil {
 		errors.FatalError(err)
@@ -112,6 +125,21 @@ func main() {
 	slog.Info("Loaded manifest",
 		"count", len(policies),
 		"phase", "discovery")
+
+	// Discover system policies from system manifest if provided
+	systemPolicies, err := discovery.DiscoverPoliciesFromManifest(absSystemManifestLockPath, "")
+	if err != nil {
+		errors.FatalError(err)
+	}
+	slog.Info("Loaded system manifest",
+		"count", len(systemPolicies),
+		"phase", "discovery")
+	// Merge system policies with regular policies
+	policies = append(policies, systemPolicies...)
+	slog.Info("Total policies after merging",
+		"count", len(policies),
+		"phase", "discovery")
+	
 
 	// Print discovered policies
 	for i, p := range policies {

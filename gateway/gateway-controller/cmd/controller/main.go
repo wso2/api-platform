@@ -4,13 +4,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/authenticators"
@@ -203,7 +204,7 @@ func main() {
 			for _, apiConfig := range loadedAPIs {
 				// Derive policy configuration from API
 				if apiConfig.Configuration.Kind == api.RestApi {
-					storedPolicy := derivePolicyFromAPIConfig(apiConfig, &cfg.GatewayController.Router)
+					storedPolicy := derivePolicyFromAPIConfig(apiConfig, cfg)
 					if storedPolicy != nil {
 						if err := policyStore.Set(storedPolicy); err != nil {
 							log.Warn("Failed to load policy from API",
@@ -301,7 +302,7 @@ func main() {
 
 	// Initialize API server with the configured validator and API key manager
 	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient,
-		policyDefinitions, templateDefinitions, validator, &cfg.GatewayController.Router, apiKeyXDSManager)
+		policyDefinitions, templateDefinitions, validator, apiKeyXDSManager, cfg)
 
 	// Register API routes (includes certificate management endpoints from OpenAPI spec)
 	api.RegisterHandlers(router, apiServer)
@@ -427,8 +428,9 @@ func generateAuthConfig(config *config.Config) commonmodels.AuthConfig {
 
 // derivePolicyFromAPIConfig derives a policy configuration from an API configuration
 // This is a simplified version of the buildStoredPolicyFromAPI function from handlers
-func derivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.RouterConfig) *models.StoredPolicyConfig {
+func derivePolicyFromAPIConfig(cfg *models.StoredConfig, fullConfig *config.Config) *models.StoredPolicyConfig {
 	apiCfg := &cfg.Configuration
+	routerConfig := &fullConfig.GatewayController.Router
 	apiData, err := apiCfg.Spec.AsAPIConfigData()
 	if err != nil {
 		return nil
@@ -494,14 +496,18 @@ func derivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 		}
 
 		for _, vhost := range vhosts {
+			// Inject system policies into the chain
+			props := make(map[string]any)
+			injectedPolicies := utils.InjectSystemPolicies(finalPolicies, fullConfig, props)
+			
 			routes = append(routes, policyenginev1.PolicyChain{
 				RouteKey: xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, vhost),
-				Policies: finalPolicies,
+				Policies: injectedPolicies,
 			})
 		}
 	}
 
-	// If there are no policies at all, return nil
+	// If there are no policies at all (including system policies), return nil
 	policyCount := 0
 	for _, r := range routes {
 		policyCount += len(r.Policies)
