@@ -99,6 +99,14 @@ func (s *TestState) Reset() error {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
+	// Create a fresh context for this test. If a previous context exists,
+	// cancel it to avoid leaking resources and ensure subsequent
+	// ExecuteCLI calls use a live context.
+	if s.cancel != nil {
+		s.cancel()
+	}
+	s.ctx, s.cancel = context.WithCancel(context.Background())
+
 	s.TempDir = tempDir
 	s.ConfigDir = configDir
 	s.WorkingDir = tempDir

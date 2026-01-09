@@ -134,6 +134,8 @@ func (m *InfrastructureManager) SetupInfrastructure(required []InfrastructureID)
 				if err := m.buildGatewayImages(); err != nil {
 					return fmt.Errorf("failed to build gateway images: %w", err)
 				}
+				// Mark images as started so later entries in `required` don't rebuild
+				m.startedServices[InfraGatewayImages] = true
 			}
 			if err := m.startGatewayStack(); err != nil {
 				return fmt.Errorf("failed to start gateway stack: %w", err)
