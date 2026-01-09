@@ -106,16 +106,19 @@ func (s *CLISteps) EnsureGatewayExists(name string) error {
 	// Add gateway with basic auth (the gateway requires auth by default)
 	server := resources.GatewayControllerURL
 	err := s.RunGatewayAdd(name, server, "basic")
+
+	if err == nil && s.state.GetExitCode() == 0 {
+		s.state.SetGatewayInfo(name, server)
+		return nil
+	}
+
 	if err != nil {
 		return err
 	}
 
-	// Check if it was added (exit code 0) or already exists
-	if s.state.GetExitCode() != 0 {
-		// Check if it's a duplicate error (which is OK)
-		if !strings.Contains(s.state.GetCombinedOutput(), "already exists") {
-			return fmt.Errorf("failed to ensure gateway exists: %s", s.state.GetCombinedOutput())
-		}
+	// Command returned non-zero exit code; allow duplicate gateway error
+	if !strings.Contains(s.state.GetCombinedOutput(), "already exists") {
+		return fmt.Errorf("failed to ensure gateway exists: %s", s.state.GetCombinedOutput())
 	}
 
 	s.state.SetGatewayInfo(name, server)
