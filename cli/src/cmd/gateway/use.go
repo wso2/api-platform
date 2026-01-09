@@ -86,8 +86,12 @@ func runUseCommand() error {
 
 		if !hasEnvCreds && !hasConfigCreds {
 			// Neither env vars nor config credentials are available
-			missing, _, _ := utils.ValidateAuthEnvVars(gateway.Auth)
-			fmt.Println("\n" + utils.FormatMissingEnvVarsWarning(gateway.Auth, missing))
+			missing, _, err := utils.ValidateAuthEnvVars(gateway.Auth)
+			if err != nil {
+				fmt.Printf("\nWarning: failed to validate auth env vars: %v\n", err)
+			} else {
+				fmt.Println("\n" + utils.FormatMissingEnvVarsWarning(gateway.Auth, missing))
+			}
 		} else if hasConfigCreds && !hasEnvCreds {
 			// Config has credentials, env vars not set - this is fine, just inform
 			fmt.Println("Using credentials from configuration.")
