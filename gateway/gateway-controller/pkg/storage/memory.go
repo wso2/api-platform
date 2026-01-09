@@ -41,8 +41,8 @@ type ConfigStore struct {
 	templateIdByHandle map[string]string
 
 	// API Keys storage
-	apiKeys      map[string]*models.APIKey   // key: API key ID
-	apiKeysByAPI map[string][]*models.APIKey // Key: "configID" → Value: slice of APIKeys
+	apiKeys      map[string]*models.APIKey            // key: API key ID
+	apiKeysByAPI map[string]map[string]*models.APIKey // Key: configID → Value: map[keyID]*APIKey
 }
 
 // NewConfigStore creates a new in-memory config store
@@ -56,7 +56,7 @@ func NewConfigStore() *ConfigStore {
 		templates:          make(map[string]*models.StoredLLMProviderTemplate),
 		templateIdByHandle: make(map[string]string),
 		apiKeys:            make(map[string]*models.APIKey),
-		apiKeysByAPI:       make(map[string][]*models.APIKey),
+		apiKeysByAPI:       make(map[string]map[string]*models.APIKey),
 	}
 }
 
@@ -470,30 +470,36 @@ func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
 
 	// Check if an API key with the same apiId and name already exists
 	existingKeys, apiIdExists := cs.apiKeysByAPI[apiKey.APIId]
-	var existingKeyIndex = -1
+	var existingKeyID = ""
 
 	if apiIdExists {
-		for i, existingKey := range existingKeys {
+		for id, existingKey := range existingKeys {
 			if existingKey.Name == apiKey.Name {
-				existingKeyIndex = i
+				existingKeyID = id
 				break
 			}
 		}
 	}
 
-	if existingKeyIndex >= 0 {
+	if existingKeyID != "" {
 		// Update the existing entry in apiKeysByAPI
 		cs.apiKeys[apiKey.ID] = apiKey
-		cs.apiKeysByAPI[apiKey.APIId][existingKeyIndex] = apiKey
+		cs.apiKeysByAPI[apiKey.APIId][existingKeyID] = apiKey
 	} else {
 		// Insert new API key
 		// Check if API key ID already exists
 		if _, exists := cs.apiKeys[apiKey.ID]; exists {
 			return ErrConflict
 		}
+
+		// Initialize the map for this API ID if it doesn't exist
+		if cs.apiKeysByAPI[apiKey.APIId] == nil {
+			cs.apiKeysByAPI[apiKey.APIId] = make(map[string]*models.APIKey)
+		}
+
 		// Store by API key value
 		cs.apiKeys[apiKey.ID] = apiKey
-		cs.apiKeysByAPI[apiKey.APIId] = append(cs.apiKeysByAPI[apiKey.APIId], apiKey)
+		cs.apiKeysByAPI[apiKey.APIId][apiKey.ID] = apiKey
 	}
 
 	return nil
@@ -522,9 +528,11 @@ func (cs *ConfigStore) GetAPIKeysByAPI(apiId string) ([]*models.APIKey, error) {
 		return []*models.APIKey{}, nil // Return empty slice instead of nil
 	}
 
-	// Return a copy to prevent external modification
-	result := make([]*models.APIKey, len(apiKeys))
-	copy(result, apiKeys)
+	// Convert map values to slice and return a copy to prevent external modification
+	result := make([]*models.APIKey, 0, len(apiKeys))
+	for _, apiKey := range apiKeys {
+		result = append(result, apiKey)
+	}
 	return result, nil
 }
 
@@ -558,17 +566,11 @@ func (cs *ConfigStore) RemoveAPIKeyByID(id string) error {
 		return ErrNotFound
 	}
 
-	// Remove from apiKeysByAPI slice
+	// Remove from apiKeysByAPI map
 	apiKeys, apiIdExists := cs.apiKeysByAPI[apiKey.APIId]
 	if apiIdExists {
-		for i, key := range apiKeys {
-			if key.ID == id {
-				// Remove the API key from the slice
-				cs.apiKeysByAPI[apiKey.APIId] = append(apiKeys[:i], apiKeys[i+1:]...)
-				break
-			}
-		}
-		// Clean up empty slices
+		delete(apiKeys, id)
+		// Clean up empty maps
 		if len(cs.apiKeysByAPI[apiKey.APIId]) == 0 {
 			delete(cs.apiKeysByAPI, apiKey.APIId)
 		}
@@ -613,12 +615,12 @@ func (cs *ConfigStore) RemoveAPIKeyByName(apiId, name string) error {
 
 	// Find the API key with the matching name
 	var targetAPIKey *models.APIKey
-	var targetIndex = -1
+	var targetID string
 
-	for i, apiKey := range apiKeys {
+	for id, apiKey := range apiKeys {
 		if apiKey.Name == name {
 			targetAPIKey = apiKey
-			targetIndex = i
+			targetID = id
 			break
 		}
 	}
@@ -627,10 +629,10 @@ func (cs *ConfigStore) RemoveAPIKeyByName(apiId, name string) error {
 		return ErrNotFound
 	}
 
-	// Remove from apiKeysByAPI slice
-	cs.apiKeysByAPI[apiId] = append(apiKeys[:targetIndex], apiKeys[targetIndex+1:]...)
+	// Remove from apiKeysByAPI map
+	delete(cs.apiKeysByAPI[apiId], targetID)
 
-	// Clean up empty slices
+	// Clean up empty maps
 	if len(cs.apiKeysByAPI[apiId]) == 0 {
 		delete(cs.apiKeysByAPI, apiId)
 	}
