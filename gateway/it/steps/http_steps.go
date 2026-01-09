@@ -61,13 +61,13 @@ func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I clear all headers$`, h.iClearHeaders)
 
 	// HTTP method steps
-	ctx.Step(`^I send a GET request to "([^"]*)"$`, h.iSendGETRequest)
-	ctx.Step(`^I send a POST request to "([^"]*)"$`, h.iSendPOSTRequest)
-	ctx.Step(`^I send a POST request to "([^"]*)" with body:$`, h.iSendPOSTRequestWithBody)
-	ctx.Step(`^I send a PUT request to "([^"]*)" with body:$`, h.iSendPUTRequestWithBody)
-	ctx.Step(`^I send a DELETE request to "([^"]*)"$`, h.iSendDELETERequest)
-	ctx.Step(`^I send a PATCH request to "([^"]*)" with body:$`, h.iSendPATCHRequestWithBody)
-	ctx.Step(`^I send (\d+) GET requests to "([^"]*)"$`, h.iSendManyGETRequests)
+	ctx.Step(`^I send a GET request to "([^"]*)"$`, h.ISendGETRequest)
+	ctx.Step(`^I send a POST request to "([^"]*)"$`, h.ISendPOSTRequest)
+	ctx.Step(`^I send a POST request to "([^"]*)" with body:$`, h.ISendPOSTRequestWithBody)
+	ctx.Step(`^I send a PUT request to "([^"]*)" with body:$`, h.ISendPUTRequestWithBody)
+	ctx.Step(`^I send a DELETE request to "([^"]*)"$`, h.ISendDELETERequest)
+	ctx.Step(`^I send a PATCH request to "([^"]*)" with body:$`, h.ISendPATCHRequestWithBody)
+	ctx.Step(`^I send (\d+) GET requests to "([^"]*)"$`, h.ISendManyGETRequests)
 
 	// Service-specific shortcuts
 	ctx.Step(`^I send a GET request to the "([^"]*)" service at "([^"]*)"$`, h.iSendGETToService)
@@ -163,7 +163,7 @@ func (h *HTTPSteps) SendGETRequest(url string) error {
 }
 
 // iSendPOSTRequest sends a POST request without body
-func (h *HTTPSteps) iSendPOSTRequest(url string) error {
+func (h *HTTPSteps) ISendPOSTRequest(url string) error {
 	return h.sendRequest(http.MethodPost, url, nil)
 }
 
@@ -188,7 +188,7 @@ func (h *HTTPSteps) ISendPATCHRequestWithBody(url string, body *godog.DocString)
 }
 
 // iSendManyGETRequests sends multiple GET requests
-func (h *HTTPSteps) iSendManyGETRequests(count int, url string) error {
+func (h *HTTPSteps) ISendManyGETRequests(count int, url string) error {
 	log.Printf("DEBUG: Sending %d GET requests to %s", count, url)
 	for i := 0; i < count; i++ {
 		if err := h.sendRequest(http.MethodGet, url, nil); err != nil {
