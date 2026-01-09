@@ -21,6 +21,7 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
@@ -70,9 +71,16 @@ func NewServer(cfg *config.MetricsConfig, log *zap.Logger) *Server {
 func (s *Server) Start() error {
 	s.log.Info("Starting metrics HTTP server", zap.Int("port", s.cfg.Port))
 
-	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		return fmt.Errorf("metrics server error: %w", err)
+	ln, err := net.Listen("tcp", s.httpServer.Addr)
+	if err != nil {
+		return fmt.Errorf("metrics server failed to bind: %w", err)
 	}
+
+	go func() {
+		if err := s.httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
+			s.log.Error("Metrics server failed", zap.Error(err))
+		}
+	}()
 
 	return nil
 }

@@ -326,11 +326,9 @@ func main() {
 		metrics.Info.WithLabelValues(Version, cfg.GatewayController.Storage.Type, BuildDate).Set(1)
 
 		metricsServer = metrics.NewServer(&cfg.GatewayController.Metrics, log)
-		go func() {
-			if err := metricsServer.Start(); err != nil {
-				log.Error("Metrics server failed", zap.Error(err))
-			}
-		}()
+		if err := metricsServer.Start(); err != nil {
+			log.Fatal("Metrics server failed", zap.Error(err))
+		}
 
 		// Start memory metrics updater with cancellable context
 		var metricsCtx context.Context
