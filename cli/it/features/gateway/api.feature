@@ -36,11 +36,15 @@ Feature: Gateway API Management Commands
         Given I apply the resource file "resources/gateway/sample-api.yaml"
         When I run ap with arguments "gateway api list"
         Then the command should succeed
+        # Clean up the sample API so subsequent "when empty" test is valid
+        When I run ap with arguments "gateway api delete --id petstore-api-v1.0"
+        Then the command should succeed
 
     @GW-API-002
     Scenario: List APIs when empty
         When I run ap with arguments "gateway api list"
         Then the command should succeed
+        And the output should not contain "petstore"
 
     # =========================================
     # API Get Tests

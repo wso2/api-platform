@@ -113,7 +113,11 @@ func TestCmdNamingConvention(t *testing.T) {
 		foundNames := []string{}
 		matched := false
 		for _, cmd := range foundCommands {
-			cmdName := strings.Fields(cmd.Use)[0]
+			fields := strings.Fields(cmd.Use)
+			if len(fields) == 0 {
+				continue
+			}
+			cmdName := fields[0]
 			foundNames = append(foundNames, cmdName)
 			if cmdName == expectedCommand {
 				matched = true

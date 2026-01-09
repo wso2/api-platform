@@ -199,7 +199,9 @@ func (r *TestReporter) writeTestLog(result *TestResult) {
 		sb.WriteString("\n")
 	}
 
-	os.WriteFile(logPath, []byte(sb.String()), 0644)
+	if err := os.WriteFile(logPath, []byte(sb.String()), 0644); err != nil {
+		fmt.Printf("%sWarning: failed to write test log %s: %v%s\n", ColorYellow, logPath, err, ColorReset)
+	}
 }
 
 // getStatusSymbol returns a symbol for the status
@@ -350,7 +352,10 @@ func (r *TestReporter) PrintSummary() {
 func (r *TestReporter) GetResults() []TestResult {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.results
+	// Return a copy to avoid exposing internal slice to callers.
+	res := make([]TestResult, len(r.results))
+	copy(res, r.results)
+	return res
 }
 
 // HasFailures returns true if any tests failed

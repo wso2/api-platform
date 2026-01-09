@@ -163,8 +163,7 @@ func (s *CLISteps) GenerateMCPConfig(server, output string) error {
 func (s *CLISteps) BuildGatewayWithManifest(manifestPath string) error {
 	absPath, err := filepath.Abs(manifestPath)
 	if err != nil {
-		// Try using the resources path
-		absPath = resources.GetPolicyManifestPath()
+		return fmt.Errorf("failed to resolve manifest path %q: %w", manifestPath, err)
 	}
 
 	return s.state.ExecuteCLI("gateway", "build", "-f", absPath,
@@ -240,12 +239,24 @@ func (s *CLISteps) EnsureGatewayExistsWithServer(name, server string) error {
 // ResetConfiguration resets the CLI configuration to empty
 func (s *CLISteps) ResetConfiguration() error {
 	// Create a backup of the config and create a fresh empty config
-	configDir := os.Getenv("HOME") + "/.wso2ap"
-	configFile := configDir + "/config.yaml"
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to determine user home directory: %w", err)
+	}
+
+	configDir := filepath.Join(home, ".wso2ap")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config dir %s: %w", configDir, err)
+	}
+
+	configFile := filepath.Join(configDir, "config.yaml")
 
 	// Create empty config
 	emptyConfig := "# WSO2 API Platform CLI Configuration\ngateways: []\n"
-	return os.WriteFile(configFile, []byte(emptyConfig), 0644)
+	if err := os.WriteFile(configFile, []byte(emptyConfig), 0644); err != nil {
+		return fmt.Errorf("failed to write config file %s: %w", configFile, err)
+	}
+	return nil
 }
 
 // ApplyResourceFile applies a resource file to the gateway
@@ -254,7 +265,7 @@ func (s *CLISteps) ApplyResourceFile(filePath string) error {
 	absPath := filePath
 	if filepath.IsAbs(filePath) {
 		absPath = filePath
-	} else if filepath.HasPrefix(filePath, "resources/gateway/") {
+	} else if strings.HasPrefix(filePath, "resources/gateway/") {
 		// Extract the filename from the relative path
 		filename := filepath.Base(filePath)
 		absPath = resources.GetResourcePath(filename)

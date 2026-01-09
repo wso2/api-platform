@@ -20,6 +20,7 @@ package it
 
 import (
 	"os"
+	"sort"
 
 	"gopkg.in/yaml.v3"
 )
@@ -145,9 +146,29 @@ func (c *TestConfig) GetRequiredInfrastructure() []InfrastructureID {
 		}
 	}
 
+	order := []InfrastructureID{
+		InfraCLI,
+		InfraGatewayImages,
+		InfraGateway,
+		InfraMCPServer,
+	}
+
 	var result []InfrastructureID
-	for id := range required {
-		result = append(result, id)
+	for _, id := range order {
+		if required[id] {
+			result = append(result, id)
+			delete(required, id)
+		}
+	}
+
+	// Append any remaining IDs deterministically (sorted by string).
+	if len(required) > 0 {
+		var others []InfrastructureID
+		for id := range required {
+			others = append(others, id)
+		}
+		sort.Slice(others, func(i, j int) bool { return string(others[i]) < string(others[j]) })
+		result = append(result, others...)
 	}
 
 	return result

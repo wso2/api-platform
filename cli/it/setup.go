@@ -50,24 +50,61 @@ const (
 
 // InfrastructureManager manages the lifecycle of test infrastructure
 type InfrastructureManager struct {
-	composeFile     string
-	cliBinaryPath   string
-	ctx             context.Context
-	cancel          context.CancelFunc
-	startedServices map[InfrastructureID]bool
-	mu              sync.Mutex
-	reporter        *TestReporter
+	composeFile         string
+	cliBinaryPath       string
+	startupTimeout      time.Duration
+	healthCheckInterval time.Duration
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	startedServices     map[InfrastructureID]bool
+	mu                  sync.Mutex
+	reporter            *TestReporter
 }
 
-// NewInfrastructureManager creates a new infrastructure manager
-func NewInfrastructureManager(reporter *TestReporter) *InfrastructureManager {
+func NewInfrastructureManager(reporter *TestReporter, cfg *TestConfig, cfgPath string) *InfrastructureManager {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &InfrastructureManager{
-		ctx:             ctx,
-		cancel:          cancel,
-		startedServices: make(map[InfrastructureID]bool),
-		reporter:        reporter,
+	m := &InfrastructureManager{
+		ctx:                 ctx,
+		cancel:              cancel,
+		startedServices:     make(map[InfrastructureID]bool),
+		reporter:            reporter,
+		startupTimeout:      DefaultStartupTimeout,
+		healthCheckInterval: HealthCheckInterval,
 	}
+
+	// Resolve compose file from config if set
+	if cfg != nil && cfg.Infrastructure.ComposeFile != "" {
+		compose := cfg.Infrastructure.ComposeFile
+		if !filepath.IsAbs(compose) {
+			baseDir := filepath.Dir(cfgPath)
+			compose = filepath.Join(baseDir, compose)
+		}
+		if abs, err := filepath.Abs(compose); err == nil {
+			m.composeFile = abs
+		} else {
+			reporter.LogPhase1Detail(fmt.Sprintf("Warning: failed to resolve compose file from config: %v", err))
+		}
+	}
+
+	// Parse timeouts if provided
+	if cfg != nil {
+		if cfg.Infrastructure.StartupTimeout != "" {
+			if d, err := time.ParseDuration(cfg.Infrastructure.StartupTimeout); err == nil {
+				m.startupTimeout = d
+			} else {
+				reporter.LogPhase1Detail(fmt.Sprintf("Warning: invalid startup_timeout in config: %v", err))
+			}
+		}
+		if cfg.Infrastructure.HealthCheckInterval != "" {
+			if d, err := time.ParseDuration(cfg.Infrastructure.HealthCheckInterval); err == nil {
+				m.healthCheckInterval = d
+			} else {
+				reporter.LogPhase1Detail(fmt.Sprintf("Warning: invalid health_check_interval in config: %v", err))
+			}
+		}
+	}
+
+	return m
 }
 
 // SetupInfrastructure starts the required infrastructure components
@@ -191,21 +228,21 @@ func (m *InfrastructureManager) buildGatewayImages() error {
 func (m *InfrastructureManager) startGatewayStack() error {
 	m.reporter.LogPhase1("GATEWAY", "Starting gateway stack...")
 
-	// Resolve the compose file path
-	composeFile, err := filepath.Abs("../../gateway/it/docker-compose.test.yaml")
-	if err != nil {
-		return fmt.Errorf("failed to resolve compose file path: %w", err)
+	if m.composeFile == "" {
+		composeFile, err := filepath.Abs("../../gateway/it/docker-compose.test.yaml")
+		if err != nil {
+			return fmt.Errorf("failed to resolve compose file path: %w", err)
+		}
+		m.composeFile = composeFile
 	}
 
-	if _, err := os.Stat(composeFile); os.IsNotExist(err) {
-		return fmt.Errorf("compose file not found: %s", composeFile)
+	if _, err := os.Stat(m.composeFile); os.IsNotExist(err) {
+		return fmt.Errorf("compose file not found: %s", m.composeFile)
 	}
-
-	m.composeFile = composeFile
 
 	// Create coverage directory with proper permissions to avoid Docker mount issues
 	m.reporter.LogPhase1Detail("Creating coverage directory...")
-	coverageDir := filepath.Join(filepath.Dir(composeFile), "coverage", "gateway-controller")
+	coverageDir := filepath.Join(filepath.Dir(m.composeFile), "coverage", "gateway-controller")
 	if err := os.MkdirAll(coverageDir, 0755); err != nil {
 		log.Printf("Warning: Could not create coverage directory: %v", err)
 	}
@@ -222,11 +259,11 @@ func (m *InfrastructureManager) startGatewayStack() error {
 
 	// Start the compose stack using native docker compose command
 	cmd := exec.CommandContext(m.ctx, "docker", "compose",
-		"-f", composeFile,
+		"-f", m.composeFile,
 		"-p", ComposeProjectName,
 		"up", "-d", "--wait",
 	)
-	cmd.Dir = filepath.Dir(composeFile)
+	cmd.Dir = filepath.Dir(m.composeFile)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		m.reporter.LogPhase1Fail("GATEWAY", "Failed to start stack", string(output))
@@ -272,7 +309,7 @@ func (m *InfrastructureManager) waitForGatewayHealth() error {
 	healthURL := fmt.Sprintf("http://localhost:%s/health", GatewayControllerPort)
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	deadline := time.Now().Add(DefaultStartupTimeout)
+	deadline := time.Now().Add(m.startupTimeout)
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(healthURL)
 		if err == nil && resp.StatusCode == http.StatusOK {
@@ -282,25 +319,25 @@ func (m *InfrastructureManager) waitForGatewayHealth() error {
 		if resp != nil {
 			resp.Body.Close()
 		}
-		time.Sleep(HealthCheckInterval)
+		time.Sleep(m.healthCheckInterval)
 	}
 
-	return fmt.Errorf("gateway controller health check timed out after %v", DefaultStartupTimeout)
+	return fmt.Errorf("gateway controller health check timed out after %v", m.startupTimeout)
 }
 
 // waitForMCPServer waits for the MCP server to be available
 func (m *InfrastructureManager) waitForMCPServer() error {
-	deadline := time.Now().Add(DefaultStartupTimeout)
+	deadline := time.Now().Add(m.startupTimeout)
 	for time.Now().Before(deadline) {
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%s", MCPServerPort), 5*time.Second)
 		if err == nil {
 			conn.Close()
 			return nil
 		}
-		time.Sleep(HealthCheckInterval)
+		time.Sleep(m.healthCheckInterval)
 	}
 
-	return fmt.Errorf("MCP server health check timed out after %v", DefaultStartupTimeout)
+	return fmt.Errorf("MCP server health check timed out after %v", m.startupTimeout)
 }
 
 // GetCLIBinaryPath returns the path to the CLI binary

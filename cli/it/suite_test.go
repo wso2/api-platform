@@ -44,6 +44,9 @@ var (
 	// Global test configuration
 	testConfig *TestConfig
 
+	// Path to the loaded test config file
+	testConfigPath string
+
 	// Step handlers
 	cliSteps    *steps.CLISteps
 	assertSteps *steps.AssertSteps
@@ -58,9 +61,13 @@ func TestFeatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to load test config: %v", err)
 	}
+	testConfigPath = configPath
 
 	// Initialize reporter
-	logsDir, _ := filepath.Abs("logs")
+	logsDir, err := filepath.Abs("logs")
+	if err != nil {
+		t.Fatalf("Failed to resolve logs directory: %v", err)
+	}
 	testReporter = NewTestReporter(logsDir)
 	if err := testReporter.Setup(); err != nil {
 		t.Fatalf("Failed to setup test reporter: %v", err)
@@ -112,7 +119,7 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 		fmt.Printf("  %s[DOCKER]%s  Docker available %s✓%s\n", ColorBlue, ColorReset, ColorGreen, ColorReset)
 
 		// Initialize infrastructure manager
-		infraManager = NewInfrastructureManager(testReporter)
+		infraManager = NewInfrastructureManager(testReporter, testConfig, testConfigPath)
 
 		// Get required infrastructure based on enabled tests
 		required := testConfig.GetRequiredInfrastructure()

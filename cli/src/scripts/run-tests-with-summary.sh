@@ -4,7 +4,7 @@ set -o pipefail
 
 # Ensure script runs from the cli/src directory regardless of invocation cwd
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR/.."
+cd "$SCRIPT_DIR/.." || { echo "Failed to change directory to $SCRIPT_DIR/.." >&2; exit 1; }
 
 mkdir -p test/unit/logs
 
