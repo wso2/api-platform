@@ -318,6 +318,7 @@ func main() {
 
 	// Start metrics server if enabled
 	var metricsServer *metrics.Server
+	var metricsCtxCancel context.CancelFunc
 	if cfg.GatewayController.Metrics.Enabled {
 		log.Info("Starting metrics server", zap.Int("port", cfg.GatewayController.Metrics.Port))
 
@@ -331,8 +332,10 @@ func main() {
 			}
 		}()
 
-		// Start memory metrics updater
-		metrics.StartMemoryMetricsUpdater(context.Background(), 15*time.Second)
+		// Start memory metrics updater with cancellable context
+		var metricsCtx context.Context
+		metricsCtx, metricsCtxCancel = context.WithCancel(context.Background())
+		metrics.StartMemoryMetricsUpdater(metricsCtx, 15*time.Second)
 	}
 
 	// Start REST API server
@@ -378,6 +381,10 @@ func main() {
 
 	// Stop metrics server if it was started
 	if metricsServer != nil {
+		// Cancel memory metrics updater context
+		if metricsCtxCancel != nil {
+			metricsCtxCancel()
+		}
 		if err := metricsServer.Stop(ctx); err != nil {
 			log.Error("Failed to stop metrics server", zap.Error(err))
 		}

@@ -135,14 +135,15 @@ func (cb *serverCallbacks) OnStreamClosed(id int64, node *core.Node) {
 	cb.activeStreamsMu.Lock()
 	defer cb.activeStreamsMu.Unlock()
 
-	nodeID := "unknown"
-	if node != nil && node.Id != "" {
-		nodeID = node.Id
-	}
-
-	// Remove from active streams and decrement metric
-	if _, exists := cb.activeStreams[id]; exists {
+	// Remove from active streams and decrement metric using the stored node ID
+	// to ensure label consistency with the increment in OnStreamRequest
+	if storedNodeID, exists := cb.activeStreams[id]; exists {
 		delete(cb.activeStreams, id)
+		// Use stored node ID; fallback to "unknown" if empty
+		nodeID := storedNodeID
+		if nodeID == "" {
+			nodeID = "unknown"
+		}
 		metrics.XDSClientsConnected.WithLabelValues("main", nodeID).Dec()
 	}
 }

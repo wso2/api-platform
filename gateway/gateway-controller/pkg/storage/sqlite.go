@@ -444,6 +444,7 @@ func (s *SQLiteStorage) GetConfig(id string) (*models.StoredConfig, error) {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()
+			metrics.StorageErrorsTotal.WithLabelValues("read", "not_found").Inc()
 			return nil, fmt.Errorf("%w: id=%s", ErrNotFound, id)
 		}
 		metrics.DatabaseOperationsTotal.WithLabelValues("read", table, "error").Inc()

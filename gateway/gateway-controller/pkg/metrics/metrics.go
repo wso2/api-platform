@@ -734,5 +734,5 @@ func UpdateMemoryMetrics() {
 
 	MemoryBytes.WithLabelValues("heap_alloc").Set(float64(m.HeapAlloc))
 	MemoryBytes.WithLabelValues("heap_sys").Set(float64(m.HeapSys))
-	MemoryBytes.WithLabelValues("stack_inuse").Set(float64(m.StackInuse))
+	MemoryBytes.WithLabelValues("stack").Set(float64(m.StackInuse))
 }

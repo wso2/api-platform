@@ -110,3 +110,8 @@ bin/
 # CLI test logs and output
 cli/src/tests/logs/
 cli/src/tests/target/
+
+# Local Claude agent files (keep them out of the repo; keep locally)
+# Specific agent file kept locally:
+# /.claude/agents/gateway-operator-expert.md
+/.claude/agents/gateway-operator-expert.md

@@ -93,9 +93,9 @@ docker compose up -d
 ```
 
 **Note:** The gateway components still expose metrics if enabled in the configuration. You can still access metrics directly at:
-- Gateway Controller: http://localhost:9091/metrics
-- Policy Engine: http://localhost:9003/metrics
-- Router (Envoy): http://localhost:9901/stats/prometheus
+- Gateway Controller: <http://localhost:9091/metrics>
+- Policy Engine: <http://localhost:9003/metrics>
+- Router (Envoy): <http://localhost:9901/stats/prometheus>
 
 ### Stop Metrics Services
 
@@ -119,10 +119,7 @@ Once you've started the gateway with the metrics profile, follow these steps to 
 
 ### Step 1: Access Grafana
 
-Open your browser and navigate to:
-```
-http://localhost:3000
-```
+Open your browser and navigate to: <http://localhost:3000>
 
 ### Step 2: Log in to Grafana
 
@@ -258,7 +255,7 @@ This alert triggers when the error rate exceeds 10% over 5 minutes.
 
 ## Prometheus Queries
 
-You can query Prometheus directly at http://localhost:9092 to create custom visualizations or debug issues.
+You can query Prometheus directly at <http://localhost:9092> to create custom visualizations or debug issues.
 
 ### Useful Queries
 
@@ -897,7 +894,7 @@ docker exec prometheus cat /etc/prometheus/prometheus.yml
 ```
 
 **4. Check Prometheus targets:**
-- Navigate to http://localhost:9092/targets
+- Navigate to <http://localhost:9092/targets>
 - Verify all endpoints are "UP" (green)
 - If endpoints are "DOWN", check:
   - Container is running
@@ -911,7 +908,7 @@ curl http://localhost:9003/metrics | head -20  # Policy Engine
 ```
 
 **6. Check Grafana data source:**
-- Navigate to http://localhost:3000/connections/datasources
+- Navigate to <http://localhost:3000/connections/datasources>
 - Verify Prometheus data source is configured
 - Test connection should succeed
 
@@ -972,8 +969,8 @@ docker logs grafana
 ```
 
 **3. Verify data source configuration:**
-- Navigate to http://localhost:3000/connections/datasources
-- Check Prometheus URL: http://prometheus:9090
+- Navigate to <http://localhost:3000/connections/datasources>
+- Check Prometheus URL: `http://prometheus:9090`
 - Test connection
 
 **4. Clear browser cache and reload dashboard**

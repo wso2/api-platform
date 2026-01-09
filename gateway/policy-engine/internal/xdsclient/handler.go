@@ -154,7 +154,7 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 		policyCount := float64(len(chain.Policies))
 		// Extract API name from route key (format: "api-name::route-name" or just routeKey)
 		apiName := routeKey
-		if idx := len("::"); idx > 0 && strings.Contains(routeKey, "::") {
+		if strings.Contains(routeKey, "::") {
 			parts := strings.SplitN(routeKey, "::", 2)
 			if len(parts) == 2 {
 				apiName = parts[0]
