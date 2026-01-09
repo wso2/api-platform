@@ -23,8 +23,11 @@ import "github.com/spf13/cobra"
 const (
 	FlagName                   = "display-name"
 	FlagServer                 = "server"
+	FlagAuth                   = "auth"
 	FlagUsername               = "username"
 	FlagPassword               = "password"
+	FlagToken                  = "token"
+	FlagNoInteractive          = "no-interactive"
 	FlagPasswordEnv            = "password-env"
 	FlagOutput                 = "output"
 	FlagFile                   = "file"
@@ -40,11 +43,12 @@ const (
 )
 
 var shortFlags = map[string]string{
-	FlagName:    "n",
-	FlagServer:  "s",
-	FlagOutput:  "o",
-	FlagFile:    "f",
-	FlagVersion: "v",
+	FlagName:          "n",
+	FlagServer:        "s",
+	FlagNoInteractive: "y",
+	FlagOutput:        "o",
+	FlagFile:          "f",
+	FlagVersion:       "v",
 }
 
 func GetShortFlags() []string {

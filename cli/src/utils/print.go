@@ -78,3 +78,33 @@ func PrintTable(headers []string, rows [][]string) {
 		fmt.Println(sep)
 	}
 }
+
+// PrintBoxedMessage prints a message in a box with borders
+func PrintBoxedMessage(lines []string) {
+	if len(lines) == 0 {
+		return
+	}
+
+	// Find the maximum line length
+	maxLen := 0
+	for _, line := range lines {
+		if len(line) > maxLen {
+			maxLen = len(line)
+		}
+	}
+
+	// Add padding
+	width := maxLen + 2
+
+	// Top border
+	fmt.Println("╔" + strings.Repeat("═", width) + "╗")
+
+	// Content lines
+	for _, line := range lines {
+		padding := width - len(line) - 1
+		fmt.Printf("║ %s%s║\n", line, strings.Repeat(" ", padding))
+	}
+
+	// Bottom border
+	fmt.Println("╚" + strings.Repeat("═", width) + "╝")
+}

@@ -29,7 +29,7 @@ import (
 
 // TestFlagValuesUnique ensures all flag values are unique across all flags
 func TestFlagValuesUnique(t *testing.T) {
-	flagsFilePath := filepath.Join("..", "..", "utils", "flags.go")
+	flagsFilePath := filepath.Join("..", "..", "..", "src", "utils", "flags.go")
 	content, err := os.ReadFile(flagsFilePath)
 	if err != nil {
 		t.Fatalf("Failed to read flags.go: %v", err)
