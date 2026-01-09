@@ -31,13 +31,13 @@ Feature: Gateway API Management Commands
     # API List Tests
     # =========================================
 
-    @API-001
+    @GW-API-001
     Scenario: List APIs
         Given I apply the resource file "resources/gateway/sample-api.yaml"
         When I run ap with arguments "gateway api list"
         Then the command should succeed
 
-    @API-002
+    @GW-API-002
     Scenario: List APIs when empty
         When I run ap with arguments "gateway api list"
         Then the command should succeed
@@ -46,14 +46,14 @@ Feature: Gateway API Management Commands
     # API Get Tests
     # =========================================
 
-    @API-003
+    @GW-API-003
     Scenario: Get existing API
         Given I apply the resource file "resources/gateway/sample-api.yaml"
         When I run ap with arguments "gateway api get --id petstore-api-v1.0"
         Then the command should succeed
         And the output should contain "petstore"
 
-    @API-004
+    @GW-API-004
     Scenario: Get non-existent API
         When I run ap with arguments "gateway api get --id non-existent-api"
         Then the command should fail
@@ -63,13 +63,13 @@ Feature: Gateway API Management Commands
     # API Delete Tests
     # =========================================
 
-    @API-005
+    @GW-API-005
     Scenario: Delete existing API
         Given I apply the resource file "resources/gateway/sample-api.yaml"
         When I run ap with arguments "gateway api delete --id petstore-api-v1.0"
         Then the command should succeed
 
-    @API-006
+    @GW-API-006
     Scenario: Delete non-existent API
         When I run ap with arguments "gateway api delete --id non-existent-api"
         Then the command should fail

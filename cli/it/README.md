@@ -28,8 +28,8 @@ Tests can be enabled/disabled by editing `test-config.yaml`:
 ```yaml
 tests:
   gateway:
-    management:
-      - id: GW-001
+    manage:
+      - id: GW-MANAGE-001
         name: gateway add with valid parameters
         enabled: true  # Set to false to skip
         requires: [CLI, GATEWAY]
@@ -59,8 +59,9 @@ cli/it/
 ## Logs
 
 Each test writes to a separate log file in `logs/`:
-- `logs/GW-001-gateway-add.log`
-- `logs/API-001-api-list.log`
+- `logs/GW-MANAGE-001-gateway-add.log`
+- `logs/GW-API-001-api-list.log`
+- `logs/PHASE-1.log` (Phase 1 infrastructure setup)
 - etc.
 
 ## Documentation

@@ -28,19 +28,19 @@ Feature: Gateway MCP Management Commands
     # MCP Generate Tests
     # =========================================
 
-    @MCP-001
+    @GW-MCP-001
     Scenario: Generate MCP config from valid server
         Given the MCP server is running
         When I run ap with arguments "gateway mcp generate --server http://localhost:3001/mcp --output /tmp/mcp-test-output"
         Then the command should succeed
 
-    @MCP-002
+    @GW-MCP-002
     Scenario: Generate MCP config with invalid server URL
         When I run ap with arguments "gateway mcp generate --server not-a-valid-url --output /tmp/mcp-test-output"
         Then the command should fail
         And the output should contain "unsupported protocol"
 
-    @MCP-003
+    @GW-MCP-003
     Scenario: Generate MCP config from unreachable server
         When I run ap with arguments "gateway mcp generate --server http://localhost:19999/mcp --output /tmp/mcp-test-output"
         Then the command should fail
@@ -50,7 +50,7 @@ Feature: Gateway MCP Management Commands
     # MCP List Tests
     # =========================================
 
-    @MCP-004
+    @GW-MCP-004
     Scenario: List MCPs
         Given the gateway is running
         And I have a gateway named "mcp-list-gw" configured
@@ -59,7 +59,7 @@ Feature: Gateway MCP Management Commands
         When I run ap with arguments "gateway mcp list"
         Then the command should succeed
 
-    @MCP-005
+    @GW-MCP-005
     Scenario: List MCPs when empty
         Given the gateway is running
         And I have a gateway named "mcp-empty-gw" configured
@@ -71,7 +71,7 @@ Feature: Gateway MCP Management Commands
     # MCP Get Tests
     # =========================================
 
-    @MCP-006
+    @GW-MCP-006
     Scenario: Get existing MCP
         Given the gateway is running
         And I have a gateway named "mcp-get-gw" configured
@@ -81,7 +81,7 @@ Feature: Gateway MCP Management Commands
         Then the command should succeed
         And the output should contain "test-mcp"
 
-    @MCP-007
+    @GW-MCP-007
     Scenario: Get non-existent MCP
         Given the gateway is running
         And I have a gateway named "mcp-get-fail-gw" configured
@@ -94,7 +94,7 @@ Feature: Gateway MCP Management Commands
     # MCP Delete Tests
     # =========================================
 
-    @MCP-008
+    @GW-MCP-008
     Scenario: Delete existing MCP
         Given the gateway is running
         And I have a gateway named "mcp-delete-gw" configured
@@ -103,7 +103,7 @@ Feature: Gateway MCP Management Commands
         When I run ap with arguments "gateway mcp delete --id test-mcp-v1.0"
         Then the command should succeed
 
-    @MCP-009
+    @GW-MCP-009
     Scenario: Delete non-existent MCP
         Given the gateway is running
         And I have a gateway named "mcp-delete-fail-gw" configured

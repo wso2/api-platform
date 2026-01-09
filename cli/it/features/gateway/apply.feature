@@ -29,21 +29,21 @@ Feature: Gateway Apply Command
     # Apply API Tests
     # =========================================
 
-    @APPLY-001
+    @GW-APPLY-001
     Scenario: Apply valid API yaml
         Given I have a gateway named "apply-test-gw" configured
         And I set the current gateway to "apply-test-gw"
         When I run ap with arguments "gateway apply -f resources/gateway/sample-api.yaml"
         Then the command should succeed
 
-    @APPLY-002
+    @GW-APPLY-002
     Scenario: Apply invalid yaml format
         Given I have a gateway named "apply-test-gw2" configured
         And I set the current gateway to "apply-test-gw2"
         When I run ap with arguments "gateway apply -f resources/gateway/invalid.yaml"
         Then the command should fail
 
-    @APPLY-003
+    @GW-APPLY-003
     Scenario: Apply missing file
         Given I have a gateway named "apply-test-gw3" configured
         And I set the current gateway to "apply-test-gw3"
@@ -51,7 +51,7 @@ Feature: Gateway Apply Command
         Then the command should fail
         And the output should contain "no such file"
 
-    @APPLY-004
+    @GW-APPLY-004
     Scenario: Apply valid MCP yaml
         Given the MCP server is running
         And I have a gateway named "apply-mcp-gw" configured

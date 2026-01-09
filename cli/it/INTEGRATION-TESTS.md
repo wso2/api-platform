@@ -128,46 +128,46 @@ Phase 2 runs CLI command tests. Each test documents its Phase 1 dependencies, an
 
 | Test ID | Test Name | Required Infrastructure |
 |---------|-----------|------------------------|
-| **Gateway Management** |||
-| GW-001 | gateway add (positive) | CLI, GATEWAY |
-| GW-002 | gateway add (negative - missing name) | CLI |
-| GW-003 | gateway add (negative - invalid URL) | CLI |
-| GW-004 | gateway add (negative - duplicate) | CLI, GATEWAY |
-| GW-005 | gateway list | CLI, GATEWAY |
-| GW-006 | gateway list (empty) | CLI |
-| GW-007 | gateway remove | CLI, GATEWAY |
-| GW-008 | gateway remove (non-existent) | CLI |
-| GW-009 | gateway use | CLI, GATEWAY |
-| GW-010 | gateway use (non-existent) | CLI |
-| GW-011 | gateway current | CLI, GATEWAY |
-| GW-012 | gateway current (none set) | CLI |
-| GW-013 | gateway health | CLI, GATEWAY |
-| GW-014 | gateway health (unreachable) | CLI |
+| **Gateway Manage** |||
+| GW-MANAGE-001 | gateway add (positive) | CLI, GATEWAY |
+| GW-MANAGE-002 | gateway add (negative - missing name) | CLI |
+| GW-MANAGE-003 | gateway add (negative - invalid URL) | CLI |
+| GW-MANAGE-004 | gateway add (negative - duplicate) | CLI, GATEWAY |
+| GW-MANAGE-005 | gateway list | CLI, GATEWAY |
+| GW-MANAGE-006 | gateway list (empty) | CLI |
+| GW-MANAGE-007 | gateway remove | CLI, GATEWAY |
+| GW-MANAGE-008 | gateway remove (non-existent) | CLI |
+| GW-MANAGE-009 | gateway use | CLI, GATEWAY |
+| GW-MANAGE-010 | gateway use (non-existent) | CLI |
+| GW-MANAGE-011 | gateway current | CLI, GATEWAY |
+| GW-MANAGE-012 | gateway current (none set) | CLI |
+| GW-MANAGE-013 | gateway health | CLI, GATEWAY |
+| GW-MANAGE-014 | gateway health (unreachable) | CLI |
 | **Gateway Apply** |||
-| APPLY-001 | apply valid API yaml | CLI, GATEWAY |
-| APPLY-002 | apply invalid yaml | CLI |
-| APPLY-003 | apply missing file | CLI |
-| APPLY-004 | apply valid MCP yaml | CLI, GATEWAY, MCP_SERVER |
+| GW-APPLY-001 | apply valid API yaml | CLI, GATEWAY |
+| GW-APPLY-002 | apply invalid yaml | CLI |
+| GW-APPLY-003 | apply missing file | CLI |
+| GW-APPLY-004 | apply valid MCP yaml | CLI, GATEWAY, MCP_SERVER |
 | **Gateway API** |||
-| API-001 | api list | CLI, GATEWAY |
-| API-002 | api list (empty) | CLI, GATEWAY |
-| API-003 | api get | CLI, GATEWAY |
-| API-004 | api get (non-existent) | CLI, GATEWAY |
-| API-005 | api delete | CLI, GATEWAY |
-| API-006 | api delete (non-existent) | CLI, GATEWAY |
+| GW-API-001 | api list | CLI, GATEWAY |
+| GW-API-002 | api list (empty) | CLI, GATEWAY |
+| GW-API-003 | api get | CLI, GATEWAY |
+| GW-API-004 | api get (non-existent) | CLI, GATEWAY |
+| GW-API-005 | api delete | CLI, GATEWAY |
+| GW-API-006 | api delete (non-existent) | CLI, GATEWAY |
 | **Gateway MCP** |||
-| MCP-001 | mcp generate (positive) | CLI, MCP_SERVER |
-| MCP-002 | mcp generate (invalid server) | CLI |
-| MCP-003 | mcp generate (unreachable server) | CLI |
-| MCP-004 | mcp list | CLI, GATEWAY |
-| MCP-005 | mcp list (empty) | CLI, GATEWAY |
-| MCP-006 | mcp get | CLI, GATEWAY |
-| MCP-007 | mcp get (non-existent) | CLI, GATEWAY |
-| MCP-008 | mcp delete | CLI, GATEWAY |
-| MCP-009 | mcp delete (non-existent) | CLI, GATEWAY |
+| GW-MCP-001 | mcp generate (positive) | CLI, MCP_SERVER |
+| GW-MCP-002 | mcp generate (invalid server) | CLI |
+| GW-MCP-003 | mcp generate (unreachable server) | CLI |
+| GW-MCP-004 | mcp list | CLI, GATEWAY |
+| GW-MCP-005 | mcp list (empty) | CLI, GATEWAY |
+| GW-MCP-006 | mcp get | CLI, GATEWAY |
+| GW-MCP-007 | mcp get (non-existent) | CLI, GATEWAY |
+| GW-MCP-008 | mcp delete | CLI, GATEWAY |
+| GW-MCP-009 | mcp delete (non-existent) | CLI, GATEWAY |
 | **Gateway Build** |||
-| BUILD-001 | build invalid manifest | CLI |
-| BUILD-002 | build missing file | CLI |
+| GW-BUILD-001 | build invalid manifest | CLI |
+| GW-BUILD-002 | build missing file | CLI |
 
 ### Smart Dependency Resolution
 
@@ -177,7 +177,7 @@ When running tests, the framework:
 3. Starts only required infrastructure
 4. Runs tests in dependency order
 
-**Example**: If only `MCP-001` (mcp generate) is enabled:
+**Example**: If only `GW-MCP-001` (mcp generate) is enabled:
 - Starts: CLI, MCP_SERVER
 - Skips: GATEWAY (not needed)
 
@@ -203,182 +203,182 @@ infrastructure:
 # Test definitions with dependencies
 tests:
   gateway:
-    management:
-      - id: GW-001
+    manage:
+      - id: GW-MANAGE-001
         name: gateway add with valid parameters
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: GW-002
+      - id: GW-MANAGE-002
         name: gateway add without name flag
         enabled: true
         requires: [CLI]
         
-      - id: GW-003
+      - id: GW-MANAGE-003
         name: gateway add with invalid server URL
         enabled: true
         requires: [CLI]
         
-      - id: GW-004
+      - id: GW-MANAGE-004
         name: gateway add duplicate name
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: GW-005
+      - id: GW-MANAGE-005
         name: gateway list
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: GW-006
+      - id: GW-MANAGE-006
         name: gateway list when empty
         enabled: true
         requires: [CLI]
         
-      - id: GW-007
+      - id: GW-MANAGE-007
         name: gateway remove existing
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: GW-008
+      - id: GW-MANAGE-008
         name: gateway remove non-existent
         enabled: true
         requires: [CLI]
         
-      - id: GW-009
+      - id: GW-MANAGE-009
         name: gateway use existing
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: GW-010
+      - id: GW-MANAGE-010
         name: gateway use non-existent
         enabled: true
         requires: [CLI]
         
-      - id: GW-011
+      - id: GW-MANAGE-011
         name: gateway current
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: GW-012
+      - id: GW-MANAGE-012
         name: gateway current when none set
         enabled: true
         requires: [CLI]
         
-      - id: GW-013
+      - id: GW-MANAGE-013
         name: gateway health
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: GW-014
+      - id: GW-MANAGE-014
         name: gateway health unreachable
         enabled: true
         requires: [CLI]
 
     apply:
-      - id: APPLY-001
+      - id: GW-APPLY-001
         name: apply valid API yaml
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: APPLY-002
+      - id: GW-APPLY-002
         name: apply invalid yaml format
         enabled: true
         requires: [CLI]
         
-      - id: APPLY-003
+      - id: GW-APPLY-003
         name: apply missing file
         enabled: true
         requires: [CLI]
         
-      - id: APPLY-004
+      - id: GW-APPLY-004
         name: apply valid MCP yaml
         enabled: true
         requires: [CLI, GATEWAY, MCP_SERVER]
 
     api:
-      - id: API-001
+      - id: GW-API-001
         name: api list
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: API-002
+      - id: GW-API-002
         name: api list empty
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: API-003
+      - id: GW-API-003
         name: api get existing
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: API-004
+      - id: GW-API-004
         name: api get non-existent
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: API-005
+      - id: GW-API-005
         name: api delete existing
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: API-006
+      - id: GW-API-006
         name: api delete non-existent
         enabled: true
         requires: [CLI, GATEWAY]
 
     mcp:
-      - id: MCP-001
+      - id: GW-MCP-001
         name: mcp generate valid server
         enabled: true
         requires: [CLI, MCP_SERVER]
         
-      - id: MCP-002
+      - id: GW-MCP-002
         name: mcp generate invalid server URL
         enabled: true
         requires: [CLI]
         
-      - id: MCP-003
+      - id: GW-MCP-003
         name: mcp generate unreachable server
         enabled: true
         requires: [CLI]
         
-      - id: MCP-004
+      - id: GW-MCP-004
         name: mcp list
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: MCP-005
+      - id: GW-MCP-005
         name: mcp list empty
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: MCP-006
+      - id: GW-MCP-006
         name: mcp get existing
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: MCP-007
+      - id: GW-MCP-007
         name: mcp get non-existent
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: MCP-008
+      - id: GW-MCP-008
         name: mcp delete existing
         enabled: true
         requires: [CLI, GATEWAY]
         
-      - id: MCP-009
+      - id: GW-MCP-009
         name: mcp delete non-existent
         enabled: true
         requires: [CLI, GATEWAY]
 
     build:
-      - id: BUILD-001
-        name: build valid policy manifest
+      - id: GW-BUILD-001
+        name: build invalid manifest
         enabled: true
         requires: [CLI]
         
-      - id: BUILD-002
+      - id: GW-BUILD-002
         name: build missing manifest file
         enabled: true
         requires: [CLI]
@@ -395,12 +395,12 @@ Each test writes to a separate log file:
 ```
 logs/
 ├── .gitignore                    # Ignore all logs
-├── phase1-infrastructure.log     # Phase 1 startup logs
-├── GW-001-gateway-add.log
-├── GW-002-gateway-add-no-name.log
-├── API-001-api-list.log
-├── MCP-001-mcp-generate.log
-├── BUILD-001-build-manifest.log
+├── PHASE-1.log                   # Phase 1 startup logs
+├── GW-MANAGE-001-gateway-add.log
+├── GW-MANAGE-002-gateway-add-no-name.log
+├── GW-API-001-api-list.log
+├── GW-MCP-001-mcp-generate.log
+├── GW-BUILD-001-build-manifest.log
 └── ...
 ```
 
@@ -531,26 +531,26 @@ Phase 1 Complete: 3/3 infrastructure ready
 
 Phase 2: Test Execution
 -----------------------------------------------
-Gateway Management:
-  [GW-001] gateway add valid params              ✓ PASS  → logs/GW-001-gateway-add.log
-  [GW-002] gateway add no name                   ✓ PASS  → logs/GW-002-gateway-add-no-name.log
-  [GW-003] gateway add invalid URL               ✓ PASS  → logs/GW-003-gateway-add-invalid-url.log
+Gateway Manage:
+  [GW-MANAGE-001] gateway add valid params       ✓ PASS  → logs/GW-MANAGE-001-gateway-add.log
+  [GW-MANAGE-002] gateway add no name            ✓ PASS  → logs/GW-MANAGE-002-gateway-add-no-name.log
+  [GW-MANAGE-003] gateway add invalid URL        ✓ PASS  → logs/GW-MANAGE-003-gateway-add-invalid-url.log
   ...
 
 Gateway Apply:
-  [APPLY-001] apply valid API yaml               ✓ PASS  → logs/APPLY-001-apply-api.log
+  [GW-APPLY-001] apply valid API yaml            ✓ PASS  → logs/GW-APPLY-001-apply-api.log
   ...
 
 Gateway API:
-  [API-001] api list                             ✓ PASS  → logs/API-001-api-list.log
+  [GW-API-001] api list                          ✓ PASS  → logs/GW-API-001-api-list.log
   ...
 
 Gateway MCP:
-  [MCP-001] mcp generate valid                   ✓ PASS  → logs/MCP-001-mcp-generate.log
+  [GW-MCP-001] mcp generate valid                ✓ PASS  → logs/GW-MCP-001-mcp-generate.log
   ...
 
 Gateway Build:
-  [BUILD-001] build invalid manifest             ✓ PASS  → logs/BUILD-001-build-invalid-manifest.log
+  [GW-BUILD-001] build invalid manifest          ✓ PASS  → logs/GW-BUILD-001-build-invalid-manifest.log
   ...
 
 ===============================================
@@ -569,8 +569,8 @@ Logs: cli/it/logs/
 ### Failure Output
 
 ```
-Gateway Management:
-  [GW-001] gateway add valid params              ✗ FAIL  → logs/GW-001-gateway-add.log
+Gateway Manage:
+  [GW-MANAGE-001] gateway add valid params       ✗ FAIL  → logs/GW-MANAGE-001-gateway-add.log
            Expected exit code 0, got 1
            Error: connection refused
 
@@ -583,8 +583,8 @@ Failed:   1
 Skipped:  0
 
 Failed Tests:
-  - GW-001: gateway add valid params
-    Log: logs/GW-001-gateway-add.log
+  - GW-MANAGE-001: gateway add valid params
+    Log: logs/GW-MANAGE-001-gateway-add.log
     Reason: Expected exit code 0, got 1
 
 Duration: 2m 15s

@@ -44,11 +44,11 @@ type TestsConfig struct {
 
 // GatewayTestsConfig holds gateway-related test configurations
 type GatewayTestsConfig struct {
-	Management []TestDefinition `yaml:"management"`
-	Apply      []TestDefinition `yaml:"apply"`
-	API        []TestDefinition `yaml:"api"`
-	MCP        []TestDefinition `yaml:"mcp"`
-	Build      []TestDefinition `yaml:"build"`
+	Manage []TestDefinition `yaml:"manage"`
+	Apply  []TestDefinition `yaml:"apply"`
+	API    []TestDefinition `yaml:"api"`
+	MCP    []TestDefinition `yaml:"mcp"`
+	Build  []TestDefinition `yaml:"build"`
 }
 
 // TestDefinition represents a single test definition
@@ -93,7 +93,7 @@ func (c *TestConfig) GetEnabledTests() []TestDefinition {
 	var enabled []TestDefinition
 
 	// Collect from all test groups
-	for _, t := range c.Tests.Gateway.Management {
+	for _, t := range c.Tests.Gateway.Manage {
 		if t.Enabled {
 			enabled = append(enabled, t)
 		}
@@ -126,7 +126,7 @@ func (c *TestConfig) GetEnabledTests() []TestDefinition {
 func (c *TestConfig) GetAllTests() []TestDefinition {
 	var all []TestDefinition
 
-	all = append(all, c.Tests.Gateway.Management...)
+	all = append(all, c.Tests.Gateway.Manage...)
 	all = append(all, c.Tests.Gateway.Apply...)
 	all = append(all, c.Tests.Gateway.API...)
 	all = append(all, c.Tests.Gateway.MCP...)

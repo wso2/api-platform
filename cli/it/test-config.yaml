@@ -37,182 +37,182 @@ infrastructure:
 # Test definitions with dependencies
 tests:
   gateway:
-    management:
-      - id: GW-001
+    manage:
+      - id: GW-MANAGE-001
         name: gateway add with valid parameters
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: GW-002
+      - id: GW-MANAGE-002
         name: gateway add without name flag
         enabled: true
         requires: [CLI]
 
-      - id: GW-003
+      - id: GW-MANAGE-003
         name: gateway add with invalid server URL
         enabled: true
         requires: [CLI]
 
-      - id: GW-004
+      - id: GW-MANAGE-004
         name: gateway add duplicate name
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: GW-005
+      - id: GW-MANAGE-005
         name: gateway list
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: GW-006
+      - id: GW-MANAGE-006
         name: gateway list when empty
         enabled: true
         requires: [CLI]
 
-      - id: GW-007
+      - id: GW-MANAGE-007
         name: gateway remove existing
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: GW-008
+      - id: GW-MANAGE-008
         name: gateway remove non-existent
         enabled: true
         requires: [CLI]
 
-      - id: GW-009
+      - id: GW-MANAGE-009
         name: gateway use existing
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: GW-010
+      - id: GW-MANAGE-010
         name: gateway use non-existent
         enabled: true
         requires: [CLI]
 
-      - id: GW-011
+      - id: GW-MANAGE-011
         name: gateway current
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: GW-012
+      - id: GW-MANAGE-012
         name: gateway current when none set
         enabled: true
         requires: [CLI]
 
-      - id: GW-013
+      - id: GW-MANAGE-013
         name: gateway health
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: GW-014
+      - id: GW-MANAGE-014
         name: gateway health unreachable
         enabled: true
         requires: [CLI]
 
     apply:
-      - id: APPLY-001
+      - id: GW-APPLY-001
         name: apply valid API yaml
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: APPLY-002
+      - id: GW-APPLY-002
         name: apply invalid yaml format
         enabled: true
         requires: [CLI]
 
-      - id: APPLY-003
+      - id: GW-APPLY-003
         name: apply missing file
         enabled: true
         requires: [CLI]
 
-      - id: APPLY-004
+      - id: GW-APPLY-004
         name: apply valid MCP yaml
         enabled: true
         requires: [CLI, GATEWAY, MCP_SERVER]
 
     api:
-      - id: API-001
+      - id: GW-API-001
         name: api list
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: API-002
+      - id: GW-API-002
         name: api list empty
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: API-003
+      - id: GW-API-003
         name: api get existing
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: API-004
+      - id: GW-API-004
         name: api get non-existent
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: API-005
+      - id: GW-API-005
         name: api delete existing
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: API-006
+      - id: GW-API-006
         name: api delete non-existent
         enabled: true
         requires: [CLI, GATEWAY]
 
     mcp:
-      - id: MCP-001
+      - id: GW-MCP-001
         name: mcp generate valid server
         enabled: true
         requires: [CLI, MCP_SERVER]
 
-      - id: MCP-002
+      - id: GW-MCP-002
         name: mcp generate invalid server URL
         enabled: true
         requires: [CLI]
 
-      - id: MCP-003
+      - id: GW-MCP-003
         name: mcp generate unreachable server
         enabled: true
         requires: [CLI]
 
-      - id: MCP-004
+      - id: GW-MCP-004
         name: mcp list
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: MCP-005
+      - id: GW-MCP-005
         name: mcp list empty
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: MCP-006
+      - id: GW-MCP-006
         name: mcp get existing
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: MCP-007
+      - id: GW-MCP-007
         name: mcp get non-existent
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: MCP-008
+      - id: GW-MCP-008
         name: mcp delete existing
         enabled: true
         requires: [CLI, GATEWAY]
 
-      - id: MCP-009
+      - id: GW-MCP-009
         name: mcp delete non-existent
         enabled: true
         requires: [CLI, GATEWAY]
 
     build:
-      - id: BUILD-001
+      - id: GW-BUILD-001
         name: build invalid manifest
         enabled: true
         requires: [CLI]
 
-      - id: BUILD-002
+      - id: GW-BUILD-002
         name: build missing manifest file
         enabled: true
         requires: [CLI]

@@ -29,12 +29,12 @@ Feature: Gateway Build Command
     # Build Tests
     # =========================================
 
-    @BUILD-001
+    @GW-BUILD-001
     Scenario: Build gateway with invalid manifest
         When I run ap with arguments "gateway build -f resources/gateway/invalid.yaml --docker-registry localhost:5000 --image-tag test --gateway-builder ghcr.io/wso2/api-platform/gateway-builder:0.3.0-SNAPSHOT"
         Then the command should fail
 
-    @BUILD-002
+    @GW-BUILD-002
     Scenario: Build gateway with missing manifest file
         When I run ap with arguments "gateway build -f non-existent-manifest.yaml --docker-registry localhost:5000 --image-tag test --gateway-builder ghcr.io/wso2/api-platform/gateway-builder:0.3.0-SNAPSHOT"
         Then the command should fail

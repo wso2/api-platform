@@ -219,16 +219,19 @@ func (r *TestReporter) getStatusSymbol(status string) string {
 // LogPhase1 logs a Phase 1 infrastructure message
 func (r *TestReporter) LogPhase1(component, message string) {
 	fmt.Printf("  %s[%s]%s %s\n", ColorBlue, component, ColorReset, message)
+	os.Stdout.Sync()
 }
 
 // LogPhase1Detail logs a detailed Phase 1 step (indented)
 func (r *TestReporter) LogPhase1Detail(detail string) {
 	fmt.Printf("    %s→%s %s\n", ColorCyan, ColorReset, detail)
+	os.Stdout.Sync()
 }
 
 // LogPhase1Pass logs a Phase 1 success
 func (r *TestReporter) LogPhase1Pass(component, message string) {
 	fmt.Printf("  %s[%s]%s %s %s✓%s\n", ColorBlue, component, ColorReset, message, ColorGreen, ColorReset)
+	os.Stdout.Sync()
 }
 
 // LogPhase1Fail logs a Phase 1 failure
@@ -237,11 +240,13 @@ func (r *TestReporter) LogPhase1Fail(component, message, details string) {
 	if details != "" {
 		fmt.Printf("    %sError: %s%s\n", ColorRed, details, ColorReset)
 	}
+	os.Stdout.Sync()
 }
 
 // LogWaiting logs a waiting/progress message with spinner
 func (r *TestReporter) LogWaiting(message string) {
 	fmt.Printf("    %s⏳%s %s\n", ColorYellow, ColorReset, message)
+	os.Stdout.Sync()
 }
 
 // LogAction logs an action being performed
@@ -291,11 +296,9 @@ func (r *TestReporter) PrintSummary() {
 
 	// Print Results Table
 	fmt.Println()
-	fmt.Printf("%s╔══════════════════════════════════════════════════════════════════════════════════╗%s\n", ColorBold, ColorReset)
-	fmt.Printf("%s║                              TEST RESULTS                                        ║%s\n", ColorBold, ColorReset)
-	fmt.Printf("%s╠════════════╦═══════════════════════════════════════════════════════╦═════════════╣%s\n", ColorBold, ColorReset)
-	fmt.Printf("%s║   TEST ID  ║                      TEST NAME                        ║   STATUS    ║%s\n", ColorBold, ColorReset)
-	fmt.Printf("%s╠════════════╬═══════════════════════════════════════════════════════╬═════════════╣%s\n", ColorBold, ColorReset)
+	fmt.Printf("%s╔════════════════╦═════════════════════════════════════════════════════╦═════════════╗%s\n", ColorBold, ColorReset)
+	fmt.Printf("%s║    TEST ID     ║                      TEST NAME                      ║   STATUS    ║%s\n", ColorBold, ColorReset)
+	fmt.Printf("%s╠════════════════╬═════════════════════════════════════════════════════╬═════════════╣%s\n", ColorBold, ColorReset)
 
 	for _, result := range r.results {
 		statusColor := ColorGreen
@@ -310,15 +313,15 @@ func (r *TestReporter) PrintSummary() {
 
 		// Truncate test name if too long
 		testName := result.TestName
-		if len(testName) > 53 {
-			testName = testName[:50] + "..."
+		if len(testName) > 51 {
+			testName = testName[:48] + "..."
 		}
 
-		fmt.Printf("║ %-10s ║ %-53s ║ %s%-11s%s ║\n",
+		fmt.Printf("║ %-14s ║ %-51s ║ %s%-11s%s ║\n",
 			result.TestID, testName, statusColor, statusSymbol, ColorReset)
 	}
 
-	fmt.Printf("%s╚════════════╩═══════════════════════════════════════════════════════╩═════════════╝%s\n", ColorBold, ColorReset)
+	fmt.Printf("%s╚════════════════╩═════════════════════════════════════════════════════╩═════════════╝%s\n", ColorBold, ColorReset)
 
 	// Print Summary Box
 	fmt.Println()
