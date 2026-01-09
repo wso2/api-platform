@@ -199,19 +199,21 @@ func runAddCommand() error {
 	fmt.Printf("Gateway %s added (server: %s, auth: %s)\n", addName, addServer, addAuth)
 	fmt.Printf("Configuration saved to: %s\n", configPath)
 
-	// Print a short note about required environment variables for the selected auth type
-	switch addAuth {
-	case utils.AuthTypeBasic:
-		fmt.Printf("Note: Basic auth requires %s and %s to be exported in your environment for controller commands.\n", utils.EnvGatewayUsername, utils.EnvGatewayPassword)
-	case utils.AuthTypeBearer:
-		fmt.Printf("Note: Bearer auth requires %s to be exported in your environment for controller commands.\n", utils.EnvGatewayToken)
-	}
-
 	// Show info message based on whether credentials were stored
 	if addAuth != utils.AuthTypeNone {
 		hasStoredCreds := utils.HasCredentials(addAuth, username, password, token)
-		if !hasStoredCreds {
-			// Show boxed message about environment variables
+
+		if hasStoredCreds {
+			// Credentials were stored in the config - inform user that environment variables may be used to override them
+			switch addAuth {
+			case utils.AuthTypeBasic:
+				fmt.Printf("Note: Credentials were stored in the configuration; exporting %s and %s will override them at runtime.\n", utils.EnvGatewayUsername, utils.EnvGatewayPassword)
+			case utils.AuthTypeBearer:
+				fmt.Printf("Note: Credentials were stored in the configuration; exporting %s will override them at runtime.\n", utils.EnvGatewayToken)
+			}
+
+		} else {
+			// No credentials stored - show boxed message about required environment variables
 			fmt.Println()
 			var envVars []string
 			switch addAuth {
