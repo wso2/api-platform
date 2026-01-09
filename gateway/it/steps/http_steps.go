@@ -60,12 +60,13 @@ func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I clear all headers$`, h.iClearHeaders)
 
 	// HTTP method steps
-	ctx.Step(`^I send a GET request to "([^"]*)"$`, h.ISendGETRequest)
-	ctx.Step(`^I send a POST request to "([^"]*)"$`, h.ISendPOSTRequest)
-	ctx.Step(`^I send a POST request to "([^"]*)" with body:$`, h.ISendPOSTRequestWithBody)
-	ctx.Step(`^I send a PUT request to "([^"]*)" with body:$`, h.ISendPUTRequestWithBody)
-	ctx.Step(`^I send a DELETE request to "([^"]*)"$`, h.ISendDELETERequest)
-	ctx.Step(`^I send a PATCH request to "([^"]*)" with body:$`, h.ISendPATCHRequestWithBody)
+	ctx.Step(`^I send a GET request to "([^"]*)"$`, h.iSendGETRequest)
+	ctx.Step(`^I send a POST request to "([^"]*)"$`, h.iSendPOSTRequest)
+	ctx.Step(`^I send a POST request to "([^"]*)" with body:$`, h.iSendPOSTRequestWithBody)
+	ctx.Step(`^I send a PUT request to "([^"]*)" with body:$`, h.iSendPUTRequestWithBody)
+	ctx.Step(`^I send a DELETE request to "([^"]*)"$`, h.iSendDELETERequest)
+	ctx.Step(`^I send a PATCH request to "([^"]*)" with body:$`, h.iSendPATCHRequestWithBody)
+	ctx.Step(`^I send (\d+) GET requests to "([^"]*)"$`, h.iSendManyGETRequests)
 
 	// Service-specific shortcuts
 	ctx.Step(`^I send a GET request to the "([^"]*)" service at "([^"]*)"$`, h.iSendGETToService)
@@ -178,6 +179,16 @@ func (h *HTTPSteps) ISendDELETERequest(url string) error {
 // ISendPATCHRequestWithBody sends a PATCH request with body
 func (h *HTTPSteps) ISendPATCHRequestWithBody(url string, body *godog.DocString) error {
 	return h.sendRequest(http.MethodPatch, url, []byte(body.Content))
+}
+
+// iSendManyGETRequests sends multiple GET requests
+func (h *HTTPSteps) iSendManyGETRequests(count int, url string) error {
+	for i := 0; i < count; i++ {
+		if err := h.sendRequest(http.MethodGet, url, nil); err != nil {
+			return fmt.Errorf("request %d failed: %w", i+1, err)
+		}
+	}
+	return nil
 }
 
 // iSendGETToService sends a GET request to a named service
