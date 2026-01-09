@@ -19,6 +19,8 @@
 package storage
 
 import (
+	"database/sql"
+
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
@@ -227,4 +229,7 @@ type Storage interface {
 	// Should be called during graceful shutdown.
 	// Implementations should ensure all pending writes are flushed.
 	Close() error
+
+	// GetDB exposes the underlying *sql.DB for advanced operations.
+	GetDB() *sql.DB
 }

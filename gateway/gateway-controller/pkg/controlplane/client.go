@@ -32,6 +32,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -113,6 +114,7 @@ func NewClient(
 	store *storage.ConfigStore,
 	db storage.Storage,
 	snapshotManager *xds.SnapshotManager,
+	policyManager *policyxds.PolicyManager,
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
 ) *Client {
@@ -126,7 +128,8 @@ func NewClient(
 		snapshotManager:   snapshotManager,
 		parser:            config.NewParser(),
 		validator:         validator,
-		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig),
+		// TODO: (VirajSalaka) Decide on behavior when controlplane is involved.
+		deploymentService: utils.NewAPIDeploymentService(store, db, snapshotManager, policyManager, validator, routerConfig, nil, false),
 		state: &ConnectionState{
 			Current:        Disconnected,
 			Conn:           nil,
