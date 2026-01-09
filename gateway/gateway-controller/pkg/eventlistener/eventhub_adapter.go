@@ -128,13 +128,14 @@ func (a *EventHubAdapter) bridgeEvents(
 			// Convert eventhub.Event to generic Event
 			genericEvents := make([]Event, len(hubEvents))
 			for i, hubEvent := range hubEvents {
+				eventCorrelationID := "event-" + hubEvent.CorrelationID
 				genericEvents[i] = Event{
 					OrganizationID: string(hubEvent.OrganizationID),
 					EventType:      string(hubEvent.EventType),
 					Action:         hubEvent.Action,
 					EntityID:       hubEvent.EntityID,
 					EventData:      hubEvent.EventData,
-					CorrelationID:  hubEvent.CorrelationID,
+					CorrelationID:  eventCorrelationID,
 					Timestamp:      hubEvent.ProcessedTimestamp,
 				}
 			}

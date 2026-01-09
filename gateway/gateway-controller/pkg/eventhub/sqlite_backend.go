@@ -26,7 +26,7 @@ type SQLiteBackend struct {
 	wg            sync.WaitGroup
 
 	initialized bool
-	
+	mu          sync.Mutex
 }
 
 // NewSQLiteBackend creates a new SQLite-based backend
@@ -44,6 +44,8 @@ func NewSQLiteBackend(db *sql.DB, logger *zap.Logger, config *SQLiteBackendConfi
 
 // Initialize sets up the SQLite backend and starts background workers
 func (b *SQLiteBackend) Initialize(ctx context.Context) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	if b.initialized {
 		return nil
@@ -215,6 +217,8 @@ func (b *SQLiteBackend) CleanupRange(ctx context.Context, from, to time.Time) er
 // Close gracefully shuts down the SQLite backend
 func (b *SQLiteBackend) Close() error {
 
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	if !b.initialized {
 		return nil
 	}
@@ -301,7 +305,7 @@ func (b *SQLiteBackend) pollAllOrganizations() {
 		}
 
 		if len(events) > 0 {
-			if b.deliverEvents(org, events) == nil{
+			if b.deliverEvents(org, events) == nil {
 				org.updatePollState(state.VersionID, time.Now())
 			}
 			// If delivery failed (channel full), don't update timestamp

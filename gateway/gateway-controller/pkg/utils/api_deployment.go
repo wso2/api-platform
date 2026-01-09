@@ -567,6 +567,8 @@ func (s *APIDeploymentService) saveOrUpdateConfig(storedCfg *models.StoredConfig
 	}
 
 	// Try to add to in-memory store
+	// Multi-replica mode: in-memory store will be updated via EventListener
+    // after event processing to ensure consistency across all replicas
 	if !s.enableReplicaSync {
 		if err := s.store.Add(storedCfg); err != nil {
 			// Check if it's a conflict (API already exists)
