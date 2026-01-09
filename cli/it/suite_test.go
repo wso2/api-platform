@@ -1,0 +1,411 @@
+/*
+ * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package it
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/cucumber/godog"
+	"github.com/wso2/api-platform/cli/it/steps"
+)
+
+var (
+	// Global infrastructure manager
+	infraManager *InfrastructureManager
+
+	// Global test reporter
+	testReporter *TestReporter
+
+	// Global test state
+	testState *TestState
+
+	// Global test configuration
+	testConfig *TestConfig
+
+	// Step handlers
+	cliSteps    *steps.CLISteps
+	assertSteps *steps.AssertSteps
+)
+
+// TestFeatures is the main entry point for BDD tests
+func TestFeatures(t *testing.T) {
+	// Load configuration
+	configPath := "test-config.yaml"
+	var err error
+	testConfig, err = LoadTestConfig(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load test config: %v", err)
+	}
+
+	// Initialize reporter
+	logsDir, _ := filepath.Abs("logs")
+	testReporter = NewTestReporter(logsDir)
+	if err := testReporter.Setup(); err != nil {
+		t.Fatalf("Failed to setup test reporter: %v", err)
+	}
+
+	// Print header
+	fmt.Printf("\n%s╔══════════════════════════════════════════════════════════════════════════════════╗%s\n", ColorBold, ColorReset)
+	fmt.Printf("%s║                        CLI INTEGRATION TESTS                                     ║%s\n", ColorBold, ColorReset)
+	fmt.Printf("%s╚══════════════════════════════════════════════════════════════════════════════════╝%s\n", ColorBold, ColorReset)
+	fmt.Printf("\n%s→ Config:%s %s\n", ColorCyan, ColorReset, configPath)
+
+	enabledTests := testConfig.GetEnabledTests()
+	allTests := testConfig.GetAllTests()
+	fmt.Printf("%s→ Tests:%s  %d/%d enabled\n\n", ColorCyan, ColorReset, len(enabledTests), len(allTests))
+
+	suite := godog.TestSuite{
+		TestSuiteInitializer: InitializeTestSuite,
+		ScenarioInitializer:  InitializeScenario,
+		Options: &godog.Options{
+			Format:   "pretty",
+			Paths:    []string{"features"},
+			TestingT: t,
+		},
+	}
+
+	exitCode := suite.Run()
+
+	// Print summary
+	testReporter.PrintSummary()
+
+	if exitCode != 0 {
+		t.Fatal("Integration tests failed")
+	}
+}
+
+// InitializeTestSuite sets up the test suite (runs once before all scenarios)
+func InitializeTestSuite(ctx *godog.TestSuiteContext) {
+	ctx.BeforeSuite(func() {
+		fmt.Printf("\n%s┌──────────────────────────────────────────────────────────────────────────────────┐%s\n", ColorBlue, ColorReset)
+		fmt.Printf("%s│  PHASE 1: Infrastructure Setup                                                   │%s\n", ColorBlue, ColorReset)
+		fmt.Printf("%s└──────────────────────────────────────────────────────────────────────────────────┘%s\n\n", ColorBlue, ColorReset)
+
+		// Pre-flight checks
+		if err := CheckDockerAvailable(); err != nil {
+			log.Fatalf("Pre-flight check failed: Docker is not available. %v", err)
+		}
+		fmt.Printf("  %s[DOCKER]%s  Docker available %s✓%s\n", ColorBlue, ColorReset, ColorGreen, ColorReset)
+
+		// Initialize infrastructure manager
+		infraManager = NewInfrastructureManager(testReporter)
+
+		// Get required infrastructure based on enabled tests
+		required := testConfig.GetRequiredInfrastructure()
+
+		// Setup infrastructure
+		if err := infraManager.SetupInfrastructure(required); err != nil {
+			log.Fatalf("Phase 1 failed: %v", err)
+		}
+
+		fmt.Printf("\n%s✓ Phase 1 Complete: Infrastructure ready%s\n", ColorGreen, ColorReset)
+
+		fmt.Printf("\n%s┌──────────────────────────────────────────────────────────────────────────────────┐%s\n", ColorPurple, ColorReset)
+		fmt.Printf("%s│  PHASE 2: Test Execution                                                         │%s\n", ColorPurple, ColorReset)
+		fmt.Printf("%s└──────────────────────────────────────────────────────────────────────────────────┘%s\n\n", ColorPurple, ColorReset)
+	})
+
+	ctx.AfterSuite(func() {
+		fmt.Printf("\n%s┌──────────────────────────────────────────────────────────────────────────────────┐%s\n", ColorGray, ColorReset)
+		fmt.Printf("%s│  Cleaning up infrastructure...                                                   │%s\n", ColorGray, ColorReset)
+		fmt.Printf("%s└──────────────────────────────────────────────────────────────────────────────────┘%s\n", ColorGray, ColorReset)
+
+		if infraManager != nil {
+			if err := infraManager.Teardown(); err != nil {
+				fmt.Printf("%sWarning: Teardown error: %v%s\n", ColorYellow, err, ColorReset)
+			}
+		}
+	})
+}
+
+// InitializeScenario sets up each test scenario
+func InitializeScenario(ctx *godog.ScenarioContext) {
+	// Initialize test state for each scenario
+	ctx.Before(func(c context.Context, sc *godog.Scenario) (context.Context, error) {
+		testState = NewTestState()
+		if err := testState.Reset(); err != nil {
+			return c, err
+		}
+
+		// Set CLI binary path
+		if infraManager != nil {
+			testState.SetCLIBinaryPath(infraManager.GetCLIBinaryPath())
+		}
+
+		// Initialize step handlers
+		cliSteps = steps.NewCLISteps(testState)
+		assertSteps = steps.NewAssertSteps(testState)
+
+		// Extract test ID from tags if available
+		for _, tag := range sc.Tags {
+			if len(tag.Name) > 1 && tag.Name[0] == '@' {
+				testState.SetTestInfo(tag.Name[1:], sc.Name)
+				testReporter.StartTest(tag.Name[1:], sc.Name)
+				break
+			}
+		}
+
+		return c, nil
+	})
+
+	ctx.After(func(c context.Context, sc *godog.Scenario, err error) (context.Context, error) {
+		passed := err == nil
+		errorMsg := ""
+		if err != nil {
+			errorMsg = err.Error()
+		}
+
+		testReporter.EndTest(testState, passed, errorMsg)
+
+		// Log the result
+		if testState.TestID != "" {
+			testReporter.LogTest(testState.TestID, testState.TestName, passed,
+				testReporter.generateLogFileName(testState.TestID, testState.TestName))
+		}
+
+		testState.Cleanup()
+		return c, nil
+	})
+
+	// Register step definitions
+	registerInfrastructureSteps(ctx)
+	registerCLISteps(ctx)
+	registerAssertSteps(ctx)
+	registerGatewaySteps(ctx)
+	registerAPISteps(ctx)
+	registerMCPSteps(ctx)
+	registerBuildSteps(ctx)
+}
+
+// registerInfrastructureSteps registers infrastructure-related step definitions
+func registerInfrastructureSteps(ctx *godog.ScenarioContext) {
+	ctx.Step(`^the CLI is available$`, theCliIsAvailable)
+	ctx.Step(`^the gateway is running$`, theGatewayIsRunning)
+	ctx.Step(`^the MCP server is running$`, theMCPServerIsRunning)
+	ctx.Step(`^Docker is available$`, dockerIsAvailable)
+}
+
+// registerCLISteps registers CLI execution step definitions
+func registerCLISteps(ctx *godog.ScenarioContext) {
+	ctx.Step(`^I run "([^"]*)"$`, iRunCommand)
+	ctx.Step(`^I run ap with arguments "([^"]*)"$`, iRunApWithArguments)
+	ctx.Step(`^I run ap gateway add with name "([^"]*)" and server "([^"]*)"$`, iRunGatewayAdd)
+	ctx.Step(`^I run ap gateway add with name "([^"]*)" and server "([^"]*)" and auth "([^"]*)"$`, iRunGatewayAddWithAuth)
+}
+
+// registerAssertSteps registers assertion step definitions
+func registerAssertSteps(ctx *godog.ScenarioContext) {
+	ctx.Step(`^the exit code should be (\d+)$`, theExitCodeShouldBe)
+	ctx.Step(`^the output should contain "([^"]*)"$`, theOutputShouldContain)
+	ctx.Step(`^the output should not contain "([^"]*)"$`, theOutputShouldNotContain)
+	ctx.Step(`^the stderr should contain "([^"]*)"$`, theStderrShouldContain)
+	ctx.Step(`^the stdout should contain "([^"]*)"$`, theStdoutShouldContain)
+	ctx.Step(`^the command should succeed$`, theCommandShouldSucceed)
+	ctx.Step(`^the command should fail$`, theCommandShouldFail)
+}
+
+// registerGatewaySteps registers gateway management step definitions
+func registerGatewaySteps(ctx *godog.ScenarioContext) {
+	ctx.Step(`^I have a gateway named "([^"]*)" configured$`, iHaveGatewayConfigured)
+	ctx.Step(`^I have a gateway named "([^"]*)" with server "([^"]*)"$`, iHaveGatewayWithServer)
+	ctx.Step(`^the gateway "([^"]*)" should exist$`, theGatewayShouldExist)
+	ctx.Step(`^the gateway "([^"]*)" should not exist$`, theGatewayShouldNotExist)
+	ctx.Step(`^I set the current gateway to "([^"]*)"$`, iSetCurrentGateway)
+	ctx.Step(`^the current gateway should be "([^"]*)"$`, theCurrentGatewayShouldBe)
+	ctx.Step(`^no gateway is configured$`, noGatewayIsConfigured)
+	ctx.Step(`^I reset the CLI configuration$`, iResetCLIConfiguration)
+}
+
+// registerAPISteps registers API management step definitions
+func registerAPISteps(ctx *godog.ScenarioContext) {
+	ctx.Step(`^I apply the sample API$`, iApplyTheSampleAPI)
+	ctx.Step(`^I apply the resource file "([^"]*)"$`, iApplyResourceFile)
+	ctx.Step(`^the API "([^"]*)" should be deployed$`, theAPIShouldBeDeployed)
+	ctx.Step(`^the API "([^"]*)" should not exist$`, theAPIShouldNotExist)
+	ctx.Step(`^I delete the API "([^"]*)"$`, iDeleteTheAPI)
+}
+
+// registerMCPSteps registers MCP management step definitions
+func registerMCPSteps(ctx *godog.ScenarioContext) {
+	ctx.Step(`^I generate MCP config from server "([^"]*)"$`, iGenerateMCPConfig)
+	ctx.Step(`^I generate MCP config to output "([^"]*)"$`, iGenerateMCPConfigToOutput)
+	ctx.Step(`^the MCP config should be generated$`, theMCPConfigShouldBeGenerated)
+	ctx.Step(`^the MCP "([^"]*)" should be deployed$`, theMCPShouldBeDeployed)
+	ctx.Step(`^the MCP "([^"]*)" should not exist$`, theMCPShouldNotExist)
+}
+
+// registerBuildSteps registers build step definitions
+func registerBuildSteps(ctx *godog.ScenarioContext) {
+	ctx.Step(`^I build gateway with manifest "([^"]*)"$`, iBuildGatewayWithManifest)
+	ctx.Step(`^the build should complete successfully$`, theBuildShouldComplete)
+}
+
+// Step implementations
+
+func theCliIsAvailable() error {
+	if testState.CLIBinaryPath == "" {
+		return fmt.Errorf("CLI binary path not set")
+	}
+	if _, err := os.Stat(testState.CLIBinaryPath); os.IsNotExist(err) {
+		return fmt.Errorf("CLI binary not found at %s", testState.CLIBinaryPath)
+	}
+	return nil
+}
+
+func theGatewayIsRunning() error {
+	return infraManager.waitForGatewayHealth()
+}
+
+func theMCPServerIsRunning() error {
+	return infraManager.waitForMCPServer()
+}
+
+func dockerIsAvailable() error {
+	return CheckDockerAvailable()
+}
+
+func iRunCommand(command string) error {
+	return cliSteps.RunCommand(command)
+}
+
+func iRunApWithArguments(args string) error {
+	return cliSteps.RunWithArgs(args)
+}
+
+func iRunGatewayAdd(name, server string) error {
+	return cliSteps.RunGatewayAdd(name, server, "none")
+}
+
+func iRunGatewayAddWithAuth(name, server, auth string) error {
+	return cliSteps.RunGatewayAdd(name, server, auth)
+}
+
+func theExitCodeShouldBe(expected int) error {
+	return assertSteps.ExitCodeShouldBe(expected)
+}
+
+func theOutputShouldContain(text string) error {
+	return assertSteps.OutputShouldContain(text)
+}
+
+func theOutputShouldNotContain(text string) error {
+	return assertSteps.OutputShouldNotContain(text)
+}
+
+func theStderrShouldContain(text string) error {
+	return assertSteps.StderrShouldContain(text)
+}
+
+func theStdoutShouldContain(text string) error {
+	return assertSteps.StdoutShouldContain(text)
+}
+
+func theCommandShouldSucceed() error {
+	return assertSteps.CommandShouldSucceed()
+}
+
+func theCommandShouldFail() error {
+	return assertSteps.CommandShouldFail()
+}
+
+func iHaveGatewayConfigured(name string) error {
+	return cliSteps.EnsureGatewayExists(name)
+}
+
+func theGatewayShouldExist(name string) error {
+	return assertSteps.GatewayShouldExist(name)
+}
+
+func theGatewayShouldNotExist(name string) error {
+	return assertSteps.GatewayShouldNotExist(name)
+}
+
+func iSetCurrentGateway(name string) error {
+	return cliSteps.SetCurrentGateway(name)
+}
+
+func theCurrentGatewayShouldBe(name string) error {
+	return assertSteps.CurrentGatewayShouldBe(name)
+}
+
+func noGatewayIsConfigured() error {
+	// This is handled by the isolated config directory
+	return nil
+}
+
+func iApplyTheSampleAPI() error {
+	return cliSteps.ApplySampleAPI()
+}
+
+func theAPIShouldBeDeployed(name string) error {
+	return assertSteps.APIShouldBeDeployed(name)
+}
+
+func theAPIShouldNotExist(name string) error {
+	return assertSteps.APIShouldNotExist(name)
+}
+
+func iDeleteTheAPI(name string) error {
+	return cliSteps.DeleteAPI(name)
+}
+
+func iGenerateMCPConfig(server string) error {
+	return cliSteps.GenerateMCPConfig(server, "")
+}
+
+func iGenerateMCPConfigToOutput(output string) error {
+	return cliSteps.GenerateMCPConfig("http://localhost:3001/mcp", output)
+}
+
+func theMCPConfigShouldBeGenerated() error {
+	return assertSteps.MCPConfigShouldBeGenerated()
+}
+
+func theMCPShouldBeDeployed(name string) error {
+	return assertSteps.MCPShouldBeDeployed(name)
+}
+
+func theMCPShouldNotExist(name string) error {
+	return assertSteps.MCPShouldNotExist(name)
+}
+
+func iBuildGatewayWithManifest(manifest string) error {
+	return cliSteps.BuildGatewayWithManifest(manifest)
+}
+
+func theBuildShouldComplete() error {
+	return assertSteps.BuildShouldComplete()
+}
+
+func iHaveGatewayWithServer(name, server string) error {
+	return cliSteps.EnsureGatewayExistsWithServer(name, server)
+}
+
+func iResetCLIConfiguration() error {
+	return cliSteps.ResetConfiguration()
+}
+
+func iApplyResourceFile(filePath string) error {
+	return cliSteps.ApplyResourceFile(filePath)
+}
