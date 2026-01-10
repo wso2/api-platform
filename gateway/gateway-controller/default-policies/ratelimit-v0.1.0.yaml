@@ -69,9 +69,10 @@ parameters:
         Configuration for extracting cost from response data (post-response rate limiting).
         When enabled, the actual cost is determined after the upstream responds, allowing
         for dynamic rate limiting based on response content (e.g., token usage from LLM APIs).
-        Note: When enabled, requests are NOT blocked pre-request - they always go to upstream.
-        Cost is extracted from response and consumed after the response. If rate limit is
-        exceeded, the current request already succeeded but headers indicate quota exhaustion.
+        Note: A pre-flight quota check is performed - if remaining quota is already exhausted,
+        requests are blocked with 429. Otherwise, requests proceed to upstream and cost is
+        extracted from response and consumed after the response. If rate limit is exceeded
+        post-response, the current request already succeeded but headers indicate quota exhaustion.
         Subsequent requests using the same key will be impacted.
       additionalProperties: false
       properties:

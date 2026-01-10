@@ -119,7 +119,7 @@ spec:
             cost: 1
             limits:
               - limit: 5
-                duration: "10m"  # 5 requests per minute
+                duration: "10m"  # 5 requests per 10 minutes
             keyExtraction:
               - type: ip  # Rate limit by IP address
             onRateLimitExceeded:
@@ -149,6 +149,7 @@ spec:
             onRateLimitExceeded:
               statusCode: 429
               body: '{"error": "ORDER_RATE_LIMIT", "message": "Order creation rate limit exceeded for your tenant."}'
+              bodyFormat: json
 
     # Example 6: Burst rate limiting with GCRA
     # Allow short bursts but maintain average rate

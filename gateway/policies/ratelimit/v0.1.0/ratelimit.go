@@ -398,6 +398,11 @@ func (p *RateLimitPolicy) handleCostExtractionResponse(ctx *policy.ResponseConte
 		slog.Debug("Cost extraction failed, using default", "key", key, "defaultCost", actualCost)
 	}
 
+	// Clamp cost to minimum of 1 to prevent free requests
+	if actualCost < 1 {
+		actualCost = 1
+	}
+
 	// Consume tokens now using existing AllowN
 	result, err := p.limiter.AllowN(context.Background(), key, actualCost)
 

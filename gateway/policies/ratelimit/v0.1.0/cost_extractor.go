@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -147,7 +148,7 @@ func (e *CostExtractor) extractFromMetadata(ctx *policy.ResponseContext, key str
 	default:
 		slog.Warn("Unsupported type for cost in metadata",
 			"key", key,
-			"type", "%T", v)
+			"type", fmt.Sprintf("%T", v))
 	}
 
 	return 0, false

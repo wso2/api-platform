@@ -165,14 +165,15 @@ Each item in the `sources` array supports the following structure:
 > **Important: Post-Response Rate Limiting Behavior**
 >
 > When `costExtraction.enabled: true`:
-> - Requests are **NOT blocked pre-request** - they always proceed to upstream
+> - A **pre-flight quota check** is performed: if the key's remaining quota is already exhausted (≤ 0), the request is blocked with a 429 response
+> - If quota is available, the request proceeds to upstream without consuming tokens
 > - Cost is extracted from the response and consumed **after** the response is received
-> - If the rate limit is exceeded, the **current request has already succeeded**, but headers indicate quota exhaustion
+> - If the rate limit is exceeded post-response, the **current request has already succeeded**, but headers indicate quota exhaustion
 > - **Subsequent requests** using the same key will be impacted by the consumed quota
 >
 > This model is appropriate for:
 > - Use cases where cost is only known after the operation completes (e.g., LLM token usage)
-> - Usage tracking rather than hard blocking
+> - Usage tracking with pre-flight protection against fully exhausted quotas
 
 #### Rate Limit Exceeded Response
 
