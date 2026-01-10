@@ -93,8 +93,8 @@ func (m *MemoryLimiter) AllowN(ctx context.Context, key string, n int64) (*limit
 		remaining = 0
 	}
 
-	// Update entry if allowed
-	if allowed {
+	// Update entry if allowed and n > 0 (skip mutation for peek operations)
+	if allowed && n > 0 {
 		m.data[key] = &windowEntry{
 			count:       newCount,
 			windowStart: windowStart,

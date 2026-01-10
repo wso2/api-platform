@@ -134,11 +134,13 @@ func (m *MemoryLimiter) AllowN(ctx context.Context, key string, n int64) (*limit
 	// GCRA Algorithm Step 5: Request allowed - update TAT
 	newTAT := tat.Add(emissionInterval * time.Duration(n))
 
-	// Store new TAT with expiration
-	expiration := m.policy.Duration + burstAllowance
-	m.data[key] = &tatEntry{
-		tat:        newTAT,
-		expiration: now.Add(expiration),
+	// Store new TAT with expiration (skip for peek operations where n=0)
+	if n > 0 {
+		expiration := m.policy.Duration + burstAllowance
+		m.data[key] = &tatEntry{
+			tat:        newTAT,
+			expiration: now.Add(expiration),
+		}
 	}
 
 	// GCRA Algorithm Step 6: Calculate remaining requests
