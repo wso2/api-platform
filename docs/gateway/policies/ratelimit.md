@@ -8,6 +8,7 @@ The Rate Limiting policy controls the rate of requests to your APIs by enforcing
 
 - Multiple rate limiting algorithms (GCRA, Fixed Window)
 - Weighted rate limiting via cost parameter
+- Post-response cost extraction for dynamic rate limiting (e.g., LLM token usage)
 - Multiple concurrent limits (e.g., 10/second AND 1000/hour)
 - Flexible key extraction (headers, metadata, IP, API name, route name)
 - Dual backends: in-memory (single instance) or Redis (distributed)
@@ -77,7 +78,8 @@ These parameters are configured per-API/route by the API developer:
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `limits` | array | Yes | - | Array of rate limit policies to enforce. Multiple limits can be specified for different time windows. |
-| `cost` | integer | No | `1` | Number of tokens this operation consumes per request (weighted rate limiting). |
+| `cost` | integer | No | `1` | Number of tokens this operation consumes per request (weighted rate limiting). Ignored when `costExtraction` is enabled. |
+| `costExtraction` | object | No | - | Configuration for extracting cost from response data (post-response rate limiting). |
 | `keyExtraction` | array | No | `[{type: "routename"}]` | Array of components to extract and combine for the rate limit key. |
 | `onRateLimitExceeded` | object | No | - | Customize the 429 response when rate limit is exceeded. |
 
@@ -133,6 +135,45 @@ Each item in the `keyExtraction` array supports the following structure:
 > These are treated as **different rate limit buckets** with separate counters. If you change the component order in your configuration, it will effectively reset all rate limit counters for that policy.
 >
 > **Best Practice:** Maintain consistent component ordering across all environments and configuration updates to avoid unexpected rate limit resets.
+
+#### Cost Extraction Configuration
+
+The `costExtraction` object enables post-response rate limiting, where the cost is extracted from the response data instead of using a static value. This is useful for scenarios where the actual resource consumption is only known after the request completes (e.g., LLM token usage, compute units).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `enabled` | boolean | No | `false` | Enable post-response cost extraction. |
+| `sources` | array | Yes (if enabled) | - | Ordered list of sources to extract cost from. Sources are tried in order until one succeeds. |
+| `default` | integer | No | `1` | Default cost to use if extraction fails from all sources. |
+
+**Source Configuration:**
+
+Each item in the `sources` array supports the following structure:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `type` | string | Yes | Type of source: `"response_header"`, `"metadata"`, or `"response_body"`. |
+| `key` | string | Conditional | Header name (for `response_header`) or metadata key (for `metadata`). Required for these types. |
+| `jsonPath` | string | Conditional | JSON path expression for extracting cost from response body (for `response_body`). Required for this type. Example: `"$.usage.total_tokens"`. |
+
+**Source Types:**
+
+- `response_header`: Extract cost from a response header (must be an integer value)
+- `metadata`: Extract cost from shared metadata (set by other policies)
+- `response_body`: Extract cost from JSON response body using JSONPath expression
+
+> **Important: Post-Response Rate Limiting Behavior**
+>
+> When `costExtraction.enabled: true`:
+> - A **pre-flight quota check** is performed: if the key's remaining quota is already exhausted (≤ 0), the request is blocked with a 429 response
+> - If quota is available, the request proceeds to upstream without consuming tokens
+> - Cost is extracted from the response and consumed **after** the response is received
+> - If the rate limit is exceeded post-response, the **current request has already succeeded**, but headers indicate quota exhaustion
+> - **Subsequent requests** using the same key will be impacted by the consumed quota
+>
+> This model is appropriate for:
+> - Use cases where cost is only known after the operation completes (e.g., LLM token usage)
+> - Usage tracking with pre-flight protection against fully exhausted quotas
 
 #### Rate Limit Exceeded Response
 
@@ -469,6 +510,83 @@ spec:
       path: /resource
 ```
 
+### Example 9: LLM Token-Based Rate Limiting (Post-Response Cost Extraction)
+
+Rate limit based on actual token usage from an LLM API response:
+
+```yaml
+version: api-platform.wso2.com/v1
+kind: http/rest
+spec:
+  name: llm-api
+  version: v1.0
+  context: /llm
+  upstream:
+    main:
+      url: https://llm-service:8080
+  policies:
+    - name: ratelimit
+      version: v0.1.0
+      params:
+        limits:
+          - limit: 100000
+            duration: "24h"
+        keyExtraction:
+          - type: header
+            key: X-User-ID
+        costExtraction:
+          enabled: true
+          sources:
+            - type: response_header
+              key: X-Token-Usage
+            - type: response_body
+              jsonPath: "$.usage.total_tokens"
+          default: 100
+  operations:
+    - method: POST
+      path: /chat/completions
+    - method: POST
+      path: /completions
+```
+
+### Example 10: Compute Unit Rate Limiting with Fallback Sources
+
+Rate limit based on compute units with multiple extraction sources:
+
+```yaml
+version: api-platform.wso2.com/v1
+kind: http/rest
+spec:
+  name: compute-api
+  version: v1.0
+  context: /compute
+  upstream:
+    main:
+      url: https://compute-service:8080
+  policies:
+    - name: ratelimit
+      version: v0.1.0
+      params:
+        limits:
+          - limit: 1000
+            duration: "1h"
+        costExtraction:
+          enabled: true
+          sources:
+            - type: response_header
+              key: X-Compute-Units
+            - type: metadata
+              key: compute_units
+            - type: response_body
+              jsonPath: "$.metrics.compute_units"
+          default: 1
+  operations:
+    - method: POST
+      path: /process
+    - method: POST
+      path: /analyze
+```
+
 ## Response Headers
 
 When rate limiting is applied, the following headers may be included in responses:
@@ -513,3 +631,7 @@ When rate limiting is applied, the following headers may be included in response
 7. **Distributed Rate Limiting**: Use Redis backend to enforce consistent rate limits across multiple gateway instances.
 
 8. **Graceful Degradation**: Configure fail-open mode to maintain availability when the rate limiting backend is unavailable.
+
+9. **LLM Token Budgeting**: Use post-response cost extraction to rate limit based on actual token usage from LLM APIs, enabling accurate quota management for AI workloads.
+
+10. **Usage-Based Billing**: Track and limit resource consumption based on actual usage metrics extracted from responses (e.g., compute units, storage operations).

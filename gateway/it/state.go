@@ -37,6 +37,7 @@ type Config struct {
 	RouterURL            string
 	PolicyEngineURL      string
 	SampleBackendURL     string
+	EchoBackendURL       string
 	HTTPTimeout          time.Duration
 	Users                map[string]AuthUser
 }
@@ -48,6 +49,7 @@ func DefaultConfig() *Config {
 		RouterURL:            fmt.Sprintf("http://localhost:%s", RouterPort),
 		PolicyEngineURL:      "http://localhost:9002",
 		SampleBackendURL:     "http://localhost:9080",
+		EchoBackendURL:       "http://localhost:9081",
 		HTTPTimeout:          10 * time.Second,
 		Users: map[string]AuthUser{
 			"admin": {Username: "admin", Password: "admin"},

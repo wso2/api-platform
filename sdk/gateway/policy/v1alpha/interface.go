@@ -5,6 +5,15 @@ package policyv1alpha
 type PolicyMetadata struct {
 	// RouteName is the unique identifier for the route this policy is attached to
 	RouteName string
+
+	// APIId is the unique identifier of the API this policy belongs to
+	APIId string
+
+	// APIName is the name of the API this policy belongs to
+	APIName string
+
+	// APIVersion is the version of the API this policy belongs to
+	APIVersion string
 }
 
 // Policy is the base interface that all policies must implement

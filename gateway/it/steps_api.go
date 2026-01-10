@@ -33,4 +33,8 @@ func RegisterAPISteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *s
 	ctx.Step(`^I delete the API "([^"]*)"$`, func(name string) error {
 		return httpSteps.SendDELETEToService("gateway-controller", "/apis/"+name)
 	})
+	ctx.Step(`^I update the API "([^"]*)" with this configuration:$`, func(apiName string, body *godog.DocString) error {
+		httpSteps.SetHeader("Content-Type", "application/yaml")
+		return httpSteps.SendPUTToService("gateway-controller", "/apis/"+apiName, body)
+	})
 }

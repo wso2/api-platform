@@ -250,3 +250,13 @@ Add `@wip` tag to your scenario:
 Scenario: My scenario under development
   ...
 ```
+
+## Troubleshooting Colima
+
+If you are using Colima and encounter a "root docker not found" error, set the following environment variables:
+
+```bash
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
+export DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock
+```
+

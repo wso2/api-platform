@@ -37,7 +37,8 @@ const (
 
 // BuildPolicyChain creates a PolicyChain from PolicySpecs with body requirement computation
 // T055: BuildPolicyChain with body requirement computation
-func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySpec, reg *registry.PolicyRegistry) (*registry.PolicyChain, error) {
+// apiMetadata is optional and can contain API-level information for policies that need it
+func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySpec, reg *registry.PolicyRegistry, apiMetadata policy.PolicyMetadata) (*registry.PolicyChain, error) {
 	chain := &registry.PolicyChain{
 		Policies:             make([]policy.Policy, 0),
 		PolicySpecs:          make([]policy.PolicySpec, 0),
@@ -47,9 +48,12 @@ func (k *Kernel) BuildPolicyChain(routeKey string, policySpecs []policy.PolicySp
 
 	// Build policy list and compute body requirements
 	for _, spec := range policySpecs {
-		// Create metadata with route information
+		// Create metadata with route and API information
 		metadata := policy.PolicyMetadata{
-			RouteName: routeKey,
+			RouteName:  routeKey,
+			APIId:      apiMetadata.APIId,
+			APIName:    apiMetadata.APIName,
+			APIVersion: apiMetadata.APIVersion,
 		}
 
 		// Create instance using factory with metadata and params

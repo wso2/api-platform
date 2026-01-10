@@ -70,7 +70,8 @@ func (cl *ConfigLoader) LoadFromFile(path string) error {
 	// Build all chains first, then replace atomically
 	chains := make(map[string]*registry.PolicyChain)
 	for _, config := range configs {
-		chain, err := cl.buildPolicyChain(config.RouteKey, &config)
+		// File-based config doesn't have API metadata, pass empty values
+		chain, err := cl.buildPolicyChain(config.RouteKey, &config, policyenginev1.Metadata{})
 		if err != nil {
 			return fmt.Errorf("failed to build policy chain for route %s: %w", config.RouteKey, err)
 		}
@@ -123,7 +124,7 @@ func (cl *ConfigLoader) validateConfig(config *policyenginev1.PolicyChain) error
 }
 
 // buildPolicyChain builds a PolicyChain from configuration
-func (cl *ConfigLoader) buildPolicyChain(routeKey string, config *policyenginev1.PolicyChain) (*registry.PolicyChain, error) {
+func (cl *ConfigLoader) buildPolicyChain(routeKey string, config *policyenginev1.PolicyChain, apiMetadata policyenginev1.Metadata) (*registry.PolicyChain, error) {
 	var policyList []policy.Policy
 	var policySpecs []policy.PolicySpec
 
@@ -131,9 +132,12 @@ func (cl *ConfigLoader) buildPolicyChain(routeKey string, config *policyenginev1
 	requiresResponseBody := false
 
 	for _, policyConfig := range config.Policies {
-		// Create metadata with route information
+		// Create metadata with route and API information
 		metadata := policy.PolicyMetadata{
-			RouteName: routeKey,
+			RouteName:  routeKey,
+			APIId:      apiMetadata.APIId,
+			APIName:    apiMetadata.APIName,
+			APIVersion: apiMetadata.Version,
 		}
 
 		// Create instance using factory with metadata and params
