@@ -114,21 +114,6 @@ func (asm *APIKeyStateManager) RemoveAPIKeysByAPI(apiId, apiName, apiVersion, co
 	return nil
 }
 
-// GetAPIKeyByID retrieves an API key by its ID
-func (asm *APIKeyStateManager) GetAPIKeyByID(id string) (*models.APIKey, bool) {
-	return asm.store.GetByID(id)
-}
-
-// GetAPIKeysByAPI retrieves all API keys for a specific API
-func (asm *APIKeyStateManager) GetAPIKeysByAPI(apiId string) []*models.APIKey {
-	return asm.store.GetByAPI(apiId)
-}
-
-// GetAllAPIKeys retrieves all API keys
-func (asm *APIKeyStateManager) GetAllAPIKeys() []*models.APIKey {
-	return asm.store.GetAll()
-}
-
 // GetAPIKeyCount returns the total number of API keys
 func (asm *APIKeyStateManager) GetAPIKeyCount() int {
 	return asm.store.Count()

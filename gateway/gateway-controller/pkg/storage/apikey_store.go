@@ -73,29 +73,6 @@ func (s *APIKeyStore) Store(apiKey *models.APIKey) {
 		zap.String("status", string(apiKey.Status)))
 }
 
-// GetByID retrieves an API key by its ID
-func (s *APIKeyStore) GetByID(id string) (*models.APIKey, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	apiKey, exists := s.apiKeys[id]
-	return apiKey, exists
-}
-
-// GetByAPI retrieves all API keys for a specific API
-func (s *APIKeyStore) GetByAPI(apiId string) []*models.APIKey {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	apiKeys := s.apiKeysByAPI[apiId]
-	// Convert map values to slice and return a copy to prevent external modification
-	result := make([]*models.APIKey, 0, len(apiKeys))
-	for _, apiKey := range apiKeys {
-		result = append(result, apiKey)
-	}
-	return result
-}
-
 // GetAll retrieves all API keys
 func (s *APIKeyStore) GetAll() []*models.APIKey {
 	s.mu.RLock()
@@ -143,26 +120,6 @@ func (s *APIKeyStore) Revoke(apiId, apiKeyID, plainAPIKeyValue string) bool {
 		zap.String("api_key_id", apiKeyID))
 
 	return false
-}
-
-// RemoveByID removes an API key by its ID
-func (s *APIKeyStore) RemoveByID(id string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	apiKey, exists := s.apiKeys[id]
-	if !exists {
-		return false
-	}
-
-	delete(s.apiKeys, id)
-	s.removeFromAPIMapping(apiKey)
-
-	s.logger.Debug("Removed API key",
-		zap.String("id", id),
-		zap.String("api_id", apiKey.APIId))
-
-	return true
 }
 
 // RemoveByAPI removes all API keys for a specific API
