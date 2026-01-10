@@ -151,6 +151,12 @@ type Storage interface {
 	// Implementations should ensure this operation is atomic (all-or-nothing).
 	SaveAPIKey(apiKey *models.APIKey) error
 
+	// GetAPIKeyByID retrieves an API key by its ID.
+	//
+	// Returns an error if the API key is not found.
+	// This is used for API key validation during authentication.
+	GetAPIKeyByID(id string) (*models.APIKey, error)
+
 	// GetAPIKeyByKey retrieves an API key by its key value.
 	//
 	// Returns an error if the API key is not found.

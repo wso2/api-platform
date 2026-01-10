@@ -106,6 +106,8 @@ func main() {
 
 	// Initialize in-memory API key store for xDS
 	apiKeyStore := storage.NewAPIKeyStore(log)
+	apiKeySnapshotManager := apikeyxds.NewAPIKeySnapshotManager(apiKeyStore, log)
+	apiKeyXDSManager := apikeyxds.NewAPIKeyStateManager(apiKeyStore, apiKeySnapshotManager, log)
 
 	// Load configurations from database on startup (if persistent mode)
 	if cfg.IsPersistentMode() && db != nil {
@@ -123,7 +125,7 @@ func main() {
 		if err := storage.LoadAPIKeysFromDatabase(db, configStore, apiKeyStore); err != nil {
 			log.Fatal("Failed to load API keys from database", zap.Error(err))
 		}
-		log.Info("Loaded API keys", zap.Int("count", apiKeyStore.Count()))
+		log.Info("Loaded API keys", zap.Int("count", apiKeyXDSManager.GetAPIKeyCount()))
 	}
 
 	// Initialize xDS snapshot manager with router config
@@ -166,12 +168,10 @@ func main() {
 		}
 	}()
 
-	apiKeySnapshotManager := apikeyxds.NewAPIKeySnapshotManager(apiKeyStore, log)
-	apiKeyXDSManager := apikeyxds.NewAPIKeyStateManager(apiKeyStore, apiKeySnapshotManager, log)
-
 	// Generate initial API key snapshot if API keys were loaded from database
-	if cfg.IsPersistentMode() && apiKeyStore.Count() > 0 {
-		log.Info("Generating initial API key snapshot for policy engine", zap.Int("api_key_count", apiKeyStore.Count()))
+	if cfg.IsPersistentMode() && apiKeyXDSManager.GetAPIKeyCount() > 0 {
+		log.Info("Generating initial API key snapshot for policy engine",
+			zap.Int("api_key_count", apiKeyXDSManager.GetAPIKeyCount()))
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		if err := apiKeySnapshotManager.UpdateSnapshot(ctx); err != nil {
 			log.Warn("Failed to generate initial API key snapshot", zap.Error(err))
@@ -300,8 +300,8 @@ func main() {
 	router.Use(gin.Recovery())
 
 	// Initialize API server with the configured validator and API key manager
-	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient,
-		policyDefinitions, templateDefinitions, validator, &cfg.GatewayController.Router, apiKeyXDSManager)
+	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient, policyDefinitions,
+		templateDefinitions, validator, &cfg.GatewayController.Router, apiKeyXDSManager, &cfg.GatewayController.APIKeyHashing)
 
 	// Register API routes (includes certificate management endpoints from OpenAPI spec)
 	api.RegisterHandlers(router, apiServer)

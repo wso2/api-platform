@@ -68,7 +68,7 @@ func (asm *APIKeyStateManager) StoreAPIKey(apiId, apiName, apiVersion string, ap
 }
 
 // RevokeAPIKey revokes an API key and updates the policy engine with the complete state
-func (asm *APIKeyStateManager) RevokeAPIKey(apiId, apiName, apiVersion, apiKeyValue, correlationID string) error {
+func (asm *APIKeyStateManager) RevokeAPIKey(apiId, apiName, apiVersion, apiKeyID, apiKeyValue, correlationID string) error {
 	asm.logger.Info("Revoking API key with state-of-the-world update",
 		zap.String("api_id", apiId),
 		zap.String("api_name", apiName),
@@ -76,7 +76,7 @@ func (asm *APIKeyStateManager) RevokeAPIKey(apiId, apiName, apiVersion, apiKeyVa
 		zap.String("correlation_id", correlationID))
 
 	// Revoke the API key and update the snapshot
-	if err := asm.snapshotManager.RevokeAPIKey(apiKeyValue); err != nil {
+	if err := asm.snapshotManager.RevokeAPIKey(apiId, apiKeyID, apiKeyValue); err != nil {
 		asm.logger.Error("Failed to revoke API key and update snapshot",
 			zap.String("api_key_value", asm.MaskAPIKey(apiKeyValue)),
 			zap.Error(err))
@@ -84,6 +84,7 @@ func (asm *APIKeyStateManager) RevokeAPIKey(apiId, apiName, apiVersion, apiKeyVa
 	}
 
 	asm.logger.Info("Successfully revoked API key and updated policy engine state",
+		zap.String("api_id", apiId),
 		zap.String("api_key_value", asm.MaskAPIKey(apiKeyValue)),
 		zap.String("correlation_id", correlationID))
 
@@ -111,26 +112,6 @@ func (asm *APIKeyStateManager) RemoveAPIKeysByAPI(apiId, apiName, apiVersion, co
 		zap.String("correlation_id", correlationID))
 
 	return nil
-}
-
-// GetAPIKeyByValue retrieves an API key by its value
-func (asm *APIKeyStateManager) GetAPIKeyByValue(value string) (*models.APIKey, bool) {
-	return asm.store.GetByValue(value)
-}
-
-// GetAPIKeyByID retrieves an API key by its ID
-func (asm *APIKeyStateManager) GetAPIKeyByID(id string) (*models.APIKey, bool) {
-	return asm.store.GetByID(id)
-}
-
-// GetAPIKeysByAPI retrieves all API keys for a specific API
-func (asm *APIKeyStateManager) GetAPIKeysByAPI(apiId string) []*models.APIKey {
-	return asm.store.GetByAPI(apiId)
-}
-
-// GetAllAPIKeys retrieves all API keys
-func (asm *APIKeyStateManager) GetAllAPIKeys() []*models.APIKey {
-	return asm.store.GetAll()
 }
 
 // GetAPIKeyCount returns the total number of API keys

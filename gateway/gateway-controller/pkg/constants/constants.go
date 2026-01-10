@@ -124,6 +124,16 @@ const (
 		"  - action: SET\n" +
 		"    name: '%s'\n" +
 		"    value: '%s'\n"
+
+	// API Key constants
+	APIKeyPrefix    = "apip_"
+	APIKeyLen       = 32 // Length of the random part of the API key in bytes
+	APIKeySeparator = "."
+
+	// HashingAlgorithm constants
+	HashingAlgorithmSHA256   = "sha256"
+	HashingAlgorithmBcrypt   = "bcrypt"
+	HashingAlgorithmArgon2ID = "argon2id"
 )
 
 var WILDCARD_HTTP_METHODS = []string{
