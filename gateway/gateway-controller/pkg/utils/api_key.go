@@ -314,7 +314,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 	var apiKey *models.APIKey
 	var matchedKey *models.APIKey
 
-	existingAPIKey, err := s.store.GetAPIKeyByID(parsedAPIkey.ID)
+	existingAPIKey, err := s.store.GetAPIKeyByID(config.ID, parsedAPIkey.ID)
 	if err != nil {
 		// If memory store fails, try database
 		if s.db != nil {
@@ -382,7 +382,7 @@ func (s *APIKeyService) RevokeAPIKey(params APIKeyRevocationParams) (*APIKeyRevo
 		}
 
 		// Remove the API key from memory store by name (since we have the matched key)
-		if err := s.store.RemoveAPIKeyByName(config.ID, apiKey.Name); err != nil {
+		if err := s.store.RemoveAPIKeyByID(config.ID, apiKey.ID); err != nil {
 			logger.Error("Failed to remove API key from memory store",
 				zap.Error(err),
 				zap.String("handle", params.Handle),

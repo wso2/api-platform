@@ -41,7 +41,6 @@ type ConfigStore struct {
 	templateIdByHandle map[string]string
 
 	// API Keys storage
-	apiKeys      map[string]*models.APIKey            // key: API key ID
 	apiKeysByAPI map[string]map[string]*models.APIKey // Key: configID → Value: map[keyID]*APIKey
 }
 
@@ -55,7 +54,6 @@ func NewConfigStore() *ConfigStore {
 		TopicManager:       NewTopicManager(),
 		templates:          make(map[string]*models.StoredLLMProviderTemplate),
 		templateIdByHandle: make(map[string]string),
-		apiKeys:            make(map[string]*models.APIKey),
 		apiKeysByAPI:       make(map[string]map[string]*models.APIKey),
 	}
 }
@@ -483,12 +481,11 @@ func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
 
 	if existingKeyID != "" {
 		// Update the existing entry in apiKeysByAPI
-		cs.apiKeys[apiKey.ID] = apiKey
 		cs.apiKeysByAPI[apiKey.APIId][existingKeyID] = apiKey
 	} else {
 		// Insert new API key
 		// Check if API key ID already exists
-		if _, exists := cs.apiKeys[apiKey.ID]; exists {
+		if _, exists := cs.apiKeysByAPI[apiKey.APIId][apiKey.ID]; exists {
 			return ErrConflict
 		}
 
@@ -498,7 +495,6 @@ func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
 		}
 
 		// Store by API key value
-		cs.apiKeys[apiKey.ID] = apiKey
 		cs.apiKeysByAPI[apiKey.APIId][apiKey.ID] = apiKey
 	}
 
@@ -506,11 +502,11 @@ func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
 }
 
 // GetAPIKeyByID retrieves an API key by its ID
-func (cs *ConfigStore) GetAPIKeyByID(id string) (*models.APIKey, error) {
+func (cs *ConfigStore) GetAPIKeyByID(apiId, id string) (*models.APIKey, error) {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 
-	apiKey, exists := cs.apiKeys[id]
+	apiKey, exists := cs.apiKeysByAPI[apiId][id]
 	if !exists {
 		return nil, ErrNotFound
 	}
@@ -557,27 +553,22 @@ func (cs *ConfigStore) GetAPIKeyByName(apiId, name string) (*models.APIKey, erro
 }
 
 // RemoveAPIKeyByID removes an API key from the in-memory cache by its ID
-func (cs *ConfigStore) RemoveAPIKeyByID(id string) error {
+func (cs *ConfigStore) RemoveAPIKeyByID(apiId, id string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	apiKey, exists := cs.apiKeys[id]
+	_, exists := cs.apiKeysByAPI[apiId][id]
 	if !exists {
 		return ErrNotFound
 	}
 
 	// Remove from apiKeysByAPI map
-	apiKeys, apiIdExists := cs.apiKeysByAPI[apiKey.APIId]
-	if apiIdExists {
-		delete(apiKeys, id)
-		// Clean up empty maps
-		if len(cs.apiKeysByAPI[apiKey.APIId]) == 0 {
-			delete(cs.apiKeysByAPI, apiKey.APIId)
-		}
+	apiKeys, _ := cs.apiKeysByAPI[apiId]
+	delete(apiKeys, id)
+	// Clean up empty maps
+	if len(cs.apiKeysByAPI[apiId]) == 0 {
+		delete(cs.apiKeysByAPI, apiId)
 	}
-
-	// Remove from main map
-	delete(cs.apiKeys, id)
 
 	return nil
 }
@@ -587,58 +578,13 @@ func (cs *ConfigStore) RemoveAPIKeysByAPI(apiId string) error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 
-	apiKeys, exists := cs.apiKeysByAPI[apiId]
+	_, exists := cs.apiKeysByAPI[apiId]
 	if !exists {
 		return nil // No keys to remove
 	}
 
-	for _, key := range apiKeys {
-		delete(cs.apiKeys, key.ID)
-	}
-
 	// Remove from API-specific map
 	delete(cs.apiKeysByAPI, apiId)
-
-	return nil
-}
-
-// RemoveAPIKeyByName removes an API key from the in-memory cache by its apiId and name
-func (cs *ConfigStore) RemoveAPIKeyByName(apiId, name string) error {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-
-	// Get API keys for the apiId
-	apiKeys, exists := cs.apiKeysByAPI[apiId]
-	if !exists {
-		return ErrNotFound
-	}
-
-	// Find the API key with the matching name
-	var targetAPIKey *models.APIKey
-	var targetID string
-
-	for id, apiKey := range apiKeys {
-		if apiKey.Name == name {
-			targetAPIKey = apiKey
-			targetID = id
-			break
-		}
-	}
-
-	if targetAPIKey == nil {
-		return ErrNotFound
-	}
-
-	// Remove from apiKeysByAPI map
-	delete(cs.apiKeysByAPI[apiId], targetID)
-
-	// Clean up empty maps
-	if len(cs.apiKeysByAPI[apiId]) == 0 {
-		delete(cs.apiKeysByAPI, apiId)
-	}
-
-	// Remove from main apiKeys map
-	delete(cs.apiKeys, targetAPIKey.ID)
 
 	return nil
 }
