@@ -3,7 +3,7 @@ gateway_controller:
   # Server configuration
   server:
     # REST API port for gateway management
-    api_port: 9010
+    api_port: 9090
 
     # xDS gRPC port for Envoy communication
     xds_port: 18000
