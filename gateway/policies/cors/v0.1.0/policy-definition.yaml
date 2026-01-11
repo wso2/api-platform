@@ -36,6 +36,7 @@ parameters:
           - PATCH
           - OPTIONS
           - HEAD
+          - "*"
       minItems: 1
       default:
         - GET
@@ -53,8 +54,6 @@ parameters:
         type: string
         minLength: 1
         maxLength: 256
-      default:
-        - "*"
     exposedHeaders:
       type: array
       description:

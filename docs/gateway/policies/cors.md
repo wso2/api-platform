@@ -20,7 +20,7 @@ The CORS (Cross-Origin Resource Sharing) policy handles cross-origin requests by
 
 The CORS policy uses a single-level configuration model where all parameters are configured per-API in the API definition YAML. This policy does not require system-level configuration.
 
-> **Important**: The CORS policy MUST be applied at the API level only, not at individual resource/operation level. Additionally, you MUST explicitly define OPTIONS operations for all resources where you expect to handle CORS preflight requests. The gateway will automatically handle preflight requests (OPTIONS method) when they match the allowed origins and methods.
+> **Important**: The CORS policy MUST be applied at the API level only, not at individual resource/operation level. Additionally, you MUST explicitly define OPTIONS operations for all resources where you expect to handle CORS preflight requests. This is not needed for MCP Proxies as the gateway internally handles the operations for them. The gateway will automatically handle preflight requests (OPTIONS method) when they match the allowed origins and methods.
 
 ### User Parameters (API Definition)
 
