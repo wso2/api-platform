@@ -40,7 +40,7 @@ func protocolVersionComparator(base, current string) bool {
 }
 
 // addMCPSpecificOperations adds MCP-specific HTTP operations based on the MCP specification version defined
-func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration) []api.Operation {
+func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration, optionsRequired bool) []api.Operation {
 	operations := []api.Operation{
 		{
 			Method:   api.OperationMethod(api.GET),
@@ -58,6 +58,15 @@ func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration) []api.Operat
 			Policies: nil,
 		},
 	}
+	if optionsRequired {
+		operations = append(operations,
+			api.Operation{
+				Method:   api.OperationMethod(api.OperationMethodOPTIONS),
+				Path:     constants.MCP_RESOURCE_PATH,
+				Policies: nil,
+			},
+		)
+	}
 	var mcpSpecVersion string
 	if mcpConfig.Spec.SpecVersion != nil && *mcpConfig.Spec.SpecVersion != "" {
 		mcpSpecVersion = *mcpConfig.Spec.SpecVersion
@@ -73,6 +82,15 @@ func addMCPSpecificOperations(mcpConfig *api.MCPProxyConfiguration) []api.Operat
 				Policies: nil,
 			},
 		)
+		if optionsRequired {
+			operations = append(operations,
+				api.Operation{
+					Method:   api.OperationMethod(api.OperationMethodOPTIONS),
+					Path:     constants.MCP_PRM_RESOURCE_PATH,
+					Policies: nil,
+				},
+			)
+		}
 	}
 
 	return operations
@@ -91,7 +109,6 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 	apiData := api.APIConfigData{
 		DisplayName: mcpConfig.Spec.DisplayName,
 		Version:     mcpConfig.Spec.Version,
-		Operations:  addMCPSpecificOperations(mcpConfig),
 	}
 	if mcpConfig.Spec.Context != nil {
 		apiData.Context = *mcpConfig.Spec.Context
@@ -110,6 +127,18 @@ func (t *MCPTransformer) Transform(input any, output *api.APIConfiguration) (*ap
 	if mcpConfig.Spec.Policies != nil && len(*mcpConfig.Spec.Policies) > 0 {
 		policies = append(policies, *mcpConfig.Spec.Policies...)
 	}
+
+	// Determine if CORS policy is present to decide if OPTIONS operations are required
+	optionsRequired := false
+	for _, p := range policies {
+		if strings.EqualFold(p.Name, "cors") {
+			optionsRequired = true
+			break
+		}
+	}
+
+	// Add MCP-specific operations, conditionally including OPTIONS when CORS is enabled
+	apiData.Operations = addMCPSpecificOperations(mcpConfig, optionsRequired)
 
 	// Set upstream auth if present
 	upstream := mcpConfig.Spec.Upstream
