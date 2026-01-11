@@ -1,0 +1,92 @@
+name: cors
+version: v0.1.0
+description: |
+  Cross-Origin Resource Sharing (CORS) policy that handles preflight requests and adds
+  appropriate CORS headers to responses. Enables controlled access to resources from different
+  origins by configuring allowed origins, methods, headers, and credentials.
+
+parameters:
+  type: object
+  properties:
+    allowedOrigins:
+      type: array
+      description:
+        List of origins allowed to access the resource. Use "*" to allow
+        all origins, specify exact origins (e.g., "https://example.com"), 
+        or regular expressions (e.g., "^https://[^.]+\.example\.com$"). 
+        At least one origin must be specified. If no origins are specified, the policy
+        will reject all cross-origin requests.
+      items:
+        type: string
+        minLength: 1
+        maxLength: 2048
+      minItems: 1
+    allowedMethods:
+      type: array
+      description:
+        HTTP methods allowed for cross-origin requests. Common methods
+        include GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD.
+      items:
+        type: string
+        enum:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - PATCH
+          - OPTIONS
+          - HEAD
+      minItems: 1
+      default:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+    allowedHeaders:
+      type: array
+      description:
+        Request headers that can be used in the actual request. Use "*"
+        to allow all headers, or specify exact header names (e.g., "Content-Type",
+        "Authorization").
+      items:
+        type: string
+        minLength: 1
+        maxLength: 256
+      default:
+        - "*"
+    exposedHeaders:
+      type: array
+      description:
+        Response headers that browsers are allowed to access. Only these
+        headers will be exposed to the client-side JavaScript code.
+      items:
+        type: string
+        minLength: 1
+        maxLength: 256
+      default: []
+    allowCredentials:
+      type: boolean
+      description: Indicates whether the response can be shared when credentials
+        (cookies, authorization headers, TLS certificates) are included. When true,
+        allowedOrigins cannot contain "*".
+      default: false
+    maxAge:
+      type: integer
+      description: Maximum time in seconds that preflight response can be cached
+        by the browser. Helps reduce the number of preflight requests.
+      minimum: 0
+      maximum: 86400
+      default: 3600
+    forwardPreflight:
+      type: boolean
+      description: If true, forwards preflight requests that do not match the CORS
+        policy to the upstream service instead of responding with CORS headers.
+      default: false
+
+  required:
+    - allowedOrigins
+
+systemParameters:
+  type: object
+  properties: {}

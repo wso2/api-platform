@@ -76,3 +76,7 @@ policies:
   - name: semantic-prompt-guard
     version: v0.1.0
     filePath: ./semantic-prompt-guard/v0.1.0
+  
+  - name: cors
+    version: v0.1.0
+    filePath: ./cors/v0.1.0
