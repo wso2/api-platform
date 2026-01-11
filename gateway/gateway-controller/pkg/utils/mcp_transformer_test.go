@@ -51,7 +51,7 @@ func TestAddMCPSpecificOperations_DefaultVersion(t *testing.T) {
 			SpecVersion: nil,
 		},
 	}
-	ops := addMCPSpecificOperations(cfg)
+	ops := addMCPSpecificOperations(cfg, false)
 	// baseline operations count: GET, POST, DELETE on MCP_RESOURCE_PATH
 	// if latest >= 2025-06-01, metadata path GET should be present
 	wantBase := 3
@@ -91,7 +91,7 @@ func TestAddMCPSpecificOperations_SpecifiedVersion(t *testing.T) {
 			SpecVersion: &v,
 		},
 	}
-	ops := addMCPSpecificOperations(cfg)
+	ops := addMCPSpecificOperations(cfg, false)
 	// Expect 4 operations including metadata GET
 	if len(ops) != 4 {
 		t.Fatalf("expected 4 operations for spec %s, got %d", v, len(ops))
