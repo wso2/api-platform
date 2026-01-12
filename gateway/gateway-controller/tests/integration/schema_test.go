@@ -95,7 +95,7 @@ func TestSchemaInitialization(t *testing.T) {
 		var version int
 		err := rawDB.QueryRow("PRAGMA user_version").Scan(&version)
 		assert.NoError(t, err)
-		assert.Equal(t, 5, version, "Schema version should be 5")
+		assert.Equal(t, 6, version, "Schema version should be 6")
 	})
 
 	// Verify deployments table exists

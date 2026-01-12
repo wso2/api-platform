@@ -22,9 +22,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/wso2/api-platform/common/constants"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
-
 	"io"
 	"net/http"
 	"sort"
@@ -34,17 +31,19 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/wso2/api-platform/common/constants"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
-	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 	"go.uber.org/zap"
 )
 
@@ -82,8 +81,10 @@ func NewAPIServer(
 	validator config.Validator,
 	routerConfig *config.RouterConfig,
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
+	eventHub eventhub.EventHub,
+	enableMultiReplicaMode bool,
 ) *APIServer {
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, policyManager, validator, routerConfig, eventHub, enableMultiReplicaMode)
 	server := &APIServer{
 		store:                store,
 		db:                   db,
@@ -225,30 +226,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 		Id:        stringPtr(result.StoredConfig.GetHandle()),
 		CreatedAt: timePtr(result.StoredConfig.CreatedAt),
 	})
-
-	// Build and add policy config derived from API configuration if policies are present
-	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(result.StoredConfig)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to add derived policy configuration", zap.Error(err))
-			} else {
-				log.Info("Derived policy configuration added",
-					zap.String("policy_id", storedPolicy.ID),
-					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else if result.IsUpdate {
-			// API was updated and no longer has policies, remove the existing policy configuration
-			policyID := result.StoredConfig.ID + "-policies"
-			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Log at debug level since policy may not exist if API never had policies
-				log.Debug("No policy configuration to remove", zap.String("policy_id", policyID))
-			} else {
-				log.Info("Derived policy configuration removed (API no longer has policies)",
-					zap.String("policy_id", policyID))
-			}
-		}
-	}
+	// Policy management is now handled by the deployment service
 }
 
 // ListAPIs implements ServerInterface.ListAPIs
@@ -487,7 +465,6 @@ func (s *APIServer) GetAPIById(c *gin.Context, id string) {
 func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
-	handle := id
 
 	// Read request body
 	body, err := io.ReadAll(c.Request.Body)
@@ -500,249 +477,82 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		return
 	}
 
-	// Parse configuration
-	contentType := c.GetHeader("Content-Type")
-	var apiConfig api.APIConfiguration
-	err = s.parser.Parse(body, contentType, &apiConfig)
-	if err != nil {
-		log.Error("Failed to parse configuration", zap.Error(err))
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: "Failed to parse configuration",
-		})
-		return
-	}
-
-	// Validate that the handle in the YAML matches the path parameter
-	if apiConfig.Metadata.Name != "" {
-		if apiConfig.Metadata.Name != handle {
-			log.Warn("Handle mismatch between path and YAML metadata",
-				zap.String("path_handle", handle),
-				zap.String("yaml_handle", apiConfig.Metadata.Name))
-			c.JSON(http.StatusBadRequest, api.ErrorResponse{
-				Status:  "error",
-				Message: fmt.Sprintf("Handle mismatch: path has '%s' but YAML metadata.name has '%s'", handle, apiConfig.Metadata.Name),
-			})
-			return
-		}
-	}
-
-	// Validate configuration
-	validationErrors := s.validator.Validate(&apiConfig)
-	if len(validationErrors) > 0 {
-		log.Warn("Configuration validation failed",
-			zap.String("handle", handle),
-			zap.Int("num_errors", len(validationErrors)))
-
-		errors := make([]api.ValidationError, len(validationErrors))
-		for i, e := range validationErrors {
-			errors[i] = api.ValidationError{
-				Field:   stringPtr(e.Field),
-				Message: stringPtr(e.Message),
-			}
-		}
-
-		c.JSON(http.StatusBadRequest, api.ErrorResponse{
-			Status:  "error",
-			Message: "Configuration validation failed",
-			Errors:  &errors,
-		})
-		return
-	}
-
-	if s.db == nil {
-		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
-			Status:  "error",
-			Message: "Database storage not available",
-		})
-		return
-	}
-
-	// Check if config exists
-	existing, err := s.db.GetConfigByHandle(handle)
-	if err != nil {
-		log.Warn("API configuration not found",
-			zap.String("handle", handle))
-		c.JSON(http.StatusNotFound, api.ErrorResponse{
-			Status:  "error",
-			Message: fmt.Sprintf("API configuration with handle '%s' not found", handle),
-		})
-		return
-	}
-
-	// Update stored configuration
-	now := time.Now()
-	existing.Configuration = apiConfig
-	existing.Status = models.StatusPending
-	existing.UpdatedAt = now
-	existing.DeployedAt = nil
-	existing.DeployedVersion = 0
-
-	if apiConfig.Kind == api.Asyncwebsub {
-		topicsToRegister, topicsToUnregister := s.deploymentService.GetTopicsForUpdate(*existing)
-		// TODO: Pre configure the dynamic forward proxy rules for event gw
-		// This was communication bridge will be created on the gw startup
-		// Can perform internal communication with websub hub without relying on the dynamic rules
-		// Execute topic operations with wait group and errors tracking
-		var wg2 sync.WaitGroup
-		var regErrs int32
-		var deregErrs int32
-
-		if len(topicsToRegister) > 0 {
-			wg2.Add(1)
-			go func(list []string) {
-				defer wg2.Done()
-				log.Info("Starting topic registration", zap.Int("total_topics", len(list)), zap.String("api_id", existing.ID))
-				//fmt.Println("Topics Registering Started")
-				var childWg sync.WaitGroup
-				for _, topic := range list {
-					childWg.Add(1)
-					go func(topic string) {
-						defer childWg.Done()
-						if err := s.deploymentService.RegisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
-							log.Error("Failed to register topic with WebSubHub",
-								zap.Error(err),
-								zap.String("topic", topic),
-								zap.String("api_id", existing.ID))
-							atomic.AddInt32(&regErrs, 1)
-						} else {
-							log.Info("Successfully registered topic with WebSubHub",
-								zap.String("topic", topic),
-								zap.String("api_id", existing.ID))
-						}
-					}(topic)
-				}
-				childWg.Wait()
-			}(topicsToRegister)
-		}
-
-		if len(topicsToUnregister) > 0 {
-			wg2.Add(1)
-			go func(list []string) {
-				defer wg2.Done()
-				log.Info("Starting topic deregistration", zap.Int("total_topics", len(list)), zap.String("api_id", existing.ID))
-				var childWg sync.WaitGroup
-				for _, topic := range list {
-					childWg.Add(1)
-					go func(topic string) {
-						defer childWg.Done()
-						if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
-							log.Error("Failed to deregister topic from WebSubHub",
-								zap.Error(err),
-								zap.String("topic", topic),
-								zap.String("api_id", existing.ID))
-							atomic.AddInt32(&deregErrs, 1)
-						} else {
-							log.Info("Successfully deregistered topic from WebSubHub",
-								zap.String("topic", topic),
-								zap.String("api_id", existing.ID))
-						}
-					}(topic)
-				}
-				childWg.Wait()
-			}(topicsToUnregister)
-		}
-		wg2.Wait()
-
-		log.Info("Topic lifecycle operations completed",
-			zap.String("api_id", existing.ID),
-			zap.Int("registered", len(topicsToRegister)),
-			zap.Int("deregistered", len(topicsToUnregister)),
-			zap.Int("register_errors", int(regErrs)),
-			zap.Int("deregister_errors", int(deregErrs)))
-
-		// Check if topic operations failed and return error
-		if regErrs > 0 || deregErrs > 0 {
-			log.Error("Failed to register & deregister topics", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Topic lifecycle operations failed",
-			})
-			return
-		}
-	}
-
-	// Atomic dual-write: database + in-memory
-	// Update database first (only if persistent mode)
-	if s.db != nil {
-		if err := s.db.UpdateConfig(existing); err != nil {
-			log.Error("Failed to update config in database", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Failed to persist configuration update",
-			})
-			return
-		}
-	}
-
-	if err := s.store.Update(existing); err != nil {
-		// Log conflict errors at info level, other errors at error level
-		if storage.IsConflictError(err) {
-			log.Info("API configuration handle already exists",
-				zap.String("id", existing.ID),
-				zap.String("handle", handle))
-			c.JSON(http.StatusConflict, api.ErrorResponse{
-				Status:  "error",
-				Message: err.Error(),
-			})
-		} else {
-			log.Error("Failed to update config in memory store", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
-				Status:  "error",
-				Message: "Failed to update configuration in memory store",
-			})
-		}
-		return
-	}
-
 	// Get correlation ID from context
 	correlationID := middleware.GetCorrelationID(c)
 
-	// Update xDS snapshot asynchronously
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+	// Update API configuration using the utility service
+	result, err := s.deploymentService.UpdateAPIConfiguration(utils.APIUpdateParams{
+		Handle:        id,
+		Data:          body,
+		ContentType:   c.GetHeader("Content-Type"),
+		CorrelationID: correlationID,
+		Logger:        log,
+	})
 
-		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
-			log.Error("Failed to update xDS snapshot", zap.Error(err))
+	if err != nil {
+		// Map error types to HTTP status codes
+		switch e := err.(type) {
+		case *utils.NotFoundError:
+			c.JSON(http.StatusNotFound, api.ErrorResponse{
+				Status:  "error",
+				Message: e.Error(),
+			})
+		case *utils.HandleMismatchError:
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: e.Error(),
+			})
+		case *utils.APIValidationError:
+			errors := make([]api.ValidationError, len(e.Errors))
+			for i, ve := range e.Errors {
+				errors[i] = api.ValidationError{
+					Field:   stringPtr(ve.Field),
+					Message: stringPtr(ve.Message),
+				}
+			}
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: "Configuration validation failed",
+				Errors:  &errors,
+			})
+		case *utils.ParseError:
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: e.Error(),
+			})
+		case *utils.TopicOperationError:
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: e.Error(),
+			})
+		case *utils.ConflictError:
+			c.JSON(http.StatusConflict, api.ErrorResponse{
+				Status:  "error",
+				Message: e.Error(),
+			})
+		case *utils.DatabaseUnavailableError:
+			c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
+				Status:  "error",
+				Message: e.Error(),
+			})
+		default:
+			log.Error("Failed to update API configuration", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, api.ErrorResponse{
+				Status:  "error",
+				Message: err.Error(),
+			})
 		}
-	}()
-
-	log.Info("API configuration updated",
-		zap.String("id", existing.ID),
-		zap.String("handle", handle))
+		return
+	}
 
 	// Return success response (id is the handle)
 	c.JSON(http.StatusOK, api.APIUpdateResponse{
 		Status:    stringPtr("success"),
 		Message:   stringPtr("API configuration updated successfully"),
-		Id:        stringPtr(existing.GetHandle()),
-		UpdatedAt: timePtr(existing.UpdatedAt),
+		Id:        stringPtr(result.StoredConfig.GetHandle()),
+		UpdatedAt: timePtr(result.StoredConfig.UpdatedAt),
 	})
-
-	// Rebuild and update derived policy configuration
-	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(existing)
-		if storedPolicy != nil {
-			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
-				log.Error("Failed to update derived policy configuration", zap.Error(err))
-			} else {
-				log.Info("Derived policy configuration updated",
-					zap.String("policy_id", storedPolicy.ID),
-					zap.Int("route_count", len(storedPolicy.Configuration.Routes)))
-			}
-		} else {
-			// API no longer has policies, remove the existing policy configuration
-			policyID := existing.ID + "-policies"
-			if err := s.policyManager.RemovePolicy(policyID); err != nil {
-				// Log at debug level since policy may not exist if API never had policies
-				log.Debug("No policy configuration to remove", zap.String("policy_id", policyID))
-			} else {
-				log.Info("Derived policy configuration removed (API no longer has policies)",
-					zap.String("policy_id", policyID))
-			}
-		}
-	}
+	// Policy management is now handled by the deployment service
 }
 
 // DeleteAPI implements ServerInterface.DeleteAPI
@@ -898,6 +708,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	correlationID := middleware.GetCorrelationID(c)
 
 	// Update xDS snapshot asynchronously
+	// TODO: (VirajSalaka) Fix to work with eventhub
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -918,6 +729,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	})
 
 	// Remove derived policy configuration
+	// TODO: (VirajSalaka) Fix to work with eventhub
 	if s.policyManager != nil {
 		policyID := cfg.ID + "-policies"
 		if err := s.policyManager.RemovePolicy(policyID); err != nil {
@@ -1175,7 +987,7 @@ func (s *APIServer) CreateLLMProvider(c *gin.Context) {
 
 	// Build and add policy config derived from API configuration if policies are present
 	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(stored)
+		storedPolicy := s.deploymentService.BuildStoredPolicyFromAPI(stored)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
 				log.Error("Failed to add derived policy configuration", zap.Error(err))
@@ -1265,7 +1077,7 @@ func (s *APIServer) UpdateLLMProvider(c *gin.Context, id string) {
 
 	// Rebuild and update derived policy configuration
 	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(updated)
+		storedPolicy := s.deploymentService.BuildStoredPolicyFromAPI(updated)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
 				log.Error("Failed to update derived policy configuration", zap.Error(err))
@@ -1412,7 +1224,7 @@ func (s *APIServer) CreateLLMProxy(c *gin.Context) {
 
 	// Build and add policy config derived from API configuration if policies are present
 	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(stored)
+		storedPolicy := s.deploymentService.BuildStoredPolicyFromAPI(stored)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
 				log.Error("Failed to add derived policy configuration", zap.Error(err))
@@ -1502,7 +1314,7 @@ func (s *APIServer) UpdateLLMProxy(c *gin.Context, id string) {
 
 	// Rebuild and update derived policy configuration
 	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(updated)
+		storedPolicy := s.deploymentService.BuildStoredPolicyFromAPI(updated)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
 				log.Error("Failed to update derived policy configuration", zap.Error(err))
@@ -1593,182 +1405,6 @@ func (s *APIServer) ListPolicies(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// buildStoredPolicyFromAPI constructs a StoredPolicyConfig from an API config
-// Merging rules: When operation has policies, they define the order (can reorder, override, or extend API policies).
-// Remaining API-level policies not mentioned in operation policies are appended at the end.
-// When operation has no policies, API-level policies are used in their declared order.
-// RouteKey uses the fully qualified route path (context + operation path) and must match the route name format
-// used by the xDS translator for consistency.
-func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.StoredPolicyConfig {
-	// TODO: (renuka) duplicate buildStoredPolicyFromAPI funcs. Refactor this.
-	apiCfg := &cfg.Configuration
-
-	// Collect API-level policies
-	apiPolicies := make(map[string]policyenginev1.PolicyInstance) // name -> policy
-	if cfg.GetPolicies() != nil {
-		for _, p := range *cfg.GetPolicies() {
-			apiPolicies[p.Name] = convertAPIPolicy(p)
-		}
-	}
-
-	routes := make([]policyenginev1.PolicyChain, 0)
-	switch apiCfg.Kind {
-	case api.Asyncwebsub:
-		// Build routes with merged policies
-		apiData, err := apiCfg.Spec.AsWebhookAPIData()
-		if err != nil {
-			// Handle error appropriately (e.g., log or return)
-			return nil
-		}
-		for _, ch := range apiData.Channels {
-			var finalPolicies []policyenginev1.PolicyInstance
-
-			if ch.Policies != nil && len(*ch.Policies) > 0 {
-				// Operation has policies: use operation policy order as authoritative
-				// This allows operations to reorder, override, or extend API-level policies
-				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*ch.Policies))
-				addedNames := make(map[string]struct{})
-
-				for _, opPolicy := range *ch.Policies {
-					finalPolicies = append(finalPolicies, convertAPIPolicy(opPolicy))
-					addedNames[opPolicy.Name] = struct{}{}
-				}
-
-				// Add any API-level policies not mentioned in operation policies (append at end)
-				if apiData.Policies != nil {
-					for _, apiPolicy := range *apiData.Policies {
-						if _, exists := addedNames[apiPolicy.Name]; !exists {
-							finalPolicies = append(finalPolicies, apiPolicies[apiPolicy.Name])
-						}
-					}
-				}
-			} else {
-				// No operation policies: use API-level policies in their declared order
-				if apiData.Policies != nil {
-					finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies))
-					for _, p := range *apiData.Policies {
-						finalPolicies = append(finalPolicies, apiPolicies[p.Name])
-					}
-				}
-			}
-
-			routeKey := xds.GenerateRouteName("POST", apiData.Context, apiData.Version, ch.Path, s.routerConfig.GatewayHost)
-			routes = append(routes, policyenginev1.PolicyChain{
-				RouteKey: routeKey,
-				Policies: finalPolicies,
-			})
-		}
-	case api.RestApi:
-		// Build routes with merged policies
-		apiData, err := apiCfg.Spec.AsAPIConfigData()
-		if err != nil {
-			// Handle error appropriately (e.g., log or return)
-			return nil
-		}
-		for _, op := range apiData.Operations {
-			var finalPolicies []policyenginev1.PolicyInstance
-
-			if op.Policies != nil && len(*op.Policies) > 0 {
-				// Operation has policies: use operation policy order as authoritative
-				// This allows operations to reorder, override, or extend API-level policies
-				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*op.Policies))
-				addedNames := make(map[string]struct{})
-
-				for _, opPolicy := range *op.Policies {
-					finalPolicies = append(finalPolicies, convertAPIPolicy(opPolicy))
-					addedNames[opPolicy.Name] = struct{}{}
-				}
-
-				// Add any API-level policies not mentioned in operation policies (append at end)
-				if apiData.Policies != nil {
-					for _, apiPolicy := range *apiData.Policies {
-						if _, exists := addedNames[apiPolicy.Name]; !exists {
-							finalPolicies = append(finalPolicies, apiPolicies[apiPolicy.Name])
-						}
-					}
-				}
-			} else {
-				// No operation policies: use API-level policies in their declared order
-				if apiData.Policies != nil {
-					finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*apiData.Policies))
-					for _, p := range *apiData.Policies {
-						finalPolicies = append(finalPolicies, apiPolicies[p.Name])
-					}
-				}
-			}
-
-			// Determine effective vhosts (fallback to global router defaults when not provided)
-			effectiveMainVHost := s.routerConfig.VHosts.Main.Default
-			effectiveSandboxVHost := s.routerConfig.VHosts.Sandbox.Default
-			if apiData.Vhosts != nil {
-				if strings.TrimSpace(apiData.Vhosts.Main) != "" {
-					effectiveMainVHost = apiData.Vhosts.Main
-				}
-				if apiData.Vhosts.Sandbox != nil && strings.TrimSpace(*apiData.Vhosts.Sandbox) != "" {
-					effectiveSandboxVHost = *apiData.Vhosts.Sandbox
-				}
-			}
-
-			vhosts := []string{effectiveMainVHost}
-			if apiData.Upstream.Sandbox != nil && apiData.Upstream.Sandbox.Url != nil &&
-				strings.TrimSpace(*apiData.Upstream.Sandbox.Url) != "" {
-				vhosts = append(vhosts, effectiveSandboxVHost)
-			}
-
-			for _, vhost := range vhosts {
-				routes = append(routes, policyenginev1.PolicyChain{
-					RouteKey: xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, vhost),
-					Policies: finalPolicies,
-				})
-			}
-		}
-	}
-
-	// If there are no policies at all, return nil (skip creation)
-	policyCount := 0
-	for _, r := range routes {
-		policyCount += len(r.Policies)
-	}
-	if policyCount == 0 {
-		return nil
-	}
-
-	now := time.Now().Unix()
-	stored := &models.StoredPolicyConfig{
-		ID: cfg.ID + "-policies",
-		Configuration: policyenginev1.Configuration{
-			Routes: routes,
-			Metadata: policyenginev1.Metadata{
-				CreatedAt:       now,
-				UpdatedAt:       now,
-				ResourceVersion: 0,
-				APIName:         cfg.GetDisplayName(),
-				Version:         cfg.GetVersion(),
-				Context:         cfg.GetContext(),
-			},
-		},
-		Version: 0,
-	}
-	return stored
-}
-
-// convertAPIPolicy converts generated api.Policy to policyenginev1.PolicyInstance
-func convertAPIPolicy(p api.Policy) policyenginev1.PolicyInstance {
-	paramsMap := make(map[string]interface{})
-	if p.Params != nil {
-		for k, v := range *p.Params {
-			paramsMap[k] = v
-		}
-	}
-	return policyenginev1.PolicyInstance{
-		Name:               p.Name,
-		Version:            p.Version,
-		Enabled:            true, // Default to enabled
-		ExecutionCondition: p.ExecutionCondition,
-		Parameters:         paramsMap,
-	}
-}
-
 // CreateMCPProxy implements ServerInterface.CreateMCPProxy
 // (POST /mcp-proxies)
 func (s *APIServer) CreateMCPProxy(c *gin.Context) {
@@ -1830,7 +1466,7 @@ func (s *APIServer) CreateMCPProxy(c *gin.Context) {
 
 	// Build and add policy config derived from API configuration if policies are present
 	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(cfg)
+		storedPolicy := s.deploymentService.BuildStoredPolicyFromAPI(cfg)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
 				log.Error("Failed to add derived policy configuration", zap.Error(err))
@@ -2007,7 +1643,7 @@ func (s *APIServer) UpdateMCPProxy(c *gin.Context, id string) {
 
 	// Rebuild and update derived policy configuration
 	if s.policyManager != nil {
-		storedPolicy := s.buildStoredPolicyFromAPI(updated)
+		storedPolicy := s.deploymentService.BuildStoredPolicyFromAPI(updated)
 		if storedPolicy != nil {
 			if err := s.policyManager.AddPolicy(storedPolicy); err != nil {
 				log.Error("Failed to update derived policy configuration", zap.Error(err))

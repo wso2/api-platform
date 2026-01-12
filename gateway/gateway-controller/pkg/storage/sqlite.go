@@ -214,6 +214,50 @@ func (s *SQLiteStorage) initSchema() error {
 			version = 5
 		}
 
+		if version == 5 {
+			// Add EventHub tables for multi-replica synchronization
+			s.logger.Info("Migrating to EventHub schema (version 6)")
+
+			// Create organization_states table
+			if _, err := s.db.Exec(`CREATE TABLE organization_states (
+				organization TEXT PRIMARY KEY,
+				version_id TEXT NOT NULL DEFAULT '',
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);`); err != nil {
+				return fmt.Errorf("failed to create organization_states table: %w", err)
+			}
+
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_organization_states_updated ON organization_states(updated_at);`); err != nil {
+				return fmt.Errorf("failed to create organization_states index: %w", err)
+			}
+
+			// Create unified events table
+			if _, err := s.db.Exec(`CREATE TABLE events (
+				organization_id TEXT NOT NULL,
+				processed_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				originated_timestamp TIMESTAMP NOT NULL,
+				event_type TEXT NOT NULL,
+				action TEXT NOT NULL CHECK(action IN ('CREATE', 'UPDATE', 'DELETE')),
+				entity_id TEXT NOT NULL,
+				correlation_id TEXT NOT NULL,
+				event_data TEXT NOT NULL,
+				PRIMARY KEY (correlation_id)
+			);`); err != nil {
+				return fmt.Errorf("failed to create events table: %w", err)
+			}
+
+			if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_events_org_time ON events(organization_id, processed_timestamp);`); err != nil {
+				return fmt.Errorf("failed to create events organization-time index: %w", err)
+			}
+
+			if _, err := s.db.Exec("PRAGMA user_version = 6"); err != nil {
+				return fmt.Errorf("failed to set schema version to 6: %w", err)
+			}
+
+			s.logger.Info("Schema migrated to version 6 (EventHub tables)")
+			version = 6
+		}
+
 		s.logger.Info("Database schema up to date", zap.Int("version", version))
 	}
 
@@ -1590,4 +1634,10 @@ func LoadAPIKeysFromDatabase(storage Storage, configStore *ConfigStore, apiKeySt
 	}
 
 	return nil
+}
+
+// GetDB returns the underlying *sql.DB instance
+// This is used for eventhub initialization
+func (s *SQLiteStorage) GetDB() *sql.DB {
+	return s.db
 }

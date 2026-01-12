@@ -4,13 +4,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/authenticators"
@@ -20,6 +21,8 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventhub"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventlistener"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
@@ -106,6 +109,26 @@ func main() {
 
 	// Initialize in-memory API key store for xDS
 	apiKeyStore := storage.NewAPIKeyStore(log)
+
+	// Initialize EventHub if multi-replica mode is enabled
+	var eventHub eventhub.EventHub
+	if cfg.GatewayController.Server.EnableReplicaSync {
+		if cfg.IsPersistentMode() && db != nil {
+			log.Info("Initializing EventHub for multi-replica mode")
+			eventHub = eventhub.New(db.GetDB(), log, eventhub.DefaultConfig())
+			ctx := context.Background()
+			if err := eventHub.Initialize(ctx); err != nil {
+				log.Fatal("Failed to initialize EventHub", zap.Error(err))
+			}
+			if err := eventHub.RegisterOrganization("default"); err != nil {
+				log.Error("Failed to register default organization", zap.Error(err))
+			} else {
+				log.Info("EventHub initialized successfully")
+			}
+		} else {
+			log.Fatal("EventHub requires persistent storage. Multi-replica mode will not function correctly in memory-only mode.")
+		}
+	}
 
 	// Load configurations from database on startup (if persistent mode)
 	if cfg.IsPersistentMode() && db != nil {
@@ -246,6 +269,26 @@ func main() {
 		log.Info("Policy xDS server is disabled")
 	}
 
+	// Initialize and start EventListener if EventHub is available
+	var evtListener *eventlistener.EventListener
+	if eventHub != nil {
+		log.Info("Initializing EventListener")
+		eventSource := eventlistener.NewEventHubAdapter(eventHub, log)
+		evtListener = eventlistener.NewEventListener(
+			eventSource,
+			configStore,
+			db,
+			snapshotManager,
+			policyManager, // Can be nil if policy server is disabled
+			&cfg.GatewayController.Router,
+			log,
+		)
+		if err := evtListener.Start(context.Background()); err != nil {
+			log.Fatal("Failed to start EventListener", zap.Error(err))
+		}
+		log.Info("EventListener started successfully")
+	}
+
 	// Load policy definitions from files (must be done before creating validator)
 	policyLoader := utils.NewPolicyLoader(log)
 	policyDir := cfg.GatewayController.Policies.DefinitionsPath
@@ -272,7 +315,7 @@ func main() {
 	validator.SetPolicyValidator(policyValidator)
 
 	// Initialize and start control plane client with dependencies for API creation
-	cpClient := controlplane.NewClient(cfg.GatewayController.ControlPlane, log, configStore, db, snapshotManager, validator, &cfg.GatewayController.Router)
+	cpClient := controlplane.NewClient(cfg.GatewayController.ControlPlane, log, configStore, db, snapshotManager, policyManager, validator, &cfg.GatewayController.Router)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", zap.Error(err))
 		// Don't fail startup - gateway can run in degraded mode without control plane
@@ -301,7 +344,7 @@ func main() {
 
 	// Initialize API server with the configured validator and API key manager
 	apiServer := handlers.NewAPIServer(configStore, db, snapshotManager, policyManager, log, cpClient,
-		policyDefinitions, templateDefinitions, validator, &cfg.GatewayController.Router, apiKeyXDSManager)
+		policyDefinitions, templateDefinitions, validator, &cfg.GatewayController.Router, apiKeyXDSManager, eventHub, cfg.GatewayController.Server.EnableReplicaSync)
 
 	// Register API routes (includes certificate management endpoints from OpenAPI spec)
 	api.RegisterHandlers(router, apiServer)
@@ -345,6 +388,11 @@ func main() {
 	// Stop policy xDS server if it was started
 	if policyXDSServer != nil {
 		policyXDSServer.Stop()
+	}
+
+	// Stop EventListener if it was started
+	if evtListener != nil {
+		evtListener.Stop()
 	}
 
 	log.Info("Gateway-Controller stopped")
