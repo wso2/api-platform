@@ -120,38 +120,54 @@ func (p *CorsPolicy) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{
 		RequestHeaderMode:  policy.HeaderModeProcess,
 		RequestBodyMode:    policy.BodyModeSkip,
-		ResponseHeaderMode: policy.HeaderModeSkip,
+		ResponseHeaderMode: policy.HeaderModeProcess,
 		ResponseBodyMode:   policy.BodyModeSkip,
 	}
 }
 
 func (p *CorsPolicy) OnRequest(ctx *policy.RequestContext, params map[string]any) policy.RequestAction {
-	if !strings.EqualFold(ctx.Method, "options") {
-		slog.Debug("Not a CORS preflight request, skipping CORS policy")
+	if strings.EqualFold(ctx.Method, "options") {
+		slog.Debug("CORS: Preflight request detected; handling preflight")
+		return p.handlePreflight(ctx)
+	} else {
+		// Non-preflight
+		corsHeaders, ok := p.handleNonPreflight(ctx)
+		if ok {
+			slog.Debug("CORS: Adding CORS headers to non-preflight request")
+			ctx.Metadata["cors_headers"] = corsHeaders
+		} else {
+			slog.Debug("CORS: No CORS headers to add for non-preflight request")
+		}
 		return nil
 	}
-	slog.Debug("Handling CORS preflight request")
-	isCorsFailure := false
+}
+
+// handlePreflight processes CORS preflight (OPTIONS) requests
+func (p *CorsPolicy) handlePreflight(ctx *policy.RequestContext) policy.RequestAction {
 	requestHeaders := ctx.Headers
+	origin := requestHeaders.Get("Origin")
+
+	isCorsFailure := false
 	headers := make(map[string]string)
 
-	origin := requestHeaders.Get("Origin")
 	requestedMethod := requestHeaders.Get("Access-Control-Request-Method")
 	requestedHeaders := requestHeaders.Get("Access-Control-Request-Headers")
 
 	// handle origins
 	originAllowed := false
-	if p.AllowedOrigins[0] == "*" {
-		slog.Debug("CORS: Allowing all origins")
-		headers["Access-Control-Allow-Origin"] = "*"
-		originAllowed = true
-	} else if len(origin) > 0 {
-		for _, regex := range p.CompiledAllowedOrigins {
-			if regex.MatchString(origin[0]) {
-				slog.Debug("CORS: Adding allowed origins")
-				headers["Access-Control-Allow-Origin"] = origin[0]
-				originAllowed = true
-				break
+	if len(p.AllowedOrigins) > 0 {
+		if p.AllowedOrigins[0] == "*" {
+			slog.Debug("CORS: Allowing all origins")
+			headers["Access-Control-Allow-Origin"] = "*"
+			originAllowed = true
+		} else if len(origin) > 0 {
+			for _, regex := range p.CompiledAllowedOrigins {
+				if regex.MatchString(origin[0]) {
+					slog.Debug("CORS: Adding allowed origins")
+					headers["Access-Control-Allow-Origin"] = origin[0]
+					originAllowed = true
+					break
+				}
 			}
 		}
 	}
@@ -183,7 +199,9 @@ func (p *CorsPolicy) OnRequest(ctx *policy.RequestContext, params map[string]any
 	if len(p.AllowedHeaders) > 0 {
 		if p.AllowedHeaders[0] == "*" {
 			slog.Debug("CORS: Allowing all headers")
-			headers["Access-Control-Allow-Headers"] = requestedHeaders[0]
+			if len(requestedHeaders) > 0 {
+				headers["Access-Control-Allow-Headers"] = requestedHeaders[0]
+			}
 			headersAllowed = true
 		} else if len(requestedHeaders) > 0 {
 			var checkedHeaders []string
@@ -210,11 +228,6 @@ func (p *CorsPolicy) OnRequest(ctx *policy.RequestContext, params map[string]any
 		isCorsFailure = true
 	}
 
-	if len(p.ExposedHeaders) > 0 {
-		slog.Debug("CORS: Adding expose headers")
-		headers["Access-Control-Expose-Headers"] = strings.Join(p.ExposedHeaders, ",")
-	}
-
 	if p.MaxAge != nil {
 		slog.Debug("CORS: Adding max age header")
 		headers["Access-Control-Max-Age"] = fmt.Sprintf("%d", *p.MaxAge)
@@ -226,7 +239,7 @@ func (p *CorsPolicy) OnRequest(ctx *policy.RequestContext, params map[string]any
 	}
 
 	if isCorsFailure {
-		slog.Debug("CORS: Preflight request did not pass the policy")
+		slog.Debug("CORS: Preflight request did not pass the conditions")
 		headers = make(map[string]string)
 		if p.ForwardPreflight {
 			slog.Debug("CORS: Forwarding preflight request to upstream.")
@@ -242,7 +255,62 @@ func (p *CorsPolicy) OnRequest(ctx *policy.RequestContext, params map[string]any
 }
 
 func (p *CorsPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]any) policy.ResponseAction {
+	corsHeaders, ok := ctx.Metadata["cors_headers"].(map[string]string)
+	if ok {
+		slog.Debug("CORS: Adding CORS headers to response")
+		return policy.UpstreamResponseModifications{
+			SetHeaders: corsHeaders,
+		}
+	}
+	slog.Debug("CORS: No CORS headers to add to response")
 	return nil
+}
+
+// handleNonPreflight adds CORS headers to actual (non-preflight) responses
+func (p *CorsPolicy) handleNonPreflight(ctx *policy.RequestContext) (map[string]string, bool) {
+	// Add CORS headers for actual requests
+	headersToInclude := make(map[string]string)
+
+	requestHeaders := ctx.Headers
+	origin := requestHeaders.Get("Origin")
+
+	// Handle allowed origin
+	originAllowed := false
+	if len(p.AllowedOrigins) > 0 {
+		if p.AllowedOrigins[0] == "*" {
+			headersToInclude["Access-Control-Allow-Origin"] = "*"
+			originAllowed = true
+		} else if len(origin) > 0 {
+			for _, regex := range p.CompiledAllowedOrigins {
+				if regex.MatchString(origin[0]) {
+					headersToInclude["Access-Control-Allow-Origin"] = origin[0]
+					// Advise caches that response may vary by Origin
+					headersToInclude["Vary"] = "Origin"
+					originAllowed = true
+					break
+				}
+			}
+		}
+	}
+
+	if !originAllowed {
+		slog.Debug("CORS: Origin not allowed for non-preflight request")
+		return nil, false
+	}
+
+	// Expose headers to the client, if configured
+	if len(p.ExposedHeaders) > 0 {
+		slog.Debug("CORS: Adding exposed headers")
+		headersToInclude["Access-Control-Expose-Headers"] = strings.Join(p.ExposedHeaders, ",")
+	}
+
+	// Allow credentials if enabled
+	if p.AllowCredentials != nil {
+		slog.Debug("CORS: Adding allow credentials header")
+		headersToInclude["Access-Control-Allow-Credentials"] = fmt.Sprintf("%t", *p.AllowCredentials)
+	}
+
+	return headersToInclude, true
 }
 
 func getStringArrayParam(params map[string]any, key string, defaultValue []string) []string {
