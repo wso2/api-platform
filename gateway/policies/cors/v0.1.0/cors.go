@@ -46,13 +46,13 @@ func GetPolicy(
 	slog.Debug("Cors Policy: GetPolicy called")
 	p := &CorsPolicy{}
 	p.AllowedOrigins = getStringArrayParam(params, "allowedOrigins", []string{"*"})
-	if len(p.AllowedOrigins) > 1 && strings.Contains(strings.Join(p.AllowedOrigins, ","), "*") {
+	if slices.Contains(p.AllowedOrigins, "*") {
 		slog.Debug("Ignoring other origins as wildcard is included")
 		p.AllowedOrigins = []string{"*"}
 	}
 	p.AllowedMethods = getStringArrayParam(params, "allowedMethods", []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"})
 	p.AllowedHeaders = getStringArrayParam(params, "allowedHeaders", []string{})
-	if len(p.AllowedHeaders) > 1 && strings.Contains(strings.Join(p.AllowedHeaders, ","), "*") {
+	if slices.Contains(p.AllowedHeaders, "*") {
 		slog.Debug("Ignoring other headers as wildcard is included")
 		p.AllowedHeaders = []string{"*"}
 	}
@@ -178,15 +178,17 @@ func (p *CorsPolicy) handlePreflight(ctx *policy.RequestContext) policy.RequestA
 
 	// handle methods
 	methodAllowed := false
-	if p.AllowedMethods[0] == "*" {
-		slog.Debug("CORS: Allowing all methods")
-		headers["Access-Control-Allow-Methods"] = "*"
-		methodAllowed = true
-	} else if len(requestedMethod) > 0 {
-		if slices.Contains(p.AllowedMethods, requestedMethod[0]) {
-			slog.Debug("CORS: Adding allowed methods")
-			headers["Access-Control-Allow-Methods"] = strings.Join(p.AllowedMethods, ",")
+	if len(p.AllowedMethods) > 0 {
+		if p.AllowedMethods[0] == "*" {
+			slog.Debug("CORS: Allowing all methods")
+			headers["Access-Control-Allow-Methods"] = "*"
 			methodAllowed = true
+		} else if len(requestedMethod) > 0 {
+			if slices.Contains(p.AllowedMethods, requestedMethod[0]) {
+				slog.Debug("CORS: Adding allowed methods")
+				headers["Access-Control-Allow-Methods"] = strings.Join(p.AllowedMethods, ",")
+				methodAllowed = true
+			}
 		}
 	}
 	if !methodAllowed {
@@ -209,7 +211,7 @@ func (p *CorsPolicy) handlePreflight(ctx *policy.RequestContext) policy.RequestA
 			allowedCount := 0
 			for _, allowedHeader := range p.AllowedHeaders {
 				for _, requestedHeader := range requestedList {
-					if strings.EqualFold(allowedHeader, requestedHeader) {
+					if strings.EqualFold(strings.TrimSpace(allowedHeader), strings.TrimSpace(requestedHeader)) {
 						checkedHeaders = append(checkedHeaders, allowedHeader)
 						allowedCount++
 					}
