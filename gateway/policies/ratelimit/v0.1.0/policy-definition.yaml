@@ -1,14 +1,16 @@
 name: ratelimit
 version: v0.1.0
 description: |
-  Rate limiting policy supporting multiple algorithms (GCRA, Fixed Window), multiple concurrent limits,
+  Rate limiting policy supporting multiple algorithms (GCRA, Fixed Window), multi-dimensional quotas,
   weighted rate limiting, flexible key extraction, and both in-memory and Redis backends. Supports
   fail-open behavior for Redis failures and provides comprehensive rate limit headers (X-RateLimit-*,
   IETF RateLimit, and Retry-After).
 
   Key features:
+  - Multi-dimensional quotas: Each quota can have its own key extraction and cost extraction
   - Multiple algorithms: GCRA (smooth rate limiting) or Fixed Window (simple counter)
-  - Weighted rate limiting via cost parameter (different operations consume different quota amounts)
+  - Dynamic cost extraction: Extract costs from request/response headers, metadata, or JSON body
+  - Weighted multipliers: Apply multipliers to extracted costs (e.g., prompt tokens @ 0.1, completion tokens @ 0.3)
   - Multiple concurrent limits (e.g., 10/second AND 1000/hour)
   - Array-based key extraction with sensible defaults (route name)
   - Dual backends: in-memory (single instance) or Redis (distributed)
@@ -18,118 +20,174 @@ description: |
 parameters:
   type: object
   additionalProperties: false
+  required: ["quotas"]
   properties:
-    limits:
+    quotas:
       type: array
       description: |
-        Array of rate limit policies to enforce. Multiple limits can be specified to enforce
-        different time windows (e.g., 10/second AND 1000/day). All limits are evaluated,
-        and the most restrictive limit is enforced.
+        Array of self-contained quota definitions. Each quota is an independent rate limit
+        dimension with its own limits, keyExtraction, and costExtraction. This enables
+        multi-dimensional rate limiting (e.g., per-user request limit + per-org token limit).
       minItems: 1
       maxItems: 10
       items:
         type: object
         additionalProperties: false
-        required: ["limit", "duration"]
+        required: ["limits"]
         properties:
-          limit:
-            type: integer
-            description: Maximum number of requests allowed in the duration
-            minimum: 1
-            maximum: 1000000000
-          duration:
+          name:
             type: string
             description: |
-              Time window for the limit (Go duration string format).
-              Examples: "1s" (1 second), "1m" (1 minute), "1h" (1 hour), "24h" (1 day)
-            pattern: "^[0-9]+(ns|us|µs|ms|s|m|h)$"
-          burst:
-            type: integer
+              Optional name for this quota. Used for logging and in the X-RateLimit-Quota
+              header when rate limit is exceeded. Makes debugging easier when multiple
+              quotas are configured.
+            minLength: 1
+            maxLength: 128
+
+          limits:
+            type: array
             description: |
-              Maximum burst capacity (number of requests that can accumulate).
-              If omitted, defaults to the limit value (no burst beyond normal rate).
-            minimum: 1
-            maximum: 1000000000
+              Array of rate limits for this quota. Multiple limits can be specified to enforce
+              different time windows (e.g., 500/hour AND 10000/day). All limits are evaluated,
+              and the most restrictive limit is enforced.
+            minItems: 1
+            maxItems: 10
+            items:
+              type: object
+              additionalProperties: false
+              required: ["limit", "duration"]
+              properties:
+                limit:
+                  type: integer
+                  description: Maximum number of tokens/requests allowed in the duration
+                  minimum: 1
+                  maximum: 1000000000
+                duration:
+                  type: string
+                  description: |
+                    Time window for the limit (Go duration string format).
+                    Examples: "1s" (1 second), "1m" (1 minute), "1h" (1 hour), "24h" (1 day)
+                  pattern: "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+                burst:
+                  type: integer
+                  description: |
+                    Maximum burst capacity (number of requests that can accumulate).
+                    If omitted, defaults to the limit value (no burst beyond normal rate).
+                  minimum: 1
+                  maximum: 1000000000
 
-    cost:
-      type: integer
-      description: |
-        Number of tokens this operation consumes per request (weighted rate limiting).
-        Use this to assign different costs to different operations. For example, simple
-        queries might cost 1 token while expensive analytics operations cost 10 tokens.
-        If omitted, defaults to 1.
-        Note: This is ignored when costExtraction is enabled.
-      minimum: 1
-      maximum: 1000000
-      default: 1
+          keyExtraction:
+            type: array
+            description: |
+              Per-quota key extraction. If omitted, inherits from global keyExtraction
+              or defaults to route name.
+            minItems: 0
+            maxItems: 5
+            items:
+              type: object
+              additionalProperties: false
+              required: ["type"]
+              properties:
+                type:
+                  type: string
+                  description: |
+                    Type of component to extract:
+                    - header: Extract from HTTP header (requires 'key' field)
+                    - metadata: Extract from SharedContext.Metadata (requires 'key' field)
+                    - ip: Extract client IP from X-Forwarded-For/X-Real-IP
+                    - apiname: Use API name from context
+                    - apiversion: Use API version from context
+                    - routename: Use route name from metadata (default)
+                  enum: ["header", "metadata", "ip", "apiname", "apiversion", "routename"]
+                key:
+                  type: string
+                  description: Header name or metadata key (required for header/metadata types)
+                  minLength: 1
+                  maxLength: 256
 
-    costExtraction:
-      type: object
-      description: |
-        Configuration for extracting cost from response data (post-response rate limiting).
-        When enabled, the actual cost is determined after the upstream responds, allowing
-        for dynamic rate limiting based on response content (e.g., token usage from LLM APIs).
-        Note: A pre-flight quota check is performed - if remaining quota is already exhausted,
-        requests are blocked with 429. Otherwise, requests proceed to upstream and cost is
-        extracted from response and consumed after the response. If rate limit is exceeded
-        post-response, the current request already succeeded but headers indicate quota exhaustion.
-        Subsequent requests using the same key will be impacted.
-      additionalProperties: false
-      properties:
-        enabled:
-          type: boolean
-          description: Enable post-response cost extraction
-          default: false
-
-        sources:
-          type: array
-          description: |
-            Ordered list of sources to extract cost from. Sources are tried in order
-            until one succeeds. If all fail, the default value is used.
-          minItems: 1
-          maxItems: 5
-          items:
+          costExtraction:
             type: object
+            description: |
+              Per-quota dynamic cost extraction configuration. When enabled, costs are
+              extracted from request or response data, allowing for token-based rate limiting
+              (e.g., LLM API token usage).
+              
+              Multiple sources can be configured. When multiple sources succeed, their values
+              are SUMMED (with multipliers applied). This enables weighted token counting:
+              
+              Example: prompt_tokens * 0.1 + completion_tokens * 0.3 = total weighted cost
             additionalProperties: false
-            required: ["type"]
             properties:
-              type:
-                type: string
-                description: |
-                  Type of source to extract cost from:
-                  - response_header: Extract from response header (integer value)
-                  - metadata: Extract from shared metadata (set by other policies)
-                  - response_body: Extract from JSON response body using jsonPath
-                enum: ["response_header", "metadata", "response_body"]
+              enabled:
+                type: boolean
+                description: Enable dynamic cost extraction
+                default: false
 
-              key:
-                type: string
+              sources:
+                type: array
                 description: |
-                  Header name (for response_header) or metadata key (for metadata).
-                  Required for response_header and metadata types.
-                minLength: 1
-                maxLength: 256
+                  List of sources to extract cost from. All successful extractions are
+                  summed together (with multipliers). If all fail, the default value is used.
+                minItems: 1
+                maxItems: 10
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: ["type"]
+                  properties:
+                    type:
+                      type: string
+                      description: |
+                        Type of source to extract cost from:
+                        - request_header: Extract from request header (pre-request)
+                        - request_metadata: Extract from request metadata (pre-request)
+                        - request_body: Extract from JSON request body using jsonPath (pre-request)
+                        - response_header: Extract from response header (post-response)
+                        - response_metadata: Extract from response metadata (post-response)
+                        - response_body: Extract from JSON response body using jsonPath (post-response)
+                      enum: ["request_header", "request_metadata", "request_body",
+                             "response_header", "response_metadata", "response_body"]
 
-              jsonPath:
-                type: string
-                description: |
-                  JSON path expression for extracting cost from response body.
-                  Required for response_body type.
-                  Example: "$.usage.total_tokens"
-                minLength: 1
-                maxLength: 512
+                    key:
+                      type: string
+                      description: |
+                        Header name (for *_header types) or metadata key (for *_metadata types).
+                        Required for header and metadata source types.
+                      minLength: 1
+                      maxLength: 256
 
-        default:
-          type: integer
-          description: Default cost to use if extraction fails from all sources
-          minimum: 1
-          maximum: 1000000
-          default: 1
+                    jsonPath:
+                      type: string
+                      description: |
+                        JSON path expression for extracting cost from body.
+                        Required for *_body types.
+                        Example: "$.usage.total_tokens" or "$.usage.prompt_tokens"
+                      minLength: 1
+                      maxLength: 512
+
+                    multiplier:
+                      type: number
+                      description: |
+                        Multiplier applied to the extracted value. Default is 1.0.
+                        Use this for weighted token counting:
+                        - Prompt tokens: multiplier 0.1 (cheaper)
+                        - Completion tokens: multiplier 0.3 (more expensive)
+                        Can be negative for refund scenarios (use with caution).
+                      default: 1.0
+
+              default:
+                type: number
+                description: Default cost to use if extraction fails from all sources
+                minimum: 0
+                maximum: 1000000000
+                default: 1
 
     keyExtraction:
       type: array
       description: |
-        Array of components to extract and combine for the rate limit key.
+        Global key extraction configuration. Used as a default for quotas that don't specify
+        their own keyExtraction.
+        
         If omitted or empty, defaults to route name.
         Multiple components are joined with ':' separator for composite keys.
       minItems: 0
@@ -179,8 +237,6 @@ parameters:
           description: Response body content type
           enum: ["json", "plain"]
           default: "json"
-
-  required: ["limits"]
 
 systemParameters:
   type: object

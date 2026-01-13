@@ -47,10 +47,11 @@ Feature: Rate Limiting
               - name: ratelimit
                 version: v0.1.0
                 params:
-                  cost: 1
-                  limits:
-                    - limit: 10
-                      duration: "1m"
+                  quotas:
+                    - name: request-limit
+                      limits:
+                        - limit: 10
+                          duration: "1h"
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/ratelimit/v1.0/limited" to be ready
@@ -63,8 +64,111 @@ Feature: Rate Limiting
     When I send 2 GET requests to "http://localhost:8080/ratelimit/v1.0/limited"
     Then the response status code should be 429
     And the response body should contain "Rate limit exceeded"
-    And the response header "Retry-After" should exist
 
+  Scenario: Multi-quota rate limit headers in IETF format
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-multi-quota-headers-api
+      spec:
+        displayName: RateLimit Multi-Quota Headers API
+        version: v1.0
+        context: /ratelimit-multi-quota-headers/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /resource
+            policies:
+              - name: ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: burst
+                      limits:
+                        - limit: 10
+                          duration: "1m"
+                    - name: daily
+                      limits:
+                        - limit: 100
+                          duration: "24h"
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-multi-quota-headers/v1.0/health" to be ready
+
+    When I send a GET request to "http://localhost:8080/ratelimit-multi-quota-headers/v1.0/resource"
+    Then the response status code should be 200
+    # Check X-RateLimit-* headers (legacy format - most restrictive quota)
+    And the response header "X-RateLimit-Limit" should exist
+    And the response header "X-RateLimit-Remaining" should exist
+    And the response header "X-RateLimit-Reset" should exist
+    # Check IETF RateLimit headers (multi-quota format)
+    And the response header "RateLimit-Policy" should exist
+    And the response header "RateLimit" should exist
+    # Verify IETF headers contain both quota names
+    And the response header "RateLimit-Policy" should contain "burst"
+    And the response header "RateLimit-Policy" should contain "daily"
+    And the response header "RateLimit" should contain "burst"
+    And the response header "RateLimit" should contain "daily"
+
+  Scenario: 429 response includes IETF RateLimit headers for violated quota
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-multi-quota-429-api
+      spec:
+        displayName: RateLimit Multi-Quota 429 API
+        version: v1.0
+        context: /ratelimit-multi-quota-429/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /resource
+            policies:
+              - name: ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: request-limit
+                      limits:
+                        - limit: 4
+                          duration: "1h"
+                    - name: daily
+                      limits:
+                        - limit: 100
+                          duration: "24h"
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-multi-quota-429/v1.0/health" to be ready
+
+    # Send requests to exhaust the request-limit quota (limit=4, 1h fixed window)
+    When I send 4 GET requests to "http://localhost:8080/ratelimit-multi-quota-429/v1.0/resource"
+    Then the response status code should be 200
+
+    # This request should be rate limited by the request-limit quota
+    When I send a GET request to "http://localhost:8080/ratelimit-multi-quota-429/v1.0/resource"
+    Then the response status code should be 429
+    # Check that violated quota is identified in legacy header
+    And the response header "X-RateLimit-Quota" should be "request-limit"
+    # Check IETF headers are present in 429 response with violated quota info
+    And the response header "RateLimit-Policy" should exist
+    And the response header "RateLimit-Policy" should contain "request-limit"
+    And the response header "RateLimit" should exist
+    And the response header "RateLimit" should contain "request-limit"
+    And the response header "Retry-After" should exist
   Scenario: Rate limit headers are returned
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
@@ -87,10 +191,11 @@ Feature: Rate Limiting
               - name: ratelimit
                 version: v0.1.0
                 params:
-                  cost: 1
-                  limits:
-                    - limit: 100
-                      duration: "1m"
+                  quotas:
+                    - name: request-limit
+                      limits:
+                        - limit: 100
+                          duration: "1h"
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/ratelimit-headers/v1.0/check" to be ready
@@ -123,10 +228,11 @@ Feature: Rate Limiting
               - name: ratelimit
                 version: v0.1.0
                 params:
-                  cost: 1
-                  limits:
-                    - limit: 5
-                      duration: "1m"
+                  quotas:
+                    - name: request-limit
+                      limits:
+                        - limit: 5
+                          duration: "1h"
                   onRateLimitExceeded:
                     statusCode: 429
                     body: '{"error": "Too Many Requests", "code": 429001}'
@@ -142,43 +248,43 @@ Feature: Rate Limiting
     And the JSON response field "error" should be "Too Many Requests"
     And the JSON response field "code" should be 429001
 
-  Scenario: Weighted rate limiting with cost parameter
+  Scenario: Basic rate limiting without cost extraction
     Given I authenticate using basic auth as "admin"
     When I deploy this API configuration:
       """
       apiVersion: gateway.api-platform.wso2.com/v1alpha1
       kind: RestApi
       metadata:
-        name: ratelimit-weighted-api
+        name: ratelimit-basic-api
       spec:
-        displayName: RateLimit Weighted API
+        displayName: RateLimit Basic API
         version: v1.0
-        context: /ratelimit-weighted/$version
+        context: /ratelimit-basic/$version
         upstream:
           main:
             url: http://sample-backend:9080/api/v1
         operations:
           - method: GET
-            path: /expensive
+            path: /resource
             policies:
               - name: ratelimit
                 version: v0.1.0
                 params:
-                  cost: 5
-                  limits:
-                    - limit: 20
-                      duration: "1m"
+                  quotas:
+                    - name: request-limit
+                      limits:
+                        - limit: 4
+                          duration: "1h"
       """
     Then the response should be successful
-    And I wait for the endpoint "http://localhost:8080/ratelimit-weighted/v1.0/expensive" to be ready
+    And I wait for the endpoint "http://localhost:8080/ratelimit-basic/v1.0/resource" to be ready
 
-    # Each request costs 5 tokens. With limit 20 and readiness check (~1 request = 5 tokens),
-    # we have ~15 tokens left. Send 3 requests (15 tokens) to exhaust quota.
-    When I send 3 GET requests to "http://localhost:8080/ratelimit-weighted/v1.0/expensive"
+    # Send 3 requests - all should succeed (each request costs 1 token by default)
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-basic/v1.0/resource"
     Then the response status code should be 200
 
     # Next request should be rate limited
-    When I send a GET request to "http://localhost:8080/ratelimit-weighted/v1.0/expensive"
+    When I send a GET request to "http://localhost:8080/ratelimit-basic/v1.0/resource"
     Then the response status code should be 429
 
   Scenario: Cost extraction from response body using echo backend
@@ -205,15 +311,17 @@ Feature: Rate Limiting
               - name: ratelimit
                 version: v0.1.0
                 params:
-                  limits:
-                    - limit: 100
-                      duration: "1m"
-                  costExtraction:
-                    enabled: true
-                    sources:
-                      - type: response_body
-                        jsonPath: "$.json.custom_cost"
-                    default: 1
+                  quotas:
+                    - name: token-quota
+                      limits:
+                        - limit: 100
+                          duration: "1h"
+                      costExtraction:
+                        enabled: true
+                        sources:
+                          - type: response_body
+                            jsonPath: "$.json.custom_cost"
+                        default: 1
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/ratelimit-cost-extraction/v1.0/anything" to be ready
@@ -269,24 +377,26 @@ Feature: Rate Limiting
               - name: ratelimit
                 version: v0.1.0
                 params:
-                  cost: 1
-                  limits:
-                    - limit: 10
-                      duration: "1m"
-                  keyExtraction:
-                    - type: apiname
+                  quotas:
+                    - name: api-quota
+                      limits:
+                        - limit: 10
+                          duration: "1h"
+                      keyExtraction:
+                        - type: apiname
           - method: GET
             path: /route2
             policies:
               - name: ratelimit
                 version: v0.1.0
                 params:
-                  cost: 1
-                  limits:
-                    - limit: 10
-                      duration: "1m"
-                  keyExtraction:
-                    - type: apiname
+                  quotas:
+                    - name: api-quota
+                      limits:
+                        - limit: 10
+                          duration: "1h"
+                      keyExtraction:
+                        - type: apiname
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/ratelimit-api-level/v1.0/route0" to be ready
@@ -338,10 +448,11 @@ Feature: Rate Limiting
               - name: ratelimit
                 version: v0.1.0
                 params:
-                  cost: 1
-                  limits:
-                    - limit: 5
-                      duration: "1m"
+                  quotas:
+                    - name: request-limit
+                      limits:
+                        - limit: 5
+                          duration: "1h"
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/ratelimit-update-test/v1.0/test" to be ready
@@ -377,10 +488,11 @@ Feature: Rate Limiting
               - name: ratelimit
                 version: v0.1.0
                 params:
-                  cost: 1
-                  limits:
-                    - limit: 5
-                      duration: "1m"
+                  quotas:
+                    - name: request-limit
+                      limits:
+                        - limit: 5
+                          duration: "1h"
           - method: PUT
             path: /handle
       """
@@ -391,3 +503,708 @@ Feature: Rate Limiting
     When I send a GET request to "http://localhost:8080/ratelimit-update-test/v1.0/resource"
     Then the response status code should be 429
     And the response body should contain "Rate limit exceeded"
+
+  Scenario: Multi-dimensional rate limiting with quotas
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-quotas-api
+      spec:
+        displayName: RateLimit Quotas API
+        version: v1.0
+        context: /ratelimit-quotas/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /multi1
+            policies:
+              - name: ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: per-route
+                      limits:
+                        - limit: 5
+                          duration: "1h"
+                      keyExtraction:
+                        - type: routename
+                    - name: per-api
+                      limits:
+                        - limit: 8
+                          duration: "1h"
+                      keyExtraction:
+                        - type: apiname
+          - method: GET
+            path: /multi2
+            policies:
+              - name: ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: per-route
+                      limits:
+                        - limit: 5
+                          duration: "1h"
+                      keyExtraction:
+                        - type: routename
+                    - name: per-api
+                      limits:
+                        - limit: 8
+                          duration: "1h"
+                      keyExtraction:
+                        - type: apiname
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-quotas/v1.0/health" to be ready
+
+    # Send 5 requests to multi1 - hits per-route limit (5/5)
+    # Per-api usage: 5/8
+    When I send 5 GET requests to "http://localhost:8080/ratelimit-quotas/v1.0/multi1"
+    Then the response status code should be 200
+
+    # 6th request to multi1 blocked by per-route quota
+    When I send a GET request to "http://localhost:8080/ratelimit-quotas/v1.0/multi1"
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
+    # multi2 has its own per-route quota (0/5), so requests should work
+    # But per-api is shared: 5 + 3 = 8/8 (reaching per-api limit)
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-quotas/v1.0/multi2"
+    Then the response status code should be 200
+
+    # This request proves per-api works: multi2's per-route is only 3/5,
+    # but per-api is exhausted at 8/8, so it should be blocked
+    When I send a GET request to "http://localhost:8080/ratelimit-quotas/v1.0/multi2"
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
+
+  Scenario: Per-quota cost extraction with multiplier
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-quota-cost-api
+      spec:
+        displayName: RateLimit Quota Cost API
+        version: v1.0
+        context: /ratelimit-quota-cost/$version
+        upstream:
+          main:
+            url: http://echo-backend:80
+        operations:
+          - method: GET
+            path: /get
+          - method: POST
+            path: /anything
+            policies:
+              - name: ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: token-limit
+                      limits:
+                        - limit: 100
+                          duration: "1h"
+                      costExtraction:
+                        enabled: true
+                        sources:
+                          - type: response_body
+                            jsonPath: "$.json.tokens"
+                            multiplier: 2.0
+                        default: 1
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-quota-cost/v1.0/get" to be ready
+
+    # Send request with tokens=25, with multiplier 2.0 -> cost=50
+    When I send a POST request to "http://localhost:8080/ratelimit-quota-cost/v1.0/anything" with body:
+      """
+      {"tokens": 25}
+      """
+    Then the response status code should be 200
+    # After first request: 100 - 50 = 50 remaining
+    And the response header "X-RateLimit-Remaining" should be "50"
+
+    # Send another request with tokens=25 -> cost=50
+    When I send a POST request to "http://localhost:8080/ratelimit-quota-cost/v1.0/anything" with body:
+      """
+      {"tokens": 25}
+      """
+    Then the response status code should be 200
+    # After second request: 50 - 50 = 0 remaining
+    And the response header "X-RateLimit-Remaining" should be "0"
+
+    # Third request should be rate limited
+    When I send a POST request to "http://localhost:8080/ratelimit-quota-cost/v1.0/anything" with body:
+      """
+      {"tokens": 10}
+      """
+    Then the response status code should be 429
+
+  Scenario: Header-based key extraction for per-user rate limiting
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-peruser-api
+      spec:
+        displayName: RateLimit Per-User API
+        version: v1.0
+        context: /ratelimit-peruser/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /user
+            policies:
+              - name: ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: per-user-limit
+                      limits:
+                        - limit: 3
+                          duration: "1h"
+                      keyExtraction:
+                        - type: header
+                          key: X-User-ID
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-peruser/v1.0/user" to be ready
+
+    # User-A sends 3 requests - should succeed
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-peruser/v1.0/user" with header "X-User-ID" value "user-A"
+    Then the response status code should be 200
+
+    # User-A's 4th request should be rate limited
+    When I send a GET request to "http://localhost:8080/ratelimit-peruser/v1.0/user" with header "X-User-ID" value "user-A"
+    Then the response status code should be 429
+
+    # User-B should still have full quota (separate bucket)
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-peruser/v1.0/user" with header "X-User-ID" value "user-B"
+    Then the response status code should be 200
+
+    # User-B's 4th request should be rate limited
+    When I send a GET request to "http://localhost:8080/ratelimit-peruser/v1.0/user" with header "X-User-ID" value "user-B"
+    Then the response status code should be 429
+
+  Scenario: Multiple limits per quota - enforces most restrictive limit
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-multilimits-api
+      spec:
+        displayName: RateLimit Multiple Limits API
+        version: v1.0
+        context: /ratelimit-multilimits/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /resource
+            policies:
+              - name: ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: "request-quota"
+                      limits:
+                        - limit: 10
+                          duration: "1h"
+                        - limit: 8
+                          duration: "24h"
+                      keyExtraction:
+                        - type: routename
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-multilimits/v1.0/health" to be ready
+
+    # Phase 1: Test that 24h limit is enforced (more restrictive than 1h)
+    # Limits: 10/1h and 8/24h - the 24h limit should be hit first
+
+    # Send 8 requests - should succeed (8/8 for 24h, 8/10 for 1h)
+    When I send 8 GET requests to "http://localhost:8080/ratelimit-multilimits/v1.0/resource"
+    Then the response status code should be 200
+
+    # 9th request should be blocked by 24h limit (8/8 exhausted)
+    # Note: 1h limit still has 2 tokens left (8/10), proving 24h limit is enforced
+    When I send a GET request to "http://localhost:8080/ratelimit-multilimits/v1.0/resource"
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
+    # Phase 2: Update API to make 1h limit more restrictive
+    # New limits: 12/1h and 10000/24h - the 1h limit should be hit first
+    When I update the API "ratelimit-multilimits-api" with this configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-multilimits-api
+      spec:
+        displayName: RateLimit Multiple Limits API
+        version: v1.0
+        context: /ratelimit-multilimits/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /resource
+            policies:
+              - name: ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: "request-quota"
+                      limits:
+                        - limit: 12
+                          duration: "1h"
+                        - limit: 10000
+                          duration: "24h"
+                      keyExtraction:
+                        - type: routename
+      """
+    Then the response should be successful
+    And I wait for 2 seconds
+
+    # Send 12 requests - should succeed (12/12 for 1h, 12/10000 for 24h)
+    When I send 12 GET requests to "http://localhost:8080/ratelimit-multilimits/v1.0/resource"
+    Then the response status code should be 200
+
+    # 13th request should be blocked by 1h limit (12/12 exhausted)
+    # Note: 24h limit still has plenty of tokens (12/10000), proving 1h limit is enforced
+    When I send a GET request to "http://localhost:8080/ratelimit-multilimits/v1.0/resource"
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
+  Scenario: Cost extraction from request body
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-request-body-cost-api
+      spec:
+        displayName: RateLimit Request Body Cost API
+        version: v1.0
+        context: /ratelimit-request-body-cost/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: POST
+            path: /resource
+            policies:
+              - name: ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: token-quota
+                      limits:
+                        - limit: 100
+                          duration: "1h"
+                      costExtraction:
+                        enabled: true
+                        sources:
+                          - type: request_body
+                            jsonPath: "$.tokens"
+                        default: 1
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-request-body-cost/v1.0/health" to be ready
+
+    # Send a POST request with tokens=40 in the body
+    # Cost extraction will read $.tokens from request body
+    When I send a POST request to "http://localhost:8080/ratelimit-request-body-cost/v1.0/resource" with body:
+      """
+      {"tokens": 40}
+      """
+    Then the response status code should be 200
+    # After first request: 100 - 40 = 60 remaining
+    And the response header "X-RateLimit-Remaining" should be "60"
+
+    # Send another request with tokens=40
+    When I send a POST request to "http://localhost:8080/ratelimit-request-body-cost/v1.0/resource" with body:
+      """
+      {"tokens": 40}
+      """
+    Then the response status code should be 200
+    # After second request: 60 - 40 = 20 remaining
+    And the response header "X-RateLimit-Remaining" should be "20"
+
+    # Send a request with tokens=30 - should be rate limited (need 30, only 20 remaining)
+    When I send a POST request to "http://localhost:8080/ratelimit-request-body-cost/v1.0/resource" with body:
+      """
+      {"tokens": 30}
+      """
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
+  Scenario: Multiple quotas with prompt and completion token cost extraction
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-prompt-tokens-api
+      spec:
+        displayName: RateLimit Prompt Tokens API
+        version: v1.0
+        context: /ratelimit-prompt-tokens/$version
+        upstream:
+          main:
+            url: http://echo-backend:80
+        operations:
+          - method: GET
+            path: /get
+          - method: POST
+            path: /anything
+            policies:
+              - name: ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: "prompt-tokens"
+                      limits:
+                        - limit: 500
+                          duration: "1h"
+                      keyExtraction:
+                        - type: header
+                          key: X-User-ID
+                      costExtraction:
+                        enabled: true
+                        sources:
+                          - type: response_body
+                            jsonPath: "$.json.usage.prompt_tokens"
+                            multiplier: 1.0
+                        default: 0
+                    - name: "completion-tokens"
+                      limits:
+                        - limit: 200
+                          duration: "1h"
+                      keyExtraction:
+                        - type: header
+                          key: X-User-ID
+                      costExtraction:
+                        enabled: true
+                        sources:
+                          - type: response_body
+                            jsonPath: "$.json.usage.completion_tokens"
+                            multiplier: 1.0
+                        default: 0
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-prompt-tokens/v1.0/get" to be ready
+
+    # Test completion-tokens quota with user-A
+    # Send request with low prompt tokens (50) but high completion tokens (100)
+    When I send a POST request to "http://localhost:8080/ratelimit-prompt-tokens/v1.0/anything" with header "X-User-ID" value "user-A" with body:
+      """
+      {"usage": {"prompt_tokens": 50, "completion_tokens": 100}}
+      """
+    Then the response status code should be 200
+    # prompt-tokens: 500 - 50 = 450 remaining
+    # completion-tokens: 200 - 100 = 100 remaining
+
+    # Send another request with same pattern
+    When I send a POST request to "http://localhost:8080/ratelimit-prompt-tokens/v1.0/anything" with header "X-User-ID" value "user-A" with body:
+      """
+      {"usage": {"prompt_tokens": 50, "completion_tokens": 100}}
+      """
+    Then the response status code should be 200
+    # prompt-tokens: 450 - 50 = 400 remaining
+    # completion-tokens: 100 - 100 = 0 remaining (exhausted!)
+
+    # This request should be blocked by completion-tokens quota
+    # Note: prompt-tokens still has 400 remaining, proving completion-tokens is enforced
+    When I send a POST request to "http://localhost:8080/ratelimit-prompt-tokens/v1.0/anything" with header "X-User-ID" value "user-A" with body:
+      """
+      {"usage": {"prompt_tokens": 50, "completion_tokens": 50}}
+      """
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
+    # Test prompt-tokens quota with user-B
+    # Send request with high prompt tokens (250) but low completion tokens (10)
+    When I send a POST request to "http://localhost:8080/ratelimit-prompt-tokens/v1.0/anything" with header "X-User-ID" value "user-B" with body:
+      """
+      {"usage": {"prompt_tokens": 250, "completion_tokens": 10}}
+      """
+    Then the response status code should be 200
+    # prompt-tokens: 500 - 250 = 250 remaining
+    # completion-tokens: 200 - 10 = 190 remaining
+
+    # Send another request with same pattern
+    When I send a POST request to "http://localhost:8080/ratelimit-prompt-tokens/v1.0/anything" with header "X-User-ID" value "user-B" with body:
+      """
+      {"usage": {"prompt_tokens": 250, "completion_tokens": 10}}
+      """
+    Then the response status code should be 200
+    # prompt-tokens: 250 - 250 = 0 remaining (exhausted!)
+    # completion-tokens: 190 - 10 = 180 remaining
+
+    # This request should be blocked by prompt-tokens quota
+    # Note: completion-tokens still has 180 remaining, proving prompt-tokens is enforced
+    When I send a POST request to "http://localhost:8080/ratelimit-prompt-tokens/v1.0/anything" with header "X-User-ID" value "user-B" with body:
+      """
+      {"usage": {"prompt_tokens": 50, "completion_tokens": 10}}
+      """
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
+  Scenario: IP-based rate limiting using X-Forwarded-For header
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-ip-based-api
+      spec:
+        displayName: RateLimit IP Based API
+        version: v1.0
+        context: /ratelimit-ip-based/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /resource
+            policies:
+              - name: ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: per-ip-limit
+                      limits:
+                        - limit: 3
+                          duration: "1h"
+                      keyExtraction:
+                        - type: ip
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-ip-based/v1.0/resource" to be ready
+
+    # IP 192.168.1.100 sends 3 requests - should succeed
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-ip-based/v1.0/resource" with header "X-Forwarded-For" value "192.168.1.100"
+    Then the response status code should be 200
+
+    # IP 192.168.1.100's 4th request should be rate limited
+    When I send a GET request to "http://localhost:8080/ratelimit-ip-based/v1.0/resource" with header "X-Forwarded-For" value "192.168.1.100"
+    Then the response status code should be 429
+
+    # Different IP 192.168.1.200 should have separate quota
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-ip-based/v1.0/resource" with header "X-Forwarded-For" value "192.168.1.200"
+    Then the response status code should be 200
+
+    # IP 192.168.1.200's 4th request should be rate limited
+    When I send a GET request to "http://localhost:8080/ratelimit-ip-based/v1.0/resource" with header "X-Forwarded-For" value "192.168.1.200"
+    Then the response status code should be 429
+
+  Scenario: Cost extraction from request header
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-request-header-cost-api
+      spec:
+        displayName: RateLimit Request Header Cost API
+        version: v1.0
+        context: /ratelimit-request-header-cost/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: POST
+            path: /resource
+            policies:
+              - name: ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: token-quota
+                      limits:
+                        - limit: 100
+                          duration: "1h"
+                      costExtraction:
+                        enabled: true
+                        sources:
+                          - type: request_header
+                            key: X-Token-Cost
+                        default: 1
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-request-header-cost/v1.0/health" to be ready
+
+    # Send a request with X-Token-Cost=40 header
+    When I send a POST request to "http://localhost:8080/ratelimit-request-header-cost/v1.0/resource" with header "X-Token-Cost" value "40" with body:
+      """
+      {}
+      """
+    Then the response status code should be 200
+    # After first request: 100 - 40 = 60 remaining
+    And the response header "X-RateLimit-Remaining" should be "60"
+
+    # Send another request with X-Token-Cost=40
+    When I send a POST request to "http://localhost:8080/ratelimit-request-header-cost/v1.0/resource" with header "X-Token-Cost" value "40" with body:
+      """
+      {}
+      """
+    Then the response status code should be 200
+    # After second request: 60 - 40 = 20 remaining
+    And the response header "X-RateLimit-Remaining" should be "20"
+
+    # Send a request with X-Token-Cost=30 - should be rate limited (need 30, only 20 remaining)
+    When I send a POST request to "http://localhost:8080/ratelimit-request-header-cost/v1.0/resource" with header "X-Token-Cost" value "30" with body:
+      """
+      {}
+      """
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
+  Scenario: Composite key extraction with multiple components
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-composite-key-api
+      spec:
+        displayName: RateLimit Composite Key API
+        version: v1.0
+        context: /ratelimit-composite-key/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /resource
+            policies:
+              - name: ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: per-user-per-api
+                      limits:
+                        - limit: 3
+                          duration: "1h"
+                      keyExtraction:
+                        - type: apiname
+                        - type: header
+                          key: X-User-ID
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-composite-key/v1.0/resource" to be ready
+
+    # User-A on this API sends 3 requests - should succeed
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-composite-key/v1.0/resource" with header "X-User-ID" value "user-A"
+    Then the response status code should be 200
+
+    # User-A's 4th request should be rate limited
+    When I send a GET request to "http://localhost:8080/ratelimit-composite-key/v1.0/resource" with header "X-User-ID" value "user-A"
+    Then the response status code should be 429
+
+    # User-B on same API should have separate quota (different composite key)
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-composite-key/v1.0/resource" with header "X-User-ID" value "user-B"
+    Then the response status code should be 200
+
+    # User-B's 4th request should be rate limited
+    When I send a GET request to "http://localhost:8080/ratelimit-composite-key/v1.0/resource" with header "X-User-ID" value "user-B"
+    Then the response status code should be 429
+
+  Scenario: Default cost fallback when extraction fails
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-default-cost-api
+      spec:
+        displayName: RateLimit Default Cost API
+        version: v1.0
+        context: /ratelimit-default-cost/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: POST
+            path: /resource
+            policies:
+              - name: ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: token-quota
+                      limits:
+                        - limit: 10
+                          duration: "1h"
+                      costExtraction:
+                        enabled: true
+                        sources:
+                          - type: request_body
+                            jsonPath: "$.nonexistent_field"
+                        default: 5
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-default-cost/v1.0/health" to be ready
+
+    # Send a request with body that doesn't contain the expected field
+    # Cost extraction will fail, so default cost (5) should be used
+    When I send a POST request to "http://localhost:8080/ratelimit-default-cost/v1.0/resource" with body:
+      """
+      {"some_other_field": 100}
+      """
+    Then the response status code should be 200
+    # After first request: 10 - 5 = 5 remaining (default cost used)
+    And the response header "X-RateLimit-Remaining" should be "5"
+
+    # Send another request - again default cost (5) should be used
+    When I send a POST request to "http://localhost:8080/ratelimit-default-cost/v1.0/resource" with body:
+      """
+      {"another_field": 200}
+      """
+    Then the response status code should be 200
+    # After second request: 5 - 5 = 0 remaining
+    And the response header "X-RateLimit-Remaining" should be "0"
+
+    # Third request should be rate limited
+    When I send a POST request to "http://localhost:8080/ratelimit-default-cost/v1.0/resource" with body:
+      """
+      {"data": "test"}
+      """
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
