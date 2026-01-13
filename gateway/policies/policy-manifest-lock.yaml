@@ -70,6 +70,9 @@ policies:
   - name: semantic-prompt-guard
     version: v0.1.0
     filePath: ./semantic-prompt-guard/v0.1.0
+  - name: add-query-parameter
+    version: v0.1.0
+    filePath: ./add-query-parameter/v0.1.0
   - name: sentence-count-guardrail
     version: v0.1.0
     filePath: ./sentence-count-guardrail/v0.1.0

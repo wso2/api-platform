@@ -1,0 +1,40 @@
+name: add-query-parameter
+version: v0.1.0
+description: |
+  Adds a query parameter to the request URL before forwarding to the upstream service.
+  This policy modifies the request path by appending or adding a query parameter with
+  the specified name and value. It properly handles existing query parameters and
+  URL encoding to ensure the request remains valid.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    name:
+      type: string
+      description: |
+        The name of the query parameter to add to the request URL.
+        This parameter name will be URL-encoded to ensure proper handling
+        of special characters. Example: "api_key", "version", "source"
+      validation:
+        minLength: 1
+        maxLength: 128
+
+    value:
+      type: string
+      description: |
+        The value of the query parameter to add to the request URL.
+        This parameter value will be URL-encoded to ensure proper handling
+        of special characters. Can be static text, empty string, or contain
+        special characters that will be properly escaped.
+      validation:
+        minLength: 0
+        maxLength: 1024
+
+  required:
+    - name
+    - value
+
+systemParameters:
+  type: object
+  properties: {}

@@ -21,6 +21,7 @@ package executor
 import (
 	"context"
 	"fmt"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/utils"
 	"time"
 
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/constants"
@@ -342,6 +343,11 @@ func applyRequestModifications(ctx *policy.RequestContext, mods *policy.Upstream
 	// Update path
 	if mods.Path != nil {
 		ctx.Path = *mods.Path
+	}
+
+	// Add query parameters
+	if mods.AddQueryParameters != nil {
+		ctx.Path = utils.AddQueryParametersToPath(ctx.Path, mods.AddQueryParameters)
 	}
 
 	// Update method

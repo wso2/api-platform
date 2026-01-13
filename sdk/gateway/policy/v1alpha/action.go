@@ -20,13 +20,14 @@ type DropHeaderAction struct {
 
 // UpstreamRequestModifications - continue request to upstream with modifications
 type UpstreamRequestModifications struct {
-	SetHeaders        map[string]string   // Set or replace headers
-	RemoveHeaders     []string            // Headers to remove
-	AppendHeaders     map[string][]string // Headers to append
-	Body              []byte              // nil = no change, []byte{} = clear
-	Path              *string             // nil = no change
-	Method            *string             // nil = no change
-	AnalyticsMetadata map[string]any      // Custom analytics metadata (key-value pairs)
+	SetHeaders               map[string]string   // Set or replace headers
+	RemoveHeaders            []string            // Headers to remove
+	AppendHeaders      		 map[string][]string // Headers to append
+	AddQueryParameters       map[string]string   // Query parameters to add
+	Body                     []byte              // nil = no change, []byte{} = clear
+	Path                     *string             // nil = no change
+	Method                   *string             // nil = no change
+	AnalyticsMetadata        map[string]any      // Custom analytics metadata (key-value pairs)
 	DropHeadersFromAnalytics DropHeaderAction  // Request headers to exclude from analytics event
 }
 
