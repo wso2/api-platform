@@ -1,0 +1,70 @@
+name: Codecov Code Coverage
+
+on:
+  workflow_dispatch:
+
+jobs:
+  codecov_test:
+    name: Run Unit and Integration Tests with Coverage
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Unit Tests
+        run: |
+          cd gateway
+          make test
+
+      - name: List coverage files - 1
+        run: |
+          echo "=== Finding all coverage.txt files ==="
+          find . -name "coverage.txt" -type f
+          echo "=== Contents of coverage.txt files ==="
+          find . -name "coverage.txt" -type f | while read file; do
+            echo ""
+            echo "=========================================="
+            echo "File: $file"
+            echo "=========================================="
+            cat "$file"
+          done
+
+      - name: Build coverage-instrumented images
+        run: |
+          cd gateway
+          make build-coverage
+
+      - name: Run integration tests
+        run: |
+          cd gateway
+          make test-integration
+
+      - name: List coverage files - 2
+        run: |
+          echo "=== Finding all coverage.txt files ==="
+          find . -name "coverage.txt" -type f
+          echo "=== Contents of coverage.txt files ==="
+          find . -name "coverage.txt" -type f | while read file; do
+            echo ""
+            echo "=========================================="
+            echo "File: $file"
+            echo "=========================================="
+            cat "$file"
+          done
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: |
+            gateway/it/coverage/coverage.txt
+            gateway/gateway-controller/coverage.txt
+            gateway/gateway-builder/coverage.txt

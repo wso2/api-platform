@@ -103,7 +103,7 @@ build-and-push-multiarch: ## Build and push multi-architecture Docker image (lin
 .PHONY: test
 test: ## Run tests
 	@echo "Running tests..."
-	@go test -v ./... -cover
+	@go test -v ./... -cover -coverprofile=coverage.txt
 
 .PHONY: tidy
 tidy: ## Run go mod tidy
