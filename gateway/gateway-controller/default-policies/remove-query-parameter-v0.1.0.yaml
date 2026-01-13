@@ -1,0 +1,28 @@
+name: remove-query-parameter
+version: v0.1.0
+description: |
+  Removes a given query parameter from the request URL before forwarding to the upstream service.
+  This policy modifies the request path by removing a query parameter with
+  the specified name. It properly handles existing query parameters and
+  URL encoding to ensure the request remains valid.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    name:
+      type: string
+      description: |
+        The name of the query parameter to be removed from the request URL.
+        If a query parameter with this name exists in the request URL, it will be removed.
+        Otherwise the request URL will remain unchanged.
+      validation:
+        minLength: 1
+        maxLength: 128
+
+  required:
+    - name
+
+systemParameters:
+  type: object
+  properties: {}

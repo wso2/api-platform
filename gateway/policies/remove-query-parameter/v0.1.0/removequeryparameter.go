@@ -15,16 +15,16 @@
  *
  */
 
-package addqueryparameter
+package removequeryparameter
 
 import (
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
-// AddQueryParameterPolicy implements adding a query parameter to requests
-type AddQueryParameterPolicy struct{}
+// RemoveQueryParameterPolicy implements removing a query parameter to requests
+type RemoveQueryParameterPolicy struct{}
 
-var ins = &AddQueryParameterPolicy{}
+var ins = &RemoveQueryParameterPolicy{}
 
 func GetPolicy(
 	metadata policy.PolicyMetadata,
@@ -34,7 +34,7 @@ func GetPolicy(
 }
 
 // Mode returns the processing mode for this policy
-func (p *AddQueryParameterPolicy) Mode() policy.ProcessingMode {
+func (p *RemoveQueryParameterPolicy) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{
 		RequestHeaderMode:  policy.HeaderModeSkip, // Don't process request headers
 		RequestBodyMode:    policy.BodyModeSkip,   // Don't need request body
@@ -43,8 +43,8 @@ func (p *AddQueryParameterPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// OnRequest modifies request path by adding query parameter
-func (p *AddQueryParameterPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
+// OnRequest modifies request path by removing query parameter
+func (p *RemoveQueryParameterPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	// Check if name parameter is configured
 	name, ok := params["name"].(string)
 	if !ok || name == "" {
@@ -52,20 +52,14 @@ func (p *AddQueryParameterPolicy) OnRequest(ctx *policy.RequestContext, params m
 		return policy.UpstreamRequestModifications{}
 	}
 
-	value, ok := params["value"].(string)
-	if !ok {
-		// Invalid value for the query parameter, pass through
-		return policy.UpstreamRequestModifications{}
-	}
-
 	return policy.UpstreamRequestModifications{
-		AddQueryParameters: map[string]string{
-			name: value,
+		RemoveQueryParameters: []string{
+			name,
 		},
 	}
 }
 
 // OnResponse is a no-op for this policy
-func (p *AddQueryParameterPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
+func (p *RemoveQueryParameterPolicy) OnResponse(ctx *policy.ResponseContext, params map[string]interface{}) policy.ResponseAction {
 	return nil
 }

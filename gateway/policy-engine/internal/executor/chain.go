@@ -350,6 +350,11 @@ func applyRequestModifications(ctx *policy.RequestContext, mods *policy.Upstream
 		ctx.Path = utils.AddQueryParametersToPath(ctx.Path, mods.AddQueryParameters)
 	}
 
+	// Remove query parameters
+	if mods.RemoveQueryParameters != nil {
+		ctx.Path = utils.RemoveQueryParametersFromPath(ctx.Path, mods.RemoveQueryParameters)
+	}
+	
 	// Update method
 	if mods.Method != nil {
 		ctx.Method = *mods.Method

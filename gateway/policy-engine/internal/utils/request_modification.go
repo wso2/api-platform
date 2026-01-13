@@ -33,3 +33,22 @@ func AddQueryParametersToPath(path string, parameters map[string]string) string 
 	// Get the modified path with query parameters
 	return parsedURL.String()
 }
+
+// RemoveQueryParametersFromPath removes specified query parameters from the given path
+func RemoveQueryParametersFromPath(path string, parameters []string) string {
+	// Parse the URL to handle existing query parameters
+	parsedURL, err := url.Parse(path)
+	if err != nil {
+		// If URL parsing fails, return the original path
+		return path
+	}
+
+	// Remove the specified query parameters
+	queryParams := parsedURL.Query()
+	for _, name := range parameters {
+		queryParams.Del(name)
+	}
+	parsedURL.RawQuery = queryParams.Encode()
+	// Get the modified path without the specified query parameters
+	return parsedURL.String()
+}

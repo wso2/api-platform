@@ -2,11 +2,11 @@
 
 ## Overview
 
-The Add Query Parameter policy dynamically adds query parameters to outgoing requests before they are forwarded to upstream services.
+The Add Query Parameter policy dynamically adds a query parameter to incoming requests before they are forwarded to upstream services.
 
 ## Features
 
-- Adds query parameters to the request URL before forwarding to upstream
+- Adds query parameter to the request URL before forwarding to upstream
 - Properly handles existing query parameters without conflicts
 - URL-safe encoding of parameter names and values
 - Static value assignment with support for special characters
