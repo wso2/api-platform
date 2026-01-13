@@ -22,8 +22,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	gatewayconstants "github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 
 	"io"
 	"net/http"
@@ -67,7 +69,7 @@ type APIServer struct {
 	controlPlaneClient   controlplane.ControlPlaneClient
 	routerConfig         *config.RouterConfig
 	httpClient           *http.Client
-	systemConfig      	 *config.Config 
+	systemConfig         *config.Config
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -84,7 +86,7 @@ func NewAPIServer(
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
 	systemConfig *config.Config,
 ) *APIServer {
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator,  &systemConfig.GatewayController.Router)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.GatewayController.Router)
 	server := &APIServer{
 		store:                store,
 		db:                   db,
@@ -1655,11 +1657,11 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 			}
 
 			routeKey := xds.GenerateRouteName("POST", apiData.Context, apiData.Version, ch.Path, s.routerConfig.GatewayHost)
-			
+
 			// Inject system policies into the chain
 			props := make(map[string]any)
 			injectedPolicies := utils.InjectSystemPolicies(finalPolicies, s.systemConfig, props)
-			
+
 			routes = append(routes, policyenginev1.PolicyChain{
 				RouteKey: routeKey,
 				Policies: injectedPolicies,
@@ -1722,11 +1724,15 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 				vhosts = append(vhosts, effectiveSandboxVHost)
 			}
 
+			// Populate props for system policies
+			props := make(map[string]any)
+			s.populatePropsForSystemPolicies(cfg.SourceConfiguration, props)
+
+			// If this is an LLM provider, get the template and pass it to analytics policy
 			for _, vhost := range vhosts {
 				// Inject system policies into the chain
-				props := make(map[string]any)
 				injectedPolicies := utils.InjectSystemPolicies(finalPolicies, s.systemConfig, props)
-				
+
 				routes = append(routes, policyenginev1.PolicyChain{
 					RouteKey: xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, vhost),
 					Policies: injectedPolicies,
@@ -2600,4 +2606,58 @@ func (s *APIServer) extractAuthenticatedUser(c *gin.Context, operationName strin
 		zap.String("correlation_id", correlationID))
 
 	return &user, true
+}
+
+// getLLMProviderTemplate extracts the template name from sourceConfig and retrieves the template.
+// Returns the template configuration if found, nil otherwise.
+func (s *APIServer) getLLMProviderTemplate(sourceConfig any) (*api.LLMProviderTemplate, error) {
+	if sourceConfig == nil {
+		return nil, fmt.Errorf("sourceConfig is nil")
+	}
+
+	// Try to extract the template name from sourceConfig
+	// and get the template from the store
+	templateName, err := utils.GetValueFromSourceConfig(sourceConfig, "spec.template")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract template name: %w", err)
+	}
+	templateNameStr, ok := templateName.(string)
+	if !ok {
+		return nil, fmt.Errorf("template name is not a string: %v", templateName)
+	}
+	if templateNameStr == "" {
+		return nil, fmt.Errorf("template name is empty")
+	}
+
+	storedTemplate, err := s.store.GetTemplateByHandle(templateNameStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get template '%s' from store: %w", templateNameStr, err)
+	}
+
+	return &storedTemplate.Configuration, nil
+}
+
+// populatePropsForSystemPolicies populates the props for system policies
+// based on the source configuration
+func (s *APIServer) populatePropsForSystemPolicies(srcConfig any, props map[string]any) {
+	if srcConfig == nil {
+		return
+	}
+
+	// If this is an LLM provider, get the template and pass it to analytics policy
+	// Check if sourceConfig is an LLM provider by checking its kind
+	kind, err := utils.GetValueFromSourceConfig(srcConfig, "kind")
+	if err == nil {
+		if kindStr, ok := kind.(string); ok && kindStr == string(api.LlmProvider) {
+			template, err := s.getLLMProviderTemplate(srcConfig)
+			if err != nil {
+				zap.Error(err)
+			} else if template != nil {
+				// Pass the template to analytics policy
+				analyticsProps := make(map[string]interface{})
+				analyticsProps["providerTemplate"] = template
+				props[gatewayconstants.ANALYTICS_SYSTEM_POLICY_NAME] = analyticsProps
+			}
+		}
+	}
 }
