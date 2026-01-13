@@ -68,6 +68,10 @@ policies:
   - name: semantic-cache
     version: v0.1.0
     filePath: ./semantic-cache/v0.1.0
+
+  - name: semantic-tool-filtering
+    version: v0.1.0
+    filePath: ./semantic-tool-filtering/v0.1.0
     
   - name: prompt-decorator
     version: v0.1.0

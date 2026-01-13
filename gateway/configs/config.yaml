@@ -361,3 +361,8 @@ tracing:
   batch_timeout: 1s
   max_export_batch_size: 512
   sampling_rate: 1.0
+
+embedding_provider: "MISTRAL"
+embedding_provider_api_key: "md2w1AywUd8xnZDEr80TX2gOYgmuQ37V"
+embedding_provider_model: "mistral-embed"
+embedding_provider_endpoint: "https://api.mistral.ai/v1/embeddings"
