@@ -21,11 +21,13 @@ package xds
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"
 )
@@ -73,6 +75,12 @@ func (sm *SnapshotManager) SetStatusCallback(callback StatusUpdateCallback) {
 // UpdateSnapshot generates a new xDS snapshot from all configurations and updates the cache
 // The correlationID parameter is optional and used for request tracing in logs
 func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID string) error {
+	startTime := time.Now()
+	trigger := "manual"
+	if correlationID != "" {
+		trigger = "api_update"
+	}
+
 	// Create a logger with correlation ID if provided
 	log := sm.logger
 	if correlationID != "" {
@@ -87,6 +95,8 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 	resources, err := sm.translator.TranslateConfigs(configs, correlationID)
 	if err != nil {
 		log.Error("Failed to translate configurations", zap.Error(err))
+		metrics.SnapshotGenerationTotal.WithLabelValues("main", "error", trigger).Inc()
+		metrics.TranslationErrorsTotal.WithLabelValues("translation_failed").Inc()
 		// Mark all pending configs as failed
 		if sm.statusCallback != nil {
 			for _, cfg := range configs {
@@ -117,6 +127,8 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 	)
 	if err != nil {
 		log.Error("Failed to create snapshot", zap.Error(err))
+		metrics.SnapshotGenerationTotal.WithLabelValues("main", "error", trigger).Inc()
+		metrics.TranslationErrorsTotal.WithLabelValues("snapshot_create_failed").Inc()
 		// Mark all pending configs as failed
 		if sm.statusCallback != nil {
 			for _, cfg := range configs {
@@ -129,6 +141,8 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 	// Validate snapshot consistency
 	if err := snapshot.Consistent(); err != nil {
 		log.Error("Snapshot is inconsistent", zap.Error(err))
+		metrics.SnapshotGenerationTotal.WithLabelValues("main", "error", trigger).Inc()
+		metrics.TranslationErrorsTotal.WithLabelValues("snapshot_inconsistent").Inc()
 		// Mark all pending configs as failed
 		if sm.statusCallback != nil {
 			for _, cfg := range configs {
@@ -141,6 +155,8 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 	// Update cache with new snapshot
 	if err := sm.cache.SetSnapshot(ctx, sm.nodeID, snapshot); err != nil {
 		log.Error("Failed to set snapshot", zap.Error(err))
+		metrics.SnapshotGenerationTotal.WithLabelValues("main", "error", trigger).Inc()
+		metrics.TranslationErrorsTotal.WithLabelValues("cache_set_failed").Inc()
 		// Mark all pending configs as failed
 		if sm.statusCallback != nil {
 			for _, cfg := range configs {
@@ -157,6 +173,23 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 		zap.Int("num_routes", len(resources[resource.RouteType])),
 		zap.Int("num_clusters", len(resources[resource.ClusterType])),
 	)
+
+	// Record successful snapshot generation metrics
+	duration := time.Since(startTime)
+	metrics.SnapshotGenerationTotal.WithLabelValues("main", "success", trigger).Inc()
+	metrics.SnapshotGenerationDurationSeconds.WithLabelValues("main").Observe(duration.Seconds())
+
+	// Record snapshot sizes
+	metrics.SnapshotSize.WithLabelValues("listener").Set(float64(len(resources[resource.ListenerType])))
+	metrics.SnapshotSize.WithLabelValues("route").Set(float64(len(resources[resource.RouteType])))
+	metrics.SnapshotSize.WithLabelValues("cluster").Set(float64(len(resources[resource.ClusterType])))
+	metrics.SnapshotSize.WithLabelValues("endpoint").Set(float64(len(resources[resource.EndpointType])))
+
+	// Record routes per API metric (if there are APIs)
+	if len(configs) > 0 && len(resources[resource.RouteType]) > 0 {
+		routesPerAPI := float64(len(resources[resource.RouteType])) / float64(len(configs))
+		metrics.RoutesPerAPI.Observe(routesPerAPI)
+	}
 
 	// Mark all successfully deployed configs
 	if sm.statusCallback != nil {

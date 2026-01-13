@@ -58,6 +58,16 @@ type GatewayController struct {
 	Policies     PoliciesConfig     `koanf:"policies"`
 	LLM          LLMConfig          `koanf:"llm"`
 	Auth         AuthConfig         `koanf:"auth"`
+	Metrics      MetricsConfig      `koanf:"metrics"`
+}
+
+// MetricsConfig holds Prometheus metrics server configuration
+type MetricsConfig struct {
+	// Enabled indicates whether the metrics server should be started
+	Enabled bool `koanf:"enabled"`
+
+	// Port is the port for the metrics HTTP server
+	Port int `koanf:"port"`
 }
 
 // AuthConfig holds authentication related configuration
@@ -478,6 +488,10 @@ func defaultConfig() *Config {
 				Level:  "info",
 				Format: "json",
 			},
+			Metrics: MetricsConfig{
+				Enabled: false,
+				Port:    9091,
+			},
 			ControlPlane: ControlPlaneConfig{
 				Host:               "localhost:9243",
 				Token:              "",
@@ -593,6 +607,19 @@ func (c *Config) Validate() error {
 
 	if c.GatewayController.Server.XDSPort < 1 || c.GatewayController.Server.XDSPort > 65535 {
 		return fmt.Errorf("server.xds_port must be between 1 and 65535, got: %d", c.GatewayController.Server.XDSPort)
+	}
+
+	// Validate metrics config
+	if c.GatewayController.Metrics.Enabled {
+		if c.GatewayController.Metrics.Port < 1 || c.GatewayController.Metrics.Port > 65535 {
+			return fmt.Errorf("metrics.port must be between 1 and 65535, got: %d", c.GatewayController.Metrics.Port)
+		}
+		if c.GatewayController.Metrics.Port == c.GatewayController.Server.APIPort {
+			return fmt.Errorf("metrics.port cannot be same as server.api_port")
+		}
+		if c.GatewayController.Metrics.Port == c.GatewayController.Server.XDSPort {
+			return fmt.Errorf("metrics.port cannot be same as server.xds_port")
+		}
 	}
 
 	if c.GatewayController.Router.ListenerPort < 1 || c.GatewayController.Router.ListenerPort > 65535 {

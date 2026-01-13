@@ -39,6 +39,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -172,6 +173,9 @@ func (s *APIServer) HealthCheck(c *gin.Context) {
 // CreateAPI implements ServerInterface.CreateAPI
 // (POST /apis)
 func (s *APIServer) CreateAPI(c *gin.Context) {
+	startTime := time.Now()
+	operation := "create"
+
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 
@@ -179,6 +183,8 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		log.Error("Failed to read request body", zap.Error(err))
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "read_body_failed").Inc()
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
@@ -200,6 +206,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 
 	if err != nil {
 		log.Error("Failed to deploy API configuration", zap.Error(err))
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
 		if storage.IsConflictError(err) {
 			c.JSON(http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
@@ -213,6 +220,11 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 		}
 		return
 	}
+
+	// Record successful operation metrics
+	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
+	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
+	metrics.APIsTotal.WithLabelValues("rest_api", "active").Inc()
 
 	// Set up a callback to notify platform API after successful deployment
 	// This is specific to direct API creation via gateway endpoint
@@ -487,6 +499,9 @@ func (s *APIServer) GetAPIById(c *gin.Context, id string) {
 // UpdateAPI implements ServerInterface.UpdateAPI
 // (PUT /apis/{handle})
 func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
+	startTime := time.Now()
+	operation := "update"
+
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 	handle := id
@@ -495,6 +510,8 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		log.Error("Failed to read request body", zap.Error(err))
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "read_body_failed").Inc()
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
@@ -508,6 +525,8 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	err = s.parser.Parse(body, contentType, &apiConfig)
 	if err != nil {
 		log.Error("Failed to parse configuration", zap.Error(err))
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "parse_failed").Inc()
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to parse configuration",
@@ -521,6 +540,8 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 			log.Warn("Handle mismatch between path and YAML metadata",
 				zap.String("path_handle", handle),
 				zap.String("yaml_handle", apiConfig.Metadata.Name))
+			metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
+			metrics.ValidationErrorsTotal.WithLabelValues(operation, "handle_mismatch").Inc()
 			c.JSON(http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: fmt.Sprintf("Handle mismatch: path has '%s' but YAML metadata.name has '%s'", handle, apiConfig.Metadata.Name),
@@ -535,6 +556,9 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		log.Warn("Configuration validation failed",
 			zap.String("handle", handle),
 			zap.Int("num_errors", len(validationErrors)))
+
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "validation_failed").Add(float64(len(validationErrors)))
 
 		errors := make([]api.ValidationError, len(validationErrors))
 		for i, e := range validationErrors {
@@ -714,6 +738,10 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		zap.String("id", existing.ID),
 		zap.String("handle", handle))
 
+	// Record successful operation metrics
+	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
+	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
+
 	// Return success response (id is the handle)
 	c.JSON(http.StatusOK, api.APIUpdateResponse{
 		Status:    stringPtr("success"),
@@ -750,12 +778,17 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 // DeleteAPI implements ServerInterface.DeleteAPI
 // (DELETE /apis/{handle})
 func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
+	startTime := time.Now()
+	operation := "delete"
+
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 
 	handle := id
 
 	if s.db == nil {
+		log.Error("Database storage not available")
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
 		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
 			Status:  "error",
 			Message: "Database storage not available",
@@ -912,6 +945,11 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	log.Info("API configuration deleted",
 		zap.String("id", cfg.ID),
 		zap.String("handle", handle))
+
+	// Record successful operation metrics
+	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
+	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
+	metrics.APIsTotal.WithLabelValues("rest_api", "active").Dec()
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
