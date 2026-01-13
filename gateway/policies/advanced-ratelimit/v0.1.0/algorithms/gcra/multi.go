@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/policy-engine/policies/ratelimit/limiter"
+	"github.com/policy-engine/policies/advanced-ratelimit/limiter"
 )
 
 // MultiLimiter supports multiple concurrent rate limit policies

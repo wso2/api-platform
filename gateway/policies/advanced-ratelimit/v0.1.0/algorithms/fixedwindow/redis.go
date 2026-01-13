@@ -7,7 +7,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/policy-engine/policies/ratelimit/limiter"
+	"github.com/policy-engine/policies/advanced-ratelimit/limiter"
 	"github.com/redis/go-redis/v9"
 )
 

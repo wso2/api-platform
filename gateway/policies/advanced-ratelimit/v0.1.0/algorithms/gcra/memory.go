@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/policy-engine/policies/ratelimit/limiter"
+	"github.com/policy-engine/policies/advanced-ratelimit/limiter"
 )
 
 // tatEntry stores TAT with expiration time

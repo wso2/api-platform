@@ -1,4 +1,4 @@
-name: ratelimit
+name: advanced-ratelimit
 version: v0.1.0
 description: |
   Rate limiting policy supporting multiple algorithms (GCRA, Fixed Window), multi-dimensional quotas,

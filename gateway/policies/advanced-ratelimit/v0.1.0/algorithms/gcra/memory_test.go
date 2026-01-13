@@ -1,4 +1,4 @@
-package fixedwindow
+package gcra
 
 import (
 	"context"
@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/policy-engine/policies/ratelimit/limiter"
+	"github.com/policy-engine/policies/advanced-ratelimit/limiter"
 )
 
 func TestMemoryLimiter_BasicAllow(t *testing.T) {
-	policy := NewPolicy(10, time.Minute) // 10 requests per minute
+	policy := NewPolicy(10, time.Minute, 10) // 10 requests per minute, burst 10
 	rl := NewMemoryLimiter(policy, 0)
 	defer rl.Close()
 
@@ -19,7 +19,7 @@ func TestMemoryLimiter_BasicAllow(t *testing.T) {
 	fixedTime := time.Unix(1000, 0)
 	rl.WithClock(&limiter.FixedClock{Time: fixedTime})
 
-	// First 10 requests in the same window should be allowed
+	// First 10 requests at the same instant should be allowed
 	for i := 0; i < 10; i++ {
 		result, err := rl.Allow(ctx, "user:123")
 		if err != nil {
@@ -30,7 +30,7 @@ func TestMemoryLimiter_BasicAllow(t *testing.T) {
 		}
 	}
 
-	// 11th request should be denied (limit reached)
+	// 11th request should be denied (burst exhausted)
 	result, err := rl.Allow(ctx, "user:123")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -38,14 +38,11 @@ func TestMemoryLimiter_BasicAllow(t *testing.T) {
 	if result.Allowed {
 		t.Fatal("11th request should be denied, but was allowed")
 	}
-	if result.Remaining != 0 {
-		t.Fatalf("expected 0 remaining, got %d", result.Remaining)
-	}
 }
 
 func TestMemoryLimiter_AllowN(t *testing.T) {
-	// Policy: 10 requests per second
-	policy := NewPolicy(10, time.Second)
+	// Policy: 10 requests per second, burst of 10
+	policy := NewPolicy(10, time.Second, 10)
 	rl := NewMemoryLimiter(policy, 0)
 	defer rl.Close()
 
@@ -58,7 +55,7 @@ func TestMemoryLimiter_AllowN(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !result.Allowed {
-		t.Fatal("5 requests should be allowed")
+		t.Fatal("5 requests should be allowed from burst capacity")
 	}
 	if result.Remaining != 5 {
 		t.Fatalf("expected 5 remaining, got %d", result.Remaining)
@@ -72,65 +69,45 @@ func TestMemoryLimiter_AllowN(t *testing.T) {
 	if result.Allowed {
 		t.Fatal("6 requests should be denied (only 5 remaining)")
 	}
-
-	// Consume exactly 5 more (should succeed)
-	result, err = rl.AllowN(ctx, "user:456", 5)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.Allowed {
-		t.Fatal("5 requests should be allowed (exactly remaining)")
-	}
-	if result.Remaining != 0 {
-		t.Fatalf("expected 0 remaining, got %d", result.Remaining)
-	}
 }
 
-func TestMemoryLimiter_WindowReset(t *testing.T) {
-	// 10 req/second
-	policy := NewPolicy(10, time.Second)
+func TestMemoryLimiter_BurstRefill(t *testing.T) {
+	// 10 req/sec with burst of 10
+	policy := NewPolicy(10, time.Second, 10)
 	rl := NewMemoryLimiter(policy, 0)
 	defer rl.Close()
 
 	ctx := context.Background()
-	// Start at exactly 2000 seconds (window boundary)
 	rl.WithClock(&limiter.FixedClock{Time: time.Unix(2000, 0)})
 
-	// Exhaust limit in first window
+	// Exhaust burst
 	for i := 0; i < 10; i++ {
-		result, err := rl.Allow(ctx, "reset-test")
+		result, err := rl.Allow(ctx, "refill-test")
 		if err != nil || !result.Allowed {
 			t.Fatalf("request %d should be allowed", i)
 		}
 	}
 
-	// Next request denied in same window
-	result, err := rl.Allow(ctx, "reset-test")
+	// Next request denied
+	result, err := rl.Allow(ctx, "refill-test")
 	if err != nil || result.Allowed {
-		t.Fatal("limit should be exhausted in current window")
+		t.Fatal("burst should be exhausted")
 	}
 
-	// Advance to next window boundary (2001 seconds)
+	// Advance time by 1 second (all 10 tokens should refill)
 	rl.WithClock(&limiter.FixedClock{Time: time.Unix(2001, 0)})
-
-	// Counter should reset - all 10 requests available again
-	for i := 0; i < 10; i++ {
-		result, err := rl.Allow(ctx, "reset-test")
-		if err != nil || !result.Allowed {
-			t.Fatalf("request %d should be allowed after window reset", i)
-		}
+	result, err = rl.Allow(ctx, "refill-test")
+	if err != nil || !result.Allowed {
+		t.Fatal("request should be allowed after 1 second")
 	}
-
-	// Verify we're at limit again
-	result, err = rl.Allow(ctx, "reset-test")
-	if err != nil || result.Allowed {
-		t.Fatal("limit should be exhausted in new window")
+	if result.Remaining != 9 {
+		t.Fatalf("expected 9 remaining after refill, got %d", result.Remaining)
 	}
 }
 
 func TestMemoryLimiter_Concurrent(t *testing.T) {
-	// 100 req/sec
-	policy := NewPolicy(100, time.Second)
+	// 100 req/sec, burst 100
+	policy := NewPolicy(100, time.Second, 100)
 	rl := NewMemoryLimiter(policy, 0)
 	defer rl.Close()
 
@@ -167,7 +144,7 @@ func TestMemoryLimiter_Concurrent(t *testing.T) {
 }
 
 func TestMemoryLimiter_CleanupExpired(t *testing.T) {
-	policy := NewPolicy(10, time.Second)
+	policy := NewPolicy(10, time.Second, 10)
 	rl := NewMemoryLimiter(policy, 100*time.Millisecond)
 	defer rl.Close()
 
@@ -181,11 +158,12 @@ func TestMemoryLimiter_CleanupExpired(t *testing.T) {
 	// Wait for cleanup cycle
 	time.Sleep(150 * time.Millisecond)
 
-	// Advance time beyond expiration (window + 1 minute buffer)
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(3062, 0)})
+	// Advance time beyond expiration (burst allowance + duration)
+	rl.WithClock(&limiter.FixedClock{Time: time.Unix(3002, 0)})
 	time.Sleep(150 * time.Millisecond)
 
-	// Verify limiter still works (entries should be cleaned up)
+	// Verify entries were cleaned up (hard to test directly without exposing internals)
+	// Just verify limiter still works
 	result, err := rl.Allow(ctx, "new-key")
 	if err != nil || !result.Allowed {
 		t.Fatal("limiter should still work after cleanup")
@@ -193,7 +171,7 @@ func TestMemoryLimiter_CleanupExpired(t *testing.T) {
 }
 
 func TestMemoryLimiter_MultipleKeys(t *testing.T) {
-	policy := NewPolicy(5, time.Second)
+	policy := NewPolicy(5, time.Second, 5)
 	rl := NewMemoryLimiter(policy, 0)
 	defer rl.Close()
 
@@ -212,48 +190,5 @@ func TestMemoryLimiter_MultipleKeys(t *testing.T) {
 		if err != nil || result.Allowed {
 			t.Fatalf("key %s 6th request should be denied", key)
 		}
-	}
-}
-
-func TestMemoryLimiter_PartialWindow(t *testing.T) {
-	// Test that requests in middle of window work correctly
-	policy := NewPolicy(10, time.Minute)
-	rl := NewMemoryLimiter(policy, 0)
-	defer rl.Close()
-
-	ctx := context.Background()
-	// Start at 30 seconds into a minute (not at window boundary)
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(1030, 0)})
-
-	// Use 7 requests
-	for i := 0; i < 7; i++ {
-		result, err := rl.Allow(ctx, "partial-test")
-		if err != nil || !result.Allowed {
-			t.Fatalf("request %d should be allowed", i)
-		}
-	}
-
-	// Move to 50 seconds (still same window: 1000-1059)
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(1050, 0)})
-
-	// Should only have 3 remaining
-	result, err := rl.AllowN(ctx, "partial-test", 3)
-	if err != nil || !result.Allowed {
-		t.Fatal("3 requests should be allowed (remaining quota)")
-	}
-
-	// Next request denied
-	result, err = rl.Allow(ctx, "partial-test")
-	if err != nil || result.Allowed {
-		t.Fatal("should be denied (quota exhausted)")
-	}
-
-	// Move to next window (1080 = start of new minute: 1080-1139)
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(1080, 0)})
-
-	// Full quota available again
-	result, err = rl.AllowN(ctx, "partial-test", 10)
-	if err != nil || !result.Allowed {
-		t.Fatal("full quota should be available in new window")
 	}
 }

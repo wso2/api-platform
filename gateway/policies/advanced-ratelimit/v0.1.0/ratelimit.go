@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/policy-engine/policies/ratelimit/algorithms/fixedwindow" // Register Fixed Window algorithm
-	_ "github.com/policy-engine/policies/ratelimit/algorithms/gcra"        // Register GCRA algorithm
-	"github.com/policy-engine/policies/ratelimit/limiter"
+	_ "github.com/policy-engine/policies/advanced-ratelimit/algorithms/fixedwindow" // Register Fixed Window algorithm
+	_ "github.com/policy-engine/policies/advanced-ratelimit/algorithms/gcra"        // Register GCRA algorithm
+	"github.com/policy-engine/policies/advanced-ratelimit/limiter"
 	"github.com/redis/go-redis/v9"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )

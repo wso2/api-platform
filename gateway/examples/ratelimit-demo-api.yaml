@@ -33,7 +33,7 @@ spec:
 
   # API-level rate limiting: Apply to all operations
   policies:
-    - name: ratelimit
+    - name: advanced-ratelimit
       version: v0.1.0
       params:
         # Default cost for all operations (can be overridden per operation)
@@ -71,7 +71,7 @@ spec:
     - method: GET
       path: /products/search
       policies:
-        - name: ratelimit
+        - name: advanced-ratelimit
           version: v0.1.0
           params:
             cost: 5  # Search operations consume more resources
@@ -90,7 +90,7 @@ spec:
     - method: POST
       path: /reports/generate
       policies:
-        - name: ratelimit
+        - name: advanced-ratelimit
           version: v0.1.0
           params:
             cost: 10  # Report generation is expensive
@@ -113,7 +113,7 @@ spec:
     - method: GET
       path: /public/products
       policies:
-        - name: ratelimit
+        - name: advanced-ratelimit
           version: v0.1.0
           params:
             cost: 1
@@ -132,7 +132,7 @@ spec:
     - method: POST
       path: /orders
       policies:
-        - name: ratelimit
+        - name: advanced-ratelimit
           version: v0.1.0
           params:
             cost: 1
@@ -156,7 +156,7 @@ spec:
     - method: GET
       path: /inventory/check
       policies:
-        - name: ratelimit
+        - name: advanced-ratelimit
           version: v0.1.0
           params:
             cost: 1
@@ -180,7 +180,7 @@ spec:
     - method: GET
       path: /inventory/apilevel1
       policies:
-        - name: ratelimit
+        - name: advanced-ratelimit
           version: v0.1.0
           params:
             cost: 1
@@ -192,7 +192,7 @@ spec:
     - method: GET
       path: /inventory/apilevel2
       policies:
-        - name: ratelimit
+        - name: advanced-ratelimit
           version: v0.1.0
           params:
             cost: 1

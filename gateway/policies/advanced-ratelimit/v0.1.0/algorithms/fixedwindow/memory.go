@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/policy-engine/policies/ratelimit/limiter"
+	"github.com/policy-engine/policies/advanced-ratelimit/limiter"
 )
 
 // windowEntry stores the request count and window start time

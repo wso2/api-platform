@@ -13,9 +13,13 @@ policies:
     version: v0.1.0
     filePath: ./basic-auth/v0.1.0
 
-  - name: ratelimit
+  - name: advanced-ratelimit
     version: v0.1.0
-    filePath: ./ratelimit/v0.1.0
+    filePath: ./advanced-ratelimit/v0.1.0
+  
+  - name: basic-ratelimit
+    version: v0.1.0
+    filePath: ./basic-ratelimit/v0.1.0
 
   - name: jwt-auth
     version: v0.1.0

@@ -44,7 +44,7 @@ Feature: Rate Limiting
           - method: GET
             path: /limited
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -86,7 +86,7 @@ Feature: Rate Limiting
           - method: GET
             path: /resource
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -138,7 +138,7 @@ Feature: Rate Limiting
           - method: GET
             path: /resource
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -188,7 +188,7 @@ Feature: Rate Limiting
           - method: GET
             path: /check
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -225,7 +225,7 @@ Feature: Rate Limiting
           - method: GET
             path: /custom
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -267,7 +267,7 @@ Feature: Rate Limiting
           - method: GET
             path: /resource
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -308,7 +308,7 @@ Feature: Rate Limiting
           - method: POST
             path: /anything
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -374,7 +374,7 @@ Feature: Rate Limiting
           - method: GET
             path: /route1
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -387,7 +387,7 @@ Feature: Rate Limiting
           - method: GET
             path: /route2
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -445,7 +445,7 @@ Feature: Rate Limiting
           - method: GET
             path: /resource
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -485,7 +485,7 @@ Feature: Rate Limiting
           - method: GET
             path: /resource
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -525,7 +525,7 @@ Feature: Rate Limiting
           - method: GET
             path: /multi1
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -544,7 +544,7 @@ Feature: Rate Limiting
           - method: GET
             path: /multi2
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -607,7 +607,7 @@ Feature: Rate Limiting
           - method: POST
             path: /anything
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -670,7 +670,7 @@ Feature: Rate Limiting
           - method: GET
             path: /user
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -722,7 +722,7 @@ Feature: Rate Limiting
           - method: GET
             path: /resource
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -772,7 +772,7 @@ Feature: Rate Limiting
           - method: GET
             path: /resource
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -819,7 +819,7 @@ Feature: Rate Limiting
           - method: POST
             path: /resource
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -885,7 +885,7 @@ Feature: Rate Limiting
           - method: POST
             path: /anything
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -996,7 +996,7 @@ Feature: Rate Limiting
           - method: GET
             path: /resource
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -1047,7 +1047,7 @@ Feature: Rate Limiting
           - method: POST
             path: /resource
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -1110,7 +1110,7 @@ Feature: Rate Limiting
           - method: GET
             path: /resource
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
@@ -1163,7 +1163,7 @@ Feature: Rate Limiting
           - method: POST
             path: /resource
             policies:
-              - name: ratelimit
+              - name: advanced-ratelimit
                 version: v0.1.0
                 params:
                   quotas:
