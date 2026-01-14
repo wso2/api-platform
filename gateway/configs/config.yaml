@@ -53,7 +53,7 @@ gateway_controller:
     gateway_host: "*"
 
     event_gateway:
-      enabled: false
+      enabled: true
       websub_hub_url: "http://host.docker.internal"
       websub_hub_port: 9098
       router_host: "localhost"

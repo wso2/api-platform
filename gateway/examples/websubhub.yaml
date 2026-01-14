@@ -1,6 +1,6 @@
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: WebSubApi
-metaData:
+metadata:
    name: WebSubHub-API
 spec:
   displayName: WebSub-API-New-API
