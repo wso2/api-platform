@@ -562,21 +562,24 @@ type Channel struct {
 	// Path Channel path or topic identifier relative to API context.
 	Path string `json:"path" yaml:"path"`
 
-	// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
-	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
-
 	// Publish Producer (send) operation definition.
 	Publish *struct {
 		// Message Event/message definition transported over a channel.
 		Message *ChannelMessage `json:"message,omitempty" yaml:"message,omitempty"`
-		Summary *string         `json:"summary,omitempty" yaml:"summary,omitempty"`
+
+		// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
+		Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+		Summary  *string   `json:"summary,omitempty" yaml:"summary,omitempty"`
 	} `json:"publish,omitempty" yaml:"publish,omitempty"`
 
 	// Subscribe Consumer (receive) operation definition.
 	Subscribe *struct {
 		// Message Event/message definition transported over a channel.
 		Message *ChannelMessage `json:"message,omitempty" yaml:"message,omitempty"`
-		Summary *string         `json:"summary,omitempty" yaml:"summary,omitempty"`
+
+		// Policies List of policies applied only to this operation (overrides or adds to API-level policies)
+		Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
+		Summary  *string   `json:"summary,omitempty" yaml:"summary,omitempty"`
 	} `json:"subscribe,omitempty" yaml:"subscribe,omitempty"`
 }
 

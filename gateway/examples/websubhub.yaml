@@ -1,32 +1,44 @@
-# --------------------------------------------------------------------
-# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
-#
-# WSO2 LLC. licenses this file to you under the Apache License,
-# Version 2.0 (the "License"); you may not use this file except
-# in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
-# --------------------------------------------------------------------
-
-apiVersion: gateway.api-platform.wso2.com/v1alpha1
-kind: async/websub
-metadata:
-  name: websub-api-v1.0
+version: api-platform.wso2.com/v1
+kind: WebSubApi
+metaData:
+   name: WebSubHub-API
 spec:
-  displayName: WebSub-API-New-API
+  name: WebSub-API-New-API
   version: v1.0
   context: /websubnewapi
-  servers:
-    - url: http://host.docker.internal:9098
-      protocol: websub
+  vhosts:
+    main:
+      default: "*"
+    sandbox:
+      default: "sandbox-*"
   channels:
-    - path: /pull-requests
-    - path: /issues
+    -  path: /pull-requests
+       subscribe:
+        policies:
+          - name: ModifyHeaders
+            version: v1.0.0
+            enabled: true
+            params:
+              requestHeaders:
+                - action: SET
+                  name: operation-level-req-header
+                  value: hello
+              responseHeaders:
+                - action: SET
+                  name: operation-level-res-header
+                  value: world
+    -  path: /issues
+       publish:
+         policies:
+          - name: ModifyHeaders
+            version: v1.0.0
+            enabled: true
+            params:
+              requestHeaders:
+                - action: SET
+                  name: operation-level-req-header
+                  value: hello
+              responseHeaders:
+                - action: SET
+                  name: operation-level-res-header
+                  value: world

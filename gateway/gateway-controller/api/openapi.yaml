@@ -2118,6 +2118,11 @@ components:
             summary:
               type: string
               example: Receive issue events.
+            policies:
+              type: array
+              description: List of policies applied only to this operation (overrides or adds to API-level policies)
+              items:
+                $ref: "#/components/schemas/Policy"
             message:
               $ref: '#/components/schemas/ChannelMessage'
         publish:
@@ -2127,6 +2132,11 @@ components:
             summary:
               type: string
               example: Publish issue events.
+            policies:
+              type: array
+              description: List of policies applied only to this operation (overrides or adds to API-level policies)
+              items:
+                $ref: "#/components/schemas/Policy"
             message:
               $ref: '#/components/schemas/ChannelMessage'
         parameters:
@@ -2145,11 +2155,6 @@ components:
           type: object
           description: Protocol-specific channel bindings (arbitrary key/value structure).
           additionalProperties: true
-        policies:
-          type: array
-          description: List of policies applied only to this operation (overrides or adds to API-level policies)
-          items:
-            $ref: '#/components/schemas/Policy'
 
     # Message schema used within Channel publish/subscribe operations.
     ChannelMessage:
