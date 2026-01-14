@@ -76,6 +76,9 @@ policies:
   - name: remove-query-parameter
     version: v0.1.0
     filePath: ./remove-query-parameter/v0.1.0
+  - name: rewrite-resource-path
+    version: v0.1.0
+    filePath: ./rewrite-resource-path/v0.1.0
   - name: sentence-count-guardrail
     version: v0.1.0
     filePath: ./sentence-count-guardrail/v0.1.0
