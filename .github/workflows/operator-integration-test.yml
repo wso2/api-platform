@@ -283,7 +283,7 @@ jobs:
                           #   password_hashed: true
                           #   roles: ["developer", "viewer"]
                         - username: "admin"
-                          password: "admin"
+                          password: ""
                           password_hashed: false
                           roles: ["admin"]
                     # Server configuration
@@ -591,6 +591,8 @@ jobs:
                   labels: {}
 
                 controller:
+                  auth:
+                    adminPassword: "admin"
                   image:
                     repository: localhost/gateway-controller
                     tag: test
@@ -681,6 +683,9 @@ jobs:
                     replicaCount: 1
                     volumeMountPath: /app/data
                     extraEnv: []
+                    extraEnvFrom:
+                      - secretRef:
+                          name: '{{ include "gateway-operator.fullname" . }}-controller-auth'
                     env:
                       xdsServerAddress: ""
                     extraVolumeMounts: []
