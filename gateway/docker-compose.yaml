@@ -32,7 +32,6 @@ services:
       - GATEWAY_GATEWAY__CONTROLLER_STORAGE_TYPE=sqlite
       - GATEWAY_GATEWAY__CONTROLLER_STORAGE_SQLITE_PATH=./data/gateway.db
       - GATEWAY_GATEWAY__CONTROLLER_LOGGING_LEVEL=info
-      - GATEWAY_GATEWAY__CONTROLLER_METRICS_ENABLED=${GATEWAY_CONTROLLER_METRICS_ENABLED:-false}
       - GATEWAY_GATEWAY__CONTROLLER_METRICS_PORT=9091
       - GATEWAY_REGISTRATION_TOKEN=${GATEWAY_REGISTRATION_TOKEN:-}
       - GATEWAY_GATEWAY__CONTROLLER_CONTROLPLANE_HOST=${GATEWAY_CONTROLPLANE_HOST:-host.docker.internal:9243}
@@ -57,7 +56,6 @@ services:
       - "9002:9002"   # Admin API
       - "9003:9003"   # Metrics
     environment:
-      - PE_POLICY__ENGINE_METRICS_ENABLED=${POLICY_ENGINE_METRICS_ENABLED:-false}
       - PE_POLICY__ENGINE_METRICS_PORT=9003
     volumes:
       - ./configs/config.yaml:/app/configs/config.yaml:ro
@@ -205,7 +203,7 @@ services:
     profiles: ["metrics"]
 
   grafana:
-    image: grafana/grafana:11.6.0
+    image: ""
     container_name: grafana
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
