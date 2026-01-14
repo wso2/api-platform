@@ -224,12 +224,13 @@ CREATE TABLE IF NOT EXISTS api_deployments (
     gateway_uuid VARCHAR(40) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
     base_deployment_id VARCHAR(40), -- Reference to the deployment used as base, NULL if based on "current"
-    content BLOB NOT NULL, -- Immutable deployment artifact (API spec + config)
+    content BLOB NOT NULL, -- Immutable deployment artifact
     metadata TEXT, -- JSON object for flexible key-value metadata
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
+    UNIQUE(api_uuid, gateway_uuid, deployment_id, organization_uuid)
     CHECK (status IN ('DEPLOYED', 'UNDEPLOYED'))
 );
 
