@@ -113,7 +113,7 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 			})
 		} else {
 			// Validate data section
-			errors = append(errors, v.validateAsyncData(&spec, true)...)
+			errors = append(errors, v.validateAsyncData(&spec)...)
 		}
 	}
 
@@ -259,7 +259,7 @@ func (v *APIValidator) validateRestData(spec *api.APIConfigData) []ValidationErr
 }
 
 // validateAsyncData validates the data section of the configuration for http/rest kind
-func (v *APIValidator) validateAsyncData(spec *api.WebhookAPIData, isWebSub bool) []ValidationError {
+func (v *APIValidator) validateAsyncData(spec *api.WebhookAPIData) []ValidationError {
 	var errors []ValidationError
 
 	// Validate name

@@ -1,7 +1,7 @@
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: WebSubApi
 metadata:
-   name: WebSubHub-API
+  name: WebSubHub-API
 spec:
   displayName: WebSub-API-New-API
   version: v1.0
@@ -9,8 +9,8 @@ spec:
   vhosts:
     main: "*"
   channels:
-    -  path: /pull-requests
-       subscribe:
+    - path: /pull-requests
+      subscribe:
         policies:
           - name: ModifyHeaders
             version: v1.0.0
@@ -24,8 +24,8 @@ spec:
                 - action: SET
                   name: operation-level-res-header
                   value: world
-    -  path: /issues
-       subscribe:
+    - path: /issues
+      subscribe:
         policies:
           - name: ModifyHeaders
             version: v1.0.0

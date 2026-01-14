@@ -234,7 +234,7 @@ func TestValidateAuthConfig_BothAuthEnabled(t *testing.T) {
 }
 
 func TestValidateEventGWConfig_Enabled(t *testing.T) {
-	// Test that validation passes when both auth methods are enabled
+	// Test that validation passes when event gateway is enabled with valid config
 	config := &Config{
 		GatewayController: GatewayController{
 			Router: RouterConfig{
@@ -254,7 +254,7 @@ func TestValidateEventGWConfig_Enabled(t *testing.T) {
 }
 
 func TestValidateWebSubURLConfig_WithoutSchema(t *testing.T) {
-	// Test that validation passes when both auth methods are enabled
+	// Test that validation fails when there's no scheme in WebSubHubURL
 	config := &Config{
 		GatewayController: GatewayController{
 			Router: RouterConfig{
@@ -271,4 +271,5 @@ func TestValidateWebSubURLConfig_WithoutSchema(t *testing.T) {
 
 	err := config.validateEventGatewayConfig()
 	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "http or https scheme")
 }
