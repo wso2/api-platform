@@ -40,29 +40,21 @@ const (
 
 // ModelWeightedRoundRobinPolicyParams holds the parsed policy parameters
 type ModelWeightedRoundRobinPolicyParams struct {
-	Models          []WeightedModelConfig
+	Models          []WeightedModel
 	SuspendDuration int
 	RequestModel    RequestModelConfig
 }
 
-// WeightedModelConfig represents a single weighted model configuration
-type WeightedModelConfig struct {
-	Model    string
-	Endpoint string
-	Weight   int
+// WeightedModel represents a single weighted model configuration
+type WeightedModel struct {
+	Model  string
+	Weight int
 }
 
 // RequestModelConfig holds the requestModel configuration
 type RequestModelConfig struct {
 	Location   string
 	Identifier string
-}
-
-// WeightedModel represents a model with its weight (used for weighted sequence)
-type WeightedModel struct {
-	Model    string
-	Endpoint string
-	Weight   int
 }
 
 // ModelWeightedRoundRobinPolicy implements weighted round-robin load balancing for AI models
@@ -85,13 +77,12 @@ func GetPolicy(
 		return nil, fmt.Errorf("invalid params: %w", err)
 	}
 
-	// Convert WeightedModelConfig slice to WeightedModel slice and build weighted sequence
+	// Convert WeightedModel slice to WeightedModel slice and build weighted sequence
 	weightedModels := make([]*WeightedModel, len(policyParams.Models))
 	for i, modelConfig := range policyParams.Models {
 		weightedModels[i] = &WeightedModel{
-			Model:    modelConfig.Model,
-			Endpoint: modelConfig.Endpoint,
-			Weight:   modelConfig.Weight,
+			Model:  modelConfig.Model,
+			Weight: modelConfig.Weight,
 		}
 	}
 
@@ -125,14 +116,14 @@ func parseParams(params map[string]interface{}) (ModelWeightedRoundRobinPolicyPa
 	}
 
 	// Parse each model in the array
-	result.Models = make([]WeightedModelConfig, 0, len(modelList))
+	result.Models = make([]WeightedModel, 0, len(modelList))
 	for i, item := range modelList {
 		modelMap, ok := item.(map[string]interface{})
 		if !ok {
 			return result, fmt.Errorf("'models[%d]' must be an object", i)
 		}
 
-		var modelConfig WeightedModelConfig
+		var modelConfig WeightedModel
 
 		// Parse model name (required)
 		modelName, ok := modelMap["model"]
@@ -166,22 +157,6 @@ func parseParams(params map[string]interface{}) (ModelWeightedRoundRobinPolicyPa
 		}
 
 		modelConfig.Weight = weightInt
-
-		// Parse endpoint if provided (optional)
-		if endpoint, ok := modelMap["endpoint"]; ok {
-			endpointStr, ok := endpoint.(string)
-			if !ok {
-				return result, fmt.Errorf("'models[%d].endpoint' must be a string", i)
-			}
-
-			// Validate endpoint pattern (must start with http:// or https://)
-			if len(endpointStr) > 0 {
-				if !strings.HasPrefix(endpointStr, "http://") && !strings.HasPrefix(endpointStr, "https://") {
-					return result, fmt.Errorf("'models[%d].endpoint' must match pattern '^https?://'", i)
-				}
-			}
-			modelConfig.Endpoint = endpointStr
-		}
 
 		result.Models = append(result.Models, modelConfig)
 	}
