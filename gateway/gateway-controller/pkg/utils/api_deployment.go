@@ -97,19 +97,31 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	switch apiConfig.Kind {
 	case api.RestApi:
 		apiData, err := apiConfig.Spec.AsAPIConfigData()
-		fmt.Println("APIData: ", apiData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse REST API data: %w", err)
 		}
 		apiName = apiData.DisplayName
 		apiVersion = apiData.Version
-	case api.Asyncwebsub:
+	case api.WebSubApi:
 		webhookData, err := apiConfig.Spec.AsWebhookAPIData()
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse WebSub API data: %w", err)
 		}
-		apiName = webhookData.Name
+		apiName = webhookData.DisplayName
 		apiVersion = webhookData.Version
+
+		// Ensure an upstream main exists for async/websub configs so downstream
+		// logic can safely rely on the field being present. Create an empty
+		// upstream if it is missing and save it back into the union spec.
+		if webhookData.Upstream.Main == nil {
+			url := fmt.Sprintf("%s:%d", s.routerConfig.EventGateway.WebSubHubURL, s.routerConfig.EventGateway.WebSubHubPort)
+			webhookData.Upstream.Main = &api.Upstream{
+				Url: &url,
+			}
+			if err := apiConfig.Spec.FromWebhookAPIData(webhookData); err != nil {
+				return nil, fmt.Errorf("failed to write updated webhook spec: %w", err)
+			}
+		}
 	}
 
 	// Validate configuration
@@ -164,7 +176,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		DeployedVersion:     0,
 	}
 
-	if apiConfig.Kind == api.Asyncwebsub {
+	if apiConfig.Kind == api.WebSubApi {
 		topicsToRegister, topicsToUnregister := s.GetTopicsForUpdate(*storedCfg)
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
 		// This was communication bridge will be created on the gw startup
@@ -184,7 +196,10 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 					childWg.Add(1)
 					go func(topic string) {
 						defer childWg.Done()
-						if err := s.RegisterTopicWithHub(s.httpClient, topic, "localhost", 8083, params.Logger); err != nil {
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+						defer cancel()
+
+						if err := s.RegisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, params.Logger); err != nil {
 							params.Logger.Error("Failed to register topic with WebSubHub",
 								zap.Error(err),
 								zap.String("topic", topic),
@@ -212,7 +227,10 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 					childWg.Add(1)
 					go func(topic string) {
 						defer childWg.Done()
-						if err := s.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, params.Logger); err != nil {
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+						defer cancel()
+
+						if err := s.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, params.Logger); err != nil {
 							params.Logger.Error("Failed to deregister topic from WebSubHub",
 								zap.Error(err),
 								zap.String("topic", topic),
@@ -301,7 +319,7 @@ func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig)
 
 	for _, topic := range asyncData.Channels {
 		// Remove leading '/' from name, context, version and topic path if present
-		name := strings.TrimPrefix(asyncData.Name, "/")
+		name := strings.TrimPrefix(asyncData.DisplayName, "/")
 		context := strings.TrimPrefix(asyncData.Context, "/")
 		version := strings.TrimPrefix(asyncData.Version, "/")
 		path := strings.TrimPrefix(topic.Path, "/")
@@ -421,17 +439,17 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 }
 
 // RegisterTopicWithHub registers a topic with the WebSubHub
-func (s *APIDeploymentService) RegisterTopicWithHub(httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *zap.Logger) error {
-	return s.sendTopicRequestToHub(httpClient, topic, "register", webSubHubHost, webSubPort, logger)
+func (s *APIDeploymentService) RegisterTopicWithHub(ctx context.Context, httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *zap.Logger) error {
+	return s.sendTopicRequestToHub(ctx, httpClient, topic, "register", webSubHubHost, webSubPort, logger)
 }
 
 // UnregisterTopicWithHub unregisters a topic from the WebSubHub
-func (s *APIDeploymentService) UnregisterTopicWithHub(httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *zap.Logger) error {
-	return s.sendTopicRequestToHub(httpClient, topic, "deregister", webSubHubHost, webSubPort, logger)
+func (s *APIDeploymentService) UnregisterTopicWithHub(ctx context.Context, httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *zap.Logger) error {
+	return s.sendTopicRequestToHub(ctx, httpClient, topic, "deregister", webSubHubHost, webSubPort, logger)
 }
 
 // sendTopicRequestToHub sends a topic registration/unregistration request to the WebSubHub
-func (s *APIDeploymentService) sendTopicRequestToHub(httpClient *http.Client, topic string, mode string, webSubHubHost string, webSubPort int, logger *zap.Logger) error {
+func (s *APIDeploymentService) sendTopicRequestToHub(ctx context.Context, httpClient *http.Client, topic string, mode string, webSubHubHost string, webSubPort int, logger *zap.Logger) error {
 	// Prepare form data
 	formData := url.Values{}
 	formData.Set("hub.mode", mode)
@@ -447,7 +465,7 @@ func (s *APIDeploymentService) sendTopicRequestToHub(httpClient *http.Client, to
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		// Encode form values so special characters in hub.topic are properly percent-encoded
-		req, err := http.NewRequest("POST", targetURL, strings.NewReader(formData.Encode()))
+		req, err := http.NewRequestWithContext(ctx, "POST", targetURL, strings.NewReader(formData.Encode()))
 		if err != nil {
 			return fmt.Errorf("failed to create HTTP request: %w", err)
 		}
@@ -455,6 +473,12 @@ func (s *APIDeploymentService) sendTopicRequestToHub(httpClient *http.Client, to
 
 		resp, err := httpClient.Do(req)
 		if err != nil {
+			// If the context was cancelled or deadline exceeded, surface that
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("request canceled: %w", ctx.Err())
+			default:
+			}
 			return fmt.Errorf("failed to send HTTP request: %w", err)
 		}
 
@@ -467,7 +491,7 @@ func (s *APIDeploymentService) sendTopicRequestToHub(httpClient *http.Client, to
 					zap.String("topic", topic),
 					zap.String("mode", mode),
 					zap.Int("status", resp.StatusCode))
-				err = nil
+				lastStatus = 0
 				return
 			}
 
@@ -481,7 +505,11 @@ func (s *APIDeploymentService) sendTopicRequestToHub(httpClient *http.Client, to
 
 		// Retry only on 404 or 503, up to maxRetries
 		if (lastStatus == http.StatusNotFound || lastStatus == http.StatusServiceUnavailable) && attempt < maxRetries {
-			time.Sleep(backoff)
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("request canceled: %w", ctx.Err())
+			case <-time.After(backoff):
+			}
 			backoff *= 2
 			lastStatus = 0
 			continue

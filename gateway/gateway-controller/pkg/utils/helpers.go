@@ -18,12 +18,12 @@ func ExtractNameVersion(cfg api.APIConfiguration) (string, string, error) {
 		}
 		return d.DisplayName, d.Version, nil
 	}
-	if cfg.Kind == api.Asyncwebsub {
+	if cfg.Kind == api.WebSubApi {
 		d, err := cfg.Spec.AsWebhookAPIData()
 		if err != nil {
 			return "", "", fmt.Errorf("failed to parse async/websub api config data: %w", err)
 		}
-		return d.Name, d.Version, nil
+		return d.DisplayName, d.Version, nil
 	}
 	return "", "", fmt.Errorf("unsupported api kind: %s", cfg.Kind)
 }

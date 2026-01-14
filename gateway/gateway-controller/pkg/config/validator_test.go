@@ -232,3 +232,44 @@ func TestValidateAuthConfig_BothAuthEnabled(t *testing.T) {
 	err := config.validateAuthConfig()
 	assert.NoError(t, err)
 }
+
+func TestValidateEventGWConfig_Enabled(t *testing.T) {
+	// Test that validation passes when event gateway is enabled with valid config
+	config := &Config{
+		GatewayController: GatewayController{
+			Router: RouterConfig{
+				EventGateway: EventGatewayConfig{
+					Enabled:               true,
+					WebSubHubURL:          "http://example.com",
+					WebSubHubPort:         9098,
+					WebSubHubListenerPort: 8083,
+					TimeoutSeconds:        10,
+				},
+			},
+		},
+	}
+
+	err := config.validateEventGatewayConfig()
+	assert.NoError(t, err)
+}
+
+func TestValidateWebSubURLConfig_WithoutSchema(t *testing.T) {
+	// Test that validation fails when there's no scheme in WebSubHubURL
+	config := &Config{
+		GatewayController: GatewayController{
+			Router: RouterConfig{
+				EventGateway: EventGatewayConfig{
+					Enabled:               true,
+					WebSubHubURL:          "example.com",
+					WebSubHubPort:         9098,
+					WebSubHubListenerPort: 8083,
+					TimeoutSeconds:        10,
+				},
+			},
+		},
+	}
+
+	err := config.validateEventGatewayConfig()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "http or https scheme")
+}

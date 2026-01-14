@@ -466,7 +466,7 @@ func (s *APIServer) GetAPIById(c *gin.Context, id string) {
 		return
 	}
 
-	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.Asyncwebsub) {
+	if cfg.Kind != string(api.RestApi) && cfg.Kind != string(api.WebSubApi) {
 		log.Warn("Configuration kind mismatch",
 			zap.String("expected", "RestApi or async/websub"),
 			zap.String("actual", cfg.Kind),
@@ -552,6 +552,35 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		}
 	}
 
+	if apiConfig.Kind == api.WebSubApi {
+		webhookData, err := apiConfig.Spec.AsWebhookAPIData()
+		if err != nil {
+			log.Error("Failed to parse configuration", zap.Error(err))
+			c.JSON(http.StatusBadRequest, api.ErrorResponse{
+				Status:  "error",
+				Message: "Failed to parse configuration",
+			})
+			return
+		}
+		// Ensure an upstream main exists for async/websub configs so downstream
+		// logic can safely rely on the field being present. Create an empty
+		// upstream if it is missing and save it back into the union spec.
+		if webhookData.Upstream.Main == nil {
+			url := fmt.Sprintf("%s:%d", s.routerConfig.EventGateway.WebSubHubURL, s.routerConfig.EventGateway.WebSubHubPort)
+			webhookData.Upstream.Main = &api.Upstream{
+				Url: &url,
+			}
+			if err := apiConfig.Spec.FromWebhookAPIData(webhookData); err != nil {
+				log.Error("Failed to parse configuration", zap.Error(err))
+				c.JSON(http.StatusBadRequest, api.ErrorResponse{
+					Status:  "error",
+					Message: "Error while processing configuration",
+				})
+				return
+			}
+		}
+	}
+
 	// Validate configuration
 	validationErrors := s.validator.Validate(&apiConfig)
 	if len(validationErrors) > 0 {
@@ -606,7 +635,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	existing.DeployedAt = nil
 	existing.DeployedVersion = 0
 
-	if apiConfig.Kind == api.Asyncwebsub {
+	if apiConfig.Kind == api.WebSubApi {
 		topicsToRegister, topicsToUnregister := s.deploymentService.GetTopicsForUpdate(*existing)
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
 		// This was communication bridge will be created on the gw startup
@@ -627,7 +656,9 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 					childWg.Add(1)
 					go func(topic string) {
 						defer childWg.Done()
-						if err := s.deploymentService.RegisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+						defer cancel()
+						if err := s.deploymentService.RegisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
 							log.Error("Failed to register topic with WebSubHub",
 								zap.Error(err),
 								zap.String("topic", topic),
@@ -654,7 +685,9 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 					childWg.Add(1)
 					go func(topic string) {
 						defer childWg.Done()
-						if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+						defer cancel()
+						if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
 							log.Error("Failed to deregister topic from WebSubHub",
 								zap.Error(err),
 								zap.String("topic", topic),
@@ -728,7 +761,7 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 
 	// Update xDS snapshot asynchronously
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
 		defer cancel()
 
 		if err := s.snapshotManager.UpdateSnapshot(ctx, correlationID); err != nil {
@@ -870,7 +903,7 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 		}
 	}
 
-	if cfg.Configuration.Kind == api.Asyncwebsub {
+	if cfg.Configuration.Kind == api.WebSubApi {
 		topicsToUnregister := s.deploymentService.GetTopicsForDelete(*cfg)
 
 		var deregErrs int32
@@ -886,7 +919,9 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 					childWg.Add(1)
 					go func(topic string) {
 						defer childWg.Done()
-						if err := s.deploymentService.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, log); err != nil {
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+						defer cancel()
+						if err := s.deploymentService.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, log); err != nil {
 							log.Error("Failed to deregister topic from WebSubHub",
 								zap.Error(err),
 								zap.String("topic", topic),
@@ -1655,7 +1690,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 
 	routes := make([]policyenginev1.PolicyChain, 0)
 	switch apiCfg.Kind {
-	case api.Asyncwebsub:
+	case api.WebSubApi:
 		// Build routes with merged policies
 		apiData, err := apiCfg.Spec.AsWebhookAPIData()
 		if err != nil {
@@ -1665,13 +1700,13 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 		for _, ch := range apiData.Channels {
 			var finalPolicies []policyenginev1.PolicyInstance
 
-			if ch.Policies != nil && len(*ch.Policies) > 0 {
+			if ch.Subscribe.Policies != nil && len(*ch.Subscribe.Policies) > 0 {
 				// Operation has policies: use operation policy order as authoritative
 				// This allows operations to reorder, override, or extend API-level policies
-				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*ch.Policies))
+				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*ch.Subscribe.Policies))
 				addedNames := make(map[string]struct{})
 
-				for _, opPolicy := range *ch.Policies {
+				for _, opPolicy := range *ch.Subscribe.Policies {
 					finalPolicies = append(finalPolicies, convertAPIPolicy(opPolicy))
 					addedNames[opPolicy.Name] = struct{}{}
 				}

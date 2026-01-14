@@ -49,12 +49,12 @@ type StoredConfig struct {
 
 // GetCompositeKey returns the composite key "displayName:version" for indexing
 func (c *StoredConfig) GetCompositeKey() string {
-	if c.Configuration.Kind == api.Asyncwebsub {
+	if c.Configuration.Kind == api.WebSubApi {
 		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
 		if err != nil {
 			return ""
 		}
-		return fmt.Sprintf("%s:%s", asyncData.Name, asyncData.Version)
+		return fmt.Sprintf("%s:%s", asyncData.DisplayName, asyncData.Version)
 	}
 	configData, err := c.Configuration.Spec.AsAPIConfigData()
 	if err != nil {
@@ -65,12 +65,12 @@ func (c *StoredConfig) GetCompositeKey() string {
 
 // GetDisplayName returns the API display name
 func (c *StoredConfig) GetDisplayName() string {
-	if c.Configuration.Kind == api.Asyncwebsub {
+	if c.Configuration.Kind == api.WebSubApi {
 		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
 		if err != nil {
 			return ""
 		}
-		return asyncData.Name
+		return asyncData.DisplayName
 	}
 	configData, err := c.Configuration.Spec.AsAPIConfigData()
 	if err != nil {
@@ -86,7 +86,7 @@ func (c *StoredConfig) GetHandle() string {
 
 // GetVersion returns the API version
 func (c *StoredConfig) GetVersion() string {
-	if c.Configuration.Kind == api.Asyncwebsub {
+	if c.Configuration.Kind == api.WebSubApi {
 		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
 		if err != nil {
 			return ""
@@ -102,7 +102,7 @@ func (c *StoredConfig) GetVersion() string {
 
 // GetContext returns the API context path
 func (c *StoredConfig) GetContext() string {
-	if c.Configuration.Kind == api.Asyncwebsub {
+	if c.Configuration.Kind == api.WebSubApi {
 		asyncData, err := c.Configuration.Spec.AsWebhookAPIData()
 		if err != nil {
 			return ""

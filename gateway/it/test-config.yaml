@@ -51,7 +51,14 @@ gateway_controller:
   router:
     # Gateway host for incoming requests
     gateway_host: "*"
-    
+    # Event Gateway (WebSub Hub) configuration
+    event_gateway:
+      enabled: true
+      websub_hub_url: "http://host.docker.internal"
+      websub_hub_port: 9098
+      router_host: "localhost"
+      websub_hub_listener_port: 8083
+      timeout_seconds: 10
     # Access logs configuration
     access_logs:
       # Enable or disable access logs
