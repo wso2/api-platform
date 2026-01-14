@@ -33,7 +33,7 @@ func main() {
 	}
 
 	log.Printf("Starting HTTPS server on port %s...", cfg.Port)
-	if err := srv.Start(cfg.Port); err != nil {
+	if err := srv.Start(cfg.Port, cfg.TLS.CertDir); err != nil {
 		log.Fatal("Failed to start HTTPS server:", err)
 	}
 }

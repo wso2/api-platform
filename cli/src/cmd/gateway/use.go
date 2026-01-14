@@ -21,7 +21,6 @@ package gateway
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/wso2/api-platform/cli/internal/config"
@@ -61,7 +60,13 @@ func runUseCommand() error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Check if gateway exists
+	// Check if gateway exists and get it
+	gateway, err := cfg.GetGateway(useName)
+	if err != nil {
+		return err
+	}
+
+	// Set as active
 	if err := cfg.SetActiveGateway(useName); err != nil {
 		return err
 	}
@@ -71,25 +76,30 @@ func runUseCommand() error {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	fmt.Printf("Gateway set to %s.\n", useName)
+	fmt.Printf("Gateway set to %s (auth: %s).\n", useName, gateway.Auth)
 
-	// If Basic Auth env vars are not present, show a helpful, friendly message.
-	user := os.Getenv(utils.EnvGatewayUsername)
-	pass := os.Getenv(utils.EnvGatewayPassword)
-	if user == "" || pass == "" {
-		fmt.Println()
-		fmt.Println("Warn: Gateway controller commands use Basic Auth credentials.")
-		missing := []string{}
-		if user == "" {
-			missing = append(missing, utils.EnvGatewayUsername)
+	// Validate credentials availability for the gateway's auth type
+	// Only warn if BOTH env vars AND config credentials are missing
+	if gateway.Auth != utils.AuthTypeNone {
+		hasEnvCreds := utils.HasEnvCredentials(gateway.Auth)
+		hasConfigCreds := utils.HasConfigCredentials(gateway.Auth, gateway.Username, gateway.Password, gateway.Token)
+
+		if !hasEnvCreds && !hasConfigCreds {
+			// Neither env vars nor config credentials are available
+			missing, _, err := utils.ValidateAuthEnvVars(gateway.Auth)
+			if err != nil {
+				fmt.Printf("\nWarning: failed to validate auth env vars: %v\n", err)
+			} else {
+				fmt.Println("\n" + utils.FormatMissingEnvVarsWarning(gateway.Auth, missing))
+			}
+		} else if hasConfigCreds && !hasEnvCreds {
+			// Config has credentials, env vars not set - this is fine, just inform
+			fmt.Println("Using credentials from configuration.")
+		} else if hasEnvCreds {
+			// Env vars are set - they will be used
+			fmt.Println("Using credentials from environment variables.")
 		}
-		if pass == "" {
-			missing = append(missing, utils.EnvGatewayPassword)
-		}
-		fmt.Printf("Missing environment variables: %s\n", strings.Join(missing, ", "))
-		fmt.Println("Please export them before running controller commands, for example:")
-		fmt.Printf("  export %s=admin\n  export %s=admin\n", utils.EnvGatewayUsername, utils.EnvGatewayPassword)
-		fmt.Println("Or provide an equivalent credential mechanism for automation/CI.")
 	}
+
 	return nil
 }

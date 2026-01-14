@@ -1,0 +1,9 @@
+# Test Configuration
+# Enable/disable tests by setting 'enabled' to true/false
+# Comment out or set to false to skip a test
+
+tests:
+  - name: TestFlagValuesUnique
+    description: Verify all CLI flags have unique values
+    enabled: true
+  

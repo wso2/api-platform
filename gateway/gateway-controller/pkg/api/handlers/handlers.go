@@ -22,8 +22,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	gatewayconstants "github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 
 	"io"
 	"net/http"
@@ -39,6 +41,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -67,6 +70,7 @@ type APIServer struct {
 	controlPlaneClient   controlplane.ControlPlaneClient
 	routerConfig         *config.RouterConfig
 	httpClient           *http.Client
+	systemConfig         *config.Config
 }
 
 // NewAPIServer creates a new API server with dependencies
@@ -80,10 +84,10 @@ func NewAPIServer(
 	policyDefinitions map[string]api.PolicyDefinition,
 	templateDefinitions map[string]*api.LLMProviderTemplate,
 	validator config.Validator,
-	routerConfig *config.RouterConfig,
 	apiKeyXDSManager *apikeyxds.APIKeyStateManager,
+	systemConfig *config.Config,
 ) *APIServer {
-	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, routerConfig)
+	deploymentService := utils.NewAPIDeploymentService(store, db, snapshotManager, validator, &systemConfig.GatewayController.Router)
 	server := &APIServer{
 		store:                store,
 		db:                   db,
@@ -96,12 +100,13 @@ func NewAPIServer(
 		deploymentService:    deploymentService,
 		mcpDeploymentService: utils.NewMCPDeploymentService(store, db, snapshotManager),
 		llmDeploymentService: utils.NewLLMDeploymentService(store, db, snapshotManager, templateDefinitions,
-			deploymentService, routerConfig),
+			deploymentService, &systemConfig.GatewayController.Router),
 		apiKeyService:      utils.NewAPIKeyService(store, db, apiKeyXDSManager),
 		apiKeyXDSManager:   apiKeyXDSManager,
 		controlPlaneClient: controlPlaneClient,
-		routerConfig:       routerConfig,
+		routerConfig:       &systemConfig.GatewayController.Router,
 		httpClient:         &http.Client{Timeout: 10 * time.Second},
+		systemConfig:       systemConfig,
 	}
 
 	// Register status update callback
@@ -170,6 +175,9 @@ func (s *APIServer) HealthCheck(c *gin.Context) {
 // CreateAPI implements ServerInterface.CreateAPI
 // (POST /apis)
 func (s *APIServer) CreateAPI(c *gin.Context) {
+	startTime := time.Now()
+	operation := "create"
+
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 
@@ -177,6 +185,8 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		log.Error("Failed to read request body", zap.Error(err))
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "read_body_failed").Inc()
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
@@ -198,6 +208,7 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 
 	if err != nil {
 		log.Error("Failed to deploy API configuration", zap.Error(err))
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
 		if storage.IsConflictError(err) {
 			c.JSON(http.StatusConflict, api.ErrorResponse{
 				Status:  "error",
@@ -211,6 +222,11 @@ func (s *APIServer) CreateAPI(c *gin.Context) {
 		}
 		return
 	}
+
+	// Record successful operation metrics
+	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
+	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
+	metrics.APIsTotal.WithLabelValues("rest_api", "active").Inc()
 
 	// Set up a callback to notify platform API after successful deployment
 	// This is specific to direct API creation via gateway endpoint
@@ -485,6 +501,9 @@ func (s *APIServer) GetAPIById(c *gin.Context, id string) {
 // UpdateAPI implements ServerInterface.UpdateAPI
 // (PUT /apis/{handle})
 func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
+	startTime := time.Now()
+	operation := "update"
+
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 	handle := id
@@ -493,6 +512,8 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		log.Error("Failed to read request body", zap.Error(err))
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "read_body_failed").Inc()
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to read request body",
@@ -506,6 +527,8 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 	err = s.parser.Parse(body, contentType, &apiConfig)
 	if err != nil {
 		log.Error("Failed to parse configuration", zap.Error(err))
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "parse_failed").Inc()
 		c.JSON(http.StatusBadRequest, api.ErrorResponse{
 			Status:  "error",
 			Message: "Failed to parse configuration",
@@ -519,6 +542,8 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 			log.Warn("Handle mismatch between path and YAML metadata",
 				zap.String("path_handle", handle),
 				zap.String("yaml_handle", apiConfig.Metadata.Name))
+			metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
+			metrics.ValidationErrorsTotal.WithLabelValues(operation, "handle_mismatch").Inc()
 			c.JSON(http.StatusBadRequest, api.ErrorResponse{
 				Status:  "error",
 				Message: fmt.Sprintf("Handle mismatch: path has '%s' but YAML metadata.name has '%s'", handle, apiConfig.Metadata.Name),
@@ -533,6 +558,9 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		log.Warn("Configuration validation failed",
 			zap.String("handle", handle),
 			zap.Int("num_errors", len(validationErrors)))
+
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
+		metrics.ValidationErrorsTotal.WithLabelValues(operation, "validation_failed").Add(float64(len(validationErrors)))
 
 		errors := make([]api.ValidationError, len(validationErrors))
 		for i, e := range validationErrors {
@@ -712,6 +740,10 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 		zap.String("id", existing.ID),
 		zap.String("handle", handle))
 
+	// Record successful operation metrics
+	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
+	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
+
 	// Return success response (id is the handle)
 	c.JSON(http.StatusOK, api.APIUpdateResponse{
 		Status:    stringPtr("success"),
@@ -748,12 +780,17 @@ func (s *APIServer) UpdateAPI(c *gin.Context, id string) {
 // DeleteAPI implements ServerInterface.DeleteAPI
 // (DELETE /apis/{handle})
 func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
+	startTime := time.Now()
+	operation := "delete"
+
 	// Get correlation-aware logger from context
 	log := middleware.GetLogger(c, s.logger)
 
 	handle := id
 
 	if s.db == nil {
+		log.Error("Database storage not available")
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", "rest_api").Inc()
 		c.JSON(http.StatusServiceUnavailable, api.ErrorResponse{
 			Status:  "error",
 			Message: "Database storage not available",
@@ -910,6 +947,11 @@ func (s *APIServer) DeleteAPI(c *gin.Context, id string) {
 	log.Info("API configuration deleted",
 		zap.String("id", cfg.ID),
 		zap.String("handle", handle))
+
+	// Record successful operation metrics
+	metrics.APIOperationsTotal.WithLabelValues(operation, "success", "rest_api").Inc()
+	metrics.APIOperationDurationSeconds.WithLabelValues(operation, "rest_api").Observe(time.Since(startTime).Seconds())
+	metrics.APIsTotal.WithLabelValues("rest_api", "active").Dec()
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
@@ -1569,7 +1611,7 @@ func (s *APIServer) DeleteLLMProxy(c *gin.Context, id string) {
 // ListPolicies implements ServerInterface.ListPolicies
 // (GET /policies)
 func (s *APIServer) ListPolicies(c *gin.Context) {
-	// Collect and sort policies loaded from files at startup
+	// Collect and sort policies loaded from files at startup (excluding system policies)
 	s.policyDefMu.RLock()
 	list := make([]api.PolicyDefinition, 0, len(s.policyDefinitions))
 	for _, d := range s.policyDefinitions {
@@ -1653,9 +1695,14 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 			}
 
 			routeKey := xds.GenerateRouteName("POST", apiData.Context, apiData.Version, ch.Path, s.routerConfig.GatewayHost)
+
+			// Inject system policies into the chain
+			props := make(map[string]any)
+			injectedPolicies := utils.InjectSystemPolicies(finalPolicies, s.systemConfig, props)
+
 			routes = append(routes, policyenginev1.PolicyChain{
 				RouteKey: routeKey,
-				Policies: finalPolicies,
+				Policies: injectedPolicies,
 			})
 		}
 	case api.RestApi:
@@ -1715,16 +1762,24 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 				vhosts = append(vhosts, effectiveSandboxVHost)
 			}
 
+			// Populate props for system policies
+			props := make(map[string]any)
+			s.populatePropsForSystemPolicies(cfg.SourceConfiguration, props)
+
+			// If this is an LLM provider, get the template and pass it to analytics policy
 			for _, vhost := range vhosts {
+				// Inject system policies into the chain
+				injectedPolicies := utils.InjectSystemPolicies(finalPolicies, s.systemConfig, props)
+
 				routes = append(routes, policyenginev1.PolicyChain{
 					RouteKey: xds.GenerateRouteName(string(op.Method), apiData.Context, apiData.Version, op.Path, vhost),
-					Policies: finalPolicies,
+					Policies: injectedPolicies,
 				})
 			}
 		}
 	}
 
-	// If there are no policies at all, return nil (skip creation)
+	// If there are no policies at all (including system policies), return nil (skip creation)
 	policyCount := 0
 	for _, r := range routes {
 		policyCount += len(r.Policies)
@@ -2204,7 +2259,7 @@ func (s *APIServer) GetConfigDump(c *gin.Context) {
 		apisSlice = append(apisSlice, item)
 	}
 
-	// Get all policies
+	// Get all policies (excluding system policies)
 	s.policyDefMu.RLock()
 	policies := make([]api.PolicyDefinition, 0, len(s.policyDefinitions))
 	for _, policy := range s.policyDefinitions {
@@ -2589,4 +2644,58 @@ func (s *APIServer) extractAuthenticatedUser(c *gin.Context, operationName strin
 		zap.String("correlation_id", correlationID))
 
 	return &user, true
+}
+
+// getLLMProviderTemplate extracts the template name from sourceConfig and retrieves the template.
+// Returns the template configuration if found, nil otherwise.
+func (s *APIServer) getLLMProviderTemplate(sourceConfig any) (*api.LLMProviderTemplate, error) {
+	if sourceConfig == nil {
+		return nil, fmt.Errorf("sourceConfig is nil")
+	}
+
+	// Try to extract the template name from sourceConfig
+	// and get the template from the store
+	templateName, err := utils.GetValueFromSourceConfig(sourceConfig, "spec.template")
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract template name: %w", err)
+	}
+	templateNameStr, ok := templateName.(string)
+	if !ok {
+		return nil, fmt.Errorf("template name is not a string: %v", templateName)
+	}
+	if templateNameStr == "" {
+		return nil, fmt.Errorf("template name is empty")
+	}
+
+	storedTemplate, err := s.store.GetTemplateByHandle(templateNameStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get template '%s' from store: %w", templateNameStr, err)
+	}
+
+	return &storedTemplate.Configuration, nil
+}
+
+// populatePropsForSystemPolicies populates the props for system policies
+// based on the source configuration
+func (s *APIServer) populatePropsForSystemPolicies(srcConfig any, props map[string]any) {
+	if srcConfig == nil {
+		return
+	}
+
+	// If this is an LLM provider, get the template and pass it to analytics policy
+	// Check if sourceConfig is an LLM provider by checking its kind
+	kind, err := utils.GetValueFromSourceConfig(srcConfig, "kind")
+	if err == nil {
+		if kindStr, ok := kind.(string); ok && kindStr == string(api.LlmProvider) {
+			template, err := s.getLLMProviderTemplate(srcConfig)
+			if err != nil {
+				s.logger.Debug("Failed to get LLM provider template", zap.Error(err))
+			} else if template != nil {
+				// Pass the template to analytics policy
+				analyticsProps := make(map[string]interface{})
+				analyticsProps["providerTemplate"] = template
+				props[gatewayconstants.ANALYTICS_SYSTEM_POLICY_NAME] = analyticsProps
+			}
+		}
+	}
 }

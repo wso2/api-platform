@@ -71,9 +71,6 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5173:5173"
-    depends_on:
-      platform-api:
-        condition: service_healthy
 
 volumes:
   platform-api-data:

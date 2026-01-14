@@ -5,6 +5,8 @@ go 1.25.1
 require (
 	github.com/spf13/cobra v1.10.1
 	github.com/wso2/api-platform/gateway/gateway-controller v1.0.0
+	golang.org/x/term v0.38.0
+	golang.org/x/text v0.32.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -53,7 +55,6 @@ require (
 	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
-	golang.org/x/text v0.32.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 

@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -32,6 +33,7 @@ import (
 	routeservice "github.com/envoyproxy/go-control-plane/envoy/service/route/v3"
 	secretservice "github.com/envoyproxy/go-control-plane/envoy/service/secret/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/server/v3"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
@@ -61,7 +63,7 @@ func NewServer(snapshotManager *SnapshotManager, sdsSecretManager *SDSSecretMana
 
 	// Create xDS server with the snapshot cache (shared with SDS)
 	cache := snapshotManager.GetCache()
-	callbacks := &serverCallbacks{logger: logger}
+	callbacks := NewServerCallbacks(logger)
 	xdsServer := server.NewServer(context.Background(), cache, callbacks)
 
 	// Register xDS services
@@ -110,7 +112,16 @@ func (s *Server) Stop() {
 
 // serverCallbacks implements server.Callbacks
 type serverCallbacks struct {
-	logger *zap.Logger
+	logger          *zap.Logger
+	activeStreams   map[int64]string // stream_id -> node_id
+	activeStreamsMu sync.Mutex
+}
+
+func NewServerCallbacks(logger *zap.Logger) *serverCallbacks {
+	return &serverCallbacks{
+		logger:        logger,
+		activeStreams: make(map[int64]string),
+	}
 }
 
 func (cb *serverCallbacks) OnStreamOpen(ctx context.Context, id int64, typ string) error {
@@ -120,6 +131,21 @@ func (cb *serverCallbacks) OnStreamOpen(ctx context.Context, id int64, typ strin
 
 func (cb *serverCallbacks) OnStreamClosed(id int64, node *core.Node) {
 	cb.logger.Info("xDS stream closed", zap.Int64("stream_id", id))
+
+	cb.activeStreamsMu.Lock()
+	defer cb.activeStreamsMu.Unlock()
+
+	// Remove from active streams and decrement metric using the stored node ID
+	// to ensure label consistency with the increment in OnStreamRequest
+	if storedNodeID, exists := cb.activeStreams[id]; exists {
+		delete(cb.activeStreams, id)
+		// Use stored node ID; fallback to "unknown" if empty
+		nodeID := storedNodeID
+		if nodeID == "" {
+			nodeID = "unknown"
+		}
+		metrics.XDSClientsConnected.WithLabelValues("main", nodeID).Dec()
+	}
 }
 
 func (cb *serverCallbacks) OnStreamRequest(id int64, req *discoverygrpc.DiscoveryRequest) error {
@@ -128,16 +154,49 @@ func (cb *serverCallbacks) OnStreamRequest(id int64, req *discoverygrpc.Discover
 		zap.String("type_url", req.TypeUrl),
 		zap.String("version", req.VersionInfo),
 	)
+
+	// Track the node ID when we first see a request
+	nodeID := "unknown"
+	if req.Node != nil && req.Node.Id != "" {
+		nodeID = req.Node.Id
+	}
+
+	cb.activeStreamsMu.Lock()
+	defer cb.activeStreamsMu.Unlock()
+
+	// Only increment if this is a new stream
+	if _, exists := cb.activeStreams[id]; !exists {
+		cb.activeStreams[id] = nodeID
+		metrics.XDSClientsConnected.WithLabelValues("main", nodeID).Inc()
+	}
+
+	metrics.XDSStreamRequestsTotal.WithLabelValues("main", req.TypeUrl, "request").Inc()
 	return nil
 }
 
 func (cb *serverCallbacks) OnStreamResponse(ctx context.Context, id int64, req *discoverygrpc.DiscoveryRequest, resp *discoverygrpc.DiscoveryResponse) {
+	// Determine if this is an ACK or NACK
+	status := "ack"
+	if req != nil && resp != nil {
+		// NACK if error detail is present
+		if req.ErrorDetail != nil {
+			status = "nack"
+		} else if req.ResponseNonce == resp.Nonce {
+			// ACK if no error and nonce matches
+			status = "ack"
+		}
+	}
+
 	cb.logger.Debug("xDS stream response",
 		zap.Int64("stream_id", id),
 		zap.String("type_url", resp.TypeUrl),
 		zap.String("version", resp.VersionInfo),
 		zap.Int("num_resources", len(resp.Resources)),
+		zap.String("status", status),
 	)
+
+	metrics.XDSStreamRequestsTotal.WithLabelValues("main", resp.TypeUrl, "response").Inc()
+	metrics.XDSSnapshotAckTotal.WithLabelValues("main", "client", status).Inc()
 }
 
 func (cb *serverCallbacks) OnFetchRequest(ctx context.Context, req *discoverygrpc.DiscoveryRequest) error {

@@ -22,6 +22,9 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // ResolveEnvVar resolves environment variable references in the format ${VAR_NAME}
@@ -53,4 +56,105 @@ func GetPolicyHubBaseURL() string {
 		return v
 	}
 	return PolicyHubBaseURLDefault
+}
+
+// ValidateAuthEnvVars checks if required environment variables are set for the given auth type
+// Returns missing variable names, whether validation passed, and an error for unknown auth types
+func ValidateAuthEnvVars(authType string) (missing []string, ok bool, err error) {
+	switch authType {
+	case AuthTypeBasic:
+		if os.Getenv(EnvGatewayUsername) == "" {
+			missing = append(missing, EnvGatewayUsername)
+		}
+		if os.Getenv(EnvGatewayPassword) == "" {
+			missing = append(missing, EnvGatewayPassword)
+		}
+	case AuthTypeBearer:
+		if os.Getenv(EnvGatewayToken) == "" {
+			missing = append(missing, EnvGatewayToken)
+		}
+	case AuthTypeNone:
+		// No env vars required
+		return nil, true, nil
+	default:
+		// Unknown auth type - return error
+		return nil, false, fmt.Errorf("unsupported authentication type '%s'. Valid types: none, basic, bearer", authType)
+	}
+
+	return missing, len(missing) == 0, nil
+}
+
+// FormatMissingEnvVarsWarning formats a warning message for missing environment variables
+func FormatMissingEnvVarsWarning(authType string, missing []string) string {
+	if len(missing) == 0 {
+		return ""
+	}
+
+	titler := cases.Title(language.English)
+	msg := fmt.Sprintf("%s authentication requires the following environment variables:\n", titler.String(authType))
+	for _, envVar := range missing {
+		msg += fmt.Sprintf("  %s\n", envVar)
+	}
+	return msg
+}
+
+// FormatCredentialsNotFoundError formats an error message when credentials are not found in env or config
+func FormatCredentialsNotFoundError(gatewayName, authType string) string {
+	var envVars string
+	switch authType {
+	case AuthTypeBasic:
+		envVars = fmt.Sprintf("%s and %s", EnvGatewayUsername, EnvGatewayPassword)
+	case AuthTypeBearer:
+		envVars = EnvGatewayToken
+	default:
+		return fmt.Sprintf("Unsupported authentication type '%s' for gateway '%s'", authType, gatewayName)
+	}
+
+	return fmt.Sprintf("Authentication credentials not found for gateway '%s' (auth type: %s).\n"+
+		"Please either:\n"+
+		"  - Re-add gateway: ap gateway add --display-name %s --server <server_url> --auth %s\n"+
+		"  - Or export: %s",
+		gatewayName, authType, gatewayName, authType, envVars)
+}
+
+// FormatMissingEnvVarsError formats an error message for missing environment variables
+func FormatMissingEnvVarsError(authType string, missing []string) string {
+	if len(missing) == 0 {
+		return ""
+	}
+
+	titler := cases.Title(language.English)
+	msg := fmt.Sprintf("%s authentication requires the following environment variables:\n", titler.String(authType))
+	for _, envVar := range missing {
+		msg += fmt.Sprintf("  %s\n", envVar)
+	}
+	return msg
+}
+
+// HasConfigCredentials checks if the gateway has credentials stored in config
+func HasConfigCredentials(authType, username, password, token string) bool {
+	switch authType {
+	case AuthTypeBasic:
+		return username != "" && password != ""
+	case AuthTypeBearer:
+		return token != ""
+	case AuthTypeNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// HasEnvCredentials checks if environment variables are set for the given auth type
+func HasEnvCredentials(authType string) bool {
+	switch authType {
+	case AuthTypeBasic:
+		return os.Getenv(EnvGatewayUsername) != "" && os.Getenv(EnvGatewayPassword) != ""
+	case AuthTypeBearer:
+		return os.Getenv(EnvGatewayToken) != ""
+	case AuthTypeNone:
+		return true
+	default:
+		return false
+	}
 }

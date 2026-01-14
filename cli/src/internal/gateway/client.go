@@ -19,6 +19,7 @@
 package gateway
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -87,42 +88,69 @@ func NewClientForActive() (*Client, error) {
 	return NewClient(gateway), nil
 }
 
+// context key for credential source
+type credCtxKey struct{}
+
 // Do executes an HTTP request with the gateway's authentication and settings
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
-	// Authentication priority (future-proofed):
-	// 1. Env token (WSO2AP_GW_TOKEN) - reserved for OAuth2/token-based auth
-	// 2. Basic Auth from env vars (WSO2AP_GW_USERNAME / WSO2AP_GW_PASSWORD)
-	// If neither is present, fail early to avoid making unauthenticated requests.
+	// Apply authentication based on gateway's auth type
+	authType := c.gateway.Auth
+	var credSource utils.CredentialSource
+	switch authType {
+	case utils.AuthTypeNone:
+		// No authentication required
 
-	// 1) Env token (future OAuth2 flow)
-	if token := os.Getenv(utils.EnvGatewayToken); token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	} else {
-		// 2) Basic Auth via env vars
-		username := os.Getenv(utils.EnvGatewayUsername)
-		password := os.Getenv(utils.EnvGatewayPassword)
+	case utils.AuthTypeBasic:
+		// Step 1: Check if ALL required environment variables are present
+		envUsername := os.Getenv(utils.EnvGatewayUsername)
+		envPassword := os.Getenv(utils.EnvGatewayPassword)
 
-		var missing []string
-		if username == "" {
-			missing = append(missing, utils.EnvGatewayUsername)
-		}
-		if password == "" {
-			missing = append(missing, utils.EnvGatewayPassword)
-		}
+		if envUsername != "" && envPassword != "" {
+			// Use environment variables (both present)
+			req.SetBasicAuth(envUsername, envPassword)
+			credSource = utils.CredSourceEnv
+		} else {
+			// Step 2: Fall back to config credentials
+			username := c.gateway.Username
+			password := c.gateway.Password
 
-		if len(missing) > 0 {
-			var b strings.Builder
-			b.WriteString("missing Basic Auth credentials:\n")
-			for _, m := range missing {
-				b.WriteString("  - ")
-				b.WriteString(m)
-				b.WriteByte('\n')
+			if username == "" || password == "" {
+				// Step 3: Neither env nor config has complete credentials
+				return nil, fmt.Errorf("%s", utils.FormatCredentialsNotFoundError(c.gateway.Name, authType))
 			}
-			b.WriteString("\nExport these environment variables and try again.\n")
-			return nil, fmt.Errorf(b.String())
+
+			req.SetBasicAuth(username, password)
+			credSource = utils.CredSourceConfig
 		}
 
-		req.SetBasicAuth(username, password)
+	case utils.AuthTypeBearer:
+		// Step 1: Check if environment variable is present
+		envToken := os.Getenv(utils.EnvGatewayToken)
+
+		if envToken != "" {
+			// Use environment variable
+			req.Header.Set("Authorization", "Bearer "+envToken)
+			credSource = utils.CredSourceEnv
+		} else {
+			// Step 2: Fall back to config token
+			token := c.gateway.Token
+
+			if token == "" {
+				// Step 3: Neither env nor config has credentials
+				return nil, fmt.Errorf("%s", utils.FormatCredentialsNotFoundError(c.gateway.Name, authType))
+			}
+
+			req.Header.Set("Authorization", "Bearer "+token)
+			credSource = utils.CredSourceConfig
+		}
+
+	default:
+		return nil, fmt.Errorf("unsupported auth type '%s' for gateway '%s'", authType, c.gateway.Name)
+	}
+
+	// Attach credential source to the request context
+	if credSource != "" {
+		req = req.WithContext(context.WithValue(req.Context(), credCtxKey{}, credSource))
 	}
 
 	// Set common headers
@@ -134,6 +162,28 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	}
 
 	return c.httpClient.Do(req)
+}
+
+// formatHTTPError formats HTTP errors with credential-source-aware messaging
+func (c *Client) formatHTTPError(operation string, resp *http.Response) error {
+	// Extract credential source from the request context, if present
+	var credSource utils.CredentialSource
+	if resp != nil && resp.Request != nil {
+		if v := resp.Request.Context().Value(credCtxKey{}); v != nil {
+			if cs, ok := v.(utils.CredentialSource); ok {
+				credSource = cs
+			}
+		}
+	}
+
+	return utils.FormatHTTPErrorWithCredSource(
+		operation,
+		resp,
+		"Gateway Controller",
+		c.gateway.Auth,
+		credSource,
+		c.gateway.Name,
+	)
 }
 
 // Get performs a GET request to the specified path
@@ -162,7 +212,7 @@ func (c *Client) Get(path string) (*http.Response, error) {
 		return resp, nil
 	}
 
-	return nil, utils.FormatHTTPError(fmt.Sprintf("GET %s", path), resp, "Gateway Controller")
+	return nil, c.formatHTTPError(fmt.Sprintf("GET %s", path), resp)
 }
 
 // Post performs a POST request to the specified path with the given body
@@ -185,7 +235,7 @@ func (c *Client) Post(path string, body io.Reader) (*http.Response, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return resp, nil
 	}
-	return nil, utils.FormatHTTPError(fmt.Sprintf("POST %s", path), resp, "Gateway Controller")
+	return nil, c.formatHTTPError(fmt.Sprintf("POST %s", path), resp)
 }
 
 // PostYAML performs a POST request with YAML content
@@ -209,7 +259,7 @@ func (c *Client) PostYAML(path string, body io.Reader) (*http.Response, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return resp, nil
 	}
-	return nil, utils.FormatHTTPError(fmt.Sprintf("POST %s", path), resp, "Gateway Controller")
+	return nil, c.formatHTTPError(fmt.Sprintf("POST %s", path), resp)
 }
 
 // Put performs a PUT request to the specified path with the given body
@@ -232,7 +282,7 @@ func (c *Client) Put(path string, body io.Reader) (*http.Response, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return resp, nil
 	}
-	return nil, utils.FormatHTTPError(fmt.Sprintf("PUT %s", path), resp, "Gateway Controller")
+	return nil, c.formatHTTPError(fmt.Sprintf("PUT %s", path), resp)
 }
 
 // PutYAML performs a PUT request with YAML content
@@ -256,7 +306,7 @@ func (c *Client) PutYAML(path string, body io.Reader) (*http.Response, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return resp, nil
 	}
-	return nil, utils.FormatHTTPError(fmt.Sprintf("PUT %s", path), resp, "Gateway Controller")
+	return nil, c.formatHTTPError(fmt.Sprintf("PUT %s", path), resp)
 }
 
 // Delete performs a DELETE request to the specified path
@@ -279,7 +329,7 @@ func (c *Client) Delete(path string) (*http.Response, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return resp, nil
 	}
-	return nil, utils.FormatHTTPError(fmt.Sprintf("DELETE %s", path), resp, "Gateway Controller")
+	return nil, c.formatHTTPError(fmt.Sprintf("DELETE %s", path), resp)
 }
 
 // GetGateway returns the gateway configuration

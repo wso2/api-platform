@@ -88,3 +88,7 @@ policies:
   - name: model-weighted-round-robin
     version: v0.1.0
     filePath: ./model-weighted-round-robin/v0.1.0
+  
+  - name: cors
+    version: v0.1.0
+    filePath: ./cors/v0.1.0

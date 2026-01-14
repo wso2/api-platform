@@ -37,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/kernel"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/pkg/cel"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/tracing"
@@ -67,6 +68,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Initialize metrics based on configuration
+	// This must be done before any metrics are used to ensure no-op behavior when disabled
+	metrics.SetEnabled(cfg.PolicyEngine.Metrics.Enabled)
+	metrics.Init() // Initialize metrics immediately so they're available throughout the codebase
 
 	// Apply flag overrides
 	applyFlagOverrides(cfg)
@@ -173,6 +179,19 @@ func main() {
 		}()
 	}
 
+	// Start metrics HTTP server if enabled
+	var metricsServer *metrics.Server
+	if cfg.PolicyEngine.Metrics.Enabled {
+		metricsServer = metrics.NewServer(&cfg.PolicyEngine.Metrics)
+		go func() {
+			if err := metricsServer.Start(ctx); err != nil {
+				slog.ErrorContext(ctx, "Metrics server error", "error", err)
+			}
+		}()
+		// Start periodic memory metrics updater
+		metrics.StartMemoryMetricsUpdater(ctx, 15*time.Second)
+	}
+
 	// Start access log service server if enabled
 	var alsServer *grpc.Server
 	slog.DebugContext(ctx, "Policy engine ALS server config", "config", cfg.Analytics.AccessLogsServiceCfg)
@@ -208,6 +227,14 @@ func main() {
 		defer cancel()
 		if err := adminServer.Stop(shutdownCtx); err != nil {
 			slog.ErrorContext(ctx, "Error stopping admin server", "error", err)
+		}
+	}
+
+	if metricsServer != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := metricsServer.Stop(shutdownCtx); err != nil {
+			slog.ErrorContext(ctx, "Error stopping metrics server", "error", err)
 		}
 	}
 

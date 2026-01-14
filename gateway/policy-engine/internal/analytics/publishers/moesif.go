@@ -142,10 +142,41 @@ func (m *Moesif) Publish(event *dto.Event) {
 
 	// Medatadata Map for the event
 	metadataMap := make(map[string]interface{})
-	m.addToMetadata("apiContext", event.API.APIContext, metadataMap)
-	m.addToMetadata("apiName", event.API.APIName, metadataMap)
-	m.addToMetadata("apiVersion", event.API.APIVersion, metadataMap)
-	m.addToMetadata("apiType", event.API.APIType, metadataMap)
+	// API Metadata
+	metadataMap["correlationId"] = event.MetaInfo.CorrelationID
+	metadataMap["apiContext"] = event.API.APIContext
+	metadataMap["apiName"] = event.API.APIName
+	metadataMap["apiVersion"] = event.API.APIVersion
+	metadataMap["apiType"] = event.API.APIType
+
+	// AI Metadata
+	if event.API.APIType == "LlmProvider" {
+		// Safely extract aiMetadata with nil check
+		if aiMetadataVal, exists := event.Properties["aiMetadata"]; exists && aiMetadataVal != nil {
+			if aiMetadata, ok := aiMetadataVal.(dto.AIMetadata); ok {
+				slog.Debug("aiMetadata from publisher", "aiMetadata", aiMetadata)
+				//[Required Format] key:aiMetadata -> dto.AIMetadata object
+				metadataMap["aiMetadata"] = aiMetadata
+			} else {
+				slog.Warn("AI Metadata property cannot be converted to the required format")
+			}
+		} else {
+			slog.Warn("AI Metadata property cannot be found in the event properties")
+		}
+
+		// Safely extract aiTokenUsage with nil check
+		if aiTokenUsageVal, exists := event.Properties["aiTokenUsage"]; exists && aiTokenUsageVal != nil {
+			if aiTokenUsage, ok := aiTokenUsageVal.(dto.AITokenUsage); ok {
+				slog.Debug("tokenUsage from publisher", "tokenUsage", aiTokenUsage)
+				//[Required Format] key:aiTokenUsage ->  dto.AITokenUsage object
+				metadataMap["aiTokenUsage"] = aiTokenUsage
+			} else {
+				slog.Warn("Token usage property cannot be converted to the required format")
+			}
+		} else {
+			slog.Warn("AI Token Usage data cannot be found in the event properties")
+		}
+	}
 
 	userID := anonymous
 	eventModel := &models.EventModel{
@@ -157,9 +188,4 @@ func (m *Moesif) Publish(event *dto.Event) {
 	m.events = append(m.events, eventModel)
 	slog.Debug(fmt.Sprintf("Event added to the queue. Queue size: %d", len(m.events)))
 	slog.Debug("Events", "events", m.events)
-}
-
-// Map any additional metadata related to the event provided under properties
-func (m *Moesif) addToMetadata(key, val string, metadataMap map[string]interface{}) {
-	metadataMap[key] = val
 }

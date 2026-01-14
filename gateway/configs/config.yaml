@@ -227,6 +227,14 @@ gateway_controller:
     # - console: Human-readable console format (recommended for development)
     format: json
 
+  # Metrics configuration
+  metrics:
+    # Enable or disable Prometheus metrics endpoint
+    enabled: true
+
+    # Port for metrics HTTP server
+    port: 9091
+
 policy_engine:
   server:
     # Port for ext_proc gRPC server (receives requests from Envoy)
@@ -299,10 +307,52 @@ policy_engine:
     # Log format: json, text
     format: json
 
-policy_configurations: {}
+  # Metrics configuration
+  metrics:
+    # Enable or disable Prometheus metrics endpoint
+    enabled: true
+
+    # Port for metrics HTTP server
+    port: 9003
+
+policy_configurations: 
+  jwtauth_v010:
+    keymanagers:
+    - name: WSO2KeyManager1
+      issuer: https://api.asgardeo.io/t/tharsanan1995/oauth2/token
+      jwks:
+        remote:
+          uri: https://api.asgardeo.io/t/tharsanan1995/oauth2/jwks
+          skipTlsVerify: false
+    - name: WSO2KeyManager2
+      issuer: https://api.asgardeo.io/t/testorgforsecurity/oauth2/token
+      jwks:
+        remote:
+          uri: https://api.asgardeo.io/t/testorgforsecurity/oauth2/jwks
+          skipTlsVerify: false
+    - name: MockKeyManager
+      issuer: http://mock-jwks.default.svc.cluster.local:8080/token
+      jwks:
+        remote:
+          uri: http://mock-jwks.default.svc.cluster.local:8080/jwks
+          skipTlsVerify: true
+    jwkscachettl: "5m"
+    jwksfetchtimeout: "5s"
+    jwksfetchretrycount: 3
+    jwksfetchretryinterval: "2s"
+    allowedalgorithms:
+      - RS256
+      - ES256
+    leeway: "30s"
+    authheaderscheme: Bearer
+    headername: Authorization
+    onfailurestatuscode: 401
+    errormessageformat: json
+    errormessage: "Authentication failed."
+    validateissuer: true
 
 analytics:
-  enabled: true
+  enabled: false
   # Publishers specific configuration
   publishers:
     - type: moesif
