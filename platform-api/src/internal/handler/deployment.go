@@ -128,8 +128,13 @@ func (h *DeploymentHandler) RedeployDeployment(c *gin.Context) {
 				"API not found"))
 			return
 		}
+		if errors.Is(err, constants.ErrDeploymentNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Deployment not found"))
+			return
+		}
 		log.Printf("[ERROR] Failed to redeploy: apiId=%s deploymentId=%s error=%v", apiId, deploymentId, err)
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", err.Error()))
 		return
 	}
 
@@ -167,8 +172,13 @@ func (h *DeploymentHandler) UndeployDeployment(c *gin.Context) {
 				"API not found"))
 			return
 		}
+		if errors.Is(err, constants.ErrDeploymentNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Deployment not found"))
+			return
+		}
 		log.Printf("[ERROR] Failed to undeploy: apiId=%s deploymentId=%s error=%v", apiId, deploymentId, err)
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", err.Error()))
 		return
 	}
 
@@ -206,8 +216,13 @@ func (h *DeploymentHandler) DeleteDeployment(c *gin.Context) {
 				"API not found"))
 			return
 		}
+		if errors.Is(err, constants.ErrDeploymentNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Deployment not found"))
+			return
+		}
 		log.Printf("[ERROR] Failed to delete deployment: apiId=%s deploymentId=%s error=%v", apiId, deploymentId, err)
-		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request", err.Error()))
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error", err.Error()))
 		return
 	}
 
@@ -245,8 +260,13 @@ func (h *DeploymentHandler) GetDeployment(c *gin.Context) {
 				"API not found"))
 			return
 		}
+		if errors.Is(err, constants.ErrDeploymentNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Deployment not found"))
+			return
+		}
 		log.Printf("[ERROR] Failed to get deployment: apiId=%s deploymentId=%s error=%v", apiId, deploymentId, err)
-		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Deployment not found"))
 		return
 	}
@@ -322,12 +342,15 @@ func (h *DeploymentHandler) GetDeploymentContent(c *gin.Context) {
 				"API not found"))
 			return
 		}
+		if errors.Is(err, constants.ErrDeploymentNotFound) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"Deployment not found"))
+			return
+		}
 		log.Printf("[ERROR] Failed to get deployment content: apiId=%s deploymentId=%s error=%v", apiId, deploymentId, err)
-		c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
-			"Deployment not found"))
-		return
+		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
+			"Failed to retrieve deployment content"))
 	}
-
 	c.Data(http.StatusOK, "application/json", content)
 }
 

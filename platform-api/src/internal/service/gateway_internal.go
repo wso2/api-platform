@@ -18,6 +18,7 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
@@ -89,6 +90,35 @@ func (s *GatewayInternalAPIService) GetAPIByUUID(apiId, orgId string) (map[strin
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate API YAML: %w", err)
 	}
+	apiYamlMap := map[string]string{
+		apiDTO.ID: apiYaml,
+	}
+	return apiYamlMap, nil
+}
+
+// GetActiveDeploymentByGateway retrieves the currently deployed API artifact for a specific gateway
+func (s *GatewayInternalAPIService) GetActiveDeploymentByGateway(apiID, orgID, gatewayID string) (map[string]string, error) {
+	// Get the active deployment for this API on this gateway
+	deployment, err := s.apiRepo.GetActiveDeploymentByGateway(apiID, gatewayID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment: %w", err)
+	}
+	if deployment == nil {
+		return nil, constants.ErrDeploymentNotActive
+	}
+
+	// Parse the deployment content (which is the serialized API definition)
+	var apiDTO *dto.API
+	if err := json.Unmarshal(deployment.Content, &apiDTO); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal deployment content: %w", err)
+	}
+
+	// Generate deployment YAML from the artifact
+	apiYaml, err := s.apiUtil.GenerateAPIDeploymentYAML(apiDTO)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate API YAML: %w", err)
+	}
+
 	apiYamlMap := map[string]string{
 		apiDTO.ID: apiYaml,
 	}

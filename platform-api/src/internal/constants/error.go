@@ -64,6 +64,11 @@ var (
 )
 
 var (
+	ErrDeploymentNotFound  = errors.New("deployment not found")
+	ErrDeploymentNotActive = errors.New("no active deployment found for this API on the gateway")
+)
+
+var (
 	ErrApiPortalSync = errors.New("failed to synchronize with dev portal")
 )
 
