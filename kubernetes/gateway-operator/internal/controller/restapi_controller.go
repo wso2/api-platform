@@ -874,12 +874,26 @@ func (r *RestApiReconciler) addAuthToRequest(ctx context.Context, req *http.Requ
 		return fmt.Errorf("failed to get Gateway CR: %w", err)
 	}
 
-	// Try to get auth config from the Gateway's ConfigMap
-	authConfig, err := auth.GetDeploymentConfigFromGateway(ctx, r.Client, gateway)
-	if err != nil {
-		log.Warn("Failed to retrieve auth config from Gateway ConfigMap, using default credentials",
-			zap.Error(err),
+	// Try to get auth config from the Gateway's AuthSecretRef first
+	var authConfig *auth.AuthSettings
+
+	// 1. Try Secret
+	authConfig, errSecret := auth.GetAuthConfigFromSecret(ctx, r.Client, gateway)
+	if errSecret != nil {
+		log.Warn("Failed to retrieve auth config from Secret referenced in Gateway, trying ConfigMap",
+			zap.Error(errSecret),
 			zap.String("gateway", gatewayInfo.Name))
+	}
+
+	// 2. Try ConfigMap if Secret failed or not present
+	if authConfig == nil {
+		var errConfigMap error
+		authConfig, errConfigMap = auth.GetDeploymentConfigFromGateway(ctx, r.Client, gateway)
+		if errConfigMap != nil {
+			log.Warn("Failed to retrieve auth config from Gateway ConfigMap, using default credentials",
+				zap.Error(errConfigMap),
+				zap.String("gateway", gatewayInfo.Name))
+		}
 	}
 
 	var username, password string

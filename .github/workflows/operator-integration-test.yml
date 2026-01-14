@@ -833,6 +833,22 @@ jobs:
                     affinity: {}
           EOF
 
+          # Create Auth Secret
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: test-gateway-auth
+            namespace: default
+          type: Opaque
+          stringData:
+            users.yaml: |
+              - username: "admin"
+                password: "admin"
+                password_hashed: false
+                roles: ["admin"]
+          EOF
+
           # Create Gateway CR
           cat <<EOF | kubectl apply -f -
           apiVersion: gateway.api-platform.wso2.com/v1alpha1
@@ -846,6 +862,8 @@ jobs:
               scope: Cluster
             configRef:
               name: test-gateway-config
+            authSecretRef:
+              name: test-gateway-auth
           EOF
 
       - name: Wait for Gateway to be ready
@@ -1245,6 +1263,22 @@ jobs:
           # Configure Gateway to use test images (same configmap as before but in new namespace)
           kubectl create configmap test-gateway-config --from-file=values.yaml=<(kubectl get cm test-gateway-config -n default -o jsonpath='{.data.values\.yaml}') -n scoped-test
 
+          # Create Auth Secret in scoped-test
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: test-gateway-auth
+            namespace: scoped-test
+          type: Opaque
+          stringData:
+            users.yaml: |
+              - username: "admin"
+                password: "admin"
+                password_hashed: false
+                roles: ["admin"]
+          EOF
+
           cat <<EOF | kubectl apply -f -
           apiVersion: gateway.api-platform.wso2.com/v1alpha1
           kind: Gateway
@@ -1257,6 +1291,8 @@ jobs:
               scope: Cluster
             configRef:
               name: test-gateway-config
+            authSecretRef:
+              name: test-gateway-auth
           EOF
 
           echo "Waiting for scoped-gateway to be Ready..."
