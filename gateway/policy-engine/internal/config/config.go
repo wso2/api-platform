@@ -56,6 +56,7 @@ type PublisherConfig struct {
 type PolicyEngine struct {
 	Server     ServerConfig     `koanf:"server"`
 	Admin      AdminConfig      `koanf:"admin"`
+	Metrics    MetricsConfig    `koanf:"metrics"`
 	ConfigMode ConfigModeConfig `koanf:"config_mode"`
 	XDS        XDSConfig        `koanf:"xds"`
 	FileConfig FileConfigConfig `koanf:"file_config"`
@@ -67,6 +68,15 @@ type PolicyEngine struct {
 	// This is used for resolving ${config} CEL expressions in policy systemParameters
 	// Note: No struct tag - populated manually via k.Raw()
 	RawConfig map[string]interface{}
+}
+
+// MetricsConfig holds Prometheus metrics server configuration
+type MetricsConfig struct {
+	// Enabled indicates whether the metrics server should be started
+	Enabled bool `koanf:"enabled"`
+
+	// Port is the port for the metrics HTTP server
+	Port int `koanf:"port"`
 }
 
 // TracingConfig holds OpenTelemetry tracing configuration
@@ -250,6 +260,10 @@ func defaultConfig() *Config {
 				Port:       9002,
 				AllowedIPs: []string{"127.0.0.1", "::1"},
 			},
+			Metrics: MetricsConfig{
+				Enabled: false,
+				Port:    9003,
+			},
 			ConfigMode: ConfigModeConfig{
 				Mode: "file",
 			},
@@ -325,6 +339,19 @@ func (c *Config) Validate() error {
 		}
 		if len(c.PolicyEngine.Admin.AllowedIPs) == 0 {
 			return fmt.Errorf("admin.allowed_ips cannot be empty when admin is enabled")
+		}
+	}
+
+	// Validate metrics config
+	if c.PolicyEngine.Metrics.Enabled {
+		if c.PolicyEngine.Metrics.Port <= 0 || c.PolicyEngine.Metrics.Port > 65535 {
+			return fmt.Errorf("invalid metrics.port: %d (must be 1-65535)", c.PolicyEngine.Metrics.Port)
+		}
+		if c.PolicyEngine.Metrics.Port == c.PolicyEngine.Server.ExtProcPort {
+			return fmt.Errorf("metrics.port cannot be same as server.extproc_port")
+		}
+		if c.PolicyEngine.Metrics.Port == c.PolicyEngine.Admin.Port {
+			return fmt.Errorf("metrics.port cannot be same as admin.port")
 		}
 	}
 

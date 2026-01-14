@@ -19,14 +19,16 @@ package handler
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"platform-api/src/internal/constants"
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/middleware"
 	"platform-api/src/internal/utils"
 
-	"github.com/gin-gonic/gin"
 	"platform-api/src/internal/service"
+
+	"github.com/gin-gonic/gin"
 )
 
 type OrganizationHandler struct {
@@ -95,6 +97,37 @@ func (h *OrganizationHandler) RegisterOrganization(c *gin.Context) {
 	c.JSON(http.StatusCreated, org)
 }
 
+// HeadOrganizationByUuid handles HEAD /api/v1/organizations/{organizationId}
+func (h *OrganizationHandler) HeadOrganizationByUuid(c *gin.Context) {
+	organizationIdFromContext, exists := middleware.GetOrganizationFromContext(c)
+	if !exists {
+		c.Status(http.StatusUnauthorized)
+		return
+	}
+	orgID := c.Param("organizationId")
+
+	slog.Debug("Organization from token: ", "organizationId", organizationIdFromContext)
+	// to do: enable this check after finalizing authentication method
+
+	// if orgID != organizationIdFromContext {
+	// 	c.JSON(http.StatusForbidden, utils.NewErrorResponse(403, "Forbidden",
+	// 		"Organization ID in token does not match the requested organization ID"))
+	// 	return
+	// }
+
+	_, err := h.orgService.GetOrganizationByUUID(orgID)
+	if err != nil {
+		if errors.Is(err, constants.ErrOrganizationNotFound) {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+
+	c.Status(http.StatusOK)
+}
+
 // GetOrganization handles GET /api/v1/organizations
 func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
 	orgID, exists := middleware.GetOrganizationFromContext(c)
@@ -129,5 +162,6 @@ func (h *OrganizationHandler) RegisterRoutes(r *gin.Engine) {
 	{
 		orgGroup.POST("", h.RegisterOrganization)
 		orgGroup.GET("", h.GetOrganization)
+		orgGroup.HEAD("/:organizationId", h.HeadOrganizationByUuid)
 	}
 }

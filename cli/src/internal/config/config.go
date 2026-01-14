@@ -29,9 +29,12 @@ import (
 
 // Gateway represents a gateway configuration
 type Gateway struct {
-	Name   string `yaml:"name"`
-	Server string `yaml:"server"`
-	Token  string `yaml:"token,omitempty"` // Bearer token (can be ${ENV_VAR}) for OAuth2
+	Name     string `yaml:"name"`
+	Server   string `yaml:"server"`
+	Auth     string `yaml:"auth,omitempty"`     // Auth type: none, basic, bearer (default: none)
+	Username string `yaml:"username,omitempty"` // For basic auth
+	Password string `yaml:"password,omitempty"` // For basic auth
+	Token    string `yaml:"token,omitempty"`    // For bearer auth
 }
 
 // Config represents the ap configuration
@@ -85,6 +88,13 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
+	// Normalize empty auth to "none" for all gateways
+	for i := range config.Gateways {
+		if config.Gateways[i].Auth == "" {
+			config.Gateways[i].Auth = utils.AuthTypeNone
+		}
+	}
+
 	return &config, nil
 }
 
@@ -135,23 +145,11 @@ func (c *Config) AddGateway(gateway Gateway) error {
 	return nil
 }
 
-// GetGateway returns a gateway by name with resolved credentials
+// GetGateway returns a gateway by name
 func (c *Config) GetGateway(name string) (*Gateway, error) {
 	for i := range c.Gateways {
 		if c.Gateways[i].Name == name {
-			// Create a copy to avoid modifying the config
-			gateway := c.Gateways[i]
-
-			// Resolve environment variables for token
-			if gateway.Token != "" {
-				resolvedToken, err := utils.ResolveEnvVar(gateway.Token)
-				if err != nil {
-					return nil, fmt.Errorf("failed to resolve token for gateway '%s': %w", name, err)
-				}
-				gateway.Token = resolvedToken
-			}
-
-			return &gateway, nil
+			return &c.Gateways[i], nil
 		}
 	}
 	return nil, fmt.Errorf("gateway '%s' not found", name)

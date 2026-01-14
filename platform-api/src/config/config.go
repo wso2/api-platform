@@ -47,6 +47,13 @@ type Server struct {
 
 	// Deployment configurations
 	Deployments Deployments `envconfig:"DEPLOYMENTS"`
+	// TLS configurations
+	TLS TLS `envconfig:"TLS"`
+}
+
+// TLS holds TLS certificate configuration
+type TLS struct {
+	CertDir string `envconfig:"CERT_DIR" default:"./data/certs"`
 }
 
 // JWT holds JWT-specific configuration

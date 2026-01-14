@@ -60,10 +60,10 @@ func runListCommand() error {
 	}
 
 	// Display as table
-	headers := []string{"NAME", "SERVER"}
+	headers := []string{"NAME", "SERVER", "AUTH"}
 	rows := make([][]string, 0, len(cfg.Gateways))
 	for _, gw := range cfg.Gateways {
-		rows = append(rows, []string{gw.Name, gw.Server})
+		rows = append(rows, []string{gw.Name, gw.Server, gw.Auth})
 	}
 	utils.PrintTable(headers, rows)
 

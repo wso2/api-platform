@@ -27,12 +27,17 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"
 )
 
 // TestDatabaseFileCreation verifies that SQLite database files are created correctly
 func TestDatabaseFileCreation(t *testing.T) {
+	// Initialize metrics for tests (disabled by default)
+	metrics.SetEnabled(false)
+	metrics.Init()
+
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
@@ -74,6 +79,10 @@ func TestDatabaseFileCreation(t *testing.T) {
 
 // TestSchemaInitialization verifies that the database schema is correctly initialized
 func TestSchemaInitialization(t *testing.T) {
+	// Initialize metrics for tests (disabled by default)
+	metrics.SetEnabled(false)
+	metrics.Init()
+
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "schema.db")
 
@@ -254,6 +263,10 @@ func TestSchemaInitialization(t *testing.T) {
 // TestSchemaInitializationIdempotent verifies that schema initialization is idempotent
 // (reopening an existing database doesn't recreate the schema)
 func TestSchemaInitializationIdempotent(t *testing.T) {
+	// Initialize metrics for tests (disabled by default)
+	metrics.SetEnabled(false)
+	metrics.Init()
+
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "idempotent.db")
 
@@ -285,6 +298,10 @@ func TestSchemaInitializationIdempotent(t *testing.T) {
 // TestEmptyDatabaseInitialization tests that a fresh database initializes correctly
 // (Success Criterion SC-001)
 func TestEmptyDatabaseInitialization(t *testing.T) {
+	// Initialize metrics for tests (disabled by default)
+	metrics.SetEnabled(false)
+	metrics.Init()
+
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "empty.db")
 
@@ -317,6 +334,10 @@ func TestEmptyDatabaseInitialization(t *testing.T) {
 
 // TestDatabaseIntegrityCheck verifies that the database maintains integrity
 func TestDatabaseIntegrityCheck(t *testing.T) {
+	// Initialize metrics for tests (disabled by default)
+	metrics.SetEnabled(false)
+	metrics.Init()
+
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "integrity.db")
 

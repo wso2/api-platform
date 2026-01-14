@@ -55,3 +55,9 @@ Feature: API Deployment and Invocation
     Then the response should be successful
     And the response should be valid JSON
     And the response body should contain "/api/v2/us/seattle"
+
+    Given I authenticate using basic auth as "admin"
+    When I delete the API "weather-api-v1.0"
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"

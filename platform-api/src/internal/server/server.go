@@ -30,6 +30,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"platform-api/src/internal/middleware"
 	"time"
 
@@ -157,8 +158,8 @@ func StartPlatformAPIServer(cfg *config.Server) (*Server, error) {
 	}, nil
 }
 
-// generateSelfSignedCert creates a self-signed certificate for development
-func generateSelfSignedCert() (tls.Certificate, error) {
+// generateSelfSignedCert creates a self-signed certificate for development and saves it to disk
+func generateSelfSignedCert(certPath, keyPath string) (tls.Certificate, error) {
 	// Generate private key
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -194,6 +195,15 @@ func generateSelfSignedCert() (tls.Certificate, error) {
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
 
+	// Save certificate and key to disk for persistence
+	if err := os.WriteFile(certPath, certPEM, 0644); err != nil {
+		return tls.Certificate{}, fmt.Errorf("failed to save certificate: %v", err)
+	}
+	if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
+		return tls.Certificate{}, fmt.Errorf("failed to save private key: %v", err)
+	}
+	log.Printf("Saved certificate to %s and key to %s", certPath, keyPath)
+
 	// CreateOrganization TLS certificate
 	cert, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
@@ -204,42 +214,42 @@ func generateSelfSignedCert() (tls.Certificate, error) {
 }
 
 // Start starts the HTTPS server
-func (s *Server) Start(port string) error {
+func (s *Server) Start(port string, certDir string) error {
 	if port == "" {
 		return fmt.Errorf("port cannot be empty")
 	}
 
+	// Build certificate paths
+	certPath := filepath.Join(certDir, "cert.pem")
+	keyPath := filepath.Join(certDir, "key.pem")
+
 	var cert tls.Certificate
 
 	// Try to load existing certificates first
-	if _, err := os.Stat("cert.pem"); err == nil {
-		if _, err := os.Stat("key.pem"); err == nil {
-			cert, err = tls.LoadX509KeyPair("cert.pem", "key.pem")
+	if _, certErr := os.Stat(certPath); certErr == nil {
+		if _, keyErr := os.Stat(keyPath); keyErr == nil {
+			loadedCert, err := tls.LoadX509KeyPair(certPath, keyPath)
 			if err != nil {
 				log.Printf("Failed to load certificates: %v", err)
-				log.Println("Generating self-signed certificate for development...")
-				cert, err = generateSelfSignedCert()
-				if err != nil {
-					return fmt.Errorf("failed to generate self-signed certificate: %v", err)
-				}
 			} else {
-				log.Println("Using existing certificates: cert.pem and key.pem")
-			}
-		} else {
-			log.Println("Generating self-signed certificate for development...")
-			var err error
-			cert, err = generateSelfSignedCert()
-			if err != nil {
-				return fmt.Errorf("failed to generate self-signed certificate: %v", err)
+				log.Printf("Using existing certificates from %s", certDir)
+				cert = loadedCert
 			}
 		}
-	} else {
+	}
+
+	// Generate new certificate if not loaded
+	if cert.Certificate == nil {
 		log.Println("Generating self-signed certificate for development...")
-		var err error
-		cert, err = generateSelfSignedCert()
+		// Ensure cert directory exists
+		if err := os.MkdirAll(certDir, 0755); err != nil {
+			return fmt.Errorf("failed to create cert directory: %v", err)
+		}
+		generatedCert, err := generateSelfSignedCert(certPath, keyPath)
 		if err != nil {
 			return fmt.Errorf("failed to generate self-signed certificate: %v", err)
 		}
+		cert = generatedCert
 	}
 
 	// Add a health endpoint that works with self-signed certs

@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -30,6 +31,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/kernel"
+	"github.com/wso2/api-platform/gateway/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/policy-engine/internal/registry"
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
@@ -143,6 +145,23 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 	// Apply changes atomically
 	// This replaces ALL routes with the new set from xDS (State of the World)
 	h.kernel.ApplyWholeRoutes(chains)
+
+	// Record metrics for policy chains loaded
+	metrics.PolicyChainsLoaded.WithLabelValues("ads").Set(float64(len(chains)))
+
+	// Calculate and record policies per chain
+	for routeKey, chain := range chains {
+		policyCount := float64(len(chain.Policies))
+		// Extract API name from route key (format: "api-name::route-name" or just routeKey)
+		apiName := routeKey
+		if strings.Contains(routeKey, "::") {
+			parts := strings.SplitN(routeKey, "::", 2)
+			if len(parts) == 2 {
+				apiName = parts[0]
+			}
+		}
+		metrics.PoliciesPerChain.WithLabelValues(routeKey, apiName).Set(policyCount)
+	}
 
 	slog.InfoContext(ctx, "Policy chain update completed successfully",
 		"version", version,

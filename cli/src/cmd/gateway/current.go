@@ -59,11 +59,7 @@ func runCurrentCommand() error {
 	}
 
 	// Display gateway info
-	securityStatus := "none"
-	if gateway.Token != "" {
-		securityStatus = "OAuth2 token"
-	}
-	fmt.Printf("Current gateway: %s - %s (auth: %s)\n", gateway.Name, gateway.Server, securityStatus)
+	fmt.Printf("Current gateway: %s - %s (auth: %s)\n", gateway.Name, gateway.Server, gateway.Auth)
 
 	return nil
 }

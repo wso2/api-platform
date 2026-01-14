@@ -91,8 +91,14 @@ func NewComposeManager(composeFile string) (*ComposeManager, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Create compose stack using testcontainers-go
-	compose, err := tc.NewDockerCompose(absPath)
+	projectName := "gateway-it"
+
+	// Create compose stack using testcontainers-go with explicit project name
+	// This ensures we can later query logs using the same project identifier
+	compose, err := tc.NewDockerComposeWith(
+		tc.StackIdentifier(projectName),
+		tc.WithStackFiles(absPath),
+	)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("failed to create docker compose: %w", err)
@@ -101,7 +107,7 @@ func NewComposeManager(composeFile string) (*ComposeManager, error) {
 	cm := &ComposeManager{
 		compose:     compose,
 		composeFile: absPath,
-		projectName: "gateway-it",
+		projectName: projectName,
 		ctx:         ctx,
 		cancel:      cancel,
 		signalChan:  make(chan os.Signal, 1),
@@ -263,6 +269,41 @@ func (cm *ComposeManager) Cleanup() {
 
 		log.Println("Cleanup complete")
 	})
+}
+
+// DumpLogs collects docker compose logs and writes them to the given file path
+func (cm *ComposeManager) DumpLogs(outputFile string) error {
+	if cm == nil {
+		return fmt.Errorf("compose manager is nil")
+	}
+
+	if err := os.MkdirAll(filepath.Dir(outputFile), 0755); err != nil {
+		return fmt.Errorf("failed to create logs directory: %w", err)
+	}
+
+	// Use a dedicated timeout for log collection
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	args := []string{"compose", "-p", cm.projectName, "-f", cm.composeFile, "logs", "--no-color", "--timestamps"}
+	cmd := execCommandContext(ctx, "docker", args...)
+
+	// Give some time for containers to flush logs
+	time.Sleep(10 * time.Second)
+
+	// Capture combined output to persist whatever we can even on partial failures
+	out, err := cmd.CombinedOutput()
+
+	if writeErr := os.WriteFile(outputFile, out, 0644); writeErr != nil {
+		return fmt.Errorf("failed to write logs to %s: %w", outputFile, writeErr)
+	}
+
+	if err != nil {
+		// Return an error but logs are still written for post-mortem
+		return fmt.Errorf("failed to collect docker compose logs: %w", err)
+	}
+
+	return nil
 }
 
 // CheckDockerAvailable verifies that Docker is running and accessible

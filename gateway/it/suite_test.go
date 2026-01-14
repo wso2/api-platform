@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cucumber/godog"
 	"github.com/wso2/api-platform/gateway/it/steps"
@@ -47,6 +48,9 @@ var (
 
 	// testReporter manages test report generation
 	testReporter *TestReporter
+
+	// hasFailures tracks if any scenario failed
+	hasFailures bool
 )
 
 // TestFeatures is the main entry point for BDD tests
@@ -61,8 +65,12 @@ func TestFeatures(t *testing.T) {
 		TestSuiteInitializer: InitializeTestSuite,
 		ScenarioInitializer:  InitializeScenario,
 		Options: &godog.Options{
-			Format:   "pretty",
-			Paths:    []string{"features"},
+			Format: "pretty",
+			Paths: []string{
+				"features/health.feature",
+				"features/api_deploy.feature",
+				"features/mcp_deploy.feature",
+			},
 			TestingT: t,
 		},
 	}
@@ -124,6 +132,24 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 	ctx.AfterSuite(func() {
 		log.Println("=== Integration Test Suite Cleanup ===")
 
+		// If failures occurred, dump container logs
+		if hasFailures {
+			log.Println("Failures detected, dumping container logs...")
+			outDir := "logs"
+			if mkErr := os.MkdirAll(outDir, 0755); mkErr != nil {
+				log.Printf("Warning: Failed to create logs directory: %v", mkErr)
+			} else if composeManager != nil {
+				ts := time.Now().Format("20060102-150405")
+				fileName := "suite_failure_" + ts + ".log"
+				outPath := filepath.Join(outDir, fileName)
+				if dumpErr := composeManager.DumpLogs(outPath); dumpErr != nil {
+					log.Printf("Warning: Failed to dump container logs: %v", dumpErr)
+				} else {
+					log.Printf("Container logs saved to: %s", outPath)
+				}
+			}
+		}
+
 		// Stop containers first - this flushes coverage data to the bind mount
 		if composeManager != nil {
 			composeManager.Cleanup()
@@ -171,6 +197,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	ctx.After(func(ctx context.Context, sc *godog.Scenario, err error) (context.Context, error) {
 		if err != nil {
 			log.Printf("Scenario failed: %s - Error: %v", sc.Name, err)
+			hasFailures = true
 		} else {
 			log.Printf("Scenario passed: %s", sc.Name)
 		}
