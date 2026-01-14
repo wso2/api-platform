@@ -1,16 +1,13 @@
-version: api-platform.wso2.com/v1
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
 kind: WebSubApi
 metaData:
    name: WebSubHub-API
 spec:
-  name: WebSub-API-New-API
+  displayName: WebSub-API-New-API
   version: v1.0
   context: /websubnewapi
   vhosts:
-    main:
-      default: "*"
-    sandbox:
-      default: "sandbox-*"
+    main: "*"
   channels:
     -  path: /pull-requests
        subscribe:

@@ -35,6 +35,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
+	"go.uber.org/zap"
 )
 
 // APIDeploymentParams contains parameters for API deployment operations
@@ -196,7 +197,10 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 					childWg.Add(1)
 					go func(topic string) {
 						defer childWg.Done()
-						if err := s.RegisterTopicWithHub(s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, params.Logger); err != nil {
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+						defer cancel()
+
+						if err := s.RegisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, params.Logger); err != nil {
 							params.Logger.Error("Failed to register topic with WebSubHub",
 								slog.Any("error", err),
 								slog.String("topic", topic),
@@ -224,7 +228,10 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 					childWg.Add(1)
 					go func(topic string) {
 						defer childWg.Done()
-						if err := s.UnregisterTopicWithHub(s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, params.Logger); err != nil {
+						ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.routerConfig.EventGateway.TimeoutSeconds)*time.Second)
+						defer cancel()
+
+						if err := s.UnregisterTopicWithHub(ctx, s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, params.Logger); err != nil {
 							params.Logger.Error("Failed to deregister topic from WebSubHub",
 								slog.Any("error", err),
 								slog.String("topic", topic),
@@ -432,18 +439,17 @@ func (s *APIDeploymentService) updateExistingConfig(newConfig *models.StoredConf
 	return true, nil // Successfully updated existing config
 }
 
-// RegisterTopicWithHub registers a topic with the WebSubHub
-func (s *APIDeploymentService) RegisterTopicWithHub(httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *slog.Logger) error {
-	return s.sendTopicRequestToHub(httpClient, topic, "register", webSubHubHost, webSubPort, logger)
+func (s *APIDeploymentService) RegisterTopicWithHub(ctx context.Context, httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *zap.Logger) error {
+	return s.sendTopicRequestToHub(ctx, httpClient, topic, "register", webSubHubHost, webSubPort, logger)
 }
 
 // UnregisterTopicWithHub unregisters a topic from the WebSubHub
-func (s *APIDeploymentService) UnregisterTopicWithHub(httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *slog.Logger) error {
-	return s.sendTopicRequestToHub(httpClient, topic, "deregister", webSubHubHost, webSubPort, logger)
+func (s *APIDeploymentService) UnregisterTopicWithHub(ctx context.Context, httpClient *http.Client, topic, webSubHubHost string, webSubPort int, logger *zap.Logger) error {
+	return s.sendTopicRequestToHub(ctx, httpClient, topic, "deregister", webSubHubHost, webSubPort, logger)
 }
 
 // sendTopicRequestToHub sends a topic registration/unregistration request to the WebSubHub
-func (s *APIDeploymentService) sendTopicRequestToHub(httpClient *http.Client, topic string, mode string, webSubHubHost string, webSubPort int, logger *slog.Logger) error {
+func (s *APIDeploymentService) sendTopicRequestToHub(ctx context.Context, httpClient *http.Client, topic string, mode string, webSubHubHost string, webSubPort int, logger *zap.Logger) error {
 	// Prepare form data
 	formData := url.Values{}
 	formData.Set("hub.mode", mode)
@@ -459,7 +465,7 @@ func (s *APIDeploymentService) sendTopicRequestToHub(httpClient *http.Client, to
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		// Encode form values so special characters in hub.topic are properly percent-encoded
-		req, err := http.NewRequest("POST", targetURL, strings.NewReader(formData.Encode()))
+		req, err := http.NewRequestWithContext(ctx, "POST", targetURL, strings.NewReader(formData.Encode()))
 		if err != nil {
 			return fmt.Errorf("failed to create HTTP request: %w", err)
 		}
@@ -467,6 +473,12 @@ func (s *APIDeploymentService) sendTopicRequestToHub(httpClient *http.Client, to
 
 		resp, err := httpClient.Do(req)
 		if err != nil {
+			// If the context was cancelled or deadline exceeded, surface that
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("request canceled: %w", ctx.Err())
+			default:
+			}
 			return fmt.Errorf("failed to send HTTP request: %w", err)
 		}
 
@@ -476,9 +488,9 @@ func (s *APIDeploymentService) sendTopicRequestToHub(httpClient *http.Client, to
 
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				logger.Debug("Topic request sent to WebSubHub",
-					slog.String("topic", topic),
-					slog.String("mode", mode),
-					slog.Int("status", resp.StatusCode))
+					zap.String("topic", topic),
+					zap.String("mode", mode),
+					zap.Int("status", resp.StatusCode))
 			}
 
 			lastStatus = resp.StatusCode
@@ -491,7 +503,11 @@ func (s *APIDeploymentService) sendTopicRequestToHub(httpClient *http.Client, to
 
 		// Retry only on 404 or 503, up to maxRetries
 		if (lastStatus == http.StatusNotFound || lastStatus == http.StatusServiceUnavailable) && attempt < maxRetries {
-			time.Sleep(backoff)
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("request canceled: %w", ctx.Err())
+			case <-time.After(backoff):
+			}
 			backoff *= 2
 			lastStatus = 0
 			continue

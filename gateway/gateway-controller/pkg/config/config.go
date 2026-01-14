@@ -205,6 +205,7 @@ type EventGatewayConfig struct {
 	WebSubHubPort         int    `koanf:"websub_hub_port"`
 	RouterHost            string `koanf:"router_host"`
 	WebSubHubListenerPort int    `koanf:"websub_hub_listener_port"`
+	TimeoutSeconds        int    `koanf:"timeout_seconds"`
 }
 
 // DownstreamTLS holds downstream (listener) TLS configuration
@@ -410,9 +411,11 @@ func defaultConfig() *Config {
 			},
 			Router: RouterConfig{
 				EventGateway: EventGatewayConfig{
-					Enabled:       true,
-					WebSubHubURL:  "http://host.docker.internal",
-					WebSubHubPort: 9098,
+					Enabled:               true,
+					WebSubHubURL:          "http://host.docker.internal",
+					WebSubHubPort:         9098,
+					RouterHost:            "localhost",
+					WebSubHubListenerPort: 8083,
 				},
 				AccessLogs: AccessLogsConfig{
 					Enabled: true,

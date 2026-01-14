@@ -53,12 +53,11 @@ gateway_controller:
     gateway_host: "*"
 
     event_gateway:
-      enabled: false
+      enabled: true
       websub_hub_url: "http://host.docker.internal"
       websub_hub_port: 9098
       router_host: "localhost"
       websub_hub_listener_port: 8083
-      timeout_seconds: 10
     
     # Access logs configuration
     access_logs:
@@ -139,9 +138,6 @@ gateway_controller:
         route_idle_timeout_in_seconds: 300
     tracing_service_name: router
 
-    http_listener:
-      server_header_transformation: OVERWRITE # Options: "APPEND_IF_ABSENT", "OVERWRITE", "PASS_THROUGH"
-      server_header_value: WSO2 API Platform
 
     # Policy Engine ext_proc filter configuration
     policy_engine:
@@ -228,34 +224,15 @@ gateway_controller:
       # Expected issuer value in the JWT `iss` claim
       issuer: ""
 
-  # API key hashing configuration
-  # Used to hash API keys before storing/comparing them
-  # By default, API keys hashing is enabled with SHA-256 algorithm
-  # Supported algorithms: "sha256", "bcrypt", "argon2id"
-  # By default a user can have up to 10 API keys per API
-  api_key:
-    # Number of API keys allowed per user per API
-    api_keys_per_user_per_api: 10
-    # Hashing algorithm: "sha256", "bcrypt", "argon2id"
-    algorithm: sha256
-
   # Logging configuration
   logging:
     # Log level: "debug", "info", "warn", or "error"
-    level: info
+    level: debug
 
     # Log format: "json" or "console"
     # - json: Structured JSON format (recommended for production)
     # - console: Human-readable console format (recommended for development)
     format: json
-
-  # Metrics configuration
-  metrics:
-    # Enable or disable Prometheus metrics endpoint
-    enabled: true
-
-    # Port for metrics HTTP server
-    port: 9091
 
 policy_engine:
   server:
@@ -329,37 +306,10 @@ policy_engine:
     # Log format: json, text
     format: json
 
-  # Metrics configuration
-  metrics:
-    # Enable or disable Prometheus metrics endpoint
-    enabled: true
-
-    # Port for metrics HTTP server
-    port: 9003
-
-policy_configurations:
-  # Rate Limiting Policy Configuration
-  # See documentation: docs/gateway/policies/ratelimit.md
-  ratelimit_v010:
-    # Rate limiting algorithm: "gcra" (smooth rate limiting with burst support) or "fixed-window" (simple counter)
-    algorithm: fixed-window
-
-    # Storage backend: "memory" for single-instance or "redis" for distributed rate limiting
-    backend: memory
-
-    # In-memory storage configuration (only used when backend=memory)
-    memory:
-      maxEntries: 10000
-      cleanupInterval: "5m"
-
-    # Control which rate limit headers are included in responses
-    headers:
-      includeXRateLimit: true
-      includeIETF: true
-      includeRetryAfter: true
+policy_configurations: {}
 
 analytics:
-  enabled: false
+  enabled: true
   # Publishers specific configuration
   publishers:
     - type: moesif
