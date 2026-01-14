@@ -237,9 +237,10 @@ type AuthenticationConfig struct {
 
 // Policy represents a request or response policy
 type Policy struct {
-	FlowDirection string                 `json:"flowDirection,omitempty"`
-	Name          string                 `json:"name,omitempty"`
-	Params        map[string]interface{} `json:"params,omitempty"`
+	ExecutionCondition *string                 `json:"executionCondition,omitempty"`
+	Name               string                  `json:"name"`
+	Params             *map[string]interface{} `json:"params,omitempty"`
+	Version            string                  `json:"version"`
 }
 
 // APIDeployment represents an API deployment record

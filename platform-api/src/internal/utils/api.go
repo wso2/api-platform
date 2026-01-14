@@ -415,8 +415,10 @@ func (u *APIUtil) PolicyDTOToModel(dto *dto.Policy) *model.Policy {
 		return nil
 	}
 	return &model.Policy{
-		Name:   dto.Name,
-		Params: dto.Params,
+		ExecutionCondition: dto.ExecutionCondition,
+		Name:               dto.Name,
+		Params:             dto.Params,
+		Version:            dto.Version,
 	}
 }
 
@@ -725,8 +727,10 @@ func (u *APIUtil) PolicyModelToDTO(model *model.Policy) *dto.Policy {
 		return nil
 	}
 	return &dto.Policy{
-		Name:   model.Name,
-		Params: model.Params,
+		ExecutionCondition: model.ExecutionCondition,
+		Name:               model.Name,
+		Params:             model.Params,
+		Version:            model.Version,
 	}
 }
 

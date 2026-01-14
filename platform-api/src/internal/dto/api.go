@@ -160,8 +160,10 @@ type AuthenticationConfig struct {
 
 // Policy represents a request or response policy
 type Policy struct {
-	Name   string                 `json:"name,omitempty" yaml:"name,omitempty"`
-	Params map[string]interface{} `json:"params,omitempty" yaml:"params,omitempty"`
+	ExecutionCondition *string                 `json:"executionCondition,omitempty" yaml:"executionCondition,omitempty"`
+	Name               string                  `json:"name" yaml:"name"`
+	Params             *map[string]interface{} `json:"params,omitempty" yaml:"params,omitempty"`
+	Version            string                  `json:"version" yaml:"version"`
 }
 
 // APIRevisionDeployment represents an API revision deployment
