@@ -532,27 +532,43 @@ func (p *ModelWeightedRoundRobinPolicy) modifyRequestModel(ctx *policy.RequestCo
 // modifyModelInPayload modifies the model in request body using JSONPath
 func (p *ModelWeightedRoundRobinPolicy) modifyModelInPayload(ctx *policy.RequestContext, newModel string, jsonPath string) policy.RequestAction {
 	if ctx.Body == nil || ctx.Body.Content == nil {
-		return policy.UpstreamRequestModifications{}
+		return policy.ImmediateResponse{
+			StatusCode: 400,
+			Headers:    map[string]string{"Content-Type": "application/json"},
+			Body:       []byte(`{"error":"Request body is empty."}`),
+		}
 	}
 
 	// Parse request body
 	var payloadData map[string]interface{}
 	if err := json.Unmarshal(ctx.Body.Content, &payloadData); err != nil {
 		slog.Debug("ModelWeightedRoundRobin: Error unmarshaling request body", "error", err)
-		return policy.UpstreamRequestModifications{}
+		return policy.ImmediateResponse{
+			StatusCode: 400,
+			Headers:    map[string]string{"Content-Type": "application/json"},
+			Body:       []byte(fmt.Sprintf(`{"error":"Invalid JSON in request body: %s"}`, err.Error())),
+		}
 	}
 
 	// Update model in payload
 	if err := utils.SetValueAtJSONPath(payloadData, jsonPath, newModel); err != nil {
 		slog.Debug("ModelWeightedRoundRobin: Error setting model in request body", "jsonPath", jsonPath, "error", err)
-		return policy.UpstreamRequestModifications{}
+		return policy.ImmediateResponse{
+			StatusCode: 400,
+			Headers:    map[string]string{"Content-Type": "application/json"},
+			Body:       []byte(fmt.Sprintf(`{"error":"Invalid or missing model at '%s': %s"}`, jsonPath, err.Error())),
+		}
 	}
 
 	// Marshal back to JSON
 	updatedPayload, err := json.Marshal(payloadData)
 	if err != nil {
 		slog.Debug("ModelWeightedRoundRobin: Error marshaling updated request body", "error", err)
-		return policy.UpstreamRequestModifications{}
+		return policy.ImmediateResponse{
+			StatusCode: 500,
+			Headers:    map[string]string{"Content-Type": "application/json"},
+			Body:       []byte(fmt.Sprintf(`{"error":"Failed to serialize updated request body: %s"}`, err.Error())),
+		}
 	}
 
 	slog.Debug("ModelWeightedRoundRobin: Modified request model in payload", "originalModel", ctx.Metadata[MetadataKeyOriginalModel], "newModel", newModel, "jsonPath", jsonPath)

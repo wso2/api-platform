@@ -443,9 +443,9 @@ func (p *ModelRoundRobinPolicy) modifyRequestModel(ctx *policy.RequestContext, n
 func (p *ModelRoundRobinPolicy) modifyModelInPayload(ctx *policy.RequestContext, newModel string, jsonPath string) policy.RequestAction {
 	if ctx.Body == nil || ctx.Body.Content == nil {
 		return policy.ImmediateResponse{
-			StatusCode: 500,
+			StatusCode: 400,
 			Headers:    map[string]string{"Content-Type": "application/json"},
-			Body:       []byte(`{"error":"Request body is empty, cannot modify model"}`),
+			Body:       []byte(`{"error":"Request body is empty."}`),
 		}
 	}
 
@@ -454,9 +454,9 @@ func (p *ModelRoundRobinPolicy) modifyModelInPayload(ctx *policy.RequestContext,
 	if err := json.Unmarshal(ctx.Body.Content, &payloadData); err != nil {
 		slog.Error("ModelRoundRobin: Error unmarshaling request body", "error", err)
 		return policy.ImmediateResponse{
-			StatusCode: 500,
+			StatusCode: 400,
 			Headers:    map[string]string{"Content-Type": "application/json"},
-			Body:       []byte(fmt.Sprintf(`{"error":"Failed to parse request body: %s"}`, err.Error())),
+			Body:       []byte(fmt.Sprintf(`{"error":"Invalid JSON in request body: %s"}`, err.Error())),
 		}
 	}
 
@@ -464,9 +464,9 @@ func (p *ModelRoundRobinPolicy) modifyModelInPayload(ctx *policy.RequestContext,
 	if err := utils.SetValueAtJSONPath(payloadData, jsonPath, newModel); err != nil {
 		slog.Error("ModelRoundRobin: Error setting model in request body", "jsonPath", jsonPath, "error", err)
 		return policy.ImmediateResponse{
-			StatusCode: 500,
+			StatusCode: 400,
 			Headers:    map[string]string{"Content-Type": "application/json"},
-			Body:       []byte(fmt.Sprintf(`{"error":"Failed to set model at jsonPath '%s': %s"}`, jsonPath, err.Error())),
+			Body:       []byte(fmt.Sprintf(`{"error":"Invalid or missing model at '%s': %s"}`, jsonPath, err.Error())),
 		}
 	}
 
@@ -477,7 +477,7 @@ func (p *ModelRoundRobinPolicy) modifyModelInPayload(ctx *policy.RequestContext,
 		return policy.ImmediateResponse{
 			StatusCode: 500,
 			Headers:    map[string]string{"Content-Type": "application/json"},
-			Body:       []byte(fmt.Sprintf(`{"error":"Failed to marshal updated request body: %s"}`, err.Error())),
+			Body:       []byte(fmt.Sprintf(`{"error":"Failed to serialize updated request body: %s"}`, err.Error())),
 		}
 	}
 
