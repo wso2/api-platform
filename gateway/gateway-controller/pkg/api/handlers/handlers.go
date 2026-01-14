@@ -2651,7 +2651,7 @@ func (s *APIServer) populatePropsForSystemPolicies(srcConfig any, props map[stri
 		if kindStr, ok := kind.(string); ok && kindStr == string(api.LlmProvider) {
 			template, err := s.getLLMProviderTemplate(srcConfig)
 			if err != nil {
-				zap.Error(err)
+				s.logger.Debug("Failed to get LLM provider template", zap.Error(err))
 			} else if template != nil {
 				// Pass the template to analytics policy
 				analyticsProps := make(map[string]interface{})

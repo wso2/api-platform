@@ -3,7 +3,6 @@ module github.com/policy-engine/system-policies/analytics
 go 1.25.1
 
 require (
-	github.com/wso2/api-platform/gateway/gateway-controller v0.0.0-20260109004602-f082675dada3
 	github.com/wso2/api-platform/sdk v0.3.0
 )
 
