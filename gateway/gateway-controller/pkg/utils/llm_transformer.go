@@ -48,8 +48,8 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	}
 
 	// Step 1.5: Get provider's template and extract template params
-	providerConfig, ok := provider.SourceConfiguration.(*api.LLMProviderConfiguration)
-	if !ok || providerConfig == nil {
+	providerConfig, ok := provider.SourceConfiguration.(api.LLMProviderConfiguration)
+	if !ok {
 		return nil, fmt.Errorf("provider source configuration is not LLMProviderConfiguration")
 	}
 
