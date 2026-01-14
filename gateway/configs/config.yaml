@@ -51,7 +51,7 @@ gateway_controller:
   router:
     # Gateway host for incoming requests
     gateway_host: "*"
-
+    # Event Gateway (WebSub Hub) configuration
     event_gateway:
       enabled: true
       websub_hub_url: "http://host.docker.internal"
