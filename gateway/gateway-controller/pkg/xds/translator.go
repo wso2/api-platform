@@ -181,7 +181,7 @@ func (t *Translator) TranslateConfigs(
 		var routesList []*route.Route
 		var clusterList []*cluster.Cluster
 		var err error
-		if cfg.Configuration.Kind == api.Asyncwebsub {
+		if cfg.Configuration.Kind == api.WebSubApi {
 			routesList, clusterList, err = t.translateAsyncAPIConfig(cfg)
 			if err != nil {
 				log.Error("Failed to translate config",
@@ -413,7 +413,7 @@ func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig) ([]*route
 			chPath = "/" + chPath
 		}
 		// Use mainClusterName by default; path rewrite based on main upstream path
-		r := t.createRoutePerTopic(apiData.Name, apiData.Version, apiData.Context, "POST", chPath,
+		r := t.createRoutePerTopic(apiData.DisplayName, apiData.Version, apiData.Context, "POST", chPath,
 			mainClusterName, effectiveMainVHost)
 		mainRoutesList = append(mainRoutesList, r)
 	}

@@ -85,10 +85,10 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 	}
 
 	// Validate kind
-	if config.Kind != api.RestApi && config.Kind != api.Asyncwebsub {
+	if config.Kind != api.RestApi && config.Kind != api.WebSubApi {
 		errors = append(errors, ValidationError{
 			Field:   "kind",
-			Message: "Unsupported API kind (only 'RestApi' and 'async/websub' are supported)",
+			Message: "Unsupported API kind (only 'RestApi' and 'WebSubApi' are supported)",
 		})
 	}
 
@@ -104,7 +104,7 @@ func (v *APIValidator) validateAPIConfiguration(config *api.APIConfiguration) []
 			// Validate data section
 			errors = append(errors, v.validateRestData(&spec)...)
 		}
-	case api.Asyncwebsub:
+	case api.WebSubApi:
 		spec, err := config.Spec.AsWebhookAPIData()
 		if err != nil {
 			errors = append(errors, ValidationError{
@@ -263,17 +263,17 @@ func (v *APIValidator) validateAsyncData(spec *api.WebhookAPIData, isWebSub bool
 	var errors []ValidationError
 
 	// Validate name
-	if spec.Name == "" {
+	if spec.DisplayName == "" {
 		errors = append(errors, ValidationError{
 			Field:   "spec.name",
 			Message: "API name is required",
 		})
-	} else if len(spec.Name) > 100 {
+	} else if len(spec.DisplayName) > 100 {
 		errors = append(errors, ValidationError{
 			Field:   "spec.name",
 			Message: "API name must be 1-100 characters",
 		})
-	} else if !v.urlFriendlyNameRegex.MatchString(spec.Name) {
+	} else if !v.urlFriendlyNameRegex.MatchString(spec.DisplayName) {
 		errors = append(errors, ValidationError{
 			Field:   "spec.name",
 			Message: "API name must be URL-friendly (only letters, numbers, spaces, hyphens, underscores, and dots allowed)",

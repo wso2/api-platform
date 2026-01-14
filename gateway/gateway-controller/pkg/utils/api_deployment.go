@@ -97,18 +97,17 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 	switch apiConfig.Kind {
 	case api.RestApi:
 		apiData, err := apiConfig.Spec.AsAPIConfigData()
-		fmt.Println("APIData: ", apiData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse REST API data: %w", err)
 		}
 		apiName = apiData.DisplayName
 		apiVersion = apiData.Version
-	case api.Asyncwebsub:
+	case api.WebSubApi:
 		webhookData, err := apiConfig.Spec.AsWebhookAPIData()
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse WebSub API data: %w", err)
 		}
-		apiName = webhookData.Name
+		apiName = webhookData.DisplayName
 		apiVersion = webhookData.Version
 
 		// Ensure an upstream main exists for async/websub configs so downstream
@@ -177,7 +176,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		DeployedVersion:     0,
 	}
 
-	if apiConfig.Kind == api.Asyncwebsub {
+	if apiConfig.Kind == api.WebSubApi {
 		topicsToRegister, topicsToUnregister := s.GetTopicsForUpdate(*storedCfg)
 		// TODO: Pre configure the dynamic forward proxy rules for event gw
 		// This was communication bridge will be created on the gw startup
@@ -197,7 +196,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 					childWg.Add(1)
 					go func(topic string) {
 						defer childWg.Done()
-						if err := s.RegisterTopicWithHub(s.httpClient, topic, "localhost", 8083, params.Logger); err != nil {
+						if err := s.RegisterTopicWithHub(s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, params.Logger); err != nil {
 							params.Logger.Error("Failed to register topic with WebSubHub",
 								slog.Any("error", err),
 								slog.String("topic", topic),
@@ -225,7 +224,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 					childWg.Add(1)
 					go func(topic string) {
 						defer childWg.Done()
-						if err := s.UnregisterTopicWithHub(s.httpClient, topic, "localhost", 8083, params.Logger); err != nil {
+						if err := s.UnregisterTopicWithHub(s.httpClient, topic, s.routerConfig.EventGateway.RouterHost, s.routerConfig.EventGateway.WebSubHubListenerPort, params.Logger); err != nil {
 							params.Logger.Error("Failed to deregister topic from WebSubHub",
 								slog.Any("error", err),
 								slog.String("topic", topic),
@@ -314,7 +313,7 @@ func (s *APIDeploymentService) GetTopicsForUpdate(apiConfig models.StoredConfig)
 
 	for _, topic := range asyncData.Channels {
 		// Remove leading '/' from name, context, version and topic path if present
-		name := strings.TrimPrefix(asyncData.Name, "/")
+		name := strings.TrimPrefix(asyncData.DisplayName, "/")
 		context := strings.TrimPrefix(asyncData.Context, "/")
 		version := strings.TrimPrefix(asyncData.Version, "/")
 		path := strings.TrimPrefix(topic.Path, "/")

@@ -28,10 +28,8 @@ const (
 
 // Defines values for APIConfigurationKind.
 const (
-	Asyncsse       APIConfigurationKind = "async/sse"
-	Asyncwebsocket APIConfigurationKind = "async/websocket"
-	Asyncwebsub    APIConfigurationKind = "async/websub"
-	RestApi        APIConfigurationKind = "RestApi"
+	RestApi   APIConfigurationKind = "RestApi"
+	WebSubApi APIConfigurationKind = "WebSubApi"
 )
 
 // Defines values for APIDetailResponseApiMetadataStatus.
@@ -1297,8 +1295,8 @@ type WebhookAPIData struct {
 	// Context Base path for all API routes (must start with /, no trailing slash)
 	Context string `json:"context" yaml:"context"`
 
-	// Name Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
-	Name string `json:"name" yaml:"name"`
+	// DisplayName Human-readable API name (must be URL-friendly - only letters, numbers, spaces, hyphens, underscores, and dots allowed)
+	DisplayName string `json:"displayName" yaml:"displayName"`
 
 	// Policies List of API-level policies applied to all operations unless overridden
 	Policies *[]Policy `json:"policies,omitempty" yaml:"policies,omitempty"`
