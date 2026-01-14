@@ -71,6 +71,22 @@ The metrics services included in the Docker Compose file (Prometheus and Grafana
 
 The gateway uses Docker Compose profiles to optionally enable these demonstration metrics services.
 
+#### Setting up Grafana Image
+
+**Important Note:** The Grafana image in the `docker-compose.yaml` file is intentionally left empty due to licensing considerations. Before you can use the demonstration dashboards, you must specify a valid Grafana image.
+
+To add the Grafana image:
+
+1. Open `gateway/docker-compose.yaml`.
+2. Locate the `grafana` service definition.
+3. Update the `image` field with a valid Grafana image tag (e.g., `grafana/grafana:11.6.0` or another compatible version).
+
+```yaml
+  grafana:
+    image: grafana/grafana:11.6.0  # Add your preferred Grafana image here
+    container_name: grafana
+```
+
 ### Start Gateway with Demonstrated Metrics Services
 
 To start the gateway with the demonstration metrics services enabled:
