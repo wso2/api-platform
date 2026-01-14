@@ -51,9 +51,6 @@ CREATE TABLE IF NOT EXISTS apis (
     lifecycle_status VARCHAR(20) DEFAULT 'CREATED',
     has_thumbnail BOOLEAN DEFAULT FALSE,
     is_default_version BOOLEAN DEFAULT FALSE,
-    is_revision BOOLEAN DEFAULT FALSE,
-    revisioned_api_id VARCHAR(40),
-    revision_id INTEGER DEFAULT 0,
     type VARCHAR(20) DEFAULT 'HTTP',
     transport VARCHAR(255), -- JSON array as TEXT
     security_enabled BOOLEAN,
@@ -219,17 +216,21 @@ CREATE TABLE IF NOT EXISTS policies (
 );
 
 
--- API Deployments table
+-- API Deployments table (immutable deployment artifacts)
 CREATE TABLE IF NOT EXISTS api_deployments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deployment_id VARCHAR(40) PRIMARY KEY,
     api_uuid VARCHAR(40) NOT NULL,
     organization_uuid VARCHAR(40) NOT NULL,
     gateway_uuid VARCHAR(40) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'DEPLOYED',
+    base_deployment_id VARCHAR(40), -- Reference to the deployment used as base, NULL if based on "current"
+    content BLOB NOT NULL, -- Immutable deployment artifact (API spec + config)
+    metadata TEXT, -- JSON object for flexible key-value metadata
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (api_uuid) REFERENCES apis(uuid) ON DELETE CASCADE,
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (gateway_uuid) REFERENCES gateways(uuid) ON DELETE CASCADE,
-    UNIQUE(api_uuid, gateway_uuid)
+    CHECK (status IN ('DEPLOYED', 'UNDEPLOYED'))
 );
 
 -- API Associations table (for both gateways and dev portals)
