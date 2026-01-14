@@ -136,9 +136,6 @@ func (s *APIService) CreateAPI(req *CreateAPIRequest, orgUUID string) (*dto.API,
 		LifeCycleStatus:  req.LifeCycleStatus,
 		HasThumbnail:     req.HasThumbnail,
 		IsDefaultVersion: req.IsDefaultVersion,
-		IsRevision:       req.IsRevision,
-		RevisionedAPIID:  req.RevisionedAPIID,
-		RevisionID:       req.RevisionID,
 		Type:             req.Type,
 		Transport:        req.Transport,
 		MTLS:             req.MTLS,
@@ -382,16 +379,6 @@ func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string) (*dto.APIGatew
 	return s.GetAPIGateways(apiUUID, orgId)
 }
 
-// DeployAPIRevisionByHandle deploys an API revision identified by handle
-func (s *APIService) DeployAPIRevisionByHandle(handle string, revisionID string,
-	deploymentRequests []dto.APIRevisionDeployment, orgId string) ([]*dto.APIRevisionDeployment, error) {
-	apiUUID, err := s.getAPIUUIDByHandle(handle, orgId)
-	if err != nil {
-		return nil, err
-	}
-	return s.DeployAPIRevision(apiUUID, revisionID, deploymentRequests, orgId)
-}
-
 // PublishAPIToDevPortalByHandle publishes an API identified by handle to a DevPortal
 func (s *APIService) PublishAPIToDevPortalByHandle(handle string, req *dto.PublishToDevPortalRequest, orgID string) error {
 	apiUUID, err := s.getAPIUUIDByHandle(handle, orgID)
@@ -417,120 +404,6 @@ func (s *APIService) GetAPIPublicationsByHandle(handle, orgID string) (*dto.APID
 		return nil, err
 	}
 	return s.GetAPIPublications(apiUUID, orgID)
-}
-
-// DeployAPIRevision deploys an API revision and generates deployment YAML
-func (s *APIService) DeployAPIRevision(apiUUID string, revisionID string,
-	deploymentRequests []dto.APIRevisionDeployment, orgUUID string) ([]*dto.APIRevisionDeployment, error) {
-	if apiUUID == "" {
-		return nil, errors.New("api id is required")
-	}
-
-	// Get the API from database
-	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
-	if err != nil {
-		return nil, err
-	}
-	if apiModel == nil {
-		return nil, constants.ErrAPINotFound
-	}
-	if apiModel.OrganizationID != orgUUID {
-		return nil, constants.ErrAPINotFound
-	}
-
-	// Get existing associations to check which gateways need association
-	existingAssociations, err := s.apiRepo.GetAPIAssociations(apiUUID, constants.AssociationTypeGateway, orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check existing API-gateway associations: %w", err)
-	}
-
-	// Create a map of existing gateway associations for quick lookup
-	existingGatewayIds := make(map[string]bool)
-	for _, assoc := range existingAssociations {
-		existingGatewayIds[assoc.ResourceID] = true
-	}
-
-	// Process deployment requests and create deployment responses
-	var deployments []*dto.APIRevisionDeployment
-	currentTime := time.Now().Format(time.RFC3339)
-
-	for _, deploymentReq := range deploymentRequests {
-		// Validate deployment request
-		if err := s.validateDeploymentRequest(&deploymentReq, apiModel, orgUUID); err != nil {
-			return nil, fmt.Errorf("invalid api deployment: %w", err)
-		}
-
-		// If gateway is not associated with the API, create the association
-		if !existingGatewayIds[deploymentReq.GatewayID] {
-			log.Printf("[INFO] Creating API-gateway association: apiUUID=%s gatewayId=%s",
-				apiUUID, deploymentReq.GatewayID)
-
-			association := &model.APIAssociation{
-				ApiID:           apiUUID,
-				OrganizationID:  orgUUID,
-				ResourceID:      deploymentReq.GatewayID,
-				AssociationType: constants.AssociationTypeGateway,
-				CreatedAt:       time.Now(),
-				UpdatedAt:       time.Now(),
-			}
-
-			if err := s.apiRepo.CreateAPIAssociation(association); err != nil {
-				return nil, fmt.Errorf("failed to create API-gateway association for gateway %s: %w",
-					deploymentReq.GatewayID, err)
-			}
-
-			// Add to the map to avoid duplicate creation in the same request
-			existingGatewayIds[deploymentReq.GatewayID] = true
-			log.Printf("[INFO] Created API-gateway association: apiUUID=%s gatewayId=%s associationId=%d",
-				apiUUID, deploymentReq.GatewayID, association.ID)
-		}
-
-		deployment := &dto.APIRevisionDeployment{
-			RevisionId:          revisionID, // Optional, can be empty
-			GatewayID:           deploymentReq.GatewayID,
-			Status:              "CREATED", // Default status for new deployments
-			VHost:               deploymentReq.VHost,
-			DisplayOnDevportal:  deploymentReq.DisplayOnDevportal,
-			DeployedTime:        &currentTime,
-			SuccessDeployedTime: &currentTime,
-		}
-
-		deployments = append(deployments, deployment)
-
-		// Create deployment record in the database
-		deploymentRecord := &model.APIDeployment{
-			ApiID:          apiUUID,
-			OrganizationID: orgUUID,
-			GatewayID:      deployment.GatewayID,
-		}
-
-		if err := s.apiRepo.CreateDeployment(deploymentRecord); err != nil {
-			log.Printf("[ERROR] Failed to create deployment record: apiUUID=%s gatewayID=%s error=%v",
-				apiUUID, deployment.GatewayID, err)
-		} else {
-			log.Printf("[INFO] Created deployment record: apiUUID=%s gatewayID=%s deploymentId=%d",
-				apiUUID, deployment.GatewayID, deploymentRecord.ID)
-		}
-
-		// Send deployment event to gateway via WebSocket
-		deploymentEvent := &model.APIDeploymentEvent{
-			ApiId:       apiUUID,
-			RevisionID:  revisionID,
-			Vhost:       deployment.VHost,
-			Environment: "production", // Default environment
-		}
-
-		// Broadcast deployment event to target gateway
-		if s.gatewayEventsService != nil {
-			if err := s.gatewayEventsService.BroadcastDeploymentEvent(deployment.GatewayID, deploymentEvent); err != nil {
-				log.Printf("[WARN] Failed to broadcast deployment event: apiUUID=%s gatewayID=%s error=%v",
-					apiUUID, deployment.GatewayID, err)
-				// Continue execution - event delivery failure doesn't fail the deployment
-			}
-		}
-	}
-
-	return deployments, nil
 }
 
 // AddGatewaysToAPI associates multiple gateways with an API
@@ -664,38 +537,6 @@ func (s *APIService) GetAPIGateways(apiUUID, orgUUID string) (*dto.APIGatewayLis
 	return listResponse, nil
 }
 
-// validateDeploymentRequest validates the deployment request
-func (s *APIService) validateDeploymentRequest(req *dto.APIRevisionDeployment, api *model.API, orgUUID string) error {
-	if req.GatewayID == "" {
-		return errors.New("gateway Id is required")
-	}
-	if req.VHost == "" {
-		return errors.New("vhost is required")
-	}
-	// TODO - vHost validation
-	gateway, err := s.gatewayRepo.GetByUUID(req.GatewayID)
-	if err != nil {
-		return fmt.Errorf("failed to get gateway: %w", err)
-	}
-	if gateway == nil {
-		return fmt.Errorf("failed to get gateway: %w", err)
-	}
-	if gateway.OrganizationID != orgUUID {
-		return fmt.Errorf("failed to get gateway: %w", err)
-	}
-
-	// Validate that the API has at least one backend service attached
-	backendServices, err := s.backendServiceRepo.GetBackendServicesByAPIID(api.ID)
-	if err != nil {
-		return fmt.Errorf("failed to get backend services for API: %w", err)
-	}
-	if len(backendServices) == 0 {
-		return errors.New("API must have at least one backend service attached before deployment")
-	}
-
-	return nil
-}
-
 // createDefaultDevPortalAssociation creates an association between the API and the default DevPortal
 func (s *APIService) createDefaultDevPortalAssociation(apiId, orgId string) error {
 	// Get default DevPortal for the organization
@@ -824,15 +665,6 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *UpdateAPI
 	}
 	if req.IsDefaultVersion != nil {
 		existingAPI.IsDefaultVersion = *req.IsDefaultVersion
-	}
-	if req.IsRevision != nil {
-		existingAPI.IsRevision = *req.IsRevision
-	}
-	if req.RevisionedAPIID != nil {
-		existingAPI.RevisionedAPIID = *req.RevisionedAPIID
-	}
-	if req.RevisionID != nil {
-		existingAPI.RevisionID = *req.RevisionID
 	}
 	if req.Type != nil {
 		existingAPI.Type = *req.Type
@@ -996,9 +828,6 @@ type CreateAPIRequest struct {
 	LifeCycleStatus  string                  `json:"lifeCycleStatus,omitempty"`
 	HasThumbnail     bool                    `json:"hasThumbnail,omitempty"`
 	IsDefaultVersion bool                    `json:"isDefaultVersion,omitempty"`
-	IsRevision       bool                    `json:"isRevision,omitempty"`
-	RevisionedAPIID  string                  `json:"revisionedApiId,omitempty"`
-	RevisionID       int                     `json:"revisionId,omitempty"`
 	Type             string                  `json:"type,omitempty"`
 	Transport        []string                `json:"transport,omitempty"`
 	MTLS             *dto.MTLSConfig         `json:"mtls,omitempty"`
@@ -1018,9 +847,6 @@ type UpdateAPIRequest struct {
 	LifeCycleStatus  *string                 `json:"lifeCycleStatus,omitempty"`
 	HasThumbnail     *bool                   `json:"hasThumbnail,omitempty"`
 	IsDefaultVersion *bool                   `json:"isDefaultVersion,omitempty"`
-	IsRevision       *bool                   `json:"isRevision,omitempty"`
-	RevisionedAPIID  *string                 `json:"revisionedApiId,omitempty"`
-	RevisionID       *int                    `json:"revisionId,omitempty"`
 	Type             *string                 `json:"type,omitempty"`
 	Transport        *[]string               `json:"transport,omitempty"`
 	MTLS             *dto.MTLSConfig         `json:"mtls,omitempty"`
@@ -1140,9 +966,6 @@ func (s *APIService) ImportAPIProject(req *dto.ImportAPIProjectRequest, orgUUID 
 		LifeCycleStatus:  apiData.LifeCycleStatus,
 		HasThumbnail:     apiData.HasThumbnail,
 		IsDefaultVersion: apiData.IsDefaultVersion,
-		IsRevision:       apiData.IsRevision,
-		RevisionedAPIID:  apiData.RevisionedAPIID,
-		RevisionID:       apiData.RevisionID,
 		Type:             apiData.Type,
 		Transport:        apiData.Transport,
 		MTLS:             apiData.MTLS,
@@ -1198,14 +1021,6 @@ func (s *APIService) mergeAPIData(artifact *dto.APIYAMLData, userAPIData *dto.AP
 	// Handle boolean fields
 	apiDTO.HasThumbnail = userAPIData.HasThumbnail
 	apiDTO.IsDefaultVersion = userAPIData.IsDefaultVersion
-	apiDTO.IsRevision = userAPIData.IsRevision
-
-	if userAPIData.RevisionedAPIID != "" {
-		apiDTO.RevisionedAPIID = userAPIData.RevisionedAPIID
-	}
-	if userAPIData.RevisionID != 0 {
-		apiDTO.RevisionID = userAPIData.RevisionID
-	}
 
 	return apiDTO
 }
