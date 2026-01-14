@@ -379,20 +379,19 @@ func (t *Translator) TranslateConfigs(
 // translateAsyncAPIConfig translates a single API configuration
 func (t *Translator) translateAsyncAPIConfig(cfg *models.StoredConfig) ([]*route.Route, []*cluster.Cluster, error) {
 	apiData, err := cfg.Configuration.Spec.AsWebhookAPIData()
-	cfg.GetContext()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse API config data: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse WebSub config data: %w", err)
 	}
 
 	clusters := []*cluster.Cluster{}
 
 	mainClusterName := constants.WEBSUBHUB_INTERNAL_CLUSTER_NAME
 	parsedMainURL, err := url.Parse(t.routerConfig.EventGateway.WebSubHubURL)
-	if parsedMainURL.Path == "" {
-		parsedMainURL.Path = "/hub"
-	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid upstream URL: %w", err)
+	}
+	if parsedMainURL.Path == "" {
+		parsedMainURL.Path = "/hub"
 	}
 
 	// Create routes for each operation (default to main cluster)

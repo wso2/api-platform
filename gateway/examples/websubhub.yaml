@@ -26,7 +26,7 @@ spec:
                   value: world
     -  path: /issues
        subscribe:
-         policies:
+        policies:
           - name: ModifyHeaders
             version: v1.0.0
             enabled: true
