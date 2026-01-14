@@ -25,7 +25,7 @@ spec:
                   name: operation-level-res-header
                   value: world
     -  path: /issues
-       publish:
+       subscribe:
          policies:
           - name: ModifyHeaders
             version: v1.0.0
