@@ -242,7 +242,11 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 
 	// prepare metaInfo
 	metaInfo := dto.MetaInfo{}
-	metaInfo.CorrelationID = logEntry.GetRequest().RequestId
+	if logEntry.GetCommonProperties().GetStreamId() != "" {
+		metaInfo.CorrelationID = logEntry.GetCommonProperties().GetStreamId()
+	} else {
+		metaInfo.CorrelationID = logEntry.GetRequest().RequestId
+	}
 	metaInfo.RegionID = keyValuePairsFromMetadata[RegionKey]
 
 	userAgent := logEntry.GetRequest().GetUserAgent()
