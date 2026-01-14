@@ -53,8 +53,10 @@ if now >= allow_at and count <= remaining then
     allowed = 1
     new_tat = tat + (emission_interval * count)  -- MODIFIED: multiply by count
 
-    -- Update TAT in Redis with expiration
-    redis.call('SET', key, new_tat, 'EX', expiration)
+    -- Update TAT in Redis with expiration (skip for peek operations where count=0)
+    if count > 0 then
+        redis.call('SET', key, new_tat, 'EX', expiration)
+    end
 
     -- Recalculate remaining after consuming
     if new_tat < now then

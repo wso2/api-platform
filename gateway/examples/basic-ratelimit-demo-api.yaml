@@ -1,0 +1,64 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# This example demonstrates various rate limiting configurations
+# See the documentation at: docs/gateway/policies/ratelimit.md
+
+apiVersion: gateway.api-platform.wso2.com/v1alpha1
+kind: RestApi
+metadata:
+  name: ecommerce-api-v1
+spec:
+  displayName: E-Commerce API with Rate Limiting
+  version: v1.0
+  context: /ecommerce/v1.0
+  upstream:
+    main:
+      url: http://sample-backend:5000/api/v1
+
+  # API-level rate limiting: Apply to all operations
+  policies:
+    - name: basic-ratelimit                                                                                                                                  
+      version: v0.1.0                                                                                                                                        
+      params:                                                                                                                                            
+        limits:                                                                                                                                              
+          - limit: 100                                                                                                                                       
+            duration: "1m"                                                                                                                                   
+          - limit: 1000                                                                                                                                      
+            duration: "1h"
+
+  operations:
+    # Example 1: Basic rate limiting (inherits API-level policy)
+    # This operation will have: 100 req/min AND 1000 req/hour per user
+    - method: GET
+      path: /products
+      description: "Get product catalog - standard rate limit"
+
+    # Example 2: Per-operation with different cost (weighted rate limiting)
+    # Complex queries cost more tokens than simple lookups
+    - method: GET
+      path: /products/search
+      policies:
+        - name: basic-ratelimit                                                                                                                                  
+          version: v0.1.0                                                                                                                                        
+          params:                                                                                                                                            
+            limits:                                                                                                                                              
+              - limit: 200                                                                                                                                       
+                duration: "1m"                                                                                                                                   
+              - limit: 2000                                                                                                                                      
+                duration: "1h"

@@ -3,7 +3,7 @@ package gcra
 import (
 	"fmt"
 
-	"github.com/policy-engine/policies/ratelimit/limiter"
+	"github.com/policy-engine/policies/advanced-ratelimit/limiter"
 )
 
 func init() {
