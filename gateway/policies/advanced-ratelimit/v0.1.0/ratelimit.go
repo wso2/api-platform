@@ -78,9 +78,9 @@ func GetPolicy(
 	}
 
 	// Extract API metadata for scope-based caching
-	apiId := ""      // metadata.APIId - field temporarily unavailable
-	apiName := ""    // metadata.APIName - field temporarily unavailable
-	apiVersion := "" // metadata.APIVersion - field temporarily unavailable
+	apiId := metadata.APIId
+	apiName := metadata.APIName
+	apiVersion := metadata.APIVersion
 
 	// Parse onRateLimitExceeded (optional)
 	statusCode := 429

@@ -1208,3 +1208,100 @@ Feature: Rate Limiting
     Then the response status code should be 429
     And the response body should contain "Rate limit exceeded"
 
+  Scenario: Different APIs with apiname key extraction have isolated quotas
+    # This test verifies that two different APIs using apiname key extraction
+    # each get their own separate rate limit bucket (not shared).
+    # This guards against the bug where empty/missing apiName causes cache key collisions.
+    Given I authenticate using basic auth as "admin"
+
+    # Deploy first API with apiname-based rate limiting
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-apiname-isolation-api-a
+      spec:
+        displayName: RateLimit ApiName Isolation API A
+        version: v1.0
+        context: /ratelimit-apiname-isolation-a/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /resource
+            policies:
+              - name: advanced-ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: api-quota
+                      limits:
+                        - limit: 5
+                          duration: "1h"
+                      keyExtraction:
+                        - type: apiname
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-apiname-isolation-a/v1.0/health" to be ready
+
+    # Deploy second API with the same rate limit configuration but different API name
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-apiname-isolation-api-b
+      spec:
+        displayName: RateLimit ApiName Isolation API B
+        version: v1.0
+        context: /ratelimit-apiname-isolation-b/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /resource
+            policies:
+              - name: advanced-ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - name: api-quota
+                      limits:
+                        - limit: 5
+                          duration: "1h"
+                      keyExtraction:
+                        - type: apiname
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-apiname-isolation-b/v1.0/health" to be ready
+
+    # Exhaust API-A's quota (5 requests)
+    When I send 5 GET requests to "http://localhost:8080/ratelimit-apiname-isolation-a/v1.0/resource"
+    Then the response status code should be 200
+
+    # Verify API-A is rate limited
+    When I send a GET request to "http://localhost:8080/ratelimit-apiname-isolation-a/v1.0/resource"
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
+    # API-B should still have its full quota (proves isolation)
+    # If there was a cache key collision, API-B would also be rate limited
+    When I send 5 GET requests to "http://localhost:8080/ratelimit-apiname-isolation-b/v1.0/resource"
+    Then the response status code should be 200
+
+    # Verify API-B is now rate limited (after exhausting its own quota)
+    When I send a GET request to "http://localhost:8080/ratelimit-apiname-isolation-b/v1.0/resource"
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
+    # Double-check API-A is still rate limited (not affected by API-B usage)
+    When I send a GET request to "http://localhost:8080/ratelimit-apiname-isolation-a/v1.0/resource"
+    Then the response status code should be 429
+

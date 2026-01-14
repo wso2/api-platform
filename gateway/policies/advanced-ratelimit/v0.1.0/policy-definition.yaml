@@ -172,7 +172,7 @@ parameters:
                         Use this for weighted token counting:
                         - Prompt tokens: multiplier 0.1 (cheaper)
                         - Completion tokens: multiplier 0.3 (more expensive)
-                        Can be negative for refund scenarios (use with caution).
+                      minimum: 0
                       default: 1.0
 
               default:

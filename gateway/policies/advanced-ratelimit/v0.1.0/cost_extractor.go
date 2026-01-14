@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -294,7 +295,7 @@ func extractFromMetadataMap(metadata map[string]interface{}, key string) (float6
 	default:
 		slog.Warn("Unsupported type for cost in metadata",
 			"key", key,
-			"type", val)
+			"type", fmt.Sprintf("%T", val))
 	}
 
 	return 0, false
@@ -426,7 +427,7 @@ func parseCostExtractionConfig(raw interface{}) (*CostExtractionConfig, error) {
 	}
 
 	config.Sources = make([]CostSource, 0, len(sourcesRaw))
-	for _, sourceRaw := range sourcesRaw {
+	for i, sourceRaw := range sourcesRaw {
 		sourceMap, ok := sourceRaw.(map[string]interface{})
 		if !ok {
 			continue
@@ -452,8 +453,14 @@ func parseCostExtractionConfig(raw interface{}) (*CostExtractionConfig, error) {
 
 		// Parse multiplier
 		if mult, ok := sourceMap["multiplier"].(float64); ok {
+			if mult < 0 {
+				return nil, fmt.Errorf("sources[%d].multiplier must be non-negative, got %v", i, mult)
+			}
 			source.Multiplier = mult
 		} else if mult, ok := sourceMap["multiplier"].(int); ok {
+			if mult < 0 {
+				return nil, fmt.Errorf("sources[%d].multiplier must be non-negative, got %v", i, mult)
+			}
 			source.Multiplier = float64(mult)
 		}
 
