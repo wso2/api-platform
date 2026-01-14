@@ -4,11 +4,25 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+)
+
+// statementKey identifies a prepared statement for re-preparation
+type statementKey int
+
+const (
+	stmtKeyGetAllStates statementKey = iota
+	stmtKeyGetEventsSince
+	stmtKeyInsertEvent
+	stmtKeyUpdateOrgState
+	stmtKeyInsertOrgState
+	stmtKeyCleanup
+	stmtKeyCleanupRange
 )
 
 // SQLiteBackend implements the Backend interface using SQLite with polling
@@ -25,8 +39,17 @@ type SQLiteBackend struct {
 	cleanupCancel context.CancelFunc
 	wg            sync.WaitGroup
 
+	// Prepared statements for performance
+	stmtGetAllStates   *sql.Stmt
+	stmtGetEventsSince *sql.Stmt
+	stmtInsertEvent    *sql.Stmt
+	stmtUpdateOrgState *sql.Stmt
+	stmtInsertOrgState *sql.Stmt
+	stmtCleanup        *sql.Stmt
+	stmtCleanupRange   *sql.Stmt
+
 	initialized bool
-	mu          sync.Mutex
+	mu          sync.RWMutex
 }
 
 // NewSQLiteBackend creates a new SQLite-based backend
@@ -53,6 +76,11 @@ func (b *SQLiteBackend) Initialize(ctx context.Context) error {
 
 	b.logger.Info("Initializing SQLite backend")
 
+	// Prepare statements for performance
+	if err := b.prepareStatements(); err != nil {
+		return fmt.Errorf("failed to prepare statements: %w", err)
+	}
+
 	// Start poller
 	b.pollerCtx, b.pollerCancel = context.WithCancel(ctx)
 	b.wg.Add(1)
@@ -72,21 +100,293 @@ func (b *SQLiteBackend) Initialize(ctx context.Context) error {
 	return nil
 }
 
+// ensureInitialized checks if the backend is initialized and returns an error if not
+func (b *SQLiteBackend) ensureInitialized() error {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	if !b.initialized {
+		return fmt.Errorf("SQLite backend not initialized")
+	}
+	return nil
+}
+
+// getStatement returns the prepared statement for the given key (caller must hold at least RLock)
+func (b *SQLiteBackend) getStatement(key statementKey) *sql.Stmt {
+	switch key {
+	case stmtKeyGetAllStates:
+		return b.stmtGetAllStates
+	case stmtKeyGetEventsSince:
+		return b.stmtGetEventsSince
+	case stmtKeyInsertEvent:
+		return b.stmtInsertEvent
+	case stmtKeyUpdateOrgState:
+		return b.stmtUpdateOrgState
+	case stmtKeyInsertOrgState:
+		return b.stmtInsertOrgState
+	case stmtKeyCleanup:
+		return b.stmtCleanup
+	case stmtKeyCleanupRange:
+		return b.stmtCleanupRange
+	default:
+		return nil
+	}
+}
+
+// setStatement sets the prepared statement for the given key (caller must hold Lock)
+func (b *SQLiteBackend) setStatement(key statementKey, stmt *sql.Stmt) {
+	switch key {
+	case stmtKeyGetAllStates:
+		b.stmtGetAllStates = stmt
+	case stmtKeyGetEventsSince:
+		b.stmtGetEventsSince = stmt
+	case stmtKeyInsertEvent:
+		b.stmtInsertEvent = stmt
+	case stmtKeyUpdateOrgState:
+		b.stmtUpdateOrgState = stmt
+	case stmtKeyInsertOrgState:
+		b.stmtInsertOrgState = stmt
+	case stmtKeyCleanup:
+		b.stmtCleanup = stmt
+	case stmtKeyCleanupRange:
+		b.stmtCleanupRange = stmt
+	}
+}
+
+// prepareStatement prepares a single statement by key
+func (b *SQLiteBackend) prepareStatement(key statementKey) (*sql.Stmt, error) {
+	var query string
+	switch key {
+	case stmtKeyGetAllStates:
+		query = `
+			SELECT organization, version_id, updated_at
+			FROM organization_states
+			ORDER BY organization
+		`
+	case stmtKeyGetEventsSince:
+		query = `
+			SELECT processed_timestamp, originated_timestamp, event_type,
+			       action, entity_id, correlation_id, event_data
+			FROM events
+			WHERE organization_id = ? AND processed_timestamp > ?
+			ORDER BY processed_timestamp ASC
+		`
+	case stmtKeyInsertEvent:
+		query = `
+			INSERT INTO events (organization_id, processed_timestamp, originated_timestamp,
+			                   event_type, action, entity_id, correlation_id, event_data)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`
+	case stmtKeyUpdateOrgState:
+		query = `
+			INSERT INTO organization_states (organization, version_id, updated_at)
+			VALUES (?, ?, ?)
+			ON CONFLICT(organization)
+			DO UPDATE SET version_id = excluded.version_id, updated_at = excluded.updated_at
+		`
+	case stmtKeyInsertOrgState:
+		query = `
+			INSERT INTO organization_states (organization, version_id, updated_at)
+			VALUES (?, ?, ?)
+			ON CONFLICT(organization)
+			DO NOTHING
+		`
+	case stmtKeyCleanup:
+		query = `DELETE FROM events WHERE processed_timestamp < ?`
+	case stmtKeyCleanupRange:
+		query = `DELETE FROM events WHERE processed_timestamp >= ? AND processed_timestamp <= ?`
+	default:
+		return nil, fmt.Errorf("unknown statement key: %d", key)
+	}
+
+	stmt, err := b.db.Prepare(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare statement (key=%d): %w", key, err)
+	}
+	return stmt, nil
+}
+
+// isRecoverableError checks if an error indicates a statement needs re-preparation
+func (b *SQLiteBackend) isRecoverableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	// SQLite schema change errors indicate statements need re-preparation
+	return strings.Contains(errStr, "schema") ||
+		strings.Contains(errStr, "SQLITE_SCHEMA")
+}
+
+// execWithRetry executes a prepared statement with automatic re-preparation on recoverable errors
+func (b *SQLiteBackend) execWithRetry(ctx context.Context, key statementKey, args ...any) (sql.Result, error) {
+	b.mu.RLock()
+	stmt := b.getStatement(key)
+	b.mu.RUnlock()
+
+	if stmt == nil {
+		return nil, fmt.Errorf("statement not initialized (key=%d)", key)
+	}
+
+	result, err := stmt.ExecContext(ctx, args...)
+	if err != nil && b.isRecoverableError(err) {
+		// Re-prepare and retry once
+		b.logger.Warn("Statement execution failed with recoverable error, re-preparing",
+			zap.Int("statementKey", int(key)),
+			zap.Error(err))
+
+		b.mu.Lock()
+		newStmt, prepErr := b.prepareStatement(key)
+		if prepErr == nil {
+			// Close old statement
+			if oldStmt := b.getStatement(key); oldStmt != nil {
+				_ = oldStmt.Close()
+			}
+			b.setStatement(key, newStmt)
+			stmt = newStmt
+		}
+		b.mu.Unlock()
+
+		if prepErr != nil {
+			return nil, fmt.Errorf("re-preparation failed after recoverable error: %w (original: %v)", prepErr, err)
+		}
+
+		// Retry with new statement
+		result, err = stmt.ExecContext(ctx, args...)
+	}
+	return result, err
+}
+
+// queryWithRetry executes a prepared query with automatic re-preparation on recoverable errors
+func (b *SQLiteBackend) queryWithRetry(ctx context.Context, key statementKey, args ...any) (*sql.Rows, error) {
+	b.mu.RLock()
+	stmt := b.getStatement(key)
+	b.mu.RUnlock()
+
+	if stmt == nil {
+		return nil, fmt.Errorf("statement not initialized (key=%d)", key)
+	}
+
+	rows, err := stmt.QueryContext(ctx, args...)
+	if err != nil && b.isRecoverableError(err) {
+		// Re-prepare and retry once
+		b.logger.Warn("Statement query failed with recoverable error, re-preparing",
+			zap.Int("statementKey", int(key)),
+			zap.Error(err))
+
+		b.mu.Lock()
+		newStmt, prepErr := b.prepareStatement(key)
+		if prepErr == nil {
+			// Close old statement
+			if oldStmt := b.getStatement(key); oldStmt != nil {
+				_ = oldStmt.Close()
+			}
+			b.setStatement(key, newStmt)
+			stmt = newStmt
+		}
+		b.mu.Unlock()
+
+		if prepErr != nil {
+			return nil, fmt.Errorf("re-preparation failed after recoverable error: %w (original: %v)", prepErr, err)
+		}
+
+		// Retry with new statement
+		rows, err = stmt.QueryContext(ctx, args...)
+	}
+	return rows, err
+}
+
+// prepareStatements prepares all frequently-used SQL statements for performance
+func (b *SQLiteBackend) prepareStatements() (err error) {
+	// Clean up any successfully prepared statements if we fail partway through
+	defer func() {
+		if err != nil {
+			b.closeStatements()
+		}
+	}()
+
+	// Prepare getAllStates query
+	b.stmtGetAllStates, err = b.db.Prepare(`
+		SELECT organization, version_id, updated_at
+		FROM organization_states
+		ORDER by organization
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare getAllStates: %w", err)
+	}
+
+	// Prepare getEventsSince query
+	b.stmtGetEventsSince, err = b.db.Prepare(`
+		SELECT processed_timestamp, originated_timestamp, event_type,
+		       action, entity_id, correlation_id, event_data
+		FROM events
+		WHERE organization_id = ? AND processed_timestamp > ?
+		ORDER BY processed_timestamp ASC
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare getEventsSince: %w", err)
+	}
+
+	// Prepare insertEvent query
+	b.stmtInsertEvent, err = b.db.Prepare(`
+		INSERT INTO events (organization_id, processed_timestamp, originated_timestamp,
+		                   event_type, action, entity_id, correlation_id, event_data)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare insertEvent: %w", err)
+	}
+
+	// Prepare updateOrgState query
+	b.stmtUpdateOrgState, err = b.db.Prepare(`
+		INSERT INTO organization_states (organization, version_id, updated_at)
+		VALUES (?, ?, ?)
+		ON CONFLICT(organization)
+		DO UPDATE SET version_id = excluded.version_id, updated_at = excluded.updated_at
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare updateOrgState: %w", err)
+	}
+
+	// Prepare insertOrgState query (for RegisterOrganization)
+	b.stmtInsertOrgState, err = b.db.Prepare(`
+		INSERT INTO organization_states (organization, version_id, updated_at)
+		VALUES (?, ?, ?)
+		ON CONFLICT(organization)
+		DO NOTHING
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare insertOrgState: %w", err)
+	}
+
+	// Prepare cleanup query
+	b.stmtCleanup, err = b.db.Prepare(`DELETE FROM events WHERE processed_timestamp < ?`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare cleanup: %w", err)
+	}
+
+	// Prepare cleanupRange query
+	b.stmtCleanupRange, err = b.db.Prepare(`DELETE FROM events WHERE processed_timestamp >= ? AND processed_timestamp <= ?`)
+	if err != nil {
+		return fmt.Errorf("failed to prepare cleanupRange: %w", err)
+	}
+
+	b.logger.Info("Prepared statements initialized successfully")
+	return nil
+}
+
 // RegisterOrganization creates the necessary resources for an organization
 func (b *SQLiteBackend) RegisterOrganization(ctx context.Context, orgID string) error {
+	if err := b.ensureInitialized(); err != nil {
+		return err
+	}
+
 	// Register in local registry
 	if err := b.registry.register(orgID); err != nil {
 		return err
 	}
 
-	// Initialize state in database
-	query := `
-		INSERT INTO organization_states (organization, version_id, updated_at)
-		VALUES (?, ?, ?)
-		ON CONFLICT(organization)
-		DO NOTHING
-	`
-	_, err := b.db.ExecContext(ctx, query, string(orgID), "", time.Now())
+	// Initialize state in database using prepared statement with retry
+	_, err := b.execWithRetry(ctx, stmtKeyInsertOrgState, string(orgID), "", time.Now())
 	if err != nil {
 		return fmt.Errorf("failed to initialize organization state: %w", err)
 	}
@@ -100,6 +400,10 @@ func (b *SQLiteBackend) RegisterOrganization(ctx context.Context, orgID string) 
 // Publish publishes an event for an organization
 func (b *SQLiteBackend) Publish(ctx context.Context, orgID string,
 	eventType EventType, action, entityID, correlationID string, eventData []byte) error {
+
+	if err := b.ensureInitialized(); err != nil {
+		return err
+	}
 
 	// Verify organization is registered
 	_, err := b.registry.get(orgID)
@@ -116,27 +420,24 @@ func (b *SQLiteBackend) Publish(ctx context.Context, orgID string,
 
 	now := time.Now()
 
-	// Insert event
-	insertQuery := `
-		INSERT INTO events (organization_id, processed_timestamp, originated_timestamp,
-		                   event_type, action, entity_id, correlation_id, event_data)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`
-	_, err = tx.ExecContext(ctx, insertQuery,
+	// Use prepared statements within transaction
+	// Note: For transaction-bound statements, we use tx.Stmt() to get transaction-specific handles
+	// Retry logic doesn't apply within transactions as the transaction would need to be restarted
+	b.mu.RLock()
+	txStmtInsertEvent := tx.Stmt(b.stmtInsertEvent)
+	txStmtUpdateOrgState := tx.Stmt(b.stmtUpdateOrgState)
+	b.mu.RUnlock()
+
+	// Insert event using prepared statement
+	_, err = txStmtInsertEvent.ExecContext(ctx,
 		string(orgID), now, now, string(eventType), action, entityID, correlationID, eventData)
 	if err != nil {
 		return fmt.Errorf("failed to record event: %w", err)
 	}
 
-	// Update organization state version
+	// Update organization state version using prepared statement
 	newVersion := uuid.New().String()
-	updateQuery := `
-		INSERT INTO organization_states (organization, version_id, updated_at)
-		VALUES (?, ?, ?)
-		ON CONFLICT(organization)
-		DO UPDATE SET version_id = excluded.version_id, updated_at = excluded.updated_at
-	`
-	_, err = tx.ExecContext(ctx, updateQuery, string(orgID), newVersion, now)
+	_, err = txStmtUpdateOrgState.ExecContext(ctx, string(orgID), newVersion, now)
 	if err != nil {
 		return fmt.Errorf("failed to update state: %w", err)
 	}
@@ -183,8 +484,11 @@ func (b *SQLiteBackend) Unsubscribe(orgID string, eventChan chan<- []Event) erro
 
 // Cleanup removes old events based on retention policy
 func (b *SQLiteBackend) Cleanup(ctx context.Context, olderThan time.Time) error {
-	query := `DELETE FROM events WHERE processed_timestamp < ?`
-	result, err := b.db.ExecContext(ctx, query, olderThan)
+	if err := b.ensureInitialized(); err != nil {
+		return err
+	}
+
+	result, err := b.execWithRetry(ctx, stmtKeyCleanup, olderThan)
 	if err != nil {
 		return fmt.Errorf("failed to cleanup old events: %w", err)
 	}
@@ -199,8 +503,11 @@ func (b *SQLiteBackend) Cleanup(ctx context.Context, olderThan time.Time) error 
 
 // CleanupRange removes events within a specific time range
 func (b *SQLiteBackend) CleanupRange(ctx context.Context, from, to time.Time) error {
-	query := `DELETE FROM events WHERE processed_timestamp >= ? AND processed_timestamp <= ?`
-	result, err := b.db.ExecContext(ctx, query, from, to)
+	if err := b.ensureInitialized(); err != nil {
+		return err
+	}
+
+	result, err := b.execWithRetry(ctx, stmtKeyCleanupRange, from, to)
 	if err != nil {
 		return fmt.Errorf("failed to cleanup events: %w", err)
 	}
@@ -238,9 +545,34 @@ func (b *SQLiteBackend) Close() error {
 	// Wait for goroutines
 	b.wg.Wait()
 
+	// Close all prepared statements
+	b.closeStatements()
+
 	b.initialized = false
 	b.logger.Info("SQLite backend shutdown complete")
 	return nil
+}
+
+// closeStatements closes all prepared statements
+func (b *SQLiteBackend) closeStatements() {
+	statements := []*sql.Stmt{
+		b.stmtGetAllStates,
+		b.stmtGetEventsSince,
+		b.stmtInsertEvent,
+		b.stmtUpdateOrgState,
+		b.stmtInsertOrgState,
+		b.stmtCleanup,
+		b.stmtCleanupRange,
+	}
+
+	for _, stmt := range statements {
+		if stmt != nil {
+			if err := stmt.Close(); err != nil {
+				b.logger.Warn("Failed to close prepared statement", zap.Error(err))
+			}
+		}
+	}
+	b.logger.Info("Prepared statements closed successfully")
 }
 
 // pollLoop runs the main polling loop for state changes
@@ -318,13 +650,11 @@ func (b *SQLiteBackend) pollAllOrganizations() {
 
 // getAllStates retrieves all organization states
 func (b *SQLiteBackend) getAllStates(ctx context.Context) ([]OrganizationState, error) {
-	query := `
-		SELECT organization, version_id, updated_at
-		FROM organization_states
-		ORDER BY organization
-	`
+	if err := b.ensureInitialized(); err != nil {
+		return nil, err
+	}
 
-	rows, err := b.db.QueryContext(ctx, query)
+	rows, err := b.queryWithRetry(ctx, stmtKeyGetAllStates)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query all states: %w", err)
 	}
@@ -343,16 +673,12 @@ func (b *SQLiteBackend) getAllStates(ctx context.Context) ([]OrganizationState, 
 
 // getEventsSince retrieves events for an organization after a given timestamp
 func (b *SQLiteBackend) getEventsSince(ctx context.Context, orgID string, since time.Time) ([]Event, error) {
-	// TODO: (VirajSalaka) Implement pagination if large number of events
-	query := `
-		SELECT processed_timestamp, originated_timestamp, event_type,
-		       action, entity_id, correlation_id, event_data
-		FROM events
-		WHERE organization_id = ? AND processed_timestamp > ?
-		ORDER BY processed_timestamp ASC
-	`
+	if err := b.ensureInitialized(); err != nil {
+		return nil, err
+	}
 
-	rows, err := b.db.QueryContext(ctx, query, string(orgID), since)
+	// TODO: (VirajSalaka) Implement pagination if large number of events
+	rows, err := b.queryWithRetry(ctx, stmtKeyGetEventsSince, string(orgID), since)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query events: %w", err)
 	}
