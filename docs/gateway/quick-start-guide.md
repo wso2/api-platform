@@ -20,14 +20,14 @@ Ensure `docker` and `docker compose` commands are available.
 
 ```bash
 # Download distribution.
-wget https://github.com/wso2/api-platform/releases/download/gateway-v0.2.0/gateway-v0.2.0.zip
+wget https://github.com/wso2/api-platform/releases/download/gateway-v0.3.0/gateway-v0.3.0.zip
 
 # Unzip the downloaded distribution.
-unzip gateway-v0.2.0.zip
+unzip gateway-v0.3.0.zip
 
 
 # Start the complete stack
-cd gateway-v0.2.0/
+cd gateway-v0.3.0/
 docker compose up -d
 
 # Verify gateway controller is running
