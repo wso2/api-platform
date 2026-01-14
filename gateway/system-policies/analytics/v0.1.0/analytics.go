@@ -18,6 +18,7 @@ const (
 	KindAsyncwebsub    = "async/websub"
 	KindRestApi        = "RestApi"
 	KindLlmProvider    = "LlmProvider"
+	KindLlmProxy       = "LlmProxy"
 	KindMCP            = "Mcp"
 
 	// Analytics metadata keys for LLM token information
@@ -88,6 +89,9 @@ func (a *AnalyticsPolicy) OnRequest(ctx *policy.RequestContext, params map[strin
 	case KindLlmProvider:
 		// Collect analytics data for AI API(LLM Provider) specific scenario
 		// Based on the json paths provided the the template, extract the token count data
+	case KindLlmProxy:
+		// Collect analytics data for LLM Proxy specific scenario
+		// Currently no data is collected
 	case KindMCP:
 		// Collect analytics data specific for MCP scenario from request
 		// Currently no data is collected
@@ -118,7 +122,7 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 			if err != nil {
 				slog.Warn("Failed to extract LLM token info", "error", err)
 			} else if tokenInfo != nil {
-				slog.Info("Extracted LLM token info",
+				slog.Debug("Extracted LLM token info",
 					"promptTokens", tokenInfo.PromptTokens,
 					"completionTokens", tokenInfo.CompletionTokens,
 					"totalTokens", tokenInfo.TotalTokens,
@@ -160,6 +164,9 @@ func (p *AnalyticsPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 				}
 			}
 		}
+	case KindLlmProxy:
+		// Collect analytics data for LLM Proxy specific scenario
+		// Currently no data is collected
 	case KindMCP:
 		// Collect the analytics data specific for MCP specific scenario
 		// Currently no data is collected
