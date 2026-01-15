@@ -62,3 +62,7 @@ jobs:
       - name: Download Go dependencies for gateway-operator
         run: go mod download
         working-directory: kubernetes/gateway-operator
+
+      - name: Build Gateway images
+        run: make build-local
+        working-directory: gateway
