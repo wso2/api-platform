@@ -18,7 +18,6 @@
 
 services:
   gateway-controller:
-    container_name: gateway-controller
     image: ghcr.io/wso2/api-platform/gateway-controller:0.3.0-SNAPSHOT
     mem_limit: 128m
     mem_reservation: 128m
@@ -46,12 +45,11 @@ services:
       - gateway-network
 
   policy-engine:
-    container_name: policy-engine
     image: ghcr.io/wso2/api-platform/policy-engine:0.3.0-SNAPSHOT
+    command: ["-xds-server", "gateway-controller:18001"]
     mem_limit: 128m
     mem_reservation: 128m
     cpus: 0.2
-    command: ["-xds-server", "gateway-controller:18001"]
     ports:
       - "9002:9002"   # Admin API
       - "9003:9003"   # Metrics
@@ -63,7 +61,6 @@ services:
       - gateway-network
 
   router:
-    container_name: router
     image: ghcr.io/wso2/api-platform/gateway-router:0.3.0-SNAPSHOT
     mem_limit: 256m
     mem_reservation: 256m
@@ -81,28 +78,18 @@ services:
       - LOG_LEVEL=info
     networks:
       - gateway-network
-    healthcheck:
-      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/9901"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
 
   sample-backend:
     image: renukafernando/request-info:latest
-    container_name: sample-backend
     ports:
       - "5000:5000"
     command: ["-addr", ":5000", "-pretty"]
     # command: ["-addr", ":5000", "-pretty", "-https", "-cert", "/app/certs/server.pem", "-key", "/app/certs/server.key"]
-    volumes:
-      - ./resources/sample-backend-certs:/app/certs:ro
     networks:
       - gateway-network
 
   secure-backend:
     image: nginx:alpine
-    container_name: secure-backend
     ports:
       - "5443:5443"
     volumes:
@@ -113,7 +100,6 @@ services:
   
   jaeger:
     image: jaegertracing/all-in-one:1.76.0
-    container_name: jaeger
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     ports:
@@ -125,7 +111,6 @@ services:
 
   otel-collector:
     image: otel/opentelemetry-collector:0.112.0
-    container_name: otel-collector
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./observability/otel-collector/config.yaml:/etc/otel-collector-config.yaml
@@ -140,7 +125,6 @@ services:
 
   opensearch:
     image: opensearchproject/opensearch:3.4.0
-    container_name: opensearch
     environment:
       - cluster.name=opensearch-cluster
       - node.name=opensearch-node1
@@ -159,7 +143,6 @@ services:
 
   opensearch-dashboards:
     image: opensearchproject/opensearch-dashboards:3.4.0
-    container_name: opensearch-dashboards
     environment:
       - OPENSEARCH_HOSTS=["http://opensearch:9200"]
       - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
@@ -173,7 +156,6 @@ services:
 
   fluent-bit:
     image: fluent/fluent-bit:4.2.1
-    container_name: fluent-bit
     volumes:
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - ./observability/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
@@ -188,7 +170,6 @@ services:
 
   prometheus:
     image: prom/prometheus:v3.3.1
-    container_name: prometheus
     volumes:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
@@ -203,8 +184,7 @@ services:
     profiles: ["metrics"]
 
   grafana:
-    image: ""
-    container_name: grafana
+    image: "grafana/grafana:latest"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
