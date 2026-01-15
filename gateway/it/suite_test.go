@@ -70,6 +70,7 @@ func TestFeatures(t *testing.T) {
 				"features/health.feature",
 				"features/api_deploy.feature",
 				"features/mcp_deploy.feature",
+				"features/metrics.feature",
 			},
 			TestingT: t,
 		},
@@ -214,6 +215,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 		RegisterAuthSteps(ctx, testState, httpSteps)
 		RegisterAPISteps(ctx, testState, httpSteps)
 		RegisterMCPSteps(ctx, testState, httpSteps)
+		RegisterMetricsSteps(ctx, testState, httpSteps)
 	}
 
 	// Register common HTTP and assertion steps
