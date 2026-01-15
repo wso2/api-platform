@@ -181,21 +181,36 @@ type APIRevisionDeployment struct {
 
 // APIDeploymentYAML represents the API deployment YAML structure
 type APIDeploymentYAML struct {
-	Kind    string      `yaml:"kind" binding:"required"`
-	Version string      `yaml:"version" binding:"required"`
-	Spec    APIYAMLData `yaml:"spec" binding:"required"`
+	ApiVersion string                `yaml:"apiVersion" binding:"required"`
+	Kind       string                `yaml:"kind" binding:"required"`
+	Metadata   APIDeploymentMetadata `yaml:"metadata" binding:"required"`
+	Spec       APIYAMLData           `yaml:"spec" binding:"required"`
+}
+
+// APIDeploymentMetadata represents the metadata section of the API deployment YAML
+type APIDeploymentMetadata struct {
+	Name string `yaml:"name" binding:"required"`
 }
 
 // APIYAMLData represents a basic spec section of the API deployment YAML
 type APIYAMLData struct {
-	Id          string             `yaml:"id"`
-	Name        string             `yaml:"name"`
+	DisplayName string             `yaml:"displayName"`
 	Version     string             `yaml:"version"`
-	Description string             `yaml:"description,omitempty"`
 	Context     string             `yaml:"context"`
-	Provider    string             `yaml:"provider,omitempty"`
-	Upstreams   []BackendEndpoint  `yaml:"upstreams,omitempty"`
+	Upstream    *UpstreamYAML      `yaml:"upstream,omitempty"`
 	Operations  []OperationRequest `yaml:"operations,omitempty"`
+}
+
+// UpstreamYAML represents the upstream configuration for API deployment YAML
+type UpstreamYAML struct {
+	Main    *UpstreamTarget `yaml:"main,omitempty"`
+	Sandbox *UpstreamTarget `yaml:"sandbox,omitempty"`
+}
+
+// UpstreamTarget represents a single upstream target (url or ref)
+type UpstreamTarget struct {
+	URL string `yaml:"url,omitempty"`
+	Ref string `yaml:"ref,omitempty"`
 }
 
 // APIListResponse represents a paginated list of APIs (constitution-compliant)

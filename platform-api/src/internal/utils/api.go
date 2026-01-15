@@ -756,29 +756,41 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 	for _, op := range api.Operations {
 		operationList = append(operationList, *op.Request)
 	}
-	upstreamList := make([]dto.BackendEndpoint, 0)
+
+	// Get the main upstream URL from the first backend service endpoint
+	var upstreamYAML *dto.UpstreamYAML
 	for _, backendService := range api.BackendServices {
 		for _, endpoint := range backendService.Endpoints {
-			upstreamList = append(upstreamList, endpoint)
+			if endpoint.URL != "" {
+				upstreamYAML = &dto.UpstreamYAML{
+					Main: &dto.UpstreamTarget{
+						URL: endpoint.URL,
+					},
+				}
+				break
+			}
+		}
+		if upstreamYAML != nil {
+			break
 		}
 	}
 
 	// Create API deployment YAML structure
 	apiYAMLData := dto.APIYAMLData{
-		Id:          api.ID,
-		Name:        api.Name,
+		DisplayName: api.Name,
 		Version:     api.Version,
-		Description: api.Description,
 		Context:     api.Context,
-		Provider:    api.Provider,
-		Upstreams:   upstreamList,
+		Upstream:    upstreamYAML,
 		Operations:  operationList,
 	}
 
 	apiDeployment := dto.APIDeploymentYAML{
-		Kind:    "http/rest",
-		Version: "api-platform.wso2.com/v1",
-		Spec:    apiYAMLData,
+		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		Kind:       "RestApi",
+		Metadata: dto.APIDeploymentMetadata{
+			Name: api.ID,
+		},
+		Spec: apiYAMLData,
 	}
 
 	// Convert to YAML
@@ -1096,23 +1108,18 @@ func (u *APIUtil) APIYAMLDataToDTO(yamlData *dto.APIYAMLData) *dto.API {
 		return nil
 	}
 
-	// Convert upstreams to backend services if present
+	// Convert upstream to backend services if present
 	var backendServices []dto.BackendService
-	if len(yamlData.Upstreams) > 0 {
-		backendServices = make([]dto.BackendService, len(yamlData.Upstreams))
-		for i, upstream := range yamlData.Upstreams {
-			backendServices[i] = dto.BackendService{
-				IsDefault: i == 0, // First backend service is default
+	if yamlData.Upstream != nil && yamlData.Upstream.Main != nil && yamlData.Upstream.Main.URL != "" {
+		backendServices = []dto.BackendService{
+			{
+				IsDefault: true,
 				Endpoints: []dto.BackendEndpoint{
 					{
-						URL:         upstream.URL,
-						Description: upstream.Description,
-						Weight:      upstream.Weight,
-						HealthCheck: upstream.HealthCheck,
-						MTLS:        upstream.MTLS,
+						URL: yamlData.Upstream.Main.URL,
 					},
 				},
-			}
+			},
 		}
 	}
 
@@ -1137,11 +1144,9 @@ func (u *APIUtil) APIYAMLDataToDTO(yamlData *dto.APIYAMLData) *dto.API {
 
 	// Create and populate API DTO with available fields
 	api := &dto.API{
-		Name:            yamlData.Name,
-		Description:     yamlData.Description,
+		Name:            yamlData.DisplayName,
 		Context:         yamlData.Context,
 		Version:         yamlData.Version,
-		Provider:        yamlData.Provider,
 		BackendServices: backendServices,
 		Operations:      operations,
 
@@ -1302,12 +1307,12 @@ func (u *APIUtil) ValidateWSO2Artifact(artifact *dto.APIDeploymentYAML) error {
 		return fmt.Errorf("invalid artifact: missing kind")
 	}
 
-	if artifact.Version == "" {
-		return fmt.Errorf("invalid artifact: missing version")
+	if artifact.ApiVersion == "" {
+		return fmt.Errorf("invalid artifact: missing apiVersion")
 	}
 
-	if artifact.Spec.Name == "" {
-		return fmt.Errorf("missing API name")
+	if artifact.Spec.DisplayName == "" {
+		return fmt.Errorf("missing API displayName")
 	}
 
 	if artifact.Spec.Context == "" {
