@@ -97,7 +97,8 @@ func BuildGatewayImages(config DockerBuildConfig) error {
 
 // runGatewayBuilder runs the gateway-builder container
 func runGatewayBuilder(config DockerBuildConfig, logFile *os.File) error {
-	args := []string{"run", "--rm", "-v", config.TempDir + ":/workspace", config.GatewayBuilder}
+	args := []string{"run", "--rm", "-v", config.TempDir + ":/workspace", config.GatewayBuilder,
+		"-system-manifest-lock", "/api-platform/gateway/system-policies/system-policy-manifest-lock.yaml"}
 
 	if config.GatewayControllerBaseImage != "" {
 		args = append(args, "-gateway-controller-base-image", config.GatewayControllerBaseImage)
