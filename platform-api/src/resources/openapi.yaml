@@ -2184,12 +2184,9 @@ components:
             $ref: "#/components/schemas/BackendRouting"
         authentication:
           $ref: "#/components/schemas/AuthenticationConfig"
-        requestPolicies:
+        policies:
           type: array
-          items:
-            $ref: "#/components/schemas/Policy"
-        responsePolicies:
-          type: array
+          description: List of policies to be applied on the operation
           items:
             $ref: "#/components/schemas/Policy"
 
