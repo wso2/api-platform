@@ -14,6 +14,9 @@ type PolicyMetadata struct {
 
 	// APIVersion is the version of the API this policy belongs to
 	APIVersion string
+
+	// AttachedTo indicates where the policy is attached (e.g., "api", "route")
+	AttachedTo string
 }
 
 // Policy is the base interface that all policies must implement
