@@ -1150,14 +1150,27 @@ func (r *APIRepo) GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.A
 }
 
 // CheckAPIExistsByNameAndVersionInOrganization checks if an API with the given name and version exists within a specific organization
-func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, orgUUID string) (bool, error) {
-	query := `
-		SELECT COUNT(*) FROM apis 
-		WHERE name = ? AND version = ? AND organization_uuid = ?
-	`
+// excludeHandle: if provided, excludes the API with this handle from the check (useful for updates)
+func (r *APIRepo) CheckAPIExistsByNameAndVersionInOrganization(name, version, orgUUID, excludeHandle string) (bool, error) {
+	var query string
+	var args []interface{}
+
+	if excludeHandle != "" {
+		query = `
+			SELECT COUNT(*) FROM apis
+			WHERE name = ? AND version = ? AND organization_uuid = ? AND handle != ?
+		`
+		args = []interface{}{name, version, orgUUID, excludeHandle}
+	} else {
+		query = `
+			SELECT COUNT(*) FROM apis
+			WHERE name = ? AND version = ? AND organization_uuid = ?
+		`
+		args = []interface{}{name, version, orgUUID}
+	}
 
 	var count int
-	err := r.db.QueryRow(query, name, version, orgUUID).Scan(&count)
+	err := r.db.QueryRow(query, args...).Scan(&count)
 	if err != nil {
 		return false, err
 	}

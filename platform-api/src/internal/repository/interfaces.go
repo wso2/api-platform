@@ -67,7 +67,7 @@ type APIRepository interface {
 
 	// API name validation methods
 	CheckAPIExistsByHandleInOrganization(handle, orgUUID string) (bool, error)
-	CheckAPIExistsByNameAndVersionInOrganization(name, version, orgUUID string) (bool, error)
+	CheckAPIExistsByNameAndVersionInOrganization(name, version, orgUUID, excludeHandle string) (bool, error)
 }
 
 // BackendServiceRepository defines the interface for backend service data operations
