@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"go.uber.org/zap"
@@ -35,6 +36,10 @@ import (
 // setupTestDB creates a temporary SQLite database for testing
 func setupTestDB(t *testing.T) (storage.Storage, string, func()) {
 	t.Helper()
+
+	// Initialize metrics for tests (disabled by default)
+	metrics.SetEnabled(false)
+	metrics.Init()
 
 	// Create temporary directory
 	tmpDir := t.TempDir()

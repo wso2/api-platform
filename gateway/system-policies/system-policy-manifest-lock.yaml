@@ -1,0 +1,6 @@
+version: v1
+
+policies:
+  - name: wso2_apip_sys_analytics
+    version: v0.1.0
+    filePath: ./analytics/v0.1.0

@@ -57,6 +57,12 @@ spec:
               - action: SET
                 name: operation-level-res-header
                 value: world
+        - name: basic-ratelimit
+          version: v0.1.0
+          params:
+            limits:
+              - limit: 5
+                duration: "1m"
     - method: GET
       path: /alerts/active
     - method: POST

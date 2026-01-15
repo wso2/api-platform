@@ -22,7 +22,9 @@ import (
 	"context"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,6 +72,8 @@ func TestFeatures(t *testing.T) {
 				"features/health.feature",
 				"features/api_deploy.feature",
 				"features/mcp_deploy.feature",
+				"features/ratelimit.feature",
+				"features/basic-ratelimit.feature",
 			},
 			TestingT: t,
 		},
@@ -93,6 +97,8 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 		}
 
 		// Pre-flight checks
+		checkColimaAndSetupEnv()
+
 		if err := CheckDockerAvailable(); err != nil {
 			log.Fatalf("Pre-flight check failed: %v", err)
 		}
@@ -123,6 +129,7 @@ func InitializeTestSuite(ctx *godog.TestSuiteContext) {
 			"router":             testState.Config.RouterURL,
 			"policy-engine":      testState.Config.PolicyEngineURL,
 			"sample-backend":     testState.Config.SampleBackendURL,
+			"echo-backend":       testState.Config.EchoBackendURL,
 		})
 		assertSteps = steps.NewAssertSteps(httpSteps)
 
@@ -210,7 +217,7 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 
 	// Register step definitions
 	if testState != nil {
-		RegisterHealthSteps(ctx, testState)
+		RegisterHealthSteps(ctx, testState, httpSteps)
 		RegisterAuthSteps(ctx, testState, httpSteps)
 		RegisterAPISteps(ctx, testState, httpSteps)
 		RegisterMCPSteps(ctx, testState, httpSteps)
@@ -248,4 +255,32 @@ func getComposeFilePath() string {
 
 	// Default to relative path
 	return "docker-compose.test.yaml"
+}
+
+// checkColimaAndSetupEnv detects if colima is used and sets up environment variables
+func checkColimaAndSetupEnv() {
+	// If DOCKER_HOST is already set, don't override
+	if os.Getenv("DOCKER_HOST") != "" {
+		return
+	}
+
+	// Check if colima context exists
+	cmd := exec.Command("docker", "context", "ls", "--format", "{{.Name}}")
+	out, err := cmd.Output()
+	if err == nil && strings.Contains(string(out), "colima") {
+		log.Println("Colima detected, setting up environment variables...")
+
+		// Set DOCKER_HOST
+		dockerHost := "unix://" + os.Getenv("HOME") + "/.colima/default/docker.sock"
+		if _, err := os.Stat(strings.TrimPrefix(dockerHost, "unix://")); err == nil {
+			os.Setenv("DOCKER_HOST", dockerHost)
+			log.Printf("Set DOCKER_HOST=%s", dockerHost)
+		}
+
+		// Disable Ryuk if not already specified
+		if os.Getenv("TESTCONTAINERS_RYUK_DISABLED") == "" {
+			os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
+			log.Println("Set TESTCONTAINERS_RYUK_DISABLED=true")
+		}
+	}
 }

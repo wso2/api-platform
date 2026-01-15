@@ -124,6 +124,10 @@ const (
 		"  - action: SET\n" +
 		"    name: '%s'\n" +
 		"    value: '%s'\n"
+
+	// System policy constants
+	ANALYTICS_SYSTEM_POLICY_NAME    = "wso2_apip_sys_analytics"
+	ANALYTICS_SYSTEM_POLICY_VERSION = "v0.1.0"
 )
 
 var WILDCARD_HTTP_METHODS = []string{

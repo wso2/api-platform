@@ -242,7 +242,11 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 
 	// prepare metaInfo
 	metaInfo := dto.MetaInfo{}
-	metaInfo.CorrelationID = logEntry.GetRequest().RequestId
+	if logEntry.GetCommonProperties().GetStreamId() != "" {
+		metaInfo.CorrelationID = logEntry.GetCommonProperties().GetStreamId()
+	} else {
+		metaInfo.CorrelationID = logEntry.GetRequest().RequestId
+	}
 	metaInfo.RegionID = keyValuePairsFromMetadata[RegionKey]
 
 	userAgent := logEntry.GetRequest().GetUserAgent()
@@ -268,13 +272,13 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	event.Properties = make(map[string]interface{}, 0)
 
 	// Process AI related metadata only if all the required metadata are present
-	if keyValuePairsFromMetadata[AIProviderNameMetadataKey] != "" &&
-		keyValuePairsFromMetadata[AIProviderAPIVersionMetadataKey] != "" &&
+	if keyValuePairsFromMetadata[AIProviderNameMetadataKey] != "" ||
+		keyValuePairsFromMetadata[AIProviderAPIVersionMetadataKey] != "" ||
 		keyValuePairsFromMetadata[ModelIDMetadataKey] != "" {
-
+		slog.Debug("Proceeding to process AI related metadata")
 		aiMetadata := dto.AIMetadata{}
 		aiMetadata.VendorName = keyValuePairsFromMetadata[AIProviderNameMetadataKey]
-		aiMetadata.VendorVersion = keyValuePairsFromMetadata[AIProviderAPIVersionMetadataKey]
+		aiMetadata.VendorVersion = keyValuePairsFromMetadata[APIVersionKey]
 		aiMetadata.Model = keyValuePairsFromMetadata[ModelIDMetadataKey]
 		event.Properties["aiMetadata"] = aiMetadata
 
