@@ -359,12 +359,11 @@ func (u *APIUtil) OperationRequestDTOToModel(dto *dto.OperationRequest) *model.O
 		return nil
 	}
 	return &model.OperationRequest{
-		Method:           dto.Method,
-		Path:             dto.Path,
-		BackendServices:  u.BackendRoutingDTOsToModel(dto.BackendServices),
-		Authentication:   u.AuthConfigDTOToModel(dto.Authentication),
-		RequestPolicies:  u.PoliciesDTOToModel(dto.RequestPolicies),
-		ResponsePolicies: u.PoliciesDTOToModel(dto.ResponsePolicies),
+		Method:          dto.Method,
+		Path:            dto.Path,
+		BackendServices: u.BackendRoutingDTOsToModel(dto.BackendServices),
+		Authentication:  u.AuthConfigDTOToModel(dto.Authentication),
+		Policies:        u.PoliciesDTOToModel(dto.Policies),
 	}
 }
 
@@ -671,12 +670,11 @@ func (u *APIUtil) OperationRequestModelToDTO(model *model.OperationRequest) *dto
 		return nil
 	}
 	return &dto.OperationRequest{
-		Method:           model.Method,
-		Path:             model.Path,
-		BackendServices:  u.BackendRoutingModelsToDTO(model.BackendServices),
-		Authentication:   u.AuthConfigModelToDTO(model.Authentication),
-		RequestPolicies:  u.PoliciesModelToDTO(model.RequestPolicies),
-		ResponsePolicies: u.PoliciesModelToDTO(model.ResponsePolicies),
+		Method:          model.Method,
+		Path:            model.Path,
+		BackendServices: u.BackendRoutingModelsToDTO(model.BackendServices),
+		Authentication:  u.AuthConfigModelToDTO(model.Authentication),
+		Policies:        u.PoliciesModelToDTO(model.Policies),
 	}
 }
 
@@ -1127,12 +1125,11 @@ func (u *APIUtil) APIYAMLDataToDTO(yamlData *dto.APIYAMLData) *dto.API {
 				Name:        fmt.Sprintf("Operation-%d", i+1),
 				Description: fmt.Sprintf("Operation for %s %s", op.Method, op.Path),
 				Request: &dto.OperationRequest{
-					Method:           op.Method,
-					Path:             op.Path,
-					BackendServices:  op.BackendServices,
-					Authentication:   op.Authentication,
-					RequestPolicies:  op.RequestPolicies,
-					ResponsePolicies: op.ResponsePolicies,
+					Method:          op.Method,
+					Path:            op.Path,
+					BackendServices: op.BackendServices,
+					Authentication:  op.Authentication,
+					Policies:        op.Policies,
 				},
 			}
 		}
@@ -1556,8 +1553,7 @@ func (u *APIUtil) extractOperationsFromV3Paths(paths *v3high.Paths) []dto.Operat
 						Required: false,
 						Scopes:   []string{},
 					},
-					RequestPolicies:  []dto.Policy{},
-					ResponsePolicies: []dto.Policy{},
+					Policies: []dto.Policy{},
 				},
 			}
 
@@ -1610,8 +1606,7 @@ func (u *APIUtil) extractOperationsFromV2Paths(paths *v2high.Paths) []dto.Operat
 						Required: false,
 						Scopes:   []string{},
 					},
-					RequestPolicies:  []dto.Policy{},
-					ResponsePolicies: []dto.Policy{},
+					Policies: []dto.Policy{},
 				},
 			}
 

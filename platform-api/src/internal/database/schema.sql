@@ -208,19 +208,8 @@ CREATE TABLE IF NOT EXISTS operation_backend_services (
     UNIQUE(operation_id, backend_service_uuid)
 );
 
--- Request Policies table
-CREATE TABLE IF NOT EXISTS request_policies (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    operation_id INTEGER,
-    name VARCHAR(255) NOT NULL,
-    params TEXT, -- JSON object as TEXT
-    execution_condition VARCHAR(512),
-    version VARCHAR(50) NOT NULL DEFAULT '1.0.0',
-    FOREIGN KEY (operation_id) REFERENCES api_operations(id)
-);
-
--- Response Policies table
-CREATE TABLE IF NOT EXISTS response_policies (
+-- Policies table
+CREATE TABLE IF NOT EXISTS policies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     operation_id INTEGER,
     name VARCHAR(255) NOT NULL,

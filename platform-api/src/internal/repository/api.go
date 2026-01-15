@@ -802,16 +802,9 @@ func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, organizationId strin
 		}
 	}
 
-	// Insert request policies
-	for _, policy := range operation.Request.RequestPolicies {
-		if err := r.insertRequestPolicy(tx, operationID, &policy); err != nil {
-			return err
-		}
-	}
-
-	// Insert response policies
-	for _, policy := range operation.Request.ResponsePolicies {
-		if err := r.insertResponsePolicy(tx, operationID, &policy); err != nil {
+	// Insert policies
+	for _, policy := range operation.Request.Policies {
+		if err := r.insertPolicy(tx, operationID, &policy); err != nil {
 			return err
 		}
 	}
@@ -819,29 +812,14 @@ func (r *APIRepo) insertOperation(tx *sql.Tx, apiId string, organizationId strin
 	return nil
 }
 
-func (r *APIRepo) insertRequestPolicy(tx *sql.Tx, operationID int64, policy *model.Policy) error {
+func (r *APIRepo) insertPolicy(tx *sql.Tx, operationID int64, policy *model.Policy) error {
 	var paramsJSON []byte
 	if policy.Params != nil {
 		paramsJSON, _ = json.Marshal(*policy.Params)
 	}
 
 	policyQuery := `
-		INSERT INTO request_policies (operation_id, name, params, execution_condition, version)
-		VALUES (?, ?, ?, ?, ?)
-	`
-	_, err := tx.Exec(policyQuery, operationID, policy.Name, string(paramsJSON),
-		policy.ExecutionCondition, policy.Version)
-	return err
-}
-
-func (r *APIRepo) insertResponsePolicy(tx *sql.Tx, operationID int64, policy *model.Policy) error {
-	var paramsJSON []byte
-	if policy.Params != nil {
-		paramsJSON, _ = json.Marshal(*policy.Params)
-	}
-
-	policyQuery := `
-		INSERT INTO response_policies (operation_id, name, params, execution_condition, version)
+		INSERT INTO policies (operation_id, name, params, execution_condition, version)
 		VALUES (?, ?, ?, ?, ?)
 	`
 	_, err := tx.Exec(policyQuery, operationID, policy.Name, string(paramsJSON),
@@ -891,18 +869,11 @@ func (r *APIRepo) loadOperations(apiId string) ([]model.Operation, error) {
 			operation.Request.BackendServices = backendServices
 		}
 
-		// Load request policies
-		if reqPolicies, err := r.loadRequestPolicies(operationID); err != nil {
+		// Load policies
+		if policies, err := r.loadPolicies(operationID); err != nil {
 			return nil, err
 		} else {
-			operation.Request.RequestPolicies = reqPolicies
-		}
-
-		// Load response policies
-		if resPolicies, err := r.loadResponsePolicies(operationID); err != nil {
-			return nil, err
-		} else {
-			operation.Request.ResponsePolicies = resPolicies
+			operation.Request.Policies = policies
 		}
 
 		operations = append(operations, operation)
@@ -937,43 +908,8 @@ func (r *APIRepo) loadOperationBackendServices(operationID int64) ([]model.Backe
 	return backendServices, rows.Err()
 }
 
-func (r *APIRepo) loadRequestPolicies(operationID int64) ([]model.Policy, error) {
-	query := `SELECT name, params, execution_condition, version FROM request_policies WHERE operation_id = ?`
-	rows, err := r.db.Query(query, operationID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var policies []model.Policy
-	for rows.Next() {
-		policy := model.Policy{}
-		var paramsJSON sql.NullString
-		var executionCondition sql.NullString
-
-		err := rows.Scan(&policy.Name, &paramsJSON, &executionCondition, &policy.Version)
-		if err != nil {
-			return nil, err
-		}
-
-		if paramsJSON.Valid && paramsJSON.String != "" {
-			var params map[string]interface{}
-			json.Unmarshal([]byte(paramsJSON.String), &params)
-			policy.Params = &params
-		}
-
-		if executionCondition.Valid {
-			policy.ExecutionCondition = &executionCondition.String
-		}
-
-		policies = append(policies, policy)
-	}
-
-	return policies, rows.Err()
-}
-
-func (r *APIRepo) loadResponsePolicies(operationID int64) ([]model.Policy, error) {
-	query := `SELECT name, params, execution_condition, version FROM response_policies WHERE operation_id = ?`
+func (r *APIRepo) loadPolicies(operationID int64) ([]model.Policy, error) {
+	query := `SELECT name, params, execution_condition, version FROM policies WHERE operation_id = ?`
 	rows, err := r.db.Query(query, operationID)
 	if err != nil {
 		return nil, err
