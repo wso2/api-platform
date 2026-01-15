@@ -64,6 +64,9 @@ policies:
   - name: semantic-prompt-guard
     version: v0.1.0
     filePath: ./semantic-prompt-guard/v0.1.0
+  - name: semantic-tool-filtering
+    version: v0.1.0
+    filePath: ./semantic-tool-filtering/v0.1.0
   - name: sentence-count-guardrail
     version: v0.1.0
     filePath: ./sentence-count-guardrail/v0.1.0
