@@ -4,7 +4,7 @@ go 1.25.1
 
 require (
 	github.com/policy-engine/policies/advanced-ratelimit v0.1.0
-	github.com/wso2/api-platform/sdk v0.3.0
+	github.com/wso2/api-platform/sdk v0.3.1
 )
 
 require (
