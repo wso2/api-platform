@@ -1,0 +1,79 @@
+name: semantic-tool-filtering
+version: v0.1.0
+description: |
+  Dynamically filters the tools provided within an API request based on their semantic relevance to the
+  user query. This policy extracts both the query and the tool definitions from the incoming payload,
+  generates an embedding for the query, and performs a similarity search against the provided tools.
+  It then replaces the original 'tools' array with a filtered subset, optimizing the request before it reaches the LLM.
+  
+  Note: This policy requires embedding providers (OpenAI, Mistral, Azure OpenAI) to be configured.
+
+parameters:
+  type: object
+  properties:
+    selectionMode:
+      type: string
+      description: |
+        Method used to filter tools:
+        - "TOP_K": Selects a fixed number of the most relevant tools.
+        - "THRESHOLD": Selects all tools exceeding a specific similarity score.
+      enum:
+        - TOP_K
+        - THRESHOLD
+      default: "TOP_K"
+    topK:
+      type: integer
+      description: "The number of most relevant tools to include (used if selectionMode is TOP_K)."
+      minimum: 0
+      maximum: 20
+      default: 5
+    similarityThreshold:
+      type: number
+      description: |
+        Similarity threshold for filtering (0.0 to 1.0). 
+        Only tools with a score above this value are included (used if selectionMode is THRESHOLD).
+      minimum: 0.0
+      maximum: 1.0
+      default: 0.7
+    jsonPath:
+      type: string
+      description: |
+        JSONPath expression to extract the user's query from the request body.
+        Example: "$.messages[-1].content"
+      default: "$.messages[-1].content"
+    toolsPath:
+      type: string
+      description: |
+        JSONPath expression to extract the tools array from the request body.
+        Example: "$.tools"
+      default: "$.tools"
+  required:
+    - selectionMode
+
+systemParameters:
+  type: object
+  properties:
+    embeddingProvider:
+      type: string
+      description: "Embedding provider: OPENAI, MISTRAL, or AZURE_OPENAI"
+      enum:
+        - OPENAI
+        - MISTRAL
+        - AZURE_OPENAI
+      "wso2/defaultValue": "${config.embedding_provider}"
+    embeddingEndpoint:
+      type: string
+      description: "Endpoint URL for the embedding service"
+      "wso2/defaultValue": "${config.embedding_provider_endpoint}"
+    embeddingModel:
+      type: string
+      description: "Model name (e.g., text-embedding-3-small or mistral-embed)"
+      "wso2/defaultValue": "${config.embedding_provider_model}"
+    apiKey:
+      type: string
+      description: "API key for the embedding service"
+      "wso2/defaultValue": "${config.embedding_provider_api_key}"
+  required:
+    - embeddingProvider
+    - embeddingEndpoint
+    - apiKey
