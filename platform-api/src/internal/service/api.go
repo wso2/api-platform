@@ -764,7 +764,7 @@ func (s *APIService) validateCreateAPIRequest(req *CreateAPIRequest, orgUUID str
 		return errors.New("project id is required")
 	}
 
-	nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgUUID)
+	nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgUUID, "")
 	if err != nil {
 		return err
 	}
@@ -917,14 +917,14 @@ func (s *APIService) validateUpdateAPIRequest(existingAPIModel *model.API, req *
 		if err != nil {
 			return err
 		}
-		if handleExists {
-			return constants.ErrHandleExists
+		if !handleExists {
+			return constants.ErrHandleDoesNotExist
 		}
 	}
 
 	if req.Name != nil {
 		nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(*req.Name,
-			existingAPIModel.Version, orgUUID)
+			existingAPIModel.Version, orgUUID, existingAPIModel.Handle)
 		if err != nil {
 			return err
 		}
@@ -1622,7 +1622,7 @@ func (s *APIService) ValidateAPI(req *dto.APIValidationRequest, orgUUID string) 
 		}
 	} else {
 		// Validate by name and version
-		exists, err = s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgUUID)
+		exists, err = s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgUUID, "")
 		if err != nil {
 			return nil, fmt.Errorf("failed to check API existence by name and version: %w", err)
 		}

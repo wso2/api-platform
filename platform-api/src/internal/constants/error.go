@@ -21,6 +21,7 @@ import "errors"
 
 var (
 	ErrHandleExists           = errors.New("handle already exists")
+	ErrHandleDoesNotExist     = errors.New("handle does not exist")
 	ErrHandleEmpty            = errors.New("handle cannot be empty")
 	ErrHandleTooShort         = errors.New("handle must be at least 3 characters")
 	ErrHandleTooLong          = errors.New("handle must be at most 63 characters")
