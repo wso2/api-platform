@@ -75,6 +75,7 @@ COPY --from=builder /usr/local/bin/gateway-builder /usr/local/bin/gateway-builde
 
 # Copy Policy Engine framework source code
 COPY --from=policy-engine . /api-platform/gateway/policy-engine
+COPY --from=system-policies . /api-platform/gateway/system-policies
 COPY --from=sdk . /api-platform/sdk
 
 # Set working directory
