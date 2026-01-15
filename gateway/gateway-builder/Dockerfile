@@ -55,8 +55,8 @@ RUN CGO_ENABLED=0 \
     GOARCH=${TARGETARCH} \
     go build \
     -ldflags "-s -w -X main.Version=${VERSION} \
-              -X main.GitCommit=${GIT_COMMIT} \
-              -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    -X main.GitCommit=${GIT_COMMIT} \
+    -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     -trimpath \
     -o /usr/local/bin/gateway-builder \
     ./cmd/builder
@@ -82,4 +82,5 @@ COPY --from=sdk . /api-platform/sdk
 WORKDIR /workspace
 
 # Set entrypoint to builder binary
-ENTRYPOINT ["/usr/local/bin/gateway-builder"]
+ENTRYPOINT [ "/usr/local/bin/gateway-builder" ]
+CMD [ "-system-manifest-lock", "/api-platform/gateway/system-policies/system-policy-manifest-lock.yaml" ]
