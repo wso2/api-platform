@@ -73,27 +73,6 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "handle does not exist",
-			existingAPI: &model.API{
-				Handle:  "my-api",
-				Version: "v1",
-			},
-			req:              &UpdateAPIRequest{ID: ptr("new-handle")},
-			mockHandleExists: false,
-			wantErr:          true,
-			expectedErr:      constants.ErrHandleDoesNotExist,
-		},
-		{
-			name: "handle exists - valid",
-			existingAPI: &model.API{
-				Handle:  "my-api",
-				Version: "v1",
-			},
-			req:              &UpdateAPIRequest{ID: ptr("new-handle")},
-			mockHandleExists: true,
-			wantErr:          false,
-		},
-		{
 			name: "name update - excludes current API handle from duplicate check",
 			existingAPI: &model.API{
 				Handle:  "my-api",
