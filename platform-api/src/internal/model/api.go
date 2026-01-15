@@ -215,12 +215,11 @@ type Operation struct {
 
 // OperationRequest represents operation request details
 type OperationRequest struct {
-	Method           string                `json:"method,omitempty"`
-	Path             string                `json:"path,omitempty"`
-	BackendServices  []BackendRouting      `json:"backend-services,omitempty"`
-	Authentication   *AuthenticationConfig `json:"authentication,omitempty"`
-	RequestPolicies  []Policy              `json:"requestPolicies,omitempty"`
-	ResponsePolicies []Policy              `json:"responsePolicies,omitempty"`
+	Method          string                `json:"method,omitempty"`
+	Path            string                `json:"path,omitempty"`
+	BackendServices []BackendRouting      `json:"backend-services,omitempty"`
+	Authentication  *AuthenticationConfig `json:"authentication,omitempty"`
+	Policies        []Policy              `json:"policies,omitempty"`
 }
 
 // BackendRouting represents backend routing configuration
@@ -237,9 +236,10 @@ type AuthenticationConfig struct {
 
 // Policy represents a request or response policy
 type Policy struct {
-	FlowDirection string                 `json:"flowDirection,omitempty"`
-	Name          string                 `json:"name,omitempty"`
-	Params        map[string]interface{} `json:"params,omitempty"`
+	ExecutionCondition *string                 `json:"executionCondition,omitempty"`
+	Name               string                  `json:"name"`
+	Params             *map[string]interface{} `json:"params,omitempty"`
+	Version            string                  `json:"version"`
 }
 
 // APIDeployment represents an API deployment record

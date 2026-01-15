@@ -138,12 +138,11 @@ type Operation struct {
 
 // OperationRequest represents operation request details
 type OperationRequest struct {
-	Method           string                `json:"method" yaml:"method"`
-	Path             string                `json:"path" yaml:"path"`
-	BackendServices  []BackendRouting      `json:"backend-services,omitempty" yaml:"backend-services,omitempty"`
-	Authentication   *AuthenticationConfig `json:"authentication,omitempty" yaml:"authentication,omitempty"`
-	RequestPolicies  []Policy              `json:"requestPolicies,omitempty" yaml:"requestPolicies,omitempty"`
-	ResponsePolicies []Policy              `json:"responsePolicies,omitempty" yaml:"responsePolicies,omitempty"`
+	Method          string                `json:"method" yaml:"method"`
+	Path            string                `json:"path" yaml:"path"`
+	BackendServices []BackendRouting      `json:"backend-services,omitempty" yaml:"backend-services,omitempty"`
+	Authentication  *AuthenticationConfig `json:"authentication,omitempty" yaml:"authentication,omitempty"`
+	Policies        []Policy              `json:"policies,omitempty" yaml:"policies,omitempty"`
 }
 
 // BackendRouting represents backend routing configuration
@@ -160,8 +159,10 @@ type AuthenticationConfig struct {
 
 // Policy represents a request or response policy
 type Policy struct {
-	Name   string                 `json:"name,omitempty" yaml:"name,omitempty"`
-	Params map[string]interface{} `json:"params,omitempty" yaml:"params,omitempty"`
+	ExecutionCondition *string                 `json:"executionCondition,omitempty" yaml:"executionCondition,omitempty"`
+	Name               string                  `json:"name" yaml:"name"`
+	Params             *map[string]interface{} `json:"params,omitempty" yaml:"params,omitempty"`
+	Version            string                  `json:"version" yaml:"version"`
 }
 
 // APIRevisionDeployment represents an API revision deployment

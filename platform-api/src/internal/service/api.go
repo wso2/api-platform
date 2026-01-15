@@ -1044,8 +1044,7 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 					Required: false,
 					Scopes:   []string{},
 				},
-				RequestPolicies:  []dto.Policy{},
-				ResponsePolicies: []dto.Policy{},
+				Policies: []dto.Policy{},
 			},
 		},
 		{
@@ -1058,8 +1057,7 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 					Required: false,
 					Scopes:   []string{},
 				},
-				RequestPolicies:  []dto.Policy{},
-				ResponsePolicies: []dto.Policy{},
+				Policies: []dto.Policy{},
 			},
 		},
 		{
@@ -1072,8 +1070,7 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 					Required: false,
 					Scopes:   []string{},
 				},
-				RequestPolicies:  []dto.Policy{},
-				ResponsePolicies: []dto.Policy{},
+				Policies: []dto.Policy{},
 			},
 		},
 		{
@@ -1086,8 +1083,7 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 					Required: false,
 					Scopes:   []string{},
 				},
-				RequestPolicies:  []dto.Policy{},
-				ResponsePolicies: []dto.Policy{},
+				Policies: []dto.Policy{},
 			},
 		},
 	}

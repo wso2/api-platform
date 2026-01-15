@@ -1,0 +1,36 @@
+name: model-round-robin
+version: v0.1.0
+description: |
+  Implements round-robin load balancing for AI models. Distributes requests evenly
+  across multiple configured AI models in a cyclic manner, ensuring equal request
+  allocation over time and preventing overloading of any single model.
+
+parameters:
+  type: object
+  properties:
+    models:
+      type: array
+      description: List of models for round-robin distribution
+      items:
+        type: object
+        properties:
+          model:
+            type: string
+            description: The AI model name
+            minLength: 1
+        required:
+          - model
+      minItems: 1
+    suspendDuration:
+      type: integer
+      description: |
+        Suspend duration in seconds for failed models.
+        If not configured, knowledge about failed invocations is not persisted.
+      minimum: 0
+      default: 0
+  required:
+    - models
+
+systemParameters:
+  type: object
+  properties: {}

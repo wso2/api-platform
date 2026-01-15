@@ -64,6 +64,12 @@ func NewResourceHandler(k *kernel.Kernel, reg *registry.PolicyRegistry) *Resourc
 	}
 }
 
+// policyChainWithMetadata pairs a PolicyChain config with its API metadata
+type policyChainWithMetadata struct {
+	config   *policyenginev1.PolicyChain
+	metadata policyenginev1.Metadata
+}
+
 // HandlePolicyChainUpdate processes custom PolicyChainConfig resources from ADS response
 func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources []*anypb.Any, version string) error {
 	slog.InfoContext(ctx, "Handling policy chain update via ADS",
@@ -71,8 +77,8 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 		"num_resources", len(resources))
 
 	// Parse all resources first (validation phase)
-	// Each resource is a StoredPolicyConfig containing multiple routes
-	configs := make([]*policyenginev1.PolicyChain, 0)
+	// Each resource is a StoredPolicyConfig containing multiple routes with shared API metadata
+	configsWithMetadata := make([]policyChainWithMetadata, 0)
 
 	for i, resource := range resources {
 		if resource.TypeUrl != PolicyChainTypeURL {
@@ -113,10 +119,13 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 			"api_name", storedConfig.Configuration.Metadata.APIName,
 			"routes", len(storedConfig.Configuration.Routes))
 
+		// Extract API metadata (shared by all routes in this StoredPolicyConfig)
+		apiMetadata := storedConfig.Configuration.Metadata
+
 		// Extract PolicyChain configurations (already in SDK format)
 		routeConfigs := h.convertStoredConfigToPolicyChains(&storedConfig)
 
-		// Validate each route configuration
+		// Validate each route configuration and pair with metadata
 		// Note: We log errors but continue to avoid NACK loops when policies are missing
 		for _, config := range routeConfigs {
 			if err := h.validatePolicyChainConfig(config); err != nil {
@@ -125,21 +134,24 @@ func (h *ResourceHandler) HandlePolicyChainUpdate(ctx context.Context, resources
 					"error", err)
 				continue // Skip this route but process others
 			}
-			configs = append(configs, config) // Only add valid configs
+			configsWithMetadata = append(configsWithMetadata, policyChainWithMetadata{
+				config:   config,
+				metadata: apiMetadata,
+			})
 		}
 	}
 
 	// Build all policy chains (can fail if policy not found or validation fails)
 	chains := make(map[string]*registry.PolicyChain)
-	for _, config := range configs {
-		chain, err := h.buildPolicyChain(config.RouteKey, config)
+	for _, cwm := range configsWithMetadata {
+		chain, err := h.buildPolicyChain(cwm.config.RouteKey, cwm.config, cwm.metadata)
 		if err != nil {
 			slog.ErrorContext(ctx, "Failed to build policy chain for route, skipping",
-				"route", config.RouteKey,
+				"route", cwm.config.RouteKey,
 				"error", err)
 			continue // Skip this route but process others
 		}
-		chains[config.RouteKey] = chain
+		chains[cwm.config.RouteKey] = chain
 	}
 
 	// Apply changes atomically
@@ -224,7 +236,7 @@ func (h *ResourceHandler) getAllRouteKeys() []string {
 
 // buildPolicyChain builds a PolicyChain from configuration
 // This is a copy of kernel.ConfigLoader.buildPolicyChain logic
-func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyenginev1.PolicyChain) (*registry.PolicyChain, error) {
+func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyenginev1.PolicyChain, apiMetadata policyenginev1.Metadata) (*registry.PolicyChain, error) {
 	var policyList []policy.Policy
 	var policySpecs []policy.PolicySpec
 
@@ -232,9 +244,12 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 	requiresResponseBody := false
 
 	for _, policyConfig := range config.Policies {
-		// Create metadata with route information
+		// Create metadata with route and API information
 		metadata := policy.PolicyMetadata{
-			RouteName: routeKey,
+			RouteName:  routeKey,
+			APIId:      apiMetadata.APIId,
+			APIName:    apiMetadata.APIName,
+			APIVersion: apiMetadata.Version,
 		}
 
 		// Create instance using factory with metadata and params

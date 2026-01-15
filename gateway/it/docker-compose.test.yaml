@@ -27,7 +27,7 @@ services:
     mem_reservation: 128m
     cpus: 0.1
     ports:
-      - "9090:9090"   # REST API
+      - "9010:9090"   # REST API
       - "18000:18000" # xDS gRPC
       - "18001:18001"
       - "9091:9091"   # Metrics
@@ -38,7 +38,7 @@ services:
       - GOCOVERDIR=/coverage
     volumes:
       - controller-data-tests:/app/data
-      - ../configs/config.yaml:/app/config/config.yaml:ro
+      - ./test-config.yaml:/app/config/config.yaml:ro
       - ../gateway-controller/certificates:/app/certificates
       - ../gateway-controller/listener-certs:/app/listener-certs:ro
       - ./coverage/gateway-controller:/coverage
@@ -62,7 +62,7 @@ services:
       - "9002:9002"   # Admin API
       - "9003:9003"   # Metrics
     volumes:
-      - ../configs/config.yaml:/app/configs/config.yaml:ro
+      - ./test-config.yaml:/app/configs/config.yaml:ro
     depends_on:
       gateway-controller:
         condition: service_healthy
@@ -110,6 +110,15 @@ services:
     container_name: mcp-server-backend
     ports:
       - "3001:3001"
+    networks:
+      - it-gateway-network
+
+  # Echo backend for testing cost extraction - returns request body in response JSON
+  echo-backend:
+    container_name: it-echo-backend
+    image: kennethreitz/httpbin:latest
+    ports:
+      - "9081:80"
     networks:
       - it-gateway-network
 

@@ -20,99 +20,62 @@ package it
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/cucumber/godog"
+	"github.com/wso2/api-platform/gateway/it/steps"
 )
 
+// HealthSteps wraps TestState and HTTPSteps for health check step definitions
+type HealthSteps struct {
+	state     *TestState
+	httpSteps *steps.HTTPSteps
+}
+
 // RegisterHealthSteps registers all health check step definitions
-func RegisterHealthSteps(ctx *godog.ScenarioContext, state *TestState) {
-	ctx.Step(`^the gateway services are running$`, state.theGatewayServicesAreRunning)
-	ctx.Step(`^I send a GET request to the gateway controller health endpoint$`, state.iSendGETRequestToGatewayControllerHealth)
-	ctx.Step(`^I send a GET request to the router ready endpoint$`, state.iSendGETRequestToRouterReady)
-	ctx.Step(`^the response status code should be (\d+)$`, state.theResponseStatusCodeShouldBe)
-	ctx.Step(`^the response should indicate healthy status$`, state.theResponseShouldIndicateHealthyStatus)
-	ctx.Step(`^I check the health of all gateway services$`, state.iCheckHealthOfAllGatewayServices)
-	ctx.Step(`^all services should report healthy status$`, state.allServicesShouldReportHealthyStatus)
+func RegisterHealthSteps(ctx *godog.ScenarioContext, state *TestState, httpSteps *steps.HTTPSteps) {
+	h := &HealthSteps{state: state, httpSteps: httpSteps}
+	ctx.Step(`^the gateway services are running$`, h.theGatewayServicesAreRunning)
+	ctx.Step(`^I send a GET request to the gateway controller health endpoint$`, h.iSendGETRequestToGatewayControllerHealth)
+	ctx.Step(`^I send a GET request to the router ready endpoint$`, h.iSendGETRequestToRouterReady)
+	// Note: "the response status code should be X" is registered in AssertSteps which uses HTTPSteps response
+	ctx.Step(`^the response should indicate healthy status$`, h.theResponseShouldIndicateHealthyStatus)
+	ctx.Step(`^I check the health of all gateway services$`, h.iCheckHealthOfAllGatewayServices)
+	ctx.Step(`^all services should report healthy status$`, h.allServicesShouldReportHealthyStatus)
+	ctx.Step(`^I wait for the endpoint "([^"]*)" to be ready$`, h.iWaitForEndpointToBeReady)
 }
 
 // theGatewayServicesAreRunning verifies that gateway services are available
-func (s *TestState) theGatewayServicesAreRunning() error {
+func (h *HealthSteps) theGatewayServicesAreRunning() error {
 	// This is verified during suite setup, so we just confirm the state is valid
-	if s.Config == nil || s.HTTPClient == nil {
+	if h.state.Config == nil || h.state.HTTPClient == nil {
 		return fmt.Errorf("test state not properly initialized")
 	}
 	return nil
 }
 
 // iSendGETRequestToGatewayControllerHealth sends a GET request to the gateway controller health endpoint
-func (s *TestState) iSendGETRequestToGatewayControllerHealth() error {
-	url := fmt.Sprintf("%s/health", s.Config.GatewayControllerURL)
-	return s.sendGETRequest(url)
+func (h *HealthSteps) iSendGETRequestToGatewayControllerHealth() error {
+	url := fmt.Sprintf("%s/health", h.state.Config.GatewayControllerURL)
+	return h.httpSteps.SendGETRequest(url)
 }
 
 // iSendGETRequestToRouterReady sends a GET request to the router ready endpoint
-func (s *TestState) iSendGETRequestToRouterReady() error {
+func (h *HealthSteps) iSendGETRequestToRouterReady() error {
 	url := fmt.Sprintf("http://localhost:%s/ready", EnvoyAdminPort)
-	return s.sendGETRequest(url)
-}
-
-// sendGETRequest is a helper to send GET requests
-func (s *TestState) sendGETRequest(url string) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		s.LastError = err
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	s.LastRequest = req
-
-	resp, err := s.HTTPClient.Do(req)
-	if err != nil {
-		s.LastError = err
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-
-	s.LastResponse = resp
-	s.LastError = nil
-	return nil
-}
-
-// theResponseStatusCodeShouldBe verifies the response status code
-func (s *TestState) theResponseStatusCodeShouldBe(expectedCode int) error {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	if s.LastResponse == nil {
-		return fmt.Errorf("no response received")
-	}
-
-	if s.LastResponse.StatusCode != expectedCode {
-		return fmt.Errorf("expected status code %d, got %d", expectedCode, s.LastResponse.StatusCode)
-	}
-
-	return nil
+	return h.httpSteps.SendGETRequest(url)
 }
 
 // theResponseShouldIndicateHealthyStatus verifies the response body indicates healthy
-func (s *TestState) theResponseShouldIndicateHealthyStatus() error {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	if s.LastResponse == nil {
+func (h *HealthSteps) theResponseShouldIndicateHealthyStatus() error {
+	resp := h.httpSteps.LastResponse()
+	if resp == nil {
 		return fmt.Errorf("no response received")
 	}
 
-	body, err := io.ReadAll(s.LastResponse.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response body: %w", err)
-	}
-
+	body := h.httpSteps.LastBody()
 	bodyStr := strings.ToLower(string(body))
 	if !strings.Contains(bodyStr, "ok") && !strings.Contains(bodyStr, "healthy") {
 		return fmt.Errorf("response does not indicate healthy status: %s", bodyStr)
@@ -122,33 +85,33 @@ func (s *TestState) theResponseShouldIndicateHealthyStatus() error {
 }
 
 // iCheckHealthOfAllGatewayServices checks all gateway service health endpoints
-func (s *TestState) iCheckHealthOfAllGatewayServices() error {
+func (h *HealthSteps) iCheckHealthOfAllGatewayServices() error {
 	healthEndpoints := []struct {
 		name string
 		url  string
 	}{
-		{"gateway-controller", fmt.Sprintf("%s/health", s.Config.GatewayControllerURL)},
+		{"gateway-controller", fmt.Sprintf("%s/health", h.state.Config.GatewayControllerURL)},
 		{"router", fmt.Sprintf("http://localhost:%s/ready", EnvoyAdminPort)},
 	}
 
 	results := make(map[string]bool)
 	for _, endpoint := range healthEndpoints {
-		resp, err := s.HTTPClient.Get(endpoint.url)
+		resp, err := h.state.HTTPClient.Get(endpoint.url)
 		if err != nil {
 			results[endpoint.name] = false
 			continue
 		}
-		defer resp.Body.Close()
+		resp.Body.Close()
 		results[endpoint.name] = resp.StatusCode == http.StatusOK
 	}
 
-	s.SetContextValue("health_results", results)
+	h.state.SetContextValue("health_results", results)
 	return nil
 }
 
 // allServicesShouldReportHealthyStatus verifies all services are healthy
-func (s *TestState) allServicesShouldReportHealthyStatus() error {
-	val, ok := s.GetContextValue("health_results")
+func (h *HealthSteps) allServicesShouldReportHealthyStatus() error {
+	val, ok := h.state.GetContextValue("health_results")
 	if !ok {
 		return fmt.Errorf("health check results not found")
 	}
@@ -170,4 +133,27 @@ func (s *TestState) allServicesShouldReportHealthyStatus() error {
 	}
 
 	return nil
+}
+
+// iWaitForEndpointToBeReady polls an endpoint until it returns 200 or times out
+func (h *HealthSteps) iWaitForEndpointToBeReady(url string) error {
+	maxAttempts := 5
+	attemptInterval := 2 * time.Second
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		resp, err := h.state.HTTPClient.Get(url)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			resp.Body.Close()
+			return nil
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+
+		if attempt < maxAttempts {
+			time.Sleep(attemptInterval)
+		}
+	}
+
+	return fmt.Errorf("endpoint %s did not become ready after %d attempts", url, maxAttempts)
 }
