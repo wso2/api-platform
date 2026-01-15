@@ -76,7 +76,6 @@ data:
           failure_mode_allow: {{ $gc.router.policy_engine.failure_mode_allow }}
           route_cache_action: {{ $gc.router.policy_engine.route_cache_action }}
           allow_mode_override: {{ $gc.router.policy_engine.allow_mode_override }}
-          request_header_mode: {{ $gc.router.policy_engine.request_header_mode }}
           message_timeout_ms: {{ $gc.router.policy_engine.message_timeout_ms }}
           tls:
             enabled: {{ $gc.router.policy_engine.tls.enabled }}

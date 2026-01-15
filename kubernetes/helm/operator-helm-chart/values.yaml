@@ -251,10 +251,6 @@ gateway:
               # Allow per-route override of ext_proc configuration
               allow_mode_override: true
 
-              # Request header processing mode: DEFAULT, SEND, or SKIP
-              # SEND: Forward request headers to policy engine for processing
-              request_header_mode: SEND
-
               # Message timeout for policy engine processing (in milliseconds)
               message_timeout_ms: 60000
 

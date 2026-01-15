@@ -139,7 +139,6 @@ gateway:
           failure_mode_allow: false
           route_cache_action: RETAIN
           allow_mode_override: true
-          request_header_mode: SEND
           message_timeout_ms: 250
           tls:
             enabled: false

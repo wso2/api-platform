@@ -1832,15 +1832,6 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 		routeCacheAction = extproc.ExternalProcessor_CLEAR
 	}
 
-	// Convert request header mode string to enum
-	requestHeaderMode := extproc.ProcessingMode_DEFAULT
-	switch policyEngine.RequestHeaderMode {
-	case constants.ExtProcHeaderModeSend:
-		requestHeaderMode = extproc.ProcessingMode_SEND
-	case constants.ExtProcHeaderModeSkip:
-		requestHeaderMode = extproc.ProcessingMode_SKIP
-	}
-
 	// Create ext_proc configuration
 	extProcConfig := &extproc.ExternalProcessor{
 		GrpcService: &core.GrpcService{
@@ -1856,7 +1847,10 @@ func (t *Translator) createExtProcFilter() (*hcm.HttpFilter, error) {
 		AllowModeOverride: policyEngine.AllowModeOverride,
 		RequestAttributes: []string{constants.ExtProcRequestAttributeRouteName, constants.ExtProcRequestAttributeRouteMetadata},
 		ProcessingMode: &extproc.ProcessingMode{
-			RequestHeaderMode: requestHeaderMode,
+			RequestHeaderMode:  extproc.ProcessingMode_SEND,
+			RequestBodyMode:    extproc.ProcessingMode_FULL_DUPLEX_STREAMED,
+			ResponseHeaderMode: extproc.ProcessingMode_SEND,
+			ResponseBodyMode:   extproc.ProcessingMode_FULL_DUPLEX_STREAMED,
 		},
 		MessageTimeout: durationpb.New(time.Duration(policyEngine.MessageTimeoutMs) * time.Millisecond),
 		MutationRules: &mutationrules.HeaderMutationRules{
