@@ -46,13 +46,13 @@ type GatewayEvent struct {
 }
 
 // APIDeploymentEvent contains payload data for "api.deployed" event type.
-// This event is sent when an API revision is successfully deployed to a gateway.
+// This event is sent when an API is successfully deployed to a gateway.
 type APIDeploymentEvent struct {
 	// ApiId identifies the deployed API
 	ApiId string `json:"apiId"`
 
-	// RevisionID identifies the specific API revision deployed
-	RevisionID string `json:"revisionId"`
+	// DeploymentID identifies the specific deployment artifact
+	DeploymentID string `json:"deploymentId"`
 
 	// Vhost specifies the virtual host where the API is deployed
 	Vhost string `json:"vhost"`

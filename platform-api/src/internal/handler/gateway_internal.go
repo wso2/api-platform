@@ -26,8 +26,9 @@ import (
 	"platform-api/src/internal/dto"
 	"platform-api/src/internal/utils"
 
-	"github.com/gin-gonic/gin"
 	"platform-api/src/internal/service"
+
+	"github.com/gin-gonic/gin"
 )
 
 type GatewayInternalAPIHandler struct {
@@ -121,6 +122,7 @@ func (h *GatewayInternalAPIHandler) GetAPI(c *gin.Context) {
 	}
 
 	orgID := gateway.OrganizationID
+	gatewayID := gateway.ID
 	apiID := c.Param("apiId")
 	if apiID == "" {
 		c.JSON(http.StatusBadRequest, utils.NewErrorResponse(400, "Bad Request",
@@ -128,8 +130,13 @@ func (h *GatewayInternalAPIHandler) GetAPI(c *gin.Context) {
 		return
 	}
 
-	api, err := h.gatewayInternalService.GetAPIByUUID(apiID, orgID)
+	api, err := h.gatewayInternalService.GetActiveDeploymentByGateway(apiID, orgID, gatewayID)
 	if err != nil {
+		if errors.Is(err, constants.ErrDeploymentNotActive) {
+			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
+				"No active deployment found for this API on this gateway"))
+			return
+		}
 		if errors.Is(err, constants.ErrAPINotFound) {
 			c.JSON(http.StatusNotFound, utils.NewErrorResponse(404, "Not Found",
 				"API not found"))

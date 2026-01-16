@@ -54,8 +54,17 @@ type APIRepository interface {
 	GetDeployedAPIsByGatewayUUID(gatewayUUID, orgUUID string) ([]*model.API, error)
 	UpdateAPI(api *model.API) error
 	DeleteAPI(apiUUID, orgUUID string) error
+
+	// Deployment artifact methods (immutable deployments)
 	CreateDeployment(deployment *model.APIDeployment) error
-	GetDeploymentsByAPIUUID(apiUUID, orgUUID string) ([]*model.APIDeployment, error)
+	GetDeploymentByID(deploymentID, apiUUID, orgUUID string) (*model.APIDeployment, error)
+	GetDeploymentsByAPIUUID(apiUUID, orgUUID string, gatewayID *string, status *string) ([]*model.APIDeployment, error)
+	GetDeploymentContent(deploymentID, apiUUID, orgUUID string) ([]byte, error)
+	UpdateDeploymentStatus(deploymentID, apiUUID, status, orgUUID string) error
+	DeleteDeployment(deploymentID, apiUUID, orgUUID string) error
+	GetActiveDeploymentByGateway(apiUUID, gatewayID, orgUUID string) (*model.APIDeployment, error)
+	CountDeploymentsByAPIAndGateway(apiUUID, gatewayID, orgUUID string) (int, error)
+	GetOldestUndeployedDeploymentByGateway(apiUUID, gatewayID, orgUUID string) (*model.APIDeployment, error)
 
 	// API-Gateway association methods
 	GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error)

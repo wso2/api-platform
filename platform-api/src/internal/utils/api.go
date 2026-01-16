@@ -60,9 +60,6 @@ func (u *APIUtil) DTOToModel(dto *dto.API) *model.API {
 		LifeCycleStatus:  dto.LifeCycleStatus,
 		HasThumbnail:     dto.HasThumbnail,
 		IsDefaultVersion: dto.IsDefaultVersion,
-		IsRevision:       dto.IsRevision,
-		RevisionedAPIID:  dto.RevisionedAPIID,
-		RevisionID:       dto.RevisionID,
 		Type:             dto.Type,
 		Transport:        dto.Transport,
 		MTLS:             u.MTLSDTOToModel(dto.MTLS),
@@ -96,9 +93,6 @@ func (u *APIUtil) ModelToDTO(model *model.API) *dto.API {
 		LifeCycleStatus:  model.LifeCycleStatus,
 		HasThumbnail:     model.HasThumbnail,
 		IsDefaultVersion: model.IsDefaultVersion,
-		IsRevision:       model.IsRevision,
-		RevisionedAPIID:  model.RevisionedAPIID,
-		RevisionID:       model.RevisionID,
 		Type:             model.Type,
 		Transport:        model.Transport,
 		MTLS:             u.MTLSModelToDTO(model.MTLS),
@@ -1156,8 +1150,6 @@ func (u *APIUtil) APIYAMLDataToDTO(yamlData *dto.APIYAMLData) *dto.API {
 		Transport:        []string{"http", "https"},
 		HasThumbnail:     false,
 		IsDefaultVersion: false,
-		IsRevision:       false,
-		RevisionID:       0,
 
 		// Fields that need to be set by caller:
 		// - ProjectID (required)
@@ -1747,9 +1739,6 @@ func (u *APIUtil) MergeAPIDetails(userAPI *dto.API, extractedAPI *dto.API) *dto.
 	// Copy boolean fields from user input
 	merged.HasThumbnail = userAPI.HasThumbnail
 	merged.IsDefaultVersion = userAPI.IsDefaultVersion
-	merged.IsRevision = userAPI.IsRevision
-	merged.RevisionedAPIID = userAPI.RevisionedAPIID
-	merged.RevisionID = userAPI.RevisionID
 
 	return merged
 }
