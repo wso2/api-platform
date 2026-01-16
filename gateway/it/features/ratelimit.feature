@@ -1304,3 +1304,93 @@ Feature: Rate Limiting
     # Double-check API-A is still rate limited (not affected by API-B usage)
     When I send a GET request to "http://localhost:8080/ratelimit-apiname-isolation-a/v1.0/resource"
     Then the response status code should be 429
+
+  Scenario: Resource grouping using constant key extraction
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: ratelimit-constant-key-api
+      spec:
+        displayName: RateLimit Constant Key API
+        version: v1.0
+        context: /ratelimit-constant/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        operations:
+          - method: GET
+            path: /health
+          - method: GET
+            path: /group-a-1
+            policies:
+              - name: advanced-ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - limits:
+                        - limit: 5
+                          duration: "1h"
+                      keyExtraction:
+                        - type: apiname
+                        - type: constant
+                          key: "group-A"
+          - method: GET
+            path: /group-a-2
+            policies:
+              - name: advanced-ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - limits:
+                        - limit: 5
+                          duration: "1h"
+                      keyExtraction:
+                        - type: apiname
+                        - type: constant
+                          key: "group-A"
+          - method: GET
+            path: /group-b-1
+            policies:
+              - name: advanced-ratelimit
+                version: v0.1.0
+                params:
+                  quotas:
+                    - limits:
+                        - limit: 5
+                          duration: "1h"
+                      keyExtraction:
+                        - type: apiname
+                        - type: constant
+                          key: "group-B"
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/ratelimit-constant/v1.0/health" to be ready
+
+    # Group A: Send 3 requests to /group-a-1
+    When I send 3 GET requests to "http://localhost:8080/ratelimit-constant/v1.0/group-a-1"
+    Then the response status code should be 200
+
+    # Group A: Send 2 requests to /group-a-2 (should share bucket with group-a-1)
+    # Total Group A usage: 3 + 2 = 5 (Limit reached)
+    When I send 2 GET requests to "http://localhost:8080/ratelimit-constant/v1.0/group-a-2"
+    Then the response status code should be 200
+
+    # Group A: Verify Limit Exceeded on /group-a-1
+    When I send a GET request to "http://localhost:8080/ratelimit-constant/v1.0/group-a-1"
+    Then the response status code should be 429
+    And the response body should contain "Rate limit exceeded"
+
+    # Group A: Verify Limit Exceeded on /group-a-2
+    When I send a GET request to "http://localhost:8080/ratelimit-constant/v1.0/group-a-2"
+    Then the response status code should be 429
+
+    # Group B: Should be independent (0 usage)
+    When I send 5 GET requests to "http://localhost:8080/ratelimit-constant/v1.0/group-b-1"
+    Then the response status code should be 200
+
+    # Group B: 6th request should fail
+    When I send a GET request to "http://localhost:8080/ratelimit-constant/v1.0/group-b-1"
+    Then the response status code should be 429

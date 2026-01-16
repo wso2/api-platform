@@ -99,7 +99,8 @@ parameters:
                     - apiname: Use API name from context
                     - apiversion: Use API version from context
                     - routename: Use route name from metadata (default)
-                  enum: ["header", "metadata", "ip", "apiname", "apiversion", "routename"]
+                    - constant: Use a static string value (requires 'key' field)
+                  enum: ["header", "metadata", "ip", "apiname", "apiversion", "routename", "constant"]
                 key:
                   type: string
                   description: Header name or metadata key (required for header/metadata types)
@@ -208,7 +209,8 @@ parameters:
               - apiname: Use API name from context
               - apiversion: Use API version from context
               - routename: Use route name from metadata (default)
-            enum: ["header", "metadata", "ip", "apiname", "apiversion", "routename"]
+              - constant: Use a static string value (requires 'key' field)
+            enum: ["header", "metadata", "ip", "apiname", "apiversion", "routename", "constant"]
           key:
             type: string
             description: Header name or metadata key (required for header/metadata types)
