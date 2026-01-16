@@ -436,6 +436,8 @@ func (p *JwtAuthPolicy) OnRequest(ctx *policy.RequestContext, params map[string]
 		)
 		return p.handleAuthFailure(ctx, onFailureStatusCode, errorMessageFormat, errorMessage, fmt.Sprintf("token validation failed: %v", err))
 	}
+	// Store validated claims in metadata for authz policies to use
+	ctx.Metadata["validatedClaims"] = claims
 
 	slog.Debug("JWT Auth Policy: Token signature validated successfully")
 
