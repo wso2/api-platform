@@ -42,10 +42,10 @@ func GetPolicy(
 // Mode returns the processing mode for this policy
 func (p *XMLToJSONPolicy) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeSkip, // Don't process request headers
-		RequestBodyMode:    policy.BodyModeBuffer, // Need request body for transformation
-		ResponseHeaderMode: policy.HeaderModeSkip, // Don't process response headers
-		ResponseBodyMode:   policy.BodyModeBuffer, // Need response body for transformation
+		RequestHeaderMode:  policy.HeaderModeProcess, // Process request headers for content type
+		RequestBodyMode:    policy.BodyModeBuffer,    // Need request body for transformation
+		ResponseHeaderMode: policy.HeaderModeProcess, // Process response headers for content type
+		ResponseBodyMode:   policy.BodyModeBuffer,    // Need response body for transformation
 	}
 }
 
