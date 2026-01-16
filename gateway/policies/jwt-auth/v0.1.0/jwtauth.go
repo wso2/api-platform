@@ -712,11 +712,22 @@ func (p *JwtAuthPolicy) validateTokenWithSignature(tokenString string, unverifie
 		// If no issuer match found
 		if len(applicableKeyManagers) == 0 {
 			if validateIssuer {
-				// Strict mode: reject if token issuer doesn't match any key manager
-				slog.Debug("JWT Auth Policy: No key manager found for token issuer (validateIssuer=true)",
+				// Strict mode: reject if token issuer doesn't match any key manager unless wildcard key managers exist
+				for _, km := range keyManagers {
+					if km.Issuer == "" {
+						applicableKeyManagers = append(applicableKeyManagers, km)
+					}
+				}
+				if len(applicableKeyManagers) == 0 {
+					slog.Debug("JWT Auth Policy: No key manager found for token issuer (validateIssuer=true)",
+						"tokenIssuer", tokenIssuer,
+					)
+					return nil, fmt.Errorf("no key manager configured for token issuer '%s'", tokenIssuer)
+				}
+				slog.Debug("JWT Auth Policy: Using key managers without issuer for token validation",
 					"tokenIssuer", tokenIssuer,
+					"count", len(applicableKeyManagers),
 				)
-				return nil, fmt.Errorf("no key manager configured for token issuer '%s'", tokenIssuer)
 			} else {
 				// Lenient mode: try all key managers
 				slog.Debug("JWT Auth Policy: No issuer match found, using all key managers (validateIssuer=false)")
