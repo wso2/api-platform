@@ -64,6 +64,7 @@ type APIRepository interface {
 	DeleteDeployment(deploymentID, apiUUID, orgUUID string) error
 	GetActiveDeploymentByGateway(apiUUID, gatewayID, orgUUID string) (*model.APIDeployment, error)
 	CountDeploymentsByAPIAndGateway(apiUUID, gatewayID, orgUUID string) (int, error)
+	GetOldestUndeployedDeploymentByGateway(apiUUID, gatewayID, orgUUID string) (*model.APIDeployment, error)
 
 	// API-Gateway association methods
 	GetAPIGatewaysWithDetails(apiUUID, orgUUID string) ([]*model.APIGatewayWithDetails, error)

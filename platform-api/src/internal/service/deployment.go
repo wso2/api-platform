@@ -99,9 +99,18 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 		return nil, fmt.Errorf("failed to check deployment count: %w", err)
 	}
 	if apiDeploymentCount >= s.cfg.Deployments.MaxPerAPIGateway {
-		return nil, fmt.Errorf("deployment limit exceeded: maximum %d deployments allowed per API-Gateway combination", s.cfg.Deployments.MaxPerAPIGateway)
+		// Delete oldest deployment in UNDEPLOYED state to make room
+		oldestDeployment, err := s.apiRepo.GetOldestUndeployedDeploymentByGateway(apiUUID, req.GatewayID, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get oldest undeployed deployment: %w", err)
+		}
+		if oldestDeployment != nil {
+			if err := s.apiRepo.DeleteDeployment(oldestDeployment.DeploymentID, apiUUID, orgUUID); err != nil {
+				return nil, fmt.Errorf("failed to delete oldest undeployed deployment: %w", err)
+			}
+			log.Printf("[INFO] Deleted oldest undeployed deployment %s to make room for new deployment", oldestDeployment.DeploymentID)
+		}
 	}
-
 	// Validate API has backend services attached
 	backendServices, err := s.backendServiceRepo.GetBackendServicesByAPIID(apiUUID)
 	if err != nil {
@@ -156,6 +165,19 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 	if existingDeployment != nil {
 		if err := s.apiRepo.UpdateDeploymentStatus(existingDeployment.DeploymentID, apiUUID, "UNDEPLOYED", orgUUID); err != nil {
 			log.Printf("[WARN] Failed to undeploy existing deployment %s: %v", existingDeployment.DeploymentID, err)
+		}
+	}
+
+	// Send undeployment event to gateway
+	if s.gatewayEventsService != nil {
+		undeploymentEvent := &model.APIUndeploymentEvent{
+			ApiId:       apiUUID,
+			Vhost:       gateway.Vhost,
+			Environment: "production",
+		}
+
+		if err := s.gatewayEventsService.BroadcastUndeploymentEvent(req.GatewayID, undeploymentEvent); err != nil {
+			log.Printf("[WARN] Failed to broadcast undeployment event: %v", err)
 		}
 	}
 

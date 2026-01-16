@@ -1207,6 +1207,46 @@ func (r *APIRepo) GetActiveDeploymentByGateway(apiUUID, gatewayID, orgID string)
 	return deployment, nil
 }
 
+// GetOldestUndeployedDeploymentByGateway implements [APIRepository].
+func (r *APIRepo) GetOldestUndeployedDeploymentByGateway(apiUUID string, gatewayID string, orgUUID string) (*model.APIDeployment, error) {
+	deployment := &model.APIDeployment{}
+
+	// SQL query to select the oldest undeployed deployment
+	query := `
+		SELECT deployment_id, api_uuid, organization_uuid, gateway_uuid, status, base_deployment_id, content, metadata, created_at
+		FROM api_deployments
+		WHERE api_uuid = ? AND gateway_uuid = ? AND organization_uuid = ? AND status != 'DEPLOYED'
+		ORDER BY created_at ASC
+		LIMIT 1
+	`
+	var baseDeploymentID sql.NullString
+	var metadataJSON string
+
+	err := r.db.QueryRow(query, apiUUID, gatewayID, orgUUID).Scan(
+		&deployment.DeploymentID, &deployment.ApiID, &deployment.OrganizationID,
+		&deployment.GatewayID, &deployment.Status, &baseDeploymentID, &deployment.Content, &metadataJSON, &deployment.CreatedAt)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if baseDeploymentID.Valid {
+		deployment.BaseDeploymentID = &baseDeploymentID.String
+	}
+
+	if metadataJSON != "" {
+		var metadata map[string]interface{}
+		if err := json.Unmarshal([]byte(metadataJSON), &metadata); err == nil {
+			deployment.Metadata = metadata
+		}
+	}
+
+	return deployment, nil
+}
+
 // CreateAPIAssociation creates an association between an API and resource (e.g., gateway or dev portal)
 func (r *APIRepo) CreateAPIAssociation(association *model.APIAssociation) error {
 	query := `
