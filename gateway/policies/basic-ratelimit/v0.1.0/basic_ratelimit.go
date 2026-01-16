@@ -56,7 +56,7 @@ func transformToRatelimitParams(params map[string]interface{}, metadata policy.P
 	limits, _ := params["limits"].([]interface{})
 
 	keyExtractorType := "routename"
-	if metadata.AttachedTo == "api" {
+	if metadata.AttachedTo == policy.LevelAPI {
 		keyExtractorType = "apiname"
 	}
 

@@ -236,7 +236,7 @@ func (h *ResourceHandler) buildPolicyChain(routeKey string, config *policyengine
 		// Check if attachedTo is present in parameters and set it in metadata
 		if val, ok := policyConfig.Parameters["attachedTo"]; ok {
 			if attachedTo, ok := val.(string); ok {
-				metadata.AttachedTo = attachedTo
+				metadata.AttachedTo = policy.Level(attachedTo)
 			}
 		}
 
