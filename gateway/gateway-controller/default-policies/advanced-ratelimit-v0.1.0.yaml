@@ -66,8 +66,9 @@ parameters:
                   type: string
                   description: |
                     Time window for the limit (Go duration string format).
-                    Examples: "1s" (1 second), "1m" (1 minute), "1h" (1 hour), "24h" (1 day)
-                  pattern: "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+                    Examples: "1s" (1 second), "1m" (1 minute), "1h" (1 hour), "24h" (1 day),
+                    "1h30m" (1 hour 30 minutes), "1.5h" (1.5 hours)
+                  pattern: "^[-+]?(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|ms|s|m|h))+$"
                 burst:
                   type: integer
                   description: |

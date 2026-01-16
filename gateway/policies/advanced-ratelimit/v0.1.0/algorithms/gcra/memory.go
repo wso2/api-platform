@@ -48,6 +48,8 @@ func NewMemoryLimiter(policy *Policy, cleanupInterval time.Duration) *MemoryLimi
 
 // WithClock sets a custom clock (for testing)
 func (m *MemoryLimiter) WithClock(clock limiter.Clock) *MemoryLimiter {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.clock = clock
 	return m
 }
