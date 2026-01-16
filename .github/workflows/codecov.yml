@@ -24,19 +24,6 @@ jobs:
           cd gateway
           make test
 
-      - name: List coverage files - 1
-        run: |
-          echo "=== Finding all coverage.txt files ==="
-          find . -name "coverage.txt" -type f
-          echo "=== Contents of coverage.txt files ==="
-          find . -name "coverage.txt" -type f | while read file; do
-            echo ""
-            echo "=========================================="
-            echo "File: $file"
-            echo "=========================================="
-            cat "$file"
-          done
-
       - name: Build coverage-instrumented images
         run: |
           cd gateway
@@ -47,24 +34,21 @@ jobs:
           cd gateway
           make test-integration
 
-      - name: List coverage files - 2
+      - name: List generated coverage files
         run: |
           echo "=== Finding all coverage.txt files ==="
-          find . -name "coverage.txt" -type f
-          echo "=== Contents of coverage.txt files ==="
-          find . -name "coverage.txt" -type f | while read file; do
-            echo ""
-            echo "=========================================="
-            echo "File: $file"
-            echo "=========================================="
-            cat "$file"
-          done
+          find . -name "*coverage.txt" -type f
 
-      - name: Upload coverage reports to Codecov
+      - name: Upload unit test coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: |
-            gateway/it/coverage/coverage.txt
-            gateway/gateway-controller/coverage.txt
-            gateway/gateway-builder/coverage.txt
+          files: '**/unit-test-coverage.txt'
+          flags: unit
+
+      - name: Upload integration test coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: '**/integration-test-coverage.txt'
+          flags: integration
