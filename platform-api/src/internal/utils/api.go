@@ -353,12 +353,11 @@ func (u *APIUtil) OperationRequestDTOToModel(dto *dto.OperationRequest) *model.O
 		return nil
 	}
 	return &model.OperationRequest{
-		Method:           dto.Method,
-		Path:             dto.Path,
-		BackendServices:  u.BackendRoutingDTOsToModel(dto.BackendServices),
-		Authentication:   u.AuthConfigDTOToModel(dto.Authentication),
-		RequestPolicies:  u.PoliciesDTOToModel(dto.RequestPolicies),
-		ResponsePolicies: u.PoliciesDTOToModel(dto.ResponsePolicies),
+		Method:          dto.Method,
+		Path:            dto.Path,
+		BackendServices: u.BackendRoutingDTOsToModel(dto.BackendServices),
+		Authentication:  u.AuthConfigDTOToModel(dto.Authentication),
+		Policies:        u.PoliciesDTOToModel(dto.Policies),
 	}
 }
 
@@ -409,8 +408,10 @@ func (u *APIUtil) PolicyDTOToModel(dto *dto.Policy) *model.Policy {
 		return nil
 	}
 	return &model.Policy{
-		Name:   dto.Name,
-		Params: dto.Params,
+		ExecutionCondition: dto.ExecutionCondition,
+		Name:               dto.Name,
+		Params:             dto.Params,
+		Version:            dto.Version,
 	}
 }
 
@@ -663,12 +664,11 @@ func (u *APIUtil) OperationRequestModelToDTO(model *model.OperationRequest) *dto
 		return nil
 	}
 	return &dto.OperationRequest{
-		Method:           model.Method,
-		Path:             model.Path,
-		BackendServices:  u.BackendRoutingModelsToDTO(model.BackendServices),
-		Authentication:   u.AuthConfigModelToDTO(model.Authentication),
-		RequestPolicies:  u.PoliciesModelToDTO(model.RequestPolicies),
-		ResponsePolicies: u.PoliciesModelToDTO(model.ResponsePolicies),
+		Method:          model.Method,
+		Path:            model.Path,
+		BackendServices: u.BackendRoutingModelsToDTO(model.BackendServices),
+		Authentication:  u.AuthConfigModelToDTO(model.Authentication),
+		Policies:        u.PoliciesModelToDTO(model.Policies),
 	}
 }
 
@@ -719,8 +719,10 @@ func (u *APIUtil) PolicyModelToDTO(model *model.Policy) *dto.Policy {
 		return nil
 	}
 	return &dto.Policy{
-		Name:   model.Name,
-		Params: model.Params,
+		ExecutionCondition: model.ExecutionCondition,
+		Name:               model.Name,
+		Params:             model.Params,
+		Version:            model.Version,
 	}
 }
 
@@ -748,29 +750,41 @@ func (u *APIUtil) GenerateAPIDeploymentYAML(api *dto.API) (string, error) {
 	for _, op := range api.Operations {
 		operationList = append(operationList, *op.Request)
 	}
-	upstreamList := make([]dto.BackendEndpoint, 0)
+
+	// Get the main upstream URL from the first backend service endpoint
+	var upstreamYAML *dto.UpstreamYAML
 	for _, backendService := range api.BackendServices {
 		for _, endpoint := range backendService.Endpoints {
-			upstreamList = append(upstreamList, endpoint)
+			if endpoint.URL != "" {
+				upstreamYAML = &dto.UpstreamYAML{
+					Main: &dto.UpstreamTarget{
+						URL: endpoint.URL,
+					},
+				}
+				break
+			}
+		}
+		if upstreamYAML != nil {
+			break
 		}
 	}
 
 	// Create API deployment YAML structure
 	apiYAMLData := dto.APIYAMLData{
-		Id:          api.ID,
-		Name:        api.Name,
+		DisplayName: api.Name,
 		Version:     api.Version,
-		Description: api.Description,
 		Context:     api.Context,
-		Provider:    api.Provider,
-		Upstreams:   upstreamList,
+		Upstream:    upstreamYAML,
 		Operations:  operationList,
 	}
 
 	apiDeployment := dto.APIDeploymentYAML{
-		Kind:    "http/rest",
-		Version: "api-platform.wso2.com/v1",
-		Spec:    apiYAMLData,
+		ApiVersion: "gateway.api-platform.wso2.com/v1alpha1",
+		Kind:       "RestApi",
+		Metadata: dto.APIDeploymentMetadata{
+			Name: api.ID,
+		},
+		Spec: apiYAMLData,
 	}
 
 	// Convert to YAML
@@ -1088,23 +1102,18 @@ func (u *APIUtil) APIYAMLDataToDTO(yamlData *dto.APIYAMLData) *dto.API {
 		return nil
 	}
 
-	// Convert upstreams to backend services if present
+	// Convert upstream to backend services if present
 	var backendServices []dto.BackendService
-	if len(yamlData.Upstreams) > 0 {
-		backendServices = make([]dto.BackendService, len(yamlData.Upstreams))
-		for i, upstream := range yamlData.Upstreams {
-			backendServices[i] = dto.BackendService{
-				IsDefault: i == 0, // First backend service is default
+	if yamlData.Upstream != nil && yamlData.Upstream.Main != nil && yamlData.Upstream.Main.URL != "" {
+		backendServices = []dto.BackendService{
+			{
+				IsDefault: true,
 				Endpoints: []dto.BackendEndpoint{
 					{
-						URL:         upstream.URL,
-						Description: upstream.Description,
-						Weight:      upstream.Weight,
-						HealthCheck: upstream.HealthCheck,
-						MTLS:        upstream.MTLS,
+						URL: yamlData.Upstream.Main.URL,
 					},
 				},
-			}
+			},
 		}
 	}
 
@@ -1117,12 +1126,11 @@ func (u *APIUtil) APIYAMLDataToDTO(yamlData *dto.APIYAMLData) *dto.API {
 				Name:        fmt.Sprintf("Operation-%d", i+1),
 				Description: fmt.Sprintf("Operation for %s %s", op.Method, op.Path),
 				Request: &dto.OperationRequest{
-					Method:           op.Method,
-					Path:             op.Path,
-					BackendServices:  op.BackendServices,
-					Authentication:   op.Authentication,
-					RequestPolicies:  op.RequestPolicies,
-					ResponsePolicies: op.ResponsePolicies,
+					Method:          op.Method,
+					Path:            op.Path,
+					BackendServices: op.BackendServices,
+					Authentication:  op.Authentication,
+					Policies:        op.Policies,
 				},
 			}
 		}
@@ -1130,11 +1138,9 @@ func (u *APIUtil) APIYAMLDataToDTO(yamlData *dto.APIYAMLData) *dto.API {
 
 	// Create and populate API DTO with available fields
 	api := &dto.API{
-		Name:            yamlData.Name,
-		Description:     yamlData.Description,
+		Name:            yamlData.DisplayName,
 		Context:         yamlData.Context,
 		Version:         yamlData.Version,
-		Provider:        yamlData.Provider,
 		BackendServices: backendServices,
 		Operations:      operations,
 
@@ -1293,12 +1299,12 @@ func (u *APIUtil) ValidateWSO2Artifact(artifact *dto.APIDeploymentYAML) error {
 		return fmt.Errorf("invalid artifact: missing kind")
 	}
 
-	if artifact.Version == "" {
-		return fmt.Errorf("invalid artifact: missing version")
+	if artifact.ApiVersion == "" {
+		return fmt.Errorf("invalid artifact: missing apiVersion")
 	}
 
-	if artifact.Spec.Name == "" {
-		return fmt.Errorf("missing API name")
+	if artifact.Spec.DisplayName == "" {
+		return fmt.Errorf("missing API displayName")
 	}
 
 	if artifact.Spec.Context == "" {
@@ -1544,8 +1550,7 @@ func (u *APIUtil) extractOperationsFromV3Paths(paths *v3high.Paths) []dto.Operat
 						Required: false,
 						Scopes:   []string{},
 					},
-					RequestPolicies:  []dto.Policy{},
-					ResponsePolicies: []dto.Policy{},
+					Policies: []dto.Policy{},
 				},
 			}
 
@@ -1598,8 +1603,7 @@ func (u *APIUtil) extractOperationsFromV2Paths(paths *v2high.Paths) []dto.Operat
 						Required: false,
 						Scopes:   []string{},
 					},
-					RequestPolicies:  []dto.Policy{},
-					ResponsePolicies: []dto.Policy{},
+					Policies: []dto.Policy{},
 				},
 			}
 

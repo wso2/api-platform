@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"strings"
@@ -60,12 +61,16 @@ func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I clear all headers$`, h.iClearHeaders)
 
 	// HTTP method steps
-	ctx.Step(`^I send a GET request to "([^"]*)"$`, h.ISendGETRequest)
-	ctx.Step(`^I send a POST request to "([^"]*)"$`, h.ISendPOSTRequest)
-	ctx.Step(`^I send a POST request to "([^"]*)" with body:$`, h.ISendPOSTRequestWithBody)
-	ctx.Step(`^I send a PUT request to "([^"]*)" with body:$`, h.ISendPUTRequestWithBody)
-	ctx.Step(`^I send a DELETE request to "([^"]*)"$`, h.ISendDELETERequest)
-	ctx.Step(`^I send a PATCH request to "([^"]*)" with body:$`, h.ISendPATCHRequestWithBody)
+	ctx.Step(`^I send a GET request to \"([^\"]*)\"$`, h.ISendGETRequest)
+	ctx.Step(`^I send a POST request to \"([^\"]*)\"$`, h.ISendPOSTRequest)
+	ctx.Step(`^I send a POST request to \"([^\"]*)\" with body:$`, h.ISendPOSTRequestWithBody)
+	ctx.Step(`^I send a PUT request to \"([^\"]*)\" with body:$`, h.ISendPUTRequestWithBody)
+	ctx.Step(`^I send a DELETE request to \"([^\"]*)\"$`, h.ISendDELETERequest)
+	ctx.Step(`^I send a PATCH request to \"([^\"]*)\" with body:$`, h.ISendPATCHRequestWithBody)
+	ctx.Step(`^I send (\d+) GET requests to \"([^\"]*)\"$`, h.ISendManyGETRequests)
+	ctx.Step(`^I send a GET request to \"([^\"]*)\" with header \"([^\"]*)\" value \"([^\"]*)\"$`, h.iSendGETRequestWithHeader)
+	ctx.Step(`^I send (\d+) GET requests to \"([^\"]*)\" with header \"([^\"]*)\" value \"([^\"]*)\"$`, h.iSendManyGETRequestsWithHeader)
+	ctx.Step(`^I send a POST request to \"([^\"]*)\" with header \"([^\"]*)\" value \"([^\"]*)\" with body:$`, h.iSendPOSTRequestWithHeaderAndBody)
 
 	// Service-specific shortcuts
 	ctx.Step(`^I send a GET request to the "([^"]*)" service at "([^"]*)"$`, h.iSendGETToService)
@@ -155,7 +160,12 @@ func (h *HTTPSteps) ISendGETRequest(url string) error {
 	return h.sendRequest(http.MethodGet, url, nil)
 }
 
-// ISendPOSTRequest sends a POST request without body
+// SendGETRequest is a public wrapper to send GET request to any URL
+func (h *HTTPSteps) SendGETRequest(url string) error {
+	return h.sendRequest(http.MethodGet, url, nil)
+}
+
+// iSendPOSTRequest sends a POST request without body
 func (h *HTTPSteps) ISendPOSTRequest(url string) error {
 	return h.sendRequest(http.MethodPost, url, nil)
 }
@@ -178,6 +188,19 @@ func (h *HTTPSteps) ISendDELETERequest(url string) error {
 // ISendPATCHRequestWithBody sends a PATCH request with body
 func (h *HTTPSteps) ISendPATCHRequestWithBody(url string, body *godog.DocString) error {
 	return h.sendRequest(http.MethodPatch, url, []byte(body.Content))
+}
+
+// iSendManyGETRequests sends multiple GET requests
+func (h *HTTPSteps) ISendManyGETRequests(count int, url string) error {
+	log.Printf("DEBUG: Sending %d GET requests to %s", count, url)
+	for i := 0; i < count; i++ {
+		if err := h.sendRequest(http.MethodGet, url, nil); err != nil {
+			return fmt.Errorf("request %d failed: %w", i+1, err)
+		}
+		log.Printf("DEBUG: Request %d/%d completed, last response status: %d", i+1, count, h.lastResponse.StatusCode)
+	}
+	log.Printf("DEBUG: All %d requests completed, final response status: %d", count, h.lastResponse.StatusCode)
+	return nil
 }
 
 // iSendGETToService sends a GET request to a named service
@@ -203,6 +226,83 @@ func (h *HTTPSteps) iSendPOSTToServiceWithBody(serviceName, path string, body *g
 // iWaitForSeconds waits for the specified number of seconds
 func (h *HTTPSteps) iWaitForSeconds(seconds int) error {
 	time.Sleep(time.Duration(seconds) * time.Second)
+	return nil
+}
+
+// iSendGETRequestWithHeader sends a GET request with a specific header
+func (h *HTTPSteps) iSendGETRequestWithHeader(url, headerName, headerValue string) error {
+	return h.sendRequestWithTempHeader(http.MethodGet, url, nil, headerName, headerValue)
+}
+
+// iSendManyGETRequestsWithHeader sends multiple GET requests with a specific header
+func (h *HTTPSteps) iSendManyGETRequestsWithHeader(count int, url, headerName, headerValue string) error {
+	log.Printf("DEBUG: Sending %d GET requests to %s with header %s=%s", count, url, headerName, headerValue)
+	for i := 0; i < count; i++ {
+		if err := h.sendRequestWithTempHeader(http.MethodGet, url, nil, headerName, headerValue); err != nil {
+			return fmt.Errorf("request %d failed: %w", i+1, err)
+		}
+		log.Printf("DEBUG: Request %d/%d completed, last response status: %d", i+1, count, h.lastResponse.StatusCode)
+	}
+	log.Printf("DEBUG: All %d requests completed, final response status: %d", count, h.lastResponse.StatusCode)
+	return nil
+}
+
+// iSendPOSTRequestWithHeaderAndBody sends a POST request with a header and body
+func (h *HTTPSteps) iSendPOSTRequestWithHeaderAndBody(url, headerName, headerValue string, body *godog.DocString) error {
+	return h.sendRequestWithTempHeader(http.MethodPost, url, []byte(body.Content), headerName, headerValue)
+}
+
+// sendRequestWithTempHeader sends a request with a temporary header that doesn't persist
+func (h *HTTPSteps) sendRequestWithTempHeader(method, url string, body []byte, headerName, headerValue string) error {
+	var bodyReader io.Reader
+	if body != nil {
+		bodyReader = bytes.NewReader(body)
+	}
+
+	req, err := http.NewRequest(method, url, bodyReader)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Apply persistent headers
+	for name, value := range h.headers {
+		req.Header.Set(name, value)
+	}
+
+	// Apply temporary header (overrides if exists)
+	req.Header.Set(headerName, headerValue)
+
+	// Set Content-Type for requests with body
+	if body != nil && req.Header.Get("Content-Type") == "" {
+		trimmed := strings.TrimSpace(string(body))
+		if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+			req.Header.Set("Content-Type", "application/json")
+		}
+	}
+
+	h.lastRequest = req
+
+	reqDump, _ := httputil.DumpRequestOut(req, true)
+	fmt.Printf("REQUEST:\n%s\n", string(reqDump))
+	log.Printf("DEBUG: Sending %s request to %s", method, url)
+
+	resp, err := h.client.Do(req)
+	if err != nil {
+		log.Printf("ERROR: Failed to send request to %s: %v", url, err)
+		return fmt.Errorf("failed to send request to %s: %w", url, err)
+	}
+
+	log.Printf("DEBUG: Received response from %s: status=%d", url, resp.StatusCode)
+
+	h.lastResponse = resp
+
+	// Read and store body
+	h.lastBody, err = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
 	return nil
 }
 
@@ -236,11 +336,16 @@ func (h *HTTPSteps) sendRequest(method, url string, body []byte) error {
 
 	reqDump, _ := httputil.DumpRequestOut(req, true)
 	fmt.Printf("REQUEST:\n%s\n", string(reqDump))
+	// Log the request for debugging
+	log.Printf("DEBUG: Sending %s request to %s", method, url)
 
 	resp, err := h.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
+		log.Printf("ERROR: Failed to send request to %s: %v", url, err)
+		return fmt.Errorf("failed to send request to %s: %w", url, err)
 	}
+
+	log.Printf("DEBUG: Received response from %s: status=%d", url, resp.StatusCode)
 
 	h.lastResponse = resp
 

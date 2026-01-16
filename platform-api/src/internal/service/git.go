@@ -203,8 +203,8 @@ func (s *gitService) FetchWSO2Artifact(repoURL, branch, path string) (*dto.APIDe
 	}
 
 	// Validate required fields
-	if artifact.Kind == "" || artifact.Version == "" {
-		return nil, fmt.Errorf("malformed WSO2 artifact at %s: kind and version are required", path)
+	if artifact.Kind == "" || artifact.ApiVersion == "" {
+		return nil, fmt.Errorf("malformed WSO2 artifact at %s: kind and apiVersion are required", path)
 	}
 
 	return &artifact, nil

@@ -7,6 +7,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/generated"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"gopkg.in/yaml.v3"
 )
@@ -44,6 +45,22 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	provider := t.store.GetByKindAndHandle(string(api.LlmProvider), proxy.Spec.Provider)
 	if provider == nil {
 		return nil, fmt.Errorf("failed to retrieve provider by id '%s'", proxy.Spec.Provider)
+	}
+
+	// Step 1.5: Get provider's template and extract template params
+	providerConfig, ok := provider.SourceConfiguration.(api.LLMProviderConfiguration)
+	if !ok {
+		return nil, fmt.Errorf("provider source configuration is not LLMProviderConfiguration")
+	}
+
+	tmpl, err := t.store.GetTemplateByHandle(providerConfig.Spec.Template)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve template '%s' from provider: %w", providerConfig.Spec.Template, err)
+	}
+
+	templateParams, err := buildTemplateParams(tmpl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build template params: %w", err)
 	}
 
 	// Step 2: Configure API metadata and basic spec
@@ -145,7 +162,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 					pol := api.Policy{
 						Name:    llmPol.Name,
 						Version: llmPol.Version,
-						Params:  &pathEntry.Params,
+						Params:  mergeParams(pathEntry.Params, templateParams),
 					}
 
 					for opKey, op := range operationRegistry {
@@ -189,9 +206,16 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConfiguration,
 	output *api.APIConfiguration) (*api.APIConfiguration, error) {
 	// @TODO: Step 1) Configure token based rate-limiting policy based on template configs
-	_, err := t.store.GetTemplateByHandle(provider.Spec.Template)
+	// Retrieve and validate template
+	tmpl, err := t.store.GetTemplateByHandle(provider.Spec.Template)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve template '%s': %w", provider.Spec.Template, err)
+	}
+
+	// Build template params for injection into policies
+	templateParams, err := buildTemplateParams(tmpl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build template params: %w", err)
 	}
 
 	output.Kind = api.RestApi
@@ -346,7 +370,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 						pol := api.Policy{
 							Name:    llmPol.Name,
 							Version: llmPol.Version,
-							Params:  &pathEntry.Params,
+							Params:  mergeParams(pathEntry.Params, templateParams),
 						}
 
 						for opKey, op := range operationRegistry {
@@ -444,7 +468,7 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 						pol := api.Policy{
 							Name:    llmPol.Name,
 							Version: llmPol.Version,
-							Params:  &pathEntry.Params,
+							Params:  mergeParams(pathEntry.Params, templateParams),
 						}
 
 						for opKey, op := range operationRegistry {
@@ -506,6 +530,79 @@ func GetHostAdditionPolicyParams(value string) (map[string]interface{}, error) {
 		return nil, err
 	}
 	return m, nil
+}
+
+// buildTemplateParams extracts all template parameters from the LLM provider template
+func buildTemplateParams(template *models.StoredLLMProviderTemplate) (map[string]interface{}, error) {
+	if template == nil {
+		return nil, fmt.Errorf("template is nil")
+	}
+
+	templateParams := make(map[string]interface{})
+
+	spec := template.Configuration.Spec
+
+	// Extract requestModel if available
+	if spec.RequestModel != nil {
+		requestModel := make(map[string]interface{})
+		requestModel["location"] = spec.RequestModel.Location
+		requestModel["identifier"] = spec.RequestModel.Identifier
+		templateParams["requestModel"] = requestModel
+	}
+
+	// Extract responseModel if available
+	if spec.ResponseModel != nil {
+		responseModel := make(map[string]interface{})
+		responseModel["location"] = spec.ResponseModel.Location
+		responseModel["identifier"] = spec.ResponseModel.Identifier
+		templateParams["responseModel"] = responseModel
+	}
+
+	// Extract promptTokens if available
+	if spec.PromptTokens != nil {
+		promptTokens := make(map[string]interface{})
+		promptTokens["location"] = spec.PromptTokens.Location
+		promptTokens["identifier"] = spec.PromptTokens.Identifier
+		templateParams["promptTokens"] = promptTokens
+	}
+
+	// Extract completionTokens if available
+	if spec.CompletionTokens != nil {
+		completionTokens := make(map[string]interface{})
+		completionTokens["location"] = spec.CompletionTokens.Location
+		completionTokens["identifier"] = spec.CompletionTokens.Identifier
+		templateParams["completionTokens"] = completionTokens
+	}
+
+	// Extract totalTokens if available
+	if spec.TotalTokens != nil {
+		totalTokens := make(map[string]interface{})
+		totalTokens["location"] = spec.TotalTokens.Location
+		totalTokens["identifier"] = spec.TotalTokens.Identifier
+		templateParams["totalTokens"] = totalTokens
+	}
+
+	// Extract remainingTokens if available
+	if spec.RemainingTokens != nil {
+		remainingTokens := make(map[string]interface{})
+		remainingTokens["location"] = spec.RemainingTokens.Location
+		remainingTokens["identifier"] = spec.RemainingTokens.Identifier
+		templateParams["remainingTokens"] = remainingTokens
+	}
+
+	return templateParams, nil
+}
+
+// mergeParams merges base parameters with additional parameters (deep copy to avoid mutation)
+func mergeParams(base map[string]interface{}, extra map[string]interface{}) *map[string]interface{} {
+	merged := make(map[string]interface{}, len(base)+len(extra))
+	for k, v := range base {
+		merged[k] = v
+	}
+	for k, v := range extra {
+		merged[k] = v
+	}
+	return &merged
 }
 
 // isDeniedByException checks if a policy path+method is denied by access control exceptions in AllowAll mode

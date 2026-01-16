@@ -605,7 +605,7 @@ func (s *APIService) validateCreateAPIRequest(req *CreateAPIRequest, orgUUID str
 		return errors.New("project id is required")
 	}
 
-	nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgUUID)
+	nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgUUID, "")
 	if err != nil {
 		return err
 	}
@@ -645,9 +645,6 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *UpdateAPI
 	existingAPI := s.apiUtil.ModelToDTO(existingAPIModel)
 
 	// Update fields (only allow certain fields to be updated)
-	if req.ID != nil {
-		existingAPI.ID = *req.ID
-	}
 	if req.Name != nil {
 		existingAPI.Name = *req.Name
 	}
@@ -738,25 +735,9 @@ func (s *APIService) updateAPIBackendServices(apiUUID string, backendServices *[
 
 // validateUpdateAPIRequest checks the validity of the update API request
 func (s *APIService) validateUpdateAPIRequest(existingAPIModel *model.API, req *UpdateAPIRequest, orgUUID string) error {
-	// Handle the API handle (user-facing identifier)
-	if req.ID != nil {
-		// Validate user-provided handle
-		if err := utils.ValidateHandle(*req.ID); err != nil {
-			return err
-		}
-		// Check if handle already exists in the organization
-		handleExists, err := s.apiRepo.CheckAPIExistsByHandleInOrganization(*req.ID, orgUUID)
-		if err != nil {
-			return err
-		}
-		if handleExists {
-			return constants.ErrHandleExists
-		}
-	}
-
 	if req.Name != nil {
 		nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(*req.Name,
-			existingAPIModel.Version, orgUUID)
+			existingAPIModel.Version, orgUUID, existingAPIModel.Handle)
 		if err != nil {
 			return err
 		}
@@ -840,7 +821,6 @@ type CreateAPIRequest struct {
 
 // UpdateAPIRequest represents the request to update an API
 type UpdateAPIRequest struct {
-	ID               *string                 `json:"id,omitempty"`
 	Name             *string                 `json:"name,omitempty"`
 	Description      *string                 `json:"description,omitempty"`
 	Provider         *string                 `json:"provider,omitempty"`
@@ -870,8 +850,7 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 					Required: false,
 					Scopes:   []string{},
 				},
-				RequestPolicies:  []dto.Policy{},
-				ResponsePolicies: []dto.Policy{},
+				Policies: []dto.Policy{},
 			},
 		},
 		{
@@ -884,8 +863,7 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 					Required: false,
 					Scopes:   []string{},
 				},
-				RequestPolicies:  []dto.Policy{},
-				ResponsePolicies: []dto.Policy{},
+				Policies: []dto.Policy{},
 			},
 		},
 		{
@@ -898,8 +876,7 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 					Required: false,
 					Scopes:   []string{},
 				},
-				RequestPolicies:  []dto.Policy{},
-				ResponsePolicies: []dto.Policy{},
+				Policies: []dto.Policy{},
 			},
 		},
 		{
@@ -912,8 +889,7 @@ func (s *APIService) generateDefaultOperations() []dto.Operation {
 					Required: false,
 					Scopes:   []string{},
 				},
-				RequestPolicies:  []dto.Policy{},
-				ResponsePolicies: []dto.Policy{},
+				Policies: []dto.Policy{},
 			},
 		},
 	}
@@ -1441,7 +1417,7 @@ func (s *APIService) ValidateAPI(req *dto.APIValidationRequest, orgUUID string) 
 		}
 	} else {
 		// Validate by name and version
-		exists, err = s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgUUID)
+		exists, err = s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.Name, req.Version, orgUUID, "")
 		if err != nil {
 			return nil, fmt.Errorf("failed to check API existence by name and version: %w", err)
 		}

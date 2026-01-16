@@ -2345,12 +2345,9 @@ components:
             $ref: "#/components/schemas/BackendRouting"
         authentication:
           $ref: "#/components/schemas/AuthenticationConfig"
-        requestPolicies:
+        policies:
           type: array
-          items:
-            $ref: "#/components/schemas/Policy"
-        responsePolicies:
-          type: array
+          description: List of policies to be applied on the operation
           items:
             $ref: "#/components/schemas/Policy"
 
@@ -2388,7 +2385,14 @@ components:
       title: Policy Configuration
       type: object
       description: Defines a request or response policy applied at runtime
+      required:
+        - name
+        - version
       properties:
+        executionCondition:
+          type: string
+          description: Conditional expression that determines when this policy executes
+          example: "request.header.x-custom == 'enabled'"
         name:
           type: string
           description: Name of the policy to apply
@@ -2400,6 +2404,10 @@ components:
           example:
             key: "MyHeader"
             value: "MyValue"
+        version:
+          type: string
+          description: Semantic version of the policy
+          example: "1.0.0"
 
     AddGatewayToAPIRequest:
       title: AddGatewayToAPIRequest object with basic gateway details
