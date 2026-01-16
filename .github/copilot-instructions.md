@@ -34,6 +34,12 @@ If you change any code in the gateway components (gateway-controller, policy-eng
    cd gateway/it && make test
    ```
 
+4. **Revert the gateway-controller image name before committing**. The `-coverage` suffix removal was only for local testing. Before creating a PR, restore the `-coverage` suffix of `gateway/it/docker-compose.test.yaml`:
+   - Change: `ghcr.io/wso2/api-platform/gateway-controller:<version>`
+   - Back to: `ghcr.io/wso2/api-platform/gateway-controller-coverage:<version>`
+   
+   **Important:** Do NOT include this image name change in your PR. The CI pipeline requires the coverage image. Other legitimate changes to docker-compose.test.yaml should still be committed.
+
 ### When modifying only `./gateway/it/**` (integration test files only)
 
 If you are only modifying integration test files (test cases, test utilities, etc.) and not the gateway component source code:
@@ -48,6 +54,12 @@ If you are only modifying integration test files (test cases, test utilities, et
    ```bash
    cd gateway/it && make test
    ```
+
+3. **Revert the gateway-controller image name before committing**. Restore the `-coverage` suffix  of `gateway/it/docker-compose.test.yaml`:
+   - Change: `ghcr.io/wso2/api-platform/gateway-controller:<version>`
+   - Back to: `ghcr.io/wso2/api-platform/gateway-controller-coverage:<version>`
+   
+   **Important:** Do NOT include this image name change in your PR. Other legitimate changes to docker-compose.test.yaml should still be committed.
 
 Note: The images are pre-built during the setup phase, so you can run tests directly without rebuilding.
 
