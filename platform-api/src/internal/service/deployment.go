@@ -493,7 +493,7 @@ func (s *DeploymentService) GetDeploymentByHandle(apiHandle, deploymentID, orgUU
 		return nil, err
 	}
 
-	return s.GetDeployment(deploymentID, apiUUID, orgUUID)
+	return s.GetDeployment(apiUUID, deploymentID, orgUUID)
 }
 
 // GetDeploymentsByHandle retrieves deployments for an API using handle
@@ -525,7 +525,7 @@ func (s *DeploymentService) RedeployDeploymentByHandle(apiHandle, deploymentID, 
 		return nil, err
 	}
 
-	return s.RedeployDeployment(deploymentID, apiUUID, orgUUID)
+	return s.RedeployDeployment(apiUUID, deploymentID, orgUUID)
 }
 
 // UndeployDeploymentByHandle undeploys a deployment using API handle
@@ -536,7 +536,7 @@ func (s *DeploymentService) UndeployDeploymentByHandle(apiHandle, deploymentID, 
 		return err
 	}
 
-	return s.UndeployDeployment(deploymentID, apiUUID, orgUUID)
+	return s.UndeployDeployment(apiUUID, deploymentID, orgUUID)
 }
 
 // DeleteDeploymentByHandle deletes a deployment using API handle
@@ -547,7 +547,7 @@ func (s *DeploymentService) DeleteDeploymentByHandle(apiHandle, deploymentID, or
 		return err
 	}
 
-	return s.DeleteDeployment(deploymentID, apiUUID, orgUUID)
+	return s.DeleteDeployment(apiUUID, deploymentID, orgUUID)
 }
 
 // GetDeploymentContentByHandle retrieves deployment artifact content using API handle
