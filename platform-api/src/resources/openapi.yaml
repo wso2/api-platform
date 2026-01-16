@@ -3673,6 +3673,7 @@ components:
         base:
           type: string
           description: The source for the API definition. Can be "current" (latest working copy) or a deploymentId (existing deployment)
+          example: "current"
         gatewayId:
           type: string
           format: uuid
