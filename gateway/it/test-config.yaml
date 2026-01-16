@@ -217,6 +217,14 @@ gateway_controller:
       # Expected issuer value in the JWT `iss` claim
       issuer: ""
 
+  # Metrics configuration
+  metrics:
+    # Enable or disable Prometheus metrics endpoint
+    enabled: true
+
+    # Port for metrics HTTP server
+    port: 9091
+
   # Logging configuration
   logging:
     # Log level: "debug", "info", "warn", or "error"
@@ -290,6 +298,14 @@ policy_engine:
   # File-based configuration (not used in xDS mode)
   file_config:
     path: ""
+
+  # Metrics configuration
+  metrics:
+    # Enable or disable Prometheus metrics endpoint
+    enabled: true
+
+    # Port for metrics HTTP server
+    port: 9003
 
   # Logging configuration
   logging:
