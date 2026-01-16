@@ -4,13 +4,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
 
 	"github.com/gin-gonic/gin"
 	"github.com/wso2/api-platform/common/authenticators"
@@ -26,6 +27,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
+	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 	"go.uber.org/zap"
 )
@@ -438,7 +440,7 @@ func derivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance)
 	if apiData.Policies != nil {
 		for _, p := range *apiData.Policies {
-			apiPolicies[p.Name] = convertAPIPolicyToModel(p, "api")
+			apiPolicies[p.Name] = convertAPIPolicyToModel(p, policy.LevelAPI)
 		}
 	}
 
@@ -453,7 +455,7 @@ func derivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 			addedNames := make(map[string]struct{})
 
 			for _, opPolicy := range *op.Policies {
-				finalPolicies = append(finalPolicies, convertAPIPolicyToModel(opPolicy, "route"))
+				finalPolicies = append(finalPolicies, convertAPIPolicyToModel(opPolicy, policy.LevelRoute))
 				addedNames[opPolicy.Name] = struct{}{}
 			}
 
@@ -529,7 +531,7 @@ func derivePolicyFromAPIConfig(cfg *models.StoredConfig, routerConfig *config.Ro
 }
 
 // convertAPIPolicyToModel converts generated api.Policy to policyenginev1.PolicyInstance
-func convertAPIPolicyToModel(p api.Policy, attachedTo string) policyenginev1.PolicyInstance {
+func convertAPIPolicyToModel(p api.Policy, attachedTo policy.Level) policyenginev1.PolicyInstance {
 	paramsMap := make(map[string]interface{})
 	if p.Params != nil {
 		for k, v := range *p.Params {
@@ -539,7 +541,7 @@ func convertAPIPolicyToModel(p api.Policy, attachedTo string) policyenginev1.Pol
 
 	// Add attachedTo metadata to parameters
 	if attachedTo != "" {
-		paramsMap["attachedTo"] = attachedTo
+		paramsMap["attachedTo"] = string(attachedTo)
 	}
 
 	return policyenginev1.PolicyInstance{
