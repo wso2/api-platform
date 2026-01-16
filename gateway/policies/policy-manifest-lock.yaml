@@ -83,6 +83,10 @@ policies:
   - name: json-to-xml
     version: v0.1.0
     filePath: ./json-to-xml/v0.1.0
+
+  - name: xml-to-json
+    version: v0.1.0
+    filePath: ./xml-to-json/v0.1.0
   - name: sentence-count-guardrail
     version: v0.1.0
     filePath: ./sentence-count-guardrail/v0.1.0

@@ -142,10 +142,10 @@ func TestJSONToXMLPolicy_OnRequest_WrongContentType(t *testing.T) {
 
 	result := p.OnRequest(ctx, params)
 
-	// Should return bad request for wrong content type
+	// Should return internal server error for wrong content type
 	if immediate, ok := result.(policy.ImmediateResponse); ok {
-		if immediate.StatusCode != 400 {
-			t.Errorf("Expected status code 400, got %d", immediate.StatusCode)
+		if immediate.StatusCode != 500 {
+			t.Errorf("Expected status code 500, got %d", immediate.StatusCode)
 		}
 
 		var errorResp map[string]interface{}
@@ -153,8 +153,8 @@ func TestJSONToXMLPolicy_OnRequest_WrongContentType(t *testing.T) {
 			t.Errorf("Failed to unmarshal error response: %v", err)
 		}
 
-		if errorResp["error"] != "Bad Request" {
-			t.Errorf("Expected error 'Bad Request', got %v", errorResp["error"])
+		if errorResp["error"] != "Internal Server Error" {
+			t.Errorf("Expected error 'Internal Server Error', got %v", errorResp["error"])
 		}
 	} else {
 		t.Errorf("Expected ImmediateResponse for wrong content type, got %T", result)
@@ -177,10 +177,10 @@ func TestJSONToXMLPolicy_OnRequest_InvalidJSON(t *testing.T) {
 
 	result := p.OnRequest(ctx, params)
 
-	// Should return bad request for invalid JSON
+	// Should return internal server error for invalid JSON
 	if immediate, ok := result.(policy.ImmediateResponse); ok {
-		if immediate.StatusCode != 400 {
-			t.Errorf("Expected status code 400, got %d", immediate.StatusCode)
+		if immediate.StatusCode != 500 {
+			t.Errorf("Expected status code 500, got %d", immediate.StatusCode)
 		}
 	} else {
 		t.Errorf("Expected ImmediateResponse for invalid JSON, got %T", result)
@@ -239,7 +239,7 @@ func TestJSONToXMLPolicy_OnResponse_EnabledWithParameter(t *testing.T) {
 	}
 }
 
-func TestJSONToXMLPolicy_OnResponse_InvalidJSON_SilentSkip(t *testing.T) {
+func TestJSONToXMLPolicy_OnResponse_InvalidJSON_Error(t *testing.T) {
 	p := &JSONToXMLPolicy{}
 	ctx := &policy.ResponseContext{
 		ResponseBody: &policy.Body{
@@ -255,10 +255,10 @@ func TestJSONToXMLPolicy_OnResponse_InvalidJSON_SilentSkip(t *testing.T) {
 
 	result := p.OnResponse(ctx, params)
 
-	// Should silently skip transformation for invalid JSON in response
+	// Should return 500 error for invalid JSON in response
 	mods := result.(policy.UpstreamResponseModifications)
-	if mods.Body != nil {
-		t.Errorf("Expected no body modification for invalid JSON response, got: %s", string(mods.Body))
+	if mods.StatusCode == nil || *mods.StatusCode != 500 {
+		t.Errorf("Expected status code 500 for invalid JSON response, got: %v", mods.StatusCode)
 	}
 }
 
@@ -548,17 +548,17 @@ func TestJSONToXMLPolicy_OnRequest_NoContentTypeHeader(t *testing.T) {
 
 	result := p.OnRequest(ctx, params)
 
-	// Should return bad request for missing JSON content type
+	// Should return internal server error for missing JSON content type
 	if immediate, ok := result.(policy.ImmediateResponse); ok {
-		if immediate.StatusCode != 400 {
-			t.Errorf("Expected status code 400, got %d", immediate.StatusCode)
+		if immediate.StatusCode != 500 {
+			t.Errorf("Expected status code 500, got %d", immediate.StatusCode)
 		}
 	} else {
 		t.Errorf("Expected ImmediateResponse for missing content type, got %T", result)
 	}
 }
 
-func TestJSONToXMLPolicy_OnResponse_WrongContentType_SilentSkip(t *testing.T) {
+func TestJSONToXMLPolicy_OnResponse_WrongContentType_Error(t *testing.T) {
 	p := &JSONToXMLPolicy{}
 	ctx := &policy.ResponseContext{
 		ResponseBody: &policy.Body{
@@ -574,10 +574,10 @@ func TestJSONToXMLPolicy_OnResponse_WrongContentType_SilentSkip(t *testing.T) {
 
 	result := p.OnResponse(ctx, params)
 
-	// Should silently skip for wrong content type in response
+	// Should return 500 error for wrong content type in response
 	mods := result.(policy.UpstreamResponseModifications)
-	if mods.Body != nil {
-		t.Errorf("Expected no body modification for wrong content type response, got: %s", string(mods.Body))
+	if mods.StatusCode == nil || *mods.StatusCode != 500 {
+		t.Errorf("Expected status code 500 for wrong content type response, got: %v", mods.StatusCode)
 	}
 }
 

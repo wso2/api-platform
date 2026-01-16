@@ -72,19 +72,19 @@ func (p *JSONToXMLPolicy) OnRequest(ctx *policy.RequestContext, params map[strin
 	}
 
 	if !strings.Contains(contentType, "application/json") {
-		return p.handleBadRequest("Content-Type must be application/json for JSON to XML transformation")
+		return p.handleInternalServerError("Content-Type must be application/json for JSON to XML transformation")
 	}
 
 	// Parse JSON
 	var jsonData interface{}
 	if err := json.Unmarshal(ctx.Body.Content, &jsonData); err != nil {
-		return p.handleBadRequest("Invalid JSON format in request body")
+		return p.handleInternalServerError("Invalid JSON format in request body")
 	}
 
 	// Convert to XML
 	xmlData, err := p.convertJSONToXML(jsonData)
 	if err != nil {
-		return p.handleBadRequest("Failed to convert JSON to XML format")
+		return p.handleInternalServerError("Failed to convert JSON to XML format")
 	}
 
 	// Return modified request with XML body and updated content type
@@ -121,21 +121,19 @@ func (p *JSONToXMLPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 	}
 
 	if !strings.Contains(contentType, "application/json") {
-		return policy.UpstreamResponseModifications{}
+		return p.handleInternalServerErrorResponse("Content-Type must be application/json for JSON to XML transformation")
 	}
 
 	// Parse JSON
 	var jsonData interface{}
 	if err := json.Unmarshal(ctx.ResponseBody.Content, &jsonData); err != nil {
-		// Don't return error for response - just skip transformation
-		return policy.UpstreamResponseModifications{}
+		return p.handleInternalServerErrorResponse("Invalid JSON format in response body")
 	}
 
 	// Convert to XML
 	xmlData, err := p.convertJSONToXML(jsonData)
 	if err != nil {
-		// Don't return error for response - just skip transformation
-		return policy.UpstreamResponseModifications{}
+		return p.handleInternalServerErrorResponse("Failed to convert JSON to XML format")
 	}
 
 	// Return modified response with XML body and updated content type
@@ -148,21 +146,39 @@ func (p *JSONToXMLPolicy) OnResponse(ctx *policy.ResponseContext, params map[str
 	}
 }
 
-// handleBadRequest returns a bad request response
-func (p *JSONToXMLPolicy) handleBadRequest(message string) policy.RequestAction {
+// handleInternalServerError returns a 500 internal server error response for request flow
+func (p *JSONToXMLPolicy) handleInternalServerError(message string) policy.RequestAction {
 	errorResponse := map[string]interface{}{
-		"error":   "Bad Request",
+		"error":   "Internal Server Error",
 		"message": message,
 	}
 	bodyBytes, _ := json.Marshal(errorResponse)
 
 	return policy.ImmediateResponse{
-		StatusCode: 400,
+		StatusCode: 500,
 		Headers: map[string]string{
 			"content-type":   "application/json",
 			"content-length": fmt.Sprintf("%d", len(bodyBytes)),
 		},
 		Body: bodyBytes,
+	}
+}
+
+// handleInternalServerErrorResponse returns a 500 internal server error response for response flow
+func (p *JSONToXMLPolicy) handleInternalServerErrorResponse(message string) policy.ResponseAction {
+	errorResponse := map[string]interface{}{
+		"error":   "Internal Server Error",
+		"message": message,
+	}
+	bodyBytes, _ := json.Marshal(errorResponse)
+
+	return policy.UpstreamResponseModifications{
+		StatusCode: &[]int{500}[0],
+		Body:       bodyBytes,
+		SetHeaders: map[string]string{
+			"content-type":   "application/json",
+			"content-length": fmt.Sprintf("%d", len(bodyBytes)),
+		},
 	}
 }
 
