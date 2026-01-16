@@ -38,7 +38,7 @@ func GetPolicy(
 	params map[string]interface{},
 ) (policy.Policy, error) {
 	// Transform simple limits to full ratelimit config
-	rlParams := transformToRatelimitParams(params)
+	rlParams := transformToRatelimitParams(params, metadata)
 
 	// Create the delegate ratelimit policy
 	delegate, err := ratelimit.GetPolicy(metadata, rlParams)
@@ -52,8 +52,13 @@ func GetPolicy(
 // transformToRatelimitParams converts the simple limits array to a full ratelimit
 // quota configuration with routename key extraction, and passes through system
 // parameters (algorithm, backend, redis, memory).
-func transformToRatelimitParams(params map[string]interface{}) map[string]interface{} {
+func transformToRatelimitParams(params map[string]interface{}, metadata policy.PolicyMetadata) map[string]interface{} {
 	limits, _ := params["limits"].([]interface{})
+
+	keyExtractorType := "routename"
+	if metadata.AttachedTo == policy.LevelAPI {
+		keyExtractorType = "apiname"
+	}
 
 	rlParams := map[string]interface{}{
 		"quotas": []interface{}{
@@ -62,7 +67,7 @@ func transformToRatelimitParams(params map[string]interface{}) map[string]interf
 				"limits": limits,
 				"keyExtraction": []interface{}{
 					map[string]interface{}{
-						"type": "routename",
+						"type": keyExtractorType,
 					},
 				},
 			},

@@ -47,6 +47,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
+	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 	policyenginev1 "github.com/wso2/api-platform/sdk/gateway/policyengine/v1"
 	"go.uber.org/zap"
 )
@@ -1649,7 +1650,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 	apiPolicies := make(map[string]policyenginev1.PolicyInstance) // name -> policy
 	if cfg.GetPolicies() != nil {
 		for _, p := range *cfg.GetPolicies() {
-			apiPolicies[p.Name] = convertAPIPolicy(p)
+			apiPolicies[p.Name] = convertAPIPolicy(p, policy.LevelAPI)
 		}
 	}
 
@@ -1672,7 +1673,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 				addedNames := make(map[string]struct{})
 
 				for _, opPolicy := range *ch.Policies {
-					finalPolicies = append(finalPolicies, convertAPIPolicy(opPolicy))
+					finalPolicies = append(finalPolicies, convertAPIPolicy(opPolicy, policy.LevelRoute))
 					addedNames[opPolicy.Name] = struct{}{}
 				}
 
@@ -1722,7 +1723,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 				addedNames := make(map[string]struct{})
 
 				for _, opPolicy := range *op.Policies {
-					finalPolicies = append(finalPolicies, convertAPIPolicy(opPolicy))
+					finalPolicies = append(finalPolicies, convertAPIPolicy(opPolicy, policy.LevelRoute))
 					addedNames[opPolicy.Name] = struct{}{}
 				}
 
@@ -1808,13 +1809,19 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 }
 
 // convertAPIPolicy converts generated api.Policy to policyenginev1.PolicyInstance
-func convertAPIPolicy(p api.Policy) policyenginev1.PolicyInstance {
+func convertAPIPolicy(p api.Policy, attachedTo policy.Level) policyenginev1.PolicyInstance {
 	paramsMap := make(map[string]interface{})
 	if p.Params != nil {
 		for k, v := range *p.Params {
 			paramsMap[k] = v
 		}
 	}
+
+	// Add attachedTo metadata to parameters
+	if attachedTo != "" {
+		paramsMap["attachedTo"] = string(attachedTo)
+	}
+
 	return policyenginev1.PolicyInstance{
 		Name:               p.Name,
 		Version:            p.Version,

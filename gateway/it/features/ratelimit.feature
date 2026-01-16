@@ -1304,4 +1304,3 @@ Feature: Rate Limiting
     # Double-check API-A is still rate limited (not affected by API-B usage)
     When I send a GET request to "http://localhost:8080/ratelimit-apiname-isolation-a/v1.0/resource"
     Then the response status code should be 429
-
