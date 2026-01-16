@@ -87,6 +87,10 @@ policies:
   - name: xml-to-json
     version: v0.1.0
     filePath: ./xml-to-json/v0.1.0
+
+  - name: log-message
+    version: v0.1.0
+    filePath: ./log-message/v0.1.0
   - name: sentence-count-guardrail
     version: v0.1.0
     filePath: ./sentence-count-guardrail/v0.1.0
