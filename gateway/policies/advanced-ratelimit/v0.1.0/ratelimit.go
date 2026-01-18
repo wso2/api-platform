@@ -603,6 +603,9 @@ func (p *RateLimitPolicy) extractKeyComponent(ctx *policy.RequestContext, comp K
 		slog.Warn("Header not found for rate limit key, using placeholder", "header", comp.Key, "type", comp.Type, "placeholder", placeholder)
 		return placeholder
 
+	case "constant":
+		return comp.Key
+
 	case "metadata":
 		if val, ok := ctx.Metadata[comp.Key]; ok {
 			if strVal, ok := val.(string); ok && strVal != "" {
