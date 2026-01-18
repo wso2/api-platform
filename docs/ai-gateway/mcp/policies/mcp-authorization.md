@@ -11,7 +11,7 @@ The MCP Authorization policy provides fine-grained access control for Model Cont
 - **Tool-Level Access Control**: Restrict access to specific MCP tools based on user claims and scopes
 - **Resource-Level Access Control**: Control access to specific MCP resources based on authorization rules
 - **Prompt-Level Access Control**: Manage access to specific MCP prompts
-- **JSON-RPC Method-Level Access Control**: Apply authorization rules at the JSON-RPC method level (e.g., `tools/call`, `resources/read`, `prompts/get`) for fine-grained control
+- **JSON-RPC Method-Level Access Control**: Apply authorization rules at the JSON-RPC method level (e.g., `tools/call`, `resources/read`, `prompts/get`) for fine-grained control. Only methods under `tools/`, `resources/`, and `prompts/` are evaluated.
 - **Flexible Rule-Based Authorization**: Define multiple authorization rules with attribute matching (exact or wildcard)
 - **Claim-Based Validation**: Validate custom claims (e.g., department, role, team) in user tokens
 - **Scope-Based Validation**: Require specific OAuth scopes for accessing protected resources
@@ -30,8 +30,8 @@ These parameters are configured per MCP Proxy by the API developer:
 | `rules` | array | Yes | - | List of authorization rules that define access control policies for MCP resources. |
 | `rules[].attribute` | object | Yes | - | The MCP resource attribute to which the authorization rule applies. |
 | `rules[].attribute.type` | string | Yes | - | Type of MCP resource: "tool", "resource", "prompt", "method". |
-| `rules[].attribute.name` | string | No | - | Name or identifier of the resource. Use "*" for wildcard matching (applies to all resources of the specified type). Examples: "list_files" for tools, "file:///*" for resources, "weather_summary" for prompts, "tools/call for methods. |
-| `rules[].requiredScopes` | array | No | - | List of OAuth scopes required to access this resource. The token must contain at least one of the specified scopes. |
+| `rules[].attribute.name` | string | No | - | Name or identifier of the resource. Use "*" for wildcard matching (applies to all resources of the specified type). Examples: "list_files" for tools, "file:///some_resource" for resources, "weather_summary" for prompts, "tools/call" for methods. |
+| `rules[].requiredScopes` | array | No | - | List of OAuth scopes required to access this resource. The token must contain all of the specified scopes. |
 | `rules[].requiredClaims` | object | No | - | Map of claim names to expected values. All specified claims must be present in the token with matching values. |
 
 ## MCP Proxy Definition Examples
@@ -109,14 +109,14 @@ spec:
         rules:
           - attribute:
               type: resource
-              name: "file:///private/*"
+              name: "file:///private/main"
             requiredClaims:
               department: "engineering"
             requiredScopes:
               - mcp:resource:read
           - attribute:
               type: resource
-              name: "file:///public/*"
+              name: "file:///public/main"
             requiredScopes:
               - mcp:resource:read
   tools:

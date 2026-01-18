@@ -31,9 +31,13 @@ import (
 )
 
 const (
-	WWWAuthenticateHeader = "WWW-Authenticate"
-	AuthMethodBearer      = "Bearer resource_metadata="
-	WellKnownPath         = ".well-known/oauth-protected-resource"
+	WWWAuthenticateHeader     = "WWW-Authenticate"
+	AuthMethodBearer          = "Bearer resource_metadata="
+	WellKnownPath             = ".well-known/oauth-protected-resource"
+	MetadataValidatedClaims   = "auth.validatedClaims"
+	MetadataMcpMethod         = "mcp.method"
+	MetadataMcpCapabilityType = "mcp.type"
+	MetadataMcpCapabilityName = "mcp.name"
 )
 
 // MCPRequest represents the JSON-RPC MCP request structure
@@ -215,7 +219,7 @@ func (p *McpAuthzPolicy) OnRequest(ctx *policy.RequestContext, params map[string
 		return nil
 	}
 	// Extract JWT claims
-	jwtClaims, ok := ctx.Metadata["validatedClaims"]
+	jwtClaims, ok := ctx.Metadata[MetadataValidatedClaims]
 	if !ok {
 		slog.Debug("MCP Authorization Policy: No validated claims found in metadata")
 		return p.handleAuthFailure(ctx, "Unauthorized: scope/claim validation failed", nil)
@@ -247,6 +251,11 @@ func (p *McpAuthzPolicy) OnRequest(ctx *policy.RequestContext, params map[string
 
 	// Extract attribute name/identifier based on method type
 	attributeName := p.getAttributeNameFromParams(mcpReq.Method, mcpReq.Params)
+
+	// Set MCP metadata in context for other policies
+	ctx.Metadata[MetadataMcpMethod] = mcpReq.Method
+	ctx.Metadata[MetadataMcpCapabilityType] = attributeType
+	ctx.Metadata[MetadataMcpCapabilityName] = attributeName
 
 	// Check authorization rules
 	authorized, missingScopes := p.checkAuthorization(attributeType, attributeName, mcpReq.Method, claims)
@@ -346,11 +355,13 @@ func (p *McpAuthzPolicy) findMatchingRules(attributeType, attributeName, method 
 	var matching []Rule
 
 	for _, rule := range p.Rules {
-		if rule.Attribute.Type == "method" && (rule.Attribute.Name == method || rule.Attribute.Name == "*") {
+		// Special handling for method-based rules since attribute type is derived from the method prefix
+		if rule.Attribute.Type == "method" && (rule.Attribute.Name == "*" || rule.Attribute.Name == method) {
 			slog.Debug("MCP Authorization Policy: Found matching method-based rule", "method", method)
 			matching = append(matching, rule)
 			continue
 		}
+
 		if rule.Attribute.Type != attributeType {
 			slog.Debug("MCP Authorization Policy: Skipping rule due to attribute type mismatch",
 				"ruleAttributeType", rule.Attribute.Type,
@@ -541,11 +552,12 @@ func generateResourcePath(ctx *policy.RequestContext, gatewayHost string, resour
 func generateWwwAuthenticateHeader(ctx *policy.RequestContext, scopes []string, errorDesc string) string {
 	slog.Debug("MCP Authorization Policy: Generating WWW-Authenticate header")
 	gatewayHost, ok := ctx.Metadata["gatewayHost"]
-	if !ok {
-		slog.Debug("MCP Authorization Policy: gatewayHost not found in metadata, using empty string")
-		gatewayHost = ""
+	gatewayHostString, _ := gatewayHost.(string)
+	if !ok || gatewayHostString == "" {
+		slog.Debug("MCP Authorization Policy: gatewayHost is empty in metadata, using empty string")
+		gatewayHostString = ""
 	}
-	headerValue := AuthMethodBearer + "\"" + generateResourcePath(ctx, gatewayHost.(string), WellKnownPath) + "\""
+	headerValue := AuthMethodBearer + "\"" + generateResourcePath(ctx, gatewayHostString, WellKnownPath) + "\""
 	if len(scopes) > 0 {
 		slog.Debug("MCP Authorization Policy: Adding scopes to WWW-Authenticate header")
 		headerValue += ", scope=\"" + strings.Join(scopes, " ") + "\""
@@ -596,7 +608,7 @@ func (p *McpAuthzPolicy) handleAuthFailure(ctx *policy.RequestContext, errorMess
 	}
 
 	errResponse := map[string]interface{}{
-		"error":   "Unauthorized",
+		"error":   "Forbidden",
 		"message": errorMessage,
 	}
 	bodyBytes, _ := json.Marshal(errResponse)

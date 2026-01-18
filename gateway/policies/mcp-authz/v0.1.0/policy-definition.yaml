@@ -61,7 +61,7 @@ parameters:
                   - "tool": Authorize access to MCP tools
                   - "resource": Authorize access to MCP resources
                   - "prompt": Authorize access to MCP prompts
-                  - "method": Authorize access to MCP JSON-RPC methods
+                  - "method": Authorize access to MCP JSON-RPC methods (currently only methods under tools/resources/prompts are evaluated)
 
               name:
                 type: string
@@ -91,7 +91,6 @@ parameters:
               Examples:
                 "sub": "user@example.com" - specific subject
                 "role": "admin" - role claim
-                "org.team": "platform" - nested claim
             additionalProperties:
               type: string
 
@@ -101,8 +100,8 @@ parameters:
               List of OAuth scopes that must be present in the token for access.
               
               All scopes from this list must be present in the token's "scope" claim 
-              (space-delimited string) or "scp" claim (array). Matching follows OAuth conventions 
-              where scopes are treated as authorization scopes, not requiring exact equality.
+              (space-delimited string) or "scp" claim (array). Matching is exact; 
+              each required scope must appear in the token's scope list.
               
               If both requiredScopes and requiredClaims are specified, BOTH must be satisfied 
               (AND logic).
