@@ -70,6 +70,10 @@ func (p *McpAuthPolicy) OnRequest(ctx *policy.RequestContext, params map[string]
 	onFailureStatusCode := getIntParam(params, "onFailureStatusCode", 401)
 	errorMessageFormat := getStringParam(params, "errorMessageFormat", "json")
 	userRequiredScopes := getStringArrayParam(params, "requiredScopes", []string{})
+	gatewayHost := getStringParam(params, "gatewayHost", "")
+	if gatewayHost != "" {
+		ctx.Metadata["gatewayHost"] = gatewayHost
+	}
 	// Check for GET /.well-known/oauth-protected-resource
 	if ctx.Method == "GET" && strings.Contains(ctx.Path, WellKnownPath) {
 		slog.Debug("MCP Auth Policy: Handling well-known protected resource metadata request")
@@ -160,7 +164,19 @@ func (p *McpAuthPolicy) handleAuth(ctx *policy.RequestContext, params map[string
 	if _, ok := reqAction.(policy.ImmediateResponse); ok {
 		slog.Debug("MCP Auth Policy: Authentication failed in JWT Auth Policy, handling failure")
 		headers := reqAction.(policy.ImmediateResponse).Headers
-		headers[WWWAuthenticateHeader] = generateWwwAuthenticateHeader(ctx, params, scopes, reqAction.(policy.ImmediateResponse))
+		ir := reqAction.(policy.ImmediateResponse)
+		escapedDesc := ""
+		contentType := ir.Headers["content-type"]
+		if contentType == "application/json" {
+			var errResp map[string]any
+			if err := json.Unmarshal(ir.Body, &errResp); err == nil {
+				if errDesc, ok := errResp["message"].(string); ok {
+					escapedDesc = strings.ReplaceAll(errDesc, "\"", "'")
+				}
+			}
+		}
+		wwwAuthHeader := generateWwwAuthenticateHeader(ctx, params, scopes, escapedDesc)
+		headers[WWWAuthenticateHeader] = wwwAuthHeader
 		headers[McpSessionHeader] = sessionId
 		return policy.ImmediateResponse{
 			StatusCode: reqAction.(policy.ImmediateResponse).StatusCode,
@@ -244,22 +260,16 @@ func generateResourcePath(ctx *policy.RequestContext, params map[string]any, res
 }
 
 // generateWwwAuthenticateHeader generates the WWW-Authenticate header value
-func generateWwwAuthenticateHeader(ctx *policy.RequestContext, params map[string]any, scopes []string, ir policy.ImmediateResponse) string {
+func generateWwwAuthenticateHeader(ctx *policy.RequestContext, params map[string]any, scopes []string, errorDesc string) string {
 	slog.Debug("MCP Auth Policy: Generating WWW-Authenticate header")
 	headerValue := AuthMethodBearer + "\"" + generateResourcePath(ctx, params, WellKnownPath) + "\""
 	if len(scopes) > 0 {
 		slog.Debug("MCP Auth Policy: Adding scopes to WWW-Authenticate header")
 		headerValue += ", scope=\"" + strings.Join(scopes, " ") + "\""
 	}
-	contentType := ir.Headers["content-type"]
-	if contentType == "application/json" {
-		var errResp map[string]any
-		if err := json.Unmarshal(ir.Body, &errResp); err == nil {
-			if errDesc, ok := errResp["message"].(string); ok {
-				escapedDesc := strings.ReplaceAll(errDesc, "\"", "'")
-				headerValue += ", error=\"invalid_token\", error_description=\"" + escapedDesc + "\""
-			}
-		}
+	if errorDesc != "" {
+		slog.Debug("MCP Auth Policy: Adding error description to WWW-Authenticate header")
+		headerValue += ", error=\"invalid_token\", error_description=\"" + errorDesc + "\""
 	}
 	return headerValue
 }
