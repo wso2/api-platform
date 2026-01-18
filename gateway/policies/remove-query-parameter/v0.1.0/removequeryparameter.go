@@ -21,7 +21,7 @@ import (
 	policy "github.com/wso2/api-platform/sdk/gateway/policy/v1alpha"
 )
 
-// RemoveQueryParameterPolicy implements removing a query parameter to requests
+// RemoveQueryParameterPolicy implements removing multiple query parameters from requests
 type RemoveQueryParameterPolicy struct{}
 
 var ins = &RemoveQueryParameterPolicy{}
@@ -43,20 +43,50 @@ func (p *RemoveQueryParameterPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// OnRequest modifies request path by removing query parameter
+// OnRequest modifies request path by removing query parameters
 func (p *RemoveQueryParameterPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	// Check if name parameter is configured
-	name, ok := params["name"].(string)
-	if !ok || name == "" {
-		// No name for the query parameter, pass through
+	// Check if queryParameters are configured
+	queryParametersRaw, ok := params["queryParameters"]
+	if !ok {
+		// No query parameters configured, pass through
 		return policy.UpstreamRequestModifications{}
 	}
 
-	return policy.UpstreamRequestModifications{
-		RemoveQueryParameters: []string{
-			name,
-		},
+	// Parse queryParameters array
+	queryParametersSlice, ok := queryParametersRaw.([]interface{})
+	if !ok {
+		// Invalid queryParameters format, pass through
+		return policy.UpstreamRequestModifications{}
 	}
+
+	// Build list of query parameter names to remove
+	var paramNamesToRemove []string
+
+	for _, paramRaw := range queryParametersSlice {
+		paramMap, ok := paramRaw.(map[string]interface{})
+		if !ok {
+			// Skip invalid parameter entries
+			continue
+		}
+
+		name, nameOk := paramMap["name"].(string)
+		if !nameOk || name == "" {
+			// Skip invalid parameter entries
+			continue
+		}
+
+		// Add the parameter name to the removal list
+		paramNamesToRemove = append(paramNamesToRemove, name)
+	}
+
+	// Return modifications if we have any query parameters to remove
+	if len(paramNamesToRemove) > 0 {
+		return policy.UpstreamRequestModifications{
+			RemoveQueryParameters: paramNamesToRemove,
+		}
+	}
+
+	return policy.UpstreamRequestModifications{}
 }
 
 // OnResponse is a no-op for this policy

@@ -15,7 +15,7 @@ The Remove Query Parameter policy dynamically removes a query parameter from inc
 ## Configuration
 
 The Remove Query Parameter policy uses a single-level configuration model where parameters are configured per-API/route in the API definition YAML.
-This policy does not require system-level configuration and operates entirely based on the configured parameter name.
+This policy does not require system-level configuration and operates entirely based on the configured parameter names array.
 
 ### User Parameters (API Definition)
 
@@ -23,6 +23,14 @@ These parameters are configured per-API/route by the API developer:
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
+| `queryParameters` | array | Yes | - | An array of query parameter names to remove from the request URL. Each item in the array specifies the name of a query parameter to be removed. |
+
+#### Query Parameter Object
+
+Each item in the `queryParameters` array has the following structure:
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
 | `name` | string | Yes | - | The name of the query parameter to remove from the request URL. If a query parameter with this name exists in the request URL, it will be removed. Otherwise the request URL will remain unchanged. Example: "debug", "internal_token", "temp_param". |
 
 ## API Definition Examples
@@ -47,7 +55,8 @@ spec:
     - name: remove-query-parameter
       version: v0.1.0
       params:
-        name: debug
+        queryParameters:
+          - name: debug
   operations:
     - method: GET
       path: /{country_code}/{city}
@@ -80,26 +89,32 @@ spec:
         - name: remove-query-parameter
           version: v0.1.0
           params:
-            name: cache_debug
+            queryParameters:
+              - name: cache_debug
+              - name: internal_trace
     - method: GET
       path: /alerts/active
       policies:
         - name: remove-query-parameter
           version: v0.1.0
           params:
-            name: internal_flag
+            queryParameters:
+              - name: internal_flag
+              - name: test_alert
     - method: POST
       path: /alerts/active
       policies:
         - name: remove-query-parameter
           version: v0.1.0
           params:
-            name: test_mode
+            queryParameters:
+              - name: test_mode
+              - name: dry_run
 ```
 
 ### Example 3: Multiple Query Parameter Removal
 
-Remove multiple query parameters by using multiple policy instances:
+Remove multiple query parameters in a single policy configuration:
 
 ```yaml
 apiVersion: gateway.api-platform.wso2.com/v1alpha1
@@ -117,15 +132,12 @@ spec:
     - name: remove-query-parameter
       version: v0.1.0
       params:
-        name: debug
-    - name: remove-query-parameter
-      version: v0.1.0
-      params:
-        name: internal_token
-    - name: remove-query-parameter
-      version: v0.1.0
-      params:
-        name: temp_session
+        queryParameters:
+          - name: debug
+          - name: internal_token
+          - name: temp_session
+          - name: csrf_token
+          - name: admin_flag
   operations:
     - method: GET
       path: /{country_code}/{city}
@@ -207,61 +219,73 @@ Accept: application/json
 
 The policy safely handles query parameter removal:
 
-- **Exact Match**: Only removes parameters that exactly match the specified name
-- **Case Sensitive**: Parameter name matching is case-sensitive
-- **Non-Existent Parameters**: If the specified parameter doesn't exist, no changes are made
+- **Exact Match**: Only removes parameters that exactly match the specified names
+- **Case Sensitive**: Parameter name matching is case-sensitive  
+- **Non-Existent Parameters**: If specified parameters don't exist, no changes are made
 - **URL Structure**: Properly maintains URL structure and encoding after removal
-- **Other Parameters**: All other query parameters are preserved unchanged
+- **Multiple Parameters**: Processes all parameters in the array sequentially
+- **Duplicate Names**: Handles duplicate parameter names in the configuration (removes all instances)
+
+### Array Processing
+
+- **Order Independence**: Parameters are processed in array order, but removal order doesn't affect the final result
+- **Error Tolerance**: Invalid entries in the array are skipped rather than causing policy failure
+- **Performance**: Linear processing time based on array size
 
 ### Error Handling
 
 The policy includes robust error handling:
 
-1. **Missing Parameter Name**: If `name` is not provided or empty, the policy passes the request through unchanged
-2. **Invalid Configuration**: If the parameter configuration is malformed, the policy passes the request through unchanged
-3. **URL Parse Errors**: If URL parsing fails, the original request is forwarded unchanged
-4. **Upstream Errors**: Policy execution errors do not affect request processing
+1. **Missing queryParameters**: If `queryParameters` array is not provided, the policy passes the request through unchanged
+2. **Invalid Array Format**: If `queryParameters` is not an array, the policy passes the request through unchanged  
+3. **Missing Parameter Names**: If a parameter object is missing the `name` field, that parameter is skipped
+4. **Empty Parameter Names**: Parameters with empty names are skipped
+5. **Invalid Parameter Objects**: Non-object entries in the array are skipped
+6. **URL Parse Errors**: Parameter removal handles URL parsing safely
+7. **Upstream Errors**: Policy execution errors do not affect request processing
 
-### Performance Considerations
+The policy is designed to be forgiving - invalid parameters are skipped rather than causing the entire policy to fail.
 
-- **Minimal Overhead**: Lightweight string processing with minimal memory allocation
-- **URL Parsing**: Efficient URL parsing and reconstruction using Go's standard library
+## Performance Considerations
+
+- **Minimal Overhead**: Lightweight array iteration with minimal memory allocation
+- **Linear Processing**: Processing time scales linearly with the number of parameters in the array (~40-115 ns/op)
+- **URL Handling**: Efficient parameter removal using Go's standard library
 - **No Network Calls**: All processing is done locally without external dependencies
 - **Request Path Only**: Only modifies the request path, does not affect headers or body
 
 ## Common Use Cases
 
-1. **Security Sanitization**: Remove internal tokens, debug flags, or sensitive parameters before forwarding to upstream services.
+1. **Security Parameter Removal**: Remove sensitive parameters like API keys, tokens, or session IDs that shouldn't reach upstream services
 
-2. **API Cleanup**: Remove temporary or client-side specific parameters that shouldn't reach the backend.
+2. **Debug Parameter Cleanup**: Remove debug, trace, or development-specific parameters in production environments  
 
-3. **Version Migration**: Remove deprecated parameters during API version transitions.
+3. **Tracking Parameter Removal**: Strip marketing and analytics tracking parameters (UTM parameters, Facebook/Google click IDs)
 
-4. **Debug Parameter Filtering**: Remove debug or development parameters in production environments.
+4. **Cache Parameter Cleanup**: Remove cache-busting parameters or timestamps that aren't needed by upstream services
 
-5. **Internal Parameter Stripping**: Remove gateway-specific parameters that are only used for internal processing.
+5. **Internal Parameter Filtering**: Remove gateway-specific or internal parameters that were added for routing/processing
 
-6. **Cache Parameter Cleanup**: Remove cache-related parameters that shouldn't affect upstream processing.
+6. **Privacy Compliance**: Remove parameters that might contain personal information or tracking data
 
-7. **Session Management**: Remove temporary session identifiers that are only relevant at the gateway level.
+7. **Legacy Parameter Cleanup**: Remove deprecated or obsolete parameters that are no longer supported by upstream services
 
-8. **Testing Parameter Removal**: Remove test flags or parameters used during development/testing phases.
+8. **A/B Testing Parameter Removal**: Remove test flags or experiment parameters after routing decisions are made
 
 ## Best Practices
 
-1. **Parameter Naming**: Use clear naming conventions for parameters that should be removed to avoid accidental removal of legitimate client parameters
+1. **Parameter Selection**: Only remove parameters that you're certain shouldn't reach the upstream service
 
-2. **Documentation**: Document which parameters are removed so API consumers are aware of the filtering
+2. **Array Organization**: Group related parameters together in the array for better readability
 
-3. **Testing**: Test the policy with various parameter combinations to ensure only intended parameters are removed
+3. **Case Sensitivity**: Be aware that parameter matching is case-sensitive (e.g., 'Debug' vs 'debug')
 
-4. **Case Sensitivity**: Be aware that parameter name matching is case-sensitive
+4. **Documentation**: Document which parameters are being removed and why for future maintenance
 
-5. **Multiple Removals**: When removing multiple parameters, use separate policy instances for clarity and maintainability
+5. **Testing**: Test with various parameter combinations to ensure only intended parameters are removed
 
-6. **Upstream Coordination**: Ensure upstream services don't depend on parameters that are being removed
+6. **Performance**: For large parameter lists, consider if all parameters really need to be removed or if some can be grouped
 
-7. **Logging**: Consider logging removed parameters for debugging and audit purposes
 
 ## Security Considerations
 
@@ -277,18 +301,22 @@ The policy includes robust error handling:
 
 6. **Information Disclosure**: Use this policy to prevent internal information from being exposed to upstream services
 
+7. **Array Validation**: Validate the `queryParameters` array configuration during development to catch syntax errors
+
 ## Troubleshooting
 
 ### Common Issues
 
 1. **Parameter Not Removed**: Verify the parameter name matches exactly (case-sensitive)
-2. **Wrong Parameter Removed**: Double-check the configuration for typos in the parameter name
+2. **Wrong Parameter Removed**: Double-check the configuration for typos in the parameter name  
 3. **Policy Not Executing**: Ensure the policy is correctly placed in the policy chain and enabled
 4. **URL Malformation**: Check that the original request URL is valid before policy execution
+5. **Array Configuration**: Verify the `queryParameters` array format is correct with proper `name` fields
 
 ### Debugging Tips
 
 1. Enable request logging to see before/after URLs
-2. Use multiple policy instances to remove parameters incrementally for testing
-3. Test with both existing and non-existing parameters to verify behavior
-4. Check policy configuration syntax and parameter naming
+2. Test with both existing and non-existing parameters to verify behavior
+3. Check policy configuration syntax and parameter naming in the array
+4. Use integration tests to validate parameter removal behavior
+5. Verify that only intended parameters are being removed by checking the array configuration
