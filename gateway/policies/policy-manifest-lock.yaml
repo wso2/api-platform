@@ -91,6 +91,18 @@ policies:
   - name: log-message
     version: v0.1.0
     filePath: ./log-message/v0.1.0
+
+  - name: add-headers
+    version: v0.1.0
+    filePath: ./add-headers/v0.1.0
+
+  - name: remove-headers
+    version: v0.1.0
+    filePath: ./remove-headers/v0.1.0
+
+  - name: set-headers
+    version: v0.1.0
+    filePath: ./set-headers/v0.1.0
   - name: sentence-count-guardrail
     version: v0.1.0
     filePath: ./sentence-count-guardrail/v0.1.0
