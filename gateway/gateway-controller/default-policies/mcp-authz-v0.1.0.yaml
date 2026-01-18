@@ -82,7 +82,7 @@ parameters:
               Map of JWT claim names to expected values. All specified claims must be present 
               in the token and match their expected values for the rule to grant access.
               
-              Claim paths use dot notation (e.g., "sub", "custom.role", "org.team").
+              Claim names must be top-level keys in the JWT (e.g., "sub", "role").
               Matching is performed as exact string equality.
               
               If both requiredClaims and requiredScopes are specified, BOTH must be satisfied 
