@@ -1,0 +1,53 @@
+name: add-headers
+version: v0.1.0
+description: |
+  This policy provides the capability to add arbitrary headers to either the request or the response.
+  Adding the same header multiple times will not overwrite the existing header values and it will be appended to the list of values if the header already exists.
+
+parameters:
+  type: object
+  properties:
+    requestHeaders:
+      type: array
+      description: Array of headers that need to added to the request during request phase. At least
+        one of requestHeaders or responseHeaders must be specified.
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+            description: Header name (case-insensitive)
+            minLength: 1
+            maxLength: 256
+            pattern: "^[a-zA-Z0-9-_]+$"
+          value:
+            type: string
+            description: Header value
+            maxLength: 8192
+        required:
+        - name
+        - value
+    responseHeaders:
+      type: array
+      description: Array of headers that need to added to the response during response phase. At
+        least one of requestHeaders or responseHeaders must be specified.
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+            description: Header name (case-insensitive)
+            minLength: 1
+            maxLength: 256
+            pattern: "^[a-zA-Z0-9-_]+$"
+          value:
+            type: string
+            description: Header value
+            maxLength: 8192
+        required:
+        - name
+        - value
+
+systemParameters:
+  type: object
+  properties: {}
