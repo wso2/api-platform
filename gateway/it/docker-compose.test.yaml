@@ -22,7 +22,7 @@
 services:
   gateway-controller:
     container_name: it-gateway-controller
-    image: ghcr.io/wso2/api-platform/gateway-controller-coverage:0.3.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/gateway-controller:0.3.0-SNAPSHOT
     mem_limit: 128m
     mem_reservation: 128m
     cpus: 0.1
@@ -119,6 +119,18 @@ services:
     image: kennethreitz/httpbin:latest
     ports:
       - "9081:80"
+    networks:
+      - it-gateway-network
+
+  # Mock JWKS server for JWT authentication testing
+  mock-jwks:
+    container_name: it-mock-jwks
+    image: ghcr.io/wso2/api-platform/mock-jwks:latest
+    build:
+      context: ../../tests/mock-servers/mock-jwks
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8080"
     networks:
       - it-gateway-network
 

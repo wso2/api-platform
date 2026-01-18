@@ -339,6 +339,7 @@ func CheckPortsAvailable() error {
 		"3001",                // MCP server backend
 		"18000",               // xDS gRPC
 		"18001",               // xDS gRPC
+		"8082",                // Mock JWKS server
 	}
 
 	var conflicts []string
