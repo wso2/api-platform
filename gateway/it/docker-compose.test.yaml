@@ -122,6 +122,18 @@ services:
     networks:
       - it-gateway-network
 
+  # Mock JWKS server for JWT authentication testing
+  mock-jwks:
+    container_name: it-mock-jwks
+    image: ghcr.io/wso2/api-platform/mock-jwks:latest
+    build:
+      context: ../../tests/mock-servers/mock-jwks
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8080"
+    networks:
+      - it-gateway-network
+
 volumes:
   controller-data-tests:
     driver: local
