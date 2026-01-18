@@ -22,7 +22,7 @@
 services:
   gateway-controller:
     container_name: it-gateway-controller
-    image: ghcr.io/wso2/api-platform/gateway-controller:0.3.0-SNAPSHOT
+    image: ghcr.io/wso2/api-platform/gateway-controller-coverage:0.3.0-SNAPSHOT
     mem_limit: 128m
     mem_reservation: 128m
     cpus: 0.1
