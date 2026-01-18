@@ -23,7 +23,7 @@ type UpstreamRequestModifications struct {
 	SetHeaders               map[string]string   // Set or replace headers
 	RemoveHeaders            []string            // Headers to remove
 	AppendHeaders         	 map[string][]string // Headers to append
-	AddQueryParameters       map[string]string   // Query parameters to add
+	AddQueryParameters       map[string][]string // Query parameters to add
 	RemoveQueryParameters    []string            // Query parameters to remove
 	Body                     []byte              // nil = no change, []byte{} = clear
 	Path                     *string             // nil = no change

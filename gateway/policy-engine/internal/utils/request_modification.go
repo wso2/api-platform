@@ -24,7 +24,7 @@ import (
 )
 
 // AddQueryParametersToPath adds query parameters to the given path
-func AddQueryParametersToPath(path string, parameters map[string]string) string {
+func AddQueryParametersToPath(path string, parameters map[string][]string) string {
 	// Parse the URL to handle existing query parameters
 	parsedURL, err := url.Parse(path)
 	if err != nil {
@@ -33,20 +33,27 @@ func AddQueryParametersToPath(path string, parameters map[string]string) string 
 		if strings.Contains(path, "?") {
 			separator = "&"
 		}
-		// iterate over parameters and append
-		for name, value := range parameters {
-			path = fmt.Sprintf("%s%s%s=%s", path, separator, url.QueryEscape(name), url.QueryEscape(value))
-			separator = "&"
+		// iterate over parameters and append all values
+		for name, values := range parameters {
+			for _, value := range values {
+				path = fmt.Sprintf("%s%s%s=%s", path, separator, url.QueryEscape(name), url.QueryEscape(value))
+				separator = "&"
+			}
 		}
 		return path
 	}
 
+	// Get existing query parameters
+	queryParams := parsedURL.Query()
+
 	// Add the new query parameters to existing query parameters
-	for name, value := range parameters {
-		queryParams := parsedURL.Query()
-		queryParams.Add(name, value)
-		parsedURL.RawQuery = queryParams.Encode()
+	for name, values := range parameters {
+		for _, value := range values {
+			queryParams.Add(name, value)
+		}
 	}
+
+	parsedURL.RawQuery = queryParams.Encode()
 	// Get the modified path with query parameters
 	return parsedURL.String()
 }

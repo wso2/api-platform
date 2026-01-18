@@ -43,26 +43,52 @@ func (p *AddQueryParameterPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// OnRequest modifies request path by adding query parameter
+// OnRequest modifies request path by adding query parameters
 func (p *AddQueryParameterPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
-	// Check if name parameter is configured
-	name, ok := params["name"].(string)
-	if !ok || name == "" {
-		// No name for the query parameter, pass through
-		return policy.UpstreamRequestModifications{}
-	}
-
-	value, ok := params["value"].(string)
+	// Check if queryParameters are configured
+	queryParametersRaw, ok := params["queryParameters"]
 	if !ok {
-		// Invalid value for the query parameter, pass through
+		// No query parameters configured, pass through
 		return policy.UpstreamRequestModifications{}
 	}
 
-	return policy.UpstreamRequestModifications{
-		AddQueryParameters: map[string]string{
-			name: value,
-		},
+	// Parse queryParameters array
+	queryParametersSlice, ok := queryParametersRaw.([]interface{})
+	if !ok {
+		// Invalid queryParameters format, pass through
+		return policy.UpstreamRequestModifications{}
 	}
+
+	// Build map of query parameters to add
+	queryParams := make(map[string][]string)
+
+	for _, paramRaw := range queryParametersSlice {
+		paramMap, ok := paramRaw.(map[string]interface{})
+		if !ok {
+			// Skip invalid parameter entries
+			continue
+		}
+
+		name, nameOk := paramMap["name"].(string)
+		value, valueOk := paramMap["value"].(string)
+
+		if !nameOk || name == "" || !valueOk {
+			// Skip invalid parameter entries
+			continue
+		}
+
+		// Add the value to the parameter name (supports multiple values per name)
+		queryParams[name] = append(queryParams[name], value)
+	}
+
+	// Return modifications if we have any query parameters to add
+	if len(queryParams) > 0 {
+		return policy.UpstreamRequestModifications{
+			AddQueryParameters: queryParams,
+		}
+	}
+
+	return policy.UpstreamRequestModifications{}
 }
 
 // OnResponse is a no-op for this policy
