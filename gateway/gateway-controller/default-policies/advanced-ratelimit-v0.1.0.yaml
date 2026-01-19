@@ -254,7 +254,7 @@ parameters:
               - routename: Use route name from metadata (default)
               - constant: Use a static string value (requires 'key' field)
               - cel: Use CEL expression to extract key (requires 'expression' field)
-            enum: ["header", "metadata", "ip", "apiname", "apiversion", "routename", "cel",  "constant"]
+            enum: ["header", "metadata", "ip", "apiname", "apiversion", "routename", "cel", "constant"]
           key:
             type: string
             description: Header name or metadata key (required for header/metadata types)

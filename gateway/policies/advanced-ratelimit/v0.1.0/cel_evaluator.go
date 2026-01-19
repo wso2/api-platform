@@ -29,21 +29,21 @@ type CELEvaluator struct {
 var (
 	globalCELEvaluator *CELEvaluator
 	celEvaluatorOnce   sync.Once
+	celInitErr         error
 )
 
 // GetCELEvaluator returns the singleton CEL evaluator instance
 func GetCELEvaluator() (*CELEvaluator, error) {
-	var initErr error
 	celEvaluatorOnce.Do(func() {
 		evaluator, err := newCELEvaluator()
 		if err != nil {
-			initErr = err
+			celInitErr = err
 			return
 		}
 		globalCELEvaluator = evaluator
 	})
-	if initErr != nil {
-		return nil, initErr
+	if celInitErr != nil {
+		return nil, celInitErr
 	}
 	return globalCELEvaluator, nil
 }
