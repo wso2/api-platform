@@ -1676,7 +1676,9 @@ func LoadAPIKeysFromDatabase(storage Storage, configStore *ConfigStore, apiKeySt
 		}
 
 		// Load into APIKeyStore for state-of-the-world updates
-		apiKeyStore.Store(apiKey)
+		if err := apiKeyStore.Store(apiKey); err != nil {
+			return fmt.Errorf("failed to load API key %s into APIKeyStore: %w", apiKey.ID, err)
+		}
 	}
 
 	return nil

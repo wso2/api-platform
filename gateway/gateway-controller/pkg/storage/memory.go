@@ -481,7 +481,8 @@ func (cs *ConfigStore) StoreAPIKey(apiKey *models.APIKey) error {
 
 	if existingKeyID != "" {
 		// Update the existing entry in apiKeysByAPI
-		cs.apiKeysByAPI[apiKey.APIId][existingKeyID] = apiKey
+		delete(cs.apiKeysByAPI[apiKey.APIId], existingKeyID)
+		cs.apiKeysByAPI[apiKey.APIId][apiKey.ID] = apiKey // in API key rotation scenario apiKey.ID = existingKeyID
 	} else {
 		// Insert new API key
 		// Check if API key ID already exists

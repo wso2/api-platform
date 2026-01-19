@@ -54,23 +54,42 @@ func NewAPIKeyStore(logger *zap.Logger) *APIKeyStore {
 }
 
 // Store adds or updates an API key
-func (s *APIKeyStore) Store(apiKey *models.APIKey) {
+func (s *APIKeyStore) Store(apiKey *models.APIKey) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Remove old entry if updating
-	if existing, exists := s.apiKeys[apiKey.ID]; exists {
-		s.removeFromAPIMapping(existing)
+	// Check if an API key with the same APIId and name already exists
+	existingKeys, apiIdExists := s.apiKeysByAPI[apiKey.APIId]
+	var existingKeyID = ""
+
+	if apiIdExists {
+		for id, existingKey := range existingKeys {
+			if existingKey.Name == apiKey.Name {
+				existingKeyID = id
+				break
+			}
+		}
 	}
 
-	// Store the API key
-	s.apiKeys[apiKey.ID] = apiKey
-	s.addToAPIMapping(apiKey)
+	if existingKeyID != "" {
+		// Handle both rotation and generation scenarios for existing key name
+		delete(s.apiKeys, existingKeyID)
+		delete(s.apiKeysByAPI[apiKey.APIId], existingKeyID)
+		// Store the new key (could be same ID with new value, or new ID entirely)
+		s.apiKeys[apiKey.ID] = apiKey
+		s.apiKeysByAPI[apiKey.APIId][apiKey.ID] = apiKey
+	} else {
+		// Store the API key
+		s.apiKeys[apiKey.ID] = apiKey
+		s.addToAPIMapping(apiKey)
+	}
 
-	s.logger.Debug("Stored API key",
+	s.logger.Debug("Successfully stored API key",
 		zap.String("id", apiKey.ID),
 		zap.String("api_id", apiKey.APIId),
 		zap.String("status", string(apiKey.Status)))
+
+	return nil
 }
 
 // GetAll retrieves all API keys
@@ -161,28 +180,13 @@ func (s *APIKeyStore) GetResourceVersion() int64 {
 
 // addToAPIMapping adds an API key to the API mapping
 func (s *APIKeyStore) addToAPIMapping(apiKey *models.APIKey) {
-	existingKeys, apiIdExists := s.apiKeysByAPI[apiKey.APIId]
-	var existingKeyID = ""
-
-	if apiIdExists {
-		for id, existingKey := range existingKeys {
-			if existingKey.Name == apiKey.Name {
-				existingKeyID = id
-				break
-			}
-		}
+	// Initialize the map for this API ID if it doesn't exist
+	if s.apiKeysByAPI[apiKey.APIId] == nil {
+		s.apiKeysByAPI[apiKey.APIId] = make(map[string]*models.APIKey)
 	}
 
-	if existingKeyID != "" {
-		// Update the existing entry in apiKeysByAPI
-		s.apiKeysByAPI[apiKey.APIId][existingKeyID] = apiKey
-	} else {
-		// Initialize the map for this API ID if it doesn't exist
-		if s.apiKeysByAPI[apiKey.APIId] == nil {
-			s.apiKeysByAPI[apiKey.APIId] = make(map[string]*models.APIKey)
-		}
-		s.apiKeysByAPI[apiKey.APIId][apiKey.ID] = apiKey
-	}
+	// Store by API key ID
+	s.apiKeysByAPI[apiKey.APIId][apiKey.ID] = apiKey
 }
 
 // removeFromAPIMapping removes an API key from the API mapping

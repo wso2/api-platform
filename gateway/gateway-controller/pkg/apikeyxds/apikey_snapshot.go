@@ -126,7 +126,9 @@ func (sm *APIKeySnapshotManager) StoreAPIKey(apiKey *models.APIKey) error {
 		zap.String("name", apiKey.Name))
 
 	// Store in the API key store
-	sm.store.Store(apiKey)
+	if err := sm.store.Store(apiKey); err != nil {
+		return fmt.Errorf("failed to store API key in APIKeyStore: %w", err)
+	}
 
 	// Update the snapshot to reflect the new state
 	return sm.UpdateSnapshot(context.Background())
