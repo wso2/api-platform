@@ -417,6 +417,7 @@ func defaultConfig() *Config {
 					WebSubHubPort:         9098,
 					RouterHost:            "localhost",
 					WebSubHubListenerPort: 8083,
+					TimeoutSeconds:        10,
 				},
 				AccessLogs: AccessLogsConfig{
 					Enabled: true,
