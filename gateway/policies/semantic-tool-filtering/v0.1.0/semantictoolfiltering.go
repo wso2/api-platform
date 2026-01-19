@@ -46,6 +46,14 @@ type ToolWithScore struct {
 	Score float64
 }
 
+// TextTool represents a tool parsed from text format
+type TextTool struct {
+	Name        string
+	Description string
+	StartPos    int // Start position in original text
+	EndPos      int // End position in original text (after </tooldescription>)
+}
+
 // SemanticToolFilteringPolicy implements semantic filtering for tool selection
 type SemanticToolFilteringPolicy struct {
 	embeddingConfig   embeddingproviders.EmbeddingProviderConfig
@@ -55,6 +63,8 @@ type SemanticToolFilteringPolicy struct {
 	threshold         float64
 	queryJSONPath     string
 	toolsJSONPath     string
+	userQueryIsJson   bool
+	toolsIsJson       bool
 }
 
 // GetPolicy creates a new instance of the semantic tool filtering policy
@@ -208,6 +218,28 @@ func parseParams(params map[string]interface{}, p *SemanticToolFilteringPolicy) 
 		p.toolsJSONPath = "$.tools" // default from policy-definition.yaml
 	}
 
+	// Optional: userQueryIsJson (default true - JSON format)
+	if userQueryIsJsonRaw, ok := params["userQueryIsJson"]; ok {
+		userQueryIsJson, err := extractBool(userQueryIsJsonRaw)
+		if err != nil {
+			return fmt.Errorf("'userQueryIsJson' must be a boolean: %w", err)
+		}
+		p.userQueryIsJson = userQueryIsJson
+	} else {
+		p.userQueryIsJson = true // default to JSON format
+	}
+
+	// Optional: toolsIsJson (default true - JSON format)
+	if toolsIsJsonRaw, ok := params["toolsIsJson"]; ok {
+		toolsIsJson, err := extractBool(toolsIsJsonRaw)
+		if err != nil {
+			return fmt.Errorf("'toolsIsJson' must be a boolean: %w", err)
+		}
+		p.toolsIsJson = toolsIsJson
+	} else {
+		p.toolsIsJson = true // default to JSON format
+	}
+
 	return nil
 }
 
@@ -256,6 +288,29 @@ func extractInt(value interface{}) (int, error) {
 	}
 }
 
+// extractBool safely extracts a boolean from various types
+func extractBool(value interface{}) (bool, error) {
+	switch v := value.(type) {
+	case bool:
+		return v, nil
+	case string:
+		lower := strings.ToLower(v)
+		if lower == "true" || lower == "1" || lower == "yes" {
+			return true, nil
+		}
+		if lower == "false" || lower == "0" || lower == "no" {
+			return false, nil
+		}
+		return false, fmt.Errorf("cannot convert %q to bool", v)
+	case int:
+		return v != 0, nil
+	case float64:
+		return v != 0, nil
+	default:
+		return false, fmt.Errorf("cannot convert %T to bool", value)
+	}
+}
+
 // createEmbeddingProvider creates a new embedding provider based on the config
 func createEmbeddingProvider(config embeddingproviders.EmbeddingProviderConfig) (embeddingproviders.EmbeddingProvider, error) {
 	var provider embeddingproviders.EmbeddingProvider
@@ -288,6 +343,129 @@ func (p *SemanticToolFilteringPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
+// extractUserQueryFromText extracts user query from text content using <userq> tags
+func extractUserQueryFromText(content string) (string, error) {
+	startTag := "<userq>"
+	endTag := "</userq>"
+
+	startIdx := strings.Index(content, startTag)
+	if startIdx == -1 {
+		return "", fmt.Errorf("user query start tag <userq> not found")
+	}
+
+	endIdx := strings.Index(content, endTag)
+	if endIdx == -1 {
+		return "", fmt.Errorf("user query end tag </userq> not found")
+	}
+
+	if endIdx <= startIdx {
+		return "", fmt.Errorf("invalid user query tag positions")
+	}
+
+	query := content[startIdx+len(startTag) : endIdx]
+	return strings.TrimSpace(query), nil
+}
+
+// extractToolsFromText extracts tools from text content using <toolname> and <tooldescription> tags
+func extractToolsFromText(content string) ([]TextTool, error) {
+	var tools []TextTool
+
+	toolNameStartTag := "<toolname>"
+	toolNameEndTag := "</toolname>"
+	toolDescStartTag := "<tooldescription>"
+	toolDescEndTag := "</tooldescription>"
+
+	// Find all tool definitions in the content
+	searchStart := 0
+	for {
+		// Find tool name
+		nameStartIdx := strings.Index(content[searchStart:], toolNameStartTag)
+		if nameStartIdx == -1 {
+			break
+		}
+		nameStartIdx += searchStart
+
+		nameEndIdx := strings.Index(content[nameStartIdx:], toolNameEndTag)
+		if nameEndIdx == -1 {
+			return nil, fmt.Errorf("tool name end tag </toolname> not found for tool starting at position %d", nameStartIdx)
+		}
+		nameEndIdx += nameStartIdx
+
+		toolName := strings.TrimSpace(content[nameStartIdx+len(toolNameStartTag) : nameEndIdx])
+
+		// Find tool description after the name
+		descSearchStart := nameEndIdx + len(toolNameEndTag)
+		descStartIdx := strings.Index(content[descSearchStart:], toolDescStartTag)
+		if descStartIdx == -1 {
+			return nil, fmt.Errorf("tool description start tag <tooldescription> not found for tool '%s'", toolName)
+		}
+		descStartIdx += descSearchStart
+
+		descEndIdx := strings.Index(content[descStartIdx:], toolDescEndTag)
+		if descEndIdx == -1 {
+			return nil, fmt.Errorf("tool description end tag </tooldescription> not found for tool '%s'", toolName)
+		}
+		descEndIdx += descStartIdx
+
+		toolDesc := strings.TrimSpace(content[descStartIdx+len(toolDescStartTag) : descEndIdx])
+
+		tools = append(tools, TextTool{
+			Name:        toolName,
+			Description: toolDesc,
+			StartPos:    nameStartIdx,
+			EndPos:      descEndIdx + len(toolDescEndTag),
+		})
+
+		// Move search start past this tool
+		searchStart = descEndIdx + len(toolDescEndTag)
+	}
+
+	return tools, nil
+}
+
+// rebuildTextWithFilteredTools rebuilds the text content keeping only filtered tools
+func rebuildTextWithFilteredTools(originalContent string, allTools []TextTool, filteredToolNames map[string]bool) string {
+	if len(allTools) == 0 {
+		return originalContent
+	}
+
+	// Sort tools by start position in reverse order to process from end to start
+	// This ensures position calculations remain valid as we remove content
+	sortedTools := make([]TextTool, len(allTools))
+	copy(sortedTools, allTools)
+	sort.Slice(sortedTools, func(i, j int) bool {
+		return sortedTools[i].StartPos > sortedTools[j].StartPos
+	})
+
+	result := originalContent
+
+	// Remove tools that are not in the filtered list
+	for _, tool := range sortedTools {
+		if !filteredToolNames[tool.Name] {
+			// Remove this tool from the content
+			result = result[:tool.StartPos] + result[tool.EndPos:]
+		}
+	}
+
+	// Clean up any extra whitespace/newlines left after removal
+	result = cleanupWhitespace(result)
+
+	return result
+}
+
+// cleanupWhitespace removes excessive whitespace while preserving structure
+func cleanupWhitespace(content string) string {
+	// Replace multiple consecutive newlines with double newline
+	for strings.Contains(content, "\n\n\n") {
+		content = strings.ReplaceAll(content, "\n\n\n", "\n\n")
+	}
+	// Replace multiple consecutive spaces with single space
+	for strings.Contains(content, "  ") {
+		content = strings.ReplaceAll(content, "  ", " ")
+	}
+	return strings.TrimSpace(content)
+}
+
 // OnRequest handles request body processing for semantic tool filtering
 func (p *SemanticToolFilteringPolicy) OnRequest(ctx *policy.RequestContext, params map[string]interface{}) policy.RequestAction {
 	var content []byte
@@ -300,6 +478,21 @@ func (p *SemanticToolFilteringPolicy) OnRequest(ctx *policy.RequestContext, para
 		return policy.UpstreamRequestModifications{}
 	}
 
+	// Handle based on format type (JSON or Text)
+	if p.userQueryIsJson && p.toolsIsJson {
+		// Pure JSON mode
+		return p.handleJSONRequest(content)
+	} else if !p.userQueryIsJson && !p.toolsIsJson {
+		// Pure Text mode
+		return p.handleTextRequest(content)
+	} else {
+		// Mixed mode
+		return p.handleMixedRequest(content)
+	}
+}
+
+// handleJSONRequest handles requests where both user query and tools are in JSON format
+func (p *SemanticToolFilteringPolicy) handleJSONRequest(content []byte) policy.RequestAction {
 	// Parse request body as JSON
 	var requestBody map[string]interface{}
 	if err := json.Unmarshal(content, &requestBody); err != nil {
@@ -419,6 +612,296 @@ func (p *SemanticToolFilteringPolicy) OnRequest(ctx *policy.RequestContext, para
 
 	return policy.UpstreamRequestModifications{
 		Body: modifiedBody,
+	}
+}
+
+// handleTextRequest handles requests where both user query and tools are in text format with tags
+func (p *SemanticToolFilteringPolicy) handleTextRequest(content []byte) policy.RequestAction {
+	contentStr := string(content)
+
+	// Extract user query from <userq> tags
+	userQuery, err := extractUserQueryFromText(contentStr)
+	if err != nil {
+		return p.buildErrorResponse("Error extracting user query from text", err)
+	}
+
+	if userQuery == "" {
+		slog.Debug("SemanticToolFiltering: Empty user query")
+		return policy.UpstreamRequestModifications{}
+	}
+
+	// Extract tools from <toolname> and <tooldescription> tags
+	textTools, err := extractToolsFromText(contentStr)
+	if err != nil {
+		return p.buildErrorResponse("Error extracting tools from text", err)
+	}
+
+	if len(textTools) == 0 {
+		slog.Debug("SemanticToolFiltering: No tools to filter")
+		return policy.UpstreamRequestModifications{}
+	}
+
+	// Generate embedding for user query
+	queryEmbedding, err := p.embeddingProvider.GetEmbedding(userQuery)
+	if err != nil {
+		slog.Error("SemanticToolFiltering: Error generating query embedding", "error", err)
+		return p.buildErrorResponse("Error generating query embedding", err)
+	}
+
+	// Calculate similarity scores for each tool
+	type TextToolWithScore struct {
+		Tool  TextTool
+		Score float64
+	}
+	toolsWithScores := make([]TextToolWithScore, 0, len(textTools))
+
+	for _, tool := range textTools {
+		// Use name + description for better semantic matching
+		toolText := fmt.Sprintf("%s: %s", tool.Name, tool.Description)
+
+		// Generate embedding for tool
+		toolEmbedding, err := p.embeddingProvider.GetEmbedding(toolText)
+		if err != nil {
+			slog.Warn("SemanticToolFiltering: Error generating tool embedding, skipping",
+				"error", err, "toolName", tool.Name)
+			continue
+		}
+
+		// Calculate cosine similarity
+		similarity, err := cosineSimilarity(queryEmbedding, toolEmbedding)
+		if err != nil {
+			slog.Warn("SemanticToolFiltering: Error calculating similarity, skipping",
+				"error", err, "toolName", tool.Name)
+			continue
+		}
+
+		toolsWithScores = append(toolsWithScores, TextToolWithScore{
+			Tool:  tool,
+			Score: similarity,
+		})
+	}
+
+	if len(toolsWithScores) == 0 {
+		slog.Debug("SemanticToolFiltering: No valid tools after embedding generation")
+		return policy.UpstreamRequestModifications{}
+	}
+
+	// Sort by score in descending order
+	sort.Slice(toolsWithScores, func(i, j int) bool {
+		return toolsWithScores[i].Score > toolsWithScores[j].Score
+	})
+
+	// Filter based on selection mode
+	filteredToolNames := make(map[string]bool)
+	switch p.selectionMode {
+	case SelectionModeTopK:
+		limit := p.topK
+		if limit > len(toolsWithScores) {
+			limit = len(toolsWithScores)
+		}
+		for i := 0; i < limit; i++ {
+			filteredToolNames[toolsWithScores[i].Tool.Name] = true
+		}
+	case SelectionModeThreshold:
+		for _, item := range toolsWithScores {
+			if item.Score >= p.threshold {
+				filteredToolNames[item.Tool.Name] = true
+			}
+		}
+	}
+
+	slog.Debug("SemanticToolFiltering: Filtered tools (text mode)",
+		"originalCount", len(textTools),
+		"filteredCount", len(filteredToolNames),
+		"selectionMode", p.selectionMode)
+
+	// Rebuild text content with only filtered tools
+	modifiedContent := rebuildTextWithFilteredTools(contentStr, textTools, filteredToolNames)
+
+	return policy.UpstreamRequestModifications{
+		Body: []byte(modifiedContent),
+	}
+}
+
+// handleMixedRequest handles requests where user query and tools have different formats
+func (p *SemanticToolFilteringPolicy) handleMixedRequest(content []byte) policy.RequestAction {
+	contentStr := string(content)
+	var userQuery string
+	var err error
+
+	// Extract user query based on format
+	if p.userQueryIsJson {
+		// Try to parse as JSON and extract using JSONPath
+		userQuery, err = utils.ExtractStringValueFromJsonpath(content, p.queryJSONPath)
+		if err != nil {
+			return p.buildErrorResponse("Error extracting user query from JSONPath", err)
+		}
+	} else {
+		// Extract from text tags
+		userQuery, err = extractUserQueryFromText(contentStr)
+		if err != nil {
+			return p.buildErrorResponse("Error extracting user query from text", err)
+		}
+	}
+
+	if userQuery == "" {
+		slog.Debug("SemanticToolFiltering: Empty user query")
+		return policy.UpstreamRequestModifications{}
+	}
+
+	// Generate embedding for user query
+	queryEmbedding, err := p.embeddingProvider.GetEmbedding(userQuery)
+	if err != nil {
+		slog.Error("SemanticToolFiltering: Error generating query embedding", "error", err)
+		return p.buildErrorResponse("Error generating query embedding", err)
+	}
+
+	// Handle tools based on format
+	if p.toolsIsJson {
+		// Parse as JSON and handle tools
+		var requestBody map[string]interface{}
+		if err := json.Unmarshal(content, &requestBody); err != nil {
+			return p.buildErrorResponse("Invalid JSON in request body", err)
+		}
+
+		toolsJSON, err := utils.ExtractValueFromJsonpath(requestBody, p.toolsJSONPath)
+		if err != nil {
+			return p.buildErrorResponse("Error extracting tools from JSONPath", err)
+		}
+
+		var tools []interface{}
+		var toolsBytes []byte
+		switch v := toolsJSON.(type) {
+		case []byte:
+			toolsBytes = v
+		case string:
+			toolsBytes = []byte(v)
+		default:
+			toolsBytes, err = json.Marshal(v)
+			if err != nil {
+				return p.buildErrorResponse("Invalid tools format in request", err)
+			}
+		}
+		if err := json.Unmarshal(toolsBytes, &tools); err != nil {
+			return p.buildErrorResponse("Invalid tools format in request", err)
+		}
+
+		if len(tools) == 0 {
+			slog.Debug("SemanticToolFiltering: No tools to filter")
+			return policy.UpstreamRequestModifications{}
+		}
+
+		toolsWithScores := make([]ToolWithScore, 0, len(tools))
+		for _, toolRaw := range tools {
+			toolMap, ok := toolRaw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			toolDesc := extractToolDescription(toolMap)
+			if toolDesc == "" {
+				continue
+			}
+
+			toolEmbedding, err := p.embeddingProvider.GetEmbedding(toolDesc)
+			if err != nil {
+				continue
+			}
+
+			similarity, err := cosineSimilarity(queryEmbedding, toolEmbedding)
+			if err != nil {
+				continue
+			}
+
+			toolsWithScores = append(toolsWithScores, ToolWithScore{
+				Tool:  toolMap,
+				Score: similarity,
+			})
+		}
+
+		if len(toolsWithScores) == 0 {
+			return policy.UpstreamRequestModifications{}
+		}
+
+		filteredTools := p.filterTools(toolsWithScores)
+		if err := updateToolsInRequestBody(&requestBody, p.toolsJSONPath, filteredTools); err != nil {
+			return p.buildErrorResponse("Error updating request body with filtered tools", err)
+		}
+
+		modifiedBody, err := json.Marshal(requestBody)
+		if err != nil {
+			return p.buildErrorResponse("Error marshaling modified request body", err)
+		}
+
+		return policy.UpstreamRequestModifications{
+			Body: modifiedBody,
+		}
+	} else {
+		// Tools in text format
+		textTools, err := extractToolsFromText(contentStr)
+		if err != nil {
+			return p.buildErrorResponse("Error extracting tools from text", err)
+		}
+
+		if len(textTools) == 0 {
+			return policy.UpstreamRequestModifications{}
+		}
+
+		type TextToolWithScore struct {
+			Tool  TextTool
+			Score float64
+		}
+		toolsWithScores := make([]TextToolWithScore, 0, len(textTools))
+
+		for _, tool := range textTools {
+			toolText := fmt.Sprintf("%s: %s", tool.Name, tool.Description)
+			toolEmbedding, err := p.embeddingProvider.GetEmbedding(toolText)
+			if err != nil {
+				continue
+			}
+
+			similarity, err := cosineSimilarity(queryEmbedding, toolEmbedding)
+			if err != nil {
+				continue
+			}
+
+			toolsWithScores = append(toolsWithScores, TextToolWithScore{
+				Tool:  tool,
+				Score: similarity,
+			})
+		}
+
+		if len(toolsWithScores) == 0 {
+			return policy.UpstreamRequestModifications{}
+		}
+
+		sort.Slice(toolsWithScores, func(i, j int) bool {
+			return toolsWithScores[i].Score > toolsWithScores[j].Score
+		})
+
+		filteredToolNames := make(map[string]bool)
+		switch p.selectionMode {
+		case SelectionModeTopK:
+			limit := p.topK
+			if limit > len(toolsWithScores) {
+				limit = len(toolsWithScores)
+			}
+			for i := 0; i < limit; i++ {
+				filteredToolNames[toolsWithScores[i].Tool.Name] = true
+			}
+		case SelectionModeThreshold:
+			for _, item := range toolsWithScores {
+				if item.Score >= p.threshold {
+					filteredToolNames[item.Tool.Name] = true
+				}
+			}
+		}
+
+		modifiedContent := rebuildTextWithFilteredTools(contentStr, textTools, filteredToolNames)
+
+		return policy.UpstreamRequestModifications{
+			Body: []byte(modifiedContent),
+		}
 	}
 }
 
