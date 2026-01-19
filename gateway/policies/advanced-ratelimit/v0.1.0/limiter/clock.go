@@ -1,6 +1,9 @@
 package limiter
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 // Clock provides an abstraction for time operations (useful for testing)
 type Clock interface {
@@ -16,11 +19,27 @@ func (c *SystemClock) Now() time.Time {
 }
 
 // FixedClock returns a fixed time (for testing)
+// Thread-safe for concurrent reads and writes
 type FixedClock struct {
-	Time time.Time
+	mu   sync.RWMutex
+	time time.Time
 }
 
-// Now returns the fixed time
+// NewFixedClock creates a new FixedClock with the given time
+func NewFixedClock(t time.Time) *FixedClock {
+	return &FixedClock{time: t}
+}
+
+// Now returns the fixed time (thread-safe)
 func (c *FixedClock) Now() time.Time {
-	return c.Time
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.time
+}
+
+// Set updates the fixed time (thread-safe)
+func (c *FixedClock) Set(t time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.time = t
 }

@@ -311,6 +311,12 @@ func (s *APIService) UpdateAPI(apiUUID string, req *UpdateAPIRequest, orgUUID st
 		return nil, err
 	}
 
+	if req.BackendServices != nil {
+		if err := s.updateAPIBackendServices(apiUUID, req.BackendServices, orgUUID); err != nil {
+			return nil, err
+		}
+	}
+
 	return existingAPI, nil
 }
 
@@ -679,9 +685,6 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *UpdateAPI
 		existingAPI.CORS = req.CORS
 	}
 	if req.BackendServices != nil {
-		if err := s.updateAPIBackendServices(existingAPIModel.ID, req.BackendServices, orgId); err != nil {
-			return nil, err
-		}
 		existingAPI.BackendServices = *req.BackendServices
 	}
 	if req.APIRateLimiting != nil {

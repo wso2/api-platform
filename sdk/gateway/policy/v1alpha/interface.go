@@ -14,6 +14,9 @@ type PolicyMetadata struct {
 
 	// APIVersion is the version of the API this policy belongs to
 	APIVersion string
+
+	// AttachedTo indicates where the policy is attached (e.g., LevelAPI, LevelRoute)
+	AttachedTo Level
 }
 
 // Policy is the base interface that all policies must implement
@@ -100,4 +103,15 @@ const (
 	// BodyModeStream - Process body in streaming chunks
 	// The kernel invokes streaming methods for each chunk (requires StreamingPolicy interface)
 	BodyModeStream BodyProcessingMode = "STREAM"
+)
+
+// Level defines the attachment level of a policy
+type Level string
+
+const (
+	// LevelAPI indicates the policy is attached at the API level
+	LevelAPI Level = "api"
+
+	// LevelRoute indicates the policy is attached at the route level
+	LevelRoute Level = "route"
 )

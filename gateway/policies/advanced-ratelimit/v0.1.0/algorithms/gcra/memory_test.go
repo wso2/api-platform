@@ -17,7 +17,7 @@ func TestMemoryLimiter_BasicAllow(t *testing.T) {
 
 	ctx := context.Background()
 	fixedTime := time.Unix(1000, 0)
-	rl.WithClock(&limiter.FixedClock{Time: fixedTime})
+	rl.WithClock(limiter.NewFixedClock(fixedTime))
 
 	// First 10 requests at the same instant should be allowed
 	for i := 0; i < 10; i++ {
@@ -47,7 +47,7 @@ func TestMemoryLimiter_AllowN(t *testing.T) {
 	defer rl.Close()
 
 	ctx := context.Background()
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(1000, 0)})
+	rl.WithClock(limiter.NewFixedClock(time.Unix(1000, 0)))
 
 	// Consume 5 requests at once
 	result, err := rl.AllowN(ctx, "user:456", 5)
@@ -78,7 +78,7 @@ func TestMemoryLimiter_BurstRefill(t *testing.T) {
 	defer rl.Close()
 
 	ctx := context.Background()
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(2000, 0)})
+	rl.WithClock(limiter.NewFixedClock(time.Unix(2000, 0)))
 
 	// Exhaust burst
 	for i := 0; i < 10; i++ {
@@ -95,7 +95,7 @@ func TestMemoryLimiter_BurstRefill(t *testing.T) {
 	}
 
 	// Advance time by 1 second (all 10 tokens should refill)
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(2001, 0)})
+	rl.WithClock(limiter.NewFixedClock(time.Unix(2001, 0)))
 	result, err = rl.Allow(ctx, "refill-test")
 	if err != nil || !result.Allowed {
 		t.Fatal("request should be allowed after 1 second")
@@ -149,7 +149,7 @@ func TestMemoryLimiter_CleanupExpired(t *testing.T) {
 	defer rl.Close()
 
 	ctx := context.Background()
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(3000, 0)})
+	rl.WithClock(limiter.NewFixedClock(time.Unix(3000, 0)))
 
 	// Create rate limit state for 2 keys
 	_, _ = rl.Allow(ctx, "temp-key-1")
@@ -159,7 +159,7 @@ func TestMemoryLimiter_CleanupExpired(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 
 	// Advance time beyond expiration (burst allowance + duration)
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(3002, 0)})
+	rl.WithClock(limiter.NewFixedClock(time.Unix(3002, 0)))
 	time.Sleep(150 * time.Millisecond)
 
 	// Verify entries were cleaned up (hard to test directly without exposing internals)

@@ -17,7 +17,7 @@ func TestMemoryLimiter_BasicAllow(t *testing.T) {
 
 	ctx := context.Background()
 	fixedTime := time.Unix(1000, 0)
-	rl.WithClock(&limiter.FixedClock{Time: fixedTime})
+	rl.WithClock(limiter.NewFixedClock(fixedTime))
 
 	// First 10 requests in the same window should be allowed
 	for i := 0; i < 10; i++ {
@@ -50,7 +50,7 @@ func TestMemoryLimiter_AllowN(t *testing.T) {
 	defer rl.Close()
 
 	ctx := context.Background()
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(1000, 0)})
+	rl.WithClock(limiter.NewFixedClock(time.Unix(1000, 0)))
 
 	// Consume 5 requests at once
 	result, err := rl.AllowN(ctx, "user:456", 5)
@@ -94,7 +94,7 @@ func TestMemoryLimiter_WindowReset(t *testing.T) {
 
 	ctx := context.Background()
 	// Start at exactly 2000 seconds (window boundary)
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(2000, 0)})
+	rl.WithClock(limiter.NewFixedClock(time.Unix(2000, 0)))
 
 	// Exhaust limit in first window
 	for i := 0; i < 10; i++ {
@@ -111,7 +111,7 @@ func TestMemoryLimiter_WindowReset(t *testing.T) {
 	}
 
 	// Advance to next window boundary (2001 seconds)
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(2001, 0)})
+	rl.WithClock(limiter.NewFixedClock(time.Unix(2001, 0)))
 
 	// Counter should reset - all 10 requests available again
 	for i := 0; i < 10; i++ {
@@ -172,7 +172,7 @@ func TestMemoryLimiter_CleanupExpired(t *testing.T) {
 	defer rl.Close()
 
 	ctx := context.Background()
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(3000, 0)})
+	rl.WithClock(limiter.NewFixedClock(time.Unix(3000, 0)))
 
 	// Create rate limit state for 2 keys
 	_, _ = rl.Allow(ctx, "temp-key-1")
@@ -182,7 +182,7 @@ func TestMemoryLimiter_CleanupExpired(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 
 	// Advance time beyond expiration (window + 1 minute buffer)
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(3062, 0)})
+	rl.WithClock(limiter.NewFixedClock(time.Unix(3062, 0)))
 	time.Sleep(150 * time.Millisecond)
 
 	// Verify limiter still works (entries should be cleaned up)
@@ -223,7 +223,7 @@ func TestMemoryLimiter_PartialWindow(t *testing.T) {
 
 	ctx := context.Background()
 	// Start at 30 seconds into a minute (not at window boundary)
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(1030, 0)})
+	rl.WithClock(limiter.NewFixedClock(time.Unix(1030, 0)))
 
 	// Use 7 requests
 	for i := 0; i < 7; i++ {
@@ -234,7 +234,7 @@ func TestMemoryLimiter_PartialWindow(t *testing.T) {
 	}
 
 	// Move to 50 seconds (still same window: 1000-1059)
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(1050, 0)})
+	rl.WithClock(limiter.NewFixedClock(time.Unix(1050, 0)))
 
 	// Should only have 3 remaining
 	result, err := rl.AllowN(ctx, "partial-test", 3)
@@ -249,7 +249,7 @@ func TestMemoryLimiter_PartialWindow(t *testing.T) {
 	}
 
 	// Move to next window (1080 = start of new minute: 1080-1139)
-	rl.WithClock(&limiter.FixedClock{Time: time.Unix(1080, 0)})
+	rl.WithClock(limiter.NewFixedClock(time.Unix(1080, 0)))
 
 	// Full quota available again
 	result, err = rl.AllowN(ctx, "partial-test", 10)

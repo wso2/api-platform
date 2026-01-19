@@ -156,20 +156,27 @@ Feature: Basic Rate Limiting
         upstream:
           main:
             url: http://sample-backend:9080/api/v1
-        policies:
-          - name: basic-ratelimit
-            version: v0.1.0
-            params:
-              limits:
-                - limit: 3
-                  duration: "1h"
         operations:
           - method: GET
             path: /health
           - method: GET
             path: /route1
+            policies:
+              - name: basic-ratelimit
+                version: v0.1.0
+                params:
+                  limits:
+                    - limit: 3
+                      duration: "1h"
           - method: GET
             path: /route2
+            policies:
+              - name: basic-ratelimit
+                version: v0.1.0
+                params:
+                  limits:
+                    - limit: 3
+                      duration: "1h"
       """
     Then the response should be successful
     And I wait for the endpoint "http://localhost:8080/basic-ratelimit-per-route/v1.0/health" to be ready
@@ -230,3 +237,82 @@ Feature: Basic Rate Limiting
     When I send a GET request to "http://localhost:8080/basic-ratelimit-retry/v1.0/resource"
     Then the response status code should be 429
     And the response header "Retry-After" should exist
+
+  Scenario: Rate limit scope based on policy attachment level
+    Given I authenticate using basic auth as "admin"
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1alpha1
+      kind: RestApi
+      metadata:
+        name: basic-ratelimit-scope-api
+      spec:
+        displayName: Basic RateLimit Scope API
+        version: v1.0
+        context: /basic-ratelimit-scope/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/api/v1
+        policies:
+          - name: basic-ratelimit
+            version: v0.1.0
+            params:
+              limits:
+                - limit: 5
+                  duration: "1h"
+        operations:
+          - method: GET
+            path: /health
+            policies:
+              - name: basic-ratelimit
+                version: v0.1.0
+                params:
+                  limits:
+                    - limit: 100
+                      duration: "1h"
+          - method: GET
+            path: /resource-a
+          - method: GET
+            path: /resource-b
+            policies:
+              - name: basic-ratelimit
+                version: v0.1.0
+                params:
+                  limits:
+                    - limit: 3
+                      duration: "1h"
+          - method: GET
+            path: /resource-c
+      """
+    Then the response should be successful
+    And I wait for the endpoint "http://localhost:8080/basic-ratelimit-scope/v1.0/health" to be ready
+
+    # Resource B has its own route-level policy (Limit: 3)
+    # Send 3 requests to B -> Should succeed
+    When I send 3 GET requests to "http://localhost:8080/basic-ratelimit-scope/v1.0/resource-b"
+    Then the response status code should be 200
+
+    # 4th request to B -> Should fail (Limit 3 exhausted)
+    When I send a GET request to "http://localhost:8080/basic-ratelimit-scope/v1.0/resource-b"
+    Then the response status code should be 429
+
+    # Resource A and C fall back to API-level policy (Limit: 5, Shared)
+    # Send 2 requests to A -> Should succeed
+    When I send 2 GET requests to "http://localhost:8080/basic-ratelimit-scope/v1.0/resource-a"
+    Then the response status code should be 200
+
+    # Send 2 requests to C -> Should succeed (Total 4/5)
+    When I send 2 GET requests to "http://localhost:8080/basic-ratelimit-scope/v1.0/resource-c"
+    Then the response status code should be 200
+
+    # Send 1 request to A -> Should succeed (Total 5/5)
+    When I send a GET request to "http://localhost:8080/basic-ratelimit-scope/v1.0/resource-a"
+    Then the response status code should be 200
+
+    # Send 1 request to C -> Should fail (Total 6/5, Limit 5 exhausted)
+    When I send a GET request to "http://localhost:8080/basic-ratelimit-scope/v1.0/resource-c"
+    Then the response status code should be 429
+
+    # Verify B is still rate limited (independent of A/C bucket)
+    When I send a GET request to "http://localhost:8080/basic-ratelimit-scope/v1.0/resource-b"
+    Then the response status code should be 429
