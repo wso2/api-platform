@@ -58,7 +58,7 @@ func (r *APIPublicationRepo) UpsertPublication(publication *model.APIPublication
 	// Check if the record exists within the transaction
 	var exists bool
 	checkQuery := `SELECT 1 FROM api_publications WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
-	err = tx.QueryRow(checkQuery, publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID).Scan(&exists)
+	err = tx.QueryRow(r.db.Rebind(checkQuery), publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID).Scan(&exists)
 	if err != nil && err != sql.ErrNoRows {
 		return fmt.Errorf("failed to check existence: %w", err)
 	}
@@ -73,7 +73,7 @@ func (r *APIPublicationRepo) UpsertPublication(publication *model.APIPublication
 				sandbox_endpoint_url, production_endpoint_url,
 				created_at, updated_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-		_, err = tx.Exec(insertQuery,
+		_, err = tx.Exec(r.db.Rebind(insertQuery),
 			publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID,
 			publication.Status, publication.APIVersion, publication.DevPortalRefID,
 			publication.SandboxEndpointURL, publication.ProductionEndpointURL,
@@ -89,7 +89,7 @@ func (r *APIPublicationRepo) UpsertPublication(publication *model.APIPublication
 			SET status = ?, api_version = ?, devportal_ref_id = ?, 
 			    sandbox_endpoint_url = ?, production_endpoint_url = ?, updated_at = ?
 			WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
-		result, err := tx.Exec(updateQuery,
+		result, err := tx.Exec(r.db.Rebind(updateQuery),
 			publication.Status, publication.APIVersion, publication.DevPortalRefID,
 			publication.SandboxEndpointURL, publication.ProductionEndpointURL, publication.UpdatedAt,
 			publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID,
@@ -104,7 +104,7 @@ func (r *APIPublicationRepo) UpsertPublication(publication *model.APIPublication
 		if rowsAffected == 0 {
 			// Verify if the row still exists (RowsAffected can be 0 for no-op updates)
 			var stillExists bool
-			err = tx.QueryRow(checkQuery, publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID).Scan(&stillExists)
+			err = tx.QueryRow(r.db.Rebind(checkQuery), publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID).Scan(&stillExists)
 			if err == sql.ErrNoRows {
 				return constants.ErrAPIPublicationNotFound
 			}
@@ -141,7 +141,7 @@ func (r *APIPublicationRepo) Create(publication *model.APIPublication) error {
 			created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
-	_, err := r.db.Exec(query,
+	_, err := r.db.Exec(r.db.Rebind(query),
 		publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID,
 		publication.Status, publication.APIVersion, publication.DevPortalRefID,
 		publication.SandboxEndpointURL, publication.ProductionEndpointURL,
@@ -165,7 +165,7 @@ func (r *APIPublicationRepo) GetByAPIAndDevPortal(apiUUID, devPortalUUID, orgUUI
 		FROM api_publications
 		WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
 
-	row := r.db.QueryRow(query, apiUUID, devPortalUUID, orgUUID)
+	row := r.db.QueryRow(r.db.Rebind(query), apiUUID, devPortalUUID, orgUUID)
 
 	publication := &model.APIPublication{}
 	err := row.Scan(
@@ -196,7 +196,7 @@ func (r *APIPublicationRepo) GetByAPIUUID(apiUUID, orgUUID string) ([]*model.API
 		WHERE api_uuid = ? AND organization_uuid = ?
 		ORDER BY created_at DESC`
 
-	rows, err := r.db.Query(query, apiUUID, orgUUID)
+	rows, err := r.db.Query(r.db.Rebind(query), apiUUID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query API publications: %w", err)
 	}
@@ -239,7 +239,7 @@ func (r *APIPublicationRepo) Update(publication *model.APIPublication) error {
 		    sandbox_endpoint_url = ?, production_endpoint_url = ?, updated_at = ?
 		WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
 
-	result, err := r.db.Exec(query,
+	result, err := r.db.Exec(r.db.Rebind(query),
 		publication.Status, publication.APIVersion, publication.DevPortalRefID,
 		publication.SandboxEndpointURL, publication.ProductionEndpointURL, publication.UpdatedAt,
 		publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID,
@@ -257,11 +257,10 @@ func (r *APIPublicationRepo) Update(publication *model.APIPublication) error {
 	if rowsAffected == 0 {
 		// Verify if the row still exists (RowsAffected can be 0 for no-op updates)
 		var stillExists bool
-		err = r.db.QueryRow(`
+		err = r.db.QueryRow(r.db.Rebind(`
 			SELECT 1 FROM api_publications 
-			WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`,
-			publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID,
-		).Scan(&stillExists)
+			WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`),
+			publication.APIUUID, publication.DevPortalUUID, publication.OrganizationUUID).Scan(&stillExists)
 		if err == sql.ErrNoRows {
 			return constants.ErrAPIPublicationNotFound
 		}
@@ -280,7 +279,7 @@ func (r *APIPublicationRepo) Delete(apiUUID, devPortalUUID, orgUUID string) erro
 		DELETE FROM api_publications 
 		WHERE api_uuid = ? AND devportal_uuid = ? AND organization_uuid = ?`
 
-	result, err := r.db.Exec(query, apiUUID, devPortalUUID, orgUUID)
+	result, err := r.db.Exec(r.db.Rebind(query), apiUUID, devPortalUUID, orgUUID)
 	if err != nil {
 		return fmt.Errorf("failed to delete API publication: %w", err)
 	}
@@ -344,7 +343,7 @@ func (r *APIPublicationRepo) GetAPIDevPortalsWithDetails(apiUUID, orgUUID string
 		  AND aa.association_type = 'dev_portal'
 		ORDER BY aa.created_at DESC`
 
-	rows, err := r.db.Query(query, apiUUID, orgUUID)
+	rows, err := r.db.Query(r.db.Rebind(query), apiUUID, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query API-DevPortal associations: %w", err)
 	}

@@ -22,15 +22,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3" // SQLite3 driver
 	"platform-api/src/config"
+
+	_ "github.com/lib/pq"           // PostgreSQL driver
+	_ "github.com/mattn/go-sqlite3" // SQLite3 driver
 )
 
 // DB holds the database connection
 type DB struct {
 	*sql.DB
+	driver string // Database driver name (sqlite3, postgres, etc.)
 }
 
 // NewConnection creates a new database connection using configuration
@@ -56,6 +60,17 @@ func NewConnection(cfg *config.Database) (*DB, error) {
 		if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
 			return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
 		}
+	case "postgres", "postgresql":
+		// Build PostgreSQL DSN from config
+		dsn := fmt.Sprintf(
+			"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+			cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Name, cfg.SSLMode,
+		)
+
+		db, err = sql.Open("postgres", dsn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open postgres database: %w", err)
+		}
 	default:
 		return nil, fmt.Errorf("unsupported database driver: %s", cfg.Driver)
 	}
@@ -70,16 +85,50 @@ func NewConnection(cfg *config.Database) (*DB, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	return &DB{db}, nil
+	return &DB{DB: db, driver: cfg.Driver}, nil
 }
 
 // InitSchema initializes the database schema
+// Automatically selects the appropriate schema file based on the database driver.
+// If dbSchemaPath is provided (e.g., "./internal/database/schema.sql"), it will
+// be used to derive the directory and then select schema.{driver}.sql
 func (db *DB) InitSchema(dbSchemaPath string) error {
+	var schemaPath string
+
+	// Determine schema file path based on driver
+	// Replace "schema.sql" with "schema.{driver}.sql" in the path
+	if dbSchemaPath != "" {
+		// Extract directory from provided path
+		dir := filepath.Dir(dbSchemaPath)
+
+		// Determine driver-specific schema filename
+		var schemaFile string
+		switch db.driver {
+		case "sqlite3":
+			schemaFile = "schema.sqlite.sql"
+		case "postgres", "postgresql":
+			schemaFile = "schema.postgres.sql"
+		default:
+			return fmt.Errorf("unsupported database driver for schema initialization: %s", db.driver)
+		}
+
+		schemaPath = filepath.Join(dir, schemaFile)
+	} else {
+		// Fallback: construct path from driver
+		switch db.driver {
+		case "sqlite3":
+			schemaPath = "./internal/database/schema.sqlite.sql"
+		case "postgres", "postgresql":
+			schemaPath = "./internal/database/schema.postgres.sql"
+		default:
+			return fmt.Errorf("unsupported database driver for schema initialization: %s", db.driver)
+		}
+	}
+
 	// Read the schema SQL from the external file
-	schemaPath := filepath.Join(dbSchemaPath)
 	schemaSQL, err := os.ReadFile(schemaPath)
 	if err != nil {
-		return fmt.Errorf("failed to read schema file: %w", err)
+		return fmt.Errorf("failed to read schema file %s: %w", schemaPath, err)
 	}
 
 	// Execute the schema SQL
@@ -89,4 +138,28 @@ func (db *DB) InitSchema(dbSchemaPath string) error {
 	}
 
 	return nil
+}
+
+// Rebind converts a SQL query with `?` placeholders to the appropriate format
+// for the current database driver. For PostgreSQL, converts `?` to `$1, $2, ...`.
+// For SQLite, leaves `?` as-is.
+func (db *DB) Rebind(query string) string {
+	if db.driver == "postgres" || db.driver == "postgresql" {
+		// Convert ? placeholders to $1, $2, $3, etc.
+		parts := strings.Split(query, "?")
+		if len(parts) == 1 {
+			return query // No placeholders
+		}
+
+		var result strings.Builder
+		for i, part := range parts {
+			if i > 0 {
+				result.WriteString(fmt.Sprintf("$%d", i))
+			}
+			result.WriteString(part)
+		}
+		return result.String()
+	}
+	// For SQLite and other drivers, return as-is
+	return query
 }

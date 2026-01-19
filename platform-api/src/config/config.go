@@ -133,8 +133,6 @@ func GetConfig() *Server {
 	if err != nil {
 		panic(err)
 	}
-	settingInstance.Database.Driver = "sqlite3"
-	settingInstance.Database.Path = "./data/api_platform.db"
 	return settingInstance
 }
 
