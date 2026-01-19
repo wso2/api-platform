@@ -1,0 +1,14 @@
+# CODEOWNERS file for WSO2 API Platform
+# This file defines code ownership and review requirements for specific files and directories.
+# Owners will be automatically requested for review when someone opens a pull request that modifies code they own.
+
+# Go Dependencies - Require approval for any changes to Go module files
+# This ensures that dependency updates are reviewed for security, compatibility, and licensing concerns.
+
+# Root level go.work files
+/go.work           @pubudu538 @malinthaprasan @Krishanx92
+/go.work.sum       @pubudu538 @malinthaprasan @Krishanx92
+
+# All go.mod and go.sum files throughout the repository
+**/go.mod          @pubudu538 @malinthaprasan @Krishanx92
+**/go.sum          @pubudu538 @malinthaprasan @Krishanx92
