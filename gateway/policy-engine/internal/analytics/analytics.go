@@ -57,6 +57,10 @@ const (
 	// ELKAnalyticsPublisher represents the ELK analytics publisher.
 	ELKAnalyticsPublisher = "elk"
 
+	// HeaderKeys represents the header keys.
+	RequestHeadersKey = "request_headers"
+	ResponseHeadersKey = "response_headers"
+
 	// PromptTokenCountMetadataKey represents the prompt token count metadata key.
 	PromptTokenCountMetadataKey string = "aitoken:prompttokencount"
 	// CompletionTokenCountMetadataKey represents the completion token count metadata key.
@@ -324,6 +328,14 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 		event.Properties["responseSize"] = logEntry.Response.ResponseBodyBytes
 	} else {
 		event.Properties["responseContentType"] = Unknown
+	}
+
+	//Adding request and response headers for the analytics event
+	if requestHeaders, exists := keyValuePairsFromMetadata[RequestHeadersKey]; exists {
+		event.Properties["requestHeaders"] = requestHeaders
+	}
+	if responseHeaders, exists := keyValuePairsFromMetadata[ResponseHeadersKey]; exists {
+		event.Properties["responseHeaders"] = responseHeaders
 	}
 
 	return event

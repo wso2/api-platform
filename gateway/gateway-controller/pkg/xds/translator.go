@@ -868,7 +868,6 @@ func (t *Translator) createRoute(apiId, apiName, apiVersion, context, method, pa
 	}
 
 	// Attach dynamic metadata for downstream correlation (policies, logging, tracing)
-	// TODO: (renuka) Include API ID as well
 	metaMap := map[string]interface{}{
 		"route_name":  routeName,
 		"api_id":      apiId,

@@ -20,6 +20,7 @@ package kernel
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -124,6 +125,20 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					for key, value := range mods.AnalyticsMetadata {
 						analyticsData[key] = value
 					}
+				}
+
+				dropAction := mods.DropHeadersFromAnalytics
+				if dropAction.Action != "" || len(dropAction.Headers) > 0 {
+					slog.Info("Translator: Found DropHeadersFromAnalytics action (REQUEST)",
+						"action", dropAction.Action,
+						"headers", dropAction.Headers,
+						"headers_count", len(dropAction.Headers))
+
+					// Set the finalized headers to the analytics data
+					originalHeaders := execCtx.requestContext.Headers.GetAll()
+					finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
+					slog.Debug("Translator: Finalized headers", "REQUEST", finalizedHeaders)
+					execCtx.requestContext.SharedContext.Metadata["request_headers"] = finalizedHeaders
 				}
 			}
 		}
@@ -267,6 +282,28 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 						analyticsData[key] = value
 					}
 				}
+
+				dropAction := mods.DropHeadersFromAnalytics
+				if dropAction.Action != "" || len(dropAction.Headers) > 0 {
+					slog.Debug("Translator: Found DropHeadersFromAnalytics action (RESPONSE)",
+						"action", dropAction.Action,
+						"headers", dropAction.Headers,
+						"headers_count", len(dropAction.Headers))
+
+					// Set the finalized headers to the analytics data
+					originalHeaders := execCtx.responseContext.ResponseHeaders.GetAll()
+					finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
+					slog.Debug("Translator: Finalized headers", "RESPONSE", finalizedHeaders)
+					analyticsData["response_headers"] = finalizedHeaders
+
+					// Include request_headers from shared context metadata if it was set in a previous phase
+					if execCtx.requestContext != nil && execCtx.requestContext.SharedContext != nil {
+						if _, exists := execCtx.requestContext.SharedContext.Metadata["request_headers"]; exists {
+							slog.Debug("Translator: Including request_headers from shared context metadata", "REQUEST", execCtx.requestContext.SharedContext.Metadata["request_headers"])
+							analyticsData["request_headers"] = execCtx.requestContext.SharedContext.Metadata["request_headers"]
+						}
+					}
+				}
 			}
 		}
 	}
@@ -285,6 +322,59 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 	}
 
 	return headerMutation, bodyMutation, analyticsData, nil
+}
+
+// finalizeAnalyticsHeaders finalizes the analytics headers based on the drop action
+// If action is "allow", only the specified headers that exist in originalHeaders are returned
+// If action is "deny", all headers except the specified ones are returned
+func finalizeAnalyticsHeaders(dropAction policy.DropHeaderAction, originalHeaders map[string][]string) map[string][]string {
+	finalizedHeaders := make(map[string][]string)
+
+	// If no action specified or no headers to filter, return all original headers
+	if dropAction.Action == "" || len(dropAction.Headers) == 0 {
+		return originalHeaders
+	}
+
+	// Create a map of specified headers (normalized to lowercase) for quick lookup
+	specifiedHeaders := make(map[string]bool)
+	for _, header := range dropAction.Headers {
+		specifiedHeaders[strings.ToLower(header)] = true
+	}
+	switch dropAction.Action {
+	case "allow":
+		// Allow mode: only include headers that are in the specified list AND exist in original headers
+		for headerName, headerValues := range originalHeaders {
+			normalizedName := strings.ToLower(headerName)
+			if specifiedHeaders[normalizedName] {
+				// Include this header in the finalized headers
+				finalizedHeaders[headerName] = headerValues
+			}
+		}
+		slog.Debug("Analytics headers filtered (allow mode)",
+			"original_count", len(originalHeaders),
+			"specified_count", len(dropAction.Headers),
+			"finalized_count", len(finalizedHeaders))
+	case "deny":
+		// Deny mode: include all headers except those in the specified list
+		for headerName, headerValues := range originalHeaders {
+			normalizedName := strings.ToLower(headerName)
+			if !specifiedHeaders[normalizedName] {
+				// Include this header (it's not in the deny list)
+				finalizedHeaders[headerName] = headerValues
+			}
+		}
+		slog.Debug("Analytics headers filtered (deny mode)",
+			"original_count", len(originalHeaders),
+			"specified_count", len(dropAction.Headers),
+			"finalized_count", len(finalizedHeaders))
+	default:
+		// Unknown action, log warning and return all original headers
+		slog.Warn("Unknown drop action, returning all headers",
+			"action", dropAction.Action)
+		return originalHeaders
+	}
+
+	return finalizedHeaders
 }
 
 // TranslateResponseHeadersActions converts response headers execution result to ext_proc response

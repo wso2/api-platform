@@ -19,6 +19,7 @@
 package kernel
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"google.golang.org/protobuf/types/known/structpb"
@@ -38,6 +39,24 @@ const (
 	APIKindKey         = Wso2MetadataPrefix + "api-kind"
 )
 
+// convertToStructValue converts a value to structpb.Value, handling complex types like map[string][]string
+func convertToStructValue(value any) (*structpb.Value, error) {
+	// Try direct conversion first (works for simple types)
+	val, err := structpb.NewValue(value)
+	if err == nil {
+		return val, nil
+	}
+
+	// If direct conversion fails, serialize to JSON string for complex types
+	// This handles cases like map[string][]string which protobuf doesn't support directly
+	jsonBytes, jsonErr := json.Marshal(value)
+	if jsonErr != nil {
+		return nil, fmt.Errorf("failed to marshal value to JSON: %w", jsonErr)
+	}
+
+	return structpb.NewStringValue(string(jsonBytes)), nil
+}
+
 // buildAnalyticsStruct converts analytics metadata map to structpb.Struct
 // If execCtx is provided, adds system-level metadata (API name, version, etc.) to analytics_data.metadata
 func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecutionContext) (*structpb.Struct, error) {
@@ -46,7 +65,7 @@ func buildAnalyticsStruct(analyticsData map[string]any, execCtx *PolicyExecution
 
 	// Add policy-provided analytics data
 	for key, value := range analyticsData {
-		val, err := structpb.NewValue(value)
+		val, err := convertToStructValue(value)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert analytics value for key %s: %w", key, err)
 		}
