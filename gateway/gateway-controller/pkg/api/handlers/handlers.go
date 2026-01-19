@@ -1704,7 +1704,7 @@ func (s *APIServer) buildStoredPolicyFromAPI(cfg *models.StoredConfig) *models.S
 		for _, ch := range apiData.Channels {
 			var finalPolicies []policyenginev1.PolicyInstance
 
-			if ch.Subscribe.Policies != nil && len(*ch.Subscribe.Policies) > 0 {
+			if ch.Subscribe != nil && len(*ch.Subscribe.Policies) > 0 {
 				// Operation has policies: use operation policy order as authoritative
 				// This allows operations to reorder, override, or extend API-level policies
 				finalPolicies = make([]policyenginev1.PolicyInstance, 0, len(*ch.Subscribe.Policies))
