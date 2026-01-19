@@ -12,7 +12,8 @@ description: |
   All matching rules must be satisfied for access to be granted (AND logic). If multiple 
   rules match the requested MCP attribute, ALL of their conditions must be met for 
   authorization to succeed. This allows combining specific and wildcard rules to build 
-  layered authorization policies.
+  layered authorization policies. If no rules are configured or no rule matches the 
+  requested attribute, access is allowed.
 
 parameters:
   type: object
@@ -82,7 +83,7 @@ parameters:
               Map of JWT claim names to expected values. All specified claims must be present 
               in the token and match their expected values for the rule to grant access.
               
-              Claim paths use dot notation (e.g., "sub", "custom.role", "org.team").
+              Claim names must be top-level keys in the JWT (e.g., "sub", "role").
               Matching is performed as exact string equality.
               
               If both requiredClaims and requiredScopes are specified, BOTH must be satisfied 

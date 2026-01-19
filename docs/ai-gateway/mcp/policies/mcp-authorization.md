@@ -237,18 +237,18 @@ spec:
 - Result: ❌ Access Denied (insufficient scopes)
 
 **Scenario 3**: User with claim `department="engineering"` attempts to read resource `file:///private/code`
-- Rule: `attribute.type="resource", attribute.name="file:///private/*", requiredClaims={department="engineering"}`
+- Rule: `attribute.type="resource", attribute.name="file:///private/code", requiredClaims={department="engineering"}`
 - Result: ✅ Access Granted
 
 **Scenario 4**: User with claim `department="finance"` (no engineering) attempts to read resource `file:///private/code`
-- Rule: `attribute.type="resource", attribute.name="file:///private/*", requiredClaims={department="engineering"}`
+- Rule: `attribute.type="resource", attribute.name="file:///private/code", requiredClaims={department="engineering"}`
 - Result: ❌ Access Denied (claim mismatch)
 
 ## Error Handling
 
 When authorization fails, the policy returns:
 - **HTTP Status**: `403 Forbidden`
-- **Response Body**: JSON error response with details about missing scopes and claims
+- **Response Body**: JSON error response with a reason message
 - **WWW-Authenticate Header**: Contains information about required scopes for the denied resource
 
 ## Related Policies
