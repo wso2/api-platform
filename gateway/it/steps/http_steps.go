@@ -67,6 +67,7 @@ func (h *HTTPSteps) Register(ctx *godog.ScenarioContext) {
 	ctx.Step(`^I send a PUT request to \"([^\"]*)\" with body:$`, h.ISendPUTRequestWithBody)
 	ctx.Step(`^I send a DELETE request to \"([^\"]*)\"$`, h.ISendDELETERequest)
 	ctx.Step(`^I send a PATCH request to \"([^\"]*)\" with body:$`, h.ISendPATCHRequestWithBody)
+	ctx.Step(`^I send an OPTIONS request to \"([^\"]*)\"$`, h.ISendOPTIONSRequest)
 	ctx.Step(`^I send (\d+) GET requests to \"([^\"]*)\"$`, h.ISendManyGETRequests)
 	ctx.Step(`^I send a GET request to \"([^\"]*)\" with header \"([^\"]*)\" value \"([^\"]*)\"$`, h.iSendGETRequestWithHeader)
 	ctx.Step(`^I send (\d+) GET requests to \"([^\"]*)\" with header \"([^\"]*)\" value \"([^\"]*)\"$`, h.iSendManyGETRequestsWithHeader)
@@ -188,6 +189,11 @@ func (h *HTTPSteps) ISendDELETERequest(url string) error {
 // ISendPATCHRequestWithBody sends a PATCH request with body
 func (h *HTTPSteps) ISendPATCHRequestWithBody(url string, body *godog.DocString) error {
 	return h.sendRequest(http.MethodPatch, url, []byte(body.Content))
+}
+
+// ISendOPTIONSRequest sends an OPTIONS request
+func (h *HTTPSteps) ISendOPTIONSRequest(url string) error {
+	return h.sendRequest(http.MethodOptions, url, nil)
 }
 
 // iSendManyGETRequests sends multiple GET requests
