@@ -3711,7 +3711,6 @@ components:
       required:
         - deploymentId
         - apiId
-        - organizationId
         - gatewayId
         - status
         - createdAt

@@ -220,7 +220,6 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *dto.DeployAPIRequest,
 	// Return deployment response
 	return &dto.DeploymentResponse{
 		DeploymentID:     deployment.DeploymentID,
-		ApiID:            deployment.ApiID,
 		GatewayID:        deployment.GatewayID,
 		Status:           deployment.Status,
 		BaseDeploymentID: deployment.BaseDeploymentID,
@@ -285,7 +284,6 @@ func (s *DeploymentService) RedeployDeployment(apiUUID, deploymentID, orgUUID st
 
 	return &dto.DeploymentResponse{
 		DeploymentID:     deployment.DeploymentID,
-		ApiID:            deployment.ApiID,
 		GatewayID:        deployment.GatewayID,
 		Status:           deployment.Status,
 		BaseDeploymentID: deployment.BaseDeploymentID,
@@ -336,7 +334,6 @@ func (s *DeploymentService) UndeployDeployment(apiUUID, deploymentID, orgUUID st
 
 	return &dto.DeploymentResponse{
 		DeploymentID:     deployment.DeploymentID,
-		ApiID:            deployment.ApiID,
 		GatewayID:        deployment.GatewayID,
 		Status:           deployment.Status,
 		BaseDeploymentID: deployment.BaseDeploymentID,
@@ -389,7 +386,6 @@ func (s *DeploymentService) GetDeployments(apiUUID, orgUUID string, gatewayID *s
 	for _, d := range deployments {
 		deploymentDTOs = append(deploymentDTOs, &dto.DeploymentResponse{
 			DeploymentID:     d.DeploymentID,
-			ApiID:            d.ApiID,
 			GatewayID:        d.GatewayID,
 			Status:           d.Status,
 			BaseDeploymentID: d.BaseDeploymentID,
@@ -432,7 +428,6 @@ func (s *DeploymentService) GetDeployment(apiUUID, deploymentID, orgUUID string)
 	// Convert to DTO
 	return &dto.DeploymentResponse{
 		DeploymentID:     deployment.DeploymentID,
-		ApiID:            deployment.ApiID,
 		GatewayID:        deployment.GatewayID,
 		Status:           deployment.Status,
 		BaseDeploymentID: deployment.BaseDeploymentID,
