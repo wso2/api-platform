@@ -9,7 +9,7 @@ parameters:
   properties:
     requestHeaders:
       type: array
-      description: Array of headers that need to added to the request during request phase. At least
+      description: Array of headers that need be to added to the request during request phase. At least
         one of requestHeaders or responseHeaders must be specified.
       items:
         type: object
@@ -29,7 +29,7 @@ parameters:
         - value
     responseHeaders:
       type: array
-      description: Array of headers that need to added to the response during response phase. At
+      description: Array of headers that need to be added to the response during response phase. At
         least one of requestHeaders or responseHeaders must be specified.
       items:
         type: object

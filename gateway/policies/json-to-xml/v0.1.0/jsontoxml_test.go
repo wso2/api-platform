@@ -608,7 +608,7 @@ func TestJSONToXMLPolicy_ConvertJSONToXML_EmptyObject(t *testing.T) {
 	}
 
 	xmlStr := string(xmlBytes)
-	if !strings.Contains(xmlStr, "<root>") && !strings.Contains(xmlStr, "</root>") {
+	if !strings.Contains(xmlStr, "<root>") || !strings.Contains(xmlStr, "</root>") {
 		t.Errorf("Expected root element for empty object")
 	}
 }
