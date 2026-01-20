@@ -138,7 +138,8 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					originalHeaders := execCtx.requestContext.Headers.GetAll()
 					finalizedHeaders := finalizeAnalyticsHeaders(dropAction, originalHeaders)
 					slog.Debug("Translator: Finalized headers", "REQUEST", finalizedHeaders)
-					execCtx.requestContext.SharedContext.Metadata["request_headers"] = finalizedHeaders
+					analyticsData["request_headers"] = finalizedHeaders
+					execCtx.analyticsMetadata["request_headers"] = finalizedHeaders
 				}
 			}
 		}
@@ -298,9 +299,9 @@ func translateResponseActionsCore(result *executor.ResponseExecutionResult, exec
 
 					// Include request_headers from shared context metadata if it was set in a previous phase
 					if execCtx.requestContext != nil && execCtx.requestContext.SharedContext != nil {
-						if _, exists := execCtx.requestContext.SharedContext.Metadata["request_headers"]; exists {
-							slog.Debug("Translator: Including request_headers from shared context metadata", "REQUEST", execCtx.requestContext.SharedContext.Metadata["request_headers"])
-							analyticsData["request_headers"] = execCtx.requestContext.SharedContext.Metadata["request_headers"]
+						if _, exists := execCtx.analyticsMetadata["request_headers"]; exists {
+							slog.Debug("Translator: Including request_headers from shared context metadata", "REQUEST", execCtx.analyticsMetadata["request_headers"])
+							analyticsData["request_headers"] = execCtx.analyticsMetadata["request_headers"]
 						}
 					}
 				}
