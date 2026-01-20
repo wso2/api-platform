@@ -355,6 +355,7 @@ func (h *DeploymentHandler) GetDeploymentContent(c *gin.Context) {
 		log.Printf("[ERROR] Failed to get deployment content: apiId=%s deploymentId=%s error=%v", apiId, deploymentId, err)
 		c.JSON(http.StatusInternalServerError, utils.NewErrorResponse(500, "Internal Server Error",
 			"Failed to retrieve deployment content"))
+		return
 	}
 	c.Data(http.StatusOK, "application/json", content)
 }
